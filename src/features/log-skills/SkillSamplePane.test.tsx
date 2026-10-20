@@ -6,6 +6,16 @@ import { mockSkillSample } from "@/infrastructure/mock/logSkills";
 
 afterEach(cleanup);
 describe("skill sample pane", () => {
+  it("allows selecting a complete long sample line with the keyboard", async () => {
+    const content = "日志".repeat(50);
+    const onLineSelect = vi.fn();
+    render(<SkillSamplePane skillId="skill-charging" apiMode canEdit repository={{ getSkillSample: vi.fn().mockResolvedValue({ ...mockSkillSample, content, lineCount: 1 }) }} onLineSelect={onLineSelect} />);
+    const line = await screen.findByRole("button", { name: `选择样例第 1 行：${content}` });
+    line.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(onLineSelect).toHaveBeenCalledWith(1);
+    expect(line.querySelector("code")).toHaveTextContent(content);
+  });
   it("scrolls a repeated hit request to the already highlighted line", async () => {
     const repository = { getSkillSample: vi.fn().mockResolvedValue(mockSkillSample) };
     const { rerender } = render(<SkillSamplePane skillId="skill-charging" apiMode canEdit repository={repository} highlightedLine={2} highlightRequest={1} />);

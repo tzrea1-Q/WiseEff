@@ -69,6 +69,7 @@ describe("parse test workspace", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "期望字段 3 值" }), { target: { value: '"normal"' } });
     expect(current!.parseTests![0].expect.fields!["val.fields.CHRG_FAULT.meaning"]).toBe("normal");
     fireEvent.click(screen.getByRole("button", { name: "删除期望字段 2" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "删除期望字段" }));
     expect(current!.parseTests![0].expect.fields!["val.fields.CHRG_FAULT.value"]).toBeUndefined();
     fireEvent.change(screen.getByRole("textbox", { name: "测试文件名" }), { target: { value: "" } });
     expect(current!.parseTests![0]).not.toHaveProperty("fileName");
@@ -145,6 +146,7 @@ describe("parse test workspace", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "期望字段 2 路径" }), { target: { value: "first" } });
     expect(screen.getByRole("button", { name: "发布" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "删除测试" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "删除测试" }));
     expect(screen.getByRole("textbox", { name: "测试名称" })).toHaveValue("Other case");
     expect(screen.getByRole("button", { name: "发布" })).toBeEnabled();
   });

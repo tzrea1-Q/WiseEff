@@ -32,6 +32,25 @@ function setup(repository: Partial<SkillWorkspaceRepository> = { parsePreview: v
   render(<Harness />); return repository;
 }
 describe("register decoding workspace", () => {
+  it("selects one register mapping at a time and selects a newly added mapping", async () => {
+    setup(undefined, false, { ...spec, registerMaps: { ...spec.registerMaps, secondary: { selectBy: "val", cases: {} } } });
+    expect(screen.getByRole("combobox", { name: "选择映射" })).toHaveTextContent("charger");
+    expect(screen.queryByRole("combobox", { name: "secondary 选择依据字段" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("combobox", { name: "选择映射" }));
+    await userEvent.click(screen.getByRole("option", { name: "secondary" }));
+    expect(screen.getByRole("combobox", { name: "secondary 选择依据字段" })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "新增映射" }));
+    expect(screen.getByRole("combobox", { name: "选择映射" })).toHaveTextContent("map1");
+    expect(screen.getByRole("combobox", { name: "map1 选择依据字段" })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "删除映射" }));
+    const dialog = screen.getByRole("dialog", { name: "删除映射？" });
+    expect(within(dialog).getByRole("button", { name: "删除映射" })).toHaveClass("danger");
+    await userEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(screen.getByRole("combobox", { name: "选择映射" })).toHaveTextContent("map1");
+    await userEvent.click(screen.getByRole("button", { name: "删除映射" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "删除映射" }));
+    expect(screen.getByRole("combobox", { name: "选择映射" })).toHaveTextContent("charger");
+  });
   it("uses the bundle content path and drops decoding previews when applicability excludes it", async () => {
     const parsePreview = vi.fn(async () => preview);
     const bundle = { ...sample, fileName: "bundle.zip", contentFilePath: "charger/charger.log" };
@@ -196,7 +215,7 @@ describe("register decoding workspace", () => {
       repository={{ parsePreview: vi.fn(async () => result) }} sample={{ ...sample, content: "addr=0x0B val=0x2c", lineCount: 1 }} selectedLine={1} />);
     const warning = await screen.findByRole("status");
     expect(warning).toHaveTextContent(/^addr=0x0B 未匹配寄存器映射 charger$/);
-    expect(warning).toHaveAttribute("title", "No register case for addr=0x0B (map charger)");
+    expect(warning).not.toHaveAttribute("title");
     expect(screen.getAllByRole("status")).toHaveLength(1);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.queryByText(/No register case|addr=11|此行未产生该寄存器/)).not.toBeInTheDocument();
@@ -206,7 +225,7 @@ describe("register decoding workspace", () => {
     ["event_size", "解码事件过大，部分字段已省略。"], ["field_cap", "解码字段数量超过上限，部分字段已省略。"],
     ["byte_cap", "解码字节数超过上限。"], ["invalid_field", "字段值无法按声明的类型解析。"],
     ["future_code", "解码失败，请检查字段定义和样例内容。"], ["constructor", "解码失败，请检查字段定义和样例内容。"]
-  ])("localizes %s while retaining its diagnostic only in the title", async (code, message) => {
+  ])("localizes %s without exposing the raw diagnostic", async (code, message) => {
     const result = structuredClone(preview);
     result.events[0].fields.val = { raw: "0x20", value: 32 };
     result.events[0].errors = [{ field: "val", code, message: "Raw engine diagnostic" }];
@@ -214,7 +233,7 @@ describe("register decoding workspace", () => {
     await userEvent.click(await screen.findByRole("button", { name: /选择样例第 2 行/ }));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(`val：${message}`);
-    expect(alert).toHaveAttribute("title", `${code}: Raw engine diagnostic`);
+    expect(alert).not.toHaveAttribute("title");
     expect(screen.queryByText(/Raw engine diagnostic|此行未产生该寄存器/)).not.toBeInTheDocument();
   });
   it("omits cleared optional field properties from YAML", async () => {

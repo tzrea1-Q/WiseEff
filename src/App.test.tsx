@@ -350,6 +350,17 @@ function renderAppForCurrentPath() {
 }
 
 describe("WiseEff app shell", { timeout: 20_000 }, () => {
+  it.each(["/log-admin/skills/skill-charging", "/log-admin/skills/skill-charging/"])("leaves %s with its own workspace header", async (path) => {
+    window.history.replaceState(null, "", path);
+    render(<App runtimeMode="mock" initialAppState={adminState} />);
+    expect(await screen.findByRole("heading", { name: "充电诊断", level: 1 })).toBeInTheDocument();
+    const topbar = screen.getByRole("banner", { name: "页面栏" });
+    expect(topbar.querySelector(".topbar-title")).not.toBeInTheDocument();
+    expect(topbar.querySelector(".topbar-subtitle")).not.toBeInTheDocument();
+    expect(within(topbar).getByRole("button", { name: /打开用户菜单$/ })).toBeInTheDocument();
+    expect(screen.queryByText("编辑草稿、发布与查看版本")).not.toBeInTheDocument();
+  });
+
   it("declares the WiseEff favicon assets in the document shell", () => {
     const indexHtml = readFileSync("index.html", "utf8");
 

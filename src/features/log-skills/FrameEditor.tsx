@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleAlert } from "lucide-react";
 import { SelectControl } from "@/components/common/SelectControl";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -125,6 +126,7 @@ export function FrameEditor({ spec, onChange, disabled, events, selectedLine, pe
   spec: Parsing; onChange: (spec: Parsing) => void; disabled: boolean; events: ParsePreview["events"]; selectedLine?: number | null; pending: boolean; error?: string;
 }) {
   const [selection, setSelection] = useState<{ id: string; line: typeof selectedLine } | null>(null);
+  const [deleting, setDeleting] = useState<{ label: string; remove: () => void } | null>(null);
   const setSelectedId = (id: string) => setSelection({ id, line: selectedLine });
   const [fieldSelection, setFieldSelection] = useState<{ frame: string; index: number; item?: string; line: typeof selectedLine } | null>(null);
   const setSelected = (value: { frame: string; index: number; item?: string } | null) => setFieldSelection(value ? { ...value, line: selectedLine } : null);
@@ -187,10 +189,10 @@ export function FrameEditor({ spec, onChange, disabled, events, selectedLine, pe
         const next = { ...frames }; delete next[activeId]; next[key] = frame;
         onChange(renameFrameReferences({ ...spec, frames: next }, "frame", activeId, key)); setSelectedId(key); setSelected(null);
       }} /></label><label>帧默认字节序<SelectControl ariaLabel="帧默认字节序" disabled={disabled} value={frame.endian ?? "big"} options={endianOptions.slice(1)} onValueChange={(value) => update({ ...frame, endian: value as Frame["endian"] })} /></label>
-        <Button variant="ghost" disabled={disabled} onClick={() => { const next = { ...frames }; delete next[activeId]; onChange({ ...spec, frames: next }); }}>删除帧</Button></div>
+        <Button variant="ghost" disabled={disabled} onClick={() => setDeleting({ label: "删除帧", remove: () => { const next = { ...frames }; delete next[activeId]; onChange({ ...spec, frames: next }); } })}>删除帧</Button></div>
       <p>{selectedLine ? `帧样例第 ${selectedLine} 行${pending ? " · 解码中…" : ""}` : "选择右侧样例行，查看帧字节和字段值。"}</p>
       {error ? <p role="alert">{error}</p> : null}
-      {events.flatMap((event) => event.errors ?? []).filter((issue) => /^(?:frame_|repeat_|tlv_|checksum|unmatched_switch)/.test(issue.code)).map((issue, i) => <p role="alert" className="skill-register-unmatched" key={i} title={`${issue.code}: ${issue.message}`}><CircleAlert aria-hidden="true" /><span>{issue.field ? `${issue.field}：` : ""}{frameErrorText(issue)}</span></p>)}
+      {events.flatMap((event) => event.errors ?? []).filter((issue) => /^(?:frame_|repeat_|tlv_|checksum|unmatched_switch)/.test(issue.code)).map((issue, i) => <p role="alert" className="skill-register-unmatched" key={i}><CircleAlert aria-hidden="true" /><span>{issue.field ? `${issue.field}：` : ""}{frameErrorText(issue)}</span></p>)}
       <Button variant="outline" disabled={disabled} onClick={() => update({ ...frame, fields: [...frame.fields, { name: nextId("field", Object.fromEntries(frame.fields.map((field) => [field.name, true]))), type: "uint", length: 1 }] })}>新增帧字段</Button>
       <Table aria-label="帧字段表" className="skill-frame-table"><TableHeader><TableRow>{["偏移 / 长度", "名称 / 类型", "字节序 / 选项", "样例值", "操作"].map((name) => <TableHead key={name}>{name}</TableHead>)}</TableRow></TableHeader>
         <TableBody>{frame.fields.map((field, index) => {
@@ -222,7 +224,7 @@ export function FrameEditor({ spec, onChange, disabled, events, selectedLine, pe
                 onClick={(event) => { event.stopPropagation(); setSelected({ frame: activeId, index, item: item.key }); }}>{item.key} · {decodedValueText(item.value)}</Button>)}</div> : null}
               {checksum ? <p role="status" aria-label={`${field.name} 校验状态`} className="skill-frame-checksum" data-ok={checksum.ok}>{checksum.ok ? "✓ 校验通过" : "✕ 校验失败"} · 期望 {checksum.expected} / 实际 {checksum.actual}</p> : null}</TableCell>
             <TableCell><Button variant="ghost" size="sm" disabled={disabled || index === 0} aria-label={`${label} 上移`} onClick={() => { const fields = [...frame.fields]; [fields[index - 1], fields[index]] = [fields[index], fields[index - 1]]; update({ ...frame, fields }); setSelected(null); }}>上移</Button>
-              <Button variant="ghost" size="sm" disabled={disabled} aria-label={`删除帧字段 ${index + 1}`} onClick={() => { update({ ...frame, fields: frame.fields.filter((_, i) => i !== index) }); setSelected(null); }}>删除</Button></TableCell>
+              <Button variant="ghost" size="sm" disabled={disabled} aria-label={`删除帧字段 ${index + 1}`} onClick={() => setDeleting({ label: "删除帧字段", remove: () => { update({ ...frame, fields: frame.fields.filter((_, i) => i !== index) }); setSelected(null); } })}>删除</Button></TableCell>
           </TableRow>;
         })}</TableBody></Table>
       <div ref={hexRef} className="skill-frame-hex" role="group" aria-label="帧十六进制视图"><p aria-live="polite">{selectedName ? `已选字段：${selectedName}（边框与粗体标记字节）` : "选择字段或字节，查看对应范围。"}</p>
@@ -234,5 +236,7 @@ export function FrameEditor({ spec, onChange, disabled, events, selectedLine, pe
             return <button type="button" key={offset} className="skill-frame-byte" aria-label={`字节 ${offset}：${byte.toUpperCase()}${fieldName ? `，字段 ${fieldName}` : ""}${item ? `，重复项 ${item.key}` : ""}`} aria-pressed={active} disabled={fieldIndex < 0} onClick={() => setSelected({ frame: activeId, index: fieldIndex, ...(item ? { item: item.key } : {}) })}>{byte.toUpperCase()}</button>;
           })}</div>)}</div>
     </>}
+    <ConfirmDialog open={!!deleting} title={`${deleting?.label ?? "删除"}？`} description="此项内容将从当前草稿中移除。" tone="danger" confirmLabel={deleting?.label ?? "删除"}
+      onCancel={() => setDeleting(null)} onConfirm={() => { deleting?.remove(); setDeleting(null); }} />
   </section>;
 }

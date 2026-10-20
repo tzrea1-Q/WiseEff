@@ -63,7 +63,7 @@ it("contains the sticky draft bar below app overlays and the shared modal scrim"
   const css = readStylesheet("src/features/log-skills/skill-workspace.css");
   const root = declarationsFor(css, ".skill-workspace");
   expect(root["z-index"]).toBe("var(--z-content-base)");
-  expect(declarationsFor(css, ".skill-workspace .navigator-workbench__context")["z-index"]).toBe("var(--z-content-sticky)");
+  expect(declarationsFor(css, ".skill-workspace .navigator-workbench__toolbar")["z-index"]).toBe("var(--z-content-sticky)");
   const shared = readStylesheet("src/styles.css");
   const ladder = declarationsFor(shared, ":root");
   expect(Number(ladder["--z-content-sticky"])).toBeLessThan(Number(ladder["--z-sticky"]));

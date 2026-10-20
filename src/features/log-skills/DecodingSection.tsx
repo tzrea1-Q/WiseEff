@@ -5,6 +5,7 @@ import { parsingSpecSchema, registerCaseKey, logSkillSpecSchema } from "@wiseeff
 import { matchSkillFile } from "@/domain/logs/fileApplicability";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SelectControl } from "@/components/common/SelectControl";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -104,6 +105,8 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
   const id = useId();
   const [view, setView] = useState("form");
   const [registerId, setRegisterId] = useState("");
+  const [mapIdSelection, setMapIdSelection] = useState("");
+  const [deleting, setDeleting] = useState<{ label: string; remove: () => void } | null>(null);
   const [occurrence, setOccurrence] = useState<{ register: string; line: typeof selectedLine; key: string } | null>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [paste, setPaste] = useState("");
@@ -121,6 +124,9 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
   const registers = spec?.registers ?? {};
   const activeId = Object.hasOwn(registers, registerId) ? registerId : Object.keys(registers)[0] ?? "";
   const register = registers[activeId];
+  const maps = spec?.registerMaps ?? {};
+  const mapId = Object.hasOwn(maps, mapIdSelection) ? mapIdSelection : Object.keys(maps)[0] ?? "";
+  const map = maps[mapId];
   const pasteIssue = useMemo(() => registerPasteIssue(paste), [paste]);
   const rows = useMemo(() => registerPasteIssue(deferredPaste) ? [] : parseRegisterTable(deferredPaste, register?.width ?? 8), [deferredPaste, register?.width]);
   const validRows = rows.filter((row) => row.field);
@@ -157,7 +163,6 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
   })))];
   const eventErrors = selectedEvents.flatMap((event) => event.errors ?? []);
   const visibleErrors = eventErrors.filter((issue) => !unmatchedMaps.length || !isRegisterCaseError(issue.code));
-  const unmatchedDetails = eventErrors.filter((issue) => isRegisterCaseError(issue.code)).map((issue) => issue.message).join("\n");
   const fieldNames = [...new Set(spec?.extractors.flatMap((extractor) => Object.keys(extractor.fields)) ?? [])];
   return <section className="skill-section skill-decoding" aria-label="解码"><h2>解码</h2>
     {sample && !skillMatched ? <p>此文件未匹配技能，仅通用分析；不会运行技能解码预览。</p> : null}
@@ -165,7 +170,7 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
       { value: "form", label: "表单", id: `${id}-form`, panelId: `${id}-form-panel` },
       { value: "code", label: "代码视图", id: `${id}-code`, panelId: `${id}-code-panel` }
     ]} />
-    {parsed.error ? <p role="alert">{parsed.error}</p> : !validation.success ? <ul role="alert">{validation.error.issues.map((issue, index) => <li key={index}>{issue.path.join(".")}：{issue.message}</li>)}</ul> : null}
+    {parsed.error ? <p role="alert">解析规则语法无效，请在代码视图检查缩进和格式。</p> : !validation.success ? <p role="alert">解码配置无效，请检查寄存器、映射、帧和字段绑定。</p> : null}
     <TabPanel id={`${id}-code-panel`} aria-labelledby={`${id}-code`} hidden={view !== "code"}>
       <label>代码视图 · YAML<Textarea spellCheck={false} className="font-mono" disabled={disabled} value={yaml} onChange={(event) => onChange(event.target.value)} /></label>
     </TabPanel>
@@ -187,20 +192,20 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
               options={[8, 16, 32, 64].map((width) => ({ value: String(width), label: `${width} 位` }))} /></label></div>
             <p>{selectedLine ? `样例第 ${selectedLine} 行${pending ? " · 解码中…" : ""}` : "选择右侧样例行，查看位段的解码值。"}</p>
             {error ? <p role="alert">{error}</p> : null}
-            {preview?.issues.map((issue, index) => <p role="alert" key={index}>{issue.path.join(".")}：{issue.message}</p>)}
+            {preview?.issues.length ? <p role="alert">解码预览未完成，请检查规则和样例内容后重试。</p> : null}
             {storedPreview.truncated ? <p role="status">样例预览仅处理 1 MiB 内的完整行；超出范围的样例行没有解码值。</p> : null}
             {preview?.truncated ? <p role="status">{preview.reason === "output_field_cap" ? "预览达到 32768 个字段输出上限，仅显示已完成的解码结果。"
               : preview.reason === "output_byte_cap" ? "预览达到 4 MiB 输出上限，仅显示已完成的解码结果。"
               : preview.reason === "time_cap" ? "预览达到 100 ms 时间上限，仅显示已完成的解码结果。"
               : preview.reason === "line_cap" ? "预览仅处理前 5000 行；超出范围的样例行没有解码值。"
               : "预览仅显示前 500 个事件；超出范围的样例行没有解码值。"}</p> : null}
-            {visibleErrors.map((issue, index) => <p role="alert" key={index} title={`${issue.code}: ${issue.message}`}>{issue.field ? `${issue.field}：` : ""}{Object.hasOwn(decodingErrorMessages, issue.code) ? decodingErrorMessages[issue.code] : "解码失败，请检查字段定义和样例内容。"}</p>)}
+            {visibleErrors.map((issue, index) => <p role="alert" key={index}>{issue.field ? `${issue.field}：` : ""}{Object.hasOwn(decodingErrorMessages, issue.code) ? decodingErrorMessages[issue.code] : "解码失败，请检查字段定义和样例内容。"}</p>)}
             {preview && !matchingValue && !unmatchedMaps.length && !visibleErrors.length ? <p>此行未产生该寄存器的解码字段；请检查抽取字段绑定与映射。</p> : null}
             {matching ? <p aria-label="寄存器样例路径">{matching.path.join(" › ")}</p> : null}
             {occurrences.length > 1 ? <label>寄存器解码位置<SelectControl ariaLabel="寄存器解码位置" value={matching?.key ?? ""} options={occurrences.map((item) => ({ value: item.key, label: item.path.join(" › ") }))}
               onValueChange={(key) => setOccurrence({ register: activeId, line: selectedLine, key })} /></label> : null}
             <RegisterBitBar register={register} values={values} />
-            {unmatchedMaps.map((message) => <p key={message} className="skill-register-unmatched" role="status" title={unmatchedDetails || undefined}><CircleAlert aria-hidden="true" />{message}</p>)}
+            {unmatchedMaps.map((message) => <p key={message} className="skill-register-unmatched" role="status"><CircleAlert aria-hidden="true" />{message}</p>)}
             <div className="skill-register-toolbar"><Button variant="outline" disabled={disabled} onClick={() => updateRegister({ ...register, fields: [...register.fields, { bits: [0, 0], name: nextId("FIELD", Object.fromEntries(register.fields.map((field) => [field.name, true]))) }] })}>新增字段</Button>
               <Button variant="outline" disabled={disabled} onClick={() => { setPaste(""); setPasteOpen(true); }}>粘贴寄存器表</Button></div>
             <Table aria-label="寄存器字段表"><TableHeader><TableRow>{["位 [高:低]", "名称", "物理值", "含义与说明", "操作"].map((name) => <TableHead key={name}>{name}</TableHead>)}</TableRow></TableHeader>
@@ -215,13 +220,15 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
                 </div></TableCell>
                 <TableCell><div className="skill-register-properties"><div><span>枚举 JSON</span><EnumEditor label={`字段 ${index + 1} 枚举`} disabled={disabled} value={field.enum} onChange={(value) => updateField(index, { enum: value })} /></div>
                   <label>说明<Input aria-label={`字段 ${index + 1} 说明`} disabled={disabled} value={field.description ?? ""} onChange={(event) => updateField(index, { description: event.target.value || undefined })} /></label></div></TableCell>
-                <TableCell><Button variant="ghost" size="sm" aria-label={`删除字段 ${index + 1}`} disabled={disabled} onClick={() => updateRegister({ ...register, fields: register.fields.filter((_, i) => i !== index) })}>删除</Button></TableCell>
+                <TableCell><Button variant="ghost" size="sm" aria-label={`删除字段 ${index + 1}`} disabled={disabled} onClick={() => setDeleting({ label: "删除字段", remove: () => updateRegister({ ...register, fields: register.fields.filter((_, i) => i !== index) }) })}>删除</Button></TableCell>
               </TableRow>)}</TableBody></Table>
           </> : <p>添加寄存器后，编辑位段和物理含义。</p>}
         </section>
         <section aria-label="寄存器映射"><h3>寄存器映射</h3>
-          <Button variant="outline" disabled={disabled} onClick={() => write({ ...spec, registerMaps: { ...spec.registerMaps, [nextId("map", spec.registerMaps ?? {})]: { selectBy: fieldNames[0] ?? "", cases: {} } } })}>新增映射</Button>
-          {Object.entries(spec.registerMaps ?? {}).map(([mapId, map]) => <fieldset key={mapId} className="skill-register-map"><legend>{mapId}</legend>
+          <div className="skill-register-toolbar"><label>选择映射<SelectControl ariaLabel="选择映射" value={mapId} onValueChange={setMapIdSelection}
+            options={Object.keys(maps).map((value) => ({ value, label: value }))} placeholder="暂无映射" /></label>
+            <Button variant="outline" disabled={disabled} onClick={() => { const key = nextId("map", maps); write({ ...spec, registerMaps: { ...maps, [key]: { selectBy: fieldNames[0] ?? "", cases: {} } } }); setMapIdSelection(key); }}>新增映射</Button></div>
+          {map ? <fieldset key={mapId} className="skill-register-map"><legend>映射设置</legend>
             <label>选择依据字段<SelectControl ariaLabel={`${mapId} 选择依据字段`} disabled={disabled} value={map.selectBy} options={fieldNames.map((value) => ({ value, label: value }))}
               onValueChange={(selectBy) => write({ ...spec, registerMaps: { ...spec.registerMaps, [mapId]: { ...map, selectBy } } })} /></label>
             {Object.entries(map.cases).map(([address, target], index) => <div className="skill-register-toolbar" key={index}>
@@ -231,13 +238,13 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
                 write({ ...spec, registerMaps: { ...spec.registerMaps, [mapId]: { ...map, cases } } });
               }} /></label><label>寄存器<SelectControl ariaLabel={`${mapId} 寄存器 ${index + 1}`} disabled={disabled} value={target} options={Object.keys(registers).map((value) => ({ value, label: value }))}
                 onValueChange={(value) => write({ ...spec, registerMaps: { ...spec.registerMaps, [mapId]: { ...map, cases: { ...map.cases, [address]: value } } } })} /></label>
-              <Button variant="ghost" disabled={disabled} aria-label={`${mapId} 删除条件 ${index + 1}`} onClick={() => { const cases = { ...map.cases }; delete cases[address]; write({ ...spec, registerMaps: { ...spec.registerMaps, [mapId]: { ...map, cases } } }); }}>删除</Button>
+              <Button variant="ghost" disabled={disabled} aria-label={`${mapId} 删除条件 ${index + 1}`} onClick={() => setDeleting({ label: "删除条件", remove: () => { const cases = { ...map.cases }; delete cases[address]; write({ ...spec, registerMaps: { ...spec.registerMaps, [mapId]: { ...map, cases } } }); } })}>删除</Button>
             </div>)}
             <Button variant="outline" disabled={disabled || !activeId} onClick={() => { let address = 0; while (Object.hasOwn(map.cases, String(address))) address++; write({ ...spec, registerMaps: { ...spec.registerMaps, [mapId]: { ...map, cases: { ...map.cases, [address]: activeId } } } }); }}>新增条件</Button>
             <label>默认寄存器<SelectControl ariaLabel={`${mapId} 默认寄存器`} disabled={disabled} value={map.default ?? ""} options={[{ value: "", label: "不匹配时报错" }, ...Object.keys(registers).map((value) => ({ value, label: value }))]}
               onValueChange={(value) => write({ ...spec, registerMaps: { ...spec.registerMaps, [mapId]: { ...map, default: value || undefined } } })} /></label>
-            <Button variant="ghost" disabled={disabled} onClick={() => { const registerMaps = { ...spec.registerMaps }; delete registerMaps[mapId]; write({ ...spec, registerMaps }); }}>删除映射 {mapId}</Button>
-          </fieldset>)}
+            <Button variant="ghost" disabled={disabled} onClick={() => setDeleting({ label: "删除映射", remove: () => { const registerMaps = { ...spec.registerMaps }; delete registerMaps[mapId]; write({ ...spec, registerMaps }); } })}>删除映射</Button>
+          </fieldset> : <p>添加映射后，配置条件和目标寄存器。</p>}
         </section>
         <FrameEditor spec={spec} onChange={write} disabled={disabled} events={selectedEvents} selectedLine={selectedLine} pending={pending} error={error} />
         <section aria-label="抽取字段绑定"><h3>抽取字段绑定</h3>
@@ -252,6 +259,8 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
         </section>
       </>}
     </TabPanel>
+    <ConfirmDialog open={!!deleting} title={`${deleting?.label ?? "删除"}？`} description="此项内容将从当前草稿中移除。" tone="danger" confirmLabel={deleting?.label ?? "删除"}
+      onCancel={() => setDeleting(null)} onConfirm={() => { deleting?.remove(); setDeleting(null); }} />
     <ModalDialog open={pasteOpen} onDismiss={() => setPasteOpen(false)} describedBy className="skill-authoring-dialog skill-register-paste-dialog modal-card--lg">
       {({ titleId, descriptionId }) => <><h2 id={titleId}>粘贴寄存器表</h2><p id={descriptionId}>粘贴位、名称、说明三列，支持制表符、逗号、多空格或竖线分隔。最多 64 KiB、512 行。确认后将替换当前寄存器的全部字段，仅导入有效行。</p>
         <label htmlFor={`${id}-paste`}>数据手册表格</label><Textarea id={`${id}-paste`} aria-invalid={!!pasteIssue} aria-describedby={pasteIssue ? `${id}-paste-limit` : descriptionId} value={paste} onChange={(event) => setPaste(event.target.value)} />

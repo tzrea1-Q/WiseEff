@@ -41,6 +41,16 @@ function editor(events = preview.events, initial = spec, disabled = false) {
 }
 
 describe("frame workspace", () => {
+  it("keeps frame fields until destructive deletion is confirmed", async () => {
+    const onChange = vi.fn();
+    render(<FrameEditor spec={spec} onChange={onChange} disabled={false} events={[]} pending={false} />);
+    await userEvent.click(screen.getByRole("button", { name: "删除帧字段 1" }));
+    expect(onChange).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog", { name: "删除帧字段？" });
+    expect(within(dialog).getByRole("button", { name: "删除帧字段" })).toHaveClass("danger");
+    await userEvent.click(within(dialog).getByRole("button", { name: "删除帧字段" }));
+    expect(onChange.mock.lastCall![0].frames.packet.fields).toEqual(spec.frames!.packet.fields.slice(1));
+  });
   it("renders the exact F0–F7 shared-reference graph quickly with one length calculation per definition", () => {
     const reads: Record<string, number> = {};
     const frames: NonNullable<Parsing["frames"]> = Object.fromEntries(Array.from({ length: 8 }, (_, level) => {
@@ -115,7 +125,7 @@ describe("frame workspace", () => {
     expect(screen.queryByText(/^已选字段：/)).not.toBeInTheDocument();
     const warning = screen.getByRole("alert");
     expect(warning).toHaveTextContent("字段 pdo 需要 4 个字节（偏移 0），仅剩 0 个字节");
-    expect(warning).toHaveAttribute("title", "frame_range: Field pdo requires 4 bytes at offset 0; only 0 remain");
+    expect(warning).not.toHaveAttribute("title");
     expect(warning).toHaveClass("skill-register-unmatched");
     expect(warning.querySelector("svg")).not.toBeNull();
     expect(within(screen.getByRole("group", { name: "帧十六进制视图" })).getAllByRole("button")).toHaveLength(2);

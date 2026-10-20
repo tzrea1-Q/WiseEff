@@ -41,6 +41,10 @@ describe("skill file applicability", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "文件角色 2" }), { target: { value: "自定义" } });
     expect(row("charger/charger.log")).toHaveTextContent("自定义");
     fireEvent.click(screen.getByRole("button", { name: "删除文件规则 2" }));
+    expect(row("charger/charger.log")).toHaveTextContent("已匹配 · 自定义");
+    const confirm = within(screen.getByRole("dialog")).getByRole("button", { name: "删除规则" });
+    expect(confirm).toHaveClass("danger");
+    fireEvent.click(confirm);
     expect(row("charger/charger.log")).toHaveTextContent("未匹配 · 仅通用分析");
     expect(screen.getByRole("button", { name: "上移文件规则 1" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "下移文件规则 1" })).toBeDisabled();
@@ -49,7 +53,7 @@ describe("skill file applicability", () => {
     setup();
     expect(screen.getAllByRole("cell", { name: "已匹配" })).toHaveLength(3);
     fireEvent.click(screen.getByRole("button", { name: "添加文件规则" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("files.0.glob");
+    expect(screen.getByRole("alert")).toHaveTextContent("第 1 条文件规则的通配模式无效");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole("textbox", { name: "通配模式 1" }), { target: { value: "charger/**" } });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();

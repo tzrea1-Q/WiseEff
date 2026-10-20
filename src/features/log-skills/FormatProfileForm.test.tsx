@@ -58,21 +58,24 @@ describe("basic format form", () => {
   it("previews unsaved timestamps, severity and raw-line entry grouping", async () => {
     const { changed, repository } = setup({ multiline: { mode: "indent" } });
     fireEvent.change(screen.getByRole("textbox", { name: "时间戳模式" }), { target: { value: "^\\[(\\d+\\.\\d+)\\]" } });
-    fireEvent.click(screen.getByRole("button", { name: "添加 error 模式" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加错误模式" }));
     fireEvent.change(screen.getByRole("textbox", { name: "error 模式 1" }), { target: { value: "<3>" } });
     await waitFor(() => expect(repository.previewFormat).toHaveBeenCalledWith("s", { formatProfile: { timestampPattern: "^\\[(\\d+\\.\\d+)\\]", multiline: { mode: "indent" }, severityMap: { error: ["<3>"] } }, sampleText }));
     const lines = await screen.findByRole("table", { name: "基础格式逐行预览" });
     expect(within(lines).getByText("12.34")).toBeInTheDocument();
-    expect(within(lines).getByText("错误 · error")).toBeInTheDocument();
+    expect(within(lines).getByText("错误")).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "基础格式条目分组" })).toHaveTextContent("1, 2");
     expect(changed).toHaveBeenLastCalledWith({ timestampPattern: "^\\[(\\d+\\.\\d+)\\]", multiline: { mode: "indent" }, severityMap: { error: ["<3>"] } });
     fireEvent.click(screen.getByRole("button", { name: "删除 error 模式 1" }));
+    const confirm = within(screen.getByRole("dialog")).getByRole("button", { name: "删除模式" });
+    expect(confirm).toHaveClass("danger");
+    fireEvent.click(confirm);
     expect(changed).toHaveBeenLastCalledWith({ timestampPattern: "^\\[(\\d+\\.\\d+)\\]", multiline: { mode: "indent" }, severityMap: { error: [] } });
   });
   it("keeps invalid form patterns and malformed code editable while blocking stale saves", () => {
     const { changed, validity } = setup({ timestampPattern: "^good" });
     fireEvent.change(screen.getByRole("textbox", { name: "时间戳模式" }), { target: { value: "(?=bad)" } });
-    expect(screen.getByRole("alert")).toHaveTextContent("timestampPattern");
+    expect(screen.getByRole("alert")).toHaveTextContent("基础格式配置无效");
     expect(screen.getByRole("textbox", { name: "时间戳模式" })).toHaveValue("(?=bad)");
     expect(validity).toHaveBeenLastCalledWith(false);
     expect(changed).not.toHaveBeenCalled();
@@ -92,5 +95,11 @@ describe("basic format form", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "时间戳模式" }), { target: { value: "[" } });
     await act(async () => complete(preview));
     expect(screen.queryByRole("table", { name: "基础格式逐行预览" })).not.toBeInTheDocument();
+  });
+  it("shows empty preview lines without rendering empty table headers", async () => {
+    setup({}, { previewFormat: vi.fn(async () => ({ lines: [], entries: [] })) });
+    expect(await screen.findByText("样例没有可解析的非空行。")).toBeInTheDocument();
+    expect(screen.getByText("暂无合并条目。")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 });

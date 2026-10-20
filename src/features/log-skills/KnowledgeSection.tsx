@@ -2,10 +2,11 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
 import { canSeeEntry, type KnowledgeCapability } from "@/domain/knowledge/rules";
 import type { KnowledgeEntry } from "@/domain/knowledge/types";
-import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
+import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { formatBytes } from "@/domain/format/formatBytes";
 import { presentError } from "@/infrastructure/http/presentError";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { SearchField } from "@/components/common/SearchField";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { DataTable } from "@/components/admin/DataTable";
@@ -29,6 +30,7 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
   const [loadFailed, setLoadFailed] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [linkOpen, setLinkOpen] = useState(false);
+  const [unlinking, setUnlinking] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [choices, setChoices] = useState<KnowledgeEntry[] | null>(null);
   const [searchFailed, setSearchFailed] = useState(false);
@@ -131,12 +133,14 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
       : <DataTable rows={visibleEntries} rowKey={(row) => row.id} ariaLabel="已链接知识条目" tableClassName="table-fixed"
         emptyState={<SectionEmpty title="尚未链接知识" message="链接已发布条目，或上传 Markdown 创建知识草稿。" />}
         columns={[
-          { key: "title", header: "标题", render: ({ id, entry }) => entry ? <span className="break-words" title={entry.title}>{entry.title}</span> : <><span>无权查看的条目</span><code className="block break-all text-xs text-muted-foreground">{id}</code></> },
+          { key: "title", header: "标题", render: ({ entry }) => entry ? <span className="break-words" title={entry.title}>{entry.title}</span> : <span>无权查看的条目</span> },
           { key: "status", header: "状态", widthClass: "w-24", render: ({ entry }) => entry ? <KnowledgeStatusBadge status={entry.status} /> : null },
           { key: "revision", header: "修订", widthClass: "w-20", render: ({ entry }) => entry ? `v${entry.headRevisionNumber}` : null },
-          { key: "updated", header: "更新时间", widthClass: "w-32", render: ({ entry }) => entry ? <span title={formatAbsolute(entry.updatedAt)}>{formatRelativeOrAbsolute(entry.updatedAt)}</span> : null }
-        ]} renderRowActions={({ id, entry }) => <Button variant="outline" size="sm" disabled={disabled} aria-label={`取消链接 ${entry?.title ?? id}`}
-          onClick={() => setSpec({ ...spec, knowledgeEntryIds: ids.filter((linked) => linked !== id) })}>取消链接</Button>} />}
+          { key: "updated", header: "更新时间", widthClass: "w-32", render: ({ entry }) => entry ? <span title={formatAbsolute(entry.updatedAt).slice(0, 16).replaceAll("-", "/")}>{formatAbsolute(entry.updatedAt).slice(0, 16).replaceAll("-", "/")}</span> : null }
+        ]} renderRowActions={({ id, entry }) => <Button variant="outline" size="sm" disabled={disabled} aria-label={`取消链接 ${entry?.title ?? "无权查看的条目"}`}
+          onClick={() => setUnlinking(id)}>取消链接</Button>} />}
+    <ConfirmDialog open={!!unlinking} title="取消知识链接？" description="此知识条目将从当前草稿中移除，知识库中的原条目保留。" tone="danger" confirmLabel="取消链接"
+      onCancel={() => setUnlinking(null)} onConfirm={() => { setSpec({ ...spec, knowledgeEntryIds: ids.filter((id) => id !== unlinking) }); setUnlinking(null); }} />
     <ModalDialog open={linkOpen} initialFocusRef={searchRef} onDismiss={() => setLinkOpen(false)} className="skill-publish-dialog modal-card--lg">
       {({ titleId }) => <div className="grid gap-4"><h2 id={titleId}>链接已有条目</h2><p>选择当前组织已发布的知识条目。链接更改需先保存草稿，再发布技能。</p>
         <SearchField ref={searchRef} value={query} onValueChange={setQuery} ariaLabel="搜索已发布知识" placeholder="搜索知识标题" disabled={!canRead} loading={canRead && !choices && !searchFailed} />

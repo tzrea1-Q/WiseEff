@@ -167,7 +167,7 @@ export function AnalysisCasesSection({ skillId, repository, canEdit, beforeRun, 
     ]} />
     {editing ? <AnalysisCaseDialog key={editing === "new" ? "new" : editing.id} title={editing === "new" ? "添加分析用例" : "编辑分析用例"}
       initial={editing === "new" ? { name: "", expectations: emptyCaseExpectations } : editing} availableFiles={editing === "new" ? [] : editing.files} uploadRequired={editing === "new"} onSave={saveCase} onClose={() => setEditing(null)} /> : null}
-    <ConfirmDialog open={!!deleting} title="删除分析用例？" description={`将删除「${deleting?.name ?? ""}」及其日志包。`} confirmLabel="删除" pending={busy}
+    <ConfirmDialog open={!!deleting} title="删除分析用例？" description={`将删除「${deleting?.name ?? ""}」及其日志包。`} tone="danger" confirmLabel="删除用例" pending={busy}
       onCancel={() => setDeleting(null)} onConfirm={() => void action(async () => { await repository.deleteAnalysisCase!(skillId, deleting!.id); setDeleting(null); await refresh(); })} />
     <ModalDialog open={!!details} onDismiss={() => setDetails(null)} className="skill-authoring-dialog skill-case-results modal-card--lg">
       {({ titleId }) => <><h2 id={titleId}>用例结果 · {details?.name}</h2>

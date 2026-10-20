@@ -36,19 +36,20 @@ describe("signal authoring", () => {
       { type: "text", pattern: "derating" }, { type: "text", pattern: "overheat" }
     ] };
     setup(spec);
-    expect(screen.getByText("当 消息匹配 thermal / battery_temp / +2")).toBeVisible();
-    const summary = screen.getByTitle("当 消息匹配 thermal / battery_temp / +2 时，产生 热降额 · 严重 · 命中待预览");
+    expect(screen.getByText("当 消息匹配 thermal / battery_temp 等 4 个")).toBeVisible();
+    const summary = screen.getByTitle("当 消息匹配 thermal / battery_temp / derating / overheat 时，产生 热降额 · 严重 · 命中待预览");
     expect(within(summary).getByText("热降额")).toBeVisible();
     expect(within(summary).getByText("· 严重 · 命中待预览")).toBeVisible();
   });
-  it("collapses existing rules and shows readable legacy conditions with the id as the fallback name", async () => {
+  it("collapses existing rules and shows translated legacy conditions with a numbered fallback name", async () => {
     const { onChange } = setup();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(screen.getByTitle(/当 消息匹配 timeout \/ 日志级别为 error 且包含 code 时，产生 legacy/)).toBeVisible();
+    expect(screen.getByTitle(/当 消息匹配 timeout \/ 日志级别为 错误 且包含 code 时，产生 规则 1/)).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "展开规则 1" }));
-    expect(screen.getByText("日志级别为 error 且包含 code")).toBeVisible();
+    expect(screen.getByText("日志级别为 错误 且包含 code")).toBeVisible();
     expect(screen.getByText("仅可在代码视图编辑")).toBeVisible();
-    expect(screen.getByRole("textbox", { name: "规则 1名称" })).toHaveValue("legacy");
+    expect(screen.getByRole("textbox", { name: "规则 1名称" })).toHaveValue("规则 1");
+    expect(screen.queryByText("legacy")).not.toBeInTheDocument();
     expect(screen.queryByText(/兼容条件：/)).not.toBeInTheDocument();
     expect(onChange).not.toHaveBeenCalled();
   });
@@ -99,6 +100,9 @@ describe("signal authoring", () => {
     expect(next.signalRules!.rules[0].inference).toBe("High temperature");
     expect(next.signalRules!.rules[1]).toEqual(initial.signalRules!.rules[0]);
     await userEvent.click(screen.getByRole("button", { name: "删除规则 1" }));
+    expect(onChange.mock.lastCall![0]).not.toEqual(initial);
+    expect(screen.getByRole("button", { name: "删除规则" })).toHaveClass("danger");
+    await userEvent.click(screen.getByRole("button", { name: "删除规则" }));
     expect(onChange.mock.lastCall![0]).toEqual(initial);
   });
   it("builds field equality, range, set and per-file window conditions in the skill representation", async () => {
@@ -155,8 +159,8 @@ describe("signal authoring", () => {
     expect(picker).toHaveAttribute("title", condition.field);
     expect(picker).toHaveAccessibleName(`规则 1 条件 1抽取字段：${condition.field}`);
     expect(picker).toHaveTextContent(condition.field);
-    const summary = screen.getByTitle("当 CHRG_FAULT 含义 = thermal_shutdown（dump.val） 时，产生 legacy · 警告 · 命中待预览");
-    expect(summary).toHaveTextContent("当 CHRG_FAULT 含义 = thermal_shutdown（dump.val） 时，产生 legacy");
+    const summary = screen.getByTitle("当 CHRG_FAULT 含义 = thermal_shutdown（dump.val） 时，产生 规则 1 · 警告 · 命中待预览");
+    expect(summary).toHaveTextContent("当 CHRG_FAULT 含义 = thermal_shutdown（dump.val） 时，产生 规则 1");
     expect(onChange.mock.lastCall![0].signalRules.rules[0].anyOf[0]).toEqual(condition);
     expect(logSkillSpecSchema.safeParse(onChange.mock.lastCall![0]).success).toBe(true);
     await waitFor(() => expect(screen.getByText(/命中 1 次/)).toBeVisible());
@@ -176,25 +180,26 @@ describe("signal authoring", () => {
     await choose("规则 1 条件 1比较方式", "在范围内");
     expect(onChange.mock.lastCall![0].signalRules.rules[0].anyOf[0]).toEqual({ type: "field", field: "dump.val.fields.VOLTAGE.value", operator: "range", min: 0, max: 100 });
   });
-  it("shows field paths for invalid RE2, unknown fields, reversed ranges and nonpositive windows", async () => {
+  it("shows Chinese guidance for invalid RE2, unknown fields, reversed ranges and nonpositive windows", async () => {
     setup();
     await userEvent.click(screen.getByRole("button", { name: "展开规则 1" }));
     fireEvent.change(screen.getByRole("textbox", { name: "规则 1 条件 1消息正则" }), { target: { value: "(?=bad)" } });
-    expect(screen.getAllByRole("alert").some((item) => item.textContent?.includes("signalRules.rules.0.anyOf.0.pattern"))).toBe(true);
+    expect(screen.getAllByRole("alert").some((item) => item.textContent?.includes("正则表达式无效，请检查语法。"))).toBe(true);
+    expect(screen.queryByText(/signalRules\.rules/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "预览信号" })).not.toBeInTheDocument();
     cleanup();
     const withCondition = (condition: unknown) => ({ ...initial, signalRules: { ...initial.signalRules!, rules: [{ ...initial.signalRules!.rules[0], anyOf: [condition] }] } }) as SkillSpec;
     setup(withCondition({ type: "field", field: "missing.temp", operator: "equals", value: 1 }));
-    expect(screen.getAllByRole("alert").some((item) => item.textContent?.includes("signalRules.rules.0.anyOf.0.field"))).toBe(true);
+    expect(screen.getAllByRole("alert").some((item) => item.textContent?.includes("请选择有效的抽取字段。"))).toBe(true);
     cleanup();
     setup(withCondition({ type: "field", field: "status.temp", operator: "range", min: 100, max: 10 }));
-    expect(screen.getAllByRole("alert").some((item) => item.textContent?.includes("signalRules.rules.0.anyOf.0.max"))).toBe(true);
+    expect(screen.getAllByRole("alert").some((item) => item.textContent?.includes("数值范围无效，请检查上下限。"))).toBe(true);
     cleanup();
     setup(withCondition({ type: "field", field: "status.temp", operator: "range", min: "bad", max: 10 }));
-    expect(screen.getAllByRole("alert").some((item) => item.textContent?.includes("signalRules.rules.0.anyOf.0.min"))).toBe(true);
+    expect(screen.getAllByRole("alert").some((item) => item.textContent?.includes("数值范围无效，请检查上下限。"))).toBe(true);
     cleanup();
     setup(withCondition({ type: "window", condition: { type: "text", pattern: "error" }, count: 1, seconds: 0 }));
-    expect(screen.getAllByRole("alert").some((item) => item.textContent?.includes("signalRules.rules.0.anyOf.0.seconds"))).toBe(true);
+    expect(screen.getAllByRole("alert").some((item) => item.textContent?.includes("时间窗必须大于零。"))).toBe(true);
   });
   it("explains picker truncation and keeps an existing path beyond its cap editable", async () => {
     const spec = structuredClone(initial);
@@ -223,18 +228,20 @@ describe("signal authoring", () => {
     expect(signalPreview).not.toHaveBeenCalled();
     cleanup();
     render(<SignalsSection skillId="s" spec={initial} disabled={false} onChange={vi.fn()} sample={null} repository={{ signalPreview }} onHit={vi.fn()} />);
+    expect(screen.getByText("上传样例日志后显示命中次数")).toBeVisible();
+    expect(screen.queryByText(/命中待预览/)).not.toBeInTheDocument();
     await act(async () => { await vi.advanceTimersByTimeAsync(500); });
     expect(signalPreview).not.toHaveBeenCalled();
   });
-  it("displays aggregate rule and condition limits at their stable paths", () => {
+  it("displays Chinese guidance for aggregate rule and condition limits", () => {
     const spec = structuredClone(initial);
     spec.signalRules!.rules = Array.from({ length: 65 }, (_, index) => ({ ...initial.signalRules!.rules[0], id: `rule-${index}` }));
     setup(spec);
-    expect(screen.getAllByRole("alert").some((item) => item.textContent?.includes("signalRules.rules："))).toBe(true);
+    expect(screen.getAllByRole("alert").some((item) => item.textContent?.includes("信号规则数量超出上限，请删减后重试。"))).toBe(true);
     cleanup();
     spec.signalRules!.rules = [{ ...initial.signalRules!.rules[0], anyOf: Array.from({ length: 17 }, () => ({ type: "text", pattern: "error" })) }];
     setup(spec);
-    expect(screen.getAllByRole("alert").some((item) => item.textContent?.includes("signalRules.rules.0.anyOf："))).toBe(true);
+    expect(screen.getAllByRole("alert").some((item) => item.textContent?.includes("规则条件数量无效，请新增或删减条件。"))).toBe(true);
   });
   it("previews draft rules on the stored sample, groups hits and jumps to its line", async () => {
     const signalPreview = vi.fn(async () => ({ ...result, truncated: true, reason: "line_cap" as const, hits: [{ ruleId: "legacy", lineNumber: 2, excerpt: "ERROR timeout" }] }));
@@ -244,7 +251,7 @@ describe("signal authoring", () => {
     expect(screen.getByText(/命中 1 次/)).toBeVisible();
     expect(screen.queryByRole("button", { name: /第 2 行/ })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "展开规则 1" }));
-    expect(screen.getByRole("button", { name: "第 2 行：ERROR timeout" })).toHaveTextContent("L2");
+    expect(screen.getByRole("button", { name: "第 2 行：ERROR timeout" })).toHaveTextContent("第 2 行");
     fireEvent.click(screen.getByRole("button", { name: "第 2 行：ERROR timeout" }));
     expect(onHit).toHaveBeenCalledWith(2);
     fireEvent.change(screen.getByRole("textbox", { name: "规则 1名称" }), { target: { value: "New" } });
@@ -279,7 +286,7 @@ describe("signal authoring", () => {
     expect(screen.getByRole("button", { name: "添加信号规则" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "展开规则 1" }));
     expect(screen.getByRole("textbox", { name: "规则 1名称" })).toBeDisabled();
-    expect(screen.getByText("请先在右侧上传样例日志，规则命中会自动显示。")).toBeVisible();
+    expect(screen.getByText("上传样例日志后显示命中次数")).toBeVisible();
     cleanup();
     render(<SkillSamplePane skillId={mockSkillSample.skillId} repository={{ getSkillSample: async () => mockSkillSample }} apiMode canEdit highlightedLine={2} />);
     const pane = await screen.findByRole("region", { name: "样例内容" });

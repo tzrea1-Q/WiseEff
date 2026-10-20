@@ -28,6 +28,7 @@ test("skill knowledge links, Markdown draft uploads, and upload permission reaso
   const skill = (await skillResponse.json()).item as AnalysisSkill;
   const route = `/log-admin/skills/${skill.id}?section=knowledge`;
   const saveDraft = async () => {
+    await expect(page.getByRole("button", { name: "保存草稿", exact: true })).toBeEnabled();
     const response = page.waitForResponse((candidate) => candidate.request().method() === "PUT"
       && new URL(candidate.url()).pathname === `/api/v1/log-skills/${skill.id}/draft`);
     await page.getByRole("button", { name: "保存草稿", exact: true }).click();
@@ -82,6 +83,10 @@ test("skill knowledge links, Markdown draft uploads, and upload permission reaso
   await testInfo.attach("knowledge-linked-drafts-1440x900", { body: await page.screenshot(), contentType: "image/png" });
 
   await linked.getByRole("button", { name: `取消链接 ${title}`, exact: true }).click();
+  const unlinkDialog = page.getByRole("dialog", { name: "取消知识链接？", exact: true });
+  await expect(unlinkDialog).toBeVisible();
+  await unlinkDialog.getByRole("button", { name: "取消链接", exact: true }).click();
+  await expect(unlinkDialog).toBeHidden();
   await saveDraft();
   const unlinked = await page.request.get(apiRoute(`/api/v1/log-skills/${skill.id}`), { headers });
   expect((await unlinked.json()).item.draft.spec.knowledgeEntryIds).not.toContain(knowledge.id);

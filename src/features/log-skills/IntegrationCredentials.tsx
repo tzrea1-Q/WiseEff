@@ -7,7 +7,7 @@ import { SectionError, SectionSkeleton } from "@/components/common/SectionState"
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
+import { formatAbsolute } from "@/domain/format/formatDateTime";
 import type { SectionProps } from "./SkillWorkspace";
 import type { IntegrationCredential, IntegrationCredentialSecret } from "./types";
 
@@ -70,9 +70,9 @@ export function IntegrationCredentials({ skill, repository, apiMode, canEdit, di
             .sort((a, b) => Number(b.status === "active") - Number(a.status === "active") || Date.parse(b.createdAt) - Date.parse(a.createdAt))}
             rowKey={(item) => item.id} tableClassName="table-fixed" emptyMessage="尚无集成凭据。" columns={[
             { key: "name", header: "名称", className: "px-2", render: (item) => <><span className="block truncate" title={item.name}>{item.name}</span>
-              <span className="block break-words text-xs text-muted-foreground">{item.skillId ? `绑定：${item.skillName ?? skill.name}` : "未绑定"} · <time className="whitespace-nowrap" title={formatAbsolute(item.createdAt)}>创建于 {formatRelativeOrAbsolute(item.createdAt)}</time></span></> },
+              <span className="block break-words text-xs text-muted-foreground">{item.skillId ? `绑定：${item.skillName ?? skill.name}` : "未绑定"} · <time className="whitespace-nowrap" title={formatAbsolute(item.createdAt).slice(0, 16).replaceAll("-", "/")}>创建于 {formatAbsolute(item.createdAt).slice(0, 16).replaceAll("-", "/")}</time></span></> },
             { key: "status", header: "状态", widthClass: "w-20", className: "px-2", render: (item) => <Badge variant="outline" className={item.status === "active" ? "text-[var(--success)] bg-[var(--success-soft)]" : "text-muted-foreground bg-muted"}>{item.status === "active" ? "有效" : "已撤销"}</Badge> },
-            { key: "used", header: "最近使用", widthClass: "w-24", className: "px-2 break-words", render: (item) => item.lastUsedAt ? <time title={formatAbsolute(item.lastUsedAt)}>{formatRelativeOrAbsolute(item.lastUsedAt)}</time> : "尚未使用" },
+            { key: "used", header: "最近使用", widthClass: "w-24", className: "px-2 break-words", render: (item) => item.lastUsedAt ? <time title={formatAbsolute(item.lastUsedAt).slice(0, 16).replaceAll("-", "/")}>{formatAbsolute(item.lastUsedAt).slice(0, 16).replaceAll("-", "/")}</time> : "尚未使用" },
             { key: "actions", header: "操作", widthClass: "w-24", className: "px-2", render: (item) => item.status === "active" ? <RowActionMenu label={`凭据 ${item.name}`} items={(["rotate", "revoke"] as const).map((kind) => ({ id: kind, label: kind === "rotate" ? "轮换" : "撤销", destructive: true, disabled, onRequestConfirmation: () => { setError(""); setAction({ kind, item }); } }))} /> : <span className="text-muted-foreground">—</span> }
           ]} />}
       </>}
@@ -85,7 +85,7 @@ export function IntegrationCredentials({ skill, repository, apiMode, canEdit, di
     </ModalDialog>
     <ConfirmDialog open={!!action} title={action?.kind === "rotate" ? "轮换集成凭据" : "撤销集成凭据"}
       description={action?.kind === "rotate" ? `轮换「${action.item.name}」后，旧密钥立即失效。请更新调用方。` : `撤销「${action?.item.name ?? ""}」后，该凭据立即失效且无法恢复。`}
-      confirmLabel={action?.kind === "rotate" ? "确认轮换" : "确认撤销"} tone={action?.kind === "revoke" ? "danger" : "primary"} pending={pending} error={error}
+      confirmLabel={action?.kind === "rotate" ? "轮换凭据" : "撤销凭据"} tone="danger" pending={pending} error={error}
       onConfirm={() => void save()} onCancel={() => setAction(null)} />
     <ModalDialog open={!!reveal} onDismiss={acknowledged ? () => setReveal(null) : undefined} className="skill-publish-dialog" describedBy>
       {({ titleId, descriptionId }) => <><h2 id={titleId}>保存集成凭据</h2><p id={descriptionId}>密钥仅显示一次。请保存到安全的密钥管理工具，不要写入日志或代码仓库。</p>

@@ -84,7 +84,11 @@ describe("workspace result webhook", () => {
     expect(deliveries).toHaveTextContent("HTTP 200");
     expect(deliveries).toHaveTextContent("投递失败");
 
-    const urlInput = within(editor).getByLabelText(/Webhook URL/);
+    const urlInput = within(editor).getByLabelText("回调地址");
+    expect(urlInput).toHaveAccessibleDescription("仅支持 HTTPS；禁止私网、环回、链路本地和元数据地址。");
+    expect(deliveries).not.toHaveTextContent("Receiver responded");
+    expect(deliveries).toHaveTextContent("回调服务暂不可用");
+    expect(deliveries.textContent).toMatch(/2026\/08\/1[23] \d{2}:00/);
     await userEvent.clear(urlInput);
     await userEvent.click(urlInput);
     await userEvent.paste("https://hooks.example.com/updated");
@@ -113,6 +117,14 @@ describe("workspace result webhook", () => {
     expect(await within(editor).findByRole("status")).toHaveTextContent("测试投递成功（HTTP 200）");
     // The list refreshes after a test delivery (initial load + refresh).
     expect(logActions.listLogDomainWebhookDeliveries).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["skipped", "failed"] as const)("explains %s test deliveries without exposing provider errors", async (status) => {
+    const logActions = createLogActions({ sendLogDomainWebhookTest: vi.fn().mockResolvedValue({ status, error: "RAW_PROVIDER_FAILURE" }) });
+    render(<SkillWebhookEditor domain={webhookDomain} logActions={logActions} onSaved={async () => undefined} />);
+    await userEvent.click(screen.getByRole("button", { name: "发送测试投递" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(status === "skipped" ? "测试投递未执行，请检查回调配置。" : "测试投递失败，请检查回调服务后重试。");
+    expect(screen.queryByText("RAW_PROVIDER_FAILURE")).not.toBeInTheDocument();
   });
 });
 

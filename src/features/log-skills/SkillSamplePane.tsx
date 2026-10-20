@@ -75,16 +75,16 @@ export function SkillSamplePane({ skillId, repository, apiMode, canEdit, onSampl
         {sample.contentFilePath && sample.contentFilePath !== sample.fileName ? <p>当前内容：{sample.contentFilePath}</p> : null}
         {extractors?.length ? <>
           <ul className="skill-extractor-legend" aria-label="抽取器高亮图例">{extractors.map((extractor, index) => <li key={extractor.id} style={extractorColor(index)}>
-            <span className="skill-extractor-swatch" aria-hidden="true" /><span>{extractor.id} · {highlightPreview ? `${highlightPreview.counts.byExtractor[extractor.id] ?? 0} 次命中` : "等待预览"}</span>
+            <span className="skill-extractor-swatch" aria-hidden="true" /><span>抽取规则 {index + 1} · {highlightPreview ? `${highlightPreview.counts.byExtractor[extractor.id] ?? 0} 次命中` : "等待预览"}</span>
           </li>)}</ul>
-          <p>匹配行标注抽取器标识；重叠匹配显示全部标识。{highlightPreview?.truncated ? "预览已达上限，仅高亮返回的匹配行（最多 500 个事件）。" : ""}</p>
+          <p>匹配行标注抽取规则；重叠匹配显示全部规则。{highlightPreview?.truncated ? "预览已达上限，仅高亮返回的匹配行（最多 500 个事件）。" : ""}</p>
           {highlightError ? <p role="alert">{highlightError}</p> : null}
         </> : null}
         {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- The read-only log viewer needs focus for keyboard scrolling. */}
         <div className="skill-sample-content" data-sample-scroll role="region" aria-label="样例内容" tabIndex={0}>
           {(sample.content ? sample.content.replace(/(?:\r\n|\n|\r)$/, "").split(/\r\n|\n|\r/) : []).map((line, index) => {
             const ids = matches.get(index + 1) ?? [], colorIndex = extractors?.findIndex((extractor) => extractor.id === ids[0]) ?? -1;
-            const labels = ids.length ? <span className="skill-extractor-matches">{ids.map((id) => <span key={id} style={extractorColor(extractors?.findIndex((extractor) => extractor.id === id) ?? 0)}>{id}</span>)}</span> : null;
+            const labels = ids.length ? <span className="skill-extractor-matches">{ids.map((id) => <span key={id} style={extractorColor(extractors?.findIndex((extractor) => extractor.id === id) ?? 0)}>抽取规则 {(extractors?.findIndex((extractor) => extractor.id === id) ?? -1) + 1}</span>)}</span> : null;
             return onLineSelect ? <button type="button" className="skill-sample-line skill-sample-line--selectable" key={index}
             ref={highlightedLine === index + 1 ? highlightedRef as RefObject<HTMLButtonElement | null> : undefined} data-highlighted={highlightedLine === index + 1 || undefined}
             data-extractor-match={ids.length ? "true" : undefined} style={colorIndex >= 0 ? extractorColor(colorIndex) : undefined}

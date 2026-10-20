@@ -11,7 +11,7 @@ import type { SectionProps } from "./SkillWorkspace";
 import type { AnalysisSkill, SkillSpec } from "./types";
 import { declarationsFor, readStylesheet } from "@/test/cssAssertions";
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 function setup(overrides: Partial<SectionProps> = {}) {
   const skill = { ...mockSkillWorkspace("skill-charging")!, budgetCaps: { stepBudget: 6, tokenBudget: 8000 } };
   const repository = { listLogSkills: vi.fn().mockResolvedValue([]), updateLogDomain: vi.fn().mockResolvedValue({}), ...overrides.repository };
@@ -29,6 +29,7 @@ function setup(overrides: Partial<SectionProps> = {}) {
 describe("skill integration", () => {
   it("copies the key, endpoint, and both runnable examples with a token placeholder", async () => {
     const user = userEvent.setup();
+    vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "");
     const copy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
     const { skill } = setup();
     const examples = buildSkillUploadExamples(window.location.origin, skill.skillKey);
@@ -49,6 +50,17 @@ describe("skill integration", () => {
       expect(examples[kind].curl).toContain(skill.skillKey);
     }
     expect(screen.getByRole("status")).toHaveTextContent("已复制多文件表单");
+  });
+
+  it.each(["development", "production"])("uses the configured HTTP API base for upload addresses and examples in %s", (mode) => {
+    vi.stubEnv("MODE", mode);
+    vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "https://api.example.com/gateway/");
+    const { skill } = setup();
+    const examples = buildSkillUploadExamples(mode === "production" ? window.location.origin : "https://api.example.com/gateway/", skill.skillKey);
+    expect(screen.getByLabelText("上传地址")).toHaveValue(examples.endpoint);
+    expect(screen.getByText((_, element) => element?.tagName === "CODE" && element.textContent === examples.json.curl)).toBeInTheDocument();
+    expect(screen.getByText((_, element) => element?.tagName === "CODE" && element.textContent === examples.multipart.curl)).toBeInTheDocument();
+    expect(screen.queryByLabelText("模型与预算")).not.toBeInTheDocument();
   });
 
   it("validates key edits, reports duplicates, and saves without changing the skill revision", async () => {
@@ -76,17 +88,16 @@ describe("skill integration", () => {
       listLogSkills: vi.fn().mockResolvedValue([]),
       saveSkillDraft: vi.fn()
     };
-    render(<SkillWorkspace skillId={skill.id} search="?section=integration" repository={repository} apiMode canEdit onNavigate={() => undefined} onPublished={() => undefined} />);
+    render(<SkillWorkspace skillId={skill.id} search="?section=overview" repository={repository} apiMode canEdit onNavigate={() => undefined} onPublished={() => undefined} />);
     const steps = await screen.findByLabelText("步骤预算");
     const tokens = screen.getByLabelText("令牌预算");
-    expect(screen.getAllByRole("region", { name: "集成" })).toHaveLength(1);
-    expect(screen.getByRole("heading", { name: "集成", level: 2 })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "运行设置", level: 3 })).toBeVisible();
     fireEvent.change(steps, { target: { value: "999999" } });
     fireEvent.change(tokens, { target: { value: "9000" } });
     expect(steps).toHaveAttribute("aria-invalid", "true");
     expect(tokens).toHaveAttribute("aria-invalid", "true");
     expect(steps).toHaveValue(999999); expect(tokens).toHaveValue(9000);
-    expect(steps).toHaveAccessibleDescription(/平台上限：6.*不得超过平台上限/);
+    expect(steps).toHaveAccessibleDescription(/最小 1，上限 6.*不得超过平台上限/);
     expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "发布" })).toBeDisabled();
     expect(repository.saveSkillDraft).not.toHaveBeenCalled();
@@ -119,7 +130,7 @@ describe("skill integration", () => {
         issues: [{ path: ["spec", "tokenBudget"], message: "Must not exceed platform cap (1000)." }]
       }, "req"))
     };
-    render(<SkillWorkspace skillId={skill.id} search="?section=integration" repository={repository} apiMode canEdit onNavigate={() => undefined} onPublished={() => undefined} />);
+    render(<SkillWorkspace skillId={skill.id} search="?section=overview" repository={repository} apiMode canEdit onNavigate={() => undefined} onPublished={() => undefined} />);
     const tokens = await screen.findByLabelText("令牌预算");
     expect(tokens).toHaveAttribute("min", "2000");
     fireEvent.change(tokens, { target: { value: "1999" } });
@@ -129,14 +140,23 @@ describe("skill integration", () => {
     await userEvent.click(screen.getByRole("button", { name: "保存草稿" }));
     await waitFor(() => expect(tokens).toHaveAttribute("aria-invalid", "true"));
     expect(tokens).toHaveValue(2000);
-    expect(tokens).toHaveAccessibleDescription(/Must not exceed platform cap \(1000\)/);
+    expect(tokens).toHaveAccessibleDescription(/字段值无效，请检查后重试/);
   });
 
-  it("keeps key editing and model budgets read-only without skill administrator access", () => {
+  it("keeps key editing read-only without skill administrator access", () => {
     setup({ disabled: true, canEdit: false });
     expect(screen.getByRole("button", { name: "编辑技能标识" })).toBeDisabled();
-    expect(screen.getByLabelText("模型覆盖")).toBeDisabled();
+    expect(screen.queryByLabelText("模型覆盖")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("步骤预算")).not.toBeInTheDocument();
+  });
+
+  it("keeps model budgets read-only on overview without skill administrator access", async () => {
+    const skill = mockSkillWorkspace("skill-charging")!;
+    const repository = { getLogSkill: vi.fn().mockResolvedValue(skill), listSkillRevisions: vi.fn().mockResolvedValue([skill.currentRevision]) };
+    render(<SkillWorkspace skillId={skill.id} search="?section=overview" repository={repository} apiMode canEdit={false} onNavigate={() => undefined} onPublished={() => undefined} />);
+    expect(await screen.findByLabelText("模型覆盖")).toBeDisabled();
     expect(screen.getByLabelText("步骤预算")).toBeDisabled();
+    expect(screen.getByLabelText("令牌预算")).toBeDisabled();
   });
 
   it("uses design tokens for input widths and field errors", () => {

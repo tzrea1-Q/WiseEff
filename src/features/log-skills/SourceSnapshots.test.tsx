@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SourceSnapshots } from "./SourceSnapshots";
 import { mockSkillWorkspace } from "@/infrastructure/mock/logSkills";
 import type { SourceSnapshot } from "./types";
+import { formatAbsolute } from "@/domain/format/formatDateTime";
 
 const snapshot: SourceSnapshot = {
   id: "snapshot-1", skillId: "skill-charging", versionLabel: "v1.0", status: "ready", fileCount: 3,
@@ -35,6 +36,7 @@ describe("source snapshots section", () => {
   it("shows status, default marker, bounded skipped paths and archived rows", async () => {
     setup({ items: [snapshot, { ...snapshot, id: "archived", versionLabel: "old", status: "archived" }, { ...snapshot, id: "bad", versionLabel: "broken", status: "failed", error: "backend stack trace" }] });
     const table = await screen.findByRole("table", { name: "源码快照" });
+    expect(within(table).getAllByText(formatAbsolute(snapshot.createdAt).slice(0, 16).replaceAll("-", "/"))).toHaveLength(3);
     expect(within(table).getByText("草稿默认")).toBeVisible();
     expect(within(table).getByText("就绪")).toBeVisible();
     expect(within(table).getByText("已归档")).toBeVisible();

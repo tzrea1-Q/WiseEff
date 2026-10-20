@@ -49,7 +49,7 @@ async function createSkillThroughUi(page: Page, name: string, description: strin
   expect(response.request().postDataJSON()).toMatchObject({ name, description, startingPoint: { templateId: "generic-text" } });
   const skill = ((await response.json()) as { item: AnalysisSkill }).item;
   await expect(page).toHaveURL(new RegExp(`/log-admin/skills/${skill.id}$`));
-  await page.goto(`/log-admin/skills/${skill.id}?section=integration`);
+  await page.goto(`/log-admin/skills/${skill.id}?section=overview`);
   await expect(page.getByLabel("模型覆盖", { exact: true })).toBeVisible();
   return { response, skill };
 }
@@ -860,7 +860,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await page.reload();
     const { skill: publishedSkill } = await publishSkillThroughUi(page, skill.id);
     expect(publishedSkill.currentRevision.spec.formatProfile).toEqual(formatProfile);
-    await page.getByRole("button", { name: "返回分析技能", exact: true }).click();
+    await page.getByRole("link", { name: "← 分析技能", exact: true }).click();
     await expect(governance.getByRole("table", { name: "分析技能列表" }).getByText(acceptanceLogDomainName)).toBeVisible();
 
     const domainsResponse = await page.request.get(apiRoute("/api/v1/log-domains"), { headers: smokeHeaders() });
@@ -1314,7 +1314,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
 
       const editor = page.getByTestId("domain-webhook-editor");
       await expect(editor).toBeVisible();
-      await editor.getByLabel(/Webhook URL/).fill(receiver.url);
+      await editor.getByLabel("回调地址", { exact: true }).fill(receiver.url);
       await editor.getByLabel(/签名密钥/).fill(acceptanceWebhookSecret);
       await editor.getByRole("checkbox", { name: "启用结果回调" }).check();
       const saveResponsePromise = page.waitForResponse(
@@ -1436,7 +1436,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     expect(overrideDraftResponse.ok()).toBe(true);
     const { skill: publishedSkill } = await publishSkillThroughUi(page, skill.id);
     expect(publishedSkill.currentRevision.spec.modelOverride).toBe(acceptanceModelOverride);
-    await page.getByRole("button", { name: "返回分析技能", exact: true }).click();
+    await page.getByRole("link", { name: "← 分析技能", exact: true }).click();
 
     const domainsResponse = await page.request.get(apiRoute("/api/v1/log-domains"), { headers: smokeHeaders() });
     expect(domainsResponse.ok()).toBe(true);
@@ -1447,7 +1447,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     expect(createdDomain).toBeTruthy();
     expect(createdDomain!.modelOverride).toBe(acceptanceModelOverride);
     await page.getByRole("table", { name: "分析技能列表" }).getByRole("link", { name: acceptanceModelDomainName, exact: true }).click();
-    await page.getByRole("navigation", { name: "技能分区导航" }).getByRole("button", { name: "集成", exact: true }).click();
+    await page.getByRole("navigation", { name: "技能分区导航" }).getByRole("button", { name: "概览", exact: true }).click();
     await expect(page.getByLabel("模型覆盖", { exact: true })).toHaveValue(acceptanceModelOverride);
 
     await page.goto("/logs");

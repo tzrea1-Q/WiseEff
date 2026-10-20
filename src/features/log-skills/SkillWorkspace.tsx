@@ -6,6 +6,8 @@ import { SelectControl } from "@/components/common/SelectControl";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { TabPanel } from "@/components/ui/tab-panel";
 import { DataTable } from "@/components/admin/DataTable";
@@ -16,6 +18,7 @@ import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import type { SettingsLeaveRequest } from "@/application/settingsFormNavigation";
 import { mockLogSkills, mockSkillWorkspace } from "@/infrastructure/mock/logSkills";
 import { formatPercent } from "@/domain/format/formatPercent";
+import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { renderMarkdownPreview } from "@/domain/knowledge/markdown";
 import type { AnalysisSkill, SkillRevision, SkillSpec, SkillSample, ParseTestRun, ParsePreview, SkillDryRun, AnalysisCaseList } from "./types";
 import { specJson } from "./diffSkillSpecs";
@@ -27,7 +30,6 @@ import { parsingSpecSchema, parseTestsSchema, logSkillSpecSchema } from "@wiseef
 import { SignalsSection } from "./SignalsSection";
 import { DecodingSection } from "./DecodingSection";
 import { SourceSnapshots } from "./SourceSnapshots";
-import { FileApplicabilitySection } from "./FileApplicabilitySection";
 import { matchSkillFile } from "@/domain/logs/fileApplicability";
 import { SkillDryRunDrawer } from "./SkillDryRunDrawer";
 import { KnowledgeSection } from "./KnowledgeSection";
@@ -53,15 +55,17 @@ export type SectionProps = { skill: AnalysisSkill; spec: SkillSpec; setSpec: (sp
   onSkillUpdated: (skill: AnalysisSkill) => void; onBusyChange: (busy: boolean) => void;
   beforeCaseRun: () => Promise<unknown>;
   testTab: "parse" | "cases"; onTestTabChange: (tab: "parse" | "cases") => void;
+  onSectionChange?: (section: string, tab?: "parse" | "cases") => void;
+  procedureEdited?: boolean;
   stats?: { analyses7d?: number; helpfulRate7d?: number | null } };
-const time = (value: string | null) => value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "尚未发布";
+const time = (value: string | null) => value ? formatAbsolute(value).slice(0, 16).replaceAll("-", "/") : "尚未发布";
 const status = { published: "当前", draft: "草稿", superseded: "已替代" };
 
 function Parsing({ skill, spec, setSpec, parsingYaml, onParsingYamlChange, disabled, repository, sample, selectedLine, onLineSelect, onProfileValidityChange }: SectionProps) {
-  return <><FileApplicabilitySection spec={spec} onChange={setSpec} disabled={disabled} sample={sample} />
-    <ParsingSection skillId={skill.id} yaml={parsingYaml} onChange={onParsingYamlChange} disabled={disabled} repository={repository} sample={sample} files={spec.files}
+  return <ParsingSection skillId={skill.id} yaml={parsingYaml} onChange={onParsingYamlChange} disabled={disabled} repository={repository} sample={sample} files={spec.files}
+    onFilesChange={(files) => { const next = { ...spec }; if (files === undefined) delete next.files; else next.files = files; setSpec(next); }}
     selectedLine={selectedLine} onLineSelect={onLineSelect} profile={spec.formatProfile} onProfileValidityChange={onProfileValidityChange}
-    onProfileChange={(formatProfile) => { const next = { ...spec }; if (formatProfile === undefined) delete next.formatProfile; else next.formatProfile = formatProfile; setSpec(next); }} /></>;
+    onProfileChange={(formatProfile) => { const next = { ...spec }; if (formatProfile === undefined) delete next.formatProfile; else next.formatProfile = formatProfile; setSpec(next); }} />;
 }
 
 function Signals({ skill, spec, setSpec, disabled, repository, sample, onSignalHit }: SectionProps) {
@@ -95,18 +99,18 @@ function Tests({ skill, spec, setSpec, disabled, repository, apiMode, canEdit, d
 const procedureOutline = ["适用场景", "先检查什么", "根因判定", "常见误判", "建议动作"]
   .map((heading) => `## ${heading}\n请补充${heading}。`).join("\n\n");
 
-function Procedure({ spec, setSpec, disabled }: SectionProps) {
+function Procedure({ spec, setSpec, disabled, procedureEdited }: SectionProps) {
   const [view, setView] = useState("edit");
   const id = useId();
-  const procedure = spec.procedure ?? procedureOutline;
+  const procedure = spec.procedure === procedureOutline && !procedureEdited ? "" : spec.procedure ?? "";
   const preview = useMemo(() => renderMarkdownPreview(procedure), [procedure]);
   return <section className="skill-section" aria-label="诊断流程"><h2>诊断流程</h2>
-    <ViewSwitch variant="tabs" ariaLabel="诊断流程视图" value={view} onValueChange={setView} items={[
+    <div className="skill-section-toolbar"><ViewSwitch variant="tabs" ariaLabel="诊断流程视图" value={view} onValueChange={setView} items={[
       { value: "edit", label: "编辑", id: `${id}-edit`, panelId: `${id}-edit-panel` },
       { value: "preview", label: "预览", id: `${id}-preview`, panelId: `${id}-preview-panel` }
-    ]} />
+    ]} /><Button variant="secondary" size="sm" disabled={disabled || !!procedure} onClick={() => setSpec({ ...spec, procedure: procedureOutline })}>插入提纲</Button></div>
     <TabPanel id={`${id}-edit-panel`} aria-labelledby={`${id}-edit`} hidden={view !== "edit"}>
-      <label>诊断流程内容<Textarea disabled={disabled} rows={18} maxLength={20000} value={procedure}
+      <label>诊断流程内容<Textarea disabled={disabled} rows={18} maxLength={20000} value={procedure} placeholder={procedureOutline}
         aria-describedby={`${id}-count`} onChange={(event) => setSpec({ ...spec, procedure: event.target.value })} /></label>
     </TabPanel>
     <TabPanel id={`${id}-preview-panel`} aria-labelledby={`${id}-preview`} hidden={view !== "preview"}>
@@ -116,24 +120,49 @@ function Procedure({ spec, setSpec, disabled }: SectionProps) {
   </section>;
 }
 
-function Overview({ skill, spec, setSpec, disabled, stats }: SectionProps) {
+function Overview({ skill, spec, setSpec, disabled, stats, fieldErrors, sample, parseTestRun, repository, apiMode, dirty, onSectionChange }: SectionProps) {
+  const [cases, setCases] = useState<AnalysisCaseList | null>(null);
+  const [casesError, setCasesError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setCases(null); setCasesError(false);
+    if (apiMode && repository?.listAnalysisCases) void repository.listAnalysisCases(skill.id)
+      .then((result) => { if (active) setCases(result); }).catch(() => { if (active) setCasesError(true); });
+    return () => { active = false; };
+  }, [apiMode, repository, skill.id, skill.draft?.id]);
+  const caseRun = cases?.latestRun;
+  const casesCurrent = cases?.current && !dirty && caseRun?.status === "complete" && caseRun.skillRevisionId === skill.draft?.id;
+  const checks = [
+    { label: "样例日志", value: sample ? "已上传" : "未上传", section: "parsing" },
+    { label: "解析测试", value: parseTestRun ? `通过 ${parseTestRun.passed}/${parseTestRun.total}` : "未运行", section: "tests", tab: "parse" as const },
+    { label: "分析用例", value: casesError ? "暂时无法读取" : casesCurrent ? `通过 ${caseRun.results.filter((result) => result.draft.passed).length}/${cases.items.length}` : "未运行", section: "tests", tab: "cases" as const },
+    { label: "默认源码快照（可选）", value: spec.defaultSourceSnapshotId ? "已配置" : "未配置", section: "source" }
+  ];
   return <section className="skill-section" aria-label="概览">
     <h2>概览</h2>
-    <dl className="skill-facts"><dt>名称</dt><dd>{skill.name}</dd>
-      <dt>当前版本</dt><dd>{skill.currentRevision.status === "draft" ? "尚未发布" : `v${skill.currentRevision.number} · ${time(skill.currentRevision.publishedAt)}`}</dd>
-      <dt>发布者</dt><dd>{skill.currentRevision.status === "draft" ? "尚未发布" : skill.currentRevision.publishedByDisplayName ?? (skill.currentRevision.publishedByUserId ? "已删除用户" : "系统")}</dd>
-      <dt>草稿状态</dt><dd>{skill.draft ? "未发布更改" : "无草稿"}</dd>
-      <dt>近 7 天分析</dt><dd>{stats?.analyses7d ?? "暂无数据"}</dd>
-      <dt>有用率</dt><dd>{stats?.helpfulRate7d == null ? "暂无反馈" : formatPercent(stats.helpfulRate7d)}</dd>
+    {skill.currentRevision.status !== "draft" ? <p>v{skill.currentRevision.number} · {skill.currentRevision.publishedByDisplayName ?? (skill.currentRevision.publishedByUserId ? "已删除用户" : "系统")} 发布于 {time(skill.currentRevision.publishedAt)}</p> : null}
+    <dl className="skill-facts"><dt>近 7 天分析</dt><dd>{stats?.analyses7d ?? "暂无数据"}</dd>
+      <dt>有帮助率</dt><dd>{stats?.helpfulRate7d == null ? "暂无反馈" : formatPercent(stats.helpfulRate7d)}</dd>
     </dl>
     <label>描述<Textarea maxLength={2000} disabled={disabled} value={spec.description ?? skill.description ?? ""}
       onChange={(event) => setSpec({ ...spec, description: event.target.value })} /></label>
-    <p>模型与预算请在「集成」分区配置，随技能版本发布。</p>
-    <section aria-label="已配置内容"><h3>已配置内容</h3><dl className="skill-facts">
-      <dt>基础格式</dt><dd>{spec.formatProfile ? "已配置" : "未配置"}</dd>
-      <dt>适用文件</dt><dd>{spec.files?.length ? `${spec.files.length} 条规则` : "全部文件"}</dd>
-      <dt>信号规则</dt><dd>{spec.signalRules ? `${spec.signalRules.rules.length} 条` : "平台通用信号"}</dd>
-    </dl></section>
+    <section aria-label="运行设置"><h3>运行设置</h3><p>模型和预算随技能草稿保存并发布；留空使用平台默认值。</p>
+      <label>模型覆盖<Input maxLength={200} disabled={disabled} value={spec.modelOverride ?? ""} placeholder="使用平台默认模型"
+        onChange={(event) => { const next = { ...spec }; if (event.target.value) next.modelOverride = event.target.value; else delete next.modelOverride; setSpec(next); }} /></label>
+      {([['stepBudget', '步骤预算'], ['tokenBudget', '令牌预算']] as const).map(([field, label]) => <div key={field}><label>{label}<Input type="number" min={field === "tokenBudget" ? Math.min(4096, skill.budgetCaps?.tokenBudget ?? 4096) : 1} step={1}
+        max={skill.budgetCaps?.[field]} disabled={disabled} value={spec[field] ?? ""} placeholder="使用平台默认预算"
+        aria-invalid={!!fieldErrors?.[field]} aria-describedby={`skill-${field}-help${fieldErrors?.[field] ? ` skill-${field}-error` : ""}`}
+        onChange={(event) => { const next = { ...spec }; if (event.target.value) next[field] = Number(event.target.value); else delete next[field]; setSpec(next); }} /></label>
+        <div className="skill-budget-help"><span id={`skill-${field}-help`}>最小 {field === "tokenBudget" ? Math.min(4096, skill.budgetCaps?.tokenBudget ?? 4096) : 1}，{skill.budgetCaps ? `上限 ${skill.budgetCaps[field]}` : "上限由服务器校验"}</span>
+          {field === "tokenBudget" ? <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="sm" aria-label="令牌预算说明">说明</Button></TooltipTrigger>
+            <TooltipContent>每次模型调用前检查累计令牌用量，单次调用可能超出预算；留空使用平台默认预算。</TooltipContent></Tooltip></TooltipProvider> : null}
+        </div>
+        {fieldErrors?.[field] ? <p id={`skill-${field}-error`} role="alert" className="skill-field-error">{fieldErrors[field]}</p> : null}
+      </div>)}
+    </section>
+    <section aria-label="发布前检查"><h3>发布前检查</h3><ul className="skill-prepublish-checks">{checks.map((check) => <li key={check.label}>
+      <Button variant="link" onClick={() => onSectionChange?.(check.section, check.tab)}>{check.label}</Button><span>{check.value}</span>
+    </li>)}</ul></section>
   </section>;
 }
 
@@ -153,18 +182,18 @@ function Versions({ skill, revisions, disabled, onRestore, repository, apiMode, 
       { key: "publisher", header: "发布者", render: (r) => r.status === "draft" ? "尚未发布" : r.publishedByDisplayName ?? (r.publishedByUserId ? "已删除用户" : "系统") },
       { key: "restore", header: "操作", render: (r) => r.status === "superseded" ? <Button variant="outline" size="sm" disabled={disabled} onClick={() => onRestore(r)}>回滚到此版本</Button> : null }
     ]} />
-    <div className="skill-compare-selectors">{(["left", "right"] as const).map((side) => <label key={side}>{side === "left" ? "变更前版本" : "变更后版本"}
+    {revisions.length >= 2 ? <><div className="skill-compare-selectors">{(["left", "right"] as const).map((side) => <label key={side}>{side === "left" ? "变更前版本" : "变更后版本"}
       <SelectControl value={side === "left" ? left.id : right.id} ariaLabel={side === "left" ? "变更前版本" : "变更后版本"}
         onValueChange={side === "left" ? setLeftId : (id) => setRightId(id === skill.currentRevision.id ? null : id)} options={revisions.map((r) => ({ value: r.id, label: `v${r.number} · ${status[r.status]}` }))} />
-    </label>)}</div><SkillSpecDiff before={left.spec} after={right.spec} />
+    </label>)}</div><SkillSpecDiff before={left.spec} after={right.spec} /></> : null}
   </section>;
 }
 
 export const skillSections: Array<{ id: string; label: string; component?: ComponentType<SectionProps>; inspectorHidden?: boolean }> = [
-  { id: "overview", label: "概览", component: Overview }, { id: "procedure", label: "诊断流程", component: Procedure, inspectorHidden: true },
+  { id: "overview", label: "概览", component: Overview, inspectorHidden: true }, { id: "procedure", label: "诊断流程", component: Procedure, inspectorHidden: true },
   { id: "parsing", label: "样例与解析", component: Parsing }, { id: "decoding", label: "解码", component: Decoding }, { id: "signals", label: "信号", component: Signals },
-  { id: "knowledge", label: "知识", component: KnowledgeSection }, { id: "source", label: "源码", component: SourceSnapshots, inspectorHidden: true }, { id: "tests", label: "测试", component: Tests },
-  { id: "integration", label: "集成", component: IntegrationSection }, { id: "versions", label: "版本", component: Versions, inspectorHidden: true }
+  { id: "knowledge", label: "知识", component: KnowledgeSection, inspectorHidden: true }, { id: "source", label: "源码", component: SourceSnapshots, inspectorHidden: true }, { id: "tests", label: "测试", component: Tests },
+  { id: "integration", label: "集成", component: IntegrationSection, inspectorHidden: true }, { id: "versions", label: "版本", component: Versions, inspectorHidden: true }
 ];
 
 export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, knowledgeRepository, knowledgeCapability, onNavigate, onPublished }: {
@@ -178,6 +207,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   const [selectedLine, setSelectedLine] = useState<number | null>(null);
   const updateSample = useCallback((next: SkillSample | null) => { setSample(next); setHighlight((value) => ({ ...value, line: null })); setSelectedLine(null); }, []);
   const [spec, setSpec] = useState<SkillSpec>({ schemaVersion: "skill/v1" });
+  const [procedureEdited, setProcedureEdited] = useState(false);
   const [testExecution, setTestExecution] = useState<{ specKey: string; run: ParseTestRun } | null>(null);
   const [testsRunning, setTestsRunning] = useState(false);
   const [testError, setTestError] = useState<{ specKey: string; message: string } | null>(null);
@@ -215,7 +245,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   const [publishOpen, setPublishOpen] = useState(false);
   const [dryRunOpen, setDryRunOpen] = useState(false);
   const [dryRun, setDryRun] = useState<SkillDryRun | null>(null);
-  const [confirm, setConfirm] = useState<{ title: string; description: string; action: () => void } | null>(null);
+  const [confirm, setConfirm] = useState<{ title: string; description: string; action: () => void; confirmLabel?: string; tone?: "danger" } | null>(null);
   const leaveDecision = useRef<{ promise: Promise<boolean>; resolve: (allowed: boolean) => void } | null>(null);
   const sectionNavigation = useRef(false);
   const base = skill?.draft ?? skill?.currentRevision;
@@ -257,10 +287,11 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
       const [history, summaries] = apiMode ? await Promise.all([repository!.listSkillRevisions!(skillId), repository!.listLogSkills?.({ includeArchived: true })])
         : [[found.currentRevision], mockLogSkills];
       if (generation !== loadGeneration.current) return;
-      setSkill(found); setSpec(structuredClone((found.draft ?? found.currentRevision).spec)); setRevisions(history);
+      setSkill(found); setSpec(structuredClone((found.draft ?? found.currentRevision).spec)); setRevisions(history); setProcedureEdited(false);
       setParsingYamlDraft(null); setFormatValid(true); setEditorReset((value) => value + 1);
       setEditReset((generation) => generation + 1);
-      setTestExecution(null);
+      const loadedRevision = found.draft ?? found.currentRevision;
+      setTestExecution(loadedRevision.parseTestRun ? { specKey: specJson(loadedRevision.spec), run: loadedRevision.parseTestRun } : null);
       setTestError(null);
       setStats(summaries?.find((s) => s.id === skillId)); setConflict(false); setError("");
     } catch (cause) {
@@ -281,7 +312,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
         leaveDecision.current = { promise, resolve };
       }
       (event as CustomEvent<SettingsLeaveRequest>).detail.decision = leaveDecision.current.promise;
-      setConfirm({ title: "放弃未保存的更改？", description: "离开将放弃本页未保存的更改。", action: () => {
+      setConfirm({ title: "放弃未保存的更改？", description: "离开将放弃本页未保存的更改。", confirmLabel: "放弃更改", tone: "danger", action: () => {
         leaveDecision.current?.resolve(true); leaveDecision.current = null;
       } });
     };
@@ -296,11 +327,11 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
       if (cause instanceof WiseEffApiError && Array.isArray(cause.details.issues)) {
         setFieldErrors(Object.fromEntries(cause.details.issues.map((item: { path?: string[]; message?: string }) => {
           const field = item.path?.at(-1) ?? "";
-          return [field, item.message ?? "字段无效"];
+          return [field, item.message && /[\u3400-\u9fff]/.test(item.message) ? item.message : "字段值无效，请检查后重试。"];
         })));
       }
       if (cause instanceof WiseEffApiError && cause.code === "LOG_SKILL_DRAFT_CONFLICT") setConflict(true);
-      else setError(cause instanceof WiseEffApiError && Array.isArray(cause.details.issues) ? cause.details.issues.map((item: { path?: string[]; message?: string }) => `${item.path?.join(".")}：${item.message}`).join("；")
+      else setError(cause instanceof WiseEffApiError && Array.isArray(cause.details.issues) ? "字段校验未通过，请检查标记的字段后重试。"
         : cause instanceof WiseEffApiError && cause.code === "LOG_SKILL_DRAFT_EXISTS" ? "请先发布或放弃现有草稿，再回滚版本。" : "操作失败，请重试。");
       return false;
     } finally { setPending(false); }
@@ -331,7 +362,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
     } catch { setTestExecution(null); setTestError({ specKey: specJson(spec), message: "解析测试暂时无法运行，请重试。仍可发布技能。" }); }
     finally { setTestsRunning(false); }
   };
-  const ask = (title: string, description: string, action: () => void) => setConfirm({ title, description, action });
+  const ask = (title: string, description: string, action: () => void, confirmLabel?: string) => setConfirm({ title, description, action, confirmLabel, tone: confirmLabel ? "danger" : undefined });
   const switchSection = (id: string, tab?: "parse" | "cases") => {
     if (!formatValid) { setError("请先修正基础格式，再切换分区。"); return; }
     setError("");
@@ -346,39 +377,43 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   if (loadError === "missing") return <SectionEmpty title="未找到分析技能" message="该技能不存在或不可访问。" actionLabel="返回分析技能" onAction={back} />;
   if (loadError) return <SectionError message="无法加载分析技能" onRetry={() => void refresh()} />;
   if (!skill) return <SectionSkeleton label="正在加载分析技能" />;
+  const dryRunReason = pending ? "请等待当前操作完成" : dryRun?.status === "processing" ? "" : conflict ? "请先重新加载草稿"
+    : !sample ? "先上传样例日志" : yamlInvalid || testsInvalid || signalsInvalid || budgetInvalid || !formatValid ? "请先修正草稿错误"
+    : !repository?.startSkillDryRun || !repository?.getSkillDryRun ? "当前无法试运行" : "";
+  const workspaceStatus = skill.currentRevision.status === "draft" ? "尚未发布" : skill.draft || dirty ? "有未发布更改" : `已发布 v${skill.currentRevision.number}`;
   return <div className="skill-workspace" aria-busy={pending}>
     <NavigatorWorkbench pageKey="log-skill-workspace" navigatorLabel="技能分区" taskLabel={selected.label}
       inspectorHidden={selected.inspectorHidden ?? false}
       inspectorLabel="样例日志" inspector={<SkillSamplePane key={skillId} skillId={skillId} repository={repository} apiMode={apiMode} canEdit={canEdit} onSampleChange={updateSample} highlightedLine={highlight.line} highlightRequest={highlight.request}
         selectedLine={selectedLine} onLineSelect={setSelectedLine} extractors={highlightSpec?.extractors}
         highlightPreview={currentHighlights?.preview} highlightError={currentHighlights?.error} />}
-      toolbar={<><Button variant="link" onClick={back}>返回分析技能</Button><strong>{skill.name}</strong>
-        {apiMode && canEdit ? <Button variant="outline" disabled={dryRun?.status === "processing" ? pending : disabled || conflict || yamlInvalid || testsInvalid || signalsInvalid || !formatValid || !sample || !repository?.startSkillDryRun || !repository?.getSkillDryRun}
-          title={!sample ? "请先上传样例日志" : undefined} onClick={() => {
+      toolbar={<header className="skill-workspace-header"><Button variant="link" asChild><a href="/log-admin?tab=skills" onClick={(event) => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); back(); } }}>← 分析技能</a></Button>
+        <div className="skill-workspace-identity"><h1 title={skill.name}>{skill.name}</h1><span className="badge" role="status">{workspaceStatus}</span></div>
+        {apiMode && canEdit ? <div className="skill-dry-run-action"><small id="skill-dry-run-reason">{dryRunReason}</small><Button variant="outline" disabled={!!dryRunReason}
+          aria-describedby={dryRunReason ? "skill-dry-run-reason" : undefined} onClick={() => {
             if (dryRun?.status === "processing") { setDryRunOpen(true); return; }
             void run(async () => {
               if (dirty || !skill.draft) await save();
               const started = await repository!.startSkillDryRun!(skillId); setDryRun(started); setDryRunOpen(true);
             });
-          }}>{dryRun?.status === "processing" ? "查看试运行" : "试运行"}</Button> : null}</>}
-      context={<>
-        {!apiMode || !canEdit ? <p>{!apiMode ? "演示技能仅供查看；请在 API 模式下编辑。" : "仅供查看；编辑需要技能管理权限。"}</p> : null}
-        {skill.draft || dirty ? <div className="skill-draft-bar" role="group" aria-label="未发布更改"><strong>未发布更改</strong>
-          <Button variant="outline" disabled={disabled || (skill.currentRevision.status === "draft" && !dirty)} onClick={() => ask("放弃草稿？", skill.currentRevision.status === "draft" ? "将放弃未保存的更改，保留已导入的首个草稿。" : skill.draft ? "将删除已保存的草稿并放弃未保存的更改，当前发布版本不受影响。" : "将放弃未保存的更改，当前发布版本不受影响。", () => {
-            if (skill.currentRevision.status === "draft") { setSpec(structuredClone((skill.draft ?? skill.currentRevision).spec)); setParsingYamlDraft(null); setFormatValid(true); setEditorReset((value) => value + 1); setEditReset((generation) => generation + 1); return; }
-            if (!skill.draft) { setSpec(structuredClone(skill.currentRevision.spec)); setParsingYamlDraft(null); setFormatValid(true); setEditorReset((value) => value + 1); setEditReset((generation) => generation + 1); return; }
+          }}>{dryRun?.status === "processing" ? "查看试运行" : "试运行"}</Button></div> : null}
+        <div className="skill-draft-actions-slot">{skill.draft || dirty ? <div className="skill-draft-bar" role="group" aria-label="未发布更改">
+          <Button variant="ghost" disabled={disabled || (skill.currentRevision.status === "draft" && !dirty)} onClick={() => ask("放弃草稿？", skill.currentRevision.status === "draft" ? "将放弃未保存的更改，保留已导入的首个草稿。" : skill.draft ? "将删除已保存的草稿并放弃未保存的更改，当前发布版本不受影响。" : "将放弃未保存的更改，当前发布版本不受影响。", () => {
+            if (skill.currentRevision.status === "draft") { setSpec(structuredClone((skill.draft ?? skill.currentRevision).spec)); setProcedureEdited(false); setParsingYamlDraft(null); setFormatValid(true); setEditorReset((value) => value + 1); setEditReset((generation) => generation + 1); return; }
+            if (!skill.draft) { setSpec(structuredClone(skill.currentRevision.spec)); setProcedureEdited(false); setParsingYamlDraft(null); setFormatValid(true); setEditorReset((value) => value + 1); setEditReset((generation) => generation + 1); return; }
             void run(async () => { await repository!.discardSkillDraft!(skillId, skill.draft!.id); await refresh(); });
-          })}>放弃草稿</Button>
+          }, "放弃草稿")}>放弃草稿</Button>
           <Button variant="outline" disabled={disabled || conflict || !dirty || yamlInvalid || budgetInvalid || testsInvalid || signalsInvalid || !formatValid} onClick={() => void run(async () => { await save(); })}>保存草稿</Button>
           <Button disabled={disabled || conflict || yamlInvalid || budgetInvalid || testsInvalid || signalsInvalid || !formatValid} onClick={() => { setPublishOpen(true); if (repository?.runSkillParseTests) void run(executeTests); }}>发布</Button>
-        </div> : null}
-      </>}
-      notice={conflict ? <div className="status-banner" data-tone="warning" role="alert"><p>草稿已被其他人更新</p><Button variant="outline" disabled={pending} onClick={() => ask("重新加载草稿？", "将丢弃本地更改并加载服务器上的最新草稿。", () => void run(refresh))}>重新加载</Button></div>
+        </div> : null}</div></header>}
+      context={!apiMode || !canEdit ? <p>{!apiMode ? "演示技能仅供查看；请在 API 模式下编辑。" : "仅供查看；编辑需要技能管理权限。"}</p> : undefined}
+      notice={conflict ? <div className="status-banner" data-tone="warning" role="alert"><p>草稿已被其他人更新</p><Button variant="outline" disabled={pending} onClick={() => ask("重新加载草稿？", "将丢弃本地更改并加载服务器上的最新草稿。", () => void run(refresh), "重新加载")}>重新加载</Button></div>
         : error ? <div className="status-banner" data-tone="danger" role="alert"><p>{error}</p></div> : undefined}
       navigator={<nav aria-label="技能分区导航">{skillSections.map((s) => <Button key={s.id} variant="ghost" disabled={!s.component || pending}
         aria-current={s.id === selected.id ? "page" : undefined} title={!s.component ? "即将推出" : undefined} onClick={() => switchSection(s.id)}>
         {s.label}{!s.component ? <small>即将推出</small> : null}</Button>)}</nav>}>
-      <Component key={selected.id === "tests" ? `${selected.id}:${skillId}:${editReset}` : selected.id === "parsing" ? `parsing-${editorReset}` : selected.id} skill={skill} spec={spec} setSpec={(next) => { setSpec(next); setFieldErrors({}); }} disabled={disabled} stats={stats} revisions={revisions} fieldErrors={{ ...fieldErrors, ...budgetErrors }}
+      <Component key={selected.id === "tests" || selected.id === "procedure" ? `${selected.id}:${skillId}:${editReset}` : selected.id === "parsing" ? `parsing-${editorReset}` : selected.id} skill={skill} spec={spec} setSpec={(next) => { if (selected.id === "procedure") setProcedureEdited(true); setSpec(next); setFieldErrors({}); }} disabled={disabled} stats={stats} revisions={revisions} fieldErrors={{ ...fieldErrors, ...budgetErrors }}
+        onSectionChange={switchSection} procedureEdited={procedureEdited}
         testTab={new URLSearchParams(search).get("tab") === "cases" ? "cases" : "parse"} onTestTabChange={(tab) => switchSection("tests", tab)}
         sample={sample?.skillId === skillId ? sample : null} selectedLine={selectedLine} onLineSelect={setSelectedLine} onProfileValidityChange={setFormatValid}
         parseTestRun={parseTestRun} testsRunning={testsRunning} testRunDisabled={yamlInvalid || testsInvalid || signalsInvalid || !formatValid} parseTestError={parseTestError} onRunTests={() => void run(executeTests)} onTestValidityChange={setTestsEditorInvalid}
@@ -425,7 +460,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
             onPublished(`已发布 v${published.currentRevision.number}`); await refresh();
           })}>{testsRunning ? "测试运行中…" : pending ? "发布中…" : "发布"}</Button></div></>}
     </ModalDialog>
-    <ConfirmDialog open={!!confirm} title={confirm?.title ?? "确认"} description={confirm?.description ?? ""} confirmLabel="确认" pending={pending}
+    <ConfirmDialog open={!!confirm} title={confirm?.title ?? "确认"} description={confirm?.description ?? ""} confirmLabel={confirm?.confirmLabel ?? "确认"} tone={confirm?.tone} pending={pending}
       onCancel={() => { leaveDecision.current?.resolve(false); leaveDecision.current = null; setConfirm(null); }} onConfirm={() => { const action = confirm?.action; setConfirm(null); action?.(); }} />
   </div>;
 }
