@@ -110,6 +110,7 @@ type MockStore = {
   catalog: typeof readyCatalogDocument;
   subject: CatalogSubjectResponse["item"];
   definition: CatalogDefinitionResponse["item"];
+  definitionDeleted: boolean;
   registration: CatalogRegistrationResponse["item"] | null;
   reviewItem: CatalogReviewItemResponse["item"];
   proposal: CatalogProposalResponse["item"];
@@ -165,6 +166,7 @@ function createStore(options: CatalogMockOptions): MockStore {
     catalog: clone(readyCatalogDocument),
     subject,
     definition,
+    definitionDeleted: false,
     registration,
     reviewItem: clone(catalogReviewItem),
     proposal: clone(catalogProposal),
@@ -342,7 +344,7 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     async listDefinitions(query) {
       assertReadyForRead(store);
       assertPinnedRead(store, query);
-      if (store.scenario === "empty-no-definitions") {
+      if (store.scenario === "empty-no-definitions" || store.definitionDeleted) {
         return emptyCatalogCollection("no-definitions");
       }
       if (store.scenario === "empty-no-filter-match") {
@@ -357,15 +359,36 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     async getDefinition(definitionId, query) {
       assertReadyForRead(store);
       assertPinnedRead(store, query);
-      if (definitionId !== store.definition.id) {
+      if (definitionId !== store.definition.id || store.definitionDeleted) {
         throw catalogApiFailure("definition-not-found");
       }
       return { item: clone(store.definition) };
     },
+    async previewDefinitionDeletion(definitionId) {
+      const session = options.getSession?.();
+      if (session && (!session.isActive || session.actorKind !== "platform-admin")) throw catalogApiFailure("forbidden");
+      assertReadyForRead(store);
+      if (definitionId !== store.definition.id || store.definitionDeleted) throw catalogApiFailure("definition-not-found");
+      return { item: {
+        definition: { id: definitionId, propertyKey: store.definition.propertyKey,
+          subjectName: store.definition.subject.canonicalName },
+        catalogRelease: { id: store.catalog.item.catalogReleaseId, digest: store.catalog.item.digest },
+        affected: { organizations: 1, projects: 0, bindings: 0, values: 0, revisions: 1, relatedRecords: 1 },
+        originalFilesRetained: true, previewToken: `delete:${definitionId}:${store.catalog.item.digest}`
+      } };
+    },
+    async deleteDefinition(definitionId, body) {
+      const preview = await catalog.previewDefinitionDeletion!(definitionId);
+      if (body.previewToken !== preview.item.previewToken) throw catalogApiFailure("revision-conflict");
+      store.definitionDeleted = true;
+      store.subject.definitionCounts[store.definition.lifecycle] = Math.max(0,
+        store.subject.definitionCounts[store.definition.lifecycle] - 1);
+      return { item: { definitionId, deleted: true, counts: { definitions: 1, revisions: 1 }, originalFilesRetained: true } };
+    },
     async listDefinitionRevisions(definitionId, query) {
       assertReadyForRead(store);
       assertPinnedRead(store, query);
-      if (definitionId !== store.definition.id) {
+      if (definitionId !== store.definition.id || store.definitionDeleted) {
         throw catalogApiFailure("definition-not-found");
       }
       return collection([catalogRevision]);
@@ -373,7 +396,7 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     async getDefinitionRevision(definitionId, revisionId, query) {
       assertReadyForRead(store);
       assertPinnedRead(store, query);
-      if (definitionId !== store.definition.id || revisionId !== CATALOG_REVISION_ID) {
+      if (definitionId !== store.definition.id || store.definitionDeleted || revisionId !== CATALOG_REVISION_ID) {
         throw catalogApiFailure("definition-not-found");
       }
       return { item: clone(catalogRevision) };
@@ -381,7 +404,7 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     async listDefinitionTimeline(definitionId, query) {
       assertReadyForRead(store);
       assertPinnedRead(store, query);
-      if (definitionId !== store.definition.id) {
+      if (definitionId !== store.definition.id || store.definitionDeleted) {
         throw catalogApiFailure("definition-not-found");
       }
       return clone(catalogTimeline);

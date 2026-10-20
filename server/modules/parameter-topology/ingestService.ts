@@ -30,6 +30,7 @@ import type {
   SchemaRegistry,
 } from "../parameter-specs/types";
 import { resolveAttributionModuleForBinding } from "../parameter-modules/ensureAttributionModuleForBinding";
+import { lockOrganizationModuleRecognition } from "../parameter-modules/recognitionSettings";
 import {
   BOARD_INSTANCE_MODULE_NAME,
   isModuleScaffoldingNode,
@@ -711,6 +712,7 @@ async function ingestConfigRevisionTx(
     });
   }
 
+  await lockOrganizationModuleRecognition(tx, manifest.organizationId);
   const revisionNumber = await nextConfigRevisionNumber(
     tx,
     manifest.configSetId,

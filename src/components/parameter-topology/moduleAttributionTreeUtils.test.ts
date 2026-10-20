@@ -81,11 +81,12 @@ describe("moduleAttributionTreeUtils", () => {
   });
 
   it("enforces kind-scoped write guards", () => {
-    expect(canDeleteModule(modules[2]!)).toBe(false);
-    expect(deleteModuleDecision(modules[2]!).allowed).toBe(false);
+    expect(canDeleteModule(modules[2]!)).toBe(true);
+    expect(deleteModuleDecision(modules[2]!).allowed).toBe(true);
+    expect(deleteModuleDecision(modules[1]!, modules)).toEqual({ allowed: false, reason: "请先删除子模块，再删除此模块。" });
     expect(canMoveModule(modules[2]!)).toBe(true);
     expect(canEditImportance(modules[0]!)).toBe(true);
-    expect(canEditImportance(modules[1]!)).toBe(false);
+    expect(canEditImportance(modules[1]!)).toBe(true);
     expect(canDeleteModule(modules[1]!)).toBe(true);
   });
 
@@ -115,12 +116,13 @@ describe("moduleAttributionTreeUtils", () => {
     expect(siblingModules(siblings, siblings[1]!).map((module) => module.id)).toEqual(["b", "b2"]);
   });
 
-  it.each(["driver-group", "node-type"] as const)("rejects either historical %s swap participant only in canonical mode", (kind) => {
+  it.each(["driver-group", "node-type"] as const)("supports sorting %s alongside business categories", (kind) => {
     const business = modules[0]!;
     const historical = { ...modules[1]!, kind, parentId: null, sortOrder: 10 };
     const siblings = [business, historical];
-    expect(sortOrderSwapUpdates(business, "down", siblings, true)).toBeNull();
-    expect(sortOrderSwapUpdates(historical, "up", siblings, true)).toBeNull();
+    expect(sortOrderSwapUpdates(historical, "up", siblings)).toEqual([
+      { id: "g", sortOrder: 0 }, { id: "b", sortOrder: 10 }
+    ]);
     expect(sortOrderSwapUpdates(business, "down", siblings)).toEqual([
       { id: "b", sortOrder: 10 }, { id: "g", sortOrder: 0 }
     ]);
@@ -184,10 +186,8 @@ describe("moduleAttributionTreeUtils", () => {
       sortOrder: 10
     };
 
-    expect(deleteModuleDecision(modules[2]!)).toEqual({
-      allowed: false,
-      reason: "节点类型不可删除，请改挂到其它父级或联系运维。"
-    });
+    expect(deleteModuleDecision(modules[2]!)).toEqual({ allowed: true });
+    expect(deleteModuleDecision(unclassified)).toEqual({ allowed: false, reason: "未分类根不可删除。" });
     expect(addChildModuleDecision(unclassified)).toEqual({
       allowed: false,
       reason: "该模块类型不可添加子模块。"

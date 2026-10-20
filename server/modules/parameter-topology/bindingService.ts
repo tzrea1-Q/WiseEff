@@ -27,6 +27,8 @@ import type {
   TrustedInvocationDomainAttributionRow
 } from "../auth/trustedInvocation";
 import { ApiError } from "../../shared/http/errors";
+import { loadModuleRecognitionSettings, lockOrganizationModuleRecognition } from "../parameter-modules/recognitionSettings";
+import { listModuleRecognitionInstances } from "../parameter-modules/recognitionInstances";
 
 export type ProjectPropertyBindingKey = {
   projectId: string;
@@ -206,7 +208,7 @@ function toBinding(row: BindingRow): ProjectParameterBinding {
     projectId: row.project_id,
     logicalNodeId: row.logical_node_id,
     parameterSpecId: row.parameter_spec_id,
-    moduleId: row.module_id,
+    moduleId: row.module_id ?? "",
     createdAt: dateTimeToIso(row.created_at),
   };
 }
@@ -467,16 +469,6 @@ export async function countBlockingIdentityMappingTasksForRevision(
   return Number(result.rows[0]?.count ?? 0);
 }
 
-type SingletonInstanceRow = {
-  attribution_subject_id: string;
-  display_name: string;
-  logical_node_id: string;
-  node_locator: string;
-  name: string;
-  unit_address: string | null;
-  compatible: string | null;
-};
-
 /**
  * Count singleton conflicts without producing or changing historical tasks.
  * Source instances stay distinct and callers retain their refusal gates.
@@ -485,52 +477,18 @@ export async function countSingletonCardinalityConflicts(
   db: Queryable,
   input: { organizationId: string; projectId: string; configRevisionId: string },
 ): Promise<number> {
-  const result = await db.query<SingletonInstanceRow>(
-    `
-    select
-      pm.attribution_subject_id,
-      subject.display_name,
-      lnr.logical_node_id,
-      lnr.node_locator,
-      lnr.name,
-      lnr.unit_address,
-      lnr.compatible
-    from dts_logical_node_revisions lnr
-    inner join dts_config_revisions cr
-      on cr.id = lnr.config_revision_id
-     and cr.organization_id = $1
-     and cr.project_id = $2
-    inner join parameter_module_mappings mapping
-      on mapping.organization_id = $1
-     and mapping.match_kind = 'compatible'
-     and lower(trim(both '"' from trim(both '''' from trim(mapping.match_value))))
-       = lower(trim(both '"' from trim(both '''' from trim(coalesce(lnr.compatible, '')))))
-    inner join parameter_modules pm
-      on pm.id = mapping.parameter_module_id
-     and pm.organization_id = $1
-     and pm.attribution_subject_id is not null
-    inner join attribution_subjects subject
-      on subject.id = pm.attribution_subject_id
-     and subject.subject_kind = 'driver-registration'
-    inner join driver_registrations registration
-      on registration.attribution_subject_id = subject.id
-     and registration.instance_cardinality = 'singleton-per-project'
-    where lnr.config_revision_id = $3
-    order by pm.attribution_subject_id, lnr.node_locator, lnr.logical_node_id
-    `,
-    [input.organizationId, input.projectId, input.configRevisionId],
-  );
-
-  const bySubject = new Map<string, SingletonInstanceRow[]>();
-  for (const row of result.rows) {
-    const instances = bySubject.get(row.attribution_subject_id) ?? [];
-    if (!instances.some((instance) => instance.logical_node_id === row.logical_node_id)) {
-      instances.push(row);
+  await lockOrganizationModuleRecognition(db, input.organizationId);
+  const settings = await loadModuleRecognitionSettings(db, input.organizationId);
+  const conflicts = new Set<string>();
+  for (const [moduleId, setting] of settings) {
+    if (setting.instanceCardinality !== "singleton-per-project") continue;
+    const instances = await listModuleRecognitionInstances(db, input.organizationId, { ...setting,
+      projectId: input.projectId, configRevisionId: input.configRevisionId });
+    if (new Set(instances.map((instance) => instance.logicalNodeId)).size > 1) {
+      conflicts.add(setting.recognitionSubjectId ?? moduleId);
     }
-    bySubject.set(row.attribution_subject_id, instances);
   }
-  const conflicts = [...bySubject.entries()].filter(([, instances]) => instances.length > 1);
-  return conflicts.length;
+  return conflicts.size;
 }
 
 /** Fingerprint of a human-selected candidate for reuse on later revisons. */
@@ -988,7 +946,7 @@ export async function listProjectBindingRows(
     rawValue: row.raw_value ?? "",
     schemaState: row.schema_state,
     policyState: row.policy_state,
-    moduleId: row.module_id,
+    moduleId: row.module_id ?? "",
     displayName: row.display_name,
     description: row.description,
     documentation: row.documentation,

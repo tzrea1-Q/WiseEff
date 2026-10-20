@@ -553,15 +553,9 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
       })
     );
 
-    // After move + audit refresh, the overflow menu can remount mid-open under load.
-    // Retry open until the delete item is stable, then click it.
-    await waitFor(() => {
-      const more = within(panel).getByRole("button", { name: "电源路径组 更多操作" });
-      expect(more).not.toBeDisabled();
-      fireEvent.click(more);
-      expect(screen.getByRole("menuitem", { name: "删除模块 电源路径组" })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole("menuitem", { name: "删除模块 电源路径组" }));
+    const deleteButton = await within(panel).findByRole("button", { name: "删除模块 电源路径组" });
+    await waitFor(() => expect(deleteButton).toBeEnabled());
+    fireEvent.click(deleteButton);
     // Deletion is irreversible and now requires an impact confirmation first.
     expect(moduleRegistry.deleteModule).not.toHaveBeenCalled();
     const deleteConfirm = await screen.findByRole("dialog", { name: "删除模块「电源路径组」" });

@@ -11,6 +11,19 @@ const leaf = { ...root, id: "health", name: "健康", parentId: child.id };
 const modules = [root, child, leaf];
 
 describe("ModuleMoveDialog", () => {
+  it("lets node types move under driver groups while excluding their own subtree", () => {
+    const driver = { ...root, id: "driver", name: "驱动", kind: "driver-group" as const };
+    const node = { ...child, kind: "node-type" as const };
+    const descendant = { ...leaf, kind: "node-type" as const };
+    const onConfirm = vi.fn();
+    render(<ModuleMoveDialog module={node} modules={[root, node, descendant, driver]} onConfirm={onConfirm} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "目标上级模块" }));
+    const tree = screen.getByRole("tree");
+    expect(within(tree).queryByRole("button", { name: "健康" })).not.toBeInTheDocument();
+    fireEvent.click(within(tree).getByRole("button", { name: "驱动" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认移动" }));
+    expect(onConfirm).toHaveBeenCalledWith("driver");
+  });
   it("starts from the current parent, prevents no-op writes, excludes descendants and explicitly supports root", () => {
     const onConfirm = vi.fn();
     render(<ModuleMoveDialog module={child} modules={modules} onConfirm={onConfirm} onCancel={vi.fn()} />);

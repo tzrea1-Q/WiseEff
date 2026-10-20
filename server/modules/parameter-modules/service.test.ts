@@ -400,8 +400,8 @@ describe("recomputeBindingModules", () => {
   });
 });
 
-describe("canonical taxonomy deletion", () => {
-  it("blocks a canonical Placement before deleting its taxonomy module", async () => {
+describe("taxonomy leaf deletion", () => {
+  it("allows deleting a leaf with a retained canonical Placement", async () => {
     const groupId = "dg-canonical";
     const query = vi.fn()
       .mockResolvedValueOnce({
@@ -423,8 +423,7 @@ describe("canonical taxonomy deletion", () => {
         rowCount: 1,
       })
       .mockResolvedValueOnce({ rows: [{ count: "0" }], rowCount: 1 })
-      .mockResolvedValueOnce({ rows: [{ count: "0" }], rowCount: 1 })
-      .mockResolvedValueOnce({ rows: [{ count: "1" }], rowCount: 1 });
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
     const db = {
       query,
       transaction: vi.fn(async (fn) => fn({ query } as never)),
@@ -432,15 +431,7 @@ describe("canonical taxonomy deletion", () => {
 
     await expect(
       deleteParameterModule(db, { organizationId: "org-1", moduleId: groupId }),
-    ).rejects.toMatchObject({
-      code: "CONFLICT",
-      status: 409,
-      details: { moduleId: groupId, placementCount: 1 },
-    });
-    expect(query).toHaveBeenCalledTimes(4);
-    expect(query.mock.calls.every(([text]) =>
-      /^\s*(select|with)\b/i.test(String(text)) &&
-      !/\b(insert|update|delete|merge)\b/i.test(String(text)),
-    )).toBe(true);
+    ).resolves.toBe(true);
+    expect(query).toHaveBeenCalledTimes(3);
   });
 });

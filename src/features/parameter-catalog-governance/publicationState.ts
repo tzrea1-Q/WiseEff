@@ -472,6 +472,9 @@ export function publicationStatusCopy(job: CatalogPublicationJobResponse["item"]
   tone: "info" | "success" | "warning" | "danger";
   message: string;
 } {
+  if (job.maintenanceRewrites?.length) {
+    return { tone: "warning", message: "此发布记录的目录内容已因参数彻底删除而重建。原审批记录保留，本次维护不代表重新批准发布。" };
+  }
   const success = publicationSuccessKind(job);
   if (success === "active-superseded") {
     return { tone: "success", message: publicationCopy.activeSuperseded };

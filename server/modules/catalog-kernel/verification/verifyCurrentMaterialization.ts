@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import pg from "pg";
 
 import {
@@ -249,9 +250,6 @@ const expectedSelectorSnapshot = (
   };
 };
 
-const jsonEqual = (left: unknown, right: unknown): boolean =>
-  JSON.stringify(left) === JSON.stringify(right);
-
 const violation = (
   code: CatalogDriftViolation["code"],
   relation: string,
@@ -315,6 +313,7 @@ type RevisionRow = {
   revision_number: string;
   catalog_release_id: string;
   content_digest: string;
+  content: unknown;
 };
 
 type HeadRow = {
@@ -470,13 +469,13 @@ export const compareCompiledProjection = async (
     const expectedTombstone = subject.content.tombstone
       ? {
           reason: subject.content.tombstone.reason,
-          successorSubjectId: subject.content.tombstone.successorId,
+          ...(subject.content.tombstone.successorId === undefined ? {} : { successorSubjectId: subject.content.tombstone.successorId }),
         }
       : null;
     if (
       row.lifecycle !== subject.content.lifecycle ||
-      !jsonEqual(row.selector_snapshot, expectedSelectorSnapshot(subject)) ||
-      !jsonEqual(row.tombstone_provenance, expectedTombstone)
+      !isDeepStrictEqual(row.selector_snapshot, expectedSelectorSnapshot(subject)) ||
+      !isDeepStrictEqual(row.tombstone_provenance, expectedTombstone)
     ) {
       violations.push(
         violation(
@@ -545,14 +544,14 @@ export const compareCompiledProjection = async (
     const expectedTombstone = alias.content.tombstone
       ? {
           reason: alias.content.tombstone.reason,
-          successorSubjectId: alias.content.tombstone.successorId,
+          ...(alias.content.tombstone.successorId === undefined ? {} : { successorSubjectId: alias.content.tombstone.successorId }),
         }
       : null;
     if (
       row.selector_kind !== alias.content.selectorKind ||
       row.normalized_selector !== alias.content.normalizedSelector ||
       row.lifecycle !== alias.content.lifecycle ||
-      !jsonEqual(row.tombstone_provenance, expectedTombstone)
+      !isDeepStrictEqual(row.tombstone_provenance, expectedTombstone)
     ) {
       violations.push(
         violation(
@@ -632,7 +631,8 @@ export const compareCompiledProjection = async (
        revision.definition_id,
        revision.revision_number::text,
        revision.catalog_release_id,
-       revision.content_digest
+       revision.content_digest,
+       revision.content
      from parameter_catalog.definition_revisions revision
      join parameter_catalog.catalog_release_definition_heads head
        on head.definition_id = revision.definition_id
@@ -659,7 +659,8 @@ export const compareCompiledProjection = async (
     if (
       row.id !== definition.content.revision.id ||
       Number(row.revision_number) !== definition.content.revision.number ||
-      row.content_digest !== definition.content.revision.contentDigest
+      row.content_digest !== definition.content.revision.contentDigest ||
+      !isDeepStrictEqual(row.content, definition.content.revision)
     ) {
       violations.push(
         violation(

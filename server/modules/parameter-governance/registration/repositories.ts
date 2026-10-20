@@ -28,7 +28,7 @@ export type PlacementRow = {
   id: string;
   registration_id: string;
   organization_id: string;
-  module_id: string;
+  module_id: string | null;
   origin: "auto" | "curated";
   version: string;
 };

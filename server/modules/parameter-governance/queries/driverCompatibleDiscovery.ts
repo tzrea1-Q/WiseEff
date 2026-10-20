@@ -3,6 +3,7 @@ import { getRootPostgresPool } from "../../../shared/database/client";
 import { ApiError } from "../../../shared/http/errors";
 import type { AuthContext } from "../../auth/types";
 import { createCatalogKernel, DriverCompatible } from "../../catalog-kernel/interface";
+import { loadOrganizationCatalogSnapshot } from "../../parameter-modules/recognitionSettings";
 import { createPinCapturingCatalogRuntime, captureCurrentCatalogPin } from "../../catalog-publication/runtime";
 import { subjectMatcherRevision } from "../../catalog-kernel/runtime/subjectMatch";
 import type { ObjectStore } from "../../logs/objectStore";
@@ -96,6 +97,7 @@ export async function listDriverCompatibleDiscovery(input: {
   const runtime = createPinCapturingCatalogRuntime(pool, createCatalogKernel(pool));
   const loaded = await runtime.loadCurrentCatalog(pin);
   if (!loaded.ok) return { status: "unavailable", reason: "catalog-unavailable" };
+  const snapshot = await loadOrganizationCatalogSnapshot(db, auth.organization.id, loaded.value);
 
   const allProjects = auth.roles.some((role) => role.roleId === "admin" || role.roleId === "platform-admin" || role.projectId === null);
   const projectIds = allProjects ? null : [...new Set(auth.roles.map((role) => role.projectId).filter((id): id is string => !!id))];
@@ -213,7 +215,7 @@ export async function listDriverCompatibleDiscovery(input: {
         sourceName: proof.sourceName,fileVersionId: proof.fileVersionId,
         sourceDigest: proof.sourceDigest,revisionDigest: proof.revisionDigest },
         compatibles: [...new Set(source.compatibles)].map((compatible) => {
-          const matched = loaded.value.resolveSubject({
+          const matched = snapshot.resolveSubject({
             driverCompatibles: [DriverCompatible(compatible)], nodeTypeFallback: { kind: "absent" },
           });
           return { compatible, candidate: matched.status === "matched" && matched.subject.kind === "driver"

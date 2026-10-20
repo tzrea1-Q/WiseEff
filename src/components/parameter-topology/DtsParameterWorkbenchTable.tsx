@@ -408,7 +408,8 @@ export function DtsParameterWorkbenchTable({
               </span> : null}
               <span role="cell" data-label="所属模块">
                 <span className="dts-parameter-workbench-table__module">
-                  <strong title={row.modulePath.join(" / ")}>{row.moduleName}</strong>
+                  <strong className={row.moduleName === "unset" ? "module-badge module-tone-2" : undefined}
+                    title={row.moduleName === "unset" ? "未分配模块，请重新归类" : row.modulePath.join(" / ")}>{row.moduleName === "unset" ? "unset（未分配）" : row.moduleName}</strong>
                   <small className="dts-parameter-workbench-table__instance" title={row.sourceNodePath || row.topologyPath || row.instanceName || undefined}>{row.sourceNodePath || row.topologyPath || row.instanceName}</small>
                 </span>
               </span>

@@ -17,6 +17,7 @@ import { canonicalManualSyncDtoSchemaCatalog } from "./canonicalManualSync";
 import { productFeedbackCoveredRouteIds, productFeedbackDtoSchemaCatalog } from "./productFeedback";
 import { structuralReadResponseSchema, dtsSearchResponseSchema } from "./dtsStructure";
 import { sourceRevisionCoveredRouteIds, sourceRevisionDtoSchemaCatalog } from "./sourceRevision";
+import { parameterDefinitionDeletionDtoSchemaCatalog, parameterDefinitionDeletionCoveredRouteIds } from "./parameterDefinitionDeletion";
 
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ...coreDtoSchemaCatalog,
@@ -26,6 +27,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ...canonicalManualSyncDtoSchemaCatalog,
   ...productFeedbackDtoSchemaCatalog,
   ...sourceRevisionDtoSchemaCatalog,
+  ...parameterDefinitionDeletionDtoSchemaCatalog,
   StructuralReadResponse: structuralReadResponseSchema,
   DtsSearchResponse: dtsSearchResponseSchema
 };
@@ -34,7 +36,8 @@ export const dtoSchemaCoveredRouteIds = [
   ...coreDtoSchemaCoveredRouteIds,
   ...parameterCatalogCoveredRouteIds,
   ...productFeedbackCoveredRouteIds,
-  ...sourceRevisionCoveredRouteIds
+  ...sourceRevisionCoveredRouteIds,
+  ...parameterDefinitionDeletionCoveredRouteIds
 ] as const;
 
 export type DtoSchemaCoveredRouteId = (typeof dtoSchemaCoveredRouteIds)[number];
@@ -56,6 +59,7 @@ export * from "./canonicalBatchRollback";
 export * from "./canonicalManualSync";
 export * from "./productFeedback";
 export * from "./sourceRevision";
+export * from "./parameterDefinitionDeletion";
 export { projectBindingDtoSchema } from "../../parameter-topology/schemas";
 export { logSkillSpecSchema } from "../../logs/skillSpec";
 export { listSignalFields, type SignalField } from "../../logs/parsing/signalFields";

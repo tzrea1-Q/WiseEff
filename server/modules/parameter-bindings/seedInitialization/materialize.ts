@@ -34,6 +34,7 @@ import {
   syncPublishedCatalogProjectValuesInTransaction
 } from "../catalogProjectValueSync";
 import { SEED_JSON_POINTERS, SEED_POWER_CONFIG_SCHEMA_ID } from "./powerConfig";
+import { loadOrganizationCatalogSnapshot } from "../../parameter-modules/recognitionSettings";
 import {
   assertProjectParameterPlaneArchived,
   captureProjectParameterPlane
@@ -239,7 +240,8 @@ async function materializeSeedSourcesLocked(
     startedByUserId: auth.user.id
   });
 
-  const snapshot = await loadPublishedCatalog(pool);
+  const published = await loadPublishedCatalog(pool);
+  const snapshot = published ? await loadOrganizationCatalogSnapshot(root, input.organizationId, published) : null;
   const staged: Array<{
     target: (typeof plan.targets)[number];
     configSet: Awaited<ReturnType<typeof ensureDefaultConfigSet>>;

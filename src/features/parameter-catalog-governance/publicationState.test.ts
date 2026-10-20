@@ -176,6 +176,14 @@ describe("publication operator state", () => {
     expect(publicationJobIsPending("active")).toBe(false);
   });
 
+  it("warns when permanent erasure rebuilt a historically approved artifact", () => {
+    expect(publicationStatusCopy({ ...catalogPublicationJob, effective: true,
+      maintenanceRewrites: [{ kind: "definition-erasure", erasedAt: "2026-10-20T00:00:00Z",
+        previousArtifactDigest: "sha256:old", currentArtifactDigest: "sha256:new", originalApprovalRetained: true }] })).toEqual({
+      tone: "warning", message: "此发布记录的目录内容已因参数彻底删除而重建。原审批记录保留，本次维护不代表重新批准发布。"
+    });
+  });
+
   it("maps policy, freeze, and needs-rebase to Chinese copy while naming the input field", () => {
     expect(publicationFailureCopy(catalogApiFailure("publication-policy-disabled"))).toContain("策略已关闭");
     expect(publicationFailureCopy(catalogApiFailure("publication-frozen"))).toContain("冻结");

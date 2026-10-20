@@ -1,4 +1,6 @@
 import type {
+  DriverNature,
+  InstanceCardinality,
   ModuleImportance,
   ModuleOrigin,
   ParameterModuleRegistry
@@ -24,11 +26,14 @@ export type UpdateParameterModuleInput = {
   parentId?: string | null;
   sortOrder?: number;
   importance?: ModuleImportance;
-  kind?: "business" | "node-type";
+  kind?: "business" | "driver-group" | "node-type";
+  compatibles?: string[];
+  driverNature?: DriverNature;
+  instanceCardinality?: InstanceCardinality;
+  nodeTypeName?: string;
 };
 
-export type DriverNature = "physical-device" | "logical-service";
-export type InstanceCardinality = "multiple" | "singleton-per-project";
+export type { DriverNature, InstanceCardinality } from "@/domain/parameter-topology/moduleRegistry";
 
 export type DriverRegistryParseCoverage =
   | { covered: false }

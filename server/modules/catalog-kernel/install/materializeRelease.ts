@@ -493,5 +493,18 @@ export const unwrapMaterializationKernelError = (
   if (error instanceof CatalogKernelFailure) {
     return error.kernelError;
   }
+  if (error instanceof pg.DatabaseError && error.code === "55000"
+    && error.message === "Parameter definition was permanently erased") {
+    return {
+      kind: "invalid-release",
+      phase: "install-preflight",
+      violations: [{
+        code: "schema-invalid",
+        location: error.detail ? { kind: "present", value: error.detail } : { kind: "absent" },
+        subjectId: { kind: "absent" },
+        detail: "definition-permanently-erased",
+      }],
+    };
+  }
   return null;
 };

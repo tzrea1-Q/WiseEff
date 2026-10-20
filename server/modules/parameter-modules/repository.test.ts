@@ -5,7 +5,7 @@ import { readRegistry, type RegistryCatalogSnapshot } from "./repository";
 
 describe("parameter module canonical registry counts", () => {
   it("counts canonical bindings and active registered definitions, including unbound definitions", async () => {
-    const query = vi.fn()
+    const query = vi.fn().mockResolvedValue({ rows: [] })
       .mockResolvedValueOnce({
         rows: [
           {
@@ -76,11 +76,11 @@ describe("parameter module canonical registry counts", () => {
     expect(registrySql).not.toContain("catalog_state");
     expect(registrySql).not.toContain("catalog_release_subjects");
     expect(registrySql).not.toContain("definition_revisions");
-    expect(query).toHaveBeenCalledTimes(3);
+    expect(query).toHaveBeenCalledTimes(4);
   });
 
   it("returns zero definition facts only when the caller explicitly has no Catalog", async () => {
-    const query = vi.fn()
+    const query = vi.fn().mockResolvedValue({ rows: [] })
       .mockResolvedValueOnce({
         rows: [{
             id: "module",

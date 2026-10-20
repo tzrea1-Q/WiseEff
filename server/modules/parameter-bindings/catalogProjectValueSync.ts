@@ -52,6 +52,7 @@ import { loadCanonicalSourceSnapshot, validatePinnedDtsSourceChange, type Canoni
 import { lockExactSourceRevisionsForProof, rethrowSourceTransactionError } from "../parameter-files/sourceVersion";
 import { canViewParameters } from "../parameter-kernel/policy";
 import type { ObjectStore } from "../logs/objectStore";
+import { loadOrganizationCatalogSnapshot, lockOrganizationModuleRecognition } from "../parameter-modules/recognitionSettings";
 
 export type CatalogBindingView = {
   id: string;
@@ -236,7 +237,8 @@ export function loadOrganizationRegisteredSubjectSelection(
 }
 
 /** Source approval keeps publication and registration admission fenced in its own transaction. */
-export async function lockSourceCatalogGovernance(tx: Queryable) {
+export async function lockSourceCatalogGovernance(tx: Queryable, organizationId: string) {
+  await lockOrganizationModuleRecognition(tx, organizationId);
   await tx.query("select pg_catalog.pg_advisory_xact_lock_shared($1::bigint)", [CURRENT_POINTER_LOCK_KEY]);
   // ponytail: the table fence covers new-registration phantoms across tenants;
   // replace it with a shared per-organization governance fence if write traffic warrants it.
@@ -458,6 +460,8 @@ export async function syncPublishedCatalogProjectValuesInTransaction(
   write: ValueClient,snapshot: CatalogSnapshot,input: CatalogProjectValueSyncInput,
 ): Promise<number> {
   try {
+  await lockOrganizationModuleRecognition(write as unknown as Queryable, input.organizationId);
+  snapshot = await loadOrganizationCatalogSnapshot(write as unknown as Queryable, input.organizationId, snapshot);
   const sourceMembers = await write.query<{ fileId: string; fileVersionId: string }>(
     `select file_id as "fileId",file_version_id as "fileVersionId" from dts_config_revision_members
      where config_revision_id=$1 order by id`, [input.configRevisionId]);

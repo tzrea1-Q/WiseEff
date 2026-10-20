@@ -73,6 +73,15 @@ function echoRouter(seen: { body?: unknown }) {
 }
 
 describe("createHttpServer", () => {
+  it("reads a DELETE confirmation body and accepts existing empty DELETE requests", async () => {
+    const seen: { body?: unknown } = {};
+    const baseUrl = await listen(createHttpServer(echoRouter(seen)));
+    expect((await fetch(`${baseUrl}/definition`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ previewToken: "confirmed" }) })).status).toBe(200);
+    expect(seen.body).toEqual({ previewToken: "confirmed" });
+    expect((await fetch(`${baseUrl}/definition`, { method: "DELETE" })).status).toBe(200);
+    expect(seen.body).toBeUndefined();
+  });
+
   it("preserves binary multipart bytes and boundary-like payloads without copying files", async () => {
     const seen: { body?: unknown } = {};
     const baseUrl = await listen(createHttpServer(echoRouter(seen), { maxBodyBytes: () => 2048 }));

@@ -20,6 +20,11 @@ export type ParameterModuleDto = {
   /** Present for driver-group / node-type modules after attribution cutover. */
   attributionSubjectId: string | null;
   effectiveImportance: ModuleImportance;
+  compatibles?: string[];
+  driverNature?: "physical-device" | "logical-service" | null;
+  instanceCardinality?: "multiple" | "singleton-per-project" | null;
+  nodeTypeName?: string | null;
+  recognitionSubjectId?: string | null;
   /** Subtree bindings (measured occurrences). */
   parameterCount: number;
   /** Distinct specs in the same subtree (definition count). */
@@ -48,6 +53,7 @@ export type ParameterModuleRow = {
   description: string;
   scope: string;
   importance: ModuleImportance;
+  importance_override?: boolean;
   kind: ModuleKind;
   origin: ModuleOrigin;
   source_key: string | null;

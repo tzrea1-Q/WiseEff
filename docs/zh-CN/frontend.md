@@ -181,7 +181,7 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 
 阶段二把模块身份物化到 `project_parameter_bindings`，并移除“读时派生”的兜底（干净切换，无兼容层）：
 
-- **物化 `module_id`（唯一真相源）。** 每条 binding 都带非空 `module_id`，外键指向 `parameter_modules(id)`；浏览唯一键为 `(project_id, logical_node_id, parameter_spec_id, module_id)`（迁移 `0067`）。写路径（ingest / `createOrReuseBinding`）经 `resolveModuleForBinding` 按 **compatible → node-type → 未分类根** 解析模块——绝不为 null。`module_id` 须指向驱动组、节点类型单元或组织未分类根；器件实例身份仅为 `logical_node_id`（ADR-0010）。种子始终写入 `module_id`，工作台不会读到没有模块的 binding。
+- **物化 `module_id`（唯一真相源）。** 导入与种子按 **compatible → node-type → 未分类根** 解析模块。删除叶子模块后，绑定保留并将 `module_id` 清为 `null`（迁移 `0209`）；已有归属的浏览键继续保持唯一，解除归属的实例仍保留身份。工作台将这些保留参数醒目标为 `unset`。器件实例身份仅为 `logical_node_id`（ADR-0010）。
 - **工作台以 `binding.moduleId` 为准。** `/api/v2/projects/:projectId/parameter-bindings` DTO 暴露 `moduleId: string`；`buildDtsWorkbenchRows` 直接读取 `binding.moduleId`，再从注册表（`GET /api/v2/parameter-modules`）取名称/重要性/排序。当 binding 已带 `moduleId` 时**不再**重新派生模块；`deriveModuleAssignment` 仅保留给重算工具与测试。
 - **公开重算已退役。** `POST /api/v2/parameter-modules/recompute-bindings` 返回 `410 GONE`（`legacy-surface-retired`），包括 `dryRun` 请求；不再是管理员回填入口。项目候选/reload 重算仍由所属项目内部流程负责。
 - **真实详情历史与跨项目对比。** `ApiProjectTopologyWorkspace` 为所选 binding 加载历史和对比端口。Canonical 历史沿精确来源/值修订及已记录历史事件读取，界面优先显示可读时间、值差异和修改原因；响应提供操作者时一并显示，缺失原因/操作者明确保留为未记录。修订/值 ID 及审计溯源归入技术详情。历史和对比组件嵌入统一详情标签。对比精确区分项目/配置/binding 实例，显示选定来源值和 raw 差异，可引用为当前目标；替换未保存输入先确认，引用值仍需保存并提交审核。加载、错误、重试和空态限定在所属标签内。
@@ -194,10 +194,10 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 - **放置辅助：** `src/domain/parameter-topology/modulePlacement.ts`（服务端镜像在 `server/modules/parameter-modules/`）。
 - **历史绑定放置：** 阶段二的 `ensureAttributionModuleForBinding` / `resolveModuleForBinding` 辅助函数解释保留的遗留 `module_id` 来源，不授权公开映射写入，也不替代规范 Subject 登记与放置。
 - **发现与登记：** 规范上下文隐藏遗留未登记驱动队列及归类/认领回调。未知证据交由规范审核队列处置；登记与放置使用各自规范入口。遗留模块映射、驱动登记写入与 compatible 驳回均返回 `410 GONE` 并提供规范后继链接。旧登记书签重定向到树。
-- **历史驱动来源：** 有界的 `GET /api/v2/parameter-modules/driver-registry` 仅供只读查看。规范上下文中，`ModuleEditDialog` 展示历史 Driver/NodeType 详情（包括 `driverNature` / `instanceCardinality`），不提供元数据编辑、默认业务分类、映射规则或回放控件。覆盖/定义变更使用 Definition Proposals 与 Catalog 发布；规范发现界面不提供 `OrganizationDriverSchemaDialog` 或 `OverlaySpecPickerDialog` 编写入口。组织 overlay 及其激活/停用读写返回 `410 GONE`；保留的 overlay 行仅为历史记录，不是运行时覆盖来源。
+- **当前识别与历史来源：** `ModuleEditDialog` 允许管理员在修改模块信息时，直接编辑当前组织的 compatible 规则、驱动性质、实例基数和节点类型名。compatible 每行一条，逗号属于完整标识的一部分；保存后替换该模块在当前组织内的规则。当前来源发现、来源匹配和绑定写入采用这些设置；单实例规则会拒绝已有或新增的项目实例冲突。已发布 Catalog 版本和历史证据保持原值。有界的 `GET /api/v2/parameter-modules/driver-registry` 继续只读展示历史来源。覆盖/定义变更使用 Definition Proposals 与 Catalog 发布；已退役的组织 overlay 仅保留历史，不参与运行时覆盖。
 - **平台控制台清除：** 已删除 `/platform-console` 页面、导航入口及历史晋升查询的客户端、API 和 DTO。旧页面地址使用通用首页回退；`GET /api/v2/platform/driver-schema-promotion-history` 返回 404。数据库历史晋升记录保留，旧晋升/撤销接口继续按 410 合同拒绝。
-- **模块动作：** 共享业务分类 CRUD 保留可用；规范登记与放置控件负责 Subject 变更。经 v1 模块路由创建、编辑、移动、删除或重新分类历史 Driver/NodeType 均返回同一 `410 GONE` 退役契约，不得在规范上下文中作为可用动作展示。
-- **树展示：** `ModuleAttributionTree` 保留 kind 徽标、规范子树定义/绑定计数、业务分类重要性及只读历史 compatible/覆盖来源。历史 Driver/NodeType 详情不是可编辑匹配规则或生效 overlay 选择器。组织 overlay 不参与规范覆盖与 ingest 合并。
+- **模块动作：** 管理员可直接修改自动生成或手动登记的驱动组、节点类型的名称、描述、适用范围、重要性、排序和上级归属，也可删除含参数的叶子模块并保留 unset 参数。人工修改将模块标为人工维护；未调整的重要性继续继承，明确选择的重要性覆盖继承值。模块修改在审计事务中同步刷新归属版本。组织范围、父级类型、循环及系统根约束保留。主体创建和身份变更使用规范治理；不支持改变模块的身份类型。
+- **树展示：** `ModuleAttributionTree` 保留 kind 徽标、规范子树定义/绑定计数、生效的重要性及只读历史 compatible/覆盖来源。组织 overlay 不参与规范覆盖与 ingest 合并。
 - **定义库列：** `OrganizationSpecGovernancePanel` 与 `ParameterSpecLibrary` 从 `GET /api/v2/parameter-specs` 的 `attributionModules` 渲染 **归属模块**（binding 陈述的事实，无 `（预测）` 后缀）。已登记但未实测的驱动组显示 **未实测**；真正未归属的规格显示 **未归类**。
 - **上传驱动摘要：** DTS 文件上传响应可带 `driverSummary`（`matchedRegistered` / `newUnregistered`），对照文件内 compatible 与已登记映射；`ProjectParameterFilesPanel` 上传成功后弹出 `DriverUploadSummaryDialog`。
 - **重算归属：** 公开模块重算/回放已退役，不再是运维或 `dryRun` 回填工具。项目候选/reload 内部流程保留自身重算；种子辅助函数不会重新开放公开结构写入。
@@ -231,7 +231,7 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 参数域与调试域各自维护独立的组织级模块树。共享选择器：`src/components/common/ModuleTreeSelect.tsx`（展开/折叠、搜索、路径标签、单选与多选）；共享树筛选由 `TreeFilterOptions` 和稳定 ID 选择工具提供，各业务域仍传入自己的注册表和范围。
 
 - `/parameters`：模块筛选与分组使用 `moduleId` 子树包含；深链 `?module=<moduleId>`。
-- `/parameter-admin/modules`：`ModuleAttributionTree` 提供导航和共享业务分类管理；规范面板负责 Subject 登记与放置。`ModuleEditDialog` 中的历史 Driver/NodeType 详情只读，不提供遗留创建、重新分类、映射、默认、回放或 overlay 编写。
+- `/parameter-admin/modules`：`ModuleAttributionTree` 提供导航及管理员直接修改、排序、移动和删除叶子模块的操作；规范面板负责 Subject 登记与身份。`ModuleEditDialog` 中的历史匹配证据保持只读。
 - `/debugging-admin`：与参数后台同类的范围导航——**参数调试**（`/debugging-admin`）承载重载配置；**节点调试**（`/debugging-admin/nodes`）承载可调节点目录。`DebugModuleManagementDialog` 管理调试节点模块树；节点目录与编辑弹窗通过 `ModuleTreeSelect` 选模块。
 
 API mode 从 `/api/v1/parameter-modules` 与 `/api/v1/debugging/admin/modules` 加载；mock mode 由 `src/config/power-management.json` 的 `parent`/`path` 经 `buildPowerManagementModuleTree()` 派生。
@@ -407,7 +407,9 @@ Xiaoze（小泽，唯一 Agent）：
 
 ## 共享模块导航
 
-`/parameters` 的 DTS/JSON 界面及 Catalog 参数定义页面（`/parameter-admin`、`/parameter-admin/specs` 及其参数定义别名、`/parameters/definitions`）遵循共享[导航工作台契约](design-docs/ui-design-system.md#导航工作台)。模板负责槽顺序、有上限的令牌化宽度、折叠偏好与滚动容器；模块树原语继续负责标签锚点和选择。其他路由在各自迁移前保留现有的内容自适应导航。
+`/parameters` 的 DTS/JSON 界面及 Catalog 参数定义页面（`/parameter-admin`、`/parameter-admin/specs` 及其参数定义别名、`/parameters/definitions`）遵循共享[导航工作台契约](design-docs/ui-design-system.md#导航工作台)。模板负责槽顺序、有上限的面板宽度、折叠偏好与滚动容器；模块树原语继续负责标签锚点和选择。其他路由在各自迁移前保留现有的内容自适应导航。
+
+模块治理、Catalog 参数定义和项目参数启用可拖动的导航分隔条。宽度按页面保存，限制在 240–520 px 和可用任务空间内。左右方向键每次调整 8 px（按住 Shift 为 32 px），Home 或双击恢复 288 px；单栏布局隐藏分隔条。模块治理直接显示删除按钮：管理员可删除含参数的叶子模块；有子模块的模块及系统未分类根仍受保护。参数、规范主体登记与历史记录保留，仅清空模块归属；参数表和 Catalog 导航醒目标示 `unset`。
 
 填充 `NavigatorWorkbench` 槽，不添加页面局部网格、面板宽度或第二层带留白的外壳。`/parameter-admin/modules` 的模块治理现已使用模板：现有分类控件位于导航区，规范归属、发现和历史注册表通过 URL 内容标签切换。旧队列和注册表路由将当前历史记录替换为对应标签 URL。契约除几何外还定义地标、键盘顺序和状态位置。日志将历史记录放在导航区，报告、元数据与相关内容标签共用任务区；上传操作位于工具栏主动作槽。节点调试与 DTS 重载现已使用模板：Bridge 就绪条进入上下文槽，模块树进入导航槽，参数表及操作／运行历史进入任务槽。项目配置同样使用 `NavigatorWorkbench`：左侧导航文件，任务区提供「源码／冲突」标签。
 
@@ -419,7 +421,7 @@ Xiaoze（小泽，唯一 Agent）：
 
 工作台在参数行或模块登记加载期间保留 URL 中的节点 ID。恢复的节点出现之前，不筛选参数行，也不显示为已选中。DTS/JSON 参数修改与 DTS 重载保留原有的失效选择行为：已确认存在的选中节点被移除时，清除其子树范围与 URL 选择；节点重新出现后不会自动再次选中。
 
-模块名保持单行。桌面端未迁移工作台的导航宽度随内容增长至布局令牌上限，超出后只在导航内部横向滚动；`/parameters` 改用模板的固定、有上限宽度。低于各自双栏断点时占满可用宽度，页面本身不得产生横向溢出。Catalog 保留现有的导航宽度约束与溢出规则。
+模块名保持单行。桌面端未迁移工作台的导航宽度随内容增长至布局令牌上限，超出后只在导航内部横向滚动；`/parameters` 使用模板的可调整、有上限宽度。低于各自双栏断点时占满可用宽度，页面本身不得产生横向溢出。Catalog 保留有上限的导航宽度与溢出规则。
 
 层级列表头筛选统一使用共享 `ColumnFilter mode="tree"`：`/parameter-review` 的变更审阅、`/parameter-admin/specs` 的参数定义库与内嵌审阅队列、`/node-debugging` 的节点调试参数表、`/dts-reload` 的参数调试候选表，以及 `/debugging-admin/nodes` 的节点目录都使用受页面作用域约束的模块树。若审阅任务接口只提供模块名称而没有归属路径，筛选器只展示可证实的模块层级，不推测不存在的祖先关系。
 

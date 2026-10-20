@@ -30,7 +30,7 @@ import {
 } from "../parameters/parameterModuleRepository";
 import type { ModuleKind } from "../parameters/types";
 import type { Queryable } from "../../shared/database/client";
-import { resolveModuleIdForBinding } from "./resolveModuleForBinding";
+import { findModuleRecognitionOverride, resolveModuleIdForBinding } from "./resolveModuleForBinding";
 import {
   bootstrapDriverRegistrationDefaultIfNull,
   findAttributionSubjectIdBySourceKey,
@@ -579,6 +579,10 @@ export async function resolveAttributionModuleForBinding(
 ): Promise<string> {
   const identity = parseNodeIdentity(input);
   const nodeType = nodeTypeKeyForNode(identity);
+  const override = await findModuleRecognitionOverride(db, { organizationId: input.organizationId,
+    compatible: input.compatible, nodeType: identity.name });
+  if (override.moduleId) return override.moduleId;
+  if (override.replacesLegacyMatch) return resolveModuleIdForBinding(db, { ...input, nodeType });
   const scaffolding = isModuleScaffoldingNode({
     name: identity.name === "/" ? BOARD_INSTANCE_MODULE_NAME : identity.name,
     compatible: input.compatible,

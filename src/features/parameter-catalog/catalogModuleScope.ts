@@ -44,10 +44,10 @@ function placementLinks(subjects: readonly SubjectItem[]): PlacementLink[] {
   for (const subject of subjects) {
     if (subject.registration.status === "unregistered") continue;
     const placement = subject.registration.placement;
-    if (!placement?.id) continue;
+    if (!placement?.id || !placement.moduleId) continue;
     links.push({
       placementId: placement.id,
-      moduleId: placement.moduleId || placement.id,
+      moduleId: placement.moduleId,
       displayName: placement.displayName || placement.id,
       parentPlacementId: placement.parentPlacementId ?? null,
       subjectId: subject.id
@@ -152,7 +152,17 @@ export function buildCatalogModuleTree(
   const unregistered = sortSubjects(
     subjects.filter((subject) => subject.registration.status === "unregistered")
   );
-  const loose = [...orphans, ...unregistered];
+  const unset = orphans.filter((subject) => subject.registration.status !== "unregistered" && subject.registration.placement);
+  if (unset.length > 0) {
+    roots.push({
+      id: "group:unset",
+      kind: "unregistered-group",
+      displayName: "unset（未分配模块）",
+      subjectCount: unset.length,
+      children: unset.map((subject) => subjectLeaf(subject, describeSubject))
+    });
+  }
+  const loose = [...orphans.filter((subject) => !unset.includes(subject)), ...unregistered];
   if (loose.length > 0) {
     roots.push({
       id: CATALOG_UNREGISTERED_GROUP_ID,

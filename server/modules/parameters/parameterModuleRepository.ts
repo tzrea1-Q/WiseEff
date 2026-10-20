@@ -78,7 +78,7 @@ export async function listParameterModules(db: Queryable, query: { organizationI
 
 export async function getParameterModuleById(
   db: Queryable,
-  query: { organizationId: string; moduleId: string }
+  query: { organizationId: string; moduleId: string; forUpdate?: boolean }
 ): Promise<ParameterModuleDto | null> {
   const result = await db.query<ParameterModuleRow>(
     `
@@ -87,6 +87,7 @@ export async function getParameterModuleById(
     where organization_id = $1
       and id = $2
     limit 1
+    ${query.forUpdate ? "for update" : ""}
     `,
     [query.organizationId, query.moduleId]
   );
@@ -336,6 +337,7 @@ export async function updateParameterModule(
     sortOrder?: number;
     importance?: "high" | "medium" | "low" | null;
     kind?: ParameterModuleDto["kind"];
+    promoteToCurated?: boolean;
   }
 ) {
   const existing = await getParameterModuleById(db, {
@@ -346,28 +348,22 @@ export async function updateParameterModule(
     return null;
   }
 
-  const nextKind = input.kind ?? existing.kind;
-  if (input.importance !== undefined && input.importance !== null && nextKind !== "business") {
-    throw new Error("Importance can only be set on business-category modules");
-  }
-
   const nextName = input.name?.trim() ?? existing.name;
   const shouldPromote =
     existing.origin === "auto" &&
-    (input.name !== undefined || input.importance !== undefined || input.kind !== undefined);
+    (input.promoteToCurated || input.name !== undefined || input.description !== undefined || input.scope !== undefined ||
+      input.sortOrder !== undefined || input.importance !== undefined || input.kind !== undefined);
 
   const clearImportance = input.kind !== undefined && input.kind !== "business" && existing.kind === "business";
   const nextImportance = clearImportance
     ? "medium"
-    : input.importance === null
-      ? existing.importance
-      : input.importance ?? null;
+    : input.importance ?? null;
 
   const result = await db.query<ParameterModuleRow>(
     `
     update parameter_modules
     set
-      name = $3,
+      name = coalesce($3, name),
       description = coalesce($4, description),
       scope = coalesce($5, scope),
       sort_order = coalesce($6, sort_order),
@@ -376,6 +372,7 @@ export async function updateParameterModule(
         when $7::text is not null then $7
         else importance
       end,
+      importance_override = importance_override or $7::text is not null,
       kind = coalesce($10, kind),
       origin = case when $8::boolean then 'curated' else origin end,
       updated_at = now()
@@ -386,7 +383,7 @@ export async function updateParameterModule(
     [
       input.organizationId,
       input.moduleId,
-      nextName,
+      input.name?.trim() ?? null,
       input.description ?? null,
       input.scope ?? null,
       input.sortOrder ?? null,
@@ -433,6 +430,14 @@ export async function moveParameterModule(
   });
 }
 
+export async function lockParameterModuleTree(db: Queryable, organizationId: string) {
+  // The caller's transaction owns this lock until commit, so reciprocal moves
+  // cannot both validate against the same old tree and create a cycle.
+  await db.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
+    `parameter-module-tree:${organizationId}`,
+  ]);
+}
+
 /**
  * Reparent an auto-origin module without promoting it to curated.
  * Curated modules are skipped (returns `{ skipped: 'curated' }`).
@@ -446,6 +451,7 @@ export async function reparentAutoParameterModule(
   | { status: "skipped"; reason: "missing" | "curated" | "noop" }
   | { status: "error"; message: string }
 > {
+  await lockParameterModuleTree(db, input.organizationId);
   const node = await getParameterModuleById(db, {
     organizationId: input.organizationId,
     moduleId: input.moduleId,
@@ -488,12 +494,16 @@ async function reparentParameterModule(
     promoteAutoToCurated: boolean;
   }
 ) {
+  await lockParameterModuleTree(db, input.organizationId);
   const node = await getParameterModuleById(db, {
     organizationId: input.organizationId,
     moduleId: input.moduleId
   });
   if (!node) {
     return null;
+  }
+  if (node.kind === "unclassified" && node.parentId === null) {
+    throw new ApiError("CONFLICT", "Cannot move the unclassified root module");
   }
 
   let parentPath: string | null = null;
@@ -504,6 +514,12 @@ async function reparentParameterModule(
     });
     if (!parent) {
       throw new Error("Target parent parameter module not found");
+    }
+    if (parent.kind === "unclassified" ||
+      ((node.kind === "business" || node.kind === "driver-group") && parent.kind !== "business")) {
+      throw new ApiError("CONFLICT", "Target parent is not valid for this module kind", {
+        moduleId: node.id, kind: node.kind, parentId: parent.id, parentKind: parent.kind,
+      });
     }
     parentPath = parent.path;
   }
@@ -555,34 +571,19 @@ export async function deleteParameterModule(
   db: Queryable,
   input: { organizationId: string; moduleId: string }
 ) {
-  const existing = await getParameterModuleById(db, input);
+  const existing = await getParameterModuleById(db, { ...input, forUpdate: true });
   if (!existing) {
     return false;
   }
-  if (existing.kind === "node-type") {
-    throw new Error("Cannot delete a node-type module");
-  }
   if (existing.kind === "unclassified" && existing.parentId === null) {
-    throw new Error("Cannot delete the unclassified root module");
+    throw new ApiError("CONFLICT", "Cannot delete the unclassified root module", { moduleId: input.moduleId });
   }
 
   const childCount = await countParameterModuleChildren(db, input);
   if (childCount > 0) {
-    throw new Error("Cannot delete parameter module with child modules");
-  }
-
-  const parameterCount = await countParametersForModule(db, input);
-  if (parameterCount > 0) {
-    throw new Error("Cannot delete parameter module referenced by parameters");
-  }
-
-  const placementCount = await countCanonicalPlacementsForModule(db, input);
-  if (placementCount > 0) {
-    throw new ApiError(
-      "CONFLICT",
-      "Cannot delete parameter module referenced by Catalog placements",
-      { moduleId: input.moduleId, placementCount },
-    );
+    throw new ApiError("CONFLICT", "Cannot delete parameter module with child modules", {
+      moduleId: input.moduleId, childCount,
+    });
   }
 
   const result = await db.query(

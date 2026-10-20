@@ -55,6 +55,8 @@ import {
 
 import { registerCatalogGovernanceRoutes, registerCatalogDefinitionReplacementRoutes } from "./governance/routes";
 import { registerCatalogDriverCompatibleDiscoveryRoute } from "./driverDiscoveryRoute";
+import { registerDefinitionDeletionRoutes } from "./definitionDeletion/routes";
+import type { DefinitionArchiveStores } from "./definitionDeletion/archives";
 import { readReviewItemDetailsFromPool } from "./productionReviewDetails";
 import { createParameterCatalogMigrationService } from "../parameter-catalog-migration/service";
 import type { ReplacementPublicationPorts } from "../parameter-catalog-migration/types";
@@ -921,7 +923,7 @@ const createLegacyOptions = (
 
 export const registerParameterCatalogApi = (
   router: WiseEffRouter,
-  options: {
+  options: DefinitionArchiveStores & {
     readonly db?: Database;
     readonly objectStore?: ObjectStore;
     readonly resolveAuth: CatalogApiAuthResolver;
@@ -938,6 +940,7 @@ export const registerParameterCatalogApi = (
   registerCatalogDriverCompatibleDiscoveryRoute(router, {
     db: options.db, objectStore: options.objectStore, resolveAuth: options.resolveAuth,
   });
+  registerDefinitionDeletionRoutes(router, options);
   registerCatalogDefinitionReplacementRoutes(
     router,
     createGovernancePorts(pool, options.resolveAuth, options.db, options.objectStore),

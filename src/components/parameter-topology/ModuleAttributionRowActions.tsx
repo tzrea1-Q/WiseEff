@@ -1,4 +1,4 @@
-import { Eye, Pencil } from "lucide-react";
+import { Eye, Pencil, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -7,7 +7,6 @@ import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry
 import {
   addChildModuleDecision,
   canViewUnclassifiedRoot,
-  deleteActionLabel,
   deleteModuleDecision,
   moveModuleDecision,
   sortOrderSwapUpdates
@@ -18,7 +17,6 @@ export type ModuleAttributionRowActionsProps = {
   modules: readonly ParameterModule[];
   busy?: boolean;
   canAdmin?: boolean;
-  canonicalModeEnabled?: boolean;
   onView?: () => void;
   onEdit: () => void;
   onAddChild: () => void;
@@ -64,7 +62,6 @@ export function ModuleAttributionRowActions({
   modules,
   busy = false,
   canAdmin = false,
-  canonicalModeEnabled = false,
   onView,
   onEdit,
   onAddChild,
@@ -80,21 +77,21 @@ export function ModuleAttributionRowActions({
   const focusLast = useRef(false);
 
   const showView = canViewUnclassifiedRoot(module) && Boolean(onView);
-  const detailsReadOnly = !canAdmin || (canonicalModeEnabled && module.kind !== "business");
+  const detailsReadOnly = !canAdmin;
   const showEdit = !showView && !detailsReadOnly;
   const showDetails = !showView && detailsReadOnly;
   const addChildDecision = addChildModuleDecision(module);
   const moveDecision = moveModuleDecision(module);
-  const deleteDecision = deleteModuleDecision(module);
-  const canMoveUp = Boolean(onReorder && sortOrderSwapUpdates(module, "up", modules, canonicalModeEnabled));
-  const canMoveDown = Boolean(onReorder && sortOrderSwapUpdates(module, "down", modules, canonicalModeEnabled));
-  const canManageTaxonomy = canAdmin && (!canonicalModeEnabled || module.kind === "business");
+  const deleteDecision = deleteModuleDecision(module, modules);
+  const canMoveUp = Boolean(onReorder && sortOrderSwapUpdates(module, "up", modules));
+  const canMoveDown = Boolean(onReorder && sortOrderSwapUpdates(module, "down", modules));
+  const canManageTaxonomy = canAdmin && !canViewUnclassifiedRoot(module);
   const showReorder = canManageTaxonomy && Boolean(onReorder);
-  const showAddChild = canManageTaxonomy;
+  const showAddChild = canManageTaxonomy && module.kind === "business";
   const showMove = canManageTaxonomy;
-  const showDelete = canManageTaxonomy;
+  const showDelete = canAdmin;
   const hasMore =
-    showReorder || showAddChild || showMove || showDelete;
+    showReorder || showAddChild || showMove;
 
   const updateMenuPosition = useCallback(() => {
     const trigger = triggerRef.current;
@@ -227,9 +224,7 @@ export function ModuleAttributionRowActions({
                 ) : (
                   disabledMenuItem(
                     PARAMETER_ADMIN_UI.moduleAttributionMoveUp,
-                    canonicalModeEnabled && sortOrderSwapUpdates(module, "up", modules)
-                      ? "相邻历史主体为只读，不能交换排序。"
-                      : "已在同级最前。",
+                    "已在同级最前。",
                     `${PARAMETER_ADMIN_UI.moduleAttributionMoveUp} ${module.name}`
                   )
                 )}
@@ -246,9 +241,7 @@ export function ModuleAttributionRowActions({
                 ) : (
                   disabledMenuItem(
                     PARAMETER_ADMIN_UI.moduleAttributionMoveDown,
-                    canonicalModeEnabled && sortOrderSwapUpdates(module, "down", modules)
-                      ? "相邻历史主体为只读，不能交换排序。"
-                      : "已在同级最后。",
+                    "已在同级最后。",
                     `${PARAMETER_ADMIN_UI.moduleAttributionMoveDown} ${module.name}`
                   )
                 )}
@@ -288,26 +281,6 @@ export function ModuleAttributionRowActions({
                 disabledMenuItem("调整上级模块", moveDecision.reason, `调整上级模块 ${module.name}`)
               )
             ) : null}
-            {showDelete ? (
-              deleteDecision.allowed ? (
-                <button
-                  type="button"
-                  className="dropdown-item dropdown-item--danger"
-                  role="menuitem"
-                  aria-label={`${deleteActionLabel(module)} ${module.name}`}
-                  onClick={() => runMenuAction(onDelete)}
-                >
-                  {module.kind === "driver-group" ? "解散" : "删除"}
-                </button>
-              ) : (
-                disabledMenuItem(
-                  module.kind === "driver-group" ? "解散" : "删除",
-                  deleteDecision.reason,
-                  `${deleteActionLabel(module)} ${module.name}`,
-                  true
-                )
-              )
-            ) : null}
           </div>,
           document.body
         )
@@ -345,6 +318,11 @@ export function ModuleAttributionRowActions({
           修改
         </button>
       ) : null}
+
+      {showDelete ? <button type="button" className="button ghost danger" tabIndex={tabIndex}
+        disabled={busy || !deleteDecision.allowed} aria-label={`删除模块 ${module.name}`}
+        title={deleteDecision.allowed ? "删除模块，保留参数并清空模块归属" : deleteDecision.reason}
+        onClick={onDelete}><Trash2 size={14} aria-hidden="true" />删除</button> : null}
 
       {hasMore ? (
         <div className="dropdown-root module-attribution-tree__more">

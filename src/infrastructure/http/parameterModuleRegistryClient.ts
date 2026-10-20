@@ -31,6 +31,11 @@ type ModuleDto = {
   parameterCount?: number;
   definitionCount?: number;
   attributionSubjectId?: string | null;
+  compatibles?: string[];
+  driverNature?: ParameterModule["driverNature"];
+  instanceCardinality?: ParameterModule["instanceCardinality"];
+  nodeTypeName?: string | null;
+  recognitionSubjectId?: string | null;
 };
 
 type MappingDto = {
@@ -68,7 +73,12 @@ function mapModule(module: ModuleDto): ParameterModule {
     effectiveImportance: module.effectiveImportance ?? importance,
     parameterCount: module.parameterCount ?? 0,
     definitionCount: module.definitionCount ?? 0,
-    attributionSubjectId: module.attributionSubjectId ?? null
+    attributionSubjectId: module.attributionSubjectId ?? null,
+    compatibles: module.compatibles,
+    driverNature: module.driverNature,
+    instanceCardinality: module.instanceCardinality,
+    nodeTypeName: module.nodeTypeName,
+    recognitionSubjectId: module.recognitionSubjectId,
   };
 }
 
@@ -128,6 +138,10 @@ export function createHttpParameterModuleRegistryRepository(
       if (input.sortOrder !== undefined) patch.sortOrder = input.sortOrder;
       if (input.importance !== undefined) patch.importance = input.importance;
       if (input.kind !== undefined) patch.kind = input.kind;
+      if (input.compatibles !== undefined) patch.compatibles = input.compatibles;
+      if (input.driverNature !== undefined) patch.driverNature = input.driverNature;
+      if (input.instanceCardinality !== undefined) patch.instanceCardinality = input.instanceCardinality;
+      if (input.nodeTypeName !== undefined) patch.nodeTypeName = input.nodeTypeName;
       if (Object.keys(patch).length > 0) {
         await apiClient.patch(`${V1_MODULES}/${encodeURIComponent(moduleId)}`, patch);
       }

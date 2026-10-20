@@ -14,7 +14,7 @@ import {
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
-import { listParameters } from "./repository";
+import { getProjectParameterForUpdate, listParameters } from "./repository";
 import {
   countParametersForModule,
   createParameterModule,
@@ -25,8 +25,8 @@ import {
   reparentAutoParameterModule
 } from "./parameterModuleRepository";
 
-describe("deleteParameterModule canonical placement guard", () => {
-  it("returns a typed conflict before issuing the delete", async () => {
+describe("deleteParameterModule leaf guard", () => {
+  it("returns a typed conflict for a parent before issuing the delete", async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({
         rows: [{
@@ -46,8 +46,6 @@ describe("deleteParameterModule canonical placement guard", () => {
           attribution_subject_id: null,
         }],
       })
-      .mockResolvedValueOnce({ rows: [{ count: "0" }] })
-      .mockResolvedValueOnce({ rows: [{ count: "0" }] })
       .mockResolvedValueOnce({ rows: [{ count: "1" }] });
 
     await expect(
@@ -58,12 +56,12 @@ describe("deleteParameterModule canonical placement guard", () => {
     ).rejects.toMatchObject({
       code: "CONFLICT",
       status: 409,
-      details: { moduleId: "module-1", placementCount: 1 },
+      details: { moduleId: "module-1", childCount: 1 },
     });
-    expect(query).toHaveBeenCalledTimes(4);
+    expect(query).toHaveBeenCalledTimes(2);
     expect(query.mock.calls.every(([text]) =>
       /^\s*(select|with)\b/i.test(String(text)) &&
-      !/\b(insert|update|delete|merge)\b/i.test(String(text)),
+      !/^\s*(insert|update|delete|merge)\b/i.test(String(text)),
     )).toBe(true);
   });
 });
@@ -145,6 +143,49 @@ describe.skipIf(!databaseAvailable)("parameterModuleRepository", () => {
       attributionSubjectId: null
     });
     expect(rows[1]).toMatchObject({ id: "pm-b", parentId: "pm-a", name: "Battery", path: "pm-a/pm-b", depth: 2 });
+  });
+
+  it("deletes populated legacy leaves without deleting definitions, values or colliding unset bindings", async () => {
+    await seedModule({ id: "pm-delete-a", name: "A", path: "pm-delete-a" });
+    await seedModule({ id: "pm-delete-b", name: "B", path: "pm-delete-b" });
+    await db.query(
+      `insert into parameter_definitions
+       (id, organization_id, name, description, explanation, config_format, module, default_range, unit, risk, parameter_module_id)
+       values ('pd-retained', 'org-1', 'retained', '', '', 'ENV', 'A', '', '', 'Low', 'pm-delete-a')`,
+    );
+    await db.query(
+      `insert into project_parameter_values
+       (id, organization_id, project_id, parameter_definition_id, current_value, recommended_value, value_version, updated_by_user_id)
+       values ('value-retained', 'org-1', 'project-1', 'pd-retained', '42', '42', 1, 'user-1')`,
+    );
+    await db.query(`insert into parameter_specs (id, organization_id, source_kind, specification_key, risk)
+                    values ('spec-retained', 'org-1', 'dts', 'chip/retained', 'Low')`);
+    await db.query(
+      `insert into project_parameter_bindings (id, organization_id, project_id, parameter_spec_id, module_id, logical_node_id)
+       values ('binding-retained-a', 'org-1', 'project-1', 'spec-retained', 'pm-delete-a', null),
+              ('binding-retained-b', 'org-1', 'project-1', 'spec-retained', 'pm-delete-b', null)`,
+    );
+    await expect(deleteParameterModule(db, { organizationId: "org-2", moduleId: "pm-delete-a" })).resolves.toBe(false);
+    await db.transaction(async (tx) => {
+      await expect(deleteParameterModule(tx, { organizationId: "org-1", moduleId: "pm-delete-a" })).resolves.toBe(true);
+      await expect(deleteParameterModule(tx, { organizationId: "org-1", moduleId: "pm-delete-b" })).resolves.toBe(true);
+    });
+    expect((await db.query(`select module, parameter_module_id from parameter_definitions where id = 'pd-retained'`)).rows)
+      .toEqual([{ module: "unset", parameter_module_id: null }]);
+    expect((await db.query(`select current_value from project_parameter_values where id = 'value-retained'`)).rows)
+      .toEqual([{ current_value: "42" }]);
+    expect((await db.query(`select module_id from project_parameter_bindings where id like 'binding-retained-%'`)).rows)
+      .toEqual([{ module_id: null }, { module_id: null }]);
+  });
+
+  it("protects the system unclassified root and every module with children", async () => {
+    await seedModule({ id: "pm-system", name: "Unclassified", path: "pm-system", kind: "unclassified" });
+    await seedModule({ id: "pm-parent", name: "Parent", path: "pm-parent" });
+    await seedModule({ id: "pm-child", name: "Child", path: "pm-parent/pm-child", parentId: "pm-parent" });
+    for (const moduleId of ["pm-system", "pm-parent"]) {
+      await expect(deleteParameterModule(db, { organizationId: "org-1", moduleId })).rejects.toMatchObject({ code: "CONFLICT" });
+      expect(await getParameterModuleById(db, { organizationId: "org-1", moduleId })).not.toBeNull();
+    }
   });
 
   it("createParameterModule computes path and depth from the parent", async () => {
@@ -391,6 +432,20 @@ describe.skipIf(!databaseAvailable)("listParameters semantic module tree filter"
       includeDescendants: false
     });
     expect(parentOnly.map((row) => row.id)).toEqual(["binding-root"]);
+  });
+
+  it("shows and filters deleted leaf bindings as unset without falling back to their specification prefix", async () => {
+    await deleteParameterModule(db, { organizationId: "org-1", moduleId: "pm-b" });
+    const rows = await listParameters(db, { organizationId: "org-1", projectId: "project-1" });
+    expect(rows.find((row) => row.id === "binding-child")).toMatchObject({ module: "unset" });
+    expect(rows.find((row) => row.id === "binding-child")?.moduleId).toBeUndefined();
+    const unset = await listParameters(db, { organizationId: "org-1", module: "unset" });
+    expect(unset.map((row) => row.id)).toEqual(["binding-child"]);
+    const assigned = await listParameters(db, { organizationId: "org-1", module: "chip" });
+    expect(assigned.map((row) => row.id)).not.toContain("binding-child");
+    expect(await getProjectParameterForUpdate(db, {
+      organizationId: "org-1", projectId: "project-1", parameterId: "binding-child",
+    })).toMatchObject({ module: "unset" });
   });
 
   it("does not fall back to legacy definitions for canonical binding counts", async () => {

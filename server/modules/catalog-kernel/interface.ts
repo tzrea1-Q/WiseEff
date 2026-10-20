@@ -1,6 +1,7 @@
 import pg from "pg";
 
 export { readRetainedDismissedCompatibleIdentities, type RetainedDismissedCompatibleIdentity } from "./security/retainedDismissedIdentities";
+export { resolveCatalogSubject } from "./runtime/subjectMatch";
 
 import type { TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { ImpactFacts } from "../catalog-publication/authorization/types";

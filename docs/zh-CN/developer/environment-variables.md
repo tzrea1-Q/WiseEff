@@ -15,6 +15,8 @@
 | `TEST_DATABASE_URL` | 未设置 | Catalog/server 集成测试 | 设置后 catalog harness 与 `catalog:lane:accept` 优先于 `DATABASE_URL`。必须仍是真实 pgvector PostgreSQL，不能是共享 compose 应用库。 |
 | `CATALOG_BASELINE_READONLY_DATABASE_URL` | 未设置 | Catalog 发布基线只读采集 | 仅供 `scripts/inspect-catalog-publication-baseline.ts` 使用的只读 DSN。采集器拒绝 `DATABASE_URL`，要求 `SET TRANSACTION READ ONLY`，若角色对 Catalog/publication 有 INSERT/UPDATE/DELETE 则失败，绝不打印 DSN，也不插入 Artifact。 |
 | `WISEEFF_CATALOG_PUBLICATION_DATA_MODE` | `new-empty` | Catalog 双事实就绪 | Catalog HTTP 与 `/health/ready` catalogPublication 的组合边界 data mode。`populated` 要求真实已批准 runtime pin 且绑定当前 Catalog，不伪造 P13。默认 `new-empty` 不声称 P13 已退役。 |
+| `WISEEFF_CATALOG_ARCHIVE_ROOT` | 未设置 | 参数定义彻底删除 | 历史加密迁移归档的原目录。有此类归档时须与 `WISEEFF_CATALOG_ARCHIVE_KEY_HEX` 配套设置；不猜测默认目录。 |
+| `WISEEFF_CATALOG_ARCHIVE_KEY_HEX` | 未设置 | 参数定义彻底删除 | 原始 32 字节归档密钥，以 64 位十六进制字符表示。须与归档目录配套设置，不打印密钥，也不替换成新密钥。 |
 | `WISEEFF_PUBLICATION_MANAGER_ENV_FILE` | `.env.publication-manager` | 自托管 Compose | 仅 `publication-manager` 服务加载的私有 env 文件。 |
 | `WISEEFF_PUBLICATION_MANAGER` | 未设置 | publication manager 进程 | `npm run publication:manager` 必须为 `1`。 |
 | `WISEEFF_API_PROCESS` | 未设置 | API 容器 | API 服务设为 `1`，使 manager 入口拒绝在该进程启动。 |

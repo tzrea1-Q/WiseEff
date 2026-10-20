@@ -672,7 +672,7 @@ export function DtsParameterWorkbench({
       data-revision-id={revisionId}
     >
       {/* The shell TopBar owns the page title; the workbench starts at the toolbar. */}
-      <NavigatorWorkbench pageKey="parameters" navigatorLabel="模块导航"
+      <NavigatorWorkbench pageKey="parameters" navigatorLabel="模块导航" resizableNavigator
         taskLabel={resultsMode === "parameters" ? "DTS 参数列表" : "DTS 源码结果"}
         taskClassName="dts-workbench-list"
         panelId={`${resultsId}-${resultsMode}-panel`} tabId={`${resultsId}-${resultsMode}-tab`}

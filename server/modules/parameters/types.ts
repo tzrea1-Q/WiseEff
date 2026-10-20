@@ -28,6 +28,11 @@ export type ParameterModuleDto = {
   sourceKey: string | null;
   /** Stable catalog identity for driver-group / node-type placement nodes (ADR-0013). */
   attributionSubjectId?: string | null;
+  compatibles?: string[];
+  driverNature?: "physical-device" | "logical-service" | null;
+  instanceCardinality?: "multiple" | "singleton-per-project" | null;
+  nodeTypeName?: string | null;
+  recognitionSubjectId?: string | null;
 };
 
 export type ParameterHistoryEntryDto = {

@@ -10,6 +10,7 @@ import {
   CatalogPageLimit,
   DefinitionRevisionId,
   ParameterDefinitionId,
+  SubjectRegistrationId,
 } from "../parameter-catalog-contract/index";
 import { createSourceBackedBindingService } from "../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
 import {
@@ -26,7 +27,10 @@ import {
   updateParameterModule,
 } from "../parameters/parameterModuleRepository";
 import { readRegistry } from "./repository";
-import { createPostgresDatabase, type RootDatabase } from "../../shared/database/client";
+import { deleteParameterModuleForAuth } from "../parameters/service";
+import { getRegistration } from "../parameter-governance/queries/registration";
+import type { AuthContext } from "../auth/types";
+import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../shared/database/client";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins, type ProvisionedRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import {
   installParameterModuleRegistryProjectionFixture,
@@ -54,6 +58,13 @@ describe.skipIf(!databaseAvailable)("Issue #897 canonical registry projection", 
   let moduleTargetId: string;
   let foreignModuleId: string;
   let registrationId: string;
+  let catalogReleaseId: string;
+  const auth: AuthContext = {
+    user: { id: "user-leaf-delete", organizationId: ORG, name: "Admin", email: "admin@leaf.test", title: "Admin", isActive: true },
+    organization: { id: ORG, name: "Issue 897" },
+    roles: [{ roleId: "admin", projectId: null }],
+    permissions: ["admin:access", "parameter:view"],
+  };
 
   beforeAll(async () => {
     database = await createManagedInstanceTestDatabase("issue897registry");
@@ -61,12 +72,17 @@ describe.skipIf(!databaseAvailable)("Issue #897 canonical registry projection", 
 
     const catalogFixture = await installParameterModuleRegistryProjectionFixture(pool);
     const pin = catalogFixture.pin;
+    catalogReleaseId = pin.id;
     const definitionId = ParameterDefinitionId(catalogFixture.activeDefinitionIds[0]);
     const definitionRevisionId = DefinitionRevisionId("drev_acme_power_iin_max_1");
 
     await pool.query(
       `insert into public.organizations (id, name) values ($1, 'Issue 897'), ($2, 'Issue 897 foreign')`,
       [ORG, FOREIGN_ORG],
+    );
+    await pool.query(
+      `insert into public.users (id, organization_id, name, email, title, is_active)
+       values ($1, $2, 'Admin', 'admin@leaf.test', 'Admin', true)`, [auth.user.id, ORG],
     );
     await pool.query(
       `insert into public.projects (id, organization_id, name, code)
@@ -130,7 +146,7 @@ describe.skipIf(!databaseAvailable)("Issue #897 canonical registry projection", 
       organizationId: ORG,
       projectId: PROJECT,
       logicalNodeId: "issue897-node",
-      registrationId,
+      registrationId: SubjectRegistrationId(registrationId),
       definitionId,
       effectiveRevisionId: definitionRevisionId,
       expectedEffectiveRevisionId: null,
@@ -184,11 +200,7 @@ describe.skipIf(!databaseAvailable)("Issue #897 canonical registry projection", 
     })).resolves.toBe(0);
   });
 
-  it("blocks deletion through canonical Binding ownership and keeps placement ownership during rename/move", async () => {
-    await expect(deleteParameterModule(pool, { organizationId: ORG, moduleId: moduleDriverId })).rejects.toThrow(
-      "referenced by parameters",
-    );
-
+  it("keeps placement ownership during rename/move", async () => {
     const renamed = await updateParameterModule(pool, {
       organizationId: ORG,
       moduleId: moduleDriverId,
@@ -205,5 +217,73 @@ describe.skipIf(!databaseAvailable)("Issue #897 canonical registry projection", 
       organizationId: ORG,
       moduleId: moduleDriverId,
     })).resolves.toBe(1);
+  });
+
+  it("refuses a parent, a foreign module, and an unauthorized actor without detaching anything", async () => {
+    await expect(deleteParameterModuleForAuth(apiDb, auth, moduleTargetId)).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(deleteParameterModuleForAuth(apiDb, auth, foreignModuleId)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(deleteParameterModuleForAuth(apiDb, { ...auth, permissions: ["parameter:view"] }, moduleDriverId))
+      .rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(countCanonicalPlacementsForModule(apiDb, { organizationId: ORG, moduleId: moduleDriverId })).resolves.toBe(1);
+  });
+
+  it("rolls back module detachment, retained Binding state and audit together", async () => {
+    await expect(apiDb.transaction(async (tx) => {
+      await deleteParameterModuleForAuth(tx, auth, moduleDriverId);
+      throw new Error("injected-after-delete");
+    })).rejects.toThrow("injected-after-delete");
+    await expect(countParametersForModule(apiDb, { organizationId: ORG, moduleId: moduleDriverId })).resolves.toBe(1);
+    const audits = await apiDb.query(`select id from public.audit_events where target_id = $1 and kind = 'parameter-module-admin-delete'`, [moduleDriverId]);
+    expect(audits.rows).toHaveLength(0);
+  });
+
+  it("deletes a populated canonical leaf through the API role and preserves unset registration, definitions, Binding and audit", async () => {
+    const before = await apiDb.query<{ id: string; version: string }>(
+      `select id, updated_at::text as version from parameter_catalog.subject_placements where registration_id = $1`, [registrationId],
+    );
+    await deleteParameterModuleForAuth(apiDb, auth, moduleDriverId);
+    const after = await getRegistration(getRootPostgresPool(apiDb)!, {
+      organizationId: ORG, registrationId: SubjectRegistrationId(registrationId), observedCatalogReleaseId: catalogReleaseId,
+      authScope: { organizationId: ORG, principalId: auth.user.id },
+    });
+    expect(after).toMatchObject({ ok: true, value: {
+      id: registrationId, status: "active", placement: { id: before.rows[0]!.id, displayName: "未设置模块 (unset)" },
+      impact: { bindingCount: 1, projectCount: 1 },
+    } });
+    if (!after.ok) throw new Error(JSON.stringify(after.error));
+    expect(after.value.placement.moduleId).toBeUndefined();
+    const retained = await apiDb.query<{ module_id: string | null; version: string }>(
+      `select module_id, updated_at::text as version from parameter_catalog.subject_placements where registration_id = $1`, [registrationId],
+    );
+    expect(retained.rows[0]!.module_id).toBeNull();
+    expect(retained.rows[0]!.version).not.toBe(before.rows[0]!.version);
+    const registry = await readRegistry(apiDb, ORG, catalogSnapshot);
+    expect(registry.modules.some((module) => module.id === moduleDriverId)).toBe(false);
+    const bindings = await apiDb.query(`select id from parameter_catalog.current_project_parameter_bindings where registration_id = $1`, [registrationId]);
+    expect(bindings.rows).toHaveLength(1);
+    const audits = await apiDb.query(`select id from public.audit_events where target_id = $1 and kind = 'parameter-module-admin-delete'`, [moduleDriverId]);
+    expect(audits.rows).toHaveLength(1);
+    await expect(deleteParameterModuleForAuth(apiDb, auth, moduleDriverId)).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("detaches a populated legacy driver placement through the API role while retaining legacy rows", async () => {
+    const subjectId = "subject-delete-legacy";
+    await pool.query(`insert into public.attribution_subjects (id, organization_id, subject_kind, display_name, source_key)
+                      values ($1, $2, 'driver-registration', 'Legacy retained', 'legacy:delete-test')`, [subjectId, ORG]);
+    await pool.query(`insert into public.driver_registrations (attribution_subject_id, driver_nature, instance_cardinality)
+                      values ($1, 'physical-device', 'multiple')`, [subjectId]);
+    const module = await createParameterModule(pool, { organizationId: ORG, name: "Legacy leaf", kind: "driver-group", attributionSubjectId: subjectId });
+    await pool.query(`insert into public.driver_registration_placements (id, organization_id, attribution_subject_id, driver_group_module_id)
+                      values ('legacy-placement-retained', $1, $2, $3)`, [ORG, subjectId, module.id]);
+    await pool.query(`insert into public.parameter_definitions
+      (id, organization_id, name, description, explanation, config_format, module, default_range, unit, risk, parameter_module_id)
+      values ('definition-legacy-retained', $1, 'retained', '', '', 'ENV', 'Legacy leaf', '', '', 'Low', $2)`, [ORG, module.id]);
+    await deleteParameterModuleForAuth(apiDb, auth, module.id);
+    expect((await apiDb.query(`select driver_group_module_id from public.driver_registration_placements where id = 'legacy-placement-retained'`)).rows)
+      .toEqual([{ driver_group_module_id: null }]);
+    expect((await apiDb.query(`select parameter_module_id, module from public.parameter_definitions where id = 'definition-legacy-retained'`)).rows)
+      .toEqual([{ parameter_module_id: null, module: "unset" }]);
+    expect((await apiDb.query(`select attribution_subject_id from public.driver_registrations where attribution_subject_id = $1`, [subjectId])).rows)
+      .toHaveLength(1);
   });
 });

@@ -16,9 +16,14 @@ import type {
 import { canSubmitModuleDraft, ModuleDefinitionForm } from "./ModuleDefinitionForm";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { SelectControl } from "@/components/common/SelectControl";
 
 export type ModuleEditSavePatch = ParameterModuleDraft & {
   importance?: ModuleImportance;
+  compatibles?: string[];
+  driverNature?: DriverNature;
+  instanceCardinality?: InstanceCardinality;
+  nodeTypeName?: string;
 };
 
 type EditableModule = {
@@ -26,8 +31,15 @@ type EditableModule = {
   description?: string;
   scope?: string;
   importance?: ModuleImportance;
+  effectiveImportance?: ModuleImportance;
   kind?: ModuleKind;
+  compatibles?: readonly string[];
+  driverNature?: DriverNature | null;
+  instanceCardinality?: InstanceCardinality | null;
+  nodeTypeName?: string | null;
 };
+
+const EMPTY_COMPATIBLES: readonly string[] = [];
 
 export function ModuleEditDialog({
   module,
@@ -43,7 +55,7 @@ export function ModuleEditDialog({
   driverNature = null,
   instanceCardinality = null,
   onManageCanonicalPlacement,
-  historicalCompatibles = [],
+  historicalCompatibles = EMPTY_COMPATIBLES,
   readOnly = false,
 }: {
   module: EditableModule;
@@ -69,11 +81,22 @@ export function ModuleEditDialog({
     description: module.description ?? "",
     scope: module.scope ?? ""
   });
-  const [importance, setImportance] = useState<ModuleImportance>(module.importance ?? "medium");
+  const initialImportance = module.effectiveImportance ?? module.importance ?? "medium";
+  const [importance, setImportance] = useState<ModuleImportance>(initialImportance);
+  const initialCompatibles = module.compatibles ?? historicalCompatibles;
+  const initialCompatibleText = initialCompatibles.join("\n");
+  const initialNature = module.driverNature ?? driverNature ?? "physical-device";
+  const initialCardinality = module.instanceCardinality ?? instanceCardinality ?? "multiple";
+  const initialNodeTypeName = module.nodeTypeName ?? "";
+  const [compatibleText, setCompatibleText] = useState(initialCompatibleText);
+  const [nature, setNature] = useState<DriverNature>(initialNature);
+  const [cardinality, setCardinality] = useState<InstanceCardinality>(initialCardinality);
+  const [nodeTypeName, setNodeTypeName] = useState(initialNodeTypeName);
+  const compatibles = [...new Set(compatibleText.split(/\r?\n/).map((value) => value.trim()).filter(Boolean))];
+  const compatiblesChanged = JSON.stringify(compatibles) !== JSON.stringify(initialCompatibles);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
-  const moduleDetailsReadOnly = readOnly || module.kind === "driver-group" || module.kind === "node-type";
+  const moduleDetailsReadOnly = readOnly;
   const showCanonicalPlacementEntry =
-    moduleDetailsReadOnly &&
     canAdmin && onManageCanonicalPlacement !== undefined;
 
   useEffect(() => {
@@ -82,16 +105,23 @@ export function ModuleEditDialog({
       description: module.description ?? "",
       scope: module.scope ?? ""
     });
-    setImportance(module.importance ?? "medium");
-  }, [module]);
+    setImportance(initialImportance);
+    setCompatibleText(initialCompatibleText);
+    setNature(initialNature);
+    setCardinality(initialCardinality);
+    setNodeTypeName(initialNodeTypeName);
+  }, [module.name, module.description, module.scope, initialImportance, initialCompatibleText,
+    initialNature, initialCardinality, initialNodeTypeName]);
 
   const canSubmit = canSubmitModuleDraft(draft, existingNames, module.name);
-  const importanceVisible = showImportance && module.kind !== "driver-group" && module.kind !== "node-type";
+  const importanceVisible = showImportance;
   const isDirty =
     draft.name.trim() !== module.name ||
     draft.description.trim() !== (module.description ?? "").trim() ||
     draft.scope.trim() !== (module.scope ?? "").trim() ||
-    (importanceVisible && importance !== (module.importance ?? "medium"));
+    (importanceVisible && importance !== initialImportance) ||
+    (module.kind === "driver-group" && (compatiblesChanged || nature !== initialNature || cardinality !== initialCardinality)) ||
+    (module.kind === "node-type" && nodeTypeName.trim() !== initialNodeTypeName);
   const canSave = !moduleDetailsReadOnly && canSubmit && isDirty;
   const requestClose = () => {
     if (busy) return;
@@ -116,7 +146,7 @@ export function ModuleEditDialog({
             <h2 id={titleId}>{module.name}</h2>
             <p id={descriptionId}>
               {moduleDetailsReadOnly
-                ? module.kind === "business" ? "查看模块的名称、描述与适用范围。当前会话为只读。" : "历史模块名称与详情仅供溯源；规范主体登记与归属由规范面板管理。"
+                ? "查看模块的名称、描述与适用范围。当前会话为只读。"
                 : description ?? (showImportance
                     ? "更新模块名称、重要性、描述与适用范围。"
                     : "更新模块名称、描述与适用范围。修改名称会同步更新共享参数库中的模块归属。")}
@@ -137,8 +167,7 @@ export function ModuleEditDialog({
               ))}</ul>
             </section>
           ) : null}
-          {module.kind === "driver-group" &&
-          (driverNature != null || instanceCardinality != null) ? (
+          {module.kind === "driver-group" ? (
             <section
               className="module-edit-section module-edit-driver-properties"
               aria-label="驱动属性"
@@ -146,35 +175,38 @@ export function ModuleEditDialog({
               <div className="module-edit-section__head">
                 <h3>驱动属性</h3>
                 <p className="muted">
-                  历史驱动登记属性仅供溯源，不代表当前规范主体登记或归属。
+                  当前组织内生效的驱动识别与实例规则。
                 </p>
               </div>
               <div className="organization-driver-schema-dialog__field-grid">
                 <label>
                   驱动性质
-                  {(
-                    <input
-                      aria-label="驱动性质"
-                      value={formatDriverNatureLabel(driverNature)}
-                      readOnly
-                      aria-readonly="true"
-                    />
-                  )}
+                  <SelectControl ariaLabel="驱动性质" value={nature} disabled={moduleDetailsReadOnly || busy}
+                    onValueChange={setNature} options={["physical-device", "logical-service"].map((value) => ({
+                      value: value as DriverNature, label: formatDriverNatureLabel(value as DriverNature)
+                    }))} />
                 </label>
                 <label>
                   实例基数
-                  {(
-                    <input
-                      aria-label="实例基数"
-                      value={formatInstanceCardinalityLabel(instanceCardinality)}
-                      readOnly
-                      aria-readonly="true"
-                    />
-                  )}
+                  <SelectControl ariaLabel="实例基数" value={cardinality} disabled={moduleDetailsReadOnly || busy}
+                    onValueChange={setCardinality} options={["multiple", "singleton-per-project"].map((value) => ({
+                      value: value as InstanceCardinality, label: formatInstanceCardinalityLabel(value as InstanceCardinality)
+                    }))} />
                 </label>
               </div>
+              <div className="param-module-def-form"><label>compatible 匹配规则
+                <textarea aria-label="compatible 匹配规则" rows={3} value={compatibleText} readOnly={moduleDetailsReadOnly || busy}
+                  onChange={(event) => setCompatibleText(event.target.value)} placeholder="每行一条，例如 vendor,device" />
+              </label></div>
+              <p className="muted">每行一条完整 compatible；保存后替换此模块在当前组织内的识别规则。</p>
             </section>
           ) : null}
+
+          {module.kind === "node-type" ? <section className="module-edit-section" aria-label="节点识别规则">
+            <h3>节点识别规则</h3>
+            <div className="param-module-def-form"><label>节点类型名<input aria-label="节点类型名" value={nodeTypeName} readOnly={moduleDetailsReadOnly || busy}
+              onChange={(event) => setNodeTypeName(event.target.value)} placeholder="例如 charger，不含 @ 地址" /></label></div>
+          </section> : null}
 
           {showCanonicalPlacementEntry ? (
             <section className="module-edit-section" aria-label="规范主体放置">
@@ -236,7 +268,11 @@ export function ModuleEditDialog({
                     description: draft.description.trim(),
                     scope: draft.scope.trim(),
 
-                    ...(importanceVisible ? { importance } : {}),
+                    ...(importanceVisible && importance !== initialImportance ? { importance } : {}),
+                    ...(module.kind === "driver-group" && compatiblesChanged ? { compatibles } : {}),
+                    ...(module.kind === "driver-group" && nature !== initialNature ? { driverNature: nature } : {}),
+                    ...(module.kind === "driver-group" && cardinality !== initialCardinality ? { instanceCardinality: cardinality } : {}),
+                    ...(module.kind === "node-type" && nodeTypeName.trim() !== initialNodeTypeName ? { nodeTypeName: nodeTypeName.trim() } : {}),
 
                   });
                 }}

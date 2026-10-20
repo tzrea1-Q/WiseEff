@@ -30,6 +30,7 @@ export function mapPublicationJob(
     isCurrent: view.isCurrent,
     currentness: view.currentness,
     failure: view.failure,
+    ...(view.maintenanceRewrites ? { maintenanceRewrites: view.maintenanceRewrites } : {}),
   });
 }
 

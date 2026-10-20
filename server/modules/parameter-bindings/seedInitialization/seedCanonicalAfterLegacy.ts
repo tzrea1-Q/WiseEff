@@ -5,6 +5,7 @@
  */
 import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
 import { ApiError } from "../../../shared/http/errors";
+import { loadOrganizationCatalogSnapshot } from "../../parameter-modules/recognitionSettings";
 import type { AuthContext } from "../../auth/types";
 import {
   getRootPostgresPool,
@@ -48,7 +49,8 @@ export async function ensureCanonicalCatalogAfterLegacySeed(
   // on an empty pointer; a seeded vendor current makes that install
   // unsupported-lineage. Sync only when a Catalog is already published.
 
-  const snapshot = await loadPublishedCatalog(pool);
+  const published = await loadPublishedCatalog(pool);
+  const snapshot = published ? await loadOrganizationCatalogSnapshot(db, input.organizationId, published) : null;
   if (!snapshot || pointer.kind !== "installed") {
     return { catalogReleaseId: null, written: {}, skipped: [...TARGET_PROJECTS] };
   }

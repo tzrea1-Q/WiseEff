@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -6,17 +5,14 @@ import { join } from "node:path";
 
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { stringify } from "yaml";
 
 import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
 import {
-  refreshReleaseAggregateDigest,
+  refreshAuthoritativeSource,
   validCatalogReleaseBundle,
 } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
 import type {
   CatalogReleaseBundle,
-  CatalogReleaseDefinitionDocument,
-  CatalogReleaseNode,
 } from "../../catalog-kernel/compiler/types";
 import {
   createCatalogKernel,
@@ -32,7 +28,6 @@ import {
   serializeContract,
   SubjectRegistrationId,
   type CatalogReleasePin,
-  type ContractJsonValue,
 } from "../../parameter-catalog-contract/index";
 import type { RegisterSubjectCommand } from "../../parameter-governance/registration/command";
 import { writeGuardedRegistration } from "../../parameter-governance/registration/internalGuardedRegistrationWriter";
@@ -96,9 +91,6 @@ const NODE_LATEST = "logical-node-latest";
 const NODE_MAP = "logical-node-map";
 const NODE_LOCK = "logical-node-lock";
 
-const sha256 = (bytes: string | Uint8Array): string =>
-  `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-
 const firstReleaseBundle = (): CatalogReleaseBundle => {
   const full = validCatalogReleaseBundle();
   const first = structuredClone(full.releases[0]!);
@@ -109,75 +101,22 @@ const firstReleaseBundle = (): CatalogReleaseBundle => {
   };
 };
 
-const refreshReleaseSource = (release: CatalogReleaseNode): void => {
-  for (const document of release.documents) {
-    if (document.kind === "definition") {
-      const revision = document.content.revision;
-      const model: Record<string, ContractJsonValue> = {
-        "/lifecycle": revision.lifecycle,
-        "/displayName": revision.displayName,
-        "/documentation": revision.documentation,
-        "/valueSchema": revision.valueSchema,
-        "/matching": revision.matching,
-      };
-      if (revision.unit !== undefined) model["/unit"] = revision.unit;
-      document.content.revision.contentDigest = sha256(serializeContract(model));
-    }
-    document.normalizedDigest = sha256(
-      serializeContract(document.content as unknown as ContractJsonValue),
-    );
-  }
-  const bytes = Buffer.from(
-    stringify(
-      {
-        schemaVersion: "1.0.0",
-        documents: release.documents.map((document) => ({
-          kind: document.kind,
-          content: document.content,
-        })),
-      },
-      { lineWidth: 0 },
-    ),
-    "utf8",
-  );
-  const digest = sha256(bytes);
-  const sourcePath = release.manifest.files[0]?.path ?? "schemas/dts/vendor/acme-power.yaml";
-  release.sources = [
-    {
-      path: sourcePath,
-      mediaType: "application/yaml",
-      encoding: "base64",
-      bytes: bytes.toString("base64"),
-    },
-  ];
-  release.manifest.files = [{ path: sourcePath, mediaType: "application/yaml", digest }];
-  for (const document of release.documents) {
-    document.source = { path: sourcePath, mediaType: "application/yaml", digest };
-  }
-  release.manifest.documents = release.documents.map((document) => ({
-    sourcePath: document.source.path,
-    kind: document.kind,
-    documentId: document.content.id,
-    normalizedDigest: document.normalizedDigest,
-  }));
-  refreshReleaseAggregateDigest(release);
-};
-
 const successorWithNewRevisionBundle = (): CatalogReleaseBundle => {
   const bundle = structuredClone(validCatalogReleaseBundle());
-  const current = bundle.releases.find(
+  const published = bundle.releases.find(
     (release) => release.manifest.release.id === bundle.targetReleaseId,
   );
-  if (!current) throw new Error("successor release missing");
+  if (!published) throw new Error("successor release missing");
+  const current = structuredClone(published) as Parameters<typeof refreshAuthoritativeSource>[0];
   const definition = current.documents.find(
-    (document): document is CatalogReleaseDefinitionDocument => document.kind === "definition",
+    (document) => document.kind === "definition",
   );
   if (!definition) throw new Error("successor definition missing");
   definition.content.revision.id = REVISION_2;
   definition.content.revision.number = 2;
   definition.content.revision.documentation = "Maximum accepted input current (raised).";
-  refreshReleaseSource(current);
-  return bundle;
+  refreshAuthoritativeSource(current);
+  return { ...bundle, releases: bundle.releases.map(release => release === published ? current : release) };
 };
 
 const compileOrThrow = (bundle: CatalogReleaseBundle) => {
@@ -863,5 +802,19 @@ describe("canonical Binding identity", () => {
       count: "1",
       owners: `${ORG_A}:${registrationA}`,
     });
+  });
+
+  it("enforces an organization singleton override before admitting another canonical instance", async () => {
+    await pool.query(`insert into public.module_recognition_rules
+      (organization_id,module_id,canonical_subject_id,compatibles,driver_nature,instance_cardinality)
+      values ($1,$2,$3,array['acme,power'],'logical-service','singleton-per-project')`,
+    [ORG_A,MODULE_A,SUBJECT_ID]);
+    const before = await catalogCounts();
+    const result = await service.stabilize({snapshot:snapshot1,organizationId:ORG_A,projectId:PROJECT_A,
+      logicalNodeId:NODE_LATEST,registrationId:registrationA,definitionId:DEFINITION_ID,
+      effectiveRevisionId:REVISION_1,expectedEffectiveRevisionId:null});
+    expect(result).toEqual({ok:false,error:{kind:"agreement-conflict",reason:"singleton-cardinality"}});
+    expect(await catalogCounts()).toEqual(before);
+    await pool.query("delete from public.module_recognition_rules where organization_id=$1 and module_id=$2",[ORG_A,MODULE_A]);
   });
 });

@@ -37,6 +37,35 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
     await db?.rollback();
   });
 
+  it("reuses edited recognition rules and prevents the old selector from rediscovering the module", async () => {
+    const module = await createParameterModule(db, { organizationId:"org-1",name:"Editable driver",
+      kind:"driver-group",origin:"auto",sourceKey:"compatible:vendor,old" });
+    await db.query(`insert into public.parameter_module_mappings
+      (id,organization_id,parameter_module_id,match_kind,match_value)
+      values ('edited-rule-map','org-1',$1,'compatible','vendor,old')`,[module.id]);
+    await db.query(`insert into public.module_recognition_rules
+      (organization_id,module_id,compatibles,driver_nature,instance_cardinality)
+      values ('org-1',$1,array['Vendor,new'],'physical-device','multiple')`,[module.id]);
+    const before = (await db.query("select id from parameter_modules where kind='driver-group' order by id")).rows;
+    const input = {organizationId:"org-1",driverModule:"editable",instanceName:"device",nodeLocator:"/device"};
+    expect(await resolveAttributionModuleForBinding(db,{...input,compatible:"Vendor,new"})).toBe(module.id);
+    expect(await resolveAttributionModuleForBinding(db,{...input,compatible:"vendor,old"})).toBe(unclassifiedModuleId("org-1"));
+    expect((await db.query("select id from parameter_modules where kind='driver-group' order by id")).rows).toEqual(before);
+    const duplicate = await createParameterModule(db, {organizationId:"org-1",name:"Other manual driver",kind:"driver-group"});
+    await db.query(`insert into public.module_recognition_rules
+      (organization_id,module_id,compatibles,driver_nature,instance_cardinality)
+      values ('org-1',$1,array['Vendor,new'],'physical-device','multiple')`,[duplicate.id]);
+    await expect(resolveAttributionModuleForBinding(db,{...input,compatible:"Vendor,new"}))
+      .rejects.toMatchObject({code:"CONFLICT",details:{reason:"ambiguous-module-recognition"}});
+    const nodeType = await createParameterModule(db,{organizationId:"org-1",name:"Editable type",kind:"node-type",
+      sourceKey:"nodetype:oldnode"});
+    await db.query(`insert into public.module_recognition_rules (organization_id,module_id,node_type_name)
+      values ('org-1',$1,'NewNode')`,[nodeType.id]);
+    expect(await resolveAttributionModuleForBinding(db,{...input,compatible:null,instanceName:"NewNode"})).toBe(nodeType.id);
+    expect(await resolveAttributionModuleForBinding(db,{...input,compatible:null,instanceName:"oldnode"}))
+      .toBe(unclassifiedModuleId("org-1"));
+  });
+
   async function seedMapping(input: {
     matchKind: "compatible" | "node-type";
     matchValue: string;

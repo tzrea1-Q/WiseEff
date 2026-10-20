@@ -55,7 +55,7 @@ describe("mock module registry withdrawal", () => {
       fireEvent.change(within(dialog).getByLabelText("模块名称"), { target: { value: "Power renamed" } });
       fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
       await waitFor(() => expect(repository.updateModule).toHaveBeenCalledWith("mod-business", {
-        name: "Power renamed", description: "Power taxonomy", scope: "organization", importance: "high"
+        name: "Power renamed", description: "Power taxonomy", scope: "organization"
       }));
       expect(await screen.findByRole("button", { name: "修改模块 Power renamed" })).toBeInTheDocument();
       expect(repository.createMapping).not.toHaveBeenCalled();

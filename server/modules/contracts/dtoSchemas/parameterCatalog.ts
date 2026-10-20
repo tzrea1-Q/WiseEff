@@ -816,6 +816,13 @@ export const catalogPublicationJobDtoSchema = catalogObject({
   isCurrent: z.boolean(),
   currentness: closedEnum(catalogPublicationCurrentness).nullable(),
   failure: catalogPublicationFailureDtoSchema.nullable(),
+  maintenanceRewrites: z.array(catalogObject({
+    kind: z.literal("definition-erasure"),
+    erasedAt: z.string().datetime(),
+    previousArtifactDigest: z.string(),
+    currentArtifactDigest: z.string(),
+    originalApprovalRetained: z.literal(true)
+  })).optional(),
   createdAt: z.string().optional(),
   sourceKind: z.string().optional()
 });

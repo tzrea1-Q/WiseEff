@@ -1,5 +1,6 @@
 import type { HttpMethod } from "../../shared/http/router";
 import { parameterCatalogCanonicalRoutes } from "./dtoSchemas/parameterCatalog";
+import { parameterDefinitionDeletionRoutes } from "./dtoSchemas/parameterDefinitionDeletion";
 
 export type RouteModule =
   | "auth"
@@ -744,6 +745,7 @@ export const routeManifest = [
   },
 
   ...parameterCatalogCanonicalRoutes,
+  ...parameterDefinitionDeletionRoutes,
 
   { id: "logs.uploadFile", method: "POST", path: "/api/v1/log-files", module: "logs", stability: "mvp" },
   { id: "logs.listIntegrationCredentials", method: "GET", path: "/api/v1/log-integration-credentials", module: "logs", stability: "mvp" },

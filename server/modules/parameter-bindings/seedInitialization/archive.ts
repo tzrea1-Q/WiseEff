@@ -232,10 +232,12 @@ export async function captureProjectParameterPlane(
   }
   if (!session) {
     return root.transaction(async (tx) => {
-      await tx.query("set transaction isolation level repeatable read");
       return captureProjectParameterPlane(root, objectStore, auth, input, tx);
     });
   }
+  // ponytail: bounded archival briefly fences plane writers for a consistent copy;
+  // use a versioned snapshot protocol if captures outgrow the existing size caps.
+  await session.query("select parameter_catalog.lock_parameter_plane_archive()");
   const organizationId = auth.organization.id;
   const readBounded = objectStore.getBounded?.bind(objectStore);
   if (!readBounded) {

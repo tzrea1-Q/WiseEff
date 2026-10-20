@@ -57,7 +57,7 @@ describe("canonical module governance", () => {
     fireEvent.click(within(editor).getByRole("button", { name: "保存" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(moduleRegistry.updateModule).toHaveBeenCalledWith("business_one", {
-      name: "Renamed category", description: "", scope: "", importance: "medium"
+      name: "Renamed category", description: "", scope: ""
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Business 更多操作" }));
@@ -81,9 +81,9 @@ describe("canonical module governance", () => {
       name: "Child category", kind: "business", parentId: "business_one"
     }));
 
-    fireEvent.click(screen.getByRole("button", { name: "查看模块 Node placement" }));
+    fireEvent.click(screen.getByRole("button", { name: "修改模块 Node placement" }));
     expect(within(screen.getByRole("dialog")).queryByLabelText("模块类型")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Node placement 更多操作" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Node placement 更多操作" })).toBeInTheDocument();
     expect(moduleRegistry.registerOrClaimDriver).not.toHaveBeenCalled();
     expect(moduleRegistry.createMapping).not.toHaveBeenCalled();
   });

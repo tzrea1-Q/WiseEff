@@ -52,6 +52,7 @@ export type BindingAgreementConflictReason =
   | "registration-not-found"
   | "subject-mismatch"
   | "project-owner-mismatch"
+  | "singleton-cardinality"
   | "legacy-unproven";
 
 export type BindingConflict =

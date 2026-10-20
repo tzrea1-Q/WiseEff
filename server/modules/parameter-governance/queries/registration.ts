@@ -78,7 +78,7 @@ export async function countCurrentBindingsForModule(
   return Number(result.rows[0]?.count ?? 0);
 }
 
-/** All Placement rows keep their module reference until the Placement is removed. */
+/** Retained Placement rows may have no module after a taxonomy leaf is deleted. */
 export async function countSubjectPlacementsForModules(
   client: Queryable,
   query: { organizationId: string; moduleIds: readonly string[] },
@@ -111,6 +111,7 @@ export async function listModuleRegistryFacts(
               and placement.organization_id = registration.organization_id
             where registration.organization_id = $1
               and registration.status = 'active'
+              and placement.module_id is not null
          )
          select registered.module_id,
                 registered.subject_id,
@@ -156,7 +157,7 @@ const toIso = (value: Date | string): string =>
 const mapPlacement = (
   row: RegistrationJoinRow,
 ): Result<GovernancePlacementRecord, GovernanceQueryFailure> => {
-  if (!row.placement_id || !row.module_name) {
+  if (!row.placement_id || (row.module_id !== null && !row.module_name)) {
     return fail({
       kind: "missing-required-placement",
       registrationId: row.id,
@@ -167,7 +168,7 @@ const mapPlacement = (
     ok: true,
     value: {
       id: row.placement_id,
-      displayName: row.module_name,
+      displayName: row.module_name ?? "未设置模块 (unset)",
       parentPlacementId: row.parent_placement_id,
       ...(row.module_id ? { moduleId: row.module_id } : {}),
     },

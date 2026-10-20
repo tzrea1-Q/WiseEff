@@ -302,17 +302,14 @@ export function moveModuleDecision(module: ParameterModule): ModuleActionDecisio
   return { allowed: false, reason: "未分类根不可移动。" };
 }
 
-export function deleteModuleDecision(module: ParameterModule): ModuleActionDecision {
-  if (module.kind === "node-type") {
-    return { allowed: false, reason: "节点类型不可删除，请改挂到其它父级或联系运维。" };
-  }
-  if (module.kind === "unclassified") {
+export function deleteModuleDecision(module: ParameterModule, modules: readonly ParameterModule[] = []): ModuleActionDecision {
+  if (module.kind === "unclassified" && module.parentId === null) {
     return { allowed: false, reason: "未分类根不可删除。" };
   }
-  if (module.kind === "business" || module.kind === "driver-group") {
-    return { allowed: true };
+  if (modules.some((candidate) => candidate.parentId === module.id)) {
+    return { allowed: false, reason: "请先删除子模块，再删除此模块。" };
   }
-  return { allowed: false, reason: "该模块不可删除。" };
+  return { allowed: true };
 }
 
 export function canRenameModule(module: ParameterModule): boolean {
@@ -351,8 +348,7 @@ export function siblingModules(
 export function sortOrderSwapUpdates(
   module: ParameterModule,
   direction: "up" | "down",
-  modules: readonly ParameterModule[],
-  canonicalModeEnabled = false
+  modules: readonly ParameterModule[]
 ): Array<{ id: string; sortOrder: number }> | null {
   const siblings = siblingModules(modules, module);
   const index = siblings.findIndex((candidate) => candidate.id === module.id);
@@ -360,7 +356,7 @@ export function sortOrderSwapUpdates(
   const swapIndex = direction === "up" ? index - 1 : index + 1;
   if (swapIndex < 0 || swapIndex >= siblings.length) return null;
   const peer = siblings[swapIndex]!;
-  if (canonicalModeEnabled && (module.kind !== "business" || peer.kind !== "business")) return null;
+  if (isUnclassifiedRoot(module) || isUnclassifiedRoot(peer)) return null;
   return [
     { id: module.id, sortOrder: peer.sortOrder },
     { id: peer.id, sortOrder: module.sortOrder }
@@ -453,10 +449,5 @@ export function canDeleteModule(module: ParameterModule): boolean {
 }
 
 export function canEditImportance(module: ParameterModule): boolean {
-  return module.kind === "business";
-}
-
-
-export function deleteActionLabel(module: ParameterModule): string {
-  return module.kind === "driver-group" ? "解散驱动组" : "删除模块";
+  return !isUnclassifiedRoot(module);
 }

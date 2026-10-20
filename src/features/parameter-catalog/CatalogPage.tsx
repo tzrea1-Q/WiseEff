@@ -45,6 +45,7 @@ import type {
 } from "@/infrastructure/http/parameterCatalogDtos";
 import { useCatalogLayoutMode, type CatalogLayoutMode } from "./catalogLayout";
 import { CatalogModuleNavigator } from "./CatalogModuleNavigator";
+import { DefinitionDeletionDialog } from "./DefinitionDeletionDialog";
 import type { CatalogNavigatorNode } from "./catalogModuleScope";
 import {
   buildCatalogModuleTree,
@@ -110,6 +111,8 @@ export type CatalogPageProps = {
    */
   /** Called when the editor dialog closes, so the host can refresh its evidence. */
   onEditorClosed?: () => void;
+  onDefinitionDeleted?: (definitionId: string) => void;
+  onDefinitionDeletionCleanupPending?: (entry: { definitionId: string; previewToken: string }) => void;
   renderDefinitionEditor?: (
     definition: DefinitionItem,
     history: {
@@ -147,6 +150,7 @@ export type CatalogPageProps = {
    */
   definitionPublishingAllowed?: boolean;
   definitionAuthoringAllowed?: boolean;
+  definitionDeletionAllowed?: boolean;
   definitionAuthoringDisabledReason?: string;
   layoutMode?: CatalogLayoutMode;
   organizationId?: string;
@@ -233,10 +237,13 @@ export function CatalogPage({
   onOpenPendingWork,
   reviewCountOverride,
   onEditorClosed,
+  onDefinitionDeleted,
+  onDefinitionDeletionCleanupPending,
   renderDefinitionEditor,
   onDefinitionCommand,
   definitionPublishingAllowed = false,
   definitionAuthoringAllowed = false,
+  definitionDeletionAllowed = false,
   definitionAuthoringDisabledReason = catalogAuthoringAccessHint,
   layoutMode: layoutOverride,
   organizationId,
@@ -275,6 +282,7 @@ export function CatalogPage({
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [editorState, setEditorState] = useState({ dirty: false, pending: false });
   const [leaveEditorOpen, setLeaveEditorOpen] = useState(false);
+  const [deletingDefinition, setDeletingDefinition] = useState<DefinitionItem | null>(null);
   const closingEditor = useRef(false);
   const leaveDecision = useRef<{ promise: Promise<boolean>; resolve: (allowed: boolean) => void } | null>(null);
   const finishEditorLeave = (allowed: boolean) => {
@@ -612,6 +620,7 @@ export function CatalogPage({
   const canEditDefinition = (item: DefinitionItem) => definitionAuthoringAllowed &&
     Boolean(renderDefinitionEditor) && !inFlight && error === undefined && item.lifecycle === "active" && ownerWritable(item);
   const definitionEditable = snapshot?.definition ? canEditDefinition(snapshot.definition) : false;
+  const canDeleteDefinition = definitionDeletionAllowed && Boolean(repository.previewDefinitionDeletion && repository.deleteDefinition);
   const definitionActionLabel = definitionEditable ? "编辑" : "查看";
   const ownerStatusLabel = (item: DefinitionItem) => subjectsById.get(item.subject.id)?.membership.status === "retired"
     ? "主体已退役"
@@ -774,7 +783,9 @@ export function CatalogPage({
       render: (row) =>
         row.registration.status === "unregistered"
           ? "未登记"
-          : row.registration.placement?.displayName ?? "未建立",
+          : row.registration.placement && !row.registration.placement.moduleId
+            ? <span className="parameter-catalog__badge" data-tone="warning">unset（未分配）</span>
+            : row.registration.placement?.displayName ?? "未建立",
       sortAccessor: (row) =>
         row.registration.status === "unregistered" ? "" : row.registration.placement?.displayName ?? "",
       headerFilter: {
@@ -906,6 +917,7 @@ export function CatalogPage({
       <NavigatorWorkbench
         pageKey={pageKey}
         navigatorLabel={catalogNavigatorLabel}
+        resizableNavigator
         taskLabel={catalogListLabel}
         toolbar={<>
           <form
@@ -1051,6 +1063,9 @@ export function CatalogPage({
                     >
                       {canEditDefinition(item) ? "编辑" : "查看"}
                     </button>
+                    {canDeleteDefinition ? <button type="button" className="button subtle sm"
+                      aria-label={`彻底删除 ${item.propertyKey}`} disabled={inFlight || error !== undefined}
+                      onClick={() => setDeletingDefinition(item)}>彻底删除</button> : null}
                   </div>
                 ))}
               </div>
@@ -1076,6 +1091,9 @@ export function CatalogPage({
                       >
                         {canEditDefinition(row) ? "编辑" : "查看"}
                       </button>
+                      {canDeleteDefinition ? <button type="button" className="button subtle sm"
+                        aria-label={`彻底删除 ${row.propertyKey}`} disabled={inFlight || error !== undefined}
+                        onClick={() => setDeletingDefinition(row)}>彻底删除</button> : null}
                       {definitionPublishingAllowed && onDefinitionCommand && !inFlight && error === undefined && ownerWritable(row) ? (
                         <button
                           type="button"
@@ -1176,6 +1194,8 @@ export function CatalogPage({
               </div>
 
               <div className="confirm-dialog__scroll parameter-catalog__editor-dialog-scroll">
+                {canDeleteDefinition ? <button type="button" className="button subtle"
+                  disabled={editorState.pending} onClick={() => setDeletingDefinition(definition)}>彻底删除此定义</button> : null}
                 {!definitionEditable && readOnlyLabel ? (
                   <p className="parameter-catalog__read-only" role="status">{readOnlyLabel}</p>
                 ) : !definitionEditable && domainState.kind !== "ready" && statusMessage ? (
@@ -1229,6 +1249,24 @@ export function CatalogPage({
           )}
         </ModalDialog>
       ) : null}
+      {deletingDefinition && canDeleteDefinition ? <DefinitionDeletionDialog
+        definition={deletingDefinition} repository={repository} onCancel={() => setDeletingDefinition(null)}
+        onCleanupPending={onDefinitionDeletionCleanupPending}
+        onDeleted={() => {
+          onDefinitionDeleted?.(deletingDefinition.id);
+          setDeletingDefinition(null);
+          setSnapshot(null);
+          setInFlight(true);
+          setInspectorOpen(false);
+          setHistoryOpen(false);
+          setEditorState({ dirty: false, pending: false });
+          setCursorTrail([]);
+          closingEditor.current = true;
+          try {
+            commitAnchor({ ...anchor, definitionId: null, catalogReleaseId: null, cursor: null }, "replace");
+          } finally { closingEditor.current = false; }
+          onEditorClosed?.();
+        }} /> : null}
       <ConfirmDialog open={leaveEditorOpen} title="放弃未保存的修改？"
         description="当前修改尚未提交，关闭后将丢失。" confirmLabel="放弃修改" cancelLabel="继续编辑"
         onConfirm={() => { if (leaveDecision.current) finishEditorLeave(true); else closeEditor(); }}
@@ -1323,7 +1361,7 @@ function CatalogDetailBody({
           {registration.status !== "unregistered" && registration.id ? ` · ${registration.id}` : ""}
         </dd>
         <dt>放置</dt>
-        <dd>{registration.status === "unregistered" ? "未建立" : placement?.displayName ?? "未建立"}</dd>
+        <dd>{registration.status === "unregistered" ? "未建立" : placement && !placement.moduleId ? "unset（未分配）" : placement?.displayName ?? "未建立"}</dd>
         {subject?.aliases?.length ? (
           <>
             <dt>别名</dt>

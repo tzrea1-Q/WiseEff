@@ -17,6 +17,7 @@ export {
   getParameterModuleByName,
   listParameterModules,
   moveParameterModule,
+  lockParameterModuleTree,
   resolveParameterModulePathNames,
   updateParameterModule
 } from "./parameterModuleRepository";
@@ -393,7 +394,7 @@ export async function getProjectParameterForUpdate(
         b.project_id,
         b.parameter_spec_id as parameter_definition_id,
         coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key) as name,
-        split_part(ps.specification_key, '/', 1) as module,
+        case when b.module_id is null then 'unset' else split_part(ps.specification_key, '/', 1) end as module,
         coalesce(psv.value_shape->>'unit', '') as unit,
         coalesce(ps.risk, 'Low') as risk,
         coalesce(bpr.raw_value, '') as current_value,

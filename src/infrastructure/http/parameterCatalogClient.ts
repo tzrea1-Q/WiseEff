@@ -1,6 +1,9 @@
 import type { ZodTypeAny, z } from "zod";
 
 import {
+  catalogDefinitionDeletionPreviewResponseSchema,
+  catalogDeleteDefinitionRequestSchema,
+  catalogDefinitionDeletedResponseSchema,
   bindingDraftResponseSchema,
   canonicalSourceConflictDecisionResponseSchema,
   bindingCompareListResponseSchema,
@@ -88,6 +91,7 @@ import {
 } from "@wiseeff/dto-schemas";
 import type {
   CatalogContinueReplacementRequest,
+  CatalogDeleteDefinitionRequest,
   CatalogCreateReplacementRequest,
   CatalogReplacementPreviewRequest
 } from "./parameterCatalogDtos";
@@ -334,6 +338,15 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogDefinitionResponseSchema,
         "CatalogDefinitionResponse"
       ),
+    previewDefinitionDeletion: (definitionId: string) => request(
+      "GET", `/api/v2/catalog/definitions/${encodeURIComponent(definitionId)}/deletion-preview`,
+      catalogDefinitionDeletionPreviewResponseSchema, "CatalogDefinitionDeletionPreviewResponse"
+    ),
+    deleteDefinition: (definitionId: string, body: CatalogDeleteDefinitionRequest) => request(
+      "DELETE", `/api/v2/catalog/definitions/${encodeURIComponent(definitionId)}`,
+      catalogDefinitionDeletedResponseSchema, "CatalogDefinitionDeletedResponse",
+      { body: catalogDeleteDefinitionRequestSchema.parse(body) }
+    ),
     listDefinitionRevisions: (definitionId: string, query?: CatalogListQuery) =>
       request(
         "GET",

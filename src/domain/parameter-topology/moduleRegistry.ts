@@ -14,6 +14,8 @@ export type ModuleImportance = "high" | "medium" | "low";
 export type ModuleKind = "business" | "driver-group" | "node-type" | "unclassified";
 
 export type ModuleOrigin = "curated" | "auto";
+export type DriverNature = "physical-device" | "logical-service";
+export type InstanceCardinality = "multiple" | "singleton-per-project";
 
 export type ParameterModule = {
   id: string;
@@ -26,7 +28,7 @@ export type ParameterModule = {
   kind: ModuleKind;
   origin: ModuleOrigin;
   sourceKey: string | null;
-  /** Nearest ancestor business category importance (or own, when business). */
+  /** Explicit module importance when set; otherwise inherited from its business category. */
   effectiveImportance: ModuleImportance;
   /** Subtree bindings (measured occurrences). */
   parameterCount: number;
@@ -34,6 +36,12 @@ export type ParameterModule = {
   definitionCount: number;
   /** Stable catalog identity for driver-group / node-type (ADR-0013). */
   attributionSubjectId?: string | null;
+  /** Current organization recognition settings, separate from historical provenance. */
+  compatibles?: string[];
+  driverNature?: DriverNature | null;
+  instanceCardinality?: InstanceCardinality | null;
+  nodeTypeName?: string | null;
+  recognitionSubjectId?: string | null;
 };
 
 export type ParameterModuleMapping = {
@@ -122,7 +130,7 @@ export function describeModuleAssignment(
     return {
       moduleId,
       moduleName: module.name,
-      importance: module.importance,
+      importance: module.effectiveImportance ?? module.importance,
       sortOrder: module.sortOrder,
       mapped
     };
@@ -131,7 +139,7 @@ export function describeModuleAssignment(
   const driver = input.driverModule?.trim();
   return {
     moduleId,
-    moduleName: driver && driver !== "" ? `${UNCLASSIFIED_LABEL} · ${driver}` : UNCLASSIFIED_LABEL,
+    moduleName: !moduleId ? "unset" : driver && driver !== "" ? `${UNCLASSIFIED_LABEL} · ${driver}` : UNCLASSIFIED_LABEL,
     importance: "medium",
     sortOrder: Number.MAX_SAFE_INTEGER,
     mapped: false

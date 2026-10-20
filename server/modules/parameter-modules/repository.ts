@@ -20,6 +20,7 @@ import type {
   ParameterModuleRow
 } from "./types";
 import { rollupSubtreeAttributionCounts } from "./subtreeCounts";
+import { loadModuleRecognitionSettings } from "./recognitionSettings";
 
 function moduleFromRow(
   row: ParameterModuleRow,
@@ -59,6 +60,7 @@ function resolveEffectiveImportance(
 ): ModuleImportance {
   const seen = new Set<string>();
   let current = byId.get(moduleId);
+  if (current?.importance_override) return current.importance ?? "medium";
   while (current && !seen.has(current.id)) {
     seen.add(current.id);
     if (current.kind === "business") {
@@ -74,7 +76,7 @@ function resolveEffectiveImportance(
  * Registration and Binding ownership remain SQL-owned facts; Definition
  * lifecycle/current-revision semantics stay inside CatalogRuntime.
  */
-export type RegistryCatalogSnapshot = Pick<CatalogSnapshot, "listDefinitions">;
+export type RegistryCatalogSnapshot = Pick<CatalogSnapshot, "listDefinitions"> & Partial<CatalogSnapshot>;
 
 function definitionFactsFromCatalog(
   catalog: RegistryCatalogSnapshot | null,
@@ -137,6 +139,7 @@ export async function readRegistry(
        coalesce(pm.description, '') as description,
        coalesce(pm.scope, '') as scope,
        coalesce(pm.importance, 'medium') as importance,
+       pm.importance_override,
        coalesce(pm.kind, 'business') as kind,
        coalesce(pm.origin, 'curated') as origin,
        pm.source_key,
@@ -168,16 +171,17 @@ export async function readRegistry(
       order by priority desc, match_value asc`,
     [organizationId]
   );
+  const recognition = await loadModuleRecognitionSettings(db, organizationId, catalog);
   return {
     modules: modules.rows.map((row) =>
-      moduleFromRow(
+      ({ ...moduleFromRow(
         {
           ...row,
           parameter_count: subtreeCounts.get(row.id)?.parameterCount ?? 0,
           definition_count: subtreeCounts.get(row.id)?.definitionCount ?? 0
         },
         resolveEffectiveImportance(row.id, byId),
-      ),
+      ), ...recognition.get(row.id) }),
     ),
     mappings: mappings.rows.map(mappingFromRow)
   };
