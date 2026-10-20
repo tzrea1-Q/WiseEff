@@ -167,7 +167,10 @@ describe("quality partitions", () => {
       const tests = keys.filter((key) => JSON.parse(key)[0] !== "runtime-warmup");
       expect(tests.length).toBeGreaterThan(0);
       expect(keys.filter((key) => JSON.parse(key)[0] === "compact")).toEqual(lane === "visual" ? compact : []);
-      const consistencyTitles = [...routeTitles, ...bridgeTitles, ...homeTitles, "aligns parameter toolbar actions across DTS and JSON views"];
+      const consistencyTitles = [...routeTitles, ...bridgeTitles, ...homeTitles,
+        "aligns parameter toolbar actions across DTS and JSON views",
+        "keeps multiline node read details complete and locally scrollable (UI fixture, no hardware proof)",
+        "keeps long DTS string details and unchanged previews bounded (read-only response fixture)"];
       expect(titles(keys.filter((key) => JSON.parse(key)[1] === "consistency.quality.spec.ts")).sort())
         .toEqual(consistencyTitles.filter((id) => shouldRegisterConsistencyFixture(lane, id)).sort());
       expect(keys.filter((key) => JSON.parse(key)[1] === "styles.consistency.collector.spec.ts"))
