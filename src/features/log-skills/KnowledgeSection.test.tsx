@@ -55,7 +55,8 @@ describe("knowledge skill section", () => {
     expect(screen.queryByRole("button", { name: `取消链接 ${privateEntry.title}` })).not.toBeInTheDocument();
     await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
     expect(await screen.findByText("无权查看的条目")).toBeVisible();
-    expect(screen.getByRole("button", { name: "取消链接 private-id" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "取消链接 无权查看的条目" })).toBeEnabled();
+    expect(screen.queryByText("private-id")).not.toBeInTheDocument();
     const table = screen.getByRole("table", { name: "已链接知识条目" });
     expect(within(table).getAllByRole("cell").slice(1, 4).map((cell) => cell.textContent)).toEqual(["", "", ""]);
   });
@@ -63,11 +64,12 @@ describe("knowledge skill section", () => {
     const { repository, changed } = setup({ ids: ["hidden-entry"], canViewKnowledge, get: async () => null });
     const table = await screen.findByRole("table", { name: "已链接知识条目" });
     expect(within(table).getByText("无权查看的条目")).toBeVisible();
-    expect(within(table).getByText("hidden-entry")).toBeVisible();
+    expect(within(table).queryByText("hidden-entry")).not.toBeInTheDocument();
     const cells = within(table).getAllByRole("cell");
     expect(cells.slice(1, 4).map((cell) => cell.textContent)).toEqual(["", "", ""]);
     if (!canViewKnowledge) expect(repository.get).not.toHaveBeenCalled();
-    await userEvent.click(within(table).getByRole("button", { name: "取消链接 hidden-entry" }));
+    await userEvent.click(within(table).getByRole("button", { name: "取消链接 无权查看的条目" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "取消链接" }));
     expect(changed).toHaveBeenLastCalledWith({ schemaVersion: "skill/v1", knowledgeEntryIds: [] });
   });
   it("lists linked entry metadata and unlinks only from the skill draft", async () => {
@@ -78,6 +80,7 @@ describe("knowledge skill section", () => {
     expect(within(table).getByText("v3")).toBeVisible();
     expect(within(table).getAllByRole("cell")[3].querySelector("span")).toHaveAttribute("title");
     await userEvent.click(within(table).getByRole("button", { name: "取消链接 linked 知识" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "取消链接" }));
     expect(changed).toHaveBeenLastCalledWith({ schemaVersion: "skill/v1", knowledgeEntryIds: [] });
     expect(repository.createMarkdown).not.toHaveBeenCalled();
     expect(await screen.findByText("尚未链接知识")).toBeVisible();

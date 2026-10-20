@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Trash2, X } from "lucide-react";
 import { listSignalFields, logSkillSpecSchema } from "@wiseeff/dto-schemas";
 import { SelectControl } from "@/components/common/SelectControl";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { SectionEmpty } from "@/components/common/SectionState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +34,7 @@ function conditionSummary(condition: Condition): string {
         : condition.operator === "in" ? ` 属于 ${Array.isArray(condition.values) ? condition.values.map(scalarText).join("、") : "（待填写）"}` : ` ${decoded ? "=" : "等于"} ${scalarText(condition.value)}`}${decoded ? `（${condition.field.split(".fields.")[0]}）` : ""}`;
     }
     case "window": return `${condition.seconds} 秒内 ${conditionSummary(condition.condition)} 达 ${condition.count} 次`;
-    case "severityToken": return `日志级别为 ${condition.severity} 且包含 ${condition.token}`;
+    case "severityToken": return `日志级别为 ${{ error: "错误", warn: "警告", info: "信息" }[condition.severity]} 且包含 ${condition.token}`;
     case "numericComparison": return `${condition.leftTokens.join(" / ")} ${comparisonLabels[condition.operator]} ${condition.rightTokens.join(" / ")}`;
   }
 }
@@ -67,6 +68,7 @@ export function SignalsSection({ skillId, spec, onChange, disabled, sample, repo
   const [preview, setPreview] = useState<SignalPreview | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState<{ label: string; remove: () => void } | null>(null);
   const validation = useMemo(() => logSkillSpecSchema.safeParse(spec), [spec]);
   const issues = validation.success ? [] : validation.error.issues.filter((issue) => issue.path[0] === "signalRules");
   useEffect(() => {
@@ -108,7 +110,9 @@ export function SignalsSection({ skillId, spec, onChange, disabled, sample, repo
   if (invalidRuleIds.some((id) => !expanded.has(id))) setExpanded(new Set([...expanded, ...invalidRuleIds]));
   const fieldError = (path: (string | number)[], exact = false) => {
     const matches = pathIssues(path).filter((issue) => !exact || issue.path.length === path.length);
-    return matches.length ? <p className="skill-rule-error" role="alert">{matches.map((issue) => `${issue.path.join(".")}：${issue.message}`).join("；")}</p> : null;
+    const guidance: Record<string, string> = { pattern: "正则表达式无效，请检查语法。", field: "请选择有效的抽取字段。", min: "数值范围无效，请检查上下限。", max: "数值范围无效，请检查上下限。",
+      seconds: "时间窗必须大于零。", count: "匹配次数必须为正整数。", rules: "信号规则数量超出上限，请删减后重试。", anyOf: "规则条件数量无效，请新增或删减条件。" };
+    return matches.length ? <p className="skill-rule-error" role="alert">{[...new Set(matches.map((issue) => guidance[String(issue.path.at(-1))] ?? "字段配置无效，请检查后重试。"))].join(" ")}</p> : null;
   };
   const conditionEditor = (condition: Condition, path: (string | number)[], change: (condition: Condition) => void, remove?: () => void, nested = false) => {
     const label = `规则 ${Number(path[2]) + 1} 条件 ${Number(path[4]) + 1}${nested ? "子条件" : ""}`;
@@ -151,17 +155,17 @@ export function SignalsSection({ skillId, spec, onChange, disabled, sample, repo
             {conditionEditor(condition.condition, [...path, "condition"], (sub) => change({ ...condition, condition: sub as Extract<Condition, { type: "text" | "field" }> }), undefined, true)}
           </> : null}
         </>}
-        {remove ? <Button className="skill-condition-remove" variant="ghost" size="icon-sm" disabled={disabled} aria-label={`删除${label}`} title="删除条件" onClick={remove}><X /></Button> : null}
+        {remove ? <Button className="skill-condition-remove" variant="ghost" size="icon-sm" disabled={disabled} aria-label={`删除${label}`} title="删除条件" onClick={() => setDeleting({ label: "删除条件", remove })}><X /></Button> : null}
       </div>
       {fieldError(path)}
     </div>;
   };
   return <section className="skill-section skill-signals-section" aria-label="信号规则"><h2>信号</h2><p>当条件满足时，产生指定名称和级别的信号。多个条件之间为“或”；规则按列表顺序运行。</p>
     {fieldsTruncated ? <p className="skill-signal-hint" role="status">字段较多，选择器仅显示部分路径；其余路径可在代码视图中配置，保存和预览仍会完整校验。</p> : null}
-    {!sample ? <p className="skill-signal-hint">请先在右侧上传样例日志，规则命中会自动显示。</p> : <p className="skill-signal-hint">{pending ? "正在预览样例命中…" : `使用右侧样例日志：${sample.fileName}`}</p>}
+    {!sample ? <p className="skill-signal-hint">上传样例日志后显示命中次数</p> : <p className="skill-signal-hint">{pending ? "正在预览样例命中…" : `使用右侧样例日志：${sample.fileName}`}</p>}
     {error ? <p role="alert" className="skill-rule-error">{error}</p> : null}
     {preview?.truncated ? <p role="status">{preview.reason === "time_cap" ? "预览达到时间上限，已返回部分命中。" : preview.reason === "line_cap" ? "预览达到行数上限，已返回部分命中。" : preview.reason === "event_cap" ? "预览达到解码事件上限，已返回部分命中。" : "预览达到处理上限，已返回部分命中。"}</p> : null}
-    {preview?.issues.map((issue, i) => <p role="alert" key={i}>{issue.path.join(".")}：{issue.message}</p>)}
+    {preview?.issues.length ? <p role="alert">信号规则预览未完成，请检查条件和抽取字段后重试。</p> : null}
     {fieldError(["signalRules", "rules"], true)}
     {!rules.length ? <SectionEmpty message="还没有技能信号规则；添加一条规则后在右侧样例上查看命中。" /> : null}
     {rules.map((rule, index) => {
@@ -169,17 +173,17 @@ export function SignalsSection({ skillId, spec, onChange, disabled, sample, repo
       const open = expanded.has(rule.id) || invalid;
       const hits = preview?.hits.filter((hit) => hit.ruleId === rule.id);
       const severity = rule.severity ?? rule.analysis.severity?.value ?? spec.signalRules?.hitDefaults.severity ?? "Info";
-      const visibleConditions = rule.anyOf.slice(0, 2);
-      const conditions = (visibleConditions.every((condition) => condition.type === "text")
-        ? `消息匹配 ${visibleConditions.map((condition) => condition.pattern || "（待填写）").join(" / ")}`
-        : visibleConditions.map(conditionSummary).join(" / ")) + (rule.anyOf.length > 2 ? ` / +${rule.anyOf.length - 2}` : "");
-      const hitLabel = hits ? `命中 ${hits.length} 次` : "命中待预览";
-      const summary = `当 ${conditions} 时，产生 ${rule.name ?? rule.id} · ${severityLabels[severity]} · ${hitLabel}`;
+      const ruleName = rule.name ?? `规则 ${index + 1}`;
+      const summarize = (conditions: Condition[]) => conditions.every((condition) => condition.type === "text")
+        ? `消息匹配 ${conditions.map((condition) => condition.pattern || "（待填写）").join(" / ")}` : conditions.map(conditionSummary).join(" / ");
+      const conditions = summarize(rule.anyOf.slice(0, 2)) + (rule.anyOf.length > 2 ? ` 等 ${rule.anyOf.length} 个` : "");
+      const hitLabel = sample ? hits ? ` · 命中 ${hits.length} 次` : " · 命中待预览" : "";
+      const summary = `当 ${summarize(rule.anyOf)} 时，产生 ${ruleName} · ${severityLabels[severity]}${hitLabel}`;
       return <section className="skill-signal-rule" aria-label={`规则 ${index + 1}`} key={rule.id}>
-        <header className="skill-rule-header"><span className="skill-rule-summary" title={summary}><span className="skill-rule-summary-condition">当 {conditions}</span>{" "}<span>时，产生</span>{" "}<span className="skill-rule-summary-name">{rule.name ?? rule.id}</span>{" "}<span>· {severityLabels[severity]} · {hitLabel}</span></span>
+        <header className="skill-rule-header"><span className="skill-rule-summary" title={summary}><span className="skill-rule-summary-condition">当 {conditions}</span>{" "}<span>时，产生</span>{" "}<span className="skill-rule-summary-name">{ruleName}</span>{" "}<span>· {severityLabels[severity]}{hitLabel}</span></span>
           <div className="skill-rule-actions"><Button variant="ghost" size="icon-sm" disabled={disabled || index === 0} aria-label={`上移规则 ${index + 1}`} title="上移" onClick={() => { const next = [...rules]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; update(next); }}><ArrowUp /></Button>
             <Button variant="ghost" size="icon-sm" disabled={disabled || index === rules.length - 1} aria-label={`下移规则 ${index + 1}`} title="下移" onClick={() => { const next = [...rules]; [next[index + 1], next[index]] = [next[index], next[index + 1]]; update(next); }}><ArrowDown /></Button>
-            <Button variant="ghost" size="icon-sm" disabled={disabled} aria-label={`删除规则 ${index + 1}`} title="删除" onClick={() => update(rules.filter((_, i) => i !== index))}><Trash2 /></Button>
+            <Button variant="ghost" size="icon-sm" disabled={disabled} aria-label={`删除规则 ${index + 1}`} title="删除" onClick={() => setDeleting({ label: "删除规则", remove: () => update(rules.filter((_, i) => i !== index)) })}><Trash2 /></Button>
             <Button variant="ghost" size="icon-sm" aria-label={`${open ? "收起" : "展开"}规则 ${index + 1}`} title={open ? "收起" : "展开"} aria-expanded={open} aria-controls={`signal-rule-${rule.id}`} disabled={invalid} onClick={() => setExpanded((value) => { const next = new Set(value); if (open) next.delete(rule.id); else next.add(rule.id); return next; })}>{open ? <ChevronUp /> : <ChevronDown />}</Button>
           </div>
         </header>
@@ -188,11 +192,11 @@ export function SignalsSection({ skillId, spec, onChange, disabled, sample, repo
             (next) => updateRule(index, { anyOf: rule.anyOf.map((value, i) => i === conditionIndex ? next : value) }), rule.anyOf.length > 1 ? () => updateRule(index, { anyOf: rule.anyOf.filter((_, i) => i !== conditionIndex) }) : undefined)}</div>)}
           {fieldError(["signalRules", "rules", index, "anyOf"], true)}
           <Button className="skill-rule-add" variant="link" size="sm" disabled={disabled} onClick={() => updateRule(index, { anyOf: [...rule.anyOf, { type: "text", pattern: "" }] })}>添加或条件</Button>
-          <div className="skill-rule-output"><label>信号名称<Input aria-label={`规则 ${index + 1}名称`} value={rule.name ?? rule.id} disabled={disabled} onChange={(event) => updateRule(index, { name: event.target.value,
+          <div className="skill-rule-output"><label>信号名称<Input aria-label={`规则 ${index + 1}名称`} value={ruleName} disabled={disabled} onChange={(event) => updateRule(index, { name: event.target.value,
             ...(rule.inference === rule.name || rule.inference === "Signal rule matched." ? { inference: event.target.value } : {}) })} />{fieldError(["signalRules", "rules", index, "name"])}</label>
             <label>级别<SelectControl ariaLabel={`规则 ${index + 1}级别`} value={severity} disabled={disabled}
               options={Object.entries(severityLabels).map(([value, label]) => ({ value, label }))} onValueChange={(severity) => updateRule(index, { severity: severity as Rule["severity"] })} /></label></div>
-          {hits?.length ? <div className="skill-rule-hits" aria-label={`${rule.name ?? rule.id}命中行`}>{hits.map((hit) => <Button variant="outline" size="xs" key={hit.lineNumber} title={hit.excerpt} aria-label={`第 ${hit.lineNumber} 行：${hit.excerpt}`} onClick={() => onHit(hit.lineNumber)}>L{hit.lineNumber}</Button>)}</div> : null}
+          {hits?.length ? <div className="skill-rule-hits" aria-label={`${ruleName}命中行`}>{hits.map((hit) => <Button variant="outline" size="xs" key={hit.lineNumber} title={hit.excerpt} aria-label={`第 ${hit.lineNumber} 行：${hit.excerpt}`} onClick={() => onHit(hit.lineNumber)}>第 {hit.lineNumber} 行</Button>)}</div> : null}
           {hits && !hits.length ? <p className="skill-signal-hint">样例中未命中此规则。</p> : null}
         </div> : null}</div>
       </section>;
@@ -202,5 +206,7 @@ export function SignalsSection({ skillId, spec, onChange, disabled, sample, repo
       update([...rules, { id, name: "新信号", severity: "Warning", anyOf: [{ type: "text", pattern: "" }], stageId: "pattern", inference: "新信号", suggestedAction: "Inspect matching lines and their context.", analysis: { suggestedActions: [] } }]);
     }}>添加信号规则</Button>
     {issues.length ? <p role="alert">请修正信号规则中的字段错误后保存或预览。</p> : null}
+    <ConfirmDialog open={!!deleting} title={`${deleting?.label ?? "删除"}？`} description="此项内容将从当前草稿中移除。" tone="danger" confirmLabel={deleting?.label ?? "删除"}
+      onCancel={() => setDeleting(null)} onConfirm={() => { deleting?.remove(); setDeleting(null); }} />
   </section>;
 }

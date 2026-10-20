@@ -1,4 +1,8 @@
 .skill-format-form { display: grid; gap: var(--space-3); min-width: 0; }
+.skill-parsing [role="tabpanel"] { display: grid; gap: var(--space-3); min-width: 0; }
+.skill-parsing [role="tabpanel"][hidden] { display: none; }
+.skill-parsing .skill-section { padding: 0; }
+.skill-parsing-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-width: 0; }
 .skill-format-form h3, .skill-format-form p, .skill-format-form pre { margin: 0; }
 .skill-format-form label { display: grid; gap: var(--space-2); }
 .skill-format-form fieldset { display: grid; gap: var(--space-3); margin: 0; padding: var(--space-3); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); min-width: 0; }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { DataTable } from "@/components/admin/DataTable";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { SectionEmpty } from "@/components/common/SectionState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +28,7 @@ function Expectations({ test, onChange, disabled, onValidityChange }: { test: Pa
   const [rows, setRows] = useState(() => Object.entries(test.expect.fields ?? {}).map(([path, value]) => ({ path, value: displayValue(value) })));
   const [code, setCode] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState<number | null>(null);
   const paths = rows.map((row) => row.path.trim()).filter(Boolean);
   const duplicatePaths = new Set(paths).size !== paths.length;
   const codeEdited = code !== null && code !== JSON.stringify(test.expect, null, 2);
@@ -47,7 +49,7 @@ function Expectations({ test, onChange, disabled, onValidityChange }: { test: Pa
         onChange={(event) => updateRows(rows.map((item, index) => index === row.index ? { ...item, path: event.target.value } : item))} /> },
       { key: "value", header: "期望", render: (row) => <Input aria-label={`期望字段 ${row.index + 1} 值`} disabled={disabled} value={row.value}
         onChange={(event) => updateRows(rows.map((item, index) => index === row.index ? { ...item, value: event.target.value } : item))} /> },
-      { key: "remove", header: "操作", render: (row) => <Button variant="outline" size="sm" disabled={disabled} aria-label={`删除期望字段 ${row.index + 1}`} onClick={() => updateRows(rows.filter((_, index) => index !== row.index))}>删除</Button> }
+      { key: "remove", header: "操作", render: (row) => <Button variant="outline" size="sm" disabled={disabled} aria-label={`删除期望字段 ${row.index + 1}`} onClick={() => setDeleting(row.index)}>删除</Button> }
     ]} emptyMessage="尚无字段期望；可新增字段，或仅检查信号。" />
     <Button variant="outline" disabled={disabled || rows.length >= 200} onClick={() => updateRows([...rows, { path: "", value: "" }])}>新增期望字段</Button>
     <label>期望信号（名称或 ID，每行一个）<Textarea disabled={disabled} value={(test.expect.signals ?? []).join("\n")} onChange={(event) => onChange({ ...test, expect: { ...test.expect, signals: event.target.value.split("\n").filter(Boolean) } })} /></label>
@@ -62,6 +64,8 @@ function Expectations({ test, onChange, disabled, onValidityChange }: { test: Pa
         } catch { setError("期望 JSON 无效，请检查字段路径和信号列表。"); }
       }}>应用期望代码</Button></> : null}
     {duplicatePaths || error ? <p role="alert">{duplicatePaths ? "字段路径重复，请修改后保存。" : error}</p> : null}
+    <ConfirmDialog open={deleting !== null} title="删除期望字段？" description="此字段期望将从当前测试中移除。" tone="danger" confirmLabel="删除期望字段"
+      onCancel={() => setDeleting(null)} onConfirm={() => { updateRows(rows.filter((_, index) => index !== deleting)); setDeleting(null); }} />
   </section>;
 }
 
@@ -74,6 +78,7 @@ export function ParseTestsSection({ skillId, spec, setSpec, disabled, repository
   const tests = spec.parseTests ?? [];
   const validation = parseTestsSchema.safeParse(tests);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<ParseTest | null>(null);
   const [adding, setAdding] = useState(false);
   const addingRef = useRef(false);
   const [error, setError] = useState("");
@@ -122,7 +127,7 @@ export function ParseTestsSection({ skillId, spec, setSpec, disabled, repository
       <label>测试样例行<Textarea disabled={disabled} value={test.lines.join("\n")} onChange={(event) => update({ ...test, lines: event.target.value.split(/\r?\n/) })} /></label>
       <p>每个测试最多 {MAX_PARSE_TEST_LINES} 行，每行最多 6144 字符；全部测试共用 1 MiB 字符和 {MAX_PARSE_TEST_RUN_LINES} 行上限。</p>
       <Expectations test={test} onChange={update} disabled={disabled} onValidityChange={onValidityChange} />
-      <Button variant="outline" disabled={disabled} onClick={() => { setSpec({ ...spec, parseTests: tests.filter((item) => item.id !== test.id) }); setSelectedId(null); }}>删除测试</Button>
+      <Button variant="outline" disabled={disabled} onClick={() => setDeleting(test)}>删除测试</Button>
       {outcome ? <section aria-label="测试结果"><h3>{outcome.passed ? "通过" : "失败"}</h3>
         {outcome.applicability?.skillMatched === false ? <p>未匹配适用文件 · 仅通用分析</p> : null}
         {outcome.error ? <p role="alert">{outcome.error}</p> : null}
@@ -136,5 +141,7 @@ export function ParseTestsSection({ skillId, spec, setSpec, disabled, repository
       </section> : null}
     </section> : null}
     {result?.truncated ? <p role="status">测试达到执行上限；未完成的测试计为失败。</p> : null}
+    <ConfirmDialog open={!!deleting} title="删除解析测试？" description={`将删除「${deleting?.name ?? ""}」及其期望。`} tone="danger" confirmLabel="删除测试"
+      onCancel={() => setDeleting(null)} onConfirm={() => { setSpec({ ...spec, parseTests: tests.filter((item) => item.id !== deleting?.id) }); setSelectedId(null); setDeleting(null); }} />
   </section>;
 }

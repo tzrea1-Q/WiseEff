@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectControl } from "@/components/common/SelectControl";
-import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
+import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 import { mockSourceSnapshots } from "@/infrastructure/mock/logSkills";
 import type { AnalysisSkill, SkillWorkspaceRepository, SourceSnapshot, SourceStatementMatches } from "./types";
@@ -107,7 +107,7 @@ export function SourceSnapshots({ skill, repository, apiMode, canEdit, disabled,
         { key: "skips", header: "跳过文件", widthClass: "w-48", render: (item) => item.skippedCount ? <div className="grid gap-1">
           <span className="text-xs">{skippedSummary(item)}</span><Button variant="link" size="sm" className="w-fit" onClick={() => setSkippedSnapshot(item)}>查看</Button>
         </div> : "无" },
-        { key: "createdAt", header: "上传时间", widthClass: "w-28 whitespace-nowrap", render: (item) => <span title={formatAbsolute(item.createdAt)}>{formatRelativeOrAbsolute(item.createdAt)}</span> },
+        { key: "createdAt", header: "上传时间", widthClass: "w-28 whitespace-nowrap", render: (item) => <span title={formatAbsolute(item.createdAt).slice(0, 16).replaceAll("-", "/")}>{formatAbsolute(item.createdAt).slice(0, 16).replaceAll("-", "/")}</span> },
         { key: "default", header: "默认", widthClass: "w-20 whitespace-nowrap", render: (item) => item.id === defaultId ? <span className="badge whitespace-nowrap">{skill.draft ? "草稿默认" : "已发布默认"}</span> : "—" }
       ]} renderRowActions={editable ? (item) => item.status === "archived" ? null : <RowActionMenu label={`${item.versionLabel} 快照操作`}
         primaryAction={{ id: "default", label: "设为默认", disabled: disabled || dirty || item.id === defaultId, onSelect: async () => {

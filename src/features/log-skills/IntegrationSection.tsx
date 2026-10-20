@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { resolveWiseEffApiBaseUrl } from "@/infrastructure/http/runtimeMode";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
 import type { LogDomain } from "@/domain/logs/types";
 import type { SectionProps } from "./SkillWorkspace";
@@ -10,7 +11,7 @@ import { SkillWebhookEditor } from "./SkillWebhookEditor";
 import { buildSkillUploadExamples } from "./integrationExamples";
 import { IntegrationCredentials } from "./IntegrationCredentials";
 
-export function IntegrationSection({ skill, spec, setSpec, disabled, repository, apiMode, canEdit, dirty, onSkillUpdated, onBusyChange, fieldErrors }: SectionProps) {
+export function IntegrationSection({ skill, disabled, repository, apiMode, canEdit, dirty, onSkillUpdated, onBusyChange }: SectionProps) {
   const id = useId();
   const [domain, setDomain] = useState<LogDomain | null>(null);
   const [loading, setLoading] = useState(apiMode);
@@ -31,7 +32,7 @@ export function IntegrationSection({ skill, spec, setSpec, disabled, repository,
     if (!repository?.listLogSkills) setLoading(false);
     return () => { active = false; };
   }, [apiMode, repository, skill.id, reload]);
-  const examples = buildSkillUploadExamples(window.location.origin, skill.skillKey);
+  const examples = buildSkillUploadExamples(import.meta.env.VITE_WISEEFF_API_BASE_URL?.trim() ? resolveWiseEffApiBaseUrl() : window.location.origin, skill.skillKey);
   const copy = async (value: string, label: string) => {
     try { await navigator.clipboard.writeText(value); setCopyStatus(`已复制${label}`); }
     catch { setCopyStatus("复制失败，请手动复制。"); }
@@ -78,18 +79,6 @@ export function IntegrationSection({ skill, spec, setSpec, disabled, repository,
       {loading ? <SectionSkeleton label="正在加载回调配置" /> : loadError ? <SectionError message="无法加载回调配置" onRetry={() => setReload((value) => value + 1)} />
         : domain && webhookRepository ? <SkillWebhookEditor key={domain.id} domain={domain} logActions={webhookRepository} disabled={disabled}
           onSaved={async () => undefined} /> : <p>{apiMode ? "当前无法加载回调配置。" : "请在 API 模式下配置结果回调。"}</p>}
-    </section>
-    <section aria-label="模型与预算"><h3>模型与预算</h3><p>模型和预算随技能草稿保存并发布；留空使用平台默认值。</p>
-      <p>令牌预算按模型报告的累计用量计算，每次模型调用前检查；单次调用可能使累计用量超过预算，超出量最多为该次补全的用量。</p>
-      <label>模型覆盖<Input maxLength={200} disabled={disabled} value={spec.modelOverride ?? ""} placeholder="使用平台默认模型"
-        onChange={(event) => { const next = { ...spec }; if (event.target.value) next.modelOverride = event.target.value; else delete next.modelOverride; setSpec(next); }} /></label>
-      {([['stepBudget', '步骤预算'], ['tokenBudget', '令牌预算']] as const).map(([field, label]) => <div key={field}><label>{label}<Input type="number" min={field === "tokenBudget" ? Math.min(4096, skill.budgetCaps?.tokenBudget ?? 4096) : 1} step={1}
-        max={skill.budgetCaps?.[field]} disabled={disabled} value={spec[field] ?? ""} placeholder="使用平台默认预算"
-        aria-invalid={!!fieldErrors?.[field]} aria-describedby={`skill-${field}-help${fieldErrors?.[field] ? ` skill-${field}-error` : ""}`}
-        onChange={(event) => { const next = { ...spec }; if (event.target.value) next[field] = Number(event.target.value); else delete next[field]; setSpec(next); }} /></label>
-        <p id={`skill-${field}-help`}>最小值：{field === "tokenBudget" ? Math.min(4096, skill.budgetCaps?.tokenBudget ?? 4096) : 1}；{skill.budgetCaps ? `平台上限：${skill.budgetCaps[field]}` : "由服务器校验平台预算上限。"}</p>
-        {fieldErrors?.[field] ? <p id={`skill-${field}-error`} role="alert" className="skill-field-error">{fieldErrors[field]}</p> : null}
-      </div>)}
     </section>
   </div>;
 }

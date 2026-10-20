@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { LogDomain, LogWebhookDelivery } from "@/domain/logs/types";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
+import { formatAbsolute } from "@/domain/format/formatDateTime";
 
 const deliveryStatusLabels: Record<LogWebhookDelivery["status"], string> = {
   delivered: "已送达",
@@ -18,8 +19,7 @@ const deliveryStatusClasses: Record<LogWebhookDelivery["status"], string> = {
 };
 
 function formatDeliveryTime(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString("zh-CN", { hour12: false });
+  return formatAbsolute(iso).replaceAll("-", "/").slice(0, 16);
 }
 
 /**
@@ -81,7 +81,7 @@ export function SkillWebhookEditor({
         await onSaved();
       }
     } catch {
-      setErrorText("保存失败：请检查 URL（仅支持 https，禁止私网/环回/元数据地址）与密钥。");
+      setErrorText("保存失败：请检查回调地址与签名密钥。");
     } finally {
       setSaving(false);
     }
@@ -100,7 +100,7 @@ export function SkillWebhookEditor({
         if (outcome.status === "delivered") {
           setStatusText(`测试投递成功（HTTP ${outcome.httpStatus ?? "-"}）`);
         } else {
-          setErrorText(`测试投递${outcome.status === "skipped" ? "未执行" : "失败"}：${outcome.error ?? "未知原因"}`);
+          setErrorText(outcome.status === "skipped" ? "测试投递未执行，请检查回调配置。" : "测试投递失败，请检查回调服务后重试。");
         }
       }
       await refreshDeliveries();
@@ -120,25 +120,27 @@ export function SkillWebhookEditor({
     >
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-foreground">结果回调 Webhook · {domain.name}</h3>
+          <h3 className="text-sm font-semibold text-foreground">结果回调 · {domain.name}</h3>
           <p className="text-xs text-muted-foreground">
-            分析到达终态（完成含降级、失败）后向该 URL 推送签名摘要（HMAC-SHA256 + 时间戳，不含原始日志内容）；投递尽力而为，失败自动重试后如实记录。
+            分析结束后向回调地址推送签名摘要和时间戳，不含原始日志；投递失败会自动重试并记录结果。
           </p>
         </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor={`domain-webhook-url-${domain.id}`}>
-          Webhook URL（仅 https；禁止私网/环回/链路本地/元数据地址）
+        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+          <label htmlFor={`domain-webhook-url-${domain.id}`}>回调地址</label>
           <Input
             id={`domain-webhook-url-${domain.id}`}
             disabled={disabled || saving || testing}
+            aria-describedby={`domain-webhook-url-help-${domain.id}`}
             value={url}
             onChange={(event) => setUrl(event.target.value)}
             className="h-8 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             placeholder="https://hooks.example.com/wiseeff"
           />
-        </label>
+          <span id={`domain-webhook-url-help-${domain.id}`}>仅支持 HTTPS；禁止私网、环回、链路本地和元数据地址。</span>
+        </div>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor={`domain-webhook-secret-${domain.id}`}>
           签名密钥（写入后不回显；{secretConfigured ? `已配置 · 末四位 ${secretLastFour ?? "????"}` : "未配置"}）
           <Input
@@ -204,7 +206,7 @@ export function SkillWebhookEditor({
                 <span className={cn("inline-flex h-5 items-center rounded-md px-1.5 text-xs font-medium", deliveryStatusClasses[delivery.status])}>
                   {deliveryStatusLabels[delivery.status]}
                 </span>
-                <span className="font-mono text-muted-foreground">{delivery.httpStatus ? `HTTP ${delivery.httpStatus}` : delivery.error ?? ""}</span>
+                <span className="font-mono text-muted-foreground">{delivery.httpStatus ? `HTTP ${delivery.httpStatus}` : delivery.error ? "回调服务暂不可用" : ""}</span>
               </li>
             ))}
           </ul>

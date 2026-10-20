@@ -82,6 +82,7 @@ test("forms only: template to published extractor, register decoder and decoded-
   const skill = (await created.json() as { item: AnalysisSkill }).item;
   await expect(page).toHaveURL(new RegExp(`/log-admin/skills/${skill.id}$`));
   await section(page, "样例与解析");
+  await page.getByRole("tablist", { name: "解析配置", exact: true }).getByRole("tab", { name: "抽取规则", exact: true }).click();
   await page.getByRole("button", { name: /^选择样例第 1 行：INFO reg=0x20/ }).click();
   await page.getByRole("button", { name: "从此行创建抽取规则", exact: true }).click();
   const extractor = page.getByRole("dialog", { name: "从此行创建抽取规则", exact: true });
@@ -200,7 +201,7 @@ test("integration only: copied UI curl and newly revealed credential reach a sig
     await testInfo.attach("05-integration-copyable-command", { body: await page.screenshot(), contentType: "image/png" });
 
     const editor = page.getByTestId("domain-webhook-editor");
-    await editor.getByLabel(/Webhook URL/).fill(receiver.url);
+    await editor.getByLabel("回调地址", { exact: true }).fill(receiver.url);
     await editor.getByLabel(/签名密钥/).fill(secret);
     await editor.getByRole("checkbox", { name: "启用结果回调", exact: true }).check();
     await editor.getByRole("button", { name: "保存配置", exact: true }).click();
@@ -250,7 +251,7 @@ test("integration only: copied UI curl and newly revealed credential reach a sig
     });
     await page.getByRole("button", { name: `凭据 ${credentialName}：更多`, exact: true }).click();
     await page.getByRole("menuitem", { name: "撤销", exact: true }).click();
-    await page.getByRole("dialog", { name: "撤销集成凭据", exact: true }).getByRole("button", { name: "确认撤销", exact: true }).click();
+    await page.getByRole("dialog", { name: "撤销集成凭据", exact: true }).getByRole("button", { name: "撤销凭据", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "撤销集成凭据", exact: true })).toBeHidden();
     // Reload to display the actual result delivery; neither attachment contains the token.
     await page.reload();

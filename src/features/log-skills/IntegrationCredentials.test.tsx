@@ -39,8 +39,8 @@ describe("integration credentials", () => {
       .toEqual([newest.name, older.name, revoked.name]);
     expect(within(rows[0]).getByTitle(newest.name)).toHaveClass("truncate");
     expect(within(rows[0]).getAllByRole("cell")[0]).toHaveTextContent("未绑定 · 创建于");
-    expect(within(rows[0]).getAllByTitle(formatAbsolute(newest.createdAt))[0]).toHaveTextContent("创建于");
-    expect(within(rows[0]).getAllByTitle(formatAbsolute(newest.createdAt))[0]).toHaveClass("whitespace-nowrap");
+    expect(within(rows[0]).getAllByTitle(formatAbsolute(newest.createdAt).slice(0, 16).replaceAll("-", "/"))[0]).toHaveTextContent(`创建于 ${formatAbsolute(newest.createdAt).slice(0, 16).replaceAll("-", "/")}`);
+    expect(within(rows[0]).getAllByTitle(formatAbsolute(newest.createdAt).slice(0, 16).replaceAll("-", "/"))[0]).toHaveClass("whitespace-nowrap");
     expect(within(rows[1]).getAllByRole("cell")[0]).toHaveTextContent(`绑定：${skill.name} · 创建于`);
     expect(within(rows[1]).getByText("尚未使用")).toBeVisible();
     expect(within(rows[0]).getByText("有效")).toHaveAttribute("data-slot", "badge");
@@ -88,14 +88,15 @@ describe("integration credentials", () => {
     await user.click(screen.getByRole("menuitem", { name: "轮换" }));
     expect(repository.rotateIntegrationCredential).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog", { name: "轮换集成凭据" })).toHaveTextContent("旧密钥立即失效");
-    await user.click(screen.getByRole("button", { name: "确认轮换" }));
+    expect(screen.getByRole("button", { name: "轮换凭据" })).toHaveClass("danger");
+    await user.click(screen.getByRole("button", { name: "轮换凭据" }));
     expect(await screen.findByDisplayValue("wie_credential-1_rotated-secret")).toBeVisible();
     expect(repository.rotateIntegrationCredential).toHaveBeenCalledWith(credential.id);
     await acknowledge(user);
     await user.click(screen.getByRole("button", { name: "凭据 Factory：更多" }));
     await user.click(screen.getByRole("menuitem", { name: "撤销" }));
     expect(repository.revokeIntegrationCredential).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "确认撤销" }));
+    await user.click(screen.getByRole("button", { name: "撤销凭据" }));
     await waitFor(() => expect(screen.getByRole("table")).toHaveTextContent("已撤销"));
     expect(repository.revokeIntegrationCredential).toHaveBeenCalledWith(credential.id);
     expect(screen.queryByRole("button", { name: "凭据 Factory：更多" })).not.toBeInTheDocument();

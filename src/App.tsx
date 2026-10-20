@@ -1467,6 +1467,7 @@ function TopBar({
   const canCreateProject = canPerform(currentRoleId, "parameter.edit");
   const showProjectInitAction = page.key === "parameters" && canCreateProject;
   const showProjectSelector = pageUsesProjectScope(page.key) && page.key !== "parameter-home";
+  const workspaceOwnsHeader = /^\/log-admin\/skills\/[^/]+\/?$/.test(page.path);
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const visibleUserName = currentUser?.name ?? "账户信息暂不可用";
   const projectOptions = state.configDraft.projects.map((project) => ({ value: project.id, label: project.name }));
@@ -1511,10 +1512,10 @@ function TopBar({
               <Menu size={18} aria-hidden="true" />
             </button>
           ) : null}
-          <div className="topbar-title">{page.title}</div>
+          {!workspaceOwnsHeader ? <div className="topbar-title">{page.title}</div> : null}
           {pageLeadingActions ? <div className="topbar-page-leading">{pageLeadingActions}</div> : null}
         </div>
-        {page.subtitle ? <div className="topbar-subtitle">{page.subtitle}</div> : null}
+        {!workspaceOwnsHeader && page.subtitle ? <div className="topbar-subtitle">{page.subtitle}</div> : null}
       </div>
       <div className="topbar-actions">
         {showProjectInitAction || pageActions ? (
