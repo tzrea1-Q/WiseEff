@@ -14,10 +14,14 @@ describe("DTO schema catalog coverage", () => {
     expect(request.parse({ file: "package.zip" })).toEqual({ file: "package.zip", status: "draft" });
     expect(request.safeParse({ file: "package.zip", status: "published" }).success).toBe(true);
     expect(request.safeParse({ file: "package.zip", status: "superseded" }).success).toBe(false);
+    expect(request.parse({ file: "package.zip", name: "  Reimported  " }).name).toBe("Reimported");
+    expect(request.safeParse({ file: "package.zip", name: "   " }).success).toBe(true);
+    expect(request.safeParse({ file: "package.zip", name: "x".repeat(121) }).success).toBe(false);
     const document = buildOpenApiDocument();
     expect(document.components.schemas.LogSkillPackageMultipartImport).toMatchObject({
       required: ["file"], properties: {
         file: { type: "string", format: "binary" },
+        name: { type: "string", maxLength: 120 },
         status: { enum: ["draft", "published"], default: "draft" }
       }
     });

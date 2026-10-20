@@ -142,7 +142,13 @@ describe("skill workspace", () => {
   });
   it("opens package export from versions with the published revision selected", async () => {
     setup({ section: "versions", draft: true });
-    await userEvent.click(await screen.findByRole("button", { name: "导出技能包" }));
+    const exportButton = await screen.findByRole("button", { name: "导出技能包" });
+    expect(exportButton).toHaveAttribute("data-variant", "outline");
+    expect(exportButton).toHaveAttribute("data-size", "default");
+    const header = exportButton.closest("header")!;
+    expect(header).toHaveClass("flex", "items-center", "justify-between");
+    expect(within(header).getByRole("heading", { name: "版本" })).toBeInTheDocument();
+    await userEvent.click(exportButton);
     const dialog = screen.getByRole("dialog", { name: "导出技能包" });
     expect(within(dialog).getByRole("combobox", { name: "导出版本" })).toHaveTextContent("当前发布版本（默认）");
     expect(within(dialog).getByText(/源码快照需单独上传/)).toBeInTheDocument();

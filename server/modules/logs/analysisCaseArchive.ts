@@ -1,7 +1,7 @@
 import { posix } from "node:path";
 import { crc32 } from "node:zlib";
 import JSZip from "jszip";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { CST, Lexer, isAlias, isMap, isScalar, isSeq, parseDocument, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 import { logAnalysisCaseExpectationsSchema } from "../contracts/dtoSchemas/logs";
 import { compileLogPattern } from "./adminPattern";
@@ -22,9 +22,72 @@ export const analysisCaseArchiveLimits = {
   maxCompressedBytes: 440 * 1024 * 1024, maxUnpackedBytes: 440 * 1024 * 1024,
   maxFiles: 2040, maxFileBytes: 10 * 1024 * 1024
 };
+// Seed charging: 5.7 KiB / 178 lines; largest template: 2.3 KiB / 93 lines.
+// Leave room for hundreds of extractors and thousands of register-map cases,
+// while bounding synchronous YAML composition independently of ZIP inflation.
+export const archiveYamlLimits = { maxBytes: 1024 * 1024, maxLines: 20_000, maxItems: 20_000,
+  maxDepth: 32, maxAliasCount: 0, maxIssues: 50 };
 export class AnalysisCaseArchiveError extends Error {
   override name = "AnalysisCaseArchiveError";
   constructor(readonly problems: string[]) { super(problems.join("\n")); }
+}
+
+/** Lexing skips quoted/block scalar contents; no graph is composed before these bounds. */
+export function parseArchiveYaml(value: string): unknown {
+  const fail = (message: string): never => { throw new Error(message); };
+  if (Buffer.byteLength(value) > archiveYamlLimits.maxBytes) fail("YAML 文档超过 1 MiB 上限");
+  if ((value.match(/\r\n|\r|\n/g)?.length ?? 0) + 1 > archiveYamlLimits.maxLines) fail("YAML 文档行数超过 20000 行上限");
+  let items = 0, flowDepth = 0, scalar = false, lineStart = true, column = 0, sequences = 0;
+  const flow: string[] = [], indents: number[] = [];
+  const count = () => { if (++items > archiveYamlLimits.maxItems) fail("YAML 映射键和序列项超过 20000 项上限"); };
+  for (const token of new Lexer().lex(value)) {
+    if (scalar) { scalar = false; lineStart = /[\r\n]$/.test(token); column = 0; continue; }
+    if (token === CST.SCALAR) { scalar = true; }
+    const type = CST.tokenType(token);
+    if (type === "newline") { lineStart = true; column = 0; sequences = 0; continue; }
+    if (type === "space") { column += token.length; continue; }
+    if (type === "comment" || type === "doc-mode" || type === "doc-start" || type === "byte-order-mark") continue;
+    if (lineStart && !flowDepth) {
+      while (indents.length && indents.at(-1)! > column) indents.pop();
+      if (!indents.length || indents.at(-1)! < column) indents.push(column);
+      if (indents.length > archiveYamlLimits.maxDepth) fail("YAML 嵌套深度超过 32 层上限");
+    }
+    lineStart = false;
+    if (type === "alias") fail("YAML 不允许使用别名");
+    if (type === "map-value-ind" && flow.at(-1) !== "{" || type === "seq-item-ind" || type === "comma" && flow.length) count();
+    if (type === "seq-item-ind" && ++sequences > archiveYamlLimits.maxDepth) fail("YAML 嵌套深度超过 32 层上限");
+    if (type === "flow-map-start" || type === "flow-seq-start") {
+      flow.push(token); flowDepth++;
+      if (flowDepth + indents.length > archiveYamlLimits.maxDepth) fail("YAML 嵌套深度超过 32 层上限");
+      count();
+    } else if (type === "flow-map-end" || type === "flow-seq-end") { flow.pop(); flowDepth = Math.max(0, flowDepth - 1); }
+  }
+  // yaml's default uniqueness check compares each pair with all prior keys.
+  // Validate scalar keys with a Set instead, including JS object-key collisions.
+  const document = parseDocument(value, { uniqueKeys: false, prettyErrors: false });
+  if (document.errors.length) fail("YAML 语法无效");
+  const pending: Array<{ node: unknown; depth: number }> = [{ node: document.contents, depth: 0 }];
+  items = 0;
+  while (pending.length) {
+    const { node, depth } = pending.pop()!;
+    if (isAlias(node)) fail("YAML 不允许使用别名");
+    if (!isMap(node) && !isSeq(node)) continue;
+    if (depth >= archiveYamlLimits.maxDepth) fail("YAML 嵌套深度超过 32 层上限");
+    items += node.items.length;
+    if (items > archiveYamlLimits.maxItems) fail("YAML 映射键和序列项超过 20000 项上限");
+    if (isMap(node)) {
+      const keys = new Set<string>();
+      for (const pair of node.items) {
+        if (pair.key !== null && (!isScalar(pair.key) || typeof pair.key.value === "object" && pair.key.value !== null)) fail("YAML 映射键必须是标量");
+        const key = isScalar(pair.key) ? pair.key.value : null;
+        const name = key === null ? "" : String(key);
+        if (keys.has(name)) fail(`YAML 映射键重复：${name.slice(0, 100)}`);
+        keys.add(name);
+        pending.push({ node: pair.value, depth: depth + 1 });
+      }
+    } else for (const item of node.items) pending.push({ node: item, depth: depth + 1 });
+  }
+  return document.toJS({ maxAliasCount: archiveYamlLimits.maxAliasCount });
 }
 
 export const analysisCaseAnnotationSchema = logAnalysisCaseExpectationsSchema.superRefine((annotation, context) => {
@@ -185,7 +248,7 @@ export function parseAnalysisCaseFiles(entries: Map<string, Buffer>, limits = an
     if (!sourceYaml) { problems.push(`${yamlPath}: missing annotation`); continue; }
     if (sourceYaml.length > limits.maxMetadataBytes) { problems.push(`${yamlPath}: annotation size exceeds ${limits.maxMetadataBytes}`); continue; }
     let yaml: unknown;
-    try { yaml = parseYaml(new TextDecoder("utf-8", { fatal: true }).decode(sourceYaml), { maxAliasCount: 0 }); }
+    try { yaml = parseArchiveYaml(new TextDecoder("utf-8", { fatal: true }).decode(sourceYaml)); }
     catch (error) { problems.push(`${yamlPath}: invalid YAML (${String(error)})`); continue; }
     const source = yaml && typeof yaml === "object" && !Array.isArray(yaml) ? yaml as Record<string, unknown> : {};
     const missing = ["domain", "summary", "realLog", "rootCauseCategory"].filter((field) => !Object.hasOwn(source, field));

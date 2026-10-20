@@ -155,6 +155,7 @@ function buildSchemaPlaceholders() {
   schemas.LogSkillPackageMultipartImport = {
     type: "object", "x-wiseeff-schema": "LogSkillPackageMultipartImport", required: ["file"], properties: {
       file: { type: "string", format: "binary", description: "One bounded skill ZIP; source snapshots are uploaded separately." },
+      name: { type: "string", maxLength: 120, description: "Optional trimmed skill name override; blank uses the package name." },
       status: { type: "string", enum: ["draft", "published"], default: "draft" }
     }
   };

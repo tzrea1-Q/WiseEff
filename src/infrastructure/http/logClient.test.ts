@@ -61,6 +61,18 @@ function createRepository(fetchMock: typeof fetch) {
   });
 }
 
+it.each([undefined, "  ", "  充电（导入）  "])("uploads skill packages with an optional trimmed name (%s)", async (name) => {
+  const skill = mockSkillWorkspace("skill-charging")!;
+  const fetchMock = createFetchMock({ item: skill });
+  const file = new File(["zip"], "skill.zip", { type: "application/zip" });
+  await expect(createRepository(fetchMock).importSkillPackage!(file, "draft", name)).resolves.toEqual(skill);
+  expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8787/api/v1/log-skills/import", expect.objectContaining({ method: "POST" }));
+  const form = fetchMock.mock.calls[0][1]!.body as FormData;
+  expect(form.get("status")).toBe("draft");
+  expect(form.get("name")).toBe(name?.trim() || null);
+  expect(form.get("file")).toBe(file);
+});
+
 it("validates extractor and format preview responses through encoded skill endpoints", async () => {
   const extractor = { pattern: "^n=(?P<n>\\d+)$", fields: { n: { type: "uint" } }, matchedLines: [{ line: 1, text: "n=2" }], matchCount: 1, totalLines: 1, coverage: 1 };
   const format = { lines: [{ line: 1, text: "INFO ready", severity: "info" }], entries: [{ lineNumbers: [1], text: "INFO ready", severity: "info" }] };

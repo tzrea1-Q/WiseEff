@@ -141,9 +141,16 @@ describe.skipIf(!available)("skill packages over PostgreSQL", () => {
       expect(await publishedZip.file("SKILL.md")!.async("string")).toContain(spec.procedure);
       expect(await draftZip.file("SKILL.md")!.async("string")).toContain("Draft-only procedure.");
       const before = await h.counts(), keys = [...h.store.entries.keys()].sort();
-      await expect(importLogSkillPackage(h.db, h.store, h.other, h.bytes, "draft", h.otherInvocation, h.context)).rejects.toMatchObject({ code: "CONFLICT" });
+      await expect(importLogSkillPackage(h.db, h.store, h.other, h.bytes, "draft", h.otherInvocation, h.context)).rejects.toMatchObject({
+        code: "CONFLICT", details: { fieldErrors: { name: expect.any(String) }, nameSuggestion: `${h.skill.name}（导入）`, packageName: h.skill.name }
+      });
       expect(await h.counts()).toEqual(before);
       expect([...h.store.entries.keys()].sort()).toEqual(keys);
+      await expect(importLogSkillPackage(h.db, h.store, h.other, h.bytes, "draft", h.otherInvocation, h.context, undefined, "x".repeat(121)))
+        .rejects.toMatchObject({ code: "VALIDATION_FAILED", details: { fieldErrors: { name: expect.any(String) } } });
+      expect(await h.counts()).toEqual(before);
+      const reimported = await importLogSkillPackage(h.db, h.store, h.auth, h.bytes, "draft", h.invocation, h.context, undefined, `  ${h.skill.name}（导入）  `);
+      expect(reimported).toMatchObject({ name: `${h.skill.name}（导入）`, draft: { status: "draft" } });
     } finally { await h.close(); }
   }, 120_000);
 
@@ -164,22 +171,52 @@ describe.skipIf(!available)("skill packages over PostgreSQL", () => {
       expect(exported.headers.get("content-disposition")).toContain("skill-package.zip");
       expect(Buffer.from(await exported.arrayBuffer())).toEqual(h.bytes);
       auth = h.other;
-      const upload = async (bytes: Buffer, status?: string) => {
+      const upload = async (bytes: Buffer, status?: string, name?: string) => {
         const boundary = "wiseeff-package-boundary";
-        const body = Buffer.concat([Buffer.from(`${status === undefined ? "" : `--${boundary}\r\nContent-Disposition: form-data; name="status"\r\n\r\n${status}\r\n`}--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="skill.zip"\r\nContent-Type: application/zip\r\n\r\n`),
+        const fields = Object.entries({ status, name }).filter(([, value]) => value !== undefined)
+          .map(([field, value]) => `--${boundary}\r\nContent-Disposition: form-data; name="${field}"\r\n\r\n${value}\r\n`).join("");
+        const body = Buffer.concat([Buffer.from(`${fields}--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="skill.zip"\r\nContent-Type: application/zip\r\n\r\n`),
           bytes, Buffer.from(`\r\n--${boundary}--\r\n`)]);
         return fetch(`${base}/api/v1/log-skills/import`, { method: "POST", headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` }, body });
       };
       const invalid = await JSZip.loadAsync(h.bytes); invalid.remove("SKILL.md");
       const rejected = await upload(await invalid.generateAsync({ type: "nodebuffer" }));
       expect(rejected.status).toBe(400);
-      expect(await rejected.json()).toMatchObject({ error: { code: "VALIDATION_FAILED", details: { problems: ["SKILL.md: required file is missing"] } } });
+      expect(await rejected.json()).toMatchObject({ error: { code: "VALIDATION_FAILED", details: { issues: [{ path: "SKILL.md", message: "缺少必需文件" }] } } });
+      const broken = await JSZip.loadAsync(h.bytes);
+      broken.remove("SKILL.md"); broken.file("signals.yaml", "rules: [\n");
+      const allIssues = await upload(await broken.generateAsync({ type: "nodebuffer" }));
+      expect(allIssues.status).toBe(400);
+      expect(await allIssues.json()).toMatchObject({ error: { code: "VALIDATION_FAILED", details: { issues: expect.arrayContaining([
+        { path: "SKILL.md", message: "缺少必需文件" }, expect.objectContaining({ path: "signals.yaml", message: expect.any(String) })
+      ]) } } });
+      const manyKeys = await JSZip.loadAsync(h.bytes);
+      manyKeys.file("parsing.yaml", Array.from({ length: 50_000 }, (_, i) => `k${i}: 0`).join("\n"));
+      const manyKeyBytes = await manyKeys.generateAsync({ type: "nodebuffer" });
+      const started = performance.now(), bounded = await upload(manyKeyBytes);
+      expect(bounded.status).toBe(400);
+      expect(await bounded.json()).toMatchObject({ error: { code: "VALIDATION_FAILED", details: { issues: expect.arrayContaining([
+        expect.objectContaining({ path: "parsing.yaml", message: expect.any(String) })
+      ]) } } });
+      expect(performance.now() - started).toBeLessThan(1000);
+      expect(await h.counts()).toEqual({ skills: 0, revisions: 0, knowledge: 0, knowledge_revisions: 0, cases: 0, file_objects: 0, audits: 0 });
       const badStatus = await upload(h.bytes, "invalid");
       expect(badStatus.status).toBe(400);
-      const created = await upload(h.bytes);
+      const badName = await upload(h.bytes, undefined, "x".repeat(121));
+      expect(badName.status).toBe(400);
+      expect(await badName.json()).toMatchObject({ error: { code: "VALIDATION_FAILED", details: { fieldErrors: { name: expect.any(String) } } } });
+      const created = await upload(h.bytes, undefined, "   ");
       expect(created.status).toBe(201);
       const result = await created.json() as { item: Awaited<ReturnType<typeof importLogSkillPackage>> };
       expect(result.item).toMatchObject({ name: h.skill.name, draft: { status: "draft" } });
+      const collision = await upload(h.bytes);
+      expect(collision.status).toBe(409);
+      expect(await collision.json()).toMatchObject({ error: { code: "CONFLICT", details: {
+        fieldErrors: { name: expect.any(String) }, nameSuggestion: `${h.skill.name}（导入）`, packageName: h.skill.name
+      } } });
+      const renamed = await upload(h.bytes, "published", `  ${h.skill.name}（导入）  `);
+      expect(renamed.status).toBe(201);
+      expect(await renamed.json()).toMatchObject({ item: { name: `${h.skill.name}（导入）`, currentRevision: { status: "published" } } });
       const draftExport = await fetch(`${base}/api/v1/log-skills/${result.item.id}/package?revision=draft`);
       expect(draftExport.status).toBe(200);
       expect((await JSZip.loadAsync(await draftExport.arrayBuffer())).file("SKILL.md")).not.toBeNull();
@@ -235,7 +272,7 @@ describe.skipIf(!available)("skill packages over PostgreSQL", () => {
       expect(before).toEqual({ skills: 0, revisions: 0, knowledge: 0, knowledge_revisions: 0, cases: 0, file_objects: 0, audits: 0 });
       const missing = await JSZip.loadAsync(h.bytes); missing.remove("SKILL.md");
       await expect(importLogSkillPackage(h.db, h.store, h.other, await missing.generateAsync({ type: "nodebuffer" }), "draft", h.otherInvocation, h.context))
-        .rejects.toMatchObject({ code: "VALIDATION_FAILED", details: { problems: expect.arrayContaining(["SKILL.md: required file is missing"]) } });
+        .rejects.toMatchObject({ code: "VALIDATION_FAILED", details: { problems: expect.arrayContaining(["SKILL.md: 缺少必需文件"]) } });
       const invalid = await JSZip.loadAsync(h.bytes), rules = parseYaml(await invalid.file("signals.yaml")!.async("string"));
       rules.rules[0].anyOf[0].field = "charger.val.fields.UNKNOWN.meaning";
       invalid.file("signals.yaml", stringifyYaml(rules), { createFolders: false });
@@ -243,13 +280,20 @@ describe.skipIf(!available)("skill packages over PostgreSQL", () => {
         .rejects.toMatchObject({ code: "VALIDATION_FAILED", details: { problems: expect.arrayContaining([
           expect.stringMatching(/^signals\.yaml: rules\[0\]\.anyOf\[0\]\.field: /)
         ]) } });
+      const budget = await JSZip.loadAsync(h.bytes);
+      budget.file("SKILL.md", (await budget.file("SKILL.md")!.async("string")).replace("stepBudget: 6", "stepBudget: 7"));
+      await expect(importLogSkillPackage(h.db, h.store, h.other, await budget.generateAsync({ type: "nodebuffer" }), "draft", h.otherInvocation, h.context))
+        .rejects.toMatchObject({ code: "VALIDATION_FAILED", details: { packageName: h.skill.name,
+          issues: [{ path: "SKILL.md › stepBudget", message: "不能超过平台上限（6）。" }] } });
       const bomb = Buffer.from(h.bytes), central = bomb.readUInt32LE(bomb.length - 6);
       bomb.writeUInt32LE(0x7fffffff, central + 24);
       const traversal = await new JSZip().file("../SKILL.md", "escape", { createFolders: false }).generateAsync({ type: "nodebuffer" });
       const parse = vi.spyOn(JSZip, "loadAsync");
       try {
         for (const bytes of [bomb, traversal]) {
-          await expect(importLogSkillPackage(h.db, h.store, h.other, bytes, "draft", h.otherInvocation, h.context)).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+          await expect(importLogSkillPackage(h.db, h.store, h.other, bytes, "draft", h.otherInvocation, h.context)).rejects.toMatchObject({
+            code: "VALIDATION_FAILED", details: { issues: [expect.objectContaining({ message: expect.stringMatching(/[\u3400-\u9fff]/) })] }
+          });
         }
         expect(parse).not.toHaveBeenCalled();
       } finally { parse.mockRestore(); }

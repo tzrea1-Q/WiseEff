@@ -42719,6 +42719,11 @@
             "format": "binary",
             "description": "One bounded skill ZIP; source snapshots are uploaded separately."
           },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Optional trimmed skill name override; blank uses the package name."
+          },
           "status": {
             "type": "string",
             "enum": [

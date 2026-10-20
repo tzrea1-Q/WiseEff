@@ -19,7 +19,7 @@ export type AnalysisCaseInput = { name: string; expectations: AnalysisCaseExpect
 export type AnalysisCasePrefill = z.infer<typeof import("@wiseeff/dto-schemas").logAnalysisCasePrefillResponseSchema>;
 
 export interface SkillAuthoringRepository {
-  importSkillPackage?(file: File, status: "draft" | "published"): Promise<AnalysisSkill>;
+  importSkillPackage?(file: File, status: "draft" | "published", name?: string): Promise<AnalysisSkill>;
   listSkillTemplates(): Promise<SkillTemplate[]>;
   createLogSkill(input: CreateSkillInput): Promise<AnalysisSkill>;
   getSkillSample(id: string): Promise<SkillSample | null>;

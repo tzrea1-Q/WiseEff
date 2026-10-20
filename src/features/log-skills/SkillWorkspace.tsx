@@ -143,8 +143,8 @@ function Versions({ skill, revisions, disabled, onRestore, repository, apiMode, 
   const [rightId, setRightId] = useState<string | null>(null);
   const left = revisions.find((r) => r.id === leftId) ?? skill.currentRevision;
   const right = revisions.find((r) => r.id === rightId) ?? skill.currentRevision;
-  return <section className="skill-section" aria-label="版本"><h2>版本</h2>
-    {apiMode && canEdit ? <Button variant="outline" disabled={disabled || !repository?.exportSkillPackage} onClick={() => setExportOpen(true)}>导出技能包</Button> : null}
+  return <section className="skill-section" aria-label="版本"><header className="flex items-center justify-between gap-3"><h2>版本</h2>
+    {apiMode && canEdit ? <Button variant="outline" disabled={disabled || !repository?.exportSkillPackage} onClick={() => setExportOpen(true)}>导出技能包</Button> : null}</header>
     {exportOpen && repository ? <ExportSkillPackageDialog skill={skill} dirty={dirty} repository={repository} onDismiss={() => setExportOpen(false)} /> : null}
     <DataTable rows={revisions} rowKey={(r) => r.id} ariaLabel="技能版本历史" selectedRowKey={left.id} columns={[
       { key: "number", header: "版本", render: (r) => <Button variant="link" size="sm" onClick={() => { setLeftId(r.id); setRightId(null); }}>v{r.number}</Button> },

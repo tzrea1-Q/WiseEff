@@ -147,6 +147,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   LogAnalysisCaseMultipartImport: z.object({ file: z.string().describe("ZIP archive in eval-cases/logs layout") }),
   LogSkillPackageMultipartImport: z.object({
     file: z.string().describe("Bounded skill ZIP containing SKILL.md, parsing.yaml, signals.yaml and tests.yaml"),
+    name: z.string().trim().max(120).optional().describe("Optional skill name override; blank uses the package name"),
     status: z.enum(["draft", "published"]).default("draft")
   }),
   LogRunListResponse: logRunListResponseSchema,

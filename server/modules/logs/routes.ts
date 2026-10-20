@@ -436,10 +436,10 @@ export function registerLogRoutes(
     const auth = await getAuth(options.getCurrentAuthContext, request);
     requireLocalOrganization(auth); requireLogAdminDomains(auth);
     const multipart = (request.body as Partial<MultipartBody>)?.kind === "multipart" ? request.body as MultipartBody : undefined;
-    if (!multipart || multipart.files.length !== 1 || multipart.files[0].fieldName !== "file") throw new ApiError("VALIDATION_FAILED", "One skill package ZIP file is required.");
-    const fields = parseWithSchema(z.object({ status: z.enum(["draft", "published"]).default("draft") }).strict(), multipart.fields);
+    if (!multipart || multipart.files.length !== 1 || multipart.files[0].fieldName !== "file") throw new ApiError("VALIDATION_FAILED", "请选择一个技能包 ZIP 文件。");
+    const fields = parseWithSchema(z.object({ status: z.enum(["draft", "published"]).default("draft"), name: z.string().optional() }).strict(), multipart.fields);
     return { status: 201, body: { item: await importLogSkillPackage(requireDb(options.db), requireObjectStore(options.objectStore), auth,
-      multipart.files[0].bytes, fields.status, createUserInvocation(auth), { requestId: request.requestId }, options.skillBudgetCaps) } };
+      multipart.files[0].bytes, fields.status, createUserInvocation(auth), { requestId: request.requestId }, options.skillBudgetCaps, fields.name) } };
   });
   router.get("/api/v1/log-skills/:skillId/package", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);

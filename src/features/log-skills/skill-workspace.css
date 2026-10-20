@@ -64,6 +64,10 @@
 .skill-authoring-dialog { background: var(--surface); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-lg); padding: var(--space-5); max-height: calc(100dvh - var(--space-8)); overflow: auto; box-shadow: var(--shadow-3); }
 .skill-authoring-dialog form, .skill-authoring-dialog fieldset { display: grid; gap: var(--space-2); }
 .skill-authoring-dialog form { gap: var(--space-3); }
+.skill-authoring-dialog .skill-package-dialog-content { display: grid; gap: var(--space-3); }
+.skill-package-dialog-content p { margin: 0; }
+.skill-package-dialog-content .dialog-actions { margin-top: var(--space-3); }
+.skill-authoring-dialog .skill-package-error, .skill-package-error p { color: var(--danger); font: 400 var(--text-sm) / var(--leading-base) var(--font-sans); }
 .skill-authoring-dialog fieldset { border: 0; padding: 0; margin: 0; }
 .skill-authoring-dialog legend { margin-bottom: var(--space-2); }
 .skill-template-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
