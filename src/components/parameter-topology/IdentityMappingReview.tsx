@@ -116,7 +116,7 @@ export function IdentityMappingReview({ tasks }: IdentityMappingReviewProps) {
                       <h4>证据</h4>
                       <ul aria-label="对应依据">
                         {evidenceLines.map((line, index) => (
-                          <li key={`${index}:${line}`}>{line}</li>
+                          <li className="parameter-text-content" key={`${index}:${line}`}>{line}</li>
                         ))}
                       </ul>
                     </div>
@@ -175,7 +175,7 @@ export function IdentityMappingReview({ tasks }: IdentityMappingReviewProps) {
                     </span>
                     <span className="risk-badge">{statusLabel(task.status)}</span>
                   </header>
-                  {task.reason ? <p className="form-hint">原因：{task.reason}</p> : null}
+                  {task.reason ? <p className="form-hint parameter-text-content">原因：{task.reason}</p> : null}
                   {task.status === "resolved" && currentLogicalNodeId ? (
                     <p className="form-hint">
                       {PARAMETER_ADMIN_UI.currentIdentityMapping}：

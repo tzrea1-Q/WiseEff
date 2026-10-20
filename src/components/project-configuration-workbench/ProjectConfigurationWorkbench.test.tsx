@@ -471,6 +471,17 @@ const BOARD_STRUCTURE: DtsStructureResult = {
 };
 
 describe("ProjectConfigurationWorkbench", () => {
+  it("keeps complete multiline property values keyboard-readable in the inspector", async () => {
+    const rawText = `"first ${"x".repeat(300)}",\n"last"`;
+    const board = BOARD_STRUCTURE.nodes[0]!;
+    const structure = { nodes: [{ ...board, properties: [{ ...board.properties[0]!, rawText }] }] };
+    renderWorkbench({ search: "?configSet=cs-default&file=file-board&node=board&property=model&inspector=selection",
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => structure) }) });
+    const value = await screen.findByLabelText("当前属性完整值");
+    expect(value.textContent).toBe(rawText);
+    expect(value).toHaveAttribute("tabindex", "0");
+  });
+
   it.each([true, false])("restores source updates through file management and preserves them across close/reopen (admin=%s)", async (canAdmin) => {
     const base = { projectId: PROJECT.id, format: "dts" as const, status: "ready" as const,
       diagnostics: [], blockers: [], impact: { textDiff: '--- previous\n+++ incoming\n-model = "Old";\n+model = "Updated";' }, createdAt: "2026-08-07T00:00:00.000Z", updatedAt: "2026-08-07T00:00:00.000Z" };

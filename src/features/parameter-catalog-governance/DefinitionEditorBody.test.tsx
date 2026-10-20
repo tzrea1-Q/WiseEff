@@ -33,6 +33,18 @@ function EditorDialog({ children }: PropsWithChildren) {
  * through preview -> confirm -> execute -> continue.
  */
 describe("DefinitionEditorBody", () => {
+  it.each([true, false])("preserves complete multiline published documentation with authoring=%s", (authoringAllowed) => {
+    const documentation = `first documentation line ${"x".repeat(300)}\nlast documentation line`;
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    render(<DefinitionEditorBody authoringAllowed={authoringAllowed} publishingAllowed actor="org-admin" history={null}
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={ready}
+      catalog={ports.catalog} catalogReleaseId={CATALOG_RELEASE_ID}
+      definition={{ ...activeDefinition, currentRevision: { ...activeDefinition.currentRevision, documentation } }}
+      subjects={[registeredSubject]} />);
+    const content = screen.getByLabelText("已发布参数说明");
+    expect(content.textContent).toBe(documentation);
+  });
+
   it.each([
     ["retired subject", { subjects: [retiredSubject] }],
     ["retired definition", { definition: { ...activeDefinition, lifecycle: "retired" } }],

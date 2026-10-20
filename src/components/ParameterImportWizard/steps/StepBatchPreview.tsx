@@ -230,7 +230,7 @@ export function StepBatchPreview({
                         <strong className="parameter-import-preview-table__name">{item.name}</strong>
                       </td>
                       <td>{item.module || "—"}</td>
-                      <td className="parameter-import-preview-table__value">{formatPreviewValue(item)}</td>
+                      <td className="parameter-import-preview-table__value"><pre className="parameter-value-content" aria-label={`${item.name} 完整导入值`} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Complete import values support keyboard scrolling. */}>{formatPreviewValue(item)}</pre></td>
                       <td>
                         <span className="import-review-status-badge">{CLASSIFICATION_LABEL[item.classification]}</span>
                       </td>

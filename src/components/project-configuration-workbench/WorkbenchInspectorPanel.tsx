@@ -294,7 +294,7 @@ export function WorkbenchInspectorPanel({
         {inspectorLevel === "property" && selectedStructureProperty && selectedStructureNode ? (
           <section className="configuration-workbench__property-editor" aria-label="当前属性">
             {propertyDefinition}
-            <p className="configuration-workbench__property-current">当前值 <code>{selectedStructureProperty.rawText || "空值"}</code></p>
+            <div className="configuration-workbench__property-current"><span>当前值</span><pre className="parameter-value-content" aria-label="当前属性完整值" tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Complete property values support keyboard scrolling. */}>{selectedStructureProperty.rawText || "空值"}</pre></div>
               {isCriticalDtsNodePath(selectedStructureNode.nodePath) ? (
                 <p className="configuration-workbench__risk-note" role="note">
                   <TriangleAlert size={16} strokeWidth={2} aria-hidden="true" />

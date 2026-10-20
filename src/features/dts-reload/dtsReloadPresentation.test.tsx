@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { DtsReloadCandidate, DtsReloadRun, DtsReloadRunListItem } from "@/domain/dtsReload/types";
-import { formatAttemptedAt, RunHistorySection, RunResultSection } from "./dtsReloadPresentation";
+import { DeployConfirmBody, formatAttemptedAt, ReloadSnapshotSummary, RunHistorySection, RunResultSection } from "./dtsReloadPresentation";
 
 const candidates = [{ bindingId: "binding-1", propertyKey: "fcp_support", displayName: "FCP 支持" }] as DtsReloadCandidate[];
 const run: DtsReloadRun = {
@@ -14,6 +14,23 @@ const run: DtsReloadRun = {
 };
 
 describe("DTS reload result presentation", () => {
+  it("preserves complete multiline values in deployment confirmation and device verification", () => {
+    const baselineValue = `first ${"a".repeat(300)}\nsecond baseline\nthird baseline`;
+    const debugValue = `first ${"b".repeat(300)}\nsecond target\nthird target`;
+    const target = { ...run.targets[0], baselineValue, debugValue };
+    const view = render(<DeployConfirmBody run={{ ...run, targets: [target] }} deviceId="device-1" targetRef="target-1" bridgeMachineLabel="Lab PC" residue={null} />);
+    expect(screen.getByRole("region", { name: "fcp_support 库基线" }).textContent).toBe(baselineValue);
+    expect(screen.getByRole("region", { name: "fcp_support 调试值" }).textContent).toBe(debugValue);
+    view.rerender(<ReloadSnapshotSummary snapshot={{ libraryBaselines: [], artifactDigest: null, kernelSignal: null,
+      behaviouralVerification: { outcomes: [{ bindingId: target.bindingId, propertyKey: target.propertyKey, outcome: "contradicted", debugNodeId: "node-1", nodePath: "/charger", expectedValue: debugValue, readValue: baselineValue, reason: null }] } }} />);
+    const readback = screen.getByRole("region", { name: "fcp_support 读回值" });
+    const expected = screen.getByRole("region", { name: "fcp_support 期望值" });
+    expect(readback.textContent).toBe(baselineValue);
+    expect(expected.textContent).toBe(debugValue);
+    expect(readback).toHaveAttribute("tabindex", "0");
+    expect(expected).toHaveAttribute("tabindex", "0");
+  });
+
   it("leads with actionable status and parameter changes while keeping technical evidence folded", () => {
     render(<RunResultSection run={run} candidates={candidates} deviceId="" targetRef="" canStartRun canRetryDeploy deployReady={false} deploying={false} onDownload={vi.fn()} onDeploy={vi.fn()} />);
     expect(screen.getByRole("status")).toHaveTextContent("预检已通过。请先连接 Bridge");

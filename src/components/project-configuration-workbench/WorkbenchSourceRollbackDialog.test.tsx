@@ -47,6 +47,16 @@ function show(prepared: BatchRollbackPreparation = proof, failFirstPrepare: bool
 }
 
 describe("historical multi-target rollback dialog", () => {
+  it("keeps complete multiline baseline and historical values keyboard-readable", async () => {
+    const beforeText = `baseline ${"x".repeat(300)}\nbaseline last`;
+    const afterText = "history first\nhistory last";
+    show({ ...proof, targets: [{ ...proof.targets[0]!, beforeText, afterText }, proof.targets[1]!] });
+    const original = await screen.findByLabelText("回滚目标 1 基线完整值");
+    expect(original.textContent).toBe(beforeText);
+    expect(original).toHaveAttribute("tabindex", "0");
+    expect(screen.getByLabelText("回滚目标 1 历史文件完整值").textContent).toBe(afterText);
+  });
+
   it("distinguishes reviewer loading failure from an empty reviewer pool and preserves the reason on retry", async () => {
     show(proof, false, { items: [], ineligible: [] }, true);
     const dialog = screen.getByRole("dialog");

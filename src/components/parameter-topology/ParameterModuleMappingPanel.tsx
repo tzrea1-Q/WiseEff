@@ -373,7 +373,7 @@ export function ParameterModuleMappingPanel({
       </>}
       context={selectedModule || visibleModuleIds ? <div className="module-governance-context">
         <div><strong>{selectedModule ? modulePath.join(" / ") : "模块筛选"}</strong>
-          <p>{selectedModule?.description || "按模块查看主体及参数定义，管理组织内的分类与归属。"}</p></div>
+          <p className="parameter-text-content">{selectedModule?.description || "按模块查看主体及参数定义，管理组织内的分类与归属。"}</p></div>
         {selectedModule ? <dl><dt>适用范围</dt><dd>{selectedModule.scope || "未填写"}</dd><dt>重要性</dt><dd>{{ low: "低", medium: "中", high: "高" }[selectedModule.effectiveImportance]}</dd>
           <dt>定义</dt><dd>{selectedModule.definitionCount}</dd><dt>实测处</dt><dd>{selectedModule.parameterCount}</dd></dl> : null}
         {visibleModuleIds ? <span className="module-governance-filter-scope" role="status">列表已应用模块树筛选，包含匹配模块的子模块</span> : null}

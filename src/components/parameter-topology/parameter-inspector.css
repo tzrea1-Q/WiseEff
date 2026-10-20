@@ -34,12 +34,15 @@
 .parameter-inspector h3 { margin: 0 0 var(--space-3); font-size: var(--text-md); line-height: var(--leading-md); }
 .parameter-inspector h4 { margin: var(--space-3) 0 var(--space-2); font-size: var(--text-base); }
 .parameter-inspector p { font-size: var(--text-base); line-height: var(--leading-base); }
+.parameter-inspector__definition > p { white-space: pre-wrap; overflow-wrap: anywhere; }
 .parameter-inspector dl { display: grid; gap: var(--space-4); margin: var(--space-4) 0; }
 .parameter-inspector dt { color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-1); }
 .parameter-inspector dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-base); }
 .parameter-inspector__editor { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding-left: var(--space-6); border-left: 1px solid var(--border); }
 .parameter-inspector__editor input,
 .parameter-inspector__editor textarea { width: 100%; min-width: 0; font-family: var(--font-mono); }
+.parameter-inspector__editor textarea,
+.json-binding-detail__form textarea { max-height: min(40vh, calc(5 * var(--space-16))); overflow: auto; }
 .parameter-inspector__editor label { font-size: var(--text-base); font-weight: 500; }
 .parameter-inspector__editor textarea:last-of-type { font-family: var(--font-sans); }
 .parameter-inspector__editor fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }

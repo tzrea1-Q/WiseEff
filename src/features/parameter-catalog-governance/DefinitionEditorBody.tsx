@@ -689,7 +689,7 @@ export function DefinitionEditorBody({
                   <dt>单位</dt>
                   <dd>{definition.currentRevision.unit?.symbol ?? "未设置"}</dd>
                   <dt>说明</dt>
-                  <dd>{definition.currentRevision.documentation ?? "无"}</dd>
+                  <dd className="parameter-text-content" aria-label="已发布参数说明">{definition.currentRevision.documentation ?? "无"}</dd>
                   <dt>使用</dt>
                   <dd>
                     {definition.usageSummary.policyCount === null
@@ -827,7 +827,7 @@ export function DefinitionEditorBody({
               <dt>当前修订</dt>
               <dd>{`修订 #${definition.currentRevision.revisionNumber}`}</dd>
               <dt>说明</dt>
-              <dd>{definition.currentRevision.documentation ?? "无"}</dd>
+              <dd className="parameter-text-content" aria-label="已发布参数说明">{definition.currentRevision.documentation ?? "无"}</dd>
               <dt>使用</dt>
               <dd>
                 {definition.usageSummary.policyCount === null
