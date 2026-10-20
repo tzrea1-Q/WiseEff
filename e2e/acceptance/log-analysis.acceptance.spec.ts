@@ -622,8 +622,10 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     expect(reportFeedback.rowCount).toBe(2);
     expect(reportFeedback.observed.split("; ")).toEqual(["helpful", "not_helpful"]);
 
-    await page.goto("/log-dashboard");
     await page.goto("/log-admin");
+    await expect(page.getByRole("tab", { name: "概览", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("log-admin-overview")).toBeVisible();
+    await page.goto("/log-admin?tab=records");
     // The Xiaoze toggle hint floats over the detail panel's corner actions.
     await dismissXiaozeToggleHint(page);
     await page.locator('input[type="search"]').fill(supportedFileName);
@@ -753,7 +755,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     const initialRuns = await logRuns(page, completedLog.id);
     expect(initialRuns.length).toBeGreaterThanOrEqual(1);
 
-    await page.goto("/log-admin");
+    await page.goto("/log-admin?tab=records");
     await dismissXiaozeToggleHint(page);
     await page.locator('input[type="search"]').fill(supportedFileName);
     await page.getByRole("row").filter({ hasText: supportedFileName }).first().click();
@@ -1192,7 +1194,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       .poll(async () => (await latestLogByFile(page, supportedFileName)).status, { timeout: 70_000 })
       .toBe("complete");
 
-    await page.goto("/log-admin");
+    await page.goto("/log-admin?tab=records");
     await prepareInteractionSurface(page);
     await page.locator('input[type="search"]').fill(supportedFileName);
     await page.getByRole("row").filter({ hasText: supportedFileName }).first().click();

@@ -283,7 +283,7 @@ function AppShell({
   const [state, dispatch] = useReducer(reducer, initialAppState);
   const stateRef = useRef(state);
   const [path, setPath] = useState(() => getPageByPath(window.location.pathname).path);
-  const [search, setSearch] = useState(() => window.location.search);
+  const [search, setSearch] = useState(() => window.location.pathname === "/log-dashboard" ? "" : window.location.search);
   const historyIndex = useRef(0);
   const navigationRequest = useRef(0);
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
@@ -831,11 +831,12 @@ function AppShell({
         historyIndex.current = nextIndex;
         if (isStaticDownloadPath(window.location.pathname)) return;
         const nextPage = getPageByPath(window.location.pathname);
+        const nextSearch = window.location.pathname === "/log-dashboard" ? "" : window.location.search;
         if (nextPage.path !== window.location.pathname) {
-          window.history.replaceState({ ...window.history.state, wiseeffNavigationIndex: nextIndex }, "", `${nextPage.path}${window.location.search}`);
+          window.history.replaceState({ ...window.history.state, wiseeffNavigationIndex: nextIndex }, "", `${nextPage.path}${nextSearch}`);
         }
         setPath(nextPage.path);
-        setSearch(window.location.search);
+        setSearch(nextSearch);
       };
       if (event && nextIndex !== historyIndex.current) {
         const decision = requestSettingsLeave();
@@ -887,6 +888,7 @@ function AppShell({
       return;
     }
     const nextPage = getPageByPath(url.pathname);
+    if (url.pathname === "/log-dashboard") url.search = "";
     const nextUrl = `${nextPage.path}${url.search}`;
     const currentUrl = `${window.location.pathname}${window.location.search}`;
 

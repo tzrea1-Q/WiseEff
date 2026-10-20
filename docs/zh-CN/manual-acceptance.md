@@ -396,7 +396,9 @@ test-fixtures/logs/unsupported.bin
 - [ ] 分析过程展示阶段进度，并最终到达 `Complete`。
 - [ ] 结论包含 thermal/foldback 证据。
 - [ ] 证据卡片可以定位并高亮原始日志行。
-- [ ] 打开 `/log-dashboard` 和 `/log-admin`。
+- [ ] 打开 `/log-admin`，确认默认选中「概览」；检查 `/log-dashboard` 重定向到这里。
+- [ ] 检查共享时间窗口内的规则降级占比及警示、通用分析占比、各技能分析量及有用率、失败原因及数量。通过适用链接进入筛选后的「记录」；空窗口仅显示一个空态。
+- [ ] 打开 `/log-admin?tab=records`。
 - [ ] 在 admin 视图找到该日志。
 - [ ] 提交 helpful feedback，并确认反馈/审计证据。
 - [ ] 归档该日志，确认默认 `/logs` 历史中不再显示。

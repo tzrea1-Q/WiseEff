@@ -35,7 +35,6 @@ import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { AuditCenterPage } from "@/AuditCenterPage";
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import { LinearTemplateHome } from "@/linear-template/LinearTemplateHome";
-import { LogDashboardPage } from "@/features/log-analysis/LogDashboardPage";
 import { LogsPage } from "@/features/log-analysis/LogsPage";
 import { ParameterReviewPage } from "@/features/parameter-review/ParameterReviewPage";
 import { ParameterSubmissionsPage } from "@/features/parameter-review/ParameterSubmissionsPage";
@@ -386,8 +385,6 @@ export function PageRouter({
         />
       );
     }
-    case "log-dashboard":
-      return <LogDashboardPage state={state} onNavigate={onNavigate} />;
     case "logs":
       return (
         <LogsPage

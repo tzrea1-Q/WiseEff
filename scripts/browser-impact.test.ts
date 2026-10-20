@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { createSourceFile, forEachChild, isArrayLiteralExpression, isCallExpression, isPropertyAccessExpression, isPropertyAssignment, isStringLiteralLike, ScriptTarget, type Node } from "typescript";
 import { describe, expect, it } from "vitest";
 import { compactQualityRoutes } from "../e2e/quality/compact-routes";
-import { consistencyReadOnlyRoutes } from "../e2e/quality/consistency-routes";
+import { consistencyReadOnlyRoutes, consistencyRoutes } from "../e2e/quality/consistency-routes";
 import { qualityRoutePaths, routeOwnership } from "../e2e/quality/route-ownership";
 import { selectBrowserImpact, type BrowserInventory } from "./test-impact";
 import { discoverBrowserInventory, unresolvedBrowserNavigation } from "./browser-navigation";
@@ -19,10 +19,13 @@ describe("browser impact selection", () => {
 
     expect(selection.fullFallback).toBe(false);
     expect(selection.qualityRoutes).toContain("/logs");
+    expect(selection.qualityRoutes).toContain("/log-admin");
+    expect(selection.qualityRoutes).not.toContain("/log-dashboard");
     expect(selection.acceptanceSpecs).toEqual([
       "e2e/acceptance/knowledge.acceptance.spec.ts",
       "e2e/acceptance/log-analysis.acceptance.spec.ts",
       "e2e/acceptance/log-skill-design-goals.acceptance.spec.ts",
+      "e2e/acceptance/log-skill-knowledge.acceptance.spec.ts",
       "e2e/acceptance/log904-related-parameter.acceptance.spec.ts",
       "e2e/acceptance/shell-navigation.acceptance.spec.ts",
     ]);
@@ -46,6 +49,19 @@ describe("browser impact selection", () => {
     for (const [feature, routes] of Object.entries(routeOwnership)) {
       expect(routes.length, feature).toBeGreaterThan(0);
       for (const route of routes) expect(qualityRoutePaths, feature).toContain(route);
+    }
+  });
+
+  it("keeps the log overview contract separate from the back-office list tabs", () => {
+    const overview = consistencyRoutes.find((route) => route.path === "/log-admin")!;
+    expect(overview.required).toContain("overviewPages");
+    expect(overview.required).not.toContain("adminLists");
+    expect(overview.required).not.toContain("tableScrollports");
+    for (const tab of ["records", "skills", "quality"]) {
+      const list = consistencyRoutes.find((route) => route.path === `/log-admin?tab=${tab}`)!;
+      expect(list.required).toContain("adminLists");
+      expect(list.required).toContain("tableScrollports");
+      expect(list.required).not.toContain("overviewPages");
     }
   });
 

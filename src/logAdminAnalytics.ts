@@ -99,12 +99,12 @@ export function applyTableFilters(logs: LogRecord[], filters: LogTableFilters): 
 export type LogAdminMetrics = {
   todayCount: {
     value: number;
-    trendPct: number;
+    trendPct: number | null;
     sparkline: number[];
   };
   avgConfidence: {
     value: number;
-    trendPct: number;
+    trendPct: number | null;
   };
   failedCount: {
     value: number;
@@ -151,7 +151,7 @@ function bucketSizes(logs: LogRecord[], buckets: number): number[] {
 
 export function deriveMetrics(
   logs: LogRecord[],
-  _timeWindow: TimeWindow,
+  timeWindow: TimeWindow,
   allLogs: LogRecord[],
   now: Date = new Date()
 ): LogAdminMetrics {
@@ -167,7 +167,7 @@ export function deriveMetrics(
     const time = Date.parse(log.updatedAtIso);
     return time < todayStart && time >= yesterdayStart;
   });
-  const trendPct = yesterdayLogs.length > 0 ? Math.round(((logs.length - yesterdayLogs.length) / yesterdayLogs.length) * 100) : 0;
+  const trendPct = timeWindow === "today" && yesterdayLogs.length > 0 ? Math.round(((logs.length - yesterdayLogs.length) / yesterdayLogs.length) * 100) : null;
   const yesterdayComplete = yesterdayLogs.filter((log) => log.status === "Complete" && log.confidence > 0);
   const yesterdayAvg =
     yesterdayComplete.length > 0
@@ -194,7 +194,7 @@ export function deriveMetrics(
     },
     avgConfidence: {
       value: avgConfidence,
-      trendPct: yesterdayAvg > 0 ? avgConfidence - yesterdayAvg : 0
+      trendPct: timeWindow === "today" && yesterdayAvg > 0 && completeLogs.length > 0 ? avgConfidence - yesterdayAvg : null
     },
     failedCount: {
       value: failedLogs.length,

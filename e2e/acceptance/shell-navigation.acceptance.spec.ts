@@ -27,7 +27,7 @@ const routes = [
   "/parameter-admin",
   "/parameter-admin/projects",
   "/parameter-admin/specs/identity-mapping",
-  "/log-dashboard",
+  "/log-admin?tab=records",
   "/logs",
   "/log-admin",
   "/knowledge",
@@ -182,5 +182,13 @@ test.describe("M5.4 manual flow A - shell navigation", () => {
       testInfo,
       notes: "A permission-denied result still ends inside the normal shell footer boundary."
     });
+  });
+
+  test("redirects the legacy log dashboard bookmark to the back-office overview", async ({ page }, testInfo) => {
+    await signInBrowserAsRole(page, "admin", "/log-dashboard");
+    await expect(page).toHaveURL((url) => url.pathname === "/log-admin" && !url.searchParams.has("tab"));
+    await expect(page.getByRole("tab", { name: "概览", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("log-admin-overview")).toBeVisible();
+    await expectUsableShell(page, testInfo, "/log-admin");
   });
 });

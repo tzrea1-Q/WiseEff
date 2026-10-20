@@ -5,6 +5,19 @@ export function requireOverviewGeometry(overviews: ConsistencyMeasurements["over
   requireMeasuredCategories({ overviewPages: overviews }, ["overviewPages"], routePath);
   for (const overview of overviews) {
     const { root, summary, content, actions, gap } = overview;
+    if (overview.emptyStateCount > 0) {
+      if (overview.emptyStateCount !== 1 || summary || !content || actions || overview.tiles.length || overview.verdicts.length || overview.items.length !== 1
+        || ![root, content, ...overview.items].flatMap((rect) => Object.values(rect)).every(Number.isFinite)
+        || root.width <= 0 || !Number.isFinite(gap) || gap <= 0
+        || !Number.isFinite(overview.pageOverflow) || overview.pageOverflow > 1
+        || !Number.isFinite(overview.viewportHeight) || overview.viewportHeight <= 0
+        || Math.abs(content.left - root.left) > 1 || Math.abs(content.right - root.right) > 1 || Math.abs(content.top - root.top) > 1
+        || overview.items[0].width <= 0 || overview.items[0].left < content.left - 1 || overview.items[0].right > content.right + 1
+        || overview.items[0].top >= overview.viewportHeight) {
+        throw new Error(`${routePath}: empty overview requires one visible, aligned empty state without metrics`);
+      }
+      continue;
+    }
     if (!summary || !content || !overview.tiles.length || !overview.items.length) {
       throw new Error(`${routePath}: missing overview summary, tiles or content`);
     }

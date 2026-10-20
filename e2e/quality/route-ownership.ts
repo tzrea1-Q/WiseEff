@@ -10,7 +10,7 @@ const parameterRoutes = ["/parameters", "/parameters/definitions", "/parameter-c
 
 export const routeOwnership: Readonly<Record<string, readonly string[]>> = {
   "src/linear-template/": ["/"],
-  "src/features/log-analysis/": ["/logs", "/log-dashboard"],
+  "src/features/log-analysis/": ["/logs", "/log-admin"],
   "src/LogAdminPage.tsx": ["/log-admin"],
   "src/features/knowledge/": ["/knowledge", "/knowledge-admin", "/logs", "/dts-reload", ...parameterRoutes],
   "src/features/dts-reload/": ["/dts-reload"],

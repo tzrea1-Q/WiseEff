@@ -165,8 +165,10 @@ test("M2 log analysis upload, evidence, feedback, archive, and unsupported failu
     )
     .toBe(true);
 
-  await page.goto("/log-dashboard");
   await page.goto("/log-admin");
+  await expect(page.getByRole("tab", { name: "概览", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("log-admin-overview")).toBeVisible();
+  await page.goto("/log-admin?tab=records");
   await page.locator('input[type="search"]').fill(supportedFileName);
   await page.getByRole("row").filter({ hasText: supportedFileName }).first().click();
   await page.locator('button:has(svg[class*="lucide-thumbs-up"])').click();

@@ -326,6 +326,7 @@ export function collectConsistencyMeasurements() {
       gap: Number.parseFloat(getComputedStyle(overview).rowGap),
       pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       viewportHeight: innerHeight,
+      emptyStateCount: [...overview.querySelectorAll('[data-testid="log-admin-overview-empty"]')].filter(visible).length,
       tiles: [...overview.querySelectorAll(".overview-tile")].filter(visible).map((tile) => ({
         rect: bounds(tile), hasSamples: tile.getAttribute("data-has-samples") === "true",
         value: tile.querySelector(".overview-tile__value")?.textContent?.trim() ?? "",
