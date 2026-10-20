@@ -1,7 +1,7 @@
 import { request, type IncomingMessage, type Server } from "node:http";
 import { json } from "node:stream/consumers";
 import { describe, expect, it, vi } from "vitest";
-import { LOG_SIGNAL_PREVIEW_HTTP_BODY_LIMIT_BYTES, LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES, resolveRouteBodyLimit, LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES } from "./app";
+import { createWiseEffServer, LOG_SIGNAL_PREVIEW_HTTP_BODY_LIMIT_BYTES, LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES, resolveRouteBodyLimit, LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES } from "./app";
 import { createRouter } from "./shared/http/router";
 import { createHttpServer, DEFAULT_MAX_REQUEST_BODY_BYTES } from "./shared/http/server";
 import { requestJson } from "./test/testClient";
@@ -9,14 +9,15 @@ import { requestJson } from "./test/testClient";
 const samplePath = "/api/v1/log-skills/skill-1/sample";
 const sampleBodyLimit = Math.ceil(2 * 1024 * 1024 * 4 / 3) + 4 + 64 * 1024;
 
-async function requestDeclaredOversize(server: Server, path: string, method: string, bytes: number) {
+async function requestDeclaredOversize(server: Server, path: string, method: string, bytes: number, authorization?: string) {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Test server did not bind to a TCP port.");
   try {
     const response = await new Promise<IncomingMessage>((resolve, reject) => {
       const outgoing = request({ host: "127.0.0.1", port: address.port, path, method,
-        headers: { "Content-Type": "application/json", "Content-Length": bytes, Connection: "close" } }, resolve);
+        headers: { "Content-Type": "application/json", "Content-Length": bytes, Connection: "close",
+          ...(authorization ? { Authorization: authorization } : {}) } }, resolve);
       outgoing.on("error", reject);
       // The declared length must be rejected before collecting or parsing this malformed prefix.
       outgoing.end("{");
@@ -27,6 +28,38 @@ async function requestDeclaredOversize(server: Server, path: string, method: str
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 }
+
+describe("integration credential pre-body route gate", () => {
+  const authorization = "Bearer wie_forbidden-route";
+
+  it.each([
+    ["/api/v1/log-domains", "application/json", "{"],
+    ["/api/v1/log-skills/skill-1/analysis-cases/import", "application/json", "{}"],
+    ["/api/v1/log-skills/skill-1/analysis-cases/import", "multipart/form-data", "malformed multipart"]
+  ])("rejects %s (%s) before parsing or consuming its stream", async (path, contentType, body) => {
+    const server = createWiseEffServer();
+    const read = vi.fn(() => { throw new Error("Forbidden request body was consumed"); });
+    server.prependListener("request", (incoming) => { incoming[Symbol.asyncIterator] = read; });
+    expect(await requestJson(server, path, { method: "POST", headers: { Authorization: authorization, "Content-Type": contentType }, body }))
+      .toMatchObject({ status: 403, body: { error: { code: "FORBIDDEN" } } });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized declaration and malformed prefix before size validation or body consumption", async () => {
+    const server = createWiseEffServer();
+    const read = vi.fn(() => { throw new Error("Forbidden request body was consumed"); });
+    server.prependListener("request", (incoming) => { incoming[Symbol.asyncIterator] = read; });
+    expect(await requestDeclaredOversize(server, samplePath, "PUT", sampleBodyLimit + 1, authorization))
+      .toMatchObject({ status: 403, body: { error: { code: "FORBIDDEN" } } });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("continues parsing allowlisted upload bodies", async () => {
+    expect(await requestJson(createWiseEffServer(), "/api/v1/log-files", {
+      method: "POST", headers: { Authorization: authorization, "Content-Type": "multipart/form-data" }, body: "malformed multipart"
+    })).toMatchObject({ status: 400, body: { error: { code: "VALIDATION_FAILED", message: "Multipart boundary is required." } } });
+  });
+});
 
 describe("skill sample transport body limit", () => {
   it("bounds only sample PUTs, including the router's slash aliases", () => {

@@ -51,7 +51,7 @@ import { registerUserRoutes } from "./modules/users/routes";
 import { registerParameterCatalogApi } from "./modules/parameter-catalog-api/productionWire";
 import { createHttpServer, DEFAULT_MAX_REQUEST_BODY_BYTES } from "./shared/http/server";
 import { DEBUG_CATALOG_MAX_DOCUMENT_BYTES } from "./modules/debugging/schemas";
-import { createRouter, type RouteRequest } from "./shared/http/router";
+import { createRouter, type HttpMethod, type RouteRequest } from "./shared/http/router";
 import { isRootDatabase, type Database } from "./shared/database/client";
 import type { ServerEnv } from "./config/env";
 import { loadLogBundleLimits } from "./config/env";
@@ -61,6 +61,12 @@ import { ApiError } from "./shared/http/errors";
 import type { JsonWebKey } from "node:crypto";
 
 type LocalAuthService = ReturnType<typeof createLocalAuthService>;
+
+function requireIntegrationRouteAccess(method: HttpMethod, pattern: string | undefined, authorization: RouteRequest["headers"]["authorization"]) {
+  if (isIntegrationAuthorization(authorization) && !allowsIntegrationPrincipal(method, pattern)) {
+    throw new ApiError("FORBIDDEN", "Integration credentials cannot access this route.");
+  }
+}
 
 async function getCurrentAuthContext(options: { db?: Database }, request: RouteRequest) {
   const userId = request.headers["x-wiseeff-user"]?.toString() ?? developmentAuthContext.user.id;
@@ -122,10 +128,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   const router = createRouter();
   const handle = router.handle;
   router.handle = async (request) => {
-    if (isIntegrationAuthorization(request.headers.authorization)
-      && !allowsIntegrationPrincipal(request.method, router.matchRoutePattern(request.method, request.path))) {
-      throw new ApiError("FORBIDDEN", "Integration credentials cannot access this route.");
-    }
+    requireIntegrationRouteAccess(request.method, router.matchRoutePattern(request.method, request.path), request.headers.authorization);
     return handle(request);
   };
   const metrics = options.metrics ?? createMetricsRegistry({ serviceName: "wiseeff-api" });
@@ -355,7 +358,8 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
 export function createWiseEffServer(options: WiseEffServerOptions = {}) {
   const { router, metrics, tracing } = buildWiseEffRouter(options);
   return attachDeviceBridgeServer(
-    createHttpServer(router, { metrics, tracing, maxBodyBytes: resolveRouteBodyLimit }),
+    createHttpServer(router, { metrics, tracing, maxBodyBytes: resolveRouteBodyLimit,
+      beforeBody: ({ method, routePattern, headers }) => requireIntegrationRouteAccess(method, routePattern, headers.authorization) }),
     options
   );
 }
