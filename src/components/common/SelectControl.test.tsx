@@ -6,6 +6,18 @@ import { SelectControl } from "./SelectControl";
 import { ModalDialog } from "./ModalDialog";
 
 describe("SelectControl", () => {
+  it("preserves a selected hidden value without listing it", async () => {
+    const user = userEvent.setup(), onValueChange = vi.fn();
+    render(<SelectControl ariaLabel="技能" value="manual" onValueChange={onValueChange}
+      options={[{ value: "auto", label: "充电（推荐）" }, { value: "manual", label: "充电", hidden: true }]} />);
+    const trigger = screen.getByRole("combobox", { name: "技能" });
+    expect(trigger).toHaveTextContent("充电");
+    await user.click(trigger);
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    expect(screen.getByRole("option")).toHaveTextContent("充电（推荐）");
+    await user.click(screen.getByRole("option"));
+    expect(onValueChange).toHaveBeenCalledWith("auto");
+  });
   it.each([false, true])("restores focus after selection loading without stealing a new focus target (%s)", async (moveFocus) => {
     const user = userEvent.setup();
     const ref = createRef<HTMLButtonElement>();

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { format } from "node:util";
 import type { Server } from "node:http";
 import pg from "pg";
@@ -13,6 +14,7 @@ import { createMemoryObjectStore } from "../../testing/objectStore";
 import { applyMigrations, migrationsDir, resolveTestDatabaseUrl } from "../../testing/tempDatabase";
 import { createInMemoryTestDatabase, type InMemoryTestDatabase } from "../../testing/testDatabase";
 import type { LogRecordDto } from "./types";
+import { provisionChargingSkill } from "./provisionChargingSkill";
 import { processLogAnalysisJobById } from "./worker";
 
 type Credential = { id: string; name: string; skillId: string | null; status: "active" | "revoked" };
@@ -153,7 +155,7 @@ describe.skipIf(!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)("in
     expect(JSON.stringify(listed.body)).not.toContain("secret");
   }, 120_000);
 
-  it("requires a bound skill selector on both uploads and revokes credentials when that skill is archived", async () => {
+  it("uses credential binding as an explicit skill on both uploads, rejects conflicts and revokes when that skill is archived", async () => {
     const skills: Skill[] = [];
     for (const name of ["Bound skill", "Other skill"]) {
       const created = await request<{ item: Skill }>("POST", "/api/v1/log-skills", { name });
@@ -163,16 +165,70 @@ describe.skipIf(!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)("in
     const bound = await issue("Bound pipeline", skills[0].id);
     const own = await upload(bound.token, skills[0]);
     expect(own.status).toBe(201);
-    for (const selection of [{}, { skillKey: skills[1].skillKey }, { skillId: skills[1].id }, { logDomainId: skills[1].id },
+    for (const selection of [{ skillKey: skills[1].skillKey }, { skillId: skills[1].id }, { logDomainId: skills[1].id },
+      { skillSelection: "generic" },
+      { skillKey: skills[0].skillKey, skillSelection: "generic" },
+      { skillId: skills[0].id, skillSelection: "generic" },
+      { logDomainId: skills[0].id, skillSelection: "generic" },
+      { skillKey: skills[1].skillKey, skillSelection: "generic" },
       { skillId: skills[0].id, skillKey: skills[1].skillKey }]) {
-      expect((await request("POST", "/api/v1/log-files", { ...uploadBody(), ...selection }, bound.token)).status).toBe(403);
-      expect((await request("POST", "/api/v1/logs", { fileObjectId: own.body.fileObject.id, fileName: "device.log", ...selection }, bound.token)).status).toBe(403);
+      for (const [path, body] of [["/api/v1/log-files", uploadBody()], ["/api/v1/logs", {
+        fileObjectId: own.body.fileObject.id, fileName: "device.log"
+      }]] as const) {
+        expect(await request("POST", path, { ...body, ...selection }, bound.token)).toMatchObject({
+          status: 403, body: { error: { code: "FORBIDDEN", message: "Credential skill binding does not match the selected skill." } }
+        });
+      }
     }
-    for (const selection of [{ skillKey: skills[0].skillKey }, { skillId: skills[0].id }, { logDomainId: skills[0].id }]) {
-      expect((await request("POST", "/api/v1/logs", { fileObjectId: own.body.fileObject.id, fileName: "device.log", ...selection }, bound.token)).status).toBe(201);
+    for (const selection of [{}, { skillKey: skills[0].skillKey }, { skillId: skills[0].id }, { logDomainId: skills[0].id }]) {
+      for (const [path, body] of [["/api/v1/log-files", uploadBody()], ["/api/v1/logs", {
+        fileObjectId: own.body.fileObject.id, fileName: "device.log"
+      }]] as const) {
+        const uploaded = await request<Upload>("POST", path, { ...body, ...selection }, bound.token);
+        expect(uploaded.status).toBe(201);
+        expect(uploaded.body.log).toMatchObject({ logDomainId: skills[0].id, createdByCredentialId: bound.item.id,
+          skillSelection: { mode: "explicit", reasons: [] } });
+        const persisted = await db.query("select created_by_credential_id, skill_selection from log_records where id=$1", [uploaded.body.log.id]);
+        expect(persisted.rows).toEqual([{ created_by_credential_id: bound.item.id, skill_selection: { mode: "explicit", reasons: [] } }]);
+      }
     }
     expect((await request("POST", `/api/v1/log-domains/${skills[0].id}/archive`, {})).status).toBe(200);
     expect((await upload(bound.token, skills[0])).status).toBe(401);
+  }, 120_000);
+
+  it("recommends the charging skill for unbound credentials and honors their generic selection", async () => {
+    await provisionChargingSkill(db, organizations[0]);
+    const chargingId = `seed-charging:${organizations[0]}`;
+    const unbound = await issue("Recommended pipeline");
+    const sample = readFileSync("test-fixtures/logs/charging-foldback.log");
+    const body = { fileName: "charging-foldback.log", contentType: "text/plain", contentBase64: sample.toString("base64") };
+    const uploaded = await request<Upload>("POST", "/api/v1/log-files", body, unbound.token);
+    expect(uploaded.status).toBe(201);
+    const replayBody = { fileObjectId: uploaded.body.fileObject.id, fileName: body.fileName };
+    const replay = await request<Upload>("POST", "/api/v1/logs", replayBody, unbound.token);
+    expect(replay.status).toBe(201);
+    for (const result of [uploaded, replay]) {
+      expect(result.body.log).toMatchObject({ logDomainId: chargingId, logDomainName: "充电", createdByCredentialId: unbound.item.id,
+        skillRevision: { id: `seed-charging-revision:${organizations[0]}` }, skillSelection: { mode: "recommended" } });
+      expect(result.body.log.skillSelection?.reasons).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: "pattern", file: body.fileName, source: "signal", ref: expect.any(String) })
+      ]));
+      const persisted = await db.query("select created_by_credential_id, skill_selection from log_records where id=$1", [result.body.log.id]);
+      expect(persisted.rows).toEqual([{ created_by_credential_id: unbound.item.id, skill_selection: result.body.log.skillSelection }]);
+    }
+    const generic = await request<Upload>("POST", "/api/v1/log-files", { ...body, skillSelection: "generic" }, unbound.token);
+    expect(generic.status).toBe(201);
+    const genericReplay = await request<Upload>("POST", "/api/v1/logs", {
+      fileObjectId: generic.body.fileObject.id, fileName: body.fileName, skillSelection: "generic"
+    }, unbound.token);
+    expect(genericReplay.status).toBe(201);
+    for (const result of [generic, genericReplay]) {
+      expect(result.body.log.logDomainId).toBeUndefined();
+      expect(result.body.log).toMatchObject({ skillRevision: null, createdByCredentialId: unbound.item.id,
+        skillSelection: { mode: "generic", reasons: [] } });
+      const persisted = await db.query("select created_by_credential_id, skill_selection from log_records where id=$1", [result.body.log.id]);
+      expect(persisted.rows).toEqual([{ created_by_credential_id: unbound.item.id, skill_selection: { mode: "generic", reasons: [] } }]);
+    }
   }, 120_000);
 
   it("audits readable lifecycle actions and safe object/skill names for bound and unbound credentials", async () => {

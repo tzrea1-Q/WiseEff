@@ -12,7 +12,7 @@
 
 有 `logs:admin-domains` 的管理员在技能工作区「集成 → 集成凭据」签发凭据。签发和轮换时密钥仅显示一次；复制到安全的密钥管理工具，勾选已保存后才能关闭。通过 TLS 发送 `Authorization: Bearer <集成凭据>`。下文的 `$WISEEFF_INTEGRATION_CREDENTIAL` 从密钥管理工具提供，绝不把值写入代码或日志。
 
-凭据是本组织内独立的机器身份，没有用户账号、角色或权限。固定范围仅为 `POST /api/v1/log-files`、`POST /api/v1/logs` 上传，以及读取它自己创建的记录、报告和文件。不能列出记录或技能，不能读取其他凭据或用户的记录，也不能访问 jobs/SSE、运行历史、轨迹、源码管理、`/me` 或凭据管理。技能选择字段由用户在工作区复制。绑定凭据必须明确选择绑定的技能，省略或冲突返回 `403`；未绑定凭据可选择本组织技能或不选择技能。大小、速率、分析限制与用户上传一致。
+凭据是本组织内独立的机器身份，没有用户账号、角色或权限。固定范围仅为 `POST /api/v1/log-files`、`POST /api/v1/logs` 上传，以及读取它自己创建的记录、报告和文件。不能列出记录或技能，不能读取其他凭据或用户的记录，也不能访问 jobs/SSE、运行历史、轨迹、源码管理、`/me` 或凭据管理。技能选择字段由用户在工作区复制。绑定凭据不传选择字段时，显式使用其绑定技能；指定其他技能返回 `403`。未绑定凭据不传选择字段时，对本组织已发布技能进行自动推荐。仅未绑定凭据可发送 `skillSelection: "generic"`，要求通用分析。绑定凭据发送此请求返回 `403`，即使同时传入匹配绑定技能的选择字段。大小、速率、分析限制与用户上传一致。
 
 轮换后旧密钥立即失效；撤销在下一请求生效。归档技能会撤销其绑定凭据。服务器只存哈希，列表不返回密钥。记录携带 `createdByCredentialId` / `createdByCredentialName`，上传用户为空；有 `logs:view` 的组织用户照常可见。上传审计标识集成凭据，最近使用时间至多每分钟更新一次。
 
@@ -38,7 +38,11 @@ curl --fail-with-body -X POST "$WISEEFF_API/api/v1/log-files" \
 
 步骤预算须为至少 1 的整数；版本 token 预算须为至少 `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)` 的整数。保存和发布均校验上下限，并返回对应字段错误。显式版本 token 预算约束模型服务报告的累计用量，每次模型调用前检查，包含提前收敛调用；不做 token 估算，也不承诺单次调用的严格限额。单次完成可能使累计用量超过预算，但耗尽后不再发起调用。没有得到已接地最终报告时，耗尽运行沿用 `rules-fallback` 结果及 `degradedReason: "token-budget-exhausted"`。省略 `tokenBudget` 时，保留既有平台全局预算计量及提前收敛行为。
 
-`POST /api/v1/log-files`，内容 base64 编码。JSON 上传的解码文件最多 32 MiB；更大的日志包使用 multipart，遵循配置的上传限制（默认 100 MiB）。传输请求体过大时在解析前返回 `413`。通过 `skillKey` 或 `skillId` 绑定分析技能（用户可用 `GET /api/v1/log-skills` 列出），保留 `logDomainId` 兼容别名；未绑定凭据可不选技能，使用平台通用分析。
+`POST /api/v1/log-files`，内容 base64 编码。JSON 上传的解码文件最多 32 MiB；更大的日志包使用 multipart，遵循配置的上传限制（默认 100 MiB）。传输请求体过大时在解析前返回 `413`。用 `skillKey`、`skillId` 或兼容别名 `logDomainId` 指定已发布技能（用户可通过 `GET /api/v1/log-skills` 列举）。任何显式选择字段及凭据绑定技能都优先于推荐。不传技能选择字段且凭据未绑定技能时，服务端根据已存储日志包，仅对本组织有效、已发布的技能评分。最高分唯一且至少为 8 时使用该技能；并列、低分或推荐预算耗尽时走通用分析。要固定使用通用分析，请使用用户会话或未绑定凭据，不传技能选择字段，并发送 `skillSelection: "generic"`。绑定凭据不能请求通用分析：发送 `skillSelection: "generic"` 返回 `403`，即使同时传入匹配的技能选择字段；与凭据绑定技能冲突的选择也返回 `403`。multipart 上传和从已有文件创建记录的 `POST /api/v1/logs` 遵循相同规则。
+
+### 预览技能推荐
+
+`POST /api/v1/log-skills/recommend` 要求用户账号有效且具备 `logs:upload`，集成凭据不能访问。请求示例为 `{ "files": [{ "path": "kernel.log", "head": ["charging current reduced"] }] }`。返回 `{ "recommendations": [{ "skillId": "...", "score": 8, "reasons": [{ "kind": "pattern", "file": "kernel.log", "detail": "..." }] }], "recommendedSkillId": "..." }`。没有达到阈值的唯一候选时省略 `recommendedSkillId`。排名最多包含 100 个技能，每技能最多 24 条理由。`kind` 为 `file` 或 `pattern`；分数用于排序，不是分析正确的概率。此端点只预览选择；上传时省略技能选择字段且没有凭据绑定技能时，服务端才会根据已存储内容独立评分。权重和限制见[推荐契约](../design-docs/api-contract.md#技能推荐与上传路由-1247)。
 
 可选字段 `sourceVersion` 为源码快照版本标签（去除首尾空白后 1–200 字符），用于选择钉住技能所属的匹配快照。匹配快照即使仍在排队、索引中或索引失败，也会被选中；只有快照就绪时才向 Agent 提供源码工具。没有匹配标签或未传标签时，使用钉住版本的默认快照。未知标签会记录在报告来源中，并在该处附上简短回退说明。JSON 上传、multipart 上传以及从已有文件创建记录的 `POST /api/v1/logs` 均接受此字段。`GET /api/v1/log-skills` 返回 `hasSourceSnapshots` 和 `readySourceVersions`；后者是就绪快照版本标签数组，不含快照元数据。上传对话框提供这些标签及默认快照选项；集成 API 仍接受自由填写的版本标签。
 
@@ -67,6 +71,8 @@ curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
 ## 3. 获取结果
 
 `GET /api/v1/logs/{logId}` 返回结论、影响、严重级别、置信度、证据(含行号锚点)、建议动作,以及溯源字段 `analysisSource` / `degradedReason`——`rules-fallback` 是降级分析,绝不冒充完整 Agent 分析。
+
+新记录的报告元数据还包含 `skillSelection: { mode: "recommended" | "explicit" | "generic", reasons: [{ kind, file, detail }] }`。推荐选择保存获胜技能的评分理由；手动指定与通用选择没有匹配理由。旧记录可能省略该字段。所选发布版本另由 `skillRevision` 记录。
 
 记录及运行列表（`GET /api/v1/logs/{logId}/runs`）显示源码溯源：`sourceSnapshot: { id, versionLabel, status }` 标识所用快照，`sourceSnapshotSelection` 为 `matched_version`（版本匹配）、`default`（默认快照）或 `none`（无快照），`requestedSourceVersion` 保留传入的标签。传入标签但结果为 `default` 或 `none` 表示未找到该标签。选择说明仅出现在来源区域，不写入报告结论。源码证据位置必须出现于工具结果；`search_source` 返回有界的排序摘录，`read_source_range` 返回所选快照中最多 80 行带行号的源码。
 

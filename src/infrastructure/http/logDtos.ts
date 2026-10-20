@@ -23,6 +23,7 @@ export type LogEvidenceDto = {
 };
 
 export type LogRecordDto = {
+  skillSelection?: LogRecord["skillSelection"];
   createdByCredentialId?: string | null;
   createdByCredentialName?: string | null;
   knowledgeRevisions?: Array<{ entryId: string; revisionId?: string }>;
@@ -113,6 +114,7 @@ export function confidencePercentFromDto(confidence: number): number {
 
 export function logRecordFromDto(dto: LogRecordDto): LogRecord {
   return {
+    skillSelection: dto.skillSelection,
     createdByCredentialId: dto.createdByCredentialId,
     createdByCredentialName: dto.createdByCredentialName,
     id: dto.id,

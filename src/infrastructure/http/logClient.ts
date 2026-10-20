@@ -31,6 +31,7 @@ import {
   logDomainKnowledgeLinkListResponseSchema,
   logDomainListResponseSchema,
   logSkillListResponseSchema,
+  logSkillRecommendationResponseSchema,
   logSkillResponseSchema,
   logSkillRevisionResponseSchema,
   logSkillRevisionListResponseSchema,
@@ -128,7 +129,8 @@ function uploadBody(input: LogUploadInput, contentBase64: string) {
     ...(input.analysisQuestion !== undefined ? { analysisQuestion: input.analysisQuestion } : {}),
     ...(input.relatedParameterPin !== undefined ? { relatedParameterPin: input.relatedParameterPin } : {}),
     ...(input.logDomainId !== undefined ? { logDomainId: input.logDomainId } : {}),
-    ...(input.skillId !== undefined ? { skillId: input.skillId } : {})
+    ...(input.skillId !== undefined ? { skillId: input.skillId } : {}),
+    ...(input.skillSelection !== undefined ? { skillSelection: input.skillSelection } : {})
   };
 }
 
@@ -187,6 +189,7 @@ export function createHttpLogAnalysisRepository(
     if (!input.files) return apiClient.post<LogUploadResponse>("/api/v1/log-files", uploadBody(input, await fileToBase64(input.file)));
     const form = new FormData();
     if (input.sourceVersion !== undefined) form.append("sourceVersion", input.sourceVersion);
+    if (input.skillSelection !== undefined) form.append("skillSelection", input.skillSelection);
     for (const file of input.files) form.append("file", file);
     if (input.analysisQuestion) form.append("analysisQuestion", input.analysisQuestion);
     if (input.skillId ?? input.logDomainId) form.append("skillId", (input.skillId ?? input.logDomainId)!);
@@ -225,6 +228,10 @@ export function createHttpLogAnalysisRepository(
     },
     async exportAnalysisCases(id) {
       return (await apiClient.raw(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-cases/export`, { method: "GET" })).blob();
+    },
+    async recommendLogSkills(files, signal) {
+      return parseContractDto(logSkillRecommendationResponseSchema,
+        await apiClient.post("/api/v1/log-skills/recommend", { files }, { signal }), "LogSkillRecommendationResponse");
     },
     async getLogTrace(logId) {
       return parseContractDto(logTraceResponseSchema, await apiClient.get(`${routeLogPath(logId)}/trace`), "LogTraceResponse").steps;

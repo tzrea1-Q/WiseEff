@@ -205,6 +205,7 @@ export type ParameterSubmissionRound = {
 };
 
 export type LogRecord = {
+  skillSelection?: import("../logs/types").LogSkillSelection;
   createdByCredentialId?: string | null;
   createdByCredentialName?: string | null;
   knowledgeRevisions?: Array<{ entryId: string; revisionId?: string }>;

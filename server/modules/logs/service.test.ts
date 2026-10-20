@@ -167,18 +167,23 @@ describe.skipIf(!databaseAvailable)("log service", () => {
       metadata: expect.objectContaining({ credentialId: owner.credentialId }) })]);
   });
 
-  it("bound integration credentials require matching skill selectors before storing any files", async () => {
+  it("bound integration credentials reject conflicting selectors before storing files and default to their binding", async () => {
     const skill = await insertLogDomain(db, { id: "bound-skill", organizationId: "org-1", name: "Bound skill" });
     await insertSkillRevision(db, { organizationId: "org-1", skillId: skill.id,
       userId: "user-1", spec: { schemaVersion: "skill/v1" }, published: true });
     const principal = await integration(skill.id);
     const store = createMemoryObjectStore();
     const input = { fileName: "machine.log", contentType: "text/plain", bytes: Buffer.from("machine log") };
-    for (const selectors of [{}, { skillId: "another-skill" }, { skillKey: "unknown" },
+    for (const selectors of [{ skillId: "another-skill" }, { skillKey: "unknown" },
       { skillId: skill.id, logDomainId: "another-skill" }, { skillId: skill.id, skillKey: "unknown" }]) {
       await expect(uploadLogFile(db, store, principal, { ...input, ...selectors })).rejects.toMatchObject({ code: "FORBIDDEN" });
     }
     expect(store.entries.size).toBe(0);
+    const read = vi.spyOn(store, "getStream");
+    await expect(uploadLogFile(db, store, principal, input)).resolves.toMatchObject({ log: {
+      logDomainId: skill.id, skillSelection: { mode: "explicit", reasons: [] }
+    } });
+    expect(read).not.toHaveBeenCalled();
     await expect(uploadLogFile(db, store, principal, { ...input, skillKey: skill.skillKey })).resolves.toMatchObject({ log: { logDomainId: skill.id } });
   });
 

@@ -272,7 +272,7 @@ describe.skipIf(!available)("decoded event runs and preview over PostgreSQL", ()
       const retryArtifact = (await db.query<{ decoded_events_object_key: string; decoded_event_counts: { total: number } }>("select decoded_events_object_key, decoded_event_counts from log_analysis_runs where id=$1", [retrying.job!.runId])).rows[0];
       expect(retryArtifact.decoded_event_counts.total).toBe(1);
       expect(gunzipSync(await objectStore.get(retryArtifact.decoded_events_object_key)).toString()).toContain('"file":"retry.log"');
-      const plain = await uploadLogFile(db, objectStore, auth, { fileName: "plain.log", contentType: "text/plain", bytes: Buffer.from("ERROR code=E_THERMAL_FOLDBACK charge_current_ma=2000") });
+      const plain = await uploadLogFile(db, objectStore, auth, { fileName: "plain.log", contentType: "text/plain", skillSelection: "generic", bytes: Buffer.from("ERROR code=E_THERMAL_FOLDBACK charge_current_ma=2000") });
       for (const file of await loadLogFiles(db, auth.organization.id, plain.log.id)) {
         await ensureStoredLogIndex(db, objectStore, auth.organization.id, plain.log.id, file);
       }

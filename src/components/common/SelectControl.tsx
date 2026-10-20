@@ -5,6 +5,8 @@ export type SelectOption<Value extends string = string> = {
   value: Value;
   label: ReactNode;
   disabled?: boolean;
+  /** Retain the selected label without offering this value in the menu. */
+  hidden?: boolean;
 };
 
 type SelectControlProps<Value extends string> = {
@@ -74,7 +76,7 @@ export function SelectControl<Value extends string>({
         onCloseAutoFocus={() => { restoreAfterLoading.current = triggerRef.current?.disabled ?? false; }}
       >
         {options.map((option) => (
-          <SelectItem key={option.value} data-value={option.value} value={VALUE_PREFIX + option.value} disabled={option.disabled}>
+          <SelectItem key={option.value} data-value={option.value} value={VALUE_PREFIX + option.value} hidden={option.hidden} disabled={option.disabled || option.hidden}>
             {option.label}
           </SelectItem>
         ))}

@@ -39,7 +39,7 @@ describe.skipIf(!available)("bundle upload and analysis over PostgreSQL", () => 
       { telemetry: { recordLlmCall: (call) => { calls.push(call.outcome); } } });
       const content = await readFile(new URL("../../../test-fixtures/logs/charging-foldback.log", import.meta.url));
       const uploaded = await uploadLogFile(db, objectStore, auth(organizationId), { fileName: "charging-foldback.log.gz",
-        contentType: "application/gzip", bytes: gzipSync(content), analysisQuestion: "Why did fast charging fold back?" });
+        contentType: "application/gzip", bytes: gzipSync(content), skillSelection: "generic", analysisQuestion: "Why did fast charging fold back?" });
       expect(await processLogAnalysisJobById({ db, objectStore, analyzer, jobId: uploaded.job!.id })).toEqual({ status: "processed" });
       expect(await getLogRecord(db, auth(organizationId), uploaded.log.id)).toMatchObject({ status: "complete",
         skillRevision: null, analysisSource: "agent", conclusion: expect.stringMatching(/thermal|foldback/i) });
@@ -113,7 +113,7 @@ describe.skipIf(!available)("bundle upload and analysis over PostgreSQL", () => 
       expect((await db.query("select kind, metadata from audit_events where target_id=$1", [rejected.log.id])).rows)
         .toEqual([{ kind: "log-upload-failed", metadata: { fileName: "bad.zip", failureReason: rejected.log.failureReason, initiator: "user" } }]);
       const text = "INFO boot\nERROR code=E_FIRST\n";
-      const single = await uploadLogFile(db, objectStore, auth(), { fileName: "single.log", contentType: "text/plain", bytes: Buffer.from(text) });
+      const single = await uploadLogFile(db, objectStore, auth(), { fileName: "single.log", contentType: "text/plain", bytes: Buffer.from(text), skillSelection: "generic" });
       await processLogAnalysisJobById({ db, objectStore, jobId: single.job!.id });
       const singleReport = await getLogRecord(db, auth(), single.log.id);
       const parsed = parseLogText({ fileName: "single.log", content: text });

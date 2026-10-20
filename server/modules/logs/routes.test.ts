@@ -113,6 +113,7 @@ function jobRecord() {
 
 function runRecord(overrides: Record<string, unknown> = {}) {
   return {
+    knowledgeRevisions: [],
     skillRevision: null,
     id: "run-1",
     logId: "log-1",
@@ -328,12 +329,13 @@ describe("log routes", () => {
 
   it("POST /api/v1/logs validates body and delegates to createLogFromFile", async () => {
     const db = makeDb();
+    const objectStore = makeObjectStore();
     const log = logRecord({ id: "log-from-file" });
     const job = jobRecord();
     vi.mocked(service.createLogFromFile).mockResolvedValue({ log, job });
 
     const response = await requestJson<{ log: typeof log; job: typeof job }>(
-      makeServer({ db, objectStore: makeObjectStore() }),
+      makeServer({ db, objectStore }),
       "/api/v1/logs",
       {
         method: "POST",
@@ -359,7 +361,7 @@ describe("log routes", () => {
         relatedParameterId: "param-1",
         relatedParameterPin: { kind: "canonical-pin", projectId: "project-1", bindingId: "param-1" }
       },
-      { requestId: "test-request" }
+      { requestId: "test-request", objectStore }
     );
   });
 
