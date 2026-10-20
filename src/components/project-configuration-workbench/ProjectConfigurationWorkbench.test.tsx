@@ -567,8 +567,7 @@ describe("ProjectConfigurationWorkbench", () => {
     const structure = { nodes: [{ ...board, properties: [{ ...board.properties[0]!, rawText }] }] };
     renderWorkbench({ search: "?configSet=cs-default&file=file-board&node=board&property=model&inspector=selection",
       dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => structure) }) });
-    fireEvent.click(await screen.findByText(/查看原值与差异/));
-    const value = screen.getByLabelText("当前属性完整值");
+    const value = await screen.findByLabelText("当前属性完整值");
     expect(value).toBeVisible();
     expect(value.textContent).toBe(rawText);
     expect(value).toHaveAttribute("tabindex", "0");
