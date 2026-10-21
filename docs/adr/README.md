@@ -58,3 +58,4 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0046](0046-source-occurrence-identity-spans-dts-and-software-configuration.md) | Source occurrence identity spans DTS occurrences and software configuration instances |
 | [0047](0047-log-analysis-is-a-skill-platform-over-a-shared-agent-kernel.md) | Log analysis is a skill platform over a shared agent kernel |
 | [0048](0048-integration-credentials-are-a-machine-principal.md) | Integration credentials are a machine principal, not a user |
+| [0049](0049-knowledge-scope-is-an-explicit-binding-or-the-organization.md) | Knowledge scope is an explicit binding or the whole organization |
