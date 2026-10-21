@@ -130,8 +130,10 @@ describe.skipIf(!available)("knowledge batches over HTTP and PostgreSQL", () => 
     const first = await create("before failure");
     const broken = await create("audit failure");
     const last = await create("after failure");
+    await db.query("create table k1331_fail_audit_targets (id text primary key)");
+    await db.query("insert into k1331_fail_audit_targets (id) values ($1)", [broken.id]);
     await db.query(`create function k1331_fail_audit() returns trigger language plpgsql as $$
-      begin if new.kind = 'knowledge-entry-publish' and new.target_id = '${broken.id}' then
+      begin if new.kind = 'knowledge-entry-publish' and exists (select 1 from k1331_fail_audit_targets where id = new.target_id) then
         raise exception 'k1331 secret database details'; end if; return new; end $$`);
     await db.query("create trigger k1331_fail_audit before insert on audit_events for each row execute function k1331_fail_audit()");
     try {
@@ -145,6 +147,7 @@ describe.skipIf(!available)("knowledge batches over HTTP and PostgreSQL", () => 
     } finally {
       await db.query("drop trigger k1331_fail_audit on audit_events");
       await db.query("drop function k1331_fail_audit()");
+      await db.query("drop table k1331_fail_audit_targets");
     }
   });
 

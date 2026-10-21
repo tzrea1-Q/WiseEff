@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../shared/database/client";
+import { applyMigrations } from "../../shared/database/migrations";
 import { installKnowledgeDefinitionReferencesCatalogFixture } from "../../testing/parameterCatalog";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { makeTestAuthContext } from "../../testing/authContext";
@@ -165,7 +166,10 @@ describe.skipIf(!available)("knowledge origin over HTTP and PostgreSQL", () => {
         values ($1,$2,$3,$4,$5,'historical-session',$6,$7,$8,$9)`,
       [id, auth.organization.id, expected, form, source, hasLog ? logId : null, reload, auth.user.id, deletedLog]);
     }
-    await db.query(await readFile(new URL("../../migrations/0246_knowledge_origin.sql", import.meta.url), "utf8"));
+    await db.query("delete from schema_migrations where name = $1", ["0246_knowledge_origin.sql"]);
+    expect(await applyMigrations(db, fileURLToPath(new URL("../../migrations/", import.meta.url)), {
+      through: "0246_knowledge_origin.sql"
+    })).toEqual(["0246_knowledge_origin.sql"]);
     for (const [index, [expected]] of cases.entries()) {
       expect((await request("GET", `entries/${ids[index]}`)).body.item.origin).toBe(expected);
     }

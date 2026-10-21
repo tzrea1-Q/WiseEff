@@ -208,10 +208,10 @@ describe.skipIf(!available)("knowledge import over HTTP and PostgreSQL", () => {
     await submit(batch, file("tenant-constraint.md"));
     const foreignBatch = await open(foreign);
     const foreignDocument = await submit(foreignBatch, file("foreign-constraint.md"), foreign);
-    for (const [column, id] of [["entry_id", foreignDocument.body.item.entryId], ["batch_id", foreignBatch]] as const) {
-      await expect(db.query(`update knowledge_import_documents set ${column} = $1 where batch_id = $2 and organization_id = $3`,
-        [id, batch, auth.organization.id])).rejects.toMatchObject({ code: "23503" });
-    }
+    await expect(db.query("update knowledge_import_documents set entry_id = $1 where batch_id = $2 and organization_id = $3",
+      [foreignDocument.body.item.entryId, batch, auth.organization.id])).rejects.toMatchObject({ code: "23503" });
+    await expect(db.query("update knowledge_import_documents set batch_id = $1 where batch_id = $2 and organization_id = $3",
+      [foreignBatch, batch, auth.organization.id])).rejects.toMatchObject({ code: "23503" });
   });
 
   it("keeps partial failures, records every outcome and writes exactly one server-computed summary", async () => {
