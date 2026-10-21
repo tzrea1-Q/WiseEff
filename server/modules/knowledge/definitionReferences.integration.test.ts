@@ -20,7 +20,7 @@ import {
 } from "../../testing/parameterCatalog";
 import { registerParameterCatalogApi } from "../parameter-catalog-api/productionWire";
 import { createDefaultKnowledgeTextExtractor } from "./extraction";
-import type { ObjectStore } from "../logs/objectStore";
+import { createLocalObjectStore, type ObjectStore } from "../logs/objectStore";
 import { registerKnowledgeRoutes } from "./routes";
 import { createKnowledgeTools } from "../agent/tools/knowledgeTools";
 import * as legacyApi from "../parameter-catalog-api/legacy";
@@ -43,15 +43,6 @@ function makeAuth(userId: string, organizationId: string): AuthContext {
   };
 }
 
-const objectStore: ObjectStore = {
-  async put() {
-    throw new Error("file storage is unused by Markdown entries");
-  },
-  async get() {
-    throw new Error("file storage is unused by Markdown entries");
-  }
-};
-
 describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP and real PostgreSQL", () => {
   let fixture: ParameterCatalogDatabase;
   let db: RootDatabase;
@@ -65,6 +56,7 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
   let searchableDefinitionCount: number;
   let catalogRelease: { id: string; digest: string };
   let archiveRoot: string;
+  let objectStore: ObjectStore;
 
   beforeAll(async () => {
     fixture = await createDisposableParameterCatalogDatabase("kbdefref");
@@ -78,6 +70,7 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     searchableDefinitionCount = catalogFixture.searchableDefinitionCount;
     catalogRelease = catalogFixture.pin;
     archiveRoot = await mkdtemp(join(tmpdir(), "wiseeff-kb903-legacy-archive-"));
+    objectStore = createLocalObjectStore(join(archiveRoot, "objects"));
     await pool.query("insert into organizations (id,name) values ($1,'Knowledge A'),($2,'Knowledge B')", [ORG_A, ORG_B]);
     for (const [id, organizationId] of [[USER_A, ORG_A], [USER_B, ORG_B], [REFERENCE_CREATOR, ORG_A]] as const) {
       await pool.query(
@@ -517,5 +510,61 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
       [cascadeEntryId]
     );
     expect(cascaded.rows[0]?.count).toBe(0);
+  });
+
+  it("deletes a human file draft and its revisions once under concurrent requests, retaining shared files, definitions and audit", async () => {
+    const bytes = Buffer.from("Knowledge shared original file", "utf8");
+    const input = {
+      contentForm: "file",
+      title: "Direct draft deletion",
+      tags: [],
+      file: { fileName: "shared.txt", contentType: "text/plain", contentBase64: bytes.toString("base64") }
+    };
+    const created = await request(auth, "POST", "/api/v1/knowledge/entries", input);
+    expect(created.status).toBe(201);
+    const entryId = created.body.item.id as string;
+    const storageKey = created.body.item.file.storageKey as string;
+    const shared = await request(auth, "POST", "/api/v1/knowledge/entries", { ...input, title: "Retained shared file entry" });
+    expect(shared.status).toBe(201);
+    expect(shared.body.item.file.storageKey).toBe(storageKey);
+    expect((await request(auth, "PATCH", `/api/v1/knowledge/entries/${entryId}`, {
+      expectedHeadRevisionNumber: 1, title: "Direct draft deletion revised"
+    })).status).toBe(200);
+    expect((await request(auth, "PUT", `/api/v1/knowledge/entries/${entryId}/definition-references/${activeDefinitionId}`)).status).toBe(200);
+
+    const editor = { ...auth, permissions: auth.permissions.filter((permission) => permission !== "knowledge:manage") };
+    expect((await request(editor, "DELETE", `/api/v1/knowledge/entries/${entryId}`)).status).toBe(403);
+    expect((await request(authB, "DELETE", `/api/v1/knowledge/entries/${entryId}`)).status).toBe(404);
+    expect((await request(auth, "GET", `/api/v1/knowledge/entries/${entryId}`)).body.item.status).toBe("draft");
+
+    const results = await Promise.all([
+      request(auth, "DELETE", `/api/v1/knowledge/entries/${entryId}`),
+      request(auth, "DELETE", `/api/v1/knowledge/entries/${entryId}`)
+    ]);
+    expect(results.map((result) => result.status).sort()).toEqual([200, 404]);
+    expect((await request(auth, "DELETE", `/api/v1/knowledge/entries/${entryId}`)).status).toBe(404);
+    expect((await request(auth, "GET", `/api/v1/knowledge/entries/${entryId}`)).status).toBe(404);
+    expect((await request(auth, "GET", `/api/v1/knowledge/entries/${entryId}/revisions`)).status).toBe(404);
+    expect((await request(auth, "GET", `/api/v1/knowledge/entries/${entryId}/file/content`)).status).toBe(404);
+    expect((await request(auth, "GET", `/api/v1/knowledge/entries/${shared.body.item.id}`)).body.item.file.storageKey).toBe(storageKey);
+    expect(await objectStore.get(storageKey)).toEqual(bytes);
+
+    const pool = getRootPostgresPool(db)!;
+    const counts = await pool.query<{
+      revisions: number; files: number; references: number; definitions: number; deletion_audits: number;
+    }>(
+      `select
+        (select count(*)::int from knowledge_revisions where entry_id = $1) as revisions,
+        (select count(*)::int from knowledge_files where entry_id = $1) as files,
+        (select count(*)::int from knowledge_definition_references where entry_id = $1) as references,
+        (select count(*)::int from parameter_catalog.parameter_definitions where id = $2) as definitions,
+        (select count(*)::int from audit_events where target_id = $1::text and kind = 'knowledge-entry-delete') as deletion_audits`,
+      [entryId, activeDefinitionId]
+    );
+    expect(counts.rows[0]).toEqual({ revisions: 0, files: 0, references: 0, definitions: 1, deletion_audits: 1 });
+    const deletionAudit = await pool.query<{ metadata: Record<string, unknown> }>(
+      "select metadata from audit_events where target_id = $1 and kind = 'knowledge-entry-delete'", [entryId]
+    );
+    expect(deletionAudit.rows[0].metadata).toMatchObject({ status: "draft", headRevisionNumber: 2, parameterReferenceCount: 1 });
   });
 });
