@@ -40,7 +40,7 @@ type RevisionRow = {
   source_snapshot_status?: NonNullable<AnalyzeLogInput["sourceSnapshot"]>["status"] | null;
   source_snapshot_selection?: "matched_version" | "default" | "none" | null;
   requested_source_version?: string | null;
-  knowledge_revisions?: Array<{ entryId: string; revisionId: string }>;
+  knowledge_revisions?: Array<{ entryId: string; revisionId: string; pages?: number[] }>;
 };
 
 type LogRecordRow = RevisionRow & {
@@ -144,7 +144,7 @@ export type LogFileObjectDto = {
 };
 
 export type LogRunDto = {
-  knowledgeRevisions: Array<{ entryId: string; revisionId?: string }>;
+  knowledgeRevisions: Array<{ entryId: string; revisionId?: string; pages?: number[] }>;
   sourceSnapshot?: AnalyzeLogInput["sourceSnapshot"];
   sourceSnapshotSelection?: "matched_version" | "default" | "none";
   requestedSourceVersion?: string;
@@ -223,7 +223,7 @@ export type PersistLogAnalysisReportInput = {
   logId: string;
   runId: string;
   report: {
-    knowledgeRevisions?: Array<{ entryId: string; revisionId: string }>;
+    knowledgeRevisions?: Array<{ entryId: string; revisionId: string; pages?: number[] }>;
     signalSummary?: import("./genericSignals").LogSignalSummary;
     confidence: number;
     conclusion: string;
@@ -322,7 +322,8 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"], 
     failureReason: row.failure_reason ?? undefined,
     analysisQuestion: row.analysis_question ?? undefined,
     skillRevision: row.skill_revision_id && row.skill_revision_number ? { id: row.skill_revision_id, number: row.skill_revision_number } : null,
-    knowledgeRevisions: (row.knowledge_revisions ?? []).map(({ entryId, revisionId }) => ({ entryId, ...(readableKnowledgeIds.has(entryId) ? { revisionId } : {}) })),
+    knowledgeRevisions: (row.knowledge_revisions ?? []).map(({ entryId, revisionId, pages }) => ({ entryId,
+      ...(readableKnowledgeIds.has(entryId) ? { revisionId, ...(pages ? { pages } : {}) } : {}) })),
     logDomainId: row.log_domain_id ?? undefined,
     logDomainName: row.log_domain_name ?? undefined,
     analysisSource: row.analysis_source ?? undefined,
@@ -359,7 +360,8 @@ function sourceProvenance(row: RevisionRow) {
 
 function toRunDto(row: RunRow, readableKnowledgeIds: Set<string>): LogRunDto {
   return {
-    knowledgeRevisions: (row.knowledge_revisions ?? []).map(({ entryId, revisionId }) => ({ entryId, ...(readableKnowledgeIds.has(entryId) ? { revisionId } : {}) })),
+    knowledgeRevisions: (row.knowledge_revisions ?? []).map(({ entryId, revisionId, pages }) => ({ entryId,
+      ...(readableKnowledgeIds.has(entryId) ? { revisionId, ...(pages ? { pages } : {}) } : {}) })),
     ...sourceProvenance(row),
     id: row.id,
     logId: row.log_record_id,

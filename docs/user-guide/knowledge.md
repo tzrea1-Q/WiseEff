@@ -19,6 +19,8 @@ Drafts are visible only to their creator and knowledge managers. Members with vi
    PDF page citations show the cited physical page in detail. Select Open page to open that revision's PDF in a new browser tab at the page. A historical-revision notice means the citation opens the older file, even if the entry's current file has been replaced. Access follows your current permission to read the entry's revisions.
 4. Check the retrieval-mode label to see whether semantic search is available. It reports either semantic plus full-text retrieval or full-text only. Select Clear search to return to the entry list and its filters.
 
+Xiaoze's PDF search citations name the retrieved chunk's page range and link to that revision at the first cited page. New log-analysis reports list the pages actually retrieved for each entry revision, with a link for each page. Earlier answers and completed runs without recorded pages keep their existing display; pages are hidden when you cannot read the cited revision.
+
 In an API-backed deployment, select Ask the knowledge base (Xiaoze) on Knowledge base (`/knowledge`) to open the Xiaoze conversation panel. Ask your question there; text in the search field is not sent automatically. Xiaoze can retrieve published knowledge through its tools and provide citation links to the original entries. Open those sources and check their applicability before relying on an answer. This entry point is unavailable in mock mode, and Xiaoze-created drafts must be published before they can be retrieved.
 
 ![Knowledge search and entry list](images/knowledge-library.png)

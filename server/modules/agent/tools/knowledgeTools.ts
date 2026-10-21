@@ -14,8 +14,8 @@ type KnowledgeToolOptions = {
 
 const MAX_DOCUMENT_CHARS = 20_000;
 
-export function knowledgeEntryHref(entryId: string) {
-  return `/knowledge?entryId=${encodeURIComponent(entryId)}`;
+export function knowledgeEntryHref(entryId: string, revisionId?: string | null, page?: number | null) {
+  return `/knowledge?entryId=${encodeURIComponent(entryId)}${revisionId && page ? `&revisionId=${encodeURIComponent(revisionId)}&page=${page}` : ""}`;
 }
 
 /**
@@ -44,8 +44,10 @@ export function createKnowledgeTools(options: KnowledgeToolOptions): AgentToolDe
         const citations: AgentCitation[] = result.items.map((item) => ({
           type: "knowledge" as const,
           id: item.entryId,
-          label: item.title,
-          href: knowledgeEntryHref(item.entryId),
+          label: item.pageStart != null
+            ? `${item.title}（第 ${item.pageStart}${item.pageEnd != null && item.pageEnd !== item.pageStart ? `–${item.pageEnd}` : ""} 页）`
+            : item.title,
+          href: knowledgeEntryHref(item.entryId, item.revisionId, item.pageStart),
           snippet: item.excerpt || undefined
         }));
 

@@ -990,11 +990,21 @@ function AnalysisProvenanceBadges({ log, canViewSkill, onNavigate }: { log: LogR
       ) : null}
       {log.knowledgeRevisions?.length ? <details className="analysis-provenance__reason">
         <summary>实际检索的知识修订（{log.knowledgeRevisions.length}）</summary>
-        <ul>{log.knowledgeRevisions.map(({ entryId, revisionId }) => <li key={`${entryId}:${revisionId}`}>
-          {revisionId ? <a href={`/knowledge?entryId=${encodeURIComponent(entryId)}`} onClick={(event) => {
-            event.preventDefault(); onNavigate(`/knowledge?entryId=${encodeURIComponent(entryId)}`);
-          }}>查看知识条目（已固定修订）</a> : <span>无权查看的条目</span>}
-        </li>)}</ul>
+        <ul>{log.knowledgeRevisions.map(({ entryId, revisionId, pages }) => {
+          const href = revisionId && pages?.length
+            ? `/knowledge?${new URLSearchParams({ entryId, revisionId, page: String(pages[0]) })}`
+            : `/knowledge?entryId=${encodeURIComponent(entryId)}`;
+          return <li key={`${entryId}:${revisionId}`}>
+            {revisionId ? <><a href={href} onClick={(event) => {
+              event.preventDefault(); onNavigate(href);
+            }}>查看知识条目（已固定修订）</a>
+            {pages?.length ? <span> 第 {pages.map((page, index) => {
+              const pageHref = `/knowledge?${new URLSearchParams({ entryId, revisionId, page: String(page) })}`;
+              return <span key={page}>{index ? "、" : ""}<a href={pageHref} aria-label={`打开第 ${page} 页`}
+                onClick={(event) => { event.preventDefault(); onNavigate(pageHref); }}>{page}</a></span>;
+            })} 页</span> : null}</> : <span>无权查看的条目</span>}
+          </li>;
+        })}</ul>
       </details> : null}
       {degraded ? (
         <p className="analysis-provenance__reason">{degraded.reason}</p>

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { processNextKnowledgeIndexJob } from "../knowledge/indexing/worker";
 import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { applyTestMigrations, migrationsDir } from "../../testing/tempDatabase";
 import { createPostgresDatabase } from "../../shared/database/client";
@@ -64,6 +66,72 @@ async function createFixture() {
 }
 
 describe.skipIf(!available)("skill knowledge runs over PostgreSQL", () => {
+  it("unions pages across retrievals per revision without replacing earlier retrievals", async () => {
+    const fixture = await createFixture();
+    const { db, request, objectStore, createMarkdown } = fixture;
+    try {
+      const entry = await createMarkdown("Retrieved knowledge", "guidance");
+      const revised = await request<{ item: KnowledgeEntryDto }>(`/api/v1/knowledge/entries/${entry.id}`, "PATCH", {
+        expectedHeadRevisionNumber: 1, contentMarkdown: "updated guidance"
+      });
+      expect(revised.status).toBe(200);
+      const first = { entryId: entry.id, revisionId: entry.headRevisionId! };
+      const second = { entryId: entry.id, revisionId: revised.body.item.headRevisionId! };
+      const uploaded = await request<{ log: { id: string }; job: { id: string } }>("/api/v1/log-files", "POST", {
+        fileName: "pages.log", contentType: "text/plain", contentBase64: Buffer.from("WARN thermal\n").toString("base64")
+      });
+      expect(uploaded.status).toBe(201);
+      expect(await processLogAnalysisJobById({ db, objectStore, jobId: uploaded.body.job.id, analyzer: {
+        async analyze(input) {
+          input.onKnowledgeRetrieved?.([{ ...first, pages: [7, 3] }]);
+          input.onKnowledgeRetrieved?.([{ ...second, pages: [2] }, { ...first, pages: [3] }]);
+          input.onKnowledgeRetrieved?.([first]);
+          return createRuleBasedLogAnalyzer().analyze(input);
+        }
+      } })).toEqual({ status: "processed" });
+      const report = await request<{ item: LogRecordDto }>(`/api/v1/logs/${uploaded.body.log.id}`);
+      expect(report.body.item.knowledgeRevisions).toEqual([{ ...first, pages: [3, 7] }, { ...second, pages: [2] }]);
+    } finally { await fixture.close(); }
+  }, 120_000);
+
+  it("retains retrieved PDF pages in the completed report and run contracts", async () => {
+    const fixture = await createFixture();
+    const { db, request, objectStore } = fixture;
+    try {
+      const created = await request<{ item: KnowledgeEntryDto }>("/api/v1/knowledge/entries", "POST", {
+        contentForm: "file", title: "PDF guidance", tags: [], file: {
+          fileName: "multipage.pdf", contentType: "application/pdf",
+          contentBase64: readFileSync(new URL("../knowledge/testing/fixtures/multipage.pdf", import.meta.url)).toString("base64")
+        }
+      });
+      expect(created.status).toBe(201);
+      const entry = created.body.item;
+      expect((await request(`/api/v1/knowledge/entries/${entry.id}/publish`, "POST", {})).status).toBe(200);
+      while ((await processNextKnowledgeIndexJob({ db })) !== "idle") { /* drain */ }
+      const uploaded = await request<{ log: { id: string }; job: { id: string; runId: string } }>("/api/v1/log-files", "POST", {
+        fileName: "pages.log", contentType: "text/plain", contentBase64: Buffer.from("WARN Second page\n").toString("base64")
+      });
+      expect(uploaded.status).toBe(201);
+      expect(await processLogAnalysisJobById({ db, objectStore, jobId: uploaded.body.job.id, analyzer: {
+        async analyze(input) {
+          const tools = createWorkerLogAnalysisToolBackends({ db, organizationId, onKnowledgeRetrieved: input.onKnowledgeRetrieved });
+          for (const query of ["Second page", "First page"]) {
+            expect((await tools.searchDomainKnowledge!(query)).items).toEqual([expect.objectContaining({
+              entryId: entry.id, revisionId: entry.headRevisionId, pageStart: 1, pageEnd: 2
+            })]);
+          }
+          return createRuleBasedLogAnalyzer().analyze(input);
+        }
+      } })).toEqual({ status: "processed" });
+      const path = `/api/v1/logs/${uploaded.body.log.id}`;
+      const expected = [{ entryId: entry.id, revisionId: entry.headRevisionId, pages: [1, 2] }];
+      const report = await request<{ item: LogRecordDto }>(path);
+      expect(logRecordDtoSchema.parse(report.body.item).knowledgeRevisions).toEqual(expected);
+      const runs = await request<{ items: LogRunDto[] }>(`${path}/runs`);
+      expect(logRunDtoSchema.parse(runs.body.items[0]).knowledgeRevisions).toEqual(expected);
+    } finally { await fixture.close(); }
+  }, 120_000);
+
   it("expands paged published tag matches and freezes those identities in a published skill revision", async () => {
     const fixture = await createFixture();
     const { request, createMarkdown, admin, setAuth } = fixture;
@@ -267,7 +335,7 @@ describe.skipIf(!available)("skill knowledge runs over PostgreSQL", () => {
         { entryId: published.id, revisionId: published.headRevisionId }
       ]);
       // Defensive historical rows can retain a reference whose current entry is private.
-      const storedRevisions = [published, privateEntry].map((entry) => ({ entryId: entry.id, revisionId: entry.headRevisionId }));
+      const storedRevisions = [published, privateEntry].map((entry) => ({ entryId: entry.id, revisionId: entry.headRevisionId, pages: [3, 7] }));
       await db.query("update log_analysis_runs set knowledge_revisions = $2::jsonb where id = $1",
         [uploaded.body.job.runId, JSON.stringify(storedRevisions)]);
 
@@ -281,7 +349,7 @@ describe.skipIf(!available)("skill knowledge runs over PostgreSQL", () => {
           if (!value || typeof value !== "object") return;
           const record = value as Record<string, unknown>;
           if ([record.id, record.entryId, record.knowledgeEntryId].includes(privateEntry.id)) {
-            for (const key of ["status", "entryStatus", "revision", "revisionId", "headRevisionId", "headRevisionNumber", "revisionNumber", "updatedAt"]) {
+            for (const key of ["status", "entryStatus", "revision", "revisionId", "headRevisionId", "headRevisionNumber", "revisionNumber", "updatedAt", "pages"]) {
               expect.soft(record).not.toHaveProperty(key);
             }
           }
@@ -339,7 +407,7 @@ describe.skipIf(!available)("skill knowledge runs over PostgreSQL", () => {
         const runs = await request<{ items: Provenance[] }>(`${reportPath}/runs`);
         const logs = await request<{ items: Array<Provenance & { id: string }> }>("/api/v1/logs");
         expect(report.status).toBe(200); expect(runs.status).toBe(200); expect(logs.status).toBe(200);
-        const expected = [{ entryId: published.id, ...(canViewKnowledge ? { revisionId: published.headRevisionId! } : {}) },
+        const expected = [{ entryId: published.id, ...(canViewKnowledge ? { revisionId: published.headRevisionId!, pages: [3, 7] } : {}) },
           { entryId: privateEntry.id }];
         expect.soft(report.body.item.knowledgeRevisions).toEqual(expected);
         expect.soft(runs.body.items[0].knowledgeRevisions).toEqual(expected);

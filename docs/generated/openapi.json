@@ -35240,6 +35240,12 @@
                     },
                     "revisionId": {
                       "type": "string"
+                    },
+                    "pages": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      }
                     }
                   },
                   "required": [
@@ -36148,6 +36154,12 @@
                     },
                     "revisionId": {
                       "type": "string"
+                    },
+                    "pages": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      }
                     }
                   },
                   "required": [
@@ -36918,6 +36930,12 @@
                       },
                       "revisionId": {
                         "type": "string"
+                      },
+                      "pages": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
                       }
                     },
                     "required": [
@@ -42682,6 +42700,12 @@
                       },
                       "revisionId": {
                         "type": "string"
+                      },
+                      "pages": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
                       }
                     },
                     "required": [
@@ -42909,6 +42933,12 @@
                     },
                     "revisionId": {
                       "type": "string"
+                    },
+                    "pages": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      }
                     }
                   },
                   "required": [
@@ -43666,6 +43696,12 @@
                       },
                       "revisionId": {
                         "type": "string"
+                      },
+                      "pages": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
                       }
                     },
                     "required": [

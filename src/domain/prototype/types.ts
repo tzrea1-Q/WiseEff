@@ -208,7 +208,7 @@ export type LogRecord = {
   skillSelection?: import("../logs/types").LogSkillSelection;
   createdByCredentialId?: string | null;
   createdByCredentialName?: string | null;
-  knowledgeRevisions?: Array<{ entryId: string; revisionId?: string }>;
+  knowledgeRevisions?: Array<{ entryId: string; revisionId?: string; pages?: number[] }>;
   sourceSnapshot?: import("../logs/types").LogRecord["sourceSnapshot"];
   sourceSnapshotSelection?: import("../logs/types").LogRecord["sourceSnapshotSelection"];
   requestedSourceVersion?: string;
