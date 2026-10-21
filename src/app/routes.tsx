@@ -204,9 +204,18 @@ export function PageRouter({
         const { items } = await knowledgeRepository.relatedToDefinition(definitionId);
         return items;
       },
+      ...(knowledgeCapability?.canEdit ? { link: {
+        search: async (q: string) => {
+          const { items } = await knowledgeRepository.list({ governable: true, q });
+          return items.map((entry) => ({ entryId: entry.id, title: entry.title }));
+        },
+        add: async (entryId: string, definitionId: string) => {
+          await knowledgeRepository.addDefinitionReference(entryId, definitionId);
+        }
+      } } : {}),
       onOpenEntry: (entryId) => onNavigate(`/knowledge?entryId=${encodeURIComponent(entryId)}`)
     };
-  }, [knowledgeRepository, canViewKnowledge, onNavigate]);
+  }, [knowledgeRepository, canViewKnowledge, knowledgeCapability?.canEdit, onNavigate]);
 
   // Entry-editor definition picker: searching needs parameter:view (the same
   // read API the caller uses elsewhere); absent hides the picker section.

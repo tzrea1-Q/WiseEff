@@ -1104,7 +1104,7 @@ export function DefinitionEditorBody({
         {relatedKnowledge ? (
           <details className="definition-editor__more">
             <summary>相关知识</summary>
-            <SpecRelatedKnowledgeSection specId={definition.id} source={relatedKnowledge} />
+            <SpecRelatedKnowledgeSection key={definition.id} specId={definition.id} source={relatedKnowledge} allowLink />
           </details>
         ) : null}
       </section>

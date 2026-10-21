@@ -158,6 +158,30 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     expect((await request({ ...auth, permissions: ["parameter:view"] }, "GET", path)).status).toBe(403);
   });
 
+  it("offers only governable non-archived entries and enforces governance on the shared reference API", async () => {
+    const owner = { ...auth, permissions: auth.permissions.filter((p) => p !== "knowledge:manage") };
+    const other = { ...owner, user: { ...owner.user, id: REFERENCE_CREATOR } };
+    const own = await createEntry(owner, "k1333 own draft", false);
+    const foreign = await createEntry(other, "k1333 other published");
+    const archived = await createEntry(owner, "k1333 archived");
+    const outside = await createEntry(authB, "k1333 other organization");
+    expect((await request(owner, "POST", `/api/v1/knowledge/entries/${archived}/archive`)).status).toBe(200);
+    const path = "/api/v1/knowledge/entries?governable=true&q=k1333";
+    expect((await request(owner, "GET", path)).body.items.map((e: { id: string }) => e.id)).toEqual([own]);
+    const managerIds = (await request(auth, "GET", path)).body.items.map((e: { id: string }) => e.id);
+    expect(managerIds.sort()).toEqual([own, foreign].sort());
+    expect((await request({ ...owner, permissions: ["knowledge:view"] }, "GET", path)).status).toBe(403);
+    const link = (id: string) => `/api/v1/knowledge/entries/${id}/definition-references/${activeDefinitionId}`;
+    expect((await request(owner, "PUT", link(foreign))).status).toBe(403);
+    expect((await request(owner, "PUT", link(archived))).status).toBe(400);
+    expect((await request(owner, "PUT", link(outside))).status).toBe(404);
+    expect((await request(owner, "PUT", link(own))).status).toBe(200);
+    expect((await request(auth, "PUT", link(foreign))).status).toBe(200);
+    const related = await request(owner, "GET", `/api/v1/knowledge/related-to-definition?definitionId=${activeDefinitionId}`);
+    expect(related.body.items.map((e: { entryId: string }) => e.entryId)).not.toContain(own);
+    expect(related.body.items.map((e: { entryId: string }) => e.entryId)).toContain(foreign);
+  });
+
   it("writes canonical-only identity, rejects new legacy writes, and audits one idempotent add", async () => {
     const entryId = await createEntry(auth, "Canonical identity");
     const legacy = await request(auth, "PUT", `/api/v1/knowledge/entries/${entryId}/parameter-references/pspec%3Aold`);

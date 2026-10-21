@@ -1373,7 +1373,10 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "List knowledge entries visible to the caller",
     tags: ["knowledge"],
     responseBody: "KnowledgeEntryListResponse",
-    requestParameters: [{ name: "origin", in: "query", schema: { type: "string", enum: ["authored", "uploaded", "distilled", "agent-drafted", "imported"] } }],
+    requestParameters: [
+      { name: "origin", in: "query", schema: { type: "string", enum: ["authored", "uploaded", "distilled", "agent-drafted", "imported"] } },
+      { name: "governable", in: "query", description: "Only non-archived entries owned by the caller, or any owner for knowledge:manage. Requires knowledge:edit or knowledge:manage.", schema: { type: "string", enum: ["true", "false"] } }
+    ],
     additionalResponses: { "403": "ErrorResponse" }
   },
   "knowledge.distillFromLog": {

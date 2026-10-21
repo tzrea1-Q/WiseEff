@@ -15249,6 +15249,19 @@
                 "imported"
               ]
             }
+          },
+          {
+            "name": "governable",
+            "in": "query",
+            "required": false,
+            "description": "Only non-archived entries owned by the caller, or any owner for knowledge:manage. Requires knowledge:edit or knowledge:manage.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
           }
         ],
         "responses": {
