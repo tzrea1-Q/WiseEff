@@ -221,4 +221,23 @@ describe("confirmed project purge HTTP", () => {
       await request;
     }
   });
+
+  it("allows the normal create form to reuse a deleted project's code under a fresh identity", async () => {
+    const server = createWiseEffServer({ db });
+    const create = () => requestJson<{ item: { id: string; code: string } }>(server, "/api/v1/parameters/admin/projects", {
+      method: "POST", headers, body: JSON.stringify({ name: "Reusable project", code: "REUSABLE" })
+    });
+    const first = await create();
+    expect(first.status).toBe(201);
+    const impact = await preview(first.body.item.id);
+    expect((await purge(first.body.item.id, impact.stateDigest)).status).toBe(200);
+    const next = await create();
+    expect(next.status).toBe(201);
+    expect(next.body.item.code).toBe("REUSABLE");
+    expect(next.body.item.id).not.toBe(first.body.item.id);
+    expect(await requestJson(server, "/api/v1/parameters/admin/projects", { method: "POST", headers,
+      body: JSON.stringify({ id: first.body.item.id, name: "Old task", code: "EXPLICITOLD" }) })).toMatchObject({
+      status: 409, body: { error: { details: { reason: "project-id-erased" } } }
+    });
+  });
 });

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import pg from "pg";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -19,6 +20,13 @@ async function receipt(db: Database, auth: AuthContext, projectId: string) {
 }
 const status = (projectId: string, item: Receipt): ProjectDeletionStatus => ({ projectId, stateDigest: item.digest, database: "deleted",
   objects: item.pending.length ? "pending" : "complete", pendingObjects: item.pending.length });
+
+/** Reusing a display code creates a new project, never the erased identity. */
+export async function resolveProjectCreateId(db: Database, auth: AuthContext, proposedId: string, explicitId: boolean) {
+  if (!await receipt(db, auth, proposedId)) return proposedId;
+  if (explicitId) throw new ApiError("CONFLICT", "此项目 ID 已永久删除。请不指定 ID 创建新项目，项目代号可以复用。", { reason: "project-id-erased" });
+  return `${proposedId}-${randomUUID()}`;
+}
 
 export async function projectDeletionStatus(db: Database, auth: AuthContext, projectId: string): Promise<ProjectDeletionStatus> {
   const item = await receipt(db, auth, projectId);

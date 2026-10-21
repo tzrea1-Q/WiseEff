@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { previewProjectDeletion } from "../projects/deletionPreview";
-import { listProjectDeletions, projectDeletionStatus, purgeProject } from "../projects/purge";
+import { listProjectDeletions, projectDeletionStatus, purgeProject, resolveProjectCreateId } from "../projects/purge";
 import {
   assertTrustedRefusalAuditSink,
   createTrustedRefusalAuditSink,
@@ -322,7 +322,7 @@ export function registerParameterRoutes(
     const auth = await options.getCurrentAuthContext(request);
     requireCanAdmin(auth);
     const body = parseWithSchema(createProjectBodySchema, request.body, "Invalid project create payload.");
-    const projectId = body.id?.trim() || slugifyProjectId(body.code);
+    const projectId = await resolveProjectCreateId(db, auth, body.id?.trim() || slugifyProjectId(body.code), Boolean(body.id?.trim()));
     const item = await createProjectForAuth(
       db,
       auth,
