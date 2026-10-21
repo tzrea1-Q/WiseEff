@@ -133,6 +133,7 @@ export type KnowledgeSearchResponseDto = {
 };
 
 export type ListKnowledgeEntriesQuery = {
+  governable?: boolean;
   origin?: KnowledgeOrigin;
   status?: KnowledgeStatus;
   contentForm?: KnowledgeContentForm;

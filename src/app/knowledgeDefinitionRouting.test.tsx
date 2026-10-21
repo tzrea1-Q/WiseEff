@@ -14,6 +14,35 @@ import { canAccessPage } from "./permissions";
 import { PageRouter } from "./routes";
 
 describe("Knowledge Definition navigation", () => {
+  it.each([false, true])("gates definition-page linking by knowledge:edit (%s)", async (canEdit) => {
+    const repository = createMockKnowledgeRepository({ userId: initialState.currentUserId, canManage: false });
+    const entry = await repository.createMarkdown({ title: "定义页关联条目", tags: [], contentMarkdown: "说明" });
+    const list = vi.spyOn(repository, "list");
+    const add = vi.spyOn(repository, "addDefinitionReference");
+    const ports = createMockCatalogPorts();
+    render(<ToastProvider><PageRouter page={getPageByPath("/parameter-admin/specs")}
+      search={`?definitionId=${activeDefinition.id}&subjectId=${activeDefinition.subject.id}`}
+      state={{ ...initialState, activeRoleId: "admin" }} dispatch={() => undefined}
+      runtime={{ knowledgeRepository: repository, parameterCatalogRepository: ports.catalog,
+        parameterCatalogGovernanceRepository: ports.governance } as AppRuntime}
+      runtimeMode="api" onNavigate={() => undefined} onFeedback={() => undefined} sessionPermissions={[]}
+      knowledgeCapability={{ userId: initialState.currentUserId, canView: true, canEdit, canManage: false }}
+      DebuggingAdminPage={() => null} /></ToastProvider>);
+    const detail = await screen.findByRole("region", { name: "定义详情" });
+    const user = userEvent.setup();
+    await user.click(within(detail).getByText("相关知识", { selector: "summary" }));
+    if (!canEdit) {
+      expect(screen.queryByRole("button", { name: "关联已有知识" })).not.toBeInTheDocument();
+      expect(list).not.toHaveBeenCalled();
+      return;
+    }
+    await user.click(screen.getByRole("button", { name: "关联已有知识" }));
+    const picker = await screen.findByRole("dialog", { name: "关联已有知识" });
+    await user.click(await within(picker).findByRole("button", { name: entry.title }));
+    await waitFor(() => expect(add).toHaveBeenCalledWith(entry.id, activeDefinition.id));
+    expect(list).toHaveBeenCalledWith({ governable: true, q: "" });
+  });
+
   it.each(["guest", "hardware-user", "software-user", "hardware-committer", "software-committer", "admin", "platform-admin"])("opens an authorized Definition destination for %s", async (roleId) => {
     const knowledgeRepository = createMockKnowledgeRepository();
     const entry = await knowledgeRepository.get("mock-kb-1");

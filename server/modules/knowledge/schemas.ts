@@ -64,6 +64,7 @@ export const restoreKnowledgeRevisionBodySchema = z.object({
 });
 
 export const listKnowledgeEntriesQuerySchema = z.object({
+  governable: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
   origin: z.enum(knowledgeOrigins).optional(),
   status: z.enum(knowledgeStatuses).optional(),
   contentForm: z.enum(knowledgeContentForms).optional(),

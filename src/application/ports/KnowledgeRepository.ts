@@ -11,6 +11,7 @@ import type {
 } from "@/domain/knowledge/types";
 
 export type KnowledgeListQuery = {
+  governable?: boolean;
   origin?: KnowledgeOrigin;
   status?: KnowledgeStatus;
   contentForm?: KnowledgeContentForm;

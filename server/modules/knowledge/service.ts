@@ -1147,6 +1147,7 @@ export async function findRelatedKnowledgeForDefinition(
 
 export async function listKnowledgeEntries(db: Queryable, auth: AuthContext, query: ListKnowledgeEntriesQuery = {}) {
   requireKnowledgeView(auth);
+  if (query.governable && !hasKnowledgeManage(auth)) requireKnowledgeEdit(auth);
   return listEntries(db, auth, {
     ...query,
     visibleDraftOwnerUserId: hasKnowledgeManage(auth) ? undefined : auth.user.id

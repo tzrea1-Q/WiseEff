@@ -182,6 +182,7 @@ async function fileBody(file: File) {
 function buildListPath(query?: KnowledgeListQuery) {
   const params = new URLSearchParams();
   if (query?.status) params.set("status", query.status);
+  if (query?.governable) params.set("governable", "true");
   if (query?.contentForm) params.set("contentForm", query.contentForm);
   if (query?.sourceType) params.set("sourceType", query.sourceType);
   if (query?.origin) params.set("origin", query.origin);

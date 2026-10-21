@@ -547,6 +547,7 @@ export function createMockKnowledgeRepository(
   return {
     async list(query?: KnowledgeListQuery) {
       const items = store.entries.filter((entry) => {
+        if (query?.governable && (entry.status === "archived" || (!canManage && entry.createdByUserId !== userId))) return false;
         if (entry.status === "draft" && !canManage && entry.createdByUserId !== userId) return false;
         if (query?.status && entry.status !== query.status) return false;
         if (query?.contentForm && entry.contentForm !== query.contentForm) return false;

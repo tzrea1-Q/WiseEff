@@ -418,6 +418,14 @@ export async function listEntries(
   const values: unknown[] = [auth.organization.id];
   const where = ["organization_id = $1"];
 
+  if (query.governable) {
+    where.push("status <> 'archived'");
+    if (!auth.permissions.includes("knowledge:manage")) {
+      values.push(auth.user.id);
+      where.push(`created_by_user_id = $${values.length}`);
+    }
+  }
+
   if (query.origin) {
     values.push(query.origin);
     where.push(`origin = $${values.length}`);
