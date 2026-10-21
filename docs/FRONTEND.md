@@ -10,6 +10,8 @@ Mock parameter mode keeps existing canonical-equivalent features only (#1087, #1
 
 ## Key Directories
 
+Catalog definition revisions distinguish omitted optional content (retain) from explicit `null` (remove) for `unit`, `examples`, and `description`. The definition editor previews cleared units/examples and publishes a new revision; it reads existing examples into a JSON-array input without changing their types, commas, empty strings, or nested structure. Blank input removes examples. Invalid JSON stays editable and cannot publish. The current form has no description input, so unrelated edits preserve description; historical revisions remain readable.
+
 - `src/app/`: page routing, navigation, permission checks, and `appRuntime.ts` — the composition root that selects every mode-dependent adapter once (`createAppRuntime`); pages receive the record via `PageProps.runtime`.
 - `src/domain/`: role, parameter, log, debugging, audit, and Agent domain types and pure logic.
 - `src/application/state/`: the global prototype state machine — `AppAction`, `reducer`/`appReducer`, and reducer-only transition helpers. API boot lives in `createApiInitialState()` here (#486); import state types from here, never from `@/App` (ADR-0023).

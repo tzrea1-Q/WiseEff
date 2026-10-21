@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Archive, ArchiveRestore, Download, ExternalLink, History, Pencil, Send, Upload } from "lucide-react";
+import { Archive, ArchiveRestore, Download, ExternalLink, History, Pencil, Send, Trash2, Upload } from "lucide-react";
 
 import { renderMarkdownPreview } from "@/domain/knowledge/markdown";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
@@ -23,6 +23,7 @@ export type KnowledgeEntryDetailDialogProps = {
   onArchive: (entry: KnowledgeEntry) => Promise<void>;
   onRestore: (entry: KnowledgeEntry) => Promise<void>;
   onDownloadFile: (entry: KnowledgeEntry) => Promise<void>;
+  onRequestDelete?: (entry: KnowledgeEntry) => void;
   /** Deep link only for an exact canonical Definition identity. */
   onOpenDefinition?: (definitionId: string) => void;
   /** Router navigation for distillation source links; absent hides them. */
@@ -58,6 +59,7 @@ export function KnowledgeEntryDetailDialog({
   onArchive,
   onRestore,
   onDownloadFile,
+  onRequestDelete,
   onOpenDefinition,
   onNavigate,
   onClose
@@ -197,6 +199,12 @@ export function KnowledgeEntryDetailDialog({
               >
                 <ArchiveRestore data-icon="inline-start" />
                 恢复为已发布
+              </Button>
+            ) : null}
+            {onRequestDelete ? (
+              <Button variant="destructive" size="sm" disabled={pendingAction !== null} onClick={() => onRequestDelete(entry)}>
+                <Trash2 data-icon="inline-start" />
+                彻底删除
               </Button>
             ) : null}
           </div>

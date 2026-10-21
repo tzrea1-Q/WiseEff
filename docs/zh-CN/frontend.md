@@ -12,6 +12,8 @@ Mock 参数模式仅保留现有 canonical 等价功能（#1087，#1080 Q3）。
 
 ## 关键目录
 
+Catalog 定义修订对 `unit`、`examples`、`description` 区分字段省略（保留旧值）与显式 `null`（移除）。定义编辑器会预告清空单位、示例的结果，并通过发布生成新修订；已有示例读入 JSON 数组输入框，保留类型、逗号、空字符串及嵌套结构。留空移除示例，非法 JSON 保留在输入框中并阻止发布。当前表单没有描述输入框，其他内容修改不会清空描述；历史修订仍可读取。
+
 - `src/app/`：路由、导航、权限、页面装配，以及组合根 `appRuntime.ts`——`createAppRuntime` 按运行时模式一次性选好全部适配器，页面经 `PageProps.runtime` 接收。
 - `src/domain/`：角色、参数、日志、调试、审计、Agent 的类型和纯规则。
 - `src/application/state/`：全局原型状态机——`AppAction`、`reducer`/`appReducer` 与仅供 reducer 使用的迁移助手。API 启动态是这里的 `createApiInitialState()`（#486）；状态类型一律从这里导入，禁止从 `@/App` 导入（ADR-0023）。

@@ -348,6 +348,8 @@ export const catalogDefinitionRevisionDtoSchema = catalogObject({
   documentation: z.string().nullable(),
   /** Symbol unit descriptor, absent when the definition declares no unit. */
   unit: catalogObject({ kind: z.literal("symbol"), symbol: z.string() }).nullable(),
+  /** Published examples, available for lossless content editing. */
+  examples: z.array(z.lazy(() => catalogJsonValueSchema)).optional(),
   publishedInCatalogReleaseId: z.string()
 });
 
@@ -696,11 +698,11 @@ export const catalogSupportedValueSchemaSchema: z.ZodType<CatalogSupportedValueS
 export const catalogSupportedDefinitionContentSchema = catalogObject({
   displayName: z.string(),
   documentation: z.string(),
-  /** Optional author description, distinct from long-form documentation. */
-  description: z.string().max(512).optional(),
-  unit: z.string().min(1).max(32).optional(),
+  /** Omitted optional content retains the old value; null explicitly removes it. */
+  description: z.string().max(512).nullable().optional(),
+  unit: z.string().min(1).max(32).nullable().optional(),
   valueSchema: catalogSupportedValueSchemaSchema,
-  examples: z.array(catalogJsonValueSchema).optional()
+  examples: z.array(catalogJsonValueSchema).nullable().optional()
 });
 
 export const catalogNestedDefinitionDraftSchema = catalogObject({

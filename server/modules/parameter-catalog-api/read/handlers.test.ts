@@ -61,7 +61,7 @@ const selectedRevision: DefinitionRevisionSnapshot = {
     constraints: { kind: "none" as const },
     unit: { kind: "absent" as const },
     schemaDefault: { kind: "absent" as const },
-    examples: [],
+    examples: [100, 200],
     matching: {
       sourceProperty: "iin_max",
       selectorKind: "driver-compatible" as const,
@@ -661,6 +661,7 @@ describe("S8-READ nine canonical catalog read routes", () => {
     const body = catalogDefinitionRevisionResponseSchema.parse(response.body);
     expect(body.item.id).toBe("drev_acme_power_iin_max_1");
     expect(body.item.publishedInCatalogReleaseId).toBe(pin.id);
+    expect(body.item.examples).toEqual([100, 200]);
   });
 
   it("loads a definition through getDefinitionById and registration/usage seams", async () => {
