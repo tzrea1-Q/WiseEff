@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import type {
   DtsReleaseBaseline,
@@ -8,6 +8,8 @@ import type {
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { Input } from "@/components/ui/input";
+import { SelectControl } from "@/components/common/SelectControl";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { baselineRestoreBlockedReason } from "@/application/project-configuration/releaseBaselineSession";
 import { formatRestorePreviewDescription } from "./WorkbenchBaselineDock";
 
@@ -33,7 +35,8 @@ export type WorkbenchBaselineDialogsProps = {
   onCancelRelease: () => void;
   onConfirmRelease: () => void;
   onCancelRestore: () => void;
-  onConfirmRestore: () => void;
+  onConfirmRestore: (input?: { reason: string; confirmCompositionChanges: boolean }) => void;
+  onRefreshRestorePreview?: (sourceConfigRevisionId?: string) => void;
   onCancelLeave: () => void;
   onConfirmLeave: () => void;
   confirmation: {
@@ -73,6 +76,7 @@ export function WorkbenchBaselineDialogs({
   onConfirmRelease,
   onCancelRestore,
   onConfirmRestore,
+  onRefreshRestorePreview,
   onCancelLeave,
   onConfirmLeave,
   confirmation,
@@ -80,10 +84,28 @@ export function WorkbenchBaselineDialogs({
   onConfirmConfirmation,
   releaseRequiresConfirmation = false
 }: WorkbenchBaselineDialogsProps) {
+  const [restoreReason, setRestoreReason] = useState({ baselineId: selectedBaselineId,value: "" });
+  const reason = restoreReason.baselineId === selectedBaselineId ? restoreReason.value : "";
+  const canonical = restorePreview?.canonical;
   const restoreBlockedReason = baselineRestoreBlockedReason(restorePreview, selectedBaselineId);
   const restoreDescription = (
     <div>
-      {restorePreview && restorePreview.baselineId === selectedBaselineId
+      {canonical ? <>
+        <p>整套恢复将原子生成新的工作配置及参数来源记录；原快照和正式版本保持不变。</p>
+        {canonical.entryFile ? <p>入口：{canonical.entryFile}；include 路径：{canonical.includeSearchPaths.join("、")}；overlay 顺序：{canonical.overlayOrder.join(" → ") || "无"}。</p> : null}
+        {canonical.members.length ? <Table aria-label="恢复后的成员组成"><TableHeader><TableRow><TableHead>文件</TableHead><TableHead>目标版本</TableHead><TableHead>用途 / 顺序</TableHead><TableHead>操作</TableHead></TableRow></TableHeader>
+          <TableBody>{canonical.members.map((member) => <TableRow key={member.fileId}><TableCell>{member.fileName}</TableCell><TableCell>v{member.versionNumber}</TableCell><TableCell>{({ base: "基础",overlay: "覆盖层",include: "包含文件",charging: "充电",thermal: "温控",misc: "其他" } as Record<string,string>)[member.role] ?? member.role} / {member.sortOrder}</TableCell>
+            <TableCell>{{ restore: "恢复版本",reattach: "补回成员", "retain-added": "保留新增成员",unchanged: "保持" }[member.action]}{member.compositionChanged ? "（组成变化）" : ""}</TableCell></TableRow>)}</TableBody></Table> : null}
+        {canonical.canRestore ? <p>参数变化：{canonical.impact.parameterChanges}；保留参数：{canonical.impact.retainedBindings}；恢复参数：{canonical.impact.restoredBindings}；来源转移：{canonical.impact.sourceReplacements}。</p> : null}
+        {canonical.missingInformation.map((message) => <p key={message}>{message}</p>)}
+        {!canonical.canRestore && canonical.historicalRevisions.length > 0 && onRefreshRestorePreview ? <label>实际历史配置修订<SelectControl
+          ariaLabel="实际历史配置修订" value={canonical.sourceConfigRevisionId ?? ""} placeholder="明确选择匹配的历史组成"
+          options={canonical.historicalRevisions.map((row) => ({ value: row.id,label: `配置修订 ${row.revisionNumber}` }))}
+          onValueChange={(id) => onRefreshRestorePreview(id)} /></label> : null}
+        <a href={canonical.editorHref}>进入配置编辑器</a>
+        {onRefreshRestorePreview ? <button type="button" className="button subtle" disabled={pendingAction === "restore-baseline"}
+          onClick={() => onRefreshRestorePreview(canonical.sourceConfigRevisionId)}>重新预览</button> : null}
+      </> : restorePreview && restorePreview.baselineId === selectedBaselineId
         ? formatRestorePreviewDescription(
             baselines.find((item) => item.id === selectedBaselineId)?.name ?? selectedBaselineId,
             restorePreview.members,
@@ -91,7 +113,8 @@ export function WorkbenchBaselineDialogs({
             Boolean(restoreBlockedReason)
           )
         : "正在准备恢复预览…"}
-      {restoreBlockedReason ? <p role="note">{restoreBlockedReason}</p> : null}
+      {restoreBlockedReason && !canonical ? <p role="note">{restoreBlockedReason}</p> : null}
+      {sessionDraftsDirty ? <p role="alert">还有未保存的本地修改，请先保存或撤销后恢复。</p> : null}
       {baselineActionError ? <p role="alert">{baselineActionError}</p> : null}
     </div>
   );
@@ -189,8 +212,12 @@ export function WorkbenchBaselineDialogs({
         pending={pendingAction === "restore-baseline"}
         pendingLabel="恢复中…"
         tone="danger"
+        confirmDisabled={sessionDraftsDirty || Boolean(canonical && !reason.trim())}
+        acknowledgement={canonical?.requiresCompositionConfirmation ? "我确认上述成员归属、用途、顺序及 include/overlay 组成变化。" : undefined}
+        extra={canonical ? <label>恢复原因<Input aria-label="恢复原因" value={reason} disabled={pendingAction === "restore-baseline"}
+          onChange={(event) => setRestoreReason({ baselineId: selectedBaselineId,value: event.target.value })} /></label> : undefined}
         onCancel={onCancelRestore}
-        onConfirm={onConfirmRestore}
+        onConfirm={() => canonical ? onConfirmRestore({ reason: reason.trim(),confirmCompositionChanges: canonical.requiresCompositionConfirmation }) : onConfirmRestore()}
       />}
 
       <ConfirmDialog

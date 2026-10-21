@@ -363,7 +363,7 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
     setRestoreBaselineOpen(true);
   }, [dtsRepository, projectId, releaseBaselineSession, selectedBaselineId]);
 
-  const restoreWorkbenchBaseline = useCallback(async () => {
+  const restoreWorkbenchBaseline = useCallback(async (input?: { reason: string; confirmCompositionChanges: boolean }) => {
     if (!canAdmin || !selectedConfigSet || !selectedBaselineId) return;
     releaseBaselineSession.clearActionError();
     let restored;
@@ -371,7 +371,8 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
       restored = await releaseBaselineSession.restore(
         projectId,
         selectedConfigSet.id,
-        dtsRepository
+        dtsRepository,
+        input
       );
     } catch {
       // Restore failed: the confirm dialog stays open and renders actionError.

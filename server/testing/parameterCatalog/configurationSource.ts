@@ -8,6 +8,7 @@ import { installPublishedRelease } from "../../modules/catalog-kernel/install/in
 import { CatalogSubjectId } from "../../modules/parameter-catalog-contract";
 import { executeRegistration } from "../../modules/parameter-governance/registration";
 import { createParameterModuleForAuth } from "../../modules/parameters/service";
+import { encodeBundleBytes, sha256Digest } from "../../modules/catalog-publication/builder/bundleCodec";
 
 /** Explicit local-test Catalog bootstrap, not publication-manager qualification.
  * Module creation and registration use their actual production owners.
@@ -15,6 +16,7 @@ import { createParameterModuleForAuth } from "../../modules/parameters/service";
 export async function installConfigurationSourceFixture(db: Database, auth: AuthContext, input: {
   subjectId: string; schemaId: string;
   additionalDefinitionWithSameName?: { definitionId: string; revisionId: string; propertyKey: string };
+  retainArtifactForErasure?: boolean;
 }) {
   const pool = getRootPostgresPool(db);
   if (!pool) throw new Error("Configuration fixture requires native PostgreSQL");
@@ -50,6 +52,12 @@ export async function installConfigurationSourceFixture(db: Database, auth: Auth
   if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
   const installed = await installPublishedRelease(pool,{ mode: "bootstrap",source: jsonCatalogReleaseSource(bundle),expectedTargetDigest: compiled.value.aggregateDigest });
   if (!installed.ok) throw new Error(JSON.stringify(installed.error));
+  if (input.retainArtifactForErasure) {
+    const bytes = encodeBundleBytes(bundle);
+    await db.query(`insert into catalog_publication.release_artifacts(id,artifact_digest,bytes_checksum,artifact_bytes,
+      source_kind,target_release_id,target_release_digest,toolchain) values ($1,$2,$3,$4,'repository-bundle',$5,$2,$6)`,
+      [`cart_${randomUUID()}`,compiled.value.aggregateDigest,sha256Digest(bytes),Buffer.from(bytes),release.manifest.release.id,release.manifest.toolchain]);
+  }
   const module = await createParameterModuleForAuth(db,auth,{ name: "Configuration",kind: "business" });
   const registration = await executeRegistration(pool,{
     kind: "register",organizationId: auth.organization.id,subjectId: CatalogSubjectId(input.subjectId),subjectKind: "configuration-schema",

@@ -243,7 +243,18 @@ export type DtsRestorePreviewResult = {
   releasedBaselineUnchanged: true;
   members: DtsRestorePreviewMember[];
   driftedCount: number;
+  canonical?: {
+    canRestore: boolean; proofToken?: string; sourceConfigRevisionId?: string; missingInformation: string[];
+    historicalRevisions: Array<{ id: string; revisionNumber: number }>; editorHref: string; requiresCompositionConfirmation: boolean;
+    members: Array<{ fileId: string; fileName: string; fromVersionId: string | null; toVersionId: string; versionNumber: number;
+      role: string; sortOrder: number; action: "restore" | "reattach" | "retain-added" | "unchanged"; compositionChanged: boolean }>;
+    entryFile: string | null; includeSearchPaths: string[]; overlayOrder: string[];
+    impact: { parameterChanges: number; retainedBindings: number; restoredBindings: number; sourceReplacements: number };
+  };
 };
+
+export type DtsCanonicalBaselineRestoreInput = { sourceConfigRevisionId?: string; proofToken: string;
+  confirmCompositionChanges: boolean; reason: string; clientMutationId: string };
 
 export type DtsValidationGateResult = {
   ok: boolean;
@@ -368,8 +379,8 @@ export interface DtsStructuredRepository {
     baselineId: string,
     options?: CompareBaselineOptions
   ): Promise<DtsCompareBaselineResult>;
-  previewRestoreBaseline(projectId: string, baselineId: string): Promise<DtsRestorePreviewResult>;
-  rollbackBaseline(projectId: string, baselineId: string): Promise<DtsRollbackBaselineResult>;
+  previewRestoreBaseline(projectId: string, baselineId: string, input?: { sourceConfigRevisionId: string }): Promise<DtsRestorePreviewResult>;
+  rollbackBaseline(projectId: string, baselineId: string, input?: DtsCanonicalBaselineRestoreInput): Promise<DtsRollbackBaselineResult>;
   releaseBaseline(
     projectId: string,
     baselineId: string,
