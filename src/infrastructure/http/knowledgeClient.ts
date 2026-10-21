@@ -445,6 +445,10 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
 
     async rebuildIndex() {
       return apiClient.post<{ enqueued: number }>("/api/v1/knowledge/index/rebuild", {});
+    },
+
+    async rescanReferenceSuggestions() {
+      return apiClient.post<{ enqueued: number }>("/api/v1/knowledge/reference-suggestions/rescan", {});
     }
   };
 }

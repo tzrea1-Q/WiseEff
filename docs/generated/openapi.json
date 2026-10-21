@@ -16240,6 +16240,36 @@
         }
       }
     },
+    "/api/v1/knowledge/reference-suggestions/rescan": {
+      "post": {
+        "operationId": "knowledge.referenceSuggestionsRescan",
+        "summary": "Re-enqueue every non-archived entry for reference suggestion detection (knowledge:manage only)",
+        "tags": [
+          "knowledge"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeIndexRebuildResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/knowledge/entries/{entryId}/index/retry": {
       "post": {
         "operationId": "knowledge.indexRetryEntry",

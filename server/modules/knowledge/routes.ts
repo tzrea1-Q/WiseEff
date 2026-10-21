@@ -31,6 +31,7 @@ import {
   listKnowledgeRevisions,
   publishKnowledgeEntry,
   rebuildKnowledgeIndex,
+  rescanKnowledgeReferenceSuggestions,
   rejectAgentKnowledgeDraft,
   removeKnowledgeParameterReference,
   removeKnowledgeDefinitionReference,
@@ -236,6 +237,13 @@ export function registerKnowledgeRoutes(
     const health = await getKnowledgeIndexHealth(db, auth, { embeddingClient });
 
     return { status: 200, body: health };
+  });
+
+  router.post("/api/v1/knowledge/reference-suggestions/rescan", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const result = await rescanKnowledgeReferenceSuggestions(db, auth, createUserInvocation(auth), { requestId: request.requestId });
+    return { status: 200, body: result };
   });
 
   router.post("/api/v1/knowledge/index/rebuild", async (request) => {

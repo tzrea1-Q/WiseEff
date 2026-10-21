@@ -1509,6 +1509,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "KnowledgeIndexRebuildResponse",
     additionalResponses: { "403": "ErrorResponse" }
   },
+  "knowledge.referenceSuggestionsRescan": {
+    summary: "Re-enqueue every non-archived entry for reference suggestion detection (knowledge:manage only)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeIndexRebuildResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
   "knowledge.indexRetryEntry": {
     summary: "Re-enqueue one entry's index refresh (knowledge:manage only)",
     tags: ["knowledge"],

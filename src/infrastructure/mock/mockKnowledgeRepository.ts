@@ -1225,6 +1225,18 @@ export function createMockKnowledgeRepository(
         });
       }
       return { enqueued: published.length };
+    },
+
+    async rescanReferenceSuggestions() {
+      if (!canManage) throw mockApiError("FORBIDDEN", "Reference suggestion rescan requires knowledge:manage.");
+      const entries = store.entries.filter((entry) => entry.status !== "archived");
+      for (const entry of entries) {
+        store.index.set(entry.id, {
+          status: "pending", error: null, indexedRevisionNumber: entry.headRevisionNumber,
+          chunkCount: store.index.get(entry.id)?.chunkCount ?? 0
+        });
+      }
+      return { enqueued: entries.length };
     }
   };
   return repository;

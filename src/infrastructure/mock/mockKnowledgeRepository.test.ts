@@ -199,6 +199,7 @@ describe("createMockKnowledgeRepository", () => {
     const repository = createMockKnowledgeRepository({ canManage: false });
     await expect(repository.getIndexHealth()).rejects.toThrow(/knowledge:manage/);
     await expect(repository.rebuildIndex()).rejects.toThrow(/knowledge:manage/);
+    await expect(repository.rescanReferenceSuggestions()).rejects.toThrow(/knowledge:manage/);
   });
 
   it("publishing adds an entry to the simulated index; hard delete removes it", async () => {

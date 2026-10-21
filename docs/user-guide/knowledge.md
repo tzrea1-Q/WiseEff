@@ -60,6 +60,10 @@ Indexing drafts and published revisions detects exact, case-sensitive property k
 
 Only the entry owner with edit permission or a knowledge manager can read or act on suggestions. Accept creates an audited definition reference; Ignore remembers the dismissal for that entry and definition. Accept all processes each remaining suggestion separately and retains completed decisions if one fails. The same key in several modules produces separate candidates. Until accepted, suggestions change neither related knowledge nor retrieval; accepted references enter related knowledge only once the entry is published.
 
+Suggestions follow the latest revision: a pending suggestion is withdrawn when its key disappears and may return when the key reappears. Archived entries hide suggestions and skip detection; restoring an entry queues detection against its head revision. Accepted references and dismissals stay unchanged.
+
+Existing non-archived entries that have never completed detection are queued on server startup. After the catalog gains definitions, a knowledge manager can select Rescan suggested links in the index health tab on `/knowledge-admin` to enqueue all the organization's non-archived entries, including drafts. Detection runs in the background; the admin action is audited and preserves accepted references and dismissals.
+
 ## Manage entries in batches
 
 Select entries in the list, then choose Add tags, Remove tags, Publish or Archive, up to 200 entries at a time. Tag changes preserve other tags and content. Publishing applies to drafts; archiving applies to published entries and removes them from retrieval while retaining history. Permissions are checked per entry: owners need edit permission, and knowledge managers may maintain others’ entries. The result table reports each success or refusal; one failure does not undo other successful entries.

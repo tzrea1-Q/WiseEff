@@ -19,6 +19,7 @@ import { fuseKnowledgeSearchResults } from "./hybridSearch";
 import type { KnowledgeEmbeddingClient } from "./indexing/embeddingClient";
 import {
   enqueueAllPublishedEntries,
+  enqueueReferenceSuggestionRescan,
   enqueueEntryIndexRefresh,
   hasKnowledgeVectorSupport,
   listIndexStatuses,
@@ -1138,6 +1139,7 @@ export async function listKnowledgeReferenceSuggestions(db: Database, auth: Auth
   const entry = await getEntryById(db, auth, entryId);
   if (!entry || !canReadEntry(auth, entry)) throw knowledgeEntryNotFound(entryId);
   requireKnowledgeGovern(auth, entry);
+  if (entry.status === "archived") return [];
   const result = await db.query<{
     definitionId: string; propertyKey: string; mentionCount: number; snippet: string;
     page: number | null; detectedRevisionId: string;
@@ -1662,4 +1664,26 @@ export async function rebuildKnowledgeIndex(
     });
   });
   return { enqueued };
+}
+
+export async function rescanKnowledgeReferenceSuggestions(
+  db: Database, auth: AuthContext, invocation: TrustedInvocationContext,
+  context: KnowledgeServiceContext = {}
+): Promise<{ enqueued: number }> {
+  assertTrustedInvocationMatchesAuth(auth, invocation, "Knowledge reference suggestions rescan");
+  requireKnowledgeManage(auth);
+  return db.transaction(async (tx) => {
+    const enqueued = await enqueueReferenceSuggestionRescan(tx, auth.organization.id);
+    await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId: context.requestId ?? randomUUID() }, {
+      app: "knowledge",
+      kind: "knowledge-reference-suggestions-rescan",
+      action: "reference-suggestions-rescan",
+      severity: "Medium",
+      projectId: null,
+      targetType: "knowledge-reference-suggestions",
+      targetId: auth.organization.id,
+      metadata: { enqueued }
+    });
+    return { enqueued };
+  });
 }

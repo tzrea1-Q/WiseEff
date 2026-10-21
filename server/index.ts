@@ -11,6 +11,7 @@ import { createBridgeConnectionPool } from "./modules/deviceBridge/connectionPoo
 import { createBridgeRpcClient } from "./modules/deviceBridge/rpc";
 import { resolveKnowledgeEmbeddingClient } from "./modules/knowledge/indexing/embeddingClient";
 import { ensureKnowledgeVectorColumn } from "./modules/knowledge/indexing/vectorEnsure";
+import { ensureKnowledgeReferenceSuggestions } from "./modules/knowledge/indexing/referenceSuggestionsEnsure";
 import { startKnowledgeIndexWorkerLoop } from "./modules/knowledge/indexing/worker";
 import { startSourceIndexWorkerLoop } from "./modules/logs/sourceIndexWorker";
 import { createLogAnalyzerFromEnv } from "./modules/logs/analyzer/analyzerFromEnv";
@@ -279,6 +280,13 @@ async function start() {
 
   server.listen(env.PORT, env.HOST, () => {
     console.log(`WiseEff API listening on http://${env.HOST}:${env.PORT}`);
+    if (db) {
+      void ensureKnowledgeReferenceSuggestions(db).then(({ enqueued }) => {
+        if (enqueued) console.log(`[knowledge-reference-suggestions] backfill enqueued ${enqueued} entries`);
+      }).catch((error) => {
+        console.error("[knowledge-reference-suggestions] startup backfill failed; retry on next startup:", error);
+      });
+    }
   });
 }
 

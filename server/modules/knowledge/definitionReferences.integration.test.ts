@@ -57,6 +57,7 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
   let searchTerm: string;
   let searchableDefinitionCount: number;
   let catalogRelease: { id: string; digest: string };
+  let addCatalogDefinition: (id: string, propertyKey: string) => Promise<{ id: string; digest: string }>;
   let archiveRoot: string;
   let objectStore: ObjectStore;
 
@@ -97,6 +98,7 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     searchTerm = catalogFixture.searchTerm;
     searchableDefinitionCount = catalogFixture.searchableDefinitionCount;
     catalogRelease = catalogFixture.pin;
+    addCatalogDefinition = catalogFixture.addDefinition;
     archiveRoot = await mkdtemp(join(tmpdir(), "wiseeff-kb903-legacy-archive-"));
     objectStore = createLocalObjectStore(join(archiveRoot, "objects"));
     await pool.query("insert into organizations (id,name) values ($1,'Knowledge A'),($2,'Knowledge B')", [ORG_A, ORG_B]);
@@ -202,6 +204,159 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     }
     throw new Error("Index queue did not drain");
   }
+
+  it("withdraws absent keys and revives only pending or withdrawn suggestions against the head revision", async () => {
+    const created = await request(auth, "POST", "/api/v1/knowledge/entries", {
+      contentForm: "markdown", title: "Current suggestion evidence", tags: [],
+      contentMarkdown: "knowledge_batch_property_5_0 knowledge_batch_property_5_1 knowledge_batch_property_5_2"
+    });
+    expect(created.status).toBe(201);
+    const id = created.body.item.id as string;
+    const path = `/api/v1/knowledge/entries/${id}/reference-suggestions`;
+    await drainSuggestions();
+    expect((await request(auth, "POST", `${path}/pdef_kb_batch_5_1/accept`)).status).toBe(200);
+    expect((await request(auth, "POST", `${path}/pdef_kb_batch_5_2/dismiss`)).status).toBe(200);
+    expect((await request(auth, "PATCH", `/api/v1/knowledge/entries/${id}`, {
+      expectedHeadRevisionNumber: 1, contentMarkdown: "No parameter keys remain."
+    })).status).toBe(200);
+    await drainSuggestions();
+    expect((await request(auth, "GET", path)).body.items).toEqual([]);
+    const restored = await request(auth, "PATCH", `/api/v1/knowledge/entries/${id}`, {
+      expectedHeadRevisionNumber: 2,
+      contentMarkdown: "knowledge_batch_property_5_0 knowledge_batch_property_5_0 knowledge_batch_property_5_1 knowledge_batch_property_5_2"
+    });
+    expect(restored.status).toBe(200);
+    await drainSuggestions();
+    expect((await request(auth, "GET", path)).body.items).toEqual([expect.objectContaining({
+      definitionId: "pdef_kb_batch_5_0", mentionCount: 2, detectedRevisionId: restored.body.item.headRevisionId
+    })]);
+    expect((await request(auth, "GET", `/api/v1/knowledge/entries/${id}`)).body.item.parameterReferences)
+      .toContainEqual(expect.objectContaining({ definitionId: "pdef_kb_batch_5_1" }));
+    expect((await request(auth, "POST", `${path}/pdef_kb_batch_5_2/accept`)).status).toBe(409);
+  });
+
+  it("hides archived suggestions, skips detection while archived and checks the head on restore", async () => {
+    const created = await request(auth, "POST", "/api/v1/knowledge/entries", {
+      contentForm: "markdown", title: "Archived suggestion evidence", tags: [], contentMarkdown: "knowledge_batch_property_6_0"
+    });
+    const id = created.body.item.id as string;
+    const path = `/api/v1/knowledge/entries/${id}/reference-suggestions`;
+    await drainSuggestions();
+    expect((await request(auth, "GET", path)).body.items).toHaveLength(1);
+    const head = await request(auth, "PATCH", `/api/v1/knowledge/entries/${id}`, {
+      expectedHeadRevisionNumber: 1, contentMarkdown: "knowledge_batch_property_6_1"
+    });
+    expect(head.status).toBe(200);
+    expect((await request(auth, "POST", `/api/v1/knowledge/entries/${id}/publish`)).status).toBe(200);
+    expect((await request(auth, "POST", `/api/v1/knowledge/entries/${id}/archive`)).status).toBe(200);
+    expect((await request(auth, "GET", path)).body.items).toEqual([]);
+    await drainSuggestions();
+    expect((await request(auth, "GET", path)).body.items).toEqual([]);
+    // Archived workers must not replace or withdraw any previously detected evidence.
+    expect((await db.query("select definition_id, status from knowledge_reference_suggestions where entry_id = $1", [id])).rows)
+      .toEqual([{ definition_id: "pdef_kb_batch_6_0", status: "pending" }]);
+    expect((await request(auth, "POST", `/api/v1/knowledge/entries/${id}/restore`)).status).toBe(200);
+    await drainSuggestions();
+    expect((await request(auth, "GET", path)).body.items).toEqual([expect.objectContaining({
+      definitionId: "pdef_kb_batch_6_1", detectedRevisionId: head.body.item.headRevisionId
+    })]);
+  });
+
+  it("enqueues organization rescans for managers, preserves decisions and audits each admin action", async () => {
+    const created = await request(auth, "POST", "/api/v1/knowledge/entries", {
+      contentForm: "markdown", title: "Rescan decisions", tags: [],
+      contentMarkdown: "knowledge_batch_property_8_0 knowledge_batch_property_8_1 k1340_new_catalog_key"
+    });
+    const id = created.body.item.id as string;
+    const path = `/api/v1/knowledge/entries/${id}/reference-suggestions`;
+    const foreign = await createEntry(authB, "Foreign rescan", false);
+    const archived = await createEntry(auth, "Archived rescan");
+    await request(auth, "POST", `/api/v1/knowledge/entries/${archived}/archive`);
+    await drainSuggestions();
+    await request(auth, "POST", `${path}/pdef_kb_batch_8_0/accept`);
+    await request(auth, "POST", `${path}/pdef_kb_batch_8_1/dismiss`);
+    expect((await request(auth, "GET", path)).body.items).toEqual([]);
+    catalogRelease = await addCatalogDefinition("pdef_k1340_new", "k1340_new_catalog_key");
+    const rescan = "/api/v1/knowledge/reference-suggestions/rescan";
+    const editor = { ...auth, permissions: auth.permissions.filter((permission) => permission !== "knowledge:manage") };
+    expect((await request(editor, "POST", rescan)).status).toBe(403);
+    expect((await request({ ...auth, permissions: [] }, "POST", rescan)).status).toBe(403);
+    const count = await db.query<{ count: string }>("select count(*) from knowledge_entries where organization_id = $1 and status <> 'archived'", [ORG_A]);
+    for (let run = 0; run < 2; run++) {
+      const result = await request(auth, "POST", rescan);
+      expect(result.status).toBe(200);
+      expect(result.body).toEqual({ enqueued: Number(count.rows[0].count) });
+      const health = await request(auth, "GET", "/api/v1/knowledge/index/status");
+      expect(health.body.items.find((item: { entryId: string }) => item.entryId === id)?.status).toBe("pending");
+      expect(health.body.items.find((item: { entryId: string }) => item.entryId === archived)?.status).toBe("succeeded");
+      const otherHealth = await request(authB, "GET", "/api/v1/knowledge/index/status");
+      expect(otherHealth.body.items.find((item: { entryId: string }) => item.entryId === foreign)?.status).toBe("succeeded");
+      await drainSuggestions();
+      expect((await request(auth, "GET", path)).body.items).toEqual([expect.objectContaining({ definitionId: "pdef_k1340_new" })]);
+      expect((await request(auth, "GET", `/api/v1/knowledge/entries/${id}`)).body.item.parameterReferences)
+        .toContainEqual(expect.objectContaining({ definitionId: "pdef_kb_batch_8_0" }));
+      expect((await request(auth, "POST", `${path}/pdef_kb_batch_8_1/accept`)).status).toBe(409);
+    }
+    const audits = await db.query<{ metadata: unknown }>(
+      "select metadata from audit_events where kind = 'knowledge-reference-suggestions-rescan' and target_id = $1", [ORG_A]
+    );
+    expect(audits.rows).toEqual([
+      { metadata: { enqueued: Number(count.rows[0].count), initiator: "user" } },
+      { metadata: { enqueued: Number(count.rows[0].count), initiator: "user" } }
+    ]);
+    const before = await request(auth, "GET", "/api/v1/knowledge/index/status");
+    await db.query(`create function k1340_refuse_rescan_audit() returns trigger language plpgsql as $$
+      begin
+        if new.kind = 'knowledge-reference-suggestions-rescan' then raise exception 'audit unavailable'; end if;
+        return new;
+      end $$`);
+    await db.query("create trigger k1340_refuse_rescan_audit before insert on audit_events for each row execute function k1340_refuse_rescan_audit()");
+    try {
+      expect((await request(auth, "POST", rescan)).status).toBe(500);
+      expect((await request(auth, "GET", "/api/v1/knowledge/index/status")).body).toEqual(before.body);
+    } finally {
+      await db.query("drop trigger k1340_refuse_rescan_audit on audit_events");
+      await db.query("drop function k1340_refuse_rescan_audit()");
+    }
+  });
+
+  it("backfills undetected heads once across replicas without resetting running workers", async () => {
+    const records: Array<{ id: string; context: AuthContext; archived: boolean }> = [];
+    for (const [context, status] of [[auth, "draft"], [auth, "published"], [authB, "draft"], [auth, "archived"]] as const) {
+      const created = await request(context, "POST", "/api/v1/knowledge/entries", {
+        contentForm: "markdown", title: `Legacy ${status}`, tags: [], contentMarkdown: "knowledge_batch_property_10_0"
+      });
+      expect(created.status).toBe(201);
+      const id = created.body.item.id as string;
+      if (status !== "draft") await request(context, "POST", `/api/v1/knowledge/entries/${id}/publish`);
+      if (status === "archived") await request(context, "POST", `/api/v1/knowledge/entries/${id}/archive`);
+      records.push({ id, context, archived: status === "archived" });
+    }
+    const noMatches = await createEntry(auth, "Legacy without matches", false);
+    const running = await createEntry(auth, "Already processing", false);
+    const queued = await createEntry(auth, "Already queued", false);
+    await drainSuggestions();
+    // Model the pre-feature deployment: indexing succeeded but detection never ran.
+    const ids = [...records.map((record) => record.id), noMatches, running, queued];
+    await db.query("delete from knowledge_reference_suggestions where entry_id = any($1::uuid[])", [ids]);
+    await db.query("update knowledge_entries set reference_suggestions_detected_at = null where id = any($1::uuid[])", [ids]);
+    await db.query("update knowledge_index_status set status = 'processing', started_at = now() where entry_id = $1", [running]);
+    await db.query("update knowledge_index_status set status = 'pending' where entry_id = $1", [queued]);
+    const { ensureKnowledgeReferenceSuggestions } = await import("./indexing/referenceSuggestionsEnsure");
+    const results = await Promise.all([ensureKnowledgeReferenceSuggestions(db), ensureKnowledgeReferenceSuggestions(db)]);
+    expect(results.reduce((total, result) => total + result.enqueued, 0)).toBe(4);
+    expect((await db.query("select status from knowledge_index_status where entry_id = $1", [running])).rows).toEqual([{ status: "processing" }]);
+    await drainSuggestions();
+    for (const record of records) {
+      const result = await request(record.context, "GET", `/api/v1/knowledge/entries/${record.id}/reference-suggestions`);
+      expect(result.body.items).toEqual(record.archived ? [] : [expect.objectContaining({ definitionId: "pdef_kb_batch_10_0" })]);
+    }
+    // Completing the already claimed worker also completes detection for its head.
+    await db.query("update knowledge_index_status set status = 'pending' where entry_id = $1", [running]);
+    await drainSuggestions();
+    expect(await ensureKnowledgeReferenceSuggestions(db)).toEqual({ enqueued: 0 });
+    expect((await request(auth, "GET", `/api/v1/knowledge/entries/${noMatches}/reference-suggestions`)).body.items).toEqual([]);
+  });
 
   it("keeps an entry indexed and searchable without suggestions when the catalog read fails", async () => {
     const created = await request(auth, "POST", "/api/v1/knowledge/entries", {

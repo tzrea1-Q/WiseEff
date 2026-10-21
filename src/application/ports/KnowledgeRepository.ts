@@ -117,4 +117,5 @@ export interface KnowledgeRepository {
   getIndexHealth(): Promise<KnowledgeIndexHealth>;
   retryEntryIndex(entryId: string): Promise<void>;
   rebuildIndex(): Promise<{ enqueued: number }>;
+  rescanReferenceSuggestions(): Promise<{ enqueued: number }>;
 }

@@ -133,6 +133,19 @@ export async function enqueueAllPublishedEntries(db: Queryable, organizationId: 
   return result.rowCount ?? 0;
 }
 
+/** Rescans include drafts; retrieval still indexes published entries only. */
+export async function enqueueReferenceSuggestionRescan(db: Queryable, organizationId: string): Promise<number> {
+  const result = await db.query(
+    `insert into knowledge_index_status (entry_id, organization_id, status, error, enqueued_at, updated_at)
+     select id, organization_id, 'pending', null, now(), now() from knowledge_entries
+     where organization_id = $1 and status <> 'archived'
+     on conflict (entry_id) do update
+       set status = 'pending', error = null, enqueued_at = now(), updated_at = now()`,
+    [organizationId]
+  );
+  return result.rowCount ?? 0;
+}
+
 /**
  * System-actor variant of the rebuild enqueue for the late-install ensure:
  * newly gained vector support applies to every organization's published

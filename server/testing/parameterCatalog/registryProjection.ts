@@ -101,7 +101,34 @@ export async function installKnowledgeDefinitionReferencesCatalogFixture(
     searchTerm: "knowledge_batch_property",
     searchableDefinitionCount: bundle.releases[0]!.documents.filter((document) =>
       document.kind === "definition" && document.content.propertyKey.includes("knowledge_batch_property")
-    ).length
+    ).length,
+    async addDefinition(id: string, propertyKey: string) {
+      const initial = bundle.releases[0]!;
+      const next = structuredClone(initial);
+      Object.assign(next.manifest.release, {
+        id: "crel_kb_definition_addition_2", version: "1.1.0",
+        sequence: initial.manifest.release.sequence + 1, publishedAt: "2026-10-21T00:00:00Z",
+        predecessor: { id: compiled.value.release.id, digest: compiled.value.release.digest }
+      });
+      const template = next.documents.find((document) => document.kind === "definition" && document.content.id === X_DEFINITION_ID);
+      if (!template || template.kind !== "definition") throw new Error("Missing definition template");
+      const addition = structuredClone(template);
+      Object.assign(addition.content, { id, propertyKey });
+      Object.assign(addition.content.revision, { id: `drev_${id}_1`, displayName: propertyKey });
+      addition.content.revision.matching.sourceProperty = propertyKey;
+      next.documents.push(addition);
+      refreshAuthoritativeSource(next);
+      const successorBundle = { ...bundle, targetReleaseId: next.manifest.release.id, releases: [initial, next] };
+      const successor = compileCatalogRelease(successorBundle);
+      if (!successor.ok) throw new Error(JSON.stringify(successor.error));
+      const advanced = await installPublishedRelease(pool, {
+        mode: "advance", source: jsonCatalogReleaseSource(successorBundle),
+        expectedCurrent: { id: compiled.value.release.id, digest: compiled.value.release.digest },
+        expectedTargetDigest: successor.value.aggregateDigest
+      });
+      if (!advanced.ok) throw new Error(JSON.stringify(advanced.error));
+      return { id: successor.value.release.id, digest: successor.value.release.digest };
+    }
   };
 }
 

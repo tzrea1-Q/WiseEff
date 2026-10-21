@@ -957,6 +957,7 @@ export const routeManifest = [
   },
   { id: "knowledge.indexStatus", method: "GET", path: "/api/v1/knowledge/index/status", module: "knowledge", stability: "mvp" },
   { id: "knowledge.indexRebuild", method: "POST", path: "/api/v1/knowledge/index/rebuild", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.referenceSuggestionsRescan", method: "POST", path: "/api/v1/knowledge/reference-suggestions/rescan", module: "knowledge", stability: "mvp" },
   {
     id: "knowledge.indexRetryEntry",
     method: "POST",
