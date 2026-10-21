@@ -80,6 +80,7 @@ export type AuthPublicConfig = LocalAuthPublicConfig | {
   selfRegisterEnabled: false;
   hasLocalAdmin: boolean;
   evaluationOrganizationName: string | null;
+  oidcIssuer?: string;
 };
 
 function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message: string) {

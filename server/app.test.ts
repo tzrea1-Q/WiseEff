@@ -222,6 +222,7 @@ function createAdbDebugGateway(): DebugDeviceGateway {
 
 function createProductionIdentityDb(input: {
   dbUserId: string;
+  oidcIdentity?: { issuer: string; subject: string };
   email: string;
   isActive?: boolean;
   roleId: string;
@@ -233,9 +234,14 @@ function createProductionIdentityDb(input: {
     query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
       calls.push({ text, values });
 
+      if (text.includes("from public.user_oidc_identities")) {
+        const matched = input.oidcIdentity && values[0] === (input.organizationId ?? "org-chargelab") && values[1] === input.oidcIdentity.issuer && values[2] === input.oidcIdentity.subject;
+        return { rows: (matched ? [{ user_id: input.dbUserId }] : []) as Row[],rowCount: matched ? 1 : 0 };
+      }
+
       if (text.includes("from users")) {
-        const requestedOrganizationId = values[0];
-        const identityValue = values[1];
+        const requestedOrganizationId = values.length === 1 ? input.organizationId ?? "org-chargelab" : values[0];
+        const identityValue = values.length === 1 ? values[0] : values[1];
         if (requestedOrganizationId !== (input.organizationId ?? "org-chargelab")) {
           return { rows: [], rowCount: 0 };
         }
@@ -1194,6 +1200,7 @@ describe("WiseEff API", () => {
   it("discovers JWKS from the OIDC issuer when AUTH_OIDC_JWKS_URI is not configured", async () => {
     const { db } = createProductionIdentityDb({
       dbUserId: "u-oidc-discovered",
+      oidcIdentity: { issuer: "https://id.example.com/realms/wiseeff",subject: "u-oidc-discovered" },
       email: "u-oidc-discovered@org-chargelab",
       roleId: "admin"
     });

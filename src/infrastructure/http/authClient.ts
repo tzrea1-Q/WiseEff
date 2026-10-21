@@ -67,6 +67,7 @@ export type LocalAuthPublicConfigDto = {
   selfRegisterEnabled: boolean;
   hasLocalAdmin: boolean;
   evaluationOrganizationName: string | null;
+  oidcIssuer?: string;
 };
 
 export const LOCAL_AUTH_TOKEN_STORAGE_KEY = "wiseeff.localAuthToken";

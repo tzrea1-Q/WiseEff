@@ -19,7 +19,7 @@ The current gap is that Organization is a security stamp (`id`, `name`, `created
 | D1 | The new product is **Organization administration**, not a thicker parameter-admin organization area. |
 | D2 | **Organization** is the tenant boundary (one company or one deployment customer). Hardware / software is **Role discipline**. |
 | D3 | The product operates the caller’s **home organization** only. No Organization directory, create, archive, or switcher. Extra `organizations` rows may exist as bootstrap or fixtures. |
-| D4 | Membership channels: local self-registration with an implicit Organization; target environments use OIDC JIT plus Admin-provisioned accounts. Invitations are later (TD-119). |
+| D4 | Membership channels: local self-registration with an implicit Organization; target environments use existing OIDC members and Admin-provisioned accounts with explicit identity bindings. JIT is not implemented. Invitations are later (TD-119). |
 | D5 | **Project member** is out. Organization membership is not project access. |
 | D6 | Local registration joins the **Evaluation Organization** (ChargeLab in the seeded profile). Department Organizations cease to be join targets; stray members move to the deployment home organization. Isolation tests use fixture Organizations, not product departments. |
 | D7 | Utility **Organization administration** replaces **User management**. Canonical routes `/organization` (profile) and `/organization/members` (people), switched as debugging-admin scope peers. `/user-permissions` permanently redirects to `/organization/members`. Parameter-admin organization subnav is unchanged. |
@@ -62,7 +62,7 @@ Sidebar label: Organization administration. Old deep links to `/user-permissions
 | Runtime | How a person joins |
 | --- | --- |
 | Local eval (`AUTH_PROVIDER=local`) | Self-register without an Organization picker. Join the Evaluation Organization (ChargeLab when seeded; otherwise the single bootstrap Organization). Committer still pending-approval. Admin cannot self-register. |
-| Target (`AUTH_PROVIDER=oidc`) | IdP claim + existing JIT. Admin may still provision local-shaped accounts through user governance where that path exists. |
+| Target (`AUTH_PROVIDER=oidc`) | Configured issuer + Organization + explicit subject binding to an Admin-provisioned member; unbound legacy accounts retain their verified-email migration compatibility. No JIT account creation. |
 | Later | Invitation links or email (TD-119). |
 
 `POST /api/v1/auth/register` stops requiring a department Organization field. Clients that still send the retired Hardware Department organization name are ignored or rejected after a short compatibility window documented in the plan — they must not create `org-hardware-department`.

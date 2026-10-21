@@ -15,7 +15,7 @@ Hardware and software stay **Role discipline**, never Organizations. The product
 ## Consequences
 
 - Local self-registration joins the Evaluation Organization (ChargeLab in the seeded profile) and drops the department picker. Non-development `AUTH_PROVIDER=local` must not mint department Organizations.
-- Target environments keep OIDC JIT plus Admin-provisioned accounts. Open registration is not production onboarding. OIDC still treats the token `organization_id` claim as the Organization; the login path does not remap department-shaped ids.
+- Target environments use existing OIDC members and Admin-provisioned accounts with explicit issuer/Organization/subject bindings. OIDC JIT account creation is not implemented (#1318 corrects the earlier JIT wording). Open registration is not production onboarding. OIDC still treats the token `organization_id` claim as the Organization; the login path does not remap department-shaped ids.
 - Local Admin bootstrap joins ChargeLab when that row exists; otherwise it creates or joins exactly one Organization from the bootstrap name (neutral default, never 硬件部). Zero or many Organizations without an explicit target fail closed.
 - The utility entry **组织管理** replaces **用户管理**. `/user-permissions` redirects. The parameter-admin organization area is unchanged.
 - Organization identity stays `organizations.id`. Holders of `users:manage` may change the display name (label, not a unique key). Slug, logo, and archive are out of v1. Rename is an audited write.

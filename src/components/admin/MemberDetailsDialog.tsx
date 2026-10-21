@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { ProjectReviewRolesPanel } from "@/components/parameter-admin-next/ProjectReviewRolesPanel";
 import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 import { presentError } from "@/infrastructure/http/presentError";
+import { MemberOidcIdentityPanel } from "./MemberOidcIdentityPanel";
+import { organizationRoleIds } from "@/domain/users/types";
 
 type Props = {
   user: User;
@@ -16,9 +18,10 @@ type Props = {
   roleLabel: (roleId: User["roleId"]) => string;
   onUpdated: (user: User) => void;
   onClose: () => void;
+  oidcIssuer?: string;
 };
 
-export function MemberDetailsDialog({ user, state, actions, roleEditor, roleLabel, onUpdated, onClose }: Props) {
+export function MemberDetailsDialog({ user, state, actions, roleEditor, roleLabel, onUpdated, onClose, oidcIssuer }: Props) {
   const [name, setName] = useState(user.name);
   const [title, setTitle] = useState(user.title);
   const [pending, setPending] = useState(false);
@@ -26,6 +29,9 @@ export function MemberDetailsDialog({ user, state, actions, roleEditor, roleLabe
   const [saved, setSaved] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
   const dirty = name !== user.name || title !== user.title;
+  const caller = state.users.find((member) => member.id === state.currentUserId);
+  const identityDisabledReason = organizationRoleIds(user).includes("platform-admin") && !(caller && organizationRoleIds(caller).includes("platform-admin"))
+    ? "只有平台超级管理员可以修改此账号的身份绑定。" : undefined;
 
   async function dismiss() {
     if (pending || !(await requestSettingsLeave())) return;
@@ -71,6 +77,7 @@ export function MemberDetailsDialog({ user, state, actions, roleEditor, roleLabe
               {saved ? <p role="status" className="member-details__hint">成员资料已保存。</p> : null}
               </div>
             </SettingsFormPage>
+            {oidcIssuer ? <MemberOidcIdentityPanel user={user} issuer={oidcIssuer} actions={actions} onUpdated={onUpdated} disabledReason={identityDisabledReason} /> : null}
             <section className="member-details__section" aria-label="组织角色与权限"><h3>组织角色</h3>{roleEditor}</section>
             <section className="member-details__section" aria-label="项目职责"><h3>项目职责</h3>
               <p className="member-details__hint">项目职责独立于组织角色，调整一个项目不会修改其他项目的授权。</p>

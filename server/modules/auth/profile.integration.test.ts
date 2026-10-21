@@ -22,6 +22,8 @@ async function fixture(provider: "oidc" | "local" = "oidc") {
   await seedCoreGraph(db, { organization: { id: organizationId, name: "Profile organization" }, users: [{ id: subject, name: "Existing display", title: "Existing title", email: "existing@example.test" }, { id: "profile-admin" }] });
   await seedBaselineAuthCatalog(db);
   await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values('profile-owner-role',$1,$2,null,'hardware-user'),('profile-admin-role','profile-admin',$2,null,'admin')`, [subject,organizationId]);
+  // The fixture represents an existing authenticated OIDC member, not a new email-only account.
+  if (provider === "oidc") await db.query("update public.user_oidc_identities set issuer=$1,subject=$2 where user_id=$2", [issuer,subject]);
   const server = createWiseEffServer({ db, env: { AUTH_PROVIDER: provider }, auth: { mode: "production", ...(provider === "oidc" ? { verifier: createOidcVerifier({ issuer, audience,
     jwks: { keys: [{ ...pair.publicKey.export({ format: "jwk" }), kid: "profile-key", alg: "RS256", use: "sig" }] } }) } : {}) } });
   const request = <T,>(path: string, method = "GET", body?: unknown, accessToken = token()) => requestJson<T>(server,path,{ method, headers: { Authorization: `Bearer ${accessToken}` }, ...(body ? { body: JSON.stringify(body) } : {}) });

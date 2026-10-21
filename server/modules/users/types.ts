@@ -1,4 +1,5 @@
 import type { BackendRoleId, RoleBinding } from "../auth/types";
+import type { OidcIdentity } from "../auth/oidcIdentity";
 
 export type UserGovernanceDto = {
   id: string;
@@ -11,6 +12,8 @@ export type UserGovernanceDto = {
   createdAt: string;
   lastActiveAt: string | null;
   roles: RoleBinding[];
+  oidcIdentity?: OidcIdentity;
+  legacyOidcEmail?: string;
 };
 
 export type CreateUserInput = {
@@ -19,7 +22,7 @@ export type CreateUserInput = {
   password: string;
   title?: string;
   roles: Array<{ projectId?: string | null; roleId: BackendRoleId }>;
-};
+} | { authentication: "oidc"; name: string; title?: string; issuer: string; subject: string; email?: string; roles: Array<{ projectId?: string | null; roleId: BackendRoleId }> };
 
 export type UpdateUserProfileInput = {
   name?: string;
