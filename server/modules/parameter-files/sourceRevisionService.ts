@@ -84,11 +84,25 @@ export async function isSourceRevisionReviewer(tx: Database, auth: AuthContext, 
     && canReviewParameters(current) && canReviewParameterStage(current, projectId, "software_review");
 }
 
-async function loadSnapshot(db: Database, provided?: CatalogSnapshot): Promise<CatalogSnapshot | null> {
+export async function loadSnapshot(db: Database, provided?: CatalogSnapshot): Promise<CatalogSnapshot | null> {
   if (provided) return provided;
   const pool = getRootPostgresPool(db);
   if (!pool) throw new ApiError("INTERNAL_ERROR", "Source inspection requires a root database or an explicit catalog snapshot.");
   return loadPublishedCatalog(pool);
+}
+
+/** Role updates take this same user fence; never authorize a commit from an old request context. */
+export async function requireCurrentSourceAdministrator(tx: Database, auth: AuthContext, projectId: string): Promise<AuthContext> {
+  const user = (await tx.query<{ id: string }>(
+    "select id from public.users where id=$1 and organization_id=$2 and is_active for no key update",
+    [auth.user.id, auth.organization.id])).rows[0];
+  if (!user) throw new ApiError("FORBIDDEN", "A current active file administrator is required.");
+  const current = await getAuthContext(tx, auth.user.id);
+  if (current.organization.id !== auth.organization.id || !canAdminParameters(current) || !canEditParameters(current, projectId)
+    || !current.roles.some((role) => role.roleId === "admin" || role.roleId === "platform-admin")) {
+    throw new ApiError("FORBIDDEN", "Current file administration and project edit permission are required.");
+  }
+  return current;
 }
 
 export async function loadSourceRevisionCatalogSnapshots(db: Database, projectId: string,
@@ -395,39 +409,7 @@ export async function submitSourceRevisionCandidate(db: Database, storage: Objec
     await assertSourceRevisionWriteAllowed(tx, auth, proof, security);
     if (proof.baseVersionId !== input.expectedCurrentVersionId || proof.proofDigest !== input.expectedProofToken) conflict("Source revision no longer matches the reviewed preview.");
     if (before === after) throw new ApiError("VALIDATION_FAILED", "Source has no changes.");
-    const pending = (await tx.query<{ id: string }>(`select id from public.project_parameter_value_change_requests
-      where organization_id=$1 and project_id=$2 and status='pending' and (
-        source_revision_config_set_id=$3 or batch_config_set_id=$3 or member_config_set_id=$3
-        or config_revision_id=$4) limit 1`, [auth.organization.id, input.projectId, proof.configSetId, proof.baseConfigRevisionId])).rows[0];
-    if (pending) throw new ApiError("CONFLICT", "This configuration already has a pending change request.", { requestId: pending.id, reason: "source-review-pending" });
-    if (await hasSourceConfigurationDrafts(tx, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: proof.configSetId })) {
-      conflict("Resolve existing parameter drafts before submitting a source revision.", "parameter-drafts-unresolved");
-    }
-    const requestId = `pvcr_${randomUUID()}`;
-    await tx.query(`update public.project_parameter_file_candidates set base_digest=$2,proposed_digest=$3,diff_digest=$4,
-      frozen_member_manifest=$5::jsonb,frozen_binding_manifest=$6::jsonb where id=$1 and status='ready'`,
-      [proof.candidateId, proof.baseDigest, proof.proposedDigest, proof.proofDigest, JSON.stringify(proof.members), JSON.stringify(proof.cohort)]);
-    await tx.query(`insert into public.project_parameter_value_change_requests
-      (id,organization_id,project_id,request_kind,reason,status,submitter_user_id,assigned_to_user_id,candidate_id,
-       candidate_base_digest,candidate_proposed_digest,candidate_diff_digest,candidate_member_manifest,candidate_binding_manifest,
-       source_revision_context,source_revision_proof_digest,source_revision_config_set_id,source_revision_mutation_id,source_revision_mutation_digest)
-      values ($1,$2,$3,'source_revision',$4,'pending',$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$10,$14,$15,$16)`,
-      [requestId, auth.organization.id, input.projectId, input.reason.trim(), auth.user.id, input.assignedToUserId,
-        proof.candidateId, proof.baseDigest, proof.proposedDigest, proof.proofDigest, JSON.stringify(proof.members),
-        JSON.stringify(proof.cohort), JSON.stringify(proof), proof.configSetId, input.clientMutationId, mutationDigest]);
-    for (const [ordinal, target] of proof.targets.entries()) {
-      const entry = proof.cohort.find((row) => row.bindingId === target.bindingId)!;
-      const source = await readOwnedProjectValueIdentity(tx, { organizationId: auth.organization.id,
-        projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
-      if (!source) conflict("Reviewed target has no current source value.");
-      await tx.query(`insert into public.project_parameter_value_change_targets
-        (id,request_id,organization_id,project_id,ordinal,binding_id,definition_id,definition_revision_id,catalog_release_id,
-         base_current_value_id,config_revision_id,source_ref,source_pin_id,action,target_value,base_digest,proposed_digest)
-        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17)`,
-        [`pvct_${randomUUID()}`, requestId, auth.organization.id, input.projectId, ordinal, entry.bindingId,
-          entry.definitionId, entry.effectiveRevisionId, entry.catalogReleaseId, entry.oldValueId, proof.baseConfigRevisionId,
-          source.value.source.sourceRef, entry.sourcePinId, target.action, JSON.stringify(target.payload), proof.baseDigest, proof.proposedDigest]);
-    }
+    const requestId = await freezeSourceRevisionRequest(tx, auth, proof, input, mutationDigest);
     await writeTrustedAuditEventInTx(asAuditTx(tx), { invocation: security.invocation, app: "parameters",
       kind: "parameter-topology-governance", action: "value-change-submitted", severity: "Medium", projectId: input.projectId,
       targetType: "project-parameter-value-change-request", targetId: requestId,
@@ -436,4 +418,43 @@ export async function submitSourceRevisionCandidate(db: Database, storage: Objec
       traceId: security.requestId });
     return { requestId, status: "pending", replayed: false };
   });
+}
+
+export async function freezeSourceRevisionRequest(tx: Database, auth: AuthContext, proof: SourceRevisionProof,
+  input: { projectId: string; reason: string; assignedToUserId: string | null; clientMutationId: string },
+  mutationDigest: string, applicationMode: "separate_review" | "administrator_direct" = "separate_review"): Promise<string> {
+  const pending = (await tx.query<{ id: string }>(`select id from public.project_parameter_value_change_requests
+    where organization_id=$1 and project_id=$2 and status='pending' and (
+      source_revision_config_set_id=$3 or batch_config_set_id=$3 or member_config_set_id=$3
+      or config_revision_id=$4) limit 1`, [auth.organization.id, input.projectId, proof.configSetId, proof.baseConfigRevisionId])).rows[0];
+  if (pending) throw new ApiError("CONFLICT", "This configuration already has a pending change request.", { requestId: pending.id, reason: "source-review-pending" });
+  if (await hasSourceConfigurationDrafts(tx, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: proof.configSetId })) {
+    conflict("Resolve existing parameter drafts before submitting a source revision.", "parameter-drafts-unresolved");
+  }
+  const requestId = `pvcr_${randomUUID()}`;
+  await tx.query(`update public.project_parameter_file_candidates set base_digest=$2,proposed_digest=$3,diff_digest=$4,
+    frozen_member_manifest=$5::jsonb,frozen_binding_manifest=$6::jsonb where id=$1 and status='ready'`,
+    [proof.candidateId, proof.baseDigest, proof.proposedDigest, proof.proofDigest, JSON.stringify(proof.members), JSON.stringify(proof.cohort)]);
+  await tx.query(`insert into public.project_parameter_value_change_requests
+    (id,organization_id,project_id,request_kind,reason,status,submitter_user_id,assigned_to_user_id,candidate_id,
+     candidate_base_digest,candidate_proposed_digest,candidate_diff_digest,candidate_member_manifest,candidate_binding_manifest,
+     source_revision_context,source_revision_proof_digest,source_revision_config_set_id,source_revision_mutation_id,source_revision_mutation_digest,source_revision_application_mode)
+    values ($1,$2,$3,'source_revision',$4,'pending',$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$10,$14,$15,$16,$17)`,
+    [requestId, auth.organization.id, input.projectId, input.reason.trim(), auth.user.id, input.assignedToUserId,
+      proof.candidateId, proof.baseDigest, proof.proposedDigest, proof.proofDigest, JSON.stringify(proof.members),
+      JSON.stringify(proof.cohort), JSON.stringify(proof), proof.configSetId, input.clientMutationId, mutationDigest, applicationMode]);
+  for (const [ordinal, target] of proof.targets.entries()) {
+    const entry = proof.cohort.find((row) => row.bindingId === target.bindingId)!;
+    const source = await readOwnedProjectValueIdentity(tx, { organizationId: auth.organization.id,
+      projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
+    if (!source) conflict("Reviewed target has no current source value.");
+    await tx.query(`insert into public.project_parameter_value_change_targets
+      (id,request_id,organization_id,project_id,ordinal,binding_id,definition_id,definition_revision_id,catalog_release_id,
+       base_current_value_id,config_revision_id,source_ref,source_pin_id,action,target_value,base_digest,proposed_digest)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17)`,
+      [`pvct_${randomUUID()}`, requestId, auth.organization.id, input.projectId, ordinal, entry.bindingId,
+        entry.definitionId, entry.effectiveRevisionId, entry.catalogReleaseId, entry.oldValueId, proof.baseConfigRevisionId,
+        source.value.source.sourceRef, entry.sourcePinId, target.action, JSON.stringify(target.payload), proof.baseDigest, proof.proposedDigest]);
+  }
+  return requestId;
 }

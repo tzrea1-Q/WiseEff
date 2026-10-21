@@ -1008,10 +1008,14 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const row = await screen.findByText("Liu Min").then((cell) => cell.closest("tr")!);
     fireEvent.click(within(row).getByRole("button", { name: "查看 Liu Min 的成员资料" }));
     const memberDialog = await screen.findByRole("dialog", { name: "Liu Min · 成员资料" });
-    await changeSelectValue(within(memberDialog).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
+    await userEvent.click(within(memberDialog).getByRole("checkbox", { name: "软件开发" }));
+    await userEvent.click(within(memberDialog).getByRole("checkbox", { name: "软件MDE" }));
+    fireEvent.click(within(within(memberDialog).getByRole("form", { name: "组织角色设置" })).getByRole("button", { name: "保存" }));
     const confirmDialog = await screen.findByRole("dialog", { name: "确认调整用户角色" });
     fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认调整" }));
-    await waitFor(() => expect(userGovernanceActions.assignUserRole).toHaveBeenCalledWith("u-liu-min", "software-committer"));
+    await waitFor(() => expect(userGovernanceActions.updateOrganizationRoles).toHaveBeenCalledWith("u-liu-min", {
+      roles: ["software-committer"], expectedRoles: ["software-user"]
+    }));
   });
 
   it("hydrates backend governed users before rendering API-mode user governance", async () => {

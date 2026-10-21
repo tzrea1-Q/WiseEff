@@ -16,6 +16,14 @@ This proposal includes saving comments, whitespace, unregistered properties and 
 
 Keep one file per save, the current 2 MiB UTF-8 byte limit, existing configuration membership and existing file-write/review permissions. Includes and overlays are validated in the pinned configuration context. File creation/removal, configuration membership, baseline publication and device writes keep their existing separate operations. This iteration does not add multi-file atomic editing, collaboration, AI completion or automatic whole-file formatting. JSON workflows keep their current behavior.
 
+## Administrator direct application (#1303 amendment)
+
+The save dialog offers **Directly apply changes** after the complete diff and a required reason. A current administrator with file administration and project edit authority can use it without a software reviewer. **Submit review** remains optional and keeps its separate assigned reviewer's current qualification, self-review prohibition and frozen-proof contract. The earlier implementation record below describes the original review-only delivery, not acceptance of this amendment.
+
+Both paths freeze the same source proof and use the same transactional source/value/structure commit. Direct application rechecks the current user's roles under the user fence, source and configuration versions, Catalog releases and registrations, structure identity, value constraints, sensitive nodes, pending requests and parameter drafts. A direct record is marked `administrator_direct`, has no assigned/reviewer user, and records the actual human actor and result in audit. Mutation keys replay one complete immutable receipt. A conflict or failure keeps local input, and applying an older captured generation preserves later typing. Agent/system invocations cannot use the direct operation; release publication and device execution authority are unchanged.
+
+Acceptance uses the existing real HTTP/runtime-role PostgreSQL seam for single-admin application, comment-only edits, stale proof/base, revoked roles, conflicting pending reviews, concurrent retries and competing applications, with browser preview → direct application → reload, failure and keyboard interaction at 1440×900. Current-candidate evidence belongs in the integration PR; component tests alone are not API/browser acceptance.
+
 ## Current seams and required changes
 
 | Observed implementation | Consequence |

@@ -160,7 +160,7 @@ test.describe("M5.11 responsive quality gate", () => {
 
     await page.getByRole("button", { name: /^查看 .+ 的成员资料$/ }).first().click();
     const memberDialog = page.getByRole("dialog", { name: / · 成员资料$/ });
-    const roleSelector = memberDialog.getByRole("combobox", { name: /调整 .+ 的角色/ });
+    const roleSelector = memberDialog.getByRole("group", { name: "组织角色选择" });
     await expect(roleSelector).toBeVisible();
     const { roleBounds, containerBounds } = await roleSelector.evaluate((element) => {
       const container = element.closest('section[aria-label="组织角色与权限"]');

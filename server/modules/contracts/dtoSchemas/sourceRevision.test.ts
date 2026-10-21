@@ -27,7 +27,7 @@ const preview = { kind: "source_revision", format: "dts", candidateId: "candidat
   proofToken: digest, baseDigest: digest, proposedDigest: digest, canSubmit: true, diagnostics: [], impact,
   reviewers: [{ userId: "reviewer", name: "Reviewer" }] };
 const request: SourceRevisionRequest = { id: "request", projectId: "project", candidateId: "candidate", fileId: "file", fileName: "board.dts",
-  configSetId: "set", status: "pending", reason: "Keep a comment", submitterUserId: "author", assignedToUserId: "reviewer",
+  configSetId: "set", status: "pending", applicationMode: "separate_review", reason: "Keep a comment", submitterUserId: "author", assignedToUserId: "reviewer",
   reviewerUserId: null, reviewerNote: null, createdAt: "2026-10-19T00:00:00Z", updatedAt: "2026-10-19T00:00:00Z", proofDigest: digest, impact };
 
 describe("whole-source public contracts", () => {

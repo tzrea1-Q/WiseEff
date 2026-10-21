@@ -270,6 +270,11 @@ export function createParameterFileClient(client: ApiClient = createDefaultApiCl
       }>(`${routeCandidate(projectId, candidateId)}/activate`, input);
       return { item: response.item, file: response.file, version: response.version };
     },
+    async applyCandidateSourceRevision(projectId, candidateId, input) {
+      const response = await client.post<ItemEnvelope<SourceRevisionRequest>>(
+        `${routeCandidate(projectId, candidateId)}/source-apply`, input);
+      return response.item;
+    },
     async getCandidateSourcePreview(projectId: string, candidateId: string) {
       const response = await client.get<ItemEnvelope<ParameterFileSourcePreview>>(
         routeCandidateSourcePreview(projectId, candidateId)

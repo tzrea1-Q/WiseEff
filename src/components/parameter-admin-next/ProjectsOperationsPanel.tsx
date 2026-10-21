@@ -11,6 +11,7 @@ import { resolveParameterFileRepository } from "@/application/parameters/paramet
 import { presentError } from "@/infrastructure/http/presentError";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
+import { ProjectDeletionPreviewDialog } from "@/components/admin/ProjectDeletionPreviewDialog";
 import { ProjectConfigurationWorkbench } from "@/components/project-configuration-workbench/ProjectConfigurationWorkbench";
 import { ProjectReviewRolesPanel } from "./ProjectReviewRolesPanel";
 import { migrateLegacyRoleId } from "@/domain/users/types";
@@ -142,6 +143,7 @@ export function ProjectsOperationsPanel({
   const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string; archive: boolean } | null>(null);
   const [archivePending, setArchivePending] = useState(false);
   const [archiveError, setArchiveError] = useState("");
+  const [deletionPreviewProjectId, setDeletionPreviewProjectId] = useState<string | null>(null);
   const listSearch = useMemo(() => parseParamAdminProjectsSearch(search), [search]);
   const listReturnPath = resolveParamAdminProjectsReturnPath(search);
   const enterProject = (id: string, nextView: "configuration" | "review-roles") => {
@@ -333,6 +335,7 @@ export function ProjectsOperationsPanel({
               setEditingProjectId(id);
             }}
             onDeleteProject={confirmDelete}
+            onPreviewDeletion={isApiMode && canAdmin ? setDeletionPreviewProjectId : undefined}
             onArchiveProject={isApiMode ? (id, archive) => {
               const row = rows.find((item) => item.id === id);
               if (row) { setArchiveError(""); setArchiveTarget({ id, name: row.name, archive }); }
@@ -394,6 +397,8 @@ export function ProjectsOperationsPanel({
         />
       ) : null}
 
+      {deletionPreviewProjectId ? <ProjectDeletionPreviewDialog key={deletionPreviewProjectId} projectId={deletionPreviewProjectId}
+        loadPreview={adminClient.previewProjectDeletion} onClose={() => setDeletionPreviewProjectId(null)} /> : null}
       {archiveTarget ? <ConfirmDialog open tone="primary" pending={archivePending} error={archiveError}
         title={`${archiveTarget.archive ? "归档项目" : "恢复项目"}「${archiveTarget.name}」`}
         description={archiveTarget.archive
