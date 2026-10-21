@@ -658,7 +658,10 @@ export function KnowledgePage({
           actionLabel: "重新加载", onAction: () => { void loadEntries(); } }}
       />
 
-      {batch ? <KnowledgeBatchDialog {...batch} repository={repository} onClose={() => setBatch(null)} onComplete={(report) => {
+      {batch ? <KnowledgeBatchDialog {...batch} repository={repository} onClose={() => {
+        setBatch(null);
+        void loadEntries();
+      }} onComplete={(report) => {
         setRows((current) => current.map((entry) => report.results.find((row) => row.entryId === entry.id)?.entry ?? entry));
         setCheckedIds([]);
       }} /> : null}

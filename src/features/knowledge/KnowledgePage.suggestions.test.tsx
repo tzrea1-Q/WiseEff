@@ -7,6 +7,52 @@ import { KnowledgePage } from "./KnowledgePage";
 const capability = { userId: "u-xu-yun", canView: true, canEdit: true, canManage: false };
 
 describe("knowledge reference suggestions", () => {
+  it("removes the only pending entry after batch acceptance and closing the report", async () => {
+    const repository = createMockKnowledgeRepository({ canManage: false }, { entries: [], revisions: [] });
+    const entry = await repository.createMarkdown({ title: "批量处理后移出筛选", tags: [], contentMarkdown: "gpio-int" });
+    const list = vi.spyOn(repository, "list");
+    render(<KnowledgePage repository={repository} capability={capability} />);
+    const user = userEvent.setup();
+    await screen.findByText(entry.title);
+    await user.click(screen.getByRole("checkbox", { name: "待处理建议" }));
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith({ pendingSuggestions: true }));
+    await user.click(screen.getByRole("checkbox", { name: `选择 ${entry.title}` }));
+    await user.click(screen.getByRole("button", { name: "接受建议关联" }));
+    await user.click(screen.getByRole("button", { name: "确认接受建议关联" }));
+    expect(await screen.findByRole("table", { name: "批量操作结果" })).toHaveTextContent("成功");
+    const callsBeforeClose = list.mock.calls.length;
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+    await waitFor(() => expect(screen.queryByText(entry.title)).not.toBeInTheDocument());
+    expect(list.mock.calls.length).toBeGreaterThan(callsBeforeClose);
+    expect(list).toHaveBeenLastCalledWith({ pendingSuggestions: true });
+    expect(screen.getByRole("checkbox", { name: "待处理建议" })).toBeChecked();
+    await user.click(screen.getByRole("checkbox", { name: "待处理建议" }));
+    expect(await screen.findByText(entry.title)).toBeInTheDocument();
+  });
+
+  it.each(["接受", "忽略", "全部接受"])("removes the last pending entry after detail %s and closing the editor", async (action) => {
+    const repository = createMockKnowledgeRepository({ canManage: false }, { entries: [], revisions: [] });
+    const entry = await repository.createMarkdown({ title: "详情处理后移出筛选", tags: [], contentMarkdown: "gpio-int" });
+    const suggestions = await repository.listReferenceSuggestions(entry.id);
+    for (const suggestion of suggestions.slice(1)) await repository.dismissReferenceSuggestion(entry.id, suggestion.definitionId);
+    const list = vi.spyOn(repository, "list");
+    render(<KnowledgePage repository={repository} capability={capability} />);
+    const user = userEvent.setup();
+    await screen.findByText(entry.title);
+    await user.click(screen.getByRole("checkbox", { name: "待处理建议" }));
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith({ pendingSuggestions: true }));
+    await user.click(await screen.findByText(entry.title));
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    const section = await screen.findByRole("region", { name: "建议关联" });
+    await user.click(await within(section).findByRole("button", { name: action }));
+    await within(section).findByText("暂无建议关联。");
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(screen.queryByText(entry.title)).not.toBeInTheDocument());
+    expect(list).toHaveBeenLastCalledWith({ pendingSuggestions: true });
+    expect(screen.getByRole("checkbox", { name: "待处理建议" })).toBeChecked();
+    expect(await repository.get(entry.id)).not.toBeNull();
+  });
+
   it("refreshes the list badge after leaving a partially reviewed entry", async () => {
     const repository = createMockKnowledgeRepository({ canManage: false });
     const entry = await repository.createMarkdown({ title: "部分审阅", tags: [], contentMarkdown: "gpio-int" });
