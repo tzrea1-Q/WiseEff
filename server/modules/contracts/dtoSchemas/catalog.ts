@@ -80,7 +80,7 @@ import {
 import { parameterModuleRegistryResponseSchema } from "./parameterModules";
 import { parameterDashboardSummaryResponseSchema } from "./parameterDashboard";
 import { administratorMemberRemovalApplyRequestSchema, administratorMemberRemovalPreviewResponseSchema, administratorMemberRemovalApplyResponseSchema } from "./memberRemoval";
-import { logDeletionPreviewResponseSchema } from "./logs";
+import { logDeletionPreviewResponseSchema, logDeletionStatusResponseSchema, logDeletionStatusListResponseSchema } from "./logs";
 import { memberAdditionBodySchema, memberAdditionApplyBodySchema, memberAdditionPreviewResponseSchema, memberAdditionApplyResponseSchema } from "./canonicalMemberAddition";
 
 /**
@@ -96,6 +96,9 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   AdministratorMemberRemovalPreviewResponse: administratorMemberRemovalPreviewResponseSchema,
   AdministratorMemberRemovalApplyResponse: administratorMemberRemovalApplyResponseSchema,
   LogDeletionPreviewResponse: logDeletionPreviewResponseSchema,
+  LogDeletionRequest: z.object({ version: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
+  LogDeletionStatusResponse: logDeletionStatusResponseSchema,
+  LogDeletionStatusListResponse: logDeletionStatusListResponseSchema,
   LogSkillRecommendationRequest: logSkillRecommendationRequestSchema,
   LogSkillRecommendationResponse: logSkillRecommendationResponseSchema,
   LogParsePreviewRequest: parsePreviewRequestSchema,
@@ -218,6 +221,7 @@ export const dtoSchemaCoveredRouteIds = [
   "parameterFiles.previewCanonicalMemberAddition", "parameterFiles.applyCanonicalMemberAddition",
   "parameterFiles.previewAdministratorMemberRemoval", "parameterFiles.applyAdministratorMemberRemoval",
   "logs.previewDeletion",
+  "logs.purge", "logs.deletionStatus", "logs.pendingDeletions",
   "parameters.listProjects",
   "parameters.admin.listProjects",
   "parameters.admin.getProject",

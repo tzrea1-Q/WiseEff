@@ -75,13 +75,19 @@ export const S2_SCH_0221_FINGERPRINT =
   "d9907a04610bdcc83f0662fc3030fca1b480488858fdce4583315bd0bfd5005d";
 
 /**
- * Current 0226 stage: project erasure adds one relation/primary key, while
+ * Retained 0226 stage: project erasure adds one relation/primary key, while
  * member addition/removal and surviving Definition-erasure origins update
  * three constraints and nine function bodies, and add twelve functions.
  * The unchanged inventory query retains all prior schema pins above.
  */
-export const S2_SCH_LIVE_FINGERPRINT =
+export const S2_SCH_0226_FINGERPRINT =
   "82c8c47c82b6f4fcdbd744fa3cfcfedd74dfbd85aba811227d6d5f468c0f6e7e";
+
+/** Current available chain through 0228 adds only the log erasure relation,
+ * its primary key/index, nine inventory attributes and six functions. All
+ * preceding entries and every historical pin remain unchanged. */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "60ef3ac1e6873e012fff56627136e7f1740d00482a11a73106a51a5287997e6a";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

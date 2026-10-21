@@ -14,7 +14,7 @@ import { countedResult } from "./evidence";
 import { IMMUTABLE_CATALOG_RELATIONS, catalogRelation, quoteIdent } from "./relations";
 import type { GateQuery } from "./session";
 
-// Permanent erasure is an explicit platform-administrator maintenance action.
+// Definition, project and log erasure are explicit administrator maintenance actions.
 // Its bodies remain pinned by the canonical schema fingerprint; these gates
 // separately verify the exact callable signatures and least-privilege boundary.
 export async function readDefinitionErasureCapabilities(query: GateQuery) {
@@ -26,6 +26,16 @@ export async function readDefinitionErasureCapabilities(query: GateQuery) {
     ["parameter_catalog.preview_parameter_definition_purge(text)", "search_path=pg_catalog, parameter_catalog, public"],
     ["parameter_catalog.purge_parameter_definition(text,jsonb,text,text)", "search_path=pg_catalog, parameter_catalog, public, catalog_publication"],
     ["parameter_catalog.read_parameter_definition_erasure(text)", "search_path=pg_catalog, parameter_catalog"],
+    ["parameter_catalog.lock_project_erasure(text,text,text)", "search_path=pg_catalog, parameter_catalog, public"],
+    ["parameter_catalog.read_project_erasure(text,text,text)", "search_path=pg_catalog, parameter_catalog, public"],
+    ["parameter_catalog.purge_project(text,text,text,text)", "search_path=pg_catalog, parameter_catalog, public"],
+    ["parameter_catalog.finish_project_erasure_object(text,text,text,text)", "search_path=pg_catalog, parameter_catalog, public"],
+    ["parameter_catalog.list_project_erasures(text,text)", "search_path=pg_catalog, parameter_catalog, public"],
+    ["parameter_catalog.lock_log_erasure(text,text,text)", "search_path=pg_catalog, parameter_catalog, public"],
+    ["parameter_catalog.read_log_erasure(text,text,text)", "search_path=pg_catalog, parameter_catalog, public"],
+    ["parameter_catalog.list_log_erasures(text,text)", "search_path=pg_catalog, parameter_catalog, public"],
+    ["parameter_catalog.purge_log(text,text,text,text)", "search_path=pg_catalog, parameter_catalog, public"],
+    ["parameter_catalog.finish_log_erasure_object(text,text,text,text)", "search_path=pg_catalog, parameter_catalog, public"],
   ] as const;
   const roles = ["public", CATALOG_SYNCHRONIZER_ROLE, CATALOG_PUBLICATION_COORDINATOR_ROLE, CATALOG_BASELINE_READER_ROLE,
     "catalog_verification_writer_role", "catalog_verifier_role", "wiseeff_mod_d02_capture", "wiseeff_mod_d02_source_reader", "catalog_mod_d02_capture_owner"];
@@ -42,6 +52,9 @@ export async function readDefinitionErasureCapabilities(query: GateQuery) {
     && row.owner === CATALOG_MIGRATION_OWNER && row.security_definer && !row.owner_login && !row.owner_superuser
     && row.settings?.length === 1 && row.settings[0] === settings && row.writer_execute && !row.other_execute) ? [identity] : []));
   const privateBoundary = await query<{ blocked: boolean }>(`select not exists(select 1 from unnest($1::text[]) role_name where
+    exists(select 1 from unnest(array['parameter_catalog.project_erasures','parameter_catalog.log_erasures']) receipt where
+      has_table_privilege(role_name,receipt,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE') or
+      has_any_column_privilege(role_name,receipt,'SELECT,INSERT,UPDATE')) or
     has_table_privilege(role_name,'parameter_catalog.definition_purge_rows','SELECT,INSERT,UPDATE,DELETE,TRUNCATE') or
     has_any_column_privilege(role_name,'parameter_catalog.definition_purge_rows','SELECT,INSERT,UPDATE') or
     has_function_privilege(role_name,'parameter_catalog.definition_purge_mark(regclass,jsonb,text)','execute') or
@@ -237,12 +250,14 @@ export const runP01 = async (db: Database): Promise<GateResult> => {
   });
 };
 
-// #930 / 0169: exact audited tombstone entry point, not a general writer DML grant.
+// #930 / 0169, extended by #1304 / 0222: exact audited tombstone entry point.
+// 0222 adds the separately checked administrator_direct actor/mode branch;
+// the former 0169 body pin was 34ac6fdf032badb57c998b3597810048b06d78e480fd8edb4c052c25d967edd5.
 // Re-review the migration body and role matrix before changing this fingerprint.
 const REVIEWED_TOMBSTONE_IDENTITY =
   "parameter_catalog.insert_reviewed_member_tombstone(text,text,text,text,text,text,text,jsonb,text,jsonb,text)";
 const REVIEWED_TOMBSTONE_BODY_SHA256 =
-  "34ac6fdf032badb57c998b3597810048b06d78e480fd8edb4c052c25d967edd5";
+  "df457041935f05f0715b9b940b533befe8a87207cf94c0a7d2a023d3934a9e55";
 // #897 / 0176: exact current DTS occurrence writer; API logins retain no Catalog table DML.
 const DTS_OBSERVATION_OCCURRENCE_IDENTITY =
   "parameter_catalog.ensure_dts_observation_source_occurrence(text,text,text,text,text,text,text,text)";

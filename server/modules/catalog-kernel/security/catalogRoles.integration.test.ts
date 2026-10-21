@@ -827,6 +827,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       ...VERIFICATION_RELATIONS,
       "definition_erasures",
       "definition_purge_rows",
+      "log_erasures",
       "project_erasures",
     ].sort());
     expect(new Set(tables.rows.map((row) => row.tableowner))).toEqual(
@@ -1337,16 +1338,21 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       { proname: "assert_catalog_subject_active" },
       { proname: "definition_erasure_object_is_referenced" },
       { proname: "ensure_dts_observation_source_occurrence" },
+      { proname: "finish_log_erasure_object" },
       { proname: "finish_parameter_definition_erasure_object" },
       { proname: "finish_project_erasure_object" },
       { proname: "insert_reviewed_member_tombstone" },
+      { proname: "list_log_erasures" },
       { proname: "list_project_erasures" },
+      { proname: "lock_log_erasure" },
       { proname: "lock_parameter_definition_purge" },
       { proname: "lock_parameter_plane_archive" },
       { proname: "lock_project_erasure" },
       { proname: "preview_parameter_definition_purge" },
+      { proname: "purge_log" },
       { proname: "purge_parameter_definition" },
       { proname: "purge_project" },
+      { proname: "read_log_erasure" },
       { proname: "read_parameter_definition_erasure" },
       { proname: "read_project_erasure" },
     ]);
@@ -1581,7 +1587,8 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
         refs.table_name = 'user_role_bindings'
         and refs.function_oid in (
           pg_catalog.to_regprocedure('parameter_catalog.lock_project_erasure(text,text,text)'),
-          pg_catalog.to_regprocedure('parameter_catalog.purge_project(text,text,text,text)')
+          pg_catalog.to_regprocedure('parameter_catalog.purge_project(text,text,text,text)'),
+          pg_catalog.to_regprocedure('parameter_catalog.lock_log_erasure(text,text,text)')
         )
         and pg_catalog.has_table_privilege(refs.function_owner, 'public.user_role_bindings', 'delete')
       )
