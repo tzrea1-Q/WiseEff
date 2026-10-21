@@ -225,6 +225,12 @@
           "401": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -21126,6 +21132,15 @@
       },
       "UpdateCurrentUserProfileRequest": {
         "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
         "x-wiseeff-schema": "UpdateCurrentUserProfileRequest"
       },
       "ChangeCurrentUserPasswordRequest": {
