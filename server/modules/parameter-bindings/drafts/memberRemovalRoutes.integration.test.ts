@@ -21,6 +21,8 @@ import { addConfigSetFile, createConfigSet } from "../../parameter-files/configS
 import { uploadProjectParameterFile } from "../../parameter-files/service";
 import { insertFileVersion } from "../../parameter-files/repository";
 import type { ParsedIndex } from "../../parameter-files/types";
+import { moveUnboundUsersToOrganization } from "../../../../scripts/move-unbound-users";
+import { deleteUser } from "../../users/service";
 
 const organizationId = "org-906-c-member-entry";
 const projectId = "project-906-c-member-entry";
@@ -162,7 +164,7 @@ describe("#906 C reviewed JSON member removal HTTP entry", () => {
       id: pendingId, submitterName: "admin", assignedToName: "reviewer", reviewerName: null
     }] });
     // A stale actor reference must not reveal a name from a different organization.
-    await db.query("update users set organization_id=$1 where id=$2", [foreign.organization.id, adminId]);
+    await db.transaction(tx => moveUnboundUsersToOrganization(tx, [adminId], foreign.organization.id));
     try {
       const staleActor = await requestJson(route(reviewer),
         `/api/v2/projects/${projectId}/parameter-value-change-requests/${pendingId}/member-removal`);
@@ -171,7 +173,7 @@ describe("#906 C reviewed JSON member removal HTTP entry", () => {
         submitterUserId: adminId, submitterName: null, assignedToName: "reviewer", reviewerName: null
       }});
     } finally {
-      await db.query("update users set organization_id=$1 where id=$2", [organizationId, adminId]);
+      await db.transaction(tx => moveUnboundUsersToOrganization(tx, [adminId], organizationId));
     }
   }, 120_000);
 
@@ -314,4 +316,17 @@ describe("#906 C reviewed JSON member removal HTTP entry", () => {
       "select config_set_id from project_parameter_files where id=$1", [removedFileId]
     )).rows[0]!.config_set_id).toBeNull();
   }, 120_000);
+
+  it("retains reviewed removal receipts when both submitter and reviewer accounts are deleted", async () => {
+    await db.query("insert into users(id,organization_id,name,title) values('member-history-admin',$1,'History administrator','Admin')", [organizationId]);
+    const manager = makeTestAuthContext({ userId: "member-history-admin", organizationId, roles: [{ roleId: "platform-admin", projectId: null }] });
+    const sql = "select id,status,member_frozen_proof,applied_source_result,applied_audit_ref from project_parameter_value_change_requests where organization_id=$1 order by id";
+    const before = (await db.query(sql, [organizationId])).rows;
+    await deleteUser(db, manager, adminId);
+    await deleteUser(db, manager, reviewerId);
+    expect((await db.query(sql, [organizationId])).rows).toEqual(before);
+    expect((await db.query("select id from users where id=any($1::text[])", [[adminId, reviewerId]])).rows).toEqual([]);
+    const actors = await db.query("select submitter_user_id,assigned_to_user_id,reviewer_user_id from project_parameter_value_change_requests where organization_id=$1", [organizationId]);
+    expect(actors.rows).toEqual(before.map(() => ({ submitter_user_id: null,assigned_to_user_id: null,reviewer_user_id: null })));
+  });
 });

@@ -11,6 +11,7 @@ import {
 } from "../../../server/modules/auth/localAccountCredentials";
 import { createPostgresDatabase, type Database } from "../../../server/shared/database/client";
 import { ipLabSeedOrganizationId, ipLabSeedOrganizationName } from "./ip-lab-profile";
+import { moveUnboundUsersToOrganization } from "../../../scripts/move-unbound-users";
 
 const labAdminRoles = ["admin", "platform-admin"] as const;
 
@@ -27,37 +28,39 @@ export async function attachLocalAdminToSeedOrganization(
   db: Database,
   username: string
 ): Promise<AttachLabAdminResult> {
-  const normalized = username.trim().toLowerCase();
-  const found = await db.query<{ user_id: string }>(
-    `
-    select user_id
-    from user_password_credentials
-    where lower(username) = lower($1)
-    limit 1
-    `,
-    [normalized]
-  );
-  const userId = found.rows[0]?.user_id;
-  if (!userId) {
-    throw new Error(`No local account found for username ${normalized}.`);
-  }
+  return db.transaction(async (tx) => {
+    const normalized = username.trim().toLowerCase();
+    const found = await tx.query<{ user_id: string }>(
+      `
+      select user_id
+      from user_password_credentials
+      where lower(username) = lower($1)
+      limit 1
+      `,
+      [normalized]
+    );
+    const userId = found.rows[0]?.user_id;
+    if (!userId) {
+      throw new Error(`No local account found for username ${normalized}.`);
+    }
 
-  await ensureSeedOrganization(db);
-  await db.query(`update users set organization_id = $2 where id = $1`, [userId, ipLabSeedOrganizationId]);
-  await db.query(`update user_role_bindings set organization_id = $2 where user_id = $1`, [
-    userId,
-    ipLabSeedOrganizationId
-  ]);
-  const roles = await ensureLabAdminRoles(db, userId);
+    await ensureSeedOrganization(tx);
+    await moveUnboundUsersToOrganization(tx, [userId], ipLabSeedOrganizationId);
+    await tx.query(`update user_role_bindings set organization_id = $2 where user_id = $1`, [
+      userId,
+      ipLabSeedOrganizationId
+    ]);
+    const roles = await ensureLabAdminRoles(tx, userId);
 
-  return {
-    userId,
-    username: normalized,
-    organizationId: ipLabSeedOrganizationId,
-    organizationName: ipLabSeedOrganizationName,
-    roles,
-    created: false
-  };
+    return {
+      userId,
+      username: normalized,
+      organizationId: ipLabSeedOrganizationId,
+      organizationName: ipLabSeedOrganizationName,
+      roles,
+      created: false
+    };
+  });
 }
 
 export async function ensureIpLabAdmin(

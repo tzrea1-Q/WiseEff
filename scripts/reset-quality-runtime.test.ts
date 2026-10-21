@@ -13,20 +13,21 @@ import {
 } from "./reset-quality-runtime";
 import { cleanupQualityVisualReview, seedQualityVisualReview } from "./seed-quality-visual-review";
 import { seedQualityRuntime } from "../e2e/quality/helpers";
-import type { Database, Queryable } from "../server/shared/database/client";
+import type { Database } from "../server/shared/database/client";
 
 function createRecordingDb(handler?: (text: string, values: unknown[]) => { rows: unknown[]; rowCount: number }): {
   db: Database;
   queries: Array<{ text: string; values: unknown[] }>;
 } {
   const queries: Array<{ text: string; values: unknown[] }> = [];
-  const tx: Queryable = {
-    async query(text, values = []) {
+  const tx: Database = {
+    async query<Row>(text: string, values: unknown[] = []) {
       const normalized = text.replace(/\s+/g, " ").trim();
       queries.push({ text: normalized, values });
-      if (handler) return handler(normalized, values);
-      return { rows: [], rowCount: 0 };
-    }
+      const result = handler?.(normalized, values) ?? { rows: [], rowCount: 0 };
+      return { rows: result.rows as Row[], rowCount: result.rowCount };
+    },
+    async transaction(callback) { return callback(tx); }
   };
   const db: Database = {
     query: tx.query,
@@ -414,10 +415,10 @@ describe("quality runtime reset wiring", () => {
 
     await resetQualityRuntime(db);
 
-    expect(queries[0].text).toBe(
-      "update users set organization_id = 'org-chargelab' where id = any($1::text[])"
+    expect(queries[1].text).toBe(
+      "select id from users where id=any($1::text[]) and organization_id<>$2 order by id for update"
     );
-    expect(queries.map((query) => query.text).slice(1, 6)).toEqual([
+    expect(queries.map((query) => query.text).slice(2, 7)).toEqual([
       "delete from local_registration_role_requests",
       "delete from auth_sessions",
       "delete from user_password_credentials",
@@ -445,7 +446,7 @@ describe("quality runtime reset wiring", () => {
     expect(demoModuleIndex).toBeGreaterThan(-1);
     expect(probeEditIndex).toBeLessThan(deleteUsersIndex);
     expect(demoModuleIndex).toBeLessThan(deleteUsersIndex);
-    expect(queries[0].values[0]).toEqual([
+    expect(queries[1].values[0]).toEqual([
       "u-xu-yun",
       "u-zhao-heng",
       "u-liu-min",

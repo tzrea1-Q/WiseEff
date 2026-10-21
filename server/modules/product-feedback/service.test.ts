@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore, StoredObject } from "../logs/objectStore";
 import { ApiError } from "../../shared/http/errors";
-import { createPostgresDatabase } from "../../shared/database/client";
+import { createPostgresDatabase, type Database } from "../../shared/database/client";
+import { cleanupFeedbackAttachmentUploads } from "./attachmentUploads";
 import { makeTestAuthContext, type TestAuthContextOverrides } from "../../testing/authContext";
 import {
   createInMemoryTestDatabase,
@@ -793,9 +794,9 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
         concurrentDb, objectStore, auth(), item.id,
         { message: `Concurrent reply ${index}`, attachments: [attachmentInput(`extra-${index}.png`)] }
       )));
-      expect(replies.filter((reply) => reply.status === "fulfilled")).toHaveLength(8);
       const rejected = replies.filter((reply) => reply.status === "rejected");
-      expect(rejected).toHaveLength(0);
+      expect(rejected.map(reply => reply.reason)).toEqual([]);
+      expect(replies.filter((reply) => reply.status === "fulfilled")).toHaveLength(8);
       const final = await getMyProductFeedback(concurrentDb, auth(), item.id);
       expect(final.attachments).toHaveLength(12);
       expect(final.progressEvents).toHaveLength(9);
@@ -804,6 +805,72 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
       await concurrentDb.close();
       await isolated.drop();
     }
+  });
+
+  it("keeps an admitted reply's upload receipt while another reply cleans up before its transaction starts", async () => {
+    const isolated = await createEphemeralTestDatabase("fbadmission"), concurrentDb = createPostgresDatabase(isolated.url);
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    let admitted!: () => void;
+    const started = new Promise<void>(resolve => { admitted = resolve; });
+    try {
+      await seedCoreGraph(concurrentDb, { organization: { id: "org-1" }, users: [{ id: "user-1" }] });
+      const { objectStore } = makeObjectStore();
+      const item = await createProductFeedback(concurrentDb, objectStore, auth(), createInput());
+      const delayedDb: Database = { query: concurrentDb.query, transaction: async (fn, options) => {
+        admitted(); await held; return concurrentDb.transaction(fn, options);
+      } };
+      const pending = replyToProductFeedback(delayedDb, objectStore, auth(), item.id, {
+        message: "Waiting for a transaction", attachments: [attachmentInput("delayed.png")]
+      }).then(result => ({ result }), error => ({ error }));
+      await started;
+      try {
+        await replyToProductFeedback(concurrentDb, objectStore, auth(), item.id, { message: "Already completed", attachments: [attachmentInput("completed.png")] });
+      } finally { release(); }
+      expect(await pending).toMatchObject({ result: { id: item.id } });
+      const final = await getMyProductFeedback(concurrentDb, auth(), item.id);
+      expect(final.progressEvents).toHaveLength(3); expect(final.attachments).toHaveLength(2);
+    } finally { release(); await concurrentDb.close(); await isolated.drop(); }
+  });
+
+  it("reclaims expired upload admissions and immediately eligible failed receipts while retaining a fresh admission", async () => {
+    const { objectStore, deleteFn } = makeObjectStore();
+    await db.query(`insert into product_feedback_attachment_uploads(id,organization_id,uploaded_by_user_id,object_keys,in_flight,created_at) values
+      ('00000000-0000-4000-8000-000000000241','org-1','user-1',ARRAY['expired-admission'],true,now()-interval '6 minutes'),
+      ('00000000-0000-4000-8000-000000000242','org-1','user-1',ARRAY['fresh-admission'],true,now()),
+      ('00000000-0000-4000-8000-000000000243','org-1','user-1',ARRAY['failed-admission'],false,now())`);
+    await cleanupFeedbackAttachmentUploads(db, objectStore, auth());
+    expect(deleteFn.mock.calls).toEqual([["expired-admission"],["failed-admission"]]);
+    expect((await db.query("select object_keys from product_feedback_attachment_uploads")).rows).toEqual([{ object_keys: ["fresh-admission"] }]);
+  });
+
+  it("protects active object IO with its row lock after the admission expiry", async () => {
+    const isolated = await createEphemeralTestDatabase("fbactive"), concurrentDb = createPostgresDatabase(isolated.url);
+    let release!: () => void, entered!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; }), started = new Promise<void>(resolve => { entered = resolve; });
+    let pending: Promise<unknown> | undefined;
+    try {
+      await seedCoreGraph(concurrentDb, { organization: { id: "org-1" }, users: [{ id: "user-1" }] });
+      const { objectStore, deleteFn } = makeObjectStore();
+      const item = await createProductFeedback(concurrentDb, objectStore, auth(), createInput());
+      let first = true;
+      const expiredAdmission: Database = { query: concurrentDb.query, transaction: async (fn, options) => {
+        if (first) {
+          first = false;
+          await concurrentDb.query("update product_feedback_attachment_uploads set created_at=now()-interval '6 minutes' where in_flight");
+        }
+        return concurrentDb.transaction(fn, options);
+      } };
+      pending = replyToProductFeedback(expiredAdmission, { ...objectStore, put: async input => {
+        entered(); await held; return objectStore.put(input);
+      } }, auth(), item.id, { message: "Slow object IO", attachments: [attachmentInput("slow.png")] });
+      await started;
+      await cleanupFeedbackAttachmentUploads(concurrentDb, objectStore, auth());
+      expect(deleteFn).not.toHaveBeenCalled();
+      expect((await concurrentDb.query("select id from product_feedback_attachment_uploads")).rows).toHaveLength(1);
+      release(); await pending;
+      expect((await getMyProductFeedback(concurrentDb, auth(), item.id)).attachments).toHaveLength(1);
+    } finally { release(); await pending; await concurrentDb.close(); await isolated.drop(); }
   });
 
   it("requires a public explanation when closing via progress or legacy PATCH and when reopening", async () => {

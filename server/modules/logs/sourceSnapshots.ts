@@ -156,7 +156,6 @@ async function requeueSnapshot(tx: Queryable, organizationId: string, skillId: s
     statement_count=0, statements_truncated=false, updated_at=now()
     where organization_id=$1 and skill_id=$2 and id=$3 and status=$4 returning id`, [organizationId, skillId, id, expectedStatus]);
   if (!queued.rows.length) throw new ApiError("CONFLICT", "快照状态已变化，请刷新后重试。");
-  await tx.query("delete from log_source_files where organization_id=$1 and snapshot_id=$2", [organizationId, id]);
   return getSnapshot(tx, organizationId, skillId, id);
 }
 

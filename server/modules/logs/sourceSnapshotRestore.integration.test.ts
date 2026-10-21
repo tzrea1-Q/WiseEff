@@ -14,6 +14,9 @@ import { createLocalObjectStore } from "./objectStore";
 import { processNextSourceIndexJob } from "./sourceIndexWorker";
 import { processLogAnalysisJobById } from "./worker";
 import { createRuleBasedLogAnalyzer, genericSignalRuleSet } from "./analyzer";
+import { createAgentLoopLogAnalyzer } from "./analyzer/agentLoop";
+import { createDeterministicLogAnalysisLoopModel } from "./analyzer/deterministicModel";
+import { createWorkerLogAnalysisToolBackends } from "./analyzer/tools/workerToolBackends";
 import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../../testing/labRuntimeLogins";
 import type { SourceSnapshotDto } from "./sourceSnapshots";
 import type { getLogSkill } from "./skillsService";
@@ -56,6 +59,53 @@ describe("archived source snapshot restoration over HTTP and PostgreSQL", () => 
     return { skill, snapshot, base, metadata };
   }
   const read = async (skillId: string, id: string) => (await request<{ items: SourceSnapshotDto[] }>(`/api/v1/log-skills/${skillId}/source-snapshots`)).body.items.find(item => item.id === id)!;
+
+  it("preserves an existing report citation through archive, restore, failed indexing and retry", async () => {
+    const h = await fixture("Restore cited source"); await processNextSourceIndexJob({ db, objectStore: store });
+    const selected = await request<{ item: Skill }>(`${h.base}/default`, "POST");
+    expect((await request(`/api/v1/log-skills/${h.skill.id}/publish`, "POST", { draftRevisionId: selected.body.item.draft!.id })).status).toBe(200);
+    const uploaded = await request<{ log: { id: string }; job: { id: string } }>("/api/v1/log-files", "POST", {
+      fileName: "restore-citation.log", contentType: "text/plain", skillId: h.skill.id,
+      contentBase64: Buffer.from("WARN restore code=7\n").toString("base64")
+    });
+    expect(uploaded.status, uploaded.bodyText).toBe(201);
+    expect((await processLogAnalysisJobById({ db, objectStore: store, jobId: uploaded.body.job.id,
+      analyzer: createAgentLoopLogAnalyzer({ model: createDeterministicLogAnalysisLoopModel(), modelLabel: "restore-citation", maxSteps: 4, tokenBudget: 100_000,
+        bindToolBackends: (input) => createWorkerLogAnalysisToolBackends({ db, organizationId: "source-restore", sourceSnapshot: input.sourceSnapshot }) })
+    })).status).toBe("processed");
+    const reportPath = `/api/v1/logs/${uploaded.body.log.id}`;
+    const report = await request<{ item: { evidence: Array<{ id: string; sourceLocation?: unknown }> } }>(reportPath);
+    const citation = report.body.item.evidence.find(item => item.sourceLocation)!;
+    expect(citation.sourceLocation).toEqual({ snapshotId: h.snapshot.id, path: "src/restore.c", line: 1 });
+    const excerptPath = `${reportPath}/evidence/${citation.id}/source`;
+    const original = await request(excerptPath, "GET", undefined, "source-restore-member");
+    expect(original.status).toBe(200);
+    expect((await request(`${h.base}/archive`, "POST")).status).toBe(200);
+    expect((await request(excerptPath, "GET", undefined, "source-restore-member")).body).toEqual(original.body);
+    const restored = await request<{ item: SourceSnapshotDto }>(`${h.base}/restore`, "POST");
+    expect(restored.status, restored.bodyText).toBe(202);
+    expect((await request(excerptPath, "GET", undefined, "source-restore-member")).body).toEqual(original.body);
+    await processNextSourceIndexJob({ db, objectStore: { ...store, getStream: async () => { throw new Error("synthetic indexing storage outage"); } } });
+    expect((await read(h.skill.id, h.snapshot.id)).status).toBe("failed");
+    expect((await request(excerptPath, "GET", undefined, "source-restore-member")).body).toEqual(original.body);
+    expect((await request(`${h.base}/retry`, "POST")).status).toBe(202);
+    await processNextSourceIndexJob({ db, objectStore: store });
+    expect((await read(h.skill.id, h.snapshot.id)).status).toBe("ready");
+    expect((await request(excerptPath, "GET", undefined, "source-restore-member")).body).toEqual(original.body);
+    expect((await request(reportPath)).body).toEqual(report.body);
+    for (const path of ["src/restore.c", "replacement.c"]) {
+      const changed = new JSZip(); changed.file(path, 'pr_warn("replacement code=%d\\n", code);\n');
+      const changedBytes = await changed.generateAsync({ type: "nodebuffer" });
+      expect((await request(`${h.base}/archive`, "POST")).status).toBe(200);
+      expect((await request(`${h.base}/restore`, "POST")).status).toBe(202);
+      await processNextSourceIndexJob({ db, objectStore: { ...store, getStream: async () => Readable.from(changedBytes) } });
+      expect((await read(h.skill.id, h.snapshot.id)).status).toBe("failed");
+      expect((await request(excerptPath, "GET", undefined, "source-restore-member")).body).toEqual(original.body);
+      expect((await request(`${h.base}/retry`, "POST")).status).toBe(202);
+      await processNextSourceIndexJob({ db, objectStore: store });
+      expect((await read(h.skill.id, h.snapshot.id)).status).toBe("ready");
+    }
+  });
 
   it("restores the original identity and upload, rebuilds before ready and preserves published defaults", async () => {
     const h = await fixture("Restore original source"); await processNextSourceIndexJob({ db, objectStore: store });

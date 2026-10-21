@@ -16,11 +16,11 @@ export async function pendingFeedbackAttachmentCleanup(db: Queryable, auth: Auth
   return result.rows[0]?.count ?? 0;
 }
 
-export async function queueFeedbackAttachmentCleanup(db: Queryable, auth: AuthContext, keys: string[], id = randomUUID()) {
+export async function queueFeedbackAttachmentCleanup(db: Queryable, auth: AuthContext, keys: string[], id = randomUUID(), inFlight = false) {
   if (!keys.length) return;
-  await db.query(`insert into product_feedback_attachment_uploads(id,organization_id,uploaded_by_user_id,object_keys) values($1,$2,$3,$4)
-    on conflict(id) do update set object_keys=excluded.object_keys where product_feedback_attachment_uploads.organization_id=excluded.organization_id and product_feedback_attachment_uploads.uploaded_by_user_id=excluded.uploaded_by_user_id`,
-  [id, auth.organization.id, auth.user.id, [...new Set(keys)]]);
+  await db.query(`insert into product_feedback_attachment_uploads(id,organization_id,uploaded_by_user_id,object_keys,in_flight) values($1,$2,$3,$4,$5)
+    on conflict(id) do update set object_keys=excluded.object_keys,in_flight=excluded.in_flight where product_feedback_attachment_uploads.organization_id=excluded.organization_id and product_feedback_attachment_uploads.uploaded_by_user_id=excluded.uploaded_by_user_id`,
+  [id, auth.organization.id, auth.user.id, [...new Set(keys)], inFlight]);
 }
 
 export async function cleanupFeedbackAttachmentUploads(db: Database, store: ObjectStore, auth: AuthContext, receiptId?: string) {
@@ -34,8 +34,10 @@ export async function cleanupFeedbackAttachmentUploads(db: Database, store: Obje
         public.log_skill_dry_runs,public.log_skill_samples,public.log_source_snapshots,public.product_feedback_attachments,
         public.project_parameter_file_candidates,public.project_parameter_file_versions in share mode nowait`);
     }
+    // ponytail: admission must acquire its row lock within five minutes; use renewed leases if connection queues can exceed that ceiling.
     const rows = (await tx.query<{ id: string; object_keys: string[] }>(`select id,object_keys from product_feedback_attachment_uploads u
       where organization_id=$1 and uploaded_by_user_id=$2 and ($3::uuid is null or id=$3)
+        and (not in_flight or created_at<now()-interval '5 minutes')
         and ($3::uuid is not null or not exists(select 1 from product_feedback_attachment_deletions d where d.cleanup_upload_id=u.id))
       order by created_at,id for update skip locked`, [auth.organization.id, auth.user.id, receiptId ?? null])).rows;
     if (!rows.length) return;
@@ -68,7 +70,7 @@ export async function withFeedbackAttachmentWrites<T>(db: Database, store: Objec
     return { ...input, id, fileName, objectName, key };
   });
   const keys = new Set(planned.map((item) => item.key));
-  await queueFeedbackAttachmentCleanup(db, auth, [...keys], attemptId);
+  await queueFeedbackAttachmentCleanup(db, auth, [...keys], attemptId, true);
   let storageFailure: unknown;
   try {
     const result = await db.transaction(async (tx) => {

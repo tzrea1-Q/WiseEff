@@ -23,6 +23,7 @@ const accountOwnedReferences = new Set([
   "parameter_drafts.user_id",
   "user_notifications.recipient_user_id",
   "user_password_credentials.user_id",
+  "user_oidc_identities.user_id,organization_id",
   "user_role_bindings.user_id"
 ]);
 
@@ -342,6 +343,7 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
       "parameter_drafts",
       "user_notifications",
       "user_password_credentials",
+      "user_oidc_identities",
       "user_role_bindings"
     ]) {
       const accountRows = await db.query(`select * from ${table} where ${

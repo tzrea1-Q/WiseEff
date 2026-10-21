@@ -463,8 +463,9 @@ export async function applyReviewedCanonicalMemberRemoval(
       from parameter_catalog.project_source_member_tombstones tombstone
       join public.audit_events audit on audit.id=tombstone.audit_event_id
       where tombstone.organization_id=$1 and tombstone.project_id=$2
-        and tombstone.config_set_id=$3 and tombstone.file_id=$4`,
-    [auth.organization.id, frozen.projectId, frozen.configSetId, frozen.fileId])).rows[0];
+        and tombstone.config_set_id=$3 and tombstone.file_id=$4
+        and audit.metadata->>'reviewRequestId'=$5`,
+    [auth.organization.id, frozen.projectId, frozen.configSetId, frozen.fileId, review.requestId])).rows[0];
     if (existing) {
       const metadata = existing.metadata as Record<string, unknown>;
       if (metadata.reviewRequestId !== review.requestId || metadata.proofDigest !== frozen.proofDigest
