@@ -9,9 +9,13 @@ import type { ProjectDeletionStatus } from "../../../src/domain/parameters/proje
 import { readProjectDeletionPreview } from "./deletionPreview";
 
 type Receipt = { digest: string; pending: string[] };
+function requireCurrentAdministrator(error: unknown): never {
+  if (error instanceof pg.DatabaseError && error.code === "42501") throw new ApiError("FORBIDDEN", "需要本组织当前有效的管理员权限。");
+  throw error;
+}
 async function receipt(db: Database, auth: AuthContext, projectId: string) {
   return (await db.query<{ item: Receipt | null }>("select parameter_catalog.read_project_erasure($1,$2,$3) as item",
-    [auth.organization.id, projectId, auth.user.id])).rows[0]?.item ?? null;
+    [auth.organization.id, projectId, auth.user.id]).catch(requireCurrentAdministrator)).rows[0]?.item ?? null;
 }
 const status = (projectId: string, item: Receipt): ProjectDeletionStatus => ({ projectId, stateDigest: item.digest, database: "deleted",
   objects: item.pending.length ? "pending" : "complete", pendingObjects: item.pending.length });
@@ -24,7 +28,7 @@ export async function projectDeletionStatus(db: Database, auth: AuthContext, pro
 
 export async function listProjectDeletions(db: Database, auth: AuthContext): Promise<ProjectDeletionStatus[]> {
   const rows = (await db.query<{ project_id: string; digest: string; pending: string[] }>(
-    "select * from parameter_catalog.list_project_erasures($1,$2)", [auth.organization.id, auth.user.id])).rows;
+    "select * from parameter_catalog.list_project_erasures($1,$2)", [auth.organization.id, auth.user.id]).catch(requireCurrentAdministrator)).rows;
   return rows.map(row => status(row.project_id, row));
 }
 
