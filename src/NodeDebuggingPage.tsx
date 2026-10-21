@@ -20,6 +20,7 @@ import { RollbackConfirmDialog } from "./components/RollbackConfirmDialog";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
 import { DtsTopologyNavigator } from "./components/parameter-topology/DtsTopologyNavigator";
+import { SpecRelatedKnowledgeSection, type SpecRelatedKnowledgeSource } from "./components/parameter-topology/ParameterSpecDetail";
 import { useModuleNodeSelection } from "./hooks/useModuleNodeSelection";
 import {
   probeLocalBridgeHealthDetailed,
@@ -326,7 +327,8 @@ export function NodeDebuggingPage({
   runtimeMode,
   bridges,
   probeBridgeHealth = defaultProbeBridgeHealth,
-  createBridgePairingCode
+  createBridgePairingCode,
+  relatedKnowledge
 }: {
   state: PrototypeState;
   /** All node operations go through the DebuggingGateway port behind these actions. */
@@ -342,6 +344,8 @@ export function NodeDebuggingPage({
   probeBridgeHealth?: () => Promise<LocalBridgeProbeResult>;
   /** Pairing-code seam for non-API runtimes; defaults to the HTTP client. */
   createBridgePairingCode?: () => Promise<DeviceBridgePairingCode>;
+  /** Published definition references; absent without knowledge:view. */
+  relatedKnowledge?: SpecRelatedKnowledgeSource;
 }) {
   // The runtime catalog hydrates when the page mounts; the shell no longer
   // watches page.key on the page's behalf. Non-api runtimes are ready at once.
@@ -934,6 +938,9 @@ export function NodeDebuggingPage({
                 {editingRow.range ? <div className="debug-detail-row"><span>参考范围</span><strong>{editingRow.range}</strong></div> : null}
               </div>
               {editingRow.error ? <p className="node-row-error">{editingRow.error}</p> : null}
+              {editingRow.definitionId && relatedKnowledge ? (
+                <SpecRelatedKnowledgeSection key={editingRow.definitionId} specId={editingRow.definitionId} source={relatedKnowledge} />
+              ) : null}
               {canRead(editingRow) ? (
                 <button
                   className="button subtle"

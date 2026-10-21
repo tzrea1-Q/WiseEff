@@ -17,6 +17,7 @@ import { resolveWiseEffApiBaseUrl } from "./infrastructure/http/runtimeMode";
 import * as bridgeLauncher from "./infrastructure/http/bridgeConnectLauncher";
 import { createMockDebuggingBridgeSeams, createMockDebuggingGateway } from "./infrastructure/mock/mockDebuggingGateway";
 import { createTestDebuggingGateway, renderApp } from "./test/harness";
+import { createMockKnowledgeFixtures, createMockKnowledgeRepository } from "./infrastructure/mock/mockKnowledgeRepository";
 
 /**
  * Bridge download links resolve against the configured API base (see
@@ -40,6 +41,45 @@ const apiSession = {
 const apiTarget = { id: "api-target-1", deviceId: "api-device-1", protocol: "hdc" as const, label: "API Gateway Target" };
 const adbSession = { ...apiSession, id: "api-session-adb-1", protocol: "adb" as const };
 const adbTarget = { ...apiTarget, protocol: "adb" as const };
+
+describe("debug-node related knowledge", () => {
+  it.each(["no-definition", "no-permission"])("hides related knowledge for %s", async (state) => {
+    const load = vi.fn(async () => []);
+    renderNodeDebuggingPage({
+      state: { ...userState, debugParameters: [{ ...userState.debugParameters[0],
+        definitionId: state === "no-definition" ? undefined : "definition-node" }] },
+      debuggingActions: createDebuggingActions(),
+      relatedKnowledge: state === "no-permission" ? undefined : { load, onOpenEntry: vi.fn() }
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /查看\/修改|查看详情/ }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByText("相关知识")).not.toBeInTheDocument();
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it("shows published knowledge for the node definition and opens the entry", async () => {
+    const fixtures = createMockKnowledgeFixtures();
+    const entries = (["published", "draft", "archived"] as const).map((status) => ({
+      ...fixtures.entries[0], id: status, title: `${status}知识`, status,
+      parameterReferences: [{ kind: "definition" as const, definitionId: "definition-node", availability: "current" as const,
+        lifecycle: "active" as const, propertyKey: null, displayName: null, driverModule: null,
+        createdByUserId: null, createdAt: "2026-10-21T00:00:00Z" }]
+    }));
+    const knowledge = createMockKnowledgeRepository({}, { entries, revisions: [] });
+    const load = vi.fn(async (id: string) => (await knowledge.relatedToDefinition(id)).items);
+    const onOpenEntry = vi.fn();
+    renderNodeDebuggingPage({
+      state: { ...userState, debugParameters: [{ ...userState.debugParameters[0], definitionId: "definition-node" }] },
+      debuggingActions: createDebuggingActions(), relatedKnowledge: { load, onOpenEntry }
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /查看\/修改|查看详情/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /published知识/ }));
+    expect(load).toHaveBeenCalledWith("definition-node");
+    expect(onOpenEntry).toHaveBeenCalledWith("published");
+    expect(screen.queryByText("draft知识")).not.toBeInTheDocument();
+    expect(screen.queryByText("archived知识")).not.toBeInTheDocument();
+  });
+});
 
 async function confirmHighRiskWriteIfPrompted() {
   const dialog = await screen.findByRole("dialog", { name: "确认高风险节点写入" });

@@ -17,6 +17,7 @@ import { DEVICE_UNAVAILABLE_MESSAGE } from "@/infrastructure/http/userErrorMessa
 import * as bridgeClient from "@/infrastructure/http/deviceBridgeClient";
 import * as bridgeLauncher from "@/infrastructure/http/bridgeConnectLauncher";
 import { requestSettingsLeave } from "@/application/settingsFormNavigation";
+import { createMockKnowledgeFixtures, createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
 
 vi.mock("@/infrastructure/http/bridgeConnectLauncher", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/infrastructure/http/bridgeConnectLauncher")>();
@@ -240,6 +241,52 @@ function renderPage(repository: DtsReloadRepository, overrides: Partial<Componen
     />
   );
 }
+
+describe("reload-run related knowledge", () => {
+  it.each(["no-definition", "no-permission"])("hides related knowledge for %s", async (state) => {
+    const load = vi.fn(async () => []);
+    const storedRun = run();
+    if (state === "no-permission") storedRun.targets[0].canonicalDefinitionId = "definition-run";
+    renderPage(createRepository({
+      getRun: vi.fn(async () => storedRun),
+      listCandidates: vi.fn(async () => ({ items: [candidate({ protectedReferencePin: {
+        kind: "canonical-pin", bindingId: "binding-1", definitionId: "newer-definition"
+      } })] }))
+    }), {
+      initialRunId: "run-1",
+      relatedKnowledge: state === "no-permission" ? undefined : { load, onOpenEntry: vi.fn() }
+    });
+    await screen.findByRole("heading", { name: "本次参数变更 · 1 项" });
+    expect(screen.queryByText("相关知识")).not.toBeInTheDocument();
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it("shows only published knowledge for each stored target definition and opens the entry", async () => {
+    const fixtures = createMockKnowledgeFixtures();
+    const entries = (["published", "draft", "archived"] as const).map((status) => ({
+      ...fixtures.entries[0], id: status, title: `${status}知识`, status,
+      parameterReferences: [{ kind: "definition" as const, definitionId: "definition-run", availability: "current" as const,
+        lifecycle: "active" as const, propertyKey: null, displayName: null, driverModule: null,
+        createdByUserId: null, createdAt: "2026-10-21T00:00:00Z" }]
+    }));
+    const knowledge = createMockKnowledgeRepository({}, { entries, revisions: [] });
+    const load = vi.fn(async (id: string) => (await knowledge.relatedToDefinition(id)).items);
+    const onOpenEntry = vi.fn();
+    const storedRun = run();
+    storedRun.targets[0].canonicalDefinitionId = "definition-run";
+    storedRun.targets.push({ ...storedRun.targets[0], bindingId: "binding-2", propertyKey: "other", canonicalDefinitionId: "definition-empty" });
+    renderPage(createRepository({ getRun: vi.fn(async () => storedRun) }), {
+      initialRunId: "run-1", relatedKnowledge: { load, onOpenEntry }
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /published知识/ }));
+    expect(onOpenEntry).toHaveBeenCalledWith("published");
+    expect(load).toHaveBeenCalledWith("definition-run");
+    expect(load).toHaveBeenCalledWith("definition-empty");
+    expect(await screen.findByText("暂无引用该定义的已发布知识条目。")).toBeInTheDocument();
+    expect(screen.queryByText("draft知识")).not.toBeInTheDocument();
+    expect(screen.queryByText("archived知识")).not.toBeInTheDocument();
+  });
+});
 
 function DtsReloadTopBarHarness({
   pageProps

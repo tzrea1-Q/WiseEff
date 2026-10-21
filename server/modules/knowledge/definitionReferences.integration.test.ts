@@ -139,6 +139,25 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     return entryId;
   }
 
+  it("returns only published definition-related knowledge and requires knowledge:view", async () => {
+    const published = await createEntry(auth, "Published debugging knowledge");
+    const draft = await createEntry(auth, "Draft debugging knowledge", false);
+    const archived = await createEntry(auth, "Archived debugging knowledge");
+    for (const entryId of [published, draft, archived]) {
+      const added = await request(auth, "PUT", `/api/v1/knowledge/entries/${entryId}/definition-references/${activeDefinitionId}`);
+      expect(added.status).toBe(200);
+    }
+    expect((await request(auth, "POST", `/api/v1/knowledge/entries/${archived}/archive`)).status).toBe(200);
+    const path = `/api/v1/knowledge/related-to-definition?definitionId=${activeDefinitionId}`;
+    const related = await request(auth, "GET", path);
+    expect(related.status).toBe(200);
+    const ids = related.body.items.map((item: { entryId: string }) => item.entryId);
+    expect(ids).toContain(published);
+    expect(ids).not.toContain(draft);
+    expect(ids).not.toContain(archived);
+    expect((await request({ ...auth, permissions: ["parameter:view"] }, "GET", path)).status).toBe(403);
+  });
+
   it("writes canonical-only identity, rejects new legacy writes, and audits one idempotent add", async () => {
     const entryId = await createEntry(auth, "Canonical identity");
     const legacy = await request(auth, "PUT", `/api/v1/knowledge/entries/${entryId}/parameter-references/pspec%3Aold`);

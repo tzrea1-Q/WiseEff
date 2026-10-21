@@ -21,6 +21,7 @@ import type {
   DtsReloadSnapshot
 } from "@/domain/dtsReload/types";
 import type { DtsWorkbenchTreeNode } from "@/application/parameters/buildDtsTopologyTree";
+import { SpecRelatedKnowledgeSection, type SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
 import type { DeviceBridgeRecord, LocalBridgeHealthState } from "@/infrastructure/http/deviceBridgeClient";
 import type { LocalBridgeProbeResult } from "@/infrastructure/http/bridgeConnectLauncher";
 import { BookPlus, FilePlus } from "lucide-react";
@@ -415,6 +416,7 @@ export function DeployConfirmBody({
 
 export function RunResultSection({
   run,
+  relatedKnowledge,
   deviceId,
   targetRef,
   canStartRun,
@@ -430,6 +432,7 @@ export function RunResultSection({
   candidates = []
 }: {
   run: DtsReloadRun;
+  relatedKnowledge?: SpecRelatedKnowledgeSource;
   deviceId: string;
   targetRef: string;
   canStartRun: boolean;
@@ -475,6 +478,9 @@ export function RunResultSection({
                 <strong>{candidate?.displayName || target.propertyKey}</strong>
                 <small>{target.propertyKey} · {target.nodePath}</small>
                 <ParameterValueDiff baseValue={target.baselineValue ?? ""} targetValue={target.debugValue} />
+                {target.canonicalDefinitionId && relatedKnowledge ? (
+                  <SpecRelatedKnowledgeSection key={target.canonicalDefinitionId} specId={target.canonicalDefinitionId} source={relatedKnowledge} />
+                ) : null}
               </li>;
             })}
           </ul>
