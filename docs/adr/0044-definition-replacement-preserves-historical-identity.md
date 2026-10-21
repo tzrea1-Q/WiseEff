@@ -112,6 +112,12 @@ The frozen preview, its fingerprint, the manifest and the idempotency identity a
 An open `parameter_review_items` row captured for a superseded release is no longer listed and can no longer be resolved through the current-release surface. Counting those leftovers as open work would block every correction on an upgraded instance forever, so `countOpenReviewItems` counts open items captured for the release being corrected, matching the reviewer queue's own rule. Drafts remain release-scoped through their base revision and release.
 
 
+### 10. A platform administrator can correct an unused identity without projects
+
+Issue #1309 extends the existing replacement flow with an empty manifest for an active Platform Admin with the required Catalog authoring/publication capabilities. Preview and submission query actual current references across all Organizations; a scoped usage summary is insufficient. Any current reference requires the existing explicitly selected project migration. No unrelated project is created or selected.
+
+The publication transaction locks the old permanent Definition and rechecks global current references and the administrators' current authority before inserting its immutable Activation Receipt. A failed check rolls back materialization, receipt and pointer together. That receipt proves absence at activation: a reference created afterwards does not invalidate same-command finalization. An exact Candidate/job/Authorization/actor receipt also permits zero-project finalization after a later release advances, provided the actual replacement identity remains in the current Catalog. Completion records the proven activation without moving the current pointer backwards. The old identity and revisions stay unchanged and active. Independent retirement uses fresh global evidence, and its own publication transaction refuses retirement if references have appeared.
+
 ## Consequences
 
 ### Historical identity and the two history events
