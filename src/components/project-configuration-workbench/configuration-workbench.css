@@ -1826,13 +1826,16 @@
 .configuration-workbench__revision-gate [data-tone="fail"] {
   color: var(--danger);
 }
-.confirm-dialog.workbench-candidate-activate-dialog {
+.confirm-dialog.workbench-candidate-activate-dialog,
+.confirm-dialog.workbench-baseline-restore-dialog {
   width: min(1200px, calc(100vw - var(--space-12)));
   grid-template-columns: minmax(0, 1fr);
 }
 
 .workbench-candidate-activate-dialog .confirm-dialog__scroll,
-.workbench-candidate-activate-dialog .governance-confirm-dialog__body {
+.workbench-candidate-activate-dialog .governance-confirm-dialog__body,
+.workbench-baseline-restore-dialog .confirm-dialog__scroll,
+.workbench-baseline-restore-dialog .governance-confirm-dialog__body {
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
 }

@@ -89,12 +89,12 @@ export function WorkbenchBaselineDialogs({
   const canonical = restorePreview?.canonical;
   const restoreBlockedReason = baselineRestoreBlockedReason(restorePreview, selectedBaselineId);
   const restoreDescription = (
-    <div>
+    <div className="min-w-0 [overflow-wrap:anywhere]">
       {canonical ? <>
         <p>整套恢复将原子生成新的工作配置及参数来源记录；原快照和正式版本保持不变。</p>
         {canonical.entryFile ? <p>入口：{canonical.entryFile}；include 路径：{canonical.includeSearchPaths.join("、")}；overlay 顺序：{canonical.overlayOrder.join(" → ") || "无"}。</p> : null}
         {canonical.members.length ? <Table aria-label="恢复后的成员组成"><TableHeader><TableRow><TableHead>文件</TableHead><TableHead>目标版本</TableHead><TableHead>用途 / 顺序</TableHead><TableHead>操作</TableHead></TableRow></TableHeader>
-          <TableBody>{canonical.members.map((member) => <TableRow key={member.fileId}><TableCell>{member.fileName}</TableCell><TableCell>v{member.versionNumber}</TableCell><TableCell>{({ base: "基础",overlay: "覆盖层",include: "包含文件",charging: "充电",thermal: "温控",misc: "其他" } as Record<string,string>)[member.role] ?? member.role} / {member.sortOrder}</TableCell>
+          <TableBody>{canonical.members.map((member) => <TableRow key={member.fileId}><TableCell className="whitespace-normal [overflow-wrap:anywhere]">{member.fileName}</TableCell><TableCell>v{member.versionNumber}</TableCell><TableCell>{({ base: "基础",overlay: "覆盖层",include: "包含文件",charging: "充电",thermal: "温控",misc: "其他" } as Record<string,string>)[member.role] ?? member.role} / {member.sortOrder}</TableCell>
             <TableCell>{{ restore: "恢复版本",reattach: "补回成员", "retain-added": "保留新增成员",unchanged: "保持" }[member.action]}{member.compositionChanged ? "（组成变化）" : ""}</TableCell></TableRow>)}</TableBody></Table> : null}
         {canonical.canRestore ? <p>参数变化：{canonical.impact.parameterChanges}；保留参数：{canonical.impact.retainedBindings}；恢复参数：{canonical.impact.restoredBindings}；来源转移：{canonical.impact.sourceReplacements}。</p> : null}
         {canonical.missingInformation.map((message) => <p key={message}>{message}</p>)}
@@ -205,6 +205,7 @@ export function WorkbenchBaselineDialogs({
         </ModalDialog>
       ) : <ConfirmDialog
         open={restoreOpen}
+        className={canonical ? "workbench-baseline-restore-dialog" : undefined}
         title="恢复版本确认"
         description={restoreDescription}
         confirmLabel="确认恢复"

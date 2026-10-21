@@ -2948,6 +2948,15 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await expect(dialog.getByRole("textbox",{ name: "恢复原因",exact: true })).toHaveValue("#1306 restore checked complete source composition");
     await dialog.getByRole("button",{ name: "重新预览",exact: true }).click();
     await expect(page.getByRole("dialog",{ name: "恢复版本确认",exact: true })).toContainText("保留新增成员");
+    const composition = dialog.getByRole("table",{ name: "恢复后的成员组成" });
+    await expect(composition.getByRole("columnheader")).toHaveCount(4);
+    expect(await composition.evaluate(table => {
+      const bounds = table.closest('[role="dialog"]')!.getBoundingClientRect();
+      return [...table.querySelectorAll("th, td")].every(cell => {
+        const rect = cell.getBoundingClientRect();
+        return rect.left >= bounds.left && rect.right <= bounds.right;
+      });
+    }),"all restore member versions, roles and actions must fit the confirmation dialog").toBe(true);
     const screenshot = testInfo.outputPath("canonical-configuration-restore-1440x900.png");
     await page.screenshot({ path: screenshot }); await testInfo.attach("Complete snapshot restore preview",{ path: screenshot,contentType: "image/png" });
     const committed = page.waitForResponse(response => response.request().method()==="POST" && new URL(response.url()).pathname===rollbackPath);
