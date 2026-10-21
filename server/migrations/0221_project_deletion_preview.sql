@@ -92,4 +92,3 @@ $$;
 alter function parameter_catalog.preview_project_deletion_catalog(text,text,text) owner to catalog_migration_owner;
 revoke all on function parameter_catalog.preview_project_deletion_catalog(text,text,text) from public;
 grant execute on function parameter_catalog.preview_project_deletion_catalog(text,text,text) to catalog_baseline_reader_role;
-

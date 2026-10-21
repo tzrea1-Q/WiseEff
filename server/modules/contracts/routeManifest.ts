@@ -1338,6 +1338,7 @@ export const routeManifest = [
   },
 
   { id: "parameters.deleteAdminProject", method: "DELETE", path: "/api/v1/parameters/admin/projects/:projectId", module: "parameters", stability: "mvp" },
+  { id: "parameters.previewAdminProjectDeletion", method: "GET", path: "/api/v1/parameters/admin/projects/:projectId/deletion-preview", module: "parameters", stability: "mvp" },
   { id: "parameters.parseDtsImport", method: "POST", path: "/api/v1/parameter-import/parse-dts", module: "parameters", stability: "mvp" },
   {
     id: "parameters.listWorkflowAssignees",

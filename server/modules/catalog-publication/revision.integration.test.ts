@@ -41,6 +41,7 @@ import {
   CatalogSubjectId,
   PublicationJobId,
   PublicationPolicyRevision,
+  SubjectPlacementId,
 } from "../parameter-catalog-contract/index";
 import { createDatabase } from "../../shared/database/client";
 import { runPublicationManagerOnce } from "./jobs/manager";
@@ -408,7 +409,8 @@ describe("CP-10 definition revision and new-subject PG", () => {
     if (!built.ok || built.value.kind !== "successor") {
       throw new Error(`build failed: ${JSON.stringify(built)}`);
     }
-    const facts = publicationImpactFacts(input.authorPrincipalId, input.changeSet, built.value.impact);
+    const successor = built.value;
+    const facts = publicationImpactFacts(input.authorPrincipalId, input.changeSet, successor.impact);
     const persisted = await persistSuccessorBuild(
       {
         db: createDatabase(asQueryable(client)),
@@ -422,16 +424,16 @@ describe("CP-10 definition revision and new-subject PG", () => {
                 authorOrganizationId: "org-cp10",
                 impactFacts: facts as never,
                 impactSummary: {
-                  addedDefinitionCount: built.value.impact.definitions.added.length,
-                  changedDefinitionCount: built.value.impact.definitions.changed.length,
-                  addedSubjectCount: built.value.impact.subjects.added.length,
+                  addedDefinitionCount: successor.impact.definitions.added.length,
+                  changedDefinitionCount: successor.impact.definitions.changed.length,
+                  addedSubjectCount: successor.impact.subjects.added.length,
                 },
               },
             }),
         },
       },
-      built.value.artifact,
-      built.value.candidate,
+      successor.artifact,
+      successor.candidate,
     );
     if ("ok" in persisted && persisted.ok === false) {
       throw new Error(`persist failed: ${JSON.stringify(persisted.error)}`);
@@ -443,19 +445,19 @@ describe("CP-10 definition revision and new-subject PG", () => {
       const capability = await client.query<{ digest: string }>(
         `select catalog_publication.digest_jsonb(capability_contract) as digest
            from catalog_publication.candidates where id = $1`,
-        [built.value.candidate.id],
+        [successor.candidate.id],
       );
       return authorizePublish(asQueryable(client), {
         trustedActor: userActor(input.publisherUserId, input.publisherPermissions as never, {
           roleId: input.publisherRoleId ?? "admin",
         }),
         candidate: {
-          candidateId: built.value.candidate.id,
-          artifactDigest: built.value.candidate.artifactDigest,
-          expectedBaseReleaseId: built.value.candidate.expectedBaseReleaseId,
-          expectedBaseReleaseDigest: built.value.candidate.expectedBaseReleaseDigest,
-          proposalRevisionId: built.value.candidate.proposalRevisionId,
-          impactReportDigest: built.value.candidate.impactReportDigest,
+          candidateId: successor.candidate.id,
+          artifactDigest: successor.candidate.artifactDigest,
+          expectedBaseReleaseId: successor.candidate.expectedBaseReleaseId,
+          expectedBaseReleaseDigest: successor.candidate.expectedBaseReleaseDigest,
+          proposalRevisionId: successor.candidate.proposalRevisionId,
+          impactReportDigest: successor.candidate.impactReportDigest,
           capabilityContractDigest: capability.rows[0]!.digest,
         },
         impactFacts: facts,
@@ -468,7 +470,7 @@ describe("CP-10 definition revision and new-subject PG", () => {
     const job = await asCoordinator(client, async () =>
       createJob(asQueryable(client), {
         id: PublicationJobId(`cjob_${input.token}`),
-        candidateId: built.value.candidate.id,
+        candidateId: successor.candidate.id,
         authorizationId: authorized.value.authorization.id,
         requestScope: "instance:cp-10",
         idempotencyKey: `key-${input.token}`,
@@ -706,7 +708,7 @@ describe("CP-10 definition revision and new-subject PG", () => {
         id: CatalogReleaseId(currentBefore.rows[0]!.id),
         digest: CatalogReleaseDigest(result.built.candidate.artifactDigest),
       },
-      placement: { mode: "choose-parent", parentPlacementId: "missing-parent", displayName: "Bad" },
+      placement: { mode: "choose-parent", parentPlacementId: SubjectPlacementId("missing-parent"), displayName: "Bad" },
       destinationModuleId: `module-${token}`,
       method: "explicit",
       proof: { reason: "t21-followup" },
