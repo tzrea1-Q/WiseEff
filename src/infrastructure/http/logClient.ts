@@ -517,6 +517,9 @@ export function createHttpLogAnalysisRepository(
     async archiveSourceSnapshot(id, snapshotId) {
       return parseContractDto(logSourceSnapshotResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/source-snapshots/${encodeURIComponent(snapshotId)}/archive`, {}), "LogSourceSnapshotResponse").item;
     },
+    async retrySourceSnapshot(id, snapshotId) {
+      return parseContractDto(logSourceSnapshotResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/source-snapshots/${encodeURIComponent(snapshotId)}/retry`, {}), "LogSourceSnapshotResponse").item;
+    },
     async locateSourceStatement(id, snapshotId, line) {
       return parseContractDto(logSourceLocateResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/source-snapshots/${encodeURIComponent(snapshotId)}/locate`, { line }), "LogSourceLocateResponse");
     },

@@ -136,6 +136,25 @@ export async function archiveSourceSnapshot(db: Database, auth: AuthContext, ski
   });
 }
 
+/** Reuse the immutable upload and its captured indexing inputs; a worker creates a fresh attempt token. */
+export async function retrySourceSnapshot(db: Database, auth: AuthContext, skillId: string, id: string,
+  invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  assertTrustedInvocationMatchesAuth(auth, invocation, "Retry source snapshot indexing");
+  requireOrganization(auth);
+  requireLogAdminDomains(auth);
+  return withAuditedWrite(db, invocation, context, async (tx) => {
+    await lockSkill(tx, auth.organization.id, skillId);
+    const snapshot = await getSnapshot(tx, auth.organization.id, skillId, id);
+    const queued = await tx.query(`update log_source_snapshots set status='queued', index_attempt_id=null, error=null,
+      files_processed=0, files_total=0, file_count=0, skipped_count=0, skipped_files='[]'::jsonb,
+      statement_count=0, statements_truncated=false, updated_at=now()
+      where organization_id=$1 and skill_id=$2 and id=$3 and status='failed' returning id`, [auth.organization.id, skillId, id]);
+    if (!queued.rows.length) throw new ApiError("CONFLICT", "仅索引失败的源码快照可重新排队，请刷新状态。", { snapshotId: id, status: snapshot.status });
+    await tx.query("delete from log_source_files where organization_id=$1 and snapshot_id=$2", [auth.organization.id, id]);
+    return { result: await getSnapshot(tx, auth.organization.id, skillId, id), audit: audit(id, "log-source-snapshot-retry", skillId) };
+  });
+}
+
 /** Update under the same skill lock used by save/publish, replacing the draft token. */
 export async function setDefaultSourceSnapshot(db: Database, auth: AuthContext, skillId: string, id: string,
   invocation: TrustedInvocationContext, context: AuditedWriteContext) {
