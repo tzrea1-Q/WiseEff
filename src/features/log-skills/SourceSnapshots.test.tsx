@@ -5,6 +5,7 @@ import { SourceSnapshots } from "./SourceSnapshots";
 import { mockSkillWorkspace } from "@/infrastructure/mock/logSkills";
 import type { SourceSnapshot } from "./types";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 
 const snapshot: SourceSnapshot = {
   id: "snapshot-1", skillId: "skill-charging", versionLabel: "v1.0", status: "ready", fileCount: 3,
@@ -21,6 +22,7 @@ function setup(options: { items?: SourceSnapshot[]; canEdit?: boolean; apiMode?:
     setDefaultSourceSnapshot: vi.fn(async () => skill),
     archiveSourceSnapshot: vi.fn(async () => ({ ...snapshot, status: "archived" as const })),
     retrySourceSnapshot: vi.fn(async () => ({ ...snapshot, status: "queued" as const, error: null })),
+    restoreSourceSnapshot: vi.fn(async () => ({ ...snapshot, status: "queued" as const, error: null })),
     locateSourceStatement: vi.fn(async () => ({ items: [{ snapshotId: snapshot.id, path: "drivers/thermal.c", line: 9,
       versionLabel: snapshot.versionLabel, startLine: 8, excerpt: 'if (hot) {\n  pr_warn("thermal foldback: temp=%d\\n", temp);\n} // <img src=x onerror=alert(1)>', confidence: 0.95 }], truncated: true }))
   };
@@ -34,6 +36,21 @@ function setup(options: { items?: SourceSnapshot[]; canEdit?: boolean; apiMode?:
 }
 
 describe("source snapshots section", () => {
+  it("restores archived snapshots and links to the actual occupant when its matching version label conflicts", async () => {
+    const { repository, onSkillUpdated } = setup({ items: [{ ...snapshot, status: "archived" }, { ...snapshot, id: "occupant", status: "ready" }] });
+    repository.restoreSourceSnapshot.mockRejectedValueOnce(new WiseEffApiError("CONFLICT", "该版本标签已被其他快照占用，请先处理占用项。", {
+      conflictingSnapshot: { id: "occupant", versionLabel: "v1.0", status: "ready" }
+    }, "restore"));
+    await userEvent.click(await screen.findByRole("button", { name: "恢复快照" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("版本标签已被其他快照占用");
+    expect(screen.getByRole("link", { name: "查看占用快照 v1.0" })).toHaveAttribute("href", "#source-snapshot-occupant");
+    expect(screen.getByText("已归档")).toBeVisible();
+    repository.listSourceSnapshots.mockResolvedValueOnce([{ ...snapshot, status: "queued" }]);
+    await userEvent.click(screen.getByRole("button", { name: "恢复快照" }));
+    expect(await screen.findByText("等待索引")).toBeVisible();
+    expect(repository.restoreSourceSnapshot).toHaveBeenLastCalledWith("skill-charging", snapshot.id);
+    expect(onSkillUpdated).not.toHaveBeenCalled();
+  });
   it("retries a failed snapshot without discarding the current line and preserves failure for another attempt", async () => {
     const failed = { ...snapshot, status: "failed" as const, error: "读取源码原始文件失败，请检查对象存储后重试。" };
     const { repository, onBusyChange, onSkillUpdated } = setup({ items: [failed, { ...snapshot, id: "ready", versionLabel: "ready" }] });
@@ -116,11 +133,12 @@ describe("source snapshots section", () => {
   });
 
   it.each([{ canEdit: false }, { apiMode: false }])("hides all source actions for viewers and mock: %j", async (options) => {
-    setup({ ...options, items: [{ ...snapshot, status: "failed" }] });
+    setup({ ...options, items: [{ ...snapshot, status: "failed" }, { ...snapshot, id: "archived", status: "archived" }] });
     await screen.findByRole("table", { name: "源码快照" });
     expect(screen.queryByRole("button", { name: "上传快照" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "设为默认" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "重试索引" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "恢复快照" })).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: /快照操作/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "日志语句试一试" })).not.toBeInTheDocument();
   });
