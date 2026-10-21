@@ -1127,6 +1127,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "debugging.admin.previewModuleDeletion",
+    method: "GET",
+    path: "/api/v1/debugging/admin/modules/:moduleId/deletion-preview",
+    module: "debugging",
+    stability: "mvp"
+  },
+  {
     id: "debugging.admin.deleteModule",
     method: "DELETE",
     path: "/api/v1/debugging/admin/modules/:moduleId",

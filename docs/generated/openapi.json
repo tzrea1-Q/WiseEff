@@ -17226,7 +17226,7 @@
       },
       "delete": {
         "operationId": "debugging.admin.deleteModule",
-        "summary": "Delete debug node module registry entry",
+        "summary": "Relocate all nodes and delete a leaf debug module atomically",
         "tags": [
           "debugging"
         ],
@@ -17240,16 +17240,19 @@
             }
           }
         ],
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeleteResponse"
-                }
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteDebugModuleRequest"
               }
             }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful response."
           },
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -17303,6 +17306,61 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DebugNodeModuleResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/admin/modules/{moduleId}/deletion-preview": {
+      "get": {
+        "operationId": "debugging.admin.previewModuleDeletion",
+        "summary": "Preview a leaf debug module deletion and relocation blockers",
+        "tags": [
+          "debugging"
+        ],
+        "parameters": [
+          {
+            "name": "moduleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetModuleId",
+            "in": "query",
+            "required": false,
+            "description": "Existing target in the same organization; omit to move nodes to unclassified.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugModuleDeletionPreviewResponse"
                 }
               }
             }
@@ -58133,6 +58191,141 @@
       "MoveDebugNodeModuleRequest": {
         "type": "object",
         "x-wiseeff-schema": "MoveDebugNodeModuleRequest"
+      },
+      "DebugModuleDeletionPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "module": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              "target": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              "nodeCount": {
+                "type": "number"
+              },
+              "legacyNodeCount": {
+                "type": "number"
+              },
+              "children": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "ambiguousNodes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "canDelete": {
+                "type": "boolean"
+              },
+              "previewDigest": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "module",
+              "target",
+              "nodeCount",
+              "legacyNodeCount",
+              "children",
+              "ambiguousNodes",
+              "canDelete",
+              "previewDigest"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "DebugModuleDeletionPreviewResponse"
+      },
+      "DeleteDebugModuleRequest": {
+        "type": "object",
+        "properties": {
+          "targetModuleId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previewDigest": {
+            "type": "string"
+          },
+          "clientMutationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetModuleId",
+          "previewDigest",
+          "clientMutationId"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "DeleteDebugModuleRequest"
       },
       "ErrorResponse": {
         "type": "object",

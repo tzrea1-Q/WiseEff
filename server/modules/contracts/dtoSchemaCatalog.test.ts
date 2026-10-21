@@ -9,6 +9,23 @@ import { projectBindingDtoSchema } from "../parameter-topology/schemas";
 const leftoverSchemaNames = new Set(["GenericObjectResponse"]);
 
 describe("DTO schema catalog coverage", () => {
+  it("documents debug module relocation preview and optional legacy deletion body", () => {
+    const document = buildOpenApiDocument();
+    expect(document.paths["/api/v1/debugging/admin/modules/{moduleId}/deletion-preview"]?.get).toMatchObject({
+      parameters: expect.arrayContaining([expect.objectContaining({ name: "targetModuleId", in: "query", required: false })]),
+      responses: { "200": { content: { "application/json": { schema: { $ref: "#/components/schemas/DebugModuleDeletionPreviewResponse" } } } } }
+    });
+    expect(document.paths["/api/v1/debugging/admin/modules/{moduleId}"]?.delete).toMatchObject({
+      requestBody: { required: false }, responses: { "204": {} }
+    });
+    const request = dtoSchemaCatalog.DeleteDebugModuleRequest;
+    expect(request.safeParse({ targetModuleId: null, previewDigest: `sha256:${"0".repeat(64)}`, clientMutationId: "delete-once" }).success).toBe(true);
+    expect(request.safeParse({ targetModuleId: "target", previewDigest: "stale", clientMutationId: "delete-once" }).success).toBe(false);
+    expect(dtoSchemaCatalog.DebugModuleDeletionPreviewResponse.safeParse({ item: {
+      module: { id: "leaf", name: "Leaf" }, target: null, nodeCount: 2, legacyNodeCount: 1,
+      children: [], ambiguousNodes: [], canDelete: true, previewDigest: `sha256:${"0".repeat(64)}`
+    } }).success).toBe(true);
+  });
   it("documents passwordless OIDC provisioning and optimistic identity binding", () => {
     const document = buildOpenApiDocument();
     expect(document.paths["/api/v1/users/{userId}/oidc-identity"]?.put).toMatchObject({
