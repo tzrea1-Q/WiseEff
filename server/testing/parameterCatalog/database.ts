@@ -70,7 +70,7 @@ export const S2_SCH_0220_COMPAT_FINGERPRINT =
   "da0aba57c65b388a140b03d8db3da6b7c61ebc70d0b92f0b2b7026751cfda412";
 
 /**
- * Retained 0221 stage: the unchanged six-category inventory adds only three
+ * Retained pre-integration 0221 stage: the unchanged six-category inventory adds only three
  * functions for direct-source receipts/mode immutability and read-only project
  * deletion preview. Relations, columns, constraints, indexes and triggers are
  * unchanged from 0219; the historical fingerprint above remains intact.
@@ -79,7 +79,7 @@ export const S2_SCH_0221_FINGERPRINT =
   "d9907a04610bdcc83f0662fc3030fca1b480488858fdce4583315bd0bfd5005d";
 
 /**
- * Retained 0226 stage: project erasure adds one relation/primary key, while
+ * Retained pre-integration 0226 stage: project erasure adds one relation/primary key, while
  * member addition/removal and surviving Definition-erasure origins update
  * three constraints and nine function bodies, and add twelve functions.
  * The unchanged inventory query retains all prior schema pins above.
@@ -87,13 +87,13 @@ export const S2_SCH_0221_FINGERPRINT =
 export const S2_SCH_0226_FINGERPRINT =
   "82c8c47c82b6f4fcdbd744fa3cfcfedd74dfbd85aba811227d6d5f468c0f6e7e";
 
-/** Current available chain through 0228 adds only the log erasure relation,
+/** Retained pre-integration chain through 0228 adds only the log erasure relation,
  * its primary key/index, nine inventory attributes and six functions. All
  * preceding entries and every historical pin remain unchanged. */
 export const S2_SCH_0228_FINGERPRINT =
   "60ef3ac1e6873e012fff56627136e7f1740d00482a11a73106a51a5287997e6a";
 
-/** Combined 0227/0230/0232 chain adds three configuration restore functions and
+/** Retained pre-integration 0227/0230/0232 chain adds three configuration restore functions and
  * updates six source/restore/Definition-erasure bodies; all five relation,
  * attribute, constraint, index and trigger inventories above are unchanged. */
 export const S2_SCH_0232_FINGERPRINT =
