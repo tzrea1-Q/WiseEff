@@ -960,6 +960,7 @@ export const routeManifest = [
     stability: "mvp"
   },
   { id: "knowledge.getEntry", method: "GET", path: "/api/v1/knowledge/entries/:entryId", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.getBinding", method: "GET", path: "/api/v1/knowledge/entries/:entryId/binding", module: "knowledge", stability: "mvp" },
   { id: "knowledge.updateEntry", method: "PATCH", path: "/api/v1/knowledge/entries/:entryId", module: "knowledge", stability: "mvp" },
   {
     id: "knowledge.publishEntry",

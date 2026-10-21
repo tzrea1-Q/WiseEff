@@ -16159,6 +16159,46 @@
         }
       }
     },
+    "/api/v1/knowledge/entries/{entryId}/binding": {
+      "get": {
+        "operationId": "knowledge.getBinding",
+        "summary": "Read a knowledge binding, retaining deleted and unavailable identities",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "entryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBindingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/knowledge/entries/{entryId}/publish": {
       "post": {
         "operationId": "knowledge.publishEntry",
@@ -58554,6 +58594,232 @@
       "KnowledgeIndexRetryResponse": {
         "type": "object",
         "x-wiseeff-schema": "KnowledgeIndexRetryResponse"
+      },
+      "KnowledgeBindingResponse": {
+        "type": "object",
+        "properties": {
+          "entry": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "contentForm": {
+                "type": "string",
+                "enum": [
+                  "markdown",
+                  "file"
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "draft",
+                  "published",
+                  "archived"
+                ]
+              },
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "authored",
+                  "uploaded",
+                  "distilled",
+                  "agent-drafted",
+                  "imported"
+                ]
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "sourceType": {
+                "type": "string",
+                "enum": [
+                  "human",
+                  "agent"
+                ]
+              },
+              "sourceSessionId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sourceLogId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sourceLogDeleted": {
+                "type": "boolean"
+              },
+              "sourceReloadRunId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdByUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "headRevisionId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "headRevisionNumber": {
+                "type": "number"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "publishedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "archivedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "contentMarkdown": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "file": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "entryId": {
+                    "type": "string"
+                  },
+                  "organizationId": {
+                    "type": "string"
+                  },
+                  "storageKey": {
+                    "type": "string"
+                  },
+                  "fileName": {
+                    "type": "string"
+                  },
+                  "contentType": {
+                    "type": "string"
+                  },
+                  "sizeBytes": {
+                    "type": "number"
+                  },
+                  "checksum": {
+                    "type": "string"
+                  },
+                  "extractionStatus": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "succeeded",
+                      "failed"
+                    ]
+                  },
+                  "extractionError": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "entryId",
+                  "organizationId",
+                  "storageKey",
+                  "fileName",
+                  "contentType",
+                  "sizeBytes",
+                  "checksum",
+                  "extractionStatus",
+                  "extractionError",
+                  "createdAt",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              },
+              "parameterReferences": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "organizationId",
+              "title",
+              "contentForm",
+              "status",
+              "origin",
+              "tags",
+              "sourceType",
+              "sourceSessionId",
+              "sourceLogId",
+              "sourceReloadRunId",
+              "createdByUserId",
+              "headRevisionId",
+              "headRevisionNumber",
+              "createdAt",
+              "updatedAt",
+              "publishedAt",
+              "archivedAt",
+              "contentMarkdown",
+              "file",
+              "parameterReferences"
+            ],
+            "additionalProperties": false
+          },
+          "deleted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "entry",
+          "deleted"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "KnowledgeBindingResponse"
       },
       "UpdateKnowledgeEntryRequest": {
         "type": "object",

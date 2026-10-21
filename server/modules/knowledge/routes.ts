@@ -20,6 +20,7 @@ import {
   findRelatedKnowledgeForDefinition,
   findRelatedKnowledgeForSpec,
   getKnowledgeEntry,
+  getKnowledgeBinding,
   getKnowledgeFileContent,
   getKnowledgeIndexHealth,
   hardDeleteKnowledgeEntry,
@@ -231,6 +232,13 @@ export function registerKnowledgeRoutes(
     await retryKnowledgeEntryIndex(db, auth, params.entryId, { requestId: request.requestId });
 
     return { status: 200, body: { enqueued: true } };
+  });
+
+  router.get("/api/v1/knowledge/entries/:entryId/binding", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithEntryIdSchema, request.params);
+    return { status: 200, body: await getKnowledgeBinding(db, auth, params.entryId) };
   });
 
   router.get("/api/v1/knowledge/entries/:entryId", async (request) => {

@@ -9,6 +9,7 @@ import { DefinitionEditorBody } from "@/features/parameter-catalog-governance/De
 import { KnowledgePage } from "./KnowledgePage";
 import { KnowledgeParameterReferenceChips } from "./KnowledgeParameterReferenceChips";
 import type { KnowledgeDefinitionPickerPage } from "./KnowledgeEntryEditorDialog";
+import { KnowledgeEntryEditorDialog } from "./KnowledgeEntryEditorDialog";
 import {
   CATALOG_RELEASE_ID,
   activeDefinition,
@@ -120,6 +121,22 @@ describe("knowledge entry detail reference chips", () => {
 });
 
 describe("knowledge entry editor reference picker", () => {
+  it("retains definition references when the edited entry becomes archived", async () => {
+    const repository = createMockKnowledgeRepository();
+    const entry = await repository.createMarkdown({ title: "Referenced notes", contentMarkdown: "Cooling", tags: [] });
+    await repository.addDefinitionReference(entry.id, activeDefinition.id);
+    const published = await repository.publish(entry.id);
+    const props = { open: true, onSubmit: vi.fn(), onClose: vi.fn(), parameterReferencePicker: {
+      search: vi.fn(async () => definitionPage), onAdd: vi.fn(), onRemove: vi.fn()
+    } };
+    const { rerender } = render(<KnowledgeEntryEditorDialog {...props} entry={published} />);
+    const referenceName = `${activeDefinition.currentRevision.displayName} · ${activeDefinition.subject.canonicalName}`;
+    expect(within(screen.getByTestId("knowledge-reference-picker")).getByText(referenceName)).toBeVisible();
+    const archived = await repository.archive(entry.id);
+    rerender(<KnowledgeEntryEditorDialog {...props} entry={archived} />);
+    expect(within(screen.getByTestId("knowledge-reference-picker")).getByText(referenceName)).toBeVisible();
+    expect(archived.parameterReferences).toEqual(published.parameterReferences);
+  });
   it("searches definitions, adds a reference immediately, and removes it", async () => {
     const searchParameterDefinitions = vi.fn(async () => definitionPage);
     renderKnowledgePage({ searchParameterDefinitions });

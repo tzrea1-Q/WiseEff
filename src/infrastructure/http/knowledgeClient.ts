@@ -245,6 +245,11 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
       }
     },
 
+    async getBinding(entryId) {
+      const response = await apiClient.get<{ entry: KnowledgeEntryDto | null; deleted: boolean }>(`${entryPath(entryId)}/binding`);
+      return { entry: response.entry ? entryFromDto(response.entry) : null, deleted: response.deleted };
+    },
+
     async createMarkdown(input: CreateMarkdownKnowledgeInput) {
       const response = await apiClient.post<ItemEnvelope<KnowledgeEntryDto>>("/api/v1/knowledge/entries", {
         contentForm: "markdown",

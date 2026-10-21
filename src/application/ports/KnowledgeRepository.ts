@@ -65,6 +65,8 @@ export interface KnowledgeRepository {
   completeImport(batchId: string): Promise<KnowledgeImportReport>;
   list(query?: KnowledgeListQuery): Promise<{ items: KnowledgeEntry[] }>;
   get(entryId: string): Promise<KnowledgeEntry | null>;
+  /** Distinguish a dangling binding from a private entry without exposing its metadata. */
+  getBinding(entryId: string): Promise<{ entry: KnowledgeEntry | null; deleted: boolean }>;
   createMarkdown(input: CreateMarkdownKnowledgeInput): Promise<KnowledgeEntry>;
   /** Upload a document: MD/TXT become markdown drafts; other formats remain file entries. */
   createFile(input: CreateFileKnowledgeInput): Promise<KnowledgeEntry>;

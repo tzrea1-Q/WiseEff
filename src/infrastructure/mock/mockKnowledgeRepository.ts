@@ -583,6 +583,11 @@ export function createMockKnowledgeRepository(
       return entry ? clone(entry) : null;
     },
 
+    async getBinding(entryId) {
+      const entry = findEntry(entryId);
+      return { entry: entry ? clone(entry) : null, deleted: !store.entries.some((item) => item.id === entryId) };
+    },
+
     async createMarkdown(input) {
       store.counter += 1;
       const entry: KnowledgeEntry = {

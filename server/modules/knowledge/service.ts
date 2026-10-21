@@ -1186,6 +1186,13 @@ export async function getKnowledgeEntry(db: Queryable, auth: AuthContext, entryI
   return entry;
 }
 
+/** Binding screens retain missing identities, but never expose private entry metadata. */
+export async function getKnowledgeBinding(db: Queryable, auth: AuthContext, entryId: string) {
+  requireKnowledgeView(auth);
+  const entry = await getEntryById(db, auth, entryId);
+  return { entry: entry && canReadEntry(auth, entry) ? entry : null, deleted: !entry };
+}
+
 export async function listKnowledgeRevisions(db: Queryable, auth: AuthContext, entryId: string) {
   await getKnowledgeEntry(db, auth, entryId);
   return listRevisions(db, auth, entryId);
