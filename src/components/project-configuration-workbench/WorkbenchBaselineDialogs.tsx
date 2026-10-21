@@ -9,6 +9,7 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { Input } from "@/components/ui/input";
 import { SelectControl } from "@/components/common/SelectControl";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { baselineRestoreBlockedReason } from "@/application/project-configuration/releaseBaselineSession";
 import { formatRestorePreviewDescription } from "./WorkbenchBaselineDock";
 
@@ -92,9 +93,9 @@ export function WorkbenchBaselineDialogs({
       {canonical ? <>
         <p>整套恢复将原子生成新的工作配置及参数来源记录；原快照和正式版本保持不变。</p>
         {canonical.entryFile ? <p>入口：{canonical.entryFile}；include 路径：{canonical.includeSearchPaths.join("、")}；overlay 顺序：{canonical.overlayOrder.join(" → ") || "无"}。</p> : null}
-        {canonical.members.length ? <table><caption>恢复后的成员组成</caption><thead><tr><th>文件</th><th>目标版本</th><th>用途 / 顺序</th><th>操作</th></tr></thead>
-          <tbody>{canonical.members.map((member) => <tr key={member.fileId}><td>{member.fileName}</td><td>v{member.versionNumber}</td><td>{member.role} / {member.sortOrder}</td>
-            <td>{{ restore: "恢复版本",reattach: "补回成员", "retain-added": "保留新增成员",unchanged: "保持" }[member.action]}{member.compositionChanged ? "（组成变化）" : ""}</td></tr>)}</tbody></table> : null}
+        {canonical.members.length ? <Table aria-label="恢复后的成员组成"><TableHeader><TableRow><TableHead>文件</TableHead><TableHead>目标版本</TableHead><TableHead>用途 / 顺序</TableHead><TableHead>操作</TableHead></TableRow></TableHeader>
+          <TableBody>{canonical.members.map((member) => <TableRow key={member.fileId}><TableCell>{member.fileName}</TableCell><TableCell>v{member.versionNumber}</TableCell><TableCell>{({ base: "基础",overlay: "覆盖层",include: "包含文件",charging: "充电",thermal: "温控",misc: "其他" } as Record<string,string>)[member.role] ?? member.role} / {member.sortOrder}</TableCell>
+            <TableCell>{{ restore: "恢复版本",reattach: "补回成员", "retain-added": "保留新增成员",unchanged: "保持" }[member.action]}{member.compositionChanged ? "（组成变化）" : ""}</TableCell></TableRow>)}</TableBody></Table> : null}
         {canonical.canRestore ? <p>参数变化：{canonical.impact.parameterChanges}；保留参数：{canonical.impact.retainedBindings}；恢复参数：{canonical.impact.restoredBindings}；来源转移：{canonical.impact.sourceReplacements}。</p> : null}
         {canonical.missingInformation.map((message) => <p key={message}>{message}</p>)}
         {!canonical.canRestore && canonical.historicalRevisions.length > 0 && onRefreshRestorePreview ? <label>实际历史配置修订<SelectControl
@@ -113,6 +114,7 @@ export function WorkbenchBaselineDialogs({
           )
         : "正在准备恢复预览…"}
       {restoreBlockedReason && !canonical ? <p role="note">{restoreBlockedReason}</p> : null}
+      {sessionDraftsDirty ? <p role="alert">还有未保存的本地修改，请先保存或撤销后恢复。</p> : null}
       {baselineActionError ? <p role="alert">{baselineActionError}</p> : null}
     </div>
   );
@@ -210,8 +212,8 @@ export function WorkbenchBaselineDialogs({
         pending={pendingAction === "restore-baseline"}
         pendingLabel="恢复中…"
         tone="danger"
-        confirmDisabled={Boolean(canonical && !reason.trim())}
-        acknowledgement={canonical?.requiresCompositionConfirmation ? "我确认上述成员的归属、用途及顺序变化。" : undefined}
+        confirmDisabled={sessionDraftsDirty || Boolean(canonical && !reason.trim())}
+        acknowledgement={canonical?.requiresCompositionConfirmation ? "我确认上述成员归属、用途、顺序及 include/overlay 组成变化。" : undefined}
         extra={canonical ? <label>恢复原因<Input aria-label="恢复原因" value={reason} disabled={pendingAction === "restore-baseline"}
           onChange={(event) => setRestoreReason({ baselineId: selectedBaselineId,value: event.target.value })} /></label> : undefined}
         onCancel={onCancelRestore}

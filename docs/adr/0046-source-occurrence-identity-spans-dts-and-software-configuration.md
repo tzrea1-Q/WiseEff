@@ -44,6 +44,8 @@ For administrator-confirmed configuration composition changes (#1305), the DTS o
 
 A whole-DTS source edit in a mixed configuration carries unchanged JSON members into the same new configuration revision. Their exact bytes, current versions, JSON Pointers, registration and pinned Definition must still agree with their current values. JSON Bindings keep their identities and receive derived value/source pins atomically with the DTS edit; the DTS editor cannot target a JSON value.
 
+Complete configuration snapshot restore (#1306) may explicitly reinstate a retained member or a deleted source value using the same historical occurrence and Binding. The saved complete source revision and its exact historical pins prove that identity; current and historical DTS continuity bases must agree wherever both contain the node. The restore creates new versions/pins and an administrator receipt, preserves later-added members, and never recreates an erased Definition or replaces the saved snapshot. Definition erasure removes an affected shared restore request; surviving restored membership uses the existing immutable erasure receipt only after its exact restore pins have been verified.
+
 The seed equality oracle is unchanged by this decision: the reviewed fixture stays at exactly 124 bindings per project (120 board + 2 DTS compatibility + 2 JSON compatibility) and 372 across three projects. Real deployments with several config-sets and instances may legitimately exceed 124; 124 is the fixture's exact set, not a schema bound, and acceptance is equality rather than a lower bound.
 
 ## Accepted clarification — 2026-09-16

@@ -43,7 +43,7 @@ export type ReleaseBaselineRepository = Pick<
 
 export function baselineRestoreBlockedReason(preview: DtsRestorePreviewResult | null, baselineId: string | null): string {
   if (!preview || preview.baselineId !== baselineId) return "请先加载当前版本的恢复预览。";
-  if (preview.canonical) return preview.canonical.canRestore && preview.canonical.proofToken ? "" : preview.canonical.missingInformation.join(" ");
+  if (preview.canonical) return preview.canonical.canRestore && preview.canonical.proofToken ? "" : preview.canonical.missingInformation.join(" ") || "请先完成完整配置的恢复预览。";
   if (preview.members.some((member) => member.canonicalOwned !== false)) {
     return "此快照涉及规范源，不能整源恢复。需要已准备并批准的规范源事务；此预览仅用于查看版本差异，不会改变工作配置。";
   }

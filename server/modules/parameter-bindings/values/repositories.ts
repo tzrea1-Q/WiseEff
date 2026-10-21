@@ -188,15 +188,14 @@ export async function loadConfigurationRestoreCohort(tx: Queryable, input: {
     from parameter_catalog.project_parameter_bindings binding
     join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
       and occurrence.organization_id=binding.organization_id and occurrence.project_id=binding.project_id
-    join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id and value.binding_id=binding.id
+    join parameter_catalog.${projectParameterValues} value on value.id=binding.current_value_id and value.binding_id=binding.id
     join parameter_catalog.project_value_source_pins pin on pin.project_value_id=value.id and pin.binding_id=binding.id
     left join parameter_catalog.current_project_parameter_bindings active on active.id=binding.id
     left join parameter_catalog.project_value_source_pins historical on historical.binding_id=binding.id
       and historical.config_revision_id=$4 and historical.value_state='present'
     where binding.organization_id=$1 and binding.project_id=$2 and occurrence.config_set_id=$3
       and (active.id is not null or historical.id is not null)
-      and not exists(select 1 from parameter_catalog.definition_replacement_projects replacement
-        where replacement.old_binding_id=binding.id and replacement.status='completed')
+      and not parameter_catalog.is_replaced_current_binding(binding.id)
     order by binding.id`, [input.organizationId,input.projectId,input.configSetId,input.snapshotRevisionId])).rows;
 }
 

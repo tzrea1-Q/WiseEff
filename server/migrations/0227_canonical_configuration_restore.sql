@@ -221,11 +221,21 @@ begin
           and binding.source_occurrence_id=old_pin.source_occurrence_id and binding.definition_id=old_pin.definition_id
         where old_pin.id=frozen->>'sourcePinId' and old_pin.binding_id=frozen->>'bindingId' and old_pin.project_value_id=frozen->>'oldValueId'
           and old_pin.organization_id=r.organization_id and old_pin.project_id=r.project_id
-          and (frozen->>'snapshotValueId' is null or exists(select 1 from parameter_catalog.project_value_source_pins historical
+          and ((frozen->>'snapshotValueId' is null and old_pin.config_revision_id=r.source_revision_context->>'baseConfigRevisionId'
+              and old_pin.value_state='present') or exists(select 1 from parameter_catalog.project_value_source_pins historical
             where historical.binding_id=binding.id and historical.source_occurrence_id=binding.source_occurrence_id
               and historical.project_value_id=frozen->>'snapshotValueId' and historical.value_state='present'
               and historical.config_revision_id=r.source_revision_context->>'snapshotConfigRevisionId')))) then
     raise exception using errcode='23514',message='Configuration restore lost its exact saved versions or historical parameter identity';
+  end if;
+  if exists(select 1 from public.dts_release_baseline baseline where baseline.id=result->>'baselineId' and baseline.source_snapshot is not null
+    and (baseline.source_snapshot->>'configRevisionId' is distinct from r.source_revision_context->>'snapshotConfigRevisionId'
+      or (baseline.source_snapshot->>'sourcePinCount')::integer<>(select count(*) from parameter_catalog.project_value_source_pins historical
+        where historical.organization_id=r.organization_id and historical.project_id=r.project_id and historical.value_state='present'
+          and historical.config_revision_id=r.source_revision_context->>'snapshotConfigRevisionId')
+      or (baseline.source_snapshot->>'sourcePinCount')::integer<>(select count(*) from jsonb_array_elements(r.source_revision_context->'cohort') frozen
+        where frozen->>'snapshotValueId' is not null))) then
+    raise exception using errcode='23514',message='Configuration restore cannot reinstate an erased snapshot dependency';
   end if;
   if jsonb_array_length(result->'results')<>jsonb_array_length(r.source_revision_context->'cohort')
     or exists(select 1 from jsonb_array_elements(r.source_revision_context->'cohort') frozen

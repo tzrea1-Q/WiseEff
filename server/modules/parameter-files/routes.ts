@@ -818,7 +818,7 @@ export function registerParameterFileRoutes(
     const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
     try {
       const preview = await previewRestoreBaseline(db,auth,params.baselineId);
-      if (preview.members.some((row) => row.canonicalOwned)) {
+      if (preview.members.some((row) => row.canonicalOwned) && request.body !== null && typeof request.body === "object" && "proofToken" in request.body) {
         const { applyCanonicalBaselineRestore } = await import("./canonicalBaselineRestore");
         const body = parseWithSchema(canonicalBaselineRestoreBodySchema,request.body,"Invalid configuration restore payload.");
         const item = await applyCanonicalBaselineRestore(db,objectStore,auth,{ ...body,projectId: params.projectId,baselineId: params.baselineId },{

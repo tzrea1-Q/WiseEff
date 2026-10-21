@@ -36,6 +36,8 @@
    管理员确认的配置组成变更（#1305）中，DTS 出现位置的不可变文件仍是逻辑节点身份锚点。覆盖层可改变有效属性的物理文件，但不修改该出现位置或 Binding ID；新 ProjectValue 钉住实际有效属性及成员版本。此切换必须同时具备已批准的冻结来源转移回执、精确的新旧 pin 与历史，以及证明同一逻辑节点和最终属性来源的编译图，不能仅凭调用者提供的文件 ID 或请求 JSON。后续修改沿用已证明的来源关系；历史 pin 和基线继续保留原成员及字节。彻底删除某个 Definition 而撤销共享请求时，须先验证原始证明，才能给仍存活的转移 pin 写入既有的不可变删除回执；后续读取仍验证有效属性图。被删 Definition 的冻结数据随请求一同移除。
 
    混合配置中的完整 DTS 源码修改，会把未改动的 JSON 成员带入同一个新配置修订。JSON 文件的精确字节、当前版本、JSON Pointer、登记和已钉住的 Definition 仍须与当前值一致。JSON Binding 保持身份，并与 DTS 修改原子生成派生值及来源 pin；DTS 编辑器不能修改 JSON 参数值。
+
+   完整配置快照恢复（#1306）可通过明确确认，沿用真实历史 occurrence 与 Binding，恢复已移出成员或已删除的来源值。身份依据是所保存的完整来源修订及精确历史 pin；当前与历史 DTS 连续性基线同时包含同一节点时，身份必须一致。恢复生成新版本、pin 和管理员回执，保留后来新增成员，不重建已彻底删除的 Definition，也不改写原快照。Definition 彻底删除会移除受影响的共享恢复请求；仍存活的已恢复成员，只有在精确恢复 pin 已验证后，才能沿用既有的不可变删除回执保持归属。
 2. **Binding 唯一性跟随出现位置。** `project_parameter_bindings` 增加 `source_occurrence_id`，项目范围内唯一性收敛为 `(project_id, source_occurrence_id, definition_id)`。由于出现位置本身已区分 config-set 与实例，共享同一 Definition 的两个实例永不塌缩为一个 Binding。
 3. **不采用可空平铺的 DTS 列。** 不把 `logical_node_id` 简单改为可空、再平铺一组 JSON 专用可空列；那会让 Binding 永久背负 DTS/JSON 的 XOR，并把未来格式继续塞进同一张表。既有 DTS Binding 原地 backfill、保留现有 Binding ID，其身份永不被重新派生；只有新的 JSON Binding 从出现位置派生身份。
 4. **修订钉不是 Binding 身份。** 不可变的 file-version / config-revision 钉属于 ProjectValue 与源修订层。把它纳入 Binding 键会让每次合法写回都铸造一个新 Binding。

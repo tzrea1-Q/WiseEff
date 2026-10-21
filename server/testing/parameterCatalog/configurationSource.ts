@@ -56,7 +56,7 @@ export async function installConfigurationSourceFixture(db: Database, auth: Auth
     const bytes = encodeBundleBytes(bundle);
     await db.query(`insert into catalog_publication.release_artifacts(id,artifact_digest,bytes_checksum,artifact_bytes,
       source_kind,target_release_id,target_release_digest,toolchain) values ($1,$2,$3,$4,'repository-bundle',$5,$2,$6)`,
-      [randomUUID(),compiled.value.aggregateDigest,sha256Digest(bytes),Buffer.from(bytes),release.manifest.release.id,release.manifest.toolchain]);
+      [`cart_${randomUUID()}`,compiled.value.aggregateDigest,sha256Digest(bytes),Buffer.from(bytes),release.manifest.release.id,release.manifest.toolchain]);
   }
   const module = await createParameterModuleForAuth(db,auth,{ name: "Configuration",kind: "business" });
   const registration = await executeRegistration(pool,{

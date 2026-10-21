@@ -10,12 +10,12 @@ import { makeTestAuthContext } from "../../testing/authContext";
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
 import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
 import { captureConfigurationSourceState } from "../../testing/parameterCatalog/configurationSource";
+import { advanceSourceRevisionCatalogFixture } from "../../testing/parameterCatalog/sourceRevision";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { createLocalObjectStore } from "../logs/objectStore";
 import { asValueClient, exportCanonicalBindingSource, listCatalogBindingRowsForProject, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction, verifyCanonicalSourceReimport } from "../parameter-bindings/catalogProjectValueSync";
 import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
-import { createUserInvocation } from "../auth/trustedInvocation";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { createBaseline, type RestorePreviewResult } from "./baselineService";
 import { createConfigSet, addConfigSetFile } from "./configSetService";
@@ -39,6 +39,18 @@ describe("complete root/include/overlay snapshot restore",{ timeout: 120_000 },(
     refusalAuditSink: createTrustedRefusalAuditSink(db) }); return createHttpServer(router); };
   const post = <T,>(path: string,body: unknown) => requestJson<T>(route(),path,{ method: "POST",body: JSON.stringify(body) });
   const baselinePath = (operation: string) => `/api/v1/projects/${PROJECT}/baselines/${baselineId}/${operation}`;
+  async function editDts(text: string,key: string) {
+    const binding = (await listCatalogBindingRowsForProject(api,auth,{ projectId: PROJECT }))[0]!;
+    const pin = await loadOwnedProjectValueSourcePin(api,{ organizationId: ORG,projectId: PROJECT,bindingId,projectValueId: binding.currentValueId });
+    const candidate = await post<{ item: { id: string } }>(`/api/v1/projects/${PROJECT}/parameter-file-candidates`,{ fileId: overlayFileId,fileName: "limits.dts",
+      intent: "source_revision",expectedCurrentVersionId: pin!.fileVersionId,expectedConfigRevisionId: pin!.configRevisionId,clientMutationId: `${key}-candidate`,contentBase64: Buffer.from(text).toString("base64") });
+    expect(candidate.status,candidate.bodyText).toBe(201);
+    const preview = await requestJson<{ item: SourceRevisionPreview }>(route(),`/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidate.body.item.id}/source-preview`);
+    expect(preview.status,preview.bodyText).toBe(200);
+    const applied = await post(`/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidate.body.item.id}/source-apply`,{
+      expectedCurrentVersionId: pin!.fileVersionId,expectedProofToken: preview.body.item.proofToken,reason: "Exercise restored source continuity",clientMutationId: key });
+    expect(applied.status,applied.bodyText).toBe(200);
+  }
   beforeAll(async () => {
     lane = await createEphemeralTestDatabase("restore-dts"); db = createPostgresDatabase(lane.url);
     directory = await mkdtemp(join(tmpdir(),"wiseeff-restore-dts-")); storage = createLocalObjectStore(directory);
@@ -106,6 +118,47 @@ describe("complete root/include/overlay snapshot restore",{ timeout: 120_000 },(
     const before = await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT });
     const refused = await post(baselinePath("rollback"),{ proofToken: "0".repeat(64),sourceConfigRevisionId: preview.body.item.canonical!.sourceConfigRevisionId,
       reason: "Stale preview",confirmCompositionChanges: false,clientMutationId: "restore-dts-stale" });
+    expect(refused.status,refused.bodyText).toBe(409);
+    expect(await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT })).toEqual(before);
+  });
+  it("restores an explicitly reattached overlay origin and remains editable through a later ordinary source transaction",async () => {
+    const removal = `/api/v1/projects/${PROJECT}/config-sets/${configSetId}/files/${overlayFileId}`;
+    const removalPreview = await post<{ item: { proofToken: string } }>(`${removal}/removal-preview`,{});
+    expect(removalPreview.status,removalPreview.bodyText).toBe(200);
+    const removed = await post(`${removal}/removal-apply`,{ expectedProofToken: removalPreview.body.item.proofToken,reason: "Restore overlay membership from complete snapshot",clientMutationId: "restore-dts-remove-overlay" });
+    expect(removed.status,removed.bodyText).toBe(200);
+    expect((await listCatalogBindingRowsForProject(api,auth,{ projectId: PROJECT }))[0]!.rawValue).toBe("<36>");
+    const preview = await requestJson<{ item: RestorePreviewResult }>(route(),baselinePath("restore-preview"));
+    expect(preview.status,preview.bodyText).toBe(200); expect(preview.body.item.canonical!.requiresCompositionConfirmation).toBe(true);
+    const restored = await post(baselinePath("rollback"),{ proofToken: preview.body.item.canonical!.proofToken,
+      sourceConfigRevisionId: preview.body.item.canonical!.sourceConfigRevisionId,confirmCompositionChanges: true,
+      reason: "Confirm saved overlay membership and actual property origin",clientMutationId: "restore-dts-reattach-overlay" });
+    expect(restored.status,restored.bodyText).toBe(200);
+    expect((await listCatalogBindingRowsForProject(api,auth,{ projectId: PROJECT }))[0]).toMatchObject({ id: bindingId,rawValue: "<48>" });
+    await editDts(overlayText.replace("<48>","<50>"),"restore-dts-follow-on");
+    const exported = await exportCanonicalBindingSource(api,storage,auth,{ projectId: PROJECT,bindingId });
+    expect(await verifyCanonicalSourceReimport(api,storage,auth,{ projectId: PROJECT,bindingId,source: exported! })).toEqual(exported);
+  });
+  it("explicitly restores a deleted source value using the exact saved Binding, while ordinary source edits keep terminal-deletion guards",async () => {
+    await editDts('/dts-v1/; /plugin/; &charger { /delete-property/ iin_max; };\n',"restore-dts-delete-value");
+    expect(await listCatalogBindingRowsForProject(api,auth,{ projectId: PROJECT })).toHaveLength(0);
+    const preview = await requestJson<{ item: RestorePreviewResult }>(route(),baselinePath("restore-preview"));
+    expect(preview.status,preview.bodyText).toBe(200); expect(preview.body.item.canonical!.impact.restoredBindings).toBe(1);
+    const restored = await post(baselinePath("rollback"),{ proofToken: preview.body.item.canonical!.proofToken,
+      sourceConfigRevisionId: preview.body.item.canonical!.sourceConfigRevisionId,confirmCompositionChanges: false,
+      reason: "Explicitly restore saved source parameter",clientMutationId: "restore-dts-deleted-value" });
+    expect(restored.status,restored.bodyText).toBe(200);
+    expect((await listCatalogBindingRowsForProject(api,auth,{ projectId: PROJECT }))[0]).toMatchObject({ id: bindingId,rawValue: "<48>" });
+  });
+  it("refuses an actual Catalog advance after preview and leaves source, values and history unchanged",async () => {
+    const preview = await requestJson<{ item: RestorePreviewResult }>(route(),baselinePath("restore-preview"));
+    expect(preview.status,preview.bodyText).toBe(200);
+    const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
+    expect(await advanceSourceRevisionCatalogFixture(db,catalog!.release)).toEqual({ ok: true });
+    const before = await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT });
+    const refused = await post(baselinePath("rollback"),{ proofToken: preview.body.item.canonical!.proofToken,
+      sourceConfigRevisionId: preview.body.item.canonical!.sourceConfigRevisionId,confirmCompositionChanges: false,
+      reason: "Stale Catalog preview",clientMutationId: "restore-dts-catalog-stale" });
     expect(refused.status,refused.bodyText).toBe(409);
     expect(await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT })).toEqual(before);
   });

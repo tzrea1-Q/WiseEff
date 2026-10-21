@@ -30,6 +30,7 @@ import {
   bindHardwareUserToProject,
   disposablePageUrl,
   lookupParameterFileVersion,
+  readCanonicalFixtureBindings,
   numericCellsDts,
   seedIsolatedBinding,
   seedSemanticFileUiConflict,
@@ -167,7 +168,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     await expect.poll(() => tree.evaluate((element) => element.scrollTop)).toBe(0);
   });
 
-  test("keeps canonical baseline restore read-only while showing source drift", async ({ page, request }, testInfo) => {
+  test("keeps incomplete legacy snapshots read-only until actual composition is supplied", async ({ page, request }, testInfo) => {
     const baselineId = "seed-dts-baseline-aurora";
     const preview = await request.get(apiRoute(`/api/v1/projects/${projectId}/baselines/${baselineId}/restore-preview`), {
       headers: adminHeaders()
@@ -185,8 +186,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       if (sent.method() === "POST" && sent.url().endsWith(`/baselines/${baselineId}/rollback`)) rollbackRequests.push(sent.url());
     });
     const baselinePanel = page.getByRole("region", { name: "配置版本列表与详情" });
-    await expect(baselinePanel.getByRole("note")).toContainText("需要回退时，请在文件管理的版本历史中申请回滚审核。");
-    await expect(baselinePanel.getByRole("button", { name: /恢复到此版本|查看恢复限制/ })).toHaveCount(0);
+    await expect(baselinePanel.getByRole("button", { name: "恢复到此版本…",exact: true })).toBeEnabled();
     await expect(baselinePanel.getByRole("button", { name: /对比已发布/ })).toHaveCount(0);
     await baselinePanel.getByRole("button", { name: "对比当前配置", exact: true }).click();
     await expect(page).toHaveURL(/sourceMode=unified-diff/);
@@ -195,6 +195,11 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     await expect(page.getByRole("button", { name: "确认恢复" })).toHaveCount(0);
     await openWorkbenchPanel(page, "release");
     await expect(baselinePanel.getByLabel("文件差异")).toContainText(item.members[0].fileName);
+    await baselinePanel.getByRole("button",{ name: "恢复到此版本…",exact: true }).click();
+    const restore = page.getByRole("dialog",{ name: "恢复版本预览",exact: true });
+    await expect(restore).toContainText("未保存完整来源修订");
+    await expect(restore.getByRole("link",{ name: "进入配置编辑器" })).toBeVisible();
+    await expect(restore.getByRole("button",{ name: "确认恢复" })).toHaveCount(0);
     const screenshot = testInfo.outputPath("canonical-baseline-restore-1440x900.png");
     await page.screenshot({ path: screenshot });
     await testInfo.attach("canonical baseline read-only restore", { path: screenshot, contentType: "image/png" });
@@ -2884,6 +2889,74 @@ test.describe("project configuration workbench post-cutover semantic identity", 
         summarizeApiResponse(content, { method: "GET", path: contentPath, responseSummary: "exact reviewed source bytes" })],
       notes: "Real registered Binding fixture on the disposable API runtime. The whole-file editor stages immutable source; current file and Value stay unchanged while pending. The server-eligible assigned reviewer approves in a separate browser context; exact source, stable Binding identity, new Value and config/file receipt agree."
     });
+  });
+
+  test("restores a complete Canonical snapshot after a stale-plan refusal and retains added members through keyboard confirmation",async ({ page,request },testInfo) => {
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request,[{ subjectId: "csub_drv_mt_mt5788",canonicalName: "mt,mt5788" }]);
+    const original = '/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "RestoreV1", "keep"; }; };';
+    const binding = await seedIsolatedBinding(request,{ propertyKey: "rx_fod_cond",dts: original,rawValuePattern: '"RestoreV1", "keep"',nodeLocatorPattern: "board",reason: "#1306 complete snapshot restore",timeoutMs: 60_000 });
+    const file = await lookupParameterFileVersion({ fileName: binding.fileName });
+    const readiness = await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/release-readiness`),{ headers: adminHeaders() });
+    expect(readiness.status(),await readiness.text()).toBe(200);
+    const gate = (await readiness.json()).item as DtsReleaseReadiness;
+    expect(gate.canCreateBaseline,JSON.stringify(gate)).toBe(true);
+    const saved = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/baselines`),{
+      headers: adminHeaders(),data: { name: `restore-${randomUUID()}`,gateToken: gate.gateToken,acknowledgedWarningIds: gate.warnings.filter(row => row.acknowledgementRequired).map(row => row.id) } });
+    expect(saved.status(),await saved.text()).toBe(201);
+    const baselineId = (await saved.json()).item.id as string;
+    async function edit(content: string,key: string) {
+      const activeFile = await lookupParameterFileVersion({ fileName: binding.fileName });
+      const active = (await readCanonicalFixtureBindings(projectId)).find(row => row.id===binding.bindingId)!;
+      const candidate = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),{ headers: adminHeaders(),data: {
+        fileId: file.fileId,fileName: binding.fileName,contentBase64: Buffer.from(content).toString("base64"),intent: "source_revision",
+        expectedCurrentVersionId: activeFile.versionId,expectedConfigRevisionId: active.configRevisionId,clientMutationId: `${key}-candidate` } });
+      expect(candidate.status(),await candidate.text()).toBe(201);
+      const candidateId = (await candidate.json()).item.id as string;
+      const preview = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-preview`),{ headers: adminHeaders() });
+      expect(preview.status(),await preview.text()).toBe(200);
+      const committed = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-apply`),{ headers: adminHeaders(),data: {
+        expectedCurrentVersionId: activeFile.versionId,expectedProofToken: (await preview.json()).item.proofToken,reason: "Snapshot restore browser fixture edit",clientMutationId: key } });
+      expect(committed.status(),await committed.text()).toBe(200);
+    }
+    await edit(original.replace("RestoreV1","RestoreV2"),"restore-browser-edit-v2");
+    const candidate = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),{ headers: adminHeaders(),data: {
+      fileName: `retained-${randomUUID()}.json`,contentBase64: Buffer.from('{"metadata":"retain"}').toString("base64") } });
+    expect(candidate.status(),await candidate.text()).toBe(201);
+    const additionPath = `/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition`;
+    const addition = { candidateId: (await candidate.json()).item.id,role: "charging",sortOrder: 1 };
+    const additionPreview = await request.post(apiRoute(`${additionPath}/preview`),{ headers: adminHeaders(),data: addition });
+    expect(additionPreview.status(),await additionPreview.text()).toBe(200);
+    const joined = await request.post(apiRoute(`${additionPath}/apply`),{ headers: adminHeaders(),data: { ...addition,proofToken: (await additionPreview.json()).item.proofToken,reason: "Retain metadata after snapshot",clientMutationId: "restore-browser-extra" } });
+    expect(joined.status(),await joined.text()).toBe(200);
+    const route = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({ configSet: binding.configSetId,file: file.fileId,baseline: baselineId })}`;
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,route)); await dismissXiaozeHint(page);
+    const versions = await openWorkbenchPanel(page,"release");
+    await versions.getByRole("button",{ name: "恢复到此版本…",exact: true }).click();
+    const dialog = page.getByRole("dialog",{ name: "恢复版本确认",exact: true });
+    await expect(dialog).toContainText("保留新增成员");
+    await expect(dialog.getByRole("button",{ name: "确认恢复",exact: true })).toBeDisabled();
+    await dialog.getByRole("textbox",{ name: "恢复原因",exact: true }).fill("#1306 restore checked complete source composition");
+    await edit(original.replace("RestoreV1","RestoreV3"),"restore-browser-edit-v3");
+    const rollbackPath = `/api/v1/projects/${projectId}/baselines/${baselineId}/rollback`;
+    expectedBrowserApiFailures.push({ method: "POST",path: rollbackPath,status: 409 });
+    const stale = page.waitForResponse(response => response.request().method()==="POST" && new URL(response.url()).pathname===rollbackPath);
+    await dialog.getByRole("button",{ name: "确认恢复",exact: true }).focus(); await page.keyboard.press("Enter");
+    expect((await stale).status()).toBe(409);
+    await expect(dialog.getByRole("alert")).toContainText("过期");
+    await expect(dialog.getByRole("textbox",{ name: "恢复原因",exact: true })).toHaveValue("#1306 restore checked complete source composition");
+    await dialog.getByRole("button",{ name: "重新预览",exact: true }).click();
+    await expect(page.getByRole("dialog",{ name: "恢复版本确认",exact: true })).toContainText("保留新增成员");
+    const screenshot = testInfo.outputPath("canonical-configuration-restore-1440x900.png");
+    await page.screenshot({ path: screenshot }); await testInfo.attach("Complete snapshot restore preview",{ path: screenshot,contentType: "image/png" });
+    const committed = page.waitForResponse(response => response.request().method()==="POST" && new URL(response.url()).pathname===rollbackPath);
+    await dialog.getByRole("button",{ name: "确认恢复",exact: true }).focus(); await page.keyboard.press("Enter");
+    const response = await committed; expect(response.status(),await response.text()).toBe(200);
+    await expect(dialog).toHaveCount(0); await page.reload();
+    const after = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),{ headers: adminHeaders() });
+    expect((await after.json()).items.find((row: { id: string }) => row.id===binding.bindingId)).toMatchObject({ rawValue: '"RestoreV1", "keep"' });
+    await expect(await openWorkbenchPanel(page,"config-set")).toContainText("retained-");
   });
 
   test("administrator adds a staged overlay to a Canonical configuration through preview and keyboard confirmation", async ({ page, request }, testInfo) => {
