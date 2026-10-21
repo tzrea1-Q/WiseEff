@@ -459,6 +459,7 @@ export function PageRouter({
       return (
         <NodeDebuggingPage
           state={state}
+          relatedKnowledge={definitionRelatedKnowledge}
           debuggingActions={debuggingActions!}
           runtimeMode={runtimeMode}
           bridges={mockSeams?.bridges}
@@ -473,6 +474,7 @@ export function PageRouter({
       const handoff = parseDtsReloadHandoffQuery(searchParams);
       return (
         <DtsReloadPage
+          relatedKnowledge={definitionRelatedKnowledge}
           projects={state.configDraft.projects.map((project) => ({ id: project.id, name: project.name }))}
           initialProjectId={handoff.projectId ?? state.activeProjectId}
           repository={dtsReloadRepository ?? resolveDtsReloadRepository(runtimeMode)}

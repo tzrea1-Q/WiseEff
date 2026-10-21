@@ -16,6 +16,7 @@ import { useDtsReloadRunSession } from "@/application/dts-reload/useDtsReloadRun
 import type { DtsReloadDeployProtocol } from "@/application/dts-reload/dtsReloadRunSession";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ParameterValueDiff } from "@/components/ParameterValueDiff";
+import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
 import {
   LocalDeviceBridgePanel,
   type LocalDeviceBridgePanelState
@@ -110,6 +111,8 @@ export type DtsReloadPageProps = {
   knowledgeRepository?: KnowledgeRepository | null;
   /** knowledge:edit gates the distil affordance (deferred roadmap item 3). */
   knowledgeCapability?: KnowledgeCapability;
+  /** Published definition references; absent without knowledge:view. */
+  relatedKnowledge?: SpecRelatedKnowledgeSource;
   /** Router navigation for the /knowledge draft-editor handoff. */
   onNavigate?: (path: string) => void;
   /** Deep link (`/dts-reload?runId=…`): opens this history run on mount. */
@@ -133,6 +136,7 @@ export function DtsReloadPage({
   moduleRegistryRepository,
   knowledgeRepository,
   knowledgeCapability,
+  relatedKnowledge,
   onNavigate,
   initialRunId,
   initialBindingIds
@@ -1121,6 +1125,7 @@ export function DtsReloadPage({
             ) : null}
             <RunResultSection
               run={run}
+              relatedKnowledge={relatedKnowledge}
               candidates={candidates}
               deviceId={deviceId}
               targetRef={targetRef}
