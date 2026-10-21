@@ -58,7 +58,7 @@ describe("retained historical identity owner / PostgreSQL capability", () => {
       expect((await db.query("select name, checksum from schema_migrations where name < '0182' order by name")).rows).toEqual(oldReceipts);
       expect(await snapshot()).toEqual(before);
       expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0182_FINGERPRINT);
-      const historical = (await db.query("select name, checksum from schema_migrations order by name")).rows;
+      const historical = (await db.query<{ name: string; checksum: string }>("select name, checksum from schema_migrations order by name")).rows;
       const files = (await readdir(migrationsDir)).filter((name) => name.endsWith(".sql")).sort();
       const effectiveFiles = getEffectiveMigrationOrder(files, historical.map(({ name }) => name));
       expect(await applyMigrations(db, migrationsDir)).toEqual(effectiveFiles.filter((name) => name > "0182_legacy_dismissed_identity_reader.sql"));

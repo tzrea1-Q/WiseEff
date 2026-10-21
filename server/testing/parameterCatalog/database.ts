@@ -58,12 +58,16 @@ export const S2_SCH_0218_FINGERPRINT =
   "b5aeee9485d4ae62070556f269ff7623e1ab9934ceb1df707a75f1bddf30487e";
 
 /**
- * Current 0219 private-capability stage: 32 trigger functions add the nested
+ * Historical 0219 private-capability stage: 32 trigger functions add the nested
  * migration-owner guard before the private erasure predicate. No other entry
  * in the six-category inventory changes from the retained 0218 pin.
  */
-export const S2_SCH_LIVE_FINGERPRINT =
+export const S2_SCH_0219_FINGERPRINT =
   "2bd66075a223cd87daf165f4ba353258edd9a845c8027bf1de140b25ae19fad6";
+
+/** 0220 archive-aware erasure closure/lock; observed on native PostgreSQL in CI. */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "da0aba57c65b388a140b03d8db3da6b7c61ebc70d0b92f0b2b7026751cfda412";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
