@@ -29,6 +29,12 @@ values (
 
 Development seed (`npm run db:seed:m0`) already binds `platform-admin` for the ChargeLab demo admin when `NODE_ENV=development`.
 
+## Inspect project deletion impact
+
+In **Parameter administration → Projects**, an organization administrator can open **Deletion impact preview** from a project's action menu, including Canonical projects. The read-only inspection separates project-owned configuration, source versions, baselines, Bindings, values, drafts, review and migration history from associations to detach and resources to retain. Shared object bytes, independent knowledge/log/device data and platform definitions are retained. Protected offline migration archives and deployment evidence require their own retention process; they are never silently included in project cleanup.
+
+The dialog reports active work and actionable blockers. Refresh after changes: its organization/project-bound state digest is snapshot evidence, never authorization to delete. Storage counts describe database references, not physical object availability. This slice provides no permanent-deletion execution control; the existing Canonical deletion guard remains in force.
+
 ## Legacy promotion is retired
 
 The Platform console, navigation entry and promotion-history API are removed. The old `/platform-console` URL uses the shared home fallback; `GET /api/v2/platform/driver-schema-promotion-history` returns 404.

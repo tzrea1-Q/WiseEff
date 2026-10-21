@@ -291,7 +291,7 @@ test.describe("parameter-admin project list", () => {
       await expect(page.getByRole("dialog", { name: "编辑项目详情" })).toBeVisible();
       await page.getByRole("dialog", { name: "编辑项目详情" }).getByRole("button", { name: "取消" }).click();
       await firstRow.getByRole("button", { name: /更多/ }).click();
-      await page.getByRole("menuitem", { name: /删除/ }).click();
+      await page.getByRole("menuitem", { name: /^删除 / }).click();
       await expect(page.getByRole("dialog", { name: /删除项目/ })).toBeVisible();
       await expect(page.getByRole("dialog", { name: /删除项目/ })).toContainText("此操作不可撤销");
       await expect(page.getByRole("dialog", { name: /删除项目/ })).toContainText("共享参数库中的参数定义会保留。");

@@ -3,6 +3,7 @@ import { createDefaultApiClient } from "./defaultApiClient";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import { createParameterCatalogClient } from "./parameterCatalogClient";
 import type { CatalogListQuery } from "./parameterCatalogDtos";
+import type { ProjectDeletionPreview } from "@/domain/parameters/projectDeletionPreview";
 
 export type ParameterModuleDto = FlatModuleNode;
 
@@ -95,6 +96,12 @@ export function createParameterAdminClient(client: ApiClient = createDefaultApiC
     },
     async deleteProject(projectId: string) {
       await client.delete<{ ok: true }>(`/api/v1/parameters/admin/projects/${encodeURIComponent(projectId)}`);
+    },
+    async previewProjectDeletion(projectId: string) {
+      const response = await client.get<ItemEnvelope<ProjectDeletionPreview>>(
+        `/api/v1/parameters/admin/projects/${encodeURIComponent(projectId)}/deletion-preview`
+      );
+      return response.item;
     },
     async listModules() {
       const response = await client.get<ItemsEnvelope<ParameterModuleDto>>("/api/v1/parameter-modules");

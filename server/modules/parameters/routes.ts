@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
+import { previewProjectDeletion } from "../projects/deletionPreview";
 import {
   assertTrustedRefusalAuditSink,
   createTrustedRefusalAuditSink,
@@ -281,6 +282,15 @@ export function registerParameterRoutes(
       throw new ApiError("NOT_FOUND", "Project was not found.", { projectId: params.projectId });
     }
 
+    return { status: 200, body: { item } };
+  });
+
+  router.get("/api/v1/parameters/admin/projects/:projectId/deletion-preview", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const item = await previewProjectDeletion(db, auth.organization.id, params.projectId, auth.user.id);
     return { status: 200, body: { item } };
   });
 
