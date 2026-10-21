@@ -34,6 +34,7 @@ import {
   type KnowledgeDefinitionPickerPage
 } from "./KnowledgeEntryEditorDialog";
 import { KnowledgeFileUploadDialog, type KnowledgeFileUploadSubmit } from "./KnowledgeFileUploadDialog";
+import { KnowledgeImportDialog } from "./KnowledgeImportDialog";
 import { KnowledgeRevisionsDialog } from "./KnowledgeRevisionsDialog";
 
 export type KnowledgePageProps = {
@@ -88,6 +89,7 @@ export function KnowledgePage({
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorEntry, setEditorEntry] = useState<KnowledgeEntry | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [uploadEntry, setUploadEntry] = useState<KnowledgeEntry | null>(null);
   const [revisionsEntry, setRevisionsEntry] = useState<KnowledgeEntry | null>(null);
   const [deleteEntry, setDeleteEntry] = useState<KnowledgeEntry | null>(null);
@@ -466,6 +468,7 @@ export function KnowledgePage({
                   <FilePlus2 data-icon="inline-start" />
                   上传文件条目
                 </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setImportOpen(true)}>批量导入</Button>
               </>
             ) : null}
             <Button type="button" variant={capability.canEdit ? "outline" : "default"} size="sm" onClick={() => {
@@ -621,6 +624,8 @@ export function KnowledgePage({
         }}
       />
 
+      {capability.canEdit ? <KnowledgeImportDialog open={importOpen} repository={repository}
+        onClose={() => setImportOpen(false)} onComplete={() => { void loadEntries(); }} /> : null}
       <KnowledgeFileUploadDialog
         open={uploadOpen}
         entry={uploadEntry}

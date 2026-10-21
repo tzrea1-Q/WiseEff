@@ -15287,6 +15287,198 @@
         }
       }
     },
+    "/api/v1/knowledge/imports": {
+      "post": {
+        "operationId": "knowledge.openImport",
+        "summary": "Open an organization-scoped, importer-owned batch with fixed tags (knowledge:edit)",
+        "tags": [
+          "knowledge"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenKnowledgeImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenKnowledgeImportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/imports/{batchId}/documents": {
+      "post": {
+        "operationId": "knowledge.importDocument",
+        "summary": "Import one document through the existing upload path; enforce 200 documents / 100 MB per batch and 20 MB per file; skip readable SHA-256 duplicates",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportKnowledgeDocumentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportKnowledgeDocumentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/imports/{batchId}": {
+      "get": {
+        "operationId": "knowledge.getImport",
+        "summary": "Read the importer's persisted document outcomes and server-computed totals",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeImportReportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/imports/{batchId}/complete": {
+      "post": {
+        "operationId": "knowledge.completeImport",
+        "summary": "Complete a batch once and audit its server-recorded outcome counts (knowledge:edit)",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteKnowledgeImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeImportReportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/knowledge/distill-from-log": {
       "post": {
         "operationId": "knowledge.distillFromLog",
@@ -57871,6 +58063,247 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "KnowledgeEntryResponse"
+      },
+      "OpenKnowledgeImportRequest": {
+        "type": "object",
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false,
+        "x-wiseeff-schema": "OpenKnowledgeImportRequest"
+      },
+      "OpenKnowledgeImportResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "OpenKnowledgeImportResponse"
+      },
+      "ImportKnowledgeDocumentRequest": {
+        "type": "object",
+        "properties": {
+          "relativePath": {
+            "type": "string"
+          },
+          "file": {
+            "type": "object",
+            "properties": {
+              "fileName": {
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              },
+              "contentBase64": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "fileName",
+              "contentType",
+              "contentBase64"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "relativePath",
+          "file"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ImportKnowledgeDocumentRequest"
+      },
+      "ImportKnowledgeDocumentResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "relativePath": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "created",
+                  "duplicate_skipped",
+                  "unsupported_skipped",
+                  "extraction_failed",
+                  "rejected"
+                ]
+              },
+              "entryId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "relativePath",
+              "status",
+              "entryId",
+              "error"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ImportKnowledgeDocumentResponse"
+      },
+      "KnowledgeImportReportResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "completed": {
+                "type": "boolean"
+              },
+              "documentCount": {
+                "type": "number"
+              },
+              "totalBytes": {
+                "type": "number"
+              },
+              "counts": {
+                "type": "object",
+                "properties": {
+                  "created": {
+                    "type": "number"
+                  },
+                  "duplicate_skipped": {
+                    "type": "number"
+                  },
+                  "unsupported_skipped": {
+                    "type": "number"
+                  },
+                  "extraction_failed": {
+                    "type": "number"
+                  },
+                  "rejected": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "created",
+                  "duplicate_skipped",
+                  "unsupported_skipped",
+                  "extraction_failed",
+                  "rejected"
+                ],
+                "additionalProperties": false
+              },
+              "outcomes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "relativePath": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "created",
+                        "duplicate_skipped",
+                        "unsupported_skipped",
+                        "extraction_failed",
+                        "rejected"
+                      ]
+                    },
+                    "entryId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "error": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "relativePath",
+                    "status",
+                    "entryId",
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "tags",
+              "completed",
+              "documentCount",
+              "totalBytes",
+              "counts",
+              "outcomes"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "KnowledgeImportReportResponse"
+      },
+      "CompleteKnowledgeImportRequest": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CompleteKnowledgeImportRequest"
       },
       "KnowledgeEntryListResponse": {
         "type": "object",

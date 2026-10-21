@@ -9,6 +9,8 @@ import { buildReloadDistillationDraft, isReloadRunDistillable } from "@/domain/k
 import type { DtsReloadRun } from "@/domain/dtsReload/types";
 import type {
   KnowledgeEntry,
+  KnowledgeImportOutcome,
+  KnowledgeImportReport,
   KnowledgeIndexState,
   KnowledgeParameterReference,
   KnowledgeRevision,
@@ -21,6 +23,15 @@ import { mockApiError } from "./mockApiError";
 
 const MOCK_KNOWLEDGE_NOW = "2026-08-12T00:00:00.000Z";
 const MOCK_USER_ID = "u-xu-yun";
+
+function sourceBytes(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1]);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
 
 /**
  * Definition chip data aligned with the `mockParameterTopologyRepository`
@@ -464,6 +475,13 @@ export function createMockKnowledgeRepository(
 ): KnowledgeRepository {
   const userId = capability.userId ?? MOCK_USER_ID;
   const canManage = capability.canManage ?? true;
+  const imports = new Map<string, KnowledgeImportReport>();
+  const sources = new Map<string, { bytes: string; contentMarkdown: string | null; fileId: string | null }>();
+  const requireImport = (id: string) => {
+    const batch = imports.get(id);
+    if (!batch) throw mockApiError("NOT_FOUND", "找不到导入批次。");
+    return batch;
+  };
   const store: MockStore = {
     entries: fixtures.entries.map(clone),
     revisions: fixtures.revisions.map(clone),
@@ -594,7 +612,62 @@ export function createMockKnowledgeRepository(
       return clone(entry);
     },
 
+    async openImport(tags) {
+      if (tags.length > 20 || tags.some((tag) => !tag.trim() || tag.length > 60)) {
+        throw mockApiError("VALIDATION_FAILED", "标签最多 20 个，每个标签不超过 60 字符。");
+      }
+      const id = crypto.randomUUID();
+      imports.set(id, { id, tags: [...new Set(tags.map((tag) => tag.trim()))], completed: false, documentCount: 0, totalBytes: 0,
+        counts: { created: 0, duplicate_skipped: 0, unsupported_skipped: 0, extraction_failed: 0, rejected: 0 }, outcomes: [] });
+      return { id };
+    },
+    async importDocument(batchId, input) {
+      const batch = requireImport(batchId);
+      if (batch.completed) throw mockApiError("CONFLICT", "导入批次已完成。");
+      if (input.file.size > 20 * 1024 * 1024) throw mockApiError("VALIDATION_FAILED", "文件超过 20 MB 上限。");
+      if (batch.documentCount >= 200) throw mockApiError("VALIDATION_FAILED", "每批最多导入 200 个文档。");
+      if (batch.totalBytes + input.file.size > 100 * 1024 * 1024) throw mockApiError("VALIDATION_FAILED", "每批文件总大小不能超过 100 MB。");
+      const outcome: KnowledgeImportOutcome = { id: crypto.randomUUID(), relativePath: input.relativePath,
+        status: "unsupported_skipped", entryId: null, error: null };
+      batch.documentCount++;
+      batch.totalBytes += input.file.size;
+      if (/\.(pdf|docx|txt|md)$/i.test(input.file.name)) {
+        const bytes = await sourceBytes(input.file);
+        const match = store.entries.find((entry) => {
+          const source = sources.get(entry.id);
+          return findEntry(entry.id) && source?.bytes === bytes && source.contentMarkdown === entry.contentMarkdown && source.fileId === (entry.file?.id ?? null);
+        });
+        if (match) {
+          outcome.status = "duplicate_skipped";
+          outcome.entryId = match.id;
+        } else {
+          try {
+            const folderTags = input.relativePath.split("/").slice(0, -1).map((tag) => tag.trim().slice(0, 60)).filter(Boolean);
+            const entry = await repository.createFile({ file: input.file, title: input.file.name.slice(0, 200),
+              tags: [...new Set([...batch.tags, ...folderTags])].slice(0, 20) });
+            outcome.status = entry.file?.extractionStatus === "failed" ? "extraction_failed" : "created";
+            outcome.entryId = entry.id;
+            outcome.error = entry.file?.extractionError ?? null;
+          } catch (error) {
+            outcome.status = "rejected";
+            outcome.error = error instanceof Error ? error.message : "导入失败，请重试。";
+          }
+        }
+      }
+      batch.outcomes.push(outcome);
+      batch.counts[outcome.status]++;
+      return clone(outcome);
+    },
+    async getImport(batchId) { return clone(requireImport(batchId)); },
+    async completeImport(batchId) {
+      const batch = requireImport(batchId);
+      batch.completed = true;
+      return clone(batch);
+    },
+
     async createFile(input) {
+      if (!input.file.size || input.file.size > 20 * 1024 * 1024) throw mockApiError("VALIDATION_FAILED", "文件须为非空且不超过 20 MB。");
+      const source = await sourceBytes(input.file);
       if (/\.(md|txt)$/i.test(input.file.name)) {
         const bytes = await new Promise<ArrayBuffer>((resolve, reject) => {
           const reader = new FileReader();
@@ -611,7 +684,9 @@ export function createMockKnowledgeRepository(
         if (contentMarkdown.length > 200_000) {
           throw mockApiError("VALIDATION_FAILED", "正文超过知识库 200,000 字符上限，请精简后重新上传。");
         }
-        return repository.createMarkdown({ title: input.title, tags: input.tags, contentMarkdown, origin: "uploaded" });
+        const entry = await repository.createMarkdown({ title: input.title, tags: input.tags, contentMarkdown, origin: "uploaded" });
+        sources.set(entry.id, { bytes: source, contentMarkdown, fileId: null });
+        return entry;
       }
       store.counter += 1;
       const id = `mock-kb-${store.counter}`;
@@ -648,6 +723,7 @@ export function createMockKnowledgeRepository(
         parameterReferences: []
       };
       store.files.set(`${id}-file`, input.file);
+      sources.set(id, { bytes: source, contentMarkdown: null, fileId: `${id}-file` });
       appendRevision(entry);
       entry.headRevisionNumber = 1;
       store.entries = [entry, ...store.entries];

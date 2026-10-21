@@ -16,6 +16,24 @@ export type KnowledgeStatus = (typeof knowledgeStatuses)[number];
 export type KnowledgeExtractionStatus = (typeof knowledgeExtractionStatuses)[number];
 export type KnowledgeSourceType = "human" | "agent";
 
+export type KnowledgeImportOutcome = {
+  id: string;
+  relativePath: string;
+  status: "created" | "duplicate_skipped" | "unsupported_skipped" | "extraction_failed" | "rejected";
+  entryId: string | null;
+  error: string | null;
+};
+
+export type KnowledgeImportReport = {
+  id: string;
+  tags: string[];
+  completed: boolean;
+  documentCount: number;
+  totalBytes: number;
+  counts: Record<KnowledgeImportOutcome["status"], number>;
+  outcomes: KnowledgeImportOutcome[];
+};
+
 export type KnowledgeFileMeta = {
   id: string;
   fileName: string;
