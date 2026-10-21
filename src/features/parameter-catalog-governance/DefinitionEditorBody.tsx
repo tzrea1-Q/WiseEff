@@ -34,6 +34,7 @@ import {
   emptyPublicationDraft,
   publicationJobIsPending,
   publicationStatusCopy,
+  publicationSuccessKind,
   type PublicationDraft,
   type PublicationValueType
 } from "./publicationState";
@@ -326,6 +327,7 @@ export function DefinitionEditorBody({
     if (!publicationJob) return;
     try {
       const response = await catalog.getPublication(publicationJob.id);
+      if (publicationSuccessKind(response.item)) await onRefreshEvidence?.();
       setPublicationJob(response.item);
       setError("");
     } catch (caught) {
@@ -344,6 +346,8 @@ export function DefinitionEditorBody({
       try {
         const response = await catalog.getPublication(publicationJobId);
         if (cancelled) return;
+        if (publicationSuccessKind(response.item)) await onRefreshEvidence?.();
+        if (cancelled) return;
         keepPolling = publicationJobIsPending(response.item.status);
         setPublicationJob(response.item);
         setError("");
@@ -355,7 +359,7 @@ export function DefinitionEditorBody({
     };
     timer = setTimeout(() => void poll(), 1000);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [catalog, publicationJobId, publicationPending]);
+  }, [catalog, publicationJobId, publicationPending, onRefreshEvidence]);
 
   const runPreview = async () => {
     if (!editable || !targetSubjectAllowed || pending) return;
@@ -439,9 +443,9 @@ export function DefinitionEditorBody({
         { idempotencyKey: key },
         { catalogReleaseId }
       );
+      if (publicationSuccessKind(published.item)) await onRefreshEvidence?.();
       setPublicationJob(published.item);
       setPhase("content-saved");
-      void onRefreshEvidence?.();
       onCompleted?.();
     } catch (caught) {
       setError(failureText(caught));

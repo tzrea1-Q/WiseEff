@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
-import { activeDefinition, CATALOG_ORGANIZATION_ID, CATALOG_RELEASE_ID, readyCatalogDocument, registeredSubject } from "@/application/parameter-catalog/fixtures";
+import { activeDefinition, catalogPublicationJob, CATALOG_ORGANIZATION_ID, CATALOG_RELEASE_ID, readyCatalogDocument, registeredSubject } from "@/application/parameter-catalog/fixtures";
 import { deriveCatalogDomainState } from "@/application/parameter-catalog/states";
 import type { CatalogPageProps } from "@/features/parameter-catalog/CatalogPage";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -50,11 +50,11 @@ function deferredPage() {
   return { promise, resolve, reject };
 }
 
-function surface(catalog: ParameterCatalogRepository) {
+function surface(catalog: ParameterCatalogRepository, onAnchorChange = vi.fn()) {
   return <CatalogOrganizationSurface
     catalog={catalog} governance={createMockCatalogPorts({ scenario: "ready" }).governance}
     actor="org-admin" sessionPermissions={["catalog:author", "catalog:publish"]}
-    search="" onAnchorChange={vi.fn()} currentPersonId="person-admin"
+    search="" onAnchorChange={onAnchorChange} currentPersonId="person-admin"
   />;
 }
 
@@ -66,6 +66,28 @@ async function readSubjectOptions() {
 }
 
 describe("CatalogOrganizationSurface editor subject collection", () => {
+  it("advances the reload anchor after a content publication activates while keeping its result visible", async () => {
+    const user = userEvent.setup();
+    const { catalog } = createMockCatalogPorts({ scenario: "ready", publicationOutcome: "queued" });
+    const latest = "crel_content_revision_applied";
+    const current = vi.spyOn(catalog, "getCatalog").mockResolvedValue({
+      ...readyCatalogDocument, item: { ...readyCatalogDocument.item!, catalogReleaseId: latest }
+    });
+    vi.spyOn(catalog, "getPublication").mockResolvedValue({ item: {
+      ...catalogPublicationJob, status: "active", effective: true, isCurrent: true, currentness: "active"
+    } });
+    const navigate = vi.fn();
+    render(surface(catalog, navigate));
+    await user.click(screen.getByRole("button", { name: "打开定义编辑器" }));
+    await user.type(screen.getByLabelText("显示名"), "更新");
+    await user.type(screen.getByLabelText("修改原因"), "发布内容修订");
+    await user.click(screen.getByRole("button", { name: "保存内容修订" }));
+    expect(await screen.findByRole("region", { name: "内容修订结果" })).toHaveTextContent("发布已入队");
+    expect(current).not.toHaveBeenCalled();
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith(expect.stringContaining(`catalogReleaseId=${latest}`), "replace"), { timeout: 4000 });
+    expect(screen.getByRole("region", { name: "内容修订结果" })).toHaveTextContent("目录发布已生效");
+  });
+
   it("ignores an automatic evidence check that finishes after the organization changes", async () => {
     const oldPorts = createMockCatalogPorts({ scenario: "ready" });
     let finishOldRead!: (value: Awaited<ReturnType<ParameterCatalogRepository["getCatalog"]>>) => void;
