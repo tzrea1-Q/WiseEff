@@ -11,6 +11,7 @@ import { formatPreviewRequestSchema, formatPreviewResponseSchema } from "../../l
 import { organizationBridgeListResponseSchema, organizationBridgeResponseSchema, revokeOrganizationBridgeBodySchema } from "../../deviceBridge/schemas";
 import { createUserBodySchema, roleBindingSchema } from "../../users/schemas";
 import { oidcIdentitySchema, setOidcIdentityBodySchema } from "./oidcMembers";
+import { debugModuleDeletionBodySchema, debugModuleDeletionPreviewResponseSchema } from "../../debugging/schemas";
 
 import {
   xiaozeAgUiRunRequestSchema,
@@ -99,6 +100,8 @@ const userGovernanceDtoSchema = z.object({
   oidcIdentity: oidcIdentitySchema.optional(), legacyOidcEmail: z.string().optional()
 });
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
+  DeleteDebugModuleRequest: debugModuleDeletionBodySchema,
+  DebugModuleDeletionPreviewResponse: debugModuleDeletionPreviewResponseSchema,
   CreateLocalAccountUserRequest: createUserBodySchema,
   SetUserOidcIdentityRequest: setOidcIdentityBodySchema,
   UserGovernanceResponse: z.object({ item: userGovernanceDtoSchema }),
@@ -252,6 +255,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 };
 
 export const dtoSchemaCoveredRouteIds = [
+  "debugging.admin.previewModuleDeletion",
   "auth.localConfig", "users.list", "users.create", "users.setOidcIdentity",
   "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.revokeOrganizationBridge",
   "logs.restoreSourceSnapshot",

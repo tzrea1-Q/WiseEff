@@ -1726,11 +1726,22 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "DebugNodeModuleResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
-  "debugging.admin.deleteModule": {
-    summary: "Delete debug node module registry entry",
+  "debugging.admin.previewModuleDeletion": {
+    summary: "Preview a leaf debug module deletion and relocation blockers",
     tags: ["debugging"],
+    responseBody: "DebugModuleDeletionPreviewResponse",
+    requestParameters: [{ name: "targetModuleId", in: "query", required: false,
+      description: "Existing target in the same organization; omit to move nodes to unclassified.", schema: { type: "string" } }],
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "debugging.admin.deleteModule": {
+    summary: "Relocate all nodes and delete a leaf debug module atomically",
+    tags: ["debugging"],
+    requestBody: "DeleteDebugModuleRequest",
+    requestBodyRequired: false,
     responseBody: "DeleteResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+    successStatus: 204,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "debugging.listReloadTargets": {
     summary: "Retired parameter-reload target list (always 410 Gone)",
