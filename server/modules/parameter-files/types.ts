@@ -310,6 +310,7 @@ export type InsertReleaseBaselineInput = {
   name: string;
   notes?: string;
   createdByUserId?: string;
+  sourceSnapshot?: { configRevisionId: string; sourcePinCount: number } | null;
 };
 
 export type InsertReleaseBaselineMemberInput = {

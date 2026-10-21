@@ -2166,8 +2166,11 @@ export function ProjectConfigurationWorkbench({
           releaseBaselineSession.clearRestorePreview();
           releaseBaselineSession.clearActionError();
         }}
-        onConfirmRestore={() => {
-          void runAction("restore-baseline", restoreWorkbenchBaseline);
+        onConfirmRestore={(input) => {
+          void runAction("restore-baseline", () => restoreWorkbenchBaseline(input));
+        }}
+        onRefreshRestorePreview={(id) => {
+          void runAction("restore-preview", async () => { await releaseBaselineSession.previewRestore(project.id,dtsRepository,id ? { sourceConfigRevisionId: id } : undefined); });
         }}
         onCancelLeave={() => setLeaveConfirmOpen(false)}
         onConfirmLeave={handleDiscardAndLeave}

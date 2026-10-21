@@ -80,6 +80,7 @@ export type ConfigRevisionIngestOptions = {
 /** Frozen by the whole-source owner after read-only continuity inspection. */
 export type ReviewedSourceContinuity = {
   baseConfigRevisionId: string;
+  restorationBaseConfigRevisionId?: string;
   nodes: Array<Omit<PersistedLogicalNodeRevision, "id"> & { isNew: boolean }>;
 };
 
@@ -357,6 +358,7 @@ async function buildLogicalRevisionsWithContinuity(
     sourceCommit?: { baseConfigRevisionId: string };
     reviewedSource?: ReviewedSourceContinuity;
     continuityBaseConfigRevisionId?: string;
+    restorationBaseConfigRevisionId?: string;
   },
 ): Promise<ContinuityBuildResult> {
   const previousRows = await listPreviousLogicalNodeSnapshots(tx, {
@@ -365,6 +367,19 @@ async function buildLogicalRevisionsWithContinuity(
     baseConfigRevisionId: input.sourceCommit?.baseConfigRevisionId ?? input.reviewedSource?.baseConfigRevisionId
       ?? input.continuityBaseConfigRevisionId,
   });
+  const restorationBase = input.reviewedSource?.restorationBaseConfigRevisionId ?? input.restorationBaseConfigRevisionId;
+  if (restorationBase) {
+    const owned = (await tx.query(`select id from dts_config_revisions where id=$1 and organization_id=$2 and project_id=$3 and config_set_id=$4`,
+      [restorationBase,input.organizationId,input.projectId,input.configSetId])).rows[0];
+    if (!owned) throw new ApiError("CONFLICT","Snapshot identity base is unavailable.");
+    const historical = await listPreviousLogicalNodeSnapshots(tx,{ configSetId: input.configSetId,
+      beforeRevisionNumber: input.revisionNumber,baseConfigRevisionId: restorationBase });
+    for (const row of historical) {
+      const existing = previousRows.find((entry) => entry.nodeLocator === row.nodeLocator);
+      if (existing && existing.logicalNodeId !== row.logicalNodeId) throw new ApiError("CONFLICT","Current and snapshot node identities disagree; explicit mapping is required.");
+      if (!existing) previousRows.push(row);
+    }
+  }
   const previousSnapshotsBase = previousRows.map(toPreviousSnapshot);
 
   const sorted = [...input.effectiveNodes.values()]
@@ -616,6 +631,7 @@ async function buildLogicalRevisionsWithContinuity(
 export async function prepareReviewedSourceContinuity(tx: Queryable, input: {
   organizationId: string; projectId: string; configSetId: string; baseConfigRevisionId: string;
   effectiveNodes: Map<string, DtsEffectiveNode>; sourceDigest: string;
+  restorationBaseConfigRevisionId?: string;
 }): Promise<ReviewedSourceContinuity> {
   const base = (await tx.query<{ revision_number: number }>(
     "select revision_number from dts_config_revisions where id=$1 and organization_id=$2 and project_id=$3 and config_set_id=$4",
@@ -631,7 +647,9 @@ export async function prepareReviewedSourceContinuity(tx: Queryable, input: {
     const node = prepared.revisions.find((entry) => entry.logicalNodeId === row.id)!;
     return [row.id, `srnode_${contentHash(`${input.configSetId}:${input.baseConfigRevisionId}:${input.sourceDigest}:${node.nodeLocator}`)}`];
   }));
-  return { baseConfigRevisionId: input.baseConfigRevisionId, nodes: prepared.revisions.map(({ id: _id, unitAddress, compatible, ...row }) => ({
+  return { baseConfigRevisionId: input.baseConfigRevisionId,
+    ...(input.restorationBaseConfigRevisionId ? { restorationBaseConfigRevisionId: input.restorationBaseConfigRevisionId } : {}),
+    nodes: prepared.revisions.map(({ id: _id, unitAddress, compatible, ...row }) => ({
     ...row, ...(unitAddress === undefined ? {} : { unitAddress }), ...(compatible === undefined ? {} : { compatible }),
     logicalNodeId: newIds.get(row.logicalNodeId) ?? row.logicalNodeId,
     parentLogicalNodeId: row.parentLogicalNodeId ? newIds.get(row.parentLogicalNodeId) ?? row.parentLogicalNodeId : null,

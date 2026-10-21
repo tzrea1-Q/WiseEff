@@ -793,7 +793,8 @@ describe("LogAdminPage 分析技能治理", () => {
     await userEvent.click(row);
     expect(onNavigate).toHaveBeenCalledWith("/log-admin/skills/domain-charging");
     await userEvent.click(within(row).getByRole("button", { name: /：更多$/ }));
-    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["改名", "导出技能包", "归档"]);
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["改名", "导出技能包", "删除实验技能", "归档"]);
+    expect(screen.getByRole("menuitem", { name: "删除实验技能" })).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByRole("menuitem", { name: "改名" })).toHaveAttribute("aria-disabled", "true");
     expect(screen.queryByRole("menuitem", { name: "知识条目" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "集成与结果回调" })).not.toBeInTheDocument();

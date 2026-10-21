@@ -40,6 +40,7 @@ import {
   loadDeletedSourceAnchors as queryDeletedSourceAnchors,
   loadSourceBindingCohort as querySourceBindingCohort,
   loadSourceBindingCohortReadOnly as querySourceBindingCohortReadOnly,
+  loadConfigurationRestoreCohort as queryConfigurationRestoreCohort,
   loadProjectBindingCatalogReleaseIds as queryProjectBindingCatalogReleaseIds,
   hasDeletedSourceBinding as queryDeletedSourceBinding,
   hasSourceConfigurationDrafts as querySourceConfigurationDrafts,
@@ -127,7 +128,13 @@ export async function loadSourceBindingCohortReadOnly(tx: Queryable, input: { or
   return querySourceBindingCohortReadOnly(tx,input);
 }
 
-export async function loadProjectBindingCatalogReleaseIds(tx: Queryable, input: { organizationId: string; projectId: string }) {
+export async function loadConfigurationRestoreCohort(tx: Queryable, input: Parameters<typeof queryConfigurationRestoreCohort>[1]) {
+  assertSourceReadScope(input);
+  if (![input.configSetId,input.snapshotRevisionId].every(controlFree)) throw new ApiError("CONFLICT", "Snapshot source identity is invalid.");
+  return queryConfigurationRestoreCohort(tx,input);
+}
+
+export async function loadProjectBindingCatalogReleaseIds(tx: Queryable, input: { organizationId: string; projectId: string; includeRetained?: boolean }) {
   assertSourceReadScope(input);
   return queryProjectBindingCatalogReleaseIds(tx, input);
 }
@@ -516,7 +523,7 @@ const writeAppend = async (
   const revision = agreeRevision(command, stored);
   if (!revision.ok) return revision;
   const expected = await loadProjectValueById(client, command.expectedTip);
-  if (expected?.value_state === "deleted") {
+  if (expected?.value_state === "deleted" && !command.sourceCommit) {
     return fail({ kind: "invalid-command", reason: "deleted-value-is-terminal" });
   }
   if (expected && expected.binding_id !== stored.id) {
@@ -554,9 +561,10 @@ const writeAppend = async (
       union all
       select request.id from public.project_parameter_value_change_requests request
       join parameter_catalog.project_value_source_pins base_pin on base_pin.binding_id=$6 and base_pin.project_value_id=$7
-        and base_pin.organization_id=request.organization_id and base_pin.project_id=request.project_id and base_pin.value_state='present'
+        and base_pin.organization_id=request.organization_id and base_pin.project_id=request.project_id
+        and (base_pin.value_state='present' or request.request_kind='configuration_restore')
       where request.id=$1 and request.organization_id=$2 and request.project_id=$3 and request.status='pending'
-        and request.request_kind in ('source_revision','member_addition')
+        and request.request_kind in ('source_revision','member_addition','configuration_restore')
         and request.source_revision_context->'cohort' @> $4::jsonb
         and $5::boolean = not exists(select 1 from jsonb_array_elements(request.source_revision_context->'targets') target
           where target->>'bindingId'=$6)
@@ -571,6 +579,12 @@ const writeAppend = async (
         expectedTip: command.expectedTip, actualTip: ProjectValueId(stored.current_value_id),
       });
       return fail({ kind: "invalid-command", reason: "source-commit-cohort" });
+    }
+    if (expected?.value_state === "deleted" && !(await client.query(`select id from public.project_parameter_value_change_requests
+      where id=$1 and request_kind='configuration_restore' and status='pending'
+        and source_revision_context->'cohort' @> $2::jsonb`,[command.sourceCommit.requestId,
+      JSON.stringify([{ bindingId: stored.id,oldValueId: command.expectedTip }])])).rows.length) {
+      return fail({ kind: "invalid-command",reason: "deleted-value-is-terminal" });
     }
   }
 

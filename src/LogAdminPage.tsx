@@ -2,6 +2,8 @@ import "./log-admin.css";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { ExportSkillPackageDialog } from "@/features/log-skills/SkillPackageDialogs";
 import { LogDeletionPreviewDialog } from "@/features/log-analysis/LogDeletionPreviewDialog";
+import { SkillDeletionDialog } from "@/features/log-skills/SkillDeletionDialog";
+import type { SkillDeletionStatus } from "@/features/log-skills/types";
 import type { LogDeletionStatus } from "@/domain/logs/deletionPreview";
 import type { AnalysisSkill } from "@/features/log-skills/types";
 import { Download, RefreshCw } from "lucide-react";
@@ -143,6 +145,8 @@ function LogDomainGovernanceSection({
   const [importOpen, setImportOpen] = useState(false);
   const [exportSkill, setExportSkill] = useState<AnalysisSkill | null>(null);
   const [identityAction, setIdentityAction] = useState<{ skill: LogDomain; restore: boolean } | null>(null);
+  const [deletion, setDeletion] = useState<{ id: string; receipt?: SkillDeletionStatus }>();
+  const [pendingDeletions, setPendingDeletions] = useState<SkillDeletionStatus[]>([]);
   const [pending, setPending] = useState(false);
   const [exportError, setExportError] = useState("");
   const [skillStatusFilter, setSkillStatusFilter] = useState<string[]>([]);
@@ -152,7 +156,11 @@ function LogDomainGovernanceSection({
       return;
     }
     setDomains(await logActions.listLogDomains({ includeArchived: true }));
-  }, [logActions]);
+    if (canGovern && skillRepository?.listSkillDeletions) {
+      try { setPendingDeletions(await skillRepository.listSkillDeletions()); }
+      catch { setExportError("无法加载未完成的技能对象清理，请刷新重试。"); }
+    }
+  }, [logActions, skillRepository, canGovern]);
 
   useEffect(() => {
     void refreshDomains();
@@ -262,6 +270,8 @@ function LogDomainGovernanceSection({
               items: [
                 { id: "rename", label: "改名", disabled: !apiMode || pending, onSelect: () => setIdentityAction({ skill: domain, restore: false }) },
                 { id: "export", label: "导出技能包", disabled: pending || !skillRepository?.getLogSkill || !skillRepository.exportSkillPackage, onSelect: () => openExport(domain) },
+                { id: "delete-experiment", label: "删除实验技能", disabled: !apiMode || pending || !skillRepository?.previewSkillDeletion,
+                  destructive: true, onRequestConfirmation: () => setDeletion({ id: domain.id }) },
                 ...(domain.status === "active" ? [{ id: "archive", label: "归档", disabled: pending, destructive: true as const,
                   confirmation: { title: `归档「${domain.name}」`, description: "归档后，新日志不再推荐此技能；已有日志及分析记录保留。", confirmLabel: "归档技能" },
                   onSelect: () => archiveDomain(domain.id) }] : [{ id: "restore", label: "恢复", disabled: !apiMode || pending,
@@ -272,6 +282,14 @@ function LogDomainGovernanceSection({
 
           {createOpen ? <CreateSkillDialog repository={skillRepository} apiMode={apiMode} skills={domains ?? []}
             onDismiss={() => setCreateOpen(false)} onNavigate={onNavigate} /> : null}
+          {pendingDeletions.length ? <details><summary>未完成的技能对象清理（{pendingDeletions.length}）</summary><ul>
+            {pendingDeletions.map(item => <li key={item.skillId}>{item.name}：{item.pendingObjects} 个对象待清理 <Button variant="link" onClick={() => setDeletion({ id: item.skillId, receipt: item })}>继续清理「{item.name}」</Button></li>)}
+          </ul></details> : null}
+          {deletion && skillRepository ? <SkillDeletionDialog key={deletion.id} skillId={deletion.id} repository={skillRepository} initialStatus={deletion.receipt}
+            onDismiss={() => setDeletion(undefined)} onNavigate={onNavigate} onArchive={() => archiveDomain(deletion.id)} onDeleted={item => {
+              setDomains(current => current?.filter(domain => domain.id !== item.skillId) ?? null);
+              setPendingDeletions(current => [...current.filter(receipt => receipt.skillId !== item.skillId), ...(item.objects === "pending" ? [item] : [])]);
+            }} /> : null}
           {identityAction && logActions ? <SkillIdentityDialog skill={identityAction.skill} restore={identityAction.restore}
             onSave={input => logActions.updateLogDomain(input)} onSaved={updated => {
               setDomains(current => current?.map(domain => domain.id === updated.id ? { ...domain, ...updated } : domain) ?? null);

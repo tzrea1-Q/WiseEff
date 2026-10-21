@@ -44,6 +44,7 @@ const objectReferences = `
   union all select 'dry-run', id, null, sample_object_key, to_jsonb(r) from log_skill_dry_runs r
   union all select 'case', c.id, null, u->>'objectKey', to_jsonb(c) from log_skill_analysis_cases c cross join lateral jsonb_array_elements(c.uploads) u
   union all select 'source', id, null, storage_key, to_jsonb(s) from log_source_snapshots s
+  union all select 'skill-artifact', skill_id, null, object_key, to_jsonb(s) from log_skill_artifact_objects s
   union all select 'knowledge-file', id::text, null, storage_key, to_jsonb(f) from knowledge_files f
   union all select 'feedback-attachment', id::text, null, storage_key, to_jsonb(a) from product_feedback_attachments a
   union all select 'parameter-file', id, null, storage_key, to_jsonb(v) from project_parameter_file_versions v
@@ -128,8 +129,10 @@ export async function readLogDeletionPreview(tx: Queryable, organizationId: stri
 }
 
 /** Physical references across retained businesses, read only under the erasure fence. */
-export async function referencedLogObjects(tx: Queryable, keys: string[]): Promise<Set<string>> {
+export async function referencedLogObjects(tx: Queryable, keys: string[], exceptSkillId?: string): Promise<Set<string>> {
   const rows = (await tx.query<{ object_key: string }>(`with refs as (${objectReferences})
-    select distinct object_key from refs where object_key=any($1::text[])`, [keys])).rows;
+    select distinct object_key from refs where object_key=any($1::text[])
+    and not coalesce($2::text is not null and kind in ('sample','dry-run','case','source','skill-artifact')
+      and state->>'skill_id'=$2,false)`, [keys, exceptSkillId ?? null])).rows;
   return new Set(rows.map((row) => row.object_key));
 }

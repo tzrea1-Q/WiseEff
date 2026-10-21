@@ -50,7 +50,6 @@ export type WorkbenchBaselineDockProps = {
   pinnedMembersError?: string;
   onRetryMembers?: () => void;
   fileNames?: Record<string, string>;
-  restoreReadOnly?: boolean;
   canAdmin: boolean;
   canRelease: boolean;
   canPreviewRestore: boolean;
@@ -78,7 +77,6 @@ export function WorkbenchBaselineDock({
   pinnedMembersError = "",
   onRetryMembers,
   fileNames,
-  restoreReadOnly = false,
   canAdmin,
   canRelease,
   canPreviewRestore,
@@ -137,9 +135,8 @@ export function WorkbenchBaselineDock({
             </Table> : <p className="configuration-versions__empty">此快照未记录文件。</p>}
           {canAdmin ? <div className="configuration-workbench__baseline-actions" aria-label="配置版本操作">
             <Button size="sm" variant="outline" disabled={comparing} onClick={() => onCompare("working")}>对比当前配置</Button>
-            {(identity === "released" || identity === "historical") && !restoreReadOnly ? <Button size="sm" variant="outline" disabled={!canPreviewRestore} onClick={onOpenRestore}>恢复到此版本…</Button> : null}
+            <Button size="sm" variant="outline" disabled={!canPreviewRestore} onClick={onOpenRestore}>恢复到此版本…</Button>
           </div> : null}
-          {canAdmin && restoreReadOnly && (identity === "released" || identity === "historical") ? <p className="configuration-versions__recovery" role="note">需要回退时，请在文件管理的版本历史中申请回滚审核。</p> : null}
           {compareMembers ? <section className="configuration-workbench__baseline-compare" aria-label="配置版本对比结果">
             <h4>{compareAgainst === "released" ? "与正式版本的差异" : "与当前配置的差异"}</h4>
             <p role="status">{changedCount ? `${changedCount} 个文件发生变化` : "文件版本一致，无需查看差异。"}</p>

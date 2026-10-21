@@ -21,6 +21,7 @@ import {
   updateBaselineStatus
 } from "./baselineRepository";
 import { getConfigSetById } from "./configSetRepository";
+import { captureBaselineSourceSnapshot, type CanonicalRestorePreview } from "./canonicalBaselineRestore";
 import { assertLegacySourceMutationAllowed, getFileVersionById, getProjectParameterFileById, insertFileVersion, setCurrentVersion } from "./repository";
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
 import { ingestDtsFileVersion } from "./structuralIngest";
@@ -85,6 +86,7 @@ export type RestorePreviewResult = {
   releasedBaselineUnchanged: true;
   members: RestorePreviewMember[];
   driftedCount: number;
+  canonical?: CanonicalRestorePreview;
 };
 
 function requireParameterFileAdmin(auth: AuthContext) {
@@ -173,7 +175,8 @@ export async function createBaseline(
       configSetId: input.configSetId,
       name: input.name,
       notes: input.notes,
-      createdByUserId: auth.user.id
+      createdByUserId: auth.user.id,
+      sourceSnapshot: await captureBaselineSourceSnapshot(tx,auth,configSet.projectId,input.configSetId)
     });
 
     for (const member of members) {
@@ -429,7 +432,9 @@ export async function previewRestoreBaseline(
       select 1 from parameter_catalog.project_parameter_source_occurrences occurrence
       where occurrence.file_id=file.id or occurrence.config_set_id=file.config_set_id
         or occurrence.config_set_id=$3
-    )`, [auth.organization.id, members.map((member) => member.fileId), baseline.configSetId]);
+    ) or (file.organization_id=$1 and file.id=any($2::text[]) and exists(select 1 from dts_release_baseline
+      where id=$4 and organization_id=$1 and source_snapshot is not null))`,
+    [auth.organization.id, members.map((member) => member.fileId), baseline.configSetId,baselineId]);
   const canonicalFileIds = new Set(canonicalFiles.rows.map((file) => file.id));
   const previewMembers: RestorePreviewMember[] = [];
   for (const member of members) {

@@ -9,6 +9,7 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { loadConfigSetSnapshot } from "./configSetSnapshot";
 import { getConfigSetById } from "./configSetRepository";
+import { parseJsonSource } from "./jsonSource";
 import {
   readDtsValidationMode,
   type DtcDiagnostic,
@@ -158,6 +159,13 @@ export async function runValidationGate(
   }
 
   const snapshot = await loadConfigSetSnapshot(db, deps.objectStore, input.configSetId);
+  for (const member of snapshot.members.filter((row) => row.format === "json")) parseJsonSource(member.content);
+  if (snapshot.members.length > 0 && snapshot.skipped.length === 0 && snapshot.members.every((row) => row.format === "json")) {
+    const result: ValidationGateResult = { ok: true, mode, requiresConfirmation: false, diagnostics: [], compiler: "unavailable" };
+    await writeValidationGateAudit(db, createUserInvocation(auth), { configSetId: input.configSetId,
+      projectId: configSet.projectId, ...result }, context);
+    return result;
+  }
 
   // Prefer injected legacy validator for focused unit tests.
   if (deps.validator) {
@@ -262,7 +270,7 @@ export async function runValidationGate(
   const toolchainResult = await toolchain.validate(
     {
       entryFile,
-      includeSearchPaths: [],
+      includeSearchPaths: snapshot.includeSearchPaths,
       overlayOrder: snapshot.overlayOrder,
       files
     },

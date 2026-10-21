@@ -106,9 +106,9 @@ export async function requireCurrentSourceAdministrator(tx: Database, auth: Auth
 }
 
 export async function loadSourceRevisionCatalogSnapshots(db: Database, projectId: string,
-  organizationId: string, current: CatalogSnapshot | null): Promise<ReadonlyMap<string, CatalogSnapshot>> {
+  organizationId: string, current: CatalogSnapshot | null, includeRetained = false): Promise<ReadonlyMap<string, CatalogSnapshot>> {
   const snapshots = new Map<string, CatalogSnapshot>(current ? [[current.release.id, current]] : []);
-  const releases = await loadProjectBindingCatalogReleaseIds(db, { organizationId, projectId });
+  const releases = await loadProjectBindingCatalogReleaseIds(db, { organizationId, projectId,includeRetained });
   const pool = getRootPostgresPool(db);
   for (const releaseId of releases) {
     if (snapshots.has(releaseId)) continue;
@@ -438,7 +438,7 @@ export async function submitSourceRevisionCandidate(db: Database, storage: Objec
 }
 
 export type FrozenSourceRequestProof = Pick<SourceRevisionProof, "configSetId" | "baseConfigRevisionId" | "baseDigest" | "proposedDigest" | "proofDigest" | "targets"> & {
-  kind: "source_revision" | "member_addition";
+  kind: "source_revision" | "member_addition" | "configuration_restore";
   candidateId: string | null;
   members: readonly unknown[];
   cohort: Array<Pick<SourceRevisionCohort, "bindingId" | "oldValueId" | "sourcePinId" | "definitionId" | "effectiveRevisionId" | "catalogReleaseId">>;

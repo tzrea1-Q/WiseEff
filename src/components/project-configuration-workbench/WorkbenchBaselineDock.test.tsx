@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import type { DtsReleaseBaseline } from "@/application/ports/DtsStructuredRepository";
@@ -56,15 +56,13 @@ describe("WorkbenchBaselineDock", () => {
     expect(screen.queryByRole("button", { name: "恢复到此版本…" })).not.toBeInTheDocument();
   });
 
-  it.each([released, historical])("explains protected recovery inline for $status without offering a direct restore", (selected) => {
+  it.each([draft,released,historical])("offers a server-checked restore preview for every saved $status snapshot", (selected) => {
     const onOpenRestore = vi.fn();
-    render(<WorkbenchBaselineDock baselines={[released, historical]} selectedBaselineId={selected.id}
-      releasedTipId={released.id} restoreReadOnly canAdmin canRelease={false} canPreviewRestore
+    render(<WorkbenchBaselineDock baselines={[draft,released,historical]} selectedBaselineId={selected.id}
+      releasedTipId={released.id} canAdmin canRelease={false} canPreviewRestore
       onSelectBaseline={vi.fn()} onCompare={vi.fn()} onOpenRelease={vi.fn()} onOpenRestore={onOpenRestore} />);
-    expect(screen.getByRole("note")).toHaveTextContent("需要回退时，请在文件管理的版本历史中申请回滚审核。");
-    expect(screen.queryByRole("button", { name: "查看恢复限制" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "恢复到此版本…" })).not.toBeInTheDocument();
-    expect(onOpenRestore).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button",{ name: "恢复到此版本…" }));
+    expect(onOpenRestore).toHaveBeenCalledOnce();
   });
 
   it("preserves the explicit restore permission for unprotected baselines", async () => {

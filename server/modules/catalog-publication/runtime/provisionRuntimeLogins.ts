@@ -37,6 +37,7 @@ export const CANONICAL_SOURCE_LOCK_RELATIONS = [
 
 const CANONICAL_SOURCE_READ_FUNCTIONS = [
   "parameter_catalog.source_origin_matches(text, text, text)",
+  "parameter_catalog.source_member_is_restored(text, text)",
   "parameter_catalog.is_replaced_current_binding(text)",
   "parameter_catalog.resolve_current_binding_by_source_occurrence(text, text, text)",
   "parameter_catalog.preview_parameter_definition_purge(text)",
@@ -440,6 +441,13 @@ export async function provisionPublicationRuntimeLogins(
 
       await grantPublicAppDml(admin, names.api);
       await grantPublicAppDml(admin, names.worker);
+      const erasedLogJob = await admin.query<{ exists: boolean }>(
+        "select to_regprocedure('public.is_erased_log_job(text,text,text)') is not null as exists",
+      );
+      if (erasedLogJob.rows[0]?.exists) {
+        await admin.query(`revoke execute on function public.is_erased_log_job(text,text,text) from public, ${quoteIdent(names.manager)}`);
+        await admin.query(`grant execute on function public.is_erased_log_job(text,text,text) to ${quoteIdent(names.api)}, ${quoteIdent(names.worker)}`);
+      }
       await revokePublicDml(admin, names.manager);
       await grantPublicSelect(admin, names.manager);
       await revokeLegacyStructuralDml(admin, [names.api, names.worker, names.manager]);

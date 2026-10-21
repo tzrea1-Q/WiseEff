@@ -214,6 +214,46 @@ describe("P01/P02 SQLSTATE privilege gates", () => {
     }
   }, 60_000);
 
+  it.each([
+    "lock_project_erasure(text,text,text)", "read_project_erasure(text,text,text)",
+    "purge_project(text,text,text,text)", "finish_project_erasure_object(text,text,text,text)", "list_project_erasures(text,text)",
+    "lock_log_erasure(text,text,text)", "read_log_erasure(text,text,text)",
+    "purge_log(text,text,text,text)", "finish_log_erasure_object(text,text,text,text)", "list_log_erasures(text,text)",
+  ])("rejects owner, security, search path and execute drift for %s", async (routine) => {
+    const identity = `parameter_catalog.${routine}`;
+    for (const drift of [
+      `grant execute on function ${identity} to public`,
+      `revoke execute on function ${identity} from parameter_governance_writer_role`,
+      `alter function ${identity} owner to catalog_publication_coordinator_role`,
+      `alter function ${identity} security invoker`,
+      `alter function ${identity} set search_path=public`,
+    ]) {
+      await db.query("savepoint scoped_erasure_drift");
+      try {
+        await db.query(drift);
+        expect((await runP02(db)).status, drift).toBe("failed");
+        expect((await runV13(db.query.bind(db))).status, drift).toBe("failed");
+      } finally {
+        await db.query("rollback to savepoint scoped_erasure_drift");
+        await db.query("release savepoint scoped_erasure_drift");
+      }
+    }
+  }, 120_000);
+
+  it.each(["project_erasures", "log_erasures"])("rejects private %s table or column grants", async (relation) => {
+    for (const privilege of ["select", "select(organization_id)"]) {
+      await db.query("savepoint private_erasure_drift");
+      try {
+        await db.query(`grant ${privilege} on parameter_catalog.${relation} to parameter_governance_writer_role`);
+        expect((await runP02(db)).status).toBe("failed");
+        expect((await runV13(db.query.bind(db))).status).toBe("failed");
+      } finally {
+        await db.query("rollback to savepoint private_erasure_drift");
+        await db.query("release savepoint private_erasure_drift");
+      }
+    }
+  });
+
   it("rejects reviewed tombstone definer body or grant drift", async () => {
     const identity = "parameter_catalog.insert_reviewed_member_tombstone(text,text,text,text,text,text,text,jsonb,text,jsonb,text)";
     const definition = await db.query<{ sql: string }>(
