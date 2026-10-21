@@ -294,7 +294,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await signInBrowserAsRoleLabel(page, "Admin", "/organization");
   });
 
-  test("edits organization role sets, clears them and reloads conflicts through the real API", async ({ page }) => {
+  test("edits organization role sets, clears them and reloads conflicts through the real API", async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const actor = authHeadersForUser(acceptanceCast.xuYun.userId, acceptanceCast.xuYun.email, acceptanceCast.xuYun.name);
     const created = await page.request.post(apiRoute("/api/v1/users"), { headers: actor, data: {
@@ -326,6 +326,9 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
       dialog = await openMember();
       await expect(dialog.getByRole("checkbox", { name: "软件开发" })).toBeChecked();
       await expect(dialog.getByRole("checkbox", { name: "软件MDE" })).toBeChecked();
+      const roleSetScreenshot = testInfo.outputPath("organization-role-set-1440.png");
+      await page.screenshot({ path: roleSetScreenshot, fullPage: true, animations: "disabled" });
+      await testInfo.attach("organization-role-set-1440", { path: roleSetScreenshot, contentType: "image/png" });
       await saveMemberOrganizationRoles(page, dialog, []);
       await dialog.getByRole("button", { name: "关闭", exact: true }).click();
       await page.reload();

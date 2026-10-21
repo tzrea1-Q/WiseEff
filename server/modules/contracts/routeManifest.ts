@@ -1339,6 +1339,9 @@ export const routeManifest = [
 
   { id: "parameters.deleteAdminProject", method: "DELETE", path: "/api/v1/parameters/admin/projects/:projectId", module: "parameters", stability: "mvp" },
   { id: "parameters.previewAdminProjectDeletion", method: "GET", path: "/api/v1/parameters/admin/projects/:projectId/deletion-preview", module: "parameters", stability: "mvp" },
+  { id: "parameters.purgeAdminProject", method: "POST", path: "/api/v1/parameters/admin/projects/:projectId/purge", module: "parameters", stability: "mvp" },
+  { id: "parameters.getAdminProjectDeletionStatus", method: "GET", path: "/api/v1/parameters/admin/projects/:projectId/deletion-status", module: "parameters", stability: "mvp" },
+  { id: "parameters.listAdminProjectDeletions", method: "GET", path: "/api/v1/parameters/admin/project-deletions", module: "parameters", stability: "mvp" },
   { id: "parameters.parseDtsImport", method: "POST", path: "/api/v1/parameter-import/parse-dts", module: "parameters", stability: "mvp" },
   {
     id: "parameters.listWorkflowAssignees",
