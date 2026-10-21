@@ -7,6 +7,24 @@ const attachment = { id: "shot-1", feedbackId: "feedback-1", fileName: "problem.
   sizeBytes: 100, sortOrder: 0, createdAt: "2026-07-08T00:00:00.000Z" };
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 describe("feedback attachments", () => {
+  it("confirms the target, keeps a failed deletion retryable, and renders a deleted message marker without fetching content", async () => {
+    const getUrl = vi.fn().mockResolvedValue("blob:original"), onDelete = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(undefined);
+    const { rerender } = render(<FeedbackAttachments feedbackId="feedback-1" attachments={[{ ...attachment, canDelete: true }]} getAttachmentObjectUrl={getUrl} onDelete={onDelete} />);
+    await userEvent.click(screen.getByRole("button", { name: "删除已提交截图 problem.png" }));
+    expect(screen.getByRole("dialog", { name: "删除这张已提交截图？" })).toHaveTextContent("problem.png");
+    await userEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(onDelete).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "删除已提交截图 problem.png" }));
+    await userEvent.click(screen.getByRole("button", { name: "确认删除截图" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("删除截图失败");
+    await userEvent.click(screen.getByRole("button", { name: "确认删除截图" }));
+    expect(onDelete).toHaveBeenCalledTimes(2);
+    rerender(<FeedbackAttachments feedbackId="feedback-1" attachments={[{ ...attachment, canDelete: true, deletedAt: "2026-10-20T12:00:00Z", cleanupPending: true }]} getAttachmentObjectUrl={getUrl} onDelete={onDelete} />);
+    expect(screen.getByText("截图已删除")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /下载/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试文件清理" })).toBeInTheDocument();
+    expect(getUrl).toHaveBeenCalledTimes(1);
+  });
   it("validates image type, count, individual size, and combined retained/new size", () => {
     const image = new File(["image"], "image.png", { type: "image/png" });
     expect(acceptFeedbackFiles([new File(["text"], "text.txt", { type: "text/plain" })], 0, 0).accepted).toEqual([]);

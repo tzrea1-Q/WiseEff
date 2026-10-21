@@ -32,6 +32,9 @@ type HttpProductFeedbackRepositoryOptions =
   | { apiClient: ApiClient; baseUrl: string; fetchImpl?: typeof fetch };
 
 export type ProductFeedbackAttachmentDto = {
+  deletedAt?: string | null;
+  cleanupPending?: boolean;
+  canDelete?: boolean;
   messageId?: string | null;
   uploadedByUserId?: string | null;
   id: string;
@@ -111,6 +114,9 @@ async function fileToBase64(file: File) {
 
 function attachmentFromDto(dto: ProductFeedbackAttachmentDto): ProductFeedbackAttachment {
   return {
+    deletedAt: dto.deletedAt ?? null,
+    cleanupPending: dto.cleanupPending ?? false,
+    canDelete: dto.canDelete ?? false,
     messageId: dto.messageId ?? null,
     uploadedByUserId: dto.uploadedByUserId ?? null,
     id: dto.id,
@@ -318,6 +324,10 @@ export function createHttpProductFeedbackRepository(
     },
     async retryAttachmentCleanup() {
       return apiClient.post<{ pendingAttachmentCleanupCount: number }>("/api/v1/product-feedback/mine/attachment-cleanup", {});
+    },
+    async deleteAttachment(feedbackId, attachmentId) {
+      const response = await apiClient.delete<ItemEnvelope<ProductFeedbackDto>>(`${routeFeedbackPath(feedbackId)}/attachments/${encodeURIComponent(attachmentId)}`);
+      return productFeedbackFromDto(response.item);
     },
     async getMine(id) {
       try {

@@ -11,7 +11,8 @@ type Upload = { fileName: string; contentType: ProductFeedbackAttachmentContentT
 
 export async function pendingFeedbackAttachmentCleanup(db: Queryable, auth: AuthContext) {
   requireProductFeedbackSubmit(auth);
-  const result = await db.query<{ count: number }>("select coalesce(sum(cardinality(object_keys)),0)::int count from product_feedback_attachment_uploads where organization_id=$1 and uploaded_by_user_id=$2", [auth.organization.id, auth.user.id]);
+  const result = await db.query<{ count: number }>(`select coalesce(sum(cardinality(object_keys)),0)::int count from product_feedback_attachment_uploads u
+    where organization_id=$1 and uploaded_by_user_id=$2 and not exists(select 1 from product_feedback_attachment_deletions d where d.cleanup_upload_id=u.id)`, [auth.organization.id, auth.user.id]);
   return result.rows[0]?.count ?? 0;
 }
 
@@ -22,11 +23,21 @@ export async function queueFeedbackAttachmentCleanup(db: Queryable, auth: AuthCo
   [id, auth.organization.id, auth.user.id, [...new Set(keys)]]);
 }
 
-export async function cleanupFeedbackAttachmentUploads(db: Database, store: ObjectStore, auth: AuthContext) {
+export async function cleanupFeedbackAttachmentUploads(db: Database, store: ObjectStore, auth: AuthContext, receiptId?: string) {
   requireProductFeedbackSubmit(auth);
   await db.transaction(async (tx) => {
-    const rows = (await tx.query<{ id: string; object_keys: string[] }>(`select id,object_keys from product_feedback_attachment_uploads
-      where organization_id=$1 and uploaded_by_user_id=$2 order by created_at,id for update skip locked`, [auth.organization.id, auth.user.id])).rows;
+    if (receiptId) {
+      // ponytail: fixed metadata fence matches the shared reference scan. Narrow
+      // this when every legacy-key writer uses a common per-object reservation.
+      await tx.query(`lock table public.dts_reload_runs,public.knowledge_files,public.log_analysis_runs,public.log_artifact_objects,
+        public.log_file_objects,public.log_files,public.log_original_uploads,public.log_skill_analysis_cases,public.log_skill_artifact_objects,
+        public.log_skill_dry_runs,public.log_skill_samples,public.log_source_snapshots,public.product_feedback_attachments,
+        public.project_parameter_file_candidates,public.project_parameter_file_versions in share mode nowait`);
+    }
+    const rows = (await tx.query<{ id: string; object_keys: string[] }>(`select id,object_keys from product_feedback_attachment_uploads u
+      where organization_id=$1 and uploaded_by_user_id=$2 and ($3::uuid is null or id=$3)
+        and ($3::uuid is not null or not exists(select 1 from product_feedback_attachment_deletions d where d.cleanup_upload_id=u.id))
+      order by created_at,id for update skip locked`, [auth.organization.id, auth.user.id, receiptId ?? null])).rows;
     if (!rows.length) return;
     const referenced = await referencedLogObjects(tx, rows.flatMap((row) => row.object_keys));
     for (const row of rows) {

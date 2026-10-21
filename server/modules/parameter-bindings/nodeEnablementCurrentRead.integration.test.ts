@@ -210,7 +210,7 @@ describe.each([
   }
 
   async function sourceState() {
-    return (await db.query(`select file.id, file.current_version_id, version.checksum
+    return (await db.query<{ id: string; current_version_id: string; checksum: string }>(`select file.id, file.current_version_id, version.checksum
       from project_parameter_files file join project_parameter_file_versions version on version.id = file.current_version_id
       where file.config_set_id = $1 order by file.id`, [configSetId])).rows;
   }
@@ -276,7 +276,7 @@ describe.each([
   it("#1078 applies approved structural enablement while retaining canonical values, pins and the legacy fence", async () => {
     setParameterIdentityMode("semantic");
     const before = await read<{ items: Array<Record<string, unknown>> }>(`/api/v2/projects/${projectId}/parameter-bindings`);
-    const canonicalState = async () => (await db.query(`select to_jsonb(binding) as binding,
+    const canonicalState = async () => (await db.query<{ binding: { id: string; current_value_id: string; updated_at: unknown }; values: unknown[]; pins: unknown[] }>(`select to_jsonb(binding) as binding,
       (select jsonb_agg(to_jsonb(value) order by value.id) from parameter_catalog.project_parameter_values value where value.binding_id = binding.id) as values,
       (select jsonb_agg(to_jsonb(pin) order by pin.id) from parameter_catalog.project_value_source_pins pin
        join parameter_catalog.project_parameter_values value on value.id = pin.project_value_id where value.binding_id = binding.id) as pins
@@ -336,10 +336,14 @@ describe.each([
     const bindings = await read<typeof before.body>(`/api/v2/projects/${projectId}/parameter-bindings`);
     expect(bindings.body.items.map((binding) => ({ ...binding, currentValueId: "" })))
       .toEqual(before.body.items.map((binding) => ({ ...binding, currentValueId: "" })));
-    const applied = (await db.query(`select member.file_version_id, revision.id from dts_config_revisions revision
+    const applied = (await db.query<{ file_version_id: string; id: string }>(`select member.file_version_id, revision.id from dts_config_revisions revision
       join dts_config_revision_members member on member.config_revision_id = revision.id
       join project_parameter_files file on file.id = member.file_id and file.current_version_id = member.file_version_id
       where revision.config_set_id = $1 and member.role = 'overlay' order by revision.revision_number desc limit 1`, [configSetId])).rows[0]!;
+    const privateObject = (await db.query<{ storage_key: string; checksum: string; file_name: string }>(`select version.storage_key,version.checksum,file.file_name from project_parameter_file_versions version join project_parameter_files file on file.id=version.file_id where version.id=$1`, [applied.file_version_id])).rows[0]!;
+    expect(privateObject.file_name).toBe("overlay.dts");
+    expect(privateObject.storage_key).not.toBe(`${organizationId}/${privateObject.checksum}-overlay.dts`);
+    expect((await createLocalObjectStore(directory).get(privateObject.storage_key)).toString()).toContain('"disabled"');
     const topology = await read<{ item: { nodes: Array<{ logicalNodeId: string; enablement: { selfEnabled: boolean } }> } }>(
       `/api/v2/projects/${projectId}/config-sets/${configSetId}/revisions/${applied.id}/topology?view=effective`);
     expect(topology.body.item.nodes.find((node) => node.logicalNodeId === logicalNodeId)?.enablement.selfEnabled).toBe(false);
@@ -351,7 +355,7 @@ describe.each([
       from parameter_history_entries where request_id=$1`, [requestId])).rows).toEqual([
       { logical_node_id: logicalNodeId, project_parameter_binding_id: null, value: '"disabled"', changed_by_user_id: authorId, initiator_type: "user" }
     ]);
-    const fileId = (await db.query(`select id from project_parameter_files where config_set_id = $1 and config_set_role = 'overlay'`, [configSetId])).rows[0]!.id;
+    const fileId = (await db.query<{ id: string }>(`select id from project_parameter_files where config_set_id = $1 and config_set_role = 'overlay'`, [configSetId])).rows[0]!.id;
     const originalVersion = originalSource.find((file) => file.id === fileId)!.current_version_id;
     const currentVersion = current.find((file) => file.id === fileId)!.current_version_id;
     expect((await read(`/api/v1/projects/${projectId}/parameter-files/${fileId}/versions/${originalVersion}/content`)).bodyText).toBe(overlay);

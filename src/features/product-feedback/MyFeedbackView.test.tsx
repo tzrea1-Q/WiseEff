@@ -22,6 +22,18 @@ async function beginReply(action = "补充说明") {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); window.history.replaceState(null, "", "/"); });
 
 describe("MyFeedbackView", () => {
+  it("deletes a submitted image within its actual message without discarding an unsent reply", async () => {
+    const original = feedback({ attachments: [{ id: "shot", feedbackId: "feedback-1", fileName: "submitted.png", contentType: "image/png", sizeBytes: 20, sortOrder: 0, createdAt: "2026-07-08T00:00:00Z", messageId: "submitted", canDelete: true }],
+      progressEvents: [{ id: "submitted", feedbackId: "feedback-1", kind: "submitted", createdAt: "2026-07-08T00:00:00Z" }] });
+    const deleteAttachment = vi.fn().mockResolvedValue({ ...original, attachments: [{ ...original.attachments[0], deletedAt: "2026-10-20T12:00:00Z", cleanupPending: false }] });
+    render(<MyFeedbackView productFeedbackRepository={repository({ getMine: async () => original, replyToMine: vi.fn(), deleteAttachment })} selectedId="feedback-1" onEditDraft={vi.fn()} />);
+    fireEvent.change(await beginReply(), { target: { value: "Keep this unsent explanation" } });
+    await userEvent.click(await screen.findByRole("button", { name: "删除已提交截图 submitted.png" }));
+    await userEvent.click(screen.getByRole("button", { name: "确认删除截图" }));
+    expect(await screen.findByText("截图已删除")).toBeInTheDocument();
+    expect(screen.getByLabelText("补充说明")).toHaveValue("Keep this unsent explanation");
+    expect(deleteAttachment).toHaveBeenCalledWith("feedback-1", "shot");
+  });
   it("shows unknown historical images separately and retries only a visible failed-upload receipt", async () => {
     const old = feedback({ attachments: [{ id: "legacy", feedbackId: "feedback-1", fileName: "legacy.png", contentType: "image/png", sizeBytes: 20, sortOrder: 0,
       createdAt: "2026-07-08T00:00:00Z", messageId: null, uploadedByUserId: null }] });
