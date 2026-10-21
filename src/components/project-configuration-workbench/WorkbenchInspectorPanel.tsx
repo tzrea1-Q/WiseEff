@@ -279,7 +279,7 @@ export function WorkbenchInspectorPanel({
         </header>
         <div className="configuration-versions-dialog__body">
           <WorkbenchBaselineDock baselines={baselines} fileNames={Object.fromEntries(selectedMembers.map((member) => [member.fileId, member.fileName]))}
-            restoreReadOnly={sourceWorkflowSetCanonical} releasedTipId={releasedBaseline?.id} selectedBaselineId={selectedBaselineId}
+            releasedTipId={releasedBaseline?.id} selectedBaselineId={selectedBaselineId}
             loading={baselinesLoading} error={baselinesError} actionError={baselineActionError}
             compareMembers={baselineCompare?.members ?? null} compareAgainst={baselineCompareAgainst}
             pinnedMembers={baselinePinnedMembers} pinnedMembersLoading={baselinePinnedMembersLoading} pinnedMembersError={baselinePinnedMembersError}

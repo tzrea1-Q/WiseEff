@@ -34,6 +34,7 @@ export type ConfigSetSnapshot = {
    * back to the first DTS member when roles are not annotated (legacy sets).
    */
   entryFile: string | null;
+  includeSearchPaths: string[];
   /** DTS overlay file names in application order (all non-base roles). */
   overlayOrder: string[];
   /** DTS members as validator input. */
@@ -100,13 +101,31 @@ export async function loadConfigSetSnapshot(
   }
   overlays.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
 
+  // Canonical revisions already persist exact parser inputs. Reusing them
+  // avoids compiling include-only members as overlays from legacy role names.
+  const manifest = (await db.query<{ entry_file: string | null; include_search_paths: string[]; overlay_order: string[];
+    members: Array<{ fileId: string; sourceName: string }> }>(`select revision.entry_file,revision.include_search_paths,revision.overlay_order,
+      (select jsonb_agg(jsonb_build_object('fileId',member.file_id,'sourceName',member.source_name))
+        from dts_config_revision_members member where member.config_revision_id=revision.id) as members
+    from dts_config_revisions revision where revision.config_set_id=$1 and revision.status='resolved'
+      and (select count(*) from dts_config_revision_members member where member.config_revision_id=revision.id)=$2
+      and not exists(select 1 from dts_config_revision_members member
+        left join project_parameter_files file on file.id=member.file_id and file.config_set_id=revision.config_set_id
+        where member.config_revision_id=revision.id and (file.id is null or file.current_version_id is distinct from member.file_version_id
+          or file.config_set_role is distinct from case when member.role='include' then 'misc' else member.role end
+          or file.config_set_sort_order is distinct from member.sort_order))
+    order by revision.revision_number desc limit 1`,[configSetId,members.length])).rows[0];
+  const exactManifest = manifest && Array.isArray(manifest.members) ? manifest : null;
+  const sourceName = (fileId: string,fileName: string) => exactManifest?.members.find((row) => row.fileId===fileId)?.sourceName ?? fileName;
+
   return {
     configSetId,
     members,
     skipped,
-    entryFile,
-    overlayOrder: overlays.map((overlay) => overlay.name),
+    entryFile: exactManifest ? exactManifest.entry_file : entryFile,
+    includeSearchPaths: exactManifest?.include_search_paths ?? [],
+    overlayOrder: exactManifest?.overlay_order ?? overlays.map((overlay) => overlay.name),
     dtsFiles: dts.map((member) => ({ name: member.fileName, content: member.content })),
-    toolchainFiles: new Map(dts.map((member) => [member.fileName, { content: member.content }]))
+    toolchainFiles: new Map(dts.map((member) => [sourceName(member.fileId,member.fileName), { content: member.content }]))
   };
 }

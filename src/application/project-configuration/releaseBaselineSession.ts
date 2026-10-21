@@ -43,6 +43,7 @@ export type ReleaseBaselineRepository = Pick<
 
 export function baselineRestoreBlockedReason(preview: DtsRestorePreviewResult | null, baselineId: string | null): string {
   if (!preview || preview.baselineId !== baselineId) return "请先加载当前版本的恢复预览。";
+  if (preview.canonical) return preview.canonical.canRestore && preview.canonical.proofToken ? "" : preview.canonical.missingInformation.join(" ");
   if (preview.members.some((member) => member.canonicalOwned !== false)) {
     return "此快照涉及规范源，不能整源恢复。需要已准备并批准的规范源事务；此预览仅用于查看版本差异，不会改变工作配置。";
   }
@@ -109,13 +110,15 @@ export type ReleaseBaselineSession = ReleaseBaselineSessionSnapshot & {
   ): Promise<DtsReleaseBaselineResult>;
   previewRestore(
     projectId: string,
-    repo: Pick<DtsStructuredRepository, "previewRestoreBaseline">
+    repo: Pick<DtsStructuredRepository, "previewRestoreBaseline">,
+    input?: { sourceConfigRevisionId: string }
   ): Promise<DtsRestorePreviewResult>;
   clearRestorePreview(): void;
   restore(
     projectId: string,
     configSetId: string,
-    repo: Pick<DtsStructuredRepository, "rollbackBaseline" | "listBaselines">
+    repo: Pick<DtsStructuredRepository, "rollbackBaseline" | "listBaselines">,
+    input?: { reason: string; confirmCompositionChanges: boolean }
   ): Promise<{ result: DtsRollbackBaselineResult; tipUnchanged: boolean }>;
 };
 
@@ -514,7 +517,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
       }
     },
 
-    async previewRestore(projectId, repo) {
+    async previewRestore(projectId, repo, input) {
       const generation = ++restorePreviewGeneration;
       if (!selectedBaselineId) {
         actionError = "请先选择版本。";
@@ -526,7 +529,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
       emit();
       const baselineId = selectedBaselineId;
       try {
-        const preview = await repo.previewRestoreBaseline(projectId, baselineId);
+        const preview = await repo.previewRestoreBaseline(projectId, baselineId, input);
         if (generation !== restorePreviewGeneration || selectedBaselineId !== baselineId || preview.baselineId !== baselineId) {
           throw new Error("版本选择已变化，请重新加载恢复预览。");
         }
@@ -548,7 +551,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
       emit();
     },
 
-    async restore(projectId, configSetId, repo) {
+    async restore(projectId, configSetId, repo, input) {
       if (!selectedBaselineId) {
         actionError = "请先选择版本。";
         emit();
@@ -564,7 +567,12 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
       emit();
       try {
         const tipBefore = latestReleased(baselines)?.id;
-        const result = await repo.rollbackBaseline(projectId, selectedBaselineId);
+        const canonical = restorePreview?.canonical;
+        const result = canonical ? await repo.rollbackBaseline(projectId, selectedBaselineId, {
+          sourceConfigRevisionId: canonical.sourceConfigRevisionId,proofToken: canonical.proofToken!,
+          reason: input?.reason ?? "",confirmCompositionChanges: input?.confirmCompositionChanges ?? false,
+          clientMutationId: `baseline-restore-${selectedBaselineId}-${canonical.proofToken}`
+        }) : await repo.rollbackBaseline(projectId, selectedBaselineId);
         restorePreview = null;
         const refreshed = await repo.listBaselines(projectId, configSetId);
         baselines = refreshed;

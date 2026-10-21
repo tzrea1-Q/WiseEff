@@ -163,14 +163,14 @@ export function createDtsStructuredClient(client: ApiClient = createDefaultApiCl
       );
       return response.item;
     },
-    async previewRestoreBaseline(projectId, baselineId) {
+    async previewRestoreBaseline(projectId, baselineId, input) {
       const response = await client.get<ItemEnvelope<DtsRestorePreviewResult>>(
-        routeBaselineRestorePreview(projectId, baselineId)
+        `${routeBaselineRestorePreview(projectId, baselineId)}${input ? `?${new URLSearchParams(input).toString()}` : ""}`
       );
       return response.item;
     },
-    async rollbackBaseline(projectId, baselineId) {
-      const response = await client.post<ItemEnvelope<DtsRollbackBaselineResult>>(routeBaselineRollback(projectId, baselineId), {});
+    async rollbackBaseline(projectId, baselineId, input) {
+      const response = await client.post<ItemEnvelope<DtsRollbackBaselineResult>>(routeBaselineRollback(projectId, baselineId), input ?? {});
       return response.item;
     },
     async releaseBaseline(projectId, baselineId, input: ReleaseBaselineInput) {
