@@ -25,6 +25,7 @@ export async function processNextKnowledgeIndexJob(
     await indexKnowledgeEntry(options.db, {
       entryId: claimed.entryId,
       organizationId: claimed.organizationId,
+      claimedStartedAt: claimed.startedAt,
       embeddingClient: options.embeddingClient
     });
   } catch (error) {
@@ -34,6 +35,7 @@ export async function processNextKnowledgeIndexJob(
       entryId: claimed.entryId,
       organizationId: claimed.organizationId,
       status: "failed",
+      expectedStartedAt: claimed.startedAt,
       error: error instanceof Error ? error.message : String(error)
     }).catch(() => undefined);
   }

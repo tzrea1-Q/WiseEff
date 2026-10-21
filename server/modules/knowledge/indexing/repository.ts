@@ -161,8 +161,8 @@ const STALE_PROCESSING_INTERVAL = "5 minutes";
  */
 export async function claimNextIndexJob(
   db: Queryable
-): Promise<{ entryId: string; organizationId: string } | null> {
-  const result = await db.query<{ entry_id: string; organization_id: string }>(
+): Promise<{ entryId: string; organizationId: string; startedAt: string } | null> {
+  const result = await db.query<{ entry_id: string; organization_id: string; started_at: string }>(
     `
     update knowledge_index_status
     set status = 'processing', started_at = now(), updated_at = now()
@@ -175,11 +175,11 @@ export async function claimNextIndexJob(
       limit 1
       for update skip locked
     )
-    returning entry_id, organization_id
+    returning entry_id, organization_id, started_at::text
     `
   );
   const row = result.rows[0];
-  return row ? { entryId: row.entry_id, organizationId: row.organization_id } : null;
+  return row ? { entryId: row.entry_id, organizationId: row.organization_id, startedAt: row.started_at } : null;
 }
 
 export async function markIndexOutcome(
@@ -194,6 +194,7 @@ export async function markIndexOutcome(
     chunkCount?: number;
     embeddedChunkCount?: number;
     embeddingModel?: string | null;
+    expectedStartedAt?: string;
   }
 ): Promise<void> {
   await db.query(
@@ -210,6 +211,7 @@ export async function markIndexOutcome(
         updated_at = now()
     where entry_id = $1
       and organization_id = $2
+      and ($10::timestamptz is null or (status = 'processing' and started_at = $10::timestamptz))
     `,
     [
       input.entryId,
@@ -220,7 +222,8 @@ export async function markIndexOutcome(
       input.indexedRevisionNumber ?? null,
       input.chunkCount ?? 0,
       input.embeddedChunkCount ?? 0,
-      input.embeddingModel ?? null
+      input.embeddingModel ?? null,
+      input.expectedStartedAt ?? null
     ]
   );
 }

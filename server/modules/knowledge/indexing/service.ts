@@ -86,6 +86,7 @@ export type IndexEntryResult =
   | { outcome: "indexed"; chunkCount: number; embeddedChunkCount: number }
   | { outcome: "removed" }
   | { outcome: "failed"; reason: string }
+  | { outcome: "superseded" }
   | { outcome: "missing" };
 
 /**
@@ -103,6 +104,7 @@ export async function indexKnowledgeEntry(
     entryId: string;
     organizationId: string;
     embeddingClient?: KnowledgeEmbeddingClient;
+    claimedStartedAt?: string;
   }
 ): Promise<IndexEntryResult> {
   const snapshot = await loadIndexEntrySnapshot(db, input);
@@ -111,8 +113,29 @@ export async function indexKnowledgeEntry(
     return { outcome: "missing" };
   }
 
+  const persist = (write: (tx: Database) => Promise<void>) => db.transaction(async (tx) => {
+    if (input.claimedStartedAt !== undefined) {
+      // Backfill and authoring use this same entry lock. A re-enqueue or failure
+      // supersedes our claim; never overwrite it with a pre-extraction snapshot.
+      const entry = await tx.query(
+        `select id from knowledge_entries where organization_id = $1 and id = $2 for update`,
+        [input.organizationId, input.entryId]
+      );
+      if (!entry.rows.length) return false;
+      const claim = await tx.query(
+        `select entry_id from knowledge_index_status
+         where organization_id = $1 and entry_id = $2 and status = 'processing'
+           and started_at = $3::timestamptz for update`,
+        [input.organizationId, input.entryId, input.claimedStartedAt]
+      );
+      if (!claim.rows.length) return false;
+    }
+    await write(tx);
+    return true;
+  });
+
   if (snapshot.entryStatus !== "published") {
-    await db.transaction(async (tx) => {
+    const committed = await persist(async (tx) => {
       await deleteChunksForEntry(tx, input);
       await markIndexOutcome(tx, {
         entryId: input.entryId,
@@ -124,7 +147,7 @@ export async function indexKnowledgeEntry(
         embeddedChunkCount: 0
       });
     });
-    return { outcome: "removed" };
+    return { outcome: committed ? "removed" : "superseded" };
   }
 
   if (snapshot.contentForm === "file" && snapshot.extractionStatus !== "succeeded") {
@@ -132,15 +155,15 @@ export async function indexKnowledgeEntry(
       snapshot.extractionStatus === "failed"
         ? `Text extraction failed: ${snapshot.extractionError ?? "unknown reason"}`
         : "Extracted text is not available yet; the entry re-enqueues when extraction completes.";
-    await markIndexOutcome(db, {
+    const committed = await persist((tx) => markIndexOutcome(tx, {
       entryId: input.entryId,
       organizationId: input.organizationId,
       status: "failed",
       error: reason,
       indexedRevisionId: snapshot.headRevisionId,
       indexedRevisionNumber: snapshot.headRevisionNumber
-    });
-    return { outcome: "failed", reason };
+    }));
+    return committed ? { outcome: "failed", reason } : { outcome: "superseded" };
   }
 
   const drafts =
@@ -160,7 +183,7 @@ export async function indexKnowledgeEntry(
   }
 
   const embeddedChunkCount = embeddings ? drafts.length : 0;
-  await db.transaction(async (tx) => {
+  const committed = await persist(async (tx) => {
     await deleteChunksForEntry(tx, input);
     if (snapshot.headRevisionId) {
       await insertChunks(tx, {
@@ -191,6 +214,7 @@ export async function indexKnowledgeEntry(
     });
   });
 
+  if (!committed) return { outcome: "superseded" };
   if (embeddingError) {
     return { outcome: "failed", reason: embeddingError };
   }
