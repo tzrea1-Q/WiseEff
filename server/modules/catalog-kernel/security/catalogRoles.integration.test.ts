@@ -8,7 +8,7 @@ import {
   privilegeVerificationGateIds,
   serializeContract,
 } from "../../parameter-catalog-contract";
-import { applyMigrations } from "../../../shared/database/migrations";
+import { applyMigrations, getEffectiveMigrationOrder } from "../../../shared/database/migrations";
 import { withTestClusterRoleCatalogLock } from "../../../testing/testDatabase";
 import {
   createEphemeralTestDatabase,
@@ -696,8 +696,9 @@ async function applyFeedbackSuccessors(db: Database, connectionString: string) {
   // Erasure deliberately adds its own private capability tables and controlled
   // writer RPCs. Keep the original source-revision ACL proof at its real phase,
   // then compare the complete upgraded ACL with the fresh live database in T13.
-  expect(await applyMigrations(db, migrationsDir)).toEqual(files.filter(name => name > sourceLast));
-  expect((await db.query<{ name: string }>("select name from schema_migrations order by name")).rows.map(row => row.name)).toEqual(files);
+  const effectiveFiles = getEffectiveMigrationOrder(files, current.map(({ name }) => name));
+  expect(await applyMigrations(db, migrationsDir)).toEqual(effectiveFiles.filter(name => name > sourceLast));
+  expect((await db.query<{ name: string }>("select name from schema_migrations order by name")).rows.map(row => row.name)).toEqual([...effectiveFiles].sort());
   expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
   expect(await applyMigrations(db, migrationsDir)).toEqual([]);
 }
