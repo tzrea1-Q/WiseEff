@@ -19,6 +19,16 @@ describe("createDefaultKnowledgeTextExtractor", () => {
     expect(outcome).toEqual({ status: "succeeded", text: "充电参数调优笔记\nfast charge current" });
   });
 
+  it.each(["", " \r\n\t\u0000"])("reports empty plain text as failed (%j)", async (text) => {
+    const outcome = await extractor.extract({
+      fileName: "empty.txt",
+      contentType: "text/plain",
+      bytes: Buffer.from(text, "utf8")
+    });
+
+    expect(outcome).toEqual({ status: "failed", reason: "无可提取文本" });
+  });
+
   it("passes markdown through unchanged", async () => {
     const outcome = await extractor.extract({
       fileName: "notes.md",
@@ -39,6 +49,19 @@ describe("createDefaultKnowledgeTextExtractor", () => {
     expect(outcome.status).toBe("succeeded");
     if (outcome.status === "succeeded") {
       expect(outcome.text).toContain("WiseEff knowledge pdf fixture");
+    }
+  });
+
+  it("keeps a line break between PDF pages without page-number markers", async () => {
+    const outcome = await extractor.extract({
+      fileName: "multipage.pdf",
+      contentType: "application/pdf",
+      bytes: readFileSync(join(fixturesDir, "multipage.pdf"))
+    });
+
+    expect(outcome.status).toBe("succeeded");
+    if (outcome.status === "succeeded") {
+      expect(outcome.text).toMatch(/^First page text\n+Second page text$/);
     }
   });
 

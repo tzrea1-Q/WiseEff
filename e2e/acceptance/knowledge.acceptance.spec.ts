@@ -1,5 +1,6 @@
 import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "playwright/test";
 
 import { runNpmScript, withPgClient } from "./helpers/database";
@@ -352,6 +353,7 @@ async function knowledgeEntryDbSummary(entryId: string) {
   return withPgClient(async (client) => {
     const result = await client.query<{
       status: string;
+      content_form: KnowledgeEntryApiItem["contentForm"];
       head_revision_number: number;
       revision_count: string;
       extraction_status: string | null;
@@ -359,6 +361,7 @@ async function knowledgeEntryDbSummary(entryId: string) {
       `
       select
         entry.status,
+        entry.content_form,
         entry.head_revision_number,
         (select count(*)::text from knowledge_revisions where entry_id = entry.id) as revision_count,
         (
@@ -378,7 +381,7 @@ async function knowledgeEntryDbSummary(entryId: string) {
       table: "knowledge_entries,knowledge_revisions,knowledge_files",
       predicate: `entryId=${entryId}`,
       observed: row
-        ? `status=${row.status}; headRevision=${row.head_revision_number}; revisions=${row.revision_count}; extraction=${row.extraction_status ?? "n/a"}`
+        ? `status=${row.status}; contentForm=${row.content_form}; headRevision=${row.head_revision_number}; revisions=${row.revision_count}; extraction=${row.extraction_status ?? "n/a"}`
         : "missing",
       rowCount: result.rowCount ?? result.rows.length
     };
@@ -509,6 +512,108 @@ test.describe("Knowledge base browser acceptance", () => {
 
   test.afterAll(async () => {
     await cleanupKnowledgeAcceptanceRows();
+  });
+
+  test("imports organization documents, batch publishes, searches and links related knowledge from a definition", async ({ page }, testInfo) => {
+    // @acceptance KB-IMPORT-001
+    // @operation KB-IMPORT-001
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const keyword = `组织调参经验${runStamp}`;
+    const names = [
+      `${titlePrefix} 调参经验 ${runStamp}.md`,
+      `${titlePrefix} 硬件手册 ${runStamp}.pdf`,
+      `${titlePrefix} 流程规范 ${runStamp}.txt`
+    ];
+    await openKnowledgePage(page);
+    await page.getByRole("button", { name: "批量导入", exact: true }).click();
+    const importer = page.getByRole("dialog", { name: "批量导入", exact: true });
+    await importer.getByTestId("file-drop-zone-input").setInputFiles([
+      { name: names[0], mimeType: "text/markdown", buffer: Buffer.from(`# 调参经验\n${keyword}：温度超过阈值时降低快充电流。`) },
+      { name: names[1], mimeType: "application/pdf", buffer: readFileSync(new URL("../../server/modules/knowledge/testing/fixtures/sample.pdf", import.meta.url)) },
+      { name: names[2], mimeType: "text/plain", buffer: Buffer.from(`发布前检查文档来源与修订。${runStamp}`) }
+    ]);
+    await importer.getByLabel("批次标签（逗号分隔）").fill("组织文档");
+    await importer.getByRole("button", { name: "开始导入", exact: true }).click();
+    const report = importer.getByRole("table", { name: "导入报告" });
+    for (const name of names) {
+      const row = report.getByRole("row").filter({ hasText: name });
+      await expect(row).toContainText("已创建草稿");
+      await expect(row.getByRole("link", { name: "查看草稿" })).toBeVisible();
+    }
+    const entryIds = await report.getByRole("link", { name: "查看草稿" }).evaluateAll((links) =>
+      links.map((link) => new URL((link as HTMLAnchorElement).href).searchParams.get("entryId")!));
+    expect(entryIds).toHaveLength(3);
+    await importer.getByRole("button", { name: "关闭", exact: true }).click();
+    const table = page.getByRole("table", { name: "知识条目列表" });
+    await table.getByText(names[2], { exact: true }).click();
+    const textDetail = page.getByRole("dialog", { name: new RegExp(names[2].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) });
+    await expect(textDetail.getByRole("button", { name: "编辑", exact: true })).toBeVisible();
+    await textDetail.getByRole("button", { name: "关闭", exact: true }).click();
+    for (const name of names) {
+      await table.getByRole("checkbox", { name: `选择 ${name}`, exact: true }).check();
+    }
+    await page.getByRole("group", { name: "批量管理" }).getByRole("button", { name: "发布", exact: true }).click();
+    const batch = page.getByRole("dialog", { name: "发布", exact: true });
+    const published = page.waitForResponse((response) => response.request().method() === "POST"
+      && new URL(response.url()).pathname === "/api/v1/knowledge/entries/batch");
+    await batch.getByRole("button", { name: "确认发布", exact: true }).click();
+    const publishResponse = await published;
+    expect(publishResponse.status()).toBe(200);
+    await expect(batch.getByRole("status")).toHaveText("成功 3 条 · 拒绝或失败 0 条");
+    await batch.getByRole("button", { name: "关闭", exact: true }).click();
+
+    const searched = page.waitForResponse((response) => response.request().method() === "GET"
+      && new URL(response.url()).pathname === "/api/v1/knowledge/search");
+    await page.getByRole("searchbox", { name: "检索知识库" }).fill(keyword);
+    await page.getByRole("button", { name: "检索", exact: true }).click();
+    const searchResponse = await searched;
+    expect(searchResponse.status()).toBe(200);
+    await expect(page.getByLabel("检索结果").getByText(names[0], { exact: true })).toBeVisible();
+
+    // Reuse the M1 canonical Binding pins already used by KB-DISTILL-002.
+    const definitionId = await withPgClient(async (client) => {
+      const binding = (await client.query<{ id: string; project_id: string }>(
+        `select id, project_id from parameter_catalog.current_project_parameter_bindings
+         where organization_id = $1 order by id limit 1`, [organizationId]
+      )).rows[0];
+      expect(binding).toBeDefined();
+      const pins = await loadCanonicalBindingPins(client, {
+        organizationId, projectId: binding.project_id, bindingId: binding.id
+      });
+      expect(pins).not.toBeNull();
+      return pins!.definitionId;
+    });
+    await signInBrowserAsRole(page, "admin", `/parameter-admin/specs?definitionId=${encodeURIComponent(definitionId)}`);
+    const detail = page.getByRole("region", { name: "定义详情" });
+    await detail.locator("summary").filter({ hasText: /^相关知识$/ }).click();
+    await detail.getByRole("button", { name: "关联已有知识", exact: true }).click();
+    const picker = page.getByRole("dialog", { name: "关联已有知识" });
+    await picker.getByRole("searchbox", { name: "搜索已有知识" }).fill(names[0]);
+    await picker.getByRole("button", { name: "搜索", exact: true }).click();
+    await picker.getByRole("button", { name: names[0], exact: true }).click();
+    await expect(picker).toBeHidden();
+    const related = detail.getByTestId("spec-related-knowledge");
+    await expect(related.getByText(names[0], { exact: true })).toBeVisible();
+    await related.getByText(names[0], { exact: true }).click();
+    await expect(page).toHaveURL((url) => url.pathname === "/knowledge" && url.searchParams.get("entryId") === entryIds[0]);
+    await expect(page.getByRole("dialog").locator('[data-status="published"]')).toBeVisible();
+
+    const db = await Promise.all(entryIds.map(knowledgeEntryDbSummary));
+    for (const [index, summary] of db.entries()) {
+      expect(summary.observed).toContain("status=published");
+      const isFile = names[index].endsWith(".pdf");
+      expect(summary.observed).toContain(`contentForm=${isFile ? "file" : "markdown"}`);
+      expect(summary.observed).toContain(`extraction=${isFile ? "succeeded" : "n/a"}`);
+    }
+    await recordOperationEvidence({
+      operationId: "KB-IMPORT-001", title: "import report batch publish search and definition related knowledge",
+      status: "passed", role: "Hardware User / Admin", route: "/knowledge", page, testInfo,
+      api: [
+        summarizeApiResponse(publishResponse, { method: "POST", path: "/api/v1/knowledge/entries/batch", responseSummary: "three imported drafts published" }),
+        summarizeApiResponse(searchResponse, { method: "GET", path: "/api/v1/knowledge/search", responseSummary: "published organization document found" })
+      ],
+      db
+    });
   });
 
   test("lists knowledge entries, searches published entries only, and reads a published detail", async ({ page }, testInfo) => {
@@ -681,7 +786,7 @@ test.describe("Knowledge base browser acceptance", () => {
     // @acceptance KB-FILE-001
     // @operation KB-FILE-001
     const title = `${titlePrefix} 文件条目 ${runStamp}`;
-    const extractedKeyword = `充电泵手册关键词${runStamp}`;
+    const extractedKeyword = "WiseEff knowledge pdf fixture";
 
     await openKnowledgePage(page);
 
@@ -690,9 +795,9 @@ test.describe("Knowledge base browser acceptance", () => {
     await upload.getByLabel("条目标题").fill(title);
     await upload.getByLabel("标签(逗号分隔)").fill("硬件手册");
     await upload.getByLabel("选择文件").setInputFiles({
-      name: "kb-acceptance-manual.txt",
-      mimeType: "text/plain",
-      buffer: Buffer.from(`SC8562 charge pump manual excerpt. ${extractedKeyword}`, "utf8")
+      name: "kb-acceptance-manual.pdf",
+      mimeType: "application/pdf",
+      buffer: readFileSync(new URL("../../server/modules/knowledge/testing/fixtures/sample.pdf", import.meta.url))
     });
     await upload.getByRole("button", { name: "上传并创建草稿" }).click();
 
@@ -700,7 +805,7 @@ test.describe("Knowledge base browser acceptance", () => {
     const detail = page.getByRole("dialog", { name: new RegExp(title) });
     await expect(detail).toBeVisible();
     await expect(detail.getByText("提取成功")).toBeVisible();
-    await expect(detail.getByText("kb-acceptance-manual.txt")).toBeVisible();
+    await expect(detail.getByText("kb-acceptance-manual.pdf")).toBeVisible();
 
     // Extraction status is also visible in the entry list column.
     await detail.getByRole("button", { name: "关闭" }).click();
@@ -715,7 +820,7 @@ test.describe("Knowledge base browser acceptance", () => {
     const listBody = (await listResponse.json()) as { items: KnowledgeEntryApiItem[] };
     const entry = listBody.items.find((item) => item.title === title);
     expect(entry).toBeTruthy();
-    expect(entry!.file).toMatchObject({ fileName: "kb-acceptance-manual.txt", extractionStatus: "succeeded" });
+    expect(entry).toMatchObject({ contentForm: "file", file: { fileName: "kb-acceptance-manual.pdf", extractionStatus: "succeeded" } });
 
     // Publish and prove the extracted text is retrievable (published-only gate).
     await publishEntryViaApi(page, entry!.id);

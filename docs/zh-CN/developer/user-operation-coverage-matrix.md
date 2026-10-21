@@ -89,6 +89,7 @@
 - `KB-READ-001`：Hardware User 在 `/knowledge` 浏览条目列表并搜索，检索只返回 `published` 条目，断言覆盖 UI、API、DB（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-EDIT-001`：Hardware User 在 `/knowledge` 创建 markdown 条目、发布、就地修订并恢复历史修订，断言覆盖 UI、API、DB、audit（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-FILE-001`：Hardware User 在 `/knowledge` 经对象存储上传文件条目并查看提取状态，断言覆盖 UI、API、DB、audit（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
+- `KB-IMPORT-001`：Hardware User 批量导入组织的 Markdown、PDF 和 TXT 文档，查看报告、批量发布并检索；Admin 从定义页关联已有知识，再经相关知识返回原文。断言覆盖 UI、API、DB、截图（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-ASK-001`：Hardware User 在 `/knowledge`（仅 API 模式）打开问知识库入口进入小泽，并以确定性 SSE 运行证明 `knowledge.search` 落地与引用深链，断言覆盖 UI、API（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-INDEX-001`：Admin 在 `/knowledge-admin` 查看逐条目索引健康与检索模式横幅，执行单条重试与全量重建，断言覆盖 UI、API、DB（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-DISTILL-001`：Hardware User 在 `/logs` 把已完成的日志分析结论沉淀为预填知识草稿，经深链交接到 `/knowledge` 草稿编辑器并发布，断言覆盖 UI、API、DB、审计（`e2e/acceptance/knowledge.acceptance.spec.ts`）。

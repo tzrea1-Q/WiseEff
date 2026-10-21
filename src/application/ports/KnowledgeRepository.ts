@@ -1,7 +1,12 @@
 import type {
   KnowledgeContentForm,
+  KnowledgeBatchInput,
+  KnowledgeBatchReport,
   KnowledgeEntry,
   KnowledgeIndexHealth,
+  KnowledgeImportOutcome,
+  KnowledgeImportReport,
+  KnowledgeOrigin,
   KnowledgeRevision,
   KnowledgeSearchResponse,
   KnowledgeSearchResult,
@@ -10,14 +15,19 @@ import type {
 } from "@/domain/knowledge/types";
 
 export type KnowledgeListQuery = {
+  governable?: boolean;
+  origin?: KnowledgeOrigin;
   status?: KnowledgeStatus;
   contentForm?: KnowledgeContentForm;
   sourceType?: KnowledgeSourceType;
   tag?: string;
   q?: string;
+  limit?: number;
+  offset?: number;
 };
 
 export type CreateMarkdownKnowledgeInput = {
+  origin?: "authored" | "uploaded";
   title: string;
   tags: string[];
   contentMarkdown: string;
@@ -53,9 +63,18 @@ export class KnowledgeRevisionConflictError extends Error {
 }
 
 export interface KnowledgeRepository {
+  batch(input: KnowledgeBatchInput): Promise<KnowledgeBatchReport>;
+  openImport(tags: string[]): Promise<{ id: string }>;
+  importDocument(batchId: string, input: { file: File; relativePath: string }): Promise<KnowledgeImportOutcome>;
+  importArchive(batchId: string, file: File): Promise<{ outcomes: KnowledgeImportOutcome[] }>;
+  getImport(batchId: string): Promise<KnowledgeImportReport>;
+  completeImport(batchId: string): Promise<KnowledgeImportReport>;
   list(query?: KnowledgeListQuery): Promise<{ items: KnowledgeEntry[] }>;
   get(entryId: string): Promise<KnowledgeEntry | null>;
+  /** Distinguish a dangling binding from a private entry without exposing its metadata. */
+  getBinding(entryId: string): Promise<{ entry: KnowledgeEntry | null; deleted: boolean }>;
   createMarkdown(input: CreateMarkdownKnowledgeInput): Promise<KnowledgeEntry>;
+  /** Upload a document: MD/TXT become markdown drafts; other formats remain file entries. */
   createFile(input: CreateFileKnowledgeInput): Promise<KnowledgeEntry>;
   /** Distil a completed log-analysis record into a pre-filled knowledge draft. */
   distillFromLog(logId: string): Promise<KnowledgeEntry>;

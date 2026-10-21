@@ -2,7 +2,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
+import { createMockKnowledgeFixtures, createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
 import type { KnowledgeEntry, KnowledgeSearchResponse } from "@/domain/knowledge/types";
 import { KnowledgePage } from "./KnowledgePage";
 
@@ -32,6 +32,68 @@ function renderPage(
 }
 
 describe("KnowledgePage", () => {
+  it("shows origin in the list and detail and filters by origin", async () => {
+    const repository = createMockKnowledgeRepository();
+    const uploadedMarkdown = await repository.createMarkdown({ title: "上传的 Markdown", tags: [], contentMarkdown: "文档内容", origin: "uploaded" });
+    expect((await repository.list({ origin: "uploaded" })).items.map((entry) => entry.id)).toContain(uploadedMarkdown.id);
+    expect((await repository.list({ origin: "authored" })).items.map((entry) => entry.id)).not.toContain(uploadedMarkdown.id);
+    render(<KnowledgePage repository={repository} capability={editorCapability} />);
+    const user = userEvent.setup();
+    const table = await screen.findByRole("table", { name: "知识条目列表" });
+    expect(within(table).getByRole("columnheader", { name: /来源/ })).toBeInTheDocument();
+    const row = within(table).getByText("MT5788 无线充手册摘录").closest("tr")!;
+    expect(within(row).getByText("上传")).toBeInTheDocument();
+    await user.click(within(row).getByText("MT5788 无线充手册摘录"));
+    const detail = await screen.findByRole("dialog", { name: /MT5788 无线充手册摘录/ });
+    expect(within(detail).getByText("上传")).toHaveAttribute("data-origin", "uploaded");
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "筛选来源" }));
+    for (const label of ["手动编写", "上传", "沉淀", "小泽草稿", "技能包导入"]) {
+      expect(screen.getByRole("checkbox", { name: label })).toBeInTheDocument();
+    }
+    await user.click(screen.getByRole("checkbox", { name: "上传" }));
+    await user.keyboard("{Escape}");
+    expect(within(table).queryByText("快充温控调参经验")).not.toBeInTheDocument();
+    expect(within(table).getByText("MT5788 无线充手册摘录")).toBeInTheDocument();
+    expect(within(table).getByText("上传的 Markdown")).toBeInTheDocument();
+    await user.type(screen.getByRole("searchbox", { name: "检索知识库" }), "快充温控");
+    await user.click(screen.getByRole("button", { name: "检索" }));
+    expect(await screen.findByText("快充温控调参经验")).toBeInTheDocument();
+  });
+
+  it("warns that a textless file is unsearchable and offers replacement from detail", async () => {
+    const fixtures = createMockKnowledgeFixtures();
+    const entry = fixtures.entries.find((item) => item.id === "mock-kb-4")!;
+    entry.file!.extractionError = "无可提取文本";
+    const repository = createMockKnowledgeRepository({}, fixtures);
+    render(<KnowledgePage repository={repository} capability={editorCapability} />);
+    const table = await screen.findByRole("table", { name: "知识条目列表" });
+    const row = within(table).getByText(entry.title).closest("tr")!;
+    expect(within(row).getByText("不可检索")).toBeInTheDocument();
+    expect(within(table).getAllByText("不可检索")).toHaveLength(1);
+    await userEvent.click(within(row).getByRole("button", { name: "查看" }));
+    const detail = await screen.findByRole("dialog", { name: /旧版工艺规范/ });
+    expect(within(detail).getByText(/不可检索：无可提取文本/)).toBeInTheDocument();
+    expect(within(detail).getByText(/替换为包含可提取文本的文件/)).toBeInTheDocument();
+    await userEvent.click(within(detail).getByRole("button", { name: "替换文件" }));
+    const replace = await screen.findByRole("dialog", { name: /替换文件/ });
+    const user = userEvent.setup();
+    await user.upload(within(replace).getByLabelText("选择文件"), new File(["Readable text"], "readable.txt", { type: "text/plain" }));
+    await user.click(within(replace).getByRole("button", { name: "替换并生成新修订" }));
+    const recovered = await screen.findByRole("dialog", { name: /旧版工艺规范/ });
+    expect(within(recovered).getByText("提取成功")).toBeInTheDocument();
+    expect(within(recovered).queryByText(/不可检索/)).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(within(table).queryByText("不可检索")).not.toBeInTheDocument();
+  });
+
+  it("explains extraction failure to viewers without granting file replacement", async () => {
+    renderPage({ capability: viewerCapability, initialEntryId: "mock-kb-4" });
+    const detail = await screen.findByRole("dialog", { name: /旧版工艺规范/ });
+    expect(within(detail).getByText(/不可检索/)).toBeInTheDocument();
+    expect(within(detail).queryByRole("button", { name: "替换文件" })).not.toBeInTheDocument();
+  });
+
   it("shows unavailable statistics through cold failure and restores counts only after a successful list", async () => {
     const repository = createMockKnowledgeRepository();
     const entries = await repository.list();
@@ -449,12 +511,47 @@ describe("KnowledgePage", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "上传文件条目" });
     await user.type(within(dialog).getByLabelText("条目标题"), "上传的调参笔记");
-    await user.upload(within(dialog).getByLabelText("选择文件"), new File(["hello"], "notes.txt", { type: "text/plain" }));
+    await user.upload(within(dialog).getByLabelText("选择文件"), new File(["hello"], "notes.pdf", { type: "application/pdf" }));
     await user.click(within(dialog).getByRole("button", { name: "上传并创建草稿" }));
 
     const detail = await screen.findByRole("dialog", { name: /上传的调参笔记/ });
     expect(within(detail).getByText("提取成功")).toBeInTheDocument();
-    expect(within(detail).getByText("notes.txt")).toBeInTheDocument();
+    expect(within(detail).getByText("notes.pdf")).toBeInTheDocument();
+  });
+
+  it.each(["notes.md", "notes.txt"])("uploads %s as an editable draft with the document text", async (name) => {
+    const { repository } = renderPage();
+    const user = userEvent.setup();
+    await screen.findByRole("table", { name: "知识条目列表" });
+    await user.click(screen.getByRole("button", { name: /上传文件条目/ }));
+    const dialog = await screen.findByRole("dialog", { name: "上传文件条目" });
+    await user.type(within(dialog).getByLabelText("条目标题"), "上传正文");
+    await user.upload(within(dialog).getByLabelText("选择文件"), new File(["# 上传\n正文"], name, { type: "text/plain" }));
+    await user.click(within(dialog).getByRole("button", { name: "上传并创建草稿" }));
+    const detail = await screen.findByRole("dialog", { name: /上传正文/ });
+    expect(within(detail).getByText("上传", { selector: "[data-origin]" })).toBeInTheDocument();
+    const uploaded = (await repository.list()).items.find((entry) => entry.title === "上传正文");
+    expect(uploaded).toMatchObject({ contentForm: "markdown", status: "draft", origin: "uploaded", headRevisionNumber: 1, contentMarkdown: "# 上传\n正文", file: null });
+    await user.click(within(detail).getByRole("button", { name: "编辑" }));
+    const editor = await screen.findByRole("dialog", { name: "编辑知识条目" });
+    expect(within(editor).getByLabelText("Markdown 内容")).toHaveValue("# 上传\n正文");
+  });
+
+  it.each([
+    { content: new Uint8Array([0xc3, 0x28]), message: "文本文件必须使用有效的 UTF-8 编码，请转换编码后重新上传。" },
+    { content: "a".repeat(200_001), message: "正文超过知识库 200,000 字符上限，请精简后重新上传。" }
+  ])("keeps the upload dialog open with a clear error: $message", async ({ content, message }) => {
+    const { repository } = renderPage();
+    const user = userEvent.setup();
+    await screen.findByRole("table", { name: "知识条目列表" });
+    await user.click(screen.getByRole("button", { name: /上传文件条目/ }));
+    const dialog = await screen.findByRole("dialog", { name: "上传文件条目" });
+    await user.type(within(dialog).getByLabelText("条目标题"), "无效正文");
+    await user.upload(within(dialog).getByLabelText("选择文件"), new File([content], "invalid.md", { type: "text/markdown" }));
+    await user.click(within(dialog).getByRole("button", { name: "上传并创建草稿" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(message);
+    expect(within(dialog).getByLabelText("条目标题")).toHaveValue("无效正文");
+    expect((await repository.list()).items.some((entry) => entry.title === "无效正文")).toBe(false);
   });
 
   it("surfaces a readable conflict when a save is stale", async () => {

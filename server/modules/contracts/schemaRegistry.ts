@@ -1369,10 +1369,45 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     successStatus: 201,
     additionalResponses: { "403": "ErrorResponse" }
   },
+  "knowledge.openImport": {
+    summary: "Open an organization-scoped, importer-owned batch with fixed tags (knowledge:edit)",
+    tags: ["knowledge"], requestBody: "OpenKnowledgeImportRequest", responseBody: "OpenKnowledgeImportResponse", successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "knowledge.batchEntries": {
+    summary: "Tag, publish or archive up to 200 entries through individually authorized audited writes; return every outcome",
+    tags: ["knowledge"], requestBody: "BatchKnowledgeEntriesRequest", responseBody: "BatchKnowledgeEntriesResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse" }
+  },
+  "knowledge.importDocument": {
+    summary: "Import one document through the existing upload path; enforce 200 documents / 100 MB per batch and 20 MB per file; skip readable SHA-256 duplicates",
+    tags: ["knowledge"], requestBody: "ImportKnowledgeDocumentRequest", responseBody: "ImportKnowledgeDocumentResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "knowledge.importArchive": {
+    summary: "Validate a bounded ZIP before importing members through the shared document path; folder names become tags; OS junk is ignored",
+    tags: ["knowledge"], requestBody: "ImportKnowledgeArchiveRequest", responseBody: "ImportKnowledgeArchiveResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "knowledge.getImport": {
+    summary: "Read the importer's persisted document outcomes and server-computed totals",
+    tags: ["knowledge"], responseBody: "KnowledgeImportReportResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.completeImport": {
+    summary: "Complete a batch once and audit its server-recorded outcome counts (knowledge:edit)",
+    tags: ["knowledge"], requestBody: "CompleteKnowledgeImportRequest", responseBody: "KnowledgeImportReportResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "knowledge.listEntries": {
     summary: "List knowledge entries visible to the caller",
     tags: ["knowledge"],
     responseBody: "KnowledgeEntryListResponse",
+    requestParameters: [
+      { name: "limit", in: "query", description: "Page size from 1 to 200; defaults to 100.", schema: { type: "integer" } },
+      { name: "offset", in: "query", description: "Nonnegative number of entries to skip; defaults to 0.", schema: { type: "integer" } },
+      { name: "origin", in: "query", schema: { type: "string", enum: ["authored", "uploaded", "distilled", "agent-drafted", "imported"] } },
+      { name: "governable", in: "query", description: "Only non-archived entries owned by the caller, or any owner for knowledge:manage. Requires knowledge:edit or knowledge:manage.", schema: { type: "string", enum: ["true", "false"] } }
+    ],
     additionalResponses: { "403": "ErrorResponse" }
   },
   "knowledge.distillFromLog": {
@@ -1470,6 +1505,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["knowledge"],
     responseBody: "KnowledgeEntryResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.getBinding": {
+    summary: "Read a knowledge binding, retaining deleted and unavailable identities",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeBindingResponse",
+    additionalResponses: { "403": "ErrorResponse" }
   },
   "knowledge.updateEntry": {
     summary: "Save a knowledge entry edit as a new immutable revision (optimistic concurrency)",

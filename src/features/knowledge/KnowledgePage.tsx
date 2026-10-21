@@ -6,12 +6,16 @@ import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { canGovernEntry, collectKnownTags } from "@/domain/knowledge/rules";
 import type {
   KnowledgeEntry,
+  KnowledgeBatchInput,
+  KnowledgeOrigin,
   KnowledgeRetrievalInfo,
   KnowledgeSearchResult,
   KnowledgeStatus
 } from "@/domain/knowledge/types";
 import {
   knowledgeContentFormLabels,
+  knowledgeOriginLabels,
+  knowledgeOrigins,
   knowledgeRetrievalModeLabels,
   knowledgeStatusLabels
 } from "@/domain/knowledge/types";
@@ -23,7 +27,7 @@ import { AdminListPage } from "@/components/layout/AdminListPage";
 import { SectionSkeleton } from "@/components/common/SectionState";
 import { SearchField } from "@/components/common/SearchField";
 import { presentError } from "@/infrastructure/http/presentError";
-import { KnowledgeExtractionBadge, KnowledgeStatusBadge, KnowledgeTagList } from "./badges";
+import { KnowledgeExtractionBadge, KnowledgeOriginBadge, KnowledgeStatusBadge, KnowledgeTagList, KnowledgeUnsearchableBadge } from "./badges";
 import { KnowledgeEntryDetailDialog } from "./KnowledgeEntryDetailDialog";
 import {
   KnowledgeEntryEditorDialog,
@@ -31,7 +35,9 @@ import {
   type KnowledgeDefinitionPickerPage
 } from "./KnowledgeEntryEditorDialog";
 import { KnowledgeFileUploadDialog, type KnowledgeFileUploadSubmit } from "./KnowledgeFileUploadDialog";
+import { KnowledgeImportDialog } from "./KnowledgeImportDialog";
 import { KnowledgeRevisionsDialog } from "./KnowledgeRevisionsDialog";
+import { KnowledgeBatchDialog, knowledgeBatchLabels } from "./KnowledgeBatchDialog";
 
 export type KnowledgePageProps = {
   repository: KnowledgeRepository;
@@ -74,6 +80,7 @@ export function KnowledgePage({
   const [citationLoading, setCitationLoading] = useState(Boolean(initialEntryId));
   const [citationRetry, setCitationRetry] = useState(0);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [originFilter, setOriginFilter] = useState<string[]>([]);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -81,9 +88,12 @@ export function KnowledgePage({
   const [searchRetrieval, setSearchRetrieval] = useState<KnowledgeRetrievalInfo | null>(null);
   const [searching, setSearching] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [checkedIds, setCheckedIds] = useState<string[]>([]);
+  const [batch, setBatch] = useState<{ action: KnowledgeBatchInput["action"]; entries: KnowledgeEntry[] } | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorEntry, setEditorEntry] = useState<KnowledgeEntry | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [uploadEntry, setUploadEntry] = useState<KnowledgeEntry | null>(null);
   const [revisionsEntry, setRevisionsEntry] = useState<KnowledgeEntry | null>(null);
   const [deleteEntry, setDeleteEntry] = useState<KnowledgeEntry | null>(null);
@@ -115,6 +125,8 @@ export function KnowledgePage({
 
   useEffect(() => {
     setRows([]);
+    setCheckedIds([]);
+    setBatch(null);
     setSearchInput("");
     setSearchQuery("");
     setSearchResults([]);
@@ -218,23 +230,38 @@ export function KnowledgePage({
     () =>
       rows.filter((entry) => {
         if (statusFilter.length > 0 && !statusFilter.includes(entry.status)) return false;
+        if (originFilter.length > 0 && !originFilter.includes(entry.origin)) return false;
         if (tagFilter.length > 0 && !tagFilter.some((tag) => entry.tags.includes(tag))) return false;
         return true;
       }),
-    [rows, statusFilter, tagFilter]
+    [rows, statusFilter, originFilter, tagFilter]
   );
   const selectedEntry = selectedId ? rows.find((entry) => entry.id === selectedId) ?? null : null;
+  const checkedEntries = filteredRows.filter((entry) => checkedIds.includes(entry.id));
+  const canBatch = capability.canEdit || capability.canManage;
   const errorMessage = (searchQuery ? searchError : listError) || citationError;
   const publishedCount = useMemo(() => rows.filter((entry) => entry.status === "published").length, [rows]);
   const draftCount = useMemo(() => rows.filter((entry) => entry.status === "draft").length, [rows]);
 
   const columns: Column<KnowledgeEntry>[] = [
+    ...(canBatch ? [{
+      key: "selection", widthClass: "w-12",
+      header: <input type="checkbox" aria-label={`全选筛选结果（${filteredRows.length} 条）`}
+        checked={filteredRows.length > 0 && checkedEntries.length === filteredRows.length}
+        ref={(input) => { if (input) input.indeterminate = checkedEntries.length > 0 && checkedEntries.length < filteredRows.length; }}
+        disabled={!filteredRows.length}
+        onChange={() => setCheckedIds(checkedEntries.length === filteredRows.length ? [] : filteredRows.map((entry) => entry.id))} />,
+      render: (entry: KnowledgeEntry) => <input type="checkbox" aria-label={`选择 ${entry.title}`}
+        checked={checkedIds.includes(entry.id)} onClick={(event) => event.stopPropagation()}
+        onChange={() => setCheckedIds((current) => current.includes(entry.id) ? current.filter((id) => id !== entry.id) : [...current, entry.id])} />
+    }] : []),
     {
       key: "title",
       header: "标题",
       render: (entry) => (
         <div className="min-w-0">
           <p className="truncate font-medium text-foreground">{entry.title}</p>
+          {entry.contentForm === "file" && entry.file?.extractionStatus === "failed" ? <KnowledgeUnsearchableBadge /> : null}
           <p className="text-xs text-muted-foreground">修订 #{entry.headRevisionNumber}</p>
         </div>
       ),
@@ -266,6 +293,22 @@ export function KnowledgePage({
           ),
         onClear: () => setStatusFilter([]),
         getValue: (entry: KnowledgeEntry) => entry.status
+      }
+    },
+    {
+      key: "origin",
+      header: "来源",
+      render: (entry) => <KnowledgeOriginBadge origin={entry.origin} />,
+      widthClass: "w-28",
+      headerFilter: {
+        label: "来源",
+        values: [...knowledgeOrigins],
+        selectedValues: originFilter,
+        renderLabel: (value) => knowledgeOriginLabels[value as KnowledgeOrigin],
+        onToggle: (value) => setOriginFilter((current) =>
+          current.includes(value) ? current.filter((item) => item !== value) : [...current, value]),
+        onClear: () => setOriginFilter([]),
+        getValue: (entry: KnowledgeEntry) => entry.origin
       }
     },
     {
@@ -417,6 +460,15 @@ export function KnowledgePage({
         }
       />
 
+      {canBatch && !searchQuery && checkedEntries.length > 0 ? <div role="group" aria-label="批量管理" className="flex flex-wrap items-center gap-2">
+        <span className="text-sm">已选择 {checkedEntries.length} 条</span>
+        {(Object.keys(knowledgeBatchLabels) as KnowledgeBatchInput["action"][]).map((action) =>
+          <Button key={action} type="button" variant="outline" size="sm" onClick={() => setBatch({ action, entries: checkedEntries })}>
+            {knowledgeBatchLabels[action]}
+          </Button>)}
+        <Button type="button" variant="ghost" size="sm" onClick={() => setCheckedIds([])}>取消选择</Button>
+      </div> : null}
+
       <AdminListPage label="知识检索" headerActions={<span className="ml-auto flex items-center gap-2">
             {askXiaozeEnabled ? (
               <Button
@@ -444,6 +496,7 @@ export function KnowledgePage({
                   <FilePlus2 data-icon="inline-start" />
                   上传文件条目
                 </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setImportOpen(true)}>批量导入</Button>
               </>
             ) : null}
             <Button type="button" variant={capability.canEdit ? "outline" : "default"} size="sm" onClick={() => {
@@ -531,7 +584,8 @@ export function KnowledgePage({
           (loading || citationLoading) && rows.length === 0 ? <SectionSkeleton label="正在加载知识条目" /> : (listError || citationError) && rows.length === 0 ? <></> : undefined
         )}
         table={{ ariaLabel: "知识条目列表", rows: filteredRows, rowKey: (entry) => entry.id, columns,
-          onRowClick: (entry) => setSelectedId(entry.id), selectedRowKey: selectedId ?? undefined, pageSize: 10 }}
+          onRowClick: (entry) => setSelectedId(entry.id), selectedRowKeys: checkedEntries.length ? checkedIds : undefined,
+          selectedRowKey: selectedId ?? undefined, pageSize: 10 }}
         rowActions={(entry) => ({ label: `${entry.title} 操作`,
           primaryAction: { id: "view", label: "查看", onSelect: () => setSelectedId(entry.id) },
           items: [
@@ -542,6 +596,11 @@ export function KnowledgePage({
         emptyState={{ message: rows.length === 0 ? "知识库还是空的。创建第一条调参经验或上传一份硬件手册。" : "当前筛选条件下没有条目。",
           actionLabel: "重新加载", onAction: () => { void loadEntries(); } }}
       />
+
+      {batch ? <KnowledgeBatchDialog {...batch} repository={repository} onClose={() => setBatch(null)} onComplete={(report) => {
+        setRows((current) => current.map((entry) => report.results.find((row) => row.entryId === entry.id)?.entry ?? entry));
+        setCheckedIds([]);
+      }} /> : null}
 
       <KnowledgeEntryDetailDialog
         open={Boolean(selectedEntry)}
@@ -599,6 +658,8 @@ export function KnowledgePage({
         }}
       />
 
+      {capability.canEdit ? <KnowledgeImportDialog open={importOpen} repository={repository}
+        onClose={() => setImportOpen(false)} onComplete={() => { void loadEntries(); }} /> : null}
       <KnowledgeFileUploadDialog
         open={uploadOpen}
         entry={uploadEntry}

@@ -176,6 +176,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db", "screenshot"]
   },
   {
+    id: "KB-IMPORT-001",
+    priority: "P1",
+    area: "knowledge",
+    route: "/knowledge → /parameter-admin/specs → /knowledge",
+    roles: ["Hardware User", "Admin"],
+    action: "Import organization documents (Markdown, PDF, text), inspect each draft in the report, batch publish, search a published document, and use the Definition's existing-knowledge picker to link it and follow related knowledge back to the published entry.",
+    coverage: "automated",
+    acceptanceIds: ["KB-IMPORT-001"],
+    specFiles: ["e2e/acceptance/knowledge.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "screenshot"]
+  },
+  {
     id: "KB-READ-001",
     priority: "P1",
     area: "knowledge",

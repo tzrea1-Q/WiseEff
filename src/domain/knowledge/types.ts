@@ -1,4 +1,13 @@
 export const knowledgeContentForms = ["markdown", "file"] as const;
+export const knowledgeOrigins = ["authored", "uploaded", "distilled", "agent-drafted", "imported"] as const;
+export type KnowledgeOrigin = (typeof knowledgeOrigins)[number];
+export const knowledgeOriginLabels: Record<KnowledgeOrigin, string> = {
+  authored: "手动编写",
+  uploaded: "上传",
+  distilled: "沉淀",
+  "agent-drafted": "小泽草稿",
+  imported: "技能包导入"
+};
 export const knowledgeStatuses = ["draft", "published", "archived"] as const;
 export const knowledgeExtractionStatuses = ["pending", "succeeded", "failed"] as const;
 
@@ -6,6 +15,38 @@ export type KnowledgeContentForm = (typeof knowledgeContentForms)[number];
 export type KnowledgeStatus = (typeof knowledgeStatuses)[number];
 export type KnowledgeExtractionStatus = (typeof knowledgeExtractionStatuses)[number];
 export type KnowledgeSourceType = "human" | "agent";
+
+export type KnowledgeBatchInput =
+  | { action: "add_tags" | "remove_tags"; entryIds: string[]; tags: string[] }
+  | { action: "publish"; entryIds: string[] }
+  | { action: "archive"; entryIds: string[] };
+export type KnowledgeBatchResult = {
+  entryId: string;
+  title: string | null;
+  status: "succeeded" | "refused" | "failed";
+  entry: KnowledgeEntry | null;
+  error: { code: string; message: string; reason?: string } | null;
+};
+export type KnowledgeBatchReport = { results: KnowledgeBatchResult[]; summaryError: string | null };
+
+export type KnowledgeImportOutcome = {
+  id: string;
+  relativePath: string;
+  status: "created" | "duplicate_skipped" | "unsupported_skipped" | "extraction_failed" | "rejected";
+  entryId: string | null;
+  error: string | null;
+  warnings?: string[];
+};
+
+export type KnowledgeImportReport = {
+  id: string;
+  tags: string[];
+  completed: boolean;
+  documentCount: number;
+  totalBytes: number;
+  counts: Record<KnowledgeImportOutcome["status"], number>;
+  outcomes: KnowledgeImportOutcome[];
+};
 
 export type KnowledgeFileMeta = {
   id: string;
@@ -48,6 +89,7 @@ export type KnowledgeParameterReference = KnowledgeReferenceFields & (
 );
 
 export type KnowledgeEntry = {
+  origin: KnowledgeOrigin;
   id: string;
   title: string;
   contentForm: KnowledgeContentForm;

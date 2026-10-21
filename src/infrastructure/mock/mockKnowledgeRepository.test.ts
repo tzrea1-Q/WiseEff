@@ -37,6 +37,8 @@ describe("createMockKnowledgeRepository", () => {
     const repository = createMockKnowledgeRepository({ getLogRecord: () => log });
 
     const draft = await repository.distillFromLog(log.id);
+    expect(typeof draft.contentMarkdown).toBe("string");
+    if (draft.contentMarkdown === null) throw new Error("Expected distilled markdown content");
 
     expect(draft.contentMarkdown.startsWith("> 降级分析 · 规则回退")).toBe(true);
     expect(draft.contentMarkdown).toContain("AI 分析服务不可用，本结论由规则引擎回退生成");
@@ -46,6 +48,7 @@ describe("createMockKnowledgeRepository", () => {
     expect(draft.title).toBe(log.conclusion);
     expect(draft.tags).toEqual(["日志分析", "提示"]);
     expect(draft.sourceLogId).toBe(log.id);
+    expect(draft.origin).toBe("distilled");
   });
 
   it("serves fixture entries covering draft, published, archived, and failed extraction", async () => {
@@ -64,6 +67,7 @@ describe("createMockKnowledgeRepository", () => {
     const entry = await repository.createMarkdown({ title: "新条目", tags: ["t"], contentMarkdown: "内容" });
 
     expect(entry.status).toBe("draft");
+    expect(entry.origin).toBe("authored");
     expect(entry.headRevisionNumber).toBe(1);
 
     const published = await repository.publish(entry.id);
@@ -136,6 +140,7 @@ describe("createMockKnowledgeRepository", () => {
     const entry = await repository.distillFromReloadRun("mock-reload-seed-01");
     expect(entry.status).toBe("draft");
     expect(entry.sourceReloadRunId).toBe("mock-reload-seed-01");
+    expect(entry.origin).toBe("distilled");
     expect(entry.sourceLogId).toBeNull();
     expect(entry.tags).toEqual(["参数调试", "DTS重载", "不可验证"]);
     expect(entry.title).toContain("参数调试重载:");
@@ -245,9 +250,10 @@ describe("createMockKnowledgeRepository", () => {
     const good = await repository.createFile({
       title: "文本文件",
       tags: [],
-      file: new File(["hello"], "notes.txt", { type: "text/plain" })
+      file: new File(["hello"], "notes.pdf", { type: "application/pdf" })
     });
     expect(good.file?.extractionStatus).toBe("succeeded");
+    expect(good.origin).toBe("uploaded");
 
     const legacy = await repository.createFile({
       title: "旧文档",

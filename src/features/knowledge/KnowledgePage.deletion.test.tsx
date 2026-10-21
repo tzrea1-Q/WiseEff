@@ -15,6 +15,7 @@ const draft: KnowledgeEntryDto = {
   status: "draft",
   tags: [],
   sourceType: "human",
+  origin: "authored",
   sourceSessionId: null,
   sourceLogId: null,
   sourceReloadRunId: null,

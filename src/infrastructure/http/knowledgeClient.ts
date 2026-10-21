@@ -8,9 +8,13 @@ import type {
 import { KnowledgeRevisionConflictError } from "@/application/ports/KnowledgeRepository";
 import type {
   KnowledgeContentForm,
+  KnowledgeBatchResult,
   KnowledgeEntry,
   KnowledgeExtractionStatus,
   KnowledgeIndexHealth,
+  KnowledgeImportOutcome,
+  KnowledgeImportReport,
+  KnowledgeOrigin,
   KnowledgeParameterReference,
   KnowledgeRetrievalInfo,
   KnowledgeRevision,
@@ -47,6 +51,7 @@ export type KnowledgeFileDto = {
 export type KnowledgeParameterReferenceDto = KnowledgeParameterReference;
 
 export type KnowledgeEntryDto = {
+  origin: KnowledgeOrigin;
   id: string;
   organizationId: string;
   title: string;
@@ -101,6 +106,7 @@ function entryFromDto(dto: KnowledgeEntryDto): KnowledgeEntry {
     id: dto.id,
     title: dto.title,
     contentForm: dto.contentForm,
+    origin: dto.origin,
     status: dto.status,
     tags: dto.tags,
     sourceType: dto.sourceType,
@@ -179,10 +185,14 @@ async function fileBody(file: File) {
 function buildListPath(query?: KnowledgeListQuery) {
   const params = new URLSearchParams();
   if (query?.status) params.set("status", query.status);
+  if (query?.governable) params.set("governable", "true");
   if (query?.contentForm) params.set("contentForm", query.contentForm);
   if (query?.sourceType) params.set("sourceType", query.sourceType);
+  if (query?.origin) params.set("origin", query.origin);
   if (query?.tag) params.set("tag", query.tag);
   if (query?.q) params.set("q", query.q);
+  if (query?.limit !== undefined) params.set("limit", String(query.limit));
+  if (query?.offset !== undefined) params.set("offset", String(query.offset));
   const encoded = params.toString();
   return encoded ? `/api/v1/knowledge/entries?${encoded}` : "/api/v1/knowledge/entries";
 }
@@ -207,6 +217,32 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
   const apiClient = options.apiClient ?? createDefaultApiClient({ baseUrl, fetchImpl: options.fetchImpl });
 
   return {
+    async batch(input) {
+      const response = await apiClient.post<{
+        results: (Omit<KnowledgeBatchResult, "entry"> & { entry: KnowledgeEntryDto | null })[];
+        summaryError: string | null;
+      }>("/api/v1/knowledge/entries/batch", input);
+      return { ...response, results: response.results.map((result) => ({ ...result, entry: result.entry ? entryFromDto(result.entry) : null })) };
+    },
+    async openImport(tags) {
+      return (await apiClient.post<ItemEnvelope<{ id: string }>>("/api/v1/knowledge/imports", { tags })).item;
+    },
+    async importDocument(batchId, input) {
+      return (await apiClient.post<ItemEnvelope<KnowledgeImportOutcome>>(`/api/v1/knowledge/imports/${encodeURIComponent(batchId)}/documents`, {
+        relativePath: input.relativePath, file: await fileBody(input.file)
+      })).item;
+    },
+    async importArchive(batchId, file) {
+      return (await apiClient.post<ItemEnvelope<{ outcomes: KnowledgeImportOutcome[] }>>(`/api/v1/knowledge/imports/${encodeURIComponent(batchId)}/archive`, {
+        file: { fileName: file.name, contentType: "application/zip", contentBase64: await fileToBase64(file) }
+      })).item;
+    },
+    async getImport(batchId) {
+      return (await apiClient.get<ItemEnvelope<KnowledgeImportReport>>(`/api/v1/knowledge/imports/${encodeURIComponent(batchId)}`)).item;
+    },
+    async completeImport(batchId) {
+      return (await apiClient.post<ItemEnvelope<KnowledgeImportReport>>(`/api/v1/knowledge/imports/${encodeURIComponent(batchId)}/complete`, {})).item;
+    },
     async list(query) {
       const response = await apiClient.get<ListEnvelope<KnowledgeEntryDto>>(buildListPath(query));
       return { items: response.items.map(entryFromDto) };
@@ -224,12 +260,18 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
       }
     },
 
+    async getBinding(entryId) {
+      const response = await apiClient.get<{ entry: KnowledgeEntryDto | null; deleted: boolean }>(`${entryPath(entryId)}/binding`);
+      return { entry: response.entry ? entryFromDto(response.entry) : null, deleted: response.deleted };
+    },
+
     async createMarkdown(input: CreateMarkdownKnowledgeInput) {
       const response = await apiClient.post<ItemEnvelope<KnowledgeEntryDto>>("/api/v1/knowledge/entries", {
         contentForm: "markdown",
         title: input.title,
         tags: input.tags,
-        contentMarkdown: input.contentMarkdown
+        contentMarkdown: input.contentMarkdown,
+        ...(input.origin ? { origin: input.origin } : {})
       });
       return entryFromDto(response.item);
     },

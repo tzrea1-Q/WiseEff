@@ -80,6 +80,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "KB-IMPORT-001",
+    workflow: "J",
+    title: "Import Markdown, PDF and text organization documents through the batch dialog, inspect the report, batch publish, search a published document, and link it from a Definition to read related knowledge and follow its entry deep link.",
+    required: true
+  },
+  {
     id: "KB-READ-001",
     workflow: "J",
     title: "Org member lists knowledge entries, searches published entries only, and reads a published entry detail.",

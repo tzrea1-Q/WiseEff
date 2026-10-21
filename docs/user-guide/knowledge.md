@@ -32,9 +32,13 @@ In an API-backed deployment, select Ask the knowledge base (Xiaoze) on Knowledge
 On Knowledge base (`/knowledge`), choose the content form that fits your material:
 
 - Select New Markdown entry and enter a title, comma-separated tags, and the content. Project tags can help identify where the guidance applies. Check the preview, then select Create draft.
-- Select Upload file entry, enter a title and tags, choose a file, and select Upload and create draft. The upload creates a separate file entry rather than attaching the file to a Markdown entry.
+- Select Upload file entry, enter a title and tags, choose a file, and select Upload and create draft. Each upload creates a separate entry.
 
-Text can be extracted from PDF, Word `.docx`, plain text, and Markdown files for retrieval. The picker also accepts legacy `.doc`, but the extractor does not support its binary format. If extraction fails, convert the file to `.docx` and replace it. After uploading, check the displayed extraction status and reason to see whether the body is searchable. You can replace an original file, but cannot edit it in the Markdown editor.
+Markdown (`.md`) and plain-text (`.txt`) uploads become editable Markdown drafts. They must use UTF-8 and contain at most 200,000 characters, with 20 MB per file. Edit them in product and save new revisions. The analysis-skill workspace’s Upload Markdown / text action uses the same conversion and links the new draft to the skill; save the skill draft to retain its links. Existing Markdown uploads stored as file entries keep their original form.
+
+PDF and Word `.docx` remain file entries. You can replace their originals, but cannot edit them in the Markdown editor. A file with no extractable text is marked Unsearchable in the list, with the extraction reason in its detail. Replace it with a text-bearing version; publishing alone cannot make its body searchable. The picker also accepts legacy `.doc`, but the extractor does not support its binary format; convert it to `.docx` before replacing it.
+
+The Origin column and filter distinguish Written here, Uploaded, Distilled, Xiaoze draft, and Skill-package import. Origin describes provenance; it does not grant access or make a draft retrievable.
 
 New entries start as drafts. Review the content, applicable conditions, and source evidence before publishing. Only after publication can the entry appear in search or Xiaoze knowledge retrieval.
 
@@ -43,6 +47,20 @@ When a Xiaoze-created draft cites a degraded source log analysis, the platform a
 ![New Markdown knowledge entry dialog](images/knowledge-new-entry.png)
 
 *The new-entry dialog alongside the published examples; this screenshot does not create another draft.*
+
+## Import several documents
+
+On `/knowledge`, select Batch import, choose several PDF, DOCX, TXT or MD files or one `.zip`, and optionally enter comma-separated batch tags. Each batch accepts at most 200 documents and 100 MB after expansion, with 20 MB per document. ZIP folders may nest up to 20 levels. Folder names become tags alongside batch tags, not a folder hierarchy. Each entry accepts at most 20 tags of 60 characters each; the report warns when folder names are truncated or excess tags are omitted.
+
+Select Start import to follow per-document progress. Each supported document creates an independent draft; byte-identical readable content is skipped, never overwritten. Changed content creates a new draft. The report lists created drafts, duplicates, unsupported formats, extraction failures and refused documents, with links to available entries and tag warnings. Extraction failures retain file drafts for replacement. Review the report and publish drafts after checking them. Closing the dialog or leaving the page does not cancel documents already submitted. If the summary fails, Retry summary preserves document results without uploading again.
+
+## Manage entries in batches
+
+Select entries in the list, then choose Add tags, Remove tags, Publish or Archive, up to 200 entries at a time. Tag changes preserve other tags and content. Publishing applies to drafts; archiving applies to published entries and removes them from retrieval while retaining history. Permissions are checked per entry: owners need edit permission, and knowledge managers may maintain others’ entries. The result table reports each success or refusal; one failure does not undo other successful entries.
+
+## Link knowledge from a definition
+
+On a parameter definition’s detail page, select Link existing knowledge. Choose a non-archived entry you govern as its owner with edit permission or as a knowledge manager. The link records an explicit definition reference; it does not publish the entry. Definition-related retrieval includes only published references. Archived skill bindings remain visible as archived and excluded from retrieval; deleted entries are shown as deleted and can be unlinked.
 
 ## Publish and revise an entry
 

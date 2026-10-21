@@ -20,9 +20,11 @@ export interface KnowledgeTextExtractor {
 
 const MAX_EXTRACTED_TEXT_CHARS = 500_000;
 
-function normalizeExtractedText(text: string) {
+function normalizeExtractedText(text: string): KnowledgeExtractionOutcome {
   const normalized = text.replace(/\r\n/g, "\n").replace(/\u0000/g, "").trim();
-  return normalized.length > MAX_EXTRACTED_TEXT_CHARS ? normalized.slice(0, MAX_EXTRACTED_TEXT_CHARS) : normalized;
+  return normalized
+    ? { status: "succeeded", text: normalized.slice(0, MAX_EXTRACTED_TEXT_CHARS) }
+    : { status: "failed", reason: "无可提取文本" };
 }
 
 function failureReason(error: unknown, fallback: string) {
@@ -36,7 +38,7 @@ async function extractPdfText(bytes: Buffer): Promise<string> {
   const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse({ data: bytes });
   try {
-    const result = await parser.getText();
+    const result = await parser.getText({ pageJoiner: "\n" });
     return result.text ?? "";
   } finally {
     await parser.destroy().catch(() => undefined);
@@ -54,13 +56,13 @@ export function createDefaultKnowledgeTextExtractor(): KnowledgeTextExtractor {
     async extract(input) {
       try {
         if (input.contentType === "text/plain" || input.contentType === "text/markdown") {
-          return { status: "succeeded", text: normalizeExtractedText(input.bytes.toString("utf8")) };
+          return normalizeExtractedText(input.bytes.toString("utf8"));
         }
         if (input.contentType === "application/pdf") {
-          return { status: "succeeded", text: normalizeExtractedText(await extractPdfText(input.bytes)) };
+          return normalizeExtractedText(await extractPdfText(input.bytes));
         }
         if (input.contentType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-          return { status: "succeeded", text: normalizeExtractedText(await extractDocxText(input.bytes)) };
+          return normalizeExtractedText(await extractDocxText(input.bytes));
         }
         if (input.contentType === "application/msword") {
           return {

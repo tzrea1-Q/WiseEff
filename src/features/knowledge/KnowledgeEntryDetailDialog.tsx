@@ -5,11 +5,10 @@ import { renderMarkdownPreview } from "@/domain/knowledge/markdown";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { canArchive, canEditContent, canPublish, canRestore } from "@/domain/knowledge/rules";
 import type { KnowledgeEntry } from "@/domain/knowledge/types";
-import { knowledgeSourceTypeLabels } from "@/domain/knowledge/types";
 import { presentError } from "@/infrastructure/http/presentError";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { Button } from "@/components/ui/button";
-import { KnowledgeExtractionBadge, KnowledgeStatusBadge, KnowledgeTagList } from "./badges";
+import { KnowledgeExtractionBadge, KnowledgeOriginBadge, KnowledgeStatusBadge, KnowledgeTagList } from "./badges";
 import { KnowledgeParameterReferenceChips } from "./KnowledgeParameterReferenceChips";
 
 export type KnowledgeEntryDetailDialogProps = {
@@ -99,12 +98,13 @@ export function KnowledgeEntryDetailDialog({
         <>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h2 id={titleId} className="flex items-center gap-2 text-base font-semibold text-foreground">
+              <h2 id={titleId} className="flex flex-wrap items-center gap-2 text-base font-semibold text-foreground">
                 <span className="truncate">{entry.title}</span>
                 <KnowledgeStatusBadge status={entry.status} />
+                <KnowledgeOriginBadge origin={entry.origin} />
               </h2>
               <p id={descriptionId} className="mt-1 text-xs text-muted-foreground">
-                修订 #{entry.headRevisionNumber} · 来源 {knowledgeSourceTypeLabels[entry.sourceType]} ·{" "}
+                修订 #{entry.headRevisionNumber} ·{" "}
                 {entry.createdByUserId ?? "已注销用户"} 创建 · 更新于 {formatDateTime(entry.updatedAt)}
                 {entry.status === "published" ? ` · 发布于 ${formatDateTime(entry.publishedAt)}` : ""}
                 {entry.status === "archived" ? ` · 归档于 ${formatDateTime(entry.archivedAt)}` : ""}
@@ -232,9 +232,9 @@ export function KnowledgeEntryDetailDialog({
                   </span>
                   <KnowledgeExtractionBadge status={entry.file.extractionStatus} error={entry.file.extractionError} />
                 </div>
-                {entry.file.extractionStatus === "failed" && entry.file.extractionError ? (
-                  <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-900">
-                    提取失败:{entry.file.extractionError}
+                {entry.file.extractionStatus === "failed" ? (
+                  <p className="rounded-md bg-[var(--warning-soft)] px-3 py-2 text-xs text-[var(--warning)]">
+                    不可检索：{entry.file.extractionError || "正文提取失败"}。请替换为包含可提取文本的文件，成功提取并发布后才能参与检索。
                   </p>
                 ) : null}
                 {entry.file.extractionStatus === "succeeded" ? (

@@ -881,6 +881,12 @@ export const routeManifest = [
   { id: "productFeedback.patch", method: "PATCH", path: "/api/v1/product-feedback/:id", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.appendProgress", method: "POST", path: "/api/v1/product-feedback/:id/progress", module: "product-feedback", stability: "mvp" },
   { id: "knowledge.createEntry", method: "POST", path: "/api/v1/knowledge/entries", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.openImport", method: "POST", path: "/api/v1/knowledge/imports", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.batchEntries", method: "POST", path: "/api/v1/knowledge/entries/batch", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.importDocument", method: "POST", path: "/api/v1/knowledge/imports/:batchId/documents", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.importArchive", method: "POST", path: "/api/v1/knowledge/imports/:batchId/archive", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.getImport", method: "GET", path: "/api/v1/knowledge/imports/:batchId", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.completeImport", method: "POST", path: "/api/v1/knowledge/imports/:batchId/complete", module: "knowledge", stability: "mvp" },
   { id: "knowledge.listEntries", method: "GET", path: "/api/v1/knowledge/entries", module: "knowledge", stability: "mvp" },
   {
     id: "knowledge.distillFromLog",
@@ -956,6 +962,7 @@ export const routeManifest = [
     stability: "mvp"
   },
   { id: "knowledge.getEntry", method: "GET", path: "/api/v1/knowledge/entries/:entryId", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.getBinding", method: "GET", path: "/api/v1/knowledge/entries/:entryId/binding", module: "knowledge", stability: "mvp" },
   { id: "knowledge.updateEntry", method: "PATCH", path: "/api/v1/knowledge/entries/:entryId", module: "knowledge", stability: "mvp" },
   {
     id: "knowledge.publishEntry",

@@ -488,13 +488,14 @@ describe("skill workspace", () => {
   it("saves knowledge links and Markdown drafts separately before unlinking", async () => {
     const entries: KnowledgeEntry[] = ["热管理知识", "散热", "协议"].map((title, index) => ({
       id: `00000000-0000-4000-8000-00000000000${index + 1}`, title, contentForm: "markdown", status: index ? "draft" : "published",
-      tags: [], sourceType: "human", sourceSessionId: null, sourceLogId: null, sourceReloadRunId: null, createdByUserId: "user", headRevisionNumber: 1,
+      tags: [], origin: "authored", sourceType: "human", sourceSessionId: null, sourceLogId: null, sourceReloadRunId: null, createdByUserId: "user", headRevisionNumber: 1,
       createdAt: "2026-10-19T10:00:00Z", updatedAt: "2026-10-19T10:00:00Z", publishedAt: index ? null : "2026-10-19T10:00:00Z", archivedAt: null,
       contentMarkdown: "# 检查步骤", file: null, parameterReferences: []
     }));
     const knowledgeRepository = {
-      list: vi.fn(async () => ({ items: [entries[0]] })), get: vi.fn(async (id: string) => entries.find((entry) => entry.id === id) ?? null),
-      createMarkdown: vi.fn(async ({ title }: { title: string }) => entries.find((entry) => entry.title === title)!)
+      list: vi.fn(async () => ({ items: [entries[0]] })),
+      getBinding: vi.fn(async (id: string) => ({ entry: entries.find((entry) => entry.id === id) ?? null, deleted: false })),
+      createFile: vi.fn(async ({ title }: { title: string }) => entries.find((entry) => entry.title === title)!)
     };
     const { repository } = setup({ section: "knowledge", knowledgeCanEdit: true, knowledgeRepository: knowledgeRepository as unknown as KnowledgeRepository });
     await userEvent.click(await screen.findByRole("button", { name: "链接已有条目" }));
@@ -508,14 +509,14 @@ describe("skill workspace", () => {
     await waitFor(() => expect(save).toBeDisabled());
     expect(repository.saveSkillDraft.mock.calls[0][1].knowledgeEntryIds).toEqual([entries[0].id]);
 
-    await userEvent.click(screen.getByRole("button", { name: "上传 Markdown" }));
-    const upload = screen.getByRole("dialog", { name: "上传 Markdown" });
+    await userEvent.click(screen.getByRole("button", { name: "上传 Markdown / 文本" }));
+    const upload = screen.getByRole("dialog", { name: "上传 Markdown / 文本" });
     const files = entries.slice(1).map((entry) => {
       const file = new File([entry.contentMarkdown!], `${entry.title}.md`, { type: "text/markdown" });
       Object.defineProperty(file, "text", { value: async () => entry.contentMarkdown });
       return file;
     });
-    fireEvent.drop(within(upload).getByRole("region", { name: "拖放 Markdown 文件" }), { dataTransfer: { files } });
+    fireEvent.drop(within(upload).getByRole("region", { name: "拖放 Markdown / 文本文件" }), { dataTransfer: { files } });
     const create = within(upload).getByRole("button", { name: "创建并链接" });
     await waitFor(() => expect(create).toBeEnabled());
     await userEvent.click(create);

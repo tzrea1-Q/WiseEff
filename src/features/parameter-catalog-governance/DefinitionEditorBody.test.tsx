@@ -18,6 +18,7 @@ import { catalogStateFromFailure, deriveCatalogDomainState } from "@/application
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 
 import { DefinitionEditorBody } from "./DefinitionEditorBody";
+import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
 
 const ready = deriveCatalogDomainState({ document: readyCatalogDocument });
 
@@ -33,6 +34,47 @@ function EditorDialog({ children }: PropsWithChildren) {
  * through preview -> confirm -> execute -> continue.
  */
 describe("DefinitionEditorBody", () => {
+  it("links an existing governable draft without adding it to published related knowledge", async () => {
+    const repository = createMockKnowledgeRepository({ userId: "k1333-owner", canManage: false });
+    const entry = await repository.createMarkdown({ title: "待关联知识", tags: [], contentMarkdown: "说明" });
+    const add = vi.spyOn(repository, "addDefinitionReference").mockRejectedValueOnce(new Error("network"));
+    renderDialog({
+      load: async (id) => (await repository.relatedToDefinition(id)).items,
+      onOpenEntry: vi.fn(),
+      link: {
+        search: async (q) => (await repository.list({ governable: true, q })).items.map((e) => ({ entryId: e.id, title: e.title })),
+        add: async (entryId, definitionId) => { await repository.addDefinitionReference(entryId, definitionId); }
+      }
+    });
+    const user = userEvent.setup();
+    await user.click(screen.getByText("相关知识", { selector: "summary" }));
+    await user.click(screen.getByRole("button", { name: "关联已有知识" }));
+    const picker = await screen.findByRole("dialog", { name: "关联已有知识" });
+    await user.click(await within(picker).findByRole("button", { name: "待关联知识" }));
+    expect(await within(picker).findByRole("alert")).toHaveTextContent("关联失败");
+    await user.click(within(picker).getByRole("button", { name: "待关联知识" }));
+    await waitFor(() => expect(add).toHaveBeenCalledWith(entry.id, activeDefinition.id));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "关联已有知识" })).not.toBeInTheDocument());
+    expect(screen.getByText("暂无引用该定义的已发布知识条目。")).toBeVisible();
+    await repository.publish(entry.id);
+    await user.click(screen.getByRole("button", { name: "关联已有知识" }));
+    const reopened = await screen.findByRole("dialog", { name: "关联已有知识" });
+    await user.type(within(reopened).getByRole("searchbox", { name: "搜索已有知识" }), "没有匹配");
+    await user.click(within(reopened).getByRole("button", { name: "搜索" }));
+    expect(await within(reopened).findByText("没有可关联的知识条目，请调整搜索条件。")).toBeVisible();
+    await user.clear(within(reopened).getByRole("searchbox", { name: "搜索已有知识" }));
+    await user.click(within(reopened).getByRole("button", { name: "搜索" }));
+    await user.click(await within(reopened).findByRole("button", { name: "待关联知识" }));
+    expect(await screen.findByRole("button", { name: /待关联知识/ })).toBeVisible();
+    expect(screen.queryByRole("dialog", { name: "关联已有知识" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the existing related list read-only when linking is not permitted", async () => {
+    renderDialog({ load: async () => [], onOpenEntry: vi.fn() });
+    await userEvent.click(screen.getByText("相关知识", { selector: "summary" }));
+    expect(screen.queryByRole("button", { name: "关联已有知识" })).not.toBeInTheDocument();
+  });
+
   it("lets a platform administrator preview identity correction without selecting an unrelated project", async () => {
     const user = userEvent.setup();
     const { preview } = renderDialog(undefined, undefined, { actor: "platform-admin", projects: [] });

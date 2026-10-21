@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { isUtf8 } from "node:buffer";
 
 import { asAuditTx, writeAuditEventInTx, type AuditSpec, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext, AuditSeverity } from "../audit/types";
@@ -8,11 +9,12 @@ import { sanitizeFileName, type ObjectStore } from "../logs/objectStore";
 import { getLogRecord } from "../logs/service";
 import { getReloadRunRecord } from "../dts-reload/service";
 import type { Database, Queryable } from "../../shared/database/client";
-import { ApiError } from "../../shared/http/errors";
+import { ApiError, serializeApiError } from "../../shared/http/errors";
 import { readCatalogDefinitionForKnowledge } from "../parameter-catalog-api/productionWire";
 import { buildLogAnalysisProvenanceNotice, buildLogDistillationDraft } from "./distillation";
 import { buildReloadDistillationDraft, isReloadRunDistillable } from "./reloadDistillation";
 import type { KnowledgeTextExtractor } from "./extraction";
+import { KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT, KNOWLEDGE_FILE_BYTE_LIMIT, KNOWLEDGE_TAG_LIMIT, knowledgeTagsSchema, type BatchKnowledgeEntriesInput } from "./schemas";
 import { fuseKnowledgeSearchResults } from "./hybridSearch";
 import type { KnowledgeEmbeddingClient } from "./indexing/embeddingClient";
 import {
@@ -67,6 +69,7 @@ import {
 } from "./repository";
 import type {
   KnowledgeEntryDto,
+  KnowledgeOrigin,
   KnowledgeFileDto,
   KnowledgeRetrievalInfo,
   KnowledgeSearchResponseDto,
@@ -76,7 +79,7 @@ import type {
   ListKnowledgeEntriesQuery
 } from "./types";
 
-export type KnowledgeServiceContext = AuditCorrelationContext;
+export type KnowledgeServiceContext = AuditCorrelationContext & { importBatchId?: string };
 
 export type KnowledgeFileUploadInput = {
   fileName: string;
@@ -85,8 +88,8 @@ export type KnowledgeFileUploadInput = {
 };
 
 export type CreateKnowledgeEntryInput =
-  | { contentForm: "markdown"; title: string; tags: string[]; contentMarkdown: string }
-  | { contentForm: "file"; title: string; tags: string[]; file: KnowledgeFileUploadInput };
+  | { contentForm: "markdown"; title: string; tags: string[]; contentMarkdown: string; origin?: KnowledgeOrigin }
+  | { contentForm: "file"; title: string; tags: string[]; file: KnowledgeFileUploadInput; origin?: KnowledgeOrigin };
 
 export type UpdateKnowledgeEntryInput = {
   expectedHeadRevisionNumber: number;
@@ -95,8 +98,6 @@ export type UpdateKnowledgeEntryInput = {
   contentMarkdown?: string;
   file?: KnowledgeFileUploadInput;
 };
-
-const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 function knowledgeEntryNotFound(entryId: string) {
   return new ApiError("NOT_FOUND", "Knowledge entry was not found.", { entryId });
@@ -116,10 +117,10 @@ function decodeFileUpload(input: KnowledgeFileUploadInput) {
   if (bytes.byteLength === 0) {
     throw new ApiError("VALIDATION_FAILED", "Knowledge file content is empty.", { fileName: input.fileName });
   }
-  if (bytes.byteLength > MAX_FILE_BYTES) {
-    throw new ApiError("VALIDATION_FAILED", "Knowledge file exceeds the 20MB limit.", {
+  if (bytes.byteLength > KNOWLEDGE_FILE_BYTE_LIMIT) {
+    throw new ApiError("VALIDATION_FAILED", `Knowledge file exceeds the ${KNOWLEDGE_FILE_BYTE_LIMIT / 1024 / 1024}MB limit.`, {
       fileName: input.fileName,
-      maxBytes: MAX_FILE_BYTES,
+      maxBytes: KNOWLEDGE_FILE_BYTE_LIMIT,
       sizeBytes: bytes.byteLength
     });
   }
@@ -198,16 +199,38 @@ async function runFileExtraction(
   });
 }
 
+function prepareKnowledgeEntry(input: CreateKnowledgeEntryInput) {
+  if (input.contentForm === "markdown") return { ...input, sourceChecksum: null };
+  const bytes = decodeFileUpload(input.file);
+  const sourceChecksum = createHash("sha256").update(bytes).digest("hex");
+  if (!/\.(md|txt)$/i.test(input.file.fileName)) return { ...input, bytes, sourceChecksum };
+  if (!isUtf8(bytes)) {
+    throw new ApiError("VALIDATION_FAILED", "文本文件必须使用有效的 UTF-8 编码，请转换编码后重新上传。", {
+      reason: "knowledge-upload-invalid-utf8"
+    });
+  }
+  const contentMarkdown = bytes.toString("utf8");
+  if (contentMarkdown.length > KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT) {
+    throw new ApiError("VALIDATION_FAILED", `正文超过知识库 ${KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT.toLocaleString("en-US")} 字符上限，请精简后重新上传。`, {
+      reason: "knowledge-markdown-too-long", maxCharacters: KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT
+    });
+  }
+  return { contentForm: "markdown" as const, title: input.title, tags: input.tags, contentMarkdown, origin: "uploaded" as const, sourceChecksum };
+}
+
 export async function createKnowledgeEntry(
   db: Database,
   objectStore: ObjectStore,
   extractor: KnowledgeTextExtractor,
   auth: AuthContext,
-  input: CreateKnowledgeEntryInput,
+  rawInput: CreateKnowledgeEntryInput,
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
   const invocation = createUserInvocation(auth);
   requireKnowledgeEdit(auth);
+
+  const input = prepareKnowledgeEntry(rawInput);
+  const sourceChecksum = input.sourceChecksum;
 
   const entryId = randomUUID();
   const revisionId = randomUUID();
@@ -218,6 +241,7 @@ export async function createKnowledgeEntry(
         id: entryId,
         title: input.title,
         contentForm: "markdown",
+        origin: input.origin ?? "authored",
         tags: input.tags,
         sourceType: "human",
         sourceSessionId: null,
@@ -232,6 +256,7 @@ export async function createKnowledgeEntry(
         title: input.title,
         tags: input.tags,
         contentMarkdown: input.contentMarkdown,
+        sourceChecksum,
         fileId: null,
         restoredFromRevisionId: null
       });
@@ -250,7 +275,8 @@ export async function createKnowledgeEntry(
           kind: "knowledge-entry-create",
           action: "create",
           entryId,
-          metadata: { contentForm: "markdown", title: input.title, tagCount: input.tags.length, revisionNumber: 1 }
+          metadata: { contentForm: "markdown", title: input.title, tagCount: input.tags.length, revisionNumber: 1,
+            ...(context.importBatchId ? { importBatchId: context.importBatchId } : {}) }
         },
         context
       );
@@ -261,7 +287,7 @@ export async function createKnowledgeEntry(
     return entry;
   }
 
-  const bytes = decodeFileUpload(input.file);
+  const bytes = input.bytes;
   const stored = await objectStore.put({
     organizationId: auth.organization.id,
     fileName: `knowledge-${randomUUID()}-${input.file.fileName}`,
@@ -276,6 +302,7 @@ export async function createKnowledgeEntry(
       id: entryId,
       title: input.title,
       contentForm: "file",
+      origin: input.origin ?? "uploaded",
       tags: input.tags,
       sourceType: "human",
       sourceSessionId: null,
@@ -323,7 +350,8 @@ export async function createKnowledgeEntry(
           tagCount: input.tags.length,
           revisionNumber: 1,
           fileName: stored.fileName,
-          sizeBytes: stored.fileSizeBytes
+          sizeBytes: stored.fileSizeBytes,
+          ...(context.importBatchId ? { importBatchId: context.importBatchId } : {})
         }
       },
       context
@@ -353,6 +381,7 @@ async function createMarkdownDraftWithSource(
     tags: string[];
     contentMarkdown: string;
     sourceType: KnowledgeSourceType;
+    origin: KnowledgeOrigin;
     sourceSessionId: string | null;
     sourceLogId: string | null;
     sourceReloadRunId: string | null;
@@ -371,6 +400,7 @@ async function createMarkdownDraftWithSource(
       contentForm: "markdown",
       tags: input.tags,
       sourceType: input.sourceType,
+      origin: input.origin,
       sourceSessionId: input.sourceSessionId,
       sourceLogId: input.sourceLogId,
       sourceReloadRunId: input.sourceReloadRunId,
@@ -442,6 +472,7 @@ export async function distillKnowledgeFromLog(
     createUserInvocation(auth),
     {
       ...draft,
+      origin: "distilled",
       sourceType: "human",
       sourceSessionId: null,
       sourceLogId: log.id,
@@ -499,6 +530,7 @@ export async function distillKnowledgeFromReloadRun(
     createUserInvocation(auth),
     {
       ...draft,
+      origin: "distilled",
       sourceType: "human",
       sourceSessionId: null,
       sourceLogId: null,
@@ -570,6 +602,7 @@ export async function createAgentKnowledgeDraft(
       tags: input.tags,
       contentMarkdown,
       sourceType: "agent",
+      origin: "agent-drafted",
       sourceSessionId: input.sessionId,
       sourceLogId,
       sourceReloadRunId,
@@ -652,7 +685,7 @@ export async function updateKnowledgeEntry(
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
   const invocation = createUserInvocation(auth);
-  requireKnowledgeEdit(auth);
+  if (!hasKnowledgeManage(auth)) requireKnowledgeEdit(auth);
 
   let uploadedBytes: Buffer | null = null;
   let storedForExtraction: { file: KnowledgeFileDto; bytes: Buffer } | null = null;
@@ -666,6 +699,7 @@ export async function updateKnowledgeEntry(
 
     if (entry.status === "archived") {
       throw new ApiError("VALIDATION_FAILED", "Archived knowledge entries cannot be edited. Restore the entry first.", {
+        reason: "knowledge-entry-archived",
         entryId,
         status: entry.status
       });
@@ -816,7 +850,7 @@ async function transitionKnowledgeEntry(
       throw new ApiError(
         "VALIDATION_FAILED",
         `Illegal knowledge status transition: ${entry.status} -> ${input.toStatus}.`,
-        { entryId, currentStatus: entry.status, nextStatus: input.toStatus }
+        { reason: "knowledge-illegal-status-transition", entryId, currentStatus: entry.status, nextStatus: input.toStatus }
       );
     }
 
@@ -873,6 +907,67 @@ export async function archiveKnowledgeEntry(
     { fromStatuses: ["published"], toStatus: "archived", kind: "knowledge-entry-archive", action: "archive" },
     context
   );
+}
+
+export async function batchKnowledgeEntries(
+  db: Database,
+  objectStore: ObjectStore,
+  extractor: KnowledgeTextExtractor,
+  auth: AuthContext,
+  invocation: TrustedInvocationContext,
+  input: BatchKnowledgeEntriesInput,
+  context: KnowledgeServiceContext = {}
+) {
+  requireKnowledgeView(auth);
+  const requestId = context.requestId ?? randomUUID();
+  const results: {
+    entryId: string; title: string | null; status: "succeeded" | "refused" | "failed";
+    entry: KnowledgeEntryDto | null; error: { code: string; message: string; reason?: string } | null;
+  }[] = [];
+  for (const entryId of input.entryIds) {
+    let title: string | null = null;
+    try {
+      const current = await getKnowledgeEntry(db, auth, entryId);
+      title = current.title;
+      requireKnowledgeGovern(auth, current);
+      let entry: KnowledgeEntryDto;
+      if (input.action === "publish") {
+        entry = await publishKnowledgeEntry(db, auth, entryId, { ...context, requestId });
+      } else if (input.action === "archive") {
+        entry = await archiveKnowledgeEntry(db, auth, entryId, { ...context, requestId });
+      } else {
+        const tags = input.action === "add_tags"
+          ? [...new Set([...current.tags, ...input.tags])]
+          : current.tags.filter((tag) => !input.tags.includes(tag));
+        if (!knowledgeTagsSchema.safeParse(tags).success) {
+          throw new ApiError("VALIDATION_FAILED", `标签合并后超过每条 ${KNOWLEDGE_TAG_LIMIT} 个标签的上限。`);
+        }
+        entry = await updateKnowledgeEntry(db, objectStore, extractor, auth, entryId, {
+          expectedHeadRevisionNumber: current.headRevisionNumber, tags
+        }, { ...context, requestId });
+      }
+      results.push({ entryId, title: entry.title, status: "succeeded", entry, error: null });
+    } catch (failure) {
+      const { code, message } = serializeApiError(failure, requestId).error;
+      const reason = failure instanceof ApiError && typeof failure.details.reason === "string" ? failure.details.reason : undefined;
+      results.push({ entryId, title, status: code === "FORBIDDEN" || code === "NOT_FOUND" ? "refused" : "failed",
+        entry: null, error: { code, message, ...(reason ? { reason } : {}) } });
+    }
+  }
+  let summaryError: string | null = null;
+  try {
+    await db.transaction(async (tx) => {
+      await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId }, {
+        app: "knowledge", kind: "knowledge-batch", action: input.action, severity: "Medium", projectId: null,
+        targetType: "knowledge-batch", targetId: randomUUID(),
+        metadata: { action: input.action, results: results.map(({ entryId, status, error }) => ({ entryId, status, error })) }
+      });
+    });
+  } catch {
+    // Per-entry writes and their audits have already committed; always return their outcomes.
+    summaryError = "条目结果已保留，批次汇总审计写入失败。请联系管理员，勿重复提交已成功的条目。";
+  }
+  return { results, summaryError };
 }
 
 export async function restoreKnowledgeEntry(
@@ -1139,6 +1234,7 @@ export async function findRelatedKnowledgeForDefinition(
 
 export async function listKnowledgeEntries(db: Queryable, auth: AuthContext, query: ListKnowledgeEntriesQuery = {}) {
   requireKnowledgeView(auth);
+  if (query.governable && !hasKnowledgeManage(auth)) requireKnowledgeEdit(auth);
   return listEntries(db, auth, {
     ...query,
     visibleDraftOwnerUserId: hasKnowledgeManage(auth) ? undefined : auth.user.id
@@ -1152,6 +1248,13 @@ export async function getKnowledgeEntry(db: Queryable, auth: AuthContext, entryI
     throw knowledgeEntryNotFound(entryId);
   }
   return entry;
+}
+
+/** Binding screens retain missing identities, but never expose private entry metadata. */
+export async function getKnowledgeBinding(db: Queryable, auth: AuthContext, entryId: string) {
+  requireKnowledgeView(auth);
+  const entry = await getEntryById(db, auth, entryId);
+  return { entry: entry && canReadEntry(auth, entry) ? entry : null, deleted: !entry };
 }
 
 export async function listKnowledgeRevisions(db: Queryable, auth: AuthContext, entryId: string) {
@@ -1179,6 +1282,7 @@ export async function restoreKnowledgeRevision(
 
     if (entry.status === "archived") {
       throw new ApiError("VALIDATION_FAILED", "Archived knowledge entries cannot be edited. Restore the entry first.", {
+        reason: "knowledge-entry-archived",
         entryId,
         status: entry.status
       });

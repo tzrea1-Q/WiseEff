@@ -46,18 +46,18 @@ describe.skipIf(!available)("submitted feedback attachment deletion over real HT
     const h = await fixture(); let release: () => void = () => undefined; let uploading: Promise<unknown> | undefined;
     try {
       const feedback = (await h.create(1)).body.item, attachment = feedback.attachments[0];
-      const legacy = await h.store.put({ organizationId: owner.organization.id, fileName: "shared.txt", contentType: "text/plain", bytes: Buffer.from("image") });
+      const legacy = await h.store.put({ organizationId: owner.organization.id, fileName: "shared.pdf", contentType: "application/pdf", bytes: Buffer.from("image") });
       await h.db.query("update product_feedback_attachments set storage_key=$2 where id=$1", [attachment.id, legacy.storageKey]);
       let entered!: () => void;
       const started = new Promise<void>((resolve) => { entered = resolve; }), held = new Promise<void>((resolve) => { release = resolve; }), put = h.store.put;
       h.store.put = async (input) => { const stored = await put(input); entered(); await held; return stored; };
       h.setAuth(admin);
-      uploading = h.request<{ item: { id: string; file: { fileName: string; storageKey: string } } }>("/api/v1/knowledge/entries", "POST", { contentForm: "file", title: "Independent file", tags: [], file: { fileName: "shared.txt", contentType: "text/plain", contentBase64: Buffer.from("image").toString("base64") } });
+      uploading = h.request<{ item: { id: string; file: { fileName: string; storageKey: string } } }>("/api/v1/knowledge/entries", "POST", { contentForm: "file", title: "Independent file", tags: [], file: { fileName: "shared.pdf", contentType: "application/pdf", contentBase64: Buffer.from("image").toString("base64") } });
       await started;
       expect((await h.request(`/api/v1/product-feedback/${feedback.id}/attachments/${attachment.id}`, "DELETE")).status).toBe(200);
       release();
       const result = await uploading as { status: number; body: { item: { id: string; file: { fileName: string; storageKey: string } } } };
-      expect(result.status).toBe(201); expect(result.body.item.file.fileName).toBe("shared.txt");
+      expect(result.status).toBe(201); expect(result.body.item.file.fileName).toBe("shared.pdf");
       expect(result.body.item.file.storageKey).not.toBe(legacy.storageKey);
       expect((await h.request(`/api/v1/knowledge/entries/${result.body.item.id}/file/content`)).status).toBe(200);
     } finally { release(); await uploading?.catch(() => undefined); await h.close(); }

@@ -7,10 +7,14 @@ import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { createDefaultKnowledgeTextExtractor, type KnowledgeTextExtractor } from "./extraction";
 import type { KnowledgeEmbeddingClient } from "./indexing/embeddingClient";
+import { importKnowledgeArchive, importKnowledgeDocument, openKnowledgeImport, readKnowledgeImport, completeKnowledgeImport } from "./import";
+import { createUserInvocation } from "../auth/trustedInvocation";
+import { importKnowledgeArchiveSchema, importKnowledgeDocumentSchema, openKnowledgeImportSchema } from "./schemas";
 import {
   addKnowledgeDefinitionReference,
   addKnowledgeParameterReference,
   archiveKnowledgeEntry,
+  batchKnowledgeEntries,
   createKnowledgeEntry,
   distillKnowledgeFromLog,
   distillKnowledgeFromReloadRun,
@@ -18,6 +22,7 @@ import {
   findRelatedKnowledgeForDefinition,
   findRelatedKnowledgeForSpec,
   getKnowledgeEntry,
+  getKnowledgeBinding,
   getKnowledgeFileContent,
   getKnowledgeIndexHealth,
   hardDeleteKnowledgeEntry,
@@ -36,6 +41,7 @@ import {
 } from "./service";
 import {
   createKnowledgeEntryBodySchema,
+  batchKnowledgeEntriesBodySchema,
   distillKnowledgeFromLogBodySchema,
   distillKnowledgeFromReloadRunBodySchema,
   listKnowledgeEntriesQuerySchema,
@@ -46,6 +52,8 @@ import {
   searchKnowledgeQuerySchema,
   updateKnowledgeEntryBodySchema
 } from "./schemas";
+
+const importBatchParamsSchema = z.object({ batchId: z.string().uuid() });
 
 const paramsWithEntryIdSchema = z.object({
   entryId: z.string().uuid()
@@ -107,6 +115,46 @@ export function registerKnowledgeRoutes(
 ) {
   const extractor = options.textExtractor ?? createDefaultKnowledgeTextExtractor();
   const embeddingClient = options.knowledgeEmbeddingClient;
+
+  router.post("/api/v1/knowledge/entries/batch", async (request) => {
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(batchKnowledgeEntriesBodySchema, request.body);
+    return { status: 200, body: await batchKnowledgeEntries(requireDb(options.db), requireObjectStore(options.objectStore),
+      extractor, auth, createUserInvocation(auth), body, { requestId: request.requestId }) };
+  });
+
+  router.post("/api/v1/knowledge/imports", async (request) => {
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(openKnowledgeImportSchema, request.body);
+    return { status: 201, body: { item: await openKnowledgeImport(requireDb(options.db), auth, body.tags) } };
+  });
+  router.post("/api/v1/knowledge/imports/:batchId/documents", async (request) => {
+    const auth = await options.getCurrentAuthContext(request);
+    const { batchId } = parseWithSchema(importBatchParamsSchema, request.params);
+    const body = parseWithSchema(importKnowledgeDocumentSchema, request.body);
+    const item = await importKnowledgeDocument(requireDb(options.db), requireObjectStore(options.objectStore), extractor,
+      auth, batchId, body, { requestId: request.requestId });
+    return { status: 200, body: { item } };
+  });
+  router.post("/api/v1/knowledge/imports/:batchId/archive", async (request) => {
+    const auth = await options.getCurrentAuthContext(request);
+    const { batchId } = parseWithSchema(importBatchParamsSchema, request.params);
+    const body = parseWithSchema(importKnowledgeArchiveSchema, request.body);
+    const item = await importKnowledgeArchive(requireDb(options.db), requireObjectStore(options.objectStore), extractor,
+      auth, batchId, body, { requestId: request.requestId });
+    return { status: 200, body: { item } };
+  });
+  router.get("/api/v1/knowledge/imports/:batchId", async (request) => {
+    const auth = await options.getCurrentAuthContext(request);
+    const { batchId } = parseWithSchema(importBatchParamsSchema, request.params);
+    return { status: 200, body: { item: await readKnowledgeImport(requireDb(options.db), auth, batchId) } };
+  });
+  router.post("/api/v1/knowledge/imports/:batchId/complete", async (request) => {
+    const auth = await options.getCurrentAuthContext(request);
+    const { batchId } = parseWithSchema(importBatchParamsSchema, request.params);
+    parseWithSchema(z.object({}).strict(), request.body ?? {});
+    return { status: 200, body: { item: await completeKnowledgeImport(requireDb(options.db), auth, createUserInvocation(auth), batchId, { requestId: request.requestId }) } };
+  });
 
   router.post("/api/v1/knowledge/entries", async (request) => {
     const db = requireDb(options.db);
@@ -204,6 +252,13 @@ export function registerKnowledgeRoutes(
     await retryKnowledgeEntryIndex(db, auth, params.entryId, { requestId: request.requestId });
 
     return { status: 200, body: { enqueued: true } };
+  });
+
+  router.get("/api/v1/knowledge/entries/:entryId/binding", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithEntryIdSchema, request.params);
+    return { status: 200, body: await getKnowledgeBinding(db, auth, params.entryId) };
   });
 
   router.get("/api/v1/knowledge/entries/:entryId", async (request) => {

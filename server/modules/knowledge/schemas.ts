@@ -1,8 +1,17 @@
 import { z } from "zod";
 
-import { knowledgeContentForms, knowledgeSourceTypes, knowledgeStatuses } from "./types";
+import { knowledgeContentForms, knowledgeOrigins, knowledgeSourceTypes, knowledgeStatuses } from "./types";
 
 const nonEmptyString = z.string().min(1);
+export const KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT = 200_000;
+export const KNOWLEDGE_TITLE_CHARACTER_LIMIT = 200;
+export const KNOWLEDGE_TAG_CHARACTER_LIMIT = 60;
+export const KNOWLEDGE_TAG_LIMIT = 20;
+export const KNOWLEDGE_BATCH_ENTRY_LIMIT = 200;
+export const KNOWLEDGE_IMPORT_DOCUMENT_LIMIT = 200;
+export const KNOWLEDGE_FILE_BYTE_LIMIT = 20 * 1024 * 1024;
+export const KNOWLEDGE_IMPORT_BYTE_LIMIT = 100 * 1024 * 1024;
+export const KNOWLEDGE_IMPORT_FOLDER_DEPTH_LIMIT = 20;
 const base64String = nonEmptyString.refine(
   (value) => {
     try {
@@ -14,8 +23,19 @@ const base64String = nonEmptyString.refine(
   { message: "Expected valid base64 content." }
 );
 
-export const knowledgeTagSchema = z.string().min(1).max(60);
-export const knowledgeTagsSchema = z.array(knowledgeTagSchema).max(20).default([]);
+export const knowledgeTagSchema = z.string().min(1).max(KNOWLEDGE_TAG_CHARACTER_LIMIT);
+export const knowledgeTagsSchema = z.array(knowledgeTagSchema).max(KNOWLEDGE_TAG_LIMIT).default([]);
+
+const batchEntryIds = z.array(z.string().uuid()).min(1).max(KNOWLEDGE_BATCH_ENTRY_LIMIT).refine(
+  (ids) => new Set(ids).size === ids.length, "Entry IDs must be unique."
+);
+export const batchKnowledgeEntriesBodySchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("add_tags"), entryIds: batchEntryIds, tags: z.array(knowledgeTagSchema).min(1).max(KNOWLEDGE_TAG_LIMIT) }).strict(),
+  z.object({ action: z.literal("remove_tags"), entryIds: batchEntryIds, tags: z.array(knowledgeTagSchema).min(1).max(KNOWLEDGE_TAG_LIMIT) }).strict(),
+  z.object({ action: z.literal("publish"), entryIds: batchEntryIds }).strict(),
+  z.object({ action: z.literal("archive"), entryIds: batchEntryIds }).strict()
+]);
+export type BatchKnowledgeEntriesInput = z.infer<typeof batchKnowledgeEntriesBodySchema>;
 
 export const knowledgeFileUploadSchema = z.object({
   fileName: nonEmptyString.max(255),
@@ -29,16 +49,28 @@ export const knowledgeFileUploadSchema = z.object({
   contentBase64: base64String
 });
 
+export const openKnowledgeImportSchema = z.object({ tags: knowledgeTagsSchema }).strict();
+export const importKnowledgeArchiveSchema = z.object({
+  file: z.object({ fileName: nonEmptyString.max(255).regex(/\.zip$/i), contentType: z.string().max(255), contentBase64: base64String })
+}).strict();
+export const importKnowledgeDocumentSchema = z.object({
+  relativePath: z.string().min(1).max(1024).refine((path) =>
+    !/^[a-z]:/i.test(path) && !path.includes("\\") && !/[\u0000-\u001f]/.test(path) && path.split("/").every((part) => part && part !== "." && part !== ".."),
+  "Expected a relative document path."),
+  file: z.object({ fileName: nonEmptyString.max(255), contentType: z.string().max(255), contentBase64: base64String })
+}).strict();
+
 export const createKnowledgeEntryBodySchema = z.discriminatedUnion("contentForm", [
   z.object({
     contentForm: z.literal("markdown"),
-    title: nonEmptyString.max(200),
+    origin: z.enum(["authored", "uploaded"]).optional(),
+    title: nonEmptyString.max(KNOWLEDGE_TITLE_CHARACTER_LIMIT),
     tags: knowledgeTagsSchema,
-    contentMarkdown: z.string().max(200_000).default("")
+    contentMarkdown: z.string().max(KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT).default("")
   }),
   z.object({
     contentForm: z.literal("file"),
-    title: nonEmptyString.max(200),
+    title: nonEmptyString.max(KNOWLEDGE_TITLE_CHARACTER_LIMIT),
     tags: knowledgeTagsSchema,
     file: knowledgeFileUploadSchema
   })
@@ -47,9 +79,9 @@ export const createKnowledgeEntryBodySchema = z.discriminatedUnion("contentForm"
 export const updateKnowledgeEntryBodySchema = z
   .object({
     expectedHeadRevisionNumber: z.number().int().min(0),
-    title: nonEmptyString.max(200).optional(),
+    title: nonEmptyString.max(KNOWLEDGE_TITLE_CHARACTER_LIMIT).optional(),
     tags: knowledgeTagsSchema.optional(),
-    contentMarkdown: z.string().max(200_000).optional(),
+    contentMarkdown: z.string().max(KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT).optional(),
     file: knowledgeFileUploadSchema.optional()
   })
   .refine(
@@ -63,12 +95,15 @@ export const restoreKnowledgeRevisionBodySchema = z.object({
 });
 
 export const listKnowledgeEntriesQuerySchema = z.object({
+  governable: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
+  origin: z.enum(knowledgeOrigins).optional(),
   status: z.enum(knowledgeStatuses).optional(),
   contentForm: z.enum(knowledgeContentForms).optional(),
   sourceType: z.enum(knowledgeSourceTypes).optional(),
   tag: z.string().optional(),
   q: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(200).optional()
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional()
 });
 
 export const distillKnowledgeFromLogBodySchema = z.object({

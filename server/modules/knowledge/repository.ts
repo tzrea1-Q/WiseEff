@@ -2,6 +2,7 @@ import type { AuthContext } from "../auth/types";
 import { isRootDatabase, type Queryable } from "../../shared/database/client";
 import { readCatalogDefinitionForKnowledge } from "../parameter-catalog-api/productionWire";
 import { loadParameterReferencesByEntryIds } from "./parameterReferences";
+import { hasKnowledgeManage } from "./policy";
 import type {
   InsertKnowledgeEntryInput,
   InsertKnowledgeFileInput,
@@ -16,6 +17,7 @@ import type {
 } from "./types";
 
 type KnowledgeEntryRow = {
+  origin: KnowledgeEntryDto["origin"];
   id: string;
   organization_id: string;
   title: string;
@@ -140,6 +142,7 @@ function toEntryDto(
     organizationId: row.organization_id,
     title: row.title,
     contentForm: row.content_form,
+    origin: row.origin,
     status: row.status,
     tags: row.tags ?? [],
     sourceType: row.source_type,
@@ -206,9 +209,9 @@ export async function insertEntry(db: Queryable, auth: AuthContext, input: Inser
   await db.query(
     `
     insert into knowledge_entries (
-      id, organization_id, title, content_form, tags, source_type, source_session_id, source_log_id, source_reload_run_id, created_by_user_id, search_text
+      id, organization_id, title, content_form, tags, source_type, source_session_id, source_log_id, source_reload_run_id, created_by_user_id, search_text, origin
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     `,
     [
       input.id,
@@ -221,7 +224,8 @@ export async function insertEntry(db: Queryable, auth: AuthContext, input: Inser
       input.sourceLogId,
       input.sourceReloadRunId,
       auth.user.id,
-      input.searchText
+      input.searchText,
+      input.origin
     ]
   );
 }
@@ -234,9 +238,12 @@ export async function insertRevision(
   const result = await db.query<KnowledgeRevisionRow>(
     `
     insert into knowledge_revisions (
-      id, entry_id, organization_id, revision_number, title, tags, content_markdown, file_id, author_user_id, restored_from_revision_id
+      id, entry_id, organization_id, revision_number, title, tags, content_markdown, file_id, author_user_id, restored_from_revision_id, source_checksum
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+      coalesce($11, (select source_checksum from knowledge_revisions
+        where entry_id = $2 and organization_id = $3 and content_markdown = $7 and source_checksum is not null
+        order by revision_number desc limit 1)))
     returning *
     `,
     [
@@ -249,7 +256,8 @@ export async function insertRevision(
       input.contentMarkdown,
       input.fileId,
       auth.user.id,
-      input.restoredFromRevisionId
+      input.restoredFromRevisionId,
+      input.sourceChecksum ?? null
     ]
   );
 
@@ -415,6 +423,19 @@ export async function listEntries(
   const values: unknown[] = [auth.organization.id];
   const where = ["organization_id = $1"];
 
+  if (query.governable) {
+    where.push("status <> 'archived'");
+    if (!hasKnowledgeManage(auth)) {
+      values.push(auth.user.id);
+      where.push(`created_by_user_id = $${values.length}`);
+    }
+  }
+
+  if (query.origin) {
+    values.push(query.origin);
+    where.push(`origin = $${values.length}`);
+  }
+
   if (query.status) {
     values.push(query.status);
     where.push(`status = $${values.length}`);
@@ -446,13 +467,14 @@ export async function listEntries(
   }
 
   values.push(query.limit ?? 100);
+  values.push(query.offset ?? 0);
   const result = await db.query<KnowledgeEntryRow>(
     `
     select *
     from knowledge_entries
     where ${where.join("\n      and ")}
     order by updated_at desc, id desc
-    limit $${values.length}
+    limit $${values.length - 1} offset $${values.length}
     `,
     values
   );

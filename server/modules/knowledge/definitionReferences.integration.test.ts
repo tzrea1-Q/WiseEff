@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -138,6 +138,49 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     }
     return entryId;
   }
+
+  it("returns only published definition-related knowledge and requires knowledge:view", async () => {
+    const published = await createEntry(auth, "Published debugging knowledge");
+    const draft = await createEntry(auth, "Draft debugging knowledge", false);
+    const archived = await createEntry(auth, "Archived debugging knowledge");
+    for (const entryId of [published, draft, archived]) {
+      const added = await request(auth, "PUT", `/api/v1/knowledge/entries/${entryId}/definition-references/${activeDefinitionId}`);
+      expect(added.status).toBe(200);
+    }
+    expect((await request(auth, "POST", `/api/v1/knowledge/entries/${archived}/archive`)).status).toBe(200);
+    const path = `/api/v1/knowledge/related-to-definition?definitionId=${activeDefinitionId}`;
+    const related = await request(auth, "GET", path);
+    expect(related.status).toBe(200);
+    const ids = related.body.items.map((item: { entryId: string }) => item.entryId);
+    expect(ids).toContain(published);
+    expect(ids).not.toContain(draft);
+    expect(ids).not.toContain(archived);
+    expect((await request({ ...auth, permissions: ["parameter:view"] }, "GET", path)).status).toBe(403);
+  });
+
+  it("offers only governable non-archived entries and enforces governance on the shared reference API", async () => {
+    const owner = { ...auth, permissions: auth.permissions.filter((p) => p !== "knowledge:manage") };
+    const other = { ...owner, user: { ...owner.user, id: REFERENCE_CREATOR } };
+    const own = await createEntry(owner, "k1333 own draft", false);
+    const foreign = await createEntry(other, "k1333 other published");
+    const archived = await createEntry(owner, "k1333 archived");
+    const outside = await createEntry(authB, "k1333 other organization");
+    expect((await request(owner, "POST", `/api/v1/knowledge/entries/${archived}/archive`)).status).toBe(200);
+    const path = "/api/v1/knowledge/entries?governable=true&q=k1333";
+    expect((await request(owner, "GET", path)).body.items.map((e: { id: string }) => e.id)).toEqual([own]);
+    const managerIds = (await request(auth, "GET", path)).body.items.map((e: { id: string }) => e.id);
+    expect(managerIds.sort()).toEqual([own, foreign].sort());
+    expect((await request({ ...owner, permissions: ["knowledge:view"] }, "GET", path)).status).toBe(403);
+    const link = (id: string) => `/api/v1/knowledge/entries/${id}/definition-references/${activeDefinitionId}`;
+    expect((await request(owner, "PUT", link(foreign))).status).toBe(403);
+    expect((await request(owner, "PUT", link(archived))).status).toBe(400);
+    expect((await request(owner, "PUT", link(outside))).status).toBe(404);
+    expect((await request(owner, "PUT", link(own))).status).toBe(200);
+    expect((await request(auth, "PUT", link(foreign))).status).toBe(200);
+    const related = await request(owner, "GET", `/api/v1/knowledge/related-to-definition?definitionId=${activeDefinitionId}`);
+    expect(related.body.items.map((e: { entryId: string }) => e.entryId)).not.toContain(own);
+    expect(related.body.items.map((e: { entryId: string }) => e.entryId)).toContain(foreign);
+  });
 
   it("writes canonical-only identity, rejects new legacy writes, and audits one idempotent add", async () => {
     const entryId = await createEntry(auth, "Canonical identity");
@@ -513,12 +556,12 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
   });
 
   it("deletes a human file draft and its revisions once under concurrent requests, retaining shared files, definitions and audit", async () => {
-    const bytes = Buffer.from("Knowledge shared original file", "utf8");
+    const bytes = await readFile(new URL("./testing/fixtures/sample.pdf", import.meta.url));
     const input = {
       contentForm: "file",
       title: "Direct draft deletion",
       tags: [],
-      file: { fileName: "shared.txt", contentType: "text/plain", contentBase64: bytes.toString("base64") }
+      file: { fileName: "shared.pdf", contentType: "application/pdf", contentBase64: bytes.toString("base64") }
     };
     const created = await request(auth, "POST", "/api/v1/knowledge/entries", input);
     expect(created.status).toBe(201);

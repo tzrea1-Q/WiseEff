@@ -1,12 +1,21 @@
-import type { KnowledgeExtractionStatus, KnowledgeStatus } from "@/domain/knowledge/types";
-import { knowledgeExtractionStatusLabels, knowledgeStatusLabels } from "@/domain/knowledge/types";
+import type { KnowledgeExtractionStatus, KnowledgeOrigin, KnowledgeStatus } from "@/domain/knowledge/types";
+import { knowledgeExtractionStatusLabels, knowledgeOriginLabels, knowledgeStatusLabels } from "@/domain/knowledge/types";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+
+export function KnowledgeUnsearchableBadge() {
+  return <Badge className="bg-[var(--warning-soft)] text-[var(--warning)]">不可检索</Badge>;
+}
 
 const statusBadgeClasses: Record<KnowledgeStatus, string> = {
   draft: "bg-amber-100 text-amber-950",
   published: "bg-emerald-100 text-emerald-900",
   archived: "bg-slate-200 text-slate-700"
 };
+
+export function KnowledgeOriginBadge({ origin }: { origin: KnowledgeOrigin }) {
+  return <span className="inline-flex h-5 shrink-0 items-center rounded-md bg-muted px-1.5 text-[11px] text-muted-foreground" data-origin={origin}>{knowledgeOriginLabels[origin]}</span>;
+}
 
 export function KnowledgeStatusBadge({ status }: { status: KnowledgeStatus }) {
   return (

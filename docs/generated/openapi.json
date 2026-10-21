@@ -15234,6 +15234,54 @@
         "tags": [
           "knowledge"
         ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size from 1 to 200; defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "description": "Nonnegative number of entries to skip; defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "origin",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "authored",
+                "uploaded",
+                "distilled",
+                "agent-drafted",
+                "imported"
+              ]
+            }
+          },
+          {
+            "name": "governable",
+            "in": "query",
+            "required": false,
+            "description": "Only non-archived entries owned by the caller, or any owner for knowledge:manage. Requires knowledge:edit or knowledge:manage.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -15249,6 +15297,294 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/imports": {
+      "post": {
+        "operationId": "knowledge.openImport",
+        "summary": "Open an organization-scoped, importer-owned batch with fixed tags (knowledge:edit)",
+        "tags": [
+          "knowledge"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenKnowledgeImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenKnowledgeImportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/entries/batch": {
+      "post": {
+        "operationId": "knowledge.batchEntries",
+        "summary": "Tag, publish or archive up to 200 entries through individually authorized audited writes; return every outcome",
+        "tags": [
+          "knowledge"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchKnowledgeEntriesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchKnowledgeEntriesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/imports/{batchId}/documents": {
+      "post": {
+        "operationId": "knowledge.importDocument",
+        "summary": "Import one document through the existing upload path; enforce 200 documents / 100 MB per batch and 20 MB per file; skip readable SHA-256 duplicates",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportKnowledgeDocumentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportKnowledgeDocumentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/imports/{batchId}/archive": {
+      "post": {
+        "operationId": "knowledge.importArchive",
+        "summary": "Validate a bounded ZIP before importing members through the shared document path; folder names become tags; OS junk is ignored",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportKnowledgeArchiveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportKnowledgeArchiveResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/imports/{batchId}": {
+      "get": {
+        "operationId": "knowledge.getImport",
+        "summary": "Read the importer's persisted document outcomes and server-computed totals",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeImportReportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/imports/{batchId}/complete": {
+      "post": {
+        "operationId": "knowledge.completeImport",
+        "summary": "Complete a batch once and audit its server-recorded outcome counts (knowledge:edit)",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteKnowledgeImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeImportReportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -15929,6 +16265,46 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/entries/{entryId}/binding": {
+      "get": {
+        "operationId": "knowledge.getBinding",
+        "summary": "Read a knowledge binding, retaining deleted and unavailable identities",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "entryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBindingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -57625,10 +58001,1083 @@
       },
       "KnowledgeEntryResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "contentForm": {
+                "type": "string",
+                "enum": [
+                  "markdown",
+                  "file"
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "draft",
+                  "published",
+                  "archived"
+                ]
+              },
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "authored",
+                  "uploaded",
+                  "distilled",
+                  "agent-drafted",
+                  "imported"
+                ]
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "sourceType": {
+                "type": "string",
+                "enum": [
+                  "human",
+                  "agent"
+                ]
+              },
+              "sourceSessionId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sourceLogId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sourceLogDeleted": {
+                "type": "boolean"
+              },
+              "sourceReloadRunId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdByUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "headRevisionId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "headRevisionNumber": {
+                "type": "number"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "publishedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "archivedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "contentMarkdown": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "file": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "entryId": {
+                    "type": "string"
+                  },
+                  "organizationId": {
+                    "type": "string"
+                  },
+                  "storageKey": {
+                    "type": "string"
+                  },
+                  "fileName": {
+                    "type": "string"
+                  },
+                  "contentType": {
+                    "type": "string"
+                  },
+                  "sizeBytes": {
+                    "type": "number"
+                  },
+                  "checksum": {
+                    "type": "string"
+                  },
+                  "extractionStatus": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "succeeded",
+                      "failed"
+                    ]
+                  },
+                  "extractionError": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "entryId",
+                  "organizationId",
+                  "storageKey",
+                  "fileName",
+                  "contentType",
+                  "sizeBytes",
+                  "checksum",
+                  "extractionStatus",
+                  "extractionError",
+                  "createdAt",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              },
+              "parameterReferences": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "organizationId",
+              "title",
+              "contentForm",
+              "status",
+              "origin",
+              "tags",
+              "sourceType",
+              "sourceSessionId",
+              "sourceLogId",
+              "sourceReloadRunId",
+              "createdByUserId",
+              "headRevisionId",
+              "headRevisionNumber",
+              "createdAt",
+              "updatedAt",
+              "publishedAt",
+              "archivedAt",
+              "contentMarkdown",
+              "file",
+              "parameterReferences"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "KnowledgeEntryResponse"
+      },
+      "OpenKnowledgeImportRequest": {
+        "type": "object",
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false,
+        "x-wiseeff-schema": "OpenKnowledgeImportRequest"
+      },
+      "OpenKnowledgeImportResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "OpenKnowledgeImportResponse"
+      },
+      "BatchKnowledgeEntriesRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "BatchKnowledgeEntriesRequest"
+      },
+      "BatchKnowledgeEntriesResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "entryId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "succeeded",
+                    "refused",
+                    "failed"
+                  ]
+                },
+                "entry": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "contentForm": {
+                      "type": "string",
+                      "enum": [
+                        "markdown",
+                        "file"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "published",
+                        "archived"
+                      ]
+                    },
+                    "origin": {
+                      "type": "string",
+                      "enum": [
+                        "authored",
+                        "uploaded",
+                        "distilled",
+                        "agent-drafted",
+                        "imported"
+                      ]
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "sourceType": {
+                      "type": "string",
+                      "enum": [
+                        "human",
+                        "agent"
+                      ]
+                    },
+                    "sourceSessionId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "sourceLogId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "sourceLogDeleted": {
+                      "type": "boolean"
+                    },
+                    "sourceReloadRunId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "createdByUserId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "headRevisionId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "headRevisionNumber": {
+                      "type": "number"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "publishedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "archivedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "contentMarkdown": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "file": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "entryId": {
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "type": "string"
+                        },
+                        "storageKey": {
+                          "type": "string"
+                        },
+                        "fileName": {
+                          "type": "string"
+                        },
+                        "contentType": {
+                          "type": "string"
+                        },
+                        "sizeBytes": {
+                          "type": "number"
+                        },
+                        "checksum": {
+                          "type": "string"
+                        },
+                        "extractionStatus": {
+                          "type": "string",
+                          "enum": [
+                            "pending",
+                            "succeeded",
+                            "failed"
+                          ]
+                        },
+                        "extractionError": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "entryId",
+                        "organizationId",
+                        "storageKey",
+                        "fileName",
+                        "contentType",
+                        "sizeBytes",
+                        "checksum",
+                        "extractionStatus",
+                        "extractionError",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "parameterReferences": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "title",
+                    "contentForm",
+                    "status",
+                    "origin",
+                    "tags",
+                    "sourceType",
+                    "sourceSessionId",
+                    "sourceLogId",
+                    "sourceReloadRunId",
+                    "createdByUserId",
+                    "headRevisionId",
+                    "headRevisionNumber",
+                    "createdAt",
+                    "updatedAt",
+                    "publishedAt",
+                    "archivedAt",
+                    "contentMarkdown",
+                    "file",
+                    "parameterReferences"
+                  ],
+                  "additionalProperties": false
+                },
+                "error": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "entryId",
+                "title",
+                "status",
+                "entry",
+                "error"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "summaryError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "results",
+          "summaryError"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "BatchKnowledgeEntriesResponse"
+      },
+      "ImportKnowledgeDocumentRequest": {
+        "type": "object",
+        "properties": {
+          "relativePath": {
+            "type": "string"
+          },
+          "file": {
+            "type": "object",
+            "properties": {
+              "fileName": {
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              },
+              "contentBase64": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "fileName",
+              "contentType",
+              "contentBase64"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "relativePath",
+          "file"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ImportKnowledgeDocumentRequest"
+      },
+      "ImportKnowledgeDocumentResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "relativePath": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "created",
+                  "duplicate_skipped",
+                  "unsupported_skipped",
+                  "extraction_failed",
+                  "rejected"
+                ]
+              },
+              "entryId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "relativePath",
+              "status",
+              "entryId",
+              "error"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ImportKnowledgeDocumentResponse"
+      },
+      "ImportKnowledgeArchiveRequest": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "object",
+            "properties": {
+              "fileName": {
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              },
+              "contentBase64": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "fileName",
+              "contentType",
+              "contentBase64"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ImportKnowledgeArchiveRequest"
+      },
+      "ImportKnowledgeArchiveResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "outcomes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "relativePath": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "created",
+                        "duplicate_skipped",
+                        "unsupported_skipped",
+                        "extraction_failed",
+                        "rejected"
+                      ]
+                    },
+                    "entryId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "error": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "relativePath",
+                    "status",
+                    "entryId",
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "outcomes"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ImportKnowledgeArchiveResponse"
+      },
+      "KnowledgeImportReportResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "completed": {
+                "type": "boolean"
+              },
+              "documentCount": {
+                "type": "number"
+              },
+              "totalBytes": {
+                "type": "number"
+              },
+              "counts": {
+                "type": "object",
+                "properties": {
+                  "created": {
+                    "type": "number"
+                  },
+                  "duplicate_skipped": {
+                    "type": "number"
+                  },
+                  "unsupported_skipped": {
+                    "type": "number"
+                  },
+                  "extraction_failed": {
+                    "type": "number"
+                  },
+                  "rejected": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "created",
+                  "duplicate_skipped",
+                  "unsupported_skipped",
+                  "extraction_failed",
+                  "rejected"
+                ],
+                "additionalProperties": false
+              },
+              "outcomes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "relativePath": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "created",
+                        "duplicate_skipped",
+                        "unsupported_skipped",
+                        "extraction_failed",
+                        "rejected"
+                      ]
+                    },
+                    "entryId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "error": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "relativePath",
+                    "status",
+                    "entryId",
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "tags",
+              "completed",
+              "documentCount",
+              "totalBytes",
+              "counts",
+              "outcomes"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "KnowledgeImportReportResponse"
+      },
+      "CompleteKnowledgeImportRequest": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CompleteKnowledgeImportRequest"
       },
       "KnowledgeEntryListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "organizationId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "contentForm": {
+                  "type": "string",
+                  "enum": [
+                    "markdown",
+                    "file"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "draft",
+                    "published",
+                    "archived"
+                  ]
+                },
+                "origin": {
+                  "type": "string",
+                  "enum": [
+                    "authored",
+                    "uploaded",
+                    "distilled",
+                    "agent-drafted",
+                    "imported"
+                  ]
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "sourceType": {
+                  "type": "string",
+                  "enum": [
+                    "human",
+                    "agent"
+                  ]
+                },
+                "sourceSessionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sourceLogId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sourceLogDeleted": {
+                  "type": "boolean"
+                },
+                "sourceReloadRunId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdByUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "headRevisionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "headRevisionNumber": {
+                  "type": "number"
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "publishedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "archivedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "contentMarkdown": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "file": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "entryId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "storageKey": {
+                      "type": "string"
+                    },
+                    "fileName": {
+                      "type": "string"
+                    },
+                    "contentType": {
+                      "type": "string"
+                    },
+                    "sizeBytes": {
+                      "type": "number"
+                    },
+                    "checksum": {
+                      "type": "string"
+                    },
+                    "extractionStatus": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "succeeded",
+                        "failed"
+                      ]
+                    },
+                    "extractionError": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "entryId",
+                    "organizationId",
+                    "storageKey",
+                    "fileName",
+                    "contentType",
+                    "sizeBytes",
+                    "checksum",
+                    "extractionStatus",
+                    "extractionError",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                },
+                "parameterReferences": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "organizationId",
+                "title",
+                "contentForm",
+                "status",
+                "origin",
+                "tags",
+                "sourceType",
+                "sourceSessionId",
+                "sourceLogId",
+                "sourceReloadRunId",
+                "createdByUserId",
+                "headRevisionId",
+                "headRevisionNumber",
+                "createdAt",
+                "updatedAt",
+                "publishedAt",
+                "archivedAt",
+                "contentMarkdown",
+                "file",
+                "parameterReferences"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "KnowledgeEntryListResponse"
       },
       "DistillKnowledgeFromLogRequest": {
@@ -57659,8 +59108,282 @@
         "type": "object",
         "x-wiseeff-schema": "KnowledgeIndexRetryResponse"
       },
+      "KnowledgeBindingResponse": {
+        "type": "object",
+        "properties": {
+          "entry": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "contentForm": {
+                "type": "string",
+                "enum": [
+                  "markdown",
+                  "file"
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "draft",
+                  "published",
+                  "archived"
+                ]
+              },
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "authored",
+                  "uploaded",
+                  "distilled",
+                  "agent-drafted",
+                  "imported"
+                ]
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "sourceType": {
+                "type": "string",
+                "enum": [
+                  "human",
+                  "agent"
+                ]
+              },
+              "sourceSessionId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sourceLogId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sourceLogDeleted": {
+                "type": "boolean"
+              },
+              "sourceReloadRunId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdByUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "headRevisionId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "headRevisionNumber": {
+                "type": "number"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "publishedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "archivedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "contentMarkdown": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "file": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "entryId": {
+                    "type": "string"
+                  },
+                  "organizationId": {
+                    "type": "string"
+                  },
+                  "storageKey": {
+                    "type": "string"
+                  },
+                  "fileName": {
+                    "type": "string"
+                  },
+                  "contentType": {
+                    "type": "string"
+                  },
+                  "sizeBytes": {
+                    "type": "number"
+                  },
+                  "checksum": {
+                    "type": "string"
+                  },
+                  "extractionStatus": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "succeeded",
+                      "failed"
+                    ]
+                  },
+                  "extractionError": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "entryId",
+                  "organizationId",
+                  "storageKey",
+                  "fileName",
+                  "contentType",
+                  "sizeBytes",
+                  "checksum",
+                  "extractionStatus",
+                  "extractionError",
+                  "createdAt",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              },
+              "parameterReferences": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "organizationId",
+              "title",
+              "contentForm",
+              "status",
+              "origin",
+              "tags",
+              "sourceType",
+              "sourceSessionId",
+              "sourceLogId",
+              "sourceReloadRunId",
+              "createdByUserId",
+              "headRevisionId",
+              "headRevisionNumber",
+              "createdAt",
+              "updatedAt",
+              "publishedAt",
+              "archivedAt",
+              "contentMarkdown",
+              "file",
+              "parameterReferences"
+            ],
+            "additionalProperties": false
+          },
+          "deleted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "entry",
+          "deleted"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "KnowledgeBindingResponse"
+      },
       "UpdateKnowledgeEntryRequest": {
         "type": "object",
+        "properties": {
+          "expectedHeadRevisionNumber": {
+            "type": "number"
+          },
+          "title": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "contentMarkdown": {
+            "type": "string"
+          },
+          "file": {
+            "type": "object",
+            "properties": {
+              "fileName": {
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string",
+                "enum": [
+                  "application/pdf",
+                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                  "application/msword",
+                  "text/plain",
+                  "text/markdown"
+                ]
+              },
+              "contentBase64": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "fileName",
+              "contentType",
+              "contentBase64"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "expectedHeadRevisionNumber"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "UpdateKnowledgeEntryRequest"
       },
       "KnowledgeDeleteResponse": {
