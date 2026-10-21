@@ -112,6 +112,9 @@ describe.skipIf(!databaseAvailable)("parameter file candidate activation", () =>
       bytes: Buffer.from(v2, "utf8")
     });
     expect(candidate.status).toBe("ready");
+    expect(candidate.fileName).toBe(fileName);
+    expect(candidate.storageKey).not.toBe(`${auth.organization.id}/${candidate.checksum}-${fileName}`);
+    expect((await objectStore.get(candidate.storageKey!)).toString()).toBe(v2);
 
     await expect(
       activateCandidate(
@@ -316,7 +319,7 @@ describe.skipIf(!databaseAvailable)("parameter file candidate activation", () =>
         title: "Viewer",
         isActive: true
       },
-      roles: [{ projectId: null, roleId: "viewer" }],
+      roles: [{ projectId: null, roleId: "guest" }],
       permissions: ["parameter:view"]
     });
     await db!.query(

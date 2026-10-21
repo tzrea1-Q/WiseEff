@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { cleanupFeedbackAttachmentUploads } from "./attachmentUploads";
+import { deleteProductFeedbackAttachment } from "./attachmentDeletion";
 
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
@@ -155,6 +156,12 @@ export function registerProductFeedbackRoutes(
   router.post("/api/v1/product-feedback/mine/attachment-cleanup", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     return { status: 200, body: await cleanupFeedbackAttachmentUploads(requireDb(options.db), requireObjectStore(options.objectStore), auth) };
+  });
+
+  router.delete("/api/v1/product-feedback/:id/attachments/:attachmentId", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const params = parseWithSchema(z.object({ id: z.string().uuid(), attachmentId: z.string().uuid() }), request.params);
+    return { status: 200, body: await deleteProductFeedbackAttachment(requireDb(options.db), requireObjectStore(options.objectStore), auth, params.id, params.attachmentId, request.requestId) };
   });
 
   router.get("/api/v1/product-feedback/mine/:id", async (request) => {

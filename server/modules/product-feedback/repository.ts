@@ -48,6 +48,9 @@ export type ProductFeedbackRow = {
 };
 
 type ProductFeedbackAttachmentRow = {
+  deleted_at?: string | Date | null;
+  cleanup_pending?: boolean;
+  can_delete?: boolean;
   message_id?: string | null;
   uploaded_by_user_id?: string | null;
   id: string;
@@ -97,6 +100,9 @@ function dateTimeToIso(value: string | Date) {
 
 function toAttachmentDto(row: ProductFeedbackAttachmentRow): ProductFeedbackAttachmentDto {
   return {
+    deletedAt: row.deleted_at ? dateTimeToIso(row.deleted_at) : null,
+    cleanupPending: row.cleanup_pending ?? false,
+    canDelete: row.can_delete ?? false,
     messageId: row.message_id ?? null,
     uploadedByUserId: row.uploaded_by_user_id ?? null,
     id: row.id,
@@ -225,13 +231,19 @@ async function loadAttachmentsForFeedback(
 
   const attachmentResult = await db.query<ProductFeedbackAttachmentRow>(
     `
-    select *
-    from product_feedback_attachments
-    where organization_id = $1
-      and feedback_id = any($2::uuid[])
+    select a.*,null::timestamptz deleted_at,false cleanup_pending,
+      (f.submitted_at is not null and ($3::boolean or a.uploaded_by_user_id=$4 or (a.uploaded_by_user_id is null and f.submitter_user_id=$4))) can_delete
+    from product_feedback_attachments a join product_feedback f on f.id=a.feedback_id and f.organization_id=a.organization_id
+    where a.organization_id = $1 and a.feedback_id = any($2::uuid[])
+    union all
+    select d.id,d.feedback_id,d.organization_id,'' storage_key,'已删除附件' file_name,'image/png' content_type,0 size_bytes,'' checksum,d.sort_order,d.created_at,
+      d.message_id,d.uploaded_by_user_id,d.deleted_at,exists(select 1 from product_feedback_attachment_uploads u where u.id=d.cleanup_upload_id) cleanup_pending,
+      ($3::boolean or d.uploaded_by_user_id=$4 or (d.uploaded_by_user_id is null and f.submitter_user_id=$4)) can_delete
+    from product_feedback_attachment_deletions d join product_feedback f on f.id=d.feedback_id and f.organization_id=d.organization_id
+    where d.organization_id=$1 and d.feedback_id=any($2::uuid[])
     order by feedback_id, sort_order asc, id asc
     `,
-    [auth.organization.id, feedbackIds]
+    [auth.organization.id, feedbackIds, auth.user.isActive && auth.permissions.includes("admin:access"), auth.user.id]
   );
 
   for (const row of attachmentResult.rows) {

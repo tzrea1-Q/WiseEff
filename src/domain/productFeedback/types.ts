@@ -33,6 +33,9 @@ export const MAX_FEEDBACK_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 export const MAX_FEEDBACK_MESSAGE_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 
 export type ProductFeedbackAttachment = {
+  deletedAt?: string | null;
+  cleanupPending?: boolean;
+  canDelete?: boolean;
   messageId?: string | null;
   uploadedByUserId?: string | null;
   id: string;

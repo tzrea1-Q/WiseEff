@@ -94,6 +94,7 @@ export interface ProductFeedbackRepository {
   submitDraft?(id: string, input?: ProductFeedbackDraftSubmitInput): Promise<ProductFeedback>;
   listMine?(query?: ProductFeedbackMineQuery): Promise<{ items: ProductFeedback[]; nextCursor?: string; pendingAttachmentCleanupCount?: number }>;
   retryAttachmentCleanup?(): Promise<{ pendingAttachmentCleanupCount: number }>;
+  deleteAttachment?(feedbackId: string, attachmentId: string): Promise<ProductFeedback>;
   replyToMine?(id: string, input: ProductFeedbackReplyInput): Promise<ProductFeedback>;
   getMine?(id: string): Promise<ProductFeedback | null>;
   getMineAttachmentObjectUrl?(feedbackId: string, attachmentId: string): Promise<string>;

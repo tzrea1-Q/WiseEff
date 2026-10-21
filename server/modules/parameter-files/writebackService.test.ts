@@ -5,6 +5,8 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
+import { createMemoryObjectStore } from "../../testing/objectStore";
+import { asAuditTx } from "../audit/auditedWrite";
 import { createTestParameterSubmissionContext } from "../parameters/testSubmissionContext";
 import { createAuditEvent } from "../audit/repository";
 import { assertLegacySourceMutationAllowed, getFileVersionById, getProjectParameterFileByName, insertFileVersion, setCurrentVersion } from "./repository";
@@ -135,21 +137,16 @@ describe("writebackMergedParameterValue", () => {
   });
 
   it("creates v2 writeback version after merge", async () => {
-    const db = {
+    const bytesStore = createMemoryObjectStore();
+    const db = asAuditTx({
       query: vi.fn().mockResolvedValue({
         rows: [{ source_file_name: "config.json", source_node_path: "battery/temp/max" }],
         rowCount: 1
       })
-    };
+    });
     const objectStore = {
       get: vi.fn(async () => Buffer.from(JSON.stringify({ battery: { temp: { max: 80 } } }, null, 2), "utf8")),
-      put: vi.fn(async () => ({
-        storageKey: "org-1/next-config.json",
-        fileName: "config.json",
-        contentType: "application/json",
-        fileSizeBytes: 42,
-        checksumSha256: "checksum-next"
-      }))
+      put: vi.fn(bytesStore.put)
     } as ObjectStore;
 
     mockedGetProjectParameterFileByName.mockResolvedValue({
@@ -177,6 +174,7 @@ describe("writebackMergedParameterValue", () => {
     mockedInsertFileVersion.mockResolvedValue({
       id: "version-2",
       fileId: "file-1",
+      storageKey: "org-1/next-config.json",
       versionNumber: 2,
       checksum: "checksum-next",
       sizeBytes: 42,
@@ -203,6 +201,10 @@ describe("writebackMergedParameterValue", () => {
     expect(assertLegacySourceMutationAllowed).toHaveBeenCalledWith(db,"file-1");
     expect(vi.mocked(assertLegacySourceMutationAllowed).mock.invocationCallOrder[0]).toBeLessThan(mockedGetFileVersionById.mock.invocationCallOrder[0]!);
     const putPayload = vi.mocked(objectStore.put).mock.calls[0][0];
+    expect(putPayload.fileName).toMatch(/^writeback-[0-9a-f-]{36}-config\.json$/);
+    const persisted = mockedInsertFileVersion.mock.calls[0][1];
+    expect(persisted.storageKey).toContain(`-${putPayload.fileName}`);
+    expect((await bytesStore.get(persisted.storageKey)).toString()).toBe(putPayload.bytes.toString());
     expect(JSON.parse(putPayload.bytes.toString("utf8"))).toEqual({
       battery: { temp: { max: 85 } }
     });
@@ -222,12 +224,12 @@ describe("writebackMergedParameterValue", () => {
   });
 
   it("skips when parameter source fields are missing", async () => {
-    const db = {
+    const db = asAuditTx({
       query: vi.fn().mockResolvedValue({
         rows: [{ source_file_name: null, source_node_path: null }],
         rowCount: 1
       })
-    };
+    });
     const objectStore = {
       get: vi.fn(),
       put: vi.fn()

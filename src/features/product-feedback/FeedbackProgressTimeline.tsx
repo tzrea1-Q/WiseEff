@@ -16,6 +16,7 @@ export function FeedbackProgressTimeline({
   initialVisibleCount,
   attachments = [],
   getAttachmentObjectUrl
+  ,onDeleteAttachment
 }: {
   events?: ProductFeedbackProgressEvent[] | null;
   isAdmin?: boolean;
@@ -23,6 +24,7 @@ export function FeedbackProgressTimeline({
   initialVisibleCount?: number;
   attachments?: ProductFeedbackAttachment[];
   getAttachmentObjectUrl?: (feedbackId: string, attachmentId: string) => Promise<string>;
+  onDeleteAttachment?: (attachmentId: string) => Promise<void>;
 }) {
   const listId = useId();
   const [expandedFor, setExpandedFor] = useState<string | null>(null);
@@ -94,7 +96,7 @@ export function FeedbackProgressTimeline({
             </div>
           )}
           {getAttachmentObjectUrl && attachments.some((item) => item.messageId === event.id) ? <FeedbackAttachments feedbackId={event.feedbackId}
-            attachments={attachments.filter((item) => item.messageId === event.id)} getAttachmentObjectUrl={getAttachmentObjectUrl} /> : null}
+            attachments={attachments.filter((item) => item.messageId === event.id)} getAttachmentObjectUrl={getAttachmentObjectUrl} onDelete={onDeleteAttachment} /> : null}
           </div>
         </li>
       ))}

@@ -429,6 +429,7 @@ describe.skipIf(!databaseAvailable)("knowledge service", () => {
     expect(entry.contentForm).toBe("file");
     expect(entry.file?.extractionStatus).toBe("succeeded");
     expect(entry.file?.fileName).toBe("sc8562-notes.txt");
+    expect(entry.file?.storageKey).not.toBe(`${editor.organization.id}/${entry.file?.checksum}-sc8562-notes.txt`);
     expect(objectStore.objects.size).toBe(1);
 
     expect((await searchKnowledge(db, viewer, { q: "charge pump ratio" })).items).toHaveLength(0);
@@ -484,6 +485,7 @@ describe.skipIf(!databaseAvailable)("knowledge service", () => {
 
     expect(updated.headRevisionNumber).toBe(2);
     expect(updated.file?.fileName).toBe("v2.txt");
+    expect(updated.file?.storageKey).not.toBe(`${editor.organization.id}/${updated.file?.checksum}-v2.txt`);
     expect(updated.file?.extractionStatus).toBe("succeeded");
     expect(objectStore.objects.size).toBe(2);
 

@@ -213,16 +213,16 @@ export async function getMyProductFeedbackAttachmentContent(
   attachmentId: string
 ) {
   requireProductFeedbackSubmit(auth);
-  const feedback = await getMyProductFeedback(db, auth, feedbackId);
-  const attachment = feedback.attachments.find((item) => item.id === attachmentId);
-  if (!attachment) {
-    throw productFeedbackNotFound(feedbackId);
-  }
+  return readLiveAttachment(objectStore, () => getMyProductFeedback(db, auth, feedbackId), feedbackId, attachmentId);
+}
 
-  return {
-    attachment,
-    bytes: await objectStore.get(attachment.storageKey)
-  };
+async function readLiveAttachment(store: ObjectStore, read: () => Promise<ProductFeedbackDto | ProductFeedbackUserDto>, feedbackId: string, attachmentId: string) {
+  const live = (feedback: ProductFeedbackDto | ProductFeedbackUserDto) => feedback.attachments.find((item) => item.id === attachmentId && !item.deletedAt);
+  const attachment = live(await read());
+  if (!attachment) throw productFeedbackNotFound(feedbackId);
+  const bytes = await store.get(attachment.storageKey);
+  if (!live(await read())) throw productFeedbackNotFound(feedbackId);
+  return { attachment, bytes };
 }
 
 export async function listProductFeedback(db: Queryable, auth: AuthContext, query: ListProductFeedbackQuery = {}) {
@@ -333,16 +333,7 @@ export async function getProductFeedbackAttachmentContent(
   attachmentId: string
 ) {
   requireProductFeedbackAdmin(auth);
-  const feedback = await getProductFeedback(db, auth, feedbackId);
-  const attachment = feedback.attachments.find((item) => item.id === attachmentId);
-  if (!attachment) {
-    throw productFeedbackNotFound(feedbackId);
-  }
-
-  return {
-    attachment,
-    bytes: await objectStore.get(attachment.storageKey)
-  };
+  return readLiveAttachment(objectStore, () => getProductFeedback(db, auth, feedbackId), feedbackId, attachmentId);
 }
 
 export async function createProductFeedbackDraft(

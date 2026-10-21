@@ -49,6 +49,12 @@ function createRepository(fetchMock: typeof fetch) {
 }
 
 describe("createHttpProductFeedbackRepository", () => {
+  it("deletes a submitted target and maps its persisted message marker and cleanup state", async () => {
+    const fetchMock = createFetchMock({ item: { ...baseFeedbackDto, attachments: [{ ...baseFeedbackDto.attachments[0], deletedAt: "2026-10-20T12:00:00Z", canDelete: true, cleanupPending: true }] }, pendingAttachmentCleanupCount: 1 });
+    const repo = createRepository(fetchMock);
+    expect((await repo.deleteAttachment!("feedback-1", "attachment-1")).attachments[0]).toMatchObject({ deletedAt: "2026-10-20T12:00:00Z", canDelete: true, cleanupPending: true });
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8787/api/v1/product-feedback/feedback-1/attachments/attachment-1", expect.objectContaining({ method: "DELETE" }));
+  });
   it("maps a public user response without admin identity or notes", async () => {
     const { submitterUserId: _submitterUserId, adminNote: _adminNote, ...publicDto } = baseFeedbackDto;
     const repository = createRepository(createFetchMock({ item: publicDto }));

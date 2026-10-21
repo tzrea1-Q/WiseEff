@@ -377,7 +377,7 @@ export async function uploadProjectParameterFile(
     if (existing) await assertLegacySourceMutationAllowed(tx,existing.id);
     const stored = await uploadStore.put({
       organizationId: auth.organization.id,
-      fileName: normalized.fileName,
+      fileName: `parameter-upload-${randomUUID()}-${normalized.fileName}`,
       contentType: contentTypeForFormat(format),
       bytes: normalized.bytes,
     });

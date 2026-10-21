@@ -25,6 +25,9 @@ export type ProductFeedbackProgressEventKind = (typeof progressEventKinds)[numbe
 export type ProductFeedbackAttachmentContentType = "image/png" | "image/jpeg" | "image/webp";
 
 export type ProductFeedbackAttachmentDto = {
+  deletedAt?: string | null;
+  cleanupPending?: boolean;
+  canDelete?: boolean;
   messageId?: string | null;
   uploadedByUserId?: string | null;
   id: string;
