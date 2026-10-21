@@ -93,11 +93,11 @@ export type SupportedValueSchema =
 export type SupportedDefinitionContent = {
   readonly displayName: string;
   readonly documentation: string;
-  /** Optional author description; preserved when absent on a revise. */
-  readonly description?: string;
-  readonly unit?: M1AllowedUnit;
+  /** Optional content: omitted retains the old value; null explicitly removes it. */
+  readonly description?: string | null;
+  readonly unit?: M1AllowedUnit | null;
   readonly valueSchema: SupportedValueSchema;
-  readonly examples?: readonly ContractJsonValue[];
+  readonly examples?: readonly ContractJsonValue[] | null;
   /**
    * Lifecycle the revision is minted with. Absent means `active` for a new
    * definition; the reversible lifecycle operations set it explicitly.

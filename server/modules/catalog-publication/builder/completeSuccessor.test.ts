@@ -355,6 +355,86 @@ describe("buildCompleteSuccessor", () => {
     }
   });
 
+  it("removes explicitly cleared optional content in a new revision without changing history", async () => {
+    const predecessor = firstAcmePredecessor();
+    const populated = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      productPath: "m2-core",
+      changeSet: [{
+        op: "revise-definition",
+        definitionId: "pdef_acme_power_iin_max",
+        class: "documentation",
+        content: {
+          ...integerContent("Input current limit", "Maximum accepted input current."),
+          description: "Optional current description",
+          examples: [100, 200],
+        },
+      }],
+      frozenIdentity: frozenPageIdentity([allocationForRevision("iin_max", 2)], "populated"),
+    });
+    expect(populated.ok).toBe(true);
+    if (!populated.ok || populated.value.kind !== "successor") return;
+    const populatedArtifact = populated.value.artifact;
+    const result = await buildCompleteSuccessor({
+      predecessorArtifact: {
+        digest: populatedArtifact.artifactDigest,
+        bytes: new TextEncoder().encode(serializeContract(populatedArtifact.bundle as unknown as ContractJsonValue)),
+      },
+      productPath: "m2-core",
+      changeSet: [{
+        op: "revise-definition",
+        definitionId: "pdef_acme_power_iin_max",
+        class: "semantic",
+        content: {
+          displayName: "Input current limit",
+          documentation: "Maximum accepted input current.",
+          unit: null,
+          examples: null,
+          description: null,
+          valueSchema: { type: "integer", minimum: 0 },
+        },
+      }],
+      frozenIdentity: frozenPageIdentity([allocationForRevision("iin_max", 3)], "cleared", "1.2.0"),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value.kind !== "successor") return;
+    const { artifact } = result.value;
+    const historical = artifact.bundle.releases.find((release) => release.manifest.release.id === predecessor.first.manifest.release.id);
+    expect(historical).toEqual(predecessor.first);
+    expect(artifact.bundle.releases.find((release) => release.manifest.release.id === populatedArtifact.targetReleaseId))
+      .toEqual(populatedArtifact.bundle.releases.find((release) => release.manifest.release.id === populatedArtifact.targetReleaseId));
+    const target = artifact.bundle.releases.find((release) => release.manifest.release.id === artifact.targetReleaseId);
+    const definition = target?.documents.find((document) => document.kind === "definition" && document.content.id === "pdef_acme_power_iin_max");
+    expect(definition?.kind).toBe("definition");
+    if (definition?.kind !== "definition") return;
+    expect(definition.content.revision).toMatchObject({ id: "drev_acme_power_iin_max_3", number: 3 });
+    expect(definition.content.revision).not.toHaveProperty("unit");
+    expect(definition.content.revision).not.toHaveProperty("examples");
+    expect(definition.content.revision).not.toHaveProperty("description");
+    const otherDefinitions = target?.documents.filter((document) => document.kind === "definition" && document.content.id !== "pdef_acme_power_iin_max");
+    expect(otherDefinitions).toEqual(predecessor.first.documents.filter((document) => document.kind === "definition" && document.content.id !== "pdef_acme_power_iin_max"));
+    const noop = await buildCompleteSuccessor({
+      predecessorArtifact: {
+        digest: artifact.artifactDigest,
+        bytes: new TextEncoder().encode(serializeContract(artifact.bundle as unknown as ContractJsonValue)),
+      },
+      productPath: "m2-core",
+      changeSet: [{
+        op: "revise-definition",
+        definitionId: "pdef_acme_power_iin_max",
+        class: "semantic",
+        content: {
+          displayName: "Input current limit",
+          documentation: "Maximum accepted input current.",
+          valueSchema: { type: "integer", minimum: 0 },
+          unit: null, examples: null, description: null,
+        },
+      }],
+      frozenIdentity: frozenPageIdentity([], "noop-clear", "1.3.0"),
+    });
+    expect(noop.ok && noop.value.kind).toBe("noop-revise");
+  });
+
   it("returns a typed no-op revise after verifying the predecessor", async () => {
     const predecessor = firstAcmePredecessor();
     const existing = predecessor.first.documents.find(
