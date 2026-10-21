@@ -1374,6 +1374,11 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["knowledge"], requestBody: "OpenKnowledgeImportRequest", responseBody: "OpenKnowledgeImportResponse", successStatus: 201,
     additionalResponses: { "403": "ErrorResponse" }
   },
+  "knowledge.batchEntries": {
+    summary: "Tag, publish or archive up to 200 entries through individually authorized audited writes; return every outcome",
+    tags: ["knowledge"], requestBody: "BatchKnowledgeEntriesRequest", responseBody: "BatchKnowledgeEntriesResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse" }
+  },
   "knowledge.importDocument": {
     summary: "Import one document through the existing upload path; enforce 200 documents / 100 MB per batch and 20 MB per file; skip readable SHA-256 duplicates",
     tags: ["knowledge"], requestBody: "ImportKnowledgeDocumentRequest", responseBody: "ImportKnowledgeDocumentResponse",

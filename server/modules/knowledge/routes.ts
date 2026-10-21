@@ -13,6 +13,7 @@ import {
   addKnowledgeDefinitionReference,
   addKnowledgeParameterReference,
   archiveKnowledgeEntry,
+  batchKnowledgeEntries,
   createKnowledgeEntry,
   distillKnowledgeFromLog,
   distillKnowledgeFromReloadRun,
@@ -39,6 +40,7 @@ import {
 } from "./service";
 import {
   createKnowledgeEntryBodySchema,
+  batchKnowledgeEntriesBodySchema,
   distillKnowledgeFromLogBodySchema,
   distillKnowledgeFromReloadRunBodySchema,
   listKnowledgeEntriesQuerySchema,
@@ -110,6 +112,13 @@ export function registerKnowledgeRoutes(
 ) {
   const extractor = options.textExtractor ?? createDefaultKnowledgeTextExtractor();
   const embeddingClient = options.knowledgeEmbeddingClient;
+
+  router.post("/api/v1/knowledge/entries/batch", async (request) => {
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(batchKnowledgeEntriesBodySchema, request.body);
+    return { status: 200, body: await batchKnowledgeEntries(requireDb(options.db), requireObjectStore(options.objectStore),
+      extractor, auth, body, { requestId: request.requestId }) };
+  });
 
   router.post("/api/v1/knowledge/imports", async (request) => {
     const auth = await options.getCurrentAuthContext(request);

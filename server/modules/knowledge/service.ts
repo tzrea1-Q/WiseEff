@@ -9,12 +9,12 @@ import { sanitizeFileName, type ObjectStore } from "../logs/objectStore";
 import { getLogRecord } from "../logs/service";
 import { getReloadRunRecord } from "../dts-reload/service";
 import type { Database, Queryable } from "../../shared/database/client";
-import { ApiError } from "../../shared/http/errors";
+import { ApiError, serializeApiError } from "../../shared/http/errors";
 import { readCatalogDefinitionForKnowledge } from "../parameter-catalog-api/productionWire";
 import { buildLogAnalysisProvenanceNotice, buildLogDistillationDraft } from "./distillation";
 import { buildReloadDistillationDraft, isReloadRunDistillable } from "./reloadDistillation";
 import type { KnowledgeTextExtractor } from "./extraction";
-import { KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT } from "./schemas";
+import { KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT, knowledgeTagsSchema, type BatchKnowledgeEntriesInput } from "./schemas";
 import { fuseKnowledgeSearchResults } from "./hybridSearch";
 import type { KnowledgeEmbeddingClient } from "./indexing/embeddingClient";
 import {
@@ -683,7 +683,7 @@ export async function updateKnowledgeEntry(
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
   const invocation = createUserInvocation(auth);
-  requireKnowledgeEdit(auth);
+  if (!hasKnowledgeManage(auth)) requireKnowledgeEdit(auth);
 
   let uploadedBytes: Buffer | null = null;
   let storedForExtraction: { file: KnowledgeFileDto; bytes: Buffer } | null = null;
@@ -904,6 +904,65 @@ export async function archiveKnowledgeEntry(
     { fromStatuses: ["published"], toStatus: "archived", kind: "knowledge-entry-archive", action: "archive" },
     context
   );
+}
+
+export async function batchKnowledgeEntries(
+  db: Database,
+  objectStore: ObjectStore,
+  extractor: KnowledgeTextExtractor,
+  auth: AuthContext,
+  input: BatchKnowledgeEntriesInput,
+  context: KnowledgeServiceContext = {}
+) {
+  requireKnowledgeView(auth);
+  const requestId = context.requestId ?? randomUUID();
+  const results: {
+    entryId: string; title: string | null; status: "succeeded" | "refused" | "failed";
+    entry: KnowledgeEntryDto | null; error: { code: string; message: string } | null;
+  }[] = [];
+  for (const entryId of input.entryIds) {
+    let title: string | null = null;
+    try {
+      const current = await getKnowledgeEntry(db, auth, entryId);
+      title = current.title;
+      requireKnowledgeGovern(auth, current);
+      let entry: KnowledgeEntryDto;
+      if (input.action === "publish") {
+        entry = await publishKnowledgeEntry(db, auth, entryId, { ...context, requestId });
+      } else if (input.action === "archive") {
+        entry = await archiveKnowledgeEntry(db, auth, entryId, { ...context, requestId });
+      } else {
+        const tags = input.action === "add_tags"
+          ? [...new Set([...current.tags, ...input.tags])]
+          : current.tags.filter((tag) => !input.tags.includes(tag));
+        if (!knowledgeTagsSchema.safeParse(tags).success) {
+          throw new ApiError("VALIDATION_FAILED", "标签合并后超过每条 20 个标签的上限。");
+        }
+        entry = await updateKnowledgeEntry(db, objectStore, extractor, auth, entryId, {
+          expectedHeadRevisionNumber: current.headRevisionNumber, tags
+        }, { ...context, requestId });
+      }
+      results.push({ entryId, title: entry.title, status: "succeeded", entry, error: null });
+    } catch (failure) {
+      const { code, message } = serializeApiError(failure, requestId).error;
+      results.push({ entryId, title, status: code === "FORBIDDEN" || code === "NOT_FOUND" ? "refused" : "failed",
+        entry: null, error: { code, message } });
+    }
+  }
+  let summaryError: string | null = null;
+  try {
+    await db.transaction(async (tx) => {
+      await writeAuditEventInTx(asAuditTx(tx), createUserInvocation(auth), { requestId }, {
+        app: "knowledge", kind: "knowledge-batch", action: input.action, severity: "Medium", projectId: null,
+        targetType: "knowledge-batch", targetId: randomUUID(),
+        metadata: { action: input.action, results: results.map(({ entryId, status, error }) => ({ entryId, status, error })) }
+      });
+    });
+  } catch {
+    // Per-entry writes and their audits have already committed; always return their outcomes.
+    summaryError = "条目结果已保留，批次汇总审计写入失败。请联系管理员，勿重复提交已成功的条目。";
+  }
+  return { results, summaryError };
 }
 
 export async function restoreKnowledgeEntry(

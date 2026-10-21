@@ -8,6 +8,7 @@ import type {
 import { KnowledgeRevisionConflictError } from "@/application/ports/KnowledgeRepository";
 import type {
   KnowledgeContentForm,
+  KnowledgeBatchResult,
   KnowledgeEntry,
   KnowledgeExtractionStatus,
   KnowledgeIndexHealth,
@@ -216,6 +217,13 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
   const apiClient = options.apiClient ?? createDefaultApiClient({ baseUrl, fetchImpl: options.fetchImpl });
 
   return {
+    async batch(input) {
+      const response = await apiClient.post<{
+        results: (Omit<KnowledgeBatchResult, "entry"> & { entry: KnowledgeEntryDto | null })[];
+        summaryError: string | null;
+      }>("/api/v1/knowledge/entries/batch", input);
+      return { ...response, results: response.results.map((result) => ({ ...result, entry: result.entry ? entryFromDto(result.entry) : null })) };
+    },
     async openImport(tags) {
       return (await apiClient.post<ItemEnvelope<{ id: string }>>("/api/v1/knowledge/imports", { tags })).item;
     },
