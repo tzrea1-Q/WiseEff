@@ -23,6 +23,7 @@ import {
 import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import { PageInsightBar, type Column } from "@/components/admin";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { AdminListPage } from "@/components/layout/AdminListPage";
 import { SectionSkeleton } from "@/components/common/SectionState";
@@ -254,13 +255,12 @@ export function KnowledgePage({
   const filteredRows = useMemo(
     () =>
       rows.filter((entry) => {
-        if (pendingSuggestions && !(entry.pendingSuggestionCount ?? 0)) return false;
         if (statusFilter.length > 0 && !statusFilter.includes(entry.status)) return false;
         if (originFilter.length > 0 && !originFilter.includes(entry.origin)) return false;
         if (tagFilter.length > 0 && !tagFilter.some((tag) => entry.tags.includes(tag))) return false;
         return true;
       }),
-    [rows, statusFilter, originFilter, tagFilter, pendingSuggestions]
+    [rows, statusFilter, originFilter, tagFilter]
   );
   const selectedEntry = selectedId ? rows.find((entry) => entry.id === selectedId) ?? null : null;
   const checkedEntries = filteredRows.filter((entry) => checkedIds.includes(entry.id));
@@ -287,8 +287,8 @@ export function KnowledgePage({
       render: (entry) => (
         <div className="min-w-0">
           <p className="truncate font-medium text-foreground">{entry.title}</p>
-          {(capability.canManage || (capability.canEdit && entry.createdByUserId === capability.userId)) && (entry.pendingSuggestionCount ?? 0) > 0
-            ? <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">待处理建议 {entry.pendingSuggestionCount}</span> : null}
+          {canGovernEntry(entry, capability) && (entry.pendingSuggestionCount ?? 0) > 0
+            ? <Badge variant="secondary">待处理建议 {entry.pendingSuggestionCount}</Badge> : null}
           {entry.contentForm === "file" && entry.file?.extractionStatus === "failed" ? <KnowledgeUnsearchableBadge /> : null}
           <p className="text-xs text-muted-foreground">修订 #{entry.headRevisionNumber}</p>
         </div>

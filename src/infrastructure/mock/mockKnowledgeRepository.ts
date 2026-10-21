@@ -15,7 +15,8 @@ import type {
   KnowledgeIndexState,
   KnowledgeParameterReference,
   KnowledgeRevision,
-  KnowledgeSearchResult
+  KnowledgeSearchResult,
+  KnowledgeReferenceSuggestion
 } from "@/domain/knowledge/types";
 import type { ParameterSpecReferenceLifecycle } from "@/domain/knowledge/types";
 import type { LogRecord } from "@/domain/prototype/types";
@@ -24,6 +25,17 @@ import { mockApiError } from "./mockApiError";
 
 const MOCK_KNOWLEDGE_NOW = "2026-08-12T00:00:00.000Z";
 const MOCK_USER_ID = "u-xu-yun";
+
+const MOCK_SUGGESTION_DEFINITIONS = [
+  { definitionId: activeDefinition.id, propertyKey: activeDefinition.propertyKey, displayName: activeDefinition.currentRevision.displayName,
+    driverModule: activeDefinition.subject.canonicalName, lifecycle: "active" as const },
+  { definitionId: "mock-definition-gpio-b", propertyKey: activeDefinition.propertyKey, displayName: "GPIO interrupt B",
+    driverModule: "module-b", lifecycle: "deprecated" as const },
+  { definitionId: "mock-definition-gpio-c", propertyKey: activeDefinition.propertyKey, displayName: "GPIO interrupt C",
+    driverModule: "module-c", lifecycle: "active" as const }
+];
+type MockSuggestion = KnowledgeReferenceSuggestion & { status: "pending" | "accepted" | "dismissed" | "withdrawn" };
+type MockExtractedFile = { text: string; pageOffsets?: number[] };
 
 function sourceBytes(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -88,6 +100,8 @@ type MockStore = {
   revisions: KnowledgeRevision[];
   files: Map<string, File>;
   index: Map<string, MockIndexRecord>;
+  suggestions: Map<string, MockSuggestion[]>;
+  extractedFiles: Map<string, MockExtractedFile>;
   counter: number;
 };
 
@@ -139,7 +153,11 @@ function bigramContainment(queryGrams: Set<string>, textGrams: Set<string>): num
   return shared / queryGrams.size;
 }
 
-export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revisions: KnowledgeRevision[] } {
+export function createMockKnowledgeFixtures(): {
+  entries: KnowledgeEntry[]; revisions: KnowledgeRevision[];
+  suggestions?: Record<string, KnowledgeReferenceSuggestion[]>;
+  extractedFiles?: Record<string, MockExtractedFile>;
+} {
   const publishedMarkdown: KnowledgeEntry = {
     origin: "authored",
     id: "mock-kb-1",
@@ -158,7 +176,7 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     publishedAt: "2026-08-02T09:00:00.000Z",
     archivedAt: null,
     contentMarkdown:
-      "# 快充温控调参经验\n\n当电池温度超过 45 度时,按 0.5A 步长下调快充电流。\n\n- 观察 NTC 采样间隔\n- 记录降流后的温升斜率",
+      "# 快充温控调参经验\n\n当电池温度超过 45 度时,按 0.5A 步长下调快充电流。\n\n- 观察 NTC 采样间隔\n- 记录降流后的温升斜率\n- 核对 gpio-int 配置",
     file: null,
     parameterReferences: [
       mockReference("spec-sc8562-gpio-int", MOCK_USER_ID),
@@ -466,7 +484,8 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
       agentDraftOther,
       publishedPdHandbook
     ],
-    revisions
+    revisions,
+    extractedFiles: { [publishedFile.file!.id]: { text: "PDF 参数说明\ngpio-int gpio-int", pageOffsets: [0, 9] } }
   };
 }
 
@@ -488,8 +507,58 @@ export function createMockKnowledgeRepository(
     revisions: fixtures.revisions.map(clone),
     counter: fixtures.entries.length,
     files: new Map(),
-    index: new Map()
+    index: new Map(),
+    suggestions: new Map(Object.entries(fixtures.suggestions ?? {}).map(([id, items]) => [id, items.map((item) => ({ ...clone(item), status: "pending" }))])),
+    extractedFiles: new Map(Object.entries(fixtures.extractedFiles ?? {}).map(([id, source]) => [id, clone(source)]))
   };
+
+  function detectSuggestions(entry: KnowledgeEntry, revisionId = `${entry.id}-r${entry.headRevisionNumber}`) {
+    if (entry.status === "archived" || (entry.contentForm === "file" && entry.file?.extractionStatus !== "succeeded")) return;
+    const extracted = entry.file ? store.extractedFiles.get(entry.file.id) : undefined;
+    const text = entry.contentForm === "markdown" ? entry.contentMarkdown ?? "" : extracted?.text ?? "";
+    const items = store.suggestions.get(entry.id) ?? [];
+    for (const definition of MOCK_SUGGESTION_DEFINITIONS) {
+      const existing = items.find((item) => item.definitionId === definition.definitionId);
+      if (existing && ["accepted", "dismissed"].includes(existing.status)) continue;
+      const escaped = definition.propertyKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const matches = [...text.matchAll(new RegExp(`(?<![A-Za-z0-9_,.+?#-])${escaped}(?![A-Za-z0-9_,.+?#-])`, "g"))];
+      const first = matches[0];
+      if (!first || entry.parameterReferences.some((reference) => reference.kind === "definition" && reference.definitionId === definition.definitionId)) {
+        if (existing) existing.status = "withdrawn";
+        continue;
+      }
+      const next: MockSuggestion = { ...definition, mentionCount: matches.length,
+        snippet: text.slice(Math.max(0, first.index - 80), first.index + definition.propertyKey.length + 120),
+        page: entry.file?.contentType === "application/pdf"
+          ? extracted?.pageOffsets?.reduce<number | null>((page, start, index) => start <= first.index ? index + 1 : page, null) ?? null : null,
+        detectedRevisionId: revisionId, status: "pending" };
+      if (existing) Object.assign(existing, next); else items.push(next);
+    }
+    store.suggestions.set(entry.id, items);
+  }
+
+  function pendingSuggestions(entry: KnowledgeEntry): MockSuggestion[] {
+    return entry.status === "archived" ? [] : (store.suggestions.get(entry.id) ?? []).filter((item) => item.status === "pending"
+      && !entry.parameterReferences.some((reference) => reference.kind === "definition" && reference.definitionId === item.definitionId))
+      .sort((a, b) => b.mentionCount - a.mentionCount || a.propertyKey.localeCompare(b.propertyKey) || a.definitionId.localeCompare(b.definitionId));
+  }
+
+  function requireSuggestionEntry(entryId: string) {
+    const entry = requireEntry(entryId);
+    if (!canManage && entry.createdByUserId !== userId) throw mockApiError("FORBIDDEN", "Suggestions require entry governance.");
+    return entry;
+  }
+
+  function acceptSuggestion(entry: KnowledgeEntry, item: MockSuggestion) {
+    if (!entry.parameterReferences.some((reference) => reference.kind === "definition" && reference.definitionId === item.definitionId)) {
+      entry.parameterReferences.push({ kind: "definition", definitionId: item.definitionId, availability: "current",
+        propertyKey: item.propertyKey, displayName: item.displayName, driverModule: item.driverModule, lifecycle: item.lifecycle,
+        createdByUserId: userId, createdAt: MOCK_KNOWLEDGE_NOW });
+    }
+    item.status = "accepted";
+  }
+
+  for (const entry of store.entries) if (!store.suggestions.has(entry.id)) detectSuggestions(entry);
 
   // Simulated index states: published entries are indexed; one carries a
   // deterministic failure so the admin health UI has a retry path to show.
@@ -560,13 +629,14 @@ export function createMockKnowledgeRepository(
       ...patch
     };
     store.revisions.push(revision);
+    detectSuggestions(entry, revision.id);
     return revision;
   }
 
   const repository: KnowledgeRepository = {
     async list(query?: KnowledgeListQuery) {
       const items = store.entries.filter((entry) => {
-        if (query?.pendingSuggestions && ((!canManage && entry.createdByUserId !== userId) || !(entry.pendingSuggestionCount ?? 0))) return false;
+        if (query?.pendingSuggestions && ((!canManage && entry.createdByUserId !== userId) || !pendingSuggestions(entry).length)) return false;
         if (query?.governable && (entry.status === "archived" || (!canManage && entry.createdByUserId !== userId))) return false;
         if (entry.status === "draft" && !canManage && entry.createdByUserId !== userId) return false;
         if (query?.status && entry.status !== query.status) return false;
@@ -581,7 +651,7 @@ export function createMockKnowledgeRepository(
       return { items: items.slice(offset, offset + (query?.limit ?? 100)).map((entry) => {
         const copy = clone(entry);
         delete copy.pendingSuggestionCount;
-        return canManage || entry.createdByUserId === userId ? { ...copy, pendingSuggestionCount: entry.pendingSuggestionCount ?? 0 } : copy;
+        return canManage || entry.createdByUserId === userId ? { ...copy, pendingSuggestionCount: pendingSuggestions(entry).length } : copy;
       }) };
     },
 
@@ -871,7 +941,7 @@ export function createMockKnowledgeRepository(
           else if (input.action === "archive") entry = await this.archive(entryId);
           else if (input.action === "accept_suggestions") {
             if (current.status === "archived") throw mockApiError("VALIDATION_FAILED", "Archived knowledge entries cannot be edited.");
-            for (const suggestion of await this.listReferenceSuggestions(entryId)) await this.acceptReferenceSuggestion(entryId, suggestion.definitionId);
+            for (const suggestion of pendingSuggestions(current)) acceptSuggestion(current, suggestion);
             entry = { ...clone(current), pendingSuggestionCount: 0 };
           }
           else {
@@ -958,6 +1028,7 @@ export function createMockKnowledgeRepository(
       entry.archivedAt = null;
       entry.updatedAt = MOCK_KNOWLEDGE_NOW;
       markIndexed(entry);
+      detectSuggestions(entry);
       return clone(entry);
     },
 
@@ -967,6 +1038,7 @@ export function createMockKnowledgeRepository(
       store.entries = store.entries.filter((entry) => entry.id !== entryId);
       store.revisions = store.revisions.filter((revision) => revision.entryId !== entryId);
       store.index.delete(entryId);
+      store.suggestions.delete(entryId);
     },
 
     async listRevisions(entryId) {
@@ -1137,17 +1209,22 @@ export function createMockKnowledgeRepository(
     },
 
     async listReferenceSuggestions(entryId) {
-      const entry = requireEntry(entryId);
-      if (!canManage && entry.createdByUserId !== userId) throw mockApiError("FORBIDDEN", "Suggestions require entry governance.");
-      return [];
+      const entry = requireSuggestionEntry(entryId);
+      return pendingSuggestions(entry).map(({ status: _status, ...item }) => clone(item));
     },
-    async acceptReferenceSuggestion(entryId) {
-      requireEntry(entryId);
-      throw mockApiError("CONFLICT", "Reference suggestion is not pending.");
+    async acceptReferenceSuggestion(entryId, definitionId) {
+      const entry = requireSuggestionEntry(entryId);
+      if (entry.status === "archived") throw mockApiError("VALIDATION_FAILED", "Archived knowledge entries cannot be edited.");
+      const suggestion = store.suggestions.get(entryId)?.find((item) => item.definitionId === definitionId);
+      if (!suggestion || !["pending", "accepted"].includes(suggestion.status)) throw mockApiError("CONFLICT", "Reference suggestion is not pending.");
+      acceptSuggestion(entry, suggestion);
+      return { ...clone(entry), pendingSuggestionCount: pendingSuggestions(entry).length };
     },
-    async dismissReferenceSuggestion(entryId) {
-      const entry = requireEntry(entryId);
-      if (!canManage && entry.createdByUserId !== userId) throw mockApiError("FORBIDDEN", "Suggestions require entry governance.");
+    async dismissReferenceSuggestion(entryId, definitionId) {
+      const entry = requireSuggestionEntry(entryId);
+      if (entry.status === "archived") throw mockApiError("VALIDATION_FAILED", "Archived knowledge entries cannot be edited.");
+      const suggestion = store.suggestions.get(entryId)?.find((item) => item.definitionId === definitionId && item.status === "pending");
+      if (suggestion) suggestion.status = "dismissed";
     },
 
     async removeDefinitionReference(entryId, definitionId) {
@@ -1243,12 +1320,7 @@ export function createMockKnowledgeRepository(
     async rescanReferenceSuggestions() {
       if (!canManage) throw mockApiError("FORBIDDEN", "Reference suggestion rescan requires knowledge:manage.");
       const entries = store.entries.filter((entry) => entry.status !== "archived");
-      for (const entry of entries) {
-        store.index.set(entry.id, {
-          status: "pending", error: null, indexedRevisionNumber: entry.headRevisionNumber,
-          chunkCount: store.index.get(entry.id)?.chunkCount ?? 0
-        });
-      }
+      for (const entry of entries) detectSuggestions(entry);
       return { enqueued: entries.length };
     }
   };

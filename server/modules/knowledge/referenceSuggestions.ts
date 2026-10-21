@@ -1,22 +1,12 @@
 import type { Database } from "../../shared/database/client";
-import { ApiError } from "../../shared/http/errors";
-import { getAuthContext } from "../auth/repository";
-import { listCatalogDefinitionsForKnowledge } from "../parameter-catalog-api/productionWire";
+import { listCatalogDefinitionsForKnowledgeOrganization } from "../parameter-catalog-api/productionWire";
 import type { KnowledgeIndexEntrySnapshot } from "./indexing/service";
 
 /** Derived evidence only: never creates a binding or writes an audit. */
-export async function detectKnowledgeReferenceSuggestions(db: Database, snapshot: KnowledgeIndexEntrySnapshot) {
-  if (snapshot.entryStatus === "archived" || !snapshot.headRevisionId || !snapshot.authorUserId) return;
+export async function detectKnowledgeReferenceSuggestions(db: Database, snapshot: KnowledgeIndexEntrySnapshot, requestId: string) {
+  if (snapshot.entryStatus === "archived" || !snapshot.headRevisionId) return;
   if (snapshot.contentForm === "file" && snapshot.extractionStatus !== "succeeded") return;
-  let auth;
-  try {
-    auth = await getAuthContext(db, snapshot.authorUserId);
-  } catch (error) {
-    if (error instanceof ApiError && ["UNAUTHENTICATED", "FORBIDDEN"].includes(error.code)) return;
-    throw error;
-  }
-  if (auth.organization.id !== snapshot.organizationId) return;
-  const definitions = await listCatalogDefinitionsForKnowledge(db, auth);
+  const definitions = await listCatalogDefinitionsForKnowledgeOrganization(db, snapshot.organizationId, requestId);
   const text = snapshot.contentForm === "markdown" ? snapshot.contentMarkdown ?? "" : snapshot.extractedText ?? "";
   await db.transaction(async (tx) => {
     // Serialize with reference decisions and refuse stale worker evidence.

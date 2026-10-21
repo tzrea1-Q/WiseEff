@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../../auth/types";
+import { createUserInvocation } from "../../auth/trustedInvocation";
 import type { ObjectStore } from "../../logs/objectStore";
 import type { InMemoryTestDatabase } from "../../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../../testing/testDatabase";
@@ -285,7 +286,7 @@ describe.skipIf(!databaseAvailable)("knowledge index lifecycle", () => {
 
     await expect(getKnowledgeIndexHealth(db, viewer)).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(retryKnowledgeEntryIndex(db, viewer, entry.id)).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(rebuildKnowledgeIndex(db, viewer)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(rebuildKnowledgeIndex(db, viewer, createUserInvocation(viewer))).rejects.toMatchObject({ code: "FORBIDDEN" });
 
     const health = await getKnowledgeIndexHealth(db, manager);
     expect(health.retrieval).toMatchObject({ mode: "fts_only", embeddingConfigured: false });
@@ -297,7 +298,7 @@ describe.skipIf(!databaseAvailable)("knowledge index lifecycle", () => {
       status: "pending"
     });
 
-    const { enqueued } = await rebuildKnowledgeIndex(db, manager, { requestId: "req-rebuild" });
+    const { enqueued } = await rebuildKnowledgeIndex(db, manager, createUserInvocation(manager), { requestId: "req-rebuild" });
     expect(enqueued).toBeGreaterThanOrEqual(1);
 
     const audits = await db.query<{ kind: string }>(

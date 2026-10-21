@@ -289,17 +289,18 @@ describe("KnowledgeAdminPage", () => {
     expect(health.items.every((item) => item.entryStatus !== "published" || item.status === "pending")).toBe(true);
   });
 
-  it("rescans non-archived entries and reports the background enqueue count", async () => {
+  it("rescans non-archived entries without rebuilding the retrieval index", async () => {
     window.history.replaceState(null, "", "/knowledge-admin?tab=index");
     const repository = createMockKnowledgeRepository();
     const published = await repository.list({ status: "published" });
     const drafts = await repository.list({ status: "draft" });
+    const before = await repository.getIndexHealth();
     render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
     await screen.findByRole("table", { name: "知识索引状态" });
     await userEvent.click(screen.getByRole("button", { name: "重新检测建议关联" }));
-    expect(await screen.findByText(new RegExp(`已入队 ${published.items.length + drafts.items.length} 条未归档条目`))).toHaveAttribute("role", "status");
+    expect(await screen.findByText(new RegExp(`已发起 ${published.items.length + drafts.items.length} 条未归档条目的后台建议检测`))).toHaveAttribute("role", "status");
     const health = await repository.getIndexHealth();
-    expect(health.items.filter((item) => item.entryStatus !== "archived").every((item) => item.status === "pending")).toBe(true);
+    expect(health).toEqual(before);
   });
 
   it("disables the rescan while pending and reports failure with a retry", async () => {
@@ -314,10 +315,10 @@ describe("KnowledgeAdminPage", () => {
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute("aria-busy", "true");
     await act(async () => { refuse(new Error("Unavailable")); });
-    expect(await screen.findByRole("alert")).toHaveTextContent("重新检测建议关联入队失败，请稍后重试。");
+    expect(await screen.findByRole("alert")).toHaveTextContent("发起建议关联检测失败，请稍后重试。");
     expect(button).toBeEnabled();
     await userEvent.click(button);
-    expect(await screen.findByText(/已入队 .* 条未归档条目/)).toBeInTheDocument();
+    expect(await screen.findByText(/已发起 .* 条未归档条目的后台建议检测/)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 

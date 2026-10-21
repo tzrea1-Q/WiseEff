@@ -244,10 +244,10 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
     setRebuildNotice("");
     try {
       const result = await repository.rescanReferenceSuggestions();
-      setRebuildNotice(`已入队 ${result.enqueued} 条未归档条目，后台将重新检测建议关联，保留已接受和已忽略的决定。`);
+      setRebuildNotice(`已发起 ${result.enqueued} 条未归档条目的后台建议检测，保留已接受和已忽略的决定。`);
       await loadIndexHealth();
     } catch (error) {
-      setIndexError(presentError(error, "重新检测建议关联入队失败，请稍后重试。"));
+      setIndexError(presentError(error, "发起建议关联检测失败，请稍后重试。"));
     } finally {
       setRescanPending(false);
     }

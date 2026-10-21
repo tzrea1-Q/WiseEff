@@ -173,7 +173,7 @@ export function registerKnowledgeRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const query = parseWithSchema(listKnowledgeEntriesQuerySchema, flattenQuery(request.query));
-    const items = await listKnowledgeEntries(db, auth, query);
+    const items = await listKnowledgeEntries(db, auth, query, request.requestId);
 
     return { status: 200, body: { items } };
   });
@@ -250,7 +250,7 @@ export function registerKnowledgeRoutes(
   router.post("/api/v1/knowledge/index/rebuild", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
-    const result = await rebuildKnowledgeIndex(db, auth, { requestId: request.requestId });
+    const result = await rebuildKnowledgeIndex(db, auth, createUserInvocation(auth), { requestId: request.requestId });
 
     return { status: 200, body: result };
   });
@@ -370,7 +370,7 @@ export function registerKnowledgeRoutes(
   router.get("/api/v1/knowledge/entries/:entryId/reference-suggestions", async (request) => {
     const auth = await options.getCurrentAuthContext(request);
     const { entryId } = parseWithSchema(paramsWithEntryIdSchema, request.params);
-    return { status: 200, body: { items: await listKnowledgeReferenceSuggestions(requireDb(options.db), auth, entryId) } };
+    return { status: 200, body: { items: await listKnowledgeReferenceSuggestions(requireDb(options.db), auth, entryId, request.requestId) } };
   });
 
   router.post("/api/v1/knowledge/entries/:entryId/reference-suggestions/:definitionId/accept", async (request) => {

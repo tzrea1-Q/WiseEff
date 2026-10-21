@@ -161,19 +161,6 @@ export async function enqueueAllPublishedEntries(db: Queryable, organizationId: 
   return result.rowCount ?? 0;
 }
 
-/** Rescans include drafts; retrieval still indexes published entries only. */
-export async function enqueueReferenceSuggestionRescan(db: Queryable, organizationId: string): Promise<number> {
-  const result = await db.query(
-    `insert into knowledge_index_status (entry_id, organization_id, status, error, enqueued_at, updated_at)
-     select id, organization_id, 'pending', null, now(), now() from knowledge_entries
-     where organization_id = $1 and status <> 'archived'
-     on conflict (entry_id) do update
-       set status = 'pending', error = null, enqueued_at = now(), updated_at = now()`,
-    [organizationId]
-  );
-  return result.rowCount ?? 0;
-}
-
 /**
  * System-actor variant of the rebuild enqueue for the late-install ensure:
  * newly gained vector support applies to every organization's published
@@ -191,6 +178,29 @@ export async function enqueueAllPublishedEntriesAcrossOrganizations(db: Queryabl
     `
   );
   return result.rowCount ?? 0;
+}
+
+/** Detection-only scans never change chunks, embeddings or index job claims. */
+export async function listReferenceSuggestionDetectionBatch(
+  db: Queryable,
+  input: { organizationId?: string; neverDetected?: boolean; afterId?: string; limit?: number }
+) {
+  const result = await db.query<{ entry_id: string; organization_id: string }>(
+    `select id as entry_id, organization_id from knowledge_entries
+     where status <> 'archived' and ($1::text is null or organization_id = $1)
+       and (not $2::boolean or reference_suggestions_detected_at is null)
+       and ($3::uuid is null or id > $3)
+     order by id limit $4`,
+    [input.organizationId ?? null, input.neverDetected ?? false, input.afterId ?? null, input.limit ?? 50]
+  );
+  return result.rows;
+}
+
+export async function countReferenceSuggestionRescanEntries(db: Queryable, organizationId: string): Promise<number> {
+  const result = await db.query<{ count: number }>(
+    "select count(*)::int as count from knowledge_entries where organization_id = $1 and status <> 'archived'", [organizationId]
+  );
+  return result.rows[0].count;
 }
 
 const STALE_PROCESSING_INTERVAL = "5 minutes";

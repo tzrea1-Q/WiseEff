@@ -161,7 +161,7 @@ describe("knowledge routes", () => {
       status: "draft",
       tag: "tuning",
       limit: 10
-    });
+    }, "test-request");
   });
 
   it("GET /api/v1/knowledge/search requires q, delegates, and reports the retrieval mode", async () => {
@@ -478,7 +478,7 @@ describe("knowledge routes", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(service.listKnowledgeEntries).toHaveBeenCalledWith(db, makeAuth(), { status: "draft", sourceType: "agent" });
+    expect(service.listKnowledgeEntries).toHaveBeenCalledWith(db, makeAuth(), { status: "draft", sourceType: "agent" }, "test-request");
   });
 
   it("DELETE /api/v1/knowledge/entries/:entryId delegates to hard delete", async () => {

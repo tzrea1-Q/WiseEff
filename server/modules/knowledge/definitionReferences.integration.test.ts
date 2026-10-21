@@ -26,6 +26,8 @@ import { registerKnowledgeRoutes } from "./routes";
 import { createKnowledgeTools } from "../agent/tools/knowledgeTools";
 import * as legacyApi from "../parameter-catalog-api/legacy";
 import { processNextKnowledgeIndexJob } from "./indexing/worker";
+import * as referenceScans from "./indexing/referenceSuggestionsEnsure";
+import { ApiError } from "../../shared/http/errors";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -262,7 +264,8 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     })]);
   });
 
-  it("enqueues organization rescans for managers, preserves decisions and audits each admin action", async () => {
+  it("runs detection-only organization rescans for managers, preserves decisions and audits each admin action", async () => {
+    const scans = vi.spyOn(referenceScans, "scanKnowledgeReferenceSuggestions");
     const created = await request(auth, "POST", "/api/v1/knowledge/entries", {
       contentForm: "markdown", title: "Rescan decisions", tags: [],
       contentMarkdown: "knowledge_batch_property_8_0 knowledge_batch_property_8_1 k1340_new_catalog_key"
@@ -283,15 +286,19 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     expect((await request({ ...auth, permissions: [] }, "POST", rescan)).status).toBe(403);
     const count = await db.query<{ count: string }>("select count(*) from knowledge_entries where organization_id = $1 and status <> 'archived'", [ORG_A]);
     for (let run = 0; run < 2; run++) {
+      const indexBefore = await db.query("select * from knowledge_index_status order by entry_id");
+      const chunksBefore = await db.query("select * from knowledge_chunks order by id");
       const result = await request(auth, "POST", rescan);
       expect(result.status).toBe(200);
       expect(result.body).toEqual({ enqueued: Number(count.rows[0].count) });
       const health = await request(auth, "GET", "/api/v1/knowledge/index/status");
-      expect(health.body.items.find((item: { entryId: string }) => item.entryId === id)?.status).toBe("pending");
+      expect(health.body.items.find((item: { entryId: string }) => item.entryId === id)?.status).toBe("succeeded");
       expect(health.body.items.find((item: { entryId: string }) => item.entryId === archived)?.status).toBe("succeeded");
       const otherHealth = await request(authB, "GET", "/api/v1/knowledge/index/status");
       expect(otherHealth.body.items.find((item: { entryId: string }) => item.entryId === foreign)?.status).toBe("succeeded");
-      await drainSuggestions();
+      await scans.mock.results.at(-1)?.value;
+      expect((await db.query("select * from knowledge_index_status order by entry_id")).rows).toEqual(indexBefore.rows);
+      expect((await db.query("select * from knowledge_chunks order by id")).rows).toEqual(chunksBefore.rows);
       expect((await request(auth, "GET", path)).body.items).toEqual([expect.objectContaining({ definitionId: "pdef_k1340_new" })]);
       expect((await request(auth, "GET", `/api/v1/knowledge/entries/${id}`)).body.item.parameterReferences)
         .toContainEqual(expect.objectContaining({ definitionId: "pdef_kb_batch_8_0" }));
@@ -317,6 +324,7 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     } finally {
       await db.query("drop trigger k1340_refuse_rescan_audit on audit_events");
       await db.query("drop function k1340_refuse_rescan_audit()");
+      scans.mockRestore();
     }
   });
 
@@ -343,8 +351,12 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     await db.query("update knowledge_index_status set status = 'processing', started_at = now() where entry_id = $1", [running]);
     await db.query("update knowledge_index_status set status = 'pending' where entry_id = $1", [queued]);
     const { ensureKnowledgeReferenceSuggestions } = await import("./indexing/referenceSuggestionsEnsure");
+    const indexBefore = await db.query("select * from knowledge_index_status order by entry_id");
+    const chunksBefore = await db.query("select * from knowledge_chunks order by id");
     const results = await Promise.all([ensureKnowledgeReferenceSuggestions(db), ensureKnowledgeReferenceSuggestions(db)]);
-    expect(results.reduce((total, result) => total + result.enqueued, 0)).toBe(4);
+    expect(results.reduce((total, result) => total + result.enqueued, 0)).toBe(6);
+    expect((await db.query("select * from knowledge_index_status order by entry_id")).rows).toEqual(indexBefore.rows);
+    expect((await db.query("select * from knowledge_chunks order by id")).rows).toEqual(chunksBefore.rows);
     expect((await db.query("select status from knowledge_index_status where entry_id = $1", [running])).rows).toEqual([{ status: "processing" }]);
     await drainSuggestions();
     for (const record of records) {
@@ -377,6 +389,13 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     expect((await list(owner, "&pendingSuggestions=true&limit=1")).body.items).toHaveLength(1);
     expect((await list(auth, "&pendingSuggestions=true")).body.items).toHaveLength(1);
     expect((await list(authB, "&pendingSuggestions=true")).body.items).toEqual([]);
+    await request(auth, "POST", `/api/v1/knowledge/entries/${id}/archive`);
+    expect((await list(owner)).body.items[0].pendingSuggestionCount).toBe(0);
+    expect((await list(owner, "&pendingSuggestions=true")).body.items).toEqual([]);
+    expect((await list(auth, "&pendingSuggestions=true")).body.items).toEqual([]);
+    expect((await db.query("select status from knowledge_reference_suggestions where entry_id = $1", [id])).rows).toEqual([{ status: "pending" }]);
+    await request(auth, "POST", `/api/v1/knowledge/entries/${id}/restore`);
+    await drainSuggestions();
     await request(owner, "POST", `/api/v1/knowledge/entries/${id}/reference-suggestions/pdef_kb_batch_8_0/accept`);
     expect((await list(owner)).body.items[0].pendingSuggestionCount).toBe(0);
     expect((await list(owner, "&pendingSuggestions=true")).body.items).toEqual([]);
@@ -431,6 +450,39 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     }
   });
 
+  it.each([
+    new Error("Catalog read unavailable"),
+    new ApiError("UNAUTHENTICATED", "Catalog authentication unavailable"),
+    new ApiError("FORBIDDEN", "Catalog access unavailable")
+  ])("retains pending evidence and no detected stamp on catalog failure: %s", async (failure) => {
+    const created = await request(auth, "POST", "/api/v1/knowledge/entries", {
+      contentForm: "markdown", title: "Failure preserves evidence", tags: [], contentMarkdown: "knowledge_batch_property_7_0"
+    });
+    const id = created.body.item.id as string;
+    await drainSuggestions();
+    const before = await db.query("select * from knowledge_reference_suggestions where entry_id = $1", [id]);
+    expect(before.rows).toHaveLength(1);
+    await request(auth, "PATCH", `/api/v1/knowledge/entries/${id}`, {
+      expectedHeadRevisionNumber: 1, contentMarkdown: "The old key is absent now"
+    });
+    await db.query("update knowledge_entries set reference_suggestions_detected_at = null where id = $1", [id]);
+    const catalogRead = vi.spyOn(catalogApi, "listCatalogDefinitionsForKnowledgeOrganization").mockRejectedValue(failure);
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await drainSuggestions();
+      expect(catalogRead).toHaveBeenCalledWith(db, ORG_A, expect.any(String));
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining("Detection failed"), expect.objectContaining({ entryId: id, error: failure }));
+      expect((await db.query("select * from knowledge_reference_suggestions where entry_id = $1", [id])).rows).toEqual(before.rows);
+      expect((await db.query("select reference_suggestions_detected_at from knowledge_entries where id = $1", [id])).rows)
+        .toEqual([{ reference_suggestions_detected_at: null }]);
+      expect((await request(auth, "GET", "/api/v1/knowledge/index/status")).body.items)
+        .toContainEqual(expect.objectContaining({ entryId: id, status: "succeeded" }));
+    } finally {
+      catalogRead.mockRestore();
+      warning.mockRestore();
+    }
+  });
+
   it("keeps an entry indexed and searchable without suggestions when the catalog read fails", async () => {
     const created = await request(auth, "POST", "/api/v1/knowledge/entries", {
       contentForm: "markdown", title: "Non-fatal suggestion detection", tags: [],
@@ -439,7 +491,7 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     expect(created.status).toBe(201);
     const id = created.body.item.id as string;
     expect((await request(auth, "POST", `/api/v1/knowledge/entries/${id}/publish`)).status).toBe(200);
-    const catalogRead = vi.spyOn(catalogApi, "listCatalogDefinitionsForKnowledge")
+    const catalogRead = vi.spyOn(catalogApi, "listCatalogDefinitionsForKnowledgeOrganization")
       .mockRejectedValue(new Error("Catalog read unavailable"));
     try {
       await drainSuggestions();
@@ -462,21 +514,21 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     expect(suggestions.body.items).toEqual([]);
   });
 
-  it("uses the authenticated revision author when a manager revises an inactive owner's entry", async () => {
+  it("detects without an active author, owner, or parameter permission on the author", async () => {
     const id = await createEntry(auth, "Manager maintained suggestions", false);
     const manager = { ...auth, user: { ...auth.user, id: REFERENCE_CREATOR } };
     const revised = await request(manager, "PATCH", `/api/v1/knowledge/entries/${id}`, {
       expectedHeadRevisionNumber: 1, contentMarkdown: "knowledge_batch_property_6_0"
     });
     expect(revised.status).toBe(200);
-    await db.query("update users set is_active = false where id = $1", [USER_A]);
+    await db.query("update users set is_active = false where id = any($1::text[])", [[USER_A, REFERENCE_CREATOR]]);
     try {
       await drainSuggestions();
       const result = await request(manager, "GET", `/api/v1/knowledge/entries/${id}/reference-suggestions`);
       expect(result.status).toBe(200);
       expect(result.body.items).toEqual([expect.objectContaining({ definitionId: "pdef_kb_batch_6_0" })]);
     } finally {
-      await db.query("update users set is_active = true where id = $1", [USER_A]);
+      await db.query("update users set is_active = true where id = any($1::text[])", [[USER_A, REFERENCE_CREATOR]]);
     }
   });
 
@@ -500,7 +552,7 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
       definitionId: "pdef_kb_batch_1_0", mentionCount: 125, snippet: expect.stringContaining(`(${key})`), page: null
     })]);
     expect((await pool.query("select id from audit_events where target_id = $1 order by id", [id])).rows).toEqual(before.rows);
-    expect((await request({ ...auth, permissions: ["knowledge:view", "knowledge:manage"] }, "GET", path)).body.items).toEqual([]);
+    expect((await request({ ...auth, permissions: ["knowledge:view", "knowledge:manage"] }, "GET", path)).status).toBe(403);
     expect((await request({ ...auth, permissions: ["knowledge:view", "knowledge:manage"] }, "POST", `${path}/pdef_kb_batch_1_0/accept`)).status).toBe(403);
   });
 
@@ -612,19 +664,17 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     expect(result.status).toBe(200);
     expect(result.body.items).toEqual([expect.objectContaining({
       definitionId: "pdef_kb_batch_5_0", propertyKey: key, mentionCount: 1,
-      snippet: expect.stringContaining(key), detectedRevisionId: created.body.item.headRevisionId
+      snippet: expect.stringContaining(key), page: 1, detectedRevisionId: created.body.item.headRevisionId
     })]);
-    // Model optional offsets from the separate page-citation slice. Detection
-    // must work both before that storage exists and after pages are available.
-    await db.query("alter table knowledge_files add column if not exists page_offsets integer[]");
-    await db.query("update knowledge_files set page_offsets = array[0] where id = $1 and organization_id = $2", [created.body.item.file.id, ORG_A]);
+    // The shared snapshot reads the PDF extraction's real page-offset column.
+    await db.query("update knowledge_files set extracted_text = 'first page ' || extracted_text, page_offsets = array[0, 11] where id = $1 and organization_id = $2", [created.body.item.file.id, ORG_A]);
     const revised = await request(auth, "PATCH", `/api/v1/knowledge/entries/${created.body.item.id}`, {
       expectedHeadRevisionNumber: 1, title: "PDF suggestions with page metadata"
     });
     expect(revised.status).toBe(200);
     await drainSuggestions();
     expect((await request(auth, "GET", `/api/v1/knowledge/entries/${created.body.item.id}/reference-suggestions`)).body.items)
-      .toEqual([expect.objectContaining({ page: 1, detectedRevisionId: revised.body.item.headRevisionId })]);
+      .toEqual([expect.objectContaining({ page: 2, detectedRevisionId: revised.body.item.headRevisionId })]);
   });
 
   it("returns only published definition-related knowledge and requires knowledge:view", async () => {

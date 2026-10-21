@@ -51,7 +51,7 @@ export type KnowledgeEntryEditorDialogProps = {
   entry: KnowledgeEntry | null;
   onSubmit: (input: KnowledgeEditorSubmit) => Promise<void>;
   parameterReferencePicker?: KnowledgeParameterReferencePicker;
-  suggestionRepository?: Pick<KnowledgeRepository, "listReferenceSuggestions" | "acceptReferenceSuggestion" | "dismissReferenceSuggestion">;
+  suggestionRepository?: Pick<KnowledgeRepository, "listReferenceSuggestions" | "acceptReferenceSuggestion" | "dismissReferenceSuggestion" | "batch">;
   onReferenceUpdate?: (entry: KnowledgeEntry) => void;
   onClose: () => void;
 };
@@ -117,20 +117,28 @@ export function KnowledgeEntryEditorDialog({
     return () => { cancelled = true; };
   }, [open, entry, suggestionRepository, suggestionReload]);
 
-  async function decideSuggestions(items: KnowledgeReferenceSuggestion[], accept: boolean) {
+  async function decideSuggestions(item?: KnowledgeReferenceSuggestion, accept = true) {
     if (!entry || !suggestionRepository || suggestionPending) return;
     setSuggestionPending(true);
     setSuggestionError("");
     try {
-      for (const item of items) {
-        if (accept) {
-          const updated = await suggestionRepository.acceptReferenceSuggestion(entry.id, item.definitionId);
-          setReferences(updated.parameterReferences);
-          onReferenceUpdate?.(updated);
-        }
-        else await suggestionRepository.dismissReferenceSuggestion(entry.id, item.definitionId);
-        setSuggestions((current) => current.filter((candidate) => candidate.definitionId !== item.definitionId));
+      let updated: KnowledgeEntry | undefined;
+      if (!item) {
+        const batch = await suggestionRepository.batch({ action: "accept_suggestions", entryIds: [entry.id] });
+        const result = batch.results[0];
+        if (result?.status !== "succeeded" || !result.entry) throw new Error(result?.error?.message ?? "建议处理失败，请重试。");
+        updated = result.entry;
+        if (batch.summaryError) setSuggestionError(batch.summaryError);
+      } else if (accept) {
+        updated = await suggestionRepository.acceptReferenceSuggestion(entry.id, item.definitionId);
+      } else {
+        await suggestionRepository.dismissReferenceSuggestion(entry.id, item.definitionId);
       }
+      if (updated) {
+        setReferences(updated.parameterReferences);
+        onReferenceUpdate?.(updated);
+      }
+      setSuggestions((current) => item ? current.filter((candidate) => candidate.definitionId !== item.definitionId) : []);
     } catch (error) {
       setSuggestionError(presentError(error, "建议处理失败，请重试。"));
     } finally { setSuggestionPending(false); }
@@ -309,7 +317,7 @@ export function KnowledgeEntryEditorDialog({
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-sm font-medium">建议关联</h3>
                 <Button type="button" size="sm" variant="outline" disabled={suggestionLoading || suggestionPending || suggestions.length === 0}
-                  onClick={() => void decideSuggestions(suggestions, true)}>全部接受</Button>
+                  onClick={() => void decideSuggestions()}>全部接受</Button>
               </div>
               {suggestionLoading ? <p role="status" className="text-xs text-muted-foreground">加载建议中…</p> : null}
               {suggestionError ? <div role="alert" className="text-sm text-destructive">{suggestionError}
@@ -327,8 +335,8 @@ export function KnowledgeEntryEditorDialog({
                         <p className="whitespace-pre-wrap break-all text-xs text-muted-foreground">{item.snippet}</p>
                       </div>
                       <div className="flex shrink-0 gap-1">
-                        <Button type="button" size="sm" variant="outline" disabled={suggestionPending} onClick={() => void decideSuggestions([item], true)}>接受</Button>
-                        <Button type="button" size="sm" variant="ghost" disabled={suggestionPending} onClick={() => void decideSuggestions([item], false)}>忽略</Button>
+                        <Button type="button" size="sm" variant="outline" disabled={suggestionPending} onClick={() => void decideSuggestions(item, true)}>接受</Button>
+                        <Button type="button" size="sm" variant="ghost" disabled={suggestionPending} onClick={() => void decideSuggestions(item, false)}>忽略</Button>
                       </div>
                     </div>
                   ))}

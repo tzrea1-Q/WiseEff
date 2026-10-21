@@ -1,7 +1,7 @@
 import { render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
+import { createMockKnowledgeFixtures, createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
 import { KnowledgePage } from "./KnowledgePage";
 
 const capability = { userId: "u-xu-yun", canView: true, canEdit: true, canManage: false };
@@ -9,14 +9,9 @@ const capability = { userId: "u-xu-yun", canView: true, canEdit: true, canManage
 describe("knowledge reference suggestions", () => {
   it("refreshes the list badge after leaving a partially reviewed entry", async () => {
     const repository = createMockKnowledgeRepository({ canManage: false });
-    const entry = await repository.createMarkdown({ title: "部分审阅", tags: [], contentMarkdown: "key" });
-    let count = 2;
-    vi.spyOn(repository, "list").mockImplementation(async () => ({ items: [{ ...entry, pendingSuggestionCount: count }] }));
-    vi.spyOn(repository, "listReferenceSuggestions").mockImplementation(async () => Array.from({ length: count }, (_, index) => ({
-      definitionId: `def-${index}`, propertyKey: "property_key", displayName: "参数", driverModule: "module", lifecycle: "active" as const,
-      mentionCount: 1, snippet: "property_key", page: null, detectedRevisionId: "revision"
-    })));
-    vi.spyOn(repository, "acceptReferenceSuggestion").mockImplementation(async () => { count = 1; return entry; });
+    const entry = await repository.createMarkdown({ title: "部分审阅", tags: [], contentMarkdown: "gpio-int" });
+    const items = await repository.listReferenceSuggestions(entry.id);
+    await repository.dismissReferenceSuggestion(entry.id, items[2]!.definitionId);
     render(<KnowledgePage repository={repository} capability={capability} />);
     const user = userEvent.setup();
     await screen.findByText("待处理建议 2");
@@ -32,16 +27,12 @@ describe("knowledge reference suggestions", () => {
 
   it("filters pending suggestions, shows governed counts, and reports bulk acceptance per entry", async () => {
     const repository = createMockKnowledgeRepository({ canManage: false });
-    const own = await repository.createMarkdown({ title: "待处理条目", tags: [], contentMarkdown: "key" });
+    const own = await repository.createMarkdown({ title: "待处理条目", tags: [], contentMarkdown: "gpio-int" });
+    await repository.acceptReferenceSuggestion(own.id, (await repository.listReferenceSuggestions(own.id))[2]!.definitionId);
     const rows = (await repository.list()).items;
     const other = rows.find((entry) => entry.status === "published" && entry.createdByUserId !== capability.userId)!;
-    const list = vi.spyOn(repository, "list").mockImplementation(async (query) => ({ items: query?.pendingSuggestions
-      ? [{ ...own, pendingSuggestionCount: 2 }]
-      : [{ ...own, pendingSuggestionCount: 2 }, other] }));
-    const batch = vi.spyOn(repository, "batch").mockResolvedValue({ results: [
-      { entryId: own.id, title: own.title, status: "succeeded", entry: { ...own, pendingSuggestionCount: 0 }, error: null },
-      { entryId: other.id, title: other.title, status: "refused", entry: null, error: { code: "FORBIDDEN", message: "Forbidden." } }
-    ], summaryError: null });
+    const list = vi.spyOn(repository, "list");
+    const batch = vi.spyOn(repository, "batch");
     render(<KnowledgePage repository={repository} capability={capability} />);
     const user = userEvent.setup();
     const ownRow = (await screen.findByText(own.title)).closest("tr")!;
@@ -66,21 +57,20 @@ describe("knowledge reference suggestions", () => {
   });
 
   it("groups ambiguous suggestions, accepts independently, dismisses and accepts all remaining items", async () => {
-    const repository = createMockKnowledgeRepository({ canManage: false });
-    const entry = await repository.createMarkdown({ title: "建议测试", tags: [], contentMarkdown: "iin_max" });
-    let items = ["module-a", "module-b", "module-c"].map((driverModule, index) => ({
+    const fixtures = createMockKnowledgeFixtures();
+    const entry = fixtures.entries.find((item) => item.status === "draft" && item.createdByUserId === capability.userId)!;
+    entry.title = "建议测试";
+    entry.contentMarkdown = "iin_max";
+    const items = ["module-a", "module-b", "module-c"].map((driverModule, index) => ({
       definitionId: `pdef-${index}`, propertyKey: "iin_max", displayName: "输入电流", driverModule,
       lifecycle: index === 1 ? "deprecated" as const : "active" as const,
       mentionCount: 3, snippet: "iin_max 调参说明", page: 2, detectedRevisionId: "detected-revision-1"
     }));
-    vi.spyOn(repository, "listReferenceSuggestions").mockImplementation(async () => items);
-    const accept = vi.spyOn(repository, "acceptReferenceSuggestion").mockImplementation(async (_id, definitionId) => {
-      items = items.filter((item) => item.definitionId !== definitionId);
-      return { ...entry, parameterReferences: [] };
-    });
-    const dismiss = vi.spyOn(repository, "dismissReferenceSuggestion").mockImplementation(async (_id, definitionId) => {
-      items = items.filter((item) => item.definitionId !== definitionId);
-    });
+    fixtures.suggestions = { [entry.id]: items };
+    const repository = createMockKnowledgeRepository({ canManage: false }, fixtures);
+    const accept = vi.spyOn(repository, "acceptReferenceSuggestion");
+    const dismiss = vi.spyOn(repository, "dismissReferenceSuggestion");
+    const batch = vi.spyOn(repository, "batch");
     render(<KnowledgePage repository={repository} capability={capability} />);
     const user = userEvent.setup();
     await user.click(await screen.findByText(entry.title));
@@ -95,8 +85,12 @@ describe("knowledge reference suggestions", () => {
     await user.click(within(section).getAllByRole("button", { name: "忽略" })[0]!);
     await waitFor(() => expect(dismiss).toHaveBeenCalledWith(entry.id, "pdef-1"));
     await user.click(within(section).getByRole("button", { name: "全部接受" }));
-    await waitFor(() => expect(accept).toHaveBeenCalledWith(entry.id, "pdef-2"));
+    await waitFor(() => expect(batch).toHaveBeenCalledWith({ action: "accept_suggestions", entryIds: [entry.id] }));
+    expect(accept).toHaveBeenCalledTimes(1);
     expect(await within(section).findByText("暂无建议关联。")).toBeInTheDocument();
+    expect((await repository.get(entry.id))?.parameterReferences).toEqual(expect.arrayContaining([
+      expect.objectContaining({ definitionId: "pdef-0" }), expect.objectContaining({ definitionId: "pdef-2" })
+    ]));
   });
 
   it("never loads suggestions for a reader", async () => {
@@ -107,6 +101,26 @@ describe("knowledge reference suggestions", () => {
     await userEvent.setup().click(await screen.findByText(entry.title));
     expect(screen.queryByRole("region", { name: "建议关联" })).not.toBeInTheDocument();
     expect(list).not.toHaveBeenCalled();
+  });
+
+  it("keeps suggestions when the single-entry atomic accept is refused", async () => {
+    const repository = createMockKnowledgeRepository({ canManage: false });
+    const entry = await repository.createMarkdown({ title: "原子接受失败", tags: [], contentMarkdown: "gpio-int" });
+    const accept = vi.spyOn(repository, "acceptReferenceSuggestion");
+    const batch = vi.spyOn(repository, "batch").mockResolvedValueOnce({ results: [{ entryId: entry.id, title: entry.title,
+      status: "failed", entry: null, error: { code: "CONFLICT", message: "定义已变化" } }], summaryError: null });
+    render(<KnowledgePage repository={repository} capability={capability} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText(entry.title));
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    const section = await screen.findByRole("region", { name: "建议关联" });
+    await within(section).findAllByRole("button", { name: "接受" });
+    await user.click(within(section).getByRole("button", { name: "全部接受" }));
+    expect(await within(section).findByRole("alert")).toHaveTextContent("定义已变化");
+    expect(batch).toHaveBeenCalledWith({ action: "accept_suggestions", entryIds: [entry.id] });
+    expect(accept).not.toHaveBeenCalled();
+    expect(within(section).getAllByRole("button", { name: "接受" })).toHaveLength(3);
+    expect((await repository.get(entry.id))?.parameterReferences).toEqual([]);
   });
 
   it("lets a manager govern file suggestions without a markdown save and retries a failed read", async () => {

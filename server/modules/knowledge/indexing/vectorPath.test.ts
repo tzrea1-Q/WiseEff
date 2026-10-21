@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Database } from "../../../shared/database/client";
 import { createDeterministicEmbeddingClient } from "./embeddingClient";
 import { indexKnowledgeEntry } from "./service";
+import * as referenceSuggestions from "../referenceSuggestions";
 
 type RecordedQuery = { text: string; values: unknown[] };
 
@@ -52,6 +53,34 @@ const markdownSnapshotRow = {
 };
 
 describe("indexKnowledgeEntry vector path (scripted db)", () => {
+  it.each(["draft", "published"])("does not detect suggestions for a superseded %s claim", async (status) => {
+    const { db, recorded } = createScriptedDb({ entrySnapshotRow: { ...markdownSnapshotRow, status }, vectorSupport: false });
+    const detection = vi.spyOn(referenceSuggestions, "detectKnowledgeReferenceSuggestions").mockResolvedValue();
+    try {
+      expect(await indexKnowledgeEntry(db, { entryId: "entry-1", organizationId: "org-1",
+        claim: { entryId: "entry-1", organizationId: "org-1", startedAt: "2026-10-21T00:00:00.000Z" }
+      })).toEqual({ outcome: "superseded" });
+      expect(detection).not.toHaveBeenCalled();
+      expect(recorded.some((query) => query.text.includes("insert into knowledge_chunks"))).toBe(false);
+    } finally { detection.mockRestore(); }
+  });
+
+  it("detects only after the index transaction commits", async () => {
+    const { db } = createScriptedDb({ entrySnapshotRow: markdownSnapshotRow, vectorSupport: false });
+    let committed = false;
+    db.transaction = async (write) => {
+      const value = await write(db);
+      committed = true;
+      return value;
+    };
+    const detection = vi.spyOn(referenceSuggestions, "detectKnowledgeReferenceSuggestions").mockImplementation(async () => {
+      expect(committed).toBe(true);
+    });
+    try {
+      expect(await indexKnowledgeEntry(db, { entryId: "entry-1", organizationId: "org-1" })).toMatchObject({ outcome: "indexed" });
+      expect(detection).toHaveBeenCalledTimes(1);
+    } finally { detection.mockRestore(); }
+  });
   it("writes chunk embeddings as pgvector literals and records the embedding model", async () => {
     const { db, recorded } = createScriptedDb({ entrySnapshotRow: markdownSnapshotRow, vectorSupport: true });
     const embeddingClient = createDeterministicEmbeddingClient({ dimensions: 8 });

@@ -19,12 +19,13 @@ import { fuseKnowledgeSearchResults } from "./hybridSearch";
 import type { KnowledgeEmbeddingClient } from "./indexing/embeddingClient";
 import {
   enqueueAllPublishedEntries,
-  enqueueReferenceSuggestionRescan,
+  countReferenceSuggestionRescanEntries,
   enqueueEntryIndexRefresh,
   hasKnowledgeVectorSupport,
   listIndexStatuses,
   type KnowledgeIndexStatusDto
 } from "./indexing/repository";
+import { scanKnowledgeReferenceSuggestions } from "./indexing/referenceSuggestionsEnsure";
 import {
   countParameterReferencesForEntry,
   deleteDefinitionReference,
@@ -38,6 +39,7 @@ import {
 } from "./parameterReferences";
 import {
   canReadEntry,
+  canGovernKnowledgeEntry,
   hasKnowledgeManage,
   requireKnowledgeEdit,
   requireKnowledgeGovern,
@@ -930,13 +932,16 @@ export async function batchKnowledgeEntries(
       requireKnowledgeGovern(auth, current);
       let entry: KnowledgeEntryDto;
       if (input.action === "publish") {
-        entry = await publishKnowledgeEntry(db, auth, entryId, { ...context, requestId });
+        entry = await transitionKnowledgeEntry(db, auth, invocation, entryId,
+          { fromStatuses: ["draft"], toStatus: "published", kind: "knowledge-entry-publish", action: "publish" }, { ...context, requestId });
       } else if (input.action === "archive") {
-        entry = await archiveKnowledgeEntry(db, auth, entryId, { ...context, requestId });
+        entry = await transitionKnowledgeEntry(db, auth, invocation, entryId,
+          { fromStatuses: ["published"], toStatus: "archived", kind: "knowledge-entry-archive", action: "archive" }, { ...context, requestId });
       } else if (input.action === "accept_suggestions") {
         await db.transaction(async (tx) => {
           await requireReferenceEditableEntry(tx, auth, entryId);
-          const suggestions = await listKnowledgeReferenceSuggestions(db, auth, entryId);
+          const definitions = await listCatalogDefinitionsForKnowledge(db, auth, requestId);
+          const suggestions = await listPendingReferenceSuggestions(tx, auth, definitions.map((d) => d.id), entryId);
           for (const suggestion of suggestions) {
             await addKnowledgeDefinitionReferenceInTx(db, tx, auth, invocation,
               { entryId, definitionId: suggestion.definitionId, fromSuggestion: true }, { ...context, requestId });
@@ -1107,7 +1112,7 @@ async function addKnowledgeDefinitionReferenceInTx(
       [auth.organization.id, input.entryId, input.definitionId]
     );
     if (!suggestion.rows[0] || !["pending", "accepted"].includes(suggestion.rows[0].status)) {
-      throw new ApiError("CONFLICT", "Reference suggestion is not pending.");
+      throw new ApiError("CONFLICT", "Reference suggestion is not pending.", { reason: "suggestion-not-pending" });
     }
     await tx.query(
       "update knowledge_reference_suggestions set status = 'accepted', updated_at = now() where organization_id = $1 and entry_id = $2 and definition_id = $3",
@@ -1151,27 +1156,39 @@ async function addKnowledgeDefinitionReferenceInTx(
   );
 }
 
-export async function listKnowledgeReferenceSuggestions(db: Database, auth: AuthContext, entryId: string) {
+/** Shared pending predicate for detail, counts/filter and transactional batch acceptance. */
+async function listPendingReferenceSuggestions(db: Queryable, auth: AuthContext, definitionIds: string[] | null, entryId?: string) {
+  const result = await db.query<{
+    entryId: string;
+    definitionId: string; propertyKey: string; mentionCount: number; snippet: string;
+    page: number | null; detectedRevisionId: string;
+  }>(
+    `select s.entry_id as "entryId", s.definition_id as "definitionId", s.property_key as "propertyKey", s.mention_count as "mentionCount",
+            s.snippet, s.page, s.detected_revision_id as "detectedRevisionId"
+     from knowledge_reference_suggestions s
+     join knowledge_entries e on e.organization_id = s.organization_id and e.id = s.entry_id
+     where s.organization_id = $1 and ($2::uuid is null or s.entry_id = $2) and s.status = 'pending'
+       and e.status <> 'archived' and ($3::text[] is null or s.definition_id = any($3::text[]))
+       and ($4::boolean or (e.created_by_user_id = $5 and $6::boolean))
+       and not exists (select 1 from knowledge_definition_references r
+         where r.organization_id = s.organization_id and r.entry_id = s.entry_id and r.definition_id = s.definition_id)
+     order by s.mention_count desc, s.property_key, s.definition_id`,
+    [auth.organization.id, entryId ?? null, definitionIds,
+      canGovernKnowledgeEntry(auth, { createdByUserId: null }), auth.user.id,
+      canGovernKnowledgeEntry(auth, { createdByUserId: auth.user.id })]
+  );
+  return result.rows;
+}
+
+export async function listKnowledgeReferenceSuggestions(db: Database, auth: AuthContext, entryId: string, requestId: string) {
   requireKnowledgeView(auth);
   const entry = await getEntryById(db, auth, entryId);
   if (!entry || !canReadEntry(auth, entry)) throw knowledgeEntryNotFound(entryId);
   requireKnowledgeGovern(auth, entry);
   if (entry.status === "archived") return [];
-  const result = await db.query<{
-    definitionId: string; propertyKey: string; mentionCount: number; snippet: string;
-    page: number | null; detectedRevisionId: string;
-  }>(
-    `select s.definition_id as "definitionId", s.property_key as "propertyKey", s.mention_count as "mentionCount",
-            s.snippet, s.page, s.detected_revision_id as "detectedRevisionId"
-     from knowledge_reference_suggestions s
-     where s.organization_id = $1 and s.entry_id = $2 and s.status = 'pending'
-       and not exists (select 1 from knowledge_definition_references r
-         where r.organization_id = s.organization_id and r.entry_id = s.entry_id and r.definition_id = s.definition_id)
-     order by s.mention_count desc, s.property_key, s.definition_id`,
-    [auth.organization.id, entryId]
-  );
-  const definitions = new Map((await listCatalogDefinitionsForKnowledge(db, auth)).map((definition) => [definition.id, definition]));
-  return result.rows.flatMap((row) => {
+  const definitions = new Map((await listCatalogDefinitionsForKnowledge(db, auth, requestId)).map((definition) => [definition.id, definition]));
+  const pending = await listPendingReferenceSuggestions(db, auth, [...definitions.keys()], entryId);
+  return pending.flatMap(({ entryId: _entryId, ...row }) => {
     const definition = definitions.get(row.definitionId);
     return !definition || definition.lifecycle === "retired" ? [] : [{ ...row,
       displayName: definition.currentRevision.displayName, driverModule: definition.subject.canonicalName, lifecycle: definition.lifecycle
@@ -1307,30 +1324,20 @@ export async function findRelatedKnowledgeForDefinition(
   };
 }
 
-export async function listKnowledgeEntries(db: Database, auth: AuthContext, query: ListKnowledgeEntriesQuery = {}) {
+export async function listKnowledgeEntries(db: Database, auth: AuthContext, query: ListKnowledgeEntriesQuery = {}, requestId: string = randomUUID()) {
   requireKnowledgeView(auth);
   if (query.governable && !hasKnowledgeManage(auth)) requireKnowledgeEdit(auth);
-  const definitions = hasKnowledgeManage(auth) || auth.permissions.includes("knowledge:edit")
-    ? (await listCatalogDefinitionsForKnowledge(db, auth)).map((d) => d.id) : [];
-  const pending = definitions.length ? await db.query<{ entryId: string; count: number }>(
-    `select s.entry_id as "entryId", count(*)::int as count
-     from knowledge_reference_suggestions s join knowledge_entries e
-       on e.organization_id = s.organization_id and e.id = s.entry_id
-     where s.organization_id = $1 and s.status = 'pending'
-       and ($2::boolean or (e.created_by_user_id = $3 and $4::boolean))
-       and s.definition_id = any($5::text[])
-       and not exists (select 1 from knowledge_definition_references r
-         where r.organization_id = s.organization_id and r.entry_id = s.entry_id and r.definition_id = s.definition_id)
-     group by s.entry_id`,
-    [auth.organization.id, hasKnowledgeManage(auth), auth.user.id, auth.permissions.includes("knowledge:edit"), definitions]
-  ) : { rows: [] };
-  const counts = new Map(pending.rows.map((row) => [row.entryId, row.count]));
+  const pending = canGovernKnowledgeEntry(auth, { createdByUserId: auth.user.id })
+    ? await listPendingReferenceSuggestions(db, auth, null) : [];
+  const definitions = new Set(pending.length ? (await listCatalogDefinitionsForKnowledge(db, auth, requestId)).map((d) => d.id) : []);
+  const counts = new Map<string, number>();
+  for (const row of pending) if (definitions.has(row.definitionId)) counts.set(row.entryId, (counts.get(row.entryId) ?? 0) + 1);
   const entries = await listEntries(db, auth, {
     ...query,
     ...(query.pendingSuggestions ? { pendingEntryIds: [...counts.keys()] } : {}),
     visibleDraftOwnerUserId: hasKnowledgeManage(auth) ? undefined : auth.user.id
   });
-  return entries.map((entry) => hasKnowledgeManage(auth) || (entry.createdByUserId === auth.user.id && auth.permissions.includes("knowledge:edit"))
+  return entries.map((entry) => canGovernKnowledgeEntry(auth, entry)
     ? { ...entry, pendingSuggestionCount: counts.get(entry.id) ?? 0 } : entry);
 }
 
@@ -1687,9 +1694,10 @@ export async function retryKnowledgeEntryIndex(
 export async function rebuildKnowledgeIndex(
   db: Database,
   auth: AuthContext,
+  invocation: TrustedInvocationContext,
   context: KnowledgeServiceContext = {}
 ): Promise<{ enqueued: number }> {
-  const invocation = createUserInvocation(auth);
+  assertTrustedInvocationMatchesAuth(auth, invocation, "Knowledge index rebuild");
   requireKnowledgeManage(auth);
   let enqueued = 0;
   await db.transaction(async (tx) => {
@@ -1714,9 +1722,10 @@ export async function rescanKnowledgeReferenceSuggestions(
 ): Promise<{ enqueued: number }> {
   assertTrustedInvocationMatchesAuth(auth, invocation, "Knowledge reference suggestions rescan");
   requireKnowledgeManage(auth);
-  return db.transaction(async (tx) => {
-    const enqueued = await enqueueReferenceSuggestionRescan(tx, auth.organization.id);
-    await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId: context.requestId ?? randomUUID() }, {
+  const requestId = context.requestId ?? randomUUID();
+  const result = await db.transaction(async (tx) => {
+    const enqueued = await countReferenceSuggestionRescanEntries(tx, auth.organization.id);
+    await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId }, {
       app: "knowledge",
       kind: "knowledge-reference-suggestions-rescan",
       action: "reference-suggestions-rescan",
@@ -1728,4 +1737,8 @@ export async function rescanKnowledgeReferenceSuggestions(
     });
     return { enqueued };
   });
+  void scanKnowledgeReferenceSuggestions(db, { organizationId: auth.organization.id, requestId }).catch((error) => {
+    console.error("[knowledge-reference-suggestions] Organization rescan failed:", { requestId, error });
+  });
+  return result;
 }
