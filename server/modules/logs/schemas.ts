@@ -165,6 +165,7 @@ export const createLogDomainBodySchema = z.object({
 
 export const createLogSkillBodySchema = createLogDomainBodySchema.extend({
   name: z.string().trim().min(1).max(120),
+  status: z.enum(["draft", "published"]).optional(),
   startingPoint: z.union([
     z.object({ templateId: nonEmptyString }).strict(),
     z.object({ copyFromSkillId: nonEmptyString }).strict()

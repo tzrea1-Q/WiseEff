@@ -51,6 +51,9 @@ import {
   logDeletionPreviewResponseSchema,
   logDeletionStatusResponseSchema,
   logDeletionStatusListResponseSchema,
+  skillDeletionPreviewResponseSchema,
+  skillDeletionStatusResponseSchema,
+  skillDeletionListResponseSchema,
   logRunResponseSchema,
   logWebhookDeliveryListResponseSchema,
   logWebhookTestOutcomeResponseSchema
@@ -200,6 +203,18 @@ export function createHttpLogAnalysisRepository(
     return (await apiClient.raw("/api/v1/log-files", { method: "POST", body: form })).json() as Promise<LogUploadResponse>;
   }
   const repository: LogAnalysisRepository = {
+    async previewSkillDeletion(id) {
+      return parseContractDto(skillDeletionPreviewResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}/deletion-preview`), "SkillDeletionPreviewResponse").item;
+    },
+    async purgeSkill(id, version) {
+      return parseContractDto(skillDeletionStatusResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/purge`, { version }), "SkillDeletionStatusResponse").item;
+    },
+    async getSkillDeletionStatus(id) {
+      return parseContractDto(skillDeletionStatusResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}/deletion-status`), "SkillDeletionStatusResponse").item;
+    },
+    async listSkillDeletions() {
+      return parseContractDto(skillDeletionListResponseSchema, await apiClient.get("/api/v1/log-skills/deletions"), "SkillDeletionListResponse").items;
+    },
     async importSkillPackage(file, status, name) {
       return parseContractDto(logSkillResponseSchema, await apiClient.upload("/api/v1/log-skills/import", file, { status, ...(name?.trim() ? { name: name.trim() } : {}) }), "LogSkillResponse").item;
     },

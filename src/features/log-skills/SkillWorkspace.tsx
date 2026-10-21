@@ -37,6 +37,8 @@ import { IntegrationSection } from "./IntegrationSection";
 import { ParseTestsSection } from "./ParseTestsSection";
 import { AnalysisCasesSection, AnalysisCasePublishSummary } from "./AnalysisCasesSection";
 import { ExportSkillPackageDialog } from "./SkillPackageDialogs";
+import { SkillDeletionDialog } from "./SkillDeletionDialog";
+import type { SkillDeletionStatus } from "./types";
 import "./skill-workspace.css";
 
 export type SectionProps = { skill: AnalysisSkill; spec: SkillSpec; setSpec: (spec: SkillSpec) => void; disabled: boolean;
@@ -228,6 +230,8 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   const [revisions, setRevisions] = useState<SkillRevision[]>([]);
   const [stats, setStats] = useState<SectionProps["stats"]>();
   const [loadError, setLoadError] = useState<"missing" | "error" | null>(null);
+  const [deletionOpen, setDeletionOpen] = useState(false);
+  const [deleted, setDeleted] = useState<SkillDeletionStatus>();
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const budgetErrors: Record<string, string> = {};
@@ -249,7 +253,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   const leaveDecision = useRef<{ promise: Promise<boolean>; resolve: (allowed: boolean) => void } | null>(null);
   const sectionNavigation = useRef(false);
   const base = skill?.draft ?? skill?.currentRevision;
-  const dirty = !!base && (specJson(spec) !== specJson(base.spec) || parsingYamlDraft !== null || !formatValid);
+  const dirty = !deleted && !!base && (specJson(spec) !== specJson(base.spec) || parsingYamlDraft !== null || !formatValid);
   const disabled = !apiMode || !canEdit || pending;
   const [lastTestTab, setLastTestTab] = useState<"parse" | "cases">("parse");
   useEffect(() => {
@@ -295,6 +299,9 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
       setTestError(null);
       setStats(summaries?.find((s) => s.id === skillId)); setConflict(false); setError("");
     } catch (cause) {
+      if (cause instanceof WiseEffApiError && cause.code === "NOT_FOUND" && repository?.getSkillDeletionStatus) {
+        try { const item = await repository.getSkillDeletionStatus(skillId); if (generation === loadGeneration.current) setDeleted(item); return; } catch { /* A missing receipt retains the normal missing state. */ }
+      }
       if (generation === loadGeneration.current) setLoadError(cause instanceof WiseEffApiError && cause.code === "NOT_FOUND" ? "missing" : "error");
     }
   }, [apiMode, repository, skillId]);
@@ -374,6 +381,9 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
     sectionNavigation.current = false;
   };
   const back = () => onNavigate("/log-admin?tab=skills");
+  if (deleted) return <><SectionEmpty title="实验技能已删除" message={deleted.objects === "pending" ? "数据库已删除，仍有对象待清理。" : "数据库及独占对象已清理完成。"} actionLabel="返回分析技能" onAction={back} />
+    {deleted.objects === "pending" && !deletionOpen ? <Button onClick={() => setDeletionOpen(true)}>继续清理对象</Button> : null}
+    {deletionOpen && repository ? <SkillDeletionDialog key={skillId} skillId={skillId} repository={repository} initialStatus={deleted} onDeleted={setDeleted} onDismiss={() => setDeletionOpen(false)} onNavigate={onNavigate} /> : null}</>;
   if (loadError === "missing") return <SectionEmpty title="未找到分析技能" message="该技能不存在或不可访问。" actionLabel="返回分析技能" onAction={back} />;
   if (loadError) return <SectionError message="无法加载分析技能" onRetry={() => void refresh()} />;
   if (!skill) return <SectionSkeleton label="正在加载分析技能" />;
@@ -398,11 +408,11 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
             });
           }}>{dryRun?.status === "processing" ? "查看试运行" : "试运行"}</Button></div> : null}
         <div className="skill-draft-actions-slot">{skill.draft || dirty ? <div className="skill-draft-bar" role="group" aria-label="未发布更改">
-          <Button variant="ghost" disabled={disabled || (skill.currentRevision.status === "draft" && !dirty)} onClick={() => ask("放弃草稿？", skill.currentRevision.status === "draft" ? "将放弃未保存的更改，保留已导入的首个草稿。" : skill.draft ? "将删除已保存的草稿并放弃未保存的更改，当前发布版本不受影响。" : "将放弃未保存的更改，当前发布版本不受影响。", () => {
+          {skill.currentRevision.status === "draft" && repository?.previewSkillDeletion ? <Button variant="ghost" disabled={disabled} onClick={() => setDeletionOpen(true)}>删除实验技能</Button> : <Button variant="ghost" disabled={disabled || (skill.currentRevision.status === "draft" && !dirty)} onClick={() => ask("放弃草稿？", skill.currentRevision.status === "draft" ? "将放弃未保存的更改，保留已导入的首个草稿。" : skill.draft ? "将删除已保存的草稿并放弃未保存的更改，当前发布版本不受影响。" : "将放弃未保存的更改，当前发布版本不受影响。", () => {
             if (skill.currentRevision.status === "draft") { setSpec(structuredClone((skill.draft ?? skill.currentRevision).spec)); setProcedureEdited(false); setParsingYamlDraft(null); setFormatValid(true); setEditorReset((value) => value + 1); setEditReset((generation) => generation + 1); return; }
             if (!skill.draft) { setSpec(structuredClone(skill.currentRevision.spec)); setProcedureEdited(false); setParsingYamlDraft(null); setFormatValid(true); setEditorReset((value) => value + 1); setEditReset((generation) => generation + 1); return; }
             void run(async () => { await repository!.discardSkillDraft!(skillId, skill.draft!.id); await refresh(); });
-          }, "放弃草稿")}>放弃草稿</Button>
+          }, "放弃草稿")}>放弃草稿</Button>}
           <Button variant="outline" disabled={disabled || conflict || !dirty || yamlInvalid || budgetInvalid || testsInvalid || signalsInvalid || !formatValid} onClick={() => void run(async () => { await save(); })}>保存草稿</Button>
           <Button disabled={disabled || conflict || yamlInvalid || budgetInvalid || testsInvalid || signalsInvalid || !formatValid} onClick={() => { setPublishOpen(true); if (repository?.runSkillParseTests) void run(executeTests); }}>发布</Button>
         </div> : null}</div></header>}
@@ -462,5 +472,6 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
     </ModalDialog>
     <ConfirmDialog open={!!confirm} title={confirm?.title ?? "确认"} description={confirm?.description ?? ""} confirmLabel={confirm?.confirmLabel ?? "确认"} tone={confirm?.tone} pending={pending}
       onCancel={() => { leaveDecision.current?.resolve(false); leaveDecision.current = null; setConfirm(null); }} onConfirm={() => { const action = confirm?.action; setConfirm(null); action?.(); }} />
+    {deletionOpen && repository ? <SkillDeletionDialog key={skillId} skillId={skillId} repository={repository} onDeleted={setDeleted} onDismiss={() => setDeletionOpen(false)} onNavigate={onNavigate} /> : null}
   </div>;
 }

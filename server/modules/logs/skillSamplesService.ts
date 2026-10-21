@@ -10,6 +10,7 @@ import type { ObjectStore } from "./objectStore";
 import { requireLogAdminDomains } from "./policy";
 import { getLogSkill } from "./skillsService";
 import { lockSkill } from "./skillsRepository";
+import { recordSkillArtifacts } from "./skillArtifacts";
 
 const maxBytes = 2 * 1024 * 1024;
 const bundleMarker = "wiseeff-log-sample/v1\n";
@@ -93,6 +94,7 @@ export async function replaceLogSkillSample(db: Database, store: ObjectStore, au
     // Old objects are retained: a failed DB write must never remove shared data.
     const object = await store.put({ organizationId: auth.organization.id, fileName: `sample-${id}.log`,
       contentType: archive ? "application/octet-stream" : "text/plain; charset=utf-8", bytes: content });
+    await recordSkillArtifacts(tx, auth.organization.id, skillId, [object.storageKey]);
     await tx.query(`insert into log_skill_samples (id, organization_id, skill_id, file_name, size_bytes, sha256,
       encoding, line_count, object_key, uploaded_by_user_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       on conflict (skill_id) do update set id = excluded.id, file_name = excluded.file_name,
