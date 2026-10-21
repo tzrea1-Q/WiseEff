@@ -33,6 +33,13 @@ export const loadCurrentReleasePin = async (
   return result.rows[0] ?? null;
 };
 
+export const isCurrentAdministrator = async (client: MigrationClient, organizationId: string, principalId: string, role: "admin" | "platform-admin") =>
+  (await client.query<{ authorized: boolean }>(
+    `select exists(select 1 from public.users administrator join public.user_role_bindings role on role.user_id=administrator.id
+      and role.organization_id=administrator.organization_id where administrator.id=$1 and administrator.organization_id=$2
+      and administrator.is_active and role.role_id=$3 and role.project_id is null) as authorized`,
+    [principalId, organizationId, role])).rows[0]?.authorized === true;
+
 export const loadReleasePinById = async (
   client: MigrationClient,
   releaseId: string,
@@ -88,6 +95,11 @@ export const loadDefinitionInRelease = async (
 };
 
 export type SubjectRow = { id: string; kind: string; status: string; canonical_key: string };
+
+export const loadDefinitionIdentity = async (client: MigrationClient, subjectId: string, propertyKey: string) =>
+  (await client.query<{ id: string; subject_id: string }>(
+    "select id,subject_id from parameter_catalog.parameter_definitions where subject_id=$1 and property_key=$2",
+    [subjectId, propertyKey])).rows[0] ?? null;
 export type SubjectIdentityRow = { id: string; kind: string; canonical_key: string };
 
 export const loadSubjectById = async (
@@ -280,13 +292,13 @@ export const loadCurrentBindingTips = async (
 
 export const countCurrentReferences = async (
   client: MigrationClient,
-  organizationId: string,
+  organizationId: string | null,
   definitionId: string,
 ): Promise<number> => {
   const result = await client.query<{ n: string }>(
     `select count(distinct binding.project_id)::text as n
        from parameter_catalog.current_project_parameter_bindings binding
-      where binding.organization_id = $1
+      where ($1::text is null or binding.organization_id = $1)
         and binding.definition_id = $2`,
     [organizationId, definitionId],
   );
@@ -295,13 +307,13 @@ export const countCurrentReferences = async (
 
 export const listCurrentReferenceProjects = async (
   client: MigrationClient,
-  organizationId: string,
+  organizationId: string | null,
   definitionId: string,
 ): Promise<readonly string[]> => {
   const result = await client.query<{ project_id: string }>(
     `select distinct binding.project_id
        from parameter_catalog.current_project_parameter_bindings binding
-      where binding.organization_id = $1
+      where ($1::text is null or binding.organization_id = $1)
         and binding.definition_id = $2
       order by binding.project_id`,
     [organizationId, definitionId],
@@ -663,6 +675,31 @@ export const loadReplacementPreview = async (
   );
   return result.rows[0] ?? null;
 };
+
+/** An actual receipt, not the preview's proposed allocation, proves activation. */
+export const loadZeroProjectActivation = async (client: MigrationClient, previewId: string, principalId: string) =>
+  (await client.query<{ candidateId: string; publicationJobId: string; authorizationId: string; releaseId: string; releaseDigest: string; targetAvailable: boolean }>(
+    `select receipt.candidate_id as "candidateId",receipt.publication_job_id as "publicationJobId",
+      receipt.authorization_id as "authorizationId",receipt.release_id as "releaseId",receipt.release_digest as "releaseDigest",
+      exists(select 1 from parameter_catalog.catalog_state state
+        join parameter_catalog.catalog_release_definition_heads head on head.release_id=state.current_catalog_release_id
+        join parameter_catalog.parameter_definitions definition on definition.id=head.definition_id
+        where definition.id=preview.new_definition_id and definition.subject_id=preview.new_subject_id
+          and definition.property_key=preview.new_property_key) as "targetAvailable"
+     from parameter_catalog.definition_replacement_previews preview
+     join catalog_publication.candidates candidate on candidate.id=preview.candidate_id and candidate.artifact_digest=preview.artifact_digest
+     join parameter_catalog.catalog_activation_receipts receipt on receipt.candidate_id=candidate.id
+       and receipt.kind='online-publication' and receipt.actor_principal_id=$2
+       and receipt.predecessor_release_id=preview.preview_catalog_release_id
+       and receipt.predecessor_release_digest=preview.preview_catalog_release_digest
+     join catalog_publication.publication_jobs job on job.id=receipt.publication_job_id
+       and job.candidate_id=receipt.candidate_id and job.authorization_id=receipt.authorization_id and job.status='active'
+       and job.request_scope='organization:'||preview.organization_id||':definition-replacement'
+     join catalog_publication.publication_authorizations approval on approval.id=receipt.authorization_id
+       and approval.candidate_id=receipt.candidate_id and approval.event_kind='approve' and approval.actor_principal_id=receipt.actor_principal_id
+     join parameter_catalog.catalog_release_definition_heads activated on activated.release_id=receipt.release_id
+       and activated.definition_id=preview.new_definition_id and activated.revision_id=preview.new_revision_id
+     where preview.id=$1 and jsonb_array_length(preview.manifest)=0`, [previewId, principalId])).rows[0] ?? null;
 
 export const consumeReplacementPreview = async (
   client: MigrationClient,
@@ -1327,7 +1364,6 @@ export type CandidateRow = {
   expected_base_release_id: string;
   expected_base_release_digest: string;
   identity_allocation: Record<string, unknown>;
-  capability_contract_digest: string;
 };
 
 export const loadCandidate = async (
@@ -1339,8 +1375,7 @@ export const loadCandidate = async (
             candidate.artifact_digest,
             candidate.expected_base_release_id,
             candidate.expected_base_release_digest,
-            candidate.identity_allocation,
-            catalog_publication.digest_jsonb(candidate.capability_contract) as capability_contract_digest
+            candidate.identity_allocation
        from catalog_publication.candidates candidate
       where candidate.id = $1`,
     [candidateId],

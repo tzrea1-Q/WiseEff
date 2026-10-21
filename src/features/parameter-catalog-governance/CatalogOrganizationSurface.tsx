@@ -392,6 +392,10 @@ export function CatalogOrganizationSurface({
             publishingAllowed={publicationSurfaceAllowsPublishing(publicationSurface)}
             onRequestHistory={history.onRequestHistory}
             onClose={history.onClose}
+            onRetireDefinition={() => {
+              history.onClose?.();
+              setLifecycle({ intent: "retire-definition", definition, ownerState: history.domainState });
+            }}
             history={
               <CatalogHistoryBody
                 timeline={history.timeline}
