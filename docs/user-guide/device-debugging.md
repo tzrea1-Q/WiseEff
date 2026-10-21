@@ -15,6 +15,8 @@ Use the two entries under the Debugging platform navigation group:
 
 The old Parameter debugging (`/debugging`) workspace is offline; use `/dts-reload`. Admins use Debugging administration (`/debugging-admin`, node catalog at `/debugging-admin/nodes`) to maintain nodes and protocol bindings. Device writes still require write permission.
 
+In the node catalog's Module management, deleting a leaf module offers one confirmation to move all its nodes to an existing module in the same organization or to Unclassified. The preview counts nodes, including legacy name references; node identities, definitions, device associations and debugging history remain. Child modules and ambiguous legacy ownership provide specific adjustment/edit actions instead of recursive deletion. If membership, the destination or imports change after preview, refresh the preview with the selected destination retained before confirming again.
+
 ## Connect your computer and select a device
 
 1. Open Node debugging (`/node-debugging`) or Parameter debugging (`/dts-reload`) and choose **HDC** or **ADB** for your device.

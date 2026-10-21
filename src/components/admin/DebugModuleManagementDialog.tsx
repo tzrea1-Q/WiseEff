@@ -9,6 +9,8 @@ import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SearchField } from "@/components/common/SearchField";
 import { DebugModuleMoveDialog } from "./DebugModuleMoveDialog";
+import { DebugModuleDeletionDialog } from "./DebugModuleDeletionDialog";
+import type { DebugModuleDeletionInput, DebugModuleDeletionPreview } from "@/infrastructure/http/debuggingAdminClient";
 import { ModuleCreateDialog } from "./ModuleCreateDialog";
 import { ModuleEditDialog } from "./ModuleEditDialog";
 import { ModuleManagementTreeRows } from "./ModuleManagementTreeRows";
@@ -29,7 +31,8 @@ export type DebugModuleManagementDialogProps = {
   onAddModule: (module: ParameterModuleDraft, parentId?: string | null) => void | Promise<void>;
   onUpdateModule: (moduleId: string, patch: ParameterModuleDraft) => void | Promise<void>;
   onMoveModule?: (moduleId: string, parentId: string | null) => void | Promise<void>;
-  onDeleteModule: (moduleId: string) => void | Promise<void>;
+  onDeleteModule: (moduleId: string, input?: DebugModuleDeletionInput) => void | Promise<void>;
+  onPreviewDeleteModule?: (moduleId: string, targetModuleId: string | null) => Promise<DebugModuleDeletionPreview>;
   onEditNode: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
 };
@@ -44,6 +47,7 @@ export function DebugModuleManagementDialog({
   onUpdateModule,
   onMoveModule,
   onDeleteModule,
+  onPreviewDeleteModule,
   onEditNode,
   onDeleteNode
 }: DebugModuleManagementDialogProps) {
@@ -54,16 +58,18 @@ export function DebugModuleManagementDialog({
   const [expandedDetailId, setExpandedDetailId] = useState<string | null>(null);
   const [expandedTreeIds, setExpandedTreeIds] = useState<Set<string>>(() => new Set());
   const [moveModuleId, setMoveModuleId] = useState<string | null>(null);
+  const [deleteModuleId, setDeleteModuleId] = useState<string | null>(null);
   const [mutationBusy, setMutationBusy] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const wasOpen = useRef(false);
   const returnFocusModuleId = useRef<string | null>(null);
-  const childOpen = showCreateDialog || Boolean(editingModuleId || moveModuleId);
+  const childOpen = showCreateDialog || Boolean(editingModuleId || moveModuleId || deleteModuleId);
 
   const moduleTree = useMemo(() => buildModuleTree(moduleNodes), [moduleNodes]);
   const filteredTree = useMemo(() => filterTreeNodes(moduleTree, moduleQuery), [moduleQuery, moduleTree]);
   const editingModule = moduleNodes.find((module) => module.id === editingModuleId) ?? null;
   const moveTarget = moduleNodes.find((module) => module.id === moveModuleId) ?? null;
+  const deleteTarget = moduleNodes.find((module) => module.id === deleteModuleId) ?? null;
   const createParentName = addParentId ? moduleNodes.find((node) => node.id === addParentId)?.name ?? addParentId : null;
 
   useEffect(() => {
@@ -78,6 +84,7 @@ export function DebugModuleManagementDialog({
     setEditingModuleId(null);
     setExpandedDetailId(null);
     setMoveModuleId(null);
+    setDeleteModuleId(null);
     setMutationError(null);
     setExpandedTreeIds(buildDefaultExpandedTreeIds(moduleTree));
   }, [open, moduleTree]);
@@ -229,6 +236,7 @@ export function DebugModuleManagementDialog({
                       key={node.id}
                       depth={0}
                       canEdit={canEdit}
+                      previewDeletion={Boolean(onPreviewDeleteModule)}
                       deleteDisabledReason="仍有子模块或节点引用，无法删除"
                       detailCountLabel={(count) => `${count} 个节点`}
                       detailListLabel={(moduleName) => `${moduleName} 节点列表`}
@@ -250,7 +258,11 @@ export function DebugModuleManagementDialog({
                       )}
                       viewItemsLabel="查看节点"
                       onAddChild={startAddChild}
-                      onDelete={onDeleteModule}
+                      onDelete={(moduleId) => {
+                        if (!onPreviewDeleteModule) return onDeleteModule(moduleId);
+                        returnFocusModuleId.current = moduleId;
+                        setDeleteModuleId(moduleId);
+                      }}
                       onDeleteItem={onDeleteNode}
                       onEdit={(moduleId) => {
                         returnFocusModuleId.current = moduleId;
@@ -310,6 +322,11 @@ export function DebugModuleManagementDialog({
         }}
       />
     ) : null}
+
+    {deleteTarget && onPreviewDeleteModule ? <DebugModuleDeletionDialog module={deleteTarget} modules={moduleNodes}
+      onPreview={onPreviewDeleteModule} onDelete={onDeleteModule} onCancel={() => setDeleteModuleId(null)}
+      onMoveChild={(moduleId) => { setDeleteModuleId(null); setMoveModuleId(moduleId); }}
+      onEditNode={(nodeId) => { setDeleteModuleId(null); onEditNode(nodeId); }} /> : null}
 
     {moveTarget && onMoveModule ? (
       <DebugModuleMoveDialog

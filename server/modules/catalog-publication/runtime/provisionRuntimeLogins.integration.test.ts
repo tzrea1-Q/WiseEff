@@ -75,6 +75,9 @@ describe("publication runtime logins", () => {
     expect(manager.memberOf).toContain(CATALOG_PUBLICATION_COORDINATOR_ROLE);
     expect(manager.memberOf).toContain(CATALOG_SYNCHRONIZER_ROLE);
     expect(api.catalogDml.filter((entry) => CATALOG_RELATIONS.some((rel) => entry.startsWith(`${rel}:`)))).toEqual([
+      "definition_replacement_previews:INSERT",
+      "definition_replacement_projects:INSERT",
+      "definition_replacements:INSERT",
       "project_parameter_source_occurrences:INSERT",
       "project_value_source_pins:INSERT",
     ]);

@@ -280,7 +280,7 @@ describe("/debugging-admin API mode", () => {
     expect(screen.queryByText("移动模块「Battery Charging」到：")).not.toBeInTheDocument();
   });
 
-  it("prevents deleting an API module referenced by a legacy name-only node", async () => {
+  it("previews transfer of legacy-name nodes before deleting their API leaf module", async () => {
     const apiClient = createDebuggingAdminApiMock();
     let moduleListCallCount = 0;
     apiClient.get.mockImplementation((path: string) => {
@@ -290,6 +290,9 @@ describe("/debugging-admin API mode", () => {
           items: [{ id: "dm-battery", name: "Battery Charging", description: "", scope: "", parentId: null, path: "dm-battery", depth: 0 }]
         });
       }
+      if (path.includes("/deletion-preview")) return Promise.resolve({ item: {
+        module: { id: "dm-battery", name: "Battery Charging" }, target: null, nodeCount: 1, legacyNodeCount: 1,
+        children: [], ambiguousNodes: [], canDelete: true, previewDigest: "sha256:approved-leaf" } });
       return Promise.resolve({ items: [apiClient.seedNode] });
     });
 
@@ -306,8 +309,11 @@ describe("/debugging-admin API mode", () => {
     const dialog = screen.getByRole("dialog", { name: "模块管理" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Battery Charging 更多操作" }));
     const deleteModule = screen.getByRole("menuitem", { name: "删除" });
-    expect(deleteModule).toHaveAttribute("aria-disabled", "true");
-    expect(deleteModule).toHaveAttribute("title", "仍有子模块或节点引用，无法删除");
+    expect(deleteModule).not.toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(deleteModule);
+    const confirmation = await screen.findByRole("dialog", { name: "删除调试模块「Battery Charging」" });
+    expect(within(confirmation).getByText(/1 个节点/)).toBeInTheDocument();
+    expect(within(confirmation).getByRole("button", { name: "节点迁移目标" })).toHaveTextContent("未分类");
     expect(apiClient.delete).not.toHaveBeenCalled();
   });
 
