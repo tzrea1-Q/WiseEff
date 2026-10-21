@@ -54,9 +54,26 @@ const UNSAFE_LEGACY_MIGRATIONS = new Set([
   "0121_classify_nodename_driver_subjects.sql",
 ]);
 
+// 0214's immutable fresh-schema baseline cannot run after the historical
+// identity cutover. Its self-contained successor must run at that dependency
+// position on databases that never applied 0214; existing installations apply
+// the successor last, without replaying the non-idempotent 0214 setup.
+const PURGE_SCOPE_REPLACEMENT = {
+  original: "0214_parameter_definition_purge_scope.sql",
+  replacement: "0220_parameter_definition_purge_compatibility.sql",
+  originalChecksum: "e637ac4a31b29b692cafb917deb43d3c03fd55d03aeedd7ac562deac032a1a8d",
+};
+
+export function getEffectiveMigrationOrder(allMigrations: string[], appliedMigrations: string[]): string[] {
+  const { original, replacement } = PURGE_SCOPE_REPLACEMENT;
+  if (!allMigrations.includes(original) || !allMigrations.includes(replacement)
+    || appliedMigrations.includes(original)) return [...allMigrations];
+  return allMigrations.flatMap((name) => name === original ? [replacement] : name === replacement ? [] : [name]);
+}
+
 export function getPendingMigrations(allMigrations: string[], appliedMigrations: string[]) {
   const applied = new Set(appliedMigrations);
-  return allMigrations.filter((migration) => !applied.has(migration));
+  return getEffectiveMigrationOrder(allMigrations, appliedMigrations).filter((migration) => !applied.has(migration));
 }
 
 /** Applied migration names are immutable inventory, not just a checksum list. */
@@ -92,16 +109,27 @@ export async function applyMigrations(
   });
 
   const files = (await fs.readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
-  const limited = files.filter(
-    (file) =>
-      (options.before === undefined || file < options.before) &&
-      (options.through === undefined || file <= options.through)
-  );
+  const withinBounds = (file: string) =>
+    (options.before === undefined || file < options.before) &&
+    (options.through === undefined || file <= options.through);
+  const limited = files.filter(withinBounds);
 
   const applied = await db.query<{ name: string; checksum: string | null }>(
     "select name, checksum from schema_migrations order by name"
   );
   const appliedChecksums = new Map(applied.rows.map((row) => [row.name, row.checksum]));
+
+  const replacement = PURGE_SCOPE_REPLACEMENT;
+  if (files.includes(replacement.replacement)) {
+    if (!files.includes(replacement.original)
+      || sha256(await fs.readFile(path.join(migrationsDir, replacement.original), "utf8")) !== replacement.originalChecksum) {
+      throw new Error("Migration replacement requires the exact immutable 0214 source file.");
+    }
+    if (!appliedChecksums.has(replacement.original) && !appliedChecksums.has(replacement.replacement)
+      && withinBounds(replacement.original) && !withinBounds(replacement.replacement)) {
+      throw new Error("Migration bounds exclude the required 0220 replacement for unapplied 0214.");
+    }
+  }
 
   const legacyMigrationNames = Object.keys(LEGACY_MIGRATION_CHECKSUMS);
   const missingFiles = getMissingMigrationFiles(
@@ -168,7 +196,7 @@ export async function applyMigrations(
     }
   }
 
-  const pending = getPendingMigrations(limited, [...appliedChecksums.keys()]);
+  const pending = getPendingMigrations(files, [...appliedChecksums.keys()]).filter(withinBounds);
 
   const appliedNow: string[] = [];
   for (const file of pending) {

@@ -27,6 +27,20 @@ export type DeviceBridgeRecord = {
 
 export type DeviceBridgePlatform = "windows" | "darwin" | "linux";
 
+export type OrganizationDeviceBridge = Omit<DeviceBridgeRecord, "capabilities"> & {
+  ownerUserId: string;
+  ownerName: string | null;
+  online: boolean;
+};
+
+export async function listOrganizationBridges(apiClient: ApiClient = createDefaultApiClient()) {
+  return (await apiClient.get<ItemsEnvelope<OrganizationDeviceBridge>>("/api/v1/device-bridges/organization")).items;
+}
+
+export async function revokeOrganizationBridge(bridgeId: string, reason: string, apiClient: ApiClient = createDefaultApiClient()) {
+  return (await apiClient.post<{ item: OrganizationDeviceBridge }>(`/api/v1/device-bridges/organization/${encodeURIComponent(bridgeId)}/revoke`, { reason })).item;
+}
+
 export type DeviceBridgeReleaseItem = {
   platform: DeviceBridgePlatform;
   arch: string;

@@ -42,6 +42,7 @@ export function mapDefinitionReplacement(
     version: view.version,
     projects: [...view.projects],
     createdAt: view.createdAt,
+    ...(view.retirementEvidence ? { retirementEvidence: view.retirementEvidence } : {}),
   });
 }
 

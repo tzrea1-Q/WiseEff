@@ -85,7 +85,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["auth"],
     requestBody: "UpdateCurrentUserProfileRequest",
     responseBody: "MeResponse",
-    additionalResponses: { "401": "ErrorResponse" }
+    additionalResponses: { "400": "ErrorResponse", "401": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
   },
   "auth.changePassword": {
     summary: "Change the current local-account password",
@@ -2172,6 +2172,21 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["device-bridge"],
     responseBody: "DeviceBridgeListResponse",
     additionalResponses: { "403": "ErrorResponse" }
+  },
+  "deviceBridges.listOrganization": {
+    summary: "List this organization's paired device bridges and their owners without credentials",
+    tags: ["device-bridge"], responseBody: "OrganizationDeviceBridgeListResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse" }
+  },
+  "deviceBridges.getOrganizationBridge": {
+    summary: "Read a device bridge in the administrator's current organization",
+    tags: ["device-bridge"], responseBody: "OrganizationDeviceBridgeResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "deviceBridges.revokeOrganizationBridge": {
+    summary: "Revoke an organization member's bridge credentials and connections with an audited reason",
+    tags: ["device-bridge"], requestBody: "RevokeOrganizationDeviceBridgeRequest", responseBody: "OrganizationDeviceBridgeResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "deviceBridges.updateBridge": {
     summary: "Update a paired bridge (for example its machine label)",

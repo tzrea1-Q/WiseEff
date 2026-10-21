@@ -225,6 +225,12 @@
           "401": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -20638,6 +20644,135 @@
         }
       }
     },
+    "/api/v1/device-bridges/organization": {
+      "get": {
+        "operationId": "deviceBridges.listOrganization",
+        "summary": "List this organization's paired device bridges and their owners without credentials",
+        "tags": [
+          "device-bridge"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationDeviceBridgeListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/device-bridges/organization/{bridgeId}": {
+      "get": {
+        "operationId": "deviceBridges.getOrganizationBridge",
+        "summary": "Read a device bridge in the administrator's current organization",
+        "tags": [
+          "device-bridge"
+        ],
+        "parameters": [
+          {
+            "name": "bridgeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationDeviceBridgeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/device-bridges/organization/{bridgeId}/revoke": {
+      "post": {
+        "operationId": "deviceBridges.revokeOrganizationBridge",
+        "summary": "Revoke an organization member's bridge credentials and connections with an audited reason",
+        "tags": [
+          "device-bridge"
+        ],
+        "parameters": [
+          {
+            "name": "bridgeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeOrganizationDeviceBridgeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationDeviceBridgeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/device-bridges/{bridgeId}": {
       "patch": {
         "operationId": "deviceBridges.updateBridge",
@@ -21126,6 +21261,15 @@
       },
       "UpdateCurrentUserProfileRequest": {
         "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
         "x-wiseeff-schema": "UpdateCurrentUserProfileRequest"
       },
       "ChangeCurrentUserPasswordRequest": {
@@ -63134,6 +63278,180 @@
       "DeviceBridgeListResponse": {
         "type": "object",
         "x-wiseeff-schema": "DeviceBridgeListResponse"
+      },
+      "OrganizationDeviceBridgeListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "machineLabel": {
+                  "type": "string"
+                },
+                "platform": {
+                  "type": "string",
+                  "enum": [
+                    "windows",
+                    "darwin",
+                    "linux"
+                  ]
+                },
+                "arch": {
+                  "type": "string"
+                },
+                "clientVersion": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "lastSeenAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "revokedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ownerUserId": {
+                  "type": "string"
+                },
+                "ownerName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "online": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "machineLabel",
+                "platform",
+                "arch",
+                "clientVersion",
+                "createdAt",
+                "lastSeenAt",
+                "revokedAt",
+                "ownerUserId",
+                "ownerName",
+                "online"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "OrganizationDeviceBridgeListResponse"
+      },
+      "OrganizationDeviceBridgeResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "machineLabel": {
+                "type": "string"
+              },
+              "platform": {
+                "type": "string",
+                "enum": [
+                  "windows",
+                  "darwin",
+                  "linux"
+                ]
+              },
+              "arch": {
+                "type": "string"
+              },
+              "clientVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "lastSeenAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "revokedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "ownerUserId": {
+                "type": "string"
+              },
+              "ownerName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "online": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "machineLabel",
+              "platform",
+              "arch",
+              "clientVersion",
+              "createdAt",
+              "lastSeenAt",
+              "revokedAt",
+              "ownerUserId",
+              "ownerName",
+              "online"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "OrganizationDeviceBridgeResponse"
+      },
+      "RevokeOrganizationDeviceBridgeRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "RevokeOrganizationDeviceBridgeRequest"
       },
       "UpdateDeviceBridgeRequest": {
         "type": "object",

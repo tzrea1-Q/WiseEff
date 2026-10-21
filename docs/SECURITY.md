@@ -293,6 +293,8 @@ The local bridge listens on loopback (`127.0.0.1:18787`) and its HTTP surface is
 
 Bridge rename (`PATCH /api/v1/device-bridges/:bridgeId`) and revoke (`POST /api/v1/device-bridges/:bridgeId/revoke`) require `debugging:use`, must target a user-owned bridge, and revoke immediately invalidates the bridge token for new WebSocket connections. Renaming updates display metadata only; it does not rotate credentials or grant additional scopes.
 
+Home-organization administrators and platform administrators with `users:manage` may inventory and revoke members' Bridges under `/api/v1/device-bridges/organization`; this does not change execution ownership or device approval requirements. Inventory omits credentials and pairing secrets. Administrator revocation records the actor, owner, target and reason in the same transaction as Bridge/token revocation, and duplicate revocations keep the original result. After commit the local connection is disconnected and pending RPCs fail. WebSocket admission remains unavailable to RPCs until authorization is rechecked; subsequent messages and each heartbeat interval also recheck credentials, closing revoked or expired connections on other API processes.
+
 ## Untrusted Subprocess Execution (DTS Validation Gate)
 
 The P2 config-set baseline validation gate compiles user-supplied DTS content with the system `dtc` binary (`server/modules/parameter-files/dtcValidator.ts`). DTS content is untrusted input (uploaded/edited by project members), so the subprocess boundary must stay restricted:

@@ -13,7 +13,7 @@ import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtu
 import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
 import { createDatabase, type Database } from "../../../shared/database/client";
-import { applyMigrations } from "../../../shared/database/migrations";
+import { applyMigrations, getEffectiveMigrationOrder } from "../../../shared/database/migrations";
 import {
   CatalogReleaseId,
   serializeContract,
@@ -37,11 +37,12 @@ async function applyFeedbackSuccessors(db: Database, connectionString: string) {
   expect(historical.at(-1)?.name).toBe("0182_legacy_dismissed_identity_reader.sql");
   expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0182_FINGERPRINT);
   const files = (await readdir(migrationsDir)).filter((name) => name.endsWith(".sql")).sort();
-  expect(await applyMigrations(db, migrationsDir)).toEqual(files.filter((name) => name > "0182_legacy_dismissed_identity_reader.sql"));
+  const effectiveFiles = getEffectiveMigrationOrder(files, historical.map(({ name }) => name));
+  expect(await applyMigrations(db, migrationsDir)).toEqual(effectiveFiles.filter((name) => name > "0182_legacy_dismissed_identity_reader.sql"));
   const current = (await db.query<{ name: string; checksum: string }>(
     "select name, checksum from schema_migrations order by name",
   )).rows;
-  expect(current.map(({ name }) => name)).toEqual(files);
+  expect(current.map(({ name }) => name)).toEqual([...effectiveFiles].sort());
   expect(current.slice(0, historical.length)).toEqual(historical);
   for (const { name, checksum } of current) {
     expect(checksum).toBe(createHash("sha256").update(await readFile(join(migrationsDir, name), "utf8")).digest("hex"));

@@ -472,6 +472,14 @@ function mapDefinitionReplacementFailure(
       return notFound(requestId);
     case "permission-denied":
       return forbidden(requestId);
+    case "current-project-references":
+      return catalogGovernanceError({ status: 409, code: "CONFLICT", requestId, reason: "candidate-stale",
+        message: "This Definition has current project references. Select the actual projects and use the migration workflow.",
+        details: { replacement: error.kind, currentReferenceCount: error.currentReferenceCount, retryable: false } });
+    case "replacement-target-unavailable":
+      return catalogGovernanceError({ status: 409, code: "CONFLICT", requestId, reason: "candidate-stale",
+        message: "The published replacement identity is no longer available in the current Catalog. Refresh and inspect its history.",
+        details: { replacement: error.kind, retryable: false } });
     case "invalid-command":
       return validationFailed(requestId, error.reason);
     case "release-drift":
@@ -505,7 +513,10 @@ function mapDefinitionReplacementFailure(
         },
       });
     case "target-identity-conflict":
-      return conflict(requestId, "subject-retired");
+      return catalogGovernanceError({ status: 409, code: "CONFLICT", requestId, reason: "candidate-stale",
+        message: "The target identity already exists. Open the existing Definition or choose a different identity.",
+        details: { replacement: error.kind, identityConflict: error.reason,
+          ...(error.existingDefinitionId ? { existingDefinitionId: error.existingDefinitionId, subjectId: error.subjectId } : {}), retryable: false } });
     case "registration-required":
       return conflict(requestId, "registration-required");
     case "preview-unavailable":
@@ -1297,6 +1308,7 @@ function migrationContext(
   scope: TrustedGovernanceScope,
   organizationId: string,
 ): import("../../parameter-catalog-migration/types").TrustedMigrationContext | null {
+  if (scope.actorKind === "platform-admin") return { actorKind: "platform-admin", principalId: scope.principalId };
   if (scope.actorKind !== "org-admin") {
     return null;
   }
@@ -1330,7 +1342,9 @@ async function handlePreviewDefinitionReplacement(
   scope: TrustedGovernanceScope,
   request: CatalogGovernanceRequest,
 ): Promise<CatalogGovernanceResponse> {
-  const denied = authorizeOrganizationWrite(scope, request);
+  const denied = scope.actorKind === "platform-admin" &&
+    (request.params.organizationId === undefined || request.params.organizationId === scope.organizationId)
+    ? null : authorizeOrganizationWrite(scope, request);
   if (denied) return denied;
   const migration = ports.definitionMigration;
   if (!migration) return catalogNotReady(request.requestId);
@@ -1369,7 +1383,9 @@ async function handleExecuteDefinitionReplacement(
   scope: TrustedGovernanceScope,
   request: CatalogGovernanceRequest,
 ): Promise<CatalogGovernanceResponse> {
-  const denied = authorizeOrganizationWrite(scope, request);
+  const denied = scope.actorKind === "platform-admin" &&
+    (request.params.organizationId === undefined || request.params.organizationId === scope.organizationId)
+    ? null : authorizeOrganizationWrite(scope, request);
   if (denied) return denied;
   const migration = ports.definitionMigration;
   if (!migration) return catalogNotReady(request.requestId);
@@ -1454,7 +1470,9 @@ async function handleContinueDefinitionReplacement(
   scope: TrustedGovernanceScope,
   request: CatalogGovernanceRequest,
 ): Promise<CatalogGovernanceResponse> {
-  const denied = authorizeOrganizationWrite(scope, request);
+  const denied = scope.actorKind === "platform-admin" &&
+    (request.params.organizationId === undefined || request.params.organizationId === scope.organizationId)
+    ? null : authorizeOrganizationWrite(scope, request);
   if (denied) return denied;
   const migration = ports.definitionMigration;
   if (!migration) return catalogNotReady(request.requestId);

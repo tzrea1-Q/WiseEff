@@ -469,6 +469,15 @@ export async function provisionPublicationRuntimeLogins(
           `grant insert, update, delete on table parameter_catalog.${quoteIdent(table)} to ${quoteIdent(names.api)}`,
         );
       }
+      // Replacement history stays immutable; the API owns only approval
+      // consumption and the existing execution/continuation state columns.
+      await admin.query(`grant insert on table parameter_catalog.definition_replacement_previews,
+        parameter_catalog.definition_replacements, parameter_catalog.definition_replacement_projects to ${quoteIdent(names.api)}`);
+      await admin.query(`grant update (consumed_by_replacement_id) on parameter_catalog.definition_replacement_previews to ${quoteIdent(names.api)}`);
+      await admin.query(`grant update (status, successor_release_id, successor_release_digest, approver_principal_id,
+        success_audit_ref, superseded_at, replacement_version, updated_at) on parameter_catalog.definition_replacements to ${quoteIdent(names.api)}`);
+      await admin.query(`grant update (status, blocker_reason, blocked_evidence, new_binding_id, new_value_id,
+        attempt_count, last_error_class, last_error_reason, updated_at) on parameter_catalog.definition_replacement_projects to ${quoteIdent(names.api)}`);
       for (const table of WORKBENCH_BINDING_RELATIONS) {
         await admin.query(
           `grant insert, update, delete on table ${table} to ${quoteIdent(names.api)}`,

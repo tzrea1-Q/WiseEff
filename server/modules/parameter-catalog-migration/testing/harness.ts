@@ -163,6 +163,7 @@ export type MigrationHarness = {
     definitionId: string,
   ) => Promise<{ readonly bindingId: string; readonly valueId: string } | null>;
   readonly setCurrentRelease: (releaseId: string) => Promise<void>;
+  readonly refreshCatalog: () => Promise<void>;
   readonly close: () => Promise<void>;
 };
 
@@ -945,6 +946,7 @@ export async function createMigrationHarness(options: { readonly objectStore?: O
     allocatedDefinition,
     currentTip,
     setCurrentRelease,
+    refreshCatalog: reloadSnapshot,
     close: async () => {
       client.release();
       await db.close();
