@@ -30,6 +30,12 @@ function createStore(transport: ObjectStorageTransport = createTransport()) {
 }
 
 describe("createS3ObjectStore", () => {
+  it("preserves deployment HTTP status and the bounded S3 error code for callers", async () => {
+    const store = createS3ObjectStore({ endpoint: "https://storage.example.com", bucket: "feedback", accessKeyId: "fixture", secretAccessKey: "fixture",
+      fetchImpl: async () => new Response("<Error><Code>EntityTooLarge</Code><Message>backend limit</Message></Error>", { status: 413 }) });
+    await expect(store.put({ organizationId: "org", fileName: "small.png", contentType: "image/png", bytes: Buffer.from("image") }))
+      .rejects.toMatchObject({ status: 413, code: "EntityTooLarge" });
+  });
   it("signs byte ranges and refuses servers that ignore them", async () => {
     const fetchImpl = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(async () => new Response("second", { status: 206 }));
     const transport = createHttpObjectStorageTransport({ endpoint: "https://storage.example.com", accessKeyId: "key", secretAccessKey: "secret", fetchImpl });

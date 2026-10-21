@@ -48,6 +48,8 @@ export type ProductFeedbackRow = {
 };
 
 type ProductFeedbackAttachmentRow = {
+  message_id?: string | null;
+  uploaded_by_user_id?: string | null;
   id: string;
   feedback_id: string;
   organization_id: string;
@@ -95,6 +97,8 @@ function dateTimeToIso(value: string | Date) {
 
 function toAttachmentDto(row: ProductFeedbackAttachmentRow): ProductFeedbackAttachmentDto {
   return {
+    messageId: row.message_id ?? null,
+    uploadedByUserId: row.uploaded_by_user_id ?? null,
     id: row.id,
     feedbackId: row.feedback_id,
     organizationId: row.organization_id,
@@ -395,7 +399,7 @@ export async function insertAttachments(
 
   const values: unknown[] = [];
   const placeholders = attachments.map((attachment, index) => {
-    const offset = index * 9;
+    const offset = index * 11;
     values.push(
       attachment.id,
       feedbackId,
@@ -405,15 +409,17 @@ export async function insertAttachments(
       attachment.contentType,
       attachment.sizeBytes,
       attachment.checksum,
-      attachment.sortOrder
+      attachment.sortOrder,
+      attachment.messageId ?? null,
+      auth.user.id
     );
-    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9})`;
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11})`;
   });
 
   const result = await db.query<ProductFeedbackAttachmentRow>(
     `
     insert into product_feedback_attachments (
-      id, feedback_id, organization_id, storage_key, file_name, content_type, size_bytes, checksum, sort_order
+      id, feedback_id, organization_id, storage_key, file_name, content_type, size_bytes, checksum, sort_order, message_id, uploaded_by_user_id
     )
     select
       input.id::uuid,
@@ -424,9 +430,11 @@ export async function insertAttachments(
       input.content_type,
       input.size_bytes::integer,
       input.checksum,
-      input.sort_order::integer
+      input.sort_order::integer,
+      input.message_id::uuid,
+      input.uploaded_by_user_id
     from (values ${placeholders.join(", ")}) as input (
-      id, feedback_id, organization_id, storage_key, file_name, content_type, size_bytes, checksum, sort_order
+      id, feedback_id, organization_id, storage_key, file_name, content_type, size_bytes, checksum, sort_order, message_id, uploaded_by_user_id
     )
     inner join product_feedback feedback
       on feedback.id = input.feedback_id::uuid
@@ -940,7 +948,7 @@ export async function submitDraft(
     return null;
   }
 
-  await insertProgressEvent(db, auth, {
+  const message = await insertProgressEvent(db, auth, {
     id: crypto.randomUUID(),
     feedbackId: draftId,
     actorUserId: auth.user.id,
@@ -948,6 +956,7 @@ export async function submitDraft(
     toStatus: "open",
     publicMessage: "反馈已提交"
   });
+  await db.query("update product_feedback_attachments set message_id=$3 where organization_id=$1 and feedback_id=$2 and message_id is null", [auth.organization.id, draftId, message.id]);
 
   return getMyFeedbackById(db, auth, draftId);
 }

@@ -96,7 +96,10 @@ async function assertOk(response: Response) {
     .then((bytes) => bytes.toString("utf8"))
     .catch(() => "");
   const detail = body.trim() ? `: ${body.trim()}` : "";
-  throw new Error(`Object storage HTTP request failed with ${response.status} ${response.statusText}${detail}`);
+  throw Object.assign(new Error(`Object storage HTTP request failed with ${response.status} ${response.statusText}${detail}`), {
+    status: response.status,
+    code: body.match(/<Code>\s*([A-Za-z][A-Za-z0-9]*)\s*<\/Code>/)?.[1]
+  });
 }
 
 function signedHeaders(input: {

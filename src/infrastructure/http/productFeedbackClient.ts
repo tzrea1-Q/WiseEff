@@ -26,12 +26,14 @@ import { resolveWiseEffApiBaseUrl } from "./runtimeMode";
 
 type ApiClient = ReturnType<typeof createApiClient>;
 type ItemEnvelope<T> = { item: T };
-type ListEnvelope<T> = { items: T[]; nextCursor?: string | null };
+type ListEnvelope<T> = { items: T[]; nextCursor?: string | null; pendingAttachmentCleanupCount?: number };
 type HttpProductFeedbackRepositoryOptions =
   | { apiClient?: undefined; baseUrl?: string; fetchImpl?: typeof fetch }
   | { apiClient: ApiClient; baseUrl: string; fetchImpl?: typeof fetch };
 
 export type ProductFeedbackAttachmentDto = {
+  messageId?: string | null;
+  uploadedByUserId?: string | null;
   id: string;
   feedbackId: string;
   organizationId: string;
@@ -109,6 +111,8 @@ async function fileToBase64(file: File) {
 
 function attachmentFromDto(dto: ProductFeedbackAttachmentDto): ProductFeedbackAttachment {
   return {
+    messageId: dto.messageId ?? null,
+    uploadedByUserId: dto.uploadedByUserId ?? null,
     id: dto.id,
     feedbackId: dto.feedbackId,
     fileName: dto.fileName,
@@ -308,8 +312,12 @@ export function createHttpProductFeedbackRepository(
       const response = await apiClient.get<ListEnvelope<ProductFeedbackDto>>(buildMinePath(query));
       return {
         items: response.items.map(productFeedbackFromDto),
+        pendingAttachmentCleanupCount: response.pendingAttachmentCleanupCount ?? 0,
         ...(response.nextCursor ? { nextCursor: response.nextCursor } : {})
       };
+    },
+    async retryAttachmentCleanup() {
+      return apiClient.post<{ pendingAttachmentCleanupCount: number }>("/api/v1/product-feedback/mine/attachment-cleanup", {});
     },
     async getMine(id) {
       try {
