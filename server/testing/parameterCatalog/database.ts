@@ -58,12 +58,16 @@ export const S2_SCH_0218_FINGERPRINT =
   "b5aeee9485d4ae62070556f269ff7623e1ab9934ceb1df707a75f1bddf30487e";
 
 /**
- * Current 0219 private-capability stage: 32 trigger functions add the nested
+ * Historical 0219 private-capability stage: 32 trigger functions add the nested
  * migration-owner guard before the private erasure predicate. No other entry
  * in the six-category inventory changes from the retained 0218 pin.
  */
 export const S2_SCH_0219_FINGERPRINT =
   "2bd66075a223cd87daf165f4ba353258edd9a845c8027bf1de140b25ae19fad6";
+
+/** Retained main #1323 archive-aware erasure compatibility chain. */
+export const S2_SCH_0220_COMPAT_FINGERPRINT =
+  "da0aba57c65b388a140b03d8db3da6b7c61ebc70d0b92f0b2b7026751cfda412";
 
 /**
  * Retained 0221 stage: the unchanged six-category inventory adds only three
@@ -97,8 +101,12 @@ export const S2_SCH_0232_FINGERPRINT =
 
 /** 0233 adds the audited source-administration guard and extends the frozen
  * source-request guard. 0235/0236 add no Catalog inventory entries. */
-export const S2_SCH_LIVE_FINGERPRINT =
+export const S2_SCH_0236_FINGERPRINT =
   "413de8e2379309ca3675e8f030629d96ebc0f62d412e05660ff62872aca82864";
+
+/** Combined current chain; refreshed against the unchanged six queries. */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "6a450990794e80feb3ba3baf1020d810f91cfbd9608f781b46e4ccf911d9935a";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

@@ -9,6 +9,8 @@ const inventory = await Promise.all((await readdir(migrations)).filter(name => n
   name, checksum: createHash("sha256").update(await readFile(new URL(name, migrations))).digest("hex"),
 })));
 const sourceSha = "82344044b436a8dafecefbb85dfd724cecb05e3f";
+const supersededMigration = "0214_parameter_definition_purge_scope.sql";
+const replacementMigration = "0220_parameter_definition_purge_compatibility.sql";
 
 // Unit checks for refusal/observation behavior. A synthetic query result is not
 // source-shape acceptance; that positive case requires the actual old database.
@@ -38,6 +40,40 @@ describe("new-empty management observation", () => {
 
   it("rejects a changed historical checksum without repairing the ledger", async () => {
     const { db, sql } = observation(inventory.map((row, i) => i === 0 ? { ...row, checksum: "changed" } : row));
+    await expect(runParameterDataMode(db, { phase: "inspect", sourceSha })).rejects.toThrow("ledger-unknown-or-drifted");
+    expect(sql).toHaveLength(2);
+  });
+
+  it("observes a complete replacement ledger without inventing the superseded entry", async () => {
+    const ledger = inventory.filter(row => row.name !== supersededMigration);
+    const { db, sql } = observation(ledger);
+
+    expect(await runParameterDataMode(db, { phase: "initialize", sourceSha })).toMatchObject({
+      state: "canonical-unpublished", migrationsApplied: ledger.length,
+    });
+    expect(sql.every(text => /^select\b|^set transaction\b/.test(text))).toBe(true);
+  });
+
+  it("recognizes the replacement's execution position while later migrations are pending", async () => {
+    const ledger = inventory.filter(row => row.name < supersededMigration || row.name === replacementMigration);
+    const { db } = observation(ledger);
+
+    expect(await runParameterDataMode(db, { phase: "inspect", sourceSha })).toMatchObject({
+      state: "canonical-unpublished", migrationsApplied: ledger.length,
+    });
+    await expect(runParameterDataMode(db, { phase: "initialize", sourceSha })).rejects.toThrow("partial-migration");
+  });
+
+  it("rejects a gap after the replacement instead of normalizing incomplete history", async () => {
+    const ledger = inventory.filter(row => row.name !== supersededMigration && !row.name.startsWith("0215_"));
+    const { db } = observation(ledger);
+
+    await expect(runParameterDataMode(db, { phase: "initialize", sourceSha })).rejects.toThrow("ledger-unknown-or-drifted");
+  });
+
+  it.each([supersededMigration, replacementMigration])("retains checksum validation for %s", async name => {
+    const { db, sql } = observation(inventory.map(row => row.name === name ? { ...row, checksum: "changed" } : row));
+
     await expect(runParameterDataMode(db, { phase: "inspect", sourceSha })).rejects.toThrow("ledger-unknown-or-drifted");
     expect(sql).toHaveLength(2);
   });

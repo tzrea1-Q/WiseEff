@@ -1,5 +1,6 @@
 import type { VerificationPlan } from "../../core/types";
 import type { GateResult } from "../../core/types";
+import { getEffectiveMigrationOrder } from "../../../../shared/database/migrations";
 import { countedResult } from "./evidence";
 import {
   aliasChecksumValid,
@@ -72,8 +73,9 @@ export const runM03 = async (
   const packagedNames = inventory.entries.map((entry) => entry.name);
   const appliedNames = applied.map((row) => row.name);
   const pending = pendingPackagedFiles(packagedNames, appliedNames);
-  const firstPendingIndex = pending[0] ? packagedNames.indexOf(pending[0]) : packagedNames.length;
-  const expectedSuffix = packagedNames.slice(firstPendingIndex);
+  const effectiveOrder = getEffectiveMigrationOrder(packagedNames, appliedNames);
+  const firstPendingIndex = pending[0] ? effectiveOrder.indexOf(pending[0]) : effectiveOrder.length;
+  const expectedSuffix = effectiveOrder.slice(firstPendingIndex);
   const suffixMismatch =
     pending.length !== expectedSuffix.length ||
     pending.some((name, index) => name !== expectedSuffix[index]);

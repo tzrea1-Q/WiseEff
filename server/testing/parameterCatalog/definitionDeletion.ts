@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
-import { createEphemeralTestDatabase } from "../testDatabase";
+import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../testDatabase";
 import { createCatalogKernel } from "../../modules/catalog-kernel/interface";
 import { documentationOnlySuccessorBundle, installPublishedCatalogChain, X_DEFINITION_ID, Y_DEFINITION_ID } from "../../modules/catalog-kernel/runtime/catalogChain.fixture";
 import { CatalogArtifactId, CatalogSubjectId, ParameterDefinitionId } from "../../modules/parameter-catalog-contract/index";
@@ -23,8 +23,8 @@ export const DELETION_ACTORS = {
 } as const;
 
 /** Shared populated PostgreSQL fixture: two tenants, two definitions, and real immutable source/value pins. */
-export async function createDefinitionDeletionFixture(prefix = "definition_deletion") {
-  const database = await createEphemeralTestDatabase(prefix);
+export async function createDefinitionDeletionFixture(prefix = "definition_deletion", upgradedDatabase?: EphemeralTestDatabase) {
+  const database = upgradedDatabase ?? await createEphemeralTestDatabase(prefix);
   const root = createPostgresDatabase(database.url);
   const pool = getRootPostgresPool(root)!;
   const chain = await installPublishedCatalogChain(pool);
