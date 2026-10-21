@@ -108,9 +108,16 @@ export const S2_SCH_0236_FINGERPRINT =
 export const S2_SCH_0236_MAIN_FINGERPRINT =
   "6a450990794e80feb3ba3baf1020d810f91cfbd9608f781b46e4ccf911d9935a";
 
-/** 0237 adds only the zero-project replacement activation function and trigger. */
-export const S2_SCH_LIVE_FINGERPRINT =
+/** Retained chain through 0241; 0237 adds only zero-project replacement activation. */
+export const S2_SCH_0241_FINGERPRINT =
   "cea17596201ab46874728187121ba0c5e1a4fe98e366db456fd9d2c35762d64f";
+
+/** 0242–0245 replace one tombstone unique constraint/index (four index attributes
+ * become five) and update six historical receipt/provenance functions. The
+ * unchanged six-category query adds no relations, table columns, triggers or
+ * functions; every earlier schema pin remains intact. */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "6b373aebaeae82091d7d3e86de2a385ba1ab73786a7b14d131333c486b66db38";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
