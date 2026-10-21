@@ -1238,6 +1238,8 @@ export const routeManifest = [
     stability: "mvp"
   },
   { id: "parameterFiles.listConfigSets", method: "GET", path: "/api/v1/projects/:projectId/config-sets", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.previewCanonicalMemberAddition", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/member-addition/preview", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.applyCanonicalMemberAddition", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/member-addition/apply", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.previewAdministratorMemberRemoval", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId/removal-preview", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.applyAdministratorMemberRemoval", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId/removal-apply", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.createConfigSet", method: "POST", path: "/api/v1/projects/:projectId/config-sets", module: "parameter-files", stability: "mvp" },

@@ -5,6 +5,7 @@ import { initialState } from "@/mockData";
 import { createTestLogAnalysisRepository } from "@/test/harness/createTestLogAnalysisRepository";
 import type { LogDeletionPreview } from "@/domain/logs/deletionPreview";
 import { LogAdminPage } from "@/LogAdminPage";
+import { LogDeletionPreviewDialog } from "./LogDeletionPreviewDialog";
 
 const log = { ...initialState.logs[0], capturedAt: new Date().toISOString() };
 const preview: LogDeletionPreview = { organizationId: "org", logId: log.id, fileName: log.fileName,
@@ -24,6 +25,22 @@ function setup(permissions: string[] = ["logs:admin-domains"], logs = [log], api
 }
 
 describe("selected log deletion scope", () => {
+  it("requires explicit confirmation, recovers an uncertain commit and retries only outstanding objects", async () => {
+    const user = userEvent.setup(), onDeleted = vi.fn();
+    const status = { logId: log.id, version: preview.version, database: "deleted" as const, objects: "pending" as const, pendingObjects: 1 };
+    const purge = vi.fn().mockRejectedValueOnce(new Error("response lost")).mockResolvedValueOnce({ ...status, objects: "complete", pendingObjects: 0 });
+    render(<LogDeletionPreviewDialog logId={log.id} loadPreview={async () => preview} onClose={() => undefined}
+      purge={purge} loadStatus={async () => status} onDeleted={onDeleted} />);
+    const dialog = await screen.findByRole("dialog"), remove = await within(dialog).findByRole("button", { name: "彻底删除" });
+    expect(remove).toBeDisabled();
+    await user.click(within(dialog).getByRole("checkbox", { name: /我确认永久删除/ }));
+    await user.click(remove);
+    expect(await within(dialog).findByText(/日志数据库数据已永久删除/)).toBeVisible();
+    expect(onDeleted).toHaveBeenCalledWith(status);
+    await user.click(within(dialog).getByRole("button", { name: "重试存储清理" }));
+    expect(await within(dialog).findByText("存储清理完成。")).toBeVisible();
+    expect(purge.mock.calls).toEqual([[log.id, preview.version], [log.id, preview.version]]);
+  });
   it("opens by keyboard, shows empty sections and retries a failed refresh without stale data", async () => {
     const { user, previewLogDeletion } = setup();
     const trigger = screen.getByRole("button", { name: "删除影响预览" });

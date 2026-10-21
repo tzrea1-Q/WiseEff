@@ -827,6 +827,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       ...VERIFICATION_RELATIONS,
       "definition_erasures",
       "definition_purge_rows",
+      "project_erasures",
     ].sort());
     expect(new Set(tables.rows.map((row) => row.tableowner))).toEqual(
       new Set([CATALOG_MIGRATION_OWNER]),
@@ -1330,19 +1331,24 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
         )
       order by procedure.proname
     `, [PARAMETER_GOVERNANCE_WRITER_ROLE]);
-    // These seven maintenance RPCs are the explicit server-authorized erasure
+    // These exact maintenance RPCs are the explicit server-authorized erasure
     // seam; none grants a legacy structural INSERT or the private row marker.
     expect(writerDefiners.rows).toEqual([
       { proname: "assert_catalog_subject_active" },
       { proname: "definition_erasure_object_is_referenced" },
       { proname: "ensure_dts_observation_source_occurrence" },
       { proname: "finish_parameter_definition_erasure_object" },
+      { proname: "finish_project_erasure_object" },
       { proname: "insert_reviewed_member_tombstone" },
+      { proname: "list_project_erasures" },
       { proname: "lock_parameter_definition_purge" },
       { proname: "lock_parameter_plane_archive" },
+      { proname: "lock_project_erasure" },
       { proname: "preview_parameter_definition_purge" },
       { proname: "purge_parameter_definition" },
+      { proname: "purge_project" },
       { proname: "read_parameter_definition_erasure" },
+      { proname: "read_project_erasure" },
     ]);
 
     const reviewedTombstoneGrant = await client.query<{
@@ -1532,6 +1538,8 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
           ('parameter_catalog.preview_project_deletion_catalog(text,text,text)', 'users',
             array['id','organization_id','is_active']),
           ('parameter_catalog.preview_project_deletion_catalog(text,text,text)', 'user_role_bindings',
+            array['user_id','organization_id','project_id','role_id']),
+          ('parameter_catalog.require_project_erasure_admin(text,text)', 'user_role_bindings',
             array['user_id','organization_id','project_id','role_id'])
       ), refs as (
         select
@@ -1566,6 +1574,16 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
               refs.function_owner, format('public.%I', refs.table_name), required.column_name, 'select'
             )
           )
+      )
+      -- These two 0223 references lock/delete role rows; their actor reads
+      -- remain checked separately on require_project_erasure_admin above.
+      and not (
+        refs.table_name = 'user_role_bindings'
+        and refs.function_oid in (
+          pg_catalog.to_regprocedure('parameter_catalog.lock_project_erasure(text,text,text)'),
+          pg_catalog.to_regprocedure('parameter_catalog.purge_project(text,text,text,text)')
+        )
+        and pg_catalog.has_table_privilege(refs.function_owner, 'public.user_role_bindings', 'delete')
       )
       order by function_name, table_name
     `);

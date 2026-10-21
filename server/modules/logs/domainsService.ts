@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import pg from "pg";
 
 import { withAuditedWrite, type AuditSpec } from "../audit/auditedWrite";
 import type { AuditedWriteContext } from "../audit/auditedWrite";
@@ -91,6 +92,12 @@ function trimmedName(name: string) {
   return value;
 }
 
+function skillNameConflict(skill: LogDomainDto) {
+  return new ApiError("CONFLICT", `名称「${skill.name}」已被${skill.status === "archived" ? "归档" : "现有"}技能占用，请使用其他名称，或查看该技能。`, {
+    name: skill.name, conflictingSkill: { id: skill.id, name: skill.name, status: skill.status }
+  });
+}
+
 export async function listLogDomainRecords(
   db: Queryable,
   auth: AuthContext,
@@ -177,9 +184,7 @@ export async function updateLogDomainRecord(
     if (name && name !== existing.name) {
       const conflicting = await findLogDomainByName(tx, { organizationId: auth.organization.id, name });
       if (conflicting && conflicting.id !== input.domainId) {
-        throw new ApiError("CONFLICT", "组织内已存在同名技能。", {
-          name
-        });
+        throw skillNameConflict(conflicting);
       }
     }
 
@@ -233,6 +238,14 @@ export async function updateLogDomainRecord(
         }
       })
     };
+  }).catch(async (cause: unknown) => {
+    // A concurrent create/rename can win after the availability check. The
+    // failed audited transaction has rolled back before reading its occupier.
+    if (cause instanceof pg.DatabaseError && cause.code === "23505" && name) {
+      const conflicting = await findLogDomainByName(db, { organizationId: auth.organization.id, name });
+      if (conflicting && conflicting.id !== input.domainId) throw skillNameConflict(conflicting);
+    }
+    throw cause;
   });
 }
 

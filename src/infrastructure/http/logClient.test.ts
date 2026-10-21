@@ -61,6 +61,18 @@ function createRepository(fetchMock: typeof fetch) {
   });
 }
 
+it("submits the exact confirmed version and reads durable deletion receipts through validated envelopes", async () => {
+  const item = { logId: "log/1", version: "a".repeat(64), database: "deleted", objects: "pending", pendingObjects: 1 };
+  const fetchMock = createFetchMock({ item }), repository = createRepository(fetchMock);
+  await expect(repository.purgeLog!(item.logId, item.version)).resolves.toEqual(item);
+  expect(fetchMock).toHaveBeenLastCalledWith("http://127.0.0.1:8787/api/v1/logs/log%2F1", expect.objectContaining({ method: "DELETE", body: JSON.stringify({ version: item.version }) }));
+  await expect(repository.getLogDeletionStatus!(item.logId)).resolves.toEqual(item);
+  fetchMock.mockResolvedValueOnce(jsonResponse({ items: [item] }));
+  await expect(repository.pendingLogDeletions!()).resolves.toEqual([item]);
+  fetchMock.mockResolvedValueOnce(jsonResponse({ item: { ...item, objects: "unknown" } }));
+  await expect(repository.getLogDeletionStatus!(item.logId)).rejects.toThrow();
+});
+
 it("reads a deletion preview through the protected record route and rejects an invalid snapshot", async () => {
   const item = { organizationId: "org", logId: "log/1", fileName: "owned.log", generatedAt: "2026-10-20T12:00:00.000Z",
     version: "a".repeat(64), inventory: [], objects: { total: 0, shared: 0, exclusive: 0 }, conditions: [], notes: [] };

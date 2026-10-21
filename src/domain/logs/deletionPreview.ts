@@ -12,3 +12,7 @@ export const logDeletionPreviewSchema = z.object({
 
 /** Read-only snapshot; the version does not authorize a deletion. */
 export type LogDeletionPreview = z.infer<typeof logDeletionPreviewSchema>;
+
+export const logDeletionStatusSchema = z.object({ logId: z.string(), version: z.string().regex(/^[a-f0-9]{64}$/),
+  database: z.literal("deleted"), objects: z.enum(["pending", "complete"]), pendingObjects: z.number().int().nonnegative() });
+export type LogDeletionStatus = z.infer<typeof logDeletionStatusSchema>;

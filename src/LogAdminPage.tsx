@@ -2,6 +2,7 @@ import "./log-admin.css";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { ExportSkillPackageDialog } from "@/features/log-skills/SkillPackageDialogs";
 import { LogDeletionPreviewDialog } from "@/features/log-analysis/LogDeletionPreviewDialog";
+import type { LogDeletionStatus } from "@/domain/logs/deletionPreview";
 import type { AnalysisSkill } from "@/features/log-skills/types";
 import { Download, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -31,6 +32,7 @@ import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import type { AppAction } from "@/application/state/appState";
 
 import { CreateSkillDialog } from "@/features/log-skills/CreateSkillDialog";
+import { SkillIdentityDialog } from "@/features/log-skills/SkillIdentityDialog";
 import { ImportSkillPackageDialog } from "@/features/log-skills/SkillPackageDialogs";
 import { SectionSkeleton } from "@/components/common/SectionState";
 import { LogAdminOverview, matchesOverviewFilter, type OverviewRecordFilter } from "@/features/log-analysis/LogAdminOverview";
@@ -44,7 +46,7 @@ export type LogAdminPageProps = {
   onNavigate: (path: string) => void;
   search: string;
   logActions?: LogRuntimeActions;
-  skillRepository?: Partial<SkillAuthoringRepository & SkillWorkspaceRepository & Pick<LogAnalysisRepository, "getLog" | "previewLogDeletion">>;
+  skillRepository?: Partial<SkillAuthoringRepository & SkillWorkspaceRepository & Pick<LogAnalysisRepository, "getLog" | "previewLogDeletion" | "purgeLog" | "getLogDeletionStatus" | "pendingLogDeletions">>;
   apiMode?: boolean;
   sessionPermissions?: readonly string[] | null;
   /** Kept for page composition; knowledge editing lives in the workspace. */
@@ -140,6 +142,7 @@ function LogDomainGovernanceSection({
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exportSkill, setExportSkill] = useState<AnalysisSkill | null>(null);
+  const [identityAction, setIdentityAction] = useState<{ skill: LogDomain; restore: boolean } | null>(null);
   const [pending, setPending] = useState(false);
   const [exportError, setExportError] = useState("");
   const [skillStatusFilter, setSkillStatusFilter] = useState<string[]>([]);
@@ -257,16 +260,23 @@ function LogDomainGovernanceSection({
               </div> }}
             rowActions={(domain) => ({ label: domain.name,
               items: [
+                { id: "rename", label: "改名", disabled: !apiMode || pending, onSelect: () => setIdentityAction({ skill: domain, restore: false }) },
                 { id: "export", label: "导出技能包", disabled: pending || !skillRepository?.getLogSkill || !skillRepository.exportSkillPackage, onSelect: () => openExport(domain) },
                 ...(domain.status === "active" ? [{ id: "archive", label: "归档", disabled: pending, destructive: true as const,
                   confirmation: { title: `归档「${domain.name}」`, description: "归档后，新日志不再推荐此技能；已有日志及分析记录保留。", confirmLabel: "归档技能" },
-                  onSelect: () => archiveDomain(domain.id) }] : [])
+                  onSelect: () => archiveDomain(domain.id) }] : [{ id: "restore", label: "恢复", disabled: !apiMode || pending,
+                  onSelect: () => setIdentityAction({ skill: domain, restore: true }) }])
               ]
             })}
             emptyState={{ message: "还没有分析技能", actionLabel: "", onAction: () => undefined }} />
 
           {createOpen ? <CreateSkillDialog repository={skillRepository} apiMode={apiMode} skills={domains ?? []}
             onDismiss={() => setCreateOpen(false)} onNavigate={onNavigate} /> : null}
+          {identityAction && logActions ? <SkillIdentityDialog skill={identityAction.skill} restore={identityAction.restore}
+            onSave={input => logActions.updateLogDomain(input)} onSaved={updated => {
+              setDomains(current => current?.map(domain => domain.id === updated.id ? { ...domain, ...updated } : domain) ?? null);
+              setIdentityAction(null);
+            }} onDismiss={() => setIdentityAction(null)} onNavigate={onNavigate} /> : null}
           {importOpen && skillRepository ? <ImportSkillPackageDialog repository={skillRepository} onDismiss={() => setImportOpen(false)} onNavigate={onNavigate}
             onImported={() => { void refreshDomains(); }} /> : null}
 
@@ -426,6 +436,9 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   const [sortBy, setSortBy] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "updatedAtIso", dir: "desc" });
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [deletionPreviewLogId, setDeletionPreviewLogId] = useState<string | null>(null);
+  const [pendingDeletions, setPendingDeletions] = useState<LogDeletionStatus[]>([]);
+  const [deletionReceiptError, setDeletionReceiptError] = useState("");
+  const [receiptRefresh, setReceiptRefresh] = useState(0);
   const [undoArchive, setUndoArchive] = useState<{ logId: string; fileName: string } | null>(null);
   const [insightDismissed, setInsightDismissed] = useState<boolean>(() => readInsightDismissed());
   const [pendingActions, setPendingActions] = useState<Set<string>>(() => new Set());
@@ -496,6 +509,19 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   const insight = useMemo(() => deriveInsight(windowLogs, visibleLogs), [visibleLogs, windowLogs]);
   const canAct = canPerform(state.activeRoleId, "admin.access");
   const canPreviewDeletion = apiMode && (sessionPermissions ? sessionPermissions.includes("logs:admin-domains") : canPerform(state.activeRoleId, "logs.admin-domains")) && !!skillRepository?.previewLogDeletion;
+  useEffect(() => {
+    if (!canPreviewDeletion || !skillRepository?.pendingLogDeletions) return;
+    let active = true;
+    void skillRepository.pendingLogDeletions().then((items) => { if (active) { setPendingDeletions(items); setDeletionReceiptError(""); } })
+      .catch(() => { if (active) setDeletionReceiptError("待清理对象的删除回执加载失败。"); });
+    return () => { active = false; };
+  }, [canPreviewDeletion, skillRepository, receiptRefresh]);
+  const deleted = (item: LogDeletionStatus) => {
+    logActions?.forgetLog?.(item.logId);
+    dispatch({ type: "HYDRATE_LOG_RUNTIME", logs: state.logs.filter((record) => record.id !== item.logId) });
+    setSelectedRecordId((id) => id === item.logId ? null : id);
+    setPendingDeletions((items) => [...items.filter((entry) => entry.logId !== item.logId), ...(item.objects === "pending" ? [item] : [])]);
+  };
   const selectedRecord = selectedRecordId ? state.logs.find((log) => log.id === selectedRecordId) ?? null : null;
 
   const unarchiveLog = (logId: string) => {
@@ -759,8 +785,15 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
         ) : null}
       </TabPanel>
 
+      {canPreviewDeletion && (pendingDeletions.length > 0 || deletionReceiptError) ? <section className="space-y-2 rounded-lg border p-4" aria-label="待完成存储清理">
+        {deletionReceiptError ? <p role="alert">{deletionReceiptError} <Button variant="outline" onClick={() => setReceiptRefresh((value) => value + 1)}>重试回执加载</Button></p> : null}
+        {pendingDeletions.map((item) => <div key={item.logId} className="flex items-center justify-between gap-3 text-sm"><span className="break-all">{item.logId}：数据库已删除，{item.pendingObjects} 个对象待清理</span>
+          <Button variant="outline" onClick={() => setDeletionPreviewLogId(item.logId)}>继续存储清理</Button></div>)}
+      </section> : null}
       {deletionPreviewLogId && skillRepository?.previewLogDeletion ? <LogDeletionPreviewDialog key={deletionPreviewLogId}
-        logId={deletionPreviewLogId} loadPreview={skillRepository.previewLogDeletion} onClose={() => setDeletionPreviewLogId(null)} /> : null}
+        logId={deletionPreviewLogId} loadPreview={skillRepository.previewLogDeletion} purge={skillRepository.purgeLog}
+        loadStatus={skillRepository.getLogDeletionStatus} onDeleted={deleted}
+        initialStatus={pendingDeletions.find((item) => item.logId === deletionPreviewLogId)} onClose={() => setDeletionPreviewLogId(null)} /> : null}
       <LogRecordDrawer
         key={selectedRecord?.id ?? "closed"}
         record={selectedRecord}

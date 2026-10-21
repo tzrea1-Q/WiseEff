@@ -315,7 +315,7 @@ export async function uploadLogFile(
   for (const file of intake.ok ? intake.files : []) {
     const object = file.status === "analyzed" ? await objectStore.put({
       organizationId: organizationId(auth),
-      fileName: uploads.length === 1 && !isLogArchive(uploads[0].fileName) ? input.fileName : `${file.sha256}.log`,
+      fileName: `${randomUUID()}.log`,
       contentType: "text/plain; charset=utf-8", bytes: bundleFileUtf8Bytes(file)
     }) : undefined;
     stored ??= object;
@@ -544,7 +544,7 @@ export async function getLogRecord(db: Queryable, auth: LogPrincipal, logId: str
   return log;
 }
 
-export async function getLogLineRange(db: Queryable, objectStore: ObjectStore, auth: LogPrincipal,
+export async function getLogLineRange(db: Database, objectStore: ObjectStore, auth: LogPrincipal,
   logId: string, input: { file: string; startLine: number; endLine: number }): Promise<LogLineRangeDto> {
   await getLogRecord(db, auth, logId);
   const parsed = logLineRangeQuerySchema.safeParse(input);
