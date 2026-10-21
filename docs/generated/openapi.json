@@ -23260,7 +23260,10 @@
                           "additionalProperties": false
                         },
                         "examples": {
-                          "type": "object"
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
                         },
                         "publishedInCatalogReleaseId": {
                           "type": "string"
@@ -23551,7 +23554,10 @@
                             "additionalProperties": false
                           },
                           "examples": {
-                            "type": "object"
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
                           },
                           "publishedInCatalogReleaseId": {
                             "type": "string"
@@ -23921,7 +23927,10 @@
                             "additionalProperties": false
                           },
                           "examples": {
-                            "type": "object"
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
                           },
                           "publishedInCatalogReleaseId": {
                             "type": "string"
@@ -24212,7 +24221,10 @@
                               "additionalProperties": false
                             },
                             "examples": {
-                              "type": "object"
+                              "type": "array",
+                              "items": {
+                                "type": "object"
+                              }
                             },
                             "publishedInCatalogReleaseId": {
                               "type": "string"
@@ -60648,7 +60660,10 @@
                       "additionalProperties": false
                     },
                     "examples": {
-                      "type": "object"
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
                     },
                     "publishedInCatalogReleaseId": {
                       "type": "string"
@@ -60959,7 +60974,10 @@
                     "additionalProperties": false
                   },
                   "examples": {
-                    "type": "object"
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
                   },
                   "publishedInCatalogReleaseId": {
                     "type": "string"
@@ -61198,7 +61216,10 @@
                   "additionalProperties": false
                 },
                 "examples": {
-                  "type": "object"
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
                 },
                 "publishedInCatalogReleaseId": {
                   "type": "string"
@@ -61342,7 +61363,10 @@
                 "additionalProperties": false
               },
               "examples": {
-                "type": "object"
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
               },
               "publishedInCatalogReleaseId": {
                 "type": "string"
