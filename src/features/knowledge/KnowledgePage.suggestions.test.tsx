@@ -7,6 +7,64 @@ import { KnowledgePage } from "./KnowledgePage";
 const capability = { userId: "u-xu-yun", canView: true, canEdit: true, canManage: false };
 
 describe("knowledge reference suggestions", () => {
+  it("refreshes the list badge after leaving a partially reviewed entry", async () => {
+    const repository = createMockKnowledgeRepository({ canManage: false });
+    const entry = await repository.createMarkdown({ title: "部分审阅", tags: [], contentMarkdown: "key" });
+    let count = 2;
+    vi.spyOn(repository, "list").mockImplementation(async () => ({ items: [{ ...entry, pendingSuggestionCount: count }] }));
+    vi.spyOn(repository, "listReferenceSuggestions").mockImplementation(async () => Array.from({ length: count }, (_, index) => ({
+      definitionId: `def-${index}`, propertyKey: "property_key", displayName: "参数", driverModule: "module", lifecycle: "active" as const,
+      mentionCount: 1, snippet: "property_key", page: null, detectedRevisionId: "revision"
+    })));
+    vi.spyOn(repository, "acceptReferenceSuggestion").mockImplementation(async () => { count = 1; return entry; });
+    render(<KnowledgePage repository={repository} capability={capability} />);
+    const user = userEvent.setup();
+    await screen.findByText("待处理建议 2");
+    await user.click(screen.getByText(entry.title));
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    const section = await screen.findByRole("region", { name: "建议关联" });
+    await user.click((await within(section).findAllByRole("button", { name: "接受" }))[0]!);
+    await waitFor(() => expect(within(section).getAllByRole("button", { name: "接受" })).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+    expect(await screen.findByText("待处理建议 1")).toBeInTheDocument();
+  });
+
+  it("filters pending suggestions, shows governed counts, and reports bulk acceptance per entry", async () => {
+    const repository = createMockKnowledgeRepository({ canManage: false });
+    const own = await repository.createMarkdown({ title: "待处理条目", tags: [], contentMarkdown: "key" });
+    const rows = (await repository.list()).items;
+    const other = rows.find((entry) => entry.status === "published" && entry.createdByUserId !== capability.userId)!;
+    const list = vi.spyOn(repository, "list").mockImplementation(async (query) => ({ items: query?.pendingSuggestions
+      ? [{ ...own, pendingSuggestionCount: 2 }]
+      : [{ ...own, pendingSuggestionCount: 2 }, other] }));
+    const batch = vi.spyOn(repository, "batch").mockResolvedValue({ results: [
+      { entryId: own.id, title: own.title, status: "succeeded", entry: { ...own, pendingSuggestionCount: 0 }, error: null },
+      { entryId: other.id, title: other.title, status: "refused", entry: null, error: { code: "FORBIDDEN", message: "Forbidden." } }
+    ], summaryError: null });
+    render(<KnowledgePage repository={repository} capability={capability} />);
+    const user = userEvent.setup();
+    const ownRow = (await screen.findByText(own.title)).closest("tr")!;
+    expect(within(ownRow).getByText("待处理建议 2")).toBeInTheDocument();
+    expect(within(screen.getByText(other.title).closest("tr")!).queryByText(/待处理建议/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "待处理建议" }));
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ pendingSuggestions: true })));
+    await waitFor(() => expect(screen.queryByText(other.title)).not.toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: "待处理建议" }));
+    await screen.findByText(other.title);
+    await user.click(screen.getByRole("checkbox", { name: `选择 ${own.title}` }));
+    await user.click(screen.getByRole("checkbox", { name: `选择 ${other.title}` }));
+    await user.click(screen.getByRole("button", { name: "接受建议关联" }));
+    await user.click(screen.getByRole("button", { name: "确认接受建议关联" }));
+    expect(batch).toHaveBeenCalledWith({ action: "accept_suggestions", entryIds: [own.id, other.id] });
+    const report = await screen.findByRole("table", { name: "批量操作结果" });
+    expect(report).toHaveTextContent("成功");
+    expect(report).toHaveTextContent("拒绝");
+    expect(report).toHaveTextContent("需要本人条目的编辑权限或知识管理权限");
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+    expect(screen.queryByText("待处理建议 2")).not.toBeInTheDocument();
+  });
+
   it("groups ambiguous suggestions, accepts independently, dismisses and accepts all remaining items", async () => {
     const repository = createMockKnowledgeRepository({ canManage: false });
     const entry = await repository.createMarkdown({ title: "建议测试", tags: [], contentMarkdown: "iin_max" });

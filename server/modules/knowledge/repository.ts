@@ -421,10 +421,14 @@ export async function getEntryForUpdate(db: Queryable, auth: AuthContext, entryI
 export async function listEntries(
   db: Queryable,
   auth: AuthContext,
-  query: ListKnowledgeEntriesQuery & { visibleDraftOwnerUserId?: string | null }
+  query: ListKnowledgeEntriesQuery & { visibleDraftOwnerUserId?: string | null; pendingEntryIds?: string[] }
 ): Promise<KnowledgeEntryDto[]> {
   const values: unknown[] = [auth.organization.id];
   const where = ["organization_id = $1"];
+  if (query.pendingEntryIds) {
+    values.push(query.pendingEntryIds);
+    where.push(`id = any($${values.length}::uuid[])`);
+  }
 
   if (query.governable) {
     where.push("status <> 'archived'");

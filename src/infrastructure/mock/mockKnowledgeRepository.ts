@@ -566,6 +566,7 @@ export function createMockKnowledgeRepository(
   const repository: KnowledgeRepository = {
     async list(query?: KnowledgeListQuery) {
       const items = store.entries.filter((entry) => {
+        if (query?.pendingSuggestions && ((!canManage && entry.createdByUserId !== userId) || !(entry.pendingSuggestionCount ?? 0))) return false;
         if (query?.governable && (entry.status === "archived" || (!canManage && entry.createdByUserId !== userId))) return false;
         if (entry.status === "draft" && !canManage && entry.createdByUserId !== userId) return false;
         if (query?.status && entry.status !== query.status) return false;
@@ -577,7 +578,11 @@ export function createMockKnowledgeRepository(
         return true;
       });
       const offset = query?.offset ?? 0;
-      return { items: items.slice(offset, offset + (query?.limit ?? 100)).map(clone) };
+      return { items: items.slice(offset, offset + (query?.limit ?? 100)).map((entry) => {
+        const copy = clone(entry);
+        delete copy.pendingSuggestionCount;
+        return canManage || entry.createdByUserId === userId ? { ...copy, pendingSuggestionCount: entry.pendingSuggestionCount ?? 0 } : copy;
+      }) };
     },
 
     async get(entryId) {
@@ -864,6 +869,11 @@ export function createMockKnowledgeRepository(
           let entry: KnowledgeEntry;
           if (input.action === "publish") entry = await this.publish(entryId);
           else if (input.action === "archive") entry = await this.archive(entryId);
+          else if (input.action === "accept_suggestions") {
+            if (current.status === "archived") throw mockApiError("VALIDATION_FAILED", "Archived knowledge entries cannot be edited.");
+            for (const suggestion of await this.listReferenceSuggestions(entryId)) await this.acceptReferenceSuggestion(entryId, suggestion.definitionId);
+            entry = { ...clone(current), pendingSuggestionCount: 0 };
+          }
           else {
             const requestedTags = input.tags;
             const tags = input.action === "add_tags" ? [...new Set([...current.tags, ...requestedTags])]

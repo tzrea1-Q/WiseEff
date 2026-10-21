@@ -31,7 +31,8 @@ export type KnowledgeReferenceSuggestion = {
 export type KnowledgeBatchInput =
   | { action: "add_tags" | "remove_tags"; entryIds: string[]; tags: string[] }
   | { action: "publish"; entryIds: string[] }
-  | { action: "archive"; entryIds: string[] };
+  | { action: "archive"; entryIds: string[] }
+  | { action: "accept_suggestions"; entryIds: string[] };
 export type KnowledgeBatchResult = {
   entryId: string;
   title: string | null;
@@ -101,6 +102,7 @@ export type KnowledgeParameterReference = KnowledgeReferenceFields & (
 );
 
 export type KnowledgeEntry = {
+  pendingSuggestionCount?: number;
   origin: KnowledgeOrigin;
   id: string;
   title: string;

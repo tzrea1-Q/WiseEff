@@ -52,6 +52,7 @@ export type KnowledgeFileDto = {
 export type KnowledgeParameterReferenceDto = KnowledgeParameterReference;
 
 export type KnowledgeEntryDto = {
+  pendingSuggestionCount?: number;
   origin: KnowledgeOrigin;
   id: string;
   organizationId: string;
@@ -133,7 +134,8 @@ function entryFromDto(dto: KnowledgeEntryDto): KnowledgeEntry {
           createdAt: dto.file.createdAt
         }
       : null,
-    parameterReferences: (dto.parameterReferences ?? []).map((reference) => ({ ...reference }))
+    parameterReferences: (dto.parameterReferences ?? []).map((reference) => ({ ...reference })),
+    ...(dto.pendingSuggestionCount !== undefined ? { pendingSuggestionCount: dto.pendingSuggestionCount } : {})
   };
 }
 
@@ -187,6 +189,7 @@ function buildListPath(query?: KnowledgeListQuery) {
   const params = new URLSearchParams();
   if (query?.status) params.set("status", query.status);
   if (query?.governable) params.set("governable", "true");
+  if (query?.pendingSuggestions) params.set("pendingSuggestions", "true");
   if (query?.contentForm) params.set("contentForm", query.contentForm);
   if (query?.sourceType) params.set("sourceType", query.sourceType);
   if (query?.origin) params.set("origin", query.origin);

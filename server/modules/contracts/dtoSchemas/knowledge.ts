@@ -28,7 +28,8 @@ export const knowledgeEntryDtoSchema = z.object({
     fileName: z.string(), contentType: z.string(), sizeBytes: z.number(), checksum: z.string(),
     extractionStatus: z.enum(knowledgeExtractionStatuses), extractionError: z.string().nullable(),
     createdAt: z.string(), updatedAt: z.string() }).nullable(),
-  parameterReferences: z.array(referenceSchema)
+  parameterReferences: z.array(referenceSchema),
+  pendingSuggestionCount: z.number().int().nonnegative().optional()
 });
 
 const importOutcomeSchema = z.object({

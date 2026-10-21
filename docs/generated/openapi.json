@@ -15280,6 +15280,19 @@
                 "false"
               ]
             }
+          },
+          {
+            "name": "pendingSuggestions",
+            "in": "query",
+            "required": false,
+            "description": "Only entries with pending reference suggestions governed by the caller; counts are omitted for other entries.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
           }
         ],
         "responses": {
@@ -58332,6 +58345,9 @@
                 "items": {
                   "type": "object"
                 }
+              },
+              "pendingSuggestionCount": {
+                "type": "number"
               }
             },
             "required": [
@@ -58615,6 +58631,9 @@
                       "items": {
                         "type": "object"
                       }
+                    },
+                    "pendingSuggestionCount": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -59193,6 +59212,9 @@
                   "items": {
                     "type": "object"
                   }
+                },
+                "pendingSuggestionCount": {
+                  "type": "number"
                 }
               },
               "required": [
@@ -59511,6 +59533,9 @@
                 "items": {
                   "type": "object"
                 }
+              },
+              "pendingSuggestionCount": {
+                "type": "number"
               }
             },
             "required": [
