@@ -556,7 +556,7 @@ const writeAppend = async (
       join parameter_catalog.project_value_source_pins base_pin on base_pin.binding_id=$6 and base_pin.project_value_id=$7
         and base_pin.organization_id=request.organization_id and base_pin.project_id=request.project_id and base_pin.value_state='present'
       where request.id=$1 and request.organization_id=$2 and request.project_id=$3 and request.status='pending'
-        and request.request_kind='source_revision'
+        and request.request_kind in ('source_revision','member_addition')
         and request.source_revision_context->'cohort' @> $4::jsonb
         and $5::boolean = not exists(select 1 from jsonb_array_elements(request.source_revision_context->'targets') target
           where target->>'bindingId'=$6)

@@ -245,7 +245,8 @@ export async function loadOwnedProjectValueSourcePin(tx: Queryable, input: { org
        and value.definition_id=pin.definition_id and value.config_revision_id=pin.config_revision_id
      join parameter_catalog.project_parameter_source_occurrences occurrence
        on occurrence.id=pin.source_occurrence_id and occurrence.organization_id=pin.organization_id
-       and occurrence.project_id=pin.project_id and occurrence.file_id=pin.file_id
+       and occurrence.project_id=pin.project_id and (occurrence.file_id=pin.file_id
+         or parameter_catalog.source_origin_matches(pin.binding_id,pin.source_occurrence_id,pin.file_id))
      join public.dts_config_revisions revision on revision.id=pin.config_revision_id
        and revision.organization_id=pin.organization_id and revision.project_id=pin.project_id
        and revision.config_set_id=occurrence.config_set_id
@@ -500,7 +501,7 @@ export const casCurrentTip = async (
               and base_pin.source_occurrence_id=binding.source_occurrence_id and base_pin.value_state='present'
             join parameter_catalog.${projectParameterValues} next_value on next_value.id=$3 and next_value.binding_id=binding.id
             where request.id=$4 and request.organization_id=binding.organization_id and request.project_id=binding.project_id
-              and request.status='pending' and request.request_kind='source_revision'
+              and request.status='pending' and request.request_kind in ('source_revision','member_addition')
               and request.source_revision_context->'cohort' @> jsonb_build_array(jsonb_build_object(
                 'bindingId',binding.id,'oldValueId',$2::text,'sourcePinId',base_pin.id))
               and next_value.value_state=case when exists(select 1 from jsonb_array_elements(request.source_revision_context->'targets') target
