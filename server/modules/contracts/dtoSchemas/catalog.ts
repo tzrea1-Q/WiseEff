@@ -81,12 +81,17 @@ import { parameterModuleRegistryResponseSchema } from "./parameterModules";
 import { parameterDashboardSummaryResponseSchema } from "./parameterDashboard";
 import { administratorMemberRemovalApplyRequestSchema, administratorMemberRemovalPreviewResponseSchema, administratorMemberRemovalApplyResponseSchema } from "./memberRemoval";
 import { logDeletionPreviewResponseSchema } from "./logs";
+import { memberAdditionBodySchema, memberAdditionApplyBodySchema, memberAdditionPreviewResponseSchema, memberAdditionApplyResponseSchema } from "./canonicalMemberAddition";
 
 /**
  * OpenAPI component names realized with Zod (parameters / logs / debugging /
  * Xiaoze). Names not listed here stay as `x-wiseeff-schema` placeholders.
  */
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
+  CanonicalMemberAdditionPreviewRequest: memberAdditionBodySchema,
+  CanonicalMemberAdditionApplyRequest: memberAdditionApplyBodySchema,
+  CanonicalMemberAdditionPreviewResponse: memberAdditionPreviewResponseSchema,
+  CanonicalMemberAdditionApplyResponse: memberAdditionApplyResponseSchema,
   AdministratorMemberRemovalApplyRequest: administratorMemberRemovalApplyRequestSchema,
   AdministratorMemberRemovalPreviewResponse: administratorMemberRemovalPreviewResponseSchema,
   AdministratorMemberRemovalApplyResponse: administratorMemberRemovalApplyResponseSchema,
@@ -210,6 +215,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 };
 
 export const dtoSchemaCoveredRouteIds = [
+  "parameterFiles.previewCanonicalMemberAddition", "parameterFiles.applyCanonicalMemberAddition",
   "parameterFiles.previewAdministratorMemberRemoval", "parameterFiles.applyAdministratorMemberRemoval",
   "logs.previewDeletion",
   "parameters.listProjects",
