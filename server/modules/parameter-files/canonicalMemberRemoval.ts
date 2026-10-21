@@ -404,7 +404,7 @@ export async function prepareCanonicalMemberRemoval(
   } catch (error) { rethrowSourceTransactionError(error); }
 }
 
-/** C calls this inside its reviewed request transaction; all D writes share that COMMIT. */
+/** Reviewed JSON and direct administrator removals share one atomic source transaction. */
 export async function applyReviewedCanonicalMemberRemoval(
   tx: Database, storage: ObjectStore, auth: AuthContext, snapshot: CatalogSnapshot | null,
   review: ReviewedCanonicalMemberRemoval,

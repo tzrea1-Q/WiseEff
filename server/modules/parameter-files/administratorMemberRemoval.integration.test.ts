@@ -282,15 +282,17 @@ describe("administrator Canonical member removal through the API database role",
 
   it("can permanently erase a Definition after removal and fallback receipts while retaining original source", async () => {
     const sources: Array<Awaited<ReturnType<typeof fixture>>> = [];
+    const requestIds: string[] = [];
     for (const override of [true, "delete"] as const) {
       const f = await fixture(true, false, false, override);
       sources.push(f);
       const preview = await requestJson<{ item: { proofToken: string } }>(server(), path(f.configSetId, f.b.file.id, "removal-preview"), { method: "POST", body: "{}" });
       expect(preview.status, preview.bodyText).toBe(200);
-      const removed = await requestJson(server(), path(f.configSetId, f.b.file.id, "removal-apply"), { method: "POST", body: JSON.stringify({
+      const removed = await requestJson<{ item: { requestId: string } }>(server(), path(f.configSetId, f.b.file.id, "removal-apply"), { method: "POST", body: JSON.stringify({
         expectedProofToken: preview.body.item.proofToken, reason: "Prepare Definition lifecycle regression", clientMutationId: crypto.randomUUID()
       }) });
       expect(removed.status, removed.bodyText).toBe(200);
+      requestIds.push(removed.body.item.requestId);
     }
     const platform = makeTestAuthContext({ organizationId: ORG, userId: USER, roles: [{ roleId: "platform-admin", projectId: null }] });
     const definitionPath = "/api/v2/catalog/definitions/pdef_acme_power_iin_max";
@@ -301,6 +303,7 @@ describe("administrator Canonical member removal through the API database role",
     const deleted = await requestJson(server(platform), definitionPath, { method: "DELETE", body: JSON.stringify({ previewToken: deletionPreview.body.item.previewToken }) });
     expect(deleted.status, deleted.bodyText).toBe(200);
     expect(await listCatalogBindingRowsForProject(db, admin, { projectId: PROJECT })).toHaveLength(0);
+    expect((await api.query("select id from public.project_parameter_value_change_requests where id=any($1::text[])", [requestIds])).rows).toHaveLength(0);
     expect((await requestJson(server(platform), `${definitionPath}/deletion-preview`)).status).toBe(404);
     for (const f of sources) {
       const original = await requestJson(server(), `/api/v1/projects/${PROJECT}/parameter-files/${f.a.file.id}/versions/${f.a.version.id}/content`);
