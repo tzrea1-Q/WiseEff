@@ -240,7 +240,7 @@ describe("JSON and mixed Canonical membership additions", () => {
       reason: "Keep JSON in the common source revision", clientMutationId: "apply-mixed-source" };
     const jsonPin = await loadOwnedProjectValueSourcePin(api, { organizationId, projectId, bindingId: final[0]!.id, projectValueId: final[0]!.currentValueId });
     const jsonKey = (await db.query<{ storage_key: string }>("select storage_key from project_parameter_file_versions where id=$1", [jsonPin!.fileVersionId])).rows[0]!.storage_key;
-    const beforeFault = await captureConfigurationSourceState(db, { organizationId, projectId }), readObject = storage.getBounded;
+    const beforeFault = await captureConfigurationSourceState(db, { organizationId, projectId }), readObject = storage.getBounded!;
     storage.getBounded = async (key, limit) => key === jsonKey ? Buffer.from('{"limit":999}') : readObject(key, limit);
     try {
       const refused = await post(`/api/v1/projects/${projectId}/parameter-file-candidates/${edited.body.item.id}/source-apply`, commitBody);
