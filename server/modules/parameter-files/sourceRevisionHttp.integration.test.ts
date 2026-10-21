@@ -246,6 +246,26 @@ describe("whole-source HTTP through the real API database role", () => {
       .rejects.toMatchObject({ code: "23514" });
   });
 
+  it("preserves the existing file administrator scope when a role binding carries another project ID", async () => {
+    const pending = await stage(`${source}\n/* existing administrator scope */\n`,"http-admin-scope");
+    await db.query("insert into projects(id,organization_id,name,code,status) values('source-http-other-project',$1,'Other project','OTHER','initialized')",[ORG]);
+    await db.query("update user_role_bindings set project_id='source-http-other-project' where id='source-http-outsider-role'");
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values('source-http-outsider-software',$1,$2,$3,'software-committer')",[outsider.user.id,ORG,PROJECT]);
+    try {
+      const cancelBody = { proofDigest: pending.proofDigest,expectedAssignedToUserId: REVIEWER,reason: "Keep the existing administrator scope" };
+      const cancelled = await post(`${path}/${pending.id}/cancel`,cancelBody,outsider);
+      expect(cancelled.status,cancelled.bodyText).toBe(200);
+      const next = await stage(`${source}\n/* existing reviewer eligibility */\n`,"http-admin-scope-reviewer");
+      const reassigned = await post(`${path}/${next.id}/reassign`,{ proofDigest: next.proofDigest,
+        expectedAssignedToUserId: REVIEWER,assignedToUserId: outsider.user.id },reviewer);
+      expect(reassigned.status,reassigned.bodyText).toBe(200);
+      expect((await post(`${path}/${next.id}/cancel`,{ ...cancelBody,proofDigest: next.proofDigest,expectedAssignedToUserId: outsider.user.id },outsider)).status).toBe(200);
+    } finally {
+      await db.query("update user_role_bindings set project_id=null where id='source-http-outsider-role'");
+      await db.query("delete from user_role_bindings where id='source-http-outsider-software'");
+    }
+  });
+
   it("serializes cancellation with approval and reassignment with rejection without partial source changes", async () => {
     const activeText = async () => (await storage.get((await db.query<{ storage_key: string }>("select storage_key from project_parameter_file_versions where id=$1",[versionId])).rows[0]!.storage_key)).toString("utf8");
     const original = await activeText();

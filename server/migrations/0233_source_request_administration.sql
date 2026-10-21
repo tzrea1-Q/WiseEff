@@ -1,5 +1,7 @@
 -- Administrator cancellation preserves the frozen source and the actual review
 -- signer. A new same-transaction human audit owns this pending transition.
+-- Match the existing parameter policy: admin/platform-admin are organization
+-- administration grants, while software-review grants retain their project scope.
 do $$
 declare installed text; changed text;
 begin
@@ -34,9 +36,9 @@ begin
           and audit.metadata->>'fromAssignedToUserId' is not distinct from old.assigned_to_user_id
           and audit.metadata->>'toAssignedToUserId'=new.assigned_to_user_id
           and exists(select 1 from public.user_role_bindings role where role.user_id=administrator.id and role.organization_id=old.organization_id
-            and role.role_id in ('admin','platform-admin') and (role.project_id is null or role.project_id=old.project_id))
+            and role.role_id in ('admin','platform-admin'))
           and exists(select 1 from public.user_role_bindings role where role.user_id=assignee.id and role.organization_id=old.organization_id
-            and role.role_id in ('admin','platform-admin') and (role.project_id is null or role.project_id=old.project_id))
+            and role.role_id in ('admin','platform-admin'))
           and exists(select 1 from public.user_role_bindings role where role.user_id=assignee.id and role.organization_id=old.organization_id
             and ((role.role_id='admin' and role.project_id is null) or (role.role_id='software-committer' and role.project_id=old.project_id)))) then
       raise exception using errcode='23514',message='Source reassignment requires its current administrator audit and eligible reviewer';
@@ -53,7 +55,7 @@ begin
           and audit.metadata->>'proofDigest'=old.source_revision_proof_digest
           and audit.metadata->>'fromAssignedToUserId' is not distinct from old.assigned_to_user_id
           and exists(select 1 from public.user_role_bindings role where role.user_id=administrator.id and role.organization_id=old.organization_id
-            and role.role_id in ('admin','platform-admin') and (role.project_id is null or role.project_id=old.project_id))) then
+            and role.role_id in ('admin','platform-admin'))) then
       raise exception using errcode='23514',message='Source cancellation requires its current administrator audit';
     end if;
   end if;
