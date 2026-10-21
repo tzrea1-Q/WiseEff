@@ -14,6 +14,7 @@ Drafts are visible only to their creator and knowledge managers. Members with vi
 
 1. Open Knowledge base (`/knowledge`). Without an active search, use the status and tag filters to browse entries you can read. Use tags to identify projects or topics; the knowledge base has no folder hierarchy.
 2. Enter a question or keywords in the knowledge search field and select Search. Full-text search supports Chinese and English. Results include only published entries; drafts and archived material are excluded.
+   Newly uploaded or replaced PDFs show the matching chunk's physical page range beside the snippet, either a single page or a range. Page numbers start at 1 and may differ from printed page labels. Other formats and older PDF indexes keep their existing snippets without page labels.
 3. Open a result to read its content, tags, source, and current revision. For a file entry, inspect its text-extraction status and download the original file when needed.
 4. Check the retrieval-mode label to see whether semantic search is available. It reports either semantic plus full-text retrieval or full-text only. Select Clear search to return to the entry list and its filters.
 

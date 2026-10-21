@@ -569,7 +569,12 @@ export function KnowledgePage({
                       <span className="font-medium text-foreground">{result.title}</span>
                       <span className="text-xs text-muted-foreground">{knowledgeContentFormLabels[result.contentForm]}</span>
                     </span>
-                    <span className="mt-1 block truncate text-xs text-muted-foreground">{result.excerpt}</span>
+                    <span className="mt-1 flex gap-2 text-xs text-muted-foreground">
+                      {result.pageStart != null && result.pageEnd != null ? (
+                        <span className="shrink-0">第 {result.pageStart}{result.pageEnd !== result.pageStart ? `–${result.pageEnd}` : ""} 页</span>
+                      ) : null}
+                      <span className="truncate">{result.excerpt}</span>
+                    </span>
                   </button>
                 </li>
               ))}

@@ -1,6 +1,8 @@
 export type KnowledgeChunkDraft = {
   chunkIndex: number;
   text: string;
+  pageStart?: number;
+  pageEnd?: number;
 };
 
 export type ChunkingOptions = {
@@ -66,15 +68,19 @@ function overlapTail(text: string, overlapChars: number) {
 function windowParagraphs(
   paragraphs: string[],
   options: Required<ChunkingOptions>,
-  contextPrefix: string
+  contextPrefix: string,
+  source?: { text: string; onChunk: (start: number, end: number) => void }
 ): string[] {
   const chunks: string[] = [];
   let current = "";
+  let sourceCursor = 0;
+  let offsets: number[] = [];
 
   const flush = () => {
     const body = current.trim();
     if (body) {
       chunks.push(contextPrefix ? `${contextPrefix}\n${body}` : body);
+      source?.onChunk(offsets[0], offsets[offsets.length - 1]);
     }
   };
 
@@ -82,6 +88,14 @@ function windowParagraphs(
     if (current && current.length + paragraph.length + 2 > options.maxChars) {
       flush();
       current = overlapTail(current, options.overlapChars);
+      offsets = current ? offsets.slice(-current.length) : [];
+    }
+    if (source) {
+      // Locate each piece in source order, so repeated paragraphs stay distinct.
+      const start = source.text.indexOf(paragraph, sourceCursor);
+      sourceCursor = start + paragraph.length;
+      if (current) offsets.push(sourceCursor, sourceCursor); // synthetic paragraph separator
+      offsets.push(...Array.from({ length: paragraph.length }, (_, index) => start + index));
     }
     current = current ? `${current}\n\n${paragraph}` : paragraph;
   }
@@ -168,7 +182,7 @@ export function chunkMarkdown(
  * structure): overlapping windows of whole paragraphs prefixed with the title.
  */
 export function chunkExtractedText(
-  input: { title: string; text: string },
+  input: { title: string; text: string; pageOffsets?: number[] | null },
   options: ChunkingOptions = {}
 ): KnowledgeChunkDraft[] {
   const resolved = {
@@ -183,9 +197,14 @@ export function chunkExtractedText(
         .map((line) => line.trim())
         .filter(Boolean);
 
-  const texts = windowParagraphs(paragraphs, resolved, input.title.trim());
+  const ranges: Array<{ pageStart: number; pageEnd: number }> = [];
+  const pageAt = (offset: number) => input.pageOffsets!.findLastIndex((start) => start <= offset) + 1;
+  const texts = windowParagraphs(paragraphs, resolved, input.title.trim(), input.pageOffsets?.length ? {
+    text: input.text,
+    onChunk: (start, end) => ranges.push({ pageStart: pageAt(start), pageEnd: pageAt(end) })
+  } : undefined);
   if (texts.length === 0 && input.title.trim()) {
     texts.push(input.title.trim());
   }
-  return texts.map((text, chunkIndex) => ({ chunkIndex, text }));
+  return texts.map((text, chunkIndex) => ({ chunkIndex, text, ...ranges[chunkIndex] }));
 }

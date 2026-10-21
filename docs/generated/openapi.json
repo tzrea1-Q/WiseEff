@@ -59090,6 +59090,101 @@
       },
       "KnowledgeSearchResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "entryId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "contentForm": {
+                  "type": "string",
+                  "enum": [
+                    "markdown",
+                    "file"
+                  ]
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "excerpt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "revisionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pageStart": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "pageEnd": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "entryId",
+                "title",
+                "contentForm",
+                "tags",
+                "excerpt",
+                "updatedAt",
+                "revisionId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "retrieval": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "semantic_fts",
+                  "fts_only"
+                ]
+              },
+              "vectorAvailable": {
+                "type": "boolean"
+              },
+              "embeddingConfigured": {
+                "type": "boolean"
+              },
+              "degradedReason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode",
+              "vectorAvailable",
+              "embeddingConfigured"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "items",
+          "retrieval"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "KnowledgeSearchResponse"
       },
       "KnowledgeRelatedToSpecResponse": {

@@ -32,6 +32,34 @@ function renderPage(
 }
 
 describe("KnowledgePage", () => {
+  it("shows physical PDF pages beside snippets and leaves results without pages unchanged", async () => {
+    const repository = createMockKnowledgeRepository();
+    const base = (await repository.search("快充")).items[0];
+    vi.spyOn(repository, "search").mockResolvedValue({
+      items: [
+        { ...base, entryId: "pdf-single", title: "单页 PDF", contentForm: "file", excerpt: "单页摘录", pageStart: 3, pageEnd: 3 },
+        { ...base, entryId: "pdf-range", title: "跨页 PDF", contentForm: "file", excerpt: "跨页摘录", pageStart: 7, pageEnd: 9 },
+        { ...base, entryId: "non-pdf", title: "其他格式", excerpt: "章节摘录" },
+        { ...base, entryId: "legacy-pdf", title: "旧 PDF", contentForm: "file", excerpt: "旧摘录", pageStart: null, pageEnd: null }
+      ],
+      retrieval: { mode: "fts_only", vectorAvailable: false, embeddingConfigured: false }
+    });
+    render(<KnowledgePage repository={repository} capability={viewerCapability} />);
+    const user = userEvent.setup();
+    await screen.findByRole("table", { name: "知识条目列表" });
+    await user.type(screen.getByRole("searchbox", { name: "检索知识库" }), "页码");
+    await user.click(screen.getByRole("button", { name: "检索" }));
+    const results = await screen.findByLabelText("检索结果");
+    const single = within(results).getByRole("button", { name: /单页 PDF/ });
+    expect(within(single).getByText("第 3 页")).toBeInTheDocument();
+    expect(within(single).getByText("单页摘录")).toBeInTheDocument();
+    const range = within(results).getByRole("button", { name: /跨页 PDF/ });
+    expect(within(range).getByText("第 7–9 页")).toBeInTheDocument();
+    expect(within(range).getByText("跨页摘录")).toBeInTheDocument();
+    expect(within(results).getByRole("button", { name: /其他格式/ })).toHaveTextContent("章节摘录");
+    expect(within(results).getAllByText(/^第 .* 页$/)).toHaveLength(2);
+  });
+
   it("shows origin in the list and detail and filters by origin", async () => {
     const repository = createMockKnowledgeRepository();
     const uploadedMarkdown = await repository.createMarkdown({ title: "上传的 Markdown", tags: [], contentMarkdown: "文档内容", origin: "uploaded" });

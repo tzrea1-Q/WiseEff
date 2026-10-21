@@ -245,7 +245,7 @@ export async function insertChunks(
     entryId: string;
     organizationId: string;
     revisionId: string;
-    chunks: Array<{ id: string; chunkIndex: number; text: string; embedding: number[] | null }>;
+    chunks: Array<{ id: string; chunkIndex: number; text: string; embedding: number[] | null; pageStart?: number; pageEnd?: number }>;
     vectorSupport: boolean;
   }
 ): Promise<void> {
@@ -253,8 +253,8 @@ export async function insertChunks(
     if (input.vectorSupport) {
       await db.query(
         `
-        insert into knowledge_chunks (id, organization_id, entry_id, revision_id, chunk_index, text, embedding)
-        values ($1, $2, $3, $4, $5, $6, $7::vector)
+        insert into knowledge_chunks (id, organization_id, entry_id, revision_id, chunk_index, text, embedding, page_start, page_end)
+        values ($1, $2, $3, $4, $5, $6, $7::vector, $8, $9)
         `,
         [
           chunk.id,
@@ -263,16 +263,18 @@ export async function insertChunks(
           input.revisionId,
           chunk.chunkIndex,
           chunk.text,
-          chunk.embedding ? toVectorLiteral(chunk.embedding) : null
+          chunk.embedding ? toVectorLiteral(chunk.embedding) : null,
+          chunk.pageStart ?? null,
+          chunk.pageEnd ?? null
         ]
       );
     } else {
       await db.query(
         `
-        insert into knowledge_chunks (id, organization_id, entry_id, revision_id, chunk_index, text)
-        values ($1, $2, $3, $4, $5, $6)
+        insert into knowledge_chunks (id, organization_id, entry_id, revision_id, chunk_index, text, page_start, page_end)
+        values ($1, $2, $3, $4, $5, $6, $7, $8)
         `,
-        [chunk.id, input.organizationId, input.entryId, input.revisionId, chunk.chunkIndex, chunk.text]
+        [chunk.id, input.organizationId, input.entryId, input.revisionId, chunk.chunkIndex, chunk.text, chunk.pageStart ?? null, chunk.pageEnd ?? null]
       );
     }
   }

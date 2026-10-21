@@ -178,6 +178,7 @@ async function runFileExtraction(
       fileId: input.file.id,
       extractionStatus: outcome.status,
       extractedText: outcome.status === "succeeded" ? outcome.text : null,
+      pageOffsets: outcome.status === "succeeded" && input.file.contentType === "application/pdf" ? outcome.pageOffsets ?? null : null,
       extractionError: outcome.status === "failed" ? outcome.reason : null
     });
 

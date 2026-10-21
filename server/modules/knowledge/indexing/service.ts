@@ -21,6 +21,7 @@ export type KnowledgeIndexEntrySnapshot = {
   headRevisionNumber: number;
   contentMarkdown: string | null;
   extractedText: string | null;
+  pageOffsets: number[] | null;
   extractionStatus: string | null;
   extractionError: string | null;
 };
@@ -41,6 +42,8 @@ export async function loadIndexEntrySnapshot(
     head_revision_number: number | string;
     content_markdown: string | null;
     extracted_text: string | null;
+    page_offsets: number[] | null;
+    content_type: string | null;
     extraction_status: string | null;
     extraction_error: string | null;
   }>(
@@ -48,7 +51,7 @@ export async function loadIndexEntrySnapshot(
     select e.id, e.organization_id, e.status, e.content_form, e.title, e.tags,
            e.head_revision_id, e.head_revision_number,
            r.content_markdown,
-           f.extracted_text, f.extraction_status, f.extraction_error
+           f.extracted_text, f.page_offsets, f.content_type, f.extraction_status, f.extraction_error
     from knowledge_entries e
     left join knowledge_revisions r on r.id = e.head_revision_id
     left join knowledge_files f on f.id = r.file_id
@@ -73,6 +76,7 @@ export async function loadIndexEntrySnapshot(
     headRevisionNumber: Number(row.head_revision_number),
     contentMarkdown: row.content_markdown,
     extractedText: row.extracted_text,
+    pageOffsets: row.content_type === "application/pdf" ? row.page_offsets : null,
     extractionStatus: row.extraction_status,
     extractionError: row.extraction_error
   };
@@ -142,7 +146,7 @@ export async function indexKnowledgeEntry(
   const drafts =
     snapshot.contentForm === "markdown"
       ? chunkMarkdown({ title: snapshot.title, markdown: snapshot.contentMarkdown ?? "" })
-      : chunkExtractedText({ title: snapshot.title, text: snapshot.extractedText ?? "" });
+      : chunkExtractedText({ title: snapshot.title, text: snapshot.extractedText ?? "", pageOffsets: snapshot.pageOffsets });
 
   const vectorSupport = await hasKnowledgeVectorSupport(db);
   let embeddings: number[][] | null = null;
@@ -168,6 +172,8 @@ export async function indexKnowledgeEntry(
           id: randomUUID(),
           chunkIndex: draft.chunkIndex,
           text: draft.text,
+          pageStart: draft.pageStart,
+          pageEnd: draft.pageEnd,
           embedding: embeddings ? embeddings[position] : null
         }))
       });

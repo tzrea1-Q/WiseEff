@@ -1,5 +1,10 @@
 export type KnowledgeExtractionOutcome =
-  | { status: "succeeded"; text: string }
+  | {
+      status: "succeeded";
+      text: string;
+      /** UTF-16 offsets by physical page - 1; trimmed/truncated pages clamp to the text boundary. */
+      pageOffsets?: number[];
+    }
   | { status: "failed"; reason: string };
 
 export type KnowledgeExtractionInput = {
@@ -34,12 +39,24 @@ function failureReason(error: unknown, fallback: string) {
   return fallback;
 }
 
-async function extractPdfText(bytes: Buffer): Promise<string> {
+async function extractPdfText(bytes: Buffer): Promise<KnowledgeExtractionOutcome> {
   const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse({ data: bytes });
   try {
     const result = await parser.getText({ pageJoiner: "\n" });
-    return result.text ?? "";
+    const outcome = normalizeExtractedText(result.text ?? "");
+    if (outcome.status === "failed") return outcome;
+    const normalize = (text: string) => text.replace(/\r\n/g, "\n").replace(/\u0000/g, "");
+    const normalized = normalize(result.text ?? "");
+    const leading = normalized.length - normalized.trimStart().length;
+    let offset = 0;
+    // pdf-parse appends a newline, the pageJoiner, and two newlines per page.
+    const pageOffsets = result.pages.map((page) => {
+      const start = Math.min(outcome.text.length, Math.max(0, offset - leading));
+      offset += normalize(page.text).length + 4;
+      return start;
+    });
+    return { ...outcome, pageOffsets };
   } finally {
     await parser.destroy().catch(() => undefined);
   }
@@ -59,7 +76,7 @@ export function createDefaultKnowledgeTextExtractor(): KnowledgeTextExtractor {
           return normalizeExtractedText(input.bytes.toString("utf8"));
         }
         if (input.contentType === "application/pdf") {
-          return normalizeExtractedText(await extractPdfText(input.bytes));
+          return await extractPdfText(input.bytes);
         }
         if (input.contentType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
           return normalizeExtractedText(await extractDocxText(input.bytes));
