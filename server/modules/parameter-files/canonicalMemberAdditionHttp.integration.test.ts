@@ -209,12 +209,11 @@ describe("JSON and mixed Canonical membership additions", () => {
     const final = await listCatalogBindingRowsForProject(api, auth, { projectId });
     expect(final.map((row) => row.rawValue).sort()).toEqual(["10\n", "20\n", "30\n"]);
     expect(final.map((row) => row.id)).toEqual(expect.arrayContaining(bindings.map((row) => row.id)));
-    const invalid = await post<{ item: { id: string; status: string } }>(`/api/v1/projects/${projectId}/parameter-file-candidates`, {
+    const invalid = await post<{ error: { code: string; message: string } }>(`/api/v1/projects/${projectId}/parameter-file-candidates`, {
       fileName: "invalid.json", contentBase64: Buffer.from('{"incomplete":').toString("base64") });
-    expect(invalid.status, invalid.bodyText).toBe(201); expect(invalid.body.item.status).toBe("failed");
-    const invalidPreview = await post<{ error: { details: { diagnostics: Array<{ code: string }> } } }>(`${path()}/preview`, { candidateId: invalid.body.item.id, role: "misc", sortOrder: 4 });
-    expect(invalidPreview.status, invalidPreview.bodyText).toBe(400);
-    expect(invalidPreview.body.error.details.diagnostics).toContainEqual(expect.objectContaining({ code: "parse-failed" }));
+    expect(invalid.status, invalid.bodyText).toBe(400);
+    expect(invalid.body.error).toMatchObject({ code: "VALIDATION_FAILED", message: "Invalid strict JSON source." });
+    expect(await listCatalogBindingRowsForProject(api, auth, { projectId })).toEqual(final);
     const unmappedSource = '{"build":{"channel":"development"},"metadata":[1,2]}';
     const unmapped = await post<{ item: { id: string } }>(`/api/v1/projects/${projectId}/parameter-file-candidates`, {
       fileName: "metadata.json", contentBase64: Buffer.from(unmappedSource).toString("base64") });

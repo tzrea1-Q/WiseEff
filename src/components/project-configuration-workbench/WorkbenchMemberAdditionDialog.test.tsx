@@ -24,12 +24,12 @@ it("retains choices on a refused preview and confirms the complete preview with 
   render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{ id: "set", name: "默认配置" }]} initialConfigSetId="set"
     availableFiles={[{ id: "file", projectId: "project", fileName: "overlay.dts", format: "dts", enabled: true, updatedAt: "" }]}
     client={client} onDismiss={vi.fn()} onApplied={submitted} />);
-  await user.selectOptions(screen.getByLabelText("文件来源"), "existing");
-  await user.selectOptions(screen.getByLabelText("文件用途"), "overlay");
+  await user.click(screen.getByRole("combobox", { name: "文件来源" })); await user.click(screen.getByRole("option", { name: "选择已有项目文件" }));
+  await user.click(screen.getByRole("combobox", { name: "文件用途" })); await user.click(screen.getByRole("option", { name: "覆盖层" }));
   await user.clear(screen.getByLabelText("文件顺序")); await user.type(screen.getByLabelText("文件顺序"), "2");
   await user.click(screen.getByRole("button", { name: "预览加入配置" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("来源已变化");
-  expect(screen.getByLabelText("文件用途")).toHaveValue("overlay");
+  expect(screen.getByRole("combobox", { name: "文件用途" })).toHaveAttribute("data-value", "overlay");
   await user.click(screen.getByRole("button", { name: "预览加入配置" }));
   expect(await screen.findByText("参数变化：1；新增节点：0；移除节点：0。")).toBeInTheDocument();
   await user.type(screen.getByLabelText("加入原因"), "Add reviewed overlay");
@@ -50,7 +50,7 @@ it("allows a JSON source member without forcing parameter registration and shows
   render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{ id: "set", name: "默认配置" }]} initialConfigSetId="set"
     availableFiles={[{ id: "json", projectId: "project", fileName: "metadata.json", format: "json", enabled: true, updatedAt: "" }]}
     client={createCanonicalMemberAdditionClient(createApiClient({ baseUrl: "", fetchImpl }))} onDismiss={vi.fn()} onApplied={vi.fn()} />);
-  await user.selectOptions(screen.getByLabelText("文件来源"), "existing");
+  await user.click(screen.getByRole("combobox", { name: "文件来源" })); await user.click(screen.getByRole("option", { name: "选择已有项目文件" }));
   await user.click(screen.getByRole("button", { name: "预览加入配置" }));
   expect(await screen.findByText("未登记为参数，将产生 0 个新 Binding。")).toBeInTheDocument();
   expect(submitted).toMatchObject({ fileId: "json", role: "misc" });

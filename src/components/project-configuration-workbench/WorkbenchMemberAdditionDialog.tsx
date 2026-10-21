@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import type { ProjectParameterFile } from "@/application/ports/ParameterFileRepository";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { SelectControl } from "@/components/common/SelectControl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -71,18 +72,21 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
       <div className="workbench-member-addition-dialog__body" aria-busy={busy}>
         <form onSubmit={(event) => { event.preventDefault(); void prepare(); }}>
           <fieldset disabled={busy}><legend>文件与目标配置</legend>
-            <label>目标配置<select aria-label="目标配置" value={configSetId} onChange={(event) => { setConfigSetId(event.target.value); invalidate(); }}>
-              {configSets.map((set) => <option key={set.id} value={set.id}>{set.name === "default" ? "默认配置" : set.name}</option>)}</select></label>
-            <label>文件来源<select aria-label="文件来源" value={source} onChange={(event) => { setSource(event.target.value); invalidate(); }}>
-              <option value="upload">上传新文件</option><option value="existing" disabled={!availableFiles.length}>选择已有项目文件</option></select></label>
+            <label>目标配置<SelectControl ariaLabel="目标配置" value={configSetId} disabled={busy}
+              onValueChange={(value) => { setConfigSetId(value); invalidate(); }}
+              options={configSets.map((set) => ({ value: set.id, label: set.name === "default" ? "默认配置" : set.name }))} /></label>
+            <label>文件来源<SelectControl ariaLabel="文件来源" value={source} disabled={busy}
+              onValueChange={(value) => { setSource(value); invalidate(); }}
+              options={[{ value: "upload", label: "上传新文件" }, { value: "existing", label: "选择已有项目文件", disabled: !availableFiles.length }]} /></label>
             {source === "upload" ? <label>上传文件<Input aria-label="上传文件" type="file" accept=".dts,.dtsi,.dtso,.json"
               onChange={(event) => { setFile(event.target.files?.[0] ?? null); setCandidate(null); invalidate(); }} /></label>
-              : <label>待加入文件<select aria-label="待加入文件" value={fileId} onChange={(event) => { setFileId(event.target.value); invalidate(); }}>
-                {availableFiles.map((item) => <option key={item.id} value={item.id}>{item.fileName}</option>)}</select></label>}
+              : <label>待加入文件<SelectControl ariaLabel="待加入文件" value={fileId} disabled={busy}
+                onValueChange={(value) => { setFileId(value); invalidate(); }} options={availableFiles.map((item) => ({ value: item.id, label: item.fileName }))} /></label>}
             {candidate && source === "upload" ? <p role="status">已保存候选：{candidate.fileName}；尚未加入配置。</p> : null}
             <div className="workbench-member-addition-dialog__columns">
-              <label>文件用途<select aria-label="文件用途" value={role} onChange={(event) => { setRole(event.target.value as MemberAdditionBody["role"]); invalidate(); }}>
-                {Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+              <label>文件用途<SelectControl ariaLabel="文件用途" value={role} disabled={busy}
+                onValueChange={(value) => { setRole(value); invalidate(); }}
+                options={(Object.keys(roleLabels) as Array<MemberAdditionBody["role"]>).map((value) => ({ value, label: roleLabels[value] }))} /></label>
               <label>文件顺序<Input aria-label="文件顺序" type="number" required min="0" max="100000" step="1" value={sortOrder}
                 onChange={(event) => { setSortOrder(event.target.value); invalidate(); }} /></label>
             </div>

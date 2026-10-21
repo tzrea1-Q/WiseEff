@@ -8,21 +8,14 @@ import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
+import { installMemberAdditionErasureCatalogFixture } from "../../testing/parameterCatalog/memberAdditionErasure";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
-import { validCatalogReleaseBundle, refreshAuthoritativeSource } from "../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
-import { compileCatalogRelease } from "../catalog-kernel/compiler";
-import { jsonCatalogReleaseSource } from "../catalog-kernel/interface";
-import { installPublishedRelease } from "../catalog-kernel/install/installer";
 import { prepareCatalogDefinitionErasure } from "../catalog-publication/definitionErasure";
-import { encodeBundleBytes, sha256Digest } from "../catalog-publication/builder/bundleCodec";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { createLocalObjectStore } from "../logs/objectStore";
 import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
 import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
-import { CatalogSubjectId } from "../parameter-catalog-contract";
-import { executeRegistration } from "../parameter-governance/registration";
-import { createParameterModule } from "../parameters/parameterModuleRepository";
-import { createParameterModuleForAuth } from "../parameters/service";
+import { ParameterDefinitionId } from "../parameter-catalog-contract";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { addConfigSetFile, createConfigSet } from "./configSetService";
 import { registerParameterFileRoutes } from "./routes";
@@ -50,27 +43,7 @@ beforeAll(async () => {
   await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [ADMIN, ORG]);
   await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'Addition erasure','ADDERASE','initialized')", [PROJECT, ORG]);
   await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('add-erasure-role',$1,$2,'admin')", [ADMIN, ORG]);
-  const full = validCatalogReleaseBundle(), release = structuredClone(full.releases[0]!) as Parameters<typeof refreshAuthoritativeSource>[0];
-  const definition = release.documents.find(document => document.kind === "definition");
-  if (!definition || definition.kind !== "definition") throw new Error("Missing Definition fixture");
-  const retained = structuredClone(definition); retained.content.id = RETAINED; retained.content.propertyKey = "retained";
-  retained.content.revision.id = "drev_acme_power_retained_1"; retained.content.revision.matching.sourceProperty = "retained";
-  release.documents.push(retained); refreshAuthoritativeSource(release);
-  const bundle = { schemaVersion: full.schemaVersion, targetReleaseId: release.manifest.release.id, releases: [release] };
-  const compiled = compileCatalogRelease(bundle); if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
-  const installed = await installPublishedRelease(getRootPostgresPool(db)!, { mode: "bootstrap", source: jsonCatalogReleaseSource(bundle), expectedTargetDigest: compiled.value.aggregateDigest });
-  if (!installed.ok) throw new Error(JSON.stringify(installed.error));
-  const bytes = encodeBundleBytes(bundle);
-  await db.query(`insert into catalog_publication.release_artifacts(id,artifact_digest,bytes_checksum,artifact_bytes,
-    source_kind,target_release_id,target_release_digest,toolchain) values ('cart_add_erasure',$1,$2,$3,'repository-bundle',$4,$1,$5)`,
-  [compiled.value.aggregateDigest, sha256Digest(bytes), Buffer.from(bytes), release.manifest.release.id, release.manifest.toolchain]);
-  const business = await createParameterModuleForAuth(db, auth, { name: "Erasure", kind: "business" });
-  const driver = await createParameterModule(db, { organizationId: ORG, name: "Erasure driver", kind: "driver-group", parentId: business.id, sourceKey: "compatible:acme,power" });
-  const registration = await executeRegistration(getRootPostgresPool(db)!, { kind: "register", organizationId: ORG,
-    subjectId: CatalogSubjectId("csub_acme_power"), subjectKind: "driver", expectedRelease: compiled.value.release,
-    destinationModuleId: driver.id, placement: { mode: "use-default" }, method: "explicit", proof: { reason: "Addition erasure regression" },
-    idempotencyKey: "add-erasure-register", context: { actorKind: "org-admin", principalId: ADMIN } });
-  if (!registration.ok) throw new Error(JSON.stringify(registration.error));
+  await installMemberAdditionErasureCatalogFixture(db, auth);
   configSetId = (await createConfigSet(db, auth, { projectId: PROJECT, name: "Erasure" })).id;
   const source = '/dts-v1/; / { compatible = "test,board"; model = "Erasure"; charger: charger { compatible = "acme,power"; retained = <20>; }; };';
   const upload = await uploadProjectParameterFile(db, storage, auth, { projectId: PROJECT, fileName: "board.dts", bytes: Buffer.from(source) });
@@ -113,7 +86,7 @@ it("erases one Definition from an addition proof while another transferred param
   expect(await Promise.all(before.map(row => loadOwnedProjectValueSourcePin(api, { organizationId: ORG, projectId: PROJECT, bindingId: row.id, projectValueId: row.currentValueId })))).toEqual(pins);
   expect(await readHistorical()).toEqual(historical);
   expect((await db.query("select id from project_parameter_value_change_requests where id=$1", [applied.body.item.requestId])).rows).toEqual([]);
-  expect((await db.query("select id from parameter_catalog.parameter_definitions where id=$1", [ERASED])).rows).toEqual([]);
+  expect((await loadPublishedCatalog(getRootPostgresPool(db)!))?.getDefinitionById(ParameterDefinitionId(ERASED)).status).toBe("unknown");
   const residue = await db.query<{ retained: boolean }>(`select exists(select 1 from project_parameter_value_change_requests
     where source_revision_context::text like '%'||$1||'%' or member_frozen_proof::text like '%'||$1||'%') retained`, [ERASED]);
   expect(residue.rows[0]?.retained).toBe(false);

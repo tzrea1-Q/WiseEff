@@ -2901,10 +2901,10 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await files.getByRole("button", { name: "添加配置文件", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "加入配置文件", exact: true });
     const overlayName = `added-overlay-${randomUUID()}.dts`;
-    await dialog.getByLabel("目标配置", { exact: true }).selectOption(binding.configSetId);
+    await selectControlOption(dialog.getByRole("combobox", { name: "目标配置", exact: true }), binding.configSetId);
     await dialog.getByLabel("上传文件", { exact: true }).setInputFiles({ name: overlayName, mimeType: "text/plain",
       buffer: Buffer.from('/dts-v1/; /plugin/; &board { rx_mod_cm_cfg = "AddV2"; };') });
-    await dialog.getByLabel("文件用途", { exact: true }).selectOption("overlay");
+    await selectControlOption(dialog.getByRole("combobox", { name: "文件用途", exact: true }), "overlay");
     await dialog.getByLabel("文件顺序", { exact: true }).fill("-1");
     await dialog.getByRole("button", { name: "预览加入配置", exact: true }).click();
     expect(await dialog.getByLabel("文件顺序", { exact: true }).evaluate((input: HTMLInputElement) => input.validity.rangeUnderflow)).toBe(true);
