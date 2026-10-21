@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SelectControl } from "@/components/common/SelectControl";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { mockSourceSnapshots } from "@/infrastructure/mock/logSkills";
 import type { AnalysisSkill, SkillWorkspaceRepository, SourceSnapshot, SourceStatementMatches } from "./types";
 
@@ -41,6 +42,7 @@ export function SourceSnapshots({ skill, repository, apiMode, canEdit, disabled,
   const [file, setFile] = useState<File | null>(null);
   const [formError, setFormError] = useState("");
   const [error, setError] = useState("");
+  const [conflict, setConflict] = useState<{ id: string; versionLabel: string }>();
   const [pending, setPending] = useState(false);
   const [trySnapshotId, setTrySnapshotId] = useState("");
   const [tryLine, setTryLine] = useState("");
@@ -69,7 +71,7 @@ export function SourceSnapshots({ skill, repository, apiMode, canEdit, disabled,
   }, [apiMode, repository, skill.id, refresh]);
 
   async function mutate(action: () => Promise<void>) {
-    setPending(true); onBusyChange(true); setError("");
+    setPending(true); onBusyChange(true); setError(""); setConflict(undefined);
     try { await action(); } finally { setPending(false); onBusyChange(false); }
   }
   async function upload() {
@@ -92,15 +94,26 @@ export function SourceSnapshots({ skill, repository, apiMode, canEdit, disabled,
     catch (cause) { setTryError(presentError(cause, "定位失败，请稍后重试。")); }
     finally { setTryPending(false); }
   }
+  async function restore(item: SourceSnapshot) {
+    try { await mutate(async () => {
+      const queued = await repository!.restoreSourceSnapshot!(skill.id, item.id);
+      setItems(current => current?.map(snapshot => snapshot.id === queued.id ? queued : snapshot) ?? null);
+      setRefresh(value => value + 1);
+    }); } catch (cause) {
+      setError(presentError(cause, "恢复失败，请重试。"));
+      const occupant = cause instanceof WiseEffApiError ? cause.details.conflictingSnapshot as { id?: unknown; versionLabel?: unknown } | undefined : undefined;
+      if (typeof occupant?.id === "string" && typeof occupant.versionLabel === "string") setConflict({ id: occupant.id, versionLabel: occupant.versionLabel });
+    }
+  }
   return <section className="skill-section" aria-label="源码"><h2>源码</h2>
     <p>默认快照随下一次技能发布生效。快照尚未就绪时，日志分析会继续完成并注明未使用源码。</p>
     {editable ? <div><Button disabled={disabled} onClick={() => { setVersionLabel(""); setFile(null); setFormError(""); setUploadOpen(true); }}>上传快照</Button></div> : null}
     {editable && dirty ? <p>请先保存或放弃未保存的更改，再设为默认快照。</p> : null}
-    {error ? <div role="alert">{error}</div> : null}
+    {error ? <div role="alert">{error}{conflict ? <Button asChild variant="link"><a href={`#source-snapshot-${encodeURIComponent(conflict.id)}`}>查看占用快照 {conflict.versionLabel}</a></Button> : null}</div> : null}
     {loadFailed ? <SectionError message="无法加载源码快照" onRetry={() => { setLoadFailed(false); setRefresh((value) => value + 1); }} />
       : !items ? <SectionSkeleton label="正在加载源码快照" />
       : <DataTable rows={items} rowKey={(item) => item.id} ariaLabel="源码快照" tableClassName="[&_th]:whitespace-nowrap [&_th]:px-3 [&_td]:px-3" emptyState={<SectionEmpty title="尚无源码快照" message="上传源码压缩包后，将在后台建立索引。" />} columns={[
-        { key: "versionLabel", header: "版本标签", render: (item) => <span className={item.versionLabel.length > 40 ? "block max-w-48 break-all" : "whitespace-nowrap"}>{item.versionLabel}</span> },
+        { key: "versionLabel", header: "版本标签", render: (item) => <span id={`source-snapshot-${item.id}`} tabIndex={-1} className={item.versionLabel.length > 40 ? "block max-w-48 break-all" : "whitespace-nowrap"}>{item.versionLabel}</span> },
         { key: "fileCount", header: "文件数", widthClass: "w-20 whitespace-nowrap", align: "right", render: (item) => item.fileCount },
         { key: "status", header: "索引状态", widthClass: "w-24 whitespace-nowrap", render: (item) => <><Badge variant="outline" className={tones[item.status]}>{labels[item.status]}</Badge>
           {active(item) ? <p aria-label="索引进度">{item.filesProcessed} / {item.filesTotal}</p> : null}
@@ -111,7 +124,7 @@ export function SourceSnapshots({ skill, repository, apiMode, canEdit, disabled,
         { key: "createdAt", header: "上传时间", widthClass: "w-28 whitespace-nowrap", render: (item) => <span title={formatAbsolute(item.createdAt).slice(0, 16).replaceAll("-", "/")}>{formatAbsolute(item.createdAt).slice(0, 16).replaceAll("-", "/")}</span> },
         { key: "default", header: "默认", widthClass: "w-20 whitespace-nowrap", render: (item) => item.id === defaultId ? <span className="badge whitespace-nowrap">{skill.draft ? "草稿默认" : "已发布默认"}</span> : "—" }
       ]} renderRowActions={editable ? (item) => {
-        if (item.status === "archived") return null;
+        if (item.status === "archived") return <Button variant="outline" size="sm" disabled={disabled || pending || !repository?.restoreSourceSnapshot} onClick={() => void restore(item)}>恢复快照</Button>;
         const defaultAction = { id: "default", label: "设为默认", disabled: disabled || dirty || item.id === defaultId, onSelect: async () => {
           try { await mutate(async () => onSkillUpdated(await repository!.setDefaultSourceSnapshot!(skill.id, item.id))); }
           catch (cause) { setError(presentError(cause, "设置默认快照失败，请刷新后重试。")); }

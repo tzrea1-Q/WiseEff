@@ -213,6 +213,9 @@ it("uses source snapshot DTOs, multipart archives, and encoded skill/snapshot pa
   fetchMock.mockResolvedValueOnce(jsonResponse({ item: { ...snapshot, status: "archived" } }));
   await expect(repository.archiveSourceSnapshot!("skill/a", "snap/b")).resolves.toMatchObject({ status: "archived" });
   expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("/skill%2Fa/source-snapshots/snap%2Fb/archive");
+  fetchMock.mockResolvedValueOnce(jsonResponse({ item: snapshot }, 202));
+  await expect(repository.restoreSourceSnapshot!("skill/a", "snap/b")).resolves.toEqual(snapshot);
+  expect(fetchMock).toHaveBeenLastCalledWith("http://127.0.0.1:8787/api/v1/log-skills/skill%2Fa/source-snapshots/snap%2Fb/restore", expect.objectContaining({ method: "POST", body: "{}" }));
   const excerpt = { snapshotId: "snap/b", path: "drivers/thermal.c", line: 9, versionLabel: "v1", startLine: 6, excerpt: "pr_warn(\"thermal foldback\");" };
   fetchMock.mockResolvedValueOnce(jsonResponse({ items: [{ ...excerpt, confidence: 0.95 }], truncated: false }));
   await expect(repository.locateSourceStatement!("skill/a", "snap/b", "thermal foldback")).resolves.toMatchObject({ items: [{ path: "drivers/thermal.c", line: 9 }] });
