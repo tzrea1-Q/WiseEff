@@ -22,6 +22,7 @@ import type { MemberAdditionPreview } from "./canonicalMemberAddition";
 import type { SourceRevisionPreview } from "./sourceRevisionService";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
+import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
 
 const ORG = "org-member-add", PROJECT = "project-member-add", ADMIN = "user-member-add";
 const admin = makeTestAuthContext({ organizationId: ORG, userId: ADMIN, roles: [{ roleId: "admin", projectId: null }] });
@@ -194,7 +195,7 @@ describe("JSON and mixed Canonical membership additions", () => {
     const mixed = { candidateId: staged.body.item.id, role: "base", sortOrder: 2 };
     const mixedPreview = await post<{ item: MemberAdditionPreview }>(`${path()}/preview`, mixed);
     expect(mixedPreview.status, mixedPreview.bodyText).toBe(200); expect(mixedPreview.body.item.members).toHaveLength(3);
-    const applied = await post(`${path()}/apply`, { ...mixed, proofToken: mixedPreview.body.item.proofToken, reason: "Add mixed DTS base", clientMutationId: "mixed-base-add" });
+    const applied = await post<{ item: { fileId: string; fileVersionId: string } }>(`${path()}/apply`, { ...mixed, proofToken: mixedPreview.body.item.proofToken, reason: "Add mixed DTS base", clientMutationId: "mixed-base-add" });
     expect(applied.status, applied.bodyText).toBe(200);
     const after = await listCatalogBindingRowsForProject(api, auth, { projectId });
     expect(after.map((row) => row.id).sort()).toEqual(bindings.map((row) => row.id).sort());
@@ -222,11 +223,44 @@ describe("JSON and mixed Canonical membership additions", () => {
     expect(unmappedPreview.status, unmappedPreview.bodyText).toBe(200);
     expect(unmappedPreview.body.item.diagnostics).toContainEqual(expect.objectContaining({ code: "json-unregistered", message: expect.stringContaining("0 个新 Binding") }));
     expect(unmappedPreview.body.item.impact.parameterChanges).toBe(0);
-    const unmappedApply = await post(`${path()}/apply`, { ...unmappedBody, proofToken: unmappedPreview.body.item.proofToken, reason: "Join metadata without parameter admission", clientMutationId: "metadata-json-add" });
+    const unmappedApply = await post<{ item: { configRevisionId: string } }>(`${path()}/apply`, { ...unmappedBody, proofToken: unmappedPreview.body.item.proofToken, reason: "Join metadata without parameter admission", clientMutationId: "metadata-json-add" });
     expect(unmappedApply.status, unmappedApply.bodyText).toBe(200);
     expect((await listCatalogBindingRowsForProject(api, auth, { projectId })).map((row) => row.id).sort()).toEqual(final.map((row) => row.id).sort());
     const exported = await requestJson<{ files: Array<{ name: string; content: string }> }>(server(), `/api/v1/projects/${projectId}/config-sets/${configSetId}/export`);
     expect(exported.status, exported.bodyText).toBe(200);
     expect(exported.body.files.find((file) => file.name === "metadata.json")?.content).toBe(unmappedSource);
+    const editedSource = '/dts-v1/; / { compatible = "test,mixed"; model = "mixed configuration"; };\n/* edit DTS while retaining governed JSON values */\n';
+    const edited = await post<{ item: { id: string } }>(`/api/v1/projects/${projectId}/parameter-file-candidates`, {
+      fileId: applied.body.item.fileId, fileName: "mixed-board.dts", intent: "source_revision", expectedCurrentVersionId: applied.body.item.fileVersionId,
+      expectedConfigRevisionId: unmappedApply.body.item.configRevisionId, clientMutationId: "edit-mixed-source", contentBase64: Buffer.from(editedSource).toString("base64") });
+    expect(edited.status, edited.bodyText).toBe(201);
+    const next = await requestJson<{ item: SourceRevisionPreview }>(server(), `/api/v1/projects/${projectId}/parameter-file-candidates/${edited.body.item.id}/source-preview`);
+    expect(next.status, next.bodyText).toBe(200);
+    const commitBody = { expectedCurrentVersionId: next.body.item.baseVersionId, expectedProofToken: next.body.item.proofToken,
+      reason: "Keep JSON in the common source revision", clientMutationId: "apply-mixed-source" };
+    const jsonPin = await loadOwnedProjectValueSourcePin(api, { organizationId, projectId, bindingId: final[0]!.id, projectValueId: final[0]!.currentValueId });
+    const jsonKey = (await db.query<{ storage_key: string }>("select storage_key from project_parameter_file_versions where id=$1", [jsonPin!.fileVersionId])).rows[0]!.storage_key;
+    const beforeFault = await captureConfigurationSourceState(db, { organizationId, projectId }), readObject = storage.getBounded;
+    storage.getBounded = async (key, limit) => key === jsonKey ? Buffer.from('{"limit":999}') : readObject(key, limit);
+    try {
+      const refused = await post(`/api/v1/projects/${projectId}/parameter-file-candidates/${edited.body.item.id}/source-apply`, commitBody);
+      expect(refused.status, refused.bodyText).toBe(409);
+    } finally { storage.getBounded = readObject; }
+    const afterFault = await captureConfigurationSourceState(db, { organizationId, projectId });
+    expect({ ...afterFault, audits: beforeFault.audits }).toEqual(beforeFault);
+    expect(afterFault.audits.filter(row => !beforeFault.audits.some(previous => previous.id === row.id)).every(row => row.action !== "value-change-applied")).toBe(true);
+    const committed = await post(`/api/v1/projects/${projectId}/parameter-file-candidates/${edited.body.item.id}/source-apply`, commitBody);
+    expect(committed.status, committed.bodyText).toBe(200);
+    const editedBindings = await listCatalogBindingRowsForProject(api, auth, { projectId });
+    expect(editedBindings.map(row => [row.id, row.rawValue]).sort()).toEqual(final.map(row => [row.id, row.rawValue]).sort());
+    const pins = await Promise.all(editedBindings.map(row => loadOwnedProjectValueSourcePin(api, { organizationId, projectId, bindingId: row.id, projectValueId: row.currentValueId })));
+    expect(pins.every(pin => pin?.format === "json")).toBe(true);
+    expect(new Set(pins.map(pin => pin?.configRevisionId)).size).toBe(1);
+    expect(pins[0]?.configRevisionId).not.toBe(unmappedApply.body.item.configRevisionId);
+    for (const previous of final) expect(await loadOwnedProjectValueSourcePin(api, { organizationId, projectId, bindingId: previous.id, projectValueId: previous.currentValueId })).not.toBeNull();
+    const reexported = await requestJson<{ files: Array<{ name: string; content: string }> }>(server(), `/api/v1/projects/${projectId}/config-sets/${configSetId}/export`);
+    expect(reexported.status, reexported.bodyText).toBe(200);
+    expect(reexported.body.files.find(file => file.name === "mixed-board.dts")?.content).toBe(editedSource);
+    expect(reexported.body.files.filter(file => file.name.endsWith(".json"))).toEqual(exported.body.files.filter(file => file.name.endsWith(".json")));
   }, 120_000);
 });
