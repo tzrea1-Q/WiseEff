@@ -43,6 +43,18 @@ export type MoveDebugNodeModuleAdminInput = {
   parentId: string | null;
 };
 
+export type DebugModuleDeletionPreview = {
+  module: { id: string; name: string };
+  target: { id: string; name: string } | null;
+  nodeCount: number;
+  legacyNodeCount: number;
+  children: Array<{ id: string; name: string }>;
+  ambiguousNodes: Array<{ id: string; name: string }>;
+  canDelete: boolean;
+  previewDigest: string;
+};
+export type DebugModuleDeletionInput = { targetModuleId: string | null; previewDigest: string; clientMutationId: string };
+
 export const DEBUG_CATALOG_FORMAT_V1 = "wiseeff.debug-node-catalog.v1" as const;
 export const DEBUG_CATALOG_FORMAT_V2 = "wiseeff.debug-node-catalog.v2" as const;
 
@@ -297,8 +309,12 @@ export function createDebuggingAdminClient(apiClient: ApiClient = createDefaultA
       );
       return debugAdminModuleFromDto(response.item);
     },
-    async deleteModule(moduleId: string) {
-      await apiClient.delete(adminModulePath(moduleId));
+    async previewModuleDeletion(moduleId: string, targetModuleId: string | null) {
+      const query = targetModuleId ? `?targetModuleId=${encodeURIComponent(targetModuleId)}` : "";
+      return (await apiClient.get<ItemEnvelope<DebugModuleDeletionPreview>>(`${adminModulePath(moduleId)}/deletion-preview${query}`)).item;
+    },
+    async deleteModule(moduleId: string, confirmation?: DebugModuleDeletionInput) {
+      await apiClient.delete(adminModulePath(moduleId), confirmation);
     },
     /**
      * Downloads the complete org catalog. Export is always a full snapshot: the server no

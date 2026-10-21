@@ -4,6 +4,7 @@ import { readDebugNodeCatalogSearch, writeDebugNodeCatalogSearch } from "@/appli
 import { ArchiveDebugNodeDialog } from "@/components/admin/ArchiveDebugNodeDialog";
 import { DeleteDebugNodeDialog } from "@/components/admin/DeleteDebugNodeDialog";
 import { DebugModuleManagementDialog } from "@/components/admin/DebugModuleManagementDialog";
+import type { DebugModuleDeletionInput } from "@/infrastructure/http/debuggingAdminClient";
 import { DebugNodeEditorDialog, type DebugNodeDraft } from "@/components/admin/DebugNodeEditorDialog";
 import { DebugNodeLibraryTable, type DebugNodeLibrarySearch } from "@/components/admin/DebugNodeLibraryTable";
 import { bindingForProtocol } from "@/debugAdminDraft";
@@ -590,8 +591,8 @@ export function DebuggingAdminPage({
     }
   };
 
-  const deleteDebugModule = async (moduleId: string) => {
-    if (countDebugNodesByModuleId(library, moduleId, moduleNodes) > 0) {
+  const deleteDebugModule = async (moduleId: string, confirmation?: DebugModuleDeletionInput) => {
+    if (!isApiMode && countDebugNodesByModuleId(library, moduleId, moduleNodes) > 0) {
       return;
     }
     if (isApiMode) {
@@ -601,8 +602,10 @@ export function DebuggingAdminPage({
       setAdminLoading(true);
       setAdminError("");
       try {
-        await debuggingAdminClient.deleteModule(moduleId);
-        await reloadAdminModules();
+        await debuggingAdminClient.deleteModule(moduleId, confirmation);
+        const [modules, nodes] = await Promise.all([debuggingAdminClient.listModules(), debuggingAdminClient.listNodes({ includeArchived: true })]);
+        setAdminModuleNodes(modules);
+        setAdminNodes(nodes);
         flashSaved("模块已删除");
       } catch (error) {
         setAdminError("删除模块失败。");
@@ -1002,6 +1005,7 @@ export function DebuggingAdminPage({
             onUpdateModule={updateDebugModule}
             onMoveModule={moveDebugModule}
             onDeleteModule={deleteDebugModule}
+            onPreviewDeleteModule={isApiMode ? debuggingAdminClient?.previewModuleDeletion : undefined}
             onEditNode={openNodeEditorFromModule}
             onDeleteNode={openNodeDeleteFromModule}
           />

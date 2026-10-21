@@ -6,6 +6,7 @@ export type ModuleManagementRowActionsProps = {
   viewItemsLabel: string;
   canEdit?: boolean;
   canDelete: boolean;
+  previewDeletion?: boolean;
   deleteDisabledReason?: string;
   onEdit: () => void;
   onViewItems: () => void;
@@ -16,7 +17,7 @@ export type ModuleManagementRowActionsProps = {
 
 export function ModuleManagementRowActions({
   moduleName, itemCount, viewItemsLabel, canEdit = true,
-  canDelete, deleteDisabledReason, onEdit, onViewItems, onAddChild, onMove, onDelete
+  canDelete, previewDeletion, deleteDisabledReason, onEdit, onViewItems, onAddChild, onMove, onDelete
 }: ModuleManagementRowActionsProps) {
   return (
     <RowActionMenu
@@ -31,12 +32,12 @@ export function ModuleManagementRowActions({
           id: "delete", label: "删除", destructive: true,
           disabled: !canEdit || !canDelete,
           title: !canEdit ? "没有编辑权限" : !canDelete ? deleteDisabledReason : undefined,
-          confirmation: {
+          ...(previewDeletion ? { onRequestConfirmation: () => { void onDelete(); } } : { confirmation: {
             title: `删除模块「${moduleName}」？`,
             description: "此操作将永久删除这个空模块。包含子模块或节点的模块不能删除。",
             confirmLabel: "删除模块"
           },
-          onSelect: onDelete
+          onSelect: onDelete })
         }
       ]}
     />

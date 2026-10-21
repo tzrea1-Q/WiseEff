@@ -1,7 +1,14 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import { assertNoCycle, buildPath, depthOf } from "../shared/moduleTree";
 import type { DebugNodeModuleRecord } from "./types";
+
+/** All organization catalog mutations share the import writer's transaction fence. */
+export async function lockDebugCatalogWriter(tx: Queryable, organizationId: string) {
+  // ponytail: one organization writer at a time; split by module only if catalog write throughput requires it.
+  const key = createHash("sha256").update(`wiseeff.debug-node-catalog:${organizationId}`).digest().readBigInt64BE(0).toString();
+  await tx.query("select pg_advisory_xact_lock($1::bigint)", [key]);
+}
 
 type DebugNodeModuleRow = {
   id: string;
