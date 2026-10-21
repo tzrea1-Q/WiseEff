@@ -22,6 +22,8 @@ import {
   patchDebugNodeAdminBodySchema,
   patchDebugNodeModuleAdminBodySchema,
   moveDebugNodeModuleBodySchema,
+  debugModuleDeletionBodySchema,
+  debugModuleDeletionQuerySchema,
   readNodeBodySchema,
   rollbackSnapshotBodySchema,
   writeDebugNodeAdminBodySchema,
@@ -301,11 +303,22 @@ export function registerDebuggingRoutes(
     return { status: 200, body: { item } };
   });
 
+  router.get("/api/v1/debugging/admin/modules/:moduleId/deletion-preview", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(debugAdminModuleParamsSchema, request.params);
+    const query = parseWithSchema(debugModuleDeletionQuerySchema, request.query);
+    const item = await service.previewAdminDebugModuleDeletion(auth, params.moduleId, query.targetModuleId ?? null);
+    return { status: 200, body: { item } };
+  });
+
   router.delete("/api/v1/debugging/admin/modules/:moduleId", async (request) => {
     const { service } = serviceFrom(options);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(debugAdminModuleParamsSchema, request.params);
-    await service.deleteAdminDebugModule(auth, params.moduleId, { requestId: request.requestId });
+    const confirmation = request.body === undefined || request.body === null ? undefined : parseWithSchema(debugModuleDeletionBodySchema, request.body);
+    if (confirmation) await service.deleteAdminDebugModule(auth, params.moduleId, { requestId: request.requestId }, confirmation);
+    else await service.deleteAdminDebugModule(auth, params.moduleId, { requestId: request.requestId });
 
     return { status: 204, body: null };
   });

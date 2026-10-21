@@ -18,6 +18,7 @@ import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { withAuditedWrite } from "../audit/auditedWrite";
 import { requireDebugAdmin } from "./policy";
+import { lockDebugCatalogWriter } from "./debugNodeModuleRepository";
 import {
   createDebugNode,
   createDebugNodeModule,
@@ -1806,20 +1807,6 @@ export async function previewDebugCatalogImport(
 }
 
 /**
- * Serializes catalog-transfer writers for one organization. An advisory lock is used
- * instead of row locks so a large import never blocks unrelated admin node edits on rows
- * it does not touch; correctness still comes from re-verifying the approved target state.
- */
-async function lockCatalogWriter(tx: Database, organizationId: string) {
-  await tx.query("select pg_advisory_xact_lock($1::bigint)", [advisoryLockKey(organizationId)]);
-}
-
-function advisoryLockKey(organizationId: string) {
-  const digest = createHash("sha256").update(`wiseeff.debug-node-catalog:${organizationId}`).digest();
-  return digest.readBigInt64BE(0).toString();
-}
-
-/**
  * Merge-imports a previewed catalog document. The caller must have previewed the same file
  * against the same target; any divergence in the approved target state returns
  * CONFLICT/409 so the admin re-previews instead of silently overwriting unreviewed data.
@@ -1853,7 +1840,7 @@ export async function importDebugCatalog(
   const requestedDigest = body.previewDigest.trim();
 
   return withAuditedWrite(db, createUserInvocation(auth), { requestId: context.requestId }, async (tx) => {
-    await lockCatalogWriter(tx, organizationId);
+    await lockDebugCatalogWriter(tx, organizationId);
     const target = await loadCatalogTargetSnapshot(tx, { organizationId });
     const plan = buildCatalogImportPlan({ organizationId, document, target });
 
