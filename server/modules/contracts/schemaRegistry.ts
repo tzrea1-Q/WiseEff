@@ -1373,6 +1373,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "List knowledge entries visible to the caller",
     tags: ["knowledge"],
     responseBody: "KnowledgeEntryListResponse",
+    requestParameters: [{ name: "origin", in: "query", schema: { type: "string", enum: ["authored", "uploaded", "distilled", "agent-drafted", "imported"] } }],
     additionalResponses: { "403": "ErrorResponse" }
   },
   "knowledge.distillFromLog": {

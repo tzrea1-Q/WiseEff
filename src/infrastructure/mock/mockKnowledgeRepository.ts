@@ -129,6 +129,7 @@ function bigramContainment(queryGrams: Set<string>, textGrams: Set<string>): num
 
 export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revisions: KnowledgeRevision[] } {
   const publishedMarkdown: KnowledgeEntry = {
+    origin: "authored",
     id: "mock-kb-1",
     title: "快充温控调参经验",
     contentForm: "markdown",
@@ -155,6 +156,7 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
   };
 
   const draftMarkdown: KnowledgeEntry = {
+    origin: "authored",
     id: "mock-kb-2",
     title: "SC8562 充电泵比率切换草稿",
     contentForm: "markdown",
@@ -176,6 +178,7 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
   };
 
   const publishedFile: KnowledgeEntry = {
+    origin: "uploaded",
     id: "mock-kb-3",
     title: "MT5788 无线充手册摘录",
     contentForm: "file",
@@ -205,6 +208,7 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
   };
 
   const failedExtractionFile: KnowledgeEntry = {
+    origin: "uploaded",
     id: "mock-kb-4",
     title: "旧版工艺规范(.doc)",
     contentForm: "file",
@@ -234,6 +238,7 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
   };
 
   const archivedMarkdown: KnowledgeEntry = {
+    origin: "authored",
     id: "mock-kb-5",
     title: "已归档:旧平台日志格式说明",
     contentForm: "markdown",
@@ -258,6 +263,7 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
   // user's session (publishable by them), one from another engineer's session
   // (manage-only governance) — so the /knowledge-admin queue has both rows.
   const agentDraftOwn: KnowledgeEntry = {
+    origin: "agent-drafted",
     id: "mock-kb-agent-1",
     title: "小泽沉淀:充电异常断电根因排查",
     contentForm: "markdown",
@@ -280,6 +286,7 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
   };
 
   const agentDraftOther: KnowledgeEntry = {
+    origin: "agent-drafted",
     id: "mock-kb-agent-2",
     title: "小泽沉淀:无线充异物检测误报处置",
     contentForm: "markdown",
@@ -303,6 +310,7 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
   // Related to the completed mock log (log-auth, PD negotiation): the log
   // result page's related-knowledge section has a real hit in mock mode.
   const publishedPdHandbook: KnowledgeEntry = {
+    origin: "authored",
     id: "mock-kb-8",
     title: "PD 快充协议兼容性排查手册",
     contentForm: "markdown",
@@ -543,6 +551,7 @@ export function createMockKnowledgeRepository(
         if (query?.status && entry.status !== query.status) return false;
         if (query?.contentForm && entry.contentForm !== query.contentForm) return false;
         if (query?.sourceType && entry.sourceType !== query.sourceType) return false;
+        if (query?.origin && entry.origin !== query.origin) return false;
         if (query?.tag && !entry.tags.includes(query.tag)) return false;
         if (query?.q && !entry.title.toLocaleLowerCase().includes(query.q.toLocaleLowerCase())) return false;
         return true;
@@ -558,6 +567,7 @@ export function createMockKnowledgeRepository(
     async createMarkdown(input) {
       store.counter += 1;
       const entry: KnowledgeEntry = {
+        origin: input.origin ?? "authored",
         id: `mock-kb-${store.counter}`,
         title: input.title,
         contentForm: "markdown",
@@ -588,6 +598,7 @@ export function createMockKnowledgeRepository(
       const id = `mock-kb-${store.counter}`;
       const isLegacyDoc = input.file.name.toLocaleLowerCase().endsWith(".doc");
       const entry: KnowledgeEntry = {
+        origin: "uploaded",
         id,
         title: input.title,
         contentForm: "file",
@@ -635,6 +646,7 @@ export function createMockKnowledgeRepository(
       const draft = buildLogDistillationDraft(log);
       store.counter += 1;
       const entry: KnowledgeEntry = {
+        origin: "distilled",
         id: `mock-kb-${store.counter}`,
         title: draft.title,
         contentForm: "markdown",
@@ -671,6 +683,7 @@ export function createMockKnowledgeRepository(
       const draft = buildReloadDistillationDraft(run);
       store.counter += 1;
       const entry: KnowledgeEntry = {
+        origin: "distilled",
         id: `mock-kb-${store.counter}`,
         title: draft.title,
         contentForm: "markdown",

@@ -67,6 +67,7 @@ import {
 } from "./repository";
 import type {
   KnowledgeEntryDto,
+  KnowledgeOrigin,
   KnowledgeFileDto,
   KnowledgeRetrievalInfo,
   KnowledgeSearchResponseDto,
@@ -85,8 +86,8 @@ export type KnowledgeFileUploadInput = {
 };
 
 export type CreateKnowledgeEntryInput =
-  | { contentForm: "markdown"; title: string; tags: string[]; contentMarkdown: string }
-  | { contentForm: "file"; title: string; tags: string[]; file: KnowledgeFileUploadInput };
+  | { contentForm: "markdown"; title: string; tags: string[]; contentMarkdown: string; origin?: KnowledgeOrigin }
+  | { contentForm: "file"; title: string; tags: string[]; file: KnowledgeFileUploadInput; origin?: KnowledgeOrigin };
 
 export type UpdateKnowledgeEntryInput = {
   expectedHeadRevisionNumber: number;
@@ -218,6 +219,7 @@ export async function createKnowledgeEntry(
         id: entryId,
         title: input.title,
         contentForm: "markdown",
+        origin: input.origin ?? "authored",
         tags: input.tags,
         sourceType: "human",
         sourceSessionId: null,
@@ -276,6 +278,7 @@ export async function createKnowledgeEntry(
       id: entryId,
       title: input.title,
       contentForm: "file",
+      origin: input.origin ?? "uploaded",
       tags: input.tags,
       sourceType: "human",
       sourceSessionId: null,
@@ -353,6 +356,7 @@ async function createMarkdownDraftWithSource(
     tags: string[];
     contentMarkdown: string;
     sourceType: KnowledgeSourceType;
+    origin: KnowledgeOrigin;
     sourceSessionId: string | null;
     sourceLogId: string | null;
     sourceReloadRunId: string | null;
@@ -371,6 +375,7 @@ async function createMarkdownDraftWithSource(
       contentForm: "markdown",
       tags: input.tags,
       sourceType: input.sourceType,
+      origin: input.origin,
       sourceSessionId: input.sourceSessionId,
       sourceLogId: input.sourceLogId,
       sourceReloadRunId: input.sourceReloadRunId,
@@ -442,6 +447,7 @@ export async function distillKnowledgeFromLog(
     createUserInvocation(auth),
     {
       ...draft,
+      origin: "distilled",
       sourceType: "human",
       sourceSessionId: null,
       sourceLogId: log.id,
@@ -499,6 +505,7 @@ export async function distillKnowledgeFromReloadRun(
     createUserInvocation(auth),
     {
       ...draft,
+      origin: "distilled",
       sourceType: "human",
       sourceSessionId: null,
       sourceLogId: null,
@@ -570,6 +577,7 @@ export async function createAgentKnowledgeDraft(
       tags: input.tags,
       contentMarkdown,
       sourceType: "agent",
+      origin: "agent-drafted",
       sourceSessionId: input.sessionId,
       sourceLogId,
       sourceReloadRunId,

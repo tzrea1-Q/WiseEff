@@ -488,7 +488,7 @@ describe("skill workspace", () => {
   it("saves knowledge links and Markdown drafts separately before unlinking", async () => {
     const entries: KnowledgeEntry[] = ["热管理知识", "散热", "协议"].map((title, index) => ({
       id: `00000000-0000-4000-8000-00000000000${index + 1}`, title, contentForm: "markdown", status: index ? "draft" : "published",
-      tags: [], sourceType: "human", sourceSessionId: null, sourceLogId: null, sourceReloadRunId: null, createdByUserId: "user", headRevisionNumber: 1,
+      tags: [], origin: "authored", sourceType: "human", sourceSessionId: null, sourceLogId: null, sourceReloadRunId: null, createdByUserId: "user", headRevisionNumber: 1,
       createdAt: "2026-10-19T10:00:00Z", updatedAt: "2026-10-19T10:00:00Z", publishedAt: index ? null : "2026-10-19T10:00:00Z", archivedAt: null,
       contentMarkdown: "# 检查步骤", file: null, parameterReferences: []
     }));

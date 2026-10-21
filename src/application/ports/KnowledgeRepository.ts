@@ -2,6 +2,7 @@ import type {
   KnowledgeContentForm,
   KnowledgeEntry,
   KnowledgeIndexHealth,
+  KnowledgeOrigin,
   KnowledgeRevision,
   KnowledgeSearchResponse,
   KnowledgeSearchResult,
@@ -10,6 +11,7 @@ import type {
 } from "@/domain/knowledge/types";
 
 export type KnowledgeListQuery = {
+  origin?: KnowledgeOrigin;
   status?: KnowledgeStatus;
   contentForm?: KnowledgeContentForm;
   sourceType?: KnowledgeSourceType;
@@ -18,6 +20,7 @@ export type KnowledgeListQuery = {
 };
 
 export type CreateMarkdownKnowledgeInput = {
+  origin?: "authored" | "uploaded";
   title: string;
   tags: string[];
   contentMarkdown: string;

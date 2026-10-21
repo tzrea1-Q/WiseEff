@@ -1,4 +1,5 @@
 import type { ZodTypeAny } from "zod";
+import { knowledgeCoveredRouteIds, knowledgeDtoSchemaCatalog } from "./knowledge";
 export { parsePreviewRequestSchema, parsePreviewResponseSchema, decodedEventSchema, decodedValueSchema } from "./logs";
 export { parsingSpecSchema, registerCaseKey } from "../../logs/parsing/spec";
 export { extractorPreviewRequestSchema, extractorPreviewResponseSchema } from "../../logs/parsing/extractorBuilder";
@@ -20,6 +21,7 @@ import { sourceRevisionCoveredRouteIds, sourceRevisionDtoSchemaCatalog } from ".
 import { parameterDefinitionDeletionDtoSchemaCatalog, parameterDefinitionDeletionCoveredRouteIds } from "./parameterDefinitionDeletion";
 
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
+  ...knowledgeDtoSchemaCatalog,
   ...coreDtoSchemaCatalog,
   ...parameterCatalogDtoSchemaCatalog,
   ...canonicalConflictDtoSchemaCatalog,
@@ -33,6 +35,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 };
 
 export const dtoSchemaCoveredRouteIds = [
+  ...knowledgeCoveredRouteIds,
   ...coreDtoSchemaCoveredRouteIds,
   ...parameterCatalogCoveredRouteIds,
   ...productFeedbackCoveredRouteIds,

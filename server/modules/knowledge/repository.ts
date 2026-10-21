@@ -16,6 +16,7 @@ import type {
 } from "./types";
 
 type KnowledgeEntryRow = {
+  origin: KnowledgeEntryDto["origin"];
   id: string;
   organization_id: string;
   title: string;
@@ -140,6 +141,7 @@ function toEntryDto(
     organizationId: row.organization_id,
     title: row.title,
     contentForm: row.content_form,
+    origin: row.origin,
     status: row.status,
     tags: row.tags ?? [],
     sourceType: row.source_type,
@@ -206,9 +208,9 @@ export async function insertEntry(db: Queryable, auth: AuthContext, input: Inser
   await db.query(
     `
     insert into knowledge_entries (
-      id, organization_id, title, content_form, tags, source_type, source_session_id, source_log_id, source_reload_run_id, created_by_user_id, search_text
+      id, organization_id, title, content_form, tags, source_type, source_session_id, source_log_id, source_reload_run_id, created_by_user_id, search_text, origin
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     `,
     [
       input.id,
@@ -221,7 +223,8 @@ export async function insertEntry(db: Queryable, auth: AuthContext, input: Inser
       input.sourceLogId,
       input.sourceReloadRunId,
       auth.user.id,
-      input.searchText
+      input.searchText,
+      input.origin
     ]
   );
 }
@@ -414,6 +417,11 @@ export async function listEntries(
 ): Promise<KnowledgeEntryDto[]> {
   const values: unknown[] = [auth.organization.id];
   const where = ["organization_id = $1"];
+
+  if (query.origin) {
+    values.push(query.origin);
+    where.push(`origin = $${values.length}`);
+  }
 
   if (query.status) {
     values.push(query.status);

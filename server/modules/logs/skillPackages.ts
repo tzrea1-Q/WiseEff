@@ -116,7 +116,7 @@ export async function importLogSkillPackage(db: Database, store: ObjectStore, au
       const knowledgeEntryIds: string[] = [];
       for (const entry of pkg.knowledge) {
         const created = await createKnowledgeEntry(tx, trackingStore, createDefaultKnowledgeTextExtractor(), auth,
-          { title: entry.title, contentForm: "markdown", tags: entry.tags, contentMarkdown: entry.body }, context);
+          { title: entry.title, contentForm: "markdown", tags: entry.tags, contentMarkdown: entry.body, origin: "imported" }, context);
         knowledgeEntryIds.push(created.id);
       }
       await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId: skill.id,

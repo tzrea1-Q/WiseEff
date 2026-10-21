@@ -11,6 +11,7 @@ import type {
   KnowledgeEntry,
   KnowledgeExtractionStatus,
   KnowledgeIndexHealth,
+  KnowledgeOrigin,
   KnowledgeParameterReference,
   KnowledgeRetrievalInfo,
   KnowledgeRevision,
@@ -47,6 +48,7 @@ export type KnowledgeFileDto = {
 export type KnowledgeParameterReferenceDto = KnowledgeParameterReference;
 
 export type KnowledgeEntryDto = {
+  origin: KnowledgeOrigin;
   id: string;
   organizationId: string;
   title: string;
@@ -101,6 +103,7 @@ function entryFromDto(dto: KnowledgeEntryDto): KnowledgeEntry {
     id: dto.id,
     title: dto.title,
     contentForm: dto.contentForm,
+    origin: dto.origin,
     status: dto.status,
     tags: dto.tags,
     sourceType: dto.sourceType,
@@ -181,6 +184,7 @@ function buildListPath(query?: KnowledgeListQuery) {
   if (query?.status) params.set("status", query.status);
   if (query?.contentForm) params.set("contentForm", query.contentForm);
   if (query?.sourceType) params.set("sourceType", query.sourceType);
+  if (query?.origin) params.set("origin", query.origin);
   if (query?.tag) params.set("tag", query.tag);
   if (query?.q) params.set("q", query.q);
   const encoded = params.toString();
@@ -229,7 +233,8 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
         contentForm: "markdown",
         title: input.title,
         tags: input.tags,
-        contentMarkdown: input.contentMarkdown
+        contentMarkdown: input.contentMarkdown,
+        ...(input.origin ? { origin: input.origin } : {})
       });
       return entryFromDto(response.item);
     },
