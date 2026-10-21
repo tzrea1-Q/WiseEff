@@ -142,8 +142,18 @@ export async function getAuthContext(db: Queryable, userId: string): Promise<Aut
 
 export async function getAuthContextForExternalIdentity(
   db: Queryable,
-  input: { organizationId: string; subject: string; email?: string }
+  input: { organizationId: string; subject: string; email?: string; issuer?: string }
 ): Promise<AuthContext> {
+  if (input.issuer) {
+    const explicit = await db.query<{ user_id: string }>("select user_id from public.user_oidc_identities where organization_id=$1 and issuer=$2 and subject=$3", [input.organizationId,input.issuer,input.subject]);
+    if (explicit.rows[0]) return getAuthContext(db, explicit.rows[0].user_id);
+    const legacy = await db.query<{ user_id: string }>(`
+      select user_id from public.user_oidc_identities where organization_id=$1 and issuer is null and legacy_subject=true
+        and (user_id=$2 or ($3::text is not null and legacy_email=lower($3)))
+    `, [input.organizationId,input.subject,input.email ?? null]);
+    if (legacy.rows.length !== 1) throw new ApiError("UNAUTHENTICATED", "OIDC identity has no unambiguous member binding; contact an administrator.");
+    return getAuthContext(db, legacy.rows[0].user_id);
+  }
   const subjectResult = await db.query<AuthRow>(
     `
     ${authContextSelect}

@@ -31,6 +31,7 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { withAuditedWrite, type AuditSpec } from "../audit/auditedWrite";
 import { getAuthContext } from "../auth/repository";
+import { CURRENT_POINTER_LOCK_KEY } from "../catalog-kernel/install/lockProtocol";
 import { deriveDtsSourceRef } from "../dts/sourceRef";
 import { dtsValueToPayload } from "../parameter-bindings/catalogProjectValueSync";
 import { digestProjectValuePayload } from "../parameter-bindings/values/repositories";
@@ -61,16 +62,19 @@ import {
   insertReplacementPreview,
   insertReplacementProjects,
   insertReplacementValue,
+  isCurrentAdministrator,
   listCurrentReferenceProjects,
   listReplacements,
   loadCandidate,
   loadCurrentBindingTips,
   loadCurrentReleasePin,
   loadDefinitionInRelease,
+  loadDefinitionIdentity,
   loadPolicyRevision,
   loadProjects,
   loadReplacement,
   loadReplacementPreview,
+  loadZeroProjectActivation,
   loadReplacementProjects,
   lockReplacementSourceRows,
   lockReplacementWorkflowRows,
@@ -133,7 +137,7 @@ export type CatalogDefinitionMigrationPorts = {
   readonly listDefinitionReplacements: (
     query: ListDefinitionReplacementsQuery,
   ) => Promise<Result<{ readonly items: readonly DefinitionReplacementView[] }, DefinitionReplacementFailure>>;
-  /** Retirement evidence: an org-wide current-reference count, never manifest-scoped. */
+  /** Retirement evidence: a platform-wide current-reference count, never manifest-scoped. */
   readonly loadDefinitionRetirementEvidence: (query: {
     readonly organizationId: string;
     readonly definitionId: string;
@@ -170,6 +174,16 @@ const authorizeOrganizationWrite = (
     return { kind: "invalid-command", reason: "principalId" };
   }
   return null;
+};
+
+const authorizeReplacementWrite = (context: TrustedMigrationContext, organizationId: string) =>
+  context.actorKind === "platform-admin" && isControlFree(context.principalId)
+    ? null : authorizeOrganizationWrite(context, organizationId);
+
+const authorizeReplacementManifest = async (client: MigrationClient, context: TrustedMigrationContext, organizationId: string, zeroProjects: boolean) => {
+  if (context.actorKind === "platform-admin" && isControlFree(context.principalId) &&
+    await isCurrentAdministrator(client, organizationId, context.principalId, zeroProjects ? "platform-admin" : "admin")) return null;
+  return zeroProjects ? { kind: "permission-denied" as const } : authorizeOrganizationWrite(context, organizationId);
 };
 
 const createCommandFingerprint = (command: CreateDefinitionReplacementCommand): string =>
@@ -465,6 +479,10 @@ export function createParameterCatalogMigrationService(
         rows,
         registration === null || registration.status !== "active",
       ),
+      ...(replacement.frozen_manifest.length === 0 && replacement.status === "completed" ? {
+        retirementEvidence: { scope: "platform" as const, authoritative: true as const,
+          remainingCurrentReferenceCount: await countCurrentReferences(client, null, replacement.old_definition_id) }
+      } : {}),
       createdAt: new Date(replacement.created_at).toISOString(),
     };
   };
@@ -475,13 +493,13 @@ export function createParameterCatalogMigrationService(
 
   const previewDefinitionReplacement: CatalogDefinitionMigrationPorts["previewDefinitionReplacement"] =
     async (command) => {
-      const denial = authorizeOrganizationWrite(command.context, command.organizationId);
+      const zeroProjects = command.projectIds.length === 0;
+      const denial = await authorizeReplacementManifest(db, command.context, command.organizationId, zeroProjects);
       if (denial) return fail(denial);
       if (!isControlFree(command.reason)) {
         return fail({ kind: "invalid-command", reason: "reason" });
       }
       if (
-        command.projectIds.length === 0 ||
         command.projectIds.length > DEFINITION_REPLACEMENT_MAX_PROJECTS
       ) {
         return fail({ kind: "invalid-command", reason: "projectIds" });
@@ -512,6 +530,10 @@ export function createParameterCatalogMigrationService(
       if (!oldDefinition) {
         return fail({ kind: "preview-unavailable", reason: "subject-not-found" });
       }
+      if (zeroProjects) {
+        const currentReferenceCount = await countCurrentReferences(db, null, command.oldDefinitionId);
+        if (currentReferenceCount > 0) return fail({ kind: "current-project-references", currentReferenceCount });
+      }
       const lifecycle = (oldDefinition.revision_content?.lifecycle ?? "active") as
         | "active"
         | "deprecated"
@@ -525,9 +547,12 @@ export function createParameterCatalogMigrationService(
       ) {
         return fail({ kind: "preview-unavailable", reason: "subject-not-active" });
       }
-      if (oldDefinition.property_key === command.newPropertyKey) {
+      if (oldDefinition.subject_id === command.newSubjectId && oldDefinition.property_key === command.newPropertyKey) {
         return fail({ kind: "invalid-command", reason: "identity-unchanged" });
       }
+      const existingTarget = await loadDefinitionIdentity(db, command.newSubjectId, command.newPropertyKey);
+      if (existingTarget) return fail({ kind: "target-identity-conflict", reason: "duplicate-natural-key",
+        existingDefinitionId: existingTarget.id, subjectId: existingTarget.subject_id });
 
       const targetSubject = await loadSubjectInRelease(db, release.id, command.newSubjectId);
       if (!targetSubject) {
@@ -558,7 +583,7 @@ export function createParameterCatalogMigrationService(
       );
       const openReviews = await countOpenReviewItems(db, command.organizationId, release.id);
       const registration = await loadRegistration(db, command.organizationId, command.newSubjectId);
-      const registrationRequired = registration === null || registration.status !== "active";
+      const registrationRequired = !zeroProjects && (registration === null || registration.status !== "active");
 
       const tips = await loadCurrentBindingTips(
         db,
@@ -769,7 +794,7 @@ export function createParameterCatalogMigrationService(
         oldDefinitionLifecycle: lifecycle,
         oldDefinitionCurrentReferenceCount: await countCurrentReferences(
           db,
-          command.organizationId,
+          zeroProjects ? null : command.organizationId,
           command.oldDefinitionId,
         ),
         targetRegistrationRequired: registrationRequired,
@@ -889,7 +914,12 @@ export function createParameterCatalogMigrationService(
       [successor.releaseId],
     );
     const releaseDigest = materialized.rows[0]?.release_digest ?? successor.releaseDigest;
-    if (current?.id !== successor.releaseId || !releaseDigest) {
+    const zeroActivation = successor.replacement.frozen_manifest.length === 0
+      ? await loadZeroProjectActivation(db, successor.replacement.source_preview_id, principalId) : null;
+    const provenZeroActivation = zeroActivation?.targetAvailable && zeroActivation.publicationJobId === successor.replacement.publication_job_id &&
+      zeroActivation.authorizationId === successor.replacement.authorization_id && zeroActivation.releaseId === successor.releaseId;
+    if (zeroActivation && !provenZeroActivation) return fail({ kind: "replacement-target-unavailable" });
+    if ((current?.id !== successor.releaseId && !provenZeroActivation) || !releaseDigest) {
       const rows = await loadReplacementProjects(db, successor.replacement.id);
       if (rows.some((row) => row.status !== "completed")) {
         await db.transaction(async (tx) => {
@@ -914,6 +944,12 @@ export function createParameterCatalogMigrationService(
         : createUserInvocation(auth);
     try {
       audited = await auditedTransaction(auditInvocation, auditRequestId, async (tx) => {
+        if (successor.replacement.frozen_manifest.length === 0) {
+          await tx.query("select pg_catalog.pg_advisory_xact_lock_shared($1::bigint)", [CURRENT_POINTER_LOCK_KEY]);
+          const proof = await loadZeroProjectActivation(tx, successor.replacement.source_preview_id, principalId);
+          if (!proof?.targetAvailable || proof.publicationJobId !== successor.replacement.publication_job_id ||
+            proof.authorizationId !== successor.replacement.authorization_id) throw new ApiError("CONFLICT", "The published replacement target is unavailable.", { reason: "candidate-stale", replacement: "replacement-target-unavailable" });
+        }
         const discoveredReplacement = await loadReplacement(tx, organizationId, replacementId, { lock: "none" });
         if (!discoveredReplacement) {
           throw new Error("definition-replacement-vanished");
@@ -1235,6 +1271,9 @@ export function createParameterCatalogMigrationService(
       };
       });
     } catch (error) {
+      if (error instanceof ApiError && error.code === "CONFLICT" && error.details.replacement === "replacement-target-unavailable") {
+        return fail({ kind: "replacement-target-unavailable" });
+      }
       if (
         (error as { readonly code?: string }).code === "55P03" ||
         (error instanceof ApiError &&
@@ -1254,7 +1293,7 @@ export function createParameterCatalogMigrationService(
 
   const createDefinitionReplacement: CatalogDefinitionMigrationPorts["createDefinitionReplacement"] =
     async (command) => {
-      const denial = authorizeOrganizationWrite(command.context, command.organizationId);
+      const denial = authorizeReplacementWrite(command.context, command.organizationId);
       if (denial) return fail(denial);
       if (!isControlFree(command.idempotencyKey)) {
         return fail({ kind: "invalid-command", reason: "idempotencyKey" });
@@ -1283,6 +1322,9 @@ export function createParameterCatalogMigrationService(
         }
         const preview = await loadReplacementPreview(tx, command.organizationId, command.previewId);
         if (!preview) return { kind: "missing-preview" as const };
+        if (await authorizeReplacementManifest(tx, command.context, command.organizationId, preview.manifest.length === 0)) {
+          return { kind: "denied" as const };
+        }
         if (preview.consumed_by_replacement_id) {
           return { kind: "replay" as const, replacementId: preview.consumed_by_replacement_id };
         }
@@ -1293,7 +1335,9 @@ export function createParameterCatalogMigrationService(
             attemptedFingerprint: command.previewFingerprint,
           };
         }
-        if (new Date(preview.expires_at).getTime() <= now().getTime()) {
+        const zeroActivation = preview.manifest.length === 0 ? await loadZeroProjectActivation(tx, preview.id, command.context.principalId) : null;
+        if (zeroActivation && !zeroActivation.targetAvailable) return { kind: "target-unavailable" as const };
+        if (!zeroActivation && new Date(preview.expires_at).getTime() <= now().getTime()) {
           return { kind: "expired" as const };
         }
         const current = await loadCurrentReleasePin(tx);
@@ -1311,11 +1355,18 @@ export function createParameterCatalogMigrationService(
         if (
           !current ||
           (current.id !== preview.preview_catalog_release_id &&
-            current.id !== successorReleaseId)
+            current.id !== successorReleaseId && !zeroActivation)
         ) {
           return { kind: "drift" as const, actualId: current?.id ?? null };
         }
-        return { kind: "ready" as const, preview };
+        // The native activation receipt guards global absence at publication's
+        // linearization point. A later reference must not orphan that already
+        // published identity on a same-command finalization retry.
+        if (preview.manifest.length === 0 && !zeroActivation && current.id !== successorReleaseId) {
+          const currentReferenceCount = await countCurrentReferences(tx, null, preview.old_definition_id);
+          if (currentReferenceCount > 0) return { kind: "references" as const, currentReferenceCount };
+        }
+        return { kind: "ready" as const, preview, zeroActivation };
       });
 
       if (preflight.kind === "conflict") {
@@ -1327,6 +1378,9 @@ export function createParameterCatalogMigrationService(
         });
       }
       if (preflight.kind === "missing-preview") return fail({ kind: "not-found" });
+      if (preflight.kind === "denied") return fail({ kind: "permission-denied" });
+      if (preflight.kind === "target-unavailable") return fail({ kind: "replacement-target-unavailable" });
+      if (preflight.kind === "references") return fail({ kind: "current-project-references", currentReferenceCount: preflight.currentReferenceCount });
       if (preflight.kind === "stale") {
         return fail({
           kind: "stale-preview",
@@ -1361,14 +1415,14 @@ export function createParameterCatalogMigrationService(
       // Phase B: mint the publication job through the existing
       // Candidate/Authorization enqueue path and let the publication manager
       // (or the injected test driver) activate it.
-      const enqueued = await input.publication.enqueueReplacementPublication({
+      const enqueued = preflight.zeroActivation ? { ok: true as const, value: { ...preflight.zeroActivation, replayed: true } } : await input.publication.enqueueReplacementPublication({
         organizationId: command.organizationId,
         candidateId: preview.candidate_id,
         idempotencyKey: command.idempotencyKey,
         trustedActor: command.trustedActor,
       });
       if (!enqueued.ok) return fail(enqueued.error);
-      const activation = input.publication.activateReplacementPublication
+      const activation = preflight.zeroActivation ? { kind: "active" as const, ...preflight.zeroActivation } : input.publication.activateReplacementPublication
         ? await input.publication.activateReplacementPublication({
             jobId: enqueued.value.publicationJobId,
           })
@@ -1386,14 +1440,28 @@ export function createParameterCatalogMigrationService(
 
       // Phase C: record the approved replacement and its per-project manifest.
       const finalized = await db.transaction(async (tx) => {
+        if (preview.manifest.length === 0) await tx.query("select pg_catalog.pg_advisory_xact_lock_shared($1::bigint)", [CURRENT_POINTER_LOCK_KEY]);
+        // Match Phase A's lock order. Concurrent retries otherwise hold the
+        // idempotency row and preview row in opposite orders.
+        const reserved = await reserveGovernanceIdempotency(tx, {
+          organizationId: command.organizationId, family: DEFINITION_REPLACEMENT_EXECUTE_FAMILY,
+          idempotencyKey: command.idempotencyKey, fingerprint,
+        });
+        if (reserved.state === "committed" && reserved.result_ref) return { kind: "replay" as const, replacementId: reserved.result_ref };
         const reloaded = await loadReplacementPreview(tx, command.organizationId, command.previewId);
         if (!reloaded) return { kind: "missing-preview" as const };
+        if (reloaded.consumed_by_replacement_id) return { kind: "replay" as const, replacementId: reloaded.consumed_by_replacement_id };
+        if (reloaded.manifest.length === 0) {
+          const proof = await loadZeroProjectActivation(tx, reloaded.id, command.context.principalId);
+          if (!proof?.targetAvailable || proof.publicationJobId !== enqueued.value.publicationJobId ||
+            proof.authorizationId !== enqueued.value.authorizationId) return { kind: "target-unavailable" as const };
+        }
         const registration = await loadRegistration(
           tx,
           command.organizationId,
           reloaded.new_subject_id,
         );
-        const registrationRequired = registration === null || registration.status !== "active";
+        const registrationRequired = reloaded.manifest.length > 0 && (registration === null || registration.status !== "active");
         const blockerByProject = new Map<
           string,
           { reason: string; evidence: Record<string, unknown> }
@@ -1454,6 +1522,11 @@ export function createParameterCatalogMigrationService(
         return { kind: "created" as const, replacementId };
       });
       if (finalized.kind === "missing-preview") return fail({ kind: "not-found" });
+      if (finalized.kind === "target-unavailable") return fail({ kind: "replacement-target-unavailable" });
+      if (finalized.kind === "replay") {
+        const stored = await loadReplacement(db, command.organizationId, finalized.replacementId);
+        return stored ? ok(await replacementView(db, stored)) : fail({ kind: "not-found" });
+      }
 
       // Phase D: after an exact impact confirmation, eligible projects advance
       // automatically; blocked projects are retained for continuation.
@@ -1473,7 +1546,11 @@ export function createParameterCatalogMigrationService(
 
   const continueDefinitionReplacement: CatalogDefinitionMigrationPorts["continueDefinitionReplacement"] =
     async (command) => {
-      const denial = authorizeOrganizationWrite(command.context, command.organizationId);
+      const scopeDenial = authorizeReplacementWrite(command.context, command.organizationId);
+      if (scopeDenial) return fail(scopeDenial);
+      const replacement = await loadReplacement(db, command.organizationId, command.replacementId);
+      if (!replacement) return fail({ kind: "not-found" });
+      const denial = await authorizeReplacementManifest(db, command.context, command.organizationId, replacement.frozen_manifest.length === 0);
       if (denial) return fail(denial);
       if (!isControlFree(command.idempotencyKey)) {
         return fail({ kind: "invalid-command", reason: "idempotencyKey" });
@@ -1503,8 +1580,6 @@ export function createParameterCatalogMigrationService(
         return fail({ kind: "not-found" });
       }
 
-      const replacement = await loadReplacement(db, command.organizationId, command.replacementId);
-      if (!replacement) return fail({ kind: "not-found" });
       const rows = await loadReplacementProjects(db, command.replacementId);
       if (command.projectIds) {
         const manifestIds = new Set(rows.map((row) => row.project_id));
@@ -1555,7 +1630,7 @@ export function createParameterCatalogMigrationService(
     async (query) => {
       const projectIds = await listCurrentReferenceProjects(
         db,
-        query.organizationId,
+        null,
         query.definitionId,
       );
       return ok({

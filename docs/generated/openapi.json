@@ -568,7 +568,7 @@
       },
       "post": {
         "operationId": "users.create",
-        "summary": "Create local account user",
+        "summary": "Create a local account or provision a configured OIDC member",
         "tags": [
           "users"
         ],
@@ -597,6 +597,62 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/users/{userId}/oidc-identity": {
+      "put": {
+        "operationId": "users.setOidcIdentity",
+        "summary": "Bind a member to the configured OIDC issuer and subject with optimistic concurrency",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetUserOidcIdentityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserGovernanceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "409": {
@@ -20644,6 +20700,135 @@
         }
       }
     },
+    "/api/v1/device-bridges/organization": {
+      "get": {
+        "operationId": "deviceBridges.listOrganization",
+        "summary": "List this organization's paired device bridges and their owners without credentials",
+        "tags": [
+          "device-bridge"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationDeviceBridgeListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/device-bridges/organization/{bridgeId}": {
+      "get": {
+        "operationId": "deviceBridges.getOrganizationBridge",
+        "summary": "Read a device bridge in the administrator's current organization",
+        "tags": [
+          "device-bridge"
+        ],
+        "parameters": [
+          {
+            "name": "bridgeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationDeviceBridgeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/device-bridges/organization/{bridgeId}/revoke": {
+      "post": {
+        "operationId": "deviceBridges.revokeOrganizationBridge",
+        "summary": "Revoke an organization member's bridge credentials and connections with an audited reason",
+        "tags": [
+          "device-bridge"
+        ],
+        "parameters": [
+          {
+            "name": "bridgeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeOrganizationDeviceBridgeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationDeviceBridgeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/device-bridges/{bridgeId}": {
       "patch": {
         "operationId": "deviceBridges.updateBridge",
@@ -21104,6 +21289,39 @@
       },
       "LocalAuthPublicConfigResponse": {
         "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "local",
+              "oidc",
+              "hmac",
+              "development"
+            ]
+          },
+          "selfRegisterEnabled": {
+            "type": "boolean"
+          },
+          "hasLocalAdmin": {
+            "type": "boolean"
+          },
+          "evaluationOrganizationName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "oidcIssuer": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "selfRegisterEnabled",
+          "hasLocalAdmin",
+          "evaluationOrganizationName"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "LocalAuthPublicConfigResponse"
       },
       "RegisterLocalAccountRequest": {
@@ -21189,15 +21407,397 @@
       },
       "UserGovernanceListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "organizationId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "username": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                },
+                "isActive": {
+                  "type": "boolean"
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "lastActiveAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "roles": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "projectId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "roleId": {
+                        "type": "string",
+                        "enum": [
+                          "guest",
+                          "hardware-user",
+                          "software-user",
+                          "hardware-committer",
+                          "software-committer",
+                          "admin",
+                          "platform-admin"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "projectId",
+                      "roleId"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "oidcIdentity": {
+                  "type": "object",
+                  "properties": {
+                    "issuer": {
+                      "type": "string"
+                    },
+                    "subject": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "issuer",
+                    "subject"
+                  ],
+                  "additionalProperties": false
+                },
+                "legacyOidcEmail": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "organizationId",
+                "name",
+                "email",
+                "username",
+                "title",
+                "isActive",
+                "createdAt",
+                "lastActiveAt",
+                "roles"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "UserGovernanceListResponse"
       },
       "CreateLocalAccountUserRequest": {
-        "type": "object",
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              },
+              "password": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "projectId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "roleId": {
+                      "type": "string",
+                      "enum": [
+                        "guest",
+                        "hardware-user",
+                        "software-user",
+                        "hardware-committer",
+                        "software-committer",
+                        "admin",
+                        "platform-admin"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "roleId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "name",
+              "username",
+              "password",
+              "roles"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "issuer": {
+                "type": "string"
+              },
+              "subject": {
+                "type": "string"
+              },
+              "authentication": {
+                "type": "string",
+                "enum": [
+                  "oidc"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "projectId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "roleId": {
+                      "type": "string",
+                      "enum": [
+                        "guest",
+                        "hardware-user",
+                        "software-user",
+                        "hardware-committer",
+                        "software-committer",
+                        "admin",
+                        "platform-admin"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "roleId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "issuer",
+              "subject",
+              "authentication",
+              "name",
+              "roles"
+            ],
+            "additionalProperties": false
+          }
+        ],
         "x-wiseeff-schema": "CreateLocalAccountUserRequest"
       },
       "UserGovernanceResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "email": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "username": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "title": {
+                "type": "string"
+              },
+              "isActive": {
+                "type": "boolean"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "lastActiveAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "projectId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "roleId": {
+                      "type": "string",
+                      "enum": [
+                        "guest",
+                        "hardware-user",
+                        "software-user",
+                        "hardware-committer",
+                        "software-committer",
+                        "admin",
+                        "platform-admin"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "projectId",
+                    "roleId"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "oidcIdentity": {
+                "type": "object",
+                "properties": {
+                  "issuer": {
+                    "type": "string"
+                  },
+                  "subject": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "issuer",
+                  "subject"
+                ],
+                "additionalProperties": false
+              },
+              "legacyOidcEmail": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "organizationId",
+              "name",
+              "email",
+              "username",
+              "title",
+              "isActive",
+              "createdAt",
+              "lastActiveAt",
+              "roles"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "UserGovernanceResponse"
+      },
+      "SetUserOidcIdentityRequest": {
+        "type": "object",
+        "properties": {
+          "issuer": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "expectedIdentity": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "issuer": {
+                "type": "string"
+              },
+              "subject": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "issuer",
+              "subject"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "issuer",
+          "subject",
+          "expectedIdentity"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SetUserOidcIdentityRequest"
       },
       "RegistrationRoleRequestListResponse": {
         "type": "object",
@@ -63149,6 +63749,180 @@
       "DeviceBridgeListResponse": {
         "type": "object",
         "x-wiseeff-schema": "DeviceBridgeListResponse"
+      },
+      "OrganizationDeviceBridgeListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "machineLabel": {
+                  "type": "string"
+                },
+                "platform": {
+                  "type": "string",
+                  "enum": [
+                    "windows",
+                    "darwin",
+                    "linux"
+                  ]
+                },
+                "arch": {
+                  "type": "string"
+                },
+                "clientVersion": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "lastSeenAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "revokedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ownerUserId": {
+                  "type": "string"
+                },
+                "ownerName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "online": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "machineLabel",
+                "platform",
+                "arch",
+                "clientVersion",
+                "createdAt",
+                "lastSeenAt",
+                "revokedAt",
+                "ownerUserId",
+                "ownerName",
+                "online"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "OrganizationDeviceBridgeListResponse"
+      },
+      "OrganizationDeviceBridgeResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "machineLabel": {
+                "type": "string"
+              },
+              "platform": {
+                "type": "string",
+                "enum": [
+                  "windows",
+                  "darwin",
+                  "linux"
+                ]
+              },
+              "arch": {
+                "type": "string"
+              },
+              "clientVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "lastSeenAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "revokedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "ownerUserId": {
+                "type": "string"
+              },
+              "ownerName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "online": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "machineLabel",
+              "platform",
+              "arch",
+              "clientVersion",
+              "createdAt",
+              "lastSeenAt",
+              "revokedAt",
+              "ownerUserId",
+              "ownerName",
+              "online"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "OrganizationDeviceBridgeResponse"
+      },
+      "RevokeOrganizationDeviceBridgeRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "RevokeOrganizationDeviceBridgeRequest"
       },
       "UpdateDeviceBridgeRequest": {
         "type": "object",

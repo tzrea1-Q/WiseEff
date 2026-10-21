@@ -24,6 +24,9 @@ type UserGovernanceRow = {
   created_at: string;
   last_active_at: string | null;
   roles?: unknown;
+  oidc_issuer?: string | null;
+  oidc_subject?: string | null;
+  legacy_oidc_email?: string | null;
 };
 
 type RegistrationRoleRequestRow = {
@@ -68,7 +71,9 @@ function toDto(row: UserGovernanceRow): UserGovernanceDto {
     isActive: row.is_active,
     createdAt: row.created_at,
     lastActiveAt: row.last_active_at,
-    roles: parseRoles(row.roles)
+    roles: parseRoles(row.roles),
+    ...(row.oidc_issuer && row.oidc_subject ? { oidcIdentity: { issuer: row.oidc_issuer,subject: row.oidc_subject } } : {}),
+    ...(row.legacy_oidc_email ? { legacyOidcEmail: row.legacy_oidc_email } : {})
   };
 }
 
@@ -100,6 +105,7 @@ const userWithRolesSelect = `
     users.name,
     users.email,
     user_password_credentials.username,
+    identity.issuer as oidc_issuer,identity.subject as oidc_subject,identity.legacy_email as legacy_oidc_email,
     users.title,
     users.is_active,
     users.created_at::text as created_at,
@@ -114,6 +120,7 @@ const userWithRolesSelect = `
   from users
   left join user_role_bindings on user_role_bindings.user_id = users.id
   left join user_password_credentials on user_password_credentials.user_id = users.id
+  left join public.user_oidc_identities identity on identity.user_id=users.id and identity.organization_id=users.organization_id
 `;
 
 type OrganizationRow = {
@@ -161,7 +168,7 @@ export async function listUsers(db: Queryable, organizationId: string) {
     `
     ${userWithRolesSelect}
     where users.organization_id = $1
-    group by users.id, user_password_credentials.username
+    group by users.id, user_password_credentials.username,identity.user_id
     order by users.name
     `,
     [organizationId]
@@ -175,7 +182,7 @@ export async function getUserById(db: Queryable, input: { organizationId: string
     `
     ${userWithRolesSelect}
     where users.organization_id = $1 and users.id = $2
-    group by users.id, user_password_credentials.username
+    group by users.id, user_password_credentials.username,identity.user_id
     `,
     [input.organizationId, input.userId]
   );
@@ -218,14 +225,14 @@ export async function deleteUserById(
   return result.rowCount;
 }
 
-export async function insertUser(db: Queryable, input: Pick<CreateUserInput, "name" | "title"> & { id: string; organizationId: string }) {
+export async function insertUser(db: Queryable, input: Pick<CreateUserInput, "name" | "title"> & { id: string; organizationId: string; email?: string }) {
   const result = await db.query<UserGovernanceRow>(
     `
-    insert into users (id, organization_id, name, title, is_active)
-    values ($1, $2, $3, $4, true)
+    insert into users (id, organization_id, name, title, email, is_active)
+    values ($1, $2, $3, $4, $5, true)
     returning id, organization_id, name, email, title, is_active, created_at::text as created_at, last_active_at::text as last_active_at
     `,
-    [input.id, input.organizationId, input.name, input.title]
+    [input.id, input.organizationId, input.name, input.title,input.email ?? null]
   );
 
   return toDto({ ...result.rows[0], roles: [] });
@@ -285,7 +292,7 @@ export async function updateUser(db: Queryable, input: { organizationId: string;
     ]
   );
 
-  return toDto({ ...result.rows[0], username: current.username, roles: current.roles });
+  return { ...current,...toDto({ ...result.rows[0], username: current.username, roles: current.roles }) };
 }
 
 export async function updateUserActive(db: Queryable, input: { organizationId: string; userId: string; isActive: boolean }) {
@@ -302,7 +309,7 @@ export async function updateUserActive(db: Queryable, input: { organizationId: s
     [input.organizationId, input.userId, input.isActive]
   );
 
-  return toDto({ ...result.rows[0], username: current.username, roles: current.roles });
+  return { ...current,...toDto({ ...result.rows[0], username: current.username, roles: current.roles }) };
 }
 
 export async function replaceRoleBindings(db: Queryable, input: { organizationId: string; userId: string; roles: RoleBinding[] }) {

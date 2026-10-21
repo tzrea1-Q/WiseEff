@@ -11,7 +11,11 @@ const CJK_PATTERN = /[\u4e00-\u9fff]/;
 
 /** Known backend English messages that deserve specific product copy. */
 const MESSAGE_LABELS: Array<{ match: RegExp; label: string | ((match: RegExpMatchArray) => string) }> = [
+  { match: /^OIDC identity matches another member;/, label: "该身份已关联其他成员或旧账号。请核对 Subject 和原始迁移邮箱，使用对应成员，不能合并账号。" },
+  { match: /^OIDC binding changed;/, label: "身份绑定已被其他管理员修改，请刷新成员资料后重试。" },
+  { match: /^OIDC binding requires the configured issuer/, label: "请选择当前部署配置的 Issuer，并填写有效 Subject。" },
   { match: /^Only a platform super admin may grant or revoke the platform-admin role\.?$/i, label: "只有平台超级管理员可以授予或撤销平台超级管理员角色。" },
+  { match: /^Only a platform super admin may change a platform-admin identity binding\.?$/i, label: "只有平台超级管理员可以修改此账号的身份绑定。" },
   { match: /^Active Admin cannot remove its last Admin capability\.?$/i, label: "不能移除当前登录账号最后的管理员能力，请保留管理员或平台超级管理员角色。" },
   { match: /^Unsupported (log format|file extension)/i, label: "暂不支持该日志格式，请上传 .log / .txt / .csv / .json 文本日志。" },
   {

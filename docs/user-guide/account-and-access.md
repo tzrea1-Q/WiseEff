@@ -57,6 +57,10 @@ Resetting the password revokes all of that member's local sessions. The member m
 
 ## Sign in on an OIDC-backed deployment
 
+Organization administrators open People management (`/organization/members`) and choose Add user to provision an OIDC member. Enter the exact subject from the configured identity provider; the issuer is read-only. The optional provider email checks legacy migration conflicts. No username or local password is required. To bind an existing member or change a subject, open Member details and save OIDC identity. A conflict preserves your input: check the subject and original migration email, or refresh if another administrator changed the binding. This does not merge accounts or change the internal user ID or roles.
+
 Use the identity-provider sign-in entry supplied by your deployment operator, then open WiseEff at `/`. WiseEff's browser integration obtains and refreshes the provider's access token. The server uses WiseEff's records to check whether the account is active and determine its Organization and effective permissions. WiseEff roles require separate authorization; signing in to the identity provider does not grant them.
+
+OIDC does not automatically create or join members. Existing unbound legacy accounts retain their verified-email migration path using the original migration email. Changing profile email does not grant login access, and an explicitly bound account requires its bound subject.
 
 There is no dedicated OIDC sign-in button or route in the current WiseEff auth screen. If you still see the local Sign in (`/`) form on an OIDC-backed deployment, ask the operator to check the browser identity integration; do not create a local account as a substitute. Follow your provider's process for external-account passwords. See the [authentication reference](../api/authentication.md) for deployment details.

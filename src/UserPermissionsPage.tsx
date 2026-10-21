@@ -29,7 +29,8 @@ import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { formatLastActive, normalizeTimestampInput } from "@/domain/format/formatLastActive";
 import { presentError } from "@/infrastructure/http/presentError";
 import { migrateLegacyRoleId, organizationRoleIds, pickPrimaryPlatformRoleId, platformRoles, type PlatformRoleId } from "@/domain/users/types";
-import type { UpdateOrganizationRolesInput } from "@/infrastructure/http/userGovernanceClient";
+import type { CreateGovernedUserInput, UpdateOrganizationRolesInput } from "@/infrastructure/http/userGovernanceClient";
+import type { LocalAuthPublicConfigDto } from "@/infrastructure/http/authClient";
 import type { PrototypeState, User } from "@/domain/prototype/types";
 import type { DataTableSort } from "@/components/admin/DataTable";
 import "./user-permissions-page.css";
@@ -50,7 +51,9 @@ export type UserPermissionsPageProps = {
 
 export type UserGovernanceActions = {
   listUsers(): Promise<User[]>;
-  createUser(input: { name: string; username: string; title: string; password: string; roleId: PlatformRoleId }): Promise<User | void>;
+  createUser(input: CreateGovernedUserInput): Promise<User | void>;
+  getAuthenticationConfig?(): Promise<LocalAuthPublicConfigDto>;
+  setOidcIdentity?(userId: string, input: { issuer: string; subject: string; email?: string; expectedIdentity: { issuer: string; subject: string } | null }): Promise<User>;
   updateOrganizationRoles(userId: string, input: UpdateOrganizationRolesInput): Promise<User | void>;
   setUserActive(userId: string, isActive: boolean): Promise<User | void>;
   deleteUser(userId: string): Promise<void>;
@@ -218,6 +221,7 @@ export function UserPermissionsPage({
   );
   const [selfDirectoryError, setSelfDirectoryError] = useState("");
   const [directoryReloadToken, setDirectoryReloadToken] = useState(0);
+  const [authentication, setAuthentication] = useState<{ provider: string; oidcIssuer?: string }>({ provider: userGovernanceActions?.getAuthenticationConfig ? "pending" : "local" });
   useEffect(() => {
     if (!userGovernanceActions || !canPerform(migrateLegacyRoleId(state.activeRoleId), "users.manage")) {
       return;
@@ -227,10 +231,10 @@ export function UserPermissionsPage({
     // First load / retry-after-error shows the skeleton; once hydrated,
     // re-entering the page refreshes in the background without one.
     setSelfDirectoryStatus((current) => (current === "ready" ? current : "loading"));
-    userGovernanceActions
-      .listUsers()
-      .then((users) => {
+    Promise.all([userGovernanceActions.listUsers(), userGovernanceActions.getAuthenticationConfig?.()])
+      .then(([users, config]) => {
         if (!cancelled) {
+          if (config) setAuthentication(config);
           dispatch({ type: "HYDRATE_USERS", users });
           setSelfDirectoryStatus("ready");
           setSelfDirectoryError("");
@@ -238,6 +242,7 @@ export function UserPermissionsPage({
       })
       .catch((error) => {
         if (!cancelled) {
+          setAuthentication((current) => current.provider === "pending" ? { provider: "unavailable" } : current);
           setSelfDirectoryStatus("error");
           setSelfDirectoryError(presentError(error, "无法加载用户名录，请稍后重试。"));
         }
@@ -257,6 +262,8 @@ export function UserPermissionsPage({
   const [page, setPage] = useState(() => readPage(search));
   const [sort, setSort] = useState<DataTableSort>(() => readSort(search));
   const [addUserOpen, setAddUserOpen] = useState(false);
+  const [oidcSubject, setOidcSubject] = useState("");
+  const [oidcEmail, setOidcEmail] = useState("");
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [title, setTitle] = useState("");
@@ -472,12 +479,13 @@ export function UserPermissionsPage({
     const trimmedUsername = username.trim();
     const trimmedTitle = title.trim();
 
-    if (!trimmedName || !trimmedUsername || !password) {
-      setAddUserError("姓名、用户名和初始密码不能为空。");
+    const oidc = authentication.provider === "oidc";
+    if (oidc ? !trimmedName || !oidcSubject.trim() || !authentication.oidcIssuer : !trimmedName || !trimmedUsername || !password) {
+      setAddUserError(oidc ? "姓名、配置的 Issuer 和 Subject 不能为空。" : "姓名、用户名和初始密码不能为空。");
       return;
     }
 
-    if (password !== confirmPassword) {
+    if (!oidc && password !== confirmPassword) {
       setAddUserError("两次输入的密码不一致。");
       return;
     }
@@ -485,14 +493,17 @@ export function UserPermissionsPage({
     addUserSubmitting.current = true;
     setAddUserPending(true);
     try {
-      const createdUser = await userGovernanceActions?.createUser({
+      const createdUser = await userGovernanceActions?.createUser(oidc ? {
+        authentication: "oidc", issuer: authentication.oidcIssuer!, subject: oidcSubject, ...(oidcEmail.trim() ? { email: oidcEmail.trim() } : {}), name: trimmedName, title: trimmedTitle, roleId: initialRoleId
+      } : {
         name: trimmedName,
         username: trimmedUsername,
         title: trimmedTitle,
         password,
         roleId: initialRoleId
       });
-      dispatch({
+      if (oidc && createdUser) dispatch({ type: "HYDRATE_USERS", users: [...state.users.filter((user) => user.id !== createdUser.id), createdUser] });
+      else dispatch({
         type: "ADD_USER",
         id: createdUser?.id,
         name: createdUser?.name ?? trimmedName,
@@ -509,6 +520,7 @@ export function UserPermissionsPage({
     }
 
     setAddUserOpen(false);
+    setOidcSubject(""); setOidcEmail("");
     setName("");
     setUsername("");
     setTitle("");
@@ -521,7 +533,7 @@ export function UserPermissionsPage({
 
   function dismissAddUser() {
     if (addUserSubmitting.current) return;
-    setAddUserOpen(false); setName(""); setUsername(""); setTitle(""); setPassword(""); setConfirmPassword(""); setAddUserError(""); setInitialRoleId("hardware-user");
+    setAddUserOpen(false); setName(""); setUsername(""); setTitle(""); setPassword(""); setConfirmPassword(""); setOidcSubject(""); setOidcEmail(""); setAddUserError(""); setInitialRoleId("hardware-user");
   }
 
   function openResetPassword(user: User) {
@@ -568,6 +580,7 @@ export function UserPermissionsPage({
         <div className="member-identity">
           <strong>{user.name}{user.id === state.currentUserId ? <Badge variant="secondary">我</Badge> : null}</strong>
           <span>{userAccountIdentifier(user)}</span>
+          <span className="member-list-meta">{user.oidcIdentity ? "OIDC · 已绑定" : authentication.provider === "oidc" ? "OIDC · 未显式绑定" : user.username ? "本地账号" : "外部身份"}</span>
         </div>
       )
     },
@@ -642,7 +655,7 @@ export function UserPermissionsPage({
             <span className="eyebrow">用户治理</span>
             <h2>成员列表</h2>
           </div>
-        )} actions={workspace === "accounts" ? <button className="button primary user-permissions-primary-action" type="button" onClick={() => setAddUserOpen(true)}>
+        )} actions={workspace === "accounts" ? <button className="button primary user-permissions-primary-action" type="button" disabled={["pending","unavailable"].includes(authentication.provider)} onClick={() => setAddUserOpen(true)}>
           <UserPlus size={16} aria-hidden="true" /><span>添加用户</span>
         </button> : null} />
 
@@ -690,7 +703,7 @@ export function UserPermissionsPage({
                   label: `${user.name} 操作`,
                   primaryAction: { id: "details", label: "查看", ariaLabel: `查看 ${user.name} 的成员资料`, onSelect: () => setMemberId(user.id) },
                   items: [
-                    ...(userGovernanceActions?.resetUserPassword ? [{ id: "password", label: "重置密码", ariaLabel: `重置 ${user.name} 的密码`, onSelect: () => openResetPassword(user) }] : []),
+                    ...(authentication.provider !== "oidc" && userGovernanceActions?.resetUserPassword ? [{ id: "password", label: "重置密码", ariaLabel: `重置 ${user.name} 的密码`, onSelect: () => openResetPassword(user) }] : []),
                     { id: "active", label: user.isActive ? "停用" : "启用", disabled: user.id === state.currentUserId || locked,
                       description: user.id === state.currentUserId ? "不能停用当前登录账号。" : locked ? "只有平台超级管理员可以停用平台超级管理员。" : undefined,
                       onSelect: () => { setGovernanceError(null); setPendingGovernance({ kind: "active", user, nextActive: !user.isActive }); } },
@@ -786,6 +799,7 @@ export function UserPermissionsPage({
       ) : null}
 
       {selectedMember ? <MemberDetailsDialog key={selectedMember.id} user={selectedMember} state={state} actions={userGovernanceActions}
+        oidcIssuer={authentication.provider === "oidc" ? authentication.oidcIssuer : undefined}
         onUpdated={applyUpdatedUser} onClose={() => { setMemberId(null); setDirectoryReloadToken((value) => value + 1); }} roleLabel={roleLabelOf}
         roleEditor={<MemberOrganizationRolesPanel user={selectedMember}
           options={assignableRolesForUser(state, organizationRoleOf(selectedMember)).map((role) => ({ id: role.id, label: roleLabelOf(role.id), description: roleCapabilityDescriptions[role.id] }))}
@@ -882,7 +896,7 @@ export function UserPermissionsPage({
           <form className="modal-form-contents" onSubmit={handleAddUserSubmit} aria-busy={addUserPending}>
             <h3 id={titleId}>添加用户</h3>
             <fieldset className="user-permissions-modal-fields" disabled={addUserPending}>
-              <p className="member-details__hint">创建本组织的本地账号，创建后立即启用。职务选填，其余为必填项。</p>
+              <p className="member-details__hint">{authentication.provider === "oidc" ? "预配本组织的 OIDC 成员并绑定外部 Subject，不创建本地密码。请核对身份提供方中的标识。" : "创建本组织的本地账号，创建后立即启用。职务选填，其余为必填项。"}</p>
               <label className="user-permissions-modal-field">
                 <span>姓名</span>
                 <input
@@ -895,7 +909,11 @@ export function UserPermissionsPage({
                   required
                 />
               </label>
-              <label className="user-permissions-modal-field">
+              {authentication.provider === "oidc" ? <>
+                <label className="user-permissions-modal-field"><span>Issuer</span><input className="user-permissions-modal-control" value={authentication.oidcIssuer ?? ""} readOnly /></label>
+                <label className="user-permissions-modal-field"><span>Subject</span><input className="user-permissions-modal-control" value={oidcSubject} maxLength={255} onChange={(event) => setOidcSubject(event.target.value)} required /></label>
+                <label className="user-permissions-modal-field"><span>身份提供方邮箱（选填）</span><input className="user-permissions-modal-control" type="email" value={oidcEmail} onChange={(event) => setOidcEmail(event.target.value)} /></label>
+              </> : <label className="user-permissions-modal-field">
                 <span>用户名</span>
                 <input
                   className="user-permissions-modal-control"
@@ -912,12 +930,12 @@ export function UserPermissionsPage({
                   required
                 />
                 <span id="member-username-hint" className="member-details__hint">3–64 个字符，用于登录。</span>
-              </label>
+              </label>}
               <label className="user-permissions-modal-field">
                 <span>职务</span>
                 <input className="user-permissions-modal-control" value={title} onChange={(event) => setTitle(event.target.value)} />
               </label>
-              <label className="user-permissions-modal-field">
+              {authentication.provider !== "oidc" ? <><label className="user-permissions-modal-field">
                 <span>初始密码</span>
                 <input
                   className="user-permissions-modal-control"
@@ -949,7 +967,7 @@ export function UserPermissionsPage({
                   autoComplete="new-password"
                   required
                 />
-              </label>
+              </label></> : null}
               <label className="user-permissions-modal-field">
                 <span>初始角色</span>
                 <SelectControl

@@ -65,6 +65,7 @@ export type DefinitionEditorBodyProps = {
   onRequestHistory?: () => void;
   /** Close callback to dismiss the host dialog. */
   onClose?: () => void;
+  onRetireDefinition?: () => void;
   /** Server gate: without it the dialog only reads. */
   authoringAllowed: boolean;
   publishingAllowed?: boolean;
@@ -217,6 +218,7 @@ export function DefinitionEditorBody({
   history,
   onRequestHistory,
   onClose,
+  onRetireDefinition,
   authoringAllowed,
   publishingAllowed = false
 }: DefinitionEditorBodyProps) {
@@ -235,6 +237,7 @@ export function DefinitionEditorBody({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [existingDefinition, setExistingDefinition] = useState<{ definitionId: string; subjectId: string } | null>(null);
   const [previewIdempotencyKey, setPreviewIdempotencyKey] = useState<string | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
 
@@ -261,6 +264,7 @@ export function DefinitionEditorBody({
     setConfirmOpen(false);
     setPending(false);
     setError("");
+    setExistingDefinition(null);
     setPreviewIdempotencyKey(null);
     setIdempotencyKey(null);
     setHistoryOpen(false);
@@ -364,7 +368,7 @@ export function DefinitionEditorBody({
   const runPreview = async () => {
     if (!editable || !targetSubjectAllowed || pending) return;
     if (!validateExamples()) return;
-    if (selectedProjects.length === 0) {
+    if (selectedProjects.length === 0 && actor !== "platform-admin") {
       setError("请选择至少一个受影响的项目。");
       return;
     }
@@ -373,6 +377,7 @@ export function DefinitionEditorBody({
       return;
     }
     setPending(true);
+    setExistingDefinition(null);
     try {
       // Preview is a catalog write route: it requires an idempotency key, kept
       // stable so a retry of the same preview is not a second command.
@@ -393,6 +398,10 @@ export function DefinitionEditorBody({
       setPhase("preview");
       setError("");
     } catch (caught) {
+      if (caught instanceof WiseEffApiError && caught.details.replacement === "target-identity-conflict" &&
+        typeof caught.details.existingDefinitionId === "string" && typeof caught.details.subjectId === "string") {
+        setExistingDefinition({ definitionId: caught.details.existingDefinitionId, subjectId: caught.details.subjectId });
+      }
       setError(failureText(caught));
     } finally {
       setPending(false);
@@ -529,6 +538,20 @@ export function DefinitionEditorBody({
     } finally {
       setPending(false);
     }
+  };
+
+  const retireOldDefinition = async () => {
+    if (!replacement || pending || !onRetireDefinition) return;
+    setPending(true);
+    try {
+      const current = (await catalog.getDefinitionReplacement(replacement.id)).item;
+      setReplacement(current);
+      if (current.status === "completed" && current.retirementEvidence?.authoritative &&
+        current.retirementEvidence.scope === "platform" && current.retirementEvidence.remainingCurrentReferenceCount === 0) {
+        onRetireDefinition();
+      } else setError("旧定义已有当前项目引用，暂不能从纠错结果中弃用；请先核对并迁移实际项目。当前输入已保留。");
+    } catch (caught) { setError(failureText(caught)); }
+    finally { setPending(false); }
   };
 
   const blockedCount = replacement
@@ -678,8 +701,12 @@ export function DefinitionEditorBody({
               <div className="definition-editor__governance-stack">
                 {identityChanged ? <fieldset className="definition-editor__projects">
                   <legend>受影响项目</legend>
-                  <p className="parameter-catalog__muted">仅迁移明确选中的项目，预演会核对其引用与兼容性。</p>
-                  {projects.length === 0 ? <p role="status">当前没有可选择的项目。请确认项目访问权限后重试。</p> : projects.map((project) => (
+                  <p className="parameter-catalog__muted">{actor === "platform-admin"
+                    ? "不选择项目时，预演和发布会核对全平台当前引用；仅无引用定义可直接纠错。有引用时请选择实际项目并沿用迁移流程。"
+                    : "仅迁移明确选中的项目，预演会核对其引用与兼容性。"}</p>
+                  {projects.length === 0 ? <p role="status">{actor === "platform-admin"
+                    ? "无需创建或选择无关项目。"
+                    : "当前没有可选择的项目。请确认项目访问权限后重试。"}</p> : projects.map((project) => (
                     <label key={project.id}>
                       <input type="checkbox" checked={selectedProjects.includes(project.id)}
                         onChange={(event) => setSelectedProjects((current) => event.target.checked
@@ -811,7 +838,7 @@ export function DefinitionEditorBody({
                         !allowed ||
                         !targetSubjectAllowed ||
                         pending ||
-                        selectedProjects.length === 0 ||
+                        (selectedProjects.length === 0 && actor !== "platform-admin") ||
                         !reason.trim()
                       }
                       title={allowed ? undefined : "当前会话缺少发布能力。"}
@@ -910,7 +937,7 @@ export function DefinitionEditorBody({
           <section aria-label="纠错影响预览" data-correction-preview="true" className="definition-editor__phase-panel">
             <div className="definition-editor__card-header">
               <h3 className="definition-editor__card-title">纠错影响预览</h3>
-              <span className="definition-editor__card-desc">核对受影响项目的兼容性与迁移阻挡原因</span>
+              <span className="definition-editor__card-desc">{preview.impact.selectedProjectCount === 0 ? "发布时会再次核对全平台当前引用" : "核对受影响项目的兼容性与迁移阻挡原因"}</span>
             </div>
             <dl className="parameter-catalog__dl definition-editor__preview-dl">
               <dt>选定项目</dt>
@@ -921,7 +948,7 @@ export function DefinitionEditorBody({
               <dd className={preview.impact.blockedProjectCount > 0 ? "definition-editor__val--danger" : ""}>
                 {preview.impact.blockedProjectCount}
               </dd>
-              <dt>旧定义当前引用</dt>
+              <dt>{preview.impact.selectedProjectCount === 0 ? "全平台当前引用" : "旧定义当前引用"}</dt>
               <dd>{preview.impact.oldDefinitionCurrentReferenceCount}</dd>
               <dt>源格式受支持</dt>
               <dd>{preview.impact.sourceFormatSupported ? "是" : "否"}</dd>
@@ -935,7 +962,7 @@ export function DefinitionEditorBody({
                 ))}
               </ul>
             ) : null}
-            <div className="definition-editor__table-wrap">
+            {preview.projects.length > 0 ? <div className="definition-editor__table-wrap">
               <table aria-label="项目迁移预览" className="definition-editor__table">
                 <thead>
                   <tr>
@@ -956,7 +983,7 @@ export function DefinitionEditorBody({
                   ))}
                 </tbody>
               </table>
-            </div>
+            </div> : null}
             <div className="dialog-actions definition-editor__dialog-actions">
               <button
                 type="button"
@@ -974,7 +1001,7 @@ export function DefinitionEditorBody({
                 title={canPublish ? undefined : publishDisabledReason}
                 onClick={() => setConfirmOpen(true)}
               >
-                确认并执行迁移
+                {preview.impact.selectedProjectCount === 0 ? "确认并执行纠错" : "确认并执行迁移"}
               </button>
             </div>
           </section>
@@ -984,9 +1011,14 @@ export function DefinitionEditorBody({
           <section aria-label="纠错执行结果" data-correction-result={replacement.status} className="definition-editor__phase-panel">
             <div className="definition-editor__card-header">
               <h3 className="definition-editor__card-title">纠错执行结果</h3>
-              <span className="definition-editor__card-desc">身份替换已生效，受影响项目引用迁移汇总</span>
+              <span className="definition-editor__card-desc">{preview?.impact.selectedProjectCount === 0
+                ? "替代身份已发布，旧定义保持有效；纠错不会自动弃用或删除旧定义。"
+                : "身份替换已生效，受影响项目引用迁移汇总"}</span>
             </div>
-            <ul className="definition-editor__stats-list">
+            {preview?.impact.selectedProjectCount === 0 ? <dl className="parameter-catalog__dl">
+              <dt>旧身份</dt><dd>{replacement.oldIdentity.propertyKey}</dd>
+              <dt>替代身份</dt><dd>{replacement.newIdentity.propertyKey}</dd>
+            </dl> : <><ul className="definition-editor__stats-list">
               <li>已完成 {replacement.projects.filter((p) => p.status === "completed").length}</li>
               <li>被阻止 {replacement.projects.filter((p) => p.status === "blocked").length}</li>
               <li>失败 {replacement.projects.filter((p) => p.status === "failed").length}</li>
@@ -1011,8 +1043,15 @@ export function DefinitionEditorBody({
                   ))}
                 </tbody>
               </table>
-            </div>
+            </div></>}
             <div className="dialog-actions definition-editor__dialog-actions">
+              {actor === "platform-admin" && onRetireDefinition && replacement.status === "completed" &&
+                replacement.retirementEvidence?.authoritative && replacement.retirementEvidence.scope === "platform" &&
+                replacement.retirementEvidence.remainingCurrentReferenceCount === 0 ? (
+                  <button type="button" className="button subtle" disabled={!canPublish || pending} onClick={() => void retireOldDefinition()}>
+                    单独弃用旧定义
+                  </button>
+                ) : null}
               {onClose ? (
                 <button type="button" className="button subtle" onClick={onClose}>
                   关闭
@@ -1060,6 +1099,8 @@ export function DefinitionEditorBody({
             {error}
           </p>
         ) : null}
+        {existingDefinition ? <a target="_blank" rel="noreferrer" href={`?${new URLSearchParams({
+          subjectId: existingDefinition.subjectId, definitionId: existingDefinition.definitionId })}`}>查看已有定义</a> : null}
         {relatedKnowledge ? (
           <details className="definition-editor__more">
             <summary>相关知识</summary>
@@ -1069,12 +1110,14 @@ export function DefinitionEditorBody({
       </section>
       <ConfirmDialog
         open={confirmOpen && canPublish}
-        title="确认执行身份纠错迁移"
+        title={preview?.impact.selectedProjectCount === 0 ? "确认执行身份纠错" : "确认执行身份纠错迁移"}
         description={
           preview
             ? [
                 `将发布替代身份 ${preview.newIdentity.propertyKey}（主体 ${preview.newIdentity.subjectName}）。`,
-                `迁移 ${preview.impact.compatibleProjectCount} 个项目，${preview.impact.blockedProjectCount} 个项目会被阻止并保留待续。`,
+                preview.impact.selectedProjectCount === 0
+                  ? "全平台当前引用为 0，无需迁移项目；发布时将重新检查。"
+                  : `迁移 ${preview.impact.compatibleProjectCount} 个项目，${preview.impact.blockedProjectCount} 个项目会被阻止并保留待续。`,
                 "旧身份与旧取值不会被重写；迁移不会自动弃用旧定义。"
               ].join("\n")
             : ""
@@ -1091,6 +1134,11 @@ export function DefinitionEditorBody({
 }
 
 function failureText(error: unknown): string {
+  if (error instanceof WiseEffApiError) {
+    if (error.details.replacement === "current-project-references") return "旧定义已有当前项目引用，请选择实际项目并使用迁移流程。当前输入已保留。";
+    if (error.details.replacement === "target-identity-conflict") return "目标身份已存在，请查看已有定义或修改目标身份。当前输入已保留。";
+    if (error.details.replacement === "replacement-target-unavailable") return "已发布的替代定义当前不可用，请刷新 Catalog 后核对目标身份。当前输入已保留。";
+  }
   const state = catalogStateFromFailure(error);
   return `${catalogStateMessage(state) ?? "操作未完成，请稍后重试。"} 当前输入已保留。`;
 }

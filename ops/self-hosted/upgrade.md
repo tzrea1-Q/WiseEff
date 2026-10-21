@@ -199,6 +199,23 @@ The recovery root defaults to `/var/backups/wiseeff/upgrades/<run-id>` and the i
 
 ## Status and interruption
 
+### Historical identity-cutover compatibility
+
+An instance that previously completed the flat-parameter identity cutover can
+have removed workflow columns and both populated `legacy_*` archive tables and
+empty compatibility tables. Migration `0214` assumed the fresh-install foreign
+key names and could fail with `Missing pre-erasure FK` after `0213` committed.
+For that failed run, use its recorded full-data rollback before retrying an
+upgrade to a release containing the compatibility fix.
+
+The official migrator preserves the immutable `0214` file. When it has never
+committed, the checksum-pinned successor `0220` executes at its dependency
+position, before `0215`; only the actually executed `0220` is recorded. A ledger
+containing `0220` without `0214` is therefore expected. If `0214` already applied,
+`0220` runs after the later migrations and preserves their policy repairs.
+Explicit migration bounds that exclude a required successor are refused.
+Do not add removed columns, fabricate a `0214` ledger row, or change checksums.
+
 Every mutating phase is written atomically. Keep the printed `run_id` and inspect it after an SSH loss or host restart:
 
 ```bash

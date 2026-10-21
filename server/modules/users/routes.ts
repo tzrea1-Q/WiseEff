@@ -23,6 +23,7 @@ import {
 } from "./service";
 import {
   createUserBodySchema,
+  setOidcIdentityBodySchema,
   listRegistrationRoleRequestsQuerySchema,
   replaceUserRolesBodySchema,
   resetUserPasswordBodySchema,
@@ -32,6 +33,9 @@ import {
   updateUserActiveBodySchema,
   updateUserBodySchema
 } from "./schemas";
+import { setOidcIdentity } from "../auth/oidcIdentity";
+import { createUserInvocation } from "../auth/trustedInvocation";
+import { getUserById } from "./repository";
 
 const userIdParamsSchema = z.object({
   userId: z.string().min(1)
@@ -69,7 +73,7 @@ function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Inv
 
 export function registerUserRoutes(
   router: WiseEffRouter,
-  options: { db?: Database; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
+  options: { db?: Database; oidcIssuer?: string; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
 ) {
   router.get("/api/v1/organization", async (request) => {
     const db = requireDb(options.db);
@@ -100,9 +104,19 @@ export function registerUserRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(createUserBodySchema, request.body);
-    const item = await createUser(db, auth, body, { requestId: request.requestId });
+    if (options.oidcIssuer && !("authentication" in body)) throw new ApiError("VALIDATION_FAILED", "OIDC provisioning requires an explicit subject instead of a local password.");
+    const item = await createUser(db, auth, body, { requestId: request.requestId }, options.oidcIssuer);
 
     return { status: 201, body: { item } };
+  });
+
+  router.put("/api/v1/users/:userId/oidc-identity", async (request) => {
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    const { userId } = parseWithSchema(userIdParamsSchema, request.params);
+    const body = parseWithSchema(setOidcIdentityBodySchema, request.body);
+    await setOidcIdentity(db, createUserInvocation(auth), userId, body, options.oidcIssuer, { requestId: request.requestId });
+    const item = await getUserById(db, { organizationId: auth.organization.id,userId });
+    return { status: 200,body: { item: item! } };
   });
 
   router.get("/api/v1/users/registration-role-requests", async (request) => {

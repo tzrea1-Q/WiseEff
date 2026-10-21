@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { createDatabase } from "./client";
 import {
   applyMigrations,
+  getEffectiveMigrationOrder,
   getMissingMigrationFiles,
   getPendingMigrations,
 } from "./migrations";
@@ -42,6 +43,25 @@ describe("getPendingMigrations", () => {
     const pending = getPendingMigrations(["0001_m0_foundation.sql", "0002_next.sql"], ["0001_m0_foundation.sql"]);
 
     expect(pending).toEqual(["0002_next.sql"]);
+  });
+
+  const original = "0214_parameter_definition_purge_scope.sql";
+  const replacement = "0220_parameter_definition_purge_compatibility.sql";
+  const files = ["0213_prior.sql", original, "0215_next.sql", replacement];
+
+  it("executes the replacement before dependent migrations without inventing original history", () => {
+    expect(getPendingMigrations(files, ["0213_prior.sql"])).toEqual([replacement, "0215_next.sql"]);
+    expect(getPendingMigrations(files, ["0213_prior.sql", replacement])).toEqual(["0215_next.sql"]);
+    expect(getPendingMigrations(files, ["0213_prior.sql", replacement, "0215_next.sql"])).toEqual([]);
+  });
+
+  it("preserves the original sequence for databases that already applied 0214", () => {
+    expect(getEffectiveMigrationOrder(files, [original])).toEqual(files);
+    expect(getPendingMigrations(files, ["0213_prior.sql", original, "0215_next.sql"])).toEqual([replacement]);
+  });
+
+  it("does not suppress an original migration when its replacement is not packaged", () => {
+    expect(getPendingMigrations(files.slice(0, -1), ["0213_prior.sql"])).toEqual([original, "0215_next.sql"]);
   });
 });
 

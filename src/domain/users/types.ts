@@ -41,6 +41,8 @@ export type UserRoleBinding = {
 };
 
 export type UserAccount = {
+  oidcIdentity?: { issuer: string; subject: string };
+  legacyOidcEmail?: string;
   id: string;
   name: string;
   email?: string;

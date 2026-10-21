@@ -5,6 +5,7 @@ import { expect, test, type Page } from "playwright/test";
 import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { authHeadersForRole } from "./helpers/bearerAuth";
+import { withPgClient } from "./helpers/database";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 
 // This controlled, signed OIDC boundary exercises the real verifier and profile API;
@@ -33,6 +34,7 @@ test.use({ viewport: { width: 1440, height: 900 } });
 test.beforeAll(async () => {
   await seedAcceptanceRoleMatrix();
   if (!oidc) return;
+  await withPgClient((client) => client.query("update public.user_oidc_identities set issuer=$1,subject='u-zhao-heng' where user_id='u-zhao-heng'", [process.env.AUTH_OIDC_ISSUER]));
   const endpoint = new URL(process.env.AUTH_OIDC_JWKS_URI!);
   jwksServer = createServer((request, response) => {
     if (request.url !== endpoint.pathname) { response.writeHead(404); response.end(); return; }
