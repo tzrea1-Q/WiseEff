@@ -46,6 +46,12 @@ const CANONICAL_SOURCE_READ_FUNCTIONS = [
   "parameter_catalog.finish_parameter_definition_erasure_object(text, text)",
   "parameter_catalog.lock_parameter_plane_archive()",
   "parameter_catalog.definition_erasure_object_is_referenced(text, text)",
+  "parameter_catalog.preview_project_deletion_catalog(text, text, text)",
+  "parameter_catalog.lock_project_erasure(text, text, text)",
+  "parameter_catalog.read_project_erasure(text, text, text)",
+  "parameter_catalog.purge_project(text, text, text, text)",
+  "parameter_catalog.finish_project_erasure_object(text, text, text, text)",
+  "parameter_catalog.list_project_erasures(text, text)",
 ] as const;
 
 export type PublicationRuntimeLoginMode = "official" | "lab";
