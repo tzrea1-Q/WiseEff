@@ -11,7 +11,7 @@ import type { SkillSpec } from "./types";
 
 afterEach(cleanup);
 const entry = (id: string, status: KnowledgeEntry["status"] = "published"): KnowledgeEntry => ({
-  id, title: `${id} 知识`, contentForm: "markdown", status, tags: [], sourceType: "human", sourceSessionId: null,
+  id, title: `${id} 知识`, contentForm: "markdown", status, origin: "authored", tags: [], sourceType: "human", sourceSessionId: null,
   sourceLogId: null, sourceReloadRunId: null, createdByUserId: "user", headRevisionNumber: 3,
   createdAt: "2026-10-01T10:00:00Z", updatedAt: "2026-10-02T10:00:00Z", publishedAt: null, archivedAt: null,
   contentMarkdown: "# Knowledge", file: null, parameterReferences: []

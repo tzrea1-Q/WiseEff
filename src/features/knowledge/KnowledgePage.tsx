@@ -6,12 +6,15 @@ import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { canGovernEntry, collectKnownTags } from "@/domain/knowledge/rules";
 import type {
   KnowledgeEntry,
+  KnowledgeOrigin,
   KnowledgeRetrievalInfo,
   KnowledgeSearchResult,
   KnowledgeStatus
 } from "@/domain/knowledge/types";
 import {
   knowledgeContentFormLabels,
+  knowledgeOriginLabels,
+  knowledgeOrigins,
   knowledgeRetrievalModeLabels,
   knowledgeStatusLabels
 } from "@/domain/knowledge/types";
@@ -23,7 +26,7 @@ import { AdminListPage } from "@/components/layout/AdminListPage";
 import { SectionSkeleton } from "@/components/common/SectionState";
 import { SearchField } from "@/components/common/SearchField";
 import { presentError } from "@/infrastructure/http/presentError";
-import { KnowledgeExtractionBadge, KnowledgeStatusBadge, KnowledgeTagList } from "./badges";
+import { KnowledgeExtractionBadge, KnowledgeOriginBadge, KnowledgeStatusBadge, KnowledgeTagList } from "./badges";
 import { KnowledgeEntryDetailDialog } from "./KnowledgeEntryDetailDialog";
 import {
   KnowledgeEntryEditorDialog,
@@ -74,6 +77,7 @@ export function KnowledgePage({
   const [citationLoading, setCitationLoading] = useState(Boolean(initialEntryId));
   const [citationRetry, setCitationRetry] = useState(0);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [originFilter, setOriginFilter] = useState<string[]>([]);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -218,10 +222,11 @@ export function KnowledgePage({
     () =>
       rows.filter((entry) => {
         if (statusFilter.length > 0 && !statusFilter.includes(entry.status)) return false;
+        if (originFilter.length > 0 && !originFilter.includes(entry.origin)) return false;
         if (tagFilter.length > 0 && !tagFilter.some((tag) => entry.tags.includes(tag))) return false;
         return true;
       }),
-    [rows, statusFilter, tagFilter]
+    [rows, statusFilter, originFilter, tagFilter]
   );
   const selectedEntry = selectedId ? rows.find((entry) => entry.id === selectedId) ?? null : null;
   const errorMessage = (searchQuery ? searchError : listError) || citationError;
@@ -266,6 +271,22 @@ export function KnowledgePage({
           ),
         onClear: () => setStatusFilter([]),
         getValue: (entry: KnowledgeEntry) => entry.status
+      }
+    },
+    {
+      key: "origin",
+      header: "来源",
+      render: (entry) => <KnowledgeOriginBadge origin={entry.origin} />,
+      widthClass: "w-28",
+      headerFilter: {
+        label: "来源",
+        values: [...knowledgeOrigins],
+        selectedValues: originFilter,
+        renderLabel: (value) => knowledgeOriginLabels[value as KnowledgeOrigin],
+        onToggle: (value) => setOriginFilter((current) =>
+          current.includes(value) ? current.filter((item) => item !== value) : [...current, value]),
+        onClear: () => setOriginFilter([]),
+        getValue: (entry: KnowledgeEntry) => entry.origin
       }
     },
     {

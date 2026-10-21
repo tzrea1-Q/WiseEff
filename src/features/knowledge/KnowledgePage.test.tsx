@@ -32,6 +32,35 @@ function renderPage(
 }
 
 describe("KnowledgePage", () => {
+  it("shows origin in the list and detail and filters by origin", async () => {
+    const repository = createMockKnowledgeRepository();
+    const uploadedMarkdown = await repository.createMarkdown({ title: "上传的 Markdown", tags: [], contentMarkdown: "文档内容", origin: "uploaded" });
+    expect((await repository.list({ origin: "uploaded" })).items.map((entry) => entry.id)).toContain(uploadedMarkdown.id);
+    expect((await repository.list({ origin: "authored" })).items.map((entry) => entry.id)).not.toContain(uploadedMarkdown.id);
+    render(<KnowledgePage repository={repository} capability={editorCapability} />);
+    const user = userEvent.setup();
+    const table = await screen.findByRole("table", { name: "知识条目列表" });
+    expect(within(table).getByRole("columnheader", { name: /来源/ })).toBeInTheDocument();
+    const row = within(table).getByText("MT5788 无线充手册摘录").closest("tr")!;
+    expect(within(row).getByText("上传")).toBeInTheDocument();
+    await user.click(within(row).getByText("MT5788 无线充手册摘录"));
+    const detail = await screen.findByRole("dialog", { name: /MT5788 无线充手册摘录/ });
+    expect(within(detail).getByText("上传")).toHaveAttribute("data-origin", "uploaded");
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "筛选来源" }));
+    for (const label of ["手动编写", "上传", "沉淀", "小泽草稿", "技能包导入"]) {
+      expect(screen.getByRole("checkbox", { name: label })).toBeInTheDocument();
+    }
+    await user.click(screen.getByRole("checkbox", { name: "上传" }));
+    await user.keyboard("{Escape}");
+    expect(within(table).queryByText("快充温控调参经验")).not.toBeInTheDocument();
+    expect(within(table).getByText("MT5788 无线充手册摘录")).toBeInTheDocument();
+    expect(within(table).getByText("上传的 Markdown")).toBeInTheDocument();
+    await user.type(screen.getByRole("searchbox", { name: "检索知识库" }), "快充温控");
+    await user.click(screen.getByRole("button", { name: "检索" }));
+    expect(await screen.findByText("快充温控调参经验")).toBeInTheDocument();
+  });
+
   it("shows unavailable statistics through cold failure and restores counts only after a successful list", async () => {
     const repository = createMockKnowledgeRepository();
     const entries = await repository.list();

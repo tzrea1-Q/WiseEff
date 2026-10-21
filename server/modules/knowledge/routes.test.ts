@@ -70,6 +70,7 @@ function makeObjectStore(): ObjectStore {
 
 function entryRecord(overrides: Partial<KnowledgeEntryDto> = {}): KnowledgeEntryDto {
   return {
+    origin: "authored",
     id: ENTRY_ID,
     organizationId: "org-1",
     title: "Fast charge tuning",

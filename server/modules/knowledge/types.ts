@@ -1,6 +1,8 @@
 export const knowledgeContentForms = ["markdown", "file"] as const;
 export const knowledgeStatuses = ["draft", "published", "archived"] as const;
 export const knowledgeSourceTypes = ["human", "agent"] as const;
+export const knowledgeOrigins = ["authored", "uploaded", "distilled", "agent-drafted", "imported"] as const;
+export type KnowledgeOrigin = (typeof knowledgeOrigins)[number];
 export const knowledgeExtractionStatuses = ["pending", "succeeded", "failed"] as const;
 
 export type KnowledgeContentForm = (typeof knowledgeContentForms)[number];
@@ -60,6 +62,7 @@ export type KnowledgeParameterReferenceDto =
   | KnowledgeLegacySpecReferenceDto;
 
 export type KnowledgeEntryDto = {
+  origin: KnowledgeOrigin;
   id: string;
   organizationId: string;
   title: string;
@@ -130,6 +133,7 @@ export type KnowledgeSearchResponseDto = {
 };
 
 export type ListKnowledgeEntriesQuery = {
+  origin?: KnowledgeOrigin;
   status?: KnowledgeStatus;
   contentForm?: KnowledgeContentForm;
   sourceType?: KnowledgeSourceType;
@@ -139,6 +143,7 @@ export type ListKnowledgeEntriesQuery = {
 };
 
 export type InsertKnowledgeEntryInput = {
+  origin: KnowledgeOrigin;
   id: string;
   title: string;
   contentForm: KnowledgeContentForm;

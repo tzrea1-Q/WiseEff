@@ -1,4 +1,13 @@
 export const knowledgeContentForms = ["markdown", "file"] as const;
+export const knowledgeOrigins = ["authored", "uploaded", "distilled", "agent-drafted", "imported"] as const;
+export type KnowledgeOrigin = (typeof knowledgeOrigins)[number];
+export const knowledgeOriginLabels: Record<KnowledgeOrigin, string> = {
+  authored: "手动编写",
+  uploaded: "上传",
+  distilled: "沉淀",
+  "agent-drafted": "小泽草稿",
+  imported: "技能包导入"
+};
 export const knowledgeStatuses = ["draft", "published", "archived"] as const;
 export const knowledgeExtractionStatuses = ["pending", "succeeded", "failed"] as const;
 
@@ -48,6 +57,7 @@ export type KnowledgeParameterReference = KnowledgeReferenceFields & (
 );
 
 export type KnowledgeEntry = {
+  origin: KnowledgeOrigin;
   id: string;
   title: string;
   contentForm: KnowledgeContentForm;

@@ -5,6 +5,7 @@ import { createApiClient } from "./apiClient";
 import { createHttpKnowledgeRepository, normalizeKnowledgeFileContentType, type KnowledgeEntryDto } from "./knowledgeClient";
 
 const baseEntryDto: KnowledgeEntryDto = {
+  origin: "authored",
   id: "entry-1",
   organizationId: "org-1",
   title: "快充温控经验",
@@ -44,10 +45,10 @@ describe("createHttpKnowledgeRepository", () => {
     const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ items: [baseEntryDto] }));
     const repository = createRepository(fetchMock);
 
-    const result = await repository.list({ status: "published", tag: "快充", q: "温控" });
-    expect(result.items[0]).toMatchObject({ id: "entry-1", title: "快充温控经验", headRevisionNumber: 1 });
+    const result = await repository.list({ status: "published", origin: "authored", tag: "快充", q: "温控" });
+    expect(result.items[0]).toMatchObject({ id: "entry-1", title: "快充温控经验", headRevisionNumber: 1, origin: "authored" });
     expect(String(fetchMock.mock.calls[0][0])).toBe(
-      "http://127.0.0.1:8787/api/v1/knowledge/entries?status=published&tag=%E5%BF%AB%E5%85%85&q=%E6%B8%A9%E6%8E%A7"
+      "http://127.0.0.1:8787/api/v1/knowledge/entries?status=published&origin=authored&tag=%E5%BF%AB%E5%85%85&q=%E6%B8%A9%E6%8E%A7"
     );
   });
 
@@ -55,9 +56,10 @@ describe("createHttpKnowledgeRepository", () => {
     const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ item: baseEntryDto }, 201));
     const repository = createRepository(fetchMock);
 
-    await repository.createMarkdown({ title: "快充温控经验", tags: ["快充"], contentMarkdown: "正文" });
+    await repository.createMarkdown({ title: "快充温控经验", tags: ["快充"], contentMarkdown: "正文", origin: "uploaded" });
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
       contentForm: "markdown",
+      origin: "uploaded",
       title: "快充温控经验",
       tags: ["快充"],
       contentMarkdown: "正文"

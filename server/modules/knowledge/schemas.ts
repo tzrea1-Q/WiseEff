@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { knowledgeContentForms, knowledgeSourceTypes, knowledgeStatuses } from "./types";
+import { knowledgeContentForms, knowledgeOrigins, knowledgeSourceTypes, knowledgeStatuses } from "./types";
 
 const nonEmptyString = z.string().min(1);
 const base64String = nonEmptyString.refine(
@@ -32,6 +32,7 @@ export const knowledgeFileUploadSchema = z.object({
 export const createKnowledgeEntryBodySchema = z.discriminatedUnion("contentForm", [
   z.object({
     contentForm: z.literal("markdown"),
+    origin: z.enum(["authored", "uploaded"]).optional(),
     title: nonEmptyString.max(200),
     tags: knowledgeTagsSchema,
     contentMarkdown: z.string().max(200_000).default("")
@@ -63,6 +64,7 @@ export const restoreKnowledgeRevisionBodySchema = z.object({
 });
 
 export const listKnowledgeEntriesQuerySchema = z.object({
+  origin: z.enum(knowledgeOrigins).optional(),
   status: z.enum(knowledgeStatuses).optional(),
   contentForm: z.enum(knowledgeContentForms).optional(),
   sourceType: z.enum(knowledgeSourceTypes).optional(),

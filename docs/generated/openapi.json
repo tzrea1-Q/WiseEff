@@ -15234,6 +15234,23 @@
         "tags": [
           "knowledge"
         ],
+        "parameters": [
+          {
+            "name": "origin",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "authored",
+                "uploaded",
+                "distilled",
+                "agent-drafted",
+                "imported"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -57625,10 +57642,443 @@
       },
       "KnowledgeEntryResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "contentForm": {
+                "type": "string",
+                "enum": [
+                  "markdown",
+                  "file"
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "draft",
+                  "published",
+                  "archived"
+                ]
+              },
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "authored",
+                  "uploaded",
+                  "distilled",
+                  "agent-drafted",
+                  "imported"
+                ]
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "sourceType": {
+                "type": "string",
+                "enum": [
+                  "human",
+                  "agent"
+                ]
+              },
+              "sourceSessionId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sourceLogId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sourceLogDeleted": {
+                "type": "boolean"
+              },
+              "sourceReloadRunId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdByUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "headRevisionId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "headRevisionNumber": {
+                "type": "number"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "publishedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "archivedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "contentMarkdown": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "file": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "entryId": {
+                    "type": "string"
+                  },
+                  "organizationId": {
+                    "type": "string"
+                  },
+                  "storageKey": {
+                    "type": "string"
+                  },
+                  "fileName": {
+                    "type": "string"
+                  },
+                  "contentType": {
+                    "type": "string"
+                  },
+                  "sizeBytes": {
+                    "type": "number"
+                  },
+                  "checksum": {
+                    "type": "string"
+                  },
+                  "extractionStatus": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "succeeded",
+                      "failed"
+                    ]
+                  },
+                  "extractionError": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "entryId",
+                  "organizationId",
+                  "storageKey",
+                  "fileName",
+                  "contentType",
+                  "sizeBytes",
+                  "checksum",
+                  "extractionStatus",
+                  "extractionError",
+                  "createdAt",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              },
+              "parameterReferences": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "organizationId",
+              "title",
+              "contentForm",
+              "status",
+              "origin",
+              "tags",
+              "sourceType",
+              "sourceSessionId",
+              "sourceLogId",
+              "sourceReloadRunId",
+              "createdByUserId",
+              "headRevisionId",
+              "headRevisionNumber",
+              "createdAt",
+              "updatedAt",
+              "publishedAt",
+              "archivedAt",
+              "contentMarkdown",
+              "file",
+              "parameterReferences"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "KnowledgeEntryResponse"
       },
       "KnowledgeEntryListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "organizationId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "contentForm": {
+                  "type": "string",
+                  "enum": [
+                    "markdown",
+                    "file"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "draft",
+                    "published",
+                    "archived"
+                  ]
+                },
+                "origin": {
+                  "type": "string",
+                  "enum": [
+                    "authored",
+                    "uploaded",
+                    "distilled",
+                    "agent-drafted",
+                    "imported"
+                  ]
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "sourceType": {
+                  "type": "string",
+                  "enum": [
+                    "human",
+                    "agent"
+                  ]
+                },
+                "sourceSessionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sourceLogId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sourceLogDeleted": {
+                  "type": "boolean"
+                },
+                "sourceReloadRunId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdByUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "headRevisionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "headRevisionNumber": {
+                  "type": "number"
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "publishedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "archivedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "contentMarkdown": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "file": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "entryId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "storageKey": {
+                      "type": "string"
+                    },
+                    "fileName": {
+                      "type": "string"
+                    },
+                    "contentType": {
+                      "type": "string"
+                    },
+                    "sizeBytes": {
+                      "type": "number"
+                    },
+                    "checksum": {
+                      "type": "string"
+                    },
+                    "extractionStatus": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "succeeded",
+                        "failed"
+                      ]
+                    },
+                    "extractionError": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "entryId",
+                    "organizationId",
+                    "storageKey",
+                    "fileName",
+                    "contentType",
+                    "sizeBytes",
+                    "checksum",
+                    "extractionStatus",
+                    "extractionError",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                },
+                "parameterReferences": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "organizationId",
+                "title",
+                "contentForm",
+                "status",
+                "origin",
+                "tags",
+                "sourceType",
+                "sourceSessionId",
+                "sourceLogId",
+                "sourceReloadRunId",
+                "createdByUserId",
+                "headRevisionId",
+                "headRevisionNumber",
+                "createdAt",
+                "updatedAt",
+                "publishedAt",
+                "archivedAt",
+                "contentMarkdown",
+                "file",
+                "parameterReferences"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "KnowledgeEntryListResponse"
       },
       "DistillKnowledgeFromLogRequest": {
@@ -57661,6 +58111,54 @@
       },
       "UpdateKnowledgeEntryRequest": {
         "type": "object",
+        "properties": {
+          "expectedHeadRevisionNumber": {
+            "type": "number"
+          },
+          "title": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "contentMarkdown": {
+            "type": "string"
+          },
+          "file": {
+            "type": "object",
+            "properties": {
+              "fileName": {
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string",
+                "enum": [
+                  "application/pdf",
+                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                  "application/msword",
+                  "text/plain",
+                  "text/markdown"
+                ]
+              },
+              "contentBase64": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "fileName",
+              "contentType",
+              "contentBase64"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "expectedHeadRevisionNumber"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "UpdateKnowledgeEntryRequest"
       },
       "KnowledgeDeleteResponse": {

@@ -46,6 +46,7 @@ describe("createMockKnowledgeRepository", () => {
     expect(draft.title).toBe(log.conclusion);
     expect(draft.tags).toEqual(["日志分析", "提示"]);
     expect(draft.sourceLogId).toBe(log.id);
+    expect(draft.origin).toBe("distilled");
   });
 
   it("serves fixture entries covering draft, published, archived, and failed extraction", async () => {
@@ -64,6 +65,7 @@ describe("createMockKnowledgeRepository", () => {
     const entry = await repository.createMarkdown({ title: "新条目", tags: ["t"], contentMarkdown: "内容" });
 
     expect(entry.status).toBe("draft");
+    expect(entry.origin).toBe("authored");
     expect(entry.headRevisionNumber).toBe(1);
 
     const published = await repository.publish(entry.id);
@@ -136,6 +138,7 @@ describe("createMockKnowledgeRepository", () => {
     const entry = await repository.distillFromReloadRun("mock-reload-seed-01");
     expect(entry.status).toBe("draft");
     expect(entry.sourceReloadRunId).toBe("mock-reload-seed-01");
+    expect(entry.origin).toBe("distilled");
     expect(entry.sourceLogId).toBeNull();
     expect(entry.tags).toEqual(["参数调试", "DTS重载", "不可验证"]);
     expect(entry.title).toContain("参数调试重载:");
@@ -248,6 +251,7 @@ describe("createMockKnowledgeRepository", () => {
       file: new File(["hello"], "notes.txt", { type: "text/plain" })
     });
     expect(good.file?.extractionStatus).toBe("succeeded");
+    expect(good.origin).toBe("uploaded");
 
     const legacy = await repository.createFile({
       title: "旧文档",
