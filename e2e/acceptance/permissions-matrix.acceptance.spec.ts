@@ -133,10 +133,9 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
     await page.getByRole("search", { name: "用户筛选" }).getByLabel("搜索").fill("Zhao Heng");
     await page.getByRole("button", { name: "查看 Zhao Heng 的成员资料" }).click();
     const memberDialog = page.getByRole("dialog", { name: "Zhao Heng · 成员资料" });
-    const assignableSelect = memberDialog.getByLabel("调整 Zhao Heng 的角色");
-    await expect(assignableSelect).toBeVisible();
-    expect(await readSelectControlOptions(assignableSelect))
-      .not.toEqual(expect.arrayContaining([expect.objectContaining({ value: "platform-admin" })]));
+    const assignableRoles = memberDialog.getByRole("group", { name: "组织角色选择" });
+    await expect(assignableRoles).toBeVisible();
+    await expect(assignableRoles.getByRole("checkbox", { name: "平台超级管理员" })).toHaveCount(0);
 
     const grantResponse = await page.request.put(apiRoute(`/api/v1/users/${acceptanceAdminOnlyUser.userId}/roles`), {
       headers: authHeadersForUser(

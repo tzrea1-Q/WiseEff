@@ -53,6 +53,11 @@ export type UserAccount = {
   lastActive: string;
 };
 
+export function organizationRoleIds(user: UserAccount): PlatformRoleId[] {
+  return user.roles === undefined ? [migrateLegacyRoleId(user.roleId)]
+    : [...new Set(user.roles.filter((role) => role.projectId === null && isPlatformRoleId(role.roleId)).map((role) => role.roleId))];
+}
+
 export const platformRoles = [
   {
     id: "guest",
