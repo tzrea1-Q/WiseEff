@@ -20,6 +20,7 @@ type ProjectAdminTableProps = {
   onManageFiles: (projectId: string) => void;
   onConfigureReviewRoles?: (projectId: string) => void;
   onArchiveProject?: (projectId: string, archive: boolean) => void;
+  onPreviewDeletion?: (projectId: string) => void;
   primaryActionLabel?: string;
   detailDrawer?: ReactNode;
 };
@@ -75,6 +76,7 @@ export function ProjectAdminTable({
   onManageFiles,
   onConfigureReviewRoles,
   onArchiveProject,
+  onPreviewDeletion,
   primaryActionLabel = "管理文件",
   detailDrawer
 }: ProjectAdminTableProps) {
@@ -233,6 +235,8 @@ export function ProjectAdminTable({
         items: [
           ...(onConfigureReviewRoles ? [{ id: "review-roles", label: "审核角色", ariaLabel: `审核角色 ${row.name}`, onSelect: () => onConfigureReviewRoles(row.id) }] : []),
           { id: "edit", label: "编辑", ariaLabel: `编辑 ${row.name}`, onSelect: () => onEditProject(row.id) },
+          ...(onPreviewDeletion ? [{ id: "deletion-preview", label: "删除影响预览", ariaLabel: `删除影响预览 ${row.name}`,
+            onSelect: () => onPreviewDeletion(row.id) }] : []),
           ...(onArchiveProject ? [{ id: "archive", label: row.status === "archived" ? "恢复项目" : "归档",
             ariaLabel: `${row.status === "archived" ? "恢复项目" : "归档"} ${row.name}`,
             onSelect: () => onArchiveProject(row.id, row.status !== "archived") }] : []),
