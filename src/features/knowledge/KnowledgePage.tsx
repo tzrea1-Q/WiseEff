@@ -18,6 +18,7 @@ import {
 import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import { PageInsightBar, type Column } from "@/components/admin";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { AdminListPage } from "@/components/layout/AdminListPage";
 import { SectionSkeleton } from "@/components/common/SectionState";
 import { SearchField } from "@/components/common/SearchField";
@@ -85,6 +86,9 @@ export function KnowledgePage({
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadEntry, setUploadEntry] = useState<KnowledgeEntry | null>(null);
   const [revisionsEntry, setRevisionsEntry] = useState<KnowledgeEntry | null>(null);
+  const [deleteEntry, setDeleteEntry] = useState<KnowledgeEntry | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const listRequest = useRef(0);
   const searchRequest = useRef(0);
   const citationResult = useRef<{ entry: KnowledgeEntry } | null>(null);
@@ -122,6 +126,8 @@ export function KnowledgePage({
     setUploadOpen(false);
     setUploadEntry(null);
     setRevisionsEntry(null);
+    setDeleteEntry(null);
+    setDeleteError("");
     void loadEntries();
     return () => {
       ++listRequest.current;
@@ -344,6 +350,33 @@ export function KnowledgePage({
     anchor.remove();
   };
 
+  const canDeleteDraft = (entry: KnowledgeEntry) =>
+    capability.canManage && entry.status === "draft" && entry.sourceType === "human";
+
+  const requestDelete = (entry: KnowledgeEntry) => {
+    setDeleteError("");
+    setDeleteEntry(entry);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteEntry || deletePending) return;
+    setDeletePending(true);
+    setDeleteError("");
+    try {
+      await repository.hardDelete(deleteEntry.id);
+      setRows((current) => current.filter((entry) => entry.id !== deleteEntry.id));
+      setSearchResults((current) => current.filter((entry) => entry.entryId !== deleteEntry.id));
+      citationResult.current = null;
+      setSelectedId((current) => current === deleteEntry.id ? null : current);
+      setDeleteEntry(null);
+      if (initialEntryId === deleteEntry.id) onNavigate?.("/knowledge");
+    } catch (error) {
+      setDeleteError(presentError(error, "删除失败，请稍后重试。"));
+    } finally {
+      setDeletePending(false);
+    }
+  };
+
   // Reference edits are immediate audited calls; keep the background rows in
   // sync but never swap the editor's `entry` prop (that would reset the form).
   const applyReferenceUpdate = (updated: KnowledgeEntry) => {
@@ -502,7 +535,8 @@ export function KnowledgePage({
         rowActions={(entry) => ({ label: `${entry.title} 操作`,
           primaryAction: { id: "view", label: "查看", onSelect: () => setSelectedId(entry.id) },
           items: [
-            { id: "revisions", label: "修订历史", onSelect: () => setRevisionsEntry(entry) }
+            { id: "revisions", label: "修订历史", onSelect: () => setRevisionsEntry(entry) },
+            ...(canDeleteDraft(entry) ? [{ id: "delete", label: "彻底删除", destructive: true as const, onRequestConfirmation: () => requestDelete(entry) }] : [])
           ]
         })}
         emptyState={{ message: rows.length === 0 ? "知识库还是空的。创建第一条调参经验或上传一份硬件手册。" : "当前筛选条件下没有条目。",
@@ -535,9 +569,23 @@ export function KnowledgePage({
           setRows((current) => current.map((item) => (item.id === updated.id ? updated : item)));
         }}
         onDownloadFile={handleDownload}
+        onRequestDelete={selectedEntry && canDeleteDraft(selectedEntry) ? requestDelete : undefined}
         onOpenDefinition={onOpenDefinition}
         onNavigate={onNavigate}
         onClose={() => setSelectedId(null)}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteEntry)}
+        title={`彻底删除「${deleteEntry?.title ?? ""}」`}
+        description={`将永久删除该人工草稿及其全部 ${deleteEntry?.headRevisionNumber ?? 0} 个修订、文件元数据、关联引用和检索索引，不可恢复。存储中的原始文件保留；其他知识、参数定义和来源日志不受影响。删除审计保留。`}
+        confirmLabel="彻底删除"
+        tone="danger"
+        acknowledgement="我确认删除该条目与全部修订历史。"
+        pending={deletePending}
+        error={deleteError}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setDeleteEntry(null)}
       />
 
       <KnowledgeEntryEditorDialog
