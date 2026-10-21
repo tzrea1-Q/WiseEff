@@ -928,6 +928,20 @@ describe("legacy parameter plane archive", () => {
         view_name: "parameter_catalog.current_project_parameter_bindings",
         parent: "parameter_catalog.project_value_source_pins",
       },
+      // 0227 keeps restored membership current through its approved complete-source receipt.
+      // 0236 evaluates the same receipt predicate through the view owner for existing column-only readers.
+      {
+        view_name: "parameter_catalog.current_project_parameter_bindings",
+        parent: "public.dts_config_revision_members",
+      },
+      {
+        view_name: "parameter_catalog.current_project_parameter_bindings",
+        parent: "public.dts_config_revisions",
+      },
+      {
+        view_name: "parameter_catalog.current_project_parameter_bindings",
+        parent: "public.project_parameter_value_change_requests",
+      },
     ]);
   }, 120_000);
 });

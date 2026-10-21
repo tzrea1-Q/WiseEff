@@ -789,6 +789,7 @@ export const routeManifest = [
   { id: "logs.listSourceVersions", method: "GET", path: "/api/v1/log-skills/:skillId/source-versions", module: "logs", stability: "mvp" },
   { id: "logs.listSourceSnapshots", method: "GET", path: "/api/v1/log-skills/:skillId/source-snapshots", module: "logs", stability: "mvp" },
   { id: "logs.uploadSourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots", module: "logs", stability: "mvp" },
+  { id: "logs.retrySourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/retry", module: "logs", stability: "mvp" },
   { id: "logs.defaultSourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/default", module: "logs", stability: "mvp" },
   { id: "logs.archiveSourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/archive", module: "logs", stability: "mvp" },
   { id: "logs.locateSourceStatement", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/locate", module: "logs", stability: "mvp" },
@@ -848,6 +849,7 @@ export const routeManifest = [
   },
 
   { id: "productFeedback.create", method: "POST", path: "/api/v1/product-feedback", module: "product-feedback", stability: "mvp" },
+  { id: "productFeedback.retryAttachmentCleanup", method: "POST", path: "/api/v1/product-feedback/mine/attachment-cleanup", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.createDraft", method: "POST", path: "/api/v1/product-feedback/drafts", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.patchDraft", method: "PATCH", path: "/api/v1/product-feedback/drafts/:id", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.deleteDraft", method: "DELETE", path: "/api/v1/product-feedback/drafts/:id", module: "product-feedback", stability: "mvp" },

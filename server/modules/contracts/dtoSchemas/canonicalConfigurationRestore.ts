@@ -5,7 +5,7 @@ const canonicalRestoreRequest = z.object({
   sourceConfigRevisionId: z.string().min(1).optional(), proofToken: z.string().regex(/^[0-9a-f]{64}$/),
   confirmCompositionChanges: z.boolean(), reason: z.string().trim().min(1).max(2000), clientMutationId: z.string().trim().min(1).max(160)
 }).strict();
-// Legacy configurations retain the existing bodyless restore; Canonical ones require the complete proof.
+// Legacy configurations retain the existing empty payload; Canonical ones require the complete proof.
 export const releaseBaselineRestoreRequestSchema = z.union([z.object({}).strict(), canonicalRestoreRequest]);
 const count = z.number().int().nonnegative();
 export const releaseBaselineRestorePreviewResponseSchema = itemEnvelopeSchema(z.object({

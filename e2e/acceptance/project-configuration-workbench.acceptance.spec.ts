@@ -201,7 +201,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     await expect(restore.getByRole("link",{ name: "进入配置编辑器" })).toBeVisible();
     await expect(restore.getByRole("button",{ name: "确认恢复" })).toHaveCount(0);
     const screenshot = testInfo.outputPath("canonical-baseline-restore-1440x900.png");
-    await page.screenshot({ path: screenshot });
+    await page.screenshot({ path: screenshot, animations: "disabled" });
     await testInfo.attach("canonical baseline read-only restore", { path: screenshot, contentType: "image/png" });
     expect(rollbackRequests).toEqual([]);
     await recordOperationEvidence({
@@ -2889,6 +2889,86 @@ test.describe("project configuration workbench post-cutover semantic identity", 
         summarizeApiResponse(content, { method: "GET", path: contentPath, responseSummary: "exact reviewed source bytes" })],
       notes: "Real registered Binding fixture on the disposable API runtime. The whole-file editor stages immutable source; current file and Value stay unchanged while pending. The server-eligible assigned reviewer approves in a separate browser context; exact source, stable Binding identity, new Value and config/file receipt agree."
     });
+  });
+
+  test("lets an unrelated administrator reassign and cancel a source request, preserving its diff and unblocking submission",async ({ page,request },testInfo) => {
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request,[{ subjectId: "csub_drv_mt_mt5788",canonicalName: "mt,mt5788" }]);
+    const original = '/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "AdminV1", "keep"; }; };';
+    const binding = await seedIsolatedBinding(request,{ propertyKey: "rx_fod_cond",dts: original,rawValuePattern: '"AdminV1", "keep"',
+      nodeLocatorPattern: "board",reason: "#1302 source request administration",timeoutMs: 60_000 });
+    const file = await lookupParameterFileVersion({ fileName: binding.fileName });
+    const workbench = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({ configSet: binding.configSetId,file: file.fileId })}`;
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,workbench));
+    await dismissXiaozeHint(page);
+    await expect(page.getByRole("heading",{ name: binding.fileName })).toBeVisible();
+    const edited = original.replace('"AdminV1"','"AdminV2"');
+    const submitted = await submitSourceFromEditor(page,edited,"#1302 administrator takeover");
+    const actors = ["manager","delegate"].map((kind) => ({ id: `source-${kind}-${randomUUID()}`,name: `Source ${kind}`,email: `${kind}-${randomUUID()}@chargelab.cn` }));
+    await withPgClient(async (client) => {
+      for (const actor of actors) {
+        await client.query("insert into users(id,organization_id,name,email,title,is_active) values($1,$2,$3,$4,'Source administrator',true)",[actor.id,organizationId,actor.name,actor.email]);
+        await client.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values($1,$2,$3,null,'admin')",[`${actor.id}-role`,actor.id,organizationId]);
+      }
+    });
+    const [manager,delegate] = actors as [typeof actors[number],typeof actors[number]];
+    const requestPath = `/api/v2/projects/${projectId}/source-revision-requests/${submitted.receipt.requestId}`;
+    const managerHeaders = authHeadersForUser(manager.id,manager.email,manager.name);
+    const reviewRoute = `/parameter-review?${new URLSearchParams({ project: projectId,request: submitted.receipt.requestId,type: "source" })}`;
+    await signInBrowserAsUser(page,manager.id,manager.email,manager.name,disposablePageUrl(disposableRuntime,reviewRoute));
+    await dismissXiaozeHint(page);
+    let panel = page.getByRole("region",{ name: "DTS 整文件审核" });
+    await expect(panel).toContainText("AdminV1"); await expect(panel).toContainText("AdminV2");
+    await expect(panel.getByRole("button",{ name: "批准并应用 DTS",exact: true })).toHaveCount(0);
+    await selectControlOption(panel.getByRole("combobox",{ name: "新的源码审核人" }),delegate.id);
+    await withPgClient((client) => client.query("delete from user_role_bindings where id=$1",[`${delegate.id}-role`]));
+    const expectedFailure: ExpectedApiFailure = { method: "POST",path: `${requestPath}/reassign`,status: 400 };
+    expectedBrowserApiFailures.push(expectedFailure);
+    try {
+      const failure = page.waitForResponse((response) => new URL(response.url()).pathname === `${requestPath}/reassign` && response.request().method()==="POST");
+      await panel.getByRole("button",{ name: "重新指派审核人" }).click();
+      expect((await failure).status()).toBe(400);
+      await expect(panel.getByRole("alert")).toContainText("审核资格");
+      await withPgClient((client) => client.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values($1,$2,$3,null,'admin')",[`${delegate.id}-role`,delegate.id,organizationId]));
+      await panel.getByRole("button",{ name: "刷新状态" }).click();
+      await selectControlOption(panel.getByRole("combobox",{ name: "新的源码审核人" }),delegate.id);
+      const reassigned = page.waitForResponse((response) => new URL(response.url()).pathname === `${requestPath}/reassign` && response.request().method()==="POST");
+      await panel.getByRole("button",{ name: "重新指派审核人" }).click();
+      expect((await reassigned).status()).toBe(200);
+      await expect(panel).toContainText(`审核人：${delegate.name}`);
+      const cancel = panel.getByRole("button",{ name: "取消源码请求" });
+      await expect(cancel).toBeDisabled();
+      await panel.getByRole("textbox",{ name: "取消源码请求的理由" }).fill("管理员解除待审配置阻塞");
+      await expect(cancel).toBeEnabled(); await cancel.scrollIntoViewIfNeeded();
+      const screenshot = testInfo.outputPath("source-request-administration-1440x900.png");
+      await page.screenshot({ path: screenshot }); await testInfo.attach("Source request administration",{ path: screenshot,contentType: "image/png" });
+      const cancelled = page.waitForResponse((response) => new URL(response.url()).pathname === `${requestPath}/cancel` && response.request().method()==="POST");
+      await cancel.focus(); await page.keyboard.press("Enter");
+      expect((await cancelled).status()).toBe(200);
+      await page.goto(disposablePageUrl(disposableRuntime,`${reviewRoute}&view=history`));
+      panel = page.getByRole("region",{ name: "DTS 整文件审核" });
+      await expect(panel).toContainText(`管理员取消：${manager.name} · 管理员解除待审配置阻塞`);
+      await expect(panel).toContainText("AdminV2");
+      const detail = await request.get(apiRoute(requestPath),{ headers: managerHeaders });
+      expect(detail.status(),await detail.text()).toBe(200);
+      expect((await detail.json()).item).toMatchObject({ status: "withdrawn",reviewerUserId: null,after: edited,
+        proofDigest: submitted.item.proofToken,cancellation: { userId: manager.id,reason: "管理员解除待审配置阻塞" } });
+      const active = (await readCanonicalFixtureBindings(projectId)).find((row) => row.id===binding.bindingId)!;
+      const candidate = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),{ headers: managerHeaders,data: {
+        fileId: file.fileId,fileName: binding.fileName,contentBase64: Buffer.from(`${edited}\n/* after cancellation */`).toString("base64"),intent: "source_revision",
+        expectedCurrentVersionId: file.versionId,expectedConfigRevisionId: active.configRevisionId,clientMutationId: `admin-unblocked-${randomUUID()}` } });
+      expect(candidate.status(),await candidate.text()).toBe(201);
+      const candidateId = (await candidate.json()).item.id as string;
+      const preview = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-preview`),{ headers: managerHeaders });
+      expect(preview.status(),await preview.text()).toBe(200);
+      const next = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-submit`),{ headers: managerHeaders,data: {
+        expectedCurrentVersionId: file.versionId,expectedProofToken: (await preview.json()).item.proofToken,assignedToUserId: delegate.id,
+        reason: "Configuration is unblocked",clientMutationId: `admin-unblocked-submit-${randomUUID()}` } });
+      expect(next.status(),await next.text()).toBe(200);
+      const nextId = (await next.json()).item.requestId as string;
+      expect((await request.post(apiRoute(`/api/v2/projects/${projectId}/source-revision-requests/${nextId}/withdraw`),{ headers: managerHeaders })).status()).toBe(200);
+    } finally { expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(expectedFailure),1); }
   });
 
   test("restores a complete Canonical snapshot after a stale-plan refusal and retains added members through keyboard confirmation",async ({ page,request },testInfo) => {

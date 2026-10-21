@@ -1527,7 +1527,7 @@
           }
         ],
         "requestBody": {
-          "required": true,
+          "required": false,
           "content": {
             "application/json": {
               "schema": {
@@ -12675,6 +12675,70 @@
         }
       }
     },
+    "/api/v1/log-skills/{skillId}/source-snapshots/{snapshotId}/retry": {
+      "post": {
+        "operationId": "logs.retrySourceSnapshot",
+        "summary": "Retry a failed source snapshot's original uploaded content and index inputs under the same identity",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "snapshotId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetryLogSourceSnapshotRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogSourceSnapshotResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/log-skills/{skillId}/source-snapshots/{snapshotId}/default": {
       "post": {
         "operationId": "logs.defaultSourceSnapshot",
@@ -14227,6 +14291,46 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProductFeedbackListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/product-feedback/mine/attachment-cleanup": {
+      "post": {
+        "operationId": "productFeedback.retryAttachmentCleanup",
+        "summary": "Retry this user's pending feedback attachment upload cleanup in the current organization",
+        "tags": [
+          "product-feedback"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductFeedbackAttachmentCleanupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductFeedbackAttachmentCleanupResponse"
                 }
               }
             }
@@ -40635,6 +40739,100 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "SkillDeletionListResponse"
       },
+      "RetryLogSourceSnapshotRequest": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "x-wiseeff-schema": "RetryLogSourceSnapshotRequest"
+      },
+      "LogSourceSnapshotResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "skillId": {
+                "type": "string"
+              },
+              "versionLabel": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "indexing",
+                  "ready",
+                  "failed",
+                  "archived"
+                ]
+              },
+              "filesProcessed": {
+                "type": "number"
+              },
+              "filesTotal": {
+                "type": "number"
+              },
+              "fileCount": {
+                "type": "number"
+              },
+              "skippedCount": {
+                "type": "number"
+              },
+              "skippedFiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "reason"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "skillId",
+              "versionLabel",
+              "status",
+              "filesProcessed",
+              "filesTotal",
+              "fileCount",
+              "skippedCount",
+              "skippedFiles",
+              "error",
+              "createdAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogSourceSnapshotResponse"
+      },
       "SkillDeletionPreviewResponse": {
         "type": "object",
         "properties": {
@@ -47097,94 +47295,6 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "LogSourceSnapshotUploadRequest"
-      },
-      "LogSourceSnapshotResponse": {
-        "type": "object",
-        "properties": {
-          "item": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "skillId": {
-                "type": "string"
-              },
-              "versionLabel": {
-                "type": "string"
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "queued",
-                  "indexing",
-                  "ready",
-                  "failed",
-                  "archived"
-                ]
-              },
-              "filesProcessed": {
-                "type": "number"
-              },
-              "filesTotal": {
-                "type": "number"
-              },
-              "fileCount": {
-                "type": "number"
-              },
-              "skippedCount": {
-                "type": "number"
-              },
-              "skippedFiles": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "path": {
-                      "type": "string"
-                    },
-                    "reason": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path",
-                    "reason"
-                  ],
-                  "additionalProperties": false
-                }
-              },
-              "error": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "createdAt": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "skillId",
-              "versionLabel",
-              "status",
-              "filesProcessed",
-              "filesTotal",
-              "fileCount",
-              "skippedCount",
-              "skippedFiles",
-              "error",
-              "createdAt"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "required": [
-          "item"
-        ],
-        "additionalProperties": false,
-        "x-wiseeff-schema": "LogSourceSnapshotResponse"
       },
       "LogSourceLocateRequest": {
         "type": "object",
@@ -54053,6 +54163,18 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "messageId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "uploadedByUserId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -54445,6 +54567,18 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "messageId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "uploadedByUserId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -54788,6 +54922,18 @@
                   "items": {
                     "type": "object",
                     "properties": {
+                      "messageId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "uploadedByUserId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -54958,6 +55104,9 @@
               "string",
               "null"
             ]
+          },
+          "pendingAttachmentCleanupCount": {
+            "type": "number"
           }
         },
         "required": [
@@ -54966,6 +55115,25 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "ProductFeedbackUserListResponse"
+      },
+      "ProductFeedbackAttachmentCleanupRequest": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProductFeedbackAttachmentCleanupRequest"
+      },
+      "ProductFeedbackAttachmentCleanupResponse": {
+        "type": "object",
+        "properties": {
+          "pendingAttachmentCleanupCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "pendingAttachmentCleanupCount"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProductFeedbackAttachmentCleanupResponse"
       },
       "ReplyToProductFeedbackRequest": {
         "type": "object",
@@ -55083,6 +55251,18 @@
                   "items": {
                     "type": "object",
                     "properties": {
+                      "messageId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "uploadedByUserId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
                       "id": {
                         "type": "string"
                       },

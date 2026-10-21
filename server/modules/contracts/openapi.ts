@@ -205,7 +205,7 @@ export function buildOpenApiDocument(): OpenApiDocument {
       ...(schema.requestBody
         ? {
             requestBody: {
-              required: true,
+              required: schema.requestBodyRequired ?? true,
               content: {
                 ...(["logs.uploadSourceSnapshot", "logs.importAnalysisCases", "logs.importSkillPackage"].includes(route.id) ? {} : jsonContent(schema.requestBody)),
                 ...(route.id === "logs.uploadFile" ? { "multipart/form-data": { schema: { $ref: "#/components/schemas/LogBundleMultipartUpload" } } } : {}),
