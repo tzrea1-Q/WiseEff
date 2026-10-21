@@ -62,8 +62,17 @@ export const S2_SCH_0218_FINGERPRINT =
  * migration-owner guard before the private erasure predicate. No other entry
  * in the six-category inventory changes from the retained 0218 pin.
  */
-export const S2_SCH_LIVE_FINGERPRINT =
+export const S2_SCH_0219_FINGERPRINT =
   "2bd66075a223cd87daf165f4ba353258edd9a845c8027bf1de140b25ae19fad6";
+
+/**
+ * Current 0221 stage: the unchanged six-category inventory adds only three
+ * functions for direct-source receipts/mode immutability and read-only project
+ * deletion preview. Relations, columns, constraints, indexes and triggers are
+ * unchanged from 0219; the historical fingerprint above remains intact.
+ */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "d9907a04610bdcc83f0662fc3030fca1b480488858fdce4583315bd0bfd5005d";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
