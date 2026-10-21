@@ -69,7 +69,7 @@ test("Issue 1064: seeded canonical modules render without organization overlays"
   await page.screenshot({ path: info.outputPath("issue1064-canonical-tree-1440x900.png"), animations: "disabled" });
 });
 
-test("Issue 1067: historical modules expose provenance without structural controls", async ({ page, request }, info) => {
+test("Issue 1067: historical provenance remains separate from editable organization metadata", async ({ page, request }, info) => {
   await seedAcceptanceRoleMatrix();
   const actor = acceptanceAdminOnlyUser;
   const headers = authHeadersForUser(actor.userId, actor.email, actor.name);
@@ -109,18 +109,24 @@ test("Issue 1067: historical modules expose provenance without structural contro
     const expand = page.getByRole("region", { name: "模块导航", exact: true }).getByRole("button", { name: `展开 ${parent.name} 子模块`, exact: true });
     if (await expand.count()) await expand.click();
   }
-  await page.getByRole("button", { name: `查看模块 ${historical.name}`, exact: true }).click();
+  await page.getByRole("button", { name: `修改模块 ${historical.name}`, exact: true }).click();
   const dialog = page.getByRole("dialog", { name: historical.name, exact: true });
-  await expect(dialog.getByLabel("驱动性质", { exact: true })).toHaveAttribute("readonly", "");
-  await expect(dialog.getByLabel("实例基数", { exact: true })).toHaveAttribute("readonly", "");
-  await expect(dialog.getByLabel("模块名称", { exact: true })).toHaveAttribute("readonly", "");
+  await expect(dialog.getByRole("combobox", { name: "驱动性质", exact: true })).toBeEnabled();
+  await expect(dialog.getByRole("combobox", { name: "实例基数", exact: true })).toBeEnabled();
+  await expect(dialog.getByLabel("模块名称", { exact: true })).toBeEditable();
   await expect(dialog.getByLabel("默认业务分类", { exact: true })).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "从注册回放放置" })).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "管理规范主体与归属" })).toBeVisible();
-  for (const compatible of historical.compatibles) await expect(dialog.getByText(compatible, { exact: true })).toBeVisible();
+  const provenanceRegion = dialog.getByRole("region", { name: "历史 compatible 溯源", exact: true });
+  for (const compatible of historical.compatibles) await expect(provenanceRegion.getByText(compatible, { exact: true })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "保存", exact: true })).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath("issue1067-provenance-preserved-1440x900.png"), animations: "disabled" });
+  await dialog.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
   expect(structuralWrites).toEqual([]);
-  await page.screenshot({ path: info.outputPath("issue1067-readonly-provenance-1440x900.png"), animations: "disabled" });
+  const unchangedProvenance = await request.get(apiRoute("/api/v2/parameter-modules/driver-registry"), { headers });
+  expect(unchangedProvenance.status(), await unchangedProvenance.text()).toBe(200);
+  expect((await unchangedProvenance.json()).items.find((item: { moduleId: string }) => item.moduleId === historical.moduleId)).toEqual(historical);
 });
 
 test("retired Platform console has no page or promotion history query", async ({ page, request }, info) => {
@@ -374,7 +380,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     const dismiss = page.getByRole("button", { name: "不再提示" });
     if (await dismiss.isVisible()) await dismiss.click();
 
-    await page.getByRole("button", { name: "查看模块 Canonical source", exact: true }).click();
+    await page.getByRole("button", { name: "修改模块 Canonical source", exact: true }).click();
     const canonicalEditor = page.getByRole("dialog", { name: "Canonical source" });
     await expect(canonicalEditor.getByRole("region", { name: "规范主体放置" })).toBeVisible();
     await expect(canonicalEditor.getByRole("button", { name: "管理规范主体与归属" })).toBeVisible();
@@ -404,13 +410,14 @@ test.describe("Issue 897 canonical module ownership", () => {
       animations: "disabled"
     });
 
-    await page.getByRole("button", { name: "查看模块 Input hardware", exact: true }).click();
+    await page.getByRole("button", { name: "修改模块 Input hardware", exact: true }).click();
     const historicalEditor = page.getByRole("dialog", { name: "Input hardware" });
     await expect(historicalEditor.getByRole("region", { name: "历史驱动登记" })).toHaveCount(0);
     await expect(historicalEditor.getByRole("region", { name: "历史 compatible 溯源" })).toContainText("issue897,uncovered");
     await expect(historicalEditor.getByRole("region", { name: "历史 compatible 溯源" })).not.toContainText("acme,power");
-    await expect(historicalEditor.getByText("历史驱动登记属性仅供溯源，不代表当前规范主体登记或归属。")).toBeVisible();
-    await expect(historicalEditor.getByLabel("驱动性质")).not.toBeEditable();
+    await expect(historicalEditor.getByRole("region", { name: "历史 compatible 溯源" }))
+      .toContainText("历史驱动注册表记录，仅供读取，不代表当前规范主体身份或匹配规则。");
+    await expect(historicalEditor.getByRole("combobox", { name: "驱动性质", exact: true })).toBeEnabled();
     await expect(historicalEditor.getByLabel("默认业务分类")).toHaveCount(0);
     await expect(historicalEditor.getByRole("button", { name: "从注册回放放置" })).toHaveCount(0);
     await expect(historicalEditor.getByRole("region", { name: "规范主体放置" })).toBeVisible();
@@ -681,15 +688,22 @@ test.describe("Issue 897 canonical module ownership", () => {
     expect(renamed.status(), await renamed.text()).toBe(200);
     const reparented = await request.post(`${configModuleUrl}/move`, { headers: authHeadersForRole("admin"), data: { parentId: null } });
     expect(reparented.status(), await reparented.text()).toBe(200);
+    const beforeDeleteRefusals = await request.get(apiRoute("/api/v2/parameter-modules"), { headers: authHeadersForRole("admin") });
+    expect(beforeDeleteRefusals.status(), await beforeDeleteRefusals.text()).toBe(200);
+    const retainedModules = (await beforeDeleteRefusals.json()).item.modules;
     for (const moduleId of ["issue897-config", "issue897-driver-b"]) {
-      const blockedDelete = await request.delete(apiRoute(`/api/v1/parameter-modules/${moduleId}`), { headers: authHeadersForRole("admin") });
-      expect(blockedDelete.status(), await blockedDelete.text()).toBe(moduleId === "issue897-driver-b" ? 410 : 409);
-      if (moduleId === "issue897-driver-b") {
-        expect((await blockedDelete.json()).error.details).toMatchObject({
-          reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
-        });
-      }
+      const blockedDelete = await request.delete(apiRoute(`/api/v1/parameter-modules/${moduleId}`), { headers: authHeadersForRole("software-user") });
+      expect(blockedDelete.status(), await blockedDelete.text()).toBe(403);
     }
+    const blockedParentDelete = await request.delete(apiRoute("/api/v1/parameter-modules/issue897-root"), { headers: authHeadersForRole("admin") });
+    expect(blockedParentDelete.status(), await blockedParentDelete.text()).toBe(409);
+    const afterDeleteRefusals = await request.get(apiRoute("/api/v2/parameter-modules"), { headers: authHeadersForRole("admin") });
+    expect(afterDeleteRefusals.status(), await afterDeleteRefusals.text()).toBe(200);
+    expect((await afterDeleteRefusals.json()).item.modules).toEqual(retainedModules);
+    const retainedPlacement = await request.get(placementUrl, { headers: authHeadersForRole("admin") });
+    expect(retainedPlacement.status(), await retainedPlacement.text()).toBe(200);
+    expect((await retainedPlacement.json()).item).toEqual((await current.json()).item);
+    expect(retainedPlacement.headers().etag).toBe(current.headers().etag);
     await page.reload();
     await expect(page.locator('[data-canonical-subject-id="csub_issue897_config"]').getByText("归属：Renamed JSON settings", { exact: true })).toBeVisible();
     await page.getByRole("searchbox", { name: "筛选规范主体" }).fill("no-such-subject");
@@ -705,7 +719,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     await expect(driver.getByText("归属：Issue 897 Modules / Output hardware", { exact: true })).toBeVisible();
     await page.getByRole("tree", { name: "模块归属树" }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("canonical-module-tree-after-move.png"), animations: "disabled" });
-    await page.getByRole("button", { name: "查看模块 Input hardware", exact: true }).click();
+    await page.getByRole("button", { name: "修改模块 Input hardware", exact: true }).click();
     const historicalDetails = page.getByRole("dialog", { name: "Input hardware", exact: true });
     await expect(historicalDetails.getByRole("region", { name: "历史 compatible 溯源" })).toContainText("issue897,uncovered");
     await expect(page.getByRole("button", { name: "配置组织级解析", exact: true })).toHaveCount(0);

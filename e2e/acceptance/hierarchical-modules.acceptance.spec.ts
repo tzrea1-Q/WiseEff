@@ -4,8 +4,7 @@ import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
 import {
   countCanonicalPlacementsForModule,
-  getParameterModuleById,
-  moveParameterModule
+  getParameterModuleById
 } from "../../server/modules/parameters/parameterModuleRepository";
 import { authHeadersForRole } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
@@ -167,13 +166,14 @@ async function assignBindingToModule(request: APIRequestContext, bindingId: stri
   const response = await request.post(apiRoute(`/api/v1/parameter-modules/${placementModuleId}/move`), {
     headers: adminHeaders(), data: { parentId: moduleId }
   });
-  expect(response.status(), await response.text()).toBe(410);
-  expect(await response.json()).toMatchObject({ error: { code: "GONE", details: { reason: "legacy-surface-retired" } } });
+  expect(response.status(), await response.text()).toBe(200);
+  expect(await response.json()).toMatchObject({ item: { id: placementModuleId, parentId: moduleId } });
   await withPgClient(async (client) => {
-    const placed = await moveParameterModule(client, { organizationId, moduleId: placementModuleId, parentId: moduleId });
+    const placed = await getParameterModuleById(client, { organizationId, moduleId: placementModuleId });
     expect(placed?.parentId).toBe(moduleId);
+    expect(await countCanonicalPlacementsForModule(client, { organizationId, moduleId: placementModuleId })).toBeGreaterThanOrEqual(1);
   });
-  return placementModuleId;
+  return { moduleId: placementModuleId, response };
 }
 
 async function seedAssignableBinding(
@@ -228,7 +228,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
     expect(child.item.path).toBe(`${parent.item.path}/${child.item.id}`);
 
     const binding = await seedAssignableBinding(request, "MOD-TREE-PARAM-001 semantic binding");
-    const placementModuleId = await assignBindingToModule(request, binding.bindingId, child.item.id);
+    const { moduleId: placementModuleId, response: placementMoveResponse } = await assignBindingToModule(request, binding.bindingId, child.item.id);
 
     const listResponse = await page.request.get(
       apiRoute(
@@ -280,6 +280,11 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
           path: "/api/v1/parameter-modules",
           responseSummary: `child=${child.item.id}; parentId=${child.item.parentId}`
         }),
+        summarizeApiResponse(placementMoveResponse, {
+          method: "POST",
+          path: `/api/v1/parameter-modules/${placementModuleId}/move`,
+          responseSummary: `canonical driver leaf moved under ${child.item.id}`
+        }),
         summarizeApiResponse(listResponse, {
           method: "GET",
           path: `/api/v2/projects/${projectId}/parameter-bindings`,
@@ -306,7 +311,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
         }
       ],
       notes:
-        "The API-returned module tree identifies the canonical Binding in the parent subtree, but not its direct members. Driver-leaf positioning is a test-only fixture; legacy movement remains 410."
+        "The admin move API positions the canonical driver leaf beneath the child. The API-returned tree and persisted Placement identify the Binding in the parent subtree, but not its direct members."
     });
   });
 
@@ -322,7 +327,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
     });
 
     const binding = await seedAssignableBinding(request, "MOD-TREE-PARAM-002 semantic binding", "iin_min");
-    await assignBindingToModule(request, binding.bindingId, child.item.id);
+    const { moduleId: placementModuleId, response: placementMoveResponse } = await assignBindingToModule(request, binding.bindingId, child.item.id);
 
     const moveResponse = await page.request.post(apiRoute(`/api/v1/parameter-modules/${child.item.id}/move`), {
       headers: adminHeaders(),
@@ -366,6 +371,11 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
       page,
       testInfo,
       api: [
+        summarizeApiResponse(placementMoveResponse, {
+          method: "POST",
+          path: `/api/v1/parameter-modules/${placementModuleId}/move`,
+          responseSummary: `canonical driver leaf moved under ${child.item.id}`
+        }),
         summarizeApiResponse(moveResponse, {
           method: "POST",
           path: `/api/v1/parameter-modules/${child.item.id}/move`,
@@ -382,7 +392,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
           responseSummary: "CONFLICT cycle rejected"
         })
       ],
-      notes: "The test-only fixture positions the driver leaf beneath a business child. The business-module move API reparents the subtree while preserving the canonical Binding's leaf; the cycle move returns 409."
+      notes: "The admin move API positions the driver leaf beneath a business child, then reparents the subtree while preserving the canonical Binding's leaf; the cycle move returns 409."
     });
   });
 
@@ -453,7 +463,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
     });
   });
 
-  test("module tree mutations require admin and canonical driver deletion is retired without writes", async ({
+  test("module tree mutations require admin and deleting a canonical driver leaf unsets Placement while retaining values", async ({
     page,
     request
   }, testInfo) => {
@@ -472,77 +482,110 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
 
     const parent = await createParameterModule(request, { name: parentName });
     await createParameterModule(request, { name: childName, parentId: parent.item.id });
-    // A module is "non-empty" when a canonical Registration Placement points at it.
     const leaf = await createParameterModule(request, { name: leafName });
-    await withPgClient(async (client) => {
-      await client.query(
-        `insert into attribution_subjects(id,organization_id,subject_kind,display_name,source_key)
-         values ('modtree-authz-attr',$1,'driver-registration','ModTree battery info','compatible:huawei,batt_info')`,
-        [organizationId]
-      );
-      await client.query(
-        `insert into driver_registrations(attribution_subject_id,driver_nature,instance_cardinality)
-         values ('modtree-authz-attr','physical-device','multiple')`
-      );
-      await client.query(
-        `insert into parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
-         values ('modtree-authz-driver',$1,$2,'modtree-authz-driver',1,'driver-group','curated','modtree-authz-attr')`,
-        [organizationId, `${moduleNamePrefix}Authz Driver ${suffix}`]
-      );
+    const binding = await seedAssignableBinding(request, "MOD-TREE-AUTHZ-001 populated canonical driver leaf");
+    const target = await withPgClient(async (client) => {
+      const rows = (await client.query<{ registration_id: string; module_id: string }>(
+        `select binding.registration_id, placement.module_id
+         from parameter_catalog.project_parameter_bindings binding
+         join parameter_catalog.organization_subject_registrations registration
+           on registration.id=binding.registration_id and registration.organization_id=binding.organization_id
+         join parameter_catalog.subject_placements placement
+           on placement.id=registration.current_placement_id and placement.registration_id=registration.id
+         where binding.id=$1 and binding.organization_id=$2`,
+        [binding.bindingId, organizationId]
+      )).rows;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.module_id).toBeTruthy();
+      return rows[0]!;
     });
-    const catalogRelease = await withPgClient(async (client) => {
-      const current = await client.query<{ id: string }>(
-        "select current_catalog_release_id as id from parameter_catalog.catalog_state"
-      );
-      return current.rows[0]!.id;
-    });
-    const registration = await request.post(
-      apiRoute(`/api/v2/organizations/${organizationId}/subject-registrations`),
-      {
-        headers: {
-          ...adminHeaders(),
-          "X-WiseEff-Catalog-Release": catalogRelease,
-          "Idempotency-Key": `modtree-authz-${suffix}`
-        },
-        data: {
-          subjectId: "csub_drv_huawei_batt_info",
-          destinationModuleId: "modtree-authz-driver",
-          placement: { mode: "use-default" }
-        }
-      }
-    );
-    expect(registration.status(), await registration.text()).toBe(201);
-    const registrationId = (await registration.json()).item.id;
+    const registrationId = target.registration_id;
+    const driverModuleId = target.module_id;
+    const canonicalSnapshot = () => withPgClient(async (client) => ({
+      registration: (await client.query(
+        "select * from parameter_catalog.organization_subject_registrations where id=$1 and organization_id=$2",
+        [registrationId, organizationId]
+      )).rows,
+      bindings: (await client.query<{ id: string }>(
+        "select * from parameter_catalog.project_parameter_bindings where registration_id=$1 and organization_id=$2 order by id",
+        [registrationId, organizationId]
+      )).rows,
+      values: (await client.query(
+        `select value.* from parameter_catalog.project_parameter_values value
+         join parameter_catalog.project_parameter_bindings binding on binding.id=value.binding_id
+         where binding.registration_id=$1 and binding.organization_id=$2 order by value.id`,
+        [registrationId, organizationId]
+      )).rows
+    }));
+    const canonicalBefore = await canonicalSnapshot();
+    expect(canonicalBefore.registration).toHaveLength(1);
+    expect(canonicalBefore.bindings.map(item => item.id)).toContain(binding.bindingId);
+    expect(canonicalBefore.values.length).toBeGreaterThanOrEqual(1);
     const placementUrl = apiRoute(`/api/v2/organizations/${organizationId}/subject-registrations/${registrationId}/placement`);
     const placementBefore = await request.get(placementUrl, { headers: adminHeaders() });
     expect(placementBefore.status(), await placementBefore.text()).toBe(200);
     const placement = (await placementBefore.json()).item;
+    expect(placement.moduleId).toBe(driverModuleId);
     const modulesBefore = await request.get(apiRoute("/api/v1/parameter-modules"), { headers: adminHeaders() });
     expect(modulesBefore.status(), await modulesBefore.text()).toBe(200);
-    const modules = (await modulesBefore.json()).items;
+    const modules = (await modulesBefore.json()).items as ParameterModuleDto[];
+    const deniedMove = await page.request.post(apiRoute(`/api/v1/parameter-modules/${driverModuleId}/move`), {
+      headers: authHeadersForRole("hardware-user"), data: { parentId: parent.item.id }
+    });
+    expect(deniedMove.status(), await deniedMove.text()).toBe(403);
+    const deniedDelete = await page.request.delete(apiRoute(`/api/v1/parameter-modules/${driverModuleId}`), {
+      headers: authHeadersForRole("hardware-user")
+    });
+    expect(deniedDelete.status(), await deniedDelete.text()).toBe(403);
 
     const deleteParentResponse = await page.request.delete(apiRoute(`/api/v1/parameter-modules/${parent.item.id}`), {
       headers: adminHeaders()
     });
     expect(deleteParentResponse.status()).toBe(409);
 
-    const deleteLeafResponse = await page.request.delete(apiRoute("/api/v1/parameter-modules/modtree-authz-driver"), {
+    const afterRefusals = await request.get(apiRoute("/api/v1/parameter-modules"), { headers: adminHeaders() });
+    expect(afterRefusals.status(), await afterRefusals.text()).toBe(200);
+    expect((await afterRefusals.json()).items).toEqual(modules);
+    const placementAfterRefusals = await request.get(placementUrl, { headers: adminHeaders() });
+    expect(placementAfterRefusals.status(), await placementAfterRefusals.text()).toBe(200);
+    expect((await placementAfterRefusals.json()).item).toEqual(placement);
+    expect(placementAfterRefusals.headers().etag).toBe(placementBefore.headers().etag);
+    expect(await canonicalSnapshot()).toEqual(canonicalBefore);
+
+    const deleteLeafResponse = await page.request.delete(apiRoute(`/api/v1/parameter-modules/${driverModuleId}`), {
       headers: adminHeaders()
     });
-    expect(deleteLeafResponse.status(), await deleteLeafResponse.text()).toBe(410);
-    expect(await deleteLeafResponse.json()).toMatchObject({ error: { code: "GONE", details: {
-      reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false
-    } } });
+    expect(deleteLeafResponse.status(), await deleteLeafResponse.text()).toBe(204);
     const modulesAfter = await request.get(apiRoute("/api/v1/parameter-modules"), { headers: adminHeaders() });
     expect(modulesAfter.status(), await modulesAfter.text()).toBe(200);
-    expect((await modulesAfter.json()).items).toEqual(modules);
+    expect((await modulesAfter.json()).items).toEqual(modules.filter(item => item.id !== driverModuleId));
     const placementAfter = await request.get(placementUrl, { headers: adminHeaders() });
     expect(placementAfter.status(), await placementAfter.text()).toBe(200);
-    expect((await placementAfter.json()).item).toEqual(placement);
+    const unsetPlacement = (await placementAfter.json()).item;
+    expect(unsetPlacement.id).toBe(placement.id);
+    expect(unsetPlacement.moduleId).toBeUndefined();
+    expect(placementAfter.headers().etag).toBeTruthy();
+    expect(placementAfter.headers().etag).not.toBe(placementBefore.headers().etag);
+    const persisted = await withPgClient(async (client) => ({
+      module: await getParameterModuleById(client, { organizationId, moduleId: driverModuleId }),
+      placements: (await client.query<{ id: string; registration_id: string; module_id: string | null }>(
+        "select id, registration_id, module_id from parameter_catalog.subject_placements where id=$1 and organization_id=$2",
+        [placement.id, organizationId]
+      )).rows
+    }));
+    expect(persisted.module).toBeNull();
+    expect(persisted.placements).toEqual([{ id: placement.id, registration_id: registrationId, module_id: null }]);
+    const canonicalAfter = await canonicalSnapshot();
+    expect(canonicalAfter).toEqual(canonicalBefore);
+    const bindingsAfterDelete = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), {
+      headers: adminHeaders()
+    });
+    expect(bindingsAfterDelete.status(), await bindingsAfterDelete.text()).toBe(200);
+    expect(((await bindingsAfterDelete.json()).items as ParameterRecordDto[]).map(item => item.id)).toContain(binding.bindingId);
     const deleteEmptyLeafResponse = await page.request.delete(apiRoute(`/api/v1/parameter-modules/${leaf.item.id}`), {
       headers: adminHeaders()
     });
-    expect(deleteEmptyLeafResponse.status(), await deleteEmptyLeafResponse.text()).toBeLessThan(300);
+    expect(deleteEmptyLeafResponse.status(), await deleteEmptyLeafResponse.text()).toBe(204);
 
     await recordOperationEvidence({
       operationId: "MOD-TREE-AUTHZ-001",
@@ -558,6 +601,16 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
           path: "/api/v1/parameter-modules",
           responseSummary: "FORBIDDEN for non-admin"
         }),
+        summarizeApiResponse(deniedMove, {
+          method: "POST",
+          path: `/api/v1/parameter-modules/${driverModuleId}/move`,
+          responseSummary: "FORBIDDEN for non-admin"
+        }),
+        summarizeApiResponse(deniedDelete, {
+          method: "DELETE",
+          path: `/api/v1/parameter-modules/${driverModuleId}`,
+          responseSummary: "FORBIDDEN for non-admin"
+        }),
         summarizeApiResponse(deleteParentResponse, {
           method: "DELETE",
           path: `/api/v1/parameter-modules/${parent.item.id}`,
@@ -565,11 +618,31 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
         }),
         summarizeApiResponse(deleteLeafResponse, {
           method: "DELETE",
-          path: "/api/v1/parameter-modules/modtree-authz-driver",
-          responseSummary: "GONE; module tree and canonical Placement unchanged"
+          path: `/api/v1/parameter-modules/${driverModuleId}`,
+          responseSummary: "NO CONTENT; leaf deleted, retained Placement unset"
+        }),
+        summarizeApiResponse(placementAfter, {
+          method: "GET",
+          path: `/api/v2/organizations/${organizationId}/subject-registrations/${registrationId}/placement`,
+          responseSummary: `Placement ${placement.id} retained without moduleId and with a new ETag`
+        }),
+        summarizeApiResponse(bindingsAfterDelete, {
+          method: "GET",
+          path: `/api/v2/projects/${projectId}/parameter-bindings`,
+          responseSummary: `canonical Binding ${binding.bindingId} retained after leaf deletion`
         })
       ],
-      notes: "Non-admin module create returned 403; deleting a parent with children returned 409; canonical driver deletion returned 410 with no tree or Placement change; an empty taxonomy leaf could be deleted."
+      db: [
+        { table: "parameter_modules", predicate: `organization_id=${organizationId} and id=${driverModuleId}`,
+          observed: "deleted", rowCount: 0 },
+        { table: "parameter_catalog.subject_placements", predicate: `id=${placement.id}`,
+          observed: `registration_id=${registrationId}; module_id=null`, rowCount: persisted.placements.length },
+        { table: "parameter_catalog.project_parameter_bindings", predicate: `registration_id=${registrationId}`,
+          observed: "all canonical Binding rows unchanged", rowCount: canonicalAfter.bindings.length },
+        { table: "parameter_catalog.project_parameter_values", predicate: `binding.registration_id=${registrationId}`,
+          observed: "all canonical value rows unchanged", rowCount: canonicalAfter.values.length }
+      ],
+      notes: "Non-admin module create, move and delete returned 403; deleting a parent with children returned 409. Admin deletion of a populated driver leaf returned 204, retained its Placement with module_id=null, and preserved every canonical Registration, Binding and value row. An empty taxonomy leaf also returned 204."
     });
   });
 });
