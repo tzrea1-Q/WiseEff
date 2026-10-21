@@ -19296,6 +19296,135 @@
         }
       }
     },
+    "/api/v1/parameters/admin/projects/{projectId}/purge": {
+      "post": {
+        "operationId": "parameters.purgeAdminProject",
+        "summary": "Permanently delete confirmed project-owned data and retry pending exclusive object cleanup",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectPurgeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDeletionStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameters/admin/projects/{projectId}/deletion-status": {
+      "get": {
+        "operationId": "parameters.getAdminProjectDeletionStatus",
+        "summary": "Read database and object cleanup status for a deleted project",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDeletionStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameters/admin/project-deletions": {
+      "get": {
+        "operationId": "parameters.listAdminProjectDeletions",
+        "summary": "List project cleanup receipts in the current organization",
+        "tags": [
+          "parameters"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDeletionStatusListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/parameter-import/parse-dts": {
       "post": {
         "operationId": "parameters.parseDtsImport",
@@ -59401,10 +59530,7 @@
                 "type": "string"
               },
               "executionAvailable": {
-                "type": "boolean",
-                "enum": [
-                  false
-                ]
+                "type": "boolean"
               },
               "inventory": {
                 "type": "array",
@@ -59516,6 +59642,112 @@
       "ProjectDeleteResponse": {
         "type": "object",
         "x-wiseeff-schema": "ProjectDeleteResponse"
+      },
+      "ProjectPurgeRequest": {
+        "type": "object",
+        "properties": {
+          "stateDigest": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "stateDigest"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProjectPurgeRequest"
+      },
+      "ProjectDeletionStatusResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string"
+              },
+              "stateDigest": {
+                "type": "string"
+              },
+              "database": {
+                "type": "string",
+                "enum": [
+                  "deleted"
+                ]
+              },
+              "objects": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "complete"
+                ]
+              },
+              "pendingObjects": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "projectId",
+              "stateDigest",
+              "database",
+              "objects",
+              "pendingObjects"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProjectDeletionStatusResponse"
+      },
+      "ProjectDeletionStatusListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "projectId": {
+                  "type": "string"
+                },
+                "stateDigest": {
+                  "type": "string"
+                },
+                "database": {
+                  "type": "string",
+                  "enum": [
+                    "deleted"
+                  ]
+                },
+                "objects": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "complete"
+                  ]
+                },
+                "pendingObjects": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "projectId",
+                "stateDigest",
+                "database",
+                "objects",
+                "pendingObjects"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProjectDeletionStatusListResponse"
       },
       "ParseDtsImportRequest": {
         "type": "object",

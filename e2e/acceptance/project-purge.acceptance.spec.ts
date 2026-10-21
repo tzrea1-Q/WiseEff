@@ -17,7 +17,7 @@ test("confirms project purge by keyboard, retries a failed request and reloads h
   expect(retained).toBeTruthy();
   const id = `purge-browser-${Date.now().toString(36)}`;
   const created = await request.post(apiRoute("/api/v1/parameters/admin/projects"), { headers,
-    data: { id, name: id, code: id.toUpperCase() } });
+    data: { id, name: id, code: `PG${Date.now().toString(36).toUpperCase()}` } });
   expect(created.status(), await created.text()).toBe(201);
   const upload = await request.post(apiRoute(`/api/v1/projects/${id}/parameter-files`), { headers,
     data: { fileName: "disposable-settings.json", contentBase64: Buffer.from('{"limit":73}').toString("base64") } });

@@ -1085,7 +1085,8 @@ export async function listCatalogBindingRowsForProject(
         on source_occurrence.id = source_pin.source_occurrence_id
        and source_occurrence.organization_id = b.organization_id
        and source_occurrence.project_id = b.project_id
-       and source_occurrence.file_id = source_pin.file_id
+      and (source_occurrence.file_id = source_pin.file_id
+        or parameter_catalog.source_origin_matches(source_pin.binding_id,source_pin.source_occurrence_id,source_pin.file_id))
       left join dts_property_occurrences source_property
         on source_property.id = source_pin.property_occurrence_id
        and source_property.file_version_id = source_pin.file_version_id
