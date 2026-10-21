@@ -71,7 +71,8 @@ import {
   projectListResponseSchema,
   projectAdminListResponseSchema,
   projectAdminDetailResponseSchema,
-  projectAdminSummaryResponseSchema
+  projectAdminSummaryResponseSchema,
+  projectDeletionPreviewResponseSchema
 } from "./parameters";
 import { parameterModuleRegistryResponseSchema } from "./parameterModules";
 import { parameterDashboardSummaryResponseSchema } from "./parameterDashboard";
@@ -123,6 +124,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ProjectAdminListResponse: projectAdminListResponseSchema,
   ProjectAdminDetailResponse: projectAdminDetailResponseSchema,
   ProjectAdminSummaryResponse: projectAdminSummaryResponseSchema,
+  ProjectDeletionPreviewResponse: projectDeletionPreviewResponseSchema,
   ParameterListResponse: parameterListResponseSchema,
   ParameterResponse: parameterResponseSchema,
   ParameterHistoryResponse: parameterHistoryResponseSchema,

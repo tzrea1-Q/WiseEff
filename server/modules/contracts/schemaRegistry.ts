@@ -2005,6 +2005,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       "404": "ErrorResponse", "409": "ErrorResponse" }
   },
 
+  "parameters.previewAdminProjectDeletion": {
+    summary: "Preview project-owned deletion scope, retained resources and current blockers without mutation",
+    tags: ["parameters"],
+    responseBody: "ProjectDeletionPreviewResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "parameters.deleteAdminProject": {
     summary: "Delete an empty or legacy-only project; retain canonical project history",
     tags: ["parameters"],

@@ -18842,6 +18842,70 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/parameter-file-candidates/{candidateId}/source-apply": {
+      "post": {
+        "operationId": "parameterFiles.applySourceRevisionCandidate",
+        "summary": "Apply a confirmed complete DTS preview as the current human administrator without a separate reviewer",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "candidateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceRevisionDirectApplyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRevisionRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/parameter-file-candidates/{candidateId}/source-submit": {
       "post": {
         "operationId": "parameterFiles.submitCanonicalCandidate",
@@ -19181,6 +19245,49 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameters/admin/projects/{projectId}/deletion-preview": {
+      "get": {
+        "operationId": "parameters.previewAdminProjectDeletion",
+        "summary": "Preview project-owned deletion scope, retained resources and current blockers without mutation",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDeletionPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -56595,6 +56702,13 @@
                 "reason": {
                   "type": "string"
                 },
+                "applicationMode": {
+                  "type": "string",
+                  "enum": [
+                    "separate_review",
+                    "administrator_direct"
+                  ]
+                },
                 "submitterUserId": {
                   "type": [
                     "string",
@@ -56701,6 +56815,7 @@
                 "configSetId",
                 "status",
                 "reason",
+                "applicationMode",
                 "submitterUserId",
                 "assignedToUserId",
                 "reviewerUserId",
@@ -56755,6 +56870,13 @@
               },
               "reason": {
                 "type": "string"
+              },
+              "applicationMode": {
+                "type": "string",
+                "enum": [
+                  "separate_review",
+                  "administrator_direct"
+                ]
               },
               "submitterUserId": {
                 "type": [
@@ -56862,6 +56984,7 @@
               "configSetId",
               "status",
               "reason",
+              "applicationMode",
               "submitterUserId",
               "assignedToUserId",
               "reviewerUserId",
@@ -56942,6 +57065,13 @@
               "reason": {
                 "type": "string"
               },
+              "applicationMode": {
+                "type": "string",
+                "enum": [
+                  "separate_review",
+                  "administrator_direct"
+                ]
+              },
               "submitterUserId": {
                 "type": [
                   "string",
@@ -57048,6 +57178,7 @@
               "configSetId",
               "status",
               "reason",
+              "applicationMode",
               "submitterUserId",
               "assignedToUserId",
               "reviewerUserId",
@@ -58247,6 +58378,31 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "CanonicalSourceSubmissionResponse"
       },
+      "SourceRevisionDirectApplyRequest": {
+        "type": "object",
+        "properties": {
+          "expectedCurrentVersionId": {
+            "type": "string"
+          },
+          "expectedProofToken": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "clientMutationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedCurrentVersionId",
+          "expectedProofToken",
+          "reason",
+          "clientMutationId"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SourceRevisionDirectApplyRequest"
+      },
       "CanonicalSourceRollbackRequest": {
         "type": "object",
         "x-wiseeff-schema": "CanonicalSourceRollbackRequest"
@@ -59222,6 +59378,140 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CanonicalBatchRollbackSubmitResponse"
+      },
+      "ProjectDeletionPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "organizationId": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "projectName": {
+                "type": "string"
+              },
+              "generatedAt": {
+                "type": "string"
+              },
+              "stateDigest": {
+                "type": "string"
+              },
+              "executionAvailable": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              },
+              "inventory": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "number"
+                    },
+                    "disposition": {
+                      "type": "string",
+                      "enum": [
+                        "delete",
+                        "detach",
+                        "retain"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "label",
+                    "count",
+                    "disposition"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "storage": {
+                "type": "object",
+                "properties": {
+                  "exclusiveObjects": {
+                    "type": "number"
+                  },
+                  "sharedObjects": {
+                    "type": "number"
+                  },
+                  "totalBytes": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "exclusiveObjects",
+                  "sharedObjects",
+                  "totalBytes"
+                ],
+                "additionalProperties": false
+              },
+              "blockers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "number"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "action": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "count",
+                    "message",
+                    "action"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "notes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "organizationId",
+              "projectId",
+              "projectName",
+              "generatedAt",
+              "stateDigest",
+              "executionAvailable",
+              "inventory",
+              "storage",
+              "blockers",
+              "notes"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProjectDeletionPreviewResponse"
       },
       "ProjectDeleteResponse": {
         "type": "object",

@@ -248,6 +248,13 @@ export function CatalogOrganizationSurface({
   );
 
   const surfaceStatus = publicationSurface ? publicationSurfaceAdvisory(publicationSurface) : null;
+  const refreshCurrentCatalog = useCallback(async () => {
+    const latest = await catalog.getCatalog();
+    if (!latest.item) throw new Error("Catalog is not published");
+    onAnchorChange(buildCatalogHref({ ...parseCatalogUrlAnchor(search),
+      catalogReleaseId: latest.item.catalogReleaseId, cursor: null }), "replace");
+    setSurfaceEpoch((value) => value + 1);
+  }, [catalog, search, onAnchorChange]);
   const dismissReview = () => {
     if (reviewEditorActive) {
       if (reviewLeaveGuard.current?.() !== false) handleSelectReviewItem(null);
@@ -377,10 +384,10 @@ export function CatalogOrganizationSurface({
             projects={projects}
             onEditorStateChange={history.onEditorStateChange}
             createIdempotencyKey={createGovernanceIdempotencyKey}
-            // The catalog refreshes when the dialog closes, so a written result
-            // stays on screen instead of being replaced by a page remount.
+            // Refresh the release anchor after activation, keeping the result
+            // panel mounted while subsequent reads use the applied revision.
             onCompleted={() => undefined}
-            onRefreshEvidence={() => undefined}
+            onRefreshEvidence={refreshCurrentCatalog}
             authoringAllowed={publicationSurfaceAllowsAuthoring(publicationSurface)}
             publishingAllowed={publicationSurfaceAllowsPublishing(publicationSurface)}
             onRequestHistory={history.onRequestHistory}
@@ -517,12 +524,7 @@ export function CatalogOrganizationSurface({
           publicationSurface={publicationSurface}
           createIdempotencyKey={createGovernanceIdempotencyKey}
           onCompleted={() => setSurfaceEpoch((value) => value + 1)}
-          onRefreshEvidence={async () => {
-            const latest = await catalog.getCatalog();
-            if (!latest.item) throw new Error("Catalog is not published");
-            onAnchorChange(buildCatalogHref({ ...anchor, catalogReleaseId: latest.item.catalogReleaseId }), "replace");
-            setSurfaceEpoch((value) => value + 1);
-          }}
+          onRefreshEvidence={refreshCurrentCatalog}
           onOpenChange={(open) => {
             if (!open) {
               setAction(null);
