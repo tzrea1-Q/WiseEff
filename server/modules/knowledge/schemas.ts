@@ -3,6 +3,7 @@ import { z } from "zod";
 import { knowledgeContentForms, knowledgeOrigins, knowledgeSourceTypes, knowledgeStatuses } from "./types";
 
 const nonEmptyString = z.string().min(1);
+export const KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT = 200_000;
 const base64String = nonEmptyString.refine(
   (value) => {
     try {
@@ -35,7 +36,7 @@ export const createKnowledgeEntryBodySchema = z.discriminatedUnion("contentForm"
     origin: z.enum(["authored", "uploaded"]).optional(),
     title: nonEmptyString.max(200),
     tags: knowledgeTagsSchema,
-    contentMarkdown: z.string().max(200_000).default("")
+    contentMarkdown: z.string().max(KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT).default("")
   }),
   z.object({
     contentForm: z.literal("file"),
@@ -50,7 +51,7 @@ export const updateKnowledgeEntryBodySchema = z
     expectedHeadRevisionNumber: z.number().int().min(0),
     title: nonEmptyString.max(200).optional(),
     tags: knowledgeTagsSchema.optional(),
-    contentMarkdown: z.string().max(200_000).optional(),
+    contentMarkdown: z.string().max(KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT).optional(),
     file: knowledgeFileUploadSchema.optional()
   })
   .refine(

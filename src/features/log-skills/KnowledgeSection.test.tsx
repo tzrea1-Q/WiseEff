@@ -127,8 +127,8 @@ describe("knowledge skill section", () => {
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "创建并链接" })).toBeEnabled());
     await userEvent.click(within(dialog).getByRole("button", { name: "创建并链接" }));
     await waitFor(() => expect(repository.createMarkdown).toHaveBeenCalledTimes(2));
-    expect(repository.createMarkdown).toHaveBeenNthCalledWith(1, { title: "thermal", tags: [], contentMarkdown: "# Thermal\nCheck cooling." });
-    expect(repository.createMarkdown).toHaveBeenNthCalledWith(2, { title: "protocol", tags: [], contentMarkdown: "# Protocol" });
+    expect(repository.createMarkdown).toHaveBeenNthCalledWith(1, { origin: "uploaded", title: "thermal", tags: [], contentMarkdown: "# Thermal\nCheck cooling." });
+    expect(repository.createMarkdown).toHaveBeenNthCalledWith(2, { origin: "uploaded", title: "protocol", tags: [], contentMarkdown: "# Protocol" });
     expect(changed).toHaveBeenLastCalledWith({ schemaVersion: "skill/v1", knowledgeEntryIds: ["linked", "thermal", "protocol"] });
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(busy.mock.calls).toEqual([[true], [false]]);
@@ -153,7 +153,7 @@ describe("knowledge skill section", () => {
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "创建并链接" })).toBeEnabled());
     await userEvent.click(within(dialog).getByRole("button", { name: "创建并链接" }));
     await waitFor(() => expect(repository.createMarkdown).toHaveBeenCalledTimes(1));
-    expect(repository.createMarkdown).toHaveBeenCalledWith({ title: "valid", tags: [], contentMarkdown: "# Valid" });
+    expect(repository.createMarkdown).toHaveBeenCalledWith({ origin: "uploaded", title: "valid", tags: [], contentMarkdown: "# Valid" });
     expect(dialog).toBeVisible();
     expect(await within(dialog).findByText("已创建并链接")).toBeVisible();
   });

@@ -59,6 +59,7 @@ export interface KnowledgeRepository {
   list(query?: KnowledgeListQuery): Promise<{ items: KnowledgeEntry[] }>;
   get(entryId: string): Promise<KnowledgeEntry | null>;
   createMarkdown(input: CreateMarkdownKnowledgeInput): Promise<KnowledgeEntry>;
+  /** Upload a document: MD/TXT become markdown drafts; other formats remain file entries. */
   createFile(input: CreateFileKnowledgeInput): Promise<KnowledgeEntry>;
   /** Distil a completed log-analysis record into a pre-filled knowledge draft. */
   distillFromLog(logId: string): Promise<KnowledgeEntry>;

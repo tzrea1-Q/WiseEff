@@ -544,7 +544,7 @@ export function createMockKnowledgeRepository(
     return revision;
   }
 
-  return {
+  const repository: KnowledgeRepository = {
     async list(query?: KnowledgeListQuery) {
       const items = store.entries.filter((entry) => {
         if (entry.status === "draft" && !canManage && entry.createdByUserId !== userId) return false;
@@ -594,6 +594,24 @@ export function createMockKnowledgeRepository(
     },
 
     async createFile(input) {
+      if (/\.(md|txt)$/i.test(input.file.name)) {
+        const bytes = await new Promise<ArrayBuffer>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as ArrayBuffer);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsArrayBuffer(input.file);
+        });
+        let contentMarkdown: string;
+        try {
+          contentMarkdown = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+        } catch {
+          throw mockApiError("VALIDATION_FAILED", "文本文件必须使用有效的 UTF-8 编码，请转换编码后重新上传。");
+        }
+        if (contentMarkdown.length > 200_000) {
+          throw mockApiError("VALIDATION_FAILED", "正文超过知识库 200,000 字符上限，请精简后重新上传。");
+        }
+        return repository.createMarkdown({ title: input.title, tags: input.tags, contentMarkdown, origin: "uploaded" });
+      }
       store.counter += 1;
       const id = `mock-kb-${store.counter}`;
       const isLegacyDoc = input.file.name.toLocaleLowerCase().endsWith(".doc");
@@ -1052,4 +1070,5 @@ export function createMockKnowledgeRepository(
       return { enqueued: published.length };
     }
   };
+  return repository;
 }

@@ -511,12 +511,47 @@ describe("KnowledgePage", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "上传文件条目" });
     await user.type(within(dialog).getByLabelText("条目标题"), "上传的调参笔记");
-    await user.upload(within(dialog).getByLabelText("选择文件"), new File(["hello"], "notes.txt", { type: "text/plain" }));
+    await user.upload(within(dialog).getByLabelText("选择文件"), new File(["hello"], "notes.pdf", { type: "application/pdf" }));
     await user.click(within(dialog).getByRole("button", { name: "上传并创建草稿" }));
 
     const detail = await screen.findByRole("dialog", { name: /上传的调参笔记/ });
     expect(within(detail).getByText("提取成功")).toBeInTheDocument();
-    expect(within(detail).getByText("notes.txt")).toBeInTheDocument();
+    expect(within(detail).getByText("notes.pdf")).toBeInTheDocument();
+  });
+
+  it.each(["notes.md", "notes.txt"])("uploads %s as an editable draft with the document text", async (name) => {
+    const { repository } = renderPage();
+    const user = userEvent.setup();
+    await screen.findByRole("table", { name: "知识条目列表" });
+    await user.click(screen.getByRole("button", { name: /上传文件条目/ }));
+    const dialog = await screen.findByRole("dialog", { name: "上传文件条目" });
+    await user.type(within(dialog).getByLabelText("条目标题"), "上传正文");
+    await user.upload(within(dialog).getByLabelText("选择文件"), new File(["# 上传\n正文"], name, { type: "text/plain" }));
+    await user.click(within(dialog).getByRole("button", { name: "上传并创建草稿" }));
+    const detail = await screen.findByRole("dialog", { name: /上传正文/ });
+    expect(within(detail).getByText("上传", { selector: "[data-origin]" })).toBeInTheDocument();
+    const uploaded = (await repository.list()).items.find((entry) => entry.title === "上传正文");
+    expect(uploaded).toMatchObject({ contentForm: "markdown", status: "draft", origin: "uploaded", headRevisionNumber: 1, contentMarkdown: "# 上传\n正文", file: null });
+    await user.click(within(detail).getByRole("button", { name: "编辑" }));
+    const editor = await screen.findByRole("dialog", { name: "编辑知识条目" });
+    expect(within(editor).getByLabelText("Markdown 内容")).toHaveValue("# 上传\n正文");
+  });
+
+  it.each([
+    { content: new Uint8Array([0xc3, 0x28]), message: "文本文件必须使用有效的 UTF-8 编码，请转换编码后重新上传。" },
+    { content: "a".repeat(200_001), message: "正文超过知识库 200,000 字符上限，请精简后重新上传。" }
+  ])("keeps the upload dialog open with a clear error: $message", async ({ content, message }) => {
+    const { repository } = renderPage();
+    const user = userEvent.setup();
+    await screen.findByRole("table", { name: "知识条目列表" });
+    await user.click(screen.getByRole("button", { name: /上传文件条目/ }));
+    const dialog = await screen.findByRole("dialog", { name: "上传文件条目" });
+    await user.type(within(dialog).getByLabelText("条目标题"), "无效正文");
+    await user.upload(within(dialog).getByLabelText("选择文件"), new File([content], "invalid.md", { type: "text/markdown" }));
+    await user.click(within(dialog).getByRole("button", { name: "上传并创建草稿" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(message);
+    expect(within(dialog).getByLabelText("条目标题")).toHaveValue("无效正文");
+    expect((await repository.list()).items.some((entry) => entry.title === "无效正文")).toBe(false);
   });
 
   it("surfaces a readable conflict when a save is stale", async () => {

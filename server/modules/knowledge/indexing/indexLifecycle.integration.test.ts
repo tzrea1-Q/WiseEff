@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../../auth/types";
@@ -197,14 +198,14 @@ describe.skipIf(!databaseAvailable)("knowledge index lifecycle", () => {
       title: "SC8562 手册",
       tags: ["硬件"],
       file: {
-        fileName: "sc8562.txt",
-        contentType: "text/plain",
-        contentBase64: Buffer.from("charge pump ratio switching thresholds", "utf8").toString("base64")
+        fileName: "sc8562.pdf",
+        contentType: "application/pdf",
+        contentBase64: readFileSync(new URL("../testing/fixtures/sample.pdf", import.meta.url)).toString("base64")
       }
     });
     await publishKnowledgeEntry(db, editor, good.id);
     await drainIndexQueue(db);
-    expect((await listChunks(db, good.id)).map((chunk) => chunk.text).join(" ")).toContain("charge pump");
+    expect((await listChunks(db, good.id)).map((chunk) => chunk.text).join(" ")).toContain("knowledge pdf fixture");
 
     const legacy = await createKnowledgeEntry(db, objectStore, extractor, editor, {
       contentForm: "file",

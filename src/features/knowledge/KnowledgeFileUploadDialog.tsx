@@ -16,7 +16,7 @@ export type KnowledgeFileUploadSubmit = {
 
 export type KnowledgeFileUploadDialogProps = {
   open: boolean;
-  /** null uploads a new file entry; an entry replaces its binary. */
+  /** null uploads a new document; an entry replaces its binary. */
   entry: KnowledgeEntry | null;
   onSubmit: (input: KnowledgeFileUploadSubmit) => Promise<void>;
   onClose: () => void;
@@ -24,7 +24,7 @@ export type KnowledgeFileUploadDialogProps = {
 
 const ACCEPTED = ".pdf,.docx,.doc,.txt,.md";
 
-/** File uploads create file-form entries directly (design D12); the binary is replaceable, never editable. */
+/** The server chooses the new entry's content form; existing file entries keep their form. */
 export function KnowledgeFileUploadDialog({ open, entry, onSubmit, onClose }: KnowledgeFileUploadDialogProps) {
   const [title, setTitle] = useState("");
   const [tagsText, setTagsText] = useState("");
@@ -91,7 +91,7 @@ export function KnowledgeFileUploadDialog({ open, entry, onSubmit, onClose }: Kn
             <p id={descriptionId} className="mt-0.5 text-xs text-muted-foreground">
               {entry
                 ? "替换会产生新的不可变修订;旧文件保留在历史修订中。"
-                : "支持 PDF、Word(.docx)与纯文本;服务端会提取正文用于检索,提取状态会显示在条目上。"}
+                : "Markdown（.md）和纯文本（.txt）创建可编辑草稿，须为 UTF-8 编码且正文不超过 200,000 字符；PDF、Word 保留为文件条目。"}
             </p>
           </div>
 

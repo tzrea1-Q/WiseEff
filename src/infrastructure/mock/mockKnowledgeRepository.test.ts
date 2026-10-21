@@ -248,7 +248,7 @@ describe("createMockKnowledgeRepository", () => {
     const good = await repository.createFile({
       title: "文本文件",
       tags: [],
-      file: new File(["hello"], "notes.txt", { type: "text/plain" })
+      file: new File(["hello"], "notes.pdf", { type: "application/pdf" })
     });
     expect(good.file?.extractionStatus).toBe("succeeded");
     expect(good.origin).toBe("uploaded");
