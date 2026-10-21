@@ -14,7 +14,8 @@ type OnNavigate = (path: string) => void;
 const allNavItems: Array<{ label: string; href: string; workflowId: WorkflowId }> = [
   { label: "参数管理", href: "/parameter-home", workflowId: "parameter-management" },
   { label: "调试平台", href: "/node-debugging", workflowId: "debugging" },
-  { label: "日志分析", href: "/logs", workflowId: "log-analysis" }
+  { label: "日志分析", href: "/logs", workflowId: "log-analysis" },
+  { label: "知识库", href: "/knowledge", workflowId: "knowledge" }
 ];
 
 const navItems = allNavItems.filter((item) => isWorkflowVisible(item.workflowId));
