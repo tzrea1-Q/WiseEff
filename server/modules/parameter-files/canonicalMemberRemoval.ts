@@ -24,6 +24,7 @@ import { insertConfigRevision, insertConfigRevisionMembers, nextConfigRevisionNu
 import type { ConfigRevisionMemberRole } from "../parameter-topology/types";
 import { ingestConfigRevisionInTransaction, prepareReviewedSourceContinuity, type ReviewedSourceContinuity } from "../parameter-topology/ingestService";
 import { resolveDtsConfigSet } from "../dts";
+import { stripDtsComments } from "../dts/preprocess";
 import { canonicalizeLogicalNodeCompatible } from "../parameter-topology/writeLock";
 import { assertTrustedSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
 import { canonicalSourceMemberMatchesCurrentFile, loadCanonicalSourceCohort,
@@ -214,7 +215,7 @@ async function inspectAdministratorMemberRemoval(tx: Database, storage: ObjectSt
   const dependencies: Array<{ file: string; kind: "include" | "overlay"; target: string }> = [];
   for (const member of members.filter((row) => row.format === "dts")) {
     const content = files.find((row) => row.name === member.sourceName)!.content;
-    for (const match of content.matchAll(/(?:#include|\/include\/)\s*["<]([^">]+)[">]/g)) dependencies.push({ file: member.sourceName, kind: "include", target: match[1]! });
+    for (const match of stripDtsComments(content).matchAll(/(?:#include|\/include\/)\s*["<]([^">]+)[">]/g)) dependencies.push({ file: member.sourceName, kind: "include", target: match[1]! });
   }
   for (const target of revision.overlay_order) dependencies.push({ file: revision.entry_file, kind: "overlay", target });
   let nodeRemovals = 0;

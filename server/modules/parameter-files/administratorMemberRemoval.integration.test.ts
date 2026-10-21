@@ -27,7 +27,7 @@ import { registerDefinitionDeletionRoutes } from "../parameter-catalog-api/defin
 
 const ORG = "org-admin-removal", PROJECT = "project-admin-removal", USER = "user-admin-removal";
 const admin = makeTestAuthContext({ organizationId: ORG, userId: USER, roles: [{ roleId: "admin", projectId: null }] });
-const root = '/dts-v1/;\n/ { compatible = "test,board"; model = "member removal"; };\n';
+const root = '/dts-v1/;\n// /include/ "unused-comment.dtsi"\n/ { compatible = "test,board"; model = "member removal"; };\n';
 const overlay = '/dts-v1/; /plugin/;\n/ { fragment@0 { target-path = "/"; __overlay__ { note = "obsolete"; }; }; };\n';
 
 describe("administrator Canonical member removal through the API database role", () => {
@@ -88,6 +88,7 @@ describe("administrator Canonical member removal through the API database role",
     const preview = await requestJson<{ item: { proofToken: string; canApply: boolean; impact: { removedBindings: number }; dependencies: unknown[] } }>(server(), path(f.configSetId, f.b.file.id, "removal-preview"), { method: "POST", body: "{}" });
     expect(preview.status, preview.bodyText).toBe(200);
     expect(preview.body.item).toMatchObject({ canApply: true, impact: { removedBindings: 0 } });
+    expect(preview.body.item.dependencies).toEqual([{ file: f.a.file.fileName, kind: "overlay", target: f.b.file.fileName }]);
     expect(await listConfigSetFiles(db, admin, { projectId: PROJECT, configSetId: f.configSetId })).toHaveLength(2);
     const applied = await requestJson(server(), path(f.configSetId, f.b.file.id, "removal-apply"), { method: "POST", body: JSON.stringify({ expectedProofToken: preview.body.item.proofToken, reason: "Remove obsolete overlay", clientMutationId: crypto.randomUUID() }) });
     expect(applied.status, applied.bodyText).toBe(200);
@@ -136,8 +137,13 @@ describe("administrator Canonical member removal through the API database role",
       intent: "source_revision", expectedCurrentVersionId: f.a.version.id, expectedConfigRevisionId: result.body.item.successorConfigRevisionId, clientMutationId: crypto.randomUUID()
     }) });
     expect(candidate.status, candidate.bodyText).toBe(201);
-    const subsequent = await requestJson<{ item: { canSubmit: boolean } }>(server(), `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidate.body.item.id}/source-preview`);
+    const subsequent = await requestJson<{ item: { canSubmit: boolean; proofToken: string } }>(server(), `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidate.body.item.id}/source-preview`);
     expect(subsequent.status, subsequent.bodyText).toBe(200); expect(subsequent.body.item.canSubmit).toBe(true);
+    const edited = await requestJson(server(), `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidate.body.item.id}/source-apply`, { method: "POST", body: JSON.stringify({
+      expectedCurrentVersionId: f.a.version.id, expectedProofToken: subsequent.body.item.proofToken, reason: "Edit restored source normally", clientMutationId: crypto.randomUUID()
+    }) });
+    expect(edited.status, edited.bodyText).toBe(200);
+    expect((await listCatalogBindingRowsForProject(api, admin, { projectId: PROJECT })).find((row) => row.id === before.id)).toMatchObject({ rawValue: "<37>", sourceFileId: f.a.file.id });
     const exported = await requestJson(server(), `/api/v1/projects/${PROJECT}/config-sets/${f.configSetId}/export`);
     expect(exported.status, exported.bodyText).toBe(200);
     const replay = await requestJson<{ item: { replayed: boolean } }>(server(), path(f.configSetId, f.b.file.id, "removal-apply"), { method: "POST", body });
