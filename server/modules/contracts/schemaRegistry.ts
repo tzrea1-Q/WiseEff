@@ -85,7 +85,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["auth"],
     requestBody: "UpdateCurrentUserProfileRequest",
     responseBody: "MeResponse",
-    additionalResponses: { "401": "ErrorResponse" }
+    additionalResponses: { "400": "ErrorResponse", "401": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
   },
   "auth.changePassword": {
     summary: "Change the current local-account password",

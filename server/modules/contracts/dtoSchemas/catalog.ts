@@ -90,6 +90,10 @@ import { releaseBaselineRestoreRequestSchema, releaseBaselineRestorePreviewRespo
  * Xiaoze). Names not listed here stay as `x-wiseeff-schema` placeholders.
  */
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
+  UpdateCurrentUserProfileRequest: z.object({
+    name: z.string().trim().min(1).optional(),
+    title: z.string().trim().min(1).optional()
+  }).strict(),
   RetryLogSourceSnapshotRequest: z.object({}).strict(),
   SkillDeletionRequest: skillDeletionRequestSchema,
   SkillDeletionPreviewResponse: skillDeletionPreviewResponseSchema,

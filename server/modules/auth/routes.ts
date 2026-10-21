@@ -4,6 +4,9 @@ import type { AuthContextResolver } from "./contextFactory";
 import { ApiError } from "../../shared/http/errors";
 import { z } from "zod";
 import type { createLocalAuthService, LocalAuthPublicConfig, LocalAuthSessionResult } from "./localAuth";
+import type { Database } from "../../shared/database/client";
+import { updateCurrentUserProfile } from "./profile";
+import { createUserInvocation } from "./trustedInvocation";
 
 const platformRoleIdSchema = z.enum([
   "guest",
@@ -61,9 +64,9 @@ const loginBodySchema = z.object({
 }).strict();
 
 const updateProfileBodySchema = z.object({
-  name: z.string().min(1).optional(),
-  title: z.string().min(1).optional()
-});
+  name: z.string().trim().min(1).optional(),
+  title: z.string().trim().min(1).optional()
+}).strict();
 
 const changePasswordBodySchema = z.object({
   currentPassword: z.string().min(1),
@@ -98,6 +101,7 @@ function sessionResponse(result: LocalAuthSessionResult) {
 export function registerAuthRoutes(
   router: WiseEffRouter,
   options: {
+    db?: Database;
     getCurrentAuthContext: AuthContextResolver;
     localAuthService?: LocalAuthService;
     authPublicConfig?: () => Promise<AuthPublicConfig> | AuthPublicConfig;
@@ -181,14 +185,12 @@ export function registerAuthRoutes(
   });
 
   router.patch("/api/v1/me/profile", async (request) => {
-    if (!options.localAuthService) {
-      throw new ApiError("NOT_FOUND", "Local profile updates are not enabled.");
-    }
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(updateProfileBodySchema, request.body, "Invalid profile input.");
+    if (!options.db) throw new ApiError("NOT_FOUND", "Profile storage is not enabled.");
     return {
       status: 200,
-      body: await options.localAuthService.updateCurrentUserProfile(auth, body, { requestId: request.requestId })
+      body: await updateCurrentUserProfile(options.db, createUserInvocation(auth), body, { requestId: request.requestId })
     };
   });
 

@@ -526,7 +526,12 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     const storageKey = created.body.item.file.storageKey as string;
     const shared = await request(auth, "POST", "/api/v1/knowledge/entries", { ...input, title: "Retained shared file entry" });
     expect(shared.status).toBe(201);
-    expect(shared.body.item.file.storageKey).toBe(storageKey);
+    expect(shared.body.item.file.storageKey).not.toBe(storageKey);
+    const pool = getRootPostgresPool(db)!;
+    // New uploads own separate objects. Preserve coverage for legacy shared keys
+    // by explicitly creating the older, valid metadata state.
+    await pool.query("update knowledge_files set storage_key = $1 where entry_id = $2 and organization_id = $3", [storageKey, shared.body.item.id, ORG_A]);
+    expect((await request(auth, "GET", `/api/v1/knowledge/entries/${shared.body.item.id}`)).body.item.file.storageKey).toBe(storageKey);
     expect((await request(auth, "PATCH", `/api/v1/knowledge/entries/${entryId}`, {
       expectedHeadRevisionNumber: 1, title: "Direct draft deletion revised"
     })).status).toBe(200);
@@ -552,7 +557,6 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     expect(retainedDefinition.status).toBe(200);
     expect(retainedDefinition.body.item.id).toBe(activeDefinitionId);
 
-    const pool = getRootPostgresPool(db)!;
     const counts = await pool.query<{
       revisions: number; files: number; references: number; deletion_audits: number;
     }>(
