@@ -52,6 +52,7 @@ import {
 } from "./workbenchInspectorModel";
 import { WorkbenchInspectorPanel } from "./WorkbenchInspectorPanel";
 import { WorkbenchConfigurationFilesDialog } from "./WorkbenchConfigurationFilesDialog";
+import { WorkbenchMemberAdditionDialog } from "./WorkbenchMemberAdditionDialog";
 import { WorkbenchRevisionGate } from "./WorkbenchRevisionGate";
 import { WorkbenchSourceCanvas } from "./WorkbenchSourceCanvas";
 import { WorkbenchSourceEditingPane } from "./WorkbenchSourceEditingPane";
@@ -645,6 +646,7 @@ export function ProjectConfigurationWorkbench({
     }
     return result;
   }, [projectFiles, sourceWorkflowsByFileId]);
+  const [memberAdditionOpen, setMemberAdditionOpen] = useState(false);
   const sourceWorkflowSetCanonical = selectedMembers.some(
     (member) => sourceWorkflowsByFileId[member.fileId]?.canonical === true
   );
@@ -1981,7 +1983,7 @@ export function ProjectConfigurationWorkbench({
       {inspectorLevel === "release" ? inspectorPanel : null}
 
       {selectedConfigSet ? <WorkbenchConfigurationFilesDialog
-        open={inspectorOpen && inspectorLevel === "config-set" && !createConfigSetOpen}
+        open={inspectorOpen && inspectorLevel === "config-set" && !createConfigSetOpen && !memberAdditionOpen}
         onClose={closeInspector}
         configSet={selectedConfigSet}
         members={selectedMembers}
@@ -2021,7 +2023,18 @@ export function ProjectConfigurationWorkbench({
         onUpdateFile={(fileId) => openInspector("candidates", fileId)}
         onOpenVersions={(fileId) => openInspector("versions", fileId)}
         onAddSourceFile={() => openInspector("candidates")}
+        onCanonicalAdd={apiMode ? () => setMemberAdditionOpen(true) : undefined}
       /> : null}
+      {memberAdditionOpen && selectedConfigSet ? <WorkbenchMemberAdditionDialog projectId={project.id} configSets={configSets}
+        initialConfigSetId={selectedConfigSet.id} availableFiles={ungroupedFiles} onDismiss={() => setMemberAdditionOpen(false)}
+        onApplied={(configSetId, fileId) => {
+          setMemberAdditionOpen(false); setInspectorOpen(false); workspaceLoadSession.retryFiles(); workspaceLoadSession.retryMembers();
+          workspaceLoadSession.retrySource(); workspaceLoadSession.retryStructure(); setSourceWorkflowReloadToken((value) => value + 1);
+          setVersionsReloadToken((value) => value + 1);
+          if (topologyRepository) void revisionGate.session.load(project.id, configSetId, topologyRepository);
+          onNavigate(formatWorkbenchPath(project.id, canvasSearch, { configSet: configSetId, file: fileId, inspector: null,
+            sourceMode: null, version: null, candidate: null, baseline: null, node: null, property: null }));
+        }} /> : null}
 
       <WorkbenchCandidateActivateDialog
         open={activateConfirmOpen}

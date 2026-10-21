@@ -42,13 +42,14 @@ export type WorkbenchConfigurationFilesDialogProps = {
   onUpdateFile: (fileId: string) => void;
   onOpenVersions: (fileId: string) => void;
   onAddSourceFile: () => void;
+  onCanonicalAdd?: () => void;
 };
 
 export function WorkbenchConfigurationFilesDialog({
   open, onClose, configSet, members, canAdmin, pendingAction, loading, error, operationError = "", ready, canonical, onRetry,
   availableFiles, addErrors, memberFileId, memberRole, memberSortOrder, onMemberFileIdChange,
   onMemberRoleChange, onMemberSortOrderChange, onAddMember, onRemoveMember, canRequestReviewedMemberRemoval,
-  onOpenFile, onUpdateFile, onOpenVersions, onAddSourceFile
+  onOpenFile, onUpdateFile, onOpenVersions, onAddSourceFile, onCanonicalAdd
 }: WorkbenchConfigurationFilesDialogProps) {
   const addErrorId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -73,7 +74,8 @@ export function WorkbenchConfigurationFilesDialog({
         </Button>
       </header>
       <div className="workbench-configuration-files-dialog__body" aria-busy={loading || busy}>
-        {canonical ? <p className="workbench-configuration-files-dialog__note">此配置已登记来源，暂不支持添加文件或移除 DTS 文件；更新及 JSON 移除需审核。</p> : null}
+        {canonical ? <p className="workbench-configuration-files-dialog__note">此配置已登记来源。添加文件需预览并确认，当前文件及历史会保留。</p> : null}
+        {canonical && canAdmin && checked && onCanonicalAdd ? <Button type="button" disabled={busy} onClick={onCanonicalAdd}>添加配置文件</Button> : null}
         {loading ? <p role="status">正在核对配置文件…</p> : null}
         {busy && pendingAction !== "add-member" ? <p role="status">正在移除文件…</p> : null}
         {operationError ? <p className="workbench-configuration-files-dialog__operation-error" role="alert">{operationError}</p> : null}

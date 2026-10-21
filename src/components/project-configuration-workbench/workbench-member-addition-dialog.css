@@ -1,0 +1,13 @@
+.workbench-member-addition-dialog { display: grid; grid-template-rows: auto minmax(0, 1fr); width: min(calc(var(--space-16) * 11), calc(100vw - var(--space-12))); max-height: calc(100dvh - var(--space-12)); background: var(--surface-raised); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-3); }
+.workbench-member-addition-dialog header { display: flex; align-items: flex-start; gap: var(--space-4); justify-content: space-between; padding: var(--space-5); border-bottom: 1px solid var(--border); }
+.workbench-member-addition-dialog h2, .workbench-member-addition-dialog h3 { margin-top: 0; }
+.workbench-member-addition-dialog header p { margin-bottom: 0; color: var(--text-muted); }
+.workbench-member-addition-dialog__body { min-width: 0; overflow-y: auto; overflow-wrap: anywhere; padding: var(--space-5); }
+.workbench-member-addition-dialog fieldset, .workbench-member-addition-dialog label { display: grid; gap: var(--space-2); min-width: 0; }
+.workbench-member-addition-dialog fieldset { gap: var(--space-4); border: 0; padding: 0; margin: 0; }
+.workbench-member-addition-dialog legend { margin-bottom: var(--space-3); font-weight: 600; }
+.workbench-member-addition-dialog select { width: 100%; min-height: var(--space-8); background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-2); }
+.workbench-member-addition-dialog__columns { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
+.workbench-member-addition-dialog section { margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.workbench-member-addition-dialog section > button { margin-top: var(--space-4); }
+.workbench-member-addition-dialog [role="alert"] { color: var(--danger); overflow-wrap: anywhere; }
