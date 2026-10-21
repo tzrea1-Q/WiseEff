@@ -218,7 +218,7 @@ export function getPageByPath(path: string): PageConfig {
       group: "平台总览",
       icon: Settings2,
       title: "组织管理",
-      subtitle: area === "members" ? ORGANIZATION_ADMIN_UI.membersSubtitle : ORGANIZATION_ADMIN_UI.profileSubtitle
+      subtitle: area === "bridges" ? ORGANIZATION_ADMIN_UI.bridgesSubtitle : area === "members" ? ORGANIZATION_ADMIN_UI.membersSubtitle : ORGANIZATION_ADMIN_UI.profileSubtitle
     };
   }
 
@@ -416,6 +416,7 @@ export function getXiaozeContextSummary(path: string): string {
       }
       return "正在关注 DTS 重载配置：落地路径、触发节点与内核日志命令。";
     case "user-permissions":
+      if (parseOrganizationAdminArea(path) === "bridges") return "正在关注本组织设备代理的所有者、连接状态与配对撤销。";
       if (parseOrganizationAdminArea(path) === "members") {
         return "正在关注本组织成员、角色权限和注册申请。";
       }

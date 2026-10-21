@@ -43,6 +43,18 @@ function rpcRequest(id: string): BridgeRpcRequest {
 }
 
 describe("bridge connection pool", () => {
+  it("disconnects a revoked bridge and rejects its in-flight and queued RPCs", async () => {
+    const pool = createBridgeConnectionPool(), socket = createMockSocket();
+    pool.register("br-1", socket);
+    const first = pool.send("br-1", rpcRequest("pending"));
+    const second = pool.send("br-1", rpcRequest("queued"));
+    const settled = Promise.allSettled([first, second]);
+    await Promise.resolve();
+    pool.disconnect("br-1");
+    expect((await settled).map(result => result.status)).toEqual(["rejected", "rejected"]);
+    expect(pool.isConnected("br-1")).toBe(false);
+    expect(socket.close).toHaveBeenCalledWith(4401, "Bridge pairing revoked.");
+  });
   it("registers and unregisters bridge sockets", () => {
     const pool = createBridgeConnectionPool();
     const socket = createMockSocket();

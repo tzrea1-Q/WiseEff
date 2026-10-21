@@ -68,7 +68,30 @@ export function createDeviceBridgeWsHandler(options: DeviceBridgeWsHandlerOption
       }
 
       const bridgeId = validated.bridgeId;
-      options.pool.register(bridgeId, socket);
+      options.pool.register(bridgeId, socket, false);
+
+      let timer: ReturnType<typeof setInterval> | undefined;
+      const detach = () => {
+        if (timer) clearInterval(timer);
+        options.pool.unregister(bridgeId, socket);
+      };
+      socket.on("close", detach);
+      socket.on("error", detach);
+      async function stillAuthorized() {
+        try {
+          const current = await options.repo.validateBridgeToken({ tokenHash: sha256Hex(bridgeToken!), now: now() });
+          if (!current || current.bridgeId !== bridgeId || !current.scopes.includes(DEVICE_BRIDGE_CONNECT_SCOPE)) {
+            detach(); closeWithError(socket, "Invalid, revoked or expired bridge token."); return false;
+          }
+        } catch { detach(); socket.close(1011, "Bridge authorization unavailable."); return false; }
+        if (!options.pool.isCurrent(bridgeId, socket) || socket.readyState !== 1) { detach(); return false; }
+        return true;
+      }
+      // A revoke may commit between the initial authorization read and registration.
+      if (!await stillAuthorized()) return;
+      try { await options.repo.touchBridgeLastSeen({ bridgeId, seenAt: now() }); }
+      catch { detach(); socket.close(1011, "Bridge activity persistence unavailable."); return; }
+      if (!options.pool.activate(bridgeId, socket)) return;
 
       const hello: BridgeHelloMessage = {
         type: "bridge.hello",
@@ -78,10 +101,18 @@ export function createDeviceBridgeWsHandler(options: DeviceBridgeWsHandlerOption
       };
       socket.send(JSON.stringify(hello));
 
-      socket.on("message", (raw) => {
+      let checking = false;
+      timer = setInterval(() => {
+        if (checking) return;
+        checking = true;
+        void stillAuthorized().finally(() => { checking = false; });
+      }, heartbeatIntervalMs);
+      timer.unref();
+
+      socket.on("message", async (raw) => {
         const payload = typeof raw === "string" ? raw : raw.toString("utf8");
         const message = parseBridgeInboundMessage(payload);
-        if (!message) {
+        if (!message || !await stillAuthorized()) {
           return;
         }
 
@@ -101,13 +132,6 @@ export function createDeviceBridgeWsHandler(options: DeviceBridgeWsHandlerOption
         options.pool.handleInboundMessage(bridgeId, message);
       });
 
-      socket.on("close", () => {
-        options.pool.unregister(bridgeId, socket);
-      });
-
-      socket.on("error", () => {
-        options.pool.unregister(bridgeId, socket);
-      });
     }
   };
 }
