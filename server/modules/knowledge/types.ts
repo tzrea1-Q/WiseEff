@@ -141,6 +141,7 @@ export type ListKnowledgeEntriesQuery = {
   tag?: string;
   q?: string;
   limit?: number;
+  offset?: number;
 };
 
 export type InsertKnowledgeEntryInput = {

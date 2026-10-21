@@ -575,7 +575,8 @@ export function createMockKnowledgeRepository(
         if (query?.q && !entry.title.toLocaleLowerCase().includes(query.q.toLocaleLowerCase())) return false;
         return true;
       });
-      return { items: items.map(clone) };
+      const offset = query?.offset ?? 0;
+      return { items: items.slice(offset, offset + (query?.limit ?? 100)).map(clone) };
     },
 
     async get(entryId) {

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
 import type { KnowledgeEntry } from "@/domain/knowledge/types";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
 import { KnowledgeSection } from "./KnowledgeSection";
 import { SkillSpecDiff } from "./SkillSpecDiff";
 import type { SkillSpec } from "./types";
@@ -39,6 +40,32 @@ const markdownFile = (name: string, content: string) => {
 };
 
 describe("knowledge skill section", () => {
+  it("expands an exact tag into published identities independently of title search, without subscribing to later tags", async () => {
+    const repository = createMockKnowledgeRepository({ userId: "user" }, { revisions: [], entries: [
+      { ...entry("linked"), tags: ["充电"] }, { ...entry("second"), tags: ["充电"] },
+      { ...entry("private", "draft"), tags: ["充电"] }, { ...entry("archived", "archived"), tags: ["充电"] },
+      { ...entry("other"), tags: ["充电器"] }
+    ] });
+    const changed = vi.fn();
+    function Harness() {
+      const [spec, setSpec] = useState<SkillSpec>({ schemaVersion: "skill/v1", knowledgeEntryIds: ["linked"] });
+      return <KnowledgeSection spec={spec} setSpec={(next) => { changed(next); setSpec(next); }} disabled={false} apiMode
+        knowledgeRepository={repository} knowledgeCapability={{ canView: true, canEdit: false, canManage: false, userId: "user" }} onBusyChange={vi.fn()} />;
+    }
+    render(<Harness />);
+    await userEvent.click(screen.getByRole("button", { name: "链接已有条目" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByRole("searchbox"), { target: { value: "no title matches" } });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "知识标签" }), { target: { value: " 充电 " } });
+    await userEvent.click(within(dialog).getByRole("button", { name: "添加此标签的全部已发布条目" }));
+    await waitFor(() => expect(changed).toHaveBeenLastCalledWith({ schemaVersion: "skill/v1", knowledgeEntryIds: ["linked", "second"] }));
+    const later = await repository.createMarkdown({ title: "later", tags: ["充电"], contentMarkdown: "later" });
+    await repository.publish(later.id);
+    expect(changed).toHaveBeenCalledTimes(1);
+    await userEvent.click(within(dialog).getByRole("button", { name: "完成" }));
+    expect(await screen.findByRole("table", { name: "已链接知识条目" })).not.toHaveTextContent("later");
+  });
+
   it("shows a read failure as retryable rather than deleted", async () => {
     let failed = false;
     setup({ ids: ["linked"], get: async (id) => {
@@ -50,6 +77,58 @@ describe("knowledge skill section", () => {
     await userEvent.click(screen.getByRole("button", { name: "重试" }));
     expect(await screen.findByText("linked 知识")).toBeVisible();
   });
+  it.each([0, 200, 201])("handles %i published tag matches without silently truncating the selection", async (count) => {
+    const repository = createMockKnowledgeRepository({}, { revisions: [], entries: Array.from({ length: count }, (_, i) => ({ ...entry(`tag-${i}`), tags: ["充电"] })) });
+    const changed = vi.fn();
+    render(<KnowledgeSection spec={{ schemaVersion: "skill/v1" }} setSpec={changed} disabled={false} apiMode
+      knowledgeRepository={repository} knowledgeCapability={{ canView: true, canEdit: false, canManage: false, userId: "user" }} onBusyChange={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "链接已有条目" }));
+    const dialog = screen.getByRole("dialog");
+    const add = within(dialog).getByRole("button", { name: "添加此标签的全部已发布条目" });
+    expect(add).toBeDisabled();
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "知识标签" }), { target: { value: "充电" } });
+    await userEvent.click(add);
+    if (count === 200) {
+      await waitFor(() => expect(changed).toHaveBeenCalledOnce());
+      expect(changed.mock.calls[0][0].knowledgeEntryIds).toEqual(Array.from({ length: 200 }, (_, i) => `tag-${i}`));
+    } else {
+      expect(await within(dialog).findByText(count ? /全部添加后超过/ : "此标签没有已发布条目，未更改链接。")).toBeVisible();
+      expect(changed).not.toHaveBeenCalled();
+    }
+  });
+
+  it("preserves existing bindings on tag lookup failure and allows retry", async () => {
+    const { repository, changed, busy } = setup({ ids: ["linked"] });
+    await userEvent.click(screen.getByRole("button", { name: "链接已有条目" }));
+    const dialog = screen.getByRole("dialog");
+    await within(dialog).findByText("existing 知识");
+    repository.list.mockRejectedValueOnce(new Error("Offline"));
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "知识标签" }), { target: { value: "充电" } });
+    await userEvent.click(within(dialog).getByRole("button", { name: "添加此标签的全部已发布条目" }));
+    expect(await within(dialog).findByRole("alert")).toBeVisible();
+    expect(changed).not.toHaveBeenCalled();
+    await userEvent.click(within(dialog).getByRole("button", { name: "添加此标签的全部已发布条目" }));
+    await waitFor(() => expect(changed).toHaveBeenCalledWith({ schemaVersion: "skill/v1", knowledgeEntryIds: ["linked", "existing"] }));
+    expect(busy.mock.calls).toEqual([[true], [false], [true], [false]]);
+  });
+
+  it("blocks repeated additions while loading and preserves the draft when the combined links exceed capacity", async () => {
+    const { repository, changed, busy } = setup({ ids: Array.from({ length: 199 }, (_, i) => `linked-${i}`) });
+    await userEvent.click(screen.getByRole("button", { name: "链接已有条目" }));
+    const dialog = screen.getByRole("dialog");
+    await within(dialog).findByText("existing 知识");
+    let finish!: (value: { items: KnowledgeEntry[] }) => void;
+    repository.list.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "知识标签" }), { target: { value: "充电" } });
+    await userEvent.click(within(dialog).getByRole("button", { name: "添加此标签的全部已发布条目" }));
+    expect(within(dialog).getByRole("button", { name: "正在添加…" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "完成" })).toBeDisabled();
+    finish({ items: [entry("existing"), entry("second")] });
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("未更改链接");
+    expect(changed).not.toHaveBeenCalled();
+    expect(busy.mock.calls).toEqual([[true], [false]]);
+  });
+
   it("keeps archived and deleted bindings visible and removable", async () => {
     const { changed } = setup({ ids: ["archived", "deleted"], get: async (id) => id === "deleted" ? null : entry(id, "archived") });
     const table = await screen.findByRole("table", { name: "已链接知识条目" });

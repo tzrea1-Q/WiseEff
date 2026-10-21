@@ -64,6 +64,59 @@ async function createFixture() {
 }
 
 describe.skipIf(!available)("skill knowledge runs over PostgreSQL", () => {
+  it("expands paged published tag matches and freezes those identities in a published skill revision", async () => {
+    const fixture = await createFixture();
+    const { request, createMarkdown, admin, setAuth } = fixture;
+    try {
+      const tagged = async (title: string, publish = true) => {
+        const created = await createMarkdown(title, "k1335 charging guidance");
+        expect((await request(`/api/v1/knowledge/entries/${created.id}`, "PATCH", {
+          expectedHeadRevisionNumber: 1, tags: ["k1335"]
+        })).status).toBe(200);
+        if (publish) expect((await request(`/api/v1/knowledge/entries/${created.id}/publish`, "POST", {})).status).toBe(200);
+        return created;
+      };
+      const first = await tagged("k1335 first"), second = await tagged("k1335 second");
+      const draftEntry = await tagged("k1335 draft", false);
+      const archived = await tagged("k1335 archived");
+      expect((await request(`/api/v1/knowledge/entries/${archived.id}/archive`, "POST", {})).status).toBe(200);
+      const untagged = await createMarkdown("k1335 retag later", "k1335 guidance");
+      expect((await request(`/api/v1/knowledge/entries/${untagged.id}/publish`, "POST", {})).status).toBe(200);
+      setAuth(makeTestAuthContext({ organizationId: "org-other-knowledge", userId: "org-other-knowledge-admin", permissions: admin.permissions }));
+      await tagged("k1335 foreign");
+      setAuth(admin);
+      const listPath = "/api/v1/knowledge/entries?tag=k1335&status=published";
+      const list = async (suffix: string) => {
+        const response = await request<{ items: KnowledgeEntryDto[] }>(listPath + suffix);
+        expect(response.status).toBe(200);
+        return response.body.items.map((entry) => entry.id);
+      };
+      const ids = [...await list("&limit=1"), ...await list("&limit=1&offset=1")];
+      expect(new Set(ids)).toEqual(new Set([first.id, second.id]));
+      expect(await list("&limit=1&offset=2")).toEqual([]);
+      expect((await request(listPath + "&offset=-1")).status).toBe(400);
+      const skill = await request<{ item: Skill }>("/api/v1/log-skills", "POST", { name: "k1335 tag snapshot" });
+      expect(skill.status).toBe(201);
+      const skillPath = `/api/v1/log-skills/${skill.body.item.id}`;
+      const spec = { schemaVersion: "skill/v1", knowledgeEntryIds: ids };
+      const draft = await request<{ item: LogSkillRevisionDto }>(`${skillPath}/draft`, "PUT", {
+        spec, baseDraftRevisionId: null, basePublishedRevisionId: skill.body.item.currentRevision.id
+      });
+      expect(draft.status).toBe(200);
+      expect(draft.body.item.spec).toEqual(spec);
+      expect((await request(`${skillPath}/publish`, "POST", { draftRevisionId: draft.body.item.id })).status).toBe(200);
+      const later = await tagged("k1335 uploaded later");
+      expect((await request(`/api/v1/knowledge/entries/${untagged.id}`, "PATCH", {
+        expectedHeadRevisionNumber: 1, tags: ["k1335"]
+      })).status).toBe(200);
+      expect(new Set(await list(""))).toEqual(new Set([...ids, later.id, untagged.id]));
+      const revision = await request<{ item: LogSkillRevisionDto }>(`${skillPath}/revisions/${draft.body.item.id}`);
+      expect(revision.status).toBe(200);
+      expect(revision.body.item.spec).toEqual(spec);
+      expect(revision.body.item.spec.knowledgeEntryIds).not.toContain(draftEntry.id);
+    } finally { await fixture.close(); }
+  }, 120_000);
+
   it("reads archived and missing bindings without exposing private or foreign knowledge", async () => {
     const fixture = await createFixture();
     const { admin, request, createMarkdown, setAuth } = fixture;

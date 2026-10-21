@@ -466,13 +466,14 @@ export async function listEntries(
   }
 
   values.push(query.limit ?? 100);
+  values.push(query.offset ?? 0);
   const result = await db.query<KnowledgeEntryRow>(
     `
     select *
     from knowledge_entries
     where ${where.join("\n      and ")}
     order by updated_at desc, id desc
-    limit $${values.length}
+    limit $${values.length - 1} offset $${values.length}
     `,
     values
   );

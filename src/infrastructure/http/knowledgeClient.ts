@@ -190,6 +190,8 @@ function buildListPath(query?: KnowledgeListQuery) {
   if (query?.origin) params.set("origin", query.origin);
   if (query?.tag) params.set("tag", query.tag);
   if (query?.q) params.set("q", query.q);
+  if (query?.limit !== undefined) params.set("limit", String(query.limit));
+  if (query?.offset !== undefined) params.set("offset", String(query.offset));
   const encoded = params.toString();
   return encoded ? `/api/v1/knowledge/entries?${encoded}` : "/api/v1/knowledge/entries";
 }

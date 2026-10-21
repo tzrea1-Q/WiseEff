@@ -1393,6 +1393,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["knowledge"],
     responseBody: "KnowledgeEntryListResponse",
     requestParameters: [
+      { name: "limit", in: "query", description: "Page size from 1 to 200; defaults to 100.", schema: { type: "integer" } },
+      { name: "offset", in: "query", description: "Nonnegative number of entries to skip; defaults to 0.", schema: { type: "integer" } },
       { name: "origin", in: "query", schema: { type: "string", enum: ["authored", "uploaded", "distilled", "agent-drafted", "imported"] } },
       { name: "governable", in: "query", description: "Only non-archived entries owned by the caller, or any owner for knowledge:manage. Requires knowledge:edit or knowledge:manage.", schema: { type: "string", enum: ["true", "false"] } }
     ],

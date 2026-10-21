@@ -20,6 +20,8 @@ export type KnowledgeListQuery = {
   sourceType?: KnowledgeSourceType;
   tag?: string;
   q?: string;
+  limit?: number;
+  offset?: number;
 };
 
 export type CreateMarkdownKnowledgeInput = {

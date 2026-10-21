@@ -15236,6 +15236,24 @@
         ],
         "parameters": [
           {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size from 1 to 200; defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "description": "Nonnegative number of entries to skip; defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
             "name": "origin",
             "in": "query",
             "required": false,

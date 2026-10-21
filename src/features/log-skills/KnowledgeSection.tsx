@@ -11,6 +11,7 @@ import { SearchField } from "@/components/common/SearchField";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { DataTable } from "@/components/admin/DataTable";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { KnowledgeStatusBadge } from "@/features/knowledge/badges";
 import type { SkillSpec } from "./types";
 
@@ -32,6 +33,9 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
   const [linkOpen, setLinkOpen] = useState(false);
   const [unlinking, setUnlinking] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [tag, setTag] = useState("");
+  const [tagError, setTagError] = useState<string | null>(null);
+  const [tagResult, setTagResult] = useState<string | null>(null);
   const [choices, setChoices] = useState<KnowledgeEntry[] | null>(null);
   const [searchFailed, setSearchFailed] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -41,6 +45,7 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
   const searchRef = useRef<HTMLInputElement>(null);
   const chooseRef = useRef<HTMLButtonElement>(null);
   const reasonId = useId();
+  const tagId = useId();
   const canRead = apiMode && !!repository && !!capability?.canView;
   const atLimit = ids.length >= 200;
   const uploadReason = !capability?.canEdit ? "上传 Markdown 需要知识编辑权限。" : atLimit ? "每个技能最多链接 200 个知识条目，请先取消部分链接。" : "";
@@ -90,6 +95,25 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
       }
     }
   }
+  async function addTag() {
+    if (!canRead || disabled || pending || !tag.trim()) return;
+    setPending(true); onBusyChange(true); setTagError(null); setTagResult(null);
+    try {
+      const filter = { status: "published" as const, tag: tag.trim() };
+      const { items } = await repository!.list({ ...filter, limit: 200 });
+      // Check one more row so a capped list never silently becomes a partial binding.
+      const overflow = items.length === 200 && (await repository!.list({ ...filter, limit: 1, offset: 200 })).items.length > 0;
+      const expanded = [...new Set([...ids, ...items.filter((entry) => entry.status === "published").map((entry) => entry.id)])];
+      if (overflow || expanded.length > 200) {
+        setTagError("全部添加后超过每个技能 200 个条目的上限，未更改链接。请缩小标签范围或逐条选择。");
+        return;
+      }
+      if (expanded.length > ids.length) setSpec({ ...spec, knowledgeEntryIds: expanded });
+      setTagResult(items.length ? `已添加 ${expanded.length - ids.length} 个条目，已有链接不重复添加。` : "此标签没有已发布条目，未更改链接。");
+    } catch (cause) {
+      setTagError(presentError(cause, "无法按标签添加知识，请重试。"));
+    } finally { setPending(false); onBusyChange(false); }
+  }
   async function upload() {
     if (!canUpload || pending || !readyFiles.length) return;
     setPending(true); onBusyChange(true);
@@ -120,7 +144,7 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
   return <section className="skill-section" aria-label="知识"><h2>知识</h2>
     <p>链接和上传结果需保存草稿，再随技能版本发布。仅已发布的知识进入分析检索；上传会创建知识草稿，请在知识库按正常流程发布。</p>
     <div className="flex flex-wrap gap-2">
-      <Button variant="outline" disabled={disabled || !canRead || atLimit} onClick={() => { setQuery(""); setLinkOpen(true); }}>链接已有条目</Button>
+      <Button variant="outline" disabled={disabled || !canRead || atLimit} onClick={() => { setQuery(""); setTag(""); setTagError(null); setTagResult(null); setLinkOpen(true); }}>链接已有条目</Button>
       <Button disabled={!canUpload} aria-describedby={uploadReason ? reasonId : undefined} onClick={() => { setFiles([]); setUploadOpen(true); }}>上传 Markdown</Button>
     </div>
     {uploadReason ? <p id={reasonId}>{uploadReason}</p> : null}
@@ -138,18 +162,29 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
           onClick={() => setUnlinking(id)}>取消链接</Button>} />}
     <ConfirmDialog open={!!unlinking} title="取消知识链接？" description="此知识条目将从当前草稿中移除，知识库中的原条目保留。" tone="danger" confirmLabel="取消链接"
       onCancel={() => setUnlinking(null)} onConfirm={() => { setSpec({ ...spec, knowledgeEntryIds: ids.filter((id) => id !== unlinking) }); setUnlinking(null); }} />
-    <ModalDialog open={linkOpen} initialFocusRef={searchRef} onDismiss={() => setLinkOpen(false)} className="skill-publish-dialog modal-card--lg">
+    <ModalDialog open={linkOpen} initialFocusRef={searchRef} onDismiss={pending ? undefined : () => setLinkOpen(false)} className="skill-publish-dialog modal-card--lg">
       {({ titleId }) => <div className="grid gap-4"><h2 id={titleId}>链接已有条目</h2><p>选择当前组织已发布的知识条目。链接更改需先保存草稿，再发布技能。</p>
         <SearchField ref={searchRef} value={query} onValueChange={setQuery} ariaLabel="搜索已发布知识" placeholder="搜索知识标题" disabled={!canRead} loading={canRead && !choices && !searchFailed} />
+        <div className="grid gap-2">
+          <label htmlFor={tagId}>知识标签</label>
+          <div className="flex flex-wrap gap-2">
+            <Input id={tagId} className="flex-1" value={tag} maxLength={60} disabled={!canRead || disabled || pending}
+              onChange={(event) => { setTag(event.target.value); setTagError(null); setTagResult(null); }} placeholder="输入完整标签" />
+            <Button variant="outline" disabled={!canRead || disabled || pending || atLimit || !tag.trim()} onClick={() => void addTag()}>{pending ? "正在添加…" : "添加此标签的全部已发布条目"}</Button>
+          </div>
+          <p>按完整标签添加，不受标题搜索影响。仅保存当前条目的链接；以后新增或更改标签的条目不会自动加入技能。</p>
+          {tagError ? <p role="alert">{tagError}</p> : null}
+          {tagResult ? <p role="status">{tagResult}</p> : null}
+        </div>
         {!canRead ? <SectionEmpty title="无法查看知识条目" message="选择知识条目需要知识查看权限。" /> : searchFailed ? <SectionError message="无法搜索知识条目" onRetry={() => setRefresh((value) => value + 1)} />
           : !choices ? <SectionSkeleton label="正在搜索知识条目" />
           : <DataTable fluid rows={choices} rowKey={(entry) => entry.id} ariaLabel="可链接知识条目" tableClassName="table-fixed [&_th:last-child]:w-24"
             emptyState={<SectionEmpty title="没有匹配的已发布知识" message="尝试其他关键词，或先在知识库发布条目。" />}
             columns={[{ key: "title", header: "标题", className: "min-w-0", render: (entry) => <span className="block min-w-0 break-all" title={entry.title}>{entry.title}</span> },
               { key: "revision", header: "修订", widthClass: "w-20", render: (entry) => `v${entry.headRevisionNumber}` }]}
-            renderRowActions={(entry) => <Button variant="outline" size="sm" disabled={disabled || atLimit || ids.includes(entry.id)} aria-label={`${ids.includes(entry.id) ? "已链接" : "链接"} ${entry.title}`}
+            renderRowActions={(entry) => <Button variant="outline" size="sm" disabled={disabled || pending || atLimit || ids.includes(entry.id)} aria-label={`${ids.includes(entry.id) ? "已链接" : "链接"} ${entry.title}`}
               onClick={() => setSpec({ ...spec, knowledgeEntryIds: [...ids, entry.id] })}>{ids.includes(entry.id) ? "已链接" : "链接"}</Button>} />}
-        <div className="dialog-actions"><Button variant="outline" onClick={() => setLinkOpen(false)}>完成</Button></div>
+        <div className="dialog-actions"><Button variant="outline" disabled={pending} onClick={() => setLinkOpen(false)}>完成</Button></div>
       </div>}
     </ModalDialog>
     <ModalDialog open={uploadOpen} initialFocusRef={chooseRef} onDismiss={pending ? undefined : () => setUploadOpen(false)} className="skill-publish-dialog">
