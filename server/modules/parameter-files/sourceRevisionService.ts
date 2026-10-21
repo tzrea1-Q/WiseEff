@@ -420,7 +420,14 @@ export async function submitSourceRevisionCandidate(db: Database, storage: Objec
   });
 }
 
-export async function freezeSourceRevisionRequest(tx: Database, auth: AuthContext, proof: SourceRevisionProof,
+export type FrozenSourceRequestProof = Pick<SourceRevisionProof, "configSetId" | "baseConfigRevisionId" | "baseDigest" | "proposedDigest" | "proofDigest" | "targets"> & {
+  kind: "source_revision" | "member_addition";
+  candidateId: string | null;
+  members: readonly unknown[];
+  cohort: Array<Pick<SourceRevisionCohort, "bindingId" | "oldValueId" | "sourcePinId" | "definitionId" | "effectiveRevisionId" | "catalogReleaseId">>;
+};
+
+export async function freezeSourceRevisionRequest(tx: Database, auth: AuthContext, proof: FrozenSourceRequestProof,
   input: { projectId: string; reason: string; assignedToUserId: string | null; clientMutationId: string },
   mutationDigest: string, applicationMode: "separate_review" | "administrator_direct" = "separate_review"): Promise<string> {
   const pending = (await tx.query<{ id: string }>(`select id from public.project_parameter_value_change_requests
@@ -439,10 +446,10 @@ export async function freezeSourceRevisionRequest(tx: Database, auth: AuthContex
     (id,organization_id,project_id,request_kind,reason,status,submitter_user_id,assigned_to_user_id,candidate_id,
      candidate_base_digest,candidate_proposed_digest,candidate_diff_digest,candidate_member_manifest,candidate_binding_manifest,
      source_revision_context,source_revision_proof_digest,source_revision_config_set_id,source_revision_mutation_id,source_revision_mutation_digest,source_revision_application_mode)
-    values ($1,$2,$3,'source_revision',$4,'pending',$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$10,$14,$15,$16,$17)`,
+    values ($1,$2,$3,$18,$4,'pending',$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$10,$14,$15,$16,$17)`,
     [requestId, auth.organization.id, input.projectId, input.reason.trim(), auth.user.id, input.assignedToUserId,
       proof.candidateId, proof.baseDigest, proof.proposedDigest, proof.proofDigest, JSON.stringify(proof.members),
-      JSON.stringify(proof.cohort), JSON.stringify(proof), proof.configSetId, input.clientMutationId, mutationDigest, applicationMode]);
+      JSON.stringify(proof.cohort), JSON.stringify(proof), proof.configSetId, input.clientMutationId, mutationDigest, applicationMode, proof.kind]);
   for (const [ordinal, target] of proof.targets.entries()) {
     const entry = proof.cohort.find((row) => row.bindingId === target.bindingId)!;
     const source = await readOwnedProjectValueIdentity(tx, { organizationId: auth.organization.id,
