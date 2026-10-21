@@ -66,6 +66,8 @@ Existing non-archived entries that have never completed detection are queued on 
 
 ## Manage entries in batches
 
+Use Pending suggestions on `/knowledge` to find entries awaiting review. Count badges appear only on entries you govern; other entries reveal no count. Select Accept suggested links in the batch bar to accept each selected entry's pending suggestions. Each entry commits its references and normal suggestion-acceptance audits together, or rolls back together on failure. Other entries retain their results, and one batch summary audit records all outcomes.
+
 Select entries in the list, then choose Add tags, Remove tags, Publish or Archive, up to 200 entries at a time. Tag changes preserve other tags and content. Publishing applies to drafts; archiving applies to published entries and removes them from retrieval while retaining history. Permissions are checked per entry: owners need edit permission, and knowledge managers may maintain others’ entries. The result table reports each success or refusal; one failure does not undo other successful entries.
 
 ## Link knowledge from a definition

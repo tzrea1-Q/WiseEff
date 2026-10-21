@@ -358,6 +358,79 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     expect((await request(auth, "GET", `/api/v1/knowledge/entries/${noMatches}/reference-suggestions`)).body.items).toEqual([]);
   });
 
+  it("lists pending counts and filters only entries the caller governs, before pagination", async () => {
+    const created = await request(auth, "POST", "/api/v1/knowledge/entries", {
+      contentForm: "markdown", title: "k1341 counts", tags: [], contentMarkdown: "knowledge_batch_property_8_0"
+    });
+    const id = created.body.item.id as string;
+    await request(auth, "POST", `/api/v1/knowledge/entries/${id}/publish`);
+    await drainSuggestions();
+    const owner = { ...auth, permissions: auth.permissions.filter((p) => p !== "knowledge:manage") };
+    const reader = { ...owner, user: { ...owner.user, id: REFERENCE_CREATOR } };
+    const list = (context: AuthContext, query = "") => request(context, "GET", `/api/v1/knowledge/entries?q=k1341%20counts${query}`);
+    expect((await list(owner)).body.items).toEqual([expect.objectContaining({ id, pendingSuggestionCount: 1 })]);
+    expect((await list(reader)).body.items[0]).not.toHaveProperty("pendingSuggestionCount");
+    const readOnlyOwner = { ...owner, permissions: ["knowledge:view"] as BackendPermission[] };
+    expect((await list(readOnlyOwner)).body.items[0]).not.toHaveProperty("pendingSuggestionCount");
+    expect((await list(readOnlyOwner, "&pendingSuggestions=true")).body.items).toEqual([]);
+    expect((await list(reader, "&pendingSuggestions=true")).body.items).toEqual([]);
+    expect((await list(owner, "&pendingSuggestions=true&limit=1")).body.items).toHaveLength(1);
+    expect((await list(auth, "&pendingSuggestions=true")).body.items).toHaveLength(1);
+    expect((await list(authB, "&pendingSuggestions=true")).body.items).toEqual([]);
+    await request(owner, "POST", `/api/v1/knowledge/entries/${id}/reference-suggestions/pdef_kb_batch_8_0/accept`);
+    expect((await list(owner)).body.items[0].pendingSuggestionCount).toBe(0);
+    expect((await list(owner, "&pendingSuggestions=true")).body.items).toEqual([]);
+  });
+
+  it("batch accepts per entry with identical suggestion audits, mixed permissions and atomic entry rollback", async () => {
+    const owner = { ...auth, permissions: auth.permissions.filter((p) => p !== "knowledge:manage") };
+    const other = { ...owner, user: { ...owner.user, id: REFERENCE_CREATOR } };
+    const ids: string[] = [];
+    for (const [context, title] of [[owner, "k1341 first"], [other, "k1341 refused"], [authB, "k1341 foreign"], [owner, "k1341 broken"], [owner, "k1341 last"]] as const) {
+      const created = await request(context, "POST", "/api/v1/knowledge/entries", {
+        contentForm: "markdown", title, tags: [], contentMarkdown: "knowledge_batch_property_9_0 knowledge_batch_property_9_1"
+      });
+      ids.push(created.body.item.id);
+      await request(context, "POST", `/api/v1/knowledge/entries/${created.body.item.id}/publish`);
+    }
+    await drainSuggestions();
+    await db.query(`create function k1341_fail_accept() returns trigger language plpgsql as $$
+      begin if new.kind = 'knowledge-definition-reference-add' and new.metadata->>'definitionId' = 'pdef_kb_batch_9_1'
+        and exists (select 1 from knowledge_entries where id::text = new.target_id and title = 'k1341 broken')
+        then raise exception 'private failure'; end if; return new; end $$`);
+    await db.query("create trigger k1341_fail_accept before insert on audit_events for each row execute function k1341_fail_accept()");
+    try {
+      const result = await request(owner, "POST", "/api/v1/knowledge/entries/batch", { action: "accept_suggestions", entryIds: ids });
+      expect(result.status).toBe(200);
+      expect(result.body.results.map((r: any) => [r.status, r.error?.code ?? null])).toEqual([
+        ["succeeded", null], ["refused", "FORBIDDEN"], ["refused", "NOT_FOUND"], ["failed", "INTERNAL_ERROR"], ["succeeded", null]
+      ]);
+      expect(result.body.results[3].error.message).toBe("Internal server error.");
+      expect(result.body.summaryError).toBeNull();
+      for (const index of [0, 4]) {
+        expect((await request(owner, "GET", `/api/v1/knowledge/entries/${ids[index]}`)).body.item.parameterReferences).toHaveLength(2);
+        expect((await request(owner, "GET", `/api/v1/knowledge/entries/${ids[index]}/reference-suggestions`)).body.items).toEqual([]);
+      }
+      expect((await request(owner, "GET", `/api/v1/knowledge/entries/${ids[3]}`)).body.item.parameterReferences).toEqual([]);
+      expect((await request(owner, "GET", `/api/v1/knowledge/entries/${ids[3]}/reference-suggestions`)).body.items).toHaveLength(2);
+      const audits = await db.query<{ metadata: { fromSuggestion: boolean } }>(
+        "select metadata from audit_events where kind = 'knowledge-definition-reference-add' and target_id = any($1::text[])", [ids]);
+      expect(audits.rows).toHaveLength(4);
+      expect(audits.rows.every((r) => r.metadata.fromSuggestion)).toBe(true);
+      const summaries = await db.query<{ metadata: { results: unknown[] } }>(
+        "select metadata from audit_events where kind = 'knowledge-batch' and action = 'accept_suggestions' and organization_id = $1", [ORG_A]);
+      expect(summaries.rows).toHaveLength(1);
+      expect(summaries.rows[0].metadata.results).toHaveLength(5);
+      const reader = { ...owner, permissions: ["knowledge:view"] as BackendPermission[] };
+      expect((await request(reader, "POST", "/api/v1/knowledge/entries/batch", { action: "accept_suggestions", entryIds: [ids[0]] })).body.results[0].status).toBe("refused");
+      const manager = { ...auth, permissions: auth.permissions.filter((p) => p !== "knowledge:edit") };
+      expect((await request(manager, "POST", "/api/v1/knowledge/entries/batch", { action: "accept_suggestions", entryIds: [ids[1]] })).body.results[0].status).toBe("succeeded");
+    } finally {
+      await db.query("drop trigger k1341_fail_accept on audit_events");
+      await db.query("drop function k1341_fail_accept()");
+    }
+  });
+
   it("keeps an entry indexed and searchable without suggestions when the catalog read fails", async () => {
     const created = await request(auth, "POST", "/api/v1/knowledge/entries", {
       contentForm: "markdown", title: "Non-fatal suggestion detection", tags: [],

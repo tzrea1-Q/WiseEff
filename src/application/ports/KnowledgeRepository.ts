@@ -16,6 +16,7 @@ import type {
 } from "@/domain/knowledge/types";
 
 export type KnowledgeListQuery = {
+  pendingSuggestions?: boolean;
   governable?: boolean;
   origin?: KnowledgeOrigin;
   status?: KnowledgeStatus;

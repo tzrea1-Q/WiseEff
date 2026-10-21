@@ -547,7 +547,7 @@ test.describe("Knowledge base browser acceptance", () => {
     await importer.getByTestId("file-drop-zone-input").setInputFiles([
       { name: names[0], mimeType: "text/markdown", buffer: Buffer.from(`# 调参经验\n${keyword}：温度超过阈值时降低快充电流。\n(${definition.propertyKey})`) },
       { name: names[1], mimeType: "application/pdf", buffer: readFileSync(new URL("../../server/modules/knowledge/testing/fixtures/sample.pdf", import.meta.url)) },
-      { name: names[2], mimeType: "text/plain", buffer: Buffer.from(`发布前检查文档来源与修订。${runStamp}`) }
+      { name: names[2], mimeType: "text/plain", buffer: Buffer.from(`发布前检查文档来源与修订。${runStamp}\n(${definition.propertyKey})`) }
     ]);
     await importer.getByLabel("批次标签（逗号分隔）").fill("组织文档");
     await importer.getByRole("button", { name: "开始导入", exact: true }).click();
@@ -601,6 +601,29 @@ test.describe("Knowledge base browser acceptance", () => {
     await editor.getByRole("button", { name: "取消", exact: true }).click();
     await knowledgeDetail.getByRole("button", { name: "关闭", exact: true }).click();
 
+    await expect.poll(async () => {
+      const response = await page.request.get(apiRoute(`/api/v1/knowledge/entries/${entryIds[2]}/reference-suggestions`), { headers: editorHeaders() });
+      expect(response.status()).toBe(200);
+      return (await response.json() as { items: { definitionId: string }[] }).items.map((item) => item.definitionId);
+    }, { timeout: 30_000 }).toContain(definitionId);
+    await page.getByRole("checkbox", { name: "待处理建议", exact: true }).check();
+    const pendingRow = table.getByRole("row").filter({ hasText: names[2] });
+    await expect(pendingRow.getByText(/待处理建议 [1-9]/)).toBeVisible();
+    await testInfo.attach("knowledge-pending-suggestions-1440x900", { body: await page.screenshot(), contentType: "image/png" });
+    await pendingRow.getByRole("checkbox", { name: `选择 ${names[2]}`, exact: true }).check();
+    await page.getByRole("group", { name: "批量管理" }).getByRole("button", { name: "接受建议关联", exact: true }).click();
+    const acceptBatch = page.getByRole("dialog", { name: "接受建议关联", exact: true });
+    const batchAccepted = page.waitForResponse((response) => response.request().method() === "POST"
+      && new URL(response.url()).pathname === "/api/v1/knowledge/entries/batch");
+    await acceptBatch.getByRole("button", { name: "确认接受建议关联", exact: true }).click();
+    const batchAcceptResponse = await batchAccepted;
+    expect(batchAcceptResponse.status()).toBe(200);
+    await expect(acceptBatch.getByRole("status")).toHaveText("成功 1 条 · 拒绝或失败 0 条");
+    await testInfo.attach("knowledge-batch-suggestions-1440x900", { body: await page.screenshot(), contentType: "image/png" });
+    await acceptBatch.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(table.getByText(names[2], { exact: true })).toHaveCount(0);
+    await page.getByRole("checkbox", { name: "待处理建议", exact: true }).uncheck();
+
     const searched = page.waitForResponse((response) => response.request().method() === "GET"
       && new URL(response.url()).pathname === "/api/v1/knowledge/search");
     await page.getByRole("searchbox", { name: "检索知识库" }).fill(keyword);
@@ -630,6 +653,7 @@ test.describe("Knowledge base browser acceptance", () => {
       status: "passed", role: "Hardware User / Admin", route: "/knowledge", page, testInfo,
       api: [
         summarizeApiResponse(acceptResponse, { method: "POST", path: `/api/v1/knowledge/entries/${entryIds[0]}/reference-suggestions/${definitionId}/accept`, responseSummary: "detected suggestion accepted as an explicit definition reference" }),
+        summarizeApiResponse(batchAcceptResponse, { method: "POST", path: "/api/v1/knowledge/entries/batch", responseSummary: "pending filter and count badge followed by audited batch suggestion acceptance" }),
         summarizeApiResponse(publishResponse, { method: "POST", path: "/api/v1/knowledge/entries/batch", responseSummary: "three imported drafts published" }),
         summarizeApiResponse(searchResponse, { method: "GET", path: "/api/v1/knowledge/search", responseSummary: "published organization document found" })
       ],
