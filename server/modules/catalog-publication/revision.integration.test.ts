@@ -562,6 +562,53 @@ describe("CP-10 definition revision and new-subject PG", () => {
     expect(receipt.ok).toBe(true);
   }, 60_000);
 
+  it("publishes optional-content removal while omitted fields and historical revisions remain intact", async () => {
+    const token = uniqueToken("clear");
+    const definitionId = `pdef_${token}`;
+    const content = {
+      ...integerContent("Optional current", "Optional content publication."),
+      description: "An optional description", examples: [100, 200],
+    };
+    const publish = (changeSet: readonly CatalogChange[], suffix: string) => activateChangeSet({
+      changeSet, authorPrincipalId: AUTHOR, publisherUserId: REVIEWER,
+      publisherPermissions: [...reviewerPermissions], token: suffix,
+    });
+    await publish([{ op: "create-definition", subjectId: "csub_acme_power",
+      propertyKey: `clear_${token}`, content }], token);
+    const before = await client.query<{ content: Record<string, unknown> }>(
+      "select content from parameter_catalog.definition_revisions where id = $1", [`drev_${token}`]);
+    await publish([{ op: "revise-definition", definitionId, class: "documentation", content: {
+      displayName: content.displayName, documentation: "Updated documentation.", valueSchema: content.valueSchema,
+    } }], `${token}_keep`);
+    const retained = await client.query<{ content: Record<string, unknown> }>(
+      "select content from parameter_catalog.definition_revisions where id = $1", [`drev_${token}_keep`]);
+    expect(retained.rows[0]?.content).toMatchObject({ unit: "mA", examples: [100, 200], description: content.description });
+    const bindings = await client.query<BindingSnapshot>(bindingSnapshotSql);
+    const cleared = await publish([{ op: "revise-definition", definitionId, class: "semantic", content: {
+      ...content, documentation: "Updated documentation.", unit: null, examples: null, description: null,
+    } }], `${token}_clear`);
+    const current = await client.query<{ id: string; content: Record<string, unknown> }>(`
+      select revision.id, revision.content from parameter_catalog.definition_revisions revision
+      join parameter_catalog.catalog_release_definition_heads head on head.revision_id = revision.id
+      join parameter_catalog.catalog_state state on state.current_catalog_release_id = head.release_id
+      where head.definition_id = $1`, [definitionId]);
+    expect(current.rows[0]?.id).toBe(`drev_${token}_clear`);
+    expect(current.rows[0]?.content).not.toHaveProperty("unit");
+    expect(current.rows[0]?.content).not.toHaveProperty("examples");
+    expect(current.rows[0]?.content).not.toHaveProperty("description");
+    expect(current.rows[0]?.content).toMatchObject({ displayName: content.displayName, valueSchema: content.valueSchema });
+    expect((await client.query<BindingSnapshot>(bindingSnapshotSql)).rows).toEqual(bindings.rows);
+    expect((await client.query("select content from parameter_catalog.definition_revisions where id = $1", [`drev_${token}`])).rows)
+      .toEqual(before.rows);
+    const counts = await client.query("select count(*) from catalog_publication.candidates");
+    await expect(publish([{ op: "revise-definition", definitionId, class: "semantic", content: {
+      ...content, unit: "", examples: ["not-an-integer"],
+    } }], `${token}_invalid`)).rejects.toThrow("build failed");
+    expect((await client.query("select count(*) from catalog_publication.candidates")).rows).toEqual(counts.rows);
+    expect((await client.query("select current_catalog_release_id from parameter_catalog.catalog_state")).rows)
+      .toEqual([{ current_catalog_release_id: cleared.built.artifact.targetReleaseId }]);
+  }, 60_000);
+
   it("T17 new Driver fallback impact requires a distinct high-risk reviewer", async () => {
     const token = uniqueToken("t17");
     const authorAttempt = activateChangeSet({
