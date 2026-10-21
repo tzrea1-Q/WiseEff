@@ -28,6 +28,17 @@ export const projectDtoSchema = z.object({
   code: z.string()
 });
 
+export const projectDeletionPreviewResponseSchema = itemEnvelopeSchema(z.object({
+  organizationId: z.string().min(1), projectId: z.string().min(1), projectName: z.string(),
+  generatedAt: z.string(), stateDigest: z.string().min(1), executionAvailable: z.literal(false),
+  inventory: z.array(z.object({ key: z.string(), label: z.string(), count: z.number().int().nonnegative(),
+    disposition: z.enum(["delete", "detach", "retain"]) }).strict()),
+  storage: z.object({ exclusiveObjects: z.number().int().nonnegative(), sharedObjects: z.number().int().nonnegative(),
+    totalBytes: z.number().int().nonnegative() }).strict(),
+  blockers: z.array(z.object({ code: z.string(), count: z.number().int().nonnegative(), message: z.string(), action: z.string() }).strict()),
+  notes: z.array(z.string())
+}).strict());
+
 export const projectAdminSummaryDtoSchema = projectDtoSchema.extend({
   status: z.string(),
   initializationStatus: z.string(),
