@@ -49,6 +49,7 @@
 - `KB-READ-001`：组织成员在 `/knowledge` 浏览知识条目列表，搜索只命中 `published` 条目（draft 和 archived 不进检索结果），并打开已发布条目详情（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-EDIT-001`：编辑者创建 markdown 知识条目、发布、就地修订产生新的不可变修订，并把历史修订恢复为新修订（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-FILE-001`：编辑者经对象存储上传文件型知识条目，并在条目上看到文本提取状态（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
+- `KB-IMPORT-001`：批量导入组织的 Markdown、PDF 和 TXT 文档，查看报告、批量发布并检索；从定义页关联已有知识，再从相关知识返回已发布条目（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-ASK-001`：组织成员在 `/knowledge`（仅 API 模式）使用问知识库入口打开小泽；确定性小泽运行经 `knowledge.search` 落地回答并携带指向已发布条目的引用深链。浏览器部分覆盖入口与引用深链；确定性落地循环在 SSE API 层断言（与 `XIAOZE-PERCEPTION-001` 同模式），并由 `knowledge-grounding` eval 场景兜底——当前小泽完整浏览器循环尚无确定性浏览器验收（`e2e/acceptance/knowledge.acceptance.spec.ts`；`server/modules/agent/xiaoze/eval/scenarios.ts`）。
 - `KB-INDEX-001`：知识管理员在 `/knowledge-admin` 查看逐条目检索索引健康（状态、失败原因、已索引修订）与诚实的检索模式横幅（语义 vs 仅全文），可单条重试或全量重建（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-DISTILL-001`：编辑者在日志分析结果页把已完成的分析结论一键沉淀为预填知识草稿（标题取自结论；正文由结论、影响、严重度、证据行引用与建议处置组装；条目上保存来源关联），经条目深链交接到 `/knowledge` 草稿编辑器审阅后发布（`e2e/acceptance/knowledge.acceptance.spec.ts`）。

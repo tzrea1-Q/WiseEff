@@ -6,7 +6,7 @@ import {
   type WorkflowId
 } from "@/domain/workflowDiscovery";
 
-type PreviewKey = "parameters" | "logs" | "debugging";
+type PreviewKey = "parameters" | "logs" | "debugging" | "knowledge";
 
 type TabConfig = {
   key: PreviewKey;
@@ -71,6 +71,24 @@ const allTabs: TabConfig[] = [
       { title: "上下文聚合。", text: "按设备、项目、参数和 Workflow 节点还原事件现场。" },
       { title: "异常定位。", text: "Agent 标注高风险片段，人工确认后进入后续调试。" },
       { title: "查询留痕。", text: "关键筛选条件、命中记录和导出动作进入审计链。" }
+    ]
+  },
+  {
+    key: "knowledge",
+    workflowId: "knowledge",
+    label: "知识库",
+    headline: "组织文档",
+    meta: "整理后发布",
+    previewRows: [
+      ["导入文档", "批量创建草稿", "保留来源"],
+      ["整理内容", "确认后发布", "修订留痕"],
+      ["检索引用", "关联参数定义", "回到原文"]
+    ],
+    features: [
+      { title: "上传组织文档。", text: "集中整理组织自己的调参经验、故障案例、硬件手册与流程规范。" },
+      { title: "批量导入。", text: "每份文档独立生成草稿，查看导入报告后继续整理。" },
+      { title: "确认发布。", text: "人工检查内容与标签，发布后才进入知识检索。" },
+      { title: "检索与引用。", text: "从知识库、参数定义或分析报告回到相关原文。" }
     ]
   }
 ];

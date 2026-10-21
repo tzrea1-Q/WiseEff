@@ -1,4 +1,4 @@
-import { FileText, SlidersHorizontal, TerminalSquare } from "lucide-react";
+import { BookOpen, FileText, SlidersHorizontal, TerminalSquare } from "lucide-react";
 import { isWorkflowVisible, type WorkflowId } from "@/domain/workflowDiscovery";
 import { SubAppCard, type SubAppCardProps } from "./SubAppCard";
 
@@ -40,6 +40,17 @@ export function SubAppEntryRow({ onNavigate }: SubAppEntryRowProps) {
       chips: ["上传解析", "根因推断", "证据追溯"],
       primary: { label: "进入日志分析", href: "/logs" },
       secondary: { label: "打开日志分析后台", href: "/log-admin" }
+    },
+    {
+      workflowId: "knowledge",
+      accent: "#15803D",
+      icon: BookOpen,
+      kicker: "组织知识",
+      title: "知识库",
+      description: "上传并整理组织自己的调参经验、故障案例、硬件手册与流程规范。",
+      chips: ["批量导入", "整理发布", "检索引用"],
+      primary: { label: "进入知识库", href: "/knowledge" },
+      secondary: { label: "打开知识后台", href: "/knowledge-admin" }
     }
   ];
 

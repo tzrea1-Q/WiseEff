@@ -7,7 +7,7 @@ import { LinearTemplateHome } from "./LinearTemplateHome";
 const cssText = readStylesheet("src/linear-template/linear-template.css");
 
 describe("WiseEff mature homepage theme", () => {
-  it("keeps the page foundation light and the three entry cards restrained", () => {
+  it("keeps the page foundation light and the four entry cards restrained", () => {
     const card = declarationsFor(cssText, ".sub-app-card");
     const hoverCard = declarationsFor(cssText, ".sub-app-card:hover");
     expect(card["border-radius"]).toBe("var(--radius-md)");
@@ -31,7 +31,7 @@ describe("WiseEff mature homepage theme", () => {
   it("renders allowlisted sub-app entry cards before the merged platform flow section", () => {
     const { container } = render(createElement(LinearTemplateHome));
 
-    expect(container.querySelectorAll(".sub-app-card")).toHaveLength(3);
+    expect(container.querySelectorAll(".sub-app-card")).toHaveLength(4);
     expect(container.querySelector(".sub-app-card-badge")).not.toBeInTheDocument();
     expect(container.querySelector(".sub-app-entry-row")).toBeInTheDocument();
     expect(container.querySelector("#platform-flow")).toBeInTheDocument();
@@ -60,8 +60,10 @@ describe("WiseEff mature homepage theme", () => {
     expect(links).toEqual([
       { label: "参数管理", href: "/parameter-home" },
       { label: "调试平台", href: "/node-debugging" },
-      { label: "日志分析", href: "/logs" }
+      { label: "日志分析", href: "/logs" },
+      { label: "知识库", href: "/knowledge" }
     ]);
+    expect(container.querySelector('.linear-footer a[href="/knowledge"]')).toBeInTheDocument();
     expect(nav?.querySelector('a[href="#platform"]')).not.toBeInTheDocument();
     expect(nav?.querySelector('a[href="#workflow"]')).not.toBeInTheDocument();
     expect(nav?.querySelector('a[href="#agent"]')).not.toBeInTheDocument();

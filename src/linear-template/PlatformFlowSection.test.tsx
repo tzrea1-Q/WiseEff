@@ -8,9 +8,9 @@ describe("PlatformFlowSection", () => {
   it("renders the section heading and the allowlisted tab buttons", () => {
     render(<PlatformFlowSection />);
 
-    expect(screen.getByRole("heading", { name: "一条可审阅工作流，三种场景接入" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "一条可审阅工作流，四种场景接入" })).toBeInTheDocument();
     const tabs = screen.getAllByRole("tab");
-    expect(tabs.map((tab) => tab.textContent)).toEqual(["参数管理", "调试平台", "日志分析"]);
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["参数管理", "调试平台", "日志分析", "知识库"]);
     expect(screen.getByRole("tab", { name: "日志分析" })).toBeInTheDocument();
   });
 
@@ -61,6 +61,14 @@ describe("PlatformFlowSection", () => {
     expect(screen.getByRole("tab", { name: "日志分析" })).toHaveAttribute("aria-selected", "true");
     expect(container).toHaveTextContent("围绕异常事件和关键证据组织可审阅链路");
     expect(container).not.toHaveTextContent(/Aurora|Nebula|Atlas|ChargeLab_X01|charging_thermal_trace|battery_pack_temp|关键温度/);
+  });
+
+  it("shows the organization document workflow when knowledge is selected", () => {
+    render(<PlatformFlowSection />);
+    fireEvent.click(screen.getByRole("tab", { name: "知识库" }));
+    expect(screen.getByRole("tab", { name: "知识库" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("集中整理组织自己的调参经验、故障案例、硬件手册与流程规范。")).toBeInTheDocument();
+    expect(screen.getByText("人工检查内容与标签，发布后才进入知识检索。")).toBeInTheDocument();
   });
 
   it("moves the selection with ArrowRight and ArrowLeft", () => {
