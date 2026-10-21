@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { previewProjectDeletion } from "../projects/deletionPreview";
+import { listProjectDeletions, projectDeletionStatus, purgeProject } from "../projects/purge";
 import {
   assertTrustedRefusalAuditSink,
   createTrustedRefusalAuditSink,
@@ -292,6 +293,28 @@ export function registerParameterRoutes(
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const item = await previewProjectDeletion(db, auth.organization.id, params.projectId, auth.user.id);
     return { status: 200, body: { item } };
+  });
+
+  router.get("/api/v1/parameters/admin/project-deletions", async (request) => {
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    return { status: 200, body: { items: await listProjectDeletions(requireDb(options.db), auth) } };
+  });
+
+  router.get("/api/v1/parameters/admin/projects/:projectId/deletion-status", async (request) => {
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    return { status: 200, body: { item: await projectDeletionStatus(requireDb(options.db), auth, params.projectId) } };
+  });
+
+  router.post("/api/v1/parameters/admin/projects/:projectId/purge", async (request) => {
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const body = parseWithSchema(z.object({ stateDigest: z.string().regex(/^[a-f0-9]{64}$/) }).strict(), request.body);
+    return { status: 200, body: { item: await purgeProject(requireDb(options.db), createUserInvocation(auth), params.projectId,
+      body.stateDigest, request.requestId, options.objectStore) } };
   });
 
   router.post("/api/v1/parameters/admin/projects", async (request) => {

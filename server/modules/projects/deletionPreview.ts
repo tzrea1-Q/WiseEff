@@ -100,6 +100,12 @@ export async function previewProjectDeletion(db: Database, organizationId: strin
   return db.transaction(async (tx) => {
     // Every count and fingerprint describes one coherent read-only snapshot.
     await tx.query("set transaction isolation level repeatable read read only");
+    return readProjectDeletionPreview(tx, organizationId, projectId, principalId);
+  });
+}
+
+/** The executor holds the maintenance fence while reading this same inventory. */
+export async function readProjectDeletionPreview(tx: Queryable, organizationId: string, projectId: string, principalId: string): Promise<ProjectDeletionPreview> {
     const project = (await tx.query<{ name: string; state: string }>(
       "select name, to_jsonb(p)::text as state from projects p where organization_id=$1 and id=$2", [organizationId, projectId])).rows[0];
     if (!project) throw new ApiError("NOT_FOUND", "Project was not found.", { projectId });
@@ -168,11 +174,10 @@ export async function previewProjectDeletion(db: Database, organizationId: strin
     if (disposalCount) blockers.push({ code: "protected-plane-disposal", count: disposalCount,
       message: "项目关联专门保留的离线迁移处置证据。", action: "通过专用迁移保留流程处理；项目删除不能清除这些证据。" });
     return { organizationId, projectId, projectName: project.name, generatedAt: new Date().toISOString(), stateDigest: state.digest("hex"),
-      executionAvailable: false, inventory, storage, blockers, notes: [
-        "此检查只读取数据；项目彻底删除的执行功能由后续任务交付。",
+      executionAvailable: blockers.length === 0, inventory, storage, blockers, notes: [
+        "确认后永久清理项目专属数据。数据库与独占对象清理状态分别显示；对象失败后可以重试。",
         "状态摘要仅绑定本次项目、组织及相关数据快照，不是删除授权；执行前必须重新读取并校验。",
         "独立知识正文、日志原文、设备及平台共享定义保留；仅处置已明确列出的项目关联。",
         "存储数量按数据库引用去重；不会下载或删除对象，也不证明底层文件当前可读。共享对象在项目删除后仍保留。"
       ] };
-  });
 }
