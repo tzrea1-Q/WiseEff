@@ -1127,6 +1127,7 @@ describe("WiseEff API", () => {
       createWiseEffServerFromEnv({
         db,
         env: {
+          ...loadServerEnv({}),
           NODE_ENV: "production",
           HOST: "127.0.0.1",
           PORT: 8787,
@@ -1241,6 +1242,7 @@ describe("WiseEff API", () => {
       createWiseEffServerFromEnv({
         db,
         env: {
+          ...loadServerEnv({}),
           NODE_ENV: "production",
           HOST: "127.0.0.1",
           PORT: 8787,
