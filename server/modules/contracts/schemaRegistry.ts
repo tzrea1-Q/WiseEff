@@ -1893,6 +1893,18 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["parameter-files"], responseBody: "AdministratorMemberRemovalPreviewResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterFiles.previewCanonicalMemberAddition": {
+    summary: "Preview a staged or existing member against the complete Canonical configuration",
+    tags: ["parameter-files"], requestBody: "CanonicalMemberAdditionPreviewRequest",
+    responseBody: "CanonicalMemberAdditionPreviewResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.applyCanonicalMemberAddition": {
+    summary: "Atomically add the confirmed Canonical member as the current human administrator",
+    tags: ["parameter-files"], requestBody: "CanonicalMemberAdditionApplyRequest",
+    responseBody: "CanonicalMemberAdditionApplyResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameterFiles.applyAdministratorMemberRemoval": {
     summary: "Atomically apply a confirmed Canonical member removal as the current human administrator",
     tags: ["parameter-files"], requestBody: "AdministratorMemberRemovalApplyRequest",

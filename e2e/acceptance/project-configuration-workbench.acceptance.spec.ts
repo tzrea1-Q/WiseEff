@@ -2890,9 +2890,9 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     test.setTimeout(240_000);
     await seedAcceptanceRoleMatrix();
     await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
-    const sample = '/dts-v1/; / { board: board { compatible = "mt,mt5788"; rx_mod_cm_cfg = "AddV1"; }; };';
-    const binding = await seedIsolatedBinding(request, { propertyKey: "rx_mod_cm_cfg", dts: sample,
-      rawValuePattern: '"AddV1"', nodeLocatorPattern: "board", reason: "#1305 Canonical member addition", timeoutMs: 60_000 });
+    const sample = '/dts-v1/; / { board: board { compatible = "mt,mt5788"; rx_fod_cond = "AddV1", "keep"; }; };';
+    const binding = await seedIsolatedBinding(request, { propertyKey: "rx_fod_cond", dts: sample,
+      rawValuePattern: '"AddV1", "keep"', nodeLocatorPattern: "board", reason: "#1305 Canonical member addition", timeoutMs: 60_000 });
     const file = await lookupParameterFileVersion({ fileName: binding.fileName });
     const route = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({ configSet: binding.configSetId, file: file.fileId })}`;
     await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, route));
@@ -2903,7 +2903,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const overlayName = `added-overlay-${randomUUID()}.dts`;
     await selectControlOption(dialog.getByRole("combobox", { name: "目标配置", exact: true }), binding.configSetId);
     await dialog.getByLabel("上传文件", { exact: true }).setInputFiles({ name: overlayName, mimeType: "text/plain",
-      buffer: Buffer.from('/dts-v1/; /plugin/; &board { rx_mod_cm_cfg = "AddV2"; };') });
+      buffer: Buffer.from('/dts-v1/; /plugin/; &board { rx_fod_cond = "AddV2", "keep"; };') });
     await selectControlOption(dialog.getByRole("combobox", { name: "文件用途", exact: true }), "overlay");
     await dialog.getByLabel("文件顺序", { exact: true }).fill("-1");
     await dialog.getByRole("button", { name: "预览加入配置", exact: true }).click();
@@ -2916,7 +2916,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const preview = await previewResponse; expect(preview.status(), await preview.text()).toBe(200);
     await expect(dialog.getByRole("region", { name: "加入配置预览" })).toContainText(overlayName);
     const before = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), { headers: adminHeaders() });
-    expect((await before.json()).items.find((item: { id: string }) => item.id === binding.bindingId)).toMatchObject({ rawValue: '"AddV1"' });
+    expect((await before.json()).items.find((item: { id: string }) => item.id === binding.bindingId)).toMatchObject({ rawValue: '"AddV1", "keep"' });
     await dialog.getByLabel("加入原因", { exact: true }).fill("#1305 checked complete composition and parameter impact");
     const screenshot = testInfo.outputPath("canonical-member-addition-1440x900.png");
     await page.screenshot({ path: screenshot }); await testInfo.attach("Canonical member addition preview", { path: screenshot, contentType: "image/png" });
@@ -2929,7 +2929,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await expect(refreshed.getByRole("table", { name: "配置文件" })).toContainText(overlayName);
     await expect(refreshed.getByRole("table", { name: "配置文件" })).toContainText(binding.fileName);
     const after = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), { headers: adminHeaders() });
-    expect((await after.json()).items.find((item: { id: string }) => item.id === binding.bindingId)).toMatchObject({ rawValue: '"AddV2"' });
+    expect((await after.json()).items.find((item: { id: string }) => item.id === binding.bindingId)).toMatchObject({ rawValue: '"AddV2", "keep"' });
   });
 
   test("administrator directly applies a complete DTS preview with keyboard confirmation and keeps invalid input", async ({ page, request }, testInfo) => {
