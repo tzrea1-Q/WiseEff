@@ -21,7 +21,7 @@ import {
   type CatalogAcceptanceFixture
 } from "./helpers/catalogEvidence";
 
-test.use({ viewport: { width: 1440, height: 900 } });
+test.use({ viewport: { width: 1440, height: 900 }, catalogRuntimeScope: import.meta.url });
 
 useBrowserDiagnostics(test, { expectedApiFailures: CATALOG_EXPECTED_API_FAILURES });
 

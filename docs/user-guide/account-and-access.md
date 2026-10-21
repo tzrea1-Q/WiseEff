@@ -25,9 +25,9 @@ The screen tells you which Evaluation Organization your account will join. It is
 
 ## Wait for Committer approval
 
-On Register (`/`), requesting either Committer role creates an inactive account and a pending role request. The account records the matching base User role, but you can sign in and receive a session only after approval.
+On Register (`/`), requesting either Committer role creates an inactive account and a pending role request. The account records the matching base User role, but remains unable to sign in until an Admin enables it.
 
-Ask your Organization Admin to review the request. Once approved, return to Sign in (`/`) and use the same username and password. Approval activates the account and assigns the requested Committer role.
+Ask your Organization Admin to review the request. They may approve the requested Committer role, reject the promotion while enabling the corresponding ordinary User role, or reject and keep the account disabled. Either enabling outcome lets you return to Sign in (`/`) with the same username and password; only approval grants the Committer role. The decision notification records the actual role and ability to sign in.
 
 ## Approve a Committer request
 
@@ -36,6 +36,12 @@ Admins with `users:manage` review applications in the Registration requests queu
 ## Get help when there is no Admin
 
 If Sign in (`/`) shows No administrator account yet, contact the deployment operator. The screen explains how to create the first Admin on the server; ordinary users cannot obtain an Admin role through registration. See the [authentication reference](../api/authentication.md) for the operator procedure.
+
+## Edit your profile
+
+Open the top-bar user menu and choose Profile. Local and OIDC users can update their display name and title. Saving these application-owned fields does not change the login identifier, external subject, Organization, or roles.
+
+The dialog checks the deployment's authentication mode before showing password actions. If that check fails, you can still save your profile and retry the capability check. On OIDC deployments, manage your password through your Organization's identity provider; the dialog does not offer local password changes or invent a provider link.
 
 ## Change your local password
 
@@ -51,6 +57,10 @@ Resetting the password revokes all of that member's local sessions. The member m
 
 ## Sign in on an OIDC-backed deployment
 
+Organization administrators open People management (`/organization/members`) and choose Add user to provision an OIDC member. Enter the exact subject from the configured identity provider; the issuer is read-only. The optional provider email checks legacy migration conflicts. No username or local password is required. To bind an existing member or change a subject, open Member details and save OIDC identity. A conflict preserves your input: check the subject and original migration email, or refresh if another administrator changed the binding. This does not merge accounts or change the internal user ID or roles.
+
 Use the identity-provider sign-in entry supplied by your deployment operator, then open WiseEff at `/`. WiseEff's browser integration obtains and refreshes the provider's access token. The server uses WiseEff's records to check whether the account is active and determine its Organization and effective permissions. WiseEff roles require separate authorization; signing in to the identity provider does not grant them.
+
+OIDC does not automatically create or join members. Existing unbound legacy accounts retain their verified-email migration path using the original migration email. Changing profile email does not grant login access, and an explicitly bound account requires its bound subject.
 
 There is no dedicated OIDC sign-in button or route in the current WiseEff auth screen. If you still see the local Sign in (`/`) form on an OIDC-backed deployment, ask the operator to check the browser identity integration; do not create a local account as a substitute. Follow your provider's process for external-account passwords. See the [authentication reference](../api/authentication.md) for deployment details.

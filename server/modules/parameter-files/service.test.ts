@@ -158,12 +158,14 @@ describe.skipIf(!databaseAvailable)("project parameter file upload service", () 
     expect(putCalls).toEqual([
       {
         organizationId: "org-1",
-        fileName: "config.json",
+        fileName: expect.stringMatching(/^parameter-upload-[0-9a-f-]{36}-config\.json$/),
         contentType: "application/json",
         bytes
       }
     ]);
     expect(result.file.currentVersionNumber).toBe(1);
+    expect(result.file.fileName).toBe("config.json");
+    expect(result.version.storageKey).not.toBe(`org-1/${result.version.checksum}-config.json`);
     expect(result.version.versionNumber).toBe(1);
     expect(result.version.parsedIndex).toEqual({ "battery/temp_max": { value: "85" } });
     expect(entries.get(result.version.storageKey)?.toString("utf8")).toBe('{"battery":{"temp_max":85}}');

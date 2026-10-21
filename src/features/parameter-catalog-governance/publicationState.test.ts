@@ -4,6 +4,7 @@ import { catalogApiFailure } from "@/application/parameter-catalog/errors";
 import {
   CATALOG_DEFINITION_ID,
   CATALOG_RELEASE_ID,
+  activeDefinition,
   catalogPublicationJob,
   readyCatalogDocument
 } from "@/application/parameter-catalog/fixtures";
@@ -152,6 +153,24 @@ describe("publication operator state", () => {
     });
   });
 
+  it("sends explicit removal for cleared unit and examples when revising, preserving hidden description", () => {
+    const draft = {
+      ...emptyPublicationDraft(),
+      mode: "revise-definition" as const,
+      definitionId: "pdef_01KGPIOINT",
+      displayName: "保持电流",
+      documentation: "保留的说明",
+      unit: "  ",
+      examples: ""
+    };
+    expect(buildPublicationChangeSet(draft)[0]).toMatchObject({
+      content: { unit: null, examples: null }
+    });
+    expect(buildPublicationChangeSet(draft)[0]).not.toHaveProperty("content.description");
+    expect(buildCreateDefinitionChangeSet({ ...draft, mode: "create-definition" })[0]).not.toHaveProperty("content.unit");
+    expect(buildCreateDefinitionChangeSet({ ...draft, mode: "create-definition" })[0]).not.toHaveProperty("content.examples");
+  });
+
   it("invalidates preview when the draft body changes", () => {
     const draft = { ...emptyPublicationDraft(), propertyKey: "iin_hold", displayName: "保持电流" };
     const fingerprint = fingerprintPublicationDraft(draft);
@@ -235,6 +254,16 @@ describe("publication operator state", () => {
         failureReason: null
       })
     ).toBe(false);
+  });
+
+  it("classifies explicit unit removal as semantic even when marked documentation", async () => {
+    const { catalog } = createMockCatalogPorts();
+    const created = await catalog.createPublicationCandidate({ changeSet: [{
+      op: "revise-definition", definitionId: CATALOG_DEFINITION_ID, class: "documentation",
+      content: { displayName: "GPIO interrupt", documentation: "GPIO interrupt", unit: null,
+        valueSchema: activeDefinition.currentRevision.valueShape.schema as { type: "integer" } }
+    }] }, { catalogReleaseId: CATALOG_RELEASE_ID });
+    expect(created.item.riskClass).toBe("high");
   });
 
   it("does not treat a fake documentation class that mutates unit or schema as low", async () => {

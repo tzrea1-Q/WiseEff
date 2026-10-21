@@ -9,6 +9,7 @@ import type {
   RegistrationRoleRequestDto,
   RegistrationRoleRequestListStatus,
   RegistrationRoleRequestStatus,
+  RegistrationDecisionOutcome,
   UserGovernanceDto
 } from "./types";
 
@@ -23,6 +24,9 @@ type UserGovernanceRow = {
   created_at: string;
   last_active_at: string | null;
   roles?: unknown;
+  oidc_issuer?: string | null;
+  oidc_subject?: string | null;
+  legacy_oidc_email?: string | null;
 };
 
 type RegistrationRoleRequestRow = {
@@ -38,6 +42,11 @@ type RegistrationRoleRequestRow = {
   created_at: string;
   decided_at: string | null;
   decided_by_user_id: string | null;
+  account_changed_at: string | null;
+  account_changed?: boolean;
+  decision_outcome: RegistrationDecisionOutcome | null;
+  decision_can_login: boolean | null;
+  decision_role_ids: BackendRoleId[] | null;
 };
 
 function parseRoles(value: unknown): RoleBinding[] {
@@ -62,7 +71,9 @@ function toDto(row: UserGovernanceRow): UserGovernanceDto {
     isActive: row.is_active,
     createdAt: row.created_at,
     lastActiveAt: row.last_active_at,
-    roles: parseRoles(row.roles)
+    roles: parseRoles(row.roles),
+    ...(row.oidc_issuer && row.oidc_subject ? { oidcIdentity: { issuer: row.oidc_issuer,subject: row.oidc_subject } } : {}),
+    ...(row.legacy_oidc_email ? { legacyOidcEmail: row.legacy_oidc_email } : {})
   };
 }
 
@@ -79,7 +90,11 @@ function registrationRoleRequestToDto(row: RegistrationRoleRequestRow): Registra
     status: row.status,
     createdAt: row.created_at,
     decidedAt: row.decided_at,
-    decidedByUserId: row.decided_by_user_id
+    decidedByUserId: row.decided_by_user_id,
+    decisionOutcome: row.decision_outcome ?? null,
+    decisionCanLogin: row.decision_can_login ?? null,
+    decisionRoleIds: row.decision_role_ids ?? null,
+    accountChanged: row.status === "pending" && (row.account_changed ?? Boolean(row.account_changed_at))
   };
 }
 
@@ -90,6 +105,7 @@ const userWithRolesSelect = `
     users.name,
     users.email,
     user_password_credentials.username,
+    identity.issuer as oidc_issuer,identity.subject as oidc_subject,identity.legacy_email as legacy_oidc_email,
     users.title,
     users.is_active,
     users.created_at::text as created_at,
@@ -104,6 +120,7 @@ const userWithRolesSelect = `
   from users
   left join user_role_bindings on user_role_bindings.user_id = users.id
   left join user_password_credentials on user_password_credentials.user_id = users.id
+  left join public.user_oidc_identities identity on identity.user_id=users.id and identity.organization_id=users.organization_id
 `;
 
 type OrganizationRow = {
@@ -151,7 +168,7 @@ export async function listUsers(db: Queryable, organizationId: string) {
     `
     ${userWithRolesSelect}
     where users.organization_id = $1
-    group by users.id, user_password_credentials.username
+    group by users.id, user_password_credentials.username,identity.user_id
     order by users.name
     `,
     [organizationId]
@@ -165,7 +182,7 @@ export async function getUserById(db: Queryable, input: { organizationId: string
     `
     ${userWithRolesSelect}
     where users.organization_id = $1 and users.id = $2
-    group by users.id, user_password_credentials.username
+    group by users.id, user_password_credentials.username,identity.user_id
     `,
     [input.organizationId, input.userId]
   );
@@ -208,14 +225,14 @@ export async function deleteUserById(
   return result.rowCount;
 }
 
-export async function insertUser(db: Queryable, input: Pick<CreateUserInput, "name" | "title"> & { id: string; organizationId: string }) {
+export async function insertUser(db: Queryable, input: Pick<CreateUserInput, "name" | "title"> & { id: string; organizationId: string; email?: string }) {
   const result = await db.query<UserGovernanceRow>(
     `
-    insert into users (id, organization_id, name, title, is_active)
-    values ($1, $2, $3, $4, true)
+    insert into users (id, organization_id, name, title, email, is_active)
+    values ($1, $2, $3, $4, $5, true)
     returning id, organization_id, name, email, title, is_active, created_at::text as created_at, last_active_at::text as last_active_at
     `,
-    [input.id, input.organizationId, input.name, input.title]
+    [input.id, input.organizationId, input.name, input.title,input.email ?? null]
   );
 
   return toDto({ ...result.rows[0], roles: [] });
@@ -275,7 +292,7 @@ export async function updateUser(db: Queryable, input: { organizationId: string;
     ]
   );
 
-  return toDto({ ...result.rows[0], username: current.username, roles: current.roles });
+  return { ...current,...toDto({ ...result.rows[0], username: current.username, roles: current.roles }) };
 }
 
 export async function updateUserActive(db: Queryable, input: { organizationId: string; userId: string; isActive: boolean }) {
@@ -292,7 +309,7 @@ export async function updateUserActive(db: Queryable, input: { organizationId: s
     [input.organizationId, input.userId, input.isActive]
   );
 
-  return toDto({ ...result.rows[0], username: current.username, roles: current.roles });
+  return { ...current,...toDto({ ...result.rows[0], username: current.username, roles: current.roles }) };
 }
 
 export async function replaceRoleBindings(db: Queryable, input: { organizationId: string; userId: string; roles: RoleBinding[] }) {
@@ -361,7 +378,19 @@ const registrationRoleRequestSelect = `
     local_registration_role_requests.status,
     local_registration_role_requests.created_at::text as created_at,
     local_registration_role_requests.decided_at::text as decided_at,
-    local_registration_role_requests.decided_by_user_id
+    local_registration_role_requests.decided_by_user_id,
+    local_registration_role_requests.account_changed_at::text as account_changed_at,
+    (local_registration_role_requests.account_changed_at is not null or users.is_active or
+      not exists(select 1 from user_role_bindings bindings
+        where bindings.user_id = users.id and bindings.organization_id = users.organization_id
+          and bindings.project_id is null and bindings.role_id = local_registration_role_requests.current_role_id) or
+      exists(select 1 from user_role_bindings bindings
+        where bindings.user_id = users.id and bindings.organization_id = users.organization_id
+          and bindings.project_id is null and bindings.role_id not like 'catalog-capability-%'
+          and bindings.role_id <> local_registration_role_requests.current_role_id)) as account_changed,
+    local_registration_role_requests.decision_outcome,
+    local_registration_role_requests.decision_can_login,
+    local_registration_role_requests.decision_role_ids
   from local_registration_role_requests
   join organizations on organizations.id = local_registration_role_requests.organization_id
   join users on users.id = local_registration_role_requests.user_id
@@ -386,13 +415,14 @@ export async function listRegistrationRoleRequestsByScope(
   return result.rows.map(registrationRoleRequestToDto);
 }
 
-export async function getPendingRegistrationRoleRequestByIdForAdmin(db: Queryable, requestId: string) {
+export async function getPendingRegistrationRoleRequestByIdForAdmin(db: Queryable, requestId: string, lock = false) {
   const result = await db.query<RegistrationRoleRequestRow>(
     `
     ${registrationRoleRequestSelect}
     where local_registration_role_requests.id = $1
       and local_registration_role_requests.status = 'pending'
     limit 1
+    ${lock ? "for update of local_registration_role_requests" : ""}
     `,
     [requestId]
   );
@@ -402,7 +432,8 @@ export async function getPendingRegistrationRoleRequestByIdForAdmin(db: Queryabl
 
 export async function getPendingRegistrationRoleRequestById(
   db: Queryable,
-  input: { organizationId: string; requestId: string }
+  input: { organizationId: string; requestId: string },
+  lock = false
 ) {
   const result = await db.query<RegistrationRoleRequestRow>(
     `
@@ -411,6 +442,7 @@ export async function getPendingRegistrationRoleRequestById(
       and local_registration_role_requests.id = $2
       and local_registration_role_requests.status = 'pending'
     limit 1
+    ${lock ? "for update of local_registration_role_requests" : ""}
     `,
     [input.organizationId, input.requestId]
   );
@@ -426,6 +458,9 @@ export async function decideRegistrationRoleRequest(
     status: Exclude<RegistrationRoleRequestStatus, "pending">;
     decidedByUserId: string;
     decidedAt: string;
+    outcome: RegistrationDecisionOutcome;
+    canLogin: boolean;
+    roles: BackendRoleId[];
   }
 ) {
   const result = await db.query<RegistrationRoleRequestRow>(
@@ -433,7 +468,10 @@ export async function decideRegistrationRoleRequest(
     update local_registration_role_requests
     set status = $3,
         decided_by_user_id = $4,
-        decided_at = $5
+        decided_at = $5,
+        decision_outcome = $6,
+        decision_can_login = $7,
+        decision_role_ids = $8
     where organization_id = $1
       and id = $2
       and status = 'pending'
@@ -449,9 +487,13 @@ export async function decideRegistrationRoleRequest(
       status,
       created_at::text as created_at,
       decided_at::text as decided_at,
-      decided_by_user_id
+      decided_by_user_id,
+      account_changed_at::text as account_changed_at,
+      decision_outcome,
+      decision_can_login,
+      decision_role_ids
     `,
-    [input.organizationId, input.requestId, input.status, input.decidedByUserId, input.decidedAt]
+    [input.organizationId, input.requestId, input.status, input.decidedByUserId, input.decidedAt, input.outcome, input.canLogin, input.roles]
   );
 
   return result.rows[0] ? registrationRoleRequestToDto(result.rows[0]) : null;

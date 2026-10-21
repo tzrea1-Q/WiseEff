@@ -9,6 +9,68 @@ import { projectBindingDtoSchema } from "../parameter-topology/schemas";
 const leftoverSchemaNames = new Set(["GenericObjectResponse"]);
 
 describe("DTO schema catalog coverage", () => {
+  it("documents registration decisions without inventing historical login outcomes", () => {
+    const document = buildOpenApiDocument();
+    expect(document.paths["/api/v1/users/registration-role-requests/{requestId}/enable-basic"]?.post).toMatchObject({
+      responses: { "200": { content: { "application/json": { schema: { $ref: "#/components/schemas/RegistrationRoleRequestResponse" } } } }, "409": {} }
+    });
+    const legacy = { id: "request", organizationId: "org", organizationName: "Organization", userId: "member", userName: "Member",
+      username: "member", currentRoleId: "software-user", requestedRoleId: "software-committer", status: "rejected",
+      createdAt: "2026-10-20T00:00:00.000Z", decidedAt: "2026-10-20T01:00:00.000Z", decidedByUserId: "admin",
+      decisionOutcome: null, decisionCanLogin: null, decisionRoleIds: null, accountChanged: false };
+    const response = dtoSchemaCatalog.RegistrationRoleRequestResponse;
+    expect(response.safeParse({ item: legacy }).success).toBe(true);
+    expect(response.safeParse({ item: { ...legacy, decisionOutcome: "basic-enabled", decisionCanLogin: true, decisionRoleIds: ["software-user"] } }).success).toBe(true);
+    expect(response.safeParse({ item: { ...legacy, decisionOutcome: "unknown" } }).success).toBe(false);
+  });
+  it("documents debug module relocation preview and optional legacy deletion body", () => {
+    const document = buildOpenApiDocument();
+    expect(document.paths["/api/v1/debugging/admin/modules/{moduleId}/deletion-preview"]?.get).toMatchObject({
+      parameters: expect.arrayContaining([expect.objectContaining({ name: "targetModuleId", in: "query", required: false })]),
+      responses: { "200": { content: { "application/json": { schema: { $ref: "#/components/schemas/DebugModuleDeletionPreviewResponse" } } } } }
+    });
+    expect(document.paths["/api/v1/debugging/admin/modules/{moduleId}"]?.delete).toMatchObject({
+      requestBody: { required: false }, responses: { "204": {} }
+    });
+    const request = dtoSchemaCatalog.DeleteDebugModuleRequest;
+    expect(request.safeParse({ targetModuleId: null, previewDigest: `sha256:${"0".repeat(64)}`, clientMutationId: "delete-once" }).success).toBe(true);
+    expect(request.safeParse({ targetModuleId: "target", previewDigest: "stale", clientMutationId: "delete-once" }).success).toBe(false);
+    expect(dtoSchemaCatalog.DebugModuleDeletionPreviewResponse.safeParse({ item: {
+      module: { id: "leaf", name: "Leaf" }, target: null, nodeCount: 2, legacyNodeCount: 1,
+      children: [], ambiguousNodes: [], canDelete: true, previewDigest: `sha256:${"0".repeat(64)}`
+    } }).success).toBe(true);
+  });
+  it("documents passwordless OIDC provisioning and optimistic identity binding", () => {
+    const document = buildOpenApiDocument();
+    expect(document.paths["/api/v1/users/{userId}/oidc-identity"]?.put).toMatchObject({
+      requestBody: { content: { "application/json": { schema: { $ref: "#/components/schemas/SetUserOidcIdentityRequest" } } } },
+      responses: { "200": {}, "400": {}, "403": {}, "404": {}, "409": {} }
+    });
+    const identity = { issuer: "https://identity.example", subject: "external-member" };
+    const member = { authentication: "oidc", name: "Member", ...identity, roles: [{ roleId: "software-user" }] };
+    expect(dtoSchemaCatalog.CreateLocalAccountUserRequest.safeParse(member).success).toBe(true);
+    expect(dtoSchemaCatalog.CreateLocalAccountUserRequest.safeParse({ ...member, subject: " " }).success).toBe(false);
+    expect(dtoSchemaCatalog.SetUserOidcIdentityRequest.safeParse({ ...identity, expectedIdentity: null }).success).toBe(true);
+    expect(dtoSchemaCatalog.SetUserOidcIdentityRequest.safeParse(identity).success).toBe(false);
+    expect(dtoSchemaCatalog.UserGovernanceResponse.safeParse({ item: {
+      id: "stable-id", organizationId: "org", name: "Member", email: null, username: null, title: "",
+      isActive: true, createdAt: "2026-10-20T00:00:00.000Z", lastActiveAt: null,
+      roles: [{ roleId: "software-user", projectId: null }], oidcIdentity: identity
+    } }).success).toBe(true);
+    expect(document.components.schemas.LocalAuthPublicConfigResponse).toMatchObject({
+      properties: { oidcIssuer: { type: "string" } }
+    });
+  });
+  it("documents complete Canonical restore proof without requiring a payload for legacy restores", () => {
+    const document = buildOpenApiDocument();
+    const paths = document.paths as Record<string, Record<string, { requestBody?: { required?: boolean } }>>;
+    expect(paths["/api/v1/projects/{projectId}/baselines/{baselineId}/rollback"].post.requestBody?.required).toBe(false);
+    const request = dtoSchemaCatalog.ReleaseBaselineRestoreRequest;
+    expect(request.safeParse({}).success).toBe(true);
+    expect(request.safeParse({ proofToken: "0".repeat(64) }).success).toBe(false);
+    expect(request.safeParse({ proofToken: "0".repeat(64), confirmCompositionChanges: true,
+      reason: "Restore the inspected complete source", clientMutationId: "restore-once" }).success).toBe(true);
+  });
   it("documents skill ZIP import status and revision-selectable ZIP export", () => {
     const request = dtoSchemaCatalog.LogSkillPackageMultipartImport;
     expect(request.parse({ file: "package.zip" })).toEqual({ file: "package.zip", status: "draft" });

@@ -1,4 +1,8 @@
 import { logValidationIssues } from "./validationMessages";
+import { previewLogDeletion } from "./deletionPreview";
+import { logDeletionStatus, pendingLogDeletions, purgeLog } from "./purge";
+import { getSkillDeletionStatus, listSkillDeletions, previewSkillDeletion, purgeSkill } from "./skillDeletion";
+import { skillDeletionRequestSchema } from "../contracts/dtoSchemas/skillDeletion";
 import type { MultipartBody } from "../../shared/http/server";
 import { MAX_LOG_JSON_UPLOAD_BYTES } from "./bundleIntake";
 import { z } from "zod";
@@ -48,7 +52,7 @@ import { previewLogSkillParsing, previewLogSkillExtractor, previewLogSkillFormat
 import { parsePreviewRequestSchema } from "./parsing/spec";
 import { extractorPreviewRequestSchema } from "./parsing/extractorBuilder";
 import { formatPreviewRequestSchema } from "./formatProfile";
-import { archiveSourceSnapshot, getSourceEvidence, listSourceSnapshots, setDefaultSourceSnapshot, trySourceStatement, uploadSourceSnapshot } from "./sourceSnapshots";
+import { archiveSourceSnapshot, getSourceEvidence, listSourceSnapshots, restoreSourceSnapshot, retrySourceSnapshot, setDefaultSourceSnapshot, trySourceStatement, uploadSourceSnapshot } from "./sourceSnapshots";
 import { sourceSnapshotUploadSchema } from "./schemas";
 import { recommendOrganizationLogSkills } from "./skillRecommendationService";
 import { logSkillRecommendationRequestSchema } from "./schemas";
@@ -296,6 +300,20 @@ export function registerLogRoutes(
       createUserInvocation(auth), { requestId: request.requestId });
     return { status: 200, body: { item } };
   });
+  router.post("/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/retry", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    parseWithSchema(z.object({}).strict(), request.body ?? {});
+    const item = await retrySourceSnapshot(requireDb(options.db), auth, request.params.skillId, request.params.snapshotId,
+      createUserInvocation(auth), { requestId: request.requestId });
+    return { status: 202, body: { item } };
+  });
+  router.post("/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/restore", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    parseWithSchema(z.object({}).strict(), request.body ?? {});
+    const item = await restoreSourceSnapshot(requireDb(options.db), requireObjectStore(options.objectStore), auth, request.params.skillId, request.params.snapshotId,
+      createUserInvocation(auth), { requestId: request.requestId });
+    return { status: 202, body: { item } };
+  });
   router.post("/api/v1/log-files", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
@@ -401,6 +419,27 @@ export function registerLogRoutes(
     return { status: 200, body: { items } };
   });
 
+  router.get("/api/v1/logs/:logId/deletion-preview", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { logId } = parseWithSchema(paramsWithLogIdSchema, request.params);
+    return { status: 200, body: { item: await previewLogDeletion(requireDb(options.db), auth, logId) } };
+  });
+  router.get("/api/v1/logs/deletions", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, body: { items: await pendingLogDeletions(requireDb(options.db), auth) } };
+  });
+  router.get("/api/v1/logs/:logId/deletion-status", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { logId } = parseWithSchema(paramsWithLogIdSchema, request.params);
+    return { status: 200, body: { item: await logDeletionStatus(requireDb(options.db), auth, logId) } };
+  });
+  router.delete("/api/v1/logs/:logId", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { logId } = parseWithSchema(paramsWithLogIdSchema, request.params);
+    const { version } = parseWithSchema(z.object({ version: z.string().regex(/^[a-f0-9]{64}$/) }).strict(), request.body);
+    return { status: 200, body: { item: await purgeLog(requireDb(options.db), createUserInvocation(auth), logId, version, request.requestId, options.objectStore) } };
+  });
+
   router.get("/api/v1/logs/:logId/lines", async (request) => {
     const db = requireDb(options.db);
     const auth = await getLogPrincipal(request);
@@ -488,6 +527,26 @@ export function registerLogRoutes(
       request.params.skillId, query.revision), contentType: "application/zip", fileName: "skill-package.zip" };
   });
   const skillParams = z.object({ skillId: z.string().min(1) });
+  router.get("/api/v1/log-skills/deletions", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, body: { items: await listSkillDeletions(requireDb(options.db), auth) } };
+  });
+  router.get("/api/v1/log-skills/:skillId/deletion-preview", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { skillId } = parseWithSchema(skillParams, request.params);
+    return { status: 200, body: { item: await previewSkillDeletion(requireDb(options.db), auth, skillId) } };
+  });
+  router.get("/api/v1/log-skills/:skillId/deletion-status", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { skillId } = parseWithSchema(skillParams, request.params);
+    return { status: 200, body: { item: await getSkillDeletionStatus(requireDb(options.db), auth, skillId) } };
+  });
+  router.post("/api/v1/log-skills/:skillId/purge", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { skillId } = parseWithSchema(skillParams, request.params);
+    const { version } = parseWithSchema(skillDeletionRequestSchema, request.body);
+    return { status: 200, body: { item: await purgeSkill(requireDb(options.db), createUserInvocation(auth), skillId, version, request.requestId, options.objectStore) } };
+  });
   router.get("/api/v1/log-skills/:skillId/sample", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const { skillId } = parseWithSchema(skillParams, request.params);

@@ -82,6 +82,26 @@ function createFile(name = "api-upload.log") {
 }
 
 describe("createLogRuntimeActions", () => {
+  it("does not report a deleted log's in-flight job read as a fresh operation failure", async () => {
+    let started!: () => void, reject!: (error: Error) => void;
+    const reading = new Promise<void>((resolve) => { started = resolve; }), pending = new Promise<LogJobSnapshot>((_resolve, fail) => { reject = fail; });
+    const dispatch = vi.fn(), actions = createLogRuntimeActions({ mode: "api", dispatch, getState: () => initialState, pollIntervalMs: 0,
+      repository: createRepository({ uploadLog: async () => ({ log: apiLog, job: queuedJob }), getJob: async () => { started(); return pending; } }) });
+    const upload = actions.upload({ file: createFile("upload.log") }); await reading;
+    actions.forgetLog!(apiLog.id); reject(new Error("job deleted"));
+    await expect(upload).resolves.toBeUndefined();
+    expect(dispatch.mock.calls).toEqual([[{ type: "UPSERT_LOG_RECORD", log: apiLog }]]);
+  });
+  it("invalidates an earlier list response when a log is permanently removed", async () => {
+    let resolve!: (logs: LogRecord[]) => void;
+    const pending = new Promise<LogRecord[]>((done) => { resolve = done; }), dispatch = vi.fn();
+    const actions = createLogRuntimeActions({ mode: "api", dispatch, getState: () => initialState,
+      repository: createRepository({ listLogs: async () => pending }) });
+    const refresh = actions.refresh();
+    actions.forgetLog!(apiLog.id);
+    resolve([apiLog]); await refresh;
+    expect(dispatch).not.toHaveBeenCalled();
+  });
   it.each([false, true])("lets only the latest refresh publish when an older request fails=%s", async (fails) => {
     let complete!: (logs: LogRecord[]) => void;
     let reject!: (error: Error) => void;

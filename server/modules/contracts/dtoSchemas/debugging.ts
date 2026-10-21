@@ -21,6 +21,26 @@ export const debugNormalizationModeSchema = z.enum([
   "json-canonical"
 ]);
 
+const nonEmptyString = z.string().trim().min(1);
+export const debugModuleDeletionBodySchema = z.object({
+  targetModuleId: nonEmptyString.nullable(),
+  previewDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+  clientMutationId: nonEmptyString.max(200)
+}).strict();
+const debugModuleDeletionIdentitySchema = z.object({ id: nonEmptyString, name: nonEmptyString });
+export const debugModuleDeletionPreviewSchema = z.object({
+  module: debugModuleDeletionIdentitySchema,
+  target: debugModuleDeletionIdentitySchema.nullable(),
+  nodeCount: z.number().int().nonnegative(),
+  legacyNodeCount: z.number().int().nonnegative(),
+  children: z.array(debugModuleDeletionIdentitySchema),
+  ambiguousNodes: z.array(debugModuleDeletionIdentitySchema),
+  canDelete: z.boolean(),
+  previewDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/)
+});
+export const debugModuleDeletionPreviewResponseSchema = z.object({ item: debugModuleDeletionPreviewSchema });
+export type DebugModuleDeletionInput = z.infer<typeof debugModuleDeletionBodySchema>;
+
 /** Public canonical identity.  The source-owner row is intentionally server-only. */
 export const canonicalDebugPinDtoSchema = z.object({
   bindingId: z.string().optional(),

@@ -136,6 +136,55 @@ export async function archiveSourceSnapshot(db: Database, auth: AuthContext, ski
   });
 }
 
+/** Reuse the immutable upload and its captured indexing inputs; a worker creates a fresh attempt token. */
+export async function retrySourceSnapshot(db: Database, auth: AuthContext, skillId: string, id: string,
+  invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  assertTrustedInvocationMatchesAuth(auth, invocation, "Retry source snapshot indexing");
+  requireOrganization(auth);
+  requireLogAdminDomains(auth);
+  return withAuditedWrite(db, invocation, context, async (tx) => {
+    await lockSkill(tx, auth.organization.id, skillId);
+    const snapshot = await getSnapshot(tx, auth.organization.id, skillId, id);
+    if (snapshot.status !== "failed") throw new ApiError("CONFLICT", "仅索引失败的源码快照可重新排队，请刷新状态。", { snapshotId: id, status: snapshot.status });
+    return { result: await requeueSnapshot(tx, auth.organization.id, skillId, id, "failed"), audit: audit(id, "log-source-snapshot-retry", skillId) };
+  });
+}
+
+async function requeueSnapshot(tx: Queryable, organizationId: string, skillId: string, id: string, expectedStatus: "failed" | "archived") {
+  const queued = await tx.query(`update log_source_snapshots set status='queued', index_attempt_id=null, error=null,
+    files_processed=0, files_total=0, file_count=0, skipped_count=0, skipped_files='[]'::jsonb,
+    statement_count=0, statements_truncated=false, updated_at=now()
+    where organization_id=$1 and skill_id=$2 and id=$3 and status=$4 returning id`, [organizationId, skillId, id, expectedStatus]);
+  if (!queued.rows.length) throw new ApiError("CONFLICT", "快照状态已变化，请刷新后重试。");
+  return getSnapshot(tx, organizationId, skillId, id);
+}
+
+export async function restoreSourceSnapshot(db: Database, store: ObjectStore, auth: AuthContext, skillId: string, id: string,
+  invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  assertTrustedInvocationMatchesAuth(auth, invocation, "Restore source snapshot");
+  requireOrganization(auth);
+  requireLogAdminDomains(auth);
+  return withAuditedWrite(db, invocation, context, async (tx) => {
+    await lockSkill(tx, auth.organization.id, skillId);
+    const snapshot = await getSnapshot(tx, auth.organization.id, skillId, id);
+    if (snapshot.status !== "archived") throw new ApiError("CONFLICT", "仅已归档的源码快照可恢复，请刷新状态。", { snapshotId: id, status: snapshot.status });
+    const conflict = (await tx.query<{ id: string; versionLabel: string; status: string }>(`select id,version_label as "versionLabel",status
+      from log_source_snapshots where organization_id=$1 and skill_id=$2 and version_label=$3 and status<>'archived' and id<>$4`,
+    [auth.organization.id, skillId, snapshot.versionLabel, id])).rows[0];
+    if (conflict) throw new ApiError("CONFLICT", "该版本标签已被其他快照占用，请先归档占用项后重试。", { conflictingSnapshot: conflict });
+    const key = (await tx.query<{ storage_key: string }>("select storage_key from log_source_snapshots where organization_id=$1 and skill_id=$2 and id=$3", [auth.organization.id, skillId, id])).rows[0]!.storage_key;
+    try {
+      let readable = false;
+      if (store.getStream) {
+        // A range read checks existence without loading the archive; breaking closes the stream.
+        for await (const chunk of await store.getStream(key, { start: 0, end: 0 })) { if (Buffer.byteLength(chunk)) { readable = true; break; } }
+      } else readable = (await store.get(key)).length > 0;
+      if (!readable) throw new Error("empty source object");
+    } catch { throw new ApiError("CONFLICT", "原始源码文件无法读取，请检查对象存储并恢复原文件后重试。", { reason: "source-snapshot-object-unavailable", snapshotId: id }); }
+    return { result: await requeueSnapshot(tx, auth.organization.id, skillId, id, "archived"), audit: audit(id, "log-source-snapshot-restore", skillId) };
+  });
+}
+
 /** Update under the same skill lock used by save/publish, replacing the draft token. */
 export async function setDefaultSourceSnapshot(db: Database, auth: AuthContext, skillId: string, id: string,
   invocation: TrustedInvocationContext, context: AuditedWriteContext) {

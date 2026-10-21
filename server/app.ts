@@ -6,6 +6,7 @@ import { createAuthAttemptLimiter } from "./modules/auth/authAttemptLimiter";
 import { createLocalAuthService } from "./modules/auth/localAuth";
 import { getAuthContext } from "./modules/auth/repository";
 import { developmentAuthContext, registerAuthRoutes } from "./modules/auth/routes";
+import { normalizeOidcIssuer } from "./modules/auth/oidcIdentity";
 import type { AuthContext } from "./modules/auth/types";
 import { createLocalArchiveObjectStore, type ArchiveObjectStore } from "./modules/catalog-cutover/archive";
 import { allowsIntegrationPrincipal, isIntegrationAuthorization, resolveIntegrationCredential } from "./modules/auth/integrationCredentialResolver";
@@ -164,6 +165,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
 
   registerAuthRoutes(router, {
+    db: options.db,
     getCurrentAuthContext: authResolver,
     localAuthService,
     authPublicConfig: localAuthService
@@ -174,7 +176,8 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
             provider: provider === "oidc" || provider === "hmac" ? provider : "development",
             selfRegisterEnabled: false as const,
             hasLocalAdmin: true,
-            evaluationOrganizationName: null
+            evaluationOrganizationName: null,
+            ...(provider === "oidc" && options.env?.AUTH_OIDC_ISSUER ? { oidcIssuer: normalizeOidcIssuer(options.env.AUTH_OIDC_ISSUER) } : {})
           };
         }
   });
@@ -188,6 +191,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerUserRoutes(router, {
     db: options.db,
+    oidcIssuer: options.env?.AUTH_PROVIDER === "oidc" ? options.env.AUTH_OIDC_ISSUER : undefined,
     getCurrentAuthContext: authResolver
   });
   registerCatalogProjectValueConsumerRoutes(router, {
@@ -500,13 +504,15 @@ function buildDeviceBridgeRouteOptions(
   if (!runtime) {
     return {
       db: options.db,
-      getCurrentAuthContext
+      getCurrentAuthContext,
+      connectionPool: options.deviceBridge?.connectionPool
     };
   }
 
   return {
     db: options.db,
     getCurrentAuthContext,
+    connectionPool: options.deviceBridge?.connectionPool,
     pairingService: runtime.pairingService,
     loadReleaseManifest: runtime.loadReleaseManifest,
     loadToolReleaseManifest: runtime.loadToolReleaseManifest

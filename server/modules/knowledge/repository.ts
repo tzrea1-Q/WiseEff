@@ -25,6 +25,7 @@ type KnowledgeEntryRow = {
   source_type: KnowledgeEntryDto["sourceType"];
   source_session_id: string | null;
   source_log_id: string | null;
+  source_log_deleted?: boolean;
   source_reload_run_id: string | null;
   created_by_user_id: string | null;
   head_revision_id: string | null;
@@ -144,6 +145,7 @@ function toEntryDto(
     sourceType: row.source_type,
     sourceSessionId: row.source_session_id,
     sourceLogId: row.source_log_id,
+    sourceLogDeleted: row.source_log_deleted ?? false,
     sourceReloadRunId: row.source_reload_run_id,
     createdByUserId: row.created_by_user_id,
     headRevisionId: row.head_revision_id,

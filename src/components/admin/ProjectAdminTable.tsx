@@ -20,6 +20,7 @@ type ProjectAdminTableProps = {
   onManageFiles: (projectId: string) => void;
   onConfigureReviewRoles?: (projectId: string) => void;
   onArchiveProject?: (projectId: string, archive: boolean) => void;
+  onPreviewDeletion?: (projectId: string) => void;
   primaryActionLabel?: string;
   detailDrawer?: ReactNode;
 };
@@ -75,6 +76,7 @@ export function ProjectAdminTable({
   onManageFiles,
   onConfigureReviewRoles,
   onArchiveProject,
+  onPreviewDeletion,
   primaryActionLabel = "管理文件",
   detailDrawer
 }: ProjectAdminTableProps) {
@@ -193,7 +195,7 @@ export function ProjectAdminTable({
       headerContent={<>
         <p>维护项目基础信息与初始化状态；冲突与基线列标出需要治理关注的项目。</p>
         {rows.some((row) => row.canonicalOwned) ?
-          <p id="canonical-project-retention-policy">项目需保留规范历史，不能删除；可归档后从默认清单收起。</p> : null}
+          <p id="canonical-project-retention-policy">{onPreviewDeletion ? "彻底删除前请打开删除影响预览，核对范围与保留资源。" : "项目需保留规范历史，不能删除；可归档后从默认清单收起。"}</p> : null}
       </>}
       table={{
         ariaLabel: "项目管理列表", rows: filteredRows, rowKey: (row) => row.id, columns, pageSize: 10,
@@ -233,12 +235,14 @@ export function ProjectAdminTable({
         items: [
           ...(onConfigureReviewRoles ? [{ id: "review-roles", label: "审核角色", ariaLabel: `审核角色 ${row.name}`, onSelect: () => onConfigureReviewRoles(row.id) }] : []),
           { id: "edit", label: "编辑", ariaLabel: `编辑 ${row.name}`, onSelect: () => onEditProject(row.id) },
+          ...(onPreviewDeletion ? [{ id: "deletion-preview", label: "删除影响预览", ariaLabel: `删除影响预览 ${row.name}`,
+            onSelect: () => onPreviewDeletion(row.id) }] : []),
           ...(onArchiveProject ? [{ id: "archive", label: row.status === "archived" ? "恢复项目" : "归档",
             ariaLabel: `${row.status === "archived" ? "恢复项目" : "归档"} ${row.name}`,
             onSelect: () => onArchiveProject(row.id, row.status !== "archived") }] : []),
-          { id: "delete", label: "删除", ariaLabel: `删除 ${row.name}`, disabled: row.canonicalOwned,
+          ...(!onPreviewDeletion ? [{ id: "delete", label: "删除", ariaLabel: `删除 ${row.name}`, disabled: row.canonicalOwned,
             descriptionId: row.canonicalOwned ? "canonical-project-retention-policy" : undefined,
-            destructive: true, confirmation: projectDeleteConfirmation(row), onSelect: () => onDeleteProject(row.id) }
+            destructive: true as const, confirmation: projectDeleteConfirmation(row), onSelect: () => onDeleteProject(row.id) }] : [])
         ]
       })}
     />

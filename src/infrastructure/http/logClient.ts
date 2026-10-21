@@ -48,6 +48,12 @@ import {
   logRecordListResponseSchema,
   logRecordResponseSchema,
   logLineRangeResponseSchema,
+  logDeletionPreviewResponseSchema,
+  logDeletionStatusResponseSchema,
+  logDeletionStatusListResponseSchema,
+  skillDeletionPreviewResponseSchema,
+  skillDeletionStatusResponseSchema,
+  skillDeletionListResponseSchema,
   logRunResponseSchema,
   logWebhookDeliveryListResponseSchema,
   logWebhookTestOutcomeResponseSchema
@@ -197,6 +203,18 @@ export function createHttpLogAnalysisRepository(
     return (await apiClient.raw("/api/v1/log-files", { method: "POST", body: form })).json() as Promise<LogUploadResponse>;
   }
   const repository: LogAnalysisRepository = {
+    async previewSkillDeletion(id) {
+      return parseContractDto(skillDeletionPreviewResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}/deletion-preview`), "SkillDeletionPreviewResponse").item;
+    },
+    async purgeSkill(id, version) {
+      return parseContractDto(skillDeletionStatusResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/purge`, { version }), "SkillDeletionStatusResponse").item;
+    },
+    async getSkillDeletionStatus(id) {
+      return parseContractDto(skillDeletionStatusResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}/deletion-status`), "SkillDeletionStatusResponse").item;
+    },
+    async listSkillDeletions() {
+      return parseContractDto(skillDeletionListResponseSchema, await apiClient.get("/api/v1/log-skills/deletions"), "SkillDeletionListResponse").items;
+    },
     async importSkillPackage(file, status, name) {
       return parseContractDto(logSkillResponseSchema, await apiClient.upload("/api/v1/log-skills/import", file, { status, ...(name?.trim() ? { name: name.trim() } : {}) }), "LogSkillResponse").item;
     },
@@ -406,6 +424,22 @@ export function createHttpLogAnalysisRepository(
     async archiveLog(logId: string) {
       await apiClient.post<ItemEnvelope<LogRecordDto>>(`${routeLogPath(logId)}/archive`, {});
     },
+    async previewLogDeletion(logId: string) {
+      return parseContractDto(logDeletionPreviewResponseSchema,
+        await apiClient.get(`${routeLogPath(logId)}/deletion-preview`), "LogDeletionPreviewResponse").item;
+    },
+    async purgeLog(logId: string, version: string) {
+      return parseContractDto(logDeletionStatusResponseSchema,
+        await apiClient.delete(routeLogPath(logId), { version }), "LogDeletionStatusResponse").item;
+    },
+    async getLogDeletionStatus(logId: string) {
+      return parseContractDto(logDeletionStatusResponseSchema,
+        await apiClient.get(`${routeLogPath(logId)}/deletion-status`), "LogDeletionStatusResponse").item;
+    },
+    async pendingLogDeletions() {
+      return parseContractDto(logDeletionStatusListResponseSchema,
+        await apiClient.get("/api/v1/logs/deletions"), "LogDeletionStatusListResponse").items;
+    },
     async unarchiveLog(logId: string) {
       await apiClient.post<ItemEnvelope<LogRecordDto>>(`${routeLogPath(logId)}/unarchive`, {});
     },
@@ -482,6 +516,12 @@ export function createHttpLogAnalysisRepository(
     },
     async archiveSourceSnapshot(id, snapshotId) {
       return parseContractDto(logSourceSnapshotResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/source-snapshots/${encodeURIComponent(snapshotId)}/archive`, {}), "LogSourceSnapshotResponse").item;
+    },
+    async retrySourceSnapshot(id, snapshotId) {
+      return parseContractDto(logSourceSnapshotResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/source-snapshots/${encodeURIComponent(snapshotId)}/retry`, {}), "LogSourceSnapshotResponse").item;
+    },
+    async restoreSourceSnapshot(id, snapshotId) {
+      return parseContractDto(logSourceSnapshotResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/source-snapshots/${encodeURIComponent(snapshotId)}/restore`, {}), "LogSourceSnapshotResponse").item;
     },
     async locateSourceStatement(id, snapshotId, line) {
       return parseContractDto(logSourceLocateResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/source-snapshots/${encodeURIComponent(snapshotId)}/locate`, { line }), "LogSourceLocateResponse");

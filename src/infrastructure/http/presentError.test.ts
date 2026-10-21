@@ -5,6 +5,16 @@ import { NETWORK_ERROR_MESSAGE, presentError, presentErrorMessage } from "./pres
 const FALLBACK = "操作失败，请稍后重试。";
 
 describe("presentError", () => {
+  it("explains administrator role grant and self-lock refusals", () => {
+    expect(presentError(new WiseEffApiError("CONFLICT", "Account settings changed after registration. Close this request to preserve the current account settings, then manage the member directly.", {}, "req-registration"), FALLBACK))
+      .toBe("账号已有后续管理调整，不能用旧申请覆盖。请关闭申请以保留现状，再直接管理成员。");
+    expect(presentError(new WiseEffApiError("FORBIDDEN", "User is pending Admin approval.", {}, "req-pending"), FALLBACK))
+      .toBe("账号等待管理员审核并启用后才能登录。");
+    expect(presentError(new WiseEffApiError("FORBIDDEN", "Only a platform super admin may grant or revoke the platform-admin role.", {}, "req-role"), FALLBACK))
+      .toBe("只有平台超级管理员可以授予或撤销平台超级管理员角色。");
+    expect(presentError(new WiseEffApiError("CONFLICT", "Active Admin cannot remove its last Admin capability.", {}, "req-self"), FALLBACK))
+      .toBe("不能移除当前登录账号最后的管理员能力，请保留管理员或平台超级管理员角色。");
+  });
   it("explains the pinned source graph conflict instead of showing a generic retry", () => {
     const error = new WiseEffApiError("CONFLICT", "Pinned source graph is immutable", {
       reason: "pinned-source-graph-immutable"

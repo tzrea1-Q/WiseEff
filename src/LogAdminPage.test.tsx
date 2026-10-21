@@ -8,6 +8,7 @@ import type { LogRuntimeActions } from "./application/logs/logRuntime";
 import { createPrototypeState } from "./mockData";
 import { createTestLogRuntimeActions as createLogActions } from "./test/harness";
 import { mockSkillWorkspace } from "./infrastructure/mock/logSkills";
+import { WiseEffApiError } from "./infrastructure/http/apiClient";
 
 afterEach(() => {
   cleanup();
@@ -619,6 +620,48 @@ describe("LogAdminPage · page header actions", () => {
 describe("LogAdminPage 分析技能治理", () => {
   beforeEach(() => window.history.replaceState(null, "", "/log-admin?tab=domains"));
 
+  it("renames in place, retains failed input and links to the actual name occupier", async () => {
+    let domain = { ...chargingDomain };
+    const logActions = createLogActions({ listLogDomains: vi.fn(async () => [domain]), updateLogDomain: vi.fn()
+      .mockRejectedValueOnce(new WiseEffApiError("CONFLICT", "此名称已被归档技能占用，请使用其他名称。", {
+        conflictingSkill: { id: "occupied-skill", name: "已占用名称", status: "archived" },
+      }, "rename-conflict"))
+      .mockImplementation(async input => { domain = { ...domain, name: input.name }; return domain; }) });
+    renderPage({ logActions, apiMode: true });
+    await userEvent.click(await screen.findByRole("button", { name: "charging-power：更多" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "改名" }));
+    const dialog = screen.getByRole("dialog", { name: "修改技能名称" });
+    const name = within(dialog).getByLabelText("名称", { exact: true });
+    expect(name).toHaveValue(chargingDomain.name);
+    await userEvent.clear(name); await userEvent.type(name, "已占用名称{Enter}");
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("归档技能占用");
+    expect(name).toHaveValue("已占用名称");
+    expect(within(dialog).getByRole("link", { name: "查看占用技能「已占用名称」" })).toHaveAttribute("href", "/log-admin/skills/occupied-skill");
+    await userEvent.clear(name); await userEvent.type(name, "修改后的技能{Enter}");
+    expect(await screen.findByRole("link", { name: "修改后的技能" })).toHaveAttribute("href", `/log-admin/skills/${chargingDomain.id}`);
+    expect(logActions.updateLogDomain).toHaveBeenLastCalledWith({ domainId: chargingDomain.id, name: "修改后的技能" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("restores an archived skill after explicit confirmation and keeps failure retryable", async () => {
+    let domain = { ...chargingDomain, status: "archived" as "active" | "archived" };
+    const logActions = createLogActions({ listLogDomains: vi.fn(async () => [domain]), updateLogDomain: vi.fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockImplementation(async input => { domain = { ...domain, status: input.status }; return domain; }) });
+    renderPage({ logActions, apiMode: true });
+    await userEvent.click(await screen.findByRole("button", { name: "charging-power：更多" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "恢复" }));
+    const dialog = screen.getByRole("dialog", { name: "恢复技能" });
+    expect(dialog).toHaveTextContent("已吊销的集成凭据不会重新启用");
+    expect(logActions.updateLogDomain).not.toHaveBeenCalled();
+    await userEvent.click(within(dialog).getByRole("button", { name: "恢复技能" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("请重试");
+    expect(within(dialog).getByLabelText("名称")).toHaveValue(chargingDomain.name);
+    await userEvent.click(within(dialog).getByRole("button", { name: "恢复技能" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(logActions.updateLogDomain).toHaveBeenLastCalledWith({ domainId: chargingDomain.id, name: chargingDomain.name, status: "active" });
+  });
+
   it("confirms domain archival from overflow before writing", async () => {
     const logActions = createLogActions({ listLogDomains: vi.fn().mockResolvedValue([chargingDomain]) });
     renderPage({ logActions });
@@ -750,7 +793,9 @@ describe("LogAdminPage 分析技能治理", () => {
     await userEvent.click(row);
     expect(onNavigate).toHaveBeenCalledWith("/log-admin/skills/domain-charging");
     await userEvent.click(within(row).getByRole("button", { name: /：更多$/ }));
-    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["导出技能包", "归档"]);
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["改名", "导出技能包", "删除实验技能", "归档"]);
+    expect(screen.getByRole("menuitem", { name: "删除实验技能" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("menuitem", { name: "改名" })).toHaveAttribute("aria-disabled", "true");
     expect(screen.queryByRole("menuitem", { name: "知识条目" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "集成与结果回调" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("domain-knowledge-links-editor")).not.toBeInTheDocument();

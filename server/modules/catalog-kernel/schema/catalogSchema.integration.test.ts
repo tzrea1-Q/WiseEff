@@ -210,6 +210,7 @@ describe("canonical parameter Catalog schema", () => {
       "legacy_identities",
       "legacy_mapping_heads",
       "legacy_mapping_versions",
+      "log_erasures",
       "organization_subject_registrations",
       "parameter_catalog_archives",
       "parameter_catalog_classification_ledger",
@@ -226,6 +227,7 @@ describe("canonical parameter Catalog schema", () => {
       "parameter_review_resolutions",
       "plane_disposal_allowlist",
       "plane_disposal_runs",
+      "project_erasures",
       "project_parameter_bindings",
       "project_parameter_source_occurrences",
       "project_parameter_values",
@@ -254,8 +256,8 @@ describe("canonical parameter Catalog schema", () => {
       has_table_privilege('catalog_synchronizer_role',c.oid,'INSERT,UPDATE,DELETE,TRUNCATE') as synchronizer_mutation
       from pg_class c join pg_namespace n on n.oid=c.relnamespace
       where n.nspname='parameter_catalog' and c.relname=any($1::text[]) order by c.relname`,
-    [["definition_erasures", "definition_purge_rows"]]);
-    expect(maintenance.rows).toEqual(["definition_erasures", "definition_purge_rows"].map(name => ({
+    [["definition_erasures", "definition_purge_rows", "log_erasures", "project_erasures"]]);
+    expect(maintenance.rows).toEqual(["definition_erasures", "definition_purge_rows", "log_erasures", "project_erasures"].map(name => ({
       name, owner: "catalog_migration_owner", public_access: false, writer_mutation: false, synchronizer_mutation: false,
     })));
   });

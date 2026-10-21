@@ -46,15 +46,17 @@ async function createSkillThroughUi(page: Page, name: string, description: strin
   await dialog.getByRole("button", { name: "创建技能", exact: true }).click();
   const response = await responsePromise;
   expect(response.ok()).toBe(true);
-  expect(response.request().postDataJSON()).toMatchObject({ name, description, startingPoint: { templateId: "generic-text" } });
+  expect(response.request().postDataJSON()).toMatchObject({ name, description, status: "draft", startingPoint: { templateId: "generic-text" } });
   const skill = ((await response.json()) as { item: AnalysisSkill }).item;
+  expect(skill.currentRevision).toMatchObject({ number: 1, status: "draft" });
+  expect(skill.draft?.id).toBe(skill.currentRevision.id);
   await expect(page).toHaveURL(new RegExp(`/log-admin/skills/${skill.id}$`));
   await page.goto(`/log-admin/skills/${skill.id}?section=overview`);
   await expect(page.getByLabel("模型覆盖", { exact: true })).toBeVisible();
   return { response, skill };
 }
 
-async function publishSkillThroughUi(page: Page, skillId: string) {
+async function publishSkillThroughUi(page: Page, skillId: string, expectedRevisionNumber: 1 | 2) {
   await page.getByRole("group", { name: "未发布更改" }).getByRole("button", { name: "发布", exact: true }).click();
   const responsePromise = page.waitForResponse(
     (response) => response.request().method() === "POST" && new URL(response.url()).pathname === `/api/v1/log-skills/${skillId}/publish`
@@ -63,13 +65,12 @@ async function publishSkillThroughUi(page: Page, skillId: string) {
   const response = await responsePromise;
   expect(response.ok()).toBe(true);
   const skill = ((await response.json()) as { item: AnalysisSkill }).item;
-  // Template creation publishes v1; publishing the configured draft makes v2.
-  expect(skill.currentRevision.number).toBe(2);
+  expect(skill.currentRevision.number).toBe(expectedRevisionNumber);
   expect(skill.currentRevision.status).toBe("published");
   expect(skill.draft).toBeNull();
   await expect(page.getByRole("dialog", { name: "发布技能", exact: true })).toBeHidden();
   await page.getByRole("navigation", { name: "技能分区导航" }).getByRole("button", { name: "概览", exact: true }).click();
-  await expect(page.locator(".skill-section")).toContainText("v2");
+  await expect(page.locator(".skill-section")).toContainText(`v${expectedRevisionNumber}`);
   return { response, skill };
 }
 
@@ -856,11 +857,11 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     // The workspace only displays format-profile configuration, so use its public draft API to retain the severity map.
     const draftResponse = await page.request.put(apiRoute(`/api/v1/log-skills/${skill.id}/draft`), {
       headers: smokeHeaders(),
-      data: { spec: { ...skill.currentRevision.spec, formatProfile }, baseDraftRevisionId: null, basePublishedRevisionId: skill.currentRevision.id }
+      data: { spec: { ...skill.currentRevision.spec, formatProfile }, baseDraftRevisionId: skill.draft!.id, basePublishedRevisionId: skill.currentRevision.id }
     });
     expect(draftResponse.ok()).toBe(true);
     await page.reload();
-    const { skill: publishedSkill } = await publishSkillThroughUi(page, skill.id);
+    const { skill: publishedSkill } = await publishSkillThroughUi(page, skill.id, 1);
     expect(publishedSkill.currentRevision.spec.formatProfile).toEqual(formatProfile);
     await page.getByRole("link", { name: "← 分析技能", exact: true }).click();
     await expect(governance.getByRole("table", { name: "分析技能列表" }).getByText(acceptanceLogDomainName)).toBeVisible();
@@ -880,7 +881,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       .poll(async () => (await latestLogByFile(page, supportedFileName)).status, { timeout: 70_000 })
       .toBe("complete");
     await historyItem(page, supportedFileName).click();
-    await expect(page.getByTestId("analysis-provenance").getByRole("link", { name: `技能：${acceptanceLogDomainName} v2`, exact: true }))
+    await expect(page.getByTestId("analysis-provenance").getByRole("link", { name: `技能：${acceptanceLogDomainName} v1`, exact: true }))
       .toHaveAttribute("href", `/log-admin/skills/${createdDomain!.id}`);
     await expect(page.getByTestId("analysis-provenance")).toContainText("手动选择");
 
@@ -985,7 +986,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     const saved = ((await saveResponse.json()) as { item: SkillRevision }).item;
     expect(saved.spec.knowledgeEntryIds).toEqual([publishedEntry.id]);
     await expect(page.getByRole("button", { name: "保存草稿", exact: true })).toBeDisabled();
-    const { response: skillPublishResponse, skill: publishedSkill } = await publishSkillThroughUi(page, domain.id);
+    const { response: skillPublishResponse, skill: publishedSkill } = await publishSkillThroughUi(page, domain.id, 2);
     expect(publishedSkill.currentRevision.spec.knowledgeEntryIds).toEqual([publishedEntry.id]);
     expect(publishedSkill.currentRevision.id).toBe(saved.id);
     await page.reload();
@@ -1436,7 +1437,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await page.getByRole("group", { name: "未发布更改" }).getByRole("button", { name: "保存草稿", exact: true }).click();
     const overrideDraftResponse = await overrideDraftPromise;
     expect(overrideDraftResponse.ok()).toBe(true);
-    const { skill: publishedSkill } = await publishSkillThroughUi(page, skill.id);
+    const { skill: publishedSkill } = await publishSkillThroughUi(page, skill.id, 1);
     expect(publishedSkill.currentRevision.spec.modelOverride).toBe(acceptanceModelOverride);
     await page.getByRole("link", { name: "← 分析技能", exact: true }).click();
 
@@ -1462,7 +1463,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       .toBe("complete");
 
     await historyItem(page, supportedFileName).click();
-    await expect(page.getByTestId("analysis-provenance").getByRole("link", { name: `技能：${acceptanceModelDomainName} v2`, exact: true }))
+    await expect(page.getByTestId("analysis-provenance").getByRole("link", { name: `技能：${acceptanceModelDomainName} v1`, exact: true }))
       .toHaveAttribute("href", `/log-admin/skills/${createdDomain!.id}`);
     await expect(page.getByTestId("analysis-provenance")).toContainText("手动选择");
 
@@ -1505,7 +1506,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       ],
       db: [await domainWebhookConfigDbSummary(createdDomain!.id), await reportModelDbSummary(boundLog.id)],
       audit: [auditSummaryFor(auditBody.items, { kind: "log-skill-publish", targetId: createdDomain!.id })],
-      notes: `Domain ${createdDomain!.id} saved 模型覆盖=${acceptanceModelOverride} through the workspace draft and published v2 (placeholder states the platform default model); the bound analysis ${boundLog.id} recorded the override as the report's model provenance while endpoint/key/budget stayed global.`
+      notes: `Domain ${createdDomain!.id} saved 模型覆盖=${acceptanceModelOverride} through the workspace draft and published v1 (placeholder states the platform default model); the bound analysis ${boundLog.id} recorded the override as the report's model provenance while endpoint/key/budget stayed global.`
     });
   });
 });

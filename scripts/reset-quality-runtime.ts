@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { pathToFileURL } from "node:url";
+import { moveUnboundUsersToOrganization } from "./move-unbound-users";
 
 import { loadServerEnv } from "../server/config/env";
 import {
@@ -399,7 +400,7 @@ export async function pruneRuntimeDemoDriverGroupModules(tx: Queryable): Promise
 
 export async function resetQualityRuntime(db: Database) {
   await db.transaction(async (tx) => {
-    await tx.query("update users set organization_id = 'org-chargelab' where id = any($1::text[])", [seededUserIds]);
+    await moveUnboundUsersToOrganization(tx, seededUserIds, "org-chargelab");
     await tx.query("delete from local_registration_role_requests");
     await tx.query("delete from auth_sessions");
     await tx.query("delete from user_password_credentials");

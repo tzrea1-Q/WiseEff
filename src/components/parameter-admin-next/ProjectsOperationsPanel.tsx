@@ -11,6 +11,7 @@ import { resolveParameterFileRepository } from "@/application/parameters/paramet
 import { presentError } from "@/infrastructure/http/presentError";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
+import { ProjectDeletionPreviewDialog } from "@/components/admin/ProjectDeletionPreviewDialog";
 import { ProjectConfigurationWorkbench } from "@/components/project-configuration-workbench/ProjectConfigurationWorkbench";
 import { ProjectReviewRolesPanel } from "./ProjectReviewRolesPanel";
 import { migrateLegacyRoleId } from "@/domain/users/types";
@@ -142,6 +143,9 @@ export function ProjectsOperationsPanel({
   const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string; archive: boolean } | null>(null);
   const [archivePending, setArchivePending] = useState(false);
   const [archiveError, setArchiveError] = useState("");
+  const [deletionPreviewProjectId, setDeletionPreviewProjectId] = useState<string | null>(null);
+  const [deletions, setDeletions] = useState<import("@/domain/parameters/projectDeletionPreview").ProjectDeletionStatus[]>([]);
+  const [cleanupError, setCleanupError] = useState("");
   const listSearch = useMemo(() => parseParamAdminProjectsSearch(search), [search]);
   const listReturnPath = resolveParamAdminProjectsReturnPath(search);
   const enterProject = (id: string, nextView: "configuration" | "review-roles") => {
@@ -164,12 +168,16 @@ export function ProjectsOperationsPanel({
       const items = await adminClient.listProjects();
       setApiRows(items.map(mapProjectAdminSummaryDto));
       setProjectsLoaded(true);
+      if (canAdmin && adminClient.listProjectDeletions) {
+        try { setDeletions(await adminClient.listProjectDeletions()); setCleanupError(""); }
+        catch (cause) { setCleanupError(presentError(cause, "项目清理记录加载失败，请重试。")); }
+      }
     } catch (loadError) {
       setError(presentError(loadError, "项目列表加载失败，请稍后重试。"));
     } finally {
       setLoading(false);
     }
-  }, [adminClient, isApiMode]);
+  }, [adminClient, isApiMode, canAdmin]);
 
   useEffect(() => {
     void loadProjects();
@@ -333,6 +341,7 @@ export function ProjectsOperationsPanel({
               setEditingProjectId(id);
             }}
             onDeleteProject={confirmDelete}
+            onPreviewDeletion={isApiMode && canAdmin ? setDeletionPreviewProjectId : undefined}
             onArchiveProject={isApiMode ? (id, archive) => {
               const row = rows.find((item) => item.id === id);
               if (row) { setArchiveError(""); setArchiveTarget({ id, name: row.name, archive }); }
@@ -394,6 +403,20 @@ export function ProjectsOperationsPanel({
         />
       ) : null}
 
+      {cleanupError ? <div role="alert">{cleanupError}<Button type="button" variant="outline" onClick={() => void loadProjects()}>重试清理记录</Button></div> : null}
+      {canAdmin && deletions.length ? <section aria-label="项目清理记录"><h3>项目清理记录</h3>
+        <ul>{deletions.map(item => <li key={item.projectId}>{item.projectId} · 数据库已清理 · {item.objects === "complete" ? "对象清理完成" : `对象待清理 ${item.pendingObjects} 个`}
+          <Button type="button" variant="outline" onClick={() => setDeletionPreviewProjectId(item.projectId)}>查看清理状态 {item.projectId}</Button>
+        </li>)}</ul></section> : null}
+      {deletionPreviewProjectId ? <ProjectDeletionPreviewDialog key={deletionPreviewProjectId} projectId={deletionPreviewProjectId}
+        loadPreview={adminClient.previewProjectDeletion} purgeProject={adminClient.purgeProject}
+        initialStatus={deletions.find(item => item.projectId === deletionPreviewProjectId)} onDeleted={() => {
+          void loadProjects();
+          void Promise.all([parameterActions?.refresh(), refreshRecentAudits()]).catch(cause => {
+            setError(presentError(cause, "项目已清理，工作区数据刷新失败，请重新加载。"));
+          });
+        }}
+        onClose={() => setDeletionPreviewProjectId(null)} /> : null}
       {archiveTarget ? <ConfirmDialog open tone="primary" pending={archivePending} error={archiveError}
         title={`${archiveTarget.archive ? "归档项目" : "恢复项目"}「${archiveTarget.name}」`}
         description={archiveTarget.archive

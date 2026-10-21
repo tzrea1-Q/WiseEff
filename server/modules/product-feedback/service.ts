@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { MAX_FEEDBACK_ATTACHMENT_COUNT as MAX_ATTACHMENT_COUNT, MAX_FEEDBACK_ATTACHMENT_BYTES as MAX_ATTACHMENT_BYTES,
+  MAX_FEEDBACK_MESSAGE_ATTACHMENT_BYTES as MAX_TOTAL_ATTACHMENT_BYTES } from "../../../src/domain/productFeedback/types";
 
 import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
@@ -9,6 +11,7 @@ import { notifyUsers } from "../notifications/service";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { requireProductFeedbackAdmin, requireProductFeedbackSubmit } from "./policy";
+import { pendingFeedbackAttachmentCleanup, queueFeedbackAttachmentCleanup, withFeedbackAttachmentWrites } from "./attachmentUploads";
 import {
   deleteAttachmentsByIds,
   deleteDraft,
@@ -61,9 +64,6 @@ export type CreateProductFeedbackInput = {
 
 export type ProductFeedbackServiceContext = AuditCorrelationContext;
 
-const MAX_ATTACHMENT_COUNT = 5;
-const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
-const MAX_TOTAL_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 const SUPPORTED_CONTENT_TYPES = new Set<ProductFeedbackAttachmentContentType>(["image/png", "image/jpeg", "image/webp"]);
 
 function hasPatchKey<Key extends keyof UpdateProductFeedbackPatch>(patch: UpdateProductFeedbackPatch, key: Key) {
@@ -156,19 +156,8 @@ export async function createProductFeedback(
 ): Promise<ProductFeedbackDto> {
   requireProductFeedbackSubmit(auth);
   const decodedAttachments = decodeAndValidateAttachments(input.attachments);
-  const storedAttachments = await Promise.all(
-    decodedAttachments.map(async (attachment) => {
-      const stored = await objectStore.put({
-        organizationId: auth.organization.id,
-        fileName: attachment.fileName,
-        contentType: attachment.contentType,
-        bytes: attachment.bytes
-      });
-      return { attachment, stored };
-    })
-  );
-
-  return db.transaction(async (tx) => {
+  return withFeedbackAttachmentWrites(db, objectStore, auth, decodedAttachments, async (tx, put) => {
+    const storedAttachments = await put();
     const feedback = await insertFeedback(tx, auth, {
       id: randomUUID(),
       pagePath: input.pagePath,
@@ -180,15 +169,7 @@ export async function createProductFeedback(
       tx,
       auth,
       feedback.id,
-      storedAttachments.map(({ attachment, stored }, index) => ({
-        id: randomUUID(),
-        storageKey: stored.storageKey,
-        fileName: stored.fileName,
-        contentType: attachment.contentType,
-        sizeBytes: stored.fileSizeBytes,
-        checksum: stored.checksumSha256,
-        sortOrder: index
-      }))
+      storedAttachments.map((attachment) => ({ ...attachment, messageId: feedback.progressEvents.find((event) => event.kind === "submitted")?.id }))
     );
     const item = (await getFeedbackById(tx, auth, feedback.id)) ?? { ...feedback, attachments: insertedAttachments };
     await createProductFeedbackAudit(
@@ -212,7 +193,7 @@ export async function listMyProductFeedback(
   query: ListMyFeedbackQuery = {}
 ) {
   requireProductFeedbackSubmit(auth);
-  return listMyFeedback(db, auth, query);
+  return { ...await listMyFeedback(db, auth, query), pendingAttachmentCleanupCount: await pendingFeedbackAttachmentCleanup(db, auth) };
 }
 
 export async function getMyProductFeedback(db: Queryable, auth: AuthContext, feedbackId: string) {
@@ -232,16 +213,16 @@ export async function getMyProductFeedbackAttachmentContent(
   attachmentId: string
 ) {
   requireProductFeedbackSubmit(auth);
-  const feedback = await getMyProductFeedback(db, auth, feedbackId);
-  const attachment = feedback.attachments.find((item) => item.id === attachmentId);
-  if (!attachment) {
-    throw productFeedbackNotFound(feedbackId);
-  }
+  return readLiveAttachment(objectStore, () => getMyProductFeedback(db, auth, feedbackId), feedbackId, attachmentId);
+}
 
-  return {
-    attachment,
-    bytes: await objectStore.get(attachment.storageKey)
-  };
+async function readLiveAttachment(store: ObjectStore, read: () => Promise<ProductFeedbackDto | ProductFeedbackUserDto>, feedbackId: string, attachmentId: string) {
+  const live = (feedback: ProductFeedbackDto | ProductFeedbackUserDto) => feedback.attachments.find((item) => item.id === attachmentId && !item.deletedAt);
+  const attachment = live(await read());
+  if (!attachment) throw productFeedbackNotFound(feedbackId);
+  const bytes = await store.get(attachment.storageKey);
+  if (!live(await read())) throw productFeedbackNotFound(feedbackId);
+  return { attachment, bytes };
 }
 
 export async function listProductFeedback(db: Queryable, auth: AuthContext, query: ListProductFeedbackQuery = {}) {
@@ -352,16 +333,7 @@ export async function getProductFeedbackAttachmentContent(
   attachmentId: string
 ) {
   requireProductFeedbackAdmin(auth);
-  const feedback = await getProductFeedback(db, auth, feedbackId);
-  const attachment = feedback.attachments.find((item) => item.id === attachmentId);
-  if (!attachment) {
-    throw productFeedbackNotFound(feedbackId);
-  }
-
-  return {
-    attachment,
-    bytes: await objectStore.get(attachment.storageKey)
-  };
+  return readLiveAttachment(objectStore, () => getProductFeedback(db, auth, feedbackId), feedbackId, attachmentId);
 }
 
 export async function createProductFeedbackDraft(
@@ -372,19 +344,8 @@ export async function createProductFeedbackDraft(
 ): Promise<ProductFeedbackUserDto> {
   requireProductFeedbackSubmit(auth);
   const decodedAttachments = decodeAndValidateAttachments(input.attachments);
-  const storedAttachments = await Promise.all(
-    decodedAttachments.map(async (attachment) => {
-      const stored = await objectStore.put({
-        organizationId: auth.organization.id,
-        fileName: attachment.fileName,
-        contentType: attachment.contentType,
-        bytes: attachment.bytes
-      });
-      return { attachment, stored };
-    })
-  );
-
-  return db.transaction(async (tx) => {
+  return withFeedbackAttachmentWrites(db, objectStore, auth, decodedAttachments, async (tx, put) => {
+    const storedAttachments = await put();
     const draftId = randomUUID();
     await insertDraftFeedback(tx, auth, {
       id: draftId,
@@ -399,15 +360,7 @@ export async function createProductFeedbackDraft(
         tx,
         auth,
         draftId,
-        storedAttachments.map(({ attachment, stored }, index) => ({
-          id: randomUUID(),
-          storageKey: stored.storageKey,
-          fileName: stored.fileName,
-          contentType: attachment.contentType,
-          sizeBytes: stored.fileSizeBytes,
-          checksum: stored.checksumSha256,
-          sortOrder: index
-        }))
+        storedAttachments
       );
     }
 
@@ -427,56 +380,47 @@ export async function saveProductFeedbackDraft(
   input: SaveProductFeedbackDraftInput
 ): Promise<ProductFeedbackUserDto> {
   requireProductFeedbackSubmit(auth);
-  const existing = await getMyFeedbackById(db, auth, draftId);
-  if (!existing) {
-    throw productFeedbackNotFound(draftId);
-  }
-  if (existing.submittedAt !== null) {
-    throw new ApiError("VALIDATION_FAILED", "Submitted feedback cannot be edited as draft.", {
-      feedbackId: draftId
-    });
-  }
-
-  let retainedAttachments = existing.attachments;
-  let discardedAttachments: typeof existing.attachments = [];
-  if (input.retainedAttachmentIds !== undefined) {
-    const retainedSet = new Set(input.retainedAttachmentIds);
-    retainedAttachments = existing.attachments.filter((att) => retainedSet.has(att.id));
-    discardedAttachments = existing.attachments.filter((att) => !retainedSet.has(att.id));
-  }
-
-  const newAttachmentCount = input.newAttachments?.length ?? 0;
-  const totalCount = retainedAttachments.length + newAttachmentCount;
-  if (totalCount > MAX_ATTACHMENT_COUNT) {
-    throw new ApiError("VALIDATION_FAILED", "Product feedback supports up to 5 attachments.", {
-      maxAttachments: MAX_ATTACHMENT_COUNT
-    });
-  }
-
   const decodedNewAttachments = decodeAndValidateAttachments(input.newAttachments);
-  const retainedBytes = retainedAttachments.reduce((sum, att) => sum + att.sizeBytes, 0);
-  const newBytes = decodedNewAttachments.reduce((sum, att) => sum + att.bytes.byteLength, 0);
-  if (retainedBytes + newBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
-    throw new ApiError("VALIDATION_FAILED", "Attachments exceed the 15MB total limit.", {
-      maxBytes: MAX_TOTAL_ATTACHMENT_BYTES,
-      sizeBytes: retainedBytes + newBytes
-    });
-  }
-
-  const storedNewAttachments = await Promise.all(
-    decodedNewAttachments.map(async (attachment) => {
-      const stored = await objectStore.put({
-        organizationId: auth.organization.id,
-        fileName: attachment.fileName,
-        contentType: attachment.contentType,
-        bytes: attachment.bytes
+  return withFeedbackAttachmentWrites(db, objectStore, auth, decodedNewAttachments, async (tx, put) => {
+    await tx.query("select id from product_feedback where organization_id=$1 and id=$2 and submitter_user_id=$3 for update", [auth.organization.id, draftId, auth.user.id]);
+    const existing = await getMyFeedbackById(tx, auth, draftId);
+    if (!existing) {
+      throw productFeedbackNotFound(draftId);
+    }
+    if (existing.submittedAt !== null) {
+      throw new ApiError("VALIDATION_FAILED", "Submitted feedback cannot be edited as draft.", {
+        feedbackId: draftId
       });
-      return { attachment, stored };
-    })
-  );
+    }
 
-  const updated = await db.transaction(async (tx) => {
+    let retainedAttachments = existing.attachments;
+    let discardedAttachments: typeof existing.attachments = [];
+    if (input.retainedAttachmentIds !== undefined) {
+      const retainedSet = new Set(input.retainedAttachmentIds);
+      retainedAttachments = existing.attachments.filter((att) => retainedSet.has(att.id));
+      discardedAttachments = existing.attachments.filter((att) => !retainedSet.has(att.id));
+    }
+
+    const newAttachmentCount = input.newAttachments?.length ?? 0;
+    const totalCount = retainedAttachments.length + newAttachmentCount;
+    if (totalCount > MAX_ATTACHMENT_COUNT) {
+      throw new ApiError("VALIDATION_FAILED", "Product feedback supports up to 5 attachments.", {
+        maxAttachments: MAX_ATTACHMENT_COUNT
+      });
+    }
+
+    const retainedBytes = retainedAttachments.reduce((sum, att) => sum + att.sizeBytes, 0);
+    const newBytes = decodedNewAttachments.reduce((sum, att) => sum + att.bytes.byteLength, 0);
+    if (retainedBytes + newBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
+      throw new ApiError("VALIDATION_FAILED", "Attachments exceed the 15MB total limit.", {
+        maxBytes: MAX_TOTAL_ATTACHMENT_BYTES,
+        sizeBytes: retainedBytes + newBytes
+      });
+    }
+
+    const storedNewAttachments = await put();
     if (discardedAttachments.length > 0) {
+      await queueFeedbackAttachmentCleanup(tx, auth, discardedAttachments.map((attachment) => attachment.storageKey));
       await deleteAttachmentsByIds(
         tx,
         auth,
@@ -490,15 +434,7 @@ export async function saveProductFeedbackDraft(
         tx,
         auth,
         draftId,
-        storedNewAttachments.map(({ attachment, stored }, index) => ({
-          id: randomUUID(),
-          storageKey: stored.storageKey,
-          fileName: stored.fileName,
-          contentType: attachment.contentType,
-          sizeBytes: stored.fileSizeBytes,
-          checksum: stored.checksumSha256,
-          sortOrder: retainedAttachments.length + index
-        }))
+        storedNewAttachments.map((attachment, index) => ({ ...attachment, sortOrder: retainedAttachments.length + index }))
       );
     }
 
@@ -513,9 +449,6 @@ export async function saveProductFeedbackDraft(
     }
     return item;
   });
-
-  // ponytail: shared content-addressed images stay until reference-aware garbage collection exists.
-  return updated;
 }
 
 export async function deleteProductFeedbackDraft(
@@ -767,7 +700,7 @@ export async function replyToProductFeedback(
     throw new ApiError("VALIDATION_FAILED", "Reply must contain between 1 and 2000 characters.");
   }
   const decoded = decodeAndValidateAttachments(input.attachments);
-  return db.transaction(async (tx) => {
+  return withFeedbackAttachmentWrites(db, objectStore, auth, decoded, async (tx, put) => {
     const existing = await getFeedbackForUpdate(tx, auth, feedbackId);
     if (!existing || existing.submitter_user_id !== auth.user.id) throw productFeedbackNotFound(feedbackId);
     if (existing.status === "closed" && !input.reopen) {
@@ -776,38 +709,16 @@ export async function replyToProductFeedback(
     if (input.reopen && existing.status !== "resolved" && existing.status !== "closed") {
       throw new ApiError("VALIDATION_FAILED", "Only resolved or closed feedback can be reopened.");
     }
-    const current = await getMyFeedbackById(tx, auth, feedbackId);
-    if (!current) throw productFeedbackNotFound(feedbackId);
-    if (current.attachments.length + decoded.length > MAX_ATTACHMENT_COUNT) {
-      throw new ApiError("VALIDATION_FAILED", "Product feedback supports up to 5 attachments.");
-    }
-    const totalBytes = current.attachments.reduce((sum, item) => sum + item.sizeBytes, 0) +
-      decoded.reduce((sum, item) => sum + item.bytes.byteLength, 0);
-    if (totalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
-      throw new ApiError("VALIDATION_FAILED", "Attachments exceed the 15MB total limit.");
-    }
-    for (const [index, attachment] of decoded.entries()) {
-      const stored = await objectStore.put({
-        organizationId: auth.organization.id,
-        fileName: attachment.fileName,
-        contentType: attachment.contentType,
-        bytes: attachment.bytes
-      });
-      await insertAttachments(tx, auth, feedbackId, [{
-        id: randomUUID(), storageKey: stored.storageKey, fileName: stored.fileName,
-        contentType: attachment.contentType, sizeBytes: stored.fileSizeBytes,
-        checksum: stored.checksumSha256, sortOrder: current.attachments.length + index
-      }]);
-    }
     const nextStatus = input.reopen ? "in_progress" : existing.status;
     const resolutionCode = input.reopen ? null : existing.resolution_code;
-    await updateFeedbackProgressStatus(tx, auth, feedbackId, nextStatus, resolutionCode);
+    const messageId = randomUUID();
     await insertProgressEvent(tx, auth, {
-      id: randomUUID(), feedbackId, actorUserId: auth.user.id,
-      author: "submitter",
+      id: messageId, feedbackId, actorUserId: auth.user.id, author: "submitter",
       kind: input.reopen ? "reopened" : "progress",
       fromStatus: existing.status, toStatus: nextStatus, resolutionCode, publicMessage: message
     });
+    await insertAttachments(tx, auth, feedbackId, (await put()).map((attachment) => ({ ...attachment, messageId })));
+    await updateFeedbackProgressStatus(tx, auth, feedbackId, nextStatus, resolutionCode);
     await writeAuditEventInTx(asAuditTx(tx), createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
       app: "product-feedback", kind: "product-feedback-reply", action: "update", severity: "Medium",
       projectId: null, targetType: "product-feedback", targetId: feedbackId,

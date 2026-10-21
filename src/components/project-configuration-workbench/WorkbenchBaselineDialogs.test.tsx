@@ -39,6 +39,25 @@ function renderDialogs(overrides: Partial<Parameters<typeof WorkbenchBaselineDia
 }
 
 describe("WorkbenchBaselineDialogs", () => {
+  it("shows the complete Canonical restore plan and requires a reason and explicit membership confirmation", () => {
+    const onConfirmRestore = vi.fn();
+    renderDialogs({ restoreOpen: true,onConfirmRestore,restorePreview: {
+      baselineId: "bl-1",configSetId: "cs-1",releasedBaselineUnchanged: true,driftedCount: 1,members: [],
+      canonical: { canRestore: true,proofToken: "proof",sourceConfigRevisionId: "revision",missingInformation: [],historicalRevisions: [],
+        editorHref: "/configuration",requiresCompositionConfirmation: true,entryFile: "board.dts",includeSearchPaths: ["."],overlayOrder: [],
+        members: [{ fileId: "f1",fileName: "board.dts",fromVersionId: "v2",toVersionId: "v1",versionNumber: 1,role: "base",sortOrder: 0,action: "reattach",compositionChanged: true },
+          { fileId: "f2",fileName: "added.json",fromVersionId: "v3",toVersionId: "v3",versionNumber: 1,role: "misc",sortOrder: 1,action: "retain-added",compositionChanged: false }],
+        impact: { parameterChanges: 1,retainedBindings: 2,restoredBindings: 1,sourceReplacements: 0 } }
+    } });
+    const dialog = screen.getByRole("dialog",{ name: "恢复版本确认" });
+    expect(dialog).toHaveTextContent("added.json"); expect(dialog).toHaveTextContent("保留新增成员");
+    const confirm = within(dialog).getByRole("button",{ name: "确认恢复" });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(within(dialog).getByRole("textbox",{ name: "恢复原因" }),{ target: { value: "恢复验收配置" } });
+    expect(confirm).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("checkbox")); fireEvent.click(confirm);
+    expect(onConfirmRestore).toHaveBeenCalledWith({ reason: "恢复验收配置",confirmCompositionChanges: true });
+  });
   it("requires a nonblank version name before saving a snapshot", () => {
     renderDialogs({ createOpen: true, newBaselineName: "   " });
     const dialog = screen.getByRole("dialog", { name: "保存版本快照" });

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Database } from "./client";
@@ -109,7 +109,9 @@ describe.skipIf(!databaseAvailable)("immutable 0214 replacement on populated his
         pg_get_functiondef('parameter_catalog.lock_parameter_plane_archive()'::regprocedure) as archive,
         has_function_privilege('public','parameter_catalog.definition_purge_allows_change(text,text,jsonb,text)','EXECUTE') as public_capability`)).rows;
       const before = await readPolicy();
-      expect(await applyMigrations(db, migrationsDir)).toEqual([replacement]);
+      const pendingThroughReplacement = (await readdir(migrationsDir)).filter(name => name.endsWith(".sql")
+        && name > "0219_definition_erasure_private_trigger_capability.sql" && name <= replacement).sort();
+      expect(await applyMigrations(db, migrationsDir, { through: replacement })).toEqual(pendingThroughReplacement);
       expect(await readPolicy()).toEqual(before);
       expect(before[0]).toMatchObject({ public_capability: false });
     });

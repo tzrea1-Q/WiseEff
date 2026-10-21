@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { Check, ChevronDown, LockKeyhole, MessageSquare, RotateCcw } from "lucide-react";
-import type { ProductFeedbackProgressEvent } from "@/domain/productFeedback/types";
+import type { ProductFeedbackAttachment, ProductFeedbackProgressEvent } from "@/domain/productFeedback/types";
+import { FeedbackAttachments } from "./FeedbackAttachments";
 import {
   productFeedbackResolutionLabels,
 } from "@/domain/productFeedback/types";
@@ -12,12 +13,18 @@ export function FeedbackProgressTimeline({
   events,
   isAdmin = false,
   className,
-  initialVisibleCount
+  initialVisibleCount,
+  attachments = [],
+  getAttachmentObjectUrl
+  ,onDeleteAttachment
 }: {
   events?: ProductFeedbackProgressEvent[] | null;
   isAdmin?: boolean;
   className?: string;
   initialVisibleCount?: number;
+  attachments?: ProductFeedbackAttachment[];
+  getAttachmentObjectUrl?: (feedbackId: string, attachmentId: string) => Promise<string>;
+  onDeleteAttachment?: (attachmentId: string) => Promise<void>;
 }) {
   const listId = useId();
   const [expandedFor, setExpandedFor] = useState<string | null>(null);
@@ -88,6 +95,8 @@ export function FeedbackProgressTimeline({
               <p>{event.internalMessage}</p>
             </div>
           )}
+          {getAttachmentObjectUrl && attachments.some((item) => item.messageId === event.id) ? <FeedbackAttachments feedbackId={event.feedbackId}
+            attachments={attachments.filter((item) => item.messageId === event.id)} getAttachmentObjectUrl={getAttachmentObjectUrl} onDelete={onDeleteAttachment} /> : null}
           </div>
         </li>
       ))}

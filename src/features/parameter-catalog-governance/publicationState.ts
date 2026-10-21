@@ -330,6 +330,10 @@ function valueSchemaOf(draft: PublicationDraft) {
 }
 
 function examplesOf(draft: PublicationDraft) {
+  if (draft.mode === "revise-definition" && draft.examples.trim().startsWith("[")) {
+    const parsed: unknown = JSON.parse(draft.examples);
+    if (Array.isArray(parsed)) return parsed;
+  }
   if (draft.valueType === "boolean") {
     const tokens = draft.examples
       .split(/[,\n]/u)
@@ -367,6 +371,14 @@ export function definitionContentOf(draft: PublicationDraft) {
     ...(unit ? { unit } : {}),
     valueSchema: valueSchemaOf(draft),
     ...(examples ? { examples } : {})
+  };
+}
+
+function definitionRevisionContentOf(draft: PublicationDraft) {
+  return {
+    ...definitionContentOf(draft),
+    ...(!draft.unit.trim() ? { unit: null } : {}),
+    ...(!draft.examples.trim() ? { examples: null } : {})
   };
 }
 
@@ -416,7 +428,7 @@ export function buildPublicationChangeSet(
         op: "revise-definition",
         definitionId: draft.definitionId,
         class: draft.reviseClass,
-        content: definitionContentOf(draft)
+        content: definitionRevisionContentOf(draft)
       }
     ];
   }
@@ -427,7 +439,7 @@ export function buildPublicationChangeSet(
         definitionId: draft.definitionId,
         class: draft.reviseClass,
         ...(draft.reason.trim() ? { reason: draft.reason.trim() } : {}),
-        content: definitionContentOf(draft)
+        content: definitionRevisionContentOf(draft)
       }
     ];
   }

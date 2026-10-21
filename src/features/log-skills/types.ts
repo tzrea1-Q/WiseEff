@@ -9,9 +9,11 @@ export type SkillTemplate = z.infer<typeof logSkillTemplateListResponseSchema>["
 export type AnalysisTraceStep = z.infer<typeof import("@wiseeff/dto-schemas").logTraceResponseSchema>["steps"][number];
 export type SkillDryRun = z.infer<typeof import("@wiseeff/dto-schemas").logSkillDryRunResponseSchema>["run"];
 export type SkillDryRunDetail = { run: SkillDryRun; steps: AnalysisTraceStep[] };
-export type CreateSkillInput = { name: string; description?: string; startingPoint: { templateId: string } | { copyFromSkillId: string } };
+export type CreateSkillInput = { name: string; description?: string; status?: "draft" | "published"; startingPoint: { templateId: string } | { copyFromSkillId: string } };
 export type IntegrationCredential = z.infer<typeof import("@wiseeff/dto-schemas").logIntegrationCredentialDtoSchema>;
 export type IntegrationCredentialSecret = { item: IntegrationCredential; token: string };
+export type SkillDeletionPreview = import("@wiseeff/dto-schemas").SkillDeletionPreview;
+export type SkillDeletionStatus = import("@wiseeff/dto-schemas").SkillDeletionStatus;
 
 export type AnalysisCaseExpectations = z.infer<typeof import("@wiseeff/dto-schemas").logAnalysisCaseExpectationsSchema>;
 export type AnalysisCase = z.infer<typeof import("@wiseeff/dto-schemas").logAnalysisCaseSchema>;
@@ -40,6 +42,10 @@ export type SourceExcerpt = z.infer<typeof import("@wiseeff/dto-schemas").logSou
 export type SourceStatementMatches = z.infer<typeof import("@wiseeff/dto-schemas").logSourceLocateResponseSchema>;
 
 export interface SkillWorkspaceRepository {
+  previewSkillDeletion?(id: string): Promise<SkillDeletionPreview>;
+  purgeSkill?(id: string, version: string): Promise<SkillDeletionStatus>;
+  getSkillDeletionStatus?(id: string): Promise<SkillDeletionStatus>;
+  listSkillDeletions?(): Promise<SkillDeletionStatus[]>;
   exportSkillPackage?(id: string, revision: "published" | "draft"): Promise<Blob>;
   listIntegrationCredentials?(): Promise<IntegrationCredential[]>;
   issueIntegrationCredential?(input: { name: string; skillId?: string | null }): Promise<IntegrationCredentialSecret>;
@@ -74,5 +80,7 @@ export interface SkillWorkspaceRepository {
   uploadSourceSnapshot(id: string, input: { versionLabel: string; file: File }): Promise<SourceSnapshot>;
   setDefaultSourceSnapshot(id: string, snapshotId: string): Promise<AnalysisSkill>;
   archiveSourceSnapshot(id: string, snapshotId: string): Promise<SourceSnapshot>;
+  retrySourceSnapshot?(id: string, snapshotId: string): Promise<SourceSnapshot>;
+  restoreSourceSnapshot?(id: string, snapshotId: string): Promise<SourceSnapshot>;
   locateSourceStatement(id: string, snapshotId: string, line: string): Promise<SourceStatementMatches>;
 }

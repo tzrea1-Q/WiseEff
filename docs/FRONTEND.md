@@ -10,6 +10,8 @@ Mock parameter mode keeps existing canonical-equivalent features only (#1087, #1
 
 ## Key Directories
 
+Catalog definition revisions distinguish omitted optional content (retain) from explicit `null` (remove) for `unit`, `examples`, and `description`. The definition editor previews cleared units/examples and publishes a new revision; it reads existing examples into a JSON-array input without changing their types, commas, empty strings, or nested structure. Blank input removes examples. Invalid JSON stays editable and cannot publish. The current form has no description input, so unrelated edits preserve description; historical revisions remain readable.
+
 - `src/app/`: page routing, navigation, permission checks, and `appRuntime.ts` — the composition root that selects every mode-dependent adapter once (`createAppRuntime`); pages receive the record via `PageProps.runtime`.
 - `src/domain/`: role, parameter, log, debugging, audit, and Agent domain types and pure logic.
 - `src/application/state/`: the global prototype state machine — `AppAction`, `reducer`/`appReducer`, and reducer-only transition helpers. API boot lives in `createApiInitialState()` here (#486); import state types from here, never from `@/App` (ADR-0023).
@@ -150,6 +152,8 @@ Key UI:
 `AuditQuery` is the read-side port for listing audit events (Activity timelines and similar projections); frontend audit writes go through backend routes rather than a frontend port. Resolve it with `resolveAuditQuery(runtimeMode)` in `src/application/parameters/auditQueryRuntime.ts` — mock returns an empty listing adapter (no HTTP); API wraps `createAuditClient`. The project configuration workbench must receive `listAuditEvents` by injection from that resolver (or a test double) and must **not** call `createAuditClient()` inside the page module.
 
 ## Workbench sessions (project configuration)
+
+Complete DTS saving offers **Directly apply changes** to a current file administrator with project edit permission after preview and a required reason. It uses `ParameterFileRepository.applyCandidateSourceRevision`, acknowledges the exact applied generation and retains newer local typing. Failed or interrupted responses keep the captured confirmation for an identical retry. **Submit review** continues to require a different eligible reviewer. Source history identifies `administrator_direct` applications and their actual actor without displaying a fictional reviewer; release/device operations keep their separate authority.
 
 Domain acts for the configuration workbench live as Workbench sessions under `src/application/project-configuration/` (see `CONTEXT.md`):
 

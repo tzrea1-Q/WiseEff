@@ -770,16 +770,21 @@ Admin 项目摘要（`GET/POST /api/v1/parameters/admin/projects`）同时返回
 
 审计动作：`parameter-file-upload`、`parameter-file-rollback`、`parameter-file-sync`、`parameter-file-conflict-open`、`parameter-file-conflict-resolve`、`parameter-writeback-to-file`。
 
-### DTS 整文件来源审核
+### DTS 整文件来源修改与管理员应用
 
 既有候选创建接口增加 `{ intent: "source_revision", fileId, expectedCurrentVersionId, expectedConfigRevisionId, clientMutationId, fileName, contentBase64 }`。固定单份非空且最多 2 MiB 的 DTS 及完整配置成员上下文，不改变活跃状态。候选 source-preview 返回 `kind: "source_revision"`、精确 `before` / `after`、诊断、影响、证明令牌及当前合资格的软件审核人。既有 source-review 提交另需范围内的幂等键；同键同内容重放，不同内容冲突。每个配置集最多一个待审来源请求。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-apply` | 当前人工文件管理员直接应用已确认的完整 DTS 预览。请求 `{ expectedCurrentVersionId, expectedProofToken, clientMutationId, reason }`，不接受审核人字段；返回 `{ item: SourceRevisionRequest }`，状态为 approved，包含应用后的文件/配置回执。 |
+| `POST` | `/api/v1/projects/:projectId/config-sets/:configSetId/member-addition/preview` | 人工管理员预览一个上传候选（`candidateId`）或未归属配置的项目文件（`fileId`），明确指定 `role` 与 `sortOrder`。JSON 可选传 `json: { configurationSchemaId, rootPointer, mappings: [{ definitionId, pointer }] }` 登记参数；不传时加入已校验的来源成员，并明确预览 0 个新 Binding。返回完整成员、include/overlay 组成、结构与参数影响、诊断和 `proofToken`，不改变当前成员或值。 |
+| `POST` | `/api/v1/projects/:projectId/config-sets/:configSetId/member-addition/apply` | 在相同输入中增加 `proofToken`、`reason`、`clientMutationId` 进行确认。重新核对当前权限、Catalog 和来源 pin，在一个事务中提交成员、候选激活、结构、Binding/值 pin、历史及审计。返回 `{ item: { requestId, fileId, fileVersionId, configRevisionId } }`，相同操作重试返回原回执。过期、外部或无效组成不会消耗候选或部分改变当前状态。 |
 | `GET` | `/api/v2/projects/:projectId/source-revision-requests?mine=true&status=pending` | `mine=true` 读取本人提交，否则读取分配给当前合资格审核人的请求。 |
 | `GET` | `/api/v2/projects/:projectId/source-revision-requests/:requestId` | 按权限读取固定源码差异、上下文摘要、影响及应用后的文件/配置回执。 |
 | `POST` | `/api/v2/projects/:projectId/source-revision-requests/:requestId/review` | `{ decision: "approve" | "reject", proofDigest, note? }`；要求当前指定审核人且不能自审。 |
 | `POST` | `/api/v2/projects/:projectId/source-revision-requests/:requestId/withdraw` | 提交人撤回待审请求，不更新活跃来源。 |
+
+可选的直接操作在角色变更共用的用户锁内核实管理员当前文件管理和项目编辑权限，复用完整来源校验、冻结证明及原子提交。过期预览、Catalog/上下文变化、敏感节点拒绝、待审请求和未处理草稿仍会阻止应用。其不可变 `applicationMode` 为 `administrator_direct`，指派人和审核人为空，审计记录实际人工操作者和结果；其他来源请求默认为 `separate_review`，继续要求独立指派审核人。Agent/system 不能使用直接入口。相同幂等键和内容返回经验证的原回执，不同内容复用同键会冲突；直接应用不发布基线，也不写设备。
 
 `source_revision` 是独立且不可变的请求类型，支持注释、未登记内容等零参数目标的变更；保留旧 single/batch 约束与独立分发。固定证明包含精确文件、配置和成员版本、摘要、Catalog/组织登记、Binding/值/来源 pin 集合、身份连续性及新增项计划。提交和批准都重新核对当前权限、版本及上下文；历史固定定义使用其历史 Catalog 快照校验，当前 Catalog 指针变化要求重新预览。登记校验暂在事务内持有表级共享锁，会串行化登记写入；按组织设置版本栅栏是已记录的扩展方向。
 

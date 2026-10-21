@@ -1,8 +1,12 @@
 import { z } from "zod";
+import { logDeletionPreviewSchema, logDeletionStatusSchema } from "../../../../src/domain/logs/deletionPreview";
 import { MAX_FILE_ROLE_LENGTH } from "../../../../src/domain/logs/fileApplicability";
 import { LOG_SKILL_RECOMMENDATION_LIMITS } from "../../logs/skillRecommendation";
 
 import { itemEnvelopeSchema, itemsEnvelopeSchema, okEnvelopeSchema } from "./envelopes";
+export const logDeletionPreviewResponseSchema = itemEnvelopeSchema(logDeletionPreviewSchema);
+export const logDeletionStatusResponseSchema = itemEnvelopeSchema(logDeletionStatusSchema);
+export const logDeletionStatusListResponseSchema = itemsEnvelopeSchema(logDeletionStatusSchema);
 import { logSkillSpecSchema } from "../../logs/skillSpec";
 import { parseTestRunSchema } from "../../logs/parseTestSpec";
 export { parseTestSchema, parseTestSchema as parseTestCaseSchema, parseTestsSchema, parseTestRunSchema, parseTestResultSchema,

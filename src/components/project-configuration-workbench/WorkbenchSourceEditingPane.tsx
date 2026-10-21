@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { ParameterFileCandidate, ParameterFileCandidateDiagnostic, ParameterFileRepository, ParameterFileSourcePreview, SubmitParameterFileSourceReviewInput } from "@/application/ports/ParameterFileRepository";
+import type { ApplyParameterFileSourceInput, ParameterFileCandidate, ParameterFileCandidateDiagnostic, ParameterFileRepository, ParameterFileSourcePreview, SubmitParameterFileSourceReviewInput } from "@/application/ports/ParameterFileRepository";
 import type { SourceEditSaveSnapshot, SourceEditSession } from "@/application/project-configuration/sourceEditSession";
 import { sourceDraftKey, type SourceDraftScope } from "@/application/project-configuration/sourceDraftStorage";
 import { fileToContentBase64 } from "@/application/project-configuration/candidateVersionFlow";
@@ -41,7 +41,7 @@ type Props = {
 };
 
 type Attempt = { saved: SourceEditSaveSnapshot; mutationId: string; candidate?: ParameterFileCandidate; preview?: ParameterFileSourcePreview;
-  submission?: SubmitParameterFileSourceReviewInput };
+  submission?: SubmitParameterFileSourceReviewInput; directApplication?: ApplyParameterFileSourceInput };
 
 export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVersionId, configRevisionId, source,
   session, editorSessions, repository, canEdit, visible, legacyDraftsDirty, onOpenLegacyDrafts, onDirtyChange,
@@ -148,7 +148,7 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
   }, [busy, canEdit, change, configRevisionId, fileName, key, legacyDraftsDirty, repository, scope, session]);
 
   const submit = async () => {
-    if (!attempt?.candidate || !attempt.preview?.canSubmit || !attempt.preview.proofToken || !reason.trim() || !reviewerId || busy) return;
+    if (!attempt?.candidate || attempt.directApplication || !attempt.preview?.canSubmit || !attempt.preview.proofToken || !reason.trim() || !reviewerId || busy) return;
     const captured = attempt;
     const epoch = ++operationEpoch.current;
     setBusy(true); setError("");
@@ -167,6 +167,39 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
       }
     } catch (cause) { if (latestScope.current === key && operationEpoch.current === epoch) setError(presentError(cause, "提交失败，可重试同一请求；文本仍保留。")); }
     finally { if (latestScope.current === key && operationEpoch.current === epoch) setBusy(false); }
+  };
+
+  const applyDirectly = async () => {
+    if (!canEdit || !repository.applyCandidateSourceRevision || !attempt?.candidate || attempt.submission
+      || !attempt.preview?.canSubmit || !attempt.preview.proofToken || !reason.trim() || busy) return;
+    const captured = attempt;
+    const epoch = ++operationEpoch.current;
+    setBusy(true); setError("");
+    try {
+      const body = captured.directApplication ?? {
+        expectedCurrentVersionId: captured.saved.base.fileVersionId, expectedProofToken: captured.preview!.proofToken!,
+        clientMutationId: captured.mutationId, reason: reason.trim()
+      };
+      const applying = { ...captured, directApplication: body };
+      attempts.current.set(key, applying); setAttempt(applying);
+      const result = await repository.applyCandidateSourceRevision(scope.projectId, captured.candidate!.id, body);
+      if (result.status !== "approved" || result.applicationMode !== "administrator_direct" || !result.appliedSourceResult) {
+        throw new Error("直接应用回执不完整，请重试同一操作以核对结果。");
+      }
+      const buffered = editor.current?.flush();
+      if (buffered?.sessionKey === key) change(buffered);
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(captured.saved.sourceText));
+      session.acknowledgeApplied(captured.saved, { fileVersionId: result.appliedSourceResult.fileVersionId,
+        configRevisionId: result.appliedSourceResult.configRevisionId,
+        sourceDigest: Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("") });
+      attempts.current.delete(key);
+      if (latestScope.current === key && operationEpoch.current === epoch) {
+        setSaveOpen(false); setReason(""); setBufferDirty(session.getFile(scope)?.dirty ?? false);
+        onDirtyChange(session.getFile(scope)?.dirty ?? false); refresh.current();
+      }
+    } catch (cause) {
+      if (latestScope.current === key && operationEpoch.current === epoch) setError(presentError(cause, "直接应用失败，可重试同一操作；文本仍保留。"));
+    } finally { if (latestScope.current === key && operationEpoch.current === epoch) setBusy(false); }
   };
 
   const download = () => {
@@ -263,7 +296,7 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
     <ModalDialog open={saveOpen} className="workbench-source-save-dialog" backdropClassName="param-admin-modal-backdrop"
       onDismiss={busy ? undefined : () => setSaveOpen(false)} describedBy>
       {({ titleId, descriptionId }) => <>
-        <header><h2 id={titleId}>保存 DTS 修改</h2><p id={descriptionId}>{fileName} · 审核通过后更新工作配置</p></header>
+        <header><h2 id={titleId}>保存 DTS 修改</h2><p id={descriptionId}>{fileName} · 管理员可核对差异后直接应用，也可提交独立审核</p></header>
         {busy ? <p role="status">正在处理来源修改…</p> : null}
         {error ? <p role="alert">{error}</p> : null}
         {mixedEndings ? <p role="note">原文件混用了换行形式，编辑后可能统一为 LF，请在差异中核对。</p> : null}
@@ -278,13 +311,15 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
         {[...diagnostics, ...(attempt?.preview?.diagnostics ?? [])].map((item, index) => <p key={index} role={item.severity === "error" ? "alert" : "status"}>
           {item.file && item.file !== fileName ? `${item.file}${item.line ? `:${item.line}` : ""} · ` : item.line ? <Button variant="ghost" size="sm"
             onClick={() => { setSaveOpen(false); editor.current?.revealLine(item.line!, item.column); }}>第 {item.line} 行</Button> : null}{item.message}</p>)}
-        <label>修改原因<textarea aria-label="DTS 修改原因" rows={2} value={reason} maxLength={2000} disabled={busy || Boolean(attempt?.submission)} onChange={(event) => setReason(event.target.value)} /></label>
-        <label>软件审核人<SelectControl ariaLabel="DTS 软件审核人" value={reviewerId} onValueChange={setReviewerId} disabled={busy || Boolean(attempt?.submission)}
+        <label>修改原因<textarea aria-label="DTS 修改原因" rows={2} value={reason} maxLength={2000} disabled={busy || Boolean(attempt?.submission || attempt?.directApplication)} onChange={(event) => setReason(event.target.value)} /></label>
+        <label>软件审核人（仅提交审核时需要）<SelectControl ariaLabel="DTS 软件审核人" value={reviewerId} onValueChange={setReviewerId} disabled={busy || Boolean(attempt?.submission || attempt?.directApplication)}
           placeholder="选择审核人" options={reviewers.map(({ userId, name }) => ({ value: userId, label: name }))} /></label>
-        {attempt?.preview && !reviewers.length ? <p role="status">需要另一名具有文件修改权限的软件审核人，请在项目审核角色中配置。</p> : null}
+        {attempt?.preview && !reviewers.length ? <p role="status">当前没有其他可选软件审核人。管理员可核对差异后直接应用；如需独立审核，请在项目审核角色中配置。</p> : null}
         <footer className="dialog-actions"><Button variant="outline" disabled={busy} onClick={() => setSaveOpen(false)}>返回编辑</Button>
           {!attempt?.preview || error ? <Button variant="outline" disabled={busy} onClick={() => void beginSave()}>重新校验</Button> : null}
-          <Button disabled={busy || !attempt?.preview?.canSubmit || !reviewerId || !reason.trim()} onClick={() => void submit()}>{attempt?.submission ? "重试同一提交" : "提交审核"}</Button></footer>
+          <Button variant="outline" disabled={busy || Boolean(attempt?.directApplication) || !attempt?.preview?.canSubmit || !reviewerId || !reason.trim()} onClick={() => void submit()}>{attempt?.submission ? "重试同一提交" : "提交审核"}</Button>
+          {canEdit && repository.applyCandidateSourceRevision ? <Button disabled={busy || Boolean(attempt?.submission) || !attempt?.preview?.canSubmit || !reason.trim()}
+            onClick={() => void applyDirectly()}>{attempt?.directApplication ? "重试同一应用" : "直接应用修改"}</Button> : null}</footer>
       </>}
     </ModalDialog>
   </section>;

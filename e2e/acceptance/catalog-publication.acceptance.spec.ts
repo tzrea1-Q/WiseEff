@@ -16,6 +16,8 @@ import {
 } from "./helpers/catalogBrowser";
 import { type CatalogAcceptanceFixture } from "./helpers/catalogEvidence";
 
+test.use({ catalogRuntimeScope: import.meta.url });
+
 useBrowserDiagnostics(test, {
   expectedApiFailures: [
     ...CATALOG_EXPECTED_API_FAILURES,

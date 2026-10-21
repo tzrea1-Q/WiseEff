@@ -41,6 +41,7 @@ import {
   CatalogSubjectId,
   PublicationJobId,
   PublicationPolicyRevision,
+  SubjectPlacementId,
 } from "../parameter-catalog-contract/index";
 import { createDatabase } from "../../shared/database/client";
 import { runPublicationManagerOnce } from "./jobs/manager";
@@ -408,7 +409,8 @@ describe("CP-10 definition revision and new-subject PG", () => {
     if (!built.ok || built.value.kind !== "successor") {
       throw new Error(`build failed: ${JSON.stringify(built)}`);
     }
-    const facts = publicationImpactFacts(input.authorPrincipalId, input.changeSet, built.value.impact);
+    const successor = built.value;
+    const facts = publicationImpactFacts(input.authorPrincipalId, input.changeSet, successor.impact);
     const persisted = await persistSuccessorBuild(
       {
         db: createDatabase(asQueryable(client)),
@@ -422,16 +424,16 @@ describe("CP-10 definition revision and new-subject PG", () => {
                 authorOrganizationId: "org-cp10",
                 impactFacts: facts as never,
                 impactSummary: {
-                  addedDefinitionCount: built.value.impact.definitions.added.length,
-                  changedDefinitionCount: built.value.impact.definitions.changed.length,
-                  addedSubjectCount: built.value.impact.subjects.added.length,
+                  addedDefinitionCount: successor.impact.definitions.added.length,
+                  changedDefinitionCount: successor.impact.definitions.changed.length,
+                  addedSubjectCount: successor.impact.subjects.added.length,
                 },
               },
             }),
         },
       },
-      built.value.artifact,
-      built.value.candidate,
+      successor.artifact,
+      successor.candidate,
     );
     if ("ok" in persisted && persisted.ok === false) {
       throw new Error(`persist failed: ${JSON.stringify(persisted.error)}`);
@@ -443,19 +445,19 @@ describe("CP-10 definition revision and new-subject PG", () => {
       const capability = await client.query<{ digest: string }>(
         `select catalog_publication.digest_jsonb(capability_contract) as digest
            from catalog_publication.candidates where id = $1`,
-        [built.value.candidate.id],
+        [successor.candidate.id],
       );
       return authorizePublish(asQueryable(client), {
         trustedActor: userActor(input.publisherUserId, input.publisherPermissions as never, {
           roleId: input.publisherRoleId ?? "admin",
         }),
         candidate: {
-          candidateId: built.value.candidate.id,
-          artifactDigest: built.value.candidate.artifactDigest,
-          expectedBaseReleaseId: built.value.candidate.expectedBaseReleaseId,
-          expectedBaseReleaseDigest: built.value.candidate.expectedBaseReleaseDigest,
-          proposalRevisionId: built.value.candidate.proposalRevisionId,
-          impactReportDigest: built.value.candidate.impactReportDigest,
+          candidateId: successor.candidate.id,
+          artifactDigest: successor.candidate.artifactDigest,
+          expectedBaseReleaseId: successor.candidate.expectedBaseReleaseId,
+          expectedBaseReleaseDigest: successor.candidate.expectedBaseReleaseDigest,
+          proposalRevisionId: successor.candidate.proposalRevisionId,
+          impactReportDigest: successor.candidate.impactReportDigest,
           capabilityContractDigest: capability.rows[0]!.digest,
         },
         impactFacts: facts,
@@ -468,7 +470,7 @@ describe("CP-10 definition revision and new-subject PG", () => {
     const job = await asCoordinator(client, async () =>
       createJob(asQueryable(client), {
         id: PublicationJobId(`cjob_${input.token}`),
-        candidateId: built.value.candidate.id,
+        candidateId: successor.candidate.id,
         authorizationId: authorized.value.authorization.id,
         requestScope: "instance:cp-10",
         idempotencyKey: `key-${input.token}`,
@@ -560,6 +562,53 @@ describe("CP-10 definition revision and new-subject PG", () => {
     expect(after.rows.every((row) => row.effective_revision_id !== `drev_${token}`)).toBe(true);
     const receipt = await withPublicationCoordinator(db, (tx) => getReceiptByJobId(tx, result.job.id));
     expect(receipt.ok).toBe(true);
+  }, 60_000);
+
+  it("publishes optional-content removal while omitted fields and historical revisions remain intact", async () => {
+    const token = uniqueToken("clear");
+    const definitionId = `pdef_${token}`;
+    const content = {
+      ...integerContent("Optional current", "Optional content publication."),
+      description: "An optional description", examples: [100, 200],
+    };
+    const publish = (changeSet: readonly CatalogChange[], suffix: string) => activateChangeSet({
+      changeSet, authorPrincipalId: AUTHOR, publisherUserId: REVIEWER,
+      publisherPermissions: [...reviewerPermissions], token: suffix,
+    });
+    await publish([{ op: "create-definition", subjectId: "csub_acme_power",
+      propertyKey: `clear_${token}`, content }], token);
+    const before = await client.query<{ content: Record<string, unknown> }>(
+      "select content from parameter_catalog.definition_revisions where id = $1", [`drev_${token}`]);
+    await publish([{ op: "revise-definition", definitionId, class: "documentation", content: {
+      displayName: content.displayName, documentation: "Updated documentation.", valueSchema: content.valueSchema,
+    } }], `${token}_keep`);
+    const retained = await client.query<{ content: Record<string, unknown> }>(
+      "select content from parameter_catalog.definition_revisions where id = $1", [`drev_${token}_keep`]);
+    expect(retained.rows[0]?.content).toMatchObject({ unit: "mA", examples: [100, 200], description: content.description });
+    const bindings = await client.query<BindingSnapshot>(bindingSnapshotSql);
+    const cleared = await publish([{ op: "revise-definition", definitionId, class: "semantic", content: {
+      ...content, documentation: "Updated documentation.", unit: null, examples: null, description: null,
+    } }], `${token}_clear`);
+    const current = await client.query<{ id: string; content: Record<string, unknown> }>(`
+      select revision.id, revision.content from parameter_catalog.definition_revisions revision
+      join parameter_catalog.catalog_release_definition_heads head on head.revision_id = revision.id
+      join parameter_catalog.catalog_state state on state.current_catalog_release_id = head.release_id
+      where head.definition_id = $1`, [definitionId]);
+    expect(current.rows[0]?.id).toBe(`drev_${token}_clear`);
+    expect(current.rows[0]?.content).not.toHaveProperty("unit");
+    expect(current.rows[0]?.content).not.toHaveProperty("examples");
+    expect(current.rows[0]?.content).not.toHaveProperty("description");
+    expect(current.rows[0]?.content).toMatchObject({ displayName: content.displayName, valueSchema: content.valueSchema });
+    expect((await client.query<BindingSnapshot>(bindingSnapshotSql)).rows).toEqual(bindings.rows);
+    expect((await client.query("select content from parameter_catalog.definition_revisions where id = $1", [`drev_${token}`])).rows)
+      .toEqual(before.rows);
+    const counts = await client.query("select count(*) from catalog_publication.candidates");
+    await expect(publish([{ op: "revise-definition", definitionId, class: "semantic", content: {
+      ...content, unit: "", examples: ["not-an-integer"],
+    } }], `${token}_invalid`)).rejects.toThrow("build failed");
+    expect((await client.query("select count(*) from catalog_publication.candidates")).rows).toEqual(counts.rows);
+    expect((await client.query("select current_catalog_release_id from parameter_catalog.catalog_state")).rows)
+      .toEqual([{ current_catalog_release_id: cleared.built.artifact.targetReleaseId }]);
   }, 60_000);
 
   it("T17 new Driver fallback impact requires a distinct high-risk reviewer", async () => {
@@ -659,7 +708,7 @@ describe("CP-10 definition revision and new-subject PG", () => {
         id: CatalogReleaseId(currentBefore.rows[0]!.id),
         digest: CatalogReleaseDigest(result.built.candidate.artifactDigest),
       },
-      placement: { mode: "choose-parent", parentPlacementId: "missing-parent", displayName: "Bad" },
+      placement: { mode: "choose-parent", parentPlacementId: SubjectPlacementId("missing-parent"), displayName: "Bad" },
       destinationModuleId: `module-${token}`,
       method: "explicit",
       proof: { reason: "t21-followup" },

@@ -9,7 +9,7 @@ import { requestJson } from "../../test/testClient";
 import { createPostgresDatabase, getRootPostgresPool, type Queryable } from "../../shared/database/client";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
-import { createEphemeralTestDatabase } from "../../testing/testDatabase";
+import { createEphemeralTestDatabase, withTestClusterRoleCatalogLock } from "../../testing/testDatabase";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { projectAdminListResponseSchema, projectAdminDetailResponseSchema } from "../contracts/dtoSchemas";
@@ -21,9 +21,11 @@ import { appendProjectValue } from "../parameter-bindings/values/service";
 import { ParameterDefinitionId, SubjectRegistrationId } from "../parameter-catalog-contract";
 import { registerCanonicalJsonSource } from "../parameter-files/canonicalJsonSource";
 import { addConfigSetFile, createConfigSet } from "../parameter-files/configSetService";
+import { insertReleaseBaseline, insertReleaseBaselineMember } from "../parameter-files/baselineRepository";
 import { uploadProjectParameterFile } from "../parameter-files/service";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { createProject, getProjectAdminDetail, listProjectAdminSummaries } from "./repository";
+import type { ProjectDeletionPreview } from "../../../src/domain/parameters/projectDeletionPreview";
 
 const ORG = "org-canonical-project-count";
 const USER = "user-canonical-project-count";
@@ -88,6 +90,10 @@ describe("canonical project admin summaries", () => {
       expect(registered.bindings).toHaveLength(1);
       expect(registered.bindings[0].definitionId).toBe(DEFINITION);
       identities.push(registered.bindings[0].id);
+      const baseline = await insertReleaseBaseline(db, { id: `admin1307-baseline-${index}`, organizationId: ORG,
+        configSetId: configSet.id, name: "Preserved configuration history", createdByUserId: USER });
+      await insertReleaseBaselineMember(db, { id: `admin1307-baseline-member-${index}`, baselineId: baseline.id,
+        fileId: uploaded.file.id, fileVersionId: uploaded.version.id, versionNumber: uploaded.version.versionNumber });
     }
     expect(new Set(identities).size).toBe(2);
   }, 60_000);
@@ -97,6 +103,112 @@ describe("canonical project admin summaries", () => {
     await db?.close();
     await database?.drop();
     if (storageDirectory) await rm(storageDirectory, { recursive: true, force: true });
+  });
+
+  it("previews Canonical project disposal through the API without changing any domain rows", async () => {
+    const server = createWiseEffServer({ db });
+    const before = await snapshotDomainRows();
+    const response = await requestJson<{ item: { projectId: string; organizationId: string; stateDigest: string;
+      inventory: { key: string; count: number; disposition: string }[]; executionAvailable: boolean } }>(server,
+      `/api/v1/parameters/admin/projects/${PROJECTS[0]}/deletion-preview`, { headers: { "X-WiseEff-User": USER } });
+    expect(response.status).toBe(200);
+    expect(response.body.item).toMatchObject({ projectId: PROJECTS[0], organizationId: ORG, executionAvailable: true,
+      stateDigest: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(response.body.item.inventory).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "configurations", count: 1, disposition: "delete" }),
+      expect.objectContaining({ key: "source-files", count: 1, disposition: "delete" }),
+      expect.objectContaining({ key: "source-versions", count: 1, disposition: "delete" }),
+      expect.objectContaining({ key: "baselines", count: 1, disposition: "delete" }),
+      expect.objectContaining({ key: "baseline-members", count: 1, disposition: "delete" }),
+      expect.objectContaining({ key: "canonical-bindings", count: 1, disposition: "delete" }),
+      // Registration preserves the identity placeholder plus the source-backed value.
+      expect.objectContaining({ key: "canonical-values", count: 2, disposition: "delete" }),
+      expect.objectContaining({ key: "canonical-history", count: 1, disposition: "delete" }),
+      expect.objectContaining({ key: "shared-definitions", count: 1, disposition: "retain" })
+    ]));
+    expect(await snapshotDomainRows()).toEqual(before);
+    const again = await requestJson<typeof response.body>(server,
+      `/api/v1/parameters/admin/projects/${PROJECTS[0]}/deletion-preview`, { headers: { "X-WiseEff-User": USER } });
+    expect(again.body.item.stateDigest).toBe(response.body.item.stateDigest);
+    expect((await requestJson(server, `/api/v1/parameters/admin/projects/${FOREIGN_PROJECT}/deletion-preview`,
+      { headers: { "X-WiseEff-User": USER } })).status).toBe(404);
+  });
+
+  it("rejects a normal member before returning project impact or private counts", async () => {
+    const memberId = "admin1307-preview-member";
+    await db.query("insert into users(id,organization_id,name,title,is_active) values($1,$2,'Member','User',true)", [memberId, ORG]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values('admin1307-preview-member-role',$1,$2,'software-user')", [memberId, ORG]);
+    try {
+      const before = await snapshotDomainRows();
+      const response = await requestJson(createWiseEffServer({ db }), `/api/v1/parameters/admin/projects/${PROJECTS[0]}/deletion-preview`,
+        { headers: { "X-WiseEff-User": memberId } });
+      expect(response.status).toBe(403);
+      expect(await snapshotDomainRows()).toEqual(before);
+    } finally {
+      await db.query("delete from user_role_bindings where user_id=$1", [memberId]);
+      await db.query("delete from users where id=$1", [memberId]);
+    }
+  });
+
+  it("keeps private history bounded to the active administrator's organization without granting table access", async () => {
+    await withTestClusterRoleCatalogLock(async () => {
+      const client = await getRootPostgresPool(db)!.connect();
+      try {
+        await client.query("begin");
+        await client.query("create role admin1307_preview_reader nologin nosuperuser");
+        await client.query("grant catalog_baseline_reader_role to admin1307_preview_reader");
+        await client.query("set local role admin1307_preview_reader");
+        const counts = await client.query("select * from parameter_catalog.preview_project_deletion_catalog($1,$2,$3)", [ORG, PROJECTS[0], USER]);
+        expect(counts.rows).toContainEqual(expect.objectContaining({ key: "canonical-values", item_count: "2" }));
+        expect(counts.rows.every((row) => Object.keys(row).sort().join(",") === "item_count,key,state_digest")).toBe(true);
+        expect((await client.query("select * from parameter_catalog.preview_project_deletion_catalog($1,$2,$3)",
+          [ORG, FOREIGN_PROJECT, USER])).rows).toEqual([]);
+        await client.query("savepoint foreign_tenant");
+        await expect(client.query("select * from parameter_catalog.preview_project_deletion_catalog($1,$2,$3)",
+          [FOREIGN_ORG, FOREIGN_PROJECT, USER])).rejects.toMatchObject({ code: "42501" });
+        await client.query("rollback to foreign_tenant");
+        await expect(client.query("select * from parameter_catalog.binding_history_events")).rejects.toMatchObject({ code: "42501" });
+      } finally {
+        await client.query("rollback");
+        client.release();
+      }
+    });
+  });
+
+  it("refreshes state evidence and reports active configuration work and shared storage without exposing another project", async () => {
+    const server = createWiseEffServer({ db });
+    const headers = { "X-WiseEff-User": USER };
+    const url = `/api/v1/parameters/admin/projects/${PROJECTS[0]}/deletion-preview`;
+    const before = await requestJson<{ item: ProjectDeletionPreview }>(server, url, { headers });
+    const version = (await db.query<{ storage_key: string; checksum: string; size_bytes: string }>(
+      "select v.storage_key,v.checksum,v.size_bytes from project_parameter_file_versions v join project_parameter_files f on f.id=v.file_id where f.project_id=$1", [PROJECTS[0]])).rows[0]!;
+    const knowledgeId = "b4b5b445-a10b-41ac-a088-f04d0525e172";
+    const knowledgeFileId = "dbcc6d47-2d85-496f-b6f2-1d4e324409f8";
+    const revision = (await db.query<{ config_set_id: string }>("select config_set_id from dts_config_revisions where project_id=$1", [PROJECTS[0]])).rows[0]!;
+    const activeRevisionId = "admin1307-resolving-revision";
+    try {
+      // An independent other-tenant file legitimately reuses the stored bytes.
+      await db.query(`insert into knowledge_entries(id,organization_id,title,content_form,status,source_type)
+        values($1,$2,'Retained independent document','file','draft','human')`, [knowledgeId, FOREIGN_ORG]);
+      await db.query(`insert into knowledge_files(id,entry_id,organization_id,storage_key,file_name,content_type,size_bytes,checksum)
+        values($1,$2,$3,$4,'shared.json','application/json',$5,$6)`, [knowledgeFileId, knowledgeId, FOREIGN_ORG, version.storage_key, version.size_bytes, version.checksum]);
+      await db.query(`insert into dts_config_revisions(id,organization_id,project_id,config_set_id,revision_number,status)
+        values($1,$2,$3,$4,999,'resolving')`, [activeRevisionId, ORG, PROJECTS[0], revision.config_set_id]);
+      const refreshed = await requestJson<{ item: ProjectDeletionPreview }>(server, url, { headers });
+      expect(refreshed.status).toBe(200);
+      expect(refreshed.body.item.stateDigest).not.toBe(before.body.item.stateDigest);
+      expect(refreshed.body.item.storage).toMatchObject({ exclusiveObjects: 0, sharedObjects: 1 });
+      expect(refreshed.body.item.blockers).toContainEqual(expect.objectContaining({ code: "configuration-resolving", count: 1, action: expect.stringContaining("刷新") }));
+      expect(JSON.stringify(refreshed.body)).not.toContain(knowledgeId);
+      expect(JSON.stringify(refreshed.body)).not.toContain(FOREIGN_ORG);
+      expect(JSON.stringify(refreshed.body)).not.toContain(version.storage_key);
+      const foreign = await db.query("select id from knowledge_files where id=$1", [knowledgeFileId]);
+      expect(foreign.rows).toEqual([{ id: knowledgeFileId }]);
+    } finally {
+      await db.query("delete from dts_config_revisions where id=$1", [activeRevisionId]);
+      await db.query("delete from knowledge_files where id=$1", [knowledgeFileId]);
+      await db.query("delete from knowledge_entries where id=$1", [knowledgeId]);
+    }
   });
 
   it("refuses canonical project deletion with trusted audit and no domain row changes", async () => {

@@ -182,7 +182,7 @@ describe("canonical JSON configuration source", () => {
     const source = await loadCanonicalSourceSnapshot(db, storage, { organizationId: ORG, projectId: PROJECT, bindingId: binding.id, projectValueId: binding.currentValueId });
     expect(source.manifest).toMatchObject({ format: "json", logicalNodeId: null, configurationSchemaSubjectId: SUBJECT, rootPointer: "/a~1b/", locator: { kind: "json-pointer", pointer: "/a~1b//limit" } });
     expect(source.manifest.configurationInstanceId).toBeTruthy();
-    expect((await db.query(`select count(*)::int as count from dts_logical_nodes where project_id=$1`, [PROJECT])).rows[0]?.count).toBe(0);
+    expect((await db.query<{ count: number }>(`select count(*)::int as count from dts_logical_nodes where project_id=$1`, [PROJECT])).rows[0]?.count).toBe(0);
     expect((await loadProjectValueById(asValueClient(db),binding.currentValueId))?.value).toBe(36.5);
     const router = createRouter();
     registerCatalogProjectValueConsumerRoutes(router, { db,objectStore: storage,getCurrentAuthContext: () => auth });
@@ -195,6 +195,10 @@ describe("canonical JSON configuration source", () => {
       target: { format: "json", sourceText: "85.25" }, invocation: createUserInvocation(auth), requestId: "t11-json-prepare", refusalSink,
     }));
     expect(prepared.diff.after).toBe(SOURCE.replace("36.5", "85.25"));
+    const privateObject = (await db.query<{ storage_key: string; file_name: string; checksum: string }>("select storage_key,file_name,checksum from project_parameter_file_candidates where id=$1", [prepared.candidateId])).rows[0]!;
+    expect(privateObject.file_name).toBe("settings.json");
+    expect(privateObject.storage_key).not.toBe(`${ORG}/${privateObject.checksum}-settings.json`);
+    expect((await storage.get(privateObject.storage_key)).toString()).toBe(prepared.diff.after);
   });
 
   it("refuses extra JSON locator keys at the source pin database boundary", async () => {
@@ -234,7 +238,7 @@ describe("canonical JSON configuration source", () => {
     }));
     expect(prepared.bindings).toHaveLength(2);
     expect(prepared.bindings.map((entry) => ({ id: entry.bindingId, current_value_id: entry.oldValueId }))).toEqual(before.rows);
-    expect((await db.query(`select frozen_binding_manifest from project_parameter_file_candidates where id=$1`, [prepared.candidateId])).rows[0]?.frozen_binding_manifest).toEqual(prepared.bindings);
+    expect((await db.query<{ frozen_binding_manifest: unknown }>(`select frozen_binding_manifest from project_parameter_file_candidates where id=$1`, [prepared.candidateId])).rows[0]?.frozen_binding_manifest).toEqual(prepared.bindings);
     expect((await db.query(`select id,current_value_id from parameter_catalog.current_project_parameter_bindings where project_id=$1 order by id`, [PROJECT])).rows).toEqual(before.rows);
     const sibling = prepared.bindings.find((entry) => entry.bindingId !== binding.id)!;
     const rollbackProbe = new Error("rollback mixed-revision cohort probe");
@@ -295,7 +299,7 @@ describe("canonical JSON configuration source", () => {
     await expect(db.transaction((tx) => commitCanonicalSourceRevision(tx,storage,reviewWithoutEdit,snapshot, {
       projectId: PROJECT,requestId,invocation: createUserInvocation(reviewWithoutEdit),traceId: "t11-json-review-without-edit",refusalSink,
     }))).rejects.toMatchObject({ code: "FORBIDDEN" });
-    expect((await db.query(`select count(*)::int as count from audit_events where trace_id='t11-json-review-without-edit' and action='deny'`)).rows[0]?.count).toBe(1);
+    expect((await db.query<{ count: number }>(`select count(*)::int as count from audit_events where trace_id='t11-json-review-without-edit' and action='deny'`)).rows[0]?.count).toBe(1);
     const revoked = { ...reviewer, permissions: [] };
     await expect(db.transaction((tx) => commitCanonicalSourceRevision(tx,storage,revoked,snapshot, {
       projectId: PROJECT,requestId,invocation: createUserInvocation(revoked),traceId: "t11-json-replay-denied",refusalSink,
@@ -305,7 +309,7 @@ describe("canonical JSON configuration source", () => {
   it("refuses legacy membership additions to a canonical-backed configuration set", async () => {
     const addedId = (await uploadProjectParameterFile(db,storage,auth,{ projectId: PROJECT,fileName: "additional.json",bytes: Buffer.from("{}") })).file.id;
     await expect(addConfigSetFile(db,auth,{ configSetId: SET,fileId: addedId,role: "misc" })).rejects.toMatchObject({ code: "CONFLICT" });
-    expect((await db.query(`select config_set_id from project_parameter_files where id=$1`, [addedId])).rows[0]?.config_set_id).toBeNull();
+    expect((await db.query<{ config_set_id: string | null }>(`select config_set_id from project_parameter_files where id=$1`, [addedId])).rows[0]?.config_set_id).toBeNull();
   });
 
   it("keeps a newer pending edit when an older immutable submission is approved", async () => {
@@ -533,7 +537,7 @@ describe("canonical JSON configuration source", () => {
     );
     try {
       expect((await api(stagePath,selection)).status).toBe(403);
-      expect((await db.query(`select count(*)::int as count from audit_events where target_id=$1 and action='deny'`, [preview.body.item.id])).rows[0]?.count).toBe(1);
+      expect((await db.query<{ count: number }>(`select count(*)::int as count from audit_events where target_id=$1 and action='deny'`, [preview.body.item.id])).rows[0]?.count).toBe(1);
     } finally {
       await db.query(
         `update user_role_bindings set role_id='admin',project_id=null where id in ('t11-json-admin','t11-json-admin-role')`
@@ -583,8 +587,8 @@ describe("canonical JSON configuration source", () => {
     try {
       await expect(approve(storage,"t11-fail-audit")).rejects.toThrow("t11-injected-audit-failure");
       expect(await state()).toEqual(beforeApply);
-      expect((await db.query(`select status from project_parameter_value_change_requests where id=$1`, [request.id])).rows[0]?.status).toBe("pending");
-      expect((await db.query(`select status from project_parameter_file_candidates where id=$1`, [draft.candidateId])).rows[0]?.status).toBe("ready");
+      expect((await db.query<{ status: string }>(`select status from project_parameter_value_change_requests where id=$1`, [request.id])).rows[0]?.status).toBe("pending");
+      expect((await db.query<{ status: string }>(`select status from project_parameter_file_candidates where id=$1`, [draft.candidateId])).rows[0]?.status).toBe("ready");
     } finally {
       await db.query(`drop trigger t11_fail_apply_audit on audit_events`);
       await db.query(`drop function public.t11_fail_apply_audit()`);
@@ -603,7 +607,7 @@ describe("canonical JSON configuration source", () => {
     }
     expect(results[0]!.status).toBe("approved");
     expect(results[1]).toEqual(results[0]);
-    expect((await db.query(`select count(*)::int as count from audit_events where target_id=$1 and action='value-change-applied'`, [request.id])).rows[0]?.count).toBe(1);
+    expect((await db.query<{ count: number }>(`select count(*)::int as count from audit_events where target_id=$1 and action='value-change-applied'`, [request.id])).rows[0]?.count).toBe(1);
     const committed = await state();
     expect(await approve()).toEqual(results[0]);
     expect(await state()).toEqual(committed);
@@ -649,9 +653,9 @@ describe("canonical JSON configuration source", () => {
     if (winning.status !== "fulfilled") throw new Error("Source CAS produced no winner");
     expect(await approve(requests[winner]!.id)).toEqual(winning.value);
     expect((await readCanonicalBindingChangeHistory(getRootPostgresPool(db)!,identity))!.length).toBe(historyBefore!.length+1);
-    expect((await db.query(`select count(*)::int as count from audit_events where target_id=any($1::text[]) and action='value-change-applied'`,
+    expect((await db.query<{ count: number }>(`select count(*)::int as count from audit_events where target_id=any($1::text[]) and action='value-change-applied'`,
       [requests.map((request) => request.id)])).rows[0]?.count).toBe(1);
-    expect((await db.query(`select status from project_parameter_value_change_requests where id=$1`, [requests[loser]!.id])).rows[0]?.status).toBe("pending");
+    expect((await db.query<{ status: string }>(`select status from project_parameter_value_change_requests where id=$1`, [requests[loser]!.id])).rows[0]?.status).toBe("pending");
     expect(await loadCanonicalSourceSnapshot(db,storage,{ ...identity,projectValueId: binding.currentValueId })).toEqual(original);
   });
 

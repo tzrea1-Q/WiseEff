@@ -75,6 +75,7 @@ export const routeManifest = [
   },
   { id: "users.list", method: "GET", path: "/api/v1/users", module: "users", stability: "commercial-readiness" },
   { id: "users.create", method: "POST", path: "/api/v1/users", module: "users", stability: "commercial-readiness" },
+  { id: "users.setOidcIdentity", method: "PUT", path: "/api/v1/users/:userId/oidc-identity", module: "users", stability: "commercial-readiness" },
   {
     id: "users.listRegistrationRoleRequests",
     method: "GET",
@@ -86,6 +87,13 @@ export const routeManifest = [
     id: "users.approveRegistrationRoleRequest",
     method: "POST",
     path: "/api/v1/users/registration-role-requests/:requestId/approve",
+    module: "users",
+    stability: "commercial-readiness"
+  },
+  {
+    id: "users.enableBasicRegistrationRoleRequest",
+    method: "POST",
+    path: "/api/v1/users/registration-role-requests/:requestId/enable-basic",
     module: "users",
     stability: "commercial-readiness"
   },
@@ -756,6 +764,10 @@ export const routeManifest = [
   { id: "logs.list", method: "GET", path: "/api/v1/logs", module: "logs", stability: "mvp" },
   { id: "logs.feedbackInsights", method: "GET", path: "/api/v1/logs/feedback-insights", module: "logs", stability: "mvp" },
   { id: "logs.get", method: "GET", path: "/api/v1/logs/:logId", module: "logs", stability: "mvp" },
+  { id: "logs.previewDeletion", method: "GET", path: "/api/v1/logs/:logId/deletion-preview", module: "logs", stability: "mvp" },
+  { id: "logs.purge", method: "DELETE", path: "/api/v1/logs/:logId", module: "logs", stability: "mvp" },
+  { id: "logs.deletionStatus", method: "GET", path: "/api/v1/logs/:logId/deletion-status", module: "logs", stability: "mvp" },
+  { id: "logs.pendingDeletions", method: "GET", path: "/api/v1/logs/deletions", module: "logs", stability: "mvp" },
   { id: "logs.getTrace", method: "GET", path: "/api/v1/logs/:logId/trace", module: "logs", stability: "mvp" },
   { id: "logs.listAnalysisCases", method: "GET", path: "/api/v1/log-skills/:skillId/analysis-cases", module: "logs", stability: "mvp" },
   { id: "logs.createAnalysisCase", method: "POST", path: "/api/v1/log-skills/:skillId/analysis-cases", module: "logs", stability: "mvp" },
@@ -777,10 +789,16 @@ export const routeManifest = [
   { id: "logs.unarchive", method: "POST", path: "/api/v1/logs/:logId/unarchive", module: "logs", stability: "mvp" },
   { id: "logs.feedback", method: "POST", path: "/api/v1/logs/:logId/feedback", module: "logs", stability: "mvp" },
   { id: "logs.listSkills", method: "GET", path: "/api/v1/log-skills", module: "logs", stability: "mvp" },
+  { id: "logs.listSkillDeletions", method: "GET", path: "/api/v1/log-skills/deletions", module: "logs", stability: "mvp" },
+  { id: "logs.previewSkillDeletion", method: "GET", path: "/api/v1/log-skills/:skillId/deletion-preview", module: "logs", stability: "mvp" },
+  { id: "logs.getSkillDeletionStatus", method: "GET", path: "/api/v1/log-skills/:skillId/deletion-status", module: "logs", stability: "mvp" },
+  { id: "logs.purgeSkill", method: "POST", path: "/api/v1/log-skills/:skillId/purge", module: "logs", stability: "mvp" },
   { id: "logs.recommendSkills", method: "POST", path: "/api/v1/log-skills/recommend", module: "logs", stability: "mvp" },
   { id: "logs.listSourceVersions", method: "GET", path: "/api/v1/log-skills/:skillId/source-versions", module: "logs", stability: "mvp" },
   { id: "logs.listSourceSnapshots", method: "GET", path: "/api/v1/log-skills/:skillId/source-snapshots", module: "logs", stability: "mvp" },
   { id: "logs.uploadSourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots", module: "logs", stability: "mvp" },
+  { id: "logs.retrySourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/retry", module: "logs", stability: "mvp" },
+  { id: "logs.restoreSourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/restore", module: "logs", stability: "mvp" },
   { id: "logs.defaultSourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/default", module: "logs", stability: "mvp" },
   { id: "logs.archiveSourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/archive", module: "logs", stability: "mvp" },
   { id: "logs.locateSourceStatement", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/locate", module: "logs", stability: "mvp" },
@@ -840,6 +858,8 @@ export const routeManifest = [
   },
 
   { id: "productFeedback.create", method: "POST", path: "/api/v1/product-feedback", module: "product-feedback", stability: "mvp" },
+  { id: "productFeedback.retryAttachmentCleanup", method: "POST", path: "/api/v1/product-feedback/mine/attachment-cleanup", module: "product-feedback", stability: "mvp" },
+  { id: "productFeedback.deleteAttachment", method: "DELETE", path: "/api/v1/product-feedback/:id/attachments/:attachmentId", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.createDraft", method: "POST", path: "/api/v1/product-feedback/drafts", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.patchDraft", method: "PATCH", path: "/api/v1/product-feedback/drafts/:id", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.deleteDraft", method: "DELETE", path: "/api/v1/product-feedback/drafts/:id", module: "product-feedback", stability: "mvp" },
@@ -1114,6 +1134,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "debugging.admin.previewModuleDeletion",
+    method: "GET",
+    path: "/api/v1/debugging/admin/modules/:moduleId/deletion-preview",
+    module: "debugging",
+    stability: "mvp"
+  },
+  {
     id: "debugging.admin.deleteModule",
     method: "DELETE",
     path: "/api/v1/debugging/admin/modules/:moduleId",
@@ -1196,6 +1223,8 @@ export const routeManifest = [
   { id: "parameterFiles.getSourceRevisionRequest", method: "GET", path: "/api/v2/projects/:projectId/source-revision-requests/:requestId", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.reviewSourceRevisionRequest", method: "POST", path: "/api/v2/projects/:projectId/source-revision-requests/:requestId/review", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.withdrawSourceRevisionRequest", method: "POST", path: "/api/v2/projects/:projectId/source-revision-requests/:requestId/withdraw", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.cancelSourceRevisionRequest", method: "POST", path: "/api/v2/projects/:projectId/source-revision-requests/:requestId/cancel", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.reassignSourceRevisionRequest", method: "POST", path: "/api/v2/projects/:projectId/source-revision-requests/:requestId/reassign", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.uploadFile", method: "POST", path: "/api/v1/projects/:projectId/parameter-files", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.listFileVersions", method: "GET", path: "/api/v1/projects/:projectId/parameter-files/:fileId/versions", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.uploadFileVersion", method: "POST", path: "/api/v1/projects/:projectId/parameter-files/:fileId/versions", module: "parameter-files", stability: "mvp" },
@@ -1237,6 +1266,10 @@ export const routeManifest = [
     stability: "mvp"
   },
   { id: "parameterFiles.listConfigSets", method: "GET", path: "/api/v1/projects/:projectId/config-sets", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.previewCanonicalMemberAddition", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/member-addition/preview", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.applyCanonicalMemberAddition", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/member-addition/apply", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.previewAdministratorMemberRemoval", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId/removal-preview", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.applyAdministratorMemberRemoval", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId/removal-apply", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.createConfigSet", method: "POST", path: "/api/v1/projects/:projectId/config-sets", module: "parameter-files", stability: "mvp" },
   {
     id: "parameterFiles.addConfigSetFile",
@@ -1295,6 +1328,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameterFiles.applySourceRevisionCandidate",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-apply",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
     id: "parameterFiles.submitCanonicalCandidate",
     method: "POST",
     path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-submit",
@@ -1331,6 +1371,10 @@ export const routeManifest = [
   },
 
   { id: "parameters.deleteAdminProject", method: "DELETE", path: "/api/v1/parameters/admin/projects/:projectId", module: "parameters", stability: "mvp" },
+  { id: "parameters.previewAdminProjectDeletion", method: "GET", path: "/api/v1/parameters/admin/projects/:projectId/deletion-preview", module: "parameters", stability: "mvp" },
+  { id: "parameters.purgeAdminProject", method: "POST", path: "/api/v1/parameters/admin/projects/:projectId/purge", module: "parameters", stability: "mvp" },
+  { id: "parameters.getAdminProjectDeletionStatus", method: "GET", path: "/api/v1/parameters/admin/projects/:projectId/deletion-status", module: "parameters", stability: "mvp" },
+  { id: "parameters.listAdminProjectDeletions", method: "GET", path: "/api/v1/parameters/admin/project-deletions", module: "parameters", stability: "mvp" },
   { id: "parameters.parseDtsImport", method: "POST", path: "/api/v1/parameter-import/parse-dts", module: "parameters", stability: "mvp" },
   {
     id: "parameters.listWorkflowAssignees",
@@ -1345,6 +1389,9 @@ export const routeManifest = [
   { id: "deviceBridges.createPairingCode", method: "POST", path: "/api/v1/device-bridges/pairing-codes", module: "device-bridge", stability: "mvp" },
   { id: "deviceBridges.pair", method: "POST", path: "/api/v1/device-bridges/pair", module: "device-bridge", stability: "mvp" },
   { id: "deviceBridges.listMine", method: "GET", path: "/api/v1/device-bridges/mine", module: "device-bridge", stability: "mvp" },
+  { id: "deviceBridges.listOrganization", method: "GET", path: "/api/v1/device-bridges/organization", module: "device-bridge", stability: "mvp" },
+  { id: "deviceBridges.getOrganizationBridge", method: "GET", path: "/api/v1/device-bridges/organization/:bridgeId", module: "device-bridge", stability: "mvp" },
+  { id: "deviceBridges.revokeOrganizationBridge", method: "POST", path: "/api/v1/device-bridges/organization/:bridgeId/revoke", module: "device-bridge", stability: "mvp" },
   { id: "deviceBridges.updateBridge", method: "PATCH", path: "/api/v1/device-bridges/:bridgeId", module: "device-bridge", stability: "mvp" },
   { id: "deviceBridges.revokeBridge", method: "POST", path: "/api/v1/device-bridges/:bridgeId/revoke", module: "device-bridge", stability: "mvp" },
   { id: "deviceBridges.getReleaseManifest", method: "GET", path: "/api/v1/device-bridges/releases", module: "device-bridge", stability: "mvp" },

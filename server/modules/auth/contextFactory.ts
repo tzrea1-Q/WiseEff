@@ -55,6 +55,7 @@ function createUserAuthContextResolver(options: AuthContextResolverOptions): Aut
           throw new ApiError("INTERNAL_ERROR", "Database-backed auth context is required when AUTH_MODE=production.");
         }
         return await getAuthContextForExternalIdentity(options.db, {
+          issuer: verifiedContext.externalIdentity?.issuer,
           organizationId: verifiedContext.user.organizationId,
           subject: verifiedContext.user.id,
           email: verifiedContext.user.emailVerified ? verifiedContext.user.email : undefined

@@ -59,6 +59,8 @@ On Knowledge base (`/knowledge`), open a published entry you can maintain and se
 
 On Knowledge admin (`/knowledge-admin`), managers can also restore entries from the archived list. Permanently delete requires an acknowledgement during confirmation and removes the entry and all revisions irreversibly. If you only need to retire outdated guidance, archive it.
 
+Managers with `knowledge:manage` can also permanently delete a human-authored draft directly from its detail or the row's More menu on Knowledge base (`/knowledge`), without publishing or archiving it first. Confirm the scope and acknowledge the irreversible action. Deletion removes the entry, all revisions, file metadata, parameter references and linked retrieval/index records; audit records remain. Original file objects in storage are retained by the existing deletion contract. Other entries, shared parameter definitions and source logs are not deleted. Cancelling leaves the draft unchanged; a failed request keeps the confirmation and its error available for retry. If another administrator has already deleted it, the request reports that the entry no longer exists; close the dialog and refresh the list.
+
 In the Agent-draft queue on Knowledge admin (`/knowledge-admin`), managers can check the creator and available session or source links, then publish the reviewed content or reject and archive it. Rejecting a draft directly into archive is available only for Agent drafts. Ordinary drafts must be published before the normal archive action is available.
 
 ## Check index health and request a rebuild

@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { debugConnectionProtocols, defaultDebugConnectionProtocol } from "./protocol";
 import { debugAccessModes } from "./status";
+export {
+  debugModuleDeletionBodySchema,
+  debugModuleDeletionPreviewSchema,
+  debugModuleDeletionPreviewResponseSchema,
+  type DebugModuleDeletionInput
+} from "../contracts/dtoSchemas/debugging";
 import {
   DEBUG_NORMALIZATION_MODES,
   DEBUG_VALUE_FORMATS,
@@ -202,6 +208,8 @@ export const patchDebugNodeModuleAdminBodySchema = writeDebugNodeModuleAdminBody
 export const moveDebugNodeModuleBodySchema = z.object({
   parentId: nonEmptyString.nullable()
 });
+
+export const debugModuleDeletionQuerySchema = z.object({ targetModuleId: nonEmptyString.optional() }).strict();
 
 export const DEBUG_CATALOG_FORMAT_V1 = "wiseeff.debug-node-catalog.v1" as const;
 export const DEBUG_CATALOG_FORMAT_V2 = "wiseeff.debug-node-catalog.v2" as const;

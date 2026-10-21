@@ -65,9 +65,59 @@ export const S2_SCH_0218_FINGERPRINT =
 export const S2_SCH_0219_FINGERPRINT =
   "2bd66075a223cd87daf165f4ba353258edd9a845c8027bf1de140b25ae19fad6";
 
-/** 0220 archive-aware erasure closure/lock; observed on native PostgreSQL in CI. */
-export const S2_SCH_LIVE_FINGERPRINT =
+/** Retained main #1323 archive-aware erasure compatibility chain. */
+export const S2_SCH_0220_COMPAT_FINGERPRINT =
   "da0aba57c65b388a140b03d8db3da6b7c61ebc70d0b92f0b2b7026751cfda412";
+
+/**
+ * Retained pre-integration 0221 stage: the unchanged six-category inventory adds only three
+ * functions for direct-source receipts/mode immutability and read-only project
+ * deletion preview. Relations, columns, constraints, indexes and triggers are
+ * unchanged from 0219; the historical fingerprint above remains intact.
+ */
+export const S2_SCH_0221_FINGERPRINT =
+  "d9907a04610bdcc83f0662fc3030fca1b480488858fdce4583315bd0bfd5005d";
+
+/**
+ * Retained pre-integration 0226 stage: project erasure adds one relation/primary key, while
+ * member addition/removal and surviving Definition-erasure origins update
+ * three constraints and nine function bodies, and add twelve functions.
+ * The unchanged inventory query retains all prior schema pins above.
+ */
+export const S2_SCH_0226_FINGERPRINT =
+  "82c8c47c82b6f4fcdbd744fa3cfcfedd74dfbd85aba811227d6d5f468c0f6e7e";
+
+/** Retained pre-integration chain through 0228 adds only the log erasure relation,
+ * its primary key/index, nine inventory attributes and six functions. All
+ * preceding entries and every historical pin remain unchanged. */
+export const S2_SCH_0228_FINGERPRINT =
+  "60ef3ac1e6873e012fff56627136e7f1740d00482a11a73106a51a5287997e6a";
+
+/** Retained pre-integration 0227/0230/0232 chain adds three configuration restore functions and
+ * updates six source/restore/Definition-erasure bodies; all five relation,
+ * attribute, constraint, index and trigger inventories above are unchanged. */
+export const S2_SCH_0232_FINGERPRINT =
+  "9c31755dae942bd052f9be556a106e2715c13ca09d0d36a89511eff975ee2f70";
+
+/** 0233 adds the audited source-administration guard and extends the frozen
+ * source-request guard. 0235/0236 add no Catalog inventory entries. */
+export const S2_SCH_0236_FINGERPRINT =
+  "413de8e2379309ca3675e8f030629d96ebc0f62d412e05660ff62872aca82864";
+
+/** Combined main #1323 and administration chain through 0236. */
+export const S2_SCH_0236_MAIN_FINGERPRINT =
+  "6a450990794e80feb3ba3baf1020d810f91cfbd9608f781b46e4ccf911d9935a";
+
+/** Retained chain through 0241; 0237 adds only zero-project replacement activation. */
+export const S2_SCH_0241_FINGERPRINT =
+  "cea17596201ab46874728187121ba0c5e1a4fe98e366db456fd9d2c35762d64f";
+
+/** 0242–0245 replace one tombstone unique constraint/index (four index attributes
+ * become five) and update six historical receipt/provenance functions. The
+ * unchanged six-category query adds no relations, table columns, triggers or
+ * functions; every earlier schema pin remains intact. */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "6b373aebaeae82091d7d3e86de2a385ba1ab73786a7b14d131333c486b66db38";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

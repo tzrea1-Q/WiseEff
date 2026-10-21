@@ -25,7 +25,7 @@ import { isStructuralPropertyKey } from "../parameter-topology/parameterSurface"
 import { hasCurrentCanonicalReviewRole } from "../parameters/reviewWorkflowRepository";
 import { getParameterFileCandidateById } from "./candidateRepository";
 import { createDtsToolchainRunner, type DtsToolchainRunner } from "./dtsToolchain";
-import { MAX_PARAMETER_SOURCE_BYTES } from "./jsonSource";
+import { MAX_PARAMETER_SOURCE_BYTES, parseJsonSource, readJsonSourceValue } from "./jsonSource";
 import { requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "./canonicalSource";
 
 export const sourceRevisionDigest = (input: string | Buffer | object) => createHash("sha256")
@@ -34,13 +34,13 @@ export const sameSourceRevision = (left: unknown, right: unknown) => serializeCo
 function conflict(message: string, reason = "source-revision-stale"): never { throw new ApiError("CONFLICT", message, { reason }); }
 
 export type SourceRevisionMember = {
-  memberId: string; fileId: string; fileVersionId: string; sourceName: string; format: "dts";
+  memberId: string; fileId: string; fileVersionId: string; sourceName: string; format: "dts" | "json";
   role: string; sortOrder: number; checksum: string; sizeBytes: number;
 };
 export type SourceRevisionCohort = {
   bindingId: string; oldValueId: string; sourcePinId: string; sourceOccurrenceId: string;
   definitionId: string; effectiveRevisionId: string; catalogReleaseId: string; valueDigest: string;
-  fileId: string; fileVersionId: string; logicalNodeId: string; propertyName: string;
+  fileId: string; fileVersionId: string; logicalNodeId: string | null; propertyName: string; format?: "json";
   valueState: "present"; locator: Record<string, ContractJsonValue>;
 };
 export type SourceRevisionTarget = {
@@ -84,17 +84,45 @@ export async function isSourceRevisionReviewer(tx: Database, auth: AuthContext, 
     && canReviewParameters(current) && canReviewParameterStage(current, projectId, "software_review");
 }
 
-async function loadSnapshot(db: Database, provided?: CatalogSnapshot): Promise<CatalogSnapshot | null> {
+export async function loadSnapshot(db: Database, provided?: CatalogSnapshot): Promise<CatalogSnapshot | null> {
   if (provided) return provided;
   const pool = getRootPostgresPool(db);
   if (!pool) throw new ApiError("INTERNAL_ERROR", "Source inspection requires a root database or an explicit catalog snapshot.");
   return loadPublishedCatalog(pool);
 }
 
+/** Role updates take this same user fence; never authorize a commit from an old request context. */
+function hasSourceAdministration(auth: AuthContext, projectId: string): boolean {
+  return canAdminParameters(auth) && canEditParameters(auth,projectId)
+    && auth.roles.some((role) => role.roleId === "admin" || role.roleId === "platform-admin");
+}
+
+export async function isCurrentSourceAdministrator(tx: Database, auth: AuthContext, projectId: string): Promise<boolean> {
+  try {
+    const current = await getAuthContext(tx,auth.user.id);
+    return current.organization.id === auth.organization.id && hasSourceAdministration(current,projectId);
+  } catch (error) {
+    if (error instanceof ApiError && (error.code === "UNAUTHENTICATED" || error.code === "FORBIDDEN")) return false;
+    throw error;
+  }
+}
+
+export async function requireCurrentSourceAdministrator(tx: Database, auth: AuthContext, projectId: string): Promise<AuthContext> {
+  const user = (await tx.query<{ id: string }>(
+    "select id from public.users where id=$1 and organization_id=$2 and is_active for no key update",
+    [auth.user.id, auth.organization.id])).rows[0];
+  if (!user) throw new ApiError("FORBIDDEN", "A current active file administrator is required.");
+  const current = await getAuthContext(tx, auth.user.id);
+  if (current.organization.id !== auth.organization.id || !hasSourceAdministration(current,projectId)) {
+    throw new ApiError("FORBIDDEN", "Current file administration and project edit permission are required.");
+  }
+  return current;
+}
+
 export async function loadSourceRevisionCatalogSnapshots(db: Database, projectId: string,
-  organizationId: string, current: CatalogSnapshot | null): Promise<ReadonlyMap<string, CatalogSnapshot>> {
+  organizationId: string, current: CatalogSnapshot | null, includeRetained = false): Promise<ReadonlyMap<string, CatalogSnapshot>> {
   const snapshots = new Map<string, CatalogSnapshot>(current ? [[current.release.id, current]] : []);
-  const releases = await loadProjectBindingCatalogReleaseIds(db, { organizationId, projectId });
+  const releases = await loadProjectBindingCatalogReleaseIds(db, { organizationId, projectId,includeRetained });
   const pool = getRootPostgresPool(db);
   for (const releaseId of releases) {
     if (snapshots.has(releaseId)) continue;
@@ -109,12 +137,12 @@ export async function loadSourceRevisionCatalogSnapshots(db: Database, projectId
   return snapshots;
 }
 
-async function sourceRevisionReviewers(tx: Database, auth: AuthContext, projectId: string) {
+export async function sourceRevisionReviewers(tx: Database, auth: AuthContext, projectId: string, excludedUserId: string | null = auth.user.id) {
   const candidates = (await tx.query<{ userId: string; name: string }>(
     `select distinct users.id as "userId",users.name from public.users
      join public.user_role_bindings role on role.user_id=users.id and role.organization_id=users.organization_id
-     where users.organization_id=$1 and users.is_active and users.id<>$2 and role.role_id in ('admin','platform-admin') order by users.id`,
-    [auth.organization.id, auth.user.id])).rows;
+     where users.organization_id=$1 and users.is_active and users.id is distinct from $2 and role.role_id in ('admin','platform-admin') order by users.id`,
+    [auth.organization.id, excludedUserId])).rows;
   const eligible = [];
   for (const candidate of candidates) {
     const current = await getAuthContext(tx, candidate.userId);
@@ -165,19 +193,22 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     [revision.id, auth.organization.id, input.projectId, context.configSetId])).rows;
   const currentCount = (await tx.query<{ count: number }>("select count(*)::int as count from public.project_parameter_files where config_set_id=$1 and organization_id=$2 and project_id=$3",
     [context.configSetId, auth.organization.id, input.projectId])).rows[0]?.count;
-  if (!rows.length || rows.length !== currentCount || rows.some((row) => row.format !== "dts"
+  if (!rows.length || rows.length !== currentCount || rows.some((row) => !["dts", "json"].includes(row.format)
     || row.fileVersionId !== row.currentVersionId || !row.sourceName
     || (row.role === "include" ? "misc" : row.role) !== row.currentRole || row.sortOrder !== row.currentOrder)
-    || !rows.some((row) => row.fileId === candidate.fileId && row.fileVersionId === context.baseVersionId)) {
-    conflict("Whole-source revision requires the exact current DTS configuration members.");
+    || !rows.some((row) => row.fileId === candidate.fileId && row.format === "dts" && row.fileVersionId === context.baseVersionId)) {
+    conflict("Whole-source revision requires the exact current configuration members and an edited DTS file.");
   }
   const files = new Map<string, { content: string; fileVersionId: string }>();
+  const memberContents = new Map<string, string>();
   let before = "";
   for (const member of rows) {
     const bytes = await storage.getBounded(member.storageKey, MAX_PARAMETER_SOURCE_BYTES);
     if (bytes.length !== member.sizeBytes || sourceRevisionDigest(bytes) !== member.checksum.replace(/^sha256:/, "")) conflict("Pinned source bytes failed integrity verification.");
     const content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
-    files.set(member.sourceName, { content, fileVersionId: member.fileVersionId });
+    memberContents.set(member.fileId, content);
+    if (member.format === "dts") files.set(member.sourceName, { content, fileVersionId: member.fileVersionId });
+    else parseJsonSource(content);
     if (member.fileId === candidate.fileId) before = content;
   }
   const bytes = await storage.getBounded(candidate.storageKey, MAX_PARAMETER_SOURCE_BYTES);
@@ -247,9 +278,10 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     const pin = await loadOwnedProjectValueSourcePin(tx, { organizationId: auth.organization.id, projectId: input.projectId,
       bindingId: entry.bindingId, projectValueId: entry.oldValueId });
     const pinnedSnapshot = options.snapshots?.get(entry.catalogReleaseId) ?? (snapshot?.release.id === entry.catalogReleaseId ? snapshot : null);
-    if (!pinnedSnapshot || !pin || pin.format !== "dts" || !pin.logicalNodeId || pin.valueState !== "present"
-      || pin.configRevisionId !== revision.id || typeof pin.locator.propertyName !== "string"
-      || pin.locator.kind !== "dts-property") conflict("A current source Binding has stale or unsupported provenance.");
+    if (!pinnedSnapshot || !pin || pin.valueState !== "present" || pin.configRevisionId !== revision.id
+      || !rows.some(member => member.fileId === pin.fileId && member.fileVersionId === pin.fileVersionId && member.format === pin.format)) {
+      conflict("A current source Binding has stale or unsupported provenance.");
+    }
     const currentBinding = await readOwnedCurrentBinding(tx, { organizationId: auth.organization.id,
       projectId: input.projectId, bindingId: entry.bindingId });
     if (currentBinding.status !== "current" || registered.get(currentBinding.binding.subjectId) !== currentBinding.binding.registrationId) {
@@ -258,6 +290,22 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     const registration = currentBinding.binding;
     const definition = pinnedSnapshot.getDefinitionRevision({ definitionId: ParameterDefinitionId(entry.definitionId), revisionId: DefinitionRevisionId(entry.effectiveRevisionId) });
     if (definition.status !== "found") conflict("A pinned parameter Definition is unavailable.");
+    const old = await readOwnedProjectValueIdentity(tx, { organizationId: auth.organization.id,
+      projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
+    if (!old) conflict("A current source value is unavailable.");
+    if (pin.format === "json") {
+      if (pin.locator.kind !== "json-pointer" || typeof pin.locator.pointer !== "string" || pin.rootPointer === null
+        || !sameSourceRevision(old.value.payload, { kind: "json", value: readJsonSourceValue(memberContents.get(pin.fileId)!, pin.locator.pointer, pin.rootPointer) })) {
+        conflict("An unchanged JSON parameter does not match its exact owned source.");
+      }
+      assertCanonicalValueConstraints(definition.revision, old.value.payload);
+      cohort.push({ ...entry, fileId: pin.fileId, fileVersionId: pin.fileVersionId, logicalNodeId: null,
+        propertyName: "", format: "json", valueState: "present", locator: pin.locator });
+      continue;
+    }
+    if (!pin.logicalNodeId || typeof pin.locator.propertyName !== "string" || pin.locator.kind !== "dts-property") {
+      conflict("A current DTS Binding has unsupported provenance.");
+    }
     const logical = continuity.nodes.find((row) => row.logicalNodeId === pin.logicalNodeId);
     const node = logical ? resolved.effective.nodesByLocator.get(logical.nodeLocator) : undefined;
     const property = node?.properties.get(pin.locator.propertyName);
@@ -274,9 +322,6 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
       && resolvedSubject?.subjectId === registration.subjectId
       ? { payload: rawTextToPayload(pin.locator.propertyName, property.rawText), fileId: pin.fileId, propertyName: pin.locator.propertyName }
       : null;
-    const old = await readOwnedProjectValueIdentity(tx, { organizationId: auth.organization.id,
-      projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
-    if (!old) conflict("A current source value is unavailable.");
     const frozen = { ...entry, fileId: pin.fileId, fileVersionId: pin.fileVersionId, logicalNodeId: pin.logicalNodeId,
       propertyName: pin.locator.propertyName, valueState: "present" as const, locator: pin.locator };
     cohort.push(frozen);
@@ -395,39 +440,7 @@ export async function submitSourceRevisionCandidate(db: Database, storage: Objec
     await assertSourceRevisionWriteAllowed(tx, auth, proof, security);
     if (proof.baseVersionId !== input.expectedCurrentVersionId || proof.proofDigest !== input.expectedProofToken) conflict("Source revision no longer matches the reviewed preview.");
     if (before === after) throw new ApiError("VALIDATION_FAILED", "Source has no changes.");
-    const pending = (await tx.query<{ id: string }>(`select id from public.project_parameter_value_change_requests
-      where organization_id=$1 and project_id=$2 and status='pending' and (
-        source_revision_config_set_id=$3 or batch_config_set_id=$3 or member_config_set_id=$3
-        or config_revision_id=$4) limit 1`, [auth.organization.id, input.projectId, proof.configSetId, proof.baseConfigRevisionId])).rows[0];
-    if (pending) throw new ApiError("CONFLICT", "This configuration already has a pending change request.", { requestId: pending.id, reason: "source-review-pending" });
-    if (await hasSourceConfigurationDrafts(tx, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: proof.configSetId })) {
-      conflict("Resolve existing parameter drafts before submitting a source revision.", "parameter-drafts-unresolved");
-    }
-    const requestId = `pvcr_${randomUUID()}`;
-    await tx.query(`update public.project_parameter_file_candidates set base_digest=$2,proposed_digest=$3,diff_digest=$4,
-      frozen_member_manifest=$5::jsonb,frozen_binding_manifest=$6::jsonb where id=$1 and status='ready'`,
-      [proof.candidateId, proof.baseDigest, proof.proposedDigest, proof.proofDigest, JSON.stringify(proof.members), JSON.stringify(proof.cohort)]);
-    await tx.query(`insert into public.project_parameter_value_change_requests
-      (id,organization_id,project_id,request_kind,reason,status,submitter_user_id,assigned_to_user_id,candidate_id,
-       candidate_base_digest,candidate_proposed_digest,candidate_diff_digest,candidate_member_manifest,candidate_binding_manifest,
-       source_revision_context,source_revision_proof_digest,source_revision_config_set_id,source_revision_mutation_id,source_revision_mutation_digest)
-      values ($1,$2,$3,'source_revision',$4,'pending',$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$10,$14,$15,$16)`,
-      [requestId, auth.organization.id, input.projectId, input.reason.trim(), auth.user.id, input.assignedToUserId,
-        proof.candidateId, proof.baseDigest, proof.proposedDigest, proof.proofDigest, JSON.stringify(proof.members),
-        JSON.stringify(proof.cohort), JSON.stringify(proof), proof.configSetId, input.clientMutationId, mutationDigest]);
-    for (const [ordinal, target] of proof.targets.entries()) {
-      const entry = proof.cohort.find((row) => row.bindingId === target.bindingId)!;
-      const source = await readOwnedProjectValueIdentity(tx, { organizationId: auth.organization.id,
-        projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
-      if (!source) conflict("Reviewed target has no current source value.");
-      await tx.query(`insert into public.project_parameter_value_change_targets
-        (id,request_id,organization_id,project_id,ordinal,binding_id,definition_id,definition_revision_id,catalog_release_id,
-         base_current_value_id,config_revision_id,source_ref,source_pin_id,action,target_value,base_digest,proposed_digest)
-        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17)`,
-        [`pvct_${randomUUID()}`, requestId, auth.organization.id, input.projectId, ordinal, entry.bindingId,
-          entry.definitionId, entry.effectiveRevisionId, entry.catalogReleaseId, entry.oldValueId, proof.baseConfigRevisionId,
-          source.value.source.sourceRef, entry.sourcePinId, target.action, JSON.stringify(target.payload), proof.baseDigest, proof.proposedDigest]);
-    }
+    const requestId = await freezeSourceRevisionRequest(tx, auth, proof, input, mutationDigest);
     await writeTrustedAuditEventInTx(asAuditTx(tx), { invocation: security.invocation, app: "parameters",
       kind: "parameter-topology-governance", action: "value-change-submitted", severity: "Medium", projectId: input.projectId,
       targetType: "project-parameter-value-change-request", targetId: requestId,
@@ -436,4 +449,50 @@ export async function submitSourceRevisionCandidate(db: Database, storage: Objec
       traceId: security.requestId });
     return { requestId, status: "pending", replayed: false };
   });
+}
+
+export type FrozenSourceRequestProof = Pick<SourceRevisionProof, "configSetId" | "baseConfigRevisionId" | "baseDigest" | "proposedDigest" | "proofDigest" | "targets"> & {
+  kind: "source_revision" | "member_addition" | "configuration_restore";
+  candidateId: string | null;
+  members: readonly unknown[];
+  cohort: Array<Pick<SourceRevisionCohort, "bindingId" | "oldValueId" | "sourcePinId" | "definitionId" | "effectiveRevisionId" | "catalogReleaseId">>;
+};
+
+export async function freezeSourceRevisionRequest(tx: Database, auth: AuthContext, proof: FrozenSourceRequestProof,
+  input: { projectId: string; reason: string; assignedToUserId: string | null; clientMutationId: string },
+  mutationDigest: string, applicationMode: "separate_review" | "administrator_direct" = "separate_review"): Promise<string> {
+  const pending = (await tx.query<{ id: string }>(`select id from public.project_parameter_value_change_requests
+    where organization_id=$1 and project_id=$2 and status='pending' and (
+      source_revision_config_set_id=$3 or batch_config_set_id=$3 or member_config_set_id=$3
+      or config_revision_id=$4) limit 1`, [auth.organization.id, input.projectId, proof.configSetId, proof.baseConfigRevisionId])).rows[0];
+  if (pending) throw new ApiError("CONFLICT", "This configuration already has a pending change request.", { requestId: pending.id, reason: "source-review-pending" });
+  if (await hasSourceConfigurationDrafts(tx, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: proof.configSetId })) {
+    conflict("Resolve existing parameter drafts before submitting a source revision.", "parameter-drafts-unresolved");
+  }
+  const requestId = `pvcr_${randomUUID()}`;
+  await tx.query(`update public.project_parameter_file_candidates set base_digest=$2,proposed_digest=$3,diff_digest=$4,
+    frozen_member_manifest=$5::jsonb,frozen_binding_manifest=$6::jsonb where id=$1 and status='ready'`,
+    [proof.candidateId, proof.baseDigest, proof.proposedDigest, proof.proofDigest, JSON.stringify(proof.members), JSON.stringify(proof.cohort)]);
+  await tx.query(`insert into public.project_parameter_value_change_requests
+    (id,organization_id,project_id,request_kind,reason,status,submitter_user_id,assigned_to_user_id,candidate_id,
+     candidate_base_digest,candidate_proposed_digest,candidate_diff_digest,candidate_member_manifest,candidate_binding_manifest,
+     source_revision_context,source_revision_proof_digest,source_revision_config_set_id,source_revision_mutation_id,source_revision_mutation_digest,source_revision_application_mode)
+    values ($1,$2,$3,$18,$4,'pending',$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$10,$14,$15,$16,$17)`,
+    [requestId, auth.organization.id, input.projectId, input.reason.trim(), auth.user.id, input.assignedToUserId,
+      proof.candidateId, proof.baseDigest, proof.proposedDigest, proof.proofDigest, JSON.stringify(proof.members),
+      JSON.stringify(proof.cohort), JSON.stringify(proof), proof.configSetId, input.clientMutationId, mutationDigest, applicationMode, proof.kind]);
+  for (const [ordinal, target] of proof.targets.entries()) {
+    const entry = proof.cohort.find((row) => row.bindingId === target.bindingId)!;
+    const source = await readOwnedProjectValueIdentity(tx, { organizationId: auth.organization.id,
+      projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
+    if (!source) conflict("Reviewed target has no current source value.");
+    await tx.query(`insert into public.project_parameter_value_change_targets
+      (id,request_id,organization_id,project_id,ordinal,binding_id,definition_id,definition_revision_id,catalog_release_id,
+       base_current_value_id,config_revision_id,source_ref,source_pin_id,action,target_value,base_digest,proposed_digest)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17)`,
+      [`pvct_${randomUUID()}`, requestId, auth.organization.id, input.projectId, ordinal, entry.bindingId,
+        entry.definitionId, entry.effectiveRevisionId, entry.catalogReleaseId, entry.oldValueId, proof.baseConfigRevisionId,
+        source.value.source.sourceRef, entry.sourcePinId, target.action, JSON.stringify(target.payload), proof.baseDigest, proof.proposedDigest]);
+  }
+  return requestId;
 }

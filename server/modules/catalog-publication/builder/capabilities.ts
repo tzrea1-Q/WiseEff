@@ -412,8 +412,8 @@ export const validateSupportedDefinitionContentAt = (
       `${path}.documentation`,
     );
   }
-  let description: string | undefined;
-  if (content.description !== undefined) {
+  let description: string | null | undefined = content.description === null ? null : undefined;
+  if (content.description != null) {
     const candidate = content.description;
     if (typeof candidate !== "string") {
       return capabilityFail("invalid-documentation", `${path}.description`);
@@ -426,8 +426,8 @@ export const validateSupportedDefinitionContentAt = (
     }
     description = candidate;
   }
-  let unit: string | undefined;
-  if (content.unit !== undefined) {
+  let unit: string | null | undefined = content.unit === null ? null : undefined;
+  if (content.unit != null) {
     if (
       typeof content.unit !== "string" ||
       content.unit.trim().length === 0 ||
@@ -441,8 +441,8 @@ export const validateSupportedDefinitionContentAt = (
   }
   const schema = validateValueSchema(content.valueSchema, `${path}.valueSchema`, allowList);
   if (!schema.ok) return schema;
-  let examples: readonly ContractJsonValue[] | undefined;
-  if (content.examples !== undefined) {
+  let examples: readonly ContractJsonValue[] | null | undefined = content.examples === null ? null : undefined;
+  if (content.examples != null) {
     if (!Array.isArray(content.examples)) {
       return capabilityFail("invalid-examples", `${path}.examples`);
     }

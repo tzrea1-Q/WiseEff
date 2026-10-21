@@ -90,12 +90,13 @@ export async function insertReleaseBaseline(
   const result = await db.query<ReleaseBaselineRow>(
     `
     insert into dts_release_baseline (
-      id, organization_id, config_set_id, name, notes, created_by_user_id
+      id, organization_id, config_set_id, name, notes, created_by_user_id, source_snapshot
     )
-    values ($1, $2, $3, $4, $5, $6)
+    values ($1, $2, $3, $4, $5, $6, $7::jsonb)
     returning *
     `,
-    [input.id, input.organizationId, input.configSetId, input.name, input.notes ?? null, input.createdByUserId ?? null]
+    [input.id, input.organizationId, input.configSetId, input.name, input.notes ?? null, input.createdByUserId ?? null,
+      input.sourceSnapshot ? JSON.stringify(input.sourceSnapshot) : null]
   );
 
   return toReleaseBaselineDto(result.rows[0]);

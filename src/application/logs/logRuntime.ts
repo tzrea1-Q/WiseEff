@@ -31,6 +31,7 @@ export type HydrateLogRuntimeAction = {
 };
 
 export type LogRuntimeActions = {
+  forgetLog?(logId: string): void;
   refresh(query?: LogListQuery, options?: { notifyOnFailure?: boolean }): Promise<void>;
   upload(input: LogUploadInput): Promise<void>;
   rerun(input: LogRerunInput): Promise<void>;
@@ -155,7 +156,12 @@ async function pollJobUntilTerminal(
       await delay(delayMs);
     }
     scheduledMs += delayMs;
-    job = await api.getJob(job.id);
+    if (!generations.isCurrent(activeGeneration.logId, activeGeneration.generation)) return;
+    try { job = await api.getJob(job.id); }
+    catch (error) {
+      if (!generations.isCurrent(activeGeneration.logId, activeGeneration.generation)) return;
+      throw error;
+    }
     if (!generations.isCurrent(job.logId, activeGeneration.generation)) {
       return;
     }
@@ -270,6 +276,7 @@ export function createLogRuntimeActions({
 
   return {
     refresh,
+    forgetLog(logId) { generations.begin(logId); refreshGeneration += 1; },
     async upload(input) {
       if (mode !== "api") {
         dispatch({

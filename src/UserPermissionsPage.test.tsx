@@ -7,6 +7,7 @@ import { UserPermissionsPage, type RegistrationRoleRequest, type UserGovernanceA
 import { createPrototypeState } from "./mockData";
 import { declarationsFor, readStylesheet } from "./test/cssAssertions";
 import type { PlatformRoleId } from "./domain/users/types";
+import { WiseEffApiError } from "./infrastructure/http/apiClient";
 
 afterEach(() => {
   cleanup();
@@ -71,12 +72,105 @@ async function openMemberDetails(name: string) {
   return screen.getByRole("dialog", { name: `${name} · 成员资料` });
 }
 
+async function chooseOrganizationRoles(dialog: HTMLElement, names: string[]) {
+  const roles = within(dialog).getByRole("group", { name: "组织角色选择" });
+  for (const checkbox of within(roles).getAllByRole<HTMLInputElement>("checkbox")) {
+    if (checkbox.checked !== names.includes(checkbox.getAttribute("aria-label")!)) await userEvent.click(checkbox);
+  }
+  await userEvent.click(within(within(dialog).getByRole("form", { name: "组织角色设置" })).getByRole("button", { name: "保存" }));
+}
+
 async function openActivationAction(row: HTMLElement, name: "停用" | "启用") {
   await userEvent.click(within(row).getByRole("button", { name: /：更多$/ }));
   await userEvent.click(screen.getByRole("menuitem", { name }));
 }
 
 describe("UserPermissionsPage", () => {
+  it("edits a member's complete organization role set without replacing project duties", async () => {
+    const base = createPrototypeState();
+    const state = { ...base, activeRoleId: "admin", users: base.users.map((user) => ({ ...user })) };
+    const member = state.users.find((user) => user.id === "u-liu-min")!;
+    member.roles = [{ projectId: null, roleId: "software-user" }, { projectId: "aurora", roleId: "hardware-committer" }];
+    const updated = { ...member, roleId: "software-committer" as const, roles: [...member.roles, { projectId: null, roleId: "software-committer" as const }] };
+    const actions = {
+      listUsers: vi.fn(async () => state.users), createUser: vi.fn(async () => undefined),
+      assignUserRole: vi.fn(), updateOrganizationRoles: vi.fn(async () => updated),
+      setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined)
+    };
+    const dispatch = vi.fn();
+    render(<UserPermissionsPage state={state} dispatch={dispatch} onNavigate={vi.fn()} search="" userGovernanceActions={actions} />);
+    await screen.findByRole("table");
+    const dialog = await openMemberDetails("Liu Min");
+    const roles = within(dialog).getByRole("group", { name: "组织角色选择" });
+    expect(within(roles).getByRole("checkbox", { name: "软件开发" })).toBeChecked();
+    await userEvent.click(within(roles).getByRole("checkbox", { name: "软件MDE" }));
+    await userEvent.click(within(dialog).getAllByRole("button", { name: /^配置 Liu Min 在/ })[0]);
+    await userEvent.click(within(screen.getByRole("dialog", { name: "放弃未保存的更改？" })).getByRole("button", { name: "继续编辑" }));
+    expect(within(roles).getByRole("checkbox", { name: "软件MDE" })).toBeChecked();
+    await userEvent.click(within(within(dialog).getByRole("form", { name: "组织角色设置" })).getByRole("button", { name: "保存" }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "确认调整用户角色" })).getByRole("button", { name: "确认调整" }));
+    await waitFor(() => expect(actions.updateOrganizationRoles).toHaveBeenCalledWith("u-liu-min", {
+      roles: ["software-user", "software-committer"], expectedRoles: ["software-user"]
+    }));
+    expect(actions.assignUserRole).not.toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledWith({ type: "HYDRATE_USERS", users: state.users.map((user) => user.id === updated.id ? updated : user) });
+    expect(await within(dialog).findByRole("status")).toHaveTextContent("组织角色已保存");
+  });
+
+  it("can clear all organization roles while keeping project duties visible", async () => {
+    const state = { ...createPrototypeState(), activeRoleId: "admin" };
+    const member = state.users.find((user) => user.id === "u-liu-min")!;
+    const projectRoles = [{ projectId: "aurora", roleId: "hardware-committer" as const }];
+    state.users = state.users.map((user) => user.id === member.id ? { ...user, roles: [...projectRoles, { projectId: null, roleId: "software-user" }] } : user);
+    const updated = { ...member, roleId: "guest" as const, roles: projectRoles };
+    const actions: UserGovernanceActions = {
+      listUsers: vi.fn(async () => state.users), createUser: vi.fn(), updateOrganizationRoles: vi.fn(async () => updated),
+      setUserActive: vi.fn(), deleteUser: vi.fn()
+    };
+    render(<UserPermissionsPage state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="" userGovernanceActions={actions} />);
+    await screen.findByRole("table");
+    const dialog = await openMemberDetails("Liu Min");
+    await chooseOrganizationRoles(dialog, []);
+    const confirm = screen.getByRole("dialog", { name: "确认调整用户角色" });
+    expect(confirm).toHaveTextContent("未授予组织级角色");
+    await userEvent.click(within(confirm).getByRole("button", { name: "确认调整" }));
+    expect(actions.updateOrganizationRoles).toHaveBeenCalledWith("u-liu-min", { roles: [], expectedRoles: ["software-user"] });
+    await waitFor(() => expect(within(dialog).getByRole("status")).toHaveTextContent("组织角色已保存"));
+    expect(within(within(dialog).getByRole("group", { name: "组织角色选择" })).getAllByRole<HTMLInputElement>("checkbox").every((box) => !box.checked)).toBe(true);
+    expect(within(dialog).getByRole("region", { name: "项目职责" })).toHaveTextContent("硬件MDE");
+  });
+
+  it("shows current roles on a stale update and requires an explicit reload before retry", async () => {
+    const base = createPrototypeState();
+    const member = base.users.find((user) => user.id === "u-liu-min")!;
+    const reloaded = { ...member, roleId: "hardware-user" as const, roles: [{ projectId: null, roleId: "hardware-user" as const }] };
+    const actions: UserGovernanceActions = {
+      listUsers: vi.fn().mockResolvedValueOnce(base.users).mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValue(base.users.map((user) => user.id === member.id ? reloaded : user)),
+      createUser: vi.fn(), updateOrganizationRoles: vi.fn().mockRejectedValueOnce(new WiseEffApiError("CONFLICT", "Organization roles are stale.", {
+        code: "role-bindings-stale", currentRoles: ["hardware-user"]
+      }, "req-stale")).mockImplementation(async (_id, input) => ({ ...reloaded, roles: input.roles.map((roleId: PlatformRoleId) => ({ projectId: null, roleId })) })),
+      setUserActive: vi.fn(), deleteUser: vi.fn()
+    };
+    renderPageWithActions(actions);
+    const dialog = await openMemberDetails("Liu Min");
+    await chooseOrganizationRoles(dialog, ["软件MDE"]);
+    const confirm = screen.getByRole("dialog", { name: "确认调整用户角色" });
+    await userEvent.click(within(confirm).getByRole("button", { name: "确认调整" }));
+    expect(await within(confirm).findByRole("alert")).toHaveTextContent("已被其他管理员修改");
+    expect(confirm).toHaveTextContent("当前组织角色：硬件开发");
+    expect(within(confirm).getByRole("button", { name: "确认调整" })).toBeDisabled();
+    await userEvent.click(within(confirm).getByRole("button", { name: "重新加载当前角色" }));
+    expect(await within(confirm).findByRole("alert")).toHaveTextContent("网络连接失败");
+    expect(within(confirm).getByRole("button", { name: "确认调整" })).toBeDisabled();
+    await userEvent.click(within(confirm).getByRole("button", { name: "重新加载当前角色" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "确认调整用户角色" })).not.toBeInTheDocument());
+    expect(within(dialog).getByRole("checkbox", { name: "硬件开发" })).toBeChecked();
+    expect(within(dialog).getByRole("checkbox", { name: "软件MDE" })).not.toBeChecked();
+    await chooseOrganizationRoles(dialog, ["硬件开发", "软件MDE"]);
+    await userEvent.click(within(screen.getByRole("dialog", { name: "确认调整用户角色" })).getByRole("button", { name: "确认调整" }));
+    expect(actions.updateOrganizationRoles).toHaveBeenLastCalledWith("u-liu-min", { roles: ["hardware-user", "software-committer"], expectedRoles: ["hardware-user"] });
+  });
+
   it("clears an empty member search through the template's next step", async () => {
     renderPage();
     await userEvent.type(screen.getByRole("searchbox", { name: "搜索用户" }), "not-a-member");
@@ -150,7 +244,7 @@ describe("UserPermissionsPage", () => {
     const row = screen.getByText("Liu Min").closest("tr")!;
     expect(within(row).queryByRole("combobox")).not.toBeInTheDocument();
     const dialog = await openMemberDetails("Liu Min");
-    expect(within(dialog).getByRole("combobox", { name: "调整 Liu Min 的角色" })).toHaveAttribute("data-value", "software-user");
+    expect(within(dialog).getByRole("checkbox", { name: "软件开发" })).toBeChecked();
     expect(
       within(dialog).getByText("软件侧可查看并提交参数修改，在变更审阅页完成合入推进，并使用参数调试和日志分析。")
     ).toBeInTheDocument();
@@ -165,11 +259,17 @@ describe("UserPermissionsPage", () => {
     act(() => button.focus());
     await userEvent.keyboard("{Enter}");
     const dialog = screen.getByRole("dialog", { name: "Wang Jie · 成员资料" });
-    const roleSelect = within(dialog).getByRole("combobox", { name: "调整 Wang Jie 的角色" });
-    expect(roleSelect).toHaveAttribute("data-value", "hardware-committer");
+    const roleSelect = within(dialog).getByRole("checkbox", { name: "硬件MDE" });
+    expect(roleSelect).toBeChecked();
     act(() => roleSelect.focus());
     expect(roleSelect).toHaveFocus();
     expect(within(dialog).getByText("包含硬件开发权限，并可执行硬件侧参数检视。")).toBeInTheDocument();
+    await userEvent.keyboard(" ");
+    expect(roleSelect).not.toBeChecked();
+    await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+    const leave = screen.getByRole("dialog", { name: "放弃未保存的更改？" });
+    await userEvent.click(within(leave).getByRole("button", { name: "继续编辑" }));
+    expect(roleSelect).not.toBeChecked();
   });
 
   it("ignores unrelated URL search params when filtering users", () => {
@@ -237,8 +337,7 @@ describe("UserPermissionsPage", () => {
     expect(within(actorRow).getByText(/平台超级管理员/)).toHaveAttribute("title", "管理员、平台超级管理员");
     expect(within(actorRow).getByText("+1")).toBeInTheDocument();
     const details = await openMemberDetails("Liu Min");
-    await userEvent.click(within(details).getByRole("combobox", { name: "调整 Liu Min 的角色" }));
-    expect(screen.getByRole("option", { name: "平台超级管理员" })).toBeInTheDocument();
+    expect(within(details).getByRole("checkbox", { name: "平台超级管理员" })).toBeEnabled();
   });
 
   it("protects a platform administrator with multiple organization roles from ordinary administrators", async () => {
@@ -248,7 +347,7 @@ describe("UserPermissionsPage", () => {
     } : user) };
     render(<UserPermissionsPage state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
     const details = await openMemberDetails("Liu Min");
-    expect(within(details).getByRole("combobox", { name: "调整 Liu Min 的角色" })).toBeDisabled();
+    expect(within(details).getByRole("checkbox", { name: "平台超级管理员" })).toBeDisabled();
     expect(details).toHaveTextContent("只有平台超级管理员可以调整此账号的角色。");
     await userEvent.click(within(details).getByRole("button", { name: "关闭" }));
     await userEvent.click(within(screen.getByText("Liu Min").closest("tr")!).getByRole("button", { name: /：更多$/ }));
@@ -301,7 +400,7 @@ describe("UserPermissionsPage", () => {
     renderPageWithActions({
       listUsers: vi.fn(async () => []),
       createUser: vi.fn(async () => undefined),
-      assignUserRole: vi.fn(async () => undefined),
+      updateOrganizationRoles: vi.fn(async () => undefined),
       setUserActive: vi.fn(async () => undefined),
       deleteUser: vi.fn(async () => undefined),
       listRegistrationRoleRequests: vi.fn(async () => [])
@@ -391,7 +490,7 @@ describe("UserPermissionsPage", () => {
     const userGovernanceActions: UserGovernanceActions = {
       listUsers: vi.fn(async () => []),
       createUser: vi.fn(() => creation),
-      assignUserRole: vi.fn(async () => undefined),
+      updateOrganizationRoles: vi.fn(async () => undefined),
       setUserActive: vi.fn(async () => undefined),
       deleteUser: vi.fn(async () => undefined)
     };
@@ -536,19 +635,17 @@ describe("UserPermissionsPage", () => {
     const row = screen.getByText("Liu Min").closest("tr")!;
 
     const details = await openMemberDetails("Liu Min");
-    await selectControlOption(within(details).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
+    await chooseOrganizationRoles(details, ["软件MDE"]);
     // Nothing happens before confirmation.
-    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ASSIGN_USER_ROLE" }));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_USERS" }));
     const roleDialog = screen.getByRole("dialog", { name: "确认调整用户角色" });
     expect(roleDialog).toHaveTextContent(/Liu Min/);
     expect(roleDialog).toHaveTextContent(/软件开发/);
     expect(roleDialog).toHaveTextContent(/软件MDE/);
     await userEvent.click(within(roleDialog).getByRole("button", { name: "确认调整" }));
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "ASSIGN_USER_ROLE",
-      userId: "u-liu-min",
-      roleId: "software-committer"
-    });
+    expect(dispatch).toHaveBeenCalledWith({ type: "HYDRATE_USERS", users: expect.arrayContaining([
+      expect.objectContaining({ id: "u-liu-min", roles: [{ projectId: null, roleId: "software-committer" }] })
+    ]) });
 
     expect(screen.getByRole("dialog", { name: "Liu Min · 成员资料" })).toBeInTheDocument();
     await userEvent.click(within(details).getByRole("button", { name: "关闭" }));
@@ -569,7 +666,7 @@ describe("UserPermissionsPage", () => {
     const userGovernanceActions: UserGovernanceActions = {
       listUsers: vi.fn(async () => []),
       createUser: vi.fn(async () => undefined),
-      assignUserRole: vi.fn(() => roleChange),
+      updateOrganizationRoles: vi.fn(() => roleChange),
       setUserActive: vi.fn(async () => undefined),
       deleteUser: vi.fn(async () => undefined)
     };
@@ -577,7 +674,7 @@ describe("UserPermissionsPage", () => {
     const row = screen.getByText("Liu Min").closest("tr")!;
 
     const details = await openMemberDetails("Liu Min");
-    await selectControlOption(within(details).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
+    await chooseOrganizationRoles(details, ["软件MDE"]);
     await userEvent.click(
       within(screen.getByRole("dialog", { name: "确认调整用户角色" })).getByRole("button", { name: "确认调整" })
     );
@@ -585,7 +682,9 @@ describe("UserPermissionsPage", () => {
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ASSIGN_USER_ROLE" }));
     await act(async () => { finishRoleChange(); await roleChange; });
     expect(screen.queryByRole("dialog", { name: "确认调整用户角色" })).not.toBeInTheDocument();
-    expect(dispatch).toHaveBeenCalledWith({ type: "ASSIGN_USER_ROLE", userId: "u-liu-min", roleId: "software-committer" });
+    expect(dispatch).toHaveBeenCalledWith({ type: "HYDRATE_USERS", users: expect.arrayContaining([
+      expect.objectContaining({ id: "u-liu-min", roles: [{ projectId: null, roleId: "software-committer" }] })
+    ]) });
     expect(screen.getByRole("dialog", { name: "Liu Min · 成员资料" })).toBeInTheDocument();
     await userEvent.click(within(details).getByRole("button", { name: "关闭" }));
     await openActivationAction(row, "停用");
@@ -593,7 +692,7 @@ describe("UserPermissionsPage", () => {
       within(screen.getByRole("dialog", { name: "确认停用用户" })).getByRole("button", { name: "确认停用" })
     );
 
-    expect(userGovernanceActions.assignUserRole).toHaveBeenCalledWith("u-liu-min", "software-committer");
+    expect(userGovernanceActions.updateOrganizationRoles).toHaveBeenCalledWith("u-liu-min", { roles: ["software-committer"], expectedRoles: ["software-user"] });
     expect(userGovernanceActions.setUserActive).toHaveBeenCalledWith("u-liu-min", false);
   });
 
@@ -603,7 +702,7 @@ describe("UserPermissionsPage", () => {
     const updated = { ...member, title: "" };
     const actions: UserGovernanceActions = {
       listUsers: vi.fn(async () => []), createUser: vi.fn(async () => undefined),
-      assignUserRole: vi.fn(async () => undefined), setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
+      updateOrganizationRoles: vi.fn(async () => undefined), setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
       updateUserProfile: vi.fn(async () => updated)
     };
     const { dispatch } = renderPageWithActions(actions);
@@ -620,7 +719,7 @@ describe("UserPermissionsPage", () => {
   it("protects unsaved member profile edits when closing the details dialog", async () => {
     const actions: UserGovernanceActions = {
       listUsers: vi.fn(async () => []), createUser: vi.fn(async () => undefined),
-      assignUserRole: vi.fn(async () => undefined), setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
+      updateOrganizationRoles: vi.fn(async () => undefined), setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
       updateUserProfile: vi.fn()
     };
     renderPageWithActions(actions);
@@ -640,7 +739,7 @@ describe("UserPermissionsPage", () => {
     const userGovernanceActions: UserGovernanceActions = {
       listUsers: vi.fn(async () => []),
       createUser: vi.fn(async () => undefined),
-      assignUserRole: vi.fn(async () => undefined),
+      updateOrganizationRoles: vi.fn(async () => undefined),
       setUserActive: vi.fn(async () => undefined),
       deleteUser: vi.fn(async () => undefined)
     };
@@ -668,7 +767,7 @@ describe("UserPermissionsPage", () => {
     const userGovernanceActions: UserGovernanceActions = {
       listUsers: vi.fn(async () => []),
       createUser: vi.fn(async () => undefined),
-      assignUserRole: vi.fn(async () => undefined),
+      updateOrganizationRoles: vi.fn(async () => undefined),
       setUserActive: vi.fn(async () => undefined),
       deleteUser: vi.fn(async () => {
         throw new Error("服务端拒绝注销");
@@ -704,7 +803,7 @@ describe("UserPermissionsPage", () => {
     const userGovernanceActions: UserGovernanceActions = {
       listUsers: vi.fn(async () => []),
       createUser: vi.fn(async () => undefined),
-      assignUserRole: vi.fn(async () => undefined),
+      updateOrganizationRoles: vi.fn(async () => undefined),
       setUserActive: vi.fn(async () => undefined),
       deleteUser: vi.fn(async () => undefined),
       resetUserPassword: vi.fn(async () => undefined)
@@ -731,7 +830,7 @@ describe("UserPermissionsPage", () => {
     const userGovernanceActions: UserGovernanceActions = {
       listUsers: vi.fn(async () => []),
       createUser: vi.fn(async () => undefined),
-      assignUserRole: vi.fn(async () => {
+      updateOrganizationRoles: vi.fn(async () => {
         throw new Error("不能移除最后一名管理员。");
       }),
       setUserActive: vi.fn(async () => undefined),
@@ -739,7 +838,7 @@ describe("UserPermissionsPage", () => {
     };
     const { dispatch } = renderPageWithActions(userGovernanceActions);
     const details = await openMemberDetails("Liu Min");
-    await selectControlOption(within(details).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
+    await chooseOrganizationRoles(details, ["软件MDE"]);
     const dialog = screen.getByRole("dialog", { name: "确认调整用户角色" });
     await userEvent.click(within(dialog).getByRole("button", { name: "确认调整" }));
 
@@ -748,11 +847,31 @@ describe("UserPermissionsPage", () => {
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ASSIGN_USER_ROLE" }));
   });
 
+  it("enables the corresponding ordinary role after a failed request without granting the requested MDE role", async () => {
+    const actions: UserGovernanceActions = {
+      listUsers: vi.fn(async () => []), createUser: vi.fn(async () => undefined), updateOrganizationRoles: vi.fn(async () => undefined),
+      setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
+      listRegistrationRoleRequests: vi.fn(async () => [registrationRoleRequest()]),
+      enableBasicRegistrationRoleRequest: vi.fn().mockRejectedValueOnce(new Error("temporary failure")).mockResolvedValueOnce(registrationRoleRequest({ status: "rejected", decisionOutcome: "basic-enabled" }))
+    };
+    const { dispatch } = renderPageWithActions(actions); await openApprovalsWorkspace();
+    const trigger = await screen.findByRole("button", { name: "按普通成员启用" }); trigger.focus(); await userEvent.keyboard("{Enter}");
+    const dialog = screen.getByRole("dialog", { name: "按普通成员启用？" });
+    expect(dialog).toHaveTextContent("软件开发"); expect(dialog).toHaveTextContent("不授予");
+    await userEvent.click(within(dialog).getByRole("button", { name: "启用普通成员" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("重试"); expect(dialog).toHaveTextContent("Committer Candidate");
+    await userEvent.click(within(dialog).getByRole("button", { name: "启用普通成员" }));
+    expect(actions.enableBasicRegistrationRoleRequest).toHaveBeenLastCalledWith("registration-role-request-1");
+    expect(dispatch).toHaveBeenCalledWith({ type: "ASSIGN_USER_ROLE", userId: "u-candidate", roleId: "software-user" });
+    expect(dispatch).toHaveBeenCalledWith({ type: "TOGGLE_USER_ACTIVE", userId: "u-candidate", isActive: true });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "ASSIGN_USER_ROLE", userId: "u-candidate", roleId: "software-committer" });
+  });
+
   it("renders pending registration role requests and dispatches approval decisions", async () => {
     const userGovernanceActions: UserGovernanceActions = {
       listUsers: vi.fn(async () => []),
       createUser: vi.fn(async () => undefined),
-      assignUserRole: vi.fn(async () => undefined),
+      updateOrganizationRoles: vi.fn(async () => undefined),
       setUserActive: vi.fn(async () => undefined),
       deleteUser: vi.fn(async () => undefined),
       listRegistrationRoleRequests: vi.fn(async () => [
@@ -797,12 +916,12 @@ describe("UserPermissionsPage", () => {
     const approveRequest = within(queue).getByText("Committer Candidate").closest("article")!;
     const rejectRequest = within(queue).getByText("Reject Candidate").closest("article")!;
 
-    expect(within(approveRequest).getByRole("button", { name: "通过" })).toBeInTheDocument();
-    expect(within(approveRequest).getByRole("button", { name: "拒绝" })).toBeInTheDocument();
+    expect(within(approveRequest).getByRole("button", { name: "批准申请角色" })).toBeInTheDocument();
+    expect(within(approveRequest).getByRole("button", { name: "拒绝并保持停用" })).toBeInTheDocument();
     expect(within(approveRequest).queryByRole("button", { name: "Approve Committer Candidate" })).not.toBeInTheDocument();
     expect(within(rejectRequest).queryByRole("button", { name: "Reject Reject Candidate" })).not.toBeInTheDocument();
 
-    await userEvent.click(within(approveRequest).getByRole("button", { name: "通过" }));
+    await userEvent.click(within(approveRequest).getByRole("button", { name: "批准申请角色" }));
     expect(userGovernanceActions.approveRegistrationRoleRequest).not.toHaveBeenCalled();
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ASSIGN_USER_ROLE" }));
     await userEvent.click(within(screen.getByRole("dialog", { name: "通过注册申请？" })).getByRole("button", { name: "通过并启用" }));
@@ -811,10 +930,35 @@ describe("UserPermissionsPage", () => {
     expect(dispatch).toHaveBeenCalledWith({ type: "TOGGLE_USER_ACTIVE", userId: "u-candidate", isActive: true });
     await waitFor(() => expect(userGovernanceActions.listUsers).toHaveBeenCalledTimes(2));
 
-    await userEvent.click(within(rejectRequest).getByRole("button", { name: "拒绝" }));
+    await userEvent.click(within(rejectRequest).getByRole("button", { name: "拒绝并保持停用" }));
     expect(userGovernanceActions.rejectRegistrationRoleRequest).not.toHaveBeenCalled();
     await userEvent.click(within(screen.getByRole("dialog", { name: "拒绝注册申请？" })).getByRole("button", { name: "确认拒绝" }));
     expect(userGovernanceActions.rejectRegistrationRoleRequest).toHaveBeenCalledWith("registration-role-request-2");
+  });
+
+  it("shows recorded access outcomes in history and lets an obsolete request close without overwriting account settings", async () => {
+    const actions: UserGovernanceActions = {
+      listUsers: vi.fn(async () => []), createUser: vi.fn(async () => undefined), updateOrganizationRoles: vi.fn(async () => undefined),
+      setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
+      listRegistrationRoleRequests: vi.fn(async status => status === "decided" ? [
+        registrationRoleRequest({ id: "basic", status: "rejected", decisionOutcome: "basic-enabled", decisionCanLogin: true, decisionRoleIds: ["software-user"] }),
+        registrationRoleRequest({ id: "legacy", userName: "Legacy candidate", status: "rejected" })
+      ] : [registrationRoleRequest({ accountChanged: true })]),
+      approveRegistrationRoleRequest: vi.fn(), enableBasicRegistrationRoleRequest: vi.fn(),
+      rejectRegistrationRoleRequest: vi.fn(async () => registrationRoleRequest({ status: "rejected", decisionOutcome: "rejected-preserved", decisionCanLogin: true, decisionRoleIds: ["hardware-user"] }))
+    };
+    const { dispatch } = renderPageWithActions(actions); await openApprovalsWorkspace();
+    expect(await screen.findByRole("button", { name: "批准申请角色" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "按普通成员启用" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "关闭申请，保留现状" }));
+    const dialog = screen.getByRole("dialog", { name: "拒绝注册申请？" }); expect(dialog).toHaveTextContent("保留最新设置");
+    await userEvent.click(within(dialog).getByRole("button", { name: "确认拒绝" }));
+    expect(actions.rejectRegistrationRoleRequest).toHaveBeenCalledWith("registration-role-request-1");
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "TOGGLE_USER_ACTIVE" }));
+    await userEvent.click(screen.getByRole("radio", { name: "处理历史" }));
+    expect(await screen.findByText("已按软件开发启用")).toBeInTheDocument();
+    expect(screen.getByText("决定时：可登录 · 软件开发")).toBeInTheDocument();
+    expect(screen.getByText("已拒绝提升（未记录账号结果）")).toBeInTheDocument();
   });
 
   it("shows request loading and retry states without claiming an empty approval queue", async () => {
@@ -822,7 +966,7 @@ describe("UserPermissionsPage", () => {
     const loading = new Promise<RegistrationRoleRequest[]>((_resolve, reject) => { rejectLoad = reject; });
     const actions: UserGovernanceActions = {
       listUsers: vi.fn(async () => []), createUser: vi.fn(async () => undefined),
-      assignUserRole: vi.fn(async () => undefined), setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
+      updateOrganizationRoles: vi.fn(async () => undefined), setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
       listRegistrationRoleRequests: vi.fn().mockImplementationOnce(() => loading).mockResolvedValue([])
     };
     renderPageWithActions(actions);
@@ -842,7 +986,7 @@ describe("UserPermissionsPage", () => {
     window.history.replaceState(null, "", "/organization/members?tab=approvals&requests=decided");
     const actions: UserGovernanceActions = {
       listUsers: vi.fn(async () => []), createUser: vi.fn(async () => undefined),
-      assignUserRole: vi.fn(async () => undefined), setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
+      updateOrganizationRoles: vi.fn(async () => undefined), setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
       listRegistrationRoleRequests: vi.fn(async (status) => status === "decided" ? [registrationRoleRequest({
         organizationName: "研发组织", status: "approved", decidedAt: "2026-06-12T00:01:00.000Z", decidedByUserId: "u-admin"
       })] : [])
@@ -855,8 +999,8 @@ describe("UserPermissionsPage", () => {
     expect(await screen.findByText("Committer Candidate")).toBeInTheDocument();
     expect(screen.getByText("研发组织")).toBeInTheDocument();
     expect(screen.getByText("已通过")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "通过" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "拒绝" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "批准申请角色" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "拒绝并保持停用" })).not.toBeInTheDocument();
     expect(actions.listRegistrationRoleRequests).toHaveBeenCalledWith("decided");
     await userEvent.click(screen.getByRole("radio", { name: "待处理" }));
     expect(await screen.findByText("暂无待处理角色申请。")).toBeInTheDocument();
@@ -869,13 +1013,13 @@ describe("UserPermissionsPage", () => {
     const approval = new Promise<RegistrationRoleRequest>((_resolve, reject) => { rejectApproval = reject; });
     const actions: UserGovernanceActions = {
       listUsers: vi.fn(async () => []), createUser: vi.fn(async () => undefined),
-      assignUserRole: vi.fn(async () => undefined), setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
+      updateOrganizationRoles: vi.fn(async () => undefined), setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
       listRegistrationRoleRequests: vi.fn(async () => [registrationRoleRequest({ organizationName: "软件组织" })]),
       approveRegistrationRoleRequest: vi.fn(() => approval)
     };
     const { dispatch } = renderPageWithActions(actions);
     await openApprovalsWorkspace();
-    await userEvent.click(await screen.findByRole("button", { name: "通过" }));
+    await userEvent.click(await screen.findByRole("button", { name: "批准申请角色" }));
     const dialog = screen.getByRole("dialog", { name: "通过注册申请？" });
     expect(dialog).toHaveTextContent("软件组织");
     expect(dialog).toHaveTextContent("通过后立即启用账号");
@@ -898,7 +1042,7 @@ describe("UserPermissionsPage", () => {
     renderPageWithActions({
       listUsers: vi.fn(async () => []),
       createUser: vi.fn(async () => undefined),
-      assignUserRole: vi.fn(async () => undefined),
+      updateOrganizationRoles: vi.fn(async () => undefined),
       setUserActive: vi.fn(async () => undefined),
       deleteUser: vi.fn(async () => undefined),
       listRegistrationRoleRequests: vi.fn(async () => [registrationRoleRequest()])
@@ -935,8 +1079,8 @@ describe("UserPermissionsPage", () => {
     expect(within(row).getByText("软件开发")).toHaveClass("member-role-label");
     expect(within(row).queryByRole("combobox")).not.toBeInTheDocument();
     const details = await openMemberDetails("Liu Min");
-    const roleSelect = within(details).getByRole("combobox", { name: "调整 Liu Min 的角色" });
-    expect(roleSelect).toHaveClass("user-permissions-role-select");
+    expect(within(details).getByRole("group", { name: "组织角色选择" })).toBeInTheDocument();
+    expect(within(details).getByRole("checkbox", { name: "软件开发" })).toBeChecked();
   });
 
   it("shows activation actions in overflow without repeating the user name", async () => {

@@ -1,6 +1,6 @@
 import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
-import { expect, test, type Page } from "playwright/test";
+import { expect, test, type Locator, type Page } from "playwright/test";
 
 import { runNpmScript, withPgClient } from "./helpers/database";
 import { apiRoute } from "./helpers/runtime";
@@ -15,7 +15,8 @@ useBrowserDiagnostics(test, {
     { method: "GET", path: "/api/v1/users", status: 403 },
     { method: "DELETE", path: "/api/v1/users/", status: 403 },
     { method: "GET", path: "/api/v1/parameters/projects/aurora/initialization", status: 404 },
-    { method: "PATCH", path: "/api/v1/organization", status: 403 }
+    { method: "PATCH", path: "/api/v1/organization", status: 403 },
+    { method: "PUT", path: "/api/v1/users/", status: 409 }
   ]
 });
 
@@ -64,6 +65,19 @@ async function setPrototypeRole(page: Page, roleName: string) {
   await signInBrowserAsRoleLabel(page, roleName, page.url() || "/organization");
 }
 
+async function saveMemberOrganizationRoles(page: Page, dialog: Locator, labels: string[]) {
+  const roles = dialog.getByRole("group", { name: "组织角色选择" });
+  for (const checkbox of await roles.getByRole("checkbox").all()) {
+    await checkbox.setChecked(labels.includes((await checkbox.getAttribute("aria-label"))!));
+  }
+  const save = dialog.getByRole("form", { name: "组织角色设置" }).getByRole("button", { name: "保存", exact: true });
+  if (await save.count()) {
+    await save.click();
+    await page.getByRole("dialog", { name: "确认调整用户角色" }).getByRole("button", { name: "确认调整" }).click();
+    await expect(dialog.getByRole("status")).toHaveText("组织角色已保存。");
+  }
+}
+
 /**
  * The accounts table is a paginated DataTable (10 rows per page), so a specific
  * user's row may sit on a later page. Narrow with the page's search filter first.
@@ -92,6 +106,7 @@ async function apiExposesPermissionAudit(page: Page, userName: string, roleId: s
       item.targetId === userName &&
       Array.isArray(item.metadata?.roles) &&
       item.metadata.roles.some((role) => {
+        if (typeof role === "string") return role === roleId;
         const item = role as { roleId?: unknown; role_id?: unknown };
         return item.roleId === roleId || item.role_id === roleId;
       })
@@ -279,6 +294,77 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await signInBrowserAsRoleLabel(page, "Admin", "/organization");
   });
 
+  test("edits organization role sets, clears them and reloads conflicts through the real API", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const actor = authHeadersForUser(acceptanceCast.xuYun.userId, acceptanceCast.xuYun.email, acceptanceCast.xuYun.name);
+    const created = await page.request.post(apiRoute("/api/v1/users"), { headers: actor, data: {
+      name: "Role Set Member", username: `${createdAcceptanceUsername}.roles`, password: acceptanceUserPassword,
+      title: "Engineer", roles: [{ projectId: null, roleId: "software-user" }]
+    } });
+    expect(created.status()).toBe(201);
+    const { item } = await created.json() as { item: GovernedUserApiItem };
+    const path = `/api/v1/users/${item.id}/organization-roles`;
+    try {
+      const projectGrant = await page.request.put(apiRoute(`/api/v1/projects/aurora/workflow-role-bindings/${item.id}`), {
+        headers: actor, data: { roles: ["hardware-committer"], expectedRoles: [] }
+      });
+      expect(projectGrant.status()).toBe(200);
+      await page.goto("/organization/members");
+      await filterUsersTo(page, `${createdAcceptanceUsername}.roles`);
+      const openMember = async () => {
+        await page.getByRole("button", { name: "查看 Role Set Member 的成员资料" }).click();
+        return page.getByRole("dialog", { name: "Role Set Member · 成员资料" });
+      };
+      let dialog = await openMember();
+      const softwareMde = dialog.getByRole("checkbox", { name: "软件MDE" });
+      await softwareMde.focus();
+      await page.keyboard.press("Space");
+      await expect(softwareMde).toBeChecked();
+      await saveMemberOrganizationRoles(page, dialog, ["软件开发", "软件MDE"]);
+      await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+      await page.reload();
+      dialog = await openMember();
+      await expect(dialog.getByRole("checkbox", { name: "软件开发" })).toBeChecked();
+      await expect(dialog.getByRole("checkbox", { name: "软件MDE" })).toBeChecked();
+      const roleSetScreenshot = testInfo.outputPath("organization-role-set-1440.png");
+      await page.screenshot({ path: roleSetScreenshot, fullPage: true, animations: "disabled" });
+      await testInfo.attach("organization-role-set-1440", { path: roleSetScreenshot, contentType: "image/png" });
+      await saveMemberOrganizationRoles(page, dialog, []);
+      await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+      await page.reload();
+      dialog = await openMember();
+      await expect(dialog.getByRole("group", { name: "组织角色选择" }).locator("input:checked")).toHaveCount(0);
+      await expect(dialog.getByRole("region", { name: "项目职责" })).toContainText("硬件MDE");
+
+      await dialog.getByRole("checkbox", { name: "软件开发" }).check();
+      const raced = await page.request.put(apiRoute(path), { headers: actor, data: { roles: ["hardware-user"], expectedRoles: [] } });
+      expect(raced.status()).toBe(200);
+      await dialog.getByRole("form", { name: "组织角色设置" }).getByRole("button", { name: "保存", exact: true }).click();
+      const confirm = page.getByRole("dialog", { name: "确认调整用户角色" });
+      const staleResponse = page.waitForResponse((response) => new URL(response.url()).pathname === path && response.status() === 409);
+      await confirm.getByRole("button", { name: "确认调整" }).click();
+      await staleResponse;
+      await expect(confirm.getByRole("alert")).toContainText("已被其他管理员修改");
+      await expect(confirm).toContainText("当前组织角色：硬件开发");
+      await expect(confirm.getByRole("button", { name: "确认调整" })).toBeDisabled();
+      await confirm.getByRole("button", { name: "重新加载当前角色" }).click();
+      await expect(confirm).toHaveCount(0);
+      await expect(dialog.getByRole("checkbox", { name: "硬件开发" })).toBeChecked();
+      await expect(dialog.getByRole("checkbox", { name: "软件开发" })).not.toBeChecked();
+      await saveMemberOrganizationRoles(page, dialog, ["硬件开发", "软件开发"]);
+      const users = await page.request.get(apiRoute("/api/v1/users"), { headers: actor });
+      expect(users.status()).toBe(200);
+      const persisted = ((await users.json()) as { items: GovernedUserApiItem[] }).items.find((user) => user.id === item.id)!;
+      expect(persisted.roles).toEqual(expect.arrayContaining([
+        { projectId: null, roleId: "hardware-user" }, { projectId: null, roleId: "software-user" },
+        { projectId: "aurora", roleId: "hardware-committer" }
+      ]));
+    } finally {
+      const removed = await page.request.delete(apiRoute(`/api/v1/users/${item.id}`), { headers: actor });
+      expect(removed.status()).toBe(204);
+    }
+  });
+
   test("loads users, shows role/status, and gates user governance to Admin", async ({ page }, testInfo) => {
     // @acceptance PERM-GOV-001
     // @operation PERM-GOV-001
@@ -320,7 +406,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
       await expect(page.getByRole("dialog", { name: "放弃未保存的更改？" })).toHaveCount(0);
       await liuRow.getByRole("button", { name: `查看 ${profile.name} 的成员资料` }).click();
     }
-    await expect(liuDialog.getByRole("combobox", { name: "调整 Liu Min 的角色" })).toHaveAttribute("data-value", "software-user");
+    await expect(liuDialog.getByRole("checkbox", { name: "软件开发" })).toBeChecked();
     await liuDialog.getByRole("button", { name: "关闭", exact: true }).click();
     await filterUsersTo(page, "Tao Lin");
     await table.getByRole("row").filter({ hasText: "Tao Lin" }).getByRole("button", { name: /：更多$/ }).click();
@@ -331,7 +417,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     const currentAdminRow = table.getByRole("row").filter({ hasText: "Xu Yun" });
     await currentAdminRow.getByRole("button", { name: "查看 Xu Yun 的成员资料" }).click();
     const currentAdminDialog = page.getByRole("dialog", { name: "Xu Yun · 成员资料" });
-    await expect(currentAdminDialog.getByRole("combobox", { name: "调整 Xu Yun 的角色" })).toBeDisabled();
+    await expect(currentAdminDialog.getByRole("checkbox", { name: "管理员", exact: true })).toBeDisabled();
     await currentAdminDialog.getByRole("button", { name: "关闭", exact: true }).click();
     await currentAdminRow.getByRole("button", { name: /：更多$/ }).click();
     await expect(page.getByRole("menuitem", { name: /^停用/ })).toBeDisabled();
@@ -340,11 +426,8 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await filterUsersTo(page, "Wang Jie");
     await table.getByRole("row").filter({ hasText: "Wang Jie" }).getByRole("button", { name: "查看 Wang Jie 的成员资料" }).click();
     const wangDialog = page.getByRole("dialog", { name: "Wang Jie · 成员资料" });
-    const wangRole = wangDialog.getByRole("combobox", { name: "调整 Wang Jie 的角色" });
-    await selectControlOption(wangRole, "software-committer");
-    // Role changes now require an explicit governance confirmation (HCI trust repair wave 1).
-    await page.getByRole("button", { name: "确认调整" }).click();
-    await expect(wangRole).toHaveAttribute("data-value", "software-committer");
+    await saveMemberOrganizationRoles(page, wangDialog, ["软件MDE"]);
+    await expect(wangDialog.getByRole("checkbox", { name: "软件MDE" })).toBeChecked();
     await wangDialog.getByRole("button", { name: "关闭", exact: true }).click();
 
     const auditVisible = await apiExposesPermissionAudit(page, "u-wang-jie", "software-committer");
@@ -390,15 +473,8 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await filterUsersTo(page, "Wang Jie");
     await table.getByRole("row").filter({ hasText: "Wang Jie" }).getByRole("button", { name: "查看 Wang Jie 的成员资料" }).click();
     const wangDialog = page.getByRole("dialog", { name: "Wang Jie · 成员资料" });
-    const wangRole = wangDialog.getByRole("combobox", { name: "调整 Wang Jie 的角色" });
-
-    await selectControlOption(wangRole, "software-committer");
-    // Role changes require confirmation, but selecting the already-current value
-    // (left behind by the previous test) does not open the dialog — confirm only
-    // when the governance ConfirmDialog actually appears.
-    const roleConfirm = page.getByRole("button", { name: "确认调整" });
-    await roleConfirm.click({ timeout: 5_000 }).catch(() => undefined);
-    await expect(wangRole).toHaveAttribute("data-value", "software-committer");
+    await saveMemberOrganizationRoles(page, wangDialog, ["软件MDE"]);
+    await expect(wangDialog.getByRole("checkbox", { name: "软件MDE" })).toBeChecked();
     await wangDialog.getByRole("button", { name: "关闭", exact: true }).click();
 
     await page.getByRole("button", { name: "添加用户" }).click();
@@ -419,7 +495,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await expect(chenRow).toContainText(createdAcceptanceUsername);
     await chenRow.getByRole("button", { name: "查看 Chen Rui 的成员资料" }).click();
     const chenDialog = page.getByRole("dialog", { name: "Chen Rui · 成员资料" });
-    await expect(chenDialog.getByRole("combobox", { name: "调整 Chen Rui 的角色" })).toHaveAttribute("data-value", "software-user");
+    await expect(chenDialog.getByRole("checkbox", { name: "软件开发" })).toBeChecked();
     await chenDialog.getByRole("button", { name: "关闭", exact: true }).click();
     await chenRow.getByRole("button", { name: /：更多$/ }).click();
     await expect(page.getByRole("menuitem", { name: "停用", exact: true })).toBeVisible();

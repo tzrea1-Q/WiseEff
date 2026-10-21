@@ -41,6 +41,8 @@ export type UserRoleBinding = {
 };
 
 export type UserAccount = {
+  oidcIdentity?: { issuer: string; subject: string };
+  legacyOidcEmail?: string;
   id: string;
   name: string;
   email?: string;
@@ -52,6 +54,11 @@ export type UserAccount = {
   createdAt: string;
   lastActive: string;
 };
+
+export function organizationRoleIds(user: UserAccount): PlatformRoleId[] {
+  return user.roles === undefined ? [migrateLegacyRoleId(user.roleId)]
+    : [...new Set(user.roles.filter((role) => role.projectId === null && isPlatformRoleId(role.roleId)).map((role) => role.roleId))];
+}
 
 export const platformRoles = [
   {

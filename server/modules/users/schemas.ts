@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { oidcProvisionUserFieldsSchema } from "../contracts/dtoSchemas/oidcMembers";
+export { setOidcIdentityBodySchema } from "../contracts/dtoSchemas/oidcMembers";
 
 const roleIdSchema = z.enum([
   "guest",
@@ -19,13 +21,13 @@ export const roleBindingSchema = z.object({
   roleId: roleIdSchema
 });
 
-export const createUserBodySchema = z.object({
+export const createUserBodySchema = z.union([z.object({
   name: z.string().min(1),
   username: z.string().min(3).max(64),
   password: z.string().min(8),
   title: z.string().optional(),
   roles: z.array(roleBindingSchema).min(1)
-});
+}),oidcProvisionUserFieldsSchema.extend({ roles: z.array(roleBindingSchema).min(1) })]);
 
 export const updateUserBodySchema = z.object({
   name: z.string().min(1).optional(),

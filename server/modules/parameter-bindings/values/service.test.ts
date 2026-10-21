@@ -5,6 +5,12 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
+  CatalogEventTime,
+  CatalogMaterializationFingerprint,
+  CatalogReleaseDigest,
+  CatalogReleaseId,
+  CatalogReleaseVersion,
+  CatalogReleaseSequence,
   CatalogSubjectId,
   DefinitionRevisionId,
   ParameterBindingId,
@@ -12,6 +18,7 @@ import {
   ProjectValueId,
   SubjectRegistrationId,
 } from "../../parameter-catalog-contract/index";
+import { PropertyKey, type DefinitionContentDigest } from "../../catalog-kernel/interface";
 import type { Binding } from "../binding";
 
 import {
@@ -54,19 +61,21 @@ const allowedCatalogIdentifiers = new Set([
   // replaced-binding guard.
   "current_project_parameter_bindings",
   "is_replaced_current_binding",
+  // #1305: read-only exact logical-anchor/effective-property agreement.
+  "source_origin_matches",
 ]);
 
 const snapshotRelease = {
-  id: "crel_acme_1",
-  version: "1.0.0",
-  digest: `sha256:${"a".repeat(64)}`,
+  id: CatalogReleaseId("crel_acme_1"),
+  version: CatalogReleaseVersion("1.0.0"),
+  digest: CatalogReleaseDigest(`sha256:${"a".repeat(64)}`),
 } as const;
 
 const selectedRevision = {
   id: DefinitionRevisionId("drev_acme_power_iin_max_1"),
   definitionId: ParameterDefinitionId("pdef_acme_power_iin_max"),
   revisionNumber: 1,
-  contentDigest: `sha256:${"b".repeat(64)}`,
+  contentDigest: `sha256:${"b".repeat(64)}` as DefinitionContentDigest,
   publishedIn: snapshotRelease,
   content: {
     lifecycle: "active" as const,
@@ -89,12 +98,17 @@ const selectedRevision = {
 const definition = {
   id: ParameterDefinitionId("pdef_acme_power_iin_max"),
   subjectId: CatalogSubjectId("csub_acme_power"),
-  propertyKey: "iin_max",
+  propertyKey: PropertyKey("iin_max"),
   selectedRevision,
 };
 
 const snapshot = {
   release: snapshotRelease,
+  sequence: CatalogReleaseSequence(1),
+  publishedAt: CatalogEventTime("2026-09-01T00:00:00.000Z"),
+  materializedAt: CatalogEventTime("2026-09-01T00:00:00.000Z"),
+  compiledFingerprint: CatalogMaterializationFingerprint(`sha256:${"c".repeat(64)}`),
+  databaseFingerprint: CatalogMaterializationFingerprint(`sha256:${"c".repeat(64)}`),
   getSubject: () => ({ status: "unknown" as const, target: "subject" as const }),
   listSubjects: () => ({ status: "invalid-page" as const, reason: "cursor-malformed" as const }),
   resolveSubject: () => ({ status: "unknown" as const, reason: "no-candidate" as const }),

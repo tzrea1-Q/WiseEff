@@ -12,6 +12,8 @@ Mock 参数模式仅保留现有 canonical 等价功能（#1087，#1080 Q3）。
 
 ## 关键目录
 
+Catalog 定义修订对 `unit`、`examples`、`description` 区分字段省略（保留旧值）与显式 `null`（移除）。定义编辑器会预告清空单位、示例的结果，并通过发布生成新修订；已有示例读入 JSON 数组输入框，保留类型、逗号、空字符串及嵌套结构。留空移除示例，非法 JSON 保留在输入框中并阻止发布。当前表单没有描述输入框，其他内容修改不会清空描述；历史修订仍可读取。
+
 - `src/app/`：路由、导航、权限、页面装配，以及组合根 `appRuntime.ts`——`createAppRuntime` 按运行时模式一次性选好全部适配器，页面经 `PageProps.runtime` 接收。
 - `src/domain/`：角色、参数、日志、调试、审计、Agent 的类型和纯规则。
 - `src/application/state/`：全局原型状态机——`AppAction`、`reducer`/`appReducer` 与仅供 reducer 使用的迁移助手。API 启动态是这里的 `createApiInitialState()`（#486）；状态类型一律从这里导入，禁止从 `@/App` 导入（ADR-0023）。
@@ -121,6 +123,8 @@ P3 / P3.1 新表面（均走 `DtsStructuredRepository`，勿在新面板里直�
 旧的 `ProjectParameterFilesPanel` / 冲突面板通过 `resolveParameterFileRepository(runtimeMode)` 注入 `ParameterFileRepository`（mock：`createMockParameterFileRepository`；API：`createParameterFileClient`），组件内禁止 `createParameterFileClient()`。mock 模式下可演示文件列表与冲突面板，不直连 `:8787`。
 
 `AuditQuery` 是审计事件的只读端口（Activity 时间线等投影）；前端的审计写入走后端路由，不经前端端口。经 `resolveAuditQuery(runtimeMode)`（`src/application/parameters/auditQueryRuntime.ts`）解析：mock 返回空列表适配器（不打 HTTP）；API 包装 `createAuditClient`。项目配置工作台必须注入 `listAuditEvents`，页面模块内禁止 `createAuditClient()`。
+
+完整 DTS 保存向具有当前文件管理和项目编辑权限的管理员提供「直接应用修改」，先预览差异并填写原因。该操作经 `ParameterFileRepository.applyCandidateSourceRevision` 确认精确应用的文本代次，保留之后的本地输入；失败或响应中断时保留原确认内容，重试同一操作。「提交审核」仍要求另一名合格审核人。来源历史明确标记 `administrator_direct` 及实际操作者，不展示虚构审核人；发布和设备操作继续独立授权。
 
 配置工作台的领域动作以 Workbench session 形式落在 `src/application/project-configuration/`（见 `CONTEXT.md`）：`StructuredEditSession`（结构化草稿）、`CandidateVersionFlow`（候选版本）、`ReleaseBaselineSession`（发布就绪/基线）、`ConfigRevisionGateSession`（经拓扑接缝列出/选择配置修订并校验，把 `requiresConfirmation` 交给发布 ConfirmDialog）、`ConflictLocateFacade`（冲突加载与定位投影）、`ConfigSetOpsSession`（配置创建/增删成员/导出/手动同步）、`WorkbenchNavigationSession`（URL/选区与统一搜索）、`WorkbenchWorkspaceLoadSession`（配置/文件/成员/活跃源码/结构加载与重试）、`WorkbenchCanvasHistorySession`（历史/统一差异源码与工作画布快照；底层兼容旧 side-by-side 数据，界面统一使用统一差异）、`WorkbenchActivitySession`（活动时间线加载；事件定位仍经壳层 + Navigation）。对应 `use*` hook 仅为 `useSyncExternalStore` 适配；优先测会话命令接口。壳层（`ProjectConfigurationWorkbench`）保留 ConfirmDialog 所有权、跨会话桥接与展示适配器接线（`WorkbenchCommandBar`、`WorkbenchInspectorPanel`、`WorkbenchSourceTree`、`WorkbenchSourceCanvas`、`WorkbenchTaskDock`）；导航/加载/画布/活动生命周期状态机在上述 session（wave-3 / #258）。
 

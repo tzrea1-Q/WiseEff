@@ -283,6 +283,9 @@ const mapWriteError = (
   if (error instanceof pg.DatabaseError && error.code === "42501") {
     return { kind: "permission-denied", operation: operation };
   }
+  if (error instanceof pg.DatabaseError && error.code === "PCA09") {
+    return { kind: "publication-not-authorized", reason: "candidate-stale", detail: error.message };
+  }
   if (error instanceof pg.DatabaseError && error.code === "PCA06") {
     const actualMatch = /actual_fence=([^ ]+)/.exec(error.detail ?? "");
     const expectedMatch = /expected_fence=([^ ]+)/.exec(error.detail ?? "");

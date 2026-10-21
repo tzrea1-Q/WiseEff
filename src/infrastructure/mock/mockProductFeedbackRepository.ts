@@ -6,6 +6,7 @@ import type {
   ProductFeedbackStatus
 } from "@/domain/productFeedback/types";
 import { mockApiError } from "./mockApiError";
+import { MAX_FEEDBACK_ATTACHMENT_COUNT, MAX_FEEDBACK_ATTACHMENT_BYTES, MAX_FEEDBACK_MESSAGE_ATTACHMENT_BYTES } from "@/domain/productFeedback/types";
 
 const MOCK_PRODUCT_FEEDBACK_NOW = "2026-07-08T00:00:00.000Z";
 
@@ -75,6 +76,8 @@ export function createMockProductFeedbackRepository(initialItems: ProductFeedbac
         const attachment = {
           id: `${id}-attachment-${index + 1}`,
           feedbackId: id,
+          messageId: `${id}-event-1`,
+          uploadedByUserId: null,
           fileName: file.name,
           contentType: (file.type || "image/png") as ProductFeedbackAttachment["contentType"],
           sizeBytes: file.size,
@@ -269,6 +272,7 @@ export function createMockProductFeedbackRepository(initialItems: ProductFeedbac
         status: "open",
         submittedAt: MOCK_PRODUCT_FEEDBACK_NOW,
         updatedAt: MOCK_PRODUCT_FEEDBACK_NOW,
+        attachments: existing.attachments.map((attachment) => ({ ...attachment, messageId: `${id}-event-${(existing.progressEvents?.length ?? 0) + 1}` })),
         progressEvents: [
           ...(existing.progressEvents ?? []),
           {
@@ -306,20 +310,20 @@ export function createMockProductFeedbackRepository(initialItems: ProductFeedbac
       if (input.reopen && existing.status !== "resolved" && existing.status !== "closed") {
         throw mockApiError("VALIDATION_FAILED", "只有已解决或已关闭的反馈才能重新打开。");
       }
-      if (input.files.length + existing.attachments.length > 5 || input.files.some((file) => file.size > 5 * 1024 * 1024) || input.files.reduce((sum, file) => sum + file.size, existing.attachments.reduce((sum, file) => sum + file.sizeBytes, 0)) > 15 * 1024 * 1024) {
+      if (input.files.length > MAX_FEEDBACK_ATTACHMENT_COUNT || input.files.some((file) => file.size > MAX_FEEDBACK_ATTACHMENT_BYTES) || input.files.reduce((sum, file) => sum + file.size, 0) > MAX_FEEDBACK_MESSAGE_ATTACHMENT_BYTES) {
         throw mockApiError("VALIDATION_FAILED", "截图超过数量或大小限制。");
       }
       const updated = await this.appendProgress!(id, {
         publicMessage: input.message,
         ...(input.reopen ? { toStatus: "in_progress" } : {})
       });
+      const last = updated.progressEvents?.at(-1);
       const attachments = input.files.map((file, index): ProductFeedbackAttachment => {
-        const attachmentId = `${id}-reply-${Date.now()}-${index}`;
+        const attachmentId = `${id}-${last?.id}-${index}`;
         attachmentFiles.set(`${id}:${attachmentId}`, file);
-        return { id: attachmentId, feedbackId: id, fileName: file.name, contentType: file.type as ProductFeedbackAttachment["contentType"], sizeBytes: file.size, sortOrder: existing.attachments.length + index, createdAt: MOCK_PRODUCT_FEEDBACK_NOW };
+        return { id: attachmentId, feedbackId: id, messageId: last?.id, uploadedByUserId: null, fileName: file.name, contentType: file.type as ProductFeedbackAttachment["contentType"], sizeBytes: file.size, sortOrder: index, createdAt: MOCK_PRODUCT_FEEDBACK_NOW };
       });
       updated.attachments = [...updated.attachments, ...attachments];
-      const last = updated.progressEvents?.at(-1);
       if (last) last.author = "submitter";
       items = items.map((item) => item.id === id ? updated : item);
       return cloneFeedback(updated);

@@ -20,6 +20,7 @@ export type ContractSchemaRef = {
   summary: string;
   tags: RouteManifestEntry["module"][];
   requestBody?: string;
+  requestBodyRequired?: boolean;
   responseBody: string;
   responseMedia?: "json" | "binary" | "zip";
   successStatus?: 200 | 201 | 202 | 204 | 410;
@@ -84,7 +85,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["auth"],
     requestBody: "UpdateCurrentUserProfileRequest",
     responseBody: "MeResponse",
-    additionalResponses: { "401": "ErrorResponse" }
+    additionalResponses: { "400": "ErrorResponse", "401": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
   },
   "auth.changePassword": {
     summary: "Change the current local-account password",
@@ -141,12 +142,19 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse" }
   },
   "users.create": {
-    summary: "Create local account user",
+    summary: "Create a local account or provision a configured OIDC member",
     tags: ["users"],
     requestBody: "CreateLocalAccountUserRequest",
     responseBody: "UserGovernanceResponse",
     successStatus: 201,
-    additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "users.setOidcIdentity": {
+    summary: "Bind a member to the configured OIDC issuer and subject with optimistic concurrency",
+    tags: ["users"],
+    requestBody: "SetUserOidcIdentityRequest",
+    responseBody: "UserGovernanceResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "users.listRegistrationRoleRequests": {
     summary: "List pending local registration role requests",
@@ -156,6 +164,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   },
   "users.approveRegistrationRoleRequest": {
     summary: "Approve a pending local registration role request",
+    tags: ["users"],
+    responseBody: "RegistrationRoleRequestResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "users.enableBasicRegistrationRoleRequest": {
+    summary: "Reject role promotion and enable the ordinary member account atomically",
     tags: ["users"],
     responseBody: "RegistrationRoleRequestResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
@@ -251,13 +265,16 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "Preview member/version blast radius for restoring a baseline without applying it",
     tags: ["parameters"],
     responseBody: "ReleaseBaselineRestorePreviewResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+    requestParameters: [{ name: "sourceConfigRevisionId", in: "query", description: "Explicit actual historical composition for a legacy snapshot without saved source composition.", schema: { type: "string" } }],
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameters.rollbackReleaseBaseline": {
     summary: "Atomically restore working member versions from a baseline without changing the released tip",
     tags: ["parameters"],
+    requestBody: "ReleaseBaselineRestoreRequest",
+    requestBodyRequired: false,
     responseBody: "ReleaseBaselineRollbackResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameters.releaseReleaseBaseline": {
     summary: "Release a draft baseline tip with readiness gate evidence and demote the previous tip to historical",
@@ -1042,6 +1059,55 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       { name: "endLine", in: "query", required: true, schema: { type: "integer" } }
     ] },
   "logs.get": { summary: "Get log record with run-owned signals and line templates", tags: ["logs"], responseBody: "LogRecordResponse" },
+  "logs.previewDeletion": {
+    summary: "Preview organization-owned log deletion, task effects and retained shared data without writes",
+    tags: ["logs"], responseBody: "LogDeletionPreviewResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "logs.purge": {
+    summary: "Permanently delete the confirmed organization-owned log and retry remaining object cleanup",
+    tags: ["logs"], requestBody: "LogDeletionRequest", responseBody: "LogDeletionStatusResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "logs.deletionStatus": {
+    summary: "Read the authorized durable database and storage cleanup result for a deleted log",
+    tags: ["logs"], responseBody: "LogDeletionStatusResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "logs.pendingDeletions": {
+    summary: "List this organization's logs with remaining storage cleanup",
+    tags: ["logs"], responseBody: "LogDeletionStatusListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "logs.listSkillDeletions": {
+    summary: "List this organization's deleted skills with remaining storage cleanup", tags: ["logs"],
+    responseBody: "SkillDeletionListResponse", additionalResponses: { "403": "ErrorResponse" }
+  },
+  "logs.retrySourceSnapshot": {
+    summary: "Retry a failed source snapshot's original uploaded content and index inputs under the same identity",
+    tags: ["logs"], requestBody: "RetryLogSourceSnapshotRequest", requestBodyRequired: false,
+    responseBody: "LogSourceSnapshotResponse", successStatus: 202,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "logs.restoreSourceSnapshot": {
+    summary: "Restore an archived source snapshot under its original identity and requeue its original uploaded content for indexing",
+    tags: ["logs"], requestBody: "RetryLogSourceSnapshotRequest", requestBodyRequired: false,
+    responseBody: "LogSourceSnapshotResponse", successStatus: 202,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "logs.previewSkillDeletion": {
+    summary: "Inspect exact references and owned objects before deleting an unpublished experimental skill", tags: ["logs"],
+    responseBody: "SkillDeletionPreviewResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "logs.getSkillDeletionStatus": {
+    summary: "Read the durable database and object cleanup result for a deleted skill", tags: ["logs"],
+    responseBody: "SkillDeletionStatusResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "logs.purgeSkill": {
+    summary: "Delete an unchanged unpublished, unreferenced experimental skill and retry owned object cleanup", tags: ["logs"],
+    requestBody: "SkillDeletionRequest", responseBody: "SkillDeletionStatusResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "logs.getLines": {
     summary: "Read an inclusive window of at most 400 indexed log lines",
     tags: ["logs"], responseBody: "LogLineRangeResponse",
@@ -1222,6 +1288,16 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "BinaryAttachment",
     responseMedia: "binary",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "productFeedback.retryAttachmentCleanup": {
+    summary: "Retry this user's pending feedback attachment upload cleanup in the current organization",
+    tags: ["product-feedback"], requestBody: "ProductFeedbackAttachmentCleanupRequest", responseBody: "ProductFeedbackAttachmentCleanupResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse" }
+  },
+  "productFeedback.deleteAttachment": {
+    summary: "Remove an owned submitted feedback attachment, retain a content-free message marker and retry exclusive object cleanup",
+    tags: ["product-feedback"], responseBody: "ProductFeedbackAttachmentDeletionResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "productFeedback.replyToMine": {
     summary: "Submitter adds public details and optional images, or reopens resolved/closed feedback",
@@ -1656,11 +1732,22 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "DebugNodeModuleResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
-  "debugging.admin.deleteModule": {
-    summary: "Delete debug node module registry entry",
+  "debugging.admin.previewModuleDeletion": {
+    summary: "Preview a leaf debug module deletion and relocation blockers",
     tags: ["debugging"],
+    responseBody: "DebugModuleDeletionPreviewResponse",
+    requestParameters: [{ name: "targetModuleId", in: "query", required: false,
+      description: "Existing target in the same organization; omit to move nodes to unclassified.", schema: { type: "string" } }],
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "debugging.admin.deleteModule": {
+    summary: "Relocate all nodes and delete a leaf debug module atomically",
+    tags: ["debugging"],
+    requestBody: "DeleteDebugModuleRequest",
+    requestBodyRequired: false,
     responseBody: "DeleteResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+    successStatus: 204,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "debugging.listReloadTargets": {
     summary: "Retired parameter-reload target list (always 410 Gone)",
@@ -1785,6 +1872,16 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "SourceRevisionRequestResponse",
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterFiles.cancelSourceRevisionRequest": {
+    summary: "Cancel this organization's unchanged pending source request as its file administrator with an audit reason",
+    tags: ["parameter-files"], requestBody: "SourceRevisionCancelRequest", responseBody: "SourceRevisionRequestResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.reassignSourceRevisionRequest": {
+    summary: "Reassign the unchanged pending source proof to a currently eligible reviewer without changing its author or diff",
+    tags: ["parameter-files"], requestBody: "SourceRevisionReassignRequest", responseBody: "SourceRevisionRequestResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameterFiles.uploadFile": {
     summary: "Upload a project parameter file (new file or new version) and sync drafts",
     tags: ["parameter-files"],
@@ -1883,6 +1980,29 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ConfigSetMembershipResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterFiles.previewAdministratorMemberRemoval": {
+    summary: "Preview an administrator's complete Canonical member removal and effective parameter impact",
+    tags: ["parameter-files"], responseBody: "AdministratorMemberRemovalPreviewResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.previewCanonicalMemberAddition": {
+    summary: "Preview a staged or existing member against the complete Canonical configuration",
+    tags: ["parameter-files"], requestBody: "CanonicalMemberAdditionPreviewRequest",
+    responseBody: "CanonicalMemberAdditionPreviewResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.applyCanonicalMemberAddition": {
+    summary: "Atomically add the confirmed Canonical member as the current human administrator",
+    tags: ["parameter-files"], requestBody: "CanonicalMemberAdditionApplyRequest",
+    responseBody: "CanonicalMemberAdditionApplyResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.applyAdministratorMemberRemoval": {
+    summary: "Atomically apply a confirmed Canonical member removal as the current human administrator",
+    tags: ["parameter-files"], requestBody: "AdministratorMemberRemovalApplyRequest",
+    responseBody: "AdministratorMemberRemovalApplyResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameterFiles.exportConfigSet": {
     summary: "Export a config set as a lossless manifest with validation evidence",
     tags: ["parameter-files"],
@@ -1957,6 +2077,13 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "CanonicalSourceSubmissionResponse",
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterFiles.applySourceRevisionCandidate": {
+    summary: "Apply a confirmed complete DTS preview as the current human administrator without a separate reviewer",
+    tags: ["parameter-files"],
+    requestBody: "SourceRevisionDirectApplyRequest",
+    responseBody: "SourceRevisionRequestResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameterFiles.rollbackCanonicalSource": {
     summary: "Submit a historical source version through canonical draft and human review",
     tags: ["parameter-files"],
@@ -1998,11 +2125,32 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       "404": "ErrorResponse", "409": "ErrorResponse" }
   },
 
+  "parameters.previewAdminProjectDeletion": {
+    summary: "Preview project-owned deletion scope, retained resources and current blockers without mutation",
+    tags: ["parameters"],
+    responseBody: "ProjectDeletionPreviewResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "parameters.deleteAdminProject": {
     summary: "Delete an empty or legacy-only project; retain canonical project history",
     tags: ["parameters"],
     responseBody: "ProjectDeleteResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameters.purgeAdminProject": {
+    summary: "Permanently delete confirmed project-owned data and retry pending exclusive object cleanup",
+    tags: ["parameters"], requestBody: "ProjectPurgeRequest", responseBody: "ProjectDeletionStatusResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameters.getAdminProjectDeletionStatus": {
+    summary: "Read database and object cleanup status for a deleted project",
+    tags: ["parameters"], responseBody: "ProjectDeletionStatusResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameters.listAdminProjectDeletions": {
+    summary: "List project cleanup receipts in the current organization",
+    tags: ["parameters"], responseBody: "ProjectDeletionStatusListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
   },
   "parameters.parseDtsImport": {
     summary: "Parse a full DTS source into import preview rows",
@@ -2048,6 +2196,21 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["device-bridge"],
     responseBody: "DeviceBridgeListResponse",
     additionalResponses: { "403": "ErrorResponse" }
+  },
+  "deviceBridges.listOrganization": {
+    summary: "List this organization's paired device bridges and their owners without credentials",
+    tags: ["device-bridge"], responseBody: "OrganizationDeviceBridgeListResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse" }
+  },
+  "deviceBridges.getOrganizationBridge": {
+    summary: "Read a device bridge in the administrator's current organization",
+    tags: ["device-bridge"], responseBody: "OrganizationDeviceBridgeResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "deviceBridges.revokeOrganizationBridge": {
+    summary: "Revoke an organization member's bridge credentials and connections with an audited reason",
+    tags: ["device-bridge"], requestBody: "RevokeOrganizationDeviceBridgeRequest", responseBody: "OrganizationDeviceBridgeResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "deviceBridges.updateBridge": {
     summary: "Update a paired bridge (for example its machine label)",

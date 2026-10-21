@@ -446,7 +446,7 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
         if (JSON.stringify(currentSchema) !== JSON.stringify(nextSchema)) {
           return true;
         }
-        return Boolean(change.content.unit);
+        return change.content.unit !== undefined && change.content.unit !== (current.unit?.symbol ?? null);
       });
       const candidate = {
         ...clone(catalogPublicationCandidate),

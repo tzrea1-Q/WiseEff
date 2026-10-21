@@ -44,6 +44,9 @@ export function smokeHeaders(env: AcceptanceRuntimeEnv = process.env) {
 
 export async function openWorkbenchPanel(page: Page, panel: "file" | "config-set" | "versions" | "release" | "candidates") {
   const configurationVersions = page.getByRole("dialog", { name: "配置版本", exact: true });
+  const restoredPanel = new URL(page.url()).searchParams.get("inspector");
+  if (restoredPanel === "config-set") await expect(page.getByRole("dialog", { name: "文件管理", exact: true })).toBeVisible();
+  if (restoredPanel === "release") await expect(configurationVersions).toBeVisible();
   if (panel !== "release" && await configurationVersions.isVisible()) {
     await configurationVersions.getByRole("button", { name: "关闭配置版本", exact: true }).click();
   }

@@ -61,6 +61,29 @@ function createRepository(fetchMock: typeof fetch) {
   });
 }
 
+it("submits the exact confirmed version and reads durable deletion receipts through validated envelopes", async () => {
+  const item = { logId: "log/1", version: "a".repeat(64), database: "deleted", objects: "pending", pendingObjects: 1 };
+  const fetchMock = createFetchMock({ item }), repository = createRepository(fetchMock);
+  await expect(repository.purgeLog!(item.logId, item.version)).resolves.toEqual(item);
+  expect(fetchMock).toHaveBeenLastCalledWith("http://127.0.0.1:8787/api/v1/logs/log%2F1", expect.objectContaining({ method: "DELETE", body: JSON.stringify({ version: item.version }) }));
+  await expect(repository.getLogDeletionStatus!(item.logId)).resolves.toEqual(item);
+  fetchMock.mockResolvedValueOnce(jsonResponse({ items: [item] }));
+  await expect(repository.pendingLogDeletions!()).resolves.toEqual([item]);
+  fetchMock.mockResolvedValueOnce(jsonResponse({ item: { ...item, objects: "unknown" } }));
+  await expect(repository.getLogDeletionStatus!(item.logId)).rejects.toThrow();
+});
+
+it("reads a deletion preview through the protected record route and rejects an invalid snapshot", async () => {
+  const item = { organizationId: "org", logId: "log/1", fileName: "owned.log", generatedAt: "2026-10-20T12:00:00.000Z",
+    version: "a".repeat(64), inventory: [], objects: { total: 0, shared: 0, exclusive: 0 }, conditions: [], notes: [] };
+  const fetchMock = createFetchMock({ item });
+  const repository = createRepository(fetchMock);
+  await expect(repository.previewLogDeletion!("log/1")).resolves.toEqual(item);
+  expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8787/api/v1/logs/log%2F1/deletion-preview", expect.objectContaining({ method: "GET" }));
+  fetchMock.mockResolvedValueOnce(jsonResponse({ item: { ...item, version: "invalid" } }));
+  await expect(repository.previewLogDeletion!("log/1")).rejects.toThrow();
+});
+
 it.each([undefined, "  ", "  充电（导入）  "])("uploads skill packages with an optional trimmed name (%s)", async (name) => {
   const skill = mockSkillWorkspace("skill-charging")!;
   const fetchMock = createFetchMock({ item: skill });
@@ -190,6 +213,9 @@ it("uses source snapshot DTOs, multipart archives, and encoded skill/snapshot pa
   fetchMock.mockResolvedValueOnce(jsonResponse({ item: { ...snapshot, status: "archived" } }));
   await expect(repository.archiveSourceSnapshot!("skill/a", "snap/b")).resolves.toMatchObject({ status: "archived" });
   expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("/skill%2Fa/source-snapshots/snap%2Fb/archive");
+  fetchMock.mockResolvedValueOnce(jsonResponse({ item: snapshot }, 202));
+  await expect(repository.restoreSourceSnapshot!("skill/a", "snap/b")).resolves.toEqual(snapshot);
+  expect(fetchMock).toHaveBeenLastCalledWith("http://127.0.0.1:8787/api/v1/log-skills/skill%2Fa/source-snapshots/snap%2Fb/restore", expect.objectContaining({ method: "POST", body: "{}" }));
   const excerpt = { snapshotId: "snap/b", path: "drivers/thermal.c", line: 9, versionLabel: "v1", startLine: 6, excerpt: "pr_warn(\"thermal foldback\");" };
   fetchMock.mockResolvedValueOnce(jsonResponse({ items: [{ ...excerpt, confidence: 0.95 }], truncated: false }));
   await expect(repository.locateSourceStatement!("skill/a", "snap/b", "thermal foldback")).resolves.toMatchObject({ items: [{ path: "drivers/thermal.c", line: 9 }] });

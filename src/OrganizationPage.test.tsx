@@ -36,6 +36,12 @@ function renderOrganizationPage(
 }
 
 describe("OrganizationPage", () => {
+  it("offers the organization Bridge inventory beside member governance", async () => {
+    const onNavigate = vi.fn();
+    renderOrganizationPage(createOrganizationActions(), { onNavigate });
+    await userEvent.click(screen.getByRole("button", { name: "设备代理" }));
+    expect(onNavigate).toHaveBeenCalledWith("/organization/bridges");
+  });
   it("discards a changed name without a server write and hides clean save actions", async () => {
     const organizationActions = createOrganizationActions();
     renderOrganizationPage(organizationActions);

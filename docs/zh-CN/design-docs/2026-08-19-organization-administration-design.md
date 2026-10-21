@@ -19,7 +19,7 @@
 | D1 | 新产品是**组织管理**，不是把参数后台的组织配置再加厚。 |
 | D2 | **Organization** 是租户边界（一家公司或一次部署的客户）。硬件 / 软件是 **Role discipline**。 |
 | D3 | 产品只运营调用者的 **home organization**。没有组织目录、创建、归档、切换。库里可以有多余行，那是 bootstrap 或夹具。 |
-| D4 | 入职通道：本地自助注册且组织隐含；目标环境走 OIDC JIT + Admin 开账号。邀请是后续（TD-119）。 |
+| D4 | 入职通道：本地自助注册且组织隐含；目标环境使用已有 OIDC 成员，或管理员预配并显式绑定身份。尚未实现 JIT 自动建号。邀请是后续（TD-119）。 |
 | D5 | **Project member** 不在本产品。组织成员资格不是项目访问权。 |
 | D6 | 本地注册加入 **Evaluation Organization**（种子档案里是 ChargeLab）。部门组织不再是加入目标；已有成员迁到部署的 home organization。隔离测试用夹具组织，不用产品里的「部门」。 |
 | D7 | 侧栏「组织管理」替换「用户管理」。规范路径 `/organization`（组织档案）与 `/organization/members`（人员管理），切换方式对齐调试后台范围对等页。`/user-permissions` 永久重定向到 `/organization/members`。参数后台组织子导航不动。 |
@@ -62,7 +62,7 @@
 | 运行时 | 加入方式 |
 | --- | --- |
 | 本地评测（`AUTH_PROVIDER=local`） | 自助注册，无组织下拉。加入 Evaluation Organization（有种子则 ChargeLab，否则 bootstrap 那一家）。Committer 仍待审批。Admin 不能自助注册。 |
-| 目标环境（`AUTH_PROVIDER=oidc`） | IdP claim + 现有 JIT。在仍存在的用户治理路径上，Admin 仍可开账号。 |
+| 目标环境（`AUTH_PROVIDER=oidc`） | 配置的 issuer、组织和显式 subject 绑定到管理员预配的成员；未绑定的旧账号保留已验证邮箱迁移兼容。没有 JIT 自动建号。 |
 | 以后 | 邀请链接或邮箱（TD-119）。 |
 
 `POST /api/v1/auth/register` 不再要求部门组织字段。仍发送 `organization: "硬件部"` 的客户端在计划写明的短兼容窗口内被忽略或拒绝——不得再创建 `org-hardware-department`。

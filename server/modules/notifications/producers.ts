@@ -265,6 +265,26 @@ export async function notifyDebugSnapshotRollback(
   });
 }
 
+export async function notifyRegistrationRoleDecided(
+  db: Queryable,
+  input: { organizationId: string; userId: string; requestId: string; actorName: string;
+    outcome: "requested-role-enabled" | "basic-enabled" | "rejected-disabled" | "rejected-preserved";
+    canLogin: boolean; roles: string[]; adminUserIds: string[] }
+) {
+  const result = input.outcome === "requested-role-enabled" ? "批准申请角色并启用账号"
+    : input.outcome === "basic-enabled" ? "拒绝角色提升，按普通成员启用账号"
+    : input.outcome === "rejected-disabled" ? "拒绝角色提升并保持账号停用" : "拒绝角色提升，保留后续管理设置";
+  const roleNames: Record<string, string> = { "hardware-user": "硬件开发", "software-user": "软件开发", "hardware-committer": "硬件MDE", "software-committer": "软件MDE" };
+  await notifyUsers(db, {
+    organizationId: input.organizationId,
+    recipientUserIds: uniqueRecipients([input.userId, ...input.adminUserIds]),
+    category: "user.role.changed", title: "注册角色申请已处理",
+    body: `${input.actorName} ${result}。组织角色：${input.roles.map(role => roleNames[role] ?? formatRoleLabel(role)).join("、") || "未分配"}；${input.canLogin ? "可登录" : "不可登录"}。`,
+    severity: "info", actionUrl: userPermissionsUrl(), sourceKind: "registration-role-request", sourceId: input.requestId,
+    metadata: { userId: input.userId, requestId: input.requestId, outcome: input.outcome, canLogin: input.canLogin, roles: input.roles }
+  });
+}
+
 export async function notifyUserRoleChanged(
   db: Queryable,
   input: {

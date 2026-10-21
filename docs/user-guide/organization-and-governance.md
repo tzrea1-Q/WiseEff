@@ -15,7 +15,8 @@ An Organization represents a company or deployment customer. Departments such as
 1. Open Organization management (`/organization`). Check the Organization identifier and display name. To rename it, edit the display name and select Save name. Renaming does not change the Organization's identity or your membership.
 2. Open People management (`/organization/members`) and the Account library tab. Search or filter the directory to find the member; check their role and enabled/disabled status before changing anything. Old `/user-permissions` bookmarks resolve to this people-management area.
 3. To create a local account, select Add user, enter the name, username, title, initial password and confirmation, and choose the appropriate role. Follow the form's validation and wait for a successful result before handing over the account.
-4. To change a member's role or enabled status, use the row control and review the confirmation before submitting. Disabling an account prevents sign-in. Enabling it restores access under its assigned roles without granting extra permissions.
+4. Open member details to edit organization roles. Select any combination, or clear all roles for an ordinary member, then save and review the confirmation. Project review duties remain independent. If another administrator has changed the roles, the dialog shows the current set; choose **Reload current roles**, review it, and select your changes again before saving. Closing or switching to project duties prompts before discarding unsaved role changes.
+5. To change a member's enabled status, use the row menu and review the confirmation. Disabling an account prevents sign-in. Enabling it restores access under its assigned roles without granting extra permissions.
 
 An Organization Admin cannot grant or revoke the Platform Admin role or manage a Platform Admin account through the protected row controls. Only a Platform Admin can perform those privileged operations. You cannot disable or delete your own signed-in account, or remove your own final Admin capability.
 
@@ -27,13 +28,16 @@ If you only need to stop access, disable the account. Delete user is permanent a
 
 ## Decide a Committer registration request
 
-In People management (`/organization/members`), switch to Registration requests. Check the applicant's account identifier, current role and requested hardware/software committer role, then choose Approve or Reject.
+In People management (`/organization/members`), switch to Registration requests. Check the applicant's Organization, account identifier, current role and requested hardware/software committer role, then choose one of three outcomes.
 
 - Approval assigns the requested Committer role and activates the account. The applicant can then sign in with the original credentials.
-- Rejection records the decision but does not activate the account or grant the requested role. A pending Committer account remains inactive after rejection.
-- Organization Admins review their own Organization's requests. Platform Admins' queue can include other Organizations. The current queue shows account and role details, not an Organization label; verify the applicant's Organization separately before a cross-Organization decision.
+- Enable as ordinary member rejects the promotion, confirms the corresponding hardware/software User role, and activates the account. The applicant can sign in with the original credentials, without the requested Committer role.
+- Reject and keep disabled closes the request without activating the account or granting the requested role.
+- Organization Admins review their own Organization's requests. Platform Admins' queue can include other Organizations; check the Organization shown before deciding.
 
-This queue handles self-registration requests; change existing members' roles in Account library. If a request has already been handled or the action fails, refresh and check the result. After choosing Approve, check that approval succeeded.
+The request closes atomically with account changes, audit and notifications. If an administrator has since adjusted the account's activation or Organization roles, approval/enabling refuses to overwrite those settings. Close the obsolete request to preserve the current settings, then manage the member directly. Profile changes and project duties do not invalidate a request. A failed action keeps its confirmation available for retry.
+
+Processing history and notifications record the roles and ability to sign in at the time of the decision. Later account changes do not rewrite that history. Older rejected requests without a recorded account outcome are labeled as unknown; their outcome is not inferred from today's account status. This queue handles self-registration requests; change existing members' roles in Account library.
 
 ## Find who changed what, when and why
 
@@ -67,11 +71,15 @@ For debugging modules, open Debugging admin's Node debugging area (`/debugging-a
 
 ## Send product feedback with screenshots
 
-Problem feedback opens a dialog on the current route and has no separate page. Open it from Problem feedback in the navigation or, where available, the page footer. Start from the affected page so the feedback records the correct page title and path.
+Problem feedback opens a dialog on the current route. Open it from Problem feedback in the navigation or, where available, the page footer. Start from the affected page so the feedback records the correct page title and path; revisit the conversation in My feedback (`/feedback`).
 
 1. Choose Experience issue, Data issue, Export/submission failure, or Feature suggestion. Describe what you did, what you expected and what happened; a nonblank description is required.
-2. Paste optional screenshots from the clipboard into the form. Preview them and remove irrelevant images before submission. The service accepts PNG, JPEG and WebP: up to five images, 5 MiB per image and 15 MiB total. Remove secrets and unrelated personal information before pasting.
+2. Paste optional screenshots from the clipboard into the form. Preview them and remove irrelevant images before submission. Each initial submission or later reply accepts PNG, JPEG and WebP: up to five images, 5 MiB per image and 15 MiB for that message. Existing images do not consume a later reply's allowance; the form shows the current message's count and size. Remove secrets and unrelated personal information before pasting.
 3. Submit feedback and wait for confirmation. Save draft keeps an unfinished report for later submission. If you close the dialog with unsent edits, the app asks whether to discard them.
 4. Open My feedback in the same dialog to revisit drafts or check submitted records, attachments, status and public progress. Internal admin notes are not part of the submitter's view.
+
+New screenshots appear with the submission or reply that added them. Historical screenshots without verifiable attribution remain in a separate section rather than being assigned to a guessed message. Failed uploads do not publish a partial reply. If storage cleanup also fails, My feedback shows the pending upload objects and **Retry upload cleanup**; this only cleans failed uploads, preserving submitted screenshots. Deployment storage capacity or object-size errors are reported separately from the current message's allowance.
+
+Use **Delete** beside a submitted screenshot to remove an image you own; feedback administrators can also remove screenshots in their organization. The confirmation names the target. Its original message keeps a deletion marker, other messages and images remain, and old download links stop authorizing access. Shared files remain available to their other references. If physical cleanup is pending, the marker says so and offers **Retry file cleanup**; refreshing preserves this state. Historical screenshots keep unknown attribution; the proven original feedback owner or an administrator may remove them. These attachment controls also remain available on closed feedback.
 
 Admins use Feedback management (`/feedback-admin`) to search or filter reports by status and type, inspect descriptions and screenshots, and record progress. They can start handling a report, mark it resolved after entering a resolution and public explanation, or confirm closure. Resolved reports can be reopened with a reason; closed reports are read-only. Distinguish public progress from internal notes when recording an update. Product feedback and ratings of log-analysis results use separate workflows.

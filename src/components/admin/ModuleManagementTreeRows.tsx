@@ -8,6 +8,7 @@ export type ModuleManagementTreeRowsProps<TItem> = {
   node: ModuleTreeNode;
   depth: number;
   canEdit?: boolean;
+  previewDeletion?: boolean;
   moduleNodes: readonly FlatModuleNode[];
   expandedTreeIds: ReadonlySet<string>;
   expandedDetailId: string | null;
@@ -36,6 +37,7 @@ export function ModuleManagementTreeRows<TItem>({
   node,
   depth,
   canEdit = true,
+  previewDeletion,
   moduleNodes,
   expandedTreeIds,
   expandedDetailId,
@@ -107,7 +109,8 @@ export function ModuleManagementTreeRows<TItem>({
         <td>
           <ModuleManagementRowActions
             canEdit={canEdit}
-            canDelete={itemCount === 0 && node.children.length === 0}
+            canDelete={previewDeletion || (itemCount === 0 && node.children.length === 0)}
+            previewDeletion={previewDeletion}
             deleteDisabledReason={deleteDisabledReason}
             itemCount={itemCount}
             moduleName={node.name}
@@ -156,6 +159,7 @@ export function ModuleManagementTreeRows<TItem>({
               key={child.id}
               depth={depth + 1}
               canEdit={canEdit}
+              previewDeletion={previewDeletion}
               deleteDisabledReason={deleteDisabledReason}
               detailCountLabel={detailCountLabel}
               detailListLabel={detailListLabel}

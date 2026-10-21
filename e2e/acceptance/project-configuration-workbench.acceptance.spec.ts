@@ -6,7 +6,8 @@ import JSZip from "jszip";
 import { expect, test, type APIResponse, type Page, type Response } from "playwright/test";
 import type { DtsReleaseReadiness } from "../../src/application/ports/DtsStructuredRepository";
 import type { ParameterFileSourcePreview, SourceRevisionRequest } from "../../src/application/ports/ParameterFileRepository";
-import { createPostgresDatabase } from "../../server/shared/database/client";
+import { createPostgresDatabase, getRootPostgresPool } from "../../server/shared/database/client";
+import { asValueClient, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "../../server/modules/parameter-bindings/catalogProjectValueSync";
 import { makeTestAuthContext } from "../../server/testing/authContext";
 import { setParameterIdentityMode } from "../../server/modules/parameter-kernel/parameterIdentityMode";
 import { ingestConfigRevision } from "../../server/modules/parameter-topology/ingestService";
@@ -15,7 +16,7 @@ import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole, signInBrow
 import { acceptanceCast } from "./helpers/cast";
 import { withPgClient } from "./helpers/database";
 import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
-import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { useBrowserDiagnostics, type ExpectedApiFailure } from "./helpers/browserDiagnostics";
 import {
   recordOperationEvidence,
   summarizeApiResponse,
@@ -29,6 +30,7 @@ import {
   bindHardwareUserToProject,
   disposablePageUrl,
   lookupParameterFileVersion,
+  readCanonicalFixtureBindings,
   numericCellsDts,
   seedIsolatedBinding,
   seedSemanticFileUiConflict,
@@ -44,12 +46,11 @@ import {
   PROJECT_CONFIGURATION_BASELINE_FAILURE_ROUTE,
 } from "../shared/failureRouteMetadata";
 
-useBrowserDiagnostics(test, {
-  expectedApiFailures: [
+const expectedBrowserApiFailures: ExpectedApiFailure[] = [
     // Pre-existing aurora conflict enrichment can 500 without blocking readiness gate proof.
     { method: "GET", path: "/api/v1/projects/aurora/parameter-file-conflicts", status: 500 }
-  ]
-});
+  ];
+useBrowserDiagnostics(test, { expectedApiFailures: expectedBrowserApiFailures });
 test.use({ viewport: { width: 1440, height: 900 } });
 
 const organizationId = "org-chargelab";
@@ -62,7 +63,7 @@ async function ensureInspectorOpen(page: Page) {
   await ensureWorkbenchInspectorOpen(page);
 }
 
-async function submitSourceFromEditor(page: Page, source: string, reason: string) {
+async function prepareSourceFromEditor(page: Page, source: string, keyboardSave = false) {
   const editor = page.getByRole("textbox", { name: "DTS 源码", exact: true });
   await expect(editor).toHaveAttribute("aria-readonly", "true");
   await page.getByRole("radio", { name: "编辑", exact: true }).click();
@@ -75,7 +76,8 @@ async function submitSourceFromEditor(page: Page, source: string, reason: string
     && new URL(response.url()).pathname === `/api/v1/projects/${projectId}/parameter-file-candidates`);
   const previewResponse = page.waitForResponse((response) => response.request().method() === "GET"
     && new URL(response.url()).pathname.endsWith("/source-preview"), { timeout: 60_000 });
-  await page.getByRole("button", { name: "保存修改", exact: true }).click();
+  const save = page.getByRole("button", { name: "保存修改", exact: true });
+  if (keyboardSave) { await save.focus(); await page.keyboard.press("Enter"); } else await save.click();
   const candidate = await candidateResponse;
   expect(candidate.status(), await candidate.text()).toBe(201);
   expect(candidate.request().postDataJSON()).toMatchObject({ intent: "source_revision",
@@ -85,11 +87,16 @@ async function submitSourceFromEditor(page: Page, source: string, reason: string
   const item = (await preview.json()).item as ParameterFileSourcePreview;
   expect(item).toMatchObject({ kind: "source_revision", format: "dts", canSubmit: true, after: source,
     baseVersionId: expect.any(String), configRevisionId: expect.any(String), proofToken: expect.any(String) });
+  const dialog = page.getByRole("dialog", { name: "保存 DTS 修改" });
+  await expect(dialog.getByRole("region", { name: "DTS 修改差异", exact: true })).toBeVisible();
+  return { candidate, preview, item, dialog };
+}
+
+async function submitSourceFromEditor(page: Page, source: string, reason: string) {
+  const { candidate, preview, item, dialog } = await prepareSourceFromEditor(page, source);
   const reviewer = item.reviewers?.find((entry) => entry.userId === acceptanceCast.acceptanceAdmin.userId)
     ?? item.reviewers?.find((entry) => Object.values(acceptanceCast).some((actor) => actor.userId === entry.userId));
   expect(reviewer, "server must offer an eligible non-author reviewer").toBeDefined();
-  const dialog = page.getByRole("dialog", { name: "保存 DTS 修改" });
-  await expect(dialog.getByRole("region", { name: "DTS 修改差异", exact: true })).toBeVisible();
   await dialog.getByRole("textbox", { name: "DTS 修改原因" }).fill(reason);
   await selectControlOption(dialog.getByRole("combobox", { name: "DTS 软件审核人" }), reviewer!.userId);
   const submittedResponse = page.waitForResponse((response) => response.request().method() === "POST"
@@ -161,7 +168,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     await expect.poll(() => tree.evaluate((element) => element.scrollTop)).toBe(0);
   });
 
-  test("keeps canonical baseline restore read-only while showing source drift", async ({ page, request }, testInfo) => {
+  test("keeps incomplete legacy snapshots read-only until actual composition is supplied", async ({ page, request }, testInfo) => {
     const baselineId = "seed-dts-baseline-aurora";
     const preview = await request.get(apiRoute(`/api/v1/projects/${projectId}/baselines/${baselineId}/restore-preview`), {
       headers: adminHeaders()
@@ -179,8 +186,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       if (sent.method() === "POST" && sent.url().endsWith(`/baselines/${baselineId}/rollback`)) rollbackRequests.push(sent.url());
     });
     const baselinePanel = page.getByRole("region", { name: "配置版本列表与详情" });
-    await expect(baselinePanel.getByRole("note")).toContainText("需要回退时，请在文件管理的版本历史中申请回滚审核。");
-    await expect(baselinePanel.getByRole("button", { name: /恢复到此版本|查看恢复限制/ })).toHaveCount(0);
+    await expect(baselinePanel.getByRole("button", { name: "恢复到此版本…",exact: true })).toBeEnabled();
     await expect(baselinePanel.getByRole("button", { name: /对比已发布/ })).toHaveCount(0);
     await baselinePanel.getByRole("button", { name: "对比当前配置", exact: true }).click();
     await expect(page).toHaveURL(/sourceMode=unified-diff/);
@@ -189,8 +195,13 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     await expect(page.getByRole("button", { name: "确认恢复" })).toHaveCount(0);
     await openWorkbenchPanel(page, "release");
     await expect(baselinePanel.getByLabel("文件差异")).toContainText(item.members[0].fileName);
+    await baselinePanel.getByRole("button",{ name: "恢复到此版本…",exact: true }).click();
+    const restore = page.getByRole("dialog",{ name: "恢复版本预览",exact: true });
+    await expect(restore).toContainText("未保存完整来源修订");
+    await expect(restore.getByRole("link",{ name: "进入配置编辑器" })).toBeVisible();
+    await expect(restore.getByRole("button",{ name: "确认恢复" })).toHaveCount(0);
     const screenshot = testInfo.outputPath("canonical-baseline-restore-1440x900.png");
-    await page.screenshot({ path: screenshot });
+    await page.screenshot({ path: screenshot, animations: "disabled" });
     await testInfo.attach("canonical baseline read-only restore", { path: screenshot, contentType: "image/png" });
     expect(rollbackRequests).toEqual([]);
     await recordOperationEvidence({
@@ -2878,6 +2889,349 @@ test.describe("project configuration workbench post-cutover semantic identity", 
         summarizeApiResponse(content, { method: "GET", path: contentPath, responseSummary: "exact reviewed source bytes" })],
       notes: "Real registered Binding fixture on the disposable API runtime. The whole-file editor stages immutable source; current file and Value stay unchanged while pending. The server-eligible assigned reviewer approves in a separate browser context; exact source, stable Binding identity, new Value and config/file receipt agree."
     });
+  });
+
+  test("lets an unrelated administrator reassign and cancel a source request, preserving its diff and unblocking submission",async ({ page,request },testInfo) => {
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request,[{ subjectId: "csub_drv_mt_mt5788",canonicalName: "mt,mt5788" }]);
+    const original = '/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "AdminV1", "keep"; }; };';
+    const binding = await seedIsolatedBinding(request,{ propertyKey: "rx_fod_cond",dts: original,rawValuePattern: '"AdminV1", "keep"',
+      nodeLocatorPattern: "board",reason: "#1302 source request administration",timeoutMs: 60_000 });
+    const file = await lookupParameterFileVersion({ fileName: binding.fileName });
+    const workbench = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({ configSet: binding.configSetId,file: file.fileId })}`;
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,workbench));
+    await dismissXiaozeHint(page);
+    await expect(page.getByRole("heading",{ name: binding.fileName })).toBeVisible();
+    const edited = original.replace('"AdminV1"','"AdminV2"');
+    const submitted = await submitSourceFromEditor(page,edited,"#1302 administrator takeover");
+    const actors = ["manager","delegate"].map((kind) => ({ id: `source-${kind}-${randomUUID()}`,name: `Source ${kind}`,email: `${kind}-${randomUUID()}@chargelab.cn` }));
+    await withPgClient(async (client) => {
+      for (const actor of actors) {
+        await client.query("insert into users(id,organization_id,name,email,title,is_active) values($1,$2,$3,$4,'Source administrator',true)",[actor.id,organizationId,actor.name,actor.email]);
+        await client.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values($1,$2,$3,null,'admin')",[`${actor.id}-role`,actor.id,organizationId]);
+      }
+    });
+    const [manager,delegate] = actors as [typeof actors[number],typeof actors[number]];
+    const requestPath = `/api/v2/projects/${projectId}/source-revision-requests/${submitted.receipt.requestId}`;
+    const managerHeaders = authHeadersForUser(manager.id,manager.email,manager.name);
+    const reviewRoute = `/parameter-review?${new URLSearchParams({ project: projectId,request: submitted.receipt.requestId,type: "source" })}`;
+    await signInBrowserAsUser(page,manager.id,manager.email,manager.name,disposablePageUrl(disposableRuntime,reviewRoute));
+    await dismissXiaozeHint(page);
+    let panel = page.getByRole("region",{ name: "DTS 整文件审核" });
+    await expect(panel).toContainText("AdminV1"); await expect(panel).toContainText("AdminV2");
+    await expect(panel.getByRole("button",{ name: "批准并应用 DTS",exact: true })).toHaveCount(0);
+    await selectControlOption(panel.getByRole("combobox",{ name: "新的源码审核人" }),delegate.id);
+    await withPgClient((client) => client.query("delete from user_role_bindings where id=$1",[`${delegate.id}-role`]));
+    const expectedFailure: ExpectedApiFailure = { method: "POST",path: `${requestPath}/reassign`,status: 400 };
+    expectedBrowserApiFailures.push(expectedFailure);
+    try {
+      const failure = page.waitForResponse((response) => new URL(response.url()).pathname === `${requestPath}/reassign` && response.request().method()==="POST");
+      await panel.getByRole("button",{ name: "重新指派审核人" }).click();
+      expect((await failure).status()).toBe(400);
+      await expect(panel.getByRole("alert")).toContainText("审核资格");
+      await withPgClient((client) => client.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values($1,$2,$3,null,'admin')",[`${delegate.id}-role`,delegate.id,organizationId]));
+      await panel.getByRole("button",{ name: "刷新状态" }).click();
+      await selectControlOption(panel.getByRole("combobox",{ name: "新的源码审核人" }),delegate.id);
+      const reassigned = page.waitForResponse((response) => new URL(response.url()).pathname === `${requestPath}/reassign` && response.request().method()==="POST");
+      await panel.getByRole("button",{ name: "重新指派审核人" }).click();
+      expect((await reassigned).status()).toBe(200);
+      await expect(panel).toContainText(`审核人：${delegate.name}`);
+      const cancel = panel.getByRole("button",{ name: "取消源码请求" });
+      await expect(cancel).toBeDisabled();
+      await panel.getByRole("textbox",{ name: "取消源码请求的理由" }).fill("管理员解除待审配置阻塞");
+      await expect(cancel).toBeEnabled(); await cancel.scrollIntoViewIfNeeded();
+      const screenshot = testInfo.outputPath("source-request-administration-1440x900.png");
+      await page.screenshot({ path: screenshot }); await testInfo.attach("Source request administration",{ path: screenshot,contentType: "image/png" });
+      const cancelled = page.waitForResponse((response) => new URL(response.url()).pathname === `${requestPath}/cancel` && response.request().method()==="POST");
+      await cancel.focus(); await page.keyboard.press("Enter");
+      expect((await cancelled).status()).toBe(200);
+      await page.goto(disposablePageUrl(disposableRuntime,`${reviewRoute}&view=history`));
+      panel = page.getByRole("region",{ name: "DTS 整文件审核" });
+      await expect(panel).toContainText(`管理员取消：${manager.name} · 管理员解除待审配置阻塞`);
+      await expect(panel).toContainText("AdminV2");
+      const detail = await request.get(apiRoute(requestPath),{ headers: managerHeaders });
+      expect(detail.status(),await detail.text()).toBe(200);
+      expect((await detail.json()).item).toMatchObject({ status: "withdrawn",reviewerUserId: null,after: edited,
+        proofDigest: submitted.item.proofToken,cancellation: { userId: manager.id,reason: "管理员解除待审配置阻塞" } });
+      const active = (await readCanonicalFixtureBindings(projectId)).find((row) => row.id===binding.bindingId)!;
+      const candidate = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),{ headers: managerHeaders,data: {
+        fileId: file.fileId,fileName: binding.fileName,contentBase64: Buffer.from(`${edited}\n/* after cancellation */`).toString("base64"),intent: "source_revision",
+        expectedCurrentVersionId: file.versionId,expectedConfigRevisionId: active.configRevisionId,clientMutationId: `admin-unblocked-${randomUUID()}` } });
+      expect(candidate.status(),await candidate.text()).toBe(201);
+      const candidateId = (await candidate.json()).item.id as string;
+      const preview = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-preview`),{ headers: managerHeaders });
+      expect(preview.status(),await preview.text()).toBe(200);
+      const next = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-submit`),{ headers: managerHeaders,data: {
+        expectedCurrentVersionId: file.versionId,expectedProofToken: (await preview.json()).item.proofToken,assignedToUserId: delegate.id,
+        reason: "Configuration is unblocked",clientMutationId: `admin-unblocked-submit-${randomUUID()}` } });
+      expect(next.status(),await next.text()).toBe(200);
+      const nextId = (await next.json()).item.requestId as string;
+      expect((await request.post(apiRoute(`/api/v2/projects/${projectId}/source-revision-requests/${nextId}/withdraw`),{ headers: managerHeaders })).status()).toBe(200);
+    } finally { expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(expectedFailure),1); }
+  });
+
+  test("restores a complete Canonical snapshot after a stale-plan refusal and retains added members through keyboard confirmation",async ({ page,request },testInfo) => {
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request,[{ subjectId: "csub_drv_mt_mt5788",canonicalName: "mt,mt5788" }]);
+    const original = '/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "RestoreV1", "keep"; }; };';
+    const binding = await seedIsolatedBinding(request,{ propertyKey: "rx_fod_cond",dts: original,rawValuePattern: '"RestoreV1", "keep"',nodeLocatorPattern: "board",reason: "#1306 complete snapshot restore",timeoutMs: 60_000 });
+    const file = await lookupParameterFileVersion({ fileName: binding.fileName });
+    const readiness = await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/release-readiness`),{ headers: adminHeaders() });
+    expect(readiness.status(),await readiness.text()).toBe(200);
+    const gate = (await readiness.json()).item as DtsReleaseReadiness;
+    expect(gate.canCreateBaseline,JSON.stringify(gate)).toBe(true);
+    const saved = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/baselines`),{
+      headers: adminHeaders(),data: { name: `restore-${randomUUID()}`,gateToken: gate.gateToken,acknowledgedWarningIds: gate.warnings.filter(row => row.acknowledgementRequired).map(row => row.id) } });
+    expect(saved.status(),await saved.text()).toBe(201);
+    const baselineId = (await saved.json()).item.id as string;
+    async function edit(content: string,key: string) {
+      const activeFile = await lookupParameterFileVersion({ fileName: binding.fileName });
+      const active = (await readCanonicalFixtureBindings(projectId)).find(row => row.id===binding.bindingId)!;
+      const candidate = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),{ headers: adminHeaders(),data: {
+        fileId: file.fileId,fileName: binding.fileName,contentBase64: Buffer.from(content).toString("base64"),intent: "source_revision",
+        expectedCurrentVersionId: activeFile.versionId,expectedConfigRevisionId: active.configRevisionId,clientMutationId: `${key}-candidate` } });
+      expect(candidate.status(),await candidate.text()).toBe(201);
+      const candidateId = (await candidate.json()).item.id as string;
+      const preview = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-preview`),{ headers: adminHeaders() });
+      expect(preview.status(),await preview.text()).toBe(200);
+      const committed = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-apply`),{ headers: adminHeaders(),data: {
+        expectedCurrentVersionId: activeFile.versionId,expectedProofToken: (await preview.json()).item.proofToken,reason: "Snapshot restore browser fixture edit",clientMutationId: key } });
+      expect(committed.status(),await committed.text()).toBe(200);
+    }
+    await edit(original.replace("RestoreV1","RestoreV2"),"restore-browser-edit-v2");
+    const candidate = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),{ headers: adminHeaders(),data: {
+      fileName: `retained-${randomUUID()}.json`,contentBase64: Buffer.from('{"metadata":"retain"}').toString("base64") } });
+    expect(candidate.status(),await candidate.text()).toBe(201);
+    const additionPath = `/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition`;
+    const addition = { candidateId: (await candidate.json()).item.id,role: "charging",sortOrder: 1 };
+    const additionPreview = await request.post(apiRoute(`${additionPath}/preview`),{ headers: adminHeaders(),data: addition });
+    expect(additionPreview.status(),await additionPreview.text()).toBe(200);
+    const joined = await request.post(apiRoute(`${additionPath}/apply`),{ headers: adminHeaders(),data: { ...addition,proofToken: (await additionPreview.json()).item.proofToken,reason: "Retain metadata after snapshot",clientMutationId: "restore-browser-extra" } });
+    expect(joined.status(),await joined.text()).toBe(200);
+    const route = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({ configSet: binding.configSetId,file: file.fileId,baseline: baselineId })}`;
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,route)); await dismissXiaozeHint(page);
+    const versions = await openWorkbenchPanel(page,"release");
+    await versions.getByRole("button",{ name: "恢复到此版本…",exact: true }).click();
+    const dialog = page.getByRole("dialog",{ name: "恢复版本确认",exact: true });
+    await expect(dialog).toContainText("保留新增成员");
+    await expect(dialog.getByRole("button",{ name: "确认恢复",exact: true })).toBeDisabled();
+    await dialog.getByRole("textbox",{ name: "恢复原因",exact: true }).fill("#1306 restore checked complete source composition");
+    await edit(original.replace("RestoreV1","RestoreV3"),"restore-browser-edit-v3");
+    const rollbackPath = `/api/v1/projects/${projectId}/baselines/${baselineId}/rollback`;
+    expectedBrowserApiFailures.push({ method: "POST",path: rollbackPath,status: 409 });
+    const stale = page.waitForResponse(response => response.request().method()==="POST" && new URL(response.url()).pathname===rollbackPath);
+    await dialog.getByRole("button",{ name: "确认恢复",exact: true }).focus(); await page.keyboard.press("Enter");
+    expect((await stale).status()).toBe(409);
+    await expect(dialog.getByRole("alert")).toContainText("过期");
+    await expect(dialog.getByRole("textbox",{ name: "恢复原因",exact: true })).toHaveValue("#1306 restore checked complete source composition");
+    await dialog.getByRole("button",{ name: "重新预览",exact: true }).click();
+    await expect(page.getByRole("dialog",{ name: "恢复版本确认",exact: true })).toContainText("保留新增成员");
+    const composition = dialog.getByRole("table",{ name: "恢复后的成员组成" });
+    await expect(composition.getByRole("columnheader")).toHaveCount(4);
+    expect(await composition.evaluate(table => {
+      const bounds = table.closest('[role="dialog"]')!.getBoundingClientRect();
+      return [...table.querySelectorAll("th, td")].every(cell => {
+        const rect = cell.getBoundingClientRect();
+        return rect.left >= bounds.left && rect.right <= bounds.right;
+      });
+    }),"all restore member versions, roles and actions must fit the confirmation dialog").toBe(true);
+    const screenshot = testInfo.outputPath("canonical-configuration-restore-1440x900.png");
+    await page.screenshot({ path: screenshot }); await testInfo.attach("Complete snapshot restore preview",{ path: screenshot,contentType: "image/png" });
+    const committed = page.waitForResponse(response => response.request().method()==="POST" && new URL(response.url()).pathname===rollbackPath);
+    await dialog.getByRole("button",{ name: "确认恢复",exact: true }).focus(); await page.keyboard.press("Enter");
+    const response = await committed; expect(response.status(),await response.text()).toBe(200);
+    await expect(dialog).toHaveCount(0); await page.reload();
+    const after = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),{ headers: adminHeaders() });
+    expect((await after.json()).items.find((row: { id: string }) => row.id===binding.bindingId)).toMatchObject({ rawValue: '"RestoreV1", "keep"' });
+    await expect(await openWorkbenchPanel(page,"config-set")).toContainText("retained-");
+  });
+
+  test("administrator adds a staged overlay to a Canonical configuration through preview and keyboard confirmation", async ({ page, request }, testInfo) => {
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
+    const sample = '/dts-v1/; / { board: board { compatible = "mt,mt5788"; rx_fod_cond = "AddV1", "keep"; }; };';
+    const binding = await seedIsolatedBinding(request, { propertyKey: "rx_fod_cond", dts: sample,
+      rawValuePattern: '"AddV1", "keep"', nodeLocatorPattern: "board", reason: "#1305 Canonical member addition", timeoutMs: 60_000 });
+    const file = await lookupParameterFileVersion({ fileName: binding.fileName });
+    const route = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({ configSet: binding.configSetId, file: file.fileId })}`;
+    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, route));
+    await dismissXiaozeHint(page);
+    const files = await openWorkbenchPanel(page, "config-set");
+    await files.getByRole("button", { name: "添加配置文件", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "加入配置文件", exact: true });
+    const overlayName = `added-overlay-${randomUUID()}.dts`;
+    await selectControlOption(dialog.getByRole("combobox", { name: "目标配置", exact: true }), binding.configSetId);
+    await dialog.getByLabel("上传文件", { exact: true }).setInputFiles({ name: overlayName, mimeType: "text/plain",
+      buffer: Buffer.from('/dts-v1/; /plugin/; &board { rx_fod_cond = "AddV2", "keep"; };') });
+    await selectControlOption(dialog.getByRole("combobox", { name: "文件用途", exact: true }), "overlay");
+    await dialog.getByLabel("文件顺序", { exact: true }).fill("-1");
+    await dialog.getByRole("button", { name: "预览加入配置", exact: true }).click();
+    expect(await dialog.getByLabel("文件顺序", { exact: true }).evaluate((input: HTMLInputElement) => input.validity.rangeUnderflow)).toBe(true);
+    expect(await dialog.getByLabel("上传文件", { exact: true }).evaluate((input: HTMLInputElement) => input.files?.length)).toBe(1);
+    await dialog.getByLabel("文件顺序", { exact: true }).fill("1");
+    const previewResponse = page.waitForResponse((response) => response.request().method() === "POST"
+      && new URL(response.url()).pathname.endsWith("/member-addition/preview"), { timeout: 60_000 });
+    await dialog.getByRole("button", { name: "预览加入配置", exact: true }).focus(); await page.keyboard.press("Enter");
+    const preview = await previewResponse; expect(preview.status(), await preview.text()).toBe(200);
+    await expect(dialog.getByRole("region", { name: "加入配置预览" })).toContainText(overlayName);
+    const before = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), { headers: adminHeaders() });
+    expect((await before.json()).items.find((item: { id: string }) => item.id === binding.bindingId)).toMatchObject({ rawValue: '"AddV1", "keep"' });
+    await dialog.getByLabel("加入原因", { exact: true }).fill("#1305 checked complete composition and parameter impact");
+    const screenshot = testInfo.outputPath("canonical-member-addition-1440x900.png");
+    await page.screenshot({ path: screenshot }); await testInfo.attach("Canonical member addition preview", { path: screenshot, contentType: "image/png" });
+    const applying = page.waitForResponse((response) => response.request().method() === "POST"
+      && new URL(response.url()).pathname.endsWith("/member-addition/apply"), { timeout: 60_000 });
+    await dialog.getByRole("button", { name: "确认加入配置", exact: true }).focus(); await page.keyboard.press("Enter");
+    const applied = await applying; expect(applied.status(), await applied.text()).toBe(200);
+    await expect(dialog).toHaveCount(0); await page.reload();
+    const refreshed = await openWorkbenchPanel(page, "config-set");
+    await expect(refreshed.getByRole("table", { name: "配置文件" })).toContainText(overlayName);
+    await expect(refreshed.getByRole("table", { name: "配置文件" })).toContainText(binding.fileName);
+    const after = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), { headers: adminHeaders() });
+    expect((await after.json()).items.find((item: { id: string }) => item.id === binding.bindingId)).toMatchObject({ rawValue: '"AddV2", "keep"' });
+  });
+
+  test("administrator directly applies a complete DTS preview with keyboard confirmation and keeps invalid input", async ({ page, request }, testInfo) => {
+    // @acceptance PROJ-CONFIG-EDIT-001
+    // @operation PROJ-CONFIG-EDIT-001
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
+    const sample = `/dts-v1/;\n/ { board { compatible = "mt,mt5788"; rx_fod_cond = "DirectV1", "keep"; }; };\n`;
+    const binding = await seedIsolatedBinding(request, { propertyKey: "rx_fod_cond", dts: sample,
+      rawValuePattern: '"DirectV1", "keep"', nodeLocatorPattern: "board", reason: "#1303 administrator direct source application", timeoutMs: 60_000 });
+    const file = await lookupParameterFileVersion({ fileName: binding.fileName });
+    const workbenchPath = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({ configSet: binding.configSetId, file: file.fileId })}`;
+    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, workbenchPath));
+    await dismissXiaozeHint(page);
+    await expect(page.getByRole("heading", { name: binding.fileName })).toBeVisible({ timeout: 30_000 });
+    const editor = page.getByRole("textbox", { name: "DTS 源码", exact: true });
+    const invalid = '/dts-v1/;\n/ { board { rx_fod_cond = <; };';
+    await page.getByRole("radio", { name: "编辑", exact: true }).click();
+    await editor.fill(invalid);
+    await page.getByRole("button", { name: "保存修改", exact: true }).click();
+    const invalidDialog = page.getByRole("dialog", { name: "保存 DTS 修改" });
+    await expect(invalidDialog.getByRole("alert").first()).toContainText(/DTS|校验/);
+    await expect(invalidDialog.getByRole("button", { name: "直接应用修改", exact: true })).toBeDisabled();
+    expect((await lookupParameterFileVersion({ fileName: binding.fileName })).versionId).toBe(file.versionId);
+    await invalidDialog.getByRole("button", { name: "返回编辑", exact: true }).click();
+    await expect(editor).toContainText("rx_fod_cond = <;");
+    await page.getByRole("radio", { name: "预览", exact: true }).click();
+    const sourcePath = `/api/v1/projects/${projectId}/parameter-files/${file.fileId}/versions/${file.versionId}/content`;
+    const source = await request.get(apiRoute(sourcePath), { headers: adminHeaders() });
+    expect(source.status(), await source.text()).toBe(200);
+    const edited = (await source.text()).replace('"DirectV1"', '"DirectV2"') + "\n/* administrator confirmed the whole source */\n";
+    const prepared = await prepareSourceFromEditor(page, edited, true);
+    expect(prepared.item.impact?.parameterChanges).toBe(1);
+    await prepared.dialog.getByRole("textbox", { name: "DTS 修改原因" }).fill("#1303 checked complete diff, directly apply");
+    const applying = page.waitForResponse((response) => response.request().method() === "POST"
+      && new URL(response.url()).pathname.endsWith("/source-apply"), { timeout: 60_000 });
+    await prepared.dialog.getByRole("button", { name: "直接应用修改", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    const applied = await applying;
+    expect(applied.status(), await applied.text()).toBe(200);
+    expect(applied.request().postDataJSON()).not.toHaveProperty("assignedToUserId");
+    const receipt = (await applied.json()).item as SourceRevisionRequest;
+    expect(receipt).toMatchObject({ status: "approved", applicationMode: "administrator_direct", submitterUserId: acceptanceCast.xuYun.userId,
+      assignedToUserId: null, reviewerUserId: null });
+    await expect(prepared.dialog).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole("textbox", { name: "DTS 源码", exact: true })).toContainText("DirectV2");
+    await expect(page.getByText("当前工作配置", { exact: true })).toBeVisible();
+    const bindingsPath = `/api/v2/projects/${projectId}/parameter-bindings`;
+    const current = await request.get(apiRoute(bindingsPath), { headers: adminHeaders() });
+    expect(current.status(), await current.text()).toBe(200);
+    expect((await current.json()).items.find((row: { id: string }) => row.id === binding.bindingId)).toMatchObject({ rawValue: '"DirectV2", "keep"' });
+    const activeFile = await lookupParameterFileVersion({ fileName: binding.fileName });
+    expect(activeFile.versionId).toBe(receipt.appliedSourceResult!.fileVersionId);
+    const contentPath = `/api/v1/projects/${projectId}/parameter-files/${file.fileId}/versions/${activeFile.versionId}/content`;
+    const content = await request.get(apiRoute(contentPath), { headers: adminHeaders() });
+    expect(content.status(), await content.text()).toBe(200); expect(await content.text()).toBe(edited);
+    await recordOperationEvidence({ operationId: "PROJ-CONFIG-EDIT-001", title: "Administrator direct DTS application",
+      status: "passed", role: "Admin", route: workbenchPath, page, testInfo, assertions: ["ui", "api", "screenshot"],
+      api: [summarizeApiResponse(applied, { method: "POST", path: `/api/v1/projects/${projectId}/parameter-file-candidates/${prepared.item.candidateId}/source-apply` }),
+        summarizeApiResponse(current, { method: "GET", path: bindingsPath })],
+      notes: "1440x900 real API: invalid source stays local, keyboard activates preview and the explicit administrator action; reload retains exact source, stable Binding and updated value. No reviewer is selected or fabricated." });
+  });
+
+  test("administrator previews mixed configuration member removal, cancels and confirms with the keyboard", async ({ page, request }, testInfo) => {
+    // @acceptance PROJ-CONFIG-OPS-001
+    // @operation PROJ-CONFIG-OPS-001
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
+    const suffix = randomUUID();
+    const rootName = `removal-root-${suffix}.dts`, overlayName = `removal-overlay-${suffix}.dts`;
+    const rootText = '/dts-v1/;\n/ { compatible = "test,board"; model = "Removal root"; board { compatible = "mt,mt5788"; rx_fod_cond = "RemovalKeep", "KeepOther"; }; };\n';
+    const overlayText = '/dts-v1/; /plugin/;\n/ { fragment@0 { target-path = "/"; __overlay__ { backup { compatible = "mt,mt5788"; rx_fod_cond = "RemovalOld", "OldOther"; }; }; }; };\n';
+    const created = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), { headers: adminHeaders(), data: { name: `member-removal-${suffix}` } });
+    expect(created.status(), await created.text()).toBe(201);
+    const configSetId = (await created.json()).item.id as string;
+    const members = [];
+    for (const [fileName, content, role, sortOrder, format] of [[rootName, rootText, "base", 0, "dts"], [overlayName, overlayText, "overlay", 1, "dts"], [`removal-settings-${suffix}.json`, '{"keep":42}\n', "charging", 2, "json"]] as const) {
+      const uploaded = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), { headers: adminHeaders(), data: { fileName, contentBase64: Buffer.from(content).toString("base64") } });
+      expect(uploaded.status(), await uploaded.text()).toBe(201);
+      const body = await uploaded.json() as { item: { id: string }; version: { id: string } };
+      const added = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`), { headers: adminHeaders(), data: { fileId: body.item.id, role, sortOrder } });
+      expect(added.status(), await added.text()).toBe(201);
+      members.push({ fileId: body.item.id, fileVersionId: body.version.id, fileName, sourceName: fileName, content, role, sortOrder, format });
+    }
+    const fixtureDb = createPostgresDatabase(disposableRuntime.databaseUrl);
+    try {
+      const actor = makeTestAuthContext({ userId: acceptanceCast.xuYun.userId, organizationId, roles: [{ roleId: "admin", projectId: null }] });
+      const revision = await ingestConfigRevision(fixtureDb, { organizationId, projectId, configSetId, entryFile: rootName, includeSearchPaths: ["."], overlayOrder: [overlayName], members }, actor);
+      expect(revision.status).toBe("resolved");
+      const snapshot = await loadPublishedCatalog(getRootPostgresPool(fixtureDb)!);
+      if (!snapshot) throw new Error("Missing published Catalog for member removal fixture.");
+      await fixtureDb.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), snapshot, { organizationId, projectId, configSetId, configRevisionId: revision.id }));
+    } finally { await fixtureDb.close(); }
+    const workbenchPath = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({ configSet: configSetId, file: members[0]!.fileId })}`;
+    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, workbenchPath));
+    await dismissXiaozeHint(page);
+    await expect(page.getByRole("heading", { name: rootName, exact: true })).toBeVisible();
+    const files = await openWorkbenchPanel(page, "config-set");
+    const previewPath = (fileId: string) => `/api/v1/projects/${projectId}/config-sets/${configSetId}/files/${fileId}/removal-preview`;
+    expectedBrowserApiFailures.push({ method: "POST", path: previewPath(members[0]!.fileId), status: 400 });
+    await files.getByRole("button", { name: `${rootName} 更多`, exact: true }).click();
+    await page.getByRole("menuitem", { name: "预览移除影响", exact: true }).click();
+    let dialog = page.getByRole("dialog", { name: "预览移除影响", exact: true });
+    await expect(dialog.getByRole("alert")).toContainText("替代根文件");
+    await expect(dialog.getByRole("button", { name: "确认移除", exact: true })).toBeDisabled();
+    await dialog.getByRole("button", { name: "取消", exact: true }).click();
+    await files.getByRole("button", { name: `${overlayName} 更多`, exact: true }).click();
+    await page.getByRole("menuitem", { name: "预览移除影响", exact: true }).click();
+    dialog = page.getByRole("dialog", { name: "预览移除影响", exact: true });
+    await expect(dialog.getByText(/移除 .*1 个当前参数/)).toBeVisible();
+    await expect(dialog).toContainText("覆盖文件");
+    await expect(dialog.getByRole("button", { name: "取消", exact: true })).toBeFocused();
+    const screenshot = testInfo.outputPath("member-removal-preview.png");
+    await page.screenshot({ path: screenshot }); await testInfo.attach("member-removal-preview", { path: screenshot, contentType: "image/png" });
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(files.getByRole("button", { name: overlayName, exact: true })).toBeVisible();
+    await files.getByRole("button", { name: `${overlayName} 更多`, exact: true }).click();
+    await page.getByRole("menuitem", { name: "预览移除影响", exact: true }).click();
+    dialog = page.getByRole("dialog", { name: "预览移除影响", exact: true });
+    await expect(dialog.getByText(/移除 .*1 个当前参数/)).toBeVisible();
+    await dialog.getByRole("textbox", { name: "移除原因", exact: true }).fill("旧覆盖文件已不再使用");
+    const applying = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/removal-apply"));
+    await dialog.getByRole("button", { name: "确认移除", exact: true }).focus(); await page.keyboard.press("Enter");
+    const applied = await applying; expect(applied.status(), await applied.text()).toBe(200);
+    await expect(dialog).toHaveCount(0);
+    await expect(files.getByRole("button", { name: overlayName, exact: true })).toHaveCount(0);
+    await page.reload();
+    const retained = await openWorkbenchPanel(page, "config-set");
+    await expect(retained.getByRole("button", { name: overlayName, exact: true })).toHaveCount(0);
+    await expect(retained.getByRole("button", { name: rootName, exact: true })).toBeVisible();
+    const historyPath = `/api/v1/projects/${projectId}/parameter-files/${members[1]!.fileId}/versions/${members[1]!.fileVersionId}/content`;
+    const history = await request.get(apiRoute(historyPath), { headers: adminHeaders() });
+    expect(history.status(), await history.text()).toBe(200); expect(await history.text()).toBe(overlayText);
+    await recordOperationEvidence({ operationId: "PROJ-CONFIG-OPS-001", title: "Administrator Canonical member removal", status: "passed", role: "Admin", route: workbenchPath,
+      page, testInfo, assertions: ["ui", "api", "screenshot"], api: [summarizeApiResponse(applied, { method: "POST", path: `/api/v1/projects/${projectId}/config-sets/${configSetId}/files/${members[1]!.fileId}/removal-apply` }), summarizeApiResponse(history, { method: "GET", path: historyPath })],
+      notes: "1440x900 real API mixed DTS/JSON configuration: invalid root rejected, dependency/parameter preview, Escape cancellation, keyboard confirmation, reload persistence and retained historical source." });
   });
 
   test("activates existing- and new-file candidates with CAS stale safety", async ({ page, request }, testInfo) => {

@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore, StoredObject } from "../logs/objectStore";
 import { ApiError } from "../../shared/http/errors";
-import { createPostgresDatabase } from "../../shared/database/client";
+import { createPostgresDatabase, type Database } from "../../shared/database/client";
+import { cleanupFeedbackAttachmentUploads } from "./attachmentUploads";
 import { makeTestAuthContext, type TestAuthContextOverrides } from "../../testing/authContext";
 import {
   createInMemoryTestDatabase,
@@ -186,7 +187,9 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
     );
 
     expect(put).toHaveBeenCalledTimes(2);
-    expect(put.mock.calls[0][0]).toMatchObject({ organizationId: "org-1", fileName: "shot-1.png", contentType: "image/png" });
+    expect(put.mock.calls[0][0]).toMatchObject({ organizationId: "org-1", fileName: expect.stringMatching(/^feedback-[a-f0-9-]{36}\.png$/), contentType: "image/png" });
+    const names = put.mock.calls.map(([input]) => input.fileName);
+    expect(new Set(names).size).toBe(2);
     expect(put.mock.calls[0][0].bytes.byteLength).toBe(8);
     expect(put.mock.calls[1][0].bytes.byteLength).toBe(16);
 
@@ -194,13 +197,15 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
     expect(feedback.attachments).toHaveLength(2);
     const bySortOrder = [...feedback.attachments].sort((a, b) => a.sortOrder - b.sortOrder);
     expect(bySortOrder[0]).toMatchObject({
-      storageKey: "org-1/stored-shot-1.png",
-      checksum: "checksum-shot-1.png",
+      storageKey: `org-1/stored-${names[0]}`,
+      checksum: `checksum-${names[0]}`,
+      fileName: "shot-1.png",
       sortOrder: 0
     });
     expect(bySortOrder[1]).toMatchObject({
-      storageKey: "org-1/stored-shot-2.png",
-      checksum: "checksum-shot-2.png",
+      storageKey: `org-1/stored-${names[1]}`,
+      checksum: `checksum-${names[1]}`,
+      fileName: "shot-2.png",
       sortOrder: 1
     });
 
@@ -209,8 +214,8 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
       ["org-1", feedback.id]
     );
     expect(stored.rows).toEqual([
-      { storage_key: "org-1/stored-shot-1.png", checksum: "checksum-shot-1.png", sort_order: 0 },
-      { storage_key: "org-1/stored-shot-2.png", checksum: "checksum-shot-2.png", sort_order: 1 }
+      { storage_key: `org-1/stored-${names[0]}`, checksum: `checksum-${names[0]}`, sort_order: 0 },
+      { storage_key: `org-1/stored-${names[1]}`, checksum: `checksum-${names[1]}`, sort_order: 1 }
     ]);
 
     const audit = (await auditEvents()).find((event) => event.kind === "product-feedback-create");
@@ -438,7 +443,7 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
     );
     expect(saved.description).toBe("Draft text in progress");
     expect(saved.attachments).toHaveLength(2);
-    expect(deleteFn).not.toHaveBeenCalled(); // Content-addressed images may still have other references.
+    expect(deleteFn).toHaveBeenCalledWith(draft.attachments[0].storageKey);
     expect(await auditEvents()).toHaveLength(0); // still no audit event
 
     // 3. Draft submission requires non-empty description
@@ -722,19 +727,19 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
     expect((await auditEvents()).some((event) => event.kind === "product-feedback-reply")).toBe(true);
   });
 
-  it("enforces total reply attachment limits before storing any new file", async () => {
+  it("enforces each reply's count and byte limits before storing any new file", async () => {
     const { objectStore, put } = makeObjectStore();
     const item = await createProductFeedback(db, objectStore, auth(), createInput({ attachments: [attachmentInput("first.png")] }));
     put.mockClear();
     await expect(replyToProductFeedback(db, objectStore, auth(), item.id, {
-      message: "More", attachments: Array.from({ length: 5 }, (_, index) => attachmentInput(`shot-${index}.png`))
+      message: "More", attachments: Array.from({ length: 6 }, (_, index) => attachmentInput(`shot-${index}.png`))
     })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
     await expect(replyToProductFeedback(db, objectStore, auth(), item.id, {
       message: "More", attachments: [attachmentInput("large.png", 5 * 1024 * 1024 + 1)]
     })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
     await db.query("update product_feedback_attachments set size_bytes = $1 where feedback_id = $2", [15 * 1024 * 1024, item.id]);
     await expect(replyToProductFeedback(db, objectStore, auth(), item.id, {
-      message: "More", attachments: [attachmentInput("extra.png")]
+      message: "More", attachments: Array.from({ length: 4 }, (_, index) => attachmentInput(`large-total-${index}.png`, 4 * 1024 * 1024))
     })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
     expect(put).not.toHaveBeenCalled();
     expect((await getMyProductFeedback(db, auth(), item.id)).progressEvents).toHaveLength(1);
@@ -765,7 +770,9 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
     const image = attachmentInput("shared.png");
     const submitted = await createProductFeedback(db, objectStore, auth(), createInput({ attachments: [image] }));
     const draft = await createProductFeedbackDraft(db, objectStore, auth(), { attachments: [image] });
-    expect(draft.attachments[0].storageKey).toBe(submitted.attachments[0].storageKey);
+    // Historical content-addressed images can share a key; new uploads have
+    // unique physical names but must still preserve these old references.
+    await db.query("update product_feedback_attachments set storage_key=$2 where id=$1", [draft.attachments[0].id, submitted.attachments[0].storageKey]);
     await saveProductFeedbackDraft(db, objectStore, auth(), draft.id, { retainedAttachmentIds: [] });
     expect((await getMyProductFeedback(db, auth(), draft.id)).attachments).toEqual([]);
     const draft2 = await createProductFeedbackDraft(db, objectStore, auth(), { attachments: [image] });
@@ -774,7 +781,7 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
     await expect(getMyProductFeedbackAttachmentContent(db, objectStore, auth(), submitted.id, submitted.attachments[0].id)).resolves.toMatchObject({ bytes: Buffer.from("stored-image") });
   });
 
-  it("serializes concurrent replies so additive attachments cannot exceed the feedback limit", async () => {
+  it("serializes concurrent replies without imposing a lifetime attachment limit", async () => {
     const isolated = await createEphemeralTestDatabase("fbreply");
     const concurrentDb = createPostgresDatabase(isolated.url);
     try {
@@ -787,17 +794,83 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
         concurrentDb, objectStore, auth(), item.id,
         { message: `Concurrent reply ${index}`, attachments: [attachmentInput(`extra-${index}.png`)] }
       )));
-      expect(replies.filter((reply) => reply.status === "fulfilled")).toHaveLength(1);
       const rejected = replies.filter((reply) => reply.status === "rejected");
-      expect(rejected).toHaveLength(7);
-      expect(rejected.every((reply) => reply.status === "rejected" && reply.reason instanceof ApiError && reply.reason.code === "VALIDATION_FAILED")).toBe(true);
+      expect(rejected.map(reply => reply.reason)).toEqual([]);
+      expect(replies.filter((reply) => reply.status === "fulfilled")).toHaveLength(8);
       const final = await getMyProductFeedback(concurrentDb, auth(), item.id);
-      expect(final.attachments).toHaveLength(5);
-      expect(final.progressEvents).toHaveLength(2);
+      expect(final.attachments).toHaveLength(12);
+      expect(final.progressEvents).toHaveLength(9);
+      expect(new Set(final.attachments.filter((attachment) => attachment.fileName.startsWith("extra-")).map((attachment) => attachment.messageId)).size).toBe(8);
     } finally {
       await concurrentDb.close();
       await isolated.drop();
     }
+  });
+
+  it("keeps an admitted reply's upload receipt while another reply cleans up before its transaction starts", async () => {
+    const isolated = await createEphemeralTestDatabase("fbadmission"), concurrentDb = createPostgresDatabase(isolated.url);
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    let admitted!: () => void;
+    const started = new Promise<void>(resolve => { admitted = resolve; });
+    try {
+      await seedCoreGraph(concurrentDb, { organization: { id: "org-1" }, users: [{ id: "user-1" }] });
+      const { objectStore } = makeObjectStore();
+      const item = await createProductFeedback(concurrentDb, objectStore, auth(), createInput());
+      const delayedDb: Database = { query: concurrentDb.query, transaction: async (fn, options) => {
+        admitted(); await held; return concurrentDb.transaction(fn, options);
+      } };
+      const pending = replyToProductFeedback(delayedDb, objectStore, auth(), item.id, {
+        message: "Waiting for a transaction", attachments: [attachmentInput("delayed.png")]
+      }).then(result => ({ result }), error => ({ error }));
+      await started;
+      try {
+        await replyToProductFeedback(concurrentDb, objectStore, auth(), item.id, { message: "Already completed", attachments: [attachmentInput("completed.png")] });
+      } finally { release(); }
+      expect(await pending).toMatchObject({ result: { id: item.id } });
+      const final = await getMyProductFeedback(concurrentDb, auth(), item.id);
+      expect(final.progressEvents).toHaveLength(3); expect(final.attachments).toHaveLength(2);
+    } finally { release(); await concurrentDb.close(); await isolated.drop(); }
+  });
+
+  it("reclaims expired upload admissions and immediately eligible failed receipts while retaining a fresh admission", async () => {
+    const { objectStore, deleteFn } = makeObjectStore();
+    await db.query(`insert into product_feedback_attachment_uploads(id,organization_id,uploaded_by_user_id,object_keys,in_flight,created_at) values
+      ('00000000-0000-4000-8000-000000000241','org-1','user-1',ARRAY['expired-admission'],true,now()-interval '6 minutes'),
+      ('00000000-0000-4000-8000-000000000242','org-1','user-1',ARRAY['fresh-admission'],true,now()),
+      ('00000000-0000-4000-8000-000000000243','org-1','user-1',ARRAY['failed-admission'],false,now())`);
+    await cleanupFeedbackAttachmentUploads(db, objectStore, auth());
+    expect(deleteFn.mock.calls).toEqual([["expired-admission"],["failed-admission"]]);
+    expect((await db.query("select object_keys from product_feedback_attachment_uploads")).rows).toEqual([{ object_keys: ["fresh-admission"] }]);
+  });
+
+  it("protects active object IO with its row lock after the admission expiry", async () => {
+    const isolated = await createEphemeralTestDatabase("fbactive"), concurrentDb = createPostgresDatabase(isolated.url);
+    let release!: () => void, entered!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; }), started = new Promise<void>(resolve => { entered = resolve; });
+    let pending: Promise<unknown> | undefined;
+    try {
+      await seedCoreGraph(concurrentDb, { organization: { id: "org-1" }, users: [{ id: "user-1" }] });
+      const { objectStore, deleteFn } = makeObjectStore();
+      const item = await createProductFeedback(concurrentDb, objectStore, auth(), createInput());
+      let first = true;
+      const expiredAdmission: Database = { query: concurrentDb.query, transaction: async (fn, options) => {
+        if (first) {
+          first = false;
+          await concurrentDb.query("update product_feedback_attachment_uploads set created_at=now()-interval '6 minutes' where in_flight");
+        }
+        return concurrentDb.transaction(fn, options);
+      } };
+      pending = replyToProductFeedback(expiredAdmission, { ...objectStore, put: async input => {
+        entered(); await held; return objectStore.put(input);
+      } }, auth(), item.id, { message: "Slow object IO", attachments: [attachmentInput("slow.png")] });
+      await started;
+      await cleanupFeedbackAttachmentUploads(concurrentDb, objectStore, auth());
+      expect(deleteFn).not.toHaveBeenCalled();
+      expect((await concurrentDb.query("select id from product_feedback_attachment_uploads")).rows).toHaveLength(1);
+      release(); await pending;
+      expect((await getMyProductFeedback(concurrentDb, auth(), item.id)).attachments).toHaveLength(1);
+    } finally { release(); await pending; await concurrentDb.close(); await isolated.drop(); }
   });
 
   it("requires a public explanation when closing via progress or legacy PATCH and when reopening", async () => {

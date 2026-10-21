@@ -127,7 +127,7 @@ test.describe("parameter-admin project list", () => {
     }
   });
 
-  test("gates canonical project Delete with its retention explanation at PC 1440x900", async ({ page, request }, testInfo) => {
+  test("previews canonical project deletion and retained shared resources at PC 1440x900", async ({ page, request }, testInfo) => {
     // @acceptance PARAM-ADMIN-003
     // @operation PARAM-ADMIN-003
     const list = await request.get(apiRoute("/api/v1/parameters/admin/projects"), { headers: adminHeaders() });
@@ -143,26 +143,31 @@ test.describe("parameter-admin project list", () => {
     await dismissXiaozeHint(page);
     const row = page.getByRole("row").filter({ hasText: project.name }).first();
     await row.getByRole("button", { name: `${project.name}操作：更多`, exact: true }).click();
-    const deleteAction = page.getByRole("menuitem", { name: `删除 ${project.name}`, exact: true });
-    await expect(deleteAction).toBeDisabled();
-    const explanation = "项目需保留规范历史，不能删除；可归档后从默认清单收起。";
-    await expect(deleteAction).toHaveAccessibleDescription(explanation);
-    await expect(page.getByText(explanation, { exact: true })).toBeVisible();
+    const deleteAction = page.getByRole("menuitem", { name: `删除影响预览 ${project.name}`, exact: true });
+    await expect(deleteAction).toBeEnabled();
     await expect(page.getByRole("menuitem", { name: `${project.status === "archived" ? "恢复项目" : "归档"} ${project.name}`, exact: true })).toBeEnabled();
+    await deleteAction.click();
+    const dialog = page.getByRole("dialog", { name: /项目删除影响预览/ });
+    await expect(dialog.getByRole("region", { name: "项目专属数据：计划清理" })).toBeVisible();
+    await expect(dialog).toContainText("平台共享参数定义");
+    await expect(dialog).toContainText("共享保留");
+    await expect(dialog.getByRole("button", { name: "确认彻底删除", exact: true })).toBeDisabled();
     expect(project.canonicalOwned).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     const screenshot = testInfo.outputPath("canonical-project-delete-1440.png");
     await page.screenshot({ path: screenshot, fullPage: true });
     await testInfo.attach("canonical-project-delete-1440", { path: screenshot, contentType: "image/png" });
     await recordOperationEvidence({
-      operationId: "PARAM-ADMIN-003", title: "canonical project deletion retention gate", status: "passed",
+      operationId: "PARAM-ADMIN-003", title: "canonical project deletion scope and retained resources", status: "passed",
       role: "Admin", route: "/parameter-admin/projects", page, testInfo, artifacts: [screenshot],
       api: [summarizeApiResponse(list, { method: "GET", path: "/api/v1/parameters/admin/projects",
         responseSummary: `project=${project.id}; canonicalOwned=true` })],
       db: [{ table: "parameter_catalog.project_parameter_bindings", predicate: `project_id=${project.id}`,
         observed: "Canonical Bindings retained", rowCount: bindings.rows[0].count }],
-      notes: "At 1440x900 the canonical project's Delete is disabled with an accessible, visible retention explanation; archive or restore remains available without deleting retained bindings."
+      notes: "At 1440x900 the administrator opens a real canonical deletion preview, inspects planned project data and retained shared resources, and cannot delete without explicit confirmation. Archive or restore remains available."
     });
+    await dialog.getByRole("button", { name: "关闭预览", exact: true }).click();
+    expect((await request.get(apiRoute(`/api/v1/parameters/admin/projects/${project.id}`), { headers: adminHeaders() })).status()).toBe(200);
   });
 
   test("preserves DataTable behavior and URL history at PC 1440x900", async ({ page, request }, testInfo) => {
@@ -291,11 +296,13 @@ test.describe("parameter-admin project list", () => {
       await expect(page.getByRole("dialog", { name: "编辑项目详情" })).toBeVisible();
       await page.getByRole("dialog", { name: "编辑项目详情" }).getByRole("button", { name: "取消" }).click();
       await firstRow.getByRole("button", { name: /更多/ }).click();
-      await page.getByRole("menuitem", { name: /删除/ }).click();
-      await expect(page.getByRole("dialog", { name: /删除项目/ })).toBeVisible();
-      await expect(page.getByRole("dialog", { name: /删除项目/ })).toContainText("此操作不可撤销");
-      await expect(page.getByRole("dialog", { name: /删除项目/ })).toContainText("共享参数库中的参数定义会保留。");
-      await page.getByRole("dialog", { name: /删除项目/ }).getByRole("button", { name: "取消" }).click();
+      await page.getByRole("menuitem", { name: /^删除影响预览 / }).click();
+      const deletePreview = page.getByRole("dialog", { name: /项目删除影响预览/ });
+      await expect(deletePreview).toBeVisible();
+      await expect(deletePreview).toContainText("无法恢复");
+      await expect(deletePreview).toContainText("平台共享参数定义");
+      await expect(deletePreview.getByRole("button", { name: "确认彻底删除", exact: true })).toBeDisabled();
+      await deletePreview.getByRole("button", { name: "关闭预览", exact: true }).click();
       await expect(page).toHaveURL(/\/parameter-admin\/projects\?/);
 
       const listUrl = page.url();

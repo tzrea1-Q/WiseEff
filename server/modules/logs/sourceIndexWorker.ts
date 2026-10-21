@@ -38,7 +38,9 @@ export async function processNextSourceIndexJob(options: SourceIndexWorkerOption
   try {
     if (!objectStore.getStream) throw new Error("源码索引需要支持流式读取的对象存储。");
     await withClaim(async (tx) => {
-      await tx.query("delete from log_source_files where snapshot_id = $1 and organization_id = $2", [snapshot.id, snapshot.organization_id]);
+      await tx.query(`delete from log_source_files file where snapshot_id=$1 and organization_id=$2
+        and not exists(select 1 from log_evidence evidence where evidence.organization_id=file.organization_id
+          and evidence.source_snapshot_id=file.snapshot_id and evidence.source_path=file.path)`, [snapshot.id, snapshot.organization_id]);
       await tx.query(`update log_source_snapshots set files_processed = 0, files_total = 0, file_count = 0,
         skipped_count = 0, skipped_files = '[]'::jsonb, statement_count = 0, statements_truncated = false,
         error = null, updated_at = now() where id = $1 and organization_id = $2`, [snapshot.id, snapshot.organization_id]);
@@ -46,12 +48,17 @@ export async function processNextSourceIndexJob(options: SourceIndexWorkerOption
     directory = await mkdtemp(join(tmpdir(), "wiseeff-source-index-"));
     const archivePath = join(directory, "archive");
     let compressedBytes = 0;
-    await pipeline(await objectStore.getStream(snapshot.storage_key), new Transform({
-      transform(chunk: Buffer, _encoding, callback) {
-        compressedBytes += chunk.length;
-        callback(compressedBytes > limits.maxCompressedBytes ? new Error("源码压缩上传大小超过上限") : null, chunk);
-      }
-    }), createWriteStream(archivePath, { flags: "wx", mode: 0o600 }));
+    try {
+      await pipeline(await objectStore.getStream(snapshot.storage_key), new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          compressedBytes += chunk.length;
+          callback(compressedBytes > limits.maxCompressedBytes ? new Error("源码压缩上传大小超过上限") : null, chunk);
+        }
+      }), createWriteStream(archivePath, { flags: "wx", mode: 0o600 }));
+    } catch (error) {
+      if (compressedBytes > limits.maxCompressedBytes) throw error;
+      throw new Error("源码原始文件读取失败，请检查对象存储连接或文件是否存在后重试。");
+    }
     let statementCount = 0, statementsTruncated = false;
     const statementBudget = createSourceStatementBudget();
     const summary = await indexSourceArchive({
@@ -69,9 +76,16 @@ export async function processNextSourceIndexJob(options: SourceIndexWorkerOption
         });
         statementsTruncated ||= extracted.truncated;
         await withClaim(async (tx) => {
-          const fileId = randomUUID();
-          await tx.query(`insert into log_source_files (id, organization_id, snapshot_id, path, size_bytes, sha256, line_count, language)
-            values ($1,$2,$3,$4,$5,$6,$7,$8)`, [fileId, snapshot.organization_id, snapshot.id, file.path, file.sizeBytes, file.sha256, file.lineCount, file.language]);
+          // Cited files retain their identity and bytes across retry/restore, even if indexing fails.
+          const indexed = await tx.query<{ id: string }>(`insert into log_source_files (id, organization_id, snapshot_id, path, size_bytes, sha256, line_count, language)
+            values ($1,$2,$3,$4,$5,$6,$7,$8)
+            on conflict(snapshot_id,organization_id,path) do update set line_count=excluded.line_count,language=excluded.language
+              where log_source_files.sha256=excluded.sha256 and log_source_files.size_bytes=excluded.size_bytes returning id`,
+          [randomUUID(), snapshot.organization_id, snapshot.id, file.path, file.sizeBytes, file.sha256, file.lineCount, file.language]);
+          const fileId = indexed.rows[0]?.id;
+          if (!fileId) throw new Error("源码内容与既有报告引用不一致，请恢复原始源码文件后重试。");
+          await tx.query("delete from log_source_chunks where file_id=$1 and organization_id=$2", [fileId, snapshot.organization_id]);
+          await tx.query("delete from log_source_statements where file_id=$1 and organization_id=$2", [fileId, snapshot.organization_id]);
           let chunkOrdinal = 0;
           for (const chunk of sourceChunks(file.text)) {
             await tx.query(`insert into log_source_chunks (id, organization_id, snapshot_id, file_id, start_line, end_line, content, chunk_ordinal)
@@ -92,6 +106,8 @@ export async function processNextSourceIndexJob(options: SourceIndexWorkerOption
       })
     });
     await withClaim(async (tx) => {
+      const files = await tx.query<{ count: number }>("select count(*)::integer as count from log_source_files where snapshot_id=$1 and organization_id=$2", [snapshot.id, snapshot.organization_id]);
+      if (files.rows[0]!.count !== summary.fileCount) throw new Error("源码压缩包缺少既有报告引用的文件，请恢复原始源码文件后重试。");
       await tx.query(`update log_source_snapshots set status='ready', files_processed=$3, files_total=$4,
         file_count=$5, skipped_count=$6, skipped_files=$7::jsonb, statement_count=$8, statements_truncated=$9,
         error=null, updated_at=now() where id=$1 and organization_id=$2`,
@@ -104,7 +120,9 @@ export async function processNextSourceIndexJob(options: SourceIndexWorkerOption
         const failed = await tx.query(`update log_source_snapshots set status='failed', file_count=0, error=$4, updated_at=now()
           where id=$1 and organization_id=$2 and status='indexing' and index_attempt_id=$3 returning id`,
         [snapshot.id, snapshot.organization_id, snapshot.index_attempt_id, (error instanceof Error ? error.message : String(error)).slice(0, 2000)]);
-        if (failed.rows.length) await tx.query("delete from log_source_files where snapshot_id=$1 and organization_id=$2", [snapshot.id, snapshot.organization_id]);
+        if (failed.rows.length) await tx.query(`delete from log_source_files file where snapshot_id=$1 and organization_id=$2
+          and not exists(select 1 from log_evidence evidence where evidence.organization_id=file.organization_id
+            and evidence.source_snapshot_id=file.snapshot_id and evidence.source_path=file.path)`, [snapshot.id, snapshot.organization_id]);
       });
     }
   } finally {

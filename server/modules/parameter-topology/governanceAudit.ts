@@ -32,6 +32,8 @@ export type GovernanceAuditAction =
   | "value-change-reviewed"
   | "value-change-applied"
   | "value-change-withdrawn"
+  | "source-request-cancelled"
+  | "source-request-reassigned"
   | "enablement-changed"
   | "baseline-mutated"
   | "identity-migrated";

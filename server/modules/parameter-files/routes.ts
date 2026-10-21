@@ -71,6 +71,8 @@ import {
 } from "./candidateService";
 import { searchProjectDts } from "./dtsSearchService";
 import { registerSourceRevisionRoutes } from "./sourceRevisionRoutes";
+import { registerCanonicalMemberAdditionRoutes } from "./canonicalMemberAdditionRoutes";
+import { registerMemberRemovalRoutes } from "./memberRemovalRoutes";
 import { previewSourceRevisionCandidate, submitSourceRevisionCandidate } from "./sourceRevisionService";
 import { getParameterFileVersionStructure } from "./structuralReadService";
 import { syncFileVersion } from "./syncService";
@@ -123,6 +125,11 @@ const paramsWithConfigSetFileIdSchema = paramsWithConfigSetIdSchema.extend({
 const paramsWithBaselineIdSchema = paramsWithProjectIdSchema.extend({
   baselineId: z.string().min(1)
 });
+
+const canonicalBaselineRestoreBodySchema = z.object({
+  sourceConfigRevisionId: z.string().min(1).optional(),proofToken: z.string().regex(/^[0-9a-f]{64}$/),
+  confirmCompositionChanges: z.boolean(),reason: z.string().trim().min(1).max(2000),clientMutationId: z.string().trim().min(1).max(160)
+}).strict();
 
 
 const uploadVersionBodySchema = z.object({
@@ -288,11 +295,13 @@ export function registerParameterFileRoutes(
   }
 ) {
   registerSourceRevisionRoutes(router, options);
+  registerCanonicalMemberAdditionRoutes(router, options);
   const refusalAuditSink = options.refusalAuditSink
     ? (assertTrustedRefusalAuditSink(options.refusalAuditSink), options.refusalAuditSink)
     : options.db && isRootDatabase(options.db)
       ? createTrustedRefusalAuditSink(options.db)
       : undefined;
+  registerMemberRemovalRoutes(router, { ...options, refusalAuditSink });
 
   function requireSubmissionRefusalSink() {
     if (!refusalAuditSink) {
@@ -792,6 +801,12 @@ export function registerParameterFileRoutes(
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
     const item = await previewRestoreBaseline(db, auth, params.baselineId);
+    if (item.members.some((row) => row.canonicalOwned)) {
+      const { previewCanonicalBaselineRestore } = await import("./canonicalBaselineRestore");
+      item.canonical = await previewCanonicalBaselineRestore(db,requireObjectStore(options.objectStore),auth,
+        { projectId: params.projectId,baselineId: params.baselineId,
+          sourceConfigRevisionId: firstQueryValue(request.query.sourceConfigRevisionId) });
+    }
     return { status: 200, body: { item } };
   });
 
@@ -802,6 +817,14 @@ export function registerParameterFileRoutes(
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
     try {
+      const preview = await previewRestoreBaseline(db,auth,params.baselineId);
+      if (preview.members.some((row) => row.canonicalOwned) && request.body !== null && typeof request.body === "object" && "proofToken" in request.body) {
+        const { applyCanonicalBaselineRestore } = await import("./canonicalBaselineRestore");
+        const body = parseWithSchema(canonicalBaselineRestoreBodySchema,request.body,"Invalid configuration restore payload.");
+        const item = await applyCanonicalBaselineRestore(db,objectStore,auth,{ ...body,projectId: params.projectId,baselineId: params.baselineId },{
+          invocation: createUserInvocation(auth),requestId: request.requestId,refusalSink: requireSubmissionRefusalSink() });
+        return { status: 200,body: { item } };
+      }
       const item = await rollbackToBaseline(db, objectStore, auth, params.baselineId, { requestId: request.requestId });
       return { status: 200, body: { item } };
     } catch (error) {

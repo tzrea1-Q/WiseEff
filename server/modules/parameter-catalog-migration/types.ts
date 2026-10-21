@@ -168,6 +168,11 @@ export type DefinitionReplacementView = {
   readonly version: number;
   readonly projects: readonly ReplacementProjectView[];
   readonly createdAt: string;
+  readonly retirementEvidence?: {
+    readonly scope: "platform";
+    readonly remainingCurrentReferenceCount: number;
+    readonly authoritative: true;
+  };
 };
 
 export type DefinitionReplacementPreviewView = {
@@ -186,6 +191,8 @@ export type DefinitionReplacementPreviewView = {
 export type DefinitionReplacementFailure =
   | { readonly kind: "not-found" }
   | { readonly kind: "permission-denied" }
+  | { readonly kind: "current-project-references"; readonly currentReferenceCount: number }
+  | { readonly kind: "replacement-target-unavailable" }
   | { readonly kind: "invalid-command"; readonly reason: string }
   | { readonly kind: "release-drift"; readonly expected: CatalogReleasePin; readonly actual: CatalogReleasePin }
   | { readonly kind: "synchronization-busy" }
@@ -210,6 +217,8 @@ export type DefinitionReplacementFailure =
     }
   | {
       readonly kind: "target-identity-conflict";
+      readonly existingDefinitionId?: string;
+      readonly subjectId?: string;
       readonly reason:
         | "duplicate-natural-key"
         | "duplicate-canonical-key"

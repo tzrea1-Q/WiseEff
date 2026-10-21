@@ -4,7 +4,7 @@ import type { ParameterFileRepository, SourceRevisionRequest } from "@/applicati
 import { SourceRevisionReviewPanel } from "./SourceRevisionReviewPanel";
 
 const pending: SourceRevisionRequest = { id: "request", projectId: "project", candidateId: "candidate", fileId: "file", fileName: "board.dts",
-  configSetId: "set", status: "pending", reason: "保留源码表达", submitterUserId: "author", assignedToUserId: "reviewer", reviewerUserId: null,
+  configSetId: "set", status: "pending", applicationMode: "separate_review", reason: "保留源码表达", submitterUserId: "author", assignedToUserId: "reviewer", reviewerUserId: null,
   reviewerNote: null, createdAt: "2026-10-19T00:00:00Z", updatedAt: "2026-10-19T00:00:00Z", proofDigest: "a".repeat(64),
   impact: { parameterChanges: 0, nodeAdditions: 0, nodeRemovals: 0 },
   before: '/ { names = "", "same", "same"; values = /bits/ 64 <9007199254740993>; };\n',
@@ -24,10 +24,52 @@ function setup() {
   const element = (options: { userId?: string; canReview?: boolean; requestId?: string; refreshVersion?: number } = {}) => <SourceRevisionReviewPanel
     projectId="project" requestId={options.requestId ?? pending.id} repository={repository} currentUserId={options.userId ?? "reviewer"}
     canReview={options.canReview ?? true} refreshVersion={options.refreshVersion ?? 0} onRequestsChanged={changed} onBusyChange={busy} />;
-  return { get, review, withdraw, changed, busy, element };
+  return { get, review, withdraw, changed, busy, repository, element };
 }
 
 describe("whole-DTS source review", () => {
+  it("offers only currently eligible reviewers and reassigns without signing a review", async () => {
+    const f = setup();
+    f.get.mockResolvedValue({ ...pending,canAdminister: true,eligibleReviewers: [{ userId: "new-reviewer",name: "新审核人" }] });
+    const reassign = vi.fn(async () => ({ ...pending,assignedToUserId: "new-reviewer",assignedToName: "新审核人",canAdminister: true }));
+    Object.assign(f.repository,{ reassignSourceRevisionRequest: reassign });
+    render(f.element({ userId: "administrator",canReview: false }));
+    const button = await screen.findByRole("button",{ name: "重新指派审核人" });
+    expect(button).toBeDisabled();
+    fireEvent.click(screen.getByRole("combobox",{ name: "新的源码审核人" }));
+    fireEvent.click(await screen.findByRole("option",{ name: "新审核人" }));
+    fireEvent.click(button);
+    await waitFor(() => expect(reassign).toHaveBeenCalledWith("project","request",{
+      proofDigest: pending.proofDigest,expectedAssignedToUserId: "reviewer",assignedToUserId: "new-reviewer" }));
+    expect(await screen.findByText(/审核人：新审核人/)).toBeInTheDocument();
+    expect(f.review).not.toHaveBeenCalled();
+  });
+  it("lets an administrator cancel an orphaned request with a reason while preserving the frozen source", async () => {
+    const f = setup();
+    f.get.mockResolvedValue({ ...pending,canAdminister: true,eligibleReviewers: [] } as SourceRevisionRequest);
+    const cancel = vi.fn(async () => ({ ...pending,status: "withdrawn",reviewerUserId: null,
+      cancellation: { userId: "administrator",name: "管理员",reason: "双方已离职，解除配置阻塞" } } as SourceRevisionRequest));
+    Object.assign(f.repository,{ cancelSourceRevisionRequest: cancel });
+    render(f.element({ userId: "administrator",canReview: false }));
+    const button = await screen.findByRole("button",{ name: "取消源码请求" });
+    expect(button).toBeDisabled();
+    expect(screen.queryByRole("button",{ name: "批准并应用 DTS" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox",{ name: "取消源码请求的理由" }),{ target: { value: "  双方已离职，解除配置阻塞  " } });
+    fireEvent.click(button);
+    await waitFor(() => expect(cancel).toHaveBeenCalledWith("project","request",{
+      proofDigest: pending.proofDigest,expectedAssignedToUserId: "reviewer",reason: "双方已离职，解除配置阻塞" }));
+    expect(await screen.findByText("管理员取消：管理员 · 双方已离职，解除配置阻塞")).toBeInTheDocument();
+    expect(screen.getByLabelText("DTS 来源变更后").textContent).toBe(pending.after);
+    expect(f.review).not.toHaveBeenCalled();
+  });
+  it("labels an administrator's own application honestly without naming a separate reviewer", async () => {
+    const f = setup();
+    f.get.mockResolvedValue({ ...pending, status: "approved", applicationMode: "administrator_direct", assignedToUserId: null, submitterName: "管理员" });
+    render(f.element({ userId: "author" }));
+    expect(await screen.findByText("管理员本人直接应用 · 未经过独立审核")).toBeInTheDocument();
+    expect(screen.queryByText(/指定软件审核人/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "批准并应用 DTS" })).not.toBeInTheDocument();
+  });
   it("submits the exact frozen proof and trimmed note, preserving verified source after a summary-only receipt", async () => {
     const f = setup(); render(f.element());
     const approve = await screen.findByRole("button", { name: "批准并应用 DTS" });

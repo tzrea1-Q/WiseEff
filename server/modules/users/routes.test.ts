@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createWiseEffServer } from "../../app";
-import type { Database, QueryResult, Queryable } from "../../shared/database/client";
+import type { Database, QueryResult } from "../../shared/database/client";
 import { requestJson } from "../../test/testClient";
 import type { AuthContext } from "../auth/types";
 
@@ -68,7 +68,7 @@ function makeDb(rowsForQuery: (text: string, values: unknown[]) => unknown[] = (
     }
     return { rows: rowsForQuery(text, values) as Row[], rowCount: 1 };
   };
-  const tx: Queryable = { query };
+  const tx: Database = { query, transaction: async (fn) => fn(tx) };
   const db: Database = {
     query,
     transaction: async (fn) => fn(tx)
@@ -113,7 +113,7 @@ describe("user governance routes", () => {
   it("rejects project-scoped roles during user creation", async () => {
     const { db } = makeDb();
 
-    const response = await requestJson(
+    const response = await requestJson<{ error: { code: string } }>(
       createWiseEffServer({
         db,
         auth: { mode: "production", verifier: { verify: async () => adminAuth } }
@@ -358,7 +358,7 @@ describe("user governance routes", () => {
         ];
       }
       if (text.includes("returning") || text.includes("select")) {
-        return [userRow({ id: "u-candidate", roles: [{ projectId: null, roleId: "hardware-committer" }] })];
+        return [userRow({ id: "u-candidate", is_active: false, roles: [{ projectId: null, roleId: "hardware-user" }] })];
       }
       return [];
     });

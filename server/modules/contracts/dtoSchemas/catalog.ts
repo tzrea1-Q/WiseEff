@@ -8,6 +8,9 @@ import { parsePreviewRequestSchema, parsePreviewResponseSchema } from "../../log
 import { signalPreviewRequestSchema, signalPreviewResponseSchema } from "../../logs/signalRules";
 import { extractorPreviewRequestSchema, extractorPreviewResponseSchema } from "../../logs/parsing/extractorBuilder";
 import { formatPreviewRequestSchema, formatPreviewResponseSchema } from "../../logs/formatProfile";
+import { organizationBridgeListResponseSchema, organizationBridgeResponseSchema, revokeOrganizationBridgeBodySchema } from "../../deviceBridge/schemas";
+import { createUserBodySchema, roleBindingSchema } from "../../users/schemas";
+import { oidcIdentitySchema, setOidcIdentityBodySchema } from "./oidcMembers";
 
 import {
   xiaozeAgUiRunRequestSchema,
@@ -23,6 +26,8 @@ import {
 } from "./agent";
 import {
   debugDeviceListResponseSchema,
+  debugModuleDeletionBodySchema,
+  debugModuleDeletionPreviewResponseSchema,
   debugNodeListResponseSchema,
   debugNodeOperationResponseSchema,
   debugParameterListResponseSchema,
@@ -71,16 +76,77 @@ import {
   projectListResponseSchema,
   projectAdminListResponseSchema,
   projectAdminDetailResponseSchema,
-  projectAdminSummaryResponseSchema
+  projectAdminSummaryResponseSchema,
+  projectDeletionPreviewResponseSchema,
+  projectPurgeRequestSchema,
+  projectDeletionStatusResponseSchema,
+  projectDeletionStatusListResponseSchema
 } from "./parameters";
 import { parameterModuleRegistryResponseSchema } from "./parameterModules";
 import { parameterDashboardSummaryResponseSchema } from "./parameterDashboard";
+import { administratorMemberRemovalApplyRequestSchema, administratorMemberRemovalPreviewResponseSchema, administratorMemberRemovalApplyResponseSchema } from "./memberRemoval";
+import { logDeletionPreviewResponseSchema, logDeletionStatusResponseSchema, logDeletionStatusListResponseSchema } from "./logs";
+import { memberAdditionBodySchema, memberAdditionApplyBodySchema, memberAdditionPreviewResponseSchema, memberAdditionApplyResponseSchema } from "./canonicalMemberAddition";
+import { skillDeletionRequestSchema, skillDeletionPreviewResponseSchema, skillDeletionStatusResponseSchema, skillDeletionListResponseSchema } from "./skillDeletion";
+import { releaseBaselineRestoreRequestSchema, releaseBaselineRestorePreviewResponseSchema, releaseBaselineRollbackResponseSchema } from "./canonicalConfigurationRestore";
 
 /**
  * OpenAPI component names realized with Zod (parameters / logs / debugging /
  * Xiaoze). Names not listed here stay as `x-wiseeff-schema` placeholders.
  */
+const userGovernanceDtoSchema = z.object({
+  id: z.string(), organizationId: z.string(), name: z.string(), email: z.string().nullable(),
+  username: z.string().nullable(), title: z.string(), isActive: z.boolean(), createdAt: z.string(),
+  lastActiveAt: z.string().nullable(), roles: z.array(roleBindingSchema.extend({ projectId: z.string().nullable() })),
+  oidcIdentity: oidcIdentitySchema.optional(), legacyOidcEmail: z.string().optional()
+});
+const registrationRoleRequestDtoSchema = z.object({
+  id: z.string(), organizationId: z.string(), organizationName: z.string(), userId: z.string(), userName: z.string(),
+  username: z.string().nullable(), currentRoleId: roleBindingSchema.shape.roleId, requestedRoleId: roleBindingSchema.shape.roleId,
+  status: z.enum(["pending", "approved", "rejected"]), createdAt: z.string(), decidedAt: z.string().nullable(),
+  decidedByUserId: z.string().nullable(),
+  decisionOutcome: z.enum(["requested-role-enabled", "basic-enabled", "rejected-disabled", "rejected-preserved"]).nullable(),
+  decisionCanLogin: z.boolean().nullable(), decisionRoleIds: z.array(roleBindingSchema.shape.roleId).nullable(), accountChanged: z.boolean()
+});
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
+  RegistrationRoleRequestResponse: z.object({ item: registrationRoleRequestDtoSchema }),
+  RegistrationRoleRequestListResponse: z.object({ items: z.array(registrationRoleRequestDtoSchema) }),
+  DeleteDebugModuleRequest: debugModuleDeletionBodySchema,
+  DebugModuleDeletionPreviewResponse: debugModuleDeletionPreviewResponseSchema,
+  CreateLocalAccountUserRequest: createUserBodySchema,
+  SetUserOidcIdentityRequest: setOidcIdentityBodySchema,
+  UserGovernanceResponse: z.object({ item: userGovernanceDtoSchema }),
+  UserGovernanceListResponse: z.object({ items: z.array(userGovernanceDtoSchema) }),
+  LocalAuthPublicConfigResponse: z.object({
+    provider: z.enum(["local", "oidc", "hmac", "development"]), selfRegisterEnabled: z.boolean(),
+    hasLocalAdmin: z.boolean(), evaluationOrganizationName: z.string().nullable(), oidcIssuer: z.string().optional()
+  }),
+  OrganizationDeviceBridgeListResponse: organizationBridgeListResponseSchema,
+  OrganizationDeviceBridgeResponse: organizationBridgeResponseSchema,
+  RevokeOrganizationDeviceBridgeRequest: revokeOrganizationBridgeBodySchema,
+  UpdateCurrentUserProfileRequest: z.object({
+    name: z.string().trim().min(1).optional(),
+    title: z.string().trim().min(1).optional()
+  }).strict(),
+  RetryLogSourceSnapshotRequest: z.object({}).strict(),
+  SkillDeletionRequest: skillDeletionRequestSchema,
+  SkillDeletionPreviewResponse: skillDeletionPreviewResponseSchema,
+  SkillDeletionStatusResponse: skillDeletionStatusResponseSchema,
+  SkillDeletionListResponse: skillDeletionListResponseSchema,
+  ReleaseBaselineRestoreRequest: releaseBaselineRestoreRequestSchema,
+  ReleaseBaselineRestorePreviewResponse: releaseBaselineRestorePreviewResponseSchema,
+  ReleaseBaselineRollbackResponse: releaseBaselineRollbackResponseSchema,
+  CanonicalMemberAdditionPreviewRequest: memberAdditionBodySchema,
+  CanonicalMemberAdditionApplyRequest: memberAdditionApplyBodySchema,
+  CanonicalMemberAdditionPreviewResponse: memberAdditionPreviewResponseSchema,
+  CanonicalMemberAdditionApplyResponse: memberAdditionApplyResponseSchema,
+  AdministratorMemberRemovalApplyRequest: administratorMemberRemovalApplyRequestSchema,
+  AdministratorMemberRemovalPreviewResponse: administratorMemberRemovalPreviewResponseSchema,
+  AdministratorMemberRemovalApplyResponse: administratorMemberRemovalApplyResponseSchema,
+  LogDeletionPreviewResponse: logDeletionPreviewResponseSchema,
+  LogDeletionRequest: z.object({ version: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
+  LogDeletionStatusResponse: logDeletionStatusResponseSchema,
+  LogDeletionStatusListResponse: logDeletionStatusListResponseSchema,
   LogSkillRecommendationRequest: logSkillRecommendationRequestSchema,
   LogSkillRecommendationResponse: logSkillRecommendationResponseSchema,
   LogParsePreviewRequest: parsePreviewRequestSchema,
@@ -123,6 +189,10 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ProjectAdminListResponse: projectAdminListResponseSchema,
   ProjectAdminDetailResponse: projectAdminDetailResponseSchema,
   ProjectAdminSummaryResponse: projectAdminSummaryResponseSchema,
+  ProjectDeletionPreviewResponse: projectDeletionPreviewResponseSchema,
+  ProjectPurgeRequest: projectPurgeRequestSchema,
+  ProjectDeletionStatusResponse: projectDeletionStatusResponseSchema,
+  ProjectDeletionStatusListResponse: projectDeletionStatusListResponseSchema,
   ParameterListResponse: parameterListResponseSchema,
   ParameterResponse: parameterResponseSchema,
   ParameterHistoryResponse: parameterHistoryResponseSchema,
@@ -196,10 +266,24 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 };
 
 export const dtoSchemaCoveredRouteIds = [
+  "users.listRegistrationRoleRequests", "users.approveRegistrationRoleRequest", "users.rejectRegistrationRoleRequest", "users.enableBasicRegistrationRoleRequest",
+  "debugging.admin.previewModuleDeletion",
+  "auth.localConfig", "users.list", "users.create", "users.setOidcIdentity",
+  "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.revokeOrganizationBridge",
+  "logs.restoreSourceSnapshot",
+  "logs.retrySourceSnapshot",
+  "parameters.previewRestoreReleaseBaseline", "parameters.rollbackReleaseBaseline",
+  "logs.listSkillDeletions", "logs.previewSkillDeletion", "logs.getSkillDeletionStatus", "logs.purgeSkill",
+  "parameterFiles.previewCanonicalMemberAddition", "parameterFiles.applyCanonicalMemberAddition",
+  "parameterFiles.previewAdministratorMemberRemoval", "parameterFiles.applyAdministratorMemberRemoval",
+  "logs.previewDeletion",
+  "logs.purge", "logs.deletionStatus", "logs.pendingDeletions",
   "parameters.listProjects",
   "parameters.admin.listProjects",
   "parameters.admin.getProject",
   "parameters.list",
+  "parameters.previewAdminProjectDeletion", "parameters.purgeAdminProject",
+  "parameters.getAdminProjectDeletionStatus", "parameters.listAdminProjectDeletions",
   "parameters.get",
   "parameters.history",
   "parameters.saveDraft",

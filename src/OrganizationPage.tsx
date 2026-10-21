@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { OrganizationAdminArea } from "@/application/organization/organizationAdminPath";
 import { OrganizationAdminScopeNav } from "@/components/admin/OrganizationAdminScopeNav";
+import { OrganizationBridgePanel } from "@/components/admin/OrganizationBridgePanel";
+import { canPerform } from "@/app/permissions";
 import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { SettingsFormPage, SettingsFormSection, useDirtyState } from "@/components/layout/SettingsFormPage";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
@@ -22,12 +24,14 @@ export type OrganizationActions = {
 
 type OrganizationPageProps = UserPermissionsPageProps & {
   area?: OrganizationAdminArea;
+  apiMode?: boolean;
   organizationActions?: OrganizationActions;
   onOrganizationUpdated?: (organization: OrganizationRecord) => void | Promise<void>;
 };
 
 export function OrganizationPage({
   area = "profile",
+  apiMode = false,
   organizationActions,
   onOrganizationUpdated,
   ...memberProps
@@ -103,7 +107,7 @@ export function OrganizationPage({
   return (
     <div className="organization-page">
       <OrganizationAdminScopeNav active={area} onNavigate={memberProps.onNavigate} />
-      {area === "members" ? (
+      {area === "bridges" ? <OrganizationBridgePanel enabled={apiMode && canPerform(memberProps.state.activeRoleId, "users.manage")} /> : area === "members" ? (
         <UserPermissionsPage {...memberProps} />
       ) : (
         <section className="organization-profile" aria-label="组织档案">

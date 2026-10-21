@@ -208,6 +208,7 @@ export function createOidcVerifier(options: OidcVerifierOptions): TokenVerifier 
       }
 
       return {
+        externalIdentity: { provider: "oidc", issuer: options.issuer },
         user: {
           id: subject,
           organizationId,

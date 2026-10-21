@@ -36,6 +36,8 @@ export const CANONICAL_SOURCE_LOCK_RELATIONS = [
 ] as const;
 
 const CANONICAL_SOURCE_READ_FUNCTIONS = [
+  "parameter_catalog.source_origin_matches(text, text, text)",
+  "parameter_catalog.source_member_is_restored(text, text)",
   "parameter_catalog.is_replaced_current_binding(text)",
   "parameter_catalog.resolve_current_binding_by_source_occurrence(text, text, text)",
   "parameter_catalog.preview_parameter_definition_purge(text)",
@@ -45,6 +47,17 @@ const CANONICAL_SOURCE_READ_FUNCTIONS = [
   "parameter_catalog.finish_parameter_definition_erasure_object(text, text)",
   "parameter_catalog.lock_parameter_plane_archive()",
   "parameter_catalog.definition_erasure_object_is_referenced(text, text)",
+  "parameter_catalog.lock_log_erasure(text, text, text)",
+  "parameter_catalog.read_log_erasure(text, text, text)",
+  "parameter_catalog.list_log_erasures(text, text)",
+  "parameter_catalog.purge_log(text, text, text, text)",
+  "parameter_catalog.finish_log_erasure_object(text, text, text, text)",
+  "parameter_catalog.preview_project_deletion_catalog(text, text, text)",
+  "parameter_catalog.lock_project_erasure(text, text, text)",
+  "parameter_catalog.read_project_erasure(text, text, text)",
+  "parameter_catalog.purge_project(text, text, text, text)",
+  "parameter_catalog.finish_project_erasure_object(text, text, text, text)",
+  "parameter_catalog.list_project_erasures(text, text)",
 ] as const;
 
 export type PublicationRuntimeLoginMode = "official" | "lab";
@@ -428,6 +441,17 @@ export async function provisionPublicationRuntimeLogins(
 
       await grantPublicAppDml(admin, names.api);
       await grantPublicAppDml(admin, names.worker);
+      const oidcIdentities = await admin.query<{ exists: boolean }>("select to_regclass('public.user_oidc_identities') is not null as exists");
+      if (oidcIdentities.rows[0]?.exists) {
+        await admin.query(`revoke insert, update, delete on public.user_oidc_identities from ${quoteIdent(names.worker)}`);
+      }
+      const erasedLogJob = await admin.query<{ exists: boolean }>(
+        "select to_regprocedure('public.is_erased_log_job(text,text,text)') is not null as exists",
+      );
+      if (erasedLogJob.rows[0]?.exists) {
+        await admin.query(`revoke execute on function public.is_erased_log_job(text,text,text) from public, ${quoteIdent(names.manager)}`);
+        await admin.query(`grant execute on function public.is_erased_log_job(text,text,text) to ${quoteIdent(names.api)}, ${quoteIdent(names.worker)}`);
+      }
       await revokePublicDml(admin, names.manager);
       await grantPublicSelect(admin, names.manager);
       await revokeLegacyStructuralDml(admin, [names.api, names.worker, names.manager]);
@@ -445,6 +469,15 @@ export async function provisionPublicationRuntimeLogins(
           `grant insert, update, delete on table parameter_catalog.${quoteIdent(table)} to ${quoteIdent(names.api)}`,
         );
       }
+      // Replacement history stays immutable; the API owns only approval
+      // consumption and the existing execution/continuation state columns.
+      await admin.query(`grant insert on table parameter_catalog.definition_replacement_previews,
+        parameter_catalog.definition_replacements, parameter_catalog.definition_replacement_projects to ${quoteIdent(names.api)}`);
+      await admin.query(`grant update (consumed_by_replacement_id) on parameter_catalog.definition_replacement_previews to ${quoteIdent(names.api)}`);
+      await admin.query(`grant update (status, successor_release_id, successor_release_digest, approver_principal_id,
+        success_audit_ref, superseded_at, replacement_version, updated_at) on parameter_catalog.definition_replacements to ${quoteIdent(names.api)}`);
+      await admin.query(`grant update (status, blocker_reason, blocked_evidence, new_binding_id, new_value_id,
+        attempt_count, last_error_class, last_error_reason, updated_at) on parameter_catalog.definition_replacement_projects to ${quoteIdent(names.api)}`);
       for (const table of WORKBENCH_BINDING_RELATIONS) {
         await admin.query(
           `grant insert, update, delete on table ${table} to ${quoteIdent(names.api)}`,

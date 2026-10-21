@@ -8,6 +8,7 @@ import type {
 } from "@/application/ports/DtsStructuredRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import { WorkbenchMemberRemovalDialog } from "./WorkbenchMemberRemovalDialog";
 import { CanonicalMemberRemovalSubmitDialog } from "@/features/parameter-review/CanonicalMemberRemovalSubmitDialog";
 import { CanonicalBatchSubmitDialog } from "@/features/parameter-review/CanonicalBatchSubmitDialog";
 import { permitsFreshBatchRequest } from "@/application/project-configuration/candidateRequestReceipt";
@@ -52,6 +53,7 @@ import {
 } from "./workbenchInspectorModel";
 import { WorkbenchInspectorPanel } from "./WorkbenchInspectorPanel";
 import { WorkbenchConfigurationFilesDialog } from "./WorkbenchConfigurationFilesDialog";
+import { WorkbenchMemberAdditionDialog } from "./WorkbenchMemberAdditionDialog";
 import { WorkbenchRevisionGate } from "./WorkbenchRevisionGate";
 import { WorkbenchSourceCanvas } from "./WorkbenchSourceCanvas";
 import { WorkbenchSourceEditingPane } from "./WorkbenchSourceEditingPane";
@@ -156,6 +158,7 @@ export function ProjectConfigurationWorkbench({
 }: ProjectConfigurationWorkbenchProps) {
   const { toast } = useToast();
   const [memberRemovalTarget, setMemberRemovalTarget] = useState<DtsConfigSetMemberFile | null>(null);
+  const [reviewedMemberRemovalTarget, setReviewedMemberRemovalTarget] = useState<DtsConfigSetMemberFile | null>(null);
   const [sourceUpdateReviewTarget, setSourceUpdateReviewTarget] = useState<HTMLDivElement | null>(null);
   const [singleConflictReview, setSingleConflictReview] = useState<{ candidateId: string; active: boolean } | null>(null);
   const showToast = useCallback((message: string) => toast({ tone: "success", message }), [toast]);
@@ -645,6 +648,7 @@ export function ProjectConfigurationWorkbench({
     }
     return result;
   }, [projectFiles, sourceWorkflowsByFileId]);
+  const [memberAdditionOpen, setMemberAdditionOpen] = useState(false);
   const sourceWorkflowSetCanonical = selectedMembers.some(
     (member) => sourceWorkflowsByFileId[member.fileId]?.canonical === true
   );
@@ -680,9 +684,9 @@ export function ProjectConfigurationWorkbench({
         || sourcePreview?.cohortProofToken && updateWorkflow?.proofToken !== sourcePreview.cohortProofToken
         ? "文件版本或来源证明已变化，旧更新不能继续提交；请刷新工作台后重新核对。"
         : "";
-  const canRequestReviewedMemberRemoval = apiMode && selectedMembers.length >= 2
-    && selectedMembers.every((member) => member.format === "json"
-      && sourceWorkflowsByFileId[member.fileId]?.canonical === true);
+  const canRequestReviewedMemberRemoval = apiMode && sourceWorkflowSetCanonical;
+  const canRequestLegacyMemberRemoval = apiMode && selectedMembers.length >= 2 && selectedMembers.every((member) => member.format === "json"
+    && sourceWorkflowsByFileId[member.fileId]?.canonical === true);
   useEffect(() => {
     if (
       canvasMode !== "working" &&
@@ -1981,7 +1985,7 @@ export function ProjectConfigurationWorkbench({
       {inspectorLevel === "release" ? inspectorPanel : null}
 
       {selectedConfigSet ? <WorkbenchConfigurationFilesDialog
-        open={inspectorOpen && inspectorLevel === "config-set" && !createConfigSetOpen}
+        open={inspectorOpen && inspectorLevel === "config-set" && !createConfigSetOpen && !memberAdditionOpen}
         onClose={closeInspector}
         configSet={selectedConfigSet}
         members={selectedMembers}
@@ -2007,10 +2011,11 @@ export function ProjectConfigurationWorkbench({
         onMemberSortOrderChange={setMemberSortOrder}
         onAddMember={() => void runAction("add-member", () => addMemberToConfigSet(memberFileId, memberRole, memberSortOrder))}
         onRemoveMember={(member) => {
-          if (canRequestReviewedMemberRemoval && member.format === "json") setMemberRemovalTarget(member);
+          if (canRequestReviewedMemberRemoval) setMemberRemovalTarget(member);
           else requestRemoveMember(member);
         }}
         canRequestReviewedMemberRemoval={canRequestReviewedMemberRemoval}
+        onReviewedMemberRemoval={canRequestLegacyMemberRemoval ? setReviewedMemberRemovalTarget : undefined}
         onOpenFile={(fileId) => {
           setInspectorOpen(false);
           setInspectorLevelOverride(null);
@@ -2021,7 +2026,18 @@ export function ProjectConfigurationWorkbench({
         onUpdateFile={(fileId) => openInspector("candidates", fileId)}
         onOpenVersions={(fileId) => openInspector("versions", fileId)}
         onAddSourceFile={() => openInspector("candidates")}
+        onCanonicalAdd={apiMode ? () => setMemberAdditionOpen(true) : undefined}
       /> : null}
+      {memberAdditionOpen && selectedConfigSet ? <WorkbenchMemberAdditionDialog projectId={project.id} configSets={configSets}
+        initialConfigSetId={selectedConfigSet.id} availableFiles={ungroupedFiles} onDismiss={() => setMemberAdditionOpen(false)}
+        onApplied={(configSetId, fileId) => {
+          setMemberAdditionOpen(false); setInspectorOpen(false); workspaceLoadSession.retryFiles(); workspaceLoadSession.retryMembers();
+          workspaceLoadSession.retrySource(); workspaceLoadSession.retryStructure(); setSourceWorkflowReloadToken((value) => value + 1);
+          setVersionsReloadToken((value) => value + 1);
+          if (topologyRepository) void revisionGate.session.load(project.id, configSetId, topologyRepository);
+          onNavigate(formatWorkbenchPath(project.id, canvasSearch, { configSet: configSetId, file: fileId, inspector: null,
+            sourceMode: null, version: null, candidate: null, baseline: null, node: null, property: null }));
+        }} /> : null}
 
       <WorkbenchCandidateActivateDialog
         open={activateConfirmOpen}
@@ -2088,21 +2104,29 @@ export function ProjectConfigurationWorkbench({
 
       {taskDock}
 
-      {memberRemovalTarget && selectedConfigSet ? <CanonicalMemberRemovalSubmitDialog
+      {memberRemovalTarget && selectedConfigSet ? <WorkbenchMemberRemovalDialog
         projectId={project.id}
         configSetId={selectedConfigSet.id}
-        configSetName={selectedConfigSet.name === "default" ? "默认配置" : selectedConfigSet.name}
-        member={memberRemovalTarget}
-        members={selectedMembers}
-        onReloadMembers={() => dtsRepository.listConfigSetFiles(project.id, selectedConfigSet.id)}
-        currentUserId={currentUserId}
-        repository={memberRemovalRepository}
+        fileId={memberRemovalTarget.fileId}
+        fileName={memberRemovalTarget.fileName}
         onDismiss={() => setMemberRemovalTarget(null)}
-        onSubmitted={(requestId) => {
+        onApplied={() => {
           setMemberRemovalTarget(null);
-          onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&memberRequest=${encodeURIComponent(requestId)}`);
+          workspaceLoadSession.retryMembers();
+          workspaceLoadSession.retryFiles();
+          setSourceWorkflowReloadToken((value) => value + 1);
+          workspaceLoadSession.retrySource();
+          workspaceLoadSession.retryStructure();
         }}
       /> : null}
+      {reviewedMemberRemovalTarget && selectedConfigSet ? <CanonicalMemberRemovalSubmitDialog projectId={project.id}
+        configSetId={selectedConfigSet.id} configSetName={selectedConfigSet.name === "default" ? "默认配置" : selectedConfigSet.name}
+        member={reviewedMemberRemovalTarget} members={selectedMembers} currentUserId={currentUserId} repository={memberRemovalRepository}
+        onReloadMembers={() => dtsRepository.listConfigSetFiles(project.id, selectedConfigSet.id)}
+        onDismiss={() => setReviewedMemberRemovalTarget(null)} onSubmitted={(requestId) => {
+          setReviewedMemberRemovalTarget(null);
+          onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&memberRequest=${encodeURIComponent(requestId)}`);
+        }} /> : null}
       <WorkbenchBaselineDialogs
         createOpen={createBaselineOpen}
         releaseOpen={releaseBaselineOpen}
@@ -2142,8 +2166,11 @@ export function ProjectConfigurationWorkbench({
           releaseBaselineSession.clearRestorePreview();
           releaseBaselineSession.clearActionError();
         }}
-        onConfirmRestore={() => {
-          void runAction("restore-baseline", restoreWorkbenchBaseline);
+        onConfirmRestore={(input) => {
+          void runAction("restore-baseline", () => restoreWorkbenchBaseline(input));
+        }}
+        onRefreshRestorePreview={(id) => {
+          void runAction("restore-preview", async () => { await releaseBaselineSession.previewRestore(project.id,dtsRepository,id ? { sourceConfigRevisionId: id } : undefined); });
         }}
         onCancelLeave={() => setLeaveConfirmOpen(false)}
         onConfirmLeave={handleDiscardAndLeave}

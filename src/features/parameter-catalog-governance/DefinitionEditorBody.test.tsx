@@ -33,6 +33,112 @@ function EditorDialog({ children }: PropsWithChildren) {
  * through preview -> confirm -> execute -> continue.
  */
 describe("DefinitionEditorBody", () => {
+  it("lets a platform administrator preview identity correction without selecting an unrelated project", async () => {
+    const user = userEvent.setup();
+    const { preview } = renderDialog(undefined, undefined, { actor: "platform-admin", projects: [] });
+    await user.type(screen.getByLabelText("属性键"), "-corrected");
+    await user.type(screen.getByLabelText("修改原因"), "纠正尚未使用的定义身份");
+    await user.click(screen.getByRole("button", { name: "预演影响" }));
+    await waitFor(() => expect(preview).toHaveBeenCalledWith(expect.objectContaining({ projectIds: [] }), expect.anything()));
+  });
+
+  it("labels the zero-project preview as a global reference check and confirms correction without a migration table", async () => {
+    const user = userEvent.setup();
+    const { preview } = renderDialog(undefined, undefined, { actor: "platform-admin", projects: [] });
+    const response = await preview.getMockImplementation()!({} as never, {} as never);
+    preview.mockResolvedValue({ item: { ...response.item, projects: [], blockers: [], impact: {
+      ...response.item.impact, selectedProjectCount: 0, compatibleProjectCount: 0, blockedProjectCount: 0,
+      oldDefinitionCurrentReferenceCount: 0
+    } } });
+    await user.type(screen.getByLabelText("属性键"), "-corrected");
+    await user.type(screen.getByLabelText("修改原因"), "纠正尚未使用的定义身份");
+    await user.click(screen.getByRole("button", { name: "预演影响" }));
+    expect(await screen.findByText("全平台当前引用")).toBeVisible();
+    expect(screen.queryByRole("table", { name: "项目迁移预览" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "确认并执行纠错" }));
+    expect(screen.getByRole("dialog", { name: "确认执行身份纠错" })).toHaveTextContent("无需迁移项目");
+  });
+
+  it("offers independent retirement only with a fresh authoritative zero-reference result", async () => {
+    const user = userEvent.setup(), retire = vi.fn();
+    const { catalog, preview, execute } = renderDialog(undefined, undefined, { actor: "platform-admin", projects: [], onRetireDefinition: retire });
+    const frozen = (await preview.getMockImplementation()!({} as never, {} as never)).item;
+    preview.mockResolvedValue({ item: { ...frozen, impact: { ...frozen.impact, selectedProjectCount: 0 } } });
+    const completed = { ...(await execute.getMockImplementation()!({} as never, {} as never)).item, status: "completed" as const,
+      projects: [], retirementEvidence: { scope: "platform" as const, authoritative: true as const, remainingCurrentReferenceCount: 0 } };
+    execute.mockResolvedValue({ item: completed });
+    vi.spyOn(catalog, "getDefinitionReplacement").mockResolvedValue({ item: { ...completed,
+      retirementEvidence: { ...completed.retirementEvidence, remainingCurrentReferenceCount: 1 } } });
+    await user.type(screen.getByLabelText("属性键"), "-corrected");
+    await user.type(screen.getByLabelText("修改原因"), "纠正未使用身份");
+    await user.click(screen.getByRole("button", { name: "预演影响" }));
+    await user.click(await screen.findByRole("button", { name: "确认并执行纠错" }));
+    await user.click(within(screen.getByRole("dialog", { name: "确认执行身份纠错" })).getByRole("button", { name: "确认执行" }));
+    await user.click(await screen.findByRole("button", { name: "单独弃用旧定义" }));
+    expect(retire).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent("旧定义已有当前项目引用");
+    expect(screen.queryByRole("button", { name: "单独弃用旧定义" })).not.toBeInTheDocument();
+  });
+
+  it("preserves a colliding identity and links to the existing Definition", async () => {
+    const user = userEvent.setup();
+    const { preview } = renderDialog(undefined, undefined, { actor: "platform-admin", projects: [] });
+    preview.mockRejectedValue(new WiseEffApiError("CONFLICT", "Identity exists", { reason: "candidate-stale",
+      replacement: "target-identity-conflict", existingDefinitionId: "pdef_existing", subjectId: "csub_existing" }, "req-collision"));
+    const key = screen.getByLabelText("属性键");
+    await user.clear(key); await user.type(key, "occupied_key");
+    await user.type(screen.getByLabelText("修改原因"), "纠正身份");
+    await user.click(screen.getByRole("button", { name: "预演影响" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("目标身份已存在");
+    expect(key).toHaveValue("occupied_key");
+    expect(screen.getByRole("link", { name: "查看已有定义" })).toHaveAttribute("href", "?subjectId=csub_existing&definitionId=pdef_existing");
+  });
+
+  it("shows published examples and lets the operator clear unit and examples together", async () => {
+    const user = userEvent.setup();
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const preview = vi.spyOn(ports.catalog, "createPublicationCandidate");
+    render(<DefinitionEditorBody authoringAllowed publishingAllowed history={<div />} actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={ready} catalog={ports.catalog}
+      catalogReleaseId={CATALOG_RELEASE_ID} definition={{ ...activeDefinition, currentRevision: {
+        ...activeDefinition.currentRevision, unit: { kind: "symbol", symbol: "mA" }, examples: [100, 200]
+      } }} subjects={[registeredSubject]} />);
+    expect(screen.getByLabelText("示例（JSON 数组）")).toHaveValue("[100,200]");
+    await user.clear(screen.getByLabelText("单位"));
+    await user.clear(screen.getByLabelText("示例（JSON 数组）"));
+    expect(screen.getByText(/本次将移除：单位、示例/)).toBeVisible();
+    await user.type(screen.getByLabelText("修改原因"), "清除错误的单位与示例");
+    await user.click(screen.getByRole("button", { name: "保存内容修订" }));
+    await waitFor(() => expect(preview).toHaveBeenCalledWith({ changeSet: [expect.objectContaining({
+      content: expect.objectContaining({ unit: null, examples: null })
+    })] }, expect.anything()));
+  });
+
+  it("retains invalid example text and round-trips string examples without coercion", async () => {
+    const user = userEvent.setup();
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const preview = vi.spyOn(ports.catalog, "createPublicationCandidate");
+    render(<DefinitionEditorBody authoringAllowed publishingAllowed history={<div />} actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={ready} catalog={ports.catalog}
+      catalogReleaseId={CATALOG_RELEASE_ID} definition={{ ...activeDefinition, currentRevision: {
+        ...activeDefinition.currentRevision, valueShape: { kind: "json-schema", schema: { type: "string" } },
+        examples: ["with,comma", "", "123"]
+      } }} subjects={[registeredSubject]} />);
+    const examples = screen.getByLabelText("示例（JSON 数组）");
+    expect(examples).toHaveValue('["with,comma","","123"]');
+    fireEvent.change(examples, { target: { value: "[invalid" } });
+    await user.type(screen.getByLabelText("修改原因"), "更新示例");
+    await user.click(screen.getByRole("button", { name: "保存内容修订" }));
+    expect(screen.getByText("示例必须为有效的 JSON 数组，当前输入已保留。")).toBeVisible();
+    expect(examples).toHaveValue("[invalid");
+    expect(preview).not.toHaveBeenCalled();
+    fireEvent.change(examples, { target: { value: '["with,comma","","123","new"]' } });
+    await user.click(screen.getByRole("button", { name: "保存内容修订" }));
+    await waitFor(() => expect(preview).toHaveBeenCalledWith({ changeSet: [expect.objectContaining({
+      content: expect.objectContaining({ examples: ["with,comma", "", "123", "new"] })
+    })] }, expect.anything()));
+  });
+
   it.each([true, false])("preserves complete multiline published documentation with authoring=%s", (authoringAllowed) => {
     const documentation = `first documentation line ${"x".repeat(300)}\nlast documentation line`;
     const ports = createMockCatalogPorts({ scenario: "ready" });
@@ -395,6 +501,7 @@ describe("DefinitionEditorBody", () => {
           content: {
             displayName: activeDefinition.currentRevision.displayName,
             documentation: activeDefinition.currentRevision.documentation,
+            examples: null,
             unit: "us",
             valueSchema: { type: "integer", maximum: 32 }
           }

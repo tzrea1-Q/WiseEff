@@ -16,6 +16,7 @@ import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MemberDetailsDialog } from "@/components/admin/MemberDetailsDialog";
+import { MemberOrganizationRolesPanel } from "@/components/admin/MemberOrganizationRolesPanel";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import {
@@ -27,7 +28,9 @@ import {
 import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { formatLastActive, normalizeTimestampInput } from "@/domain/format/formatLastActive";
 import { presentError } from "@/infrastructure/http/presentError";
-import { migrateLegacyRoleId, pickPrimaryPlatformRoleId, platformRoles, type PlatformRoleId } from "@/domain/users/types";
+import { migrateLegacyRoleId, organizationRoleIds, pickPrimaryPlatformRoleId, platformRoles, type PlatformRoleId } from "@/domain/users/types";
+import type { CreateGovernedUserInput, UpdateOrganizationRolesInput } from "@/infrastructure/http/userGovernanceClient";
+import type { LocalAuthPublicConfigDto } from "@/infrastructure/http/authClient";
 import type { PrototypeState, User } from "@/domain/prototype/types";
 import type { DataTableSort } from "@/components/admin/DataTable";
 import "./user-permissions-page.css";
@@ -48,8 +51,10 @@ export type UserPermissionsPageProps = {
 
 export type UserGovernanceActions = {
   listUsers(): Promise<User[]>;
-  createUser(input: { name: string; username: string; title: string; password: string; roleId: PlatformRoleId }): Promise<User | void>;
-  assignUserRole(userId: string, roleId: PlatformRoleId): Promise<User | void>;
+  createUser(input: CreateGovernedUserInput): Promise<User | void>;
+  getAuthenticationConfig?(): Promise<LocalAuthPublicConfigDto>;
+  setOidcIdentity?(userId: string, input: { issuer: string; subject: string; email?: string; expectedIdentity: { issuer: string; subject: string } | null }): Promise<User>;
+  updateOrganizationRoles(userId: string, input: UpdateOrganizationRolesInput): Promise<User | void>;
   setUserActive(userId: string, isActive: boolean): Promise<User | void>;
   deleteUser(userId: string): Promise<void>;
   resetUserPassword?(userId: string, password: string): Promise<User | void>;
@@ -57,6 +62,7 @@ export type UserGovernanceActions = {
   listRegistrationRoleRequests?(status?: "pending" | "decided"): Promise<RegistrationRoleRequest[]>;
   approveRegistrationRoleRequest?(requestId: string): Promise<RegistrationRoleRequest | void>;
   rejectRegistrationRoleRequest?(requestId: string): Promise<RegistrationRoleRequest | void>;
+  enableBasicRegistrationRoleRequest?(requestId: string): Promise<RegistrationRoleRequest | void>;
   getOrganization?(): Promise<{ id: string; name: string; createdAt: string }>;
   updateOrganization?(input: { name: string }): Promise<{ id: string; name: string; createdAt: string }>;
 };
@@ -74,6 +80,10 @@ export type RegistrationRoleRequest = {
   createdAt: string;
   decidedAt: string | null;
   decidedByUserId: string | null;
+  decisionOutcome?: "requested-role-enabled" | "basic-enabled" | "rejected-disabled" | "rejected-preserved" | null;
+  decisionCanLogin?: boolean | null;
+  decisionRoleIds?: PlatformRoleId[] | null;
+  accountChanged?: boolean;
 };
 
 export const roleLabels: Record<PlatformRoleId, string> = {
@@ -101,7 +111,6 @@ type UserColumnFilterKey = "user" | "title" | "role" | "status" | "lastActive";
 type UserPermissionsWorkspace = "accounts" | "approvals";
 
 type PendingGovernanceAction =
-  | { kind: "role"; user: User; nextRoleId: PlatformRoleId }
   | { kind: "active"; user: User; nextActive: boolean }
   | { kind: "delete"; user: User };
 
@@ -116,13 +125,11 @@ function canGrantPlatformAdmin(state: PrototypeState) {
 }
 
 function organizationRoleOf(user?: User) {
-  const roles = user?.roles?.filter((role) => role.projectId === null && platformRoles.some((item) => item.id === role.roleId));
-  return roles?.length ? pickPrimaryPlatformRoleId(roles.map((role) => role.roleId)) : migrateLegacyRoleId(user?.roleId ?? "guest");
+  return user ? pickPrimaryPlatformRoleId(organizationRoleIds(user)) : "guest";
 }
 
 function organizationRoleLabels(user: User) {
-  const roles = user.roles?.filter((role) => role.projectId === null && platformRoles.some((item) => item.id === role.roleId));
-  return [...new Set((roles?.length ? roles.map((role) => role.roleId) : [user.roleId]).map(roleLabelOf))];
+  return organizationRoleIds(user).map(roleLabelOf);
 }
 
 function isPlatformAdminLocked(state: PrototypeState, user: User) {
@@ -214,6 +221,7 @@ export function UserPermissionsPage({
   );
   const [selfDirectoryError, setSelfDirectoryError] = useState("");
   const [directoryReloadToken, setDirectoryReloadToken] = useState(0);
+  const [authentication, setAuthentication] = useState<{ provider: string; oidcIssuer?: string }>({ provider: userGovernanceActions?.getAuthenticationConfig ? "pending" : "local" });
   useEffect(() => {
     if (!userGovernanceActions || !canPerform(migrateLegacyRoleId(state.activeRoleId), "users.manage")) {
       return;
@@ -223,10 +231,10 @@ export function UserPermissionsPage({
     // First load / retry-after-error shows the skeleton; once hydrated,
     // re-entering the page refreshes in the background without one.
     setSelfDirectoryStatus((current) => (current === "ready" ? current : "loading"));
-    userGovernanceActions
-      .listUsers()
-      .then((users) => {
+    Promise.all([userGovernanceActions.listUsers(), userGovernanceActions.getAuthenticationConfig?.()])
+      .then(([users, config]) => {
         if (!cancelled) {
+          if (config) setAuthentication(config);
           dispatch({ type: "HYDRATE_USERS", users });
           setSelfDirectoryStatus("ready");
           setSelfDirectoryError("");
@@ -234,6 +242,7 @@ export function UserPermissionsPage({
       })
       .catch((error) => {
         if (!cancelled) {
+          setAuthentication((current) => current.provider === "pending" ? { provider: "unavailable" } : current);
           setSelfDirectoryStatus("error");
           setSelfDirectoryError(presentError(error, "无法加载用户名录，请稍后重试。"));
         }
@@ -253,6 +262,8 @@ export function UserPermissionsPage({
   const [page, setPage] = useState(() => readPage(search));
   const [sort, setSort] = useState<DataTableSort>(() => readSort(search));
   const [addUserOpen, setAddUserOpen] = useState(false);
+  const [oidcSubject, setOidcSubject] = useState("");
+  const [oidcEmail, setOidcEmail] = useState("");
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [title, setTitle] = useState("");
@@ -269,7 +280,7 @@ export function UserPermissionsPage({
   const [approvalView, setApprovalView] = useState<"pending" | "decided">(() => new URLSearchParams(search).get("requests") === "decided" ? "decided" : "pending");
   const [requestStatus, setRequestStatus] = useState<UserDirectoryStatus>("loading");
   const [requestReloadToken, setRequestReloadToken] = useState(0);
-  const [pendingRequestDecision, setPendingRequestDecision] = useState<{ request: RegistrationRoleRequest; decision: "approve" | "reject" } | null>(null);
+  const [pendingRequestDecision, setPendingRequestDecision] = useState<{ request: RegistrationRoleRequest; decision: "approve" | "reject" | "enable-basic" } | null>(null);
   const [memberId, setMemberId] = useState<string | null>(null);
   const selectedMember = state.users.find((user) => user.id === memberId);
   const inactiveWorkspace = workspace === "accounts" ? "approvals" : "accounts";
@@ -395,28 +406,36 @@ export function UserPermissionsPage({
     };
   }, [userGovernanceActions, approvalView, requestReloadToken]);
 
-  async function decideRegistrationRoleRequest(request: RegistrationRoleRequest, decision: "approve" | "reject") {
+  async function decideRegistrationRoleRequest(request: RegistrationRoleRequest, decision: "approve" | "reject" | "enable-basic") {
     if (decidingRequestId) return;
     setRegistrationRoleRequestError("");
     setDecidingRequestId(request.id);
 
     try {
+      let result: RegistrationRoleRequest | void;
       if (decision === "approve") {
         if (!userGovernanceActions?.approveRegistrationRoleRequest) {
           throw new Error("注册角色申请审批尚未启用。");
         }
-        await userGovernanceActions.approveRegistrationRoleRequest(request.id);
+        result = await userGovernanceActions.approveRegistrationRoleRequest(request.id);
         dispatch({ type: "ASSIGN_USER_ROLE", userId: request.userId, roleId: request.requestedRoleId });
+        dispatch({ type: "TOGGLE_USER_ACTIVE", userId: request.userId, isActive: true });
+      } else if (decision === "enable-basic") {
+        if (!userGovernanceActions?.enableBasicRegistrationRoleRequest) throw new Error("普通成员启用尚未启用。");
+        result = await userGovernanceActions.enableBasicRegistrationRoleRequest(request.id);
+        dispatch({ type: "ASSIGN_USER_ROLE", userId: request.userId, roleId: request.currentRoleId });
         dispatch({ type: "TOGGLE_USER_ACTIVE", userId: request.userId, isActive: true });
       } else {
         if (!userGovernanceActions?.rejectRegistrationRoleRequest) {
           throw new Error("注册角色申请拒绝尚未启用。");
         }
-        await userGovernanceActions.rejectRegistrationRoleRequest(request.id);
+        result = await userGovernanceActions.rejectRegistrationRoleRequest(request.id);
       }
       setRegistrationRoleRequests((items) => items.filter((item) => item.id !== request.id));
       setPendingRequestDecision(null);
-      dispatch({ type: "ADD_NOTIFICATION", message: `${decision === "approve" ? "已通过并启用" : "已拒绝"} ${request.userName} 的注册申请` });
+      const access = result?.decisionCanLogin === undefined || result.decisionCanLogin === null ? ""
+        : `；${result.decisionCanLogin ? "可登录" : "不可登录"} · ${result.decisionRoleIds?.map(roleLabelOf).join("、") || "未分配组织角色"}`;
+      dispatch({ type: "ADD_NOTIFICATION", message: `${decision === "approve" ? "已批准申请角色并启用：" : decision === "enable-basic" ? "已拒绝提升并按普通成员启用：" : "已拒绝提升，保留账号设置："}${request.userName}${access}` });
       setDirectoryReloadToken((value) => value + 1);
     } catch (error) {
       setRegistrationRoleRequestError(presentError(error, "注册角色申请处理失败，请稍后重试。"));
@@ -432,16 +451,7 @@ export function UserPermissionsPage({
     setGovernancePending(true);
     setGovernanceError(null);
     try {
-      if (pendingGovernance.kind === "role") {
-        const updated = await userGovernanceActions?.assignUserRole(pendingGovernance.user.id, pendingGovernance.nextRoleId);
-        dispatch({
-          type: "ASSIGN_USER_ROLE",
-          userId: pendingGovernance.user.id,
-          roleId: pendingGovernance.nextRoleId
-        });
-        if (updated) applyUpdatedUser(updated);
-        dispatch({ type: "ADD_NOTIFICATION", message: `已更新 ${pendingGovernance.user.name} 的组织角色` });
-      } else if (pendingGovernance.kind === "active") {
+      if (pendingGovernance.kind === "active") {
         await userGovernanceActions?.setUserActive(pendingGovernance.user.id, pendingGovernance.nextActive);
         dispatch({
           type: "TOGGLE_USER_ACTIVE",
@@ -469,12 +479,13 @@ export function UserPermissionsPage({
     const trimmedUsername = username.trim();
     const trimmedTitle = title.trim();
 
-    if (!trimmedName || !trimmedUsername || !password) {
-      setAddUserError("姓名、用户名和初始密码不能为空。");
+    const oidc = authentication.provider === "oidc";
+    if (oidc ? !trimmedName || !oidcSubject.trim() || !authentication.oidcIssuer : !trimmedName || !trimmedUsername || !password) {
+      setAddUserError(oidc ? "姓名、配置的 Issuer 和 Subject 不能为空。" : "姓名、用户名和初始密码不能为空。");
       return;
     }
 
-    if (password !== confirmPassword) {
+    if (!oidc && password !== confirmPassword) {
       setAddUserError("两次输入的密码不一致。");
       return;
     }
@@ -482,14 +493,17 @@ export function UserPermissionsPage({
     addUserSubmitting.current = true;
     setAddUserPending(true);
     try {
-      const createdUser = await userGovernanceActions?.createUser({
+      const createdUser = await userGovernanceActions?.createUser(oidc ? {
+        authentication: "oidc", issuer: authentication.oidcIssuer!, subject: oidcSubject, ...(oidcEmail.trim() ? { email: oidcEmail.trim() } : {}), name: trimmedName, title: trimmedTitle, roleId: initialRoleId
+      } : {
         name: trimmedName,
         username: trimmedUsername,
         title: trimmedTitle,
         password,
         roleId: initialRoleId
       });
-      dispatch({
+      if (oidc && createdUser) dispatch({ type: "HYDRATE_USERS", users: [...state.users.filter((user) => user.id !== createdUser.id), createdUser] });
+      else dispatch({
         type: "ADD_USER",
         id: createdUser?.id,
         name: createdUser?.name ?? trimmedName,
@@ -506,6 +520,7 @@ export function UserPermissionsPage({
     }
 
     setAddUserOpen(false);
+    setOidcSubject(""); setOidcEmail("");
     setName("");
     setUsername("");
     setTitle("");
@@ -518,7 +533,7 @@ export function UserPermissionsPage({
 
   function dismissAddUser() {
     if (addUserSubmitting.current) return;
-    setAddUserOpen(false); setName(""); setUsername(""); setTitle(""); setPassword(""); setConfirmPassword(""); setAddUserError(""); setInitialRoleId("hardware-user");
+    setAddUserOpen(false); setName(""); setUsername(""); setTitle(""); setPassword(""); setConfirmPassword(""); setOidcSubject(""); setOidcEmail(""); setAddUserError(""); setInitialRoleId("hardware-user");
   }
 
   function openResetPassword(user: User) {
@@ -565,6 +580,7 @@ export function UserPermissionsPage({
         <div className="member-identity">
           <strong>{user.name}{user.id === state.currentUserId ? <Badge variant="secondary">我</Badge> : null}</strong>
           <span>{userAccountIdentifier(user)}</span>
+          <span className="member-list-meta">{user.oidcIdentity ? "OIDC · 已绑定" : authentication.provider === "oidc" ? "OIDC · 未显式绑定" : user.username ? "本地账号" : "外部身份"}</span>
         </div>
       )
     },
@@ -582,8 +598,8 @@ export function UserPermissionsPage({
         values={[...new Set(state.users.flatMap(organizationRoleLabels))].sort((a, b) => a.localeCompare(b, "zh-CN"))}
         selectedValues={columnFilters.role ?? []} onToggle={(value) => toggleColumnFilter("role", value)} onClear={() => clearColumnFilter("role")} />,
       render: (user) => {
-        const roles = [...new Set((user.roles ?? []).filter((role) => role.projectId === null && platformRoles.some((item) => item.id === role.roleId)).map((role) => role.roleId))];
-        return <span className="member-role-label" title={roles.map(roleLabelOf).join("、")}>{roleLabelOf(organizationRoleOf(user))}{roles.length > 1 ? <span className="member-list-meta"> +{roles.length - 1}</span> : null}</span>;
+        const roles = organizationRoleIds(user);
+        return <span className="member-role-label" title={roles.map(roleLabelOf).join("、")}>{roles.length ? roleLabelOf(organizationRoleOf(user)) : "未授予组织级角色"}{roles.length > 1 ? <span className="member-list-meta"> +{roles.length - 1}</span> : null}</span>;
       }
     },
     {
@@ -639,7 +655,7 @@ export function UserPermissionsPage({
             <span className="eyebrow">用户治理</span>
             <h2>成员列表</h2>
           </div>
-        )} actions={workspace === "accounts" ? <button className="button primary user-permissions-primary-action" type="button" onClick={() => setAddUserOpen(true)}>
+        )} actions={workspace === "accounts" ? <button className="button primary user-permissions-primary-action" type="button" disabled={["pending","unavailable"].includes(authentication.provider)} onClick={() => setAddUserOpen(true)}>
           <UserPlus size={16} aria-hidden="true" /><span>添加用户</span>
         </button> : null} />
 
@@ -687,7 +703,7 @@ export function UserPermissionsPage({
                   label: `${user.name} 操作`,
                   primaryAction: { id: "details", label: "查看", ariaLabel: `查看 ${user.name} 的成员资料`, onSelect: () => setMemberId(user.id) },
                   items: [
-                    ...(userGovernanceActions?.resetUserPassword ? [{ id: "password", label: "重置密码", ariaLabel: `重置 ${user.name} 的密码`, onSelect: () => openResetPassword(user) }] : []),
+                    ...(authentication.provider !== "oidc" && userGovernanceActions?.resetUserPassword ? [{ id: "password", label: "重置密码", ariaLabel: `重置 ${user.name} 的密码`, onSelect: () => openResetPassword(user) }] : []),
                     { id: "active", label: user.isActive ? "停用" : "启用", disabled: user.id === state.currentUserId || locked,
                       description: user.id === state.currentUserId ? "不能停用当前登录账号。" : locked ? "只有平台超级管理员可以停用平台超级管理员。" : undefined,
                       onSelect: () => { setGovernanceError(null); setPendingGovernance({ kind: "active", user, nextActive: !user.isActive }); } },
@@ -713,7 +729,7 @@ export function UserPermissionsPage({
         >
           <div className="user-permissions-approval-queue__header">
             <div>
-              <p className="user-permissions-approval-queue__hint">核对申请人的组织与角色后审批，通过将立即启用账号。</p>
+              <p className="user-permissions-approval-queue__hint">核对申请人的组织与角色，选择授予申请角色、按普通成员启用或拒绝并保持停用。</p>
             </div>
             <Button type="button" size="sm" variant="outline" disabled={requestStatus === "loading" || Boolean(decidingRequestId)} onClick={() => setRequestReloadToken((value) => value + 1)}><RefreshCw size={16} aria-hidden="true" />刷新申请</Button>
           </div>
@@ -733,6 +749,7 @@ export function UserPermissionsPage({
                     <time className="member-approval-item-meta" dateTime={request.createdAt}>申请于 {formatAbsolute(request.createdAt)}</time>
                   </div>
                   <div className="user-permissions-approval-role-change">
+                    {request.status !== "pending" ? <span>申请角色：</span> : null}
                     <span>{roleLabelOf(request.currentRoleId)}</span>
                     <span aria-hidden="true">→</span>
                     <span>{roleLabelOf(request.requestedRoleId)}</span>
@@ -742,20 +759,28 @@ export function UserPermissionsPage({
                     <button
                       className="button primary"
                       type="button"
-                      disabled={Boolean(decidingRequestId)}
+                      disabled={Boolean(decidingRequestId) || request.accountChanged}
                       onClick={() => { setRegistrationRoleRequestError(""); setPendingRequestDecision({ request, decision: "approve" }); }}
                     >
-                      通过
+                      批准申请角色
                     </button>
+                    <button className="button" type="button" disabled={Boolean(decidingRequestId) || request.accountChanged || !userGovernanceActions?.enableBasicRegistrationRoleRequest}
+                      onClick={() => { setRegistrationRoleRequestError(""); setPendingRequestDecision({ request, decision: "enable-basic" }); }}>按普通成员启用</button>
                     <button
                       className="button"
                       type="button"
                       disabled={Boolean(decidingRequestId)}
                       onClick={() => { setRegistrationRoleRequestError(""); setPendingRequestDecision({ request, decision: "reject" }); }}
                     >
-                      拒绝
+                      {request.accountChanged ? "关闭申请，保留现状" : "拒绝并保持停用"}
                     </button>
-                    </> : <div><Badge variant={request.status === "approved" ? "secondary" : "outline"}>{request.status === "approved" ? "已通过" : "已拒绝"}</Badge>
+                    {request.accountChanged ? <p className="member-approval-item-meta">账号已有后续管理调整。关闭此申请将保留当前角色与启停状态。</p> : null}
+                    </> : <div><Badge variant={request.status === "approved" ? "secondary" : "outline"}>{request.decisionOutcome === "basic-enabled" ? `已按${roleLabelOf(request.currentRoleId)}启用`
+                      : request.decisionOutcome === "requested-role-enabled" ? "已批准申请角色并启用"
+                      : request.decisionOutcome === "rejected-disabled" ? "已拒绝提升，保持停用"
+                      : request.decisionOutcome === "rejected-preserved" ? "已拒绝提升，保留账号设置"
+                      : request.status === "approved" ? "已通过" : "已拒绝提升（未记录账号结果）"}</Badge>
+                      {request.decisionCanLogin !== undefined && request.decisionCanLogin !== null ? <p className="member-approval-item-meta">决定时：{request.decisionCanLogin ? "可登录" : "不可登录"} · {request.decisionRoleIds?.map(roleLabelOf).join("、") || "未分配组织角色"}</p> : null}
                       {request.decidedAt ? <p className="member-approval-item-meta">{formatAbsolute(request.decidedAt)}</p> : null}</div>}
                   </div>
                 </article>
@@ -774,25 +799,34 @@ export function UserPermissionsPage({
       ) : null}
 
       {selectedMember ? <MemberDetailsDialog key={selectedMember.id} user={selectedMember} state={state} actions={userGovernanceActions}
+        oidcIssuer={authentication.provider === "oidc" ? authentication.oidcIssuer : undefined}
         onUpdated={applyUpdatedUser} onClose={() => { setMemberId(null); setDirectoryReloadToken((value) => value + 1); }} roleLabel={roleLabelOf}
-        roleEditor={<>
-          <SelectControl className="user-permissions-role-select" ariaLabel={`调整 ${selectedMember.name} 的角色`}
-            value={organizationRoleOf(selectedMember)} disabled={selectedMember.id === state.currentUserId || isPlatformAdminLocked(state, selectedMember)}
-            onValueChange={(value) => { if (value !== organizationRoleOf(selectedMember)) { setGovernanceError(null); setPendingGovernance({ kind: "role", user: selectedMember, nextRoleId: value as PlatformRoleId }); } }}
-            options={assignableRolesForUser(state, organizationRoleOf(selectedMember)).map((role) => ({ value: role.id, label: roleLabelOf(role.id) }))} />
-          <p className="member-details__hint">{roleCapabilityDescriptions[organizationRoleOf(selectedMember)]}</p>
-          <p className="member-details__hint">{selectedMember.roles && !selectedMember.roles.some((role) => role.projectId === null && platformRoles.some((item) => item.id === role.roleId))
-            ? "未授予组织级角色，项目权限仍独立生效。" : `已授予：${organizationRoleLabels(selectedMember).join("、")}`}</p>
-          {selectedMember.id === state.currentUserId ? <p className="member-details__hint">不能调整当前登录账号的角色。</p>
-            : isPlatformAdminLocked(state, selectedMember) ? <p className="member-details__hint">只有平台超级管理员可以调整此账号的角色。</p> : null}
-        </>} /> : null}
+        roleEditor={<MemberOrganizationRolesPanel user={selectedMember}
+          options={assignableRolesForUser(state, organizationRoleOf(selectedMember)).map((role) => ({ id: role.id, label: roleLabelOf(role.id), description: roleCapabilityDescriptions[role.id] }))}
+          disabledReason={selectedMember.id === state.currentUserId ? "不能调整当前登录账号的角色。"
+            : isPlatformAdminLocked(state, selectedMember) ? "只有平台超级管理员可以调整此账号的角色。" : undefined}
+          onSave={async (roles, expectedRoles) => {
+            const updated = await userGovernanceActions?.updateOrganizationRoles(selectedMember.id, { roles, expectedRoles }) ?? {
+              ...selectedMember, roleId: pickPrimaryPlatformRoleId(roles),
+              roles: [...(selectedMember.roles ?? []).filter((role) => role.projectId !== null), ...roles.map((roleId) => ({ projectId: null, roleId }))]
+            };
+            applyUpdatedUser(updated);
+            dispatch({ type: "ADD_NOTIFICATION", message: `已更新 ${selectedMember.name} 的组织角色` });
+            return updated;
+          }}
+          onReload={async () => {
+            const updated = userGovernanceActions ? (await userGovernanceActions.listUsers()).find((user) => user.id === selectedMember.id) : selectedMember;
+            if (!updated) throw new Error("该成员已不存在，请关闭成员资料并刷新名录。");
+            applyUpdatedUser(updated);
+            return updated;
+          }} />} /> : null}
 
-      <ConfirmDialog open={pendingRequestDecision !== null} title={pendingRequestDecision?.decision === "approve" ? "通过注册申请？" : "拒绝注册申请？"}
+      <ConfirmDialog open={pendingRequestDecision !== null} title={pendingRequestDecision?.decision === "approve" ? "通过注册申请？" : pendingRequestDecision?.decision === "enable-basic" ? "按普通成员启用？" : "拒绝注册申请？"}
         description={pendingRequestDecision ? <div><p>{pendingRequestDecision.request.userName} · {pendingRequestDecision.request.organizationName ?? pendingRequestDecision.request.organizationId}</p>
           <p>申请角色：{roleLabelOf(pendingRequestDecision.request.requestedRoleId)}</p>
           <p>{roleCapabilityDescriptions[pendingRequestDecision.request.requestedRoleId]}</p>
-          <p>{pendingRequestDecision.decision === "approve" ? "通过后立即启用账号，并授予上述组织角色。" : "拒绝后，该注册角色申请将结束处理。"}</p></div> : undefined}
-        confirmLabel={pendingRequestDecision?.decision === "approve" ? "通过并启用" : "确认拒绝"} tone={pendingRequestDecision?.decision === "approve" ? "primary" : "danger"}
+          <p>{pendingRequestDecision.decision === "approve" ? "通过后立即启用账号，并授予上述组织角色。" : pendingRequestDecision.decision === "enable-basic" ? `不授予申请角色，按${roleLabelOf(pendingRequestDecision.request.currentRoleId)}启用，账号可登录。` : "拒绝提升，不更改账号当前的角色与启停状态。初始停用状态将保持；如已有后续管理调整，将保留最新设置。"}</p></div> : undefined}
+        confirmLabel={pendingRequestDecision?.decision === "approve" ? "通过并启用" : pendingRequestDecision?.decision === "enable-basic" ? "启用普通成员" : "确认拒绝"} tone={pendingRequestDecision?.decision === "reject" ? "danger" : "primary"}
         pending={Boolean(decidingRequestId)} error={registrationRoleRequestError || null}
         onCancel={() => { if (!decidingRequestId) { setPendingRequestDecision(null); setRegistrationRoleRequestError(""); } }}
         onConfirm={() => { if (pendingRequestDecision) void decideRegistrationRoleRequest(pendingRequestDecision.request, pendingRequestDecision.decision); }} />
@@ -800,9 +834,7 @@ export function UserPermissionsPage({
       <ConfirmDialog
         open={pendingGovernance !== null}
         title={
-          pendingGovernance?.kind === "role"
-            ? "确认调整用户角色"
-            : pendingGovernance?.kind === "delete"
+          pendingGovernance?.kind === "delete"
               ? "确认注销用户"
               : pendingGovernance?.nextActive
                 ? "确认启用用户"
@@ -810,19 +842,7 @@ export function UserPermissionsPage({
         }
         description={
           pendingGovernance ? (
-            pendingGovernance.kind === "role" ? (
-              <div>
-                <p>
-                  将把 <strong>{pendingGovernance.user.name}</strong> 的组织角色从「
-                  {roleLabelOf(organizationRoleOf(pendingGovernance.user))}」调整为「
-                  {roleLabelOf(pendingGovernance.nextRoleId)}」，新权限立即生效。
-                </p>
-                <p className="member-details__hint">{roleCapabilityDescriptions[pendingGovernance.nextRoleId]}</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  注意：本次修改仅更新组织级内置角色，该用户在各项目中的项目审核角色与职责绑定将完整保留。
-                </p>
-              </div>
-            ) : pendingGovernance.kind === "delete" ? (
+            pendingGovernance.kind === "delete" ? (
               <p>
                 将永久删除 <strong>{pendingGovernance.user.name}</strong>（
                 {userAccountIdentifier(pendingGovernance.user)}）。账号的角色、凭据、会话和临时数据将一并清除；业务与审计历史记录会保留，
@@ -842,9 +862,7 @@ export function UserPermissionsPage({
           ) : null
         }
         confirmLabel={
-          pendingGovernance?.kind === "role"
-            ? "确认调整"
-            : pendingGovernance?.kind === "delete"
+          pendingGovernance?.kind === "delete"
               ? "确认注销"
               : pendingGovernance?.nextActive
                 ? "确认启用"
@@ -878,7 +896,7 @@ export function UserPermissionsPage({
           <form className="modal-form-contents" onSubmit={handleAddUserSubmit} aria-busy={addUserPending}>
             <h3 id={titleId}>添加用户</h3>
             <fieldset className="user-permissions-modal-fields" disabled={addUserPending}>
-              <p className="member-details__hint">创建本组织的本地账号，创建后立即启用。职务选填，其余为必填项。</p>
+              <p className="member-details__hint">{authentication.provider === "oidc" ? "预配本组织的 OIDC 成员并绑定外部 Subject，不创建本地密码。请核对身份提供方中的标识。" : "创建本组织的本地账号，创建后立即启用。职务选填，其余为必填项。"}</p>
               <label className="user-permissions-modal-field">
                 <span>姓名</span>
                 <input
@@ -891,7 +909,11 @@ export function UserPermissionsPage({
                   required
                 />
               </label>
-              <label className="user-permissions-modal-field">
+              {authentication.provider === "oidc" ? <>
+                <label className="user-permissions-modal-field"><span>Issuer</span><input className="user-permissions-modal-control" value={authentication.oidcIssuer ?? ""} readOnly /></label>
+                <label className="user-permissions-modal-field"><span>Subject</span><input className="user-permissions-modal-control" value={oidcSubject} maxLength={255} onChange={(event) => setOidcSubject(event.target.value)} required /></label>
+                <label className="user-permissions-modal-field"><span>身份提供方邮箱（选填）</span><input className="user-permissions-modal-control" type="email" value={oidcEmail} onChange={(event) => setOidcEmail(event.target.value)} /></label>
+              </> : <label className="user-permissions-modal-field">
                 <span>用户名</span>
                 <input
                   className="user-permissions-modal-control"
@@ -908,12 +930,12 @@ export function UserPermissionsPage({
                   required
                 />
                 <span id="member-username-hint" className="member-details__hint">3–64 个字符，用于登录。</span>
-              </label>
+              </label>}
               <label className="user-permissions-modal-field">
                 <span>职务</span>
                 <input className="user-permissions-modal-control" value={title} onChange={(event) => setTitle(event.target.value)} />
               </label>
-              <label className="user-permissions-modal-field">
+              {authentication.provider !== "oidc" ? <><label className="user-permissions-modal-field">
                 <span>初始密码</span>
                 <input
                   className="user-permissions-modal-control"
@@ -945,7 +967,7 @@ export function UserPermissionsPage({
                   autoComplete="new-password"
                   required
                 />
-              </label>
+              </label></> : null}
               <label className="user-permissions-modal-field">
                 <span>初始角色</span>
                 <SelectControl

@@ -172,9 +172,36 @@ export async function loadSourceBindingCohortReadOnly(tx: Queryable, input: { or
   return querySourceBindingCohort(tx, input, false);
 }
 
-export async function loadProjectBindingCatalogReleaseIds(tx: Queryable, input: { organizationId: string; projectId: string }) {
+/** Snapshot restore retains exact identities, including members retired since
+ * that immutable revision. Replaced Definitions are never restoration targets. */
+export async function loadConfigurationRestoreCohort(tx: Queryable, input: {
+  organizationId: string; projectId: string; configSetId: string; snapshotRevisionId: string;
+}) {
+  return (await tx.query<CanonicalSourceBindingPin & { subjectId: string; registrationId: string;
+    logicalNodeId: string | null; snapshotValueId: string | null; active: boolean }>(`select
+    binding.id as "bindingId",binding.current_value_id as "oldValueId",pin.id as "sourcePinId",
+    binding.source_occurrence_id as "sourceOccurrenceId",binding.definition_id as "definitionId",
+    binding.effective_revision_id as "effectiveRevisionId",binding.catalog_release_id as "catalogReleaseId",
+    binding.subject_id as "subjectId",binding.registration_id as "registrationId",binding.logical_node_id as "logicalNodeId",
+    pin.locator,value.value_kind as "valueKind",value.value_digest as "valueDigest",occurrence.config_set_id as "configSetId",
+    historical.project_value_id as "snapshotValueId",active.id is not null as active
+    from parameter_catalog.project_parameter_bindings binding
+    join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
+      and occurrence.organization_id=binding.organization_id and occurrence.project_id=binding.project_id
+    join parameter_catalog.${projectParameterValues} value on value.id=binding.current_value_id and value.binding_id=binding.id
+    join parameter_catalog.project_value_source_pins pin on pin.project_value_id=value.id and pin.binding_id=binding.id
+    left join parameter_catalog.current_project_parameter_bindings active on active.id=binding.id
+    left join parameter_catalog.project_value_source_pins historical on historical.binding_id=binding.id
+      and historical.config_revision_id=$4 and historical.value_state='present'
+    where binding.organization_id=$1 and binding.project_id=$2 and occurrence.config_set_id=$3
+      and (active.id is not null or historical.id is not null)
+      and not parameter_catalog.is_replaced_current_binding(binding.id)
+    order by binding.id`, [input.organizationId,input.projectId,input.configSetId,input.snapshotRevisionId])).rows;
+}
+
+export async function loadProjectBindingCatalogReleaseIds(tx: Queryable, input: { organizationId: string; projectId: string; includeRetained?: boolean }) {
   return (await tx.query<{ catalogReleaseId: string }>(
-    `select distinct catalog_release_id as "catalogReleaseId" from parameter_catalog.current_project_parameter_bindings
+    `select distinct catalog_release_id as "catalogReleaseId" from parameter_catalog.${input.includeRetained ? "project_parameter_bindings" : "current_project_parameter_bindings"}
      where organization_id=$1 and project_id=$2 order by catalog_release_id`, [input.organizationId, input.projectId])).rows
     .map((row) => row.catalogReleaseId);
 }
@@ -245,7 +272,8 @@ export async function loadOwnedProjectValueSourcePin(tx: Queryable, input: { org
        and value.definition_id=pin.definition_id and value.config_revision_id=pin.config_revision_id
      join parameter_catalog.project_parameter_source_occurrences occurrence
        on occurrence.id=pin.source_occurrence_id and occurrence.organization_id=pin.organization_id
-       and occurrence.project_id=pin.project_id and occurrence.file_id=pin.file_id
+       and occurrence.project_id=pin.project_id and (occurrence.file_id=pin.file_id
+         or parameter_catalog.source_origin_matches(pin.binding_id,pin.source_occurrence_id,pin.file_id))
      join public.dts_config_revisions revision on revision.id=pin.config_revision_id
        and revision.organization_id=pin.organization_id and revision.project_id=pin.project_id
        and revision.config_set_id=occurrence.config_set_id
@@ -497,10 +525,11 @@ export const casCurrentTip = async (
           or exists (select 1 from public.project_parameter_value_change_requests request
             join parameter_catalog.project_value_source_pins base_pin on base_pin.binding_id=binding.id and base_pin.project_value_id=$2
               and base_pin.organization_id=binding.organization_id and base_pin.project_id=binding.project_id
-              and base_pin.source_occurrence_id=binding.source_occurrence_id and base_pin.value_state='present'
+              and base_pin.source_occurrence_id=binding.source_occurrence_id
+              and (base_pin.value_state='present' or request.request_kind='configuration_restore')
             join parameter_catalog.${projectParameterValues} next_value on next_value.id=$3 and next_value.binding_id=binding.id
             where request.id=$4 and request.organization_id=binding.organization_id and request.project_id=binding.project_id
-              and request.status='pending' and request.request_kind='source_revision'
+              and request.status='pending' and request.request_kind in ('source_revision','member_addition','configuration_restore')
               and request.source_revision_context->'cohort' @> jsonb_build_array(jsonb_build_object(
                 'bindingId',binding.id,'oldValueId',$2::text,'sourcePinId',base_pin.id))
               and next_value.value_state=case when exists(select 1 from jsonb_array_elements(request.source_revision_context->'targets') target
@@ -552,20 +581,29 @@ export const casCurrentTip = async (
              and next_pin.source_occurrence_id=binding.source_occurrence_id
              and next_pin.definition_id=binding.definition_id
              and next_pin.config_revision_id=next_value.config_revision_id
-             and next_pin.file_id=base_pin.file_id and next_pin.file_version_id=base_pin.file_version_id
-             and next_pin.format=base_pin.format and next_pin.locator=base_pin.locator
-             and next_pin.locator_digest=base_pin.locator_digest and next_pin.value_state='present'
+             and ((next_pin.file_id=base_pin.file_id and next_pin.file_version_id=base_pin.file_version_id)
+               or (request.member_application_mode='administrator_direct' and request.member_frozen_proof->'originTransfers' @>
+                 jsonb_build_array(jsonb_build_object('bindingId',binding.id,'oldValueId',$2::text,'sourcePinId',base_pin.id,
+                   'fromFileId',base_pin.file_id,'toFileId',next_pin.file_id))))
+             and next_pin.format=base_pin.format and next_pin.value_state='present'
+             and ((next_pin.locator=base_pin.locator and next_pin.locator_digest=base_pin.locator_digest)
+               or (request.member_application_mode='administrator_direct' and next_pin.format='dts'
+                 and next_pin.locator->>'kind'='dts-property' and base_pin.locator->>'kind'='dts-property'
+                 and next_pin.locator->>'propertyName'=base_pin.locator->>'propertyName'))
             where request.id=$4 and request.request_kind='member-removal'
               and request.status='pending' and request.organization_id=binding.organization_id
               and request.project_id=binding.project_id
               and request.member_config_set_id=occurrence.config_set_id
-              and occurrence.file_id=base_pin.file_id
-              and request.member_file_id<>base_pin.file_id
+              and base_pin.source_occurrence_id=occurrence.id
+              and (request.member_file_id<>base_pin.file_id or request.member_frozen_proof->'originTransfers' @>
+                jsonb_build_array(jsonb_build_object('bindingId',binding.id,'fromFileId',base_pin.file_id,'toFileId',next_pin.file_id)))
               and base_pin.config_revision_id=request.member_frozen_proof->>'configRevisionId'
               and next_value.config_revision_id<>base_pin.config_revision_id
               and next_value.value_state='present' and old_value.value_state='present'
               and next_value.value_kind=old_value.value_kind
-              and next_value.value_digest=old_value.value_digest
+              and (next_value.value_digest=old_value.value_digest or (request.member_application_mode='administrator_direct'
+                and request.member_frozen_proof->'originTransfers' @> jsonb_build_array(jsonb_build_object('bindingId',binding.id,
+                  'oldValueId',$2::text,'sourcePinId',base_pin.id,'fromFileId',base_pin.file_id,'toFileId',next_pin.file_id))))
               and request.member_frozen_proof->'cohort' @> jsonb_build_array(jsonb_build_object(
                 'bindingId',binding.id,'oldValueId',$2::text,'sourcePinId',base_pin.id,
                 'sourceOccurrenceId',binding.source_occurrence_id,'fileId',base_pin.file_id,

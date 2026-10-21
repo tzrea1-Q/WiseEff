@@ -51,7 +51,7 @@ describe("create skill dialog", () => {
     await userEvent.upload(screen.getByTestId("file-drop-zone-input"), sample);
     await userEvent.click(screen.getByRole("button", { name: "创建技能" }));
     await waitFor(() => expect(onNavigate).toHaveBeenCalledWith("/log-admin/skills/skill-charging"));
-    expect(repository.createLogSkill).toHaveBeenCalledWith({ name: "Device", description: "Description", startingPoint: { templateId: template.id } });
+    expect(repository.createLogSkill).toHaveBeenCalledWith({ name: "Device", description: "Description", status: "draft", startingPoint: { templateId: template.id } });
     expect(repository.replaceSkillSample).toHaveBeenCalledWith("skill-charging", sample);
     expect(repository.replaceSkillSample.mock.invocationCallOrder[0]).toBeLessThan(onNavigate.mock.invocationCallOrder[0]);
   });
@@ -69,7 +69,7 @@ describe("create skill dialog", () => {
     await userEvent.click(screen.getByRole("option", { name: "充电诊断" }));
     await userEvent.click(screen.getByRole("button", { name: "创建技能" }));
     await waitFor(() => expect(onNavigate).toHaveBeenCalled());
-    expect(repository.createLogSkill).toHaveBeenCalledWith({ name: "Copy", startingPoint: { copyFromSkillId: "skill-charging" } });
+    expect(repository.createLogSkill).toHaveBeenCalledWith({ name: "Copy", status: "draft", startingPoint: { copyFromSkillId: "skill-charging" } });
   });
   it("shows name conflicts inline and keeps the dialog open", async () => {
     const { repository, onDismiss } = setup();

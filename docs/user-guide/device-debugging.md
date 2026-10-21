@@ -15,6 +15,8 @@ Use the two entries under the Debugging platform navigation group:
 
 The old Parameter debugging (`/debugging`) workspace is offline; use `/dts-reload`. Admins use Debugging administration (`/debugging-admin`, node catalog at `/debugging-admin/nodes`) to maintain nodes and protocol bindings. Device writes still require write permission.
 
+In the node catalog's Module management, deleting a leaf module offers one confirmation to move all its nodes to an existing module in the same organization or to Unclassified. The preview counts nodes, including legacy name references; node identities, definitions, device associations and debugging history remain. Child modules and ambiguous legacy ownership provide specific adjustment/edit actions instead of recursive deletion. If membership, the destination or imports change after preview, refresh the preview with the selected destination retained before confirming again.
+
 ## Connect your computer and select a device
 
 1. Open Node debugging (`/node-debugging`) or Parameter debugging (`/dts-reload`) and choose **HDC** or **ADB** for your device.
@@ -24,6 +26,8 @@ The old Parameter debugging (`/debugging`) workspace is offline; use `/dts-reloa
 5. Check the Bridge connection and HDC/ADB device detection separately. If detection fails, check the cable, device authorization, selected protocol, and the panel's tool status, then detect again.
 
 The connection bar shows the current Bridge state and the next step. Once a computer is registered, use **Manage device agents** to open its management dialog, rename the computer, or request revocation. Revocation still requires confirmation. Close the dialog or press Escape to return to the same workbench position.
+
+Organization administrators and platform administrators can open **Organization → Device agents** to inventory all members' Bridges in their home organization, including owner, machine identifier, version, connection/last activity and revocation status. Select **Revoke pairing**, check the member and machine, and enter a reason. Failure keeps the reason for retry; refreshing the directory shows the saved result. Revocation invalidates the old credentials and closes its connection; reusing the computer requires the member to pair again. Inventory and revocation do not give administrators permission to execute through another member's Bridge. Ordinary members continue managing only their own pairings from the debugging workbench.
 
 If installation, pairing, or HDC/ADB tooling remains unavailable, ask your deployment operator to use the [local Device Bridge runbook](../runbooks/local-device-bridge.md). Confirm the target device before writing. Real-device verification requires the hardware and tools on site; simulated results do not establish target-device readiness.
 

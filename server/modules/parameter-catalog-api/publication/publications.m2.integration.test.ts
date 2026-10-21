@@ -169,6 +169,30 @@ describe("CP-10 M2 publication HTTP", () => {
     expect((created.body as { item: { riskClass: string } }).item.riskClass).toBe("low");
   });
 
+  it("accepts explicit optional-content removal through the HTTP candidate contract", async () => {
+    authenticateAs(scopeFor(AUTHOR, [...authorPermissions]));
+    const cleared = await request("POST", "/api/v2/catalog/publication-candidates", {
+      headers: { [CATALOG_RELEASE_HEADER]: pinId },
+      body: { changeSet: [{
+        op: "revise-definition",
+        definitionId: "pdef_acme_power_iin_max",
+        class: "documentation",
+        content: { ...integerContent("Input current limit", "Maximum accepted input current."),
+          unit: null, examples: null, description: null },
+      }] },
+    });
+    expect(cleared.status).toBe(201);
+    expect((cleared.body as { item: { riskClass: string } }).item.riskClass).toBe("high");
+    const invalid = await request("POST", "/api/v2/catalog/publication-candidates", {
+      headers: { [CATALOG_RELEASE_HEADER]: pinId },
+      body: { changeSet: [{
+        op: "revise-definition", definitionId: "pdef_acme_power_iin_max", class: "documentation",
+        content: { ...integerContent("Input current limit", "Maximum accepted input current."), unit: "" },
+      }] },
+    });
+    expect(invalid.status).toBe(400);
+  });
+
   it("previews documentation revise as low and fake documentation as high", async () => {
     authenticateAs(scopeFor(AUTHOR, [...authorPermissions]));
     const docs = await request("POST", "/api/v2/catalog/publication-candidates", {

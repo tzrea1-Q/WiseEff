@@ -415,6 +415,7 @@ export function PageRouter({
           knowledgeRepository={knowledgeRepository}
           skillRepository={runtime?.logAnalysisRepository}
           apiMode={runtimeMode === "api"}
+          sessionPermissions={sessionPermissions}
         />
       );
     case "feedback-admin":
@@ -519,6 +520,7 @@ export function PageRouter({
           onNavigate={onNavigate}
           search={search}
           area={parseOrganizationAdminArea(page.path) ?? "profile"}
+          apiMode={runtimeMode === "api"}
           userGovernanceActions={userGovernanceActions}
           organizationActions={organizationActions}
           onOrganizationUpdated={async () => {

@@ -126,6 +126,10 @@ export type LogFeedbackInsightsQuery = {
 };
 
 export interface LogAnalysisRepository extends Partial<SkillWorkspaceRepository>, Partial<SkillAuthoringRepository> {
+  previewLogDeletion?(logId: string): Promise<import("@/domain/logs/deletionPreview").LogDeletionPreview>;
+  purgeLog?(logId: string, version: string): Promise<import("@/domain/logs/deletionPreview").LogDeletionStatus>;
+  getLogDeletionStatus?(logId: string): Promise<import("@/domain/logs/deletionPreview").LogDeletionStatus>;
+  pendingLogDeletions?(): Promise<import("@/domain/logs/deletionPreview").LogDeletionStatus[]>;
   getLogTrace?(logId: string): Promise<import("@/features/log-skills/types").AnalysisTraceStep[]>;
   getSourceEvidence?(logId: string, evidenceId: string): Promise<import("@/features/log-skills/types").SourceExcerpt>;
   listLogs(query?: LogListQuery): Promise<LogRecord[]>;

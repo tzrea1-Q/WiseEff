@@ -483,7 +483,7 @@ async function createCandidateInScope(
   const source = input.bytes.toString("utf8");
   const stored = await objectStore.put({
     organizationId: auth.organization.id,
-    fileName,
+    fileName: `candidate-${candidateId}-${fileName}`,
     contentType: contentTypeForFormat(format),
     bytes: input.bytes
   });

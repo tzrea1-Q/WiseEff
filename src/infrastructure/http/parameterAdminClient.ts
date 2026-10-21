@@ -3,6 +3,7 @@ import { createDefaultApiClient } from "./defaultApiClient";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import { createParameterCatalogClient } from "./parameterCatalogClient";
 import type { CatalogListQuery } from "./parameterCatalogDtos";
+import type { ProjectDeletionPreview, ProjectDeletionStatus } from "@/domain/parameters/projectDeletionPreview";
 
 export type ParameterModuleDto = FlatModuleNode;
 
@@ -95,6 +96,26 @@ export function createParameterAdminClient(client: ApiClient = createDefaultApiC
     },
     async deleteProject(projectId: string) {
       await client.delete<{ ok: true }>(`/api/v1/parameters/admin/projects/${encodeURIComponent(projectId)}`);
+    },
+    async previewProjectDeletion(projectId: string) {
+      const response = await client.get<ItemEnvelope<ProjectDeletionPreview>>(
+        `/api/v1/parameters/admin/projects/${encodeURIComponent(projectId)}/deletion-preview`
+      );
+      return response.item;
+    },
+    async purgeProject(projectId: string, stateDigest: string) {
+      const response = await client.post<ItemEnvelope<ProjectDeletionStatus>>(
+        `/api/v1/parameters/admin/projects/${encodeURIComponent(projectId)}/purge`, { stateDigest });
+      return response.item;
+    },
+    async getProjectDeletionStatus(projectId: string) {
+      const response = await client.get<ItemEnvelope<ProjectDeletionStatus>>(
+        `/api/v1/parameters/admin/projects/${encodeURIComponent(projectId)}/deletion-status`);
+      return response.item;
+    },
+    async listProjectDeletions() {
+      const response = await client.get<ItemsEnvelope<ProjectDeletionStatus>>("/api/v1/parameters/admin/project-deletions");
+      return response.items;
     },
     async listModules() {
       const response = await client.get<ItemsEnvelope<ParameterModuleDto>>("/api/v1/parameter-modules");

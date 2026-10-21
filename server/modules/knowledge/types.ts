@@ -70,6 +70,7 @@ export type KnowledgeEntryDto = {
   sourceSessionId: string | null;
   /** Log-analysis record this entry was distilled from (Phase 3 distillation). */
   sourceLogId: string | null;
+  sourceLogDeleted?: boolean;
   /** DTS reload run this entry was distilled from (deferred roadmap item 3). */
   sourceReloadRunId: string | null;
   createdByUserId: string | null;
