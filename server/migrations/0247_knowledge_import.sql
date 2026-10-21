@@ -29,3 +29,15 @@ create table knowledge_import_documents (
     references knowledge_entries (id, organization_id) on delete set null (entry_id)
 );
 create index knowledge_import_documents_batch_idx on knowledge_import_documents(batch_id);
+
+do $$
+declare role_name text;
+begin
+  for role_name in select rolname from pg_roles
+    where has_table_privilege(oid,'public.log_domains','INSERT')
+      and oid<>(select relowner from pg_class where oid='public.knowledge_import_batches'::regclass)
+      and rolname<>'PUBLIC'
+  loop
+    execute format('grant select,insert,update,delete on public.knowledge_import_batches,public.knowledge_import_documents to %I',role_name);
+  end loop;
+end; $$;

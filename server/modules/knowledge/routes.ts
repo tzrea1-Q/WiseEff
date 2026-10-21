@@ -8,6 +8,7 @@ import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { createDefaultKnowledgeTextExtractor, type KnowledgeTextExtractor } from "./extraction";
 import type { KnowledgeEmbeddingClient } from "./indexing/embeddingClient";
 import { importKnowledgeArchive, importKnowledgeDocument, openKnowledgeImport, readKnowledgeImport, completeKnowledgeImport } from "./import";
+import { createUserInvocation } from "../auth/trustedInvocation";
 import { importKnowledgeArchiveSchema, importKnowledgeDocumentSchema, openKnowledgeImportSchema } from "./schemas";
 import {
   addKnowledgeDefinitionReference,
@@ -119,7 +120,7 @@ export function registerKnowledgeRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(batchKnowledgeEntriesBodySchema, request.body);
     return { status: 200, body: await batchKnowledgeEntries(requireDb(options.db), requireObjectStore(options.objectStore),
-      extractor, auth, body, { requestId: request.requestId }) };
+      extractor, auth, createUserInvocation(auth), body, { requestId: request.requestId }) };
   });
 
   router.post("/api/v1/knowledge/imports", async (request) => {
@@ -152,7 +153,7 @@ export function registerKnowledgeRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const { batchId } = parseWithSchema(importBatchParamsSchema, request.params);
     parseWithSchema(z.object({}).strict(), request.body ?? {});
-    return { status: 200, body: { item: await completeKnowledgeImport(requireDb(options.db), auth, batchId, { requestId: request.requestId }) } };
+    return { status: 200, body: { item: await completeKnowledgeImport(requireDb(options.db), auth, createUserInvocation(auth), batchId, { requestId: request.requestId }) } };
   });
 
   router.post("/api/v1/knowledge/entries", async (request) => {

@@ -12,6 +12,7 @@ import { TopBarActionsContext } from "./components/layout";
 import { NodeDebuggingPage } from "./NodeDebuggingPage";
 import { initialState } from "./mockData";
 import type { PrototypeState } from "./domain/prototype/types";
+import type { DebugParameter } from "./domain/debugging/types";
 import { resolveLocalBridgeHealthUrl } from "./infrastructure/http/localBridgeHttpUrl";
 import { resolveWiseEffApiBaseUrl } from "./infrastructure/http/runtimeMode";
 import * as bridgeLauncher from "./infrastructure/http/bridgeConnectLauncher";
@@ -45,9 +46,10 @@ const adbTarget = { ...apiTarget, protocol: "adb" as const };
 describe("debug-node related knowledge", () => {
   it.each(["no-definition", "no-permission"])("hides related knowledge for %s", async (state) => {
     const load = vi.fn(async () => []);
+    const parameter: DebugParameter = { ...userState.debugParameters[0],
+      definitionId: state === "no-definition" ? undefined : "definition-node" };
     renderNodeDebuggingPage({
-      state: { ...userState, debugParameters: [{ ...userState.debugParameters[0],
-        definitionId: state === "no-definition" ? undefined : "definition-node" }] },
+      state: { ...userState, debugParameters: [parameter] },
       debuggingActions: createDebuggingActions(),
       relatedKnowledge: state === "no-permission" ? undefined : { load, onOpenEntry: vi.fn() }
     });
@@ -68,8 +70,9 @@ describe("debug-node related knowledge", () => {
     const knowledge = createMockKnowledgeRepository({}, { entries, revisions: [] });
     const load = vi.fn(async (id: string) => (await knowledge.relatedToDefinition(id)).items);
     const onOpenEntry = vi.fn();
+    const parameter: DebugParameter = { ...userState.debugParameters[0], definitionId: "definition-node" };
     renderNodeDebuggingPage({
-      state: { ...userState, debugParameters: [{ ...userState.debugParameters[0], definitionId: "definition-node" }] },
+      state: { ...userState, debugParameters: [parameter] },
       debuggingActions: createDebuggingActions(), relatedKnowledge: { load, onOpenEntry }
     });
     fireEvent.click(await screen.findByRole("button", { name: /查看\/修改|查看详情/ }));

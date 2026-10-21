@@ -5,7 +5,7 @@ import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
-import { createUserInvocation } from "../auth/trustedInvocation";
+import type { TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { ObjectStore } from "../logs/objectStore";
 import { AnalysisCaseArchiveError, analysisCaseArchiveLimits, readBoundedZipArchive } from "../logs/analysisCaseArchive";
 import type { KnowledgeTextExtractor } from "./extraction";
@@ -161,14 +161,14 @@ export async function importKnowledgeDocument(
   });
 }
 
-export async function completeKnowledgeImport(db: Database, auth: AuthContext, batchId: string, context: KnowledgeServiceContext = {}) {
+export async function completeKnowledgeImport(db: Database, auth: AuthContext, invocation: TrustedInvocationContext, batchId: string, context: KnowledgeServiceContext = {}) {
   requireKnowledgeEdit(auth);
   return db.transaction(async (tx) => {
     const batch = await lockBatch(tx, auth, batchId);
     const report = await readKnowledgeImport(tx, auth, batchId);
     if (!batch.completed_at) {
       await tx.query("update knowledge_import_batches set completed_at = now() where id = $1 and organization_id = $2", [batchId, auth.organization.id]);
-      await writeAuditEventInTx(asAuditTx(tx), createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
+      await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId: context.requestId ?? randomUUID() }, {
         app: "knowledge", kind: "knowledge-import-complete", action: "import", severity: "Medium", projectId: null,
         targetType: "knowledge-import-batch", targetId: batchId,
         metadata: { importBatchId: batchId, documentCount: batch.document_count, totalBytes: Number(batch.total_bytes), counts: report.counts }

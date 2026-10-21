@@ -37,6 +37,8 @@ describe("createMockKnowledgeRepository", () => {
     const repository = createMockKnowledgeRepository({ getLogRecord: () => log });
 
     const draft = await repository.distillFromLog(log.id);
+    expect(typeof draft.contentMarkdown).toBe("string");
+    if (draft.contentMarkdown === null) throw new Error("Expected distilled markdown content");
 
     expect(draft.contentMarkdown.startsWith("> 降级分析 · 规则回退")).toBe(true);
     expect(draft.contentMarkdown).toContain("AI 分析服务不可用，本结论由规则引擎回退生成");

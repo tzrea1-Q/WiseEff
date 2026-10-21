@@ -20,7 +20,7 @@ describe("knowledge batch management", () => {
     render(<KnowledgePage repository={repository} capability={capability} />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("checkbox", { name: `选择 ${entry.title}` }));
-    await user.click(screen.getByRole("button", { name: "发布", exact: true }));
+    await user.click(screen.getByRole("button", { name: "发布" }));
     await user.click(screen.getByRole("button", { name: "确认发布" }));
     expect(await screen.findByRole("table", { name: "批量操作结果" })).toHaveTextContent(copy);
   });
@@ -33,8 +33,8 @@ describe("knowledge batch management", () => {
     await user.click(await screen.findByRole("checkbox", { name: "选择 自己的草稿" }));
     await user.click(screen.getByRole("checkbox", { name: `选择 ${foreignPublished.title}` }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    for (const name of ["添加标签", "移除标签", "发布", "归档"]) expect(screen.getByRole("button", { name, exact: true })).toBeEnabled();
-    await user.click(screen.getByRole("button", { name: "添加标签", exact: true }));
+    for (const name of ["添加标签", "移除标签", "发布", "归档"]) expect(screen.getByRole("button", { name })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "添加标签" }));
     const dialog = screen.getByRole("dialog", { name: "添加标签" });
     await user.type(within(dialog).getByLabelText("标签（逗号分隔）"), "共享, 原有");
     await user.click(within(dialog).getByRole("button", { name: "确认添加标签" }));
@@ -53,13 +53,13 @@ describe("knowledge batch management", () => {
     render(<KnowledgePage repository={repository} capability={capability} />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("checkbox", { name: `选择 ${entry.title}` }));
-    await user.click(screen.getByRole("button", { name: "发布", exact: true }));
+    await user.click(screen.getByRole("button", { name: "发布" }));
     await user.click(screen.getByRole("button", { name: "确认发布" }));
     expect(await screen.findByRole("table", { name: "批量操作结果" })).toHaveTextContent("成功");
     expect((await repository.search(entry.title)).items).toHaveLength(1);
     await user.click(screen.getByRole("button", { name: "关闭" }));
     await user.click(screen.getByRole("checkbox", { name: `选择 ${entry.title}` }));
-    await user.click(screen.getByRole("button", { name: "归档", exact: true }));
+    await user.click(screen.getByRole("button", { name: "归档" }));
     await user.click(screen.getByRole("button", { name: "确认归档" }));
     expect(await screen.findByRole("table", { name: "批量操作结果" })).toHaveTextContent(entry.title);
     expect((await repository.search(entry.title)).items).toHaveLength(0);
@@ -77,7 +77,7 @@ describe("knowledge batch management", () => {
     render(<KnowledgePage repository={repository} capability={{ ...capability, canEdit: false, canManage: true }} />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("checkbox", { name: `选择 ${entry.title}` }));
-    await user.click(screen.getByRole("button", { name: "移除标签", exact: true }));
+    await user.click(screen.getByRole("button", { name: "移除标签" }));
     await user.type(screen.getByLabelText("标签（逗号分隔）"), "移除");
     await user.click(screen.getByRole("button", { name: "确认移除标签" }));
     expect(await screen.findByRole("table", { name: "批量操作结果" })).toHaveTextContent("成功");
@@ -90,7 +90,7 @@ describe("knowledge batch management", () => {
     render(<KnowledgePage repository={repository} capability={capability} />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("checkbox", { name: /全选筛选结果/ }));
-    await user.click(screen.getByRole("button", { name: "添加标签", exact: true }));
+    await user.click(screen.getByRole("button", { name: "添加标签" }));
     await user.click(screen.getByRole("button", { name: "确认添加标签" }));
     expect(screen.getByRole("alert")).toHaveTextContent("请输入 1–20 个标签");
     expect(batch).not.toHaveBeenCalled();
@@ -99,7 +99,7 @@ describe("knowledge batch management", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("部分条目可能已完成");
     await user.click(screen.getByRole("button", { name: "取消" }));
     expect(screen.getByRole("group", { name: "批量管理" })).toHaveTextContent("已选择");
-    await user.click(screen.getByRole("button", { name: "添加标签", exact: true }));
+    await user.click(screen.getByRole("button", { name: "添加标签" }));
     let release!: (report: Awaited<ReturnType<typeof repository.batch>>) => void;
     batch.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
     await user.type(screen.getByLabelText("标签（逗号分隔）"), "重试");
@@ -128,7 +128,7 @@ describe("knowledge batch management", () => {
     await user.click(await screen.findByRole("checkbox", { name: `选择 ${own.title}` }));
     await user.click(screen.getByRole("checkbox", { name: `选择 ${removed.title}` }));
     await user.click(screen.getByRole("checkbox", { name: `选择 ${success.title}` }));
-    await user.click(screen.getByRole("button", { name: "发布", exact: true }));
+    await user.click(screen.getByRole("button", { name: "发布" }));
     await user.click(screen.getByRole("button", { name: "确认发布" }));
     const report = await screen.findByRole("table", { name: "批量操作结果" });
     expect(report).toHaveTextContent("失败条目");
@@ -150,7 +150,7 @@ describe("knowledge batch management", () => {
     const { rerender } = render(<KnowledgePage repository={repository} capability={capability} />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("checkbox", { name: `选择 ${old.title}` }));
-    await user.click(screen.getByRole("button", { name: "发布", exact: true }));
+    await user.click(screen.getByRole("button", { name: "发布" }));
     await user.click(screen.getByRole("button", { name: "确认发布" }));
     rerender(<KnowledgePage repository={nextRepository} capability={capability} />);
     await screen.findByRole("checkbox", { name: "选择 新组织草稿" });

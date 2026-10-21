@@ -4037,8 +4037,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const groupLabels = Array.from(sidebar.querySelectorAll(".nav-group-label")).map((node) => node.textContent);
     expect(groupLabels).toEqual(["平台总览", "参数管理", "调试平台", "日志分析", "知识库"]);
     expect(within(sidebar).getByRole("button", { name: "智能分析" })).toBeInTheDocument();
-    expect(within(sidebar).getByRole("button", { name: "知识库", exact: true })).toBeInTheDocument();
-    expect(within(sidebar).getByRole("button", { name: "知识后台", exact: true })).toBeInTheDocument();
+    expect(within(sidebar).getByRole("button", { name: "知识库" })).toBeInTheDocument();
+    expect(within(sidebar).getByRole("button", { name: "知识后台" })).toBeInTheDocument();
     expect(within(sidebar).getByRole("button", { name: "日志后台" })).toBeInTheDocument();
     const logGroup = Array.from(sidebar.querySelectorAll(".nav-group")).find((group) =>
       group.querySelector(".nav-group-label")?.textContent === "日志分析"

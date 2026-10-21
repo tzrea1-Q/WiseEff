@@ -37,7 +37,7 @@ it.each([
   { entry: null, deleted: false },
   { entry: null, deleted: true }
 ])("loads bound knowledge without conflating deletion and private entries: $deleted / $entry.status", async (binding) => {
-  const fetchMock = vi.fn(async () => jsonResponse(binding));
+  const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(binding));
   const repository = createRepository(fetchMock);
   const result = await repository.getBinding("entry-1");
   expect(result.deleted).toBe(binding.deleted);

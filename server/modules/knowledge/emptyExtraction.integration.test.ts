@@ -96,7 +96,7 @@ describe.skipIf(!databaseAvailable)("empty knowledge extraction over HTTP and Po
     const before = await request<KnowledgeIndexHealthDto>("GET", "/index/status");
     expect(before.items.find((entry) => entry.entryId === item.id)?.chunkCount).toBeGreaterThan(0);
 
-    let emptyBytes = emptyPdf;
+    let emptyBytes: Buffer = emptyPdf;
     if (fileName.endsWith(".docx")) {
       const zip = await JSZip.loadAsync(bytes);
       zip.file("word/document.xml", (await zip.file("word/document.xml")!.async("string")).replace(/<w:t[^>]*>.*?<\/w:t>/gs, "<w:t> </w:t>"));

@@ -914,6 +914,7 @@ export async function batchKnowledgeEntries(
   objectStore: ObjectStore,
   extractor: KnowledgeTextExtractor,
   auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: BatchKnowledgeEntriesInput,
   context: KnowledgeServiceContext = {}
 ) {
@@ -956,7 +957,7 @@ export async function batchKnowledgeEntries(
   let summaryError: string | null = null;
   try {
     await db.transaction(async (tx) => {
-      await writeAuditEventInTx(asAuditTx(tx), createUserInvocation(auth), { requestId }, {
+      await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId }, {
         app: "knowledge", kind: "knowledge-batch", action: input.action, severity: "Medium", projectId: null,
         targetType: "knowledge-batch", targetId: randomUUID(),
         metadata: { action: input.action, results: results.map(({ entryId, status, error }) => ({ entryId, status, error })) }

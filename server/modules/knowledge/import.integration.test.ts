@@ -109,10 +109,11 @@ describe.skipIf(!available)("knowledge import over HTTP and PostgreSQL", () => {
 
   it("refuses oversized expanded ZIP totals and members before creating any entry", async () => {
     const twentyMb = Buffer.alloc(20 * 1024 * 1024, 97);
-    for (const members of [
+    const cases: Record<string, string | Buffer>[] = [
       { "valid-first.md": "not created", "large.bin": Buffer.alloc(20 * 1024 * 1024 + 1, 97) },
       { "valid-first.md": "not created", ...Object.fromEntries(Array.from({ length: 5 }, (_, index) => [`${index}.bin`, twentyMb])) }
-    ]) {
+    ];
+    for (const members of cases) {
       const batch = await open();
       expect((await archive(batch, members)).status).toBe(400);
       expect((await request(`imports/${batch}`, undefined, auth, "GET")).body.item)
