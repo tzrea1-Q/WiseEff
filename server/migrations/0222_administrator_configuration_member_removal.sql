@@ -152,6 +152,7 @@ set search_path=pg_catalog,parameter_catalog,public as $$
 declare request_row public.project_parameter_value_change_requests%rowtype; planned jsonb; matched integer; total integer;
 begin
   select * into request_row from public.project_parameter_value_change_requests where id=new.id;
+  if not found then return null; end if;
   if request_row.member_application_mode<>'administrator_direct' or request_row.status<>'approved' then return null; end if;
   for planned in select value from jsonb_array_elements(coalesce(request_row.member_frozen_proof->'newProperties','[]')) loop
     select count(*) into matched from parameter_catalog.current_project_parameter_bindings binding

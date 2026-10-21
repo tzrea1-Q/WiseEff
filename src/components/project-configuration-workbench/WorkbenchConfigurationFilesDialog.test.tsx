@@ -70,6 +70,17 @@ describe("WorkbenchConfigurationFilesDialog", () => {
     expect(values.onRemoveMember).toHaveBeenCalledWith(values.members[1]);
   });
 
+  it("retains the optional existing JSON review action alongside direct impact preview", async () => {
+    const user = userEvent.setup();
+    const reviewed = vi.fn();
+    const values = props({ canonical: true, onReviewedMemberRemoval: reviewed });
+    render(<WorkbenchConfigurationFilesDialog {...values} />);
+    await user.click(screen.getByRole("button", { name: "charging.json 更多" }));
+    expect(screen.getByRole("menuitem", { name: "预览移除影响" })).toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "申请从配置移除" }));
+    expect(reviewed).toHaveBeenCalledWith(values.members[1]);
+  });
+
   it.each([
     { ready: false }, { loading: true }, { error: "来源读取失败" }, { canRequestReviewedMemberRemoval: false }
   ])("keeps reviewed removal unavailable until every source gate passes: %j", async (gate) => {

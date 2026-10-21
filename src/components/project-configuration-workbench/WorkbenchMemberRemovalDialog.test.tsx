@@ -8,7 +8,7 @@ afterEach(cleanup);
 const preview = { canApply: true as const, proofToken: "a".repeat(64), removedFileId: "overlay", members: [
   { fileId: "root", fileVersionId: "v1", sourceName: "board.dts", format: "dts" as const, role: "base", sortOrder: 0, checksum: "x", sizeBytes: 10 },
   { fileId: "overlay", fileVersionId: "v2", sourceName: "overlay.dts", format: "dts" as const, role: "overlay", sortOrder: 1, checksum: "y", sizeBytes: 10 }
-], dependencies: [{ file: "board.dts", kind: "overlay" as const, target: "overlay.dts" }], impact: { nodeRemovals: 2, removedBindings: 3, retainedBindings: 4, exposedBindings: 0 } };
+], dependencies: [{ file: "board.dts", kind: "overlay" as const, target: "overlay.dts" }], parameterImpacts: [], impact: { nodeRemovals: 2, nodeAdditions: 0, removedBindings: 3, retainedBindings: 4, exposedBindings: 0 } };
 
 describe("administrator member removal confirmation", () => {
   it("shows source dependencies and parameter impact, keeps cancel focused and sends no mutation on Escape", async () => {

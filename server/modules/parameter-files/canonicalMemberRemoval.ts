@@ -318,7 +318,16 @@ export async function previewAdministratorMemberRemoval(db: Database, storage: O
     return await db.transaction(async (tx) => {
       const inspected = await inspectAdministratorMemberRemoval(tx, storage, auth, input, snapshot, snapshots);
       return { canApply: true as const, proofToken: inspected.proof.proofDigest, members: inspected.proof.members,
-        removedFileId: input.fileId, dependencies: inspected.dependencies, impact: { nodeRemovals: inspected.nodeRemovals,
+        removedFileId: input.fileId, dependencies: inspected.dependencies,
+        parameterImpacts: [...inspected.proof.cohort.flatMap((row) => {
+          const transfer = inspected.proof.originTransfers.find((item) => item.bindingId === row.bindingId);
+          if (row.fileId !== input.fileId && !transfer) return [];
+          return [{ propertyName: String(row.locator.propertyName ?? row.locator.pointer ?? "参数"),
+            fromSource: inspected.proof.members.find((member) => member.fileId === row.fileId)!.sourceName,
+            toSource: transfer ? inspected.proof.members.find((member) => member.fileId === transfer.toFileId)!.sourceName : null }];
+        }), ...inspected.proof.newProperties.map((row) => ({ propertyName: row.propertyName, fromSource: null,
+          toSource: inspected.proof.members.find((member) => member.fileId === row.fileId)!.sourceName }))],
+        impact: { nodeRemovals: inspected.nodeRemovals, nodeAdditions: inspected.proof.configuration.continuity?.nodes.filter((node) => node.isNew).length ?? 0,
           removedBindings: inspected.proof.cohort.filter((row) => row.fileId === input.fileId && !inspected.proof.originTransfers.some((transfer) => transfer.bindingId === row.bindingId)).length,
           retainedBindings: inspected.proof.cohort.filter((row) => row.fileId !== input.fileId || inspected.proof.originTransfers.some((transfer) => transfer.bindingId === row.bindingId)).length,
           exposedBindings: inspected.proof.newProperties.length + inspected.proof.originTransfers.length } };
@@ -487,19 +496,19 @@ export async function applyReviewedCanonicalMemberRemoval(
       if (revision.status !== "resolved") conflict("移除后的配置结构解析失败，未保存任何变化。");
       successorConfigRevisionId = revision.id;
     } else {
-    await insertConfigRevision(tx, {
-      id: successorConfigRevisionId, organizationId: auth.organization.id,
-      projectId: frozen.projectId, configSetId: frozen.configSetId,
-      revisionNumber: await nextConfigRevisionNumber(tx, frozen.configSetId),
-      status: "resolved", attribution
-    });
-    await insertConfigRevisionMembers(tx, successorConfigRevisionId,
-      frozen.members.filter((member) => member.fileId !== frozen.fileId).map((member) => ({
-        fileId: member.fileId, fileVersionId: member.fileVersionId,
-        fileName: member.sourceName, sourceName: member.sourceName,
-        format: member.format, role: member.role as ConfigRevisionMemberRole,
-        sortOrder: member.sortOrder, content: ""
-      })));
+      await insertConfigRevision(tx, {
+        id: successorConfigRevisionId, organizationId: auth.organization.id,
+        projectId: frozen.projectId, configSetId: frozen.configSetId,
+        revisionNumber: await nextConfigRevisionNumber(tx, frozen.configSetId),
+        status: "resolved", attribution
+      });
+      await insertConfigRevisionMembers(tx, successorConfigRevisionId,
+        frozen.members.filter((member) => member.fileId !== frozen.fileId).map((member) => ({
+          fileId: member.fileId, fileVersionId: member.fileVersionId,
+          fileName: member.sourceName, sourceName: member.sourceName,
+          format: member.format, role: member.role as ConfigRevisionMemberRole,
+          sortOrder: member.sortOrder, content: ""
+        })));
     }
     const observed = frozen.configuration?.continuity ? await listObservedProperties(asValueClient(tx), successorConfigRevisionId) : [];
     const auditEventId = randomUUID();

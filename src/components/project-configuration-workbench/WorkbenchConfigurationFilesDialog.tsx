@@ -37,6 +37,7 @@ export type WorkbenchConfigurationFilesDialogProps = {
   onMemberSortOrderChange: (sortOrder: number) => void;
   onAddMember: () => void;
   onRemoveMember: (member: DtsConfigSetMemberFile) => void;
+  onReviewedMemberRemoval?: (member: DtsConfigSetMemberFile) => void;
   canRequestReviewedMemberRemoval: boolean;
   onOpenFile: (fileId: string) => void;
   onUpdateFile: (fileId: string) => void;
@@ -48,7 +49,7 @@ export function WorkbenchConfigurationFilesDialog({
   open, onClose, configSet, members, canAdmin, pendingAction, loading, error, operationError = "", ready, canonical, onRetry,
   availableFiles, addErrors, memberFileId, memberRole, memberSortOrder, onMemberFileIdChange,
   onMemberRoleChange, onMemberSortOrderChange, onAddMember, onRemoveMember, canRequestReviewedMemberRemoval,
-  onOpenFile, onUpdateFile, onOpenVersions, onAddSourceFile
+  onOpenFile, onUpdateFile, onOpenVersions, onAddSourceFile, onReviewedMemberRemoval
 }: WorkbenchConfigurationFilesDialogProps) {
   const addErrorId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -101,7 +102,9 @@ export function WorkbenchConfigurationFilesDialog({
               <RowActionMenu label={`${member.fileName} 文件操作`} triggerLabel={`${member.fileName} 更多`} items={[
                 { id: "versions", label: "版本历史与下载", disabled: busy, onSelect: () => onOpenVersions(member.fileId) },
                 ...(canRemove() ? [{ id: "remove", label: canonical ? "预览移除影响" : "从配置移除", destructive: true as const,
-                  disabled: busy, onRequestConfirmation: () => onRemoveMember(member) }] : [])
+                  disabled: busy, onRequestConfirmation: () => onRemoveMember(member) }] : []),
+                ...(canRemove() && canonical && member.format === "json" && onReviewedMemberRemoval ? [{ id: "remove-review", label: "申请从配置移除",
+                  disabled: busy, onRequestConfirmation: () => onReviewedMemberRemoval(member) }] : [])
               ]} />
             </div></TableCell>
           </TableRow>)}</TableBody>
