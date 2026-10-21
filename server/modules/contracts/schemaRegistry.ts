@@ -1076,6 +1076,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "LogSourceSnapshotResponse", successStatus: 202,
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "logs.restoreSourceSnapshot": {
+    summary: "Restore an archived source snapshot under its original identity and requeue its original uploaded content for indexing",
+    tags: ["logs"], requestBody: "RetryLogSourceSnapshotRequest", requestBodyRequired: false,
+    responseBody: "LogSourceSnapshotResponse", successStatus: 202,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "logs.previewSkillDeletion": {
     summary: "Inspect exact references and owned objects before deleting an unpublished experimental skill", tags: ["logs"],
     responseBody: "SkillDeletionPreviewResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }

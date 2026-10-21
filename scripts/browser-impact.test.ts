@@ -31,6 +31,7 @@ describe("browser impact selection", () => {
       "e2e/acceptance/shell-navigation.acceptance.spec.ts",
       "e2e/acceptance/skill-experiment-deletion.acceptance.spec.ts",
       "e2e/acceptance/skill-lifecycle.acceptance.spec.ts",
+      "e2e/acceptance/source-snapshot-restore.acceptance.spec.ts",
       "e2e/acceptance/source-snapshot-retry.acceptance.spec.ts",
     ]);
     const grep = new RegExp(selection.qualityGrep!);

@@ -790,6 +790,7 @@ export const routeManifest = [
   { id: "logs.listSourceSnapshots", method: "GET", path: "/api/v1/log-skills/:skillId/source-snapshots", module: "logs", stability: "mvp" },
   { id: "logs.uploadSourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots", module: "logs", stability: "mvp" },
   { id: "logs.retrySourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/retry", module: "logs", stability: "mvp" },
+  { id: "logs.restoreSourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/restore", module: "logs", stability: "mvp" },
   { id: "logs.defaultSourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/default", module: "logs", stability: "mvp" },
   { id: "logs.archiveSourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/archive", module: "logs", stability: "mvp" },
   { id: "logs.locateSourceStatement", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/locate", module: "logs", stability: "mvp" },

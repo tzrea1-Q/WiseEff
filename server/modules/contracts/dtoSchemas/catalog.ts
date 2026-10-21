@@ -228,6 +228,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 };
 
 export const dtoSchemaCoveredRouteIds = [
+  "logs.restoreSourceSnapshot",
   "logs.retrySourceSnapshot",
   "parameters.previewRestoreReleaseBaseline", "parameters.rollbackReleaseBaseline",
   "logs.listSkillDeletions", "logs.previewSkillDeletion", "logs.getSkillDeletionStatus", "logs.purgeSkill",
