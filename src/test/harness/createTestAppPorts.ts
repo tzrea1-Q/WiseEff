@@ -122,7 +122,7 @@ export function createTestUserGovernanceActions(
   return {
     listUsers: vi.fn().mockResolvedValue(users),
     createUser: vi.fn().mockResolvedValue(undefined),
-    assignUserRole: vi.fn().mockResolvedValue(undefined),
+    updateOrganizationRoles: vi.fn().mockResolvedValue(undefined),
     setUserActive: vi.fn().mockResolvedValue(undefined),
     deleteUser: vi.fn().mockResolvedValue(undefined),
     resetUserPassword: vi.fn().mockResolvedValue(undefined),

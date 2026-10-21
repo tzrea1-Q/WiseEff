@@ -16,6 +16,7 @@ import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MemberDetailsDialog } from "@/components/admin/MemberDetailsDialog";
+import { MemberOrganizationRolesPanel } from "@/components/admin/MemberOrganizationRolesPanel";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import {
@@ -27,7 +28,8 @@ import {
 import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { formatLastActive, normalizeTimestampInput } from "@/domain/format/formatLastActive";
 import { presentError } from "@/infrastructure/http/presentError";
-import { migrateLegacyRoleId, pickPrimaryPlatformRoleId, platformRoles, type PlatformRoleId } from "@/domain/users/types";
+import { migrateLegacyRoleId, organizationRoleIds, pickPrimaryPlatformRoleId, platformRoles, type PlatformRoleId } from "@/domain/users/types";
+import type { UpdateOrganizationRolesInput } from "@/infrastructure/http/userGovernanceClient";
 import type { PrototypeState, User } from "@/domain/prototype/types";
 import type { DataTableSort } from "@/components/admin/DataTable";
 import "./user-permissions-page.css";
@@ -49,7 +51,7 @@ export type UserPermissionsPageProps = {
 export type UserGovernanceActions = {
   listUsers(): Promise<User[]>;
   createUser(input: { name: string; username: string; title: string; password: string; roleId: PlatformRoleId }): Promise<User | void>;
-  assignUserRole(userId: string, roleId: PlatformRoleId): Promise<User | void>;
+  updateOrganizationRoles(userId: string, input: UpdateOrganizationRolesInput): Promise<User | void>;
   setUserActive(userId: string, isActive: boolean): Promise<User | void>;
   deleteUser(userId: string): Promise<void>;
   resetUserPassword?(userId: string, password: string): Promise<User | void>;
@@ -101,7 +103,6 @@ type UserColumnFilterKey = "user" | "title" | "role" | "status" | "lastActive";
 type UserPermissionsWorkspace = "accounts" | "approvals";
 
 type PendingGovernanceAction =
-  | { kind: "role"; user: User; nextRoleId: PlatformRoleId }
   | { kind: "active"; user: User; nextActive: boolean }
   | { kind: "delete"; user: User };
 
@@ -116,13 +117,11 @@ function canGrantPlatformAdmin(state: PrototypeState) {
 }
 
 function organizationRoleOf(user?: User) {
-  const roles = user?.roles?.filter((role) => role.projectId === null && platformRoles.some((item) => item.id === role.roleId));
-  return roles?.length ? pickPrimaryPlatformRoleId(roles.map((role) => role.roleId)) : migrateLegacyRoleId(user?.roleId ?? "guest");
+  return user ? pickPrimaryPlatformRoleId(organizationRoleIds(user)) : "guest";
 }
 
 function organizationRoleLabels(user: User) {
-  const roles = user.roles?.filter((role) => role.projectId === null && platformRoles.some((item) => item.id === role.roleId));
-  return [...new Set((roles?.length ? roles.map((role) => role.roleId) : [user.roleId]).map(roleLabelOf))];
+  return organizationRoleIds(user).map(roleLabelOf);
 }
 
 function isPlatformAdminLocked(state: PrototypeState, user: User) {
@@ -432,16 +431,7 @@ export function UserPermissionsPage({
     setGovernancePending(true);
     setGovernanceError(null);
     try {
-      if (pendingGovernance.kind === "role") {
-        const updated = await userGovernanceActions?.assignUserRole(pendingGovernance.user.id, pendingGovernance.nextRoleId);
-        dispatch({
-          type: "ASSIGN_USER_ROLE",
-          userId: pendingGovernance.user.id,
-          roleId: pendingGovernance.nextRoleId
-        });
-        if (updated) applyUpdatedUser(updated);
-        dispatch({ type: "ADD_NOTIFICATION", message: `已更新 ${pendingGovernance.user.name} 的组织角色` });
-      } else if (pendingGovernance.kind === "active") {
+      if (pendingGovernance.kind === "active") {
         await userGovernanceActions?.setUserActive(pendingGovernance.user.id, pendingGovernance.nextActive);
         dispatch({
           type: "TOGGLE_USER_ACTIVE",
@@ -582,8 +572,8 @@ export function UserPermissionsPage({
         values={[...new Set(state.users.flatMap(organizationRoleLabels))].sort((a, b) => a.localeCompare(b, "zh-CN"))}
         selectedValues={columnFilters.role ?? []} onToggle={(value) => toggleColumnFilter("role", value)} onClear={() => clearColumnFilter("role")} />,
       render: (user) => {
-        const roles = [...new Set((user.roles ?? []).filter((role) => role.projectId === null && platformRoles.some((item) => item.id === role.roleId)).map((role) => role.roleId))];
-        return <span className="member-role-label" title={roles.map(roleLabelOf).join("、")}>{roleLabelOf(organizationRoleOf(user))}{roles.length > 1 ? <span className="member-list-meta"> +{roles.length - 1}</span> : null}</span>;
+        const roles = organizationRoleIds(user);
+        return <span className="member-role-label" title={roles.map(roleLabelOf).join("、")}>{roles.length ? roleLabelOf(organizationRoleOf(user)) : "未授予组织级角色"}{roles.length > 1 ? <span className="member-list-meta"> +{roles.length - 1}</span> : null}</span>;
       }
     },
     {
@@ -775,17 +765,25 @@ export function UserPermissionsPage({
 
       {selectedMember ? <MemberDetailsDialog key={selectedMember.id} user={selectedMember} state={state} actions={userGovernanceActions}
         onUpdated={applyUpdatedUser} onClose={() => { setMemberId(null); setDirectoryReloadToken((value) => value + 1); }} roleLabel={roleLabelOf}
-        roleEditor={<>
-          <SelectControl className="user-permissions-role-select" ariaLabel={`调整 ${selectedMember.name} 的角色`}
-            value={organizationRoleOf(selectedMember)} disabled={selectedMember.id === state.currentUserId || isPlatformAdminLocked(state, selectedMember)}
-            onValueChange={(value) => { if (value !== organizationRoleOf(selectedMember)) { setGovernanceError(null); setPendingGovernance({ kind: "role", user: selectedMember, nextRoleId: value as PlatformRoleId }); } }}
-            options={assignableRolesForUser(state, organizationRoleOf(selectedMember)).map((role) => ({ value: role.id, label: roleLabelOf(role.id) }))} />
-          <p className="member-details__hint">{roleCapabilityDescriptions[organizationRoleOf(selectedMember)]}</p>
-          <p className="member-details__hint">{selectedMember.roles && !selectedMember.roles.some((role) => role.projectId === null && platformRoles.some((item) => item.id === role.roleId))
-            ? "未授予组织级角色，项目权限仍独立生效。" : `已授予：${organizationRoleLabels(selectedMember).join("、")}`}</p>
-          {selectedMember.id === state.currentUserId ? <p className="member-details__hint">不能调整当前登录账号的角色。</p>
-            : isPlatformAdminLocked(state, selectedMember) ? <p className="member-details__hint">只有平台超级管理员可以调整此账号的角色。</p> : null}
-        </>} /> : null}
+        roleEditor={<MemberOrganizationRolesPanel user={selectedMember}
+          options={assignableRolesForUser(state, organizationRoleOf(selectedMember)).map((role) => ({ id: role.id, label: roleLabelOf(role.id), description: roleCapabilityDescriptions[role.id] }))}
+          disabledReason={selectedMember.id === state.currentUserId ? "不能调整当前登录账号的角色。"
+            : isPlatformAdminLocked(state, selectedMember) ? "只有平台超级管理员可以调整此账号的角色。" : undefined}
+          onSave={async (roles, expectedRoles) => {
+            const updated = await userGovernanceActions?.updateOrganizationRoles(selectedMember.id, { roles, expectedRoles }) ?? {
+              ...selectedMember, roleId: pickPrimaryPlatformRoleId(roles),
+              roles: [...(selectedMember.roles ?? []).filter((role) => role.projectId !== null), ...roles.map((roleId) => ({ projectId: null, roleId }))]
+            };
+            applyUpdatedUser(updated);
+            dispatch({ type: "ADD_NOTIFICATION", message: `已更新 ${selectedMember.name} 的组织角色` });
+            return updated;
+          }}
+          onReload={async () => {
+            const updated = userGovernanceActions ? (await userGovernanceActions.listUsers()).find((user) => user.id === selectedMember.id) : selectedMember;
+            if (!updated) throw new Error("该成员已不存在，请关闭成员资料并刷新名录。");
+            applyUpdatedUser(updated);
+            return updated;
+          }} />} /> : null}
 
       <ConfirmDialog open={pendingRequestDecision !== null} title={pendingRequestDecision?.decision === "approve" ? "通过注册申请？" : "拒绝注册申请？"}
         description={pendingRequestDecision ? <div><p>{pendingRequestDecision.request.userName} · {pendingRequestDecision.request.organizationName ?? pendingRequestDecision.request.organizationId}</p>
@@ -800,9 +798,7 @@ export function UserPermissionsPage({
       <ConfirmDialog
         open={pendingGovernance !== null}
         title={
-          pendingGovernance?.kind === "role"
-            ? "确认调整用户角色"
-            : pendingGovernance?.kind === "delete"
+          pendingGovernance?.kind === "delete"
               ? "确认注销用户"
               : pendingGovernance?.nextActive
                 ? "确认启用用户"
@@ -810,19 +806,7 @@ export function UserPermissionsPage({
         }
         description={
           pendingGovernance ? (
-            pendingGovernance.kind === "role" ? (
-              <div>
-                <p>
-                  将把 <strong>{pendingGovernance.user.name}</strong> 的组织角色从「
-                  {roleLabelOf(organizationRoleOf(pendingGovernance.user))}」调整为「
-                  {roleLabelOf(pendingGovernance.nextRoleId)}」，新权限立即生效。
-                </p>
-                <p className="member-details__hint">{roleCapabilityDescriptions[pendingGovernance.nextRoleId]}</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  注意：本次修改仅更新组织级内置角色，该用户在各项目中的项目审核角色与职责绑定将完整保留。
-                </p>
-              </div>
-            ) : pendingGovernance.kind === "delete" ? (
+            pendingGovernance.kind === "delete" ? (
               <p>
                 将永久删除 <strong>{pendingGovernance.user.name}</strong>（
                 {userAccountIdentifier(pendingGovernance.user)}）。账号的角色、凭据、会话和临时数据将一并清除；业务与审计历史记录会保留，
@@ -842,9 +826,7 @@ export function UserPermissionsPage({
           ) : null
         }
         confirmLabel={
-          pendingGovernance?.kind === "role"
-            ? "确认调整"
-            : pendingGovernance?.kind === "delete"
+          pendingGovernance?.kind === "delete"
               ? "确认注销"
               : pendingGovernance?.nextActive
                 ? "确认启用"
