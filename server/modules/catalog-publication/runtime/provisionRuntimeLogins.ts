@@ -441,6 +441,10 @@ export async function provisionPublicationRuntimeLogins(
 
       await grantPublicAppDml(admin, names.api);
       await grantPublicAppDml(admin, names.worker);
+      const oidcIdentities = await admin.query<{ exists: boolean }>("select to_regclass('public.user_oidc_identities') is not null as exists");
+      if (oidcIdentities.rows[0]?.exists) {
+        await admin.query(`revoke insert, update, delete on public.user_oidc_identities from ${quoteIdent(names.worker)}`);
+      }
       const erasedLogJob = await admin.query<{ exists: boolean }>(
         "select to_regprocedure('public.is_erased_log_job(text,text,text)') is not null as exists",
       );

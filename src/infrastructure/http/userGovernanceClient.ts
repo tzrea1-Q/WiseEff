@@ -1,6 +1,7 @@
 import { pickPrimaryPlatformRoleId, type PlatformRoleId, type UserAccount } from "@/domain/users/types";
 import { createApiClient } from "./apiClient";
 import { createDefaultApiClient, type DefaultApiClientOptions } from "./defaultApiClient";
+import type { LocalAuthPublicConfigDto } from "./authClient";
 
 type ApiClient = ReturnType<typeof createApiClient>;
 
@@ -20,6 +21,8 @@ type UserGovernanceDto = {
   createdAt: string;
   lastActiveAt: string | null;
   roles: RoleBindingDto[];
+  oidcIdentity?: { issuer: string; subject: string };
+  legacyOidcEmail?: string;
 };
 
 export type RegistrationRoleRequestDto = {
@@ -53,7 +56,7 @@ export type CreateGovernedUserInput = {
   password: string;
   roleId: PlatformRoleId;
   projectId?: string | null;
-};
+} | { authentication: "oidc"; name: string; title: string; issuer: string; subject: string; email?: string; roleId: PlatformRoleId };
 
 export type ProjectWorkflowRoleId = "hardware-committer" | "software-committer" | "software-user";
 
@@ -90,6 +93,8 @@ function userFromDto(dto: UserGovernanceDto): UserAccount {
   const organizationRoles = dto.roles.filter((role) => role.projectId === null);
   return {
     id: dto.id,
+    ...(dto.oidcIdentity ? { oidcIdentity: dto.oidcIdentity } : {}),
+    ...(dto.legacyOidcEmail ? { legacyOidcEmail: dto.legacyOidcEmail } : {}),
     name: dto.name,
     ...(dto.email ? { email: dto.email } : {}),
     ...(dto.username ? { username: dto.username } : {}),
@@ -118,12 +123,15 @@ export function createUserGovernanceClient(
     },
     async createUser(input: CreateGovernedUserInput) {
       const response = await apiClient.post<ItemEnvelope<UserGovernanceDto>>("/api/v1/users", {
-        name: input.name,
-        username: input.username,
-        title: input.title,
-        password: input.password,
-        roles: [{ projectId: input.projectId ?? null, roleId: input.roleId }]
+        ...("authentication" in input ? { authentication: input.authentication, issuer: input.issuer, subject: input.subject, ...(input.email ? { email: input.email } : {}),name: input.name,title: input.title }
+          : { name: input.name,username: input.username,title: input.title,password: input.password }),
+        roles: [{ projectId: "projectId" in input ? input.projectId ?? null : null, roleId: input.roleId }]
       });
+      return userFromDto(response.item);
+    },
+    getAuthenticationConfig: () => apiClient.get<LocalAuthPublicConfigDto>("/api/v1/auth/local-config"),
+    async setOidcIdentity(userId: string, input: { issuer: string; subject: string; email?: string; expectedIdentity: { issuer: string; subject: string } | null }) {
+      const response = await apiClient.put<ItemEnvelope<UserGovernanceDto>>(`/api/v1/users/${encodeURIComponent(userId)}/oidc-identity`,input);
       return userFromDto(response.item);
     },
     async assignUserRole(userId: string, roleId: PlatformRoleId, projectId: string | null = null) {

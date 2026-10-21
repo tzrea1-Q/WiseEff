@@ -49,6 +49,7 @@ import type {
   UpdateUserProfileInput
 } from "./types";
 import { organizationNameMaxLength } from "./schemas";
+import { setOidcIdentity } from "../auth/oidcIdentity";
 
 const roleIds = new Set<BackendRoleId>([
   "guest",
@@ -292,7 +293,7 @@ export async function listGovernedUsers(db: Queryable, auth: AuthContext) {
   return listUsers(db, auth.organization.id);
 }
 
-export async function createUser(db: Database, auth: AuthContext, input: CreateUserInput, context: AuditCorrelationContext = {}) {
+export async function createUser(db: Database, auth: AuthContext, input: CreateUserInput, context: AuditCorrelationContext = {}, configuredOidcIssuer?: string) {
   requireUserManager(auth);
   if (input.roles.some((r) => r.projectId !== null && r.projectId !== undefined)) {
     throw new ApiError(
@@ -306,15 +307,16 @@ export async function createUser(db: Database, auth: AuthContext, input: CreateU
   // matching replaceUserRoles so user creation cannot be a platform-admin escalation path.
   assertPlatformAdminGrantAllowed(auth, [], roles);
   const name = input.name.trim();
-  const username = normalizeUsername(input.username);
-  requireUsername(username);
-  requirePasswordPolicy(input.password);
+  const oidc = "authentication" in input, username = oidc ? null : normalizeUsername(input.username);
+  if (!oidc) { requireUsername(username!); requirePasswordPolicy(input.password); }
+  if (oidc && !configuredOidcIssuer) throw new ApiError("VALIDATION_FAILED", "OIDC provisioning is not enabled.");
   if (!name) {
     throw new ApiError("VALIDATION_FAILED", "User name is required.");
   }
 
+  const invocation = createUserInvocation(auth);
   return db.transaction(async (tx) => {
-    const existingCredential = await findPasswordCredentialByUsername(tx, username);
+    const existingCredential = username ? await findPasswordCredentialByUsername(tx, username) : null;
     if (existingCredential) {
       throw new ApiError("CONFLICT", "Username is already registered.", { username });
     }
@@ -323,11 +325,12 @@ export async function createUser(db: Database, auth: AuthContext, input: CreateU
       id: `u-${randomUUID()}`,
       organizationId: auth.organization.id,
       name,
-      title: input.title?.trim() || "User"
+      title: input.title?.trim() || "User",
+      ...(oidc && input.email ? { email: input.email.trim().toLowerCase() } : {})
     });
-    await insertPasswordCredential(tx, {
+    if (!oidc) await insertPasswordCredential(tx, {
       userId: user.id,
-      username,
+      username: username!,
       passwordHash: await hashPassword(input.password)
     });
     await updateOrganizationRoles(tx, {
@@ -335,14 +338,18 @@ export async function createUser(db: Database, auth: AuthContext, input: CreateU
       userId: user.id,
       roles: roles.map((r) => r.roleId)
     });
-    await auditUserMutation(asAuditTx(tx), createUserInvocation(auth), {
+    if (oidc) await setOidcIdentity(tx, invocation, user.id, { issuer: input.issuer,subject: input.subject,email: input.email,expectedIdentity: null }, configuredOidcIssuer, { requestId: context.requestId ?? randomUUID() });
+    await auditUserMutation(asAuditTx(tx), invocation, {
       kind: "user-create",
       action: "create",
       userId: user.id,
       metadata: { username, roles }
     }, context);
 
-    return { ...user, username, roles };
+    return oidc ? (await getUserById(tx, { organizationId: auth.organization.id,userId: user.id }))! : { ...user, username, roles };
+  }).catch((error: unknown) => {
+    if (oidc && (error as { code?: string })?.code === "23505") throw new ApiError("CONFLICT", "OIDC identity matches another member; check the subject and original migration email instead of merging accounts.");
+    throw error;
   });
 }
 

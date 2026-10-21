@@ -40,7 +40,11 @@ Authorization: Bearer <oidc-access-token>
 
 API 通过 discovery/JWKS 校验 issuer、audience、expiration、not-before 和签名。`AUTH_OIDC_JWKS_URI` 在 issuer discovery 文档暴露 `jwks_uri` 时可以留空。
 
-Access token 必须包含 `sub` 和组织声明。OIDC token 只证明身份；WiseEff 会按 token 的组织和 `sub` 从 PostgreSQL 加载有效用户、激活状态、角色和权限。只有当 token 包含 `email_verified=true` 时，才允许用 email 作为迁移期 fallback 绑定。管理员在 WiseEff 用户治理中修改角色后，API 授权会从数据库立即生效，不依赖 IdP role claim 更新。
+Access token 必须包含 `sub` 和组织声明。OIDC token 只证明身份；WiseEff 从 PostgreSQL 加载有效用户、激活状态、角色和权限。显式绑定以配置的 issuer、组织和区分大小写的 subject 定位稳定的内部用户 ID，优先于旧身份匹配。已绑定账号不能通过另一个 subject 的邮箱或内部用户 ID 回退路径登录。
+
+迁移 0238 执行时已有的账号保留原有 subject 和初始邮箱的迁移身份。邮箱回退仍要求 `email_verified=true`，且只能匹配唯一的合格旧账号；subject 与邮箱指向不同账号时拒绝登录。后续资料邮箱修改不改变迁移身份。新建账号必须显式绑定 OIDC 身份，资料邮箱本身不授予访问权。当前没有 JIT 自动建号、目录同步或账号合并。管理员修改角色后，授权从数据库生效，不依赖 IdP role claim 更新。
+
+OIDC 部署中，具有 `users:manage` 权限的管理员可通过 `POST /api/v1/users` 提交 `authentication: "oidc"`、配置的 `issuer`、`subject`、显示资料和组织角色预配成员，不创建本地密码凭据。通过 `PUT /api/v1/users/:userId/oidc-identity` 修改已有成员的绑定，`expectedIdentity` 为未绑定时的 `null`，或此前的 issuer/subject。可选的身份提供方邮箱只用于检查旧迁移关联冲突，不能替代 subject。重复、歧义、过期、错误 issuer 和外组织绑定均会被拒绝；修改与审计原子提交。受控签名令牌/JWKS 测试验证此流程，但不等于真实外部 IdP 联调验收。
 
 `wiseeff_roles` 可以用于 bootstrap 诊断或兼容，但 M6.2 之后生产授权不以它作为最终来源。若存在该 claim，角色 id 必须属于支持集合：
 

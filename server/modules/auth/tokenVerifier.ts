@@ -3,7 +3,7 @@ import { ApiError } from "../../shared/http/errors";
 import type { AuthContext, BackendPermission, BackendRoleId, RoleBinding } from "./types";
 
 export type TokenVerifier = {
-  verify(authorization: string | string[] | undefined): Promise<AuthContext>;
+  verify(authorization: string | string[] | undefined): Promise<AuthContext & { externalIdentity?: { provider: "oidc"; issuer: string } }>;
 };
 
 export type TokenVerifierOptions = {
