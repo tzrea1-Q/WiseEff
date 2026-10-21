@@ -2892,16 +2892,16 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     test.setTimeout(240_000);
     await seedAcceptanceRoleMatrix();
     await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
-    const sample = `/dts-v1/;\n/ { board { compatible = "mt,mt5788"; rx_mod_cm_cfg = "DirectV1"; }; };\n`;
-    const binding = await seedIsolatedBinding(request, { propertyKey: "rx_mod_cm_cfg", dts: sample,
-      rawValuePattern: '"DirectV1"', nodeLocatorPattern: "board", reason: "#1303 administrator direct source application", timeoutMs: 60_000 });
+    const sample = `/dts-v1/;\n/ { board { compatible = "mt,mt5788"; rx_fod_cond = "DirectV1", "keep"; }; };\n`;
+    const binding = await seedIsolatedBinding(request, { propertyKey: "rx_fod_cond", dts: sample,
+      rawValuePattern: '"DirectV1", "keep"', nodeLocatorPattern: "board", reason: "#1303 administrator direct source application", timeoutMs: 60_000 });
     const file = await lookupParameterFileVersion({ fileName: binding.fileName });
     const workbenchPath = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({ configSet: binding.configSetId, file: file.fileId })}`;
     await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, workbenchPath));
     await dismissXiaozeHint(page);
     await expect(page.getByRole("heading", { name: binding.fileName })).toBeVisible({ timeout: 30_000 });
     const editor = page.getByRole("textbox", { name: "DTS 源码", exact: true });
-    const invalid = '/dts-v1/;\n/ { board { rx_mod_cm_cfg = <; };';
+    const invalid = '/dts-v1/;\n/ { board { rx_fod_cond = <; };';
     await page.getByRole("radio", { name: "编辑", exact: true }).click();
     await editor.fill(invalid);
     await page.getByRole("button", { name: "保存修改", exact: true }).click();
@@ -2910,7 +2910,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await expect(invalidDialog.getByRole("button", { name: "直接应用修改", exact: true })).toBeDisabled();
     expect((await lookupParameterFileVersion({ fileName: binding.fileName })).versionId).toBe(file.versionId);
     await invalidDialog.getByRole("button", { name: "返回编辑", exact: true }).click();
-    await expect(editor).toContainText("rx_mod_cm_cfg = <;");
+    await expect(editor).toContainText("rx_fod_cond = <;");
     await page.getByRole("radio", { name: "预览", exact: true }).click();
     const sourcePath = `/api/v1/projects/${projectId}/parameter-files/${file.fileId}/versions/${file.versionId}/content`;
     const source = await request.get(apiRoute(sourcePath), { headers: adminHeaders() });
@@ -2936,7 +2936,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const bindingsPath = `/api/v2/projects/${projectId}/parameter-bindings`;
     const current = await request.get(apiRoute(bindingsPath), { headers: adminHeaders() });
     expect(current.status(), await current.text()).toBe(200);
-    expect((await current.json()).items.find((row: { id: string }) => row.id === binding.bindingId)).toMatchObject({ rawValue: '"DirectV2"' });
+    expect((await current.json()).items.find((row: { id: string }) => row.id === binding.bindingId)).toMatchObject({ rawValue: '"DirectV2", "keep"' });
     const activeFile = await lookupParameterFileVersion({ fileName: binding.fileName });
     expect(activeFile.versionId).toBe(receipt.appliedSourceResult!.fileVersionId);
     const contentPath = `/api/v1/projects/${projectId}/parameter-files/${file.fileId}/versions/${activeFile.versionId}/content`;
