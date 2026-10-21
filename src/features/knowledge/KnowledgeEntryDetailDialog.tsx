@@ -150,10 +150,10 @@ export function KnowledgeEntryDetailDialog({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
-            {canEditContent(entry, capability) && entry.contentForm === "markdown" ? (
+            {canEditContent(entry, capability) ? (
               <Button variant="outline" size="sm" onClick={() => onEdit(entry)}>
                 <Pencil data-icon="inline-start" />
-                编辑
+                {entry.contentForm === "markdown" ? "编辑" : "关联参数定义"}
               </Button>
             ) : null}
             {canEditContent(entry, capability) && entry.contentForm === "file" ? (

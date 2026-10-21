@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
+import { createUserInvocation } from "../auth/trustedInvocation";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -335,6 +336,7 @@ describe("knowledge routes", () => {
     expect(service.addKnowledgeDefinitionReference).toHaveBeenCalledWith(
       db,
       makeAuth(),
+      createUserInvocation(makeAuth()),
       { entryId: ENTRY_ID, definitionId: "pdef:abc" },
       expect.objectContaining({ requestId: expect.any(String) })
     );

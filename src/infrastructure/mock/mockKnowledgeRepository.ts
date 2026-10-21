@@ -1126,6 +1126,20 @@ export function createMockKnowledgeRepository(
       return clone(entry);
     },
 
+    async listReferenceSuggestions(entryId) {
+      const entry = requireEntry(entryId);
+      if (!canManage && entry.createdByUserId !== userId) throw mockApiError("FORBIDDEN", "Suggestions require entry governance.");
+      return [];
+    },
+    async acceptReferenceSuggestion(entryId) {
+      requireEntry(entryId);
+      throw mockApiError("CONFLICT", "Reference suggestion is not pending.");
+    },
+    async dismissReferenceSuggestion(entryId) {
+      const entry = requireEntry(entryId);
+      if (!canManage && entry.createdByUserId !== userId) throw mockApiError("FORBIDDEN", "Suggestions require entry governance.");
+    },
+
     async removeDefinitionReference(entryId, definitionId) {
       const entry = requireEntry(entryId);
       if (!canManage && entry.createdByUserId !== userId) {

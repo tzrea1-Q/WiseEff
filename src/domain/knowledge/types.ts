@@ -16,6 +16,18 @@ export type KnowledgeStatus = (typeof knowledgeStatuses)[number];
 export type KnowledgeExtractionStatus = (typeof knowledgeExtractionStatuses)[number];
 export type KnowledgeSourceType = "human" | "agent";
 
+export type KnowledgeReferenceSuggestion = {
+  definitionId: string;
+  propertyKey: string;
+  displayName: string | null;
+  driverModule: string;
+  lifecycle: "active" | "deprecated";
+  mentionCount: number;
+  snippet: string;
+  page: number | null;
+  detectedRevisionId: string;
+};
+
 export type KnowledgeBatchInput =
   | { action: "add_tags" | "remove_tags"; entryIds: string[]; tags: string[] }
   | { action: "publish"; entryIds: string[] }

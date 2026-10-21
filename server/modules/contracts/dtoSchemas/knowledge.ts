@@ -40,6 +40,11 @@ const importCountsSchema = z.object({ created: z.number().int(), duplicate_skipp
   extraction_failed: z.number().int(), rejected: z.number().int() });
 
 export const knowledgeDtoSchemaCatalog = {
+  KnowledgeReferenceSuggestionsResponse: itemsEnvelopeSchema(z.object({
+    definitionId: z.string(), propertyKey: z.string(), displayName: z.string().nullable(), driverModule: z.string(),
+    lifecycle: z.enum(["active", "deprecated"]), mentionCount: z.number().int().positive(), snippet: z.string(),
+    page: z.number().int().positive().nullable(), detectedRevisionId: z.string().uuid()
+  })),
   BatchKnowledgeEntriesRequest: batchKnowledgeEntriesBodySchema,
   BatchKnowledgeEntriesResponse: z.object({ results: z.array(z.object({
     entryId: z.string().uuid(), title: z.string().nullable(), status: z.enum(["succeeded", "refused", "failed"]),

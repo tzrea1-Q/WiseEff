@@ -3,6 +3,7 @@ import { isRootDatabase, type Queryable } from "../../shared/database/client";
 import { readCatalogDefinitionForKnowledge } from "../parameter-catalog-api/productionWire";
 import { loadParameterReferencesByEntryIds } from "./parameterReferences";
 import { hasKnowledgeManage } from "./policy";
+import { enqueueEntryIndexRefresh } from "./indexing/repository";
 import type {
   InsertKnowledgeEntryInput,
   InsertKnowledgeFileInput,
@@ -314,6 +315,8 @@ export async function setEntryHead(
     `,
     [auth.organization.id, input.entryId, input.headRevisionId, input.headRevisionNumber, input.title, input.tags, input.searchText]
   );
+  // Every revision gets suggestion detection; the indexer keeps drafts out of retrieval.
+  await enqueueEntryIndexRefresh(db, { entryId: input.entryId, organizationId: auth.organization.id });
 }
 
 export async function setEntrySearchText(

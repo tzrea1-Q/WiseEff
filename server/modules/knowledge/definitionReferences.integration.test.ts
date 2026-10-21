@@ -19,11 +19,13 @@ import {
   type ParameterCatalogDatabase
 } from "../../testing/parameterCatalog";
 import { registerParameterCatalogApi } from "../parameter-catalog-api/productionWire";
+import * as catalogApi from "../parameter-catalog-api/productionWire";
 import { createDefaultKnowledgeTextExtractor } from "./extraction";
 import { createLocalObjectStore, type ObjectStore } from "../logs/objectStore";
 import { registerKnowledgeRoutes } from "./routes";
 import { createKnowledgeTools } from "../agent/tools/knowledgeTools";
 import * as legacyApi from "../parameter-catalog-api/legacy";
+import { processNextKnowledgeIndexJob } from "./indexing/worker";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -63,7 +65,33 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     db = createPostgresDatabase(fixture.url);
     const pool = getRootPostgresPool(db);
     if (!pool) throw new Error("Knowledge Definition reference tests require a root PostgreSQL pool.");
-    const catalogFixture = await installKnowledgeDefinitionReferencesCatalogFixture(pool);
+    const catalogFixture = await installKnowledgeDefinitionReferencesCatalogFixture(pool, (release) => {
+      for (const document of release.documents) {
+        if (document.kind !== "definition") continue;
+        if (["pdef_kb_batch_28_0", "pdef_kb_batch_29_0"].includes(document.content.id)) {
+          document.content.propertyKey = "ambiguous_key";
+          document.content.revision.matching.sourceProperty = "ambiguous_key";
+        }
+        if (document.content.id === "pdef_kb_batch_29_0") {
+          document.content.revision.lifecycle = "deprecated";
+          document.content.revision.successorDefinitionId = "pdef_kb_batch_29_1";
+        }
+        if (document.content.id === "pdef_kb_batch_29_1") {
+          document.content.propertyKey = "abc";
+          document.content.revision.matching.sourceProperty = "abc";
+        }
+      }
+      const template = release.documents.find((document) => document.kind === "definition" && document.content.id === "pdef_kb_batch_0_0");
+      if (!template || template.kind !== "definition") throw new Error("Missing definition fixture");
+      for (let index = 0; index < 55; index++) {
+        const extra = structuredClone(template);
+        extra.content.id = `pdef_extra_${index}`;
+        extra.content.propertyKey = `extra_property_${index}`;
+        extra.content.revision.id = `drev_extra_${index}`;
+        extra.content.revision.matching.sourceProperty = extra.content.propertyKey;
+        release.documents.push(extra);
+      }
+    });
     activeDefinitionId = catalogFixture.activeDefinitionId;
     retiredDefinitionId = catalogFixture.retiredDefinitionId;
     searchTerm = catalogFixture.searchTerm;
@@ -81,6 +109,7 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
 
     auth = makeAuth(USER_A, ORG_A);
     authB = makeAuth(USER_B, ORG_B);
+    await pool.query("insert into user_role_bindings (id, organization_id, user_id, role_id) values ('k1339-a', $1, $2, 'admin'), ('k1339-b', $3, $4, 'admin'), ('k1339-manager', $1, $5, 'admin')", [ORG_A, USER_A, ORG_B, USER_B, REFERENCE_CREATOR]);
     let activeAuth = auth;
     const router = createRouter();
     registerKnowledgeRoutes(router, {
@@ -138,6 +167,237 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     }
     return entryId;
   }
+
+  it("detects draft property keys without binding them and accepts a suggestion through the governed reference path", async () => {
+    const created = await request(auth, "POST", "/api/v1/knowledge/entries", {
+      contentForm: "markdown", title: "Suggested references", tags: [],
+      contentMarkdown: "knowledge_batch_property_0_0 knowledge_batch_property_0_0 (knowledge_batch_property_0_1)"
+    });
+    expect(created.status).toBe(201);
+    const id = created.body.item.id as string;
+    for (let i = 0; i < 100; i++) {
+      if (await processNextKnowledgeIndexJob({ db }) === "idle") break;
+    }
+    const path = `/api/v1/knowledge/entries/${id}/reference-suggestions`;
+    const suggestions = await request(auth, "GET", path);
+    expect(suggestions.status).toBe(200);
+    expect(suggestions.body.items).toEqual([
+      expect.objectContaining({ definitionId: "pdef_kb_batch_0_0", propertyKey: "knowledge_batch_property_0_0", displayName: "Knowledge batch property 0-0", mentionCount: 2, detectedRevisionId: created.body.item.headRevisionId }),
+      expect.objectContaining({ definitionId: "pdef_kb_batch_0_1", mentionCount: 1 })
+    ]);
+    expect((await request(auth, "GET", `/api/v1/knowledge/entries/${id}`)).body.item.parameterReferences).toEqual([]);
+    const reader = { ...auth, user: { ...auth.user, id: REFERENCE_CREATOR }, permissions: ["knowledge:view"] as BackendPermission[] };
+    expect((await request(reader, "GET", path)).status).toBe(404);
+    expect((await request(authB, "GET", path)).status).toBe(404);
+    const owner = { ...auth, permissions: auth.permissions.filter((permission) => permission !== "knowledge:manage") };
+    const accepted = await request(owner, "POST", `${path}/pdef_kb_batch_0_0/accept`);
+    expect(accepted.status).toBe(200);
+    expect(accepted.body.item.parameterReferences).toContainEqual(expect.objectContaining({ definitionId: "pdef_kb_batch_0_0" }));
+    expect((await request(auth, "GET", path)).body.items).toHaveLength(1);
+  });
+
+  async function drainSuggestions() {
+    for (let i = 0; i < 150; i++) {
+      if (await processNextKnowledgeIndexJob({ db }) === "idle") return;
+    }
+    throw new Error("Index queue did not drain");
+  }
+
+  it("keeps an entry indexed and searchable without suggestions when the catalog read fails", async () => {
+    const created = await request(auth, "POST", "/api/v1/knowledge/entries", {
+      contentForm: "markdown", title: "Non-fatal suggestion detection", tags: [],
+      contentMarkdown: "suggestionfailureindexprobe knowledge_batch_property_7_0"
+    });
+    expect(created.status).toBe(201);
+    const id = created.body.item.id as string;
+    expect((await request(auth, "POST", `/api/v1/knowledge/entries/${id}/publish`)).status).toBe(200);
+    const catalogRead = vi.spyOn(catalogApi, "listCatalogDefinitionsForKnowledge")
+      .mockRejectedValue(new Error("Catalog read unavailable"));
+    try {
+      await drainSuggestions();
+      expect(catalogRead).toHaveBeenCalled();
+      const health = await request(auth, "GET", "/api/v1/knowledge/index/status");
+      expect(health.status).toBe(200);
+      expect(health.body.items).toContainEqual(expect.objectContaining({
+        entryId: id, status: "succeeded", error: null, chunkCount: expect.any(Number)
+      }));
+      expect(health.body.items.find((item: { entryId: string }) => item.entryId === id).chunkCount).toBeGreaterThan(0);
+      const search = await request(auth, "GET", "/api/v1/knowledge/search?q=suggestionfailureindexprobe");
+      expect(search.status).toBe(200);
+      expect(search.body.items).toContainEqual(expect.objectContaining({ entryId: id }));
+      expect(await processNextKnowledgeIndexJob({ db })).toBe("idle");
+    } finally {
+      catalogRead.mockRestore();
+    }
+    const suggestions = await request(auth, "GET", `/api/v1/knowledge/entries/${id}/reference-suggestions`);
+    expect(suggestions.status).toBe(200);
+    expect(suggestions.body.items).toEqual([]);
+  });
+
+  it("uses the authenticated revision author when a manager revises an inactive owner's entry", async () => {
+    const id = await createEntry(auth, "Manager maintained suggestions", false);
+    const manager = { ...auth, user: { ...auth.user, id: REFERENCE_CREATOR } };
+    const revised = await request(manager, "PATCH", `/api/v1/knowledge/entries/${id}`, {
+      expectedHeadRevisionNumber: 1, contentMarkdown: "knowledge_batch_property_6_0"
+    });
+    expect(revised.status).toBe(200);
+    await db.query("update users set is_active = false where id = $1", [USER_A]);
+    try {
+      await drainSuggestions();
+      const result = await request(manager, "GET", `/api/v1/knowledge/entries/${id}/reference-suggestions`);
+      expect(result.status).toBe(200);
+      expect(result.body.items).toEqual([expect.objectContaining({ definitionId: "pdef_kb_batch_6_0" })]);
+    } finally {
+      await db.query("update users set is_active = true where id = $1", [USER_A]);
+    }
+  });
+
+  it("matches case-sensitive whole tokens without a cap, skips short keys, display names, retired and existing references", async () => {
+    const key = "knowledge_batch_property_1_0";
+    const blocked = [..."Az09_,.+?#-"].flatMap((adjacent) => [`${adjacent}${key}`, `${key}${adjacent}`]);
+    const created = await request(auth, "POST", "/api/v1/knowledge/entries", {
+      contentForm: "markdown", title: "Token evidence", tags: [],
+      contentMarkdown: [blocked.join(" "), key.toUpperCase(), "abc Knowledge batch property 2-0 knowledge_retired_property",
+        ...Array.from({ length: 125 }, () => `(${key})`), "knowledge_batch_property_1_1"].join("\n")
+    });
+    const id = created.body.item.id as string;
+    const path = `/api/v1/knowledge/entries/${id}/reference-suggestions`;
+    await request(auth, "PUT", `/api/v1/knowledge/entries/${id}/definition-references/pdef_kb_batch_1_1`);
+    const pool = getRootPostgresPool(db)!;
+    const before = await pool.query("select id from audit_events where target_id = $1 order by id", [id]);
+    await drainSuggestions();
+    const found = await request(auth, "GET", path);
+    expect(found.status).toBe(200);
+    expect(found.body.items).toEqual([expect.objectContaining({
+      definitionId: "pdef_kb_batch_1_0", mentionCount: 125, snippet: expect.stringContaining(`(${key})`), page: null
+    })]);
+    expect((await pool.query("select id from audit_events where target_id = $1 order by id", [id])).rows).toEqual(before.rows);
+    expect((await request({ ...auth, permissions: ["knowledge:view", "knowledge:manage"] }, "GET", path)).body.items).toEqual([]);
+    expect((await request({ ...auth, permissions: ["knowledge:view", "knowledge:manage"] }, "POST", `${path}/pdef_kb_batch_1_0/accept`)).status).toBe(403);
+  });
+
+  it("keeps ambiguity, deprecated labels and dismissal memory while auditing only governed decisions", async () => {
+    const created = await request(auth, "POST", "/api/v1/knowledge/entries", {
+      contentForm: "markdown", title: "Ambiguous evidence", tags: [], contentMarkdown: "ambiguous_key ambiguous_key"
+    });
+    const id = created.body.item.id as string;
+    const path = `/api/v1/knowledge/entries/${id}/reference-suggestions`;
+    await request(auth, "POST", `/api/v1/knowledge/entries/${id}/publish`);
+    await drainSuggestions();
+    const items = (await request(auth, "GET", path)).body.items;
+    expect(items).toHaveLength(2);
+    expect(items).toContainEqual(expect.objectContaining({ definitionId: "pdef_kb_batch_29_0", lifecycle: "deprecated" }));
+    const relatedPath = "/api/v1/knowledge/related-to-definition?definitionId=pdef_kb_batch_28_0";
+    expect((await request(auth, "GET", relatedPath)).body.items).toEqual([]);
+    const reader = { ...auth, user: { ...auth.user, id: REFERENCE_CREATOR }, permissions: ["knowledge:view"] as BackendPermission[] };
+    expect((await request(reader, "GET", path)).status).toBe(403);
+    for (const action of ["accept", "dismiss"]) {
+      expect((await request(reader, "POST", `${path}/pdef_kb_batch_28_0/${action}`)).status).toBe(403);
+      expect((await request(authB, "POST", `${path}/pdef_kb_batch_28_0/${action}`)).status).toBe(404);
+    }
+    expect((await request(auth, "POST", `${path}/pdef_kb_batch_28_0/accept`)).status).toBe(200);
+    expect((await request(auth, "GET", relatedPath)).body.items.map((item: { entryId: string }) => item.entryId)).toContain(id);
+    expect((await request(auth, "GET", path)).body.items).toEqual([expect.objectContaining({ definitionId: "pdef_kb_batch_29_0" })]);
+    await request(auth, "POST", `${path}/pdef_kb_batch_28_0/accept`);
+    await request(auth, "POST", `${path}/pdef_kb_batch_29_0/dismiss`);
+    await request(auth, "POST", `${path}/pdef_kb_batch_29_0/dismiss`);
+    await request(auth, "PATCH", `/api/v1/knowledge/entries/${id}`, {
+      expectedHeadRevisionNumber: 1, contentMarkdown: "ambiguous_key ambiguous_key ambiguous_key"
+    });
+    await drainSuggestions();
+    expect((await request(auth, "GET", path)).body.items).toEqual([]);
+    const pool = getRootPostgresPool(db)!;
+    const audits = await pool.query<{ kind: string; metadata: Record<string, unknown> }>(
+      "select kind, metadata from audit_events where target_id = $1 and kind in ('knowledge-definition-reference-add', 'knowledge-reference-suggestion-dismiss') order by kind", [id]
+    );
+    expect(audits.rows).toEqual([
+      { kind: "knowledge-definition-reference-add", metadata: expect.objectContaining({ definitionId: "pdef_kb_batch_28_0", fromSuggestion: true }) },
+      { kind: "knowledge-reference-suggestion-dismiss", metadata: expect.objectContaining({ definitionId: "pdef_kb_batch_29_0" }) }
+    ]);
+    expect((await request(auth, "POST", `${path}/pdef_kb_batch_29_0/accept`)).status).toBe(409);
+  });
+
+  it("refuses archived decisions and never exposes evidence across organizations", async () => {
+    const created = await request(auth, "POST", "/api/v1/knowledge/entries", {
+      contentForm: "markdown", title: "Private organization evidence", tags: [], contentMarkdown: "knowledge_batch_property_3_0"
+    });
+    const id = created.body.item.id as string;
+    await drainSuggestions();
+    const path = `/api/v1/knowledge/entries/${id}/reference-suggestions`;
+    expect((await request(authB, "GET", path)).status).toBe(404);
+    const other = await createEntry(authB, "Other organization evidence", false);
+    expect((await request(authB, "GET", `/api/v1/knowledge/entries/${other}/reference-suggestions`)).body.items).toEqual([]);
+    // A previously detected definition can retire before the governor acts.
+    await db.query(
+      `insert into knowledge_reference_suggestions
+       (organization_id, entry_id, definition_id, property_key, mention_count, snippet, detected_revision_id)
+       values ($1,$2,$3,'knowledge_retired_property',1,'historical detection',$4)`,
+      [ORG_A, id, retiredDefinitionId, created.body.item.headRevisionId]
+    );
+    expect((await request(auth, "POST", `${path}/${retiredDefinitionId}/accept`)).status).toBe(409);
+    expect((await request(auth, "GET", `/api/v1/knowledge/entries/${id}`)).body.item.parameterReferences).toEqual([]);
+    expect((await request(auth, "POST", `/api/v1/knowledge/entries/${id}/publish`)).status).toBe(200);
+    expect((await request(auth, "POST", `/api/v1/knowledge/entries/${id}/archive`)).status).toBe(200);
+    expect((await request(auth, "POST", `${path}/pdef_kb_batch_3_0/accept`)).status).toBe(400);
+    expect((await request(auth, "POST", `${path}/pdef_kb_batch_3_0/dismiss`)).status).toBe(400);
+  });
+
+  it("rolls back both acceptance and dismissal when their audit cannot be written", async () => {
+    const created = await request(auth, "POST", "/api/v1/knowledge/entries", {
+      contentForm: "markdown", title: "Atomic suggestion", tags: [], contentMarkdown: "knowledge_batch_property_4_0"
+    });
+    const id = created.body.item.id as string;
+    const path = `/api/v1/knowledge/entries/${id}/reference-suggestions`;
+    await drainSuggestions();
+    await db.query(`create function k1339_refuse_audit() returns trigger language plpgsql as $$
+      begin
+        if new.kind in ('knowledge-definition-reference-add','knowledge-reference-suggestion-dismiss')
+          and new.target_id in (select id::text from knowledge_entries where title = 'Atomic suggestion')
+        then raise exception 'audit unavailable'; end if;
+        return new;
+      end $$`);
+    await db.query("create trigger k1339_refuse_audit before insert on audit_events for each row execute function k1339_refuse_audit()");
+    try {
+      for (const action of ["accept", "dismiss"]) {
+        expect((await request(auth, "POST", `${path}/pdef_kb_batch_4_0/${action}`)).status).toBe(500);
+        expect((await request(auth, "GET", path)).body.items).toHaveLength(1);
+        expect((await request(auth, "GET", `/api/v1/knowledge/entries/${id}`)).body.item.parameterReferences).toEqual([]);
+      }
+    } finally {
+      await db.query("drop trigger k1339_refuse_audit on audit_events");
+      await db.query("drop function k1339_refuse_audit()");
+    }
+  });
+
+  it("detects property keys in an extracted draft PDF and stores its revision and snippet", async () => {
+    const sample = await readFile(new URL("./testing/fixtures/sample.pdf", import.meta.url));
+    const key = "knowledge_batch_property_5_0";
+    const bytes = Buffer.from(sample.toString().replace(/WiseEff knowledge pdf fixture: thermal derating case/, (text) => key.padEnd(text.length)));
+    const created = await request(auth, "POST", "/api/v1/knowledge/entries", {
+      contentForm: "file", title: "PDF suggestions", tags: [],
+      file: { fileName: "suggestions.pdf", contentType: "application/pdf", contentBase64: bytes.toString("base64") }
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.item.file.extractionStatus).toBe("succeeded");
+    await drainSuggestions();
+    const result = await request(auth, "GET", `/api/v1/knowledge/entries/${created.body.item.id}/reference-suggestions`);
+    expect(result.status).toBe(200);
+    expect(result.body.items).toEqual([expect.objectContaining({
+      definitionId: "pdef_kb_batch_5_0", propertyKey: key, mentionCount: 1,
+      snippet: expect.stringContaining(key), detectedRevisionId: created.body.item.headRevisionId
+    })]);
+    // Model optional offsets from the separate page-citation slice. Detection
+    // must work both before that storage exists and after pages are available.
+    await db.query("alter table knowledge_files add column if not exists page_offsets integer[]");
+    await db.query("update knowledge_files set page_offsets = array[0] where id = $1 and organization_id = $2", [created.body.item.file.id, ORG_A]);
+    const revised = await request(auth, "PATCH", `/api/v1/knowledge/entries/${created.body.item.id}`, {
+      expectedHeadRevisionNumber: 1, title: "PDF suggestions with page metadata"
+    });
+    expect(revised.status).toBe(200);
+    await drainSuggestions();
+    expect((await request(auth, "GET", `/api/v1/knowledge/entries/${created.body.item.id}/reference-suggestions`)).body.items)
+      .toEqual([expect.objectContaining({ page: 1, detectedRevisionId: revised.body.item.headRevisionId })]);
+  });
 
   it("returns only published definition-related knowledge and requires knowledge:view", async () => {
     const published = await createEntry(auth, "Published debugging knowledge");

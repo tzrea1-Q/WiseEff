@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { detectKnowledgeReferenceSuggestions } from "../referenceSuggestions";
 
 import type { Database } from "../../../shared/database/client";
 import { chunkExtractedText, chunkMarkdown } from "./chunking";
@@ -23,6 +24,8 @@ export type KnowledgeIndexEntrySnapshot = {
   extractedText: string | null;
   extractionStatus: string | null;
   extractionError: string | null;
+  authorUserId: string | null;
+  pageOffsets?: number[] | null;
 };
 
 /** Worker-side load: the indexing worker is a system actor scoped by explicit org id. */
@@ -43,12 +46,15 @@ export async function loadIndexEntrySnapshot(
     extracted_text: string | null;
     extraction_status: string | null;
     extraction_error: string | null;
+    author_user_id: string | null;
+    page_offsets: number[] | null;
   }>(
     `
     select e.id, e.organization_id, e.status, e.content_form, e.title, e.tags,
            e.head_revision_id, e.head_revision_number,
            r.content_markdown,
-           f.extracted_text, f.extraction_status, f.extraction_error
+           f.extracted_text, f.extraction_status, f.extraction_error, r.author_user_id,
+           case when f.content_type = 'application/pdf' then to_jsonb(f)->'page_offsets' else null end as page_offsets
     from knowledge_entries e
     left join knowledge_revisions r on r.id = e.head_revision_id
     left join knowledge_files f on f.id = r.file_id
@@ -74,7 +80,9 @@ export async function loadIndexEntrySnapshot(
     contentMarkdown: row.content_markdown,
     extractedText: row.extracted_text,
     extractionStatus: row.extraction_status,
-    extractionError: row.extraction_error
+    extractionError: row.extraction_error,
+    authorUserId: row.author_user_id,
+    pageOffsets: row.page_offsets
   };
 }
 
@@ -107,6 +115,14 @@ export async function indexKnowledgeEntry(
     return { outcome: "missing" };
   }
 
+  const detectSuggestions = async () => {
+    try {
+      await detectKnowledgeReferenceSuggestions(db, snapshot);
+    } catch (error) {
+      console.warn("[knowledge-reference-suggestions] Detection failed; indexing outcome is unchanged:", { entryId: snapshot.entryId, error });
+    }
+  };
+
   if (snapshot.entryStatus !== "published") {
     await db.transaction(async (tx) => {
       await deleteChunksForEntry(tx, input);
@@ -120,6 +136,7 @@ export async function indexKnowledgeEntry(
         embeddedChunkCount: 0
       });
     });
+    await detectSuggestions();
     return { outcome: "removed" };
   }
 
@@ -184,6 +201,8 @@ export async function indexKnowledgeEntry(
       embeddingModel: embeddings ? input.embeddingClient?.model ?? null : null
     });
   });
+
+  await detectSuggestions();
 
   if (embeddingError) {
     return { outcome: "failed", reason: embeddingError };

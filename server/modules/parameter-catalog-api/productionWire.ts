@@ -50,6 +50,7 @@ export type { CompletedMappingManifest } from "../catalog-cutover/completedMappi
 import type { ObjectStore } from "../logs/objectStore";
 import {
   catalogDefinitionResponseSchema,
+  catalogDefinitionListResponseSchema,
   catalogRegistrationDtoSchema,
 } from "../contracts/dtoSchemas/parameterCatalog";
 
@@ -109,6 +110,32 @@ import type {
 
 const UNAVAILABLE_RELEASE_ID = "catalog-unready";
 const CATALOG_NOT_READY_RETRY_AFTER_SECONDS = 5;
+
+/** Authenticated, release-pinned candidate discovery for Knowledge indexing. */
+export async function listCatalogDefinitionsForKnowledge(db: Database, auth: AuthContext) {
+  const pool = getRootPostgresPool(db);
+  if (!pool) return [];
+  const ports = createReadPorts(pool, async () => auth, db, { env: process.env });
+  const items: ReturnType<typeof catalogDefinitionListResponseSchema.parse>["items"] = [];
+  let release: string | undefined;
+  for (const lifecycle of ["active", "deprecated"]) {
+    let cursor: string | null = null;
+    do {
+      const response = await handleCatalogRead(ports, {
+        method: "GET", path: "/api/v2/catalog/definitions", params: {},
+        query: { limit: "100", lifecycle, ...(cursor ? { cursor } : {}), ...(release ? { catalogReleaseId: release } : {}) },
+        headers: {}, requestId: "knowledge-reference-detection"
+      });
+      if (response.status === 401 || response.status === 403) return [];
+      if (response.status !== 200) throw new ApiError("CONFLICT", "Catalog candidates are unavailable.");
+      const page = catalogDefinitionListResponseSchema.parse(response.body);
+      items.push(...page.items);
+      cursor = page.nextCursor;
+      release = page.catalogReleaseId;
+    } while (cursor);
+  }
+  return items;
+}
 
 export type CatalogApiAuthResolver = (request: RouteRequest) => Promise<AuthContext> | AuthContext;
 

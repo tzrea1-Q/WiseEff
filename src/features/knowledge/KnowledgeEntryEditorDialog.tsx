@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Search } from "lucide-react";
 
-import { KnowledgeRevisionConflictError } from "@/application/ports/KnowledgeRepository";
+import { KnowledgeRevisionConflictError, type KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
 import { renderMarkdownPreview } from "@/domain/knowledge/markdown";
-import type { KnowledgeEntry, KnowledgeParameterReference } from "@/domain/knowledge/types";
+import type { KnowledgeEntry, KnowledgeParameterReference, KnowledgeReferenceSuggestion } from "@/domain/knowledge/types";
 import { definitionReferenceLifecycleLabels } from "@/domain/knowledge/types";
 import { presentError } from "@/infrastructure/http/presentError";
 import { ModalDialog } from "@/components/common/ModalDialog";
@@ -51,6 +51,8 @@ export type KnowledgeEntryEditorDialogProps = {
   entry: KnowledgeEntry | null;
   onSubmit: (input: KnowledgeEditorSubmit) => Promise<void>;
   parameterReferencePicker?: KnowledgeParameterReferencePicker;
+  suggestionRepository?: Pick<KnowledgeRepository, "listReferenceSuggestions" | "acceptReferenceSuggestion" | "dismissReferenceSuggestion">;
+  onReferenceUpdate?: (entry: KnowledgeEntry) => void;
   onClose: () => void;
 };
 
@@ -76,6 +78,8 @@ export function KnowledgeEntryEditorDialog({
   entry,
   onSubmit,
   parameterReferencePicker,
+  suggestionRepository,
+  onReferenceUpdate,
   onClose
 }: KnowledgeEntryEditorDialogProps) {
   const [title, setTitle] = useState("");
@@ -93,6 +97,44 @@ export function KnowledgeEntryEditorDialog({
   const [specSearching, setSpecSearching] = useState(false);
   const [referenceError, setReferenceError] = useState("");
   const [referencePendingSpecId, setReferencePendingSpecId] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<KnowledgeReferenceSuggestion[]>([]);
+  const [suggestionLoading, setSuggestionLoading] = useState(false);
+  const [suggestionPending, setSuggestionPending] = useState(false);
+  const [suggestionError, setSuggestionError] = useState("");
+  const [suggestionReload, setSuggestionReload] = useState(0);
+
+  useEffect(() => {
+    if (!open || !entry || !suggestionRepository) return;
+    let cancelled = false;
+    setSuggestions([]);
+    setSuggestionError("");
+    setSuggestionLoading(true);
+    void suggestionRepository.listReferenceSuggestions(entry.id).then((items) => {
+      if (!cancelled) setSuggestions(items);
+    }).catch((error: unknown) => {
+      if (!cancelled) setSuggestionError(presentError(error, "建议读取失败，请重试。"));
+    }).finally(() => { if (!cancelled) setSuggestionLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, entry, suggestionRepository, suggestionReload]);
+
+  async function decideSuggestions(items: KnowledgeReferenceSuggestion[], accept: boolean) {
+    if (!entry || !suggestionRepository || suggestionPending) return;
+    setSuggestionPending(true);
+    setSuggestionError("");
+    try {
+      for (const item of items) {
+        if (accept) {
+          const updated = await suggestionRepository.acceptReferenceSuggestion(entry.id, item.definitionId);
+          setReferences(updated.parameterReferences);
+          onReferenceUpdate?.(updated);
+        }
+        else await suggestionRepository.dismissReferenceSuggestion(entry.id, item.definitionId);
+        setSuggestions((current) => current.filter((candidate) => candidate.definitionId !== item.definitionId));
+      }
+    } catch (error) {
+      setSuggestionError(presentError(error, "建议处理失败，请重试。"));
+    } finally { setSuggestionPending(false); }
+  }
 
   useEffect(() => {
     if (open) {
@@ -211,7 +253,7 @@ export function KnowledgeEntryEditorDialog({
   return (
     <ModalDialog
       open={open}
-      onDismiss={pending ? undefined : onClose}
+      onDismiss={pending || suggestionPending ? undefined : onClose}
       className="knowledge-editor-dialog flex max-h-[min(920px,calc(100dvh-48px))] w-[min(1080px,calc(100vw-48px))] flex-col gap-4 overflow-hidden rounded-xl bg-card p-5 shadow-xl"
       backdropClassName="knowledge-modal-backdrop"
       describedBy
@@ -220,16 +262,16 @@ export function KnowledgeEntryEditorDialog({
         <>
           <div>
             <h2 id={titleId} className="text-base font-semibold text-foreground">
-              {entry ? "编辑知识条目" : "新建 Markdown 条目"}
+              {entry?.contentForm === "file" ? "关联参数定义" : entry ? "编辑知识条目" : "新建 Markdown 条目"}
             </h2>
             <p id={descriptionId} className="mt-0.5 text-xs text-muted-foreground">
-              {entry
+              {entry?.contentForm === "file" ? "接受建议或手动关联参数定义，操作立即生效。" : entry
                 ? `每次保存都会产生新的不可变修订(当前修订 #${entry.headRevisionNumber})。`
                 : "新条目以草稿创建;发布后才进入检索。"}
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          {entry?.contentForm !== "file" ? <div className="flex flex-wrap items-center gap-2">
             <input
               aria-label="条目标题"
               value={title}
@@ -244,9 +286,9 @@ export function KnowledgeEntryEditorDialog({
               placeholder="标签,逗号分隔(可含项目标签)"
               className="h-9 w-72 rounded-md border border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
-          </div>
+          </div> : null}
 
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto md:grid-cols-2">
+          {entry?.contentForm !== "file" ? <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto md:grid-cols-2">
             <textarea
               aria-label="Markdown 内容"
               value={content}
@@ -260,7 +302,40 @@ export function KnowledgeEntryEditorDialog({
               className="knowledge-markdown-preview min-h-64 overflow-auto rounded-md border border-border bg-muted/20 p-3 text-sm leading-relaxed"
               dangerouslySetInnerHTML={{ __html: previewHtml || "<p class='text-muted-foreground'>预览区</p>" }}
             />
-          </div>
+          </div> : null}
+
+          {entry && suggestionRepository ? (
+            <section aria-label="建议关联" aria-busy={suggestionPending || suggestionLoading || undefined} className="max-h-56 shrink-0 space-y-2 overflow-y-auto rounded-md border border-border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium">建议关联</h3>
+                <Button type="button" size="sm" variant="outline" disabled={suggestionLoading || suggestionPending || suggestions.length === 0}
+                  onClick={() => void decideSuggestions(suggestions, true)}>全部接受</Button>
+              </div>
+              {suggestionLoading ? <p role="status" className="text-xs text-muted-foreground">加载建议中…</p> : null}
+              {suggestionError ? <div role="alert" className="text-sm text-destructive">{suggestionError}
+                <Button type="button" size="sm" variant="ghost" disabled={suggestionPending} onClick={() => setSuggestionReload((value) => value + 1)}>重试</Button>
+              </div> : null}
+              {!suggestionLoading && !suggestionError && suggestions.length === 0 ? <p className="text-xs text-muted-foreground">暂无建议关联。</p> : null}
+              {Array.from(new Set(suggestions.map((item) => item.propertyKey))).map((key) => (
+                <div key={key} className="space-y-2">
+                  <h4 className="break-all text-sm font-medium">{key}</h4>
+                  {suggestions.filter((item) => item.propertyKey === key).map((item) => (
+                    <div key={item.definitionId} data-definition-id={item.definitionId} className="flex items-start justify-between gap-3 rounded-md bg-muted/30 p-2 text-sm">
+                      <div className="min-w-0 space-y-1 break-words">
+                        <p>{item.driverModule}{item.displayName ? ` · ${item.displayName}` : ""}{item.lifecycle === "deprecated" ? " · 已弃用" : ""}</p>
+                        <p className="text-xs text-muted-foreground">提及 {item.mentionCount} 次{item.page ? ` · 第 ${item.page} 页` : ""}</p>
+                        <p className="whitespace-pre-wrap break-all text-xs text-muted-foreground">{item.snippet}</p>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <Button type="button" size="sm" variant="outline" disabled={suggestionPending} onClick={() => void decideSuggestions([item], true)}>接受</Button>
+                        <Button type="button" size="sm" variant="ghost" disabled={suggestionPending} onClick={() => void decideSuggestions([item], false)}>忽略</Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </section>
+          ) : null}
 
           {showReferenceSection ? (
             <section
@@ -383,12 +458,12 @@ export function KnowledgeEntryEditorDialog({
           ) : null}
 
           <div className="flex items-center justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={onClose} disabled={pending}>
-              取消
+            <Button variant="outline" size="sm" onClick={onClose} disabled={pending || suggestionPending}>
+              {entry?.contentForm === "file" ? "关闭" : "取消"}
             </Button>
-            <Button size="sm" onClick={() => void submit()} disabled={pending} aria-busy={pending || undefined}>
+            {entry?.contentForm !== "file" ? <Button size="sm" onClick={() => void submit()} disabled={pending || suggestionPending} aria-busy={pending || undefined}>
               {pending ? "保存中…" : entry ? "保存为新修订" : "创建草稿"}
-            </Button>
+            </Button> : null}
           </div>
         </>
       )}

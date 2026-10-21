@@ -652,6 +652,8 @@ export function KnowledgePage({
         entry={editorEntry}
         onSubmit={handleEditorSubmit}
         parameterReferencePicker={parameterReferencePicker}
+        suggestionRepository={repository}
+        onReferenceUpdate={applyReferenceUpdate}
         onClose={() => {
           setEditorOpen(false);
           setEditorEntry(null);

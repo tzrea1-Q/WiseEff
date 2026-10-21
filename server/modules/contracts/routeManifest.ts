@@ -931,6 +931,9 @@ export const routeManifest = [
     module: "knowledge",
     stability: "mvp"
   },
+  { id: "knowledge.listReferenceSuggestions", method: "GET", path: "/api/v1/knowledge/entries/:entryId/reference-suggestions", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.acceptReferenceSuggestion", method: "POST", path: "/api/v1/knowledge/entries/:entryId/reference-suggestions/:definitionId/accept", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.dismissReferenceSuggestion", method: "POST", path: "/api/v1/knowledge/entries/:entryId/reference-suggestions/:definitionId/dismiss", module: "knowledge", stability: "mvp" },
   {
     id: "knowledge.removeDefinitionReference",
     method: "DELETE",

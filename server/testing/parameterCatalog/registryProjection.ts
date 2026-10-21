@@ -71,8 +71,15 @@ export function knowledgeCatalogBundle() {
 }
 
 /** A published Catalog with more than two pages of searchable Definitions. */
-export async function installKnowledgeDefinitionReferencesCatalogFixture(pool: pg.Pool) {
+export async function installKnowledgeDefinitionReferencesCatalogFixture(
+  pool: pg.Pool,
+  configure?: (release: ReturnType<typeof knowledgeCatalogBundle>["releases"][number]) => void
+) {
   const bundle = knowledgeCatalogBundle();
+  if (configure) {
+    configure(bundle.releases[0]!);
+    refreshAuthoritativeSource(bundle.releases[0]!);
+  }
   const retiredDefinitionId = bundle.releases[0]!.documents.find(
     (document) => document.kind === "definition" && document.content.id === "pdef_kb_batch_retired"
   );
@@ -92,7 +99,9 @@ export async function installKnowledgeDefinitionReferencesCatalogFixture(pool: p
     activeDefinitionId: X_DEFINITION_ID,
     retiredDefinitionId: retiredDefinitionId.content.id,
     searchTerm: "knowledge_batch_property",
-    searchableDefinitionCount: 60
+    searchableDefinitionCount: bundle.releases[0]!.documents.filter((document) =>
+      document.kind === "definition" && document.content.propertyKey.includes("knowledge_batch_property")
+    ).length
   };
 }
 

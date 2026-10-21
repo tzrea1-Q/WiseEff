@@ -10,7 +10,7 @@ import { getLogRecord } from "../logs/service";
 import { getReloadRunRecord } from "../dts-reload/service";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError, serializeApiError } from "../../shared/http/errors";
-import { readCatalogDefinitionForKnowledge } from "../parameter-catalog-api/productionWire";
+import { readCatalogDefinitionForKnowledge, listCatalogDefinitionsForKnowledge } from "../parameter-catalog-api/productionWire";
 import { buildLogAnalysisProvenanceNotice, buildLogDistillationDraft } from "./distillation";
 import { buildReloadDistillationDraft, isReloadRunDistillable } from "./reloadDistillation";
 import type { KnowledgeTextExtractor } from "./extraction";
@@ -188,7 +188,7 @@ async function runFileExtraction(
           entryId: input.entryId,
           searchText: buildSearchText({ title: entry.title, tags: entry.tags, content: outcome.text })
         });
-        if (entry.status === "published") {
+        if (entry.status !== "archived") {
           // The chunk projection reads the extracted text, so a published file
           // entry re-enqueues once extraction lands (covers the worker racing
           // ahead of a file replacement's extraction).
@@ -787,12 +787,6 @@ export async function updateKnowledgeEntry(
       });
     }
 
-    if (entry.status === "published") {
-      // Edit-of-published refreshes the retrieval projection (D13: only
-      // published content is ever indexed, so draft edits never enqueue).
-      await enqueueEntryIndexRefresh(tx, { entryId, organizationId: auth.organization.id });
-    }
-
     await writeKnowledgeAudit(
       asAuditTx(tx),
       invocation,
@@ -1077,12 +1071,26 @@ export async function addKnowledgeParameterReference(
 export async function addKnowledgeDefinitionReference(
   db: Database,
   auth: AuthContext,
-  input: { entryId: string; definitionId: string },
+  invocation: TrustedInvocationContext,
+  input: { entryId: string; definitionId: string; fromSuggestion?: boolean },
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
-  const invocation = createUserInvocation(auth);
+  assertTrustedInvocationMatchesAuth(auth, invocation, "Knowledge definition reference");
   await db.transaction(async (tx) => {
     const entry = await requireReferenceEditableEntry(tx, auth, input.entryId);
+    if (input.fromSuggestion) {
+      const suggestion = await tx.query<{ status: string }>(
+        "select status from knowledge_reference_suggestions where organization_id = $1 and entry_id = $2 and definition_id = $3 for update",
+        [auth.organization.id, input.entryId, input.definitionId]
+      );
+      if (!suggestion.rows[0] || !["pending", "accepted"].includes(suggestion.rows[0].status)) {
+        throw new ApiError("CONFLICT", "Reference suggestion is not pending.");
+      }
+      await tx.query(
+        "update knowledge_reference_suggestions set status = 'accepted', updated_at = now() where organization_id = $1 and entry_id = $2 and definition_id = $3",
+        [auth.organization.id, input.entryId, input.definitionId]
+      );
+    }
     if (await hasDefinitionReference(tx, auth, input)) return;
     // Read through the authenticated Catalog boundary using the root Database.
     const definition = await readCatalogDefinitionForKnowledge(db, auth, input.definitionId, context.requestId);
@@ -1112,7 +1120,8 @@ export async function addKnowledgeDefinitionReference(
           definitionId: input.definitionId,
           propertyKey: definition.propertyKey,
           driverModule: definition.subject.canonicalName,
-          lifecycle: definition.lifecycle
+          lifecycle: definition.lifecycle,
+          ...(input.fromSuggestion ? { fromSuggestion: true } : {})
         }
       },
       context
@@ -1122,6 +1131,53 @@ export async function addKnowledgeDefinitionReference(
   const entry = await getEntryById(db, auth, input.entryId);
   if (!entry) throw knowledgeEntryNotFound(input.entryId);
   return entry;
+}
+
+export async function listKnowledgeReferenceSuggestions(db: Database, auth: AuthContext, entryId: string) {
+  requireKnowledgeView(auth);
+  const entry = await getEntryById(db, auth, entryId);
+  if (!entry || !canReadEntry(auth, entry)) throw knowledgeEntryNotFound(entryId);
+  requireKnowledgeGovern(auth, entry);
+  const result = await db.query<{
+    definitionId: string; propertyKey: string; mentionCount: number; snippet: string;
+    page: number | null; detectedRevisionId: string;
+  }>(
+    `select s.definition_id as "definitionId", s.property_key as "propertyKey", s.mention_count as "mentionCount",
+            s.snippet, s.page, s.detected_revision_id as "detectedRevisionId"
+     from knowledge_reference_suggestions s
+     where s.organization_id = $1 and s.entry_id = $2 and s.status = 'pending'
+       and not exists (select 1 from knowledge_definition_references r
+         where r.organization_id = s.organization_id and r.entry_id = s.entry_id and r.definition_id = s.definition_id)
+     order by s.mention_count desc, s.property_key, s.definition_id`,
+    [auth.organization.id, entryId]
+  );
+  const definitions = new Map((await listCatalogDefinitionsForKnowledge(db, auth)).map((definition) => [definition.id, definition]));
+  return result.rows.flatMap((row) => {
+    const definition = definitions.get(row.definitionId);
+    return !definition || definition.lifecycle === "retired" ? [] : [{ ...row,
+      displayName: definition.currentRevision.displayName, driverModule: definition.subject.canonicalName, lifecycle: definition.lifecycle
+    }];
+  });
+}
+
+export async function dismissKnowledgeReferenceSuggestion(
+  db: Database, auth: AuthContext, invocation: TrustedInvocationContext,
+  input: { entryId: string; definitionId: string }, context: KnowledgeServiceContext = {}
+) {
+  assertTrustedInvocationMatchesAuth(auth, invocation, "Knowledge reference suggestion dismissal");
+  await db.transaction(async (tx) => {
+    await requireReferenceEditableEntry(tx, auth, input.entryId);
+    const changed = await tx.query(
+      `update knowledge_reference_suggestions set status = 'dismissed', updated_at = now()
+       where organization_id = $1 and entry_id = $2 and definition_id = $3 and status = 'pending'
+       returning definition_id`, [auth.organization.id, input.entryId, input.definitionId]
+    );
+    if (!changed.rowCount) return;
+    await writeKnowledgeAudit(asAuditTx(tx), invocation, {
+      kind: "knowledge-reference-suggestion-dismiss", action: "reference-suggestion-dismiss", entryId: input.entryId,
+      metadata: { definitionId: input.definitionId }
+    }, context);
+  });
 }
 
 export async function removeKnowledgeParameterReference(

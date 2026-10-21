@@ -8,6 +8,7 @@ import type {
 import { KnowledgeRevisionConflictError } from "@/application/ports/KnowledgeRepository";
 import type {
   KnowledgeContentForm,
+  KnowledgeReferenceSuggestion,
   KnowledgeBatchResult,
   KnowledgeEntry,
   KnowledgeExtractionStatus,
@@ -395,6 +396,21 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
         {}
       );
       return entryFromDto(response.item);
+    },
+
+    async listReferenceSuggestions(entryId) {
+      return (await apiClient.get<ListEnvelope<KnowledgeReferenceSuggestion>>(`${entryPath(entryId)}/reference-suggestions`)).items;
+    },
+
+    async acceptReferenceSuggestion(entryId, definitionId) {
+      const response = await apiClient.post<ItemEnvelope<KnowledgeEntryDto>>(
+        `${entryPath(entryId)}/reference-suggestions/${encodeURIComponent(definitionId)}/accept`, {}
+      );
+      return entryFromDto(response.item);
+    },
+
+    async dismissReferenceSuggestion(entryId, definitionId) {
+      await apiClient.post(`${entryPath(entryId)}/reference-suggestions/${encodeURIComponent(definitionId)}/dismiss`, {});
     },
 
     async removeDefinitionReference(entryId, definitionId) {

@@ -1462,6 +1462,21 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "KnowledgeEntryResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "knowledge.listReferenceSuggestions": {
+    summary: "List authenticated Catalog reference suggestions for entry governors only; suggestions are never bindings",
+    tags: ["knowledge"], responseBody: "KnowledgeReferenceSuggestionsResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.acceptReferenceSuggestion": {
+    summary: "Accept a pending suggestion through the audited definition reference add path",
+    tags: ["knowledge"], responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "knowledge.dismissReferenceSuggestion": {
+    summary: "Remember an entry governor's dismissal with an in-transaction audit",
+    tags: ["knowledge"], responseBody: "OkResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "knowledge.removeDefinitionReference": {
     summary: "Idempotently remove an exact Catalog Definition reference from a knowledge entry (entry owner or knowledge:manage; audited)",
     tags: ["knowledge"],

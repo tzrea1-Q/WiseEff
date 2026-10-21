@@ -1,5 +1,6 @@
 import type {
   KnowledgeContentForm,
+  KnowledgeReferenceSuggestion,
   KnowledgeBatchInput,
   KnowledgeBatchReport,
   KnowledgeEntry,
@@ -63,6 +64,9 @@ export class KnowledgeRevisionConflictError extends Error {
 }
 
 export interface KnowledgeRepository {
+  listReferenceSuggestions(entryId: string): Promise<KnowledgeReferenceSuggestion[]>;
+  acceptReferenceSuggestion(entryId: string, definitionId: string): Promise<KnowledgeEntry>;
+  dismissReferenceSuggestion(entryId: string, definitionId: string): Promise<void>;
   batch(input: KnowledgeBatchInput): Promise<KnowledgeBatchReport>;
   openImport(tags: string[]): Promise<{ id: string }>;
   importDocument(batchId: string, input: { file: File; relativePath: string }): Promise<KnowledgeImportOutcome>;

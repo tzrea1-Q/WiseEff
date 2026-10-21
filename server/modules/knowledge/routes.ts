@@ -9,6 +9,7 @@ import { createDefaultKnowledgeTextExtractor, type KnowledgeTextExtractor } from
 import type { KnowledgeEmbeddingClient } from "./indexing/embeddingClient";
 import { importKnowledgeArchive, importKnowledgeDocument, openKnowledgeImport, readKnowledgeImport, completeKnowledgeImport } from "./import";
 import { createUserInvocation } from "../auth/trustedInvocation";
+import { listKnowledgeReferenceSuggestions, dismissKnowledgeReferenceSuggestion } from "./service";
 import { importKnowledgeArchiveSchema, importKnowledgeDocumentSchema, openKnowledgeImportSchema } from "./schemas";
 import {
   addKnowledgeDefinitionReference,
@@ -349,11 +350,33 @@ export function registerKnowledgeRoutes(
     const item = await addKnowledgeDefinitionReference(
       db,
       auth,
+      createUserInvocation(auth),
       { entryId: params.entryId, definitionId: params.definitionId },
       { requestId: request.requestId }
     );
 
     return { status: 200, body: { item } };
+  });
+
+  router.get("/api/v1/knowledge/entries/:entryId/reference-suggestions", async (request) => {
+    const auth = await options.getCurrentAuthContext(request);
+    const { entryId } = parseWithSchema(paramsWithEntryIdSchema, request.params);
+    return { status: 200, body: { items: await listKnowledgeReferenceSuggestions(requireDb(options.db), auth, entryId) } };
+  });
+
+  router.post("/api/v1/knowledge/entries/:entryId/reference-suggestions/:definitionId/accept", async (request) => {
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithDefinitionIdSchema, request.params);
+    const item = await addKnowledgeDefinitionReference(requireDb(options.db), auth, createUserInvocation(auth),
+      { ...params, fromSuggestion: true }, { requestId: request.requestId });
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/knowledge/entries/:entryId/reference-suggestions/:definitionId/dismiss", async (request) => {
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithDefinitionIdSchema, request.params);
+    await dismissKnowledgeReferenceSuggestion(requireDb(options.db), auth, createUserInvocation(auth), params, { requestId: request.requestId });
+    return { status: 200, body: { ok: true } };
   });
 
   router.delete("/api/v1/knowledge/entries/:entryId/parameter-references/:specId", async (request) => {
