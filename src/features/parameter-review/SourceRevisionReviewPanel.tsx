@@ -63,7 +63,9 @@ export function SourceRevisionReviewPanel({ projectId, requestId, repository, cu
     <header><h2>{request.fileName}</h2><p>{canonicalStatusLabels[request.status]} · DTS 来源修改</p></header>
     <p>{request.reason}</p>
     <p>{request.impact.parameterChanges} 项参数变化 · 新增 {request.impact.nodeAdditions} 个节点 · 删除 {request.impact.nodeRemovals} 个节点</p>
-    <p>提交人：{request.submitterName ?? "项目成员"} · 审核人：{request.assignedToName ?? "指定软件审核人"}</p>
+    {request.applicationMode === "administrator_direct" ? <>
+      <p>管理员本人直接应用 · 未经过独立审核</p><p>操作人：{request.submitterName ?? "管理员"}</p>
+    </> : <p>提交人：{request.submitterName ?? "项目成员"} · 审核人：{request.assignedToName ?? "指定软件审核人"}</p>}
     {hasSource ? <ReviewSourceDiff before={request.before!} after={request.after!} label="DTS 来源" virtualized /> : <p role="alert">固定来源差异不可用，不能批准。</p>}
     {error ? <p role="alert">{error}</p> : null}
     {pending && reviewer ? <label>审核说明<textarea aria-label="DTS 审核说明" value={note} maxLength={2000} rows={3} disabled={busy} onChange={(event) => setNote({ scope, text: event.target.value })} /></label> : null}

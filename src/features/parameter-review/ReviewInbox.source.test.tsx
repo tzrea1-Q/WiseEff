@@ -5,7 +5,7 @@ import type { ParameterFileRepository, SourceRevisionRequest } from "@/applicati
 import { initialState } from "@/mockData";
 import { ReviewInbox } from "./ReviewInbox";
 
-const request: SourceRevisionRequest = { id: "source-request", projectId: "aurora", candidateId: "candidate", fileId: "file", fileName: "board.dts", configSetId: "set",
+const request: SourceRevisionRequest = { id: "source-request", projectId: "aurora", candidateId: "candidate", fileId: "file", fileName: "board.dts", configSetId: "set", applicationMode: "separate_review",
   status: "pending", reason: "整文件注释修改", submitterUserId: "author", assignedToUserId: "reviewer", reviewerUserId: null,
   submitterName: "提交人", assignedToName: "审核人", reviewerNote: null, createdAt: "2026-10-19T00:00:00Z", updatedAt: "2026-10-19T00:00:00Z",
   proofDigest: "a".repeat(64), impact: { parameterChanges: 0, nodeAdditions: 0, nodeRemovals: 0 }, before: "/ {};\n", after: "/ {}; // comment\n" };

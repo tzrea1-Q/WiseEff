@@ -20,13 +20,16 @@ import { MAX_PARAMETER_SOURCE_BYTES } from "./jsonSource";
 import { insertFileVersion } from "./repository";
 import { ingestDtsFileVersion } from "./structuralIngest";
 import { requireCanonicalUserInvocation } from "./canonicalSource";
-import { assertSourceRevisionWriteAllowed, inspectSourceRevision, isSourceRevisionReviewer, sameSourceRevision, sourceRevisionDigest, type SourceRevisionProof } from "./sourceRevisionService";
+import { assertSourceRevisionWriteAllowed, freezeSourceRevisionRequest, inspectSourceRevision, isSourceRevisionReviewer,
+  loadSnapshot, loadSourceRevisionCatalogSnapshots, requireCurrentSourceAdministrator, sameSourceRevision, sourceRevisionDigest, type SourceRevisionProof } from "./sourceRevisionService";
+import type { CanonicalSourceSecurityContext } from "./canonicalSource";
 
 function conflict(message: string): never { throw new ApiError("CONFLICT", message, { reason: "source-revision-stale" }); }
 
 type SourceRevisionResult = { bindingId: string; oldValueId: string; newValueId: string; sourcePinId: string;
   historyEventId: string; kind: "changed" | "derived" | "deleted" | "created" };
-type RequestRow = { id: string; status: string; submitter_user_id: string; assigned_to_user_id: string;
+type RequestRow = { id: string; status: string; submitter_user_id: string; assigned_to_user_id: string | null;
+  source_revision_application_mode: "separate_review" | "administrator_direct";
   source_revision_context: SourceRevisionProof; source_revision_proof_digest: string;
   applied_source_result: { requestId: string; configRevisionId: string; fileVersionId: string;
     sourceRevisionProofDigest: string; results: SourceRevisionResult[] } | null; applied_audit_ref: string | null };
@@ -34,7 +37,8 @@ type RequestRow = { id: string; status: string; submitter_user_id: string; assig
 /** No object writes: the staged immutable candidate owns bytes before this transaction. */
 export async function commitSourceRevision(tx: Database, storage: ObjectStore, auth: AuthContext, snapshot: CatalogSnapshot | null,
   input: { projectId: string; requestId: string; invocation: TrustedInvocationContext; traceId: string;
-    refusalSink: TrustedRefusalAuditSink; note?: string | null; catalogSnapshots?: ReadonlyMap<string, CatalogSnapshot> }
+    refusalSink: TrustedRefusalAuditSink; note?: string | null; catalogSnapshots?: ReadonlyMap<string, CatalogSnapshot>;
+    applicationMode?: "administrator_direct" }
 ): Promise<{ requestId: string; status: "approved"; sourceRevisionProofDigest: string }> {
   const security = { invocation: input.invocation, requestId: input.traceId, refusalSink: input.refusalSink };
   await requireCanonicalUserInvocation(auth, security, { projectId: input.projectId, operation: "whole DTS source revision apply",
@@ -43,7 +47,11 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
     where id=$1 and organization_id=$2 and project_id=$3 and request_kind='source_revision'`,
     [input.requestId, auth.organization.id, input.projectId])).rows[0];
   if (!visible) throw new ApiError("NOT_FOUND", "Whole-source request was not found.");
-  if (!await isSourceRevisionReviewer(tx, auth, input.projectId)
+  const direct = input.applicationMode === "administrator_direct";
+  if (direct) auth = await requireCurrentSourceAdministrator(tx, auth, input.projectId);
+  if (direct ? visible.source_revision_application_mode !== "administrator_direct" || visible.submitter_user_id !== auth.user.id
+    || visible.assigned_to_user_id !== null
+    : visible.source_revision_application_mode !== "separate_review" || !await isSourceRevisionReviewer(tx, auth, input.projectId)
     || visible.assigned_to_user_id !== auth.user.id || visible.submitter_user_id === auth.user.id) {
     throw new ApiError("FORBIDDEN", "The assigned software reviewer with file administration permission is required.");
   }
@@ -52,7 +60,9 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
   visible = (await tx.query<RequestRow>(`select * from public.project_parameter_value_change_requests
     where id=$1 and organization_id=$2 and project_id=$3 and request_kind='source_revision'`,
     [input.requestId, auth.organization.id, input.projectId])).rows[0];
-  if (!visible || visible.assigned_to_user_id !== auth.user.id || visible.submitter_user_id === auth.user.id) {
+  if (!visible || (direct ? visible.source_revision_application_mode !== "administrator_direct"
+    || visible.submitter_user_id !== auth.user.id || visible.assigned_to_user_id !== null
+    : visible.assigned_to_user_id !== auth.user.id || visible.submitter_user_id === auth.user.id)) {
     throw new ApiError("FORBIDDEN", "The assigned reviewer changed.");
   }
   if (visible.status === "approved") {
@@ -79,8 +89,8 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
   const request = (await tx.query<RequestRow>(`select * from public.project_parameter_value_change_requests
     where id=$1 and organization_id=$2 and project_id=$3 and request_kind='source_revision' for update`,
     [input.requestId, auth.organization.id, input.projectId])).rows[0];
-  if (!request || request.status !== "pending" || request.assigned_to_user_id !== auth.user.id
-    || request.submitter_user_id === auth.user.id || request.submitter_user_id !== visible.submitter_user_id
+  if (!request || request.status !== "pending" || request.source_revision_application_mode !== visible.source_revision_application_mode
+    || request.assigned_to_user_id !== visible.assigned_to_user_id || request.submitter_user_id !== visible.submitter_user_id
     || !sameSourceRevision(request.source_revision_context, frozen)) conflict("Source revision lost its pending review transition.");
   // Freeze the complete source cohort, not only parameters with changed business values.
   await lockSourceConfigurationBindings(tx, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: frozen.configSetId });
@@ -197,13 +207,58 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
   await writeTrustedAuditEventInTx(asAuditTx(tx), { id: auditRef, invocation: input.invocation, app: "parameters",
     kind: "parameter-topology-governance", action: "value-change-applied", severity: "Medium", projectId: input.projectId,
     targetType: "project-parameter-value-change-request", targetId: request.id,
-    metadata: { requestId: request.id, requestKind: "source_revision", sourceRevisionProofDigest: frozen.proofDigest, result }, traceId: input.traceId });
+    metadata: { requestId: request.id, requestKind: "source_revision", applicationMode: request.source_revision_application_mode,
+      appliedByUserId: auth.user.id, sourceRevisionProofDigest: frozen.proofDigest, result }, traceId: input.traceId });
   await tx.query(`update public.project_parameter_file_candidates set status='active',activated_at=now(),activated_by_user_id=$2,activated_version_id=$3 where id=$1`,
     [candidate.id, auth.user.id, version.id]);
   const approved = await tx.query(`update public.project_parameter_value_change_requests set status='approved',reviewer_user_id=$2,
     reviewer_note=$3,apply_outcome='committed',applied_at=now(),applied_audit_ref=$4,applied_file_version_ids=$5::jsonb,
     applied_source_result=$6::jsonb,updated_at=now() where id=$1 and status='pending'`,
-    [request.id, auth.user.id, input.note ?? null, auditRef, JSON.stringify([version.id]), JSON.stringify(result)]);
+    [request.id, direct ? null : auth.user.id, input.note ?? null, auditRef, JSON.stringify([version.id]), JSON.stringify(result)]);
   if (approved.rowCount !== 1) conflict("Whole-source review lost its approval transition.");
   return { requestId: request.id, status: "approved", sourceRevisionProofDigest: frozen.proofDigest };
+}
+
+/** Preview, freeze and apply in one transaction; the durable record honestly has no second reviewer. */
+export async function applySourceRevisionCandidate(db: Database, storage: ObjectStore, auth: AuthContext,
+  input: { projectId: string; candidateId: string; expectedCurrentVersionId: string; expectedProofToken: string;
+    reason: string; clientMutationId: string }, security: CanonicalSourceSecurityContext
+): Promise<{ requestId: string }> {
+  await requireCanonicalUserInvocation(auth, security, { projectId: input.projectId, operation: "administrator direct DTS source application",
+    targetType: "project-parameter-file-candidate", targetId: input.candidateId });
+  if (!input.reason.trim() || !input.clientMutationId.trim() || input.clientMutationId.length > 160) {
+    throw new ApiError("VALIDATION_FAILED", "A reason and mutation key are required.");
+  }
+  const snapshot = await loadSnapshot(db);
+  const snapshots = await loadSourceRevisionCatalogSnapshots(db, input.projectId, auth.organization.id, snapshot);
+  const mutationDigest = sourceRevisionDigest({ ...input, applicationMode: "administrator_direct" });
+  return db.transaction(async (tx) => {
+    auth = await requireCurrentSourceAdministrator(tx, auth, input.projectId);
+    await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
+      `source-revision-submit:${auth.organization.id}:${input.projectId}:${auth.user.id}:${input.clientMutationId}`
+    ]);
+    const replay = (await tx.query<{ id: string; source_revision_mutation_digest: string; source_revision_application_mode: string }>(
+      `select id,source_revision_mutation_digest,source_revision_application_mode from public.project_parameter_value_change_requests
+       where organization_id=$1 and project_id=$2 and submitter_user_id=$3 and source_revision_mutation_id=$4`,
+      [auth.organization.id, input.projectId, auth.user.id, input.clientMutationId])).rows[0];
+    let requestId: string;
+    if (replay) {
+      if (replay.source_revision_mutation_digest !== mutationDigest || replay.source_revision_application_mode !== "administrator_direct") {
+        conflict("Source application mutation key was reused for different input.");
+      }
+      requestId = replay.id;
+    } else {
+      const { proof, before, after } = await inspectSourceRevision(tx, storage, auth, input, snapshot, { lock: true, snapshots });
+      await assertSourceRevisionWriteAllowed(tx, auth, proof, security);
+      if (proof.baseVersionId !== input.expectedCurrentVersionId || proof.proofDigest !== input.expectedProofToken) {
+        conflict("Source revision no longer matches the confirmed preview.");
+      }
+      if (before === after) throw new ApiError("VALIDATION_FAILED", "Source has no changes.");
+      requestId = await freezeSourceRevisionRequest(tx, auth, proof, { ...input, assignedToUserId: null }, mutationDigest, "administrator_direct");
+    }
+    await commitSourceRevision(tx, storage, auth, snapshot, { projectId: input.projectId, requestId,
+      invocation: security.invocation, traceId: security.requestId, refusalSink: security.refusalSink,
+      catalogSnapshots: snapshots, applicationMode: "administrator_direct" });
+    return { requestId };
+  });
 }

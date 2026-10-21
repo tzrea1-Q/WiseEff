@@ -24,6 +24,9 @@ export const canonicalSourceSubmitRequestSchema = z.object({
   expectedCurrentVersionId: id, expectedProofToken: id, expectedWorkflowProofToken: id.optional(),
   assignedToUserId: id.optional(), reason, clientMutationId: mutationId.optional()
 }).strict();
+export const sourceRevisionDirectApplyRequestSchema = z.object({
+  expectedCurrentVersionId: id, expectedProofToken: digest, reason, clientMutationId: id.max(160)
+}).strict();
 
 export const sourceRevisionCandidatePreviewSchema = z.object({
   kind: z.literal("source_revision"), format: z.literal("dts"), candidateId: id, fileId: id, configSetId: id,
@@ -39,6 +42,7 @@ export const sourceRevisionCandidatePreviewSchema = z.object({
 export const sourceRevisionRequestDtoSchema = z.object({
   id, projectId: id, candidateId: id, fileId: id, fileName: id, configSetId: id,
   status: sourceRevisionStatusSchema, reason,
+  applicationMode: z.enum(["separate_review", "administrator_direct"]),
   submitterUserId: id.nullable(), assignedToUserId: id.nullable(), reviewerUserId: id.nullable(),
   submitterName: z.string().nullable().optional(), assignedToName: z.string().nullable().optional(), reviewerName: z.string().nullable().optional(),
   reviewerNote: z.string().nullable(), createdAt: id, updatedAt: id, proofDigest: digest,
@@ -67,11 +71,13 @@ export const sourceRevisionDtoSchemaCatalog = {
   SourceRevisionRequestResponse: sourceRevisionRequestResponseSchema,
   SourceRevisionRequestDetailResponse: sourceRevisionRequestDetailResponseSchema,
   SourceRevisionReviewRequest: sourceRevisionReviewRequestSchema,
-  SourceRevisionWithdrawRequest: sourceRevisionWithdrawRequestSchema
+  SourceRevisionWithdrawRequest: sourceRevisionWithdrawRequestSchema,
+  SourceRevisionDirectApplyRequest: sourceRevisionDirectApplyRequestSchema
 };
 
 export const sourceRevisionCoveredRouteIds = [
   "parameterFiles.previewCanonicalCandidate", "parameterFiles.submitCanonicalCandidate",
+  "parameterFiles.applySourceRevisionCandidate",
   "parameterFiles.listSourceRevisionRequests", "parameterFiles.getSourceRevisionRequest",
   "parameterFiles.reviewSourceRevisionRequest", "parameterFiles.withdrawSourceRevisionRequest"
 ] as const;

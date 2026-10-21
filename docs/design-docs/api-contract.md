@@ -565,16 +565,19 @@ When `versionId` is omitted, sync uses the file's `currentVersionId`. Versions w
 
 Audit actions: `parameter-file-upload`, `parameter-file-rollback`, `parameter-file-sync`, `parameter-file-conflict-open`, `parameter-file-conflict-resolve`, `parameter-writeback-to-file`.
 
-### Reviewed whole-DTS source revisions
+### Whole-DTS source revisions and administrator application
 
 The existing candidate-create endpoint additionally accepts `{ intent: "source_revision", fileId, expectedCurrentVersionId, expectedConfigRevisionId, clientMutationId, fileName, contentBase64 }`. It pins one nonempty DTS file up to 2 MiB and the complete configuration membership; it does not change active state. Candidate source-preview returns `kind: "source_revision"`, exact `before`/`after`, diagnostics, impact, proof token and currently eligible assigned reviewers. Existing source-review submission additionally requires a scoped mutation key. Reusing a key with identical input replays; different input conflicts. Only one pending source revision may own a config set.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-apply` | Current human file administrator directly applies a confirmed whole-DTS preview. Body `{ expectedCurrentVersionId, expectedProofToken, clientMutationId, reason }`; no reviewer field. Returns `{ item: SourceRevisionRequest }` with approved status and the applied version/config receipt. |
 | `GET` | `/api/v2/projects/:projectId/source-revision-requests?mine=true&status=pending` | Author's requests when `mine=true`; otherwise requests assigned to the current eligible reviewer. |
 | `GET` | `/api/v2/projects/:projectId/source-revision-requests/:requestId` | Authorized fixed source diff, context digest, impact and applied version/config receipt. |
 | `POST` | `/api/v2/projects/:projectId/source-revision-requests/:requestId/review` | `{ decision: "approve" | "reject", proofDigest, note? }`; current assigned reviewer, separate from author. |
 | `POST` | `/api/v2/projects/:projectId/source-revision-requests/:requestId/withdraw` | Author withdraws a pending request; no active source update. |
+
+The optional direct operation requires the administrator's current file administration and project edit authority under the same user fence used by role changes. It reuses the complete source validation, frozen proof and atomic commit; stale previews, Catalog/context drift, sensitive-node refusals, pending requests and unresolved drafts still block it. Its immutable `applicationMode` is `administrator_direct`, assigned/reviewer IDs are null, and audit records the actual human actor and result. Other source requests default to `separate_review` and retain their assigned separate-reviewer rules. Agent/system invocations cannot use the direct operation. Identical mutation retries return the verified original receipt; reusing a key for different input conflicts. Direct application neither publishes a release nor writes a device.
 
 `source_revision` is a distinct immutable request kind, including zero-target comment/unregistered-only changes. Old single/batch contracts and dedicated dispatch remain intact. The frozen proof includes exact file/config/member versions, digests, Catalog/registration context, Binding/value/pin cohort, identity continuity and proposed additions. Submission and approval recheck current permissions and all version/context fences. A pinned historical Catalog Definition is validated against its historical snapshot; an advanced current pointer requires a fresh preview. Registration validation currently holds a table-level shared lock during the transaction, serializing registration writes; a per-organization fence is the documented scaling upgrade.
 

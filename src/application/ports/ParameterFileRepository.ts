@@ -364,6 +364,13 @@ export type SubmitParameterFileSourceReviewInput = {
   clientMutationId?: string;
 };
 
+export type ApplyParameterFileSourceInput = {
+  expectedCurrentVersionId: string;
+  expectedProofToken: string;
+  reason: string;
+  clientMutationId: string;
+};
+
 export type SourceRevisionRequest = {
   id: string;
   projectId: string;
@@ -372,6 +379,7 @@ export type SourceRevisionRequest = {
   fileName: string;
   configSetId: string;
   status: ParameterFileSourceReviewStatus;
+  applicationMode: "separate_review" | "administrator_direct";
   reason: string;
   submitterUserId: string | null;
   assignedToUserId: string | null;
@@ -398,6 +406,7 @@ export type RollbackParameterFileSourceReviewInput = {
 
 
 export interface ParameterFileRepository {
+  applyCandidateSourceRevision?(projectId: string, candidateId: string, input: ApplyParameterFileSourceInput): Promise<SourceRevisionRequest>;
   listSourceRevisionRequests?(projectId: string, query?: { mine?: boolean; status?: string }): Promise<SourceRevisionRequest[]>;
   getSourceRevisionRequest?(projectId: string, requestId: string): Promise<SourceRevisionRequest>;
   reviewSourceRevisionRequest?(projectId: string, requestId: string, input: {

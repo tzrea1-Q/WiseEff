@@ -108,6 +108,59 @@ describe("DTS whole-source workbench integration", () => {
     await session.flush();
   });
 
+  it("directly applies an administrator's confirmed preview without choosing a reviewer and keeps later typing", async () => {
+    const { props, rerender, getCandidateSourcePreview, submitCandidateSourceReview, session } = setup();
+    getCandidateSourcePreview.mockResolvedValue({ kind: "source_revision", candidateId: "candidate", canSubmit: true,
+      proofToken: "proof", before: "/ { old; };", after: "/ { next; };", impact: { parameterChanges: 0, nodeAdditions: 0, nodeRemovals: 0 }, reviewers: [] });
+    let resolve!: (value: object) => void;
+    const apply = vi.fn().mockImplementation(() => new Promise((done) => { resolve = done; }));
+    rerender(<WorkbenchSourceEditingPane {...props} repository={{ ...props.repository, applyCandidateSourceRevision: apply }} />);
+    await waitFor(() => expect(screen.getByRole("radio", { name: "编辑" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("radio", { name: "编辑" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "test DTS" }), { target: { value: "/ { next; };" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "DTS 修改原因" }), { target: { value: "管理员已核对差异" } });
+    const direct = screen.getByRole("button", { name: "直接应用修改" });
+    await waitFor(() => expect(direct).toBeEnabled());
+    fireEvent.click(direct);
+    await waitFor(() => expect(apply).toHaveBeenCalledWith("p", "candidate", {
+      expectedCurrentVersionId: "v1", expectedProofToken: "proof", reason: "管理员已核对差异", clientMutationId: expect.any(String)
+    }));
+    fireEvent.change(screen.getAllByRole("textbox", { name: "test DTS", hidden: true })[0]!, { target: { value: "/ { later; };" } });
+    await act(async () => { resolve({ id: "direct-request", status: "approved", applicationMode: "administrator_direct",
+      appliedSourceResult: { fileVersionId: "v2", configRevisionId: "c2" } }); });
+    await waitFor(() => expect(session.getFile(props.scope)?.base.fileVersionId).toBe("v2"));
+    expect(session.getFile(props.scope)).toMatchObject({ sourceText: "/ { later; };", dirty: true });
+    expect(submitCandidateSourceReview).not.toHaveBeenCalled();
+    expect(props.onRefresh).toHaveBeenCalledOnce();
+    await session.flush();
+  });
+
+  it("retains a failed direct application's text and retries the identical confirmation", async () => {
+    const { props, rerender, session } = setup();
+    const apply = vi.fn().mockRejectedValueOnce(new Error("response lost")).mockResolvedValue({
+      id: "direct-request", status: "approved", applicationMode: "administrator_direct",
+      appliedSourceResult: { fileVersionId: "v2", configRevisionId: "c2" }
+    });
+    rerender(<WorkbenchSourceEditingPane {...props} repository={{ ...props.repository, applyCandidateSourceRevision: apply }} />);
+    await waitFor(() => expect(screen.getByRole("radio", { name: "编辑" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("radio", { name: "编辑" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "test DTS" }), { target: { value: "/ { next; };" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "DTS 修改原因" }), { target: { value: "保留确认内容" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "直接应用修改" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "直接应用修改" }));
+    expect(await screen.findByText("直接应用失败，可重试同一操作；文本仍保留。")).toBeInTheDocument();
+    expect(session.getFile(props.scope)).toMatchObject({ sourceText: "/ { next; };", dirty: true });
+    expect(screen.getByRole("textbox", { name: "DTS 修改原因" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "提交审核" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "重试同一应用" }));
+    await waitFor(() => expect(apply).toHaveBeenCalledTimes(2));
+    expect(apply.mock.calls[1]).toEqual(apply.mock.calls[0]);
+    await waitFor(() => expect(session.getFile(props.scope)).toMatchObject({ dirty: false, base: { fileVersionId: "v2" } }));
+    await session.flush();
+  });
+
   it("captures undebounced input with pinned bases and retries the exact submitted body", async () => {
     const { createCandidate, submitCandidateSourceReview, session, props } = setup();
     const input = await screen.findByRole("textbox", { name: "test DTS" });
