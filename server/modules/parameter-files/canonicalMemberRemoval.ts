@@ -12,7 +12,7 @@ import type { ObjectStore } from "../logs/objectStore";
 import { DefinitionRevisionId, ParameterDefinitionId, serializeContract, type ContractJsonValue } from "../parameter-catalog-contract";
 import { readSourceRegistrationAgreement } from "../parameter-bindings/binding";
 import { asValueClient, listObservedProperties, rawTextToPayload, syncPublishedCatalogProjectValuesInTransaction,
-  resolveObservedSubject, parseCompatibles, loadActiveOrganizationSourceRegistrations } from "../parameter-bindings/catalogProjectValueSync";
+  resolveObservedSubject, parseCompatibles, loadActiveOrganizationSourceRegistrations, lockSourceCatalogGovernance } from "../parameter-bindings/catalogProjectValueSync";
 import { loadSourceBindingCohortReadOnly, hasSourceConfigurationDrafts, hasDeletedSourceBinding, readOwnedCurrentBinding } from "../parameter-bindings/values";
 import { assertCanonicalValueConstraints } from "../parameter-bindings/values/service";
 import { digestProjectValuePayload, deriveHistoryEventId, deriveProjectValueId,
@@ -169,6 +169,10 @@ async function inspectMemberRemoval(
 async function inspectAdministratorMemberRemoval(tx: Database, storage: ObjectStore, auth: AuthContext,
   input: { projectId: string; configSetId: string; fileId: string }, snapshot: CatalogSnapshot | null,
   snapshots?: ReadonlyMap<string, CatalogSnapshot>, requestId?: string) {
+  const currentCatalog = await lockSourceCatalogGovernance(tx, auth.organization.id);
+  if (snapshot ? currentCatalog?.id !== snapshot.release.id || currentCatalog.digest !== snapshot.release.digest : currentCatalog) {
+    conflict("Catalog 已更新，请刷新配置并重新预览。");
+  }
   const scope = [auth.organization.id, input.projectId, input.configSetId];
   const set = await tx.query("select id from public.dts_config_set where organization_id=$1 and project_id=$2 and id=$3 for update nowait", scope);
   if (set.rows.length !== 1) throw new ApiError("NOT_FOUND", "配置不存在或不属于当前项目。");

@@ -104,10 +104,13 @@ $direct$);
     where physical_pin.binding_id=binding.id and physical_pin.project_value_id=binding.current_value_id and physical_pin.file_id=new.file_id)$physical$);
   -- The successor count covers propagation of the frozen cohort. Newly exposed
   -- identities have a separate complete materialization proof below.
-  frozen_cohort_clause := $cohort$exists(select 1 from public.project_parameter_value_change_requests removal_request
+  frozen_cohort_clause := $cohort$(not exists(select 1 from public.project_parameter_value_change_requests direct_request
+    join public.audit_events direct_audit on direct_audit.metadata->>'reviewRequestId'=direct_request.id
+    where direct_audit.id=new.audit_event_id and direct_request.member_application_mode='administrator_direct')
+    or exists(select 1 from public.project_parameter_value_change_requests removal_request
     join public.audit_events removal_audit on removal_audit.metadata->>'reviewRequestId'=removal_request.id
     where removal_audit.id=new.audit_event_id and removal_request.member_frozen_proof->'cohort' @>
-      jsonb_build_array(jsonb_build_object('bindingId',binding.id)))$cohort$;
+      jsonb_build_array(jsonb_build_object('bindingId',binding.id))))$cohort$;
   rewritten := replace(rewritten,'occurrence.file_id<>new.file_id', frozen_cohort_clause || ' and not exists(select 1 from parameter_catalog.project_value_source_pins removed_pin where removed_pin.binding_id=binding.id and removed_pin.project_value_id=binding.current_value_id and removed_pin.file_id=new.file_id)');
   rewritten := replace(rewritten,'''fileId'',occurrence.file_id', '''fileId'',new_pin.file_id');
   rewritten := replace(rewritten,'and occurrence.file_id=new_pin.file_id','and new_pin.source_occurrence_id=occurrence.id');

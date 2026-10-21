@@ -2957,8 +2957,8 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
     const suffix = randomUUID();
     const rootName = `removal-root-${suffix}.dts`, overlayName = `removal-overlay-${suffix}.dts`;
-    const rootText = '/dts-v1/;\n/ { compatible = "test,board"; model = "Removal root"; board { compatible = "mt,mt5788"; rx_mod_cm_cfg = "RemovalKeep"; }; };\n';
-    const overlayText = '/dts-v1/; /plugin/;\n/ { fragment@0 { target-path = "/"; __overlay__ { backup { compatible = "mt,mt5788"; rx_mod_cm_cfg = "RemovalOld"; }; }; }; };\n';
+    const rootText = '/dts-v1/;\n/ { compatible = "test,board"; model = "Removal root"; board { compatible = "mt,mt5788"; rx_fod_cond = "RemovalKeep", "KeepOther"; }; };\n';
+    const overlayText = '/dts-v1/; /plugin/;\n/ { fragment@0 { target-path = "/"; __overlay__ { backup { compatible = "mt,mt5788"; rx_fod_cond = "RemovalOld", "OldOther"; }; }; }; };\n';
     const created = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), { headers: adminHeaders(), data: { name: `member-removal-${suffix}` } });
     expect(created.status(), await created.text()).toBe(201);
     const configSetId = (await created.json()).item.id as string;

@@ -103,7 +103,7 @@ export function WorkbenchConfigurationFilesDialog({
                 { id: "versions", label: "版本历史与下载", disabled: busy, onSelect: () => onOpenVersions(member.fileId) },
                 ...(canRemove() ? [{ id: "remove", label: canonical ? "预览移除影响" : "从配置移除", destructive: true as const,
                   disabled: busy, onRequestConfirmation: () => onRemoveMember(member) }] : []),
-                ...(canRemove() && canonical && member.format === "json" && onReviewedMemberRemoval ? [{ id: "remove-review", label: "申请从配置移除",
+                ...(canRemove() && canonical && member.format === "json" && onReviewedMemberRemoval ? [{ id: "remove-review", label: "申请从配置移除", destructive: true as const,
                   disabled: busy, onRequestConfirmation: () => onReviewedMemberRemoval(member) }] : [])
               ]} />
             </div></TableCell>

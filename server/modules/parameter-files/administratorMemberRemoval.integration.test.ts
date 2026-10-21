@@ -23,6 +23,7 @@ import { asValueClient, loadPublishedCatalog, syncPublishedCatalogProjectValuesI
 import { createConfigSet, addConfigSetFile, listConfigSetFiles } from "./configSetService";
 import { registerParameterFileRoutes } from "./routes";
 import { uploadProjectParameterFile } from "./service";
+import { registerDefinitionDeletionRoutes } from "../parameter-catalog-api/definitionDeletion/routes";
 
 const ORG = "org-admin-removal", PROJECT = "project-admin-removal", USER = "user-admin-removal";
 const admin = makeTestAuthContext({ organizationId: ORG, userId: USER, roles: [{ roleId: "admin", projectId: null }] });
@@ -39,14 +40,15 @@ describe("administrator Canonical member removal through the API database role",
     registerParameterFileRoutes(router, { db: dependencies.db, objectStore: dependencies.storage,
       refusalAuditSink: createTrustedRefusalAuditSink(dependencies.owner), getCurrentAuthContext: () => auth });
     registerCatalogProjectValueConsumerRoutes(router, { db: dependencies.db, objectStore: dependencies.storage, getCurrentAuthContext: () => auth });
+    registerDefinitionDeletionRoutes(router, { db: dependencies.db, objectStore: dependencies.storage, resolveAuth: () => auth });
     return createHttpServer(router);
   }
   const path = (set: string, file: string, op: string) => `/api/v1/projects/${PROJECT}/config-sets/${set}/files/${file}/${op}`;
-  async function fixture(bound = false, mixed = false, include = false, override = false) {
+  async function fixture(bound = false, mixed = false, include = false, override: boolean | "delete" = false) {
     const dependencyName = `obsolete-${crypto.randomUUID()}.dts`;
     let rootText = bound ? root.replace(" };", ' charger: charger { compatible = "acme,power"; iin_max = <36>; }; };') : root;
     if (include) rootText = rootText.replace('/dts-v1/;', `/dts-v1/;\n/include/ "${dependencyName}"`);
-    const overlayText = override ? '/dts-v1/; /plugin/;\n&charger { iin_max = <48>; };\n' : include ? '/ { extra { note = "include dependency"; }; };' : bound ? overlay.replace('note = "obsolete";', 'backup: backup { compatible = "acme,power"; iin_max = <48>; };') : overlay;
+    const overlayText = override === "delete" ? '/dts-v1/; /plugin/;\n&charger { /delete-property/ iin_max; };\n' : override ? '/dts-v1/; /plugin/;\n&charger { iin_max = <48>; };\n' : include ? '/ { extra { note = "include dependency"; }; };' : bound ? overlay.replace('note = "obsolete";', 'backup: backup { compatible = "acme,power"; iin_max = <48>; };') : overlay;
     const configSetId = (await createConfigSet(db, admin, { projectId: PROJECT, name: `Removal ${crypto.randomUUID()}` })).id;
     const a = await uploadProjectParameterFile(db, storage, admin, { projectId: PROJECT, fileName: `board-${crypto.randomUUID()}.dts`, bytes: Buffer.from(rootText) });
     const b = await uploadProjectParameterFile(db, storage, admin, { projectId: PROJECT, fileName: dependencyName, bytes: Buffer.from(overlayText) });
@@ -140,6 +142,17 @@ describe("administrator Canonical member removal through the API database role",
     expect(exported.status, exported.bodyText).toBe(200);
     const replay = await requestJson<{ item: { replayed: boolean } }>(server(), path(f.configSetId, f.b.file.id, "removal-apply"), { method: "POST", body });
     expect(replay.status, replay.bodyText).toBe(200); expect(replay.body.item.replayed).toBe(true);
+  });
+
+  it("materializes a previously hidden registered parameter when its masking overlay is removed", async () => {
+    const f = await fixture(true, false, false, "delete");
+    expect((await listCatalogBindingRowsForProject(db, admin, { projectId: PROJECT })).filter((row) => [f.a.file.id, f.b.file.id].includes(row.sourceFileId!))).toHaveLength(0);
+    const preview = await requestJson<{ item: { proofToken: string; impact: { exposedBindings: number } } }>(server(), path(f.configSetId, f.b.file.id, "removal-preview"), { method: "POST", body: "{}" });
+    expect(preview.status, preview.bodyText).toBe(200); expect(preview.body.item.impact.exposedBindings).toBe(1);
+    const result = await requestJson(server(), path(f.configSetId, f.b.file.id, "removal-apply"), { method: "POST", body: JSON.stringify({ expectedProofToken: preview.body.item.proofToken, reason: "Restore the actual surviving source", clientMutationId: crypto.randomUUID() }) });
+    expect(result.status, result.bodyText).toBe(200);
+    const created = (await listCatalogBindingRowsForProject(db, admin, { projectId: PROJECT })).find((row) => row.sourceFileId === f.a.file.id);
+    expect(created).toMatchObject({ definitionId: "pdef_acme_power_iin_max", rawValue: "<36>" });
   });
 
   it("rejects removal of the active root and unresolved include dependencies without any writes", async () => {
@@ -259,5 +272,33 @@ describe("administrator Canonical member removal through the API database role",
       const history = await requestJson(server(admin, dependencies), `/api/v1/projects/${PROJECT}/parameter-files/${b.file.id}/versions/${b.version.id}/content`);
       expect(history.status).toBe(200); expect(history.bodyText).toBe('{"limit":48}\n');
     } finally { await jsonApi?.close(); await dropLabRuntimeLogins(jsonLane.url, jsonToken); await owner.close(); await jsonLane.drop(); }
+  });
+
+  it("can permanently erase a Definition after removal and fallback receipts while retaining original source", async () => {
+    const sources: Array<Awaited<ReturnType<typeof fixture>>> = [];
+    for (const override of [true, "delete"] as const) {
+      const f = await fixture(true, false, false, override);
+      sources.push(f);
+      const preview = await requestJson<{ item: { proofToken: string } }>(server(), path(f.configSetId, f.b.file.id, "removal-preview"), { method: "POST", body: "{}" });
+      expect(preview.status, preview.bodyText).toBe(200);
+      const removed = await requestJson(server(), path(f.configSetId, f.b.file.id, "removal-apply"), { method: "POST", body: JSON.stringify({
+        expectedProofToken: preview.body.item.proofToken, reason: "Prepare Definition lifecycle regression", clientMutationId: crypto.randomUUID()
+      }) });
+      expect(removed.status, removed.bodyText).toBe(200);
+    }
+    const platform = makeTestAuthContext({ organizationId: ORG, userId: USER, roles: [{ roleId: "platform-admin", projectId: null }] });
+    const definitionPath = "/api/v2/catalog/definitions/pdef_acme_power_iin_max";
+    const deletionPreview = await requestJson<{ item: { previewToken: string; affected: { bindings: number }; originalFilesRetained: boolean } }>(server(platform), `${definitionPath}/deletion-preview`);
+    expect(deletionPreview.status, deletionPreview.bodyText).toBe(200);
+    expect(deletionPreview.body.item.affected.bindings).toBeGreaterThan(0);
+    expect(deletionPreview.body.item.originalFilesRetained).toBe(true);
+    const deleted = await requestJson(server(platform), definitionPath, { method: "DELETE", body: JSON.stringify({ previewToken: deletionPreview.body.item.previewToken }) });
+    expect(deleted.status, deleted.bodyText).toBe(200);
+    expect(await listCatalogBindingRowsForProject(db, admin, { projectId: PROJECT })).toHaveLength(0);
+    expect((await requestJson(server(platform), `${definitionPath}/deletion-preview`)).status).toBe(404);
+    for (const f of sources) {
+      const original = await requestJson(server(), `/api/v1/projects/${PROJECT}/parameter-files/${f.a.file.id}/versions/${f.a.version.id}/content`);
+      expect(original.status, original.bodyText).toBe(200); expect(original.bodyText).toBe(f.rootText);
+    }
   });
 });
