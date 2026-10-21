@@ -121,7 +121,11 @@ describe("whole-source HTTP through the real API database role", () => {
     expect(detail.status).toBe(200); expect(detail.body.item).toMatchObject({ before: source, after: pending.text });
     expect((await post(`${path}/${pending.id}/review`, { decision: "approve", proofDigest: pending.proofDigest }, author)).status).toBe(403);
     expect((await post(`${path}/${pending.id}/review`, { decision: "approve", proofDigest: pending.proofDigest }, outsider)).status).toBe(403);
-    expect((await requestJson(route(outsider), `${path}/${pending.id}`)).status).toBe(404);
+    const administratorDetail = await requestJson<{ item: SourceRevisionRequestDto }>(route(outsider), `${path}/${pending.id}`);
+    expect(administratorDetail.status, administratorDetail.bodyText).toBe(200);
+    expect(administratorDetail.body.item).toMatchObject({ before: source,after: pending.text,canAdminister: true });
+    const administratorQueue = await requestJson<{ items: SourceRevisionRequestDto[] }>(route(outsider), `${path}?status=pending`);
+    expect(administratorQueue.body.items.map((item) => item.id)).toContain(pending.id);
     expect((await requestJson(route(foreign), `${path}/${pending.id}`)).status).toBe(404);
     await db.query("delete from user_role_bindings where id='source-http-reviewer-role'");
     expect((await post(`${path}/${pending.id}/review`, { decision: "approve", proofDigest: pending.proofDigest }, reviewer)).status).toBe(403);
@@ -159,6 +163,62 @@ describe("whole-source HTTP through the real API database role", () => {
     const file = (await db.query<{ current_version_id: string }>("select current_version_id from project_parameter_files where id=$1", [fileId])).rows[0]!;
     expect(file.current_version_id).toBe(versionId);
     expect((await listCatalogBindingRowsForProject(api, author, { projectId: PROJECT }))[0]).toMatchObject({ id: bindingId, rawValue: "<42>" });
+  });
+
+  it("lets another administrator cancel an orphaned request with a reason and unblock a fresh submission", async () => {
+    const pending = await stage(`${source}\n/* orphaned request */\n`,"http-orphan");
+    const frozen = (await db.query("select source_revision_context,candidate_member_manifest,candidate_binding_manifest,reason from project_parameter_value_change_requests where id=$1",[pending.id])).rows;
+    await db.query("update users set is_active=false where id=any($1::text[])",[[AUTHOR,REVIEWER]]);
+    try {
+      const detail = await requestJson<{ item: SourceRevisionRequestDto }>(route(outsider),`${path}/${pending.id}`);
+      expect(detail.status,detail.bodyText).toBe(200);
+      expect(detail.body.item).toMatchObject({ canAdminister: true,after: pending.text });
+      const body = { proofDigest: pending.proofDigest,expectedAssignedToUserId: REVIEWER,reason: "双方已离职，解除配置阻塞" };
+      expect((await post(`${path}/${pending.id}/cancel`,{ ...body,reason: " " },outsider)).status).toBe(400);
+      expect((await post(`${path}/${pending.id}/cancel`,{ ...body,proofDigest: "0".repeat(64) },outsider)).status).toBe(409);
+      const cancel = () => post<{ item: SourceRevisionRequestDto }>(`${path}/${pending.id}/cancel`,body,outsider);
+      const cancelled = await cancel();
+      expect(cancelled.status,cancelled.bodyText).toBe(200);
+      expect(cancelled.body.item).toMatchObject({ status: "withdrawn",reviewerUserId: null,
+        cancellation: { userId: outsider.user.id,name: "Outsider",reason: body.reason } });
+      expect((await cancel()).body).toEqual(cancelled.body);
+      expect((await db.query("select source_revision_context,candidate_member_manifest,candidate_binding_manifest,reason from project_parameter_value_change_requests where id=$1",[pending.id])).rows).toEqual(frozen);
+      expect((await db.query("select actor_type,actor_user_id,metadata->>'reason' as reason from audit_events where target_id=$1 and action='source-request-cancelled'",[pending.id])).rows)
+        .toEqual([{ actor_type: "user",actor_user_id: outsider.user.id,reason: body.reason }]);
+    } finally { await db.query("update users set is_active=true where id=any($1::text[])",[[AUTHOR,REVIEWER]]); }
+    const next = await stage(`${source}\n/* unblocked legitimate submission */\n`,"http-after-cancel");
+    expect((await post(`${path}/${next.id}/withdraw`,{})).status).toBe(200);
+  });
+
+  it("reassigns only to a current eligible non-author and preserves the frozen proof and real reviewer", async () => {
+    const active = (await db.query<{ storage_key: string }>("select storage_key from project_parameter_file_versions where id=$1",[versionId])).rows[0]!;
+    const text = `${(await storage.get(active.storage_key)).toString("utf8")}\n/* reassigned unchanged source */\n`;
+    const pending = await stage(text,"http-reassign");
+    const frozen = (await db.query("select source_revision_context,candidate_member_manifest,candidate_binding_manifest,reason from project_parameter_value_change_requests where id=$1",[pending.id])).rows;
+    const body = { proofDigest: pending.proofDigest,expectedAssignedToUserId: REVIEWER,assignedToUserId: outsider.user.id };
+    const endpoint = `${path}/${pending.id}/reassign`;
+    expect((await post(endpoint,{ ...body,assignedToUserId: AUTHOR },outsider)).status).toBe(400);
+    expect((await post(endpoint,{ ...body,assignedToUserId: foreign.user.id },outsider)).status).toBe(400);
+    await db.query("update user_role_bindings set role_id='software-user' where id='source-http-outsider-role'");
+    try { expect((await post(endpoint,body,reviewer)).status).toBe(400); }
+    finally { await db.query("update user_role_bindings set role_id='admin' where id='source-http-outsider-role'"); }
+    await expect(api.transaction((tx) => tx.query("update project_parameter_value_change_requests set assigned_to_user_id=$2 where id=$1",[pending.id,outsider.user.id])))
+      .rejects.toMatchObject({ code: "23514" });
+    const reassign = () => post<{ item: SourceRevisionRequestDto }>(endpoint,body,outsider);
+    const reassigned = await reassign();
+    expect(reassigned.status,reassigned.bodyText).toBe(200);
+    expect(reassigned.body.item).toMatchObject({ status: "pending",assignedToUserId: outsider.user.id,reviewerUserId: null });
+    expect((await reassign()).body).toEqual(reassigned.body);
+    expect((await post(endpoint,{ ...body,assignedToUserId: REVIEWER },outsider)).status).toBe(409);
+    expect((await db.query("select source_revision_context,candidate_member_manifest,candidate_binding_manifest,reason from project_parameter_value_change_requests where id=$1",[pending.id])).rows).toEqual(frozen);
+    expect((await db.query("select actor_user_id,metadata->>'fromAssignedToUserId' as previous,metadata->>'toAssignedToUserId' as assigned from audit_events where target_id=$1 and action='source-request-reassigned'",[pending.id])).rows)
+      .toEqual([{ actor_user_id: outsider.user.id,previous: REVIEWER,assigned: outsider.user.id }]);
+    expect((await post(`${path}/${pending.id}/review`,{ decision: "approve",proofDigest: pending.proofDigest },reviewer)).status).toBe(403);
+    const approved = await post<{ item: SourceRevisionRequestDto }>(`${path}/${pending.id}/review`,{ decision: "approve",proofDigest: pending.proofDigest },outsider);
+    expect(approved.status,approved.bodyText).toBe(200);
+    expect(approved.body.item.reviewerUserId).toBe(outsider.user.id);
+    versionId = approved.body.item.appliedSourceResult!.fileVersionId; revisionId = approved.body.item.appliedSourceResult!.configRevisionId;
+    expect((await post(endpoint,body,outsider)).status).toBe(409);
   });
 
   it("lets one current administrator directly apply a preview without inventing a reviewer", async () => {

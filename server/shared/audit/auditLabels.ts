@@ -232,6 +232,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "value-change-submitted": "提交参数值变更",
   "value-change-reviewed": "参数值变更已审核",
   "value-change-withdrawn": "撤回参数值变更",
+  "source-request-cancelled": "管理员取消源码请求",
+  "source-request-reassigned": "重新指派源码审核人",
   "enablement-changed": "更改节点启停状态",
   "baseline-mutated": "更新参数基线",
   "identity-migrated": "迁移参数身份",
