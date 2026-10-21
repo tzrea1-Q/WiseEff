@@ -1166,20 +1166,15 @@ for (const route of consistencyReadOnlyRoutes) {
           const listUrl = page.url();
           const trigger = page.getByRole("table", { name: "项目管理列表" }).getByRole("button", { name: /：更多$/ }).first();
           await trigger.click();
-          const deleteItem = page.getByRole("menuitem", { name: /^删除 / });
-          if (await deleteItem.isDisabled()) {
-            await expect(deleteItem).toHaveAccessibleDescription("项目需保留规范历史，不能删除；可归档后从默认清单收起。");
-            await expect(page.getByRole("menuitem", { name: /^(归档|恢复项目) / })).toBeEnabled();
-            await page.keyboard.press("Escape");
-          } else {
-            await deleteItem.click();
-            const confirmation = page.getByRole("dialog", { name: /^删除项目 / });
-            await expect(confirmation).toBeVisible();
-            await expect(confirmation).toContainText("此操作不可撤销");
-            await expect(confirmation).toContainText("共享参数库中的参数定义会保留。");
-            await page.keyboard.press("Escape");
-            await expect(confirmation).toHaveCount(0);
-          }
+          await expect(page.getByRole("menuitem", { name: /^(归档|恢复项目) / })).toBeEnabled();
+          await page.getByRole("menuitem", { name: /^删除影响预览 / }).click();
+          const confirmation = page.getByRole("dialog", { name: /^项目删除影响预览/ });
+          await expect(confirmation.getByRole("region", { name: "项目专属数据：计划清理" })).toBeVisible();
+          await expect(confirmation).toContainText("无法恢复");
+          await expect(confirmation).toContainText("共享定义及独立知识、日志、设备保留");
+          await expect(confirmation.getByRole("button", { name: "确认彻底删除", exact: true })).toBeDisabled();
+          await page.keyboard.press("Escape");
+          await expect(confirmation).toHaveCount(0);
           await expect(trigger).toBeFocused();
           await expect(page).toHaveURL(listUrl);
         }
