@@ -23,7 +23,7 @@ import { AdminListPage } from "@/components/layout/AdminListPage";
 import { SectionSkeleton } from "@/components/common/SectionState";
 import { SearchField } from "@/components/common/SearchField";
 import { presentError } from "@/infrastructure/http/presentError";
-import { KnowledgeExtractionBadge, KnowledgeStatusBadge, KnowledgeTagList } from "./badges";
+import { KnowledgeExtractionBadge, KnowledgeStatusBadge, KnowledgeTagList, KnowledgeUnsearchableBadge } from "./badges";
 import { KnowledgeEntryDetailDialog } from "./KnowledgeEntryDetailDialog";
 import {
   KnowledgeEntryEditorDialog,
@@ -235,6 +235,7 @@ export function KnowledgePage({
       render: (entry) => (
         <div className="min-w-0">
           <p className="truncate font-medium text-foreground">{entry.title}</p>
+          {entry.contentForm === "file" && entry.file?.extractionStatus === "failed" ? <KnowledgeUnsearchableBadge /> : null}
           <p className="text-xs text-muted-foreground">修订 #{entry.headRevisionNumber}</p>
         </div>
       ),

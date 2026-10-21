@@ -12,6 +12,26 @@ const editorCapability: KnowledgeCapability = { userId: "u-xu-yun", canView: tru
 describe("KnowledgeAdminPage", () => {
   beforeEach(() => window.history.replaceState(null, "", "/knowledge-admin"));
 
+  it("identifies completed zero-chunk entries as unsearchable without warning on pending or archived entries", async () => {
+    window.history.replaceState(null, "", "/knowledge-admin?tab=index");
+    const repository = createMockKnowledgeRepository();
+    const health = await repository.getIndexHealth();
+    const template = health.items[0];
+    vi.spyOn(repository, "getIndexHealth").mockResolvedValue({ ...health, items: [
+      { ...template, entryId: "legacy-empty", title: "旧扫描文件", entryStatus: "published", status: "succeeded", chunkCount: 0 },
+      { ...template, entryId: "failed-empty", title: "提取失败文件", entryStatus: "published", status: "failed", chunkCount: 0 },
+      { ...template, entryId: "pending", title: "待索引文件", entryStatus: "published", status: "pending", chunkCount: 0 },
+      { ...template, entryId: "archived", title: "已归档文件", entryStatus: "archived", status: "succeeded", chunkCount: 0 },
+      { ...template, entryId: "normal", title: "正常文件", entryStatus: "published", status: "succeeded", chunkCount: 2 }
+    ] });
+    render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
+    const table = await screen.findByRole("table", { name: "知识索引状态" });
+    const row = within(table).getByText("旧扫描文件").closest("tr")!;
+    expect(within(row).getByText("不可检索")).toBeInTheDocument();
+    expect(within(row).getByText("无已索引分块，请检查文件是否包含可提取文本并替换文件。")).toBeInTheDocument();
+    expect(within(table).getAllByText("不可检索")).toHaveLength(2);
+  });
+
   it.each(["drafts", "index", "archived"])("keeps tabs, header, filter context and table in order on %s", async (tab) => {
     window.history.replaceState(null, "", `/knowledge-admin?tab=${tab}`);
     render(<KnowledgeAdminPage repository={createMockKnowledgeRepository()} capability={manageCapability} />);

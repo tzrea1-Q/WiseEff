@@ -1,6 +1,11 @@
 import type { KnowledgeExtractionStatus, KnowledgeStatus } from "@/domain/knowledge/types";
 import { knowledgeExtractionStatusLabels, knowledgeStatusLabels } from "@/domain/knowledge/types";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+
+export function KnowledgeUnsearchableBadge() {
+  return <Badge className="bg-[var(--warning-soft)] text-[var(--warning)]">不可检索</Badge>;
+}
 
 const statusBadgeClasses: Record<KnowledgeStatus, string> = {
   draft: "bg-amber-100 text-amber-950",

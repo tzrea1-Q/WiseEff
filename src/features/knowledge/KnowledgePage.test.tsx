@@ -2,7 +2,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
+import { createMockKnowledgeFixtures, createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
 import type { KnowledgeEntry, KnowledgeSearchResponse } from "@/domain/knowledge/types";
 import { KnowledgePage } from "./KnowledgePage";
 
@@ -32,6 +32,39 @@ function renderPage(
 }
 
 describe("KnowledgePage", () => {
+  it("warns that a textless file is unsearchable and offers replacement from detail", async () => {
+    const fixtures = createMockKnowledgeFixtures();
+    const entry = fixtures.entries.find((item) => item.id === "mock-kb-4")!;
+    entry.file!.extractionError = "无可提取文本";
+    const repository = createMockKnowledgeRepository({}, fixtures);
+    render(<KnowledgePage repository={repository} capability={editorCapability} />);
+    const table = await screen.findByRole("table", { name: "知识条目列表" });
+    const row = within(table).getByText(entry.title).closest("tr")!;
+    expect(within(row).getByText("不可检索")).toBeInTheDocument();
+    expect(within(table).getAllByText("不可检索")).toHaveLength(1);
+    await userEvent.click(within(row).getByRole("button", { name: "查看" }));
+    const detail = await screen.findByRole("dialog", { name: /旧版工艺规范/ });
+    expect(within(detail).getByText(/不可检索：无可提取文本/)).toBeInTheDocument();
+    expect(within(detail).getByText(/替换为包含可提取文本的文件/)).toBeInTheDocument();
+    await userEvent.click(within(detail).getByRole("button", { name: "替换文件" }));
+    const replace = await screen.findByRole("dialog", { name: /替换文件/ });
+    const user = userEvent.setup();
+    await user.upload(within(replace).getByLabelText("选择文件"), new File(["Readable text"], "readable.txt", { type: "text/plain" }));
+    await user.click(within(replace).getByRole("button", { name: "替换并生成新修订" }));
+    const recovered = await screen.findByRole("dialog", { name: /旧版工艺规范/ });
+    expect(within(recovered).getByText("提取成功")).toBeInTheDocument();
+    expect(within(recovered).queryByText(/不可检索/)).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(within(table).queryByText("不可检索")).not.toBeInTheDocument();
+  });
+
+  it("explains extraction failure to viewers without granting file replacement", async () => {
+    renderPage({ capability: viewerCapability, initialEntryId: "mock-kb-4" });
+    const detail = await screen.findByRole("dialog", { name: /旧版工艺规范/ });
+    expect(within(detail).getByText(/不可检索/)).toBeInTheDocument();
+    expect(within(detail).queryByRole("button", { name: "替换文件" })).not.toBeInTheDocument();
+  });
+
   it("shows unavailable statistics through cold failure and restores counts only after a successful list", async () => {
     const repository = createMockKnowledgeRepository();
     const entries = await repository.list();
