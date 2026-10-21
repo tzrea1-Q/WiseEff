@@ -11120,6 +11120,49 @@
         }
       }
     },
+    "/api/v1/logs/{logId}/deletion-preview": {
+      "get": {
+        "operationId": "logs.previewDeletion",
+        "summary": "Preview organization-owned log deletion, task effects and retained shared data without writes",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogDeletionPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/logs/{logId}/trace": {
       "get": {
         "operationId": "logs.getTrace",
@@ -18434,6 +18477,140 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/config-sets/{configSetId}/files/{fileId}/removal-preview": {
+      "post": {
+        "operationId": "parameterFiles.previewAdministratorMemberRemoval",
+        "summary": "Preview an administrator's complete Canonical member removal and effective parameter impact",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "configSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdministratorMemberRemovalPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/config-sets/{configSetId}/files/{fileId}/removal-apply": {
+      "post": {
+        "operationId": "parameterFiles.applyAdministratorMemberRemoval",
+        "summary": "Atomically apply a confirmed Canonical member removal as the current human administrator",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "configSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdministratorMemberRemovalApplyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdministratorMemberRemovalApplyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "409": {
@@ -39354,6 +39531,128 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "LogLineRangeResponse"
       },
+      "LogDeletionPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "organizationId": {
+                "type": "string"
+              },
+              "logId": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string"
+              },
+              "generatedAt": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "inventory": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "number"
+                    },
+                    "disposition": {
+                      "type": "string",
+                      "enum": [
+                        "delete",
+                        "retain"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "label",
+                    "count",
+                    "disposition"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "objects": {
+                "type": "object",
+                "properties": {
+                  "total": {
+                    "type": "number"
+                  },
+                  "shared": {
+                    "type": "number"
+                  },
+                  "exclusive": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "total",
+                  "shared",
+                  "exclusive"
+                ],
+                "additionalProperties": false
+              },
+              "conditions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "number"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "count",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "notes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "organizationId",
+              "logId",
+              "fileName",
+              "generatedAt",
+              "version",
+              "inventory",
+              "objects",
+              "conditions",
+              "notes"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogDeletionPreviewResponse"
+      },
       "LogRunListResponse": {
         "type": "object",
         "properties": {
@@ -57412,6 +57711,229 @@
       "ConfigSetMembershipResponse": {
         "type": "object",
         "x-wiseeff-schema": "ConfigSetMembershipResponse"
+      },
+      "AdministratorMemberRemovalPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "canApply": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              },
+              "proofToken": {
+                "type": "string"
+              },
+              "removedFileId": {
+                "type": "string"
+              },
+              "members": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "fileId": {
+                      "type": "string"
+                    },
+                    "fileVersionId": {
+                      "type": "string"
+                    },
+                    "sourceName": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "type": "string",
+                      "enum": [
+                        "json",
+                        "dts"
+                      ]
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "sortOrder": {
+                      "type": "number"
+                    },
+                    "checksum": {
+                      "type": "string"
+                    },
+                    "sizeBytes": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "fileId",
+                    "fileVersionId",
+                    "sourceName",
+                    "format",
+                    "role",
+                    "sortOrder",
+                    "checksum",
+                    "sizeBytes"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "dependencies": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "file": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "include",
+                        "overlay"
+                      ]
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "file",
+                    "kind",
+                    "target"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "parameterImpacts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "propertyName": {
+                      "type": "string"
+                    },
+                    "fromSource": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "toSource": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "propertyName",
+                    "fromSource",
+                    "toSource"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "impact": {
+                "type": "object",
+                "properties": {
+                  "nodeRemovals": {
+                    "type": "number"
+                  },
+                  "nodeAdditions": {
+                    "type": "number"
+                  },
+                  "removedBindings": {
+                    "type": "number"
+                  },
+                  "retainedBindings": {
+                    "type": "number"
+                  },
+                  "exposedBindings": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "nodeRemovals",
+                  "nodeAdditions",
+                  "removedBindings",
+                  "retainedBindings",
+                  "exposedBindings"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "canApply",
+              "proofToken",
+              "removedFileId",
+              "members",
+              "dependencies",
+              "parameterImpacts",
+              "impact"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "AdministratorMemberRemovalPreviewResponse"
+      },
+      "AdministratorMemberRemovalApplyRequest": {
+        "type": "object",
+        "properties": {
+          "expectedProofToken": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "clientMutationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedProofToken",
+          "reason",
+          "clientMutationId"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "AdministratorMemberRemovalApplyRequest"
+      },
+      "AdministratorMemberRemovalApplyResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "requestId": {
+                "type": "string"
+              },
+              "tombstoneId": {
+                "type": "string"
+              },
+              "successorConfigRevisionId": {
+                "type": "string"
+              },
+              "replayed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "requestId",
+              "tombstoneId",
+              "successorConfigRevisionId",
+              "replayed"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "AdministratorMemberRemovalApplyResponse"
       },
       "ConfigSetExportResponse": {
         "type": "object",
