@@ -34,7 +34,7 @@ export const knowledgeEntryDtoSchema = z.object({
 const importOutcomeSchema = z.object({
   id: z.string().uuid(), relativePath: z.string(),
   status: z.enum(["created", "duplicate_skipped", "unsupported_skipped", "extraction_failed", "rejected"]),
-  entryId: z.string().uuid().nullable(), error: z.string().nullable()
+  entryId: z.string().uuid().nullable(), error: z.string().nullable(), warnings: z.array(z.string()).optional()
 });
 const importCountsSchema = z.object({ created: z.number().int(), duplicate_skipped: z.number().int(), unsupported_skipped: z.number().int(),
   extraction_failed: z.number().int(), rejected: z.number().int() });
@@ -43,7 +43,7 @@ export const knowledgeDtoSchemaCatalog = {
   BatchKnowledgeEntriesRequest: batchKnowledgeEntriesBodySchema,
   BatchKnowledgeEntriesResponse: z.object({ results: z.array(z.object({
     entryId: z.string().uuid(), title: z.string().nullable(), status: z.enum(["succeeded", "refused", "failed"]),
-    entry: knowledgeEntryDtoSchema.nullable(), error: z.object({ code: z.string(), message: z.string() }).nullable()
+    entry: knowledgeEntryDtoSchema.nullable(), error: z.object({ code: z.string(), message: z.string(), reason: z.string().optional() }).nullable()
   })), summaryError: z.string().nullable() }),
   OpenKnowledgeImportRequest: openKnowledgeImportSchema,
   OpenKnowledgeImportResponse: itemEnvelopeSchema(z.object({ id: z.string().uuid() })),

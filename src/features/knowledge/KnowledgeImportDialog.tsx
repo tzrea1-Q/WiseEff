@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
+import { KNOWLEDGE_IMPORT_DOCUMENT_LIMIT, KNOWLEDGE_IMPORT_BYTE_LIMIT, KNOWLEDGE_FILE_BYTE_LIMIT, KNOWLEDGE_TAG_LIMIT, KNOWLEDGE_TAG_CHARACTER_LIMIT } from "@/domain/knowledge/limits";
 import type { KnowledgeImportOutcome } from "@/domain/knowledge/types";
 import { DataTable } from "@/components/admin";
 import { FileDropZone } from "@/components/common/FileDropZone";
@@ -42,16 +43,20 @@ export function KnowledgeImportDialog({ open, repository, onClose, onComplete }:
   const submit = async () => {
     if (!files.length) { setError("请选择要导入的文档。"); return; }
     if (files.filter(isZip).length > 1) { setError("每批最多选择一个 ZIP 压缩包。"); return; }
-    if (files.filter((file) => !isZip(file)).length > 200) { setError("每批最多导入 200 个文档。"); return; }
-    if (files.filter((file) => !isZip(file)).reduce((total, file) => total + file.size, 0) > 100 * 1024 * 1024
-      || files.some((file) => isZip(file) && file.size > 100 * 1024 * 1024)) {
-      setError("每批文件总大小不能超过 100 MB。"); return;
+    if (files.filter((file) => !isZip(file)).length > KNOWLEDGE_IMPORT_DOCUMENT_LIMIT) { setError(`每批最多导入 ${KNOWLEDGE_IMPORT_DOCUMENT_LIMIT} 个文档。`); return; }
+    if (files.filter((file) => !isZip(file)).reduce((total, file) => total + file.size, 0) > KNOWLEDGE_IMPORT_BYTE_LIMIT
+      || files.some((file) => isZip(file) && file.size > KNOWLEDGE_IMPORT_BYTE_LIMIT)) {
+      setError(`每批文件总大小不能超过 ${KNOWLEDGE_IMPORT_BYTE_LIMIT / 1024 / 1024} MB。`); return;
+    }
+    const batchTags = parseTagsInput(tags);
+    if (batchTags.length > KNOWLEDGE_TAG_LIMIT || batchTags.some((tag) => tag.length > KNOWLEDGE_TAG_CHARACTER_LIMIT)) {
+      setError(`每批最多 ${KNOWLEDGE_TAG_LIMIT} 个标签，每个标签不超过 ${KNOWLEDGE_TAG_CHARACTER_LIMIT} 个字符。`); return;
     }
     setPending(true);
     setError("");
     let id: string;
     try {
-      id = (await repository.openImport(parseTagsInput(tags))).id;
+      id = (await repository.openImport(batchTags)).id;
     } catch (failure) {
       setError(presentError(failure, "无法开始导入，请重试。"));
       setPending(false);
@@ -84,12 +89,12 @@ export function KnowledgeImportDialog({ open, repository, onClose, onComplete }:
   };
 
   return <ModalDialog open={open} onDismiss={onClose} describedBy backdropClassName="knowledge-modal-backdrop"
-    className="flex max-h-[calc(100vh-48px)] w-[min(720px,calc(100vw-48px))] min-w-0 flex-col gap-4 rounded-xl bg-card p-5 shadow-xl">
+    className="submission-dialog modal-card--lg flex min-w-0 flex-col gap-4">
     {({ titleId, descriptionId }) => <>
       <div>
         <h2 id={titleId} className="text-base font-semibold text-foreground">批量导入</h2>
         <p id={descriptionId} className="mt-1 text-xs text-muted-foreground">
-          支持 PDF、DOCX、TXT、MD 和一个 ZIP 压缩包，文件夹名转为标签。每批最多 200 个文档、解压后 100 MB，每个文档最多 20 MB。每份文档创建独立草稿，重复内容跳过。
+          支持 PDF、DOCX、TXT、MD 和一个 ZIP 压缩包，文件夹名转为标签。每批最多 {KNOWLEDGE_IMPORT_DOCUMENT_LIMIT} 个文档、解压后 {KNOWLEDGE_IMPORT_BYTE_LIMIT / 1024 / 1024} MB，每个文档最多 {KNOWLEDGE_FILE_BYTE_LIMIT / 1024 / 1024} MB。每份文档创建独立草稿，重复内容跳过。
         </p>
       </div>
       <div className="min-h-0 overflow-auto">
@@ -107,6 +112,7 @@ export function KnowledgeImportDialog({ open, repository, onClose, onComplete }:
             { key: "name", header: "文档", render: (row) => <span className="break-all">{row.name}</span> },
             { key: "status", header: "结果", render: (row) => <div>
               <span>{row.outcome ? labels[row.outcome.status] : "导入失败"}</span>
+              {row.outcome?.warnings?.map((warning) => <p key={warning} className="text-xs text-muted-foreground break-words">{warning}</p>)}
               {row.requestError || row.outcome?.error ? <p className="text-xs text-muted-foreground break-words">
                 {row.requestError || presentError(new Error(row.outcome!.error!), "文本提取失败，请查看草稿并替换文件。")}
               </p> : null}

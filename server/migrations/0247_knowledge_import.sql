@@ -1,13 +1,5 @@
 alter table knowledge_revisions add column source_checksum text;
 
--- Earlier converted uploads preserved the exact UTF-8 source in revision 1.
-update knowledge_revisions r
-set source_checksum = encode(sha256(convert_to(first_revision.content_markdown, 'UTF8')), 'hex')
-from knowledge_entries e join knowledge_revisions first_revision on first_revision.entry_id = e.id
-  and first_revision.organization_id = e.organization_id and first_revision.revision_number = 1
-where r.entry_id = e.id and e.origin = 'uploaded' and e.content_form = 'markdown'
-  and r.organization_id = e.organization_id and r.content_markdown = first_revision.content_markdown;
-
 create table knowledge_import_batches (
   id uuid primary key,
   organization_id text not null references organizations(id),
@@ -29,6 +21,7 @@ create table knowledge_import_documents (
   status text not null check (status in ('created', 'duplicate_skipped', 'unsupported_skipped', 'extraction_failed', 'rejected')),
   entry_id uuid,
   error text,
+  warnings text[] not null default '{}',
   created_at timestamptz not null default now(),
   foreign key (batch_id, organization_id)
     references knowledge_import_batches (id, organization_id) on delete cascade,

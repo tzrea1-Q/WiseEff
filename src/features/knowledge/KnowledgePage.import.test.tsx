@@ -18,6 +18,20 @@ async function chooseFiles(files: File[], repository = createMockKnowledgeReposi
 }
 
 describe("knowledge batch import on the knowledge page", () => {
+  it("shows tag warnings alongside the created draft in the import report", async () => {
+    const repository = createMockKnowledgeRepository();
+    vi.spyOn(repository, "importDocument").mockResolvedValueOnce({
+      id: "warning", relativePath: "tags.md", status: "created", entryId: "draft-id", error: null,
+      warnings: ["文件夹名过长，已截断为标签", "部分标签未添加：超过每条 20 个标签上限"]
+    });
+    const { user, dialog } = await chooseFiles([new File(["tags"], "tags.md")], repository);
+    await user.click(within(dialog).getByRole("button", { name: "开始导入" }));
+    const report = await within(dialog).findByRole("table", { name: "导入报告" });
+    expect(within(report).getByText("已创建草稿")).toBeInTheDocument();
+    expect(within(report).getByText("文件夹名过长，已截断为标签")).toBeInTheDocument();
+    expect(within(report).getByText("部分标签未添加：超过每条 20 个标签上限")).toBeInTheDocument();
+    expect(within(report).getByRole("link", { name: "查看草稿" })).toHaveAttribute("href", "/knowledge?entryId=draft-id");
+  });
   it("chooses one ZIP and renders its member paths, outcomes and draft links", async () => {
     const zip = new JSZip();
     zip.file("guides/start.md", "# ZIP from page");

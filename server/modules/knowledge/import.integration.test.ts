@@ -32,7 +32,7 @@ describe.skipIf(!available)("knowledge import over HTTP and PostgreSQL", () => {
     const router = createRouter();
     registerKnowledgeRoutes(router, { db, objectStore: store, getCurrentAuthContext: () => context });
     return requestJson<{
-      item: { id: string; headRevisionId: string; status: string; entryId: string | null; tags: string[]; contentMarkdown: string; documentCount: number; totalBytes: number; outcomes: { relativePath: string; status: string; entryId: string | null }[]; counts: Record<string, number> };
+      item: { id: string; headRevisionId: string; status: string; entryId: string | null; warnings: string[]; tags: string[]; contentMarkdown: string; documentCount: number; totalBytes: number; outcomes: { relativePath: string; status: string; entryId: string | null; warnings: string[] }[]; counts: Record<string, number> };
       items: { id: string }[];
       error: { message: string };
     }>(createHttpServer(router), `/api/v1/knowledge/${path}`, { method, ...(method === "GET" ? {} : { body: JSON.stringify(body) }) });
@@ -43,6 +43,24 @@ describe.skipIf(!available)("knowledge import over HTTP and PostgreSQL", () => {
     return result.body.item.id;
   }
   const submit = (id: string, upload: ReturnType<typeof file>, context = auth) => request(`imports/${id}/documents`, { relativePath: upload.fileName, file: upload }, context);
+
+  it("creates entries with fitting tags and persists warnings for truncated and excess folder tags", async () => {
+    const tags = Array.from({ length: 19 }, (_, i) => `batch-${i}`);
+    const batch = (await request("imports", { tags })).body.item.id;
+    const longFolder = "长".repeat(61);
+    const result = await request(`imports/${batch}/documents`, {
+      relativePath: `${longFolder}/extra/warnings.md`, file: file("warnings.md", "tag warning document")
+    });
+    expect(result.status).toBe(200);
+    expect(result.body.item).toMatchObject({ status: "created", warnings: [
+      "文件夹名过长，已截断为标签", "部分标签未添加：超过每条 20 个标签上限"
+    ] });
+    const entry = await request(`entries/${result.body.item.entryId}`, undefined, auth, "GET");
+    expect(entry.body.item).toMatchObject({ status: "draft", tags: [...tags, "长".repeat(60)] });
+    for (const report of [await request(`imports/${batch}`, undefined, auth, "GET"), await request(`imports/${batch}/complete`)]) {
+      expect(report.body.item.outcomes[0].warnings).toEqual(result.body.item.warnings);
+    }
+  });
 
   async function archive(id: string, members: Record<string, string | Buffer>, context = auth) {
     const zip = new JSZip();

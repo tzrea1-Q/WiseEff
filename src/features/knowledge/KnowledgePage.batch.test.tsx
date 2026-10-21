@@ -7,6 +7,23 @@ import { KnowledgePage } from "./KnowledgePage";
 const capability = { userId: "u-xu-yun", canView: true, canEdit: true, canManage: false };
 
 describe("knowledge batch management", () => {
+  it.each([
+    ["knowledge-illegal-status-transition", "条目状态不允许此操作"],
+    ["knowledge-entry-archived", "已归档条目不能修改标签"]
+  ])("renders the server reason %s without depending on its message", async (reason, copy) => {
+    const repository = createMockKnowledgeRepository();
+    const entry = await repository.createMarkdown({ title: "reason draft", tags: [], contentMarkdown: "reason" });
+    vi.spyOn(repository, "batch").mockResolvedValueOnce({ results: [{
+      entryId: entry.id, title: entry.title, entry: null, status: "failed",
+      error: { code: "VALIDATION_FAILED", message: "Server wording may change.", reason }
+    }], summaryError: null });
+    render(<KnowledgePage repository={repository} capability={capability} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("checkbox", { name: `选择 ${entry.title}` }));
+    await user.click(screen.getByRole("button", { name: "发布", exact: true }));
+    await user.click(screen.getByRole("button", { name: "确认发布" }));
+    expect(await screen.findByRole("table", { name: "批量操作结果" })).toHaveTextContent(copy);
+  });
   it("selects rows without opening detail, offers all actions and names mixed outcomes", async () => {
     const repository = createMockKnowledgeRepository({ canManage: false });
     const own = await repository.createMarkdown({ title: "自己的草稿", tags: ["原有"], contentMarkdown: "batch" });

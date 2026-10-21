@@ -3857,6 +3857,7 @@ Constraints:
 | `status` | `text` | no | — |
 | `entry_id` | `uuid` | yes | — |
 | `error` | `text` | yes | — |
+| `warnings` | `text[]` | no | `'{}'::text[]` |
 | `created_at` | `timestamp with time zone` | no | `now()` |
 
 Constraints:

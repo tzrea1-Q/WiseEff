@@ -2,6 +2,7 @@ import type { AuthContext } from "../auth/types";
 import { isRootDatabase, type Queryable } from "../../shared/database/client";
 import { readCatalogDefinitionForKnowledge } from "../parameter-catalog-api/productionWire";
 import { loadParameterReferencesByEntryIds } from "./parameterReferences";
+import { hasKnowledgeManage } from "./policy";
 import type {
   InsertKnowledgeEntryInput,
   InsertKnowledgeFileInput,
@@ -424,7 +425,7 @@ export async function listEntries(
 
   if (query.governable) {
     where.push("status <> 'archived'");
-    if (!auth.permissions.includes("knowledge:manage")) {
+    if (!hasKnowledgeManage(auth)) {
       values.push(auth.user.id);
       where.push(`created_by_user_id = $${values.length}`);
     }

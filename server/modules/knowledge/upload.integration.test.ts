@@ -48,11 +48,13 @@ describe.skipIf(!available)("document uploads over HTTP and PostgreSQL", () => {
   });
 
   it.each([
-    { bytes: Buffer.from([0xc3, 0x28]), reason: "knowledge-upload-invalid-utf8", message: "UTF-8" },
-    { bytes: Buffer.from("a".repeat(200_001)), reason: "knowledge-markdown-too-long", message: "200,000" }
-  ])("refuses $reason without creating an entry", async ({ bytes, reason, message }) => {
+    { fileName: "invalid.md", bytes: Buffer.from([0xc3, 0x28]), reason: "knowledge-upload-invalid-utf8", message: "UTF-8" },
+    { fileName: "invalid.txt", bytes: Buffer.from([0xc3, 0x28]), reason: "knowledge-upload-invalid-utf8", message: "UTF-8" },
+    { fileName: "long.md", bytes: Buffer.from("a".repeat(200_001)), reason: "knowledge-markdown-too-long", message: "200,000" },
+    { fileName: "long.txt", bytes: Buffer.from("a".repeat(200_001)), reason: "knowledge-markdown-too-long", message: "200,000" }
+  ])("refuses $fileName with $reason without creating an entry", async ({ fileName, bytes, reason, message }) => {
     const created = await request("POST", "entries", { contentForm: "file", title: reason, tags: [],
-      file: { fileName: "invalid.md", contentType: "text/markdown", contentBase64: bytes.toString("base64") } });
+      file: { fileName, contentType: fileName.endsWith(".txt") ? "text/plain" : "text/markdown", contentBase64: bytes.toString("base64") } });
     expect(created.status).toBe(400);
     expect(created.body.error).toMatchObject({ code: "VALIDATION_FAILED", details: { reason } });
     expect(created.body.error.message).toContain(message);

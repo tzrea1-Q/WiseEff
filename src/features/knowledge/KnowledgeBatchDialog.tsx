@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
+import { KNOWLEDGE_BATCH_ENTRY_LIMIT, KNOWLEDGE_TAG_LIMIT, KNOWLEDGE_TAG_CHARACTER_LIMIT } from "@/domain/knowledge/limits";
 import type { KnowledgeBatchInput, KnowledgeBatchReport, KnowledgeEntry } from "@/domain/knowledge/types";
 import { DataTable } from "@/components/admin";
 import { ModalDialog } from "@/components/common/ModalDialog";
@@ -13,10 +14,10 @@ export const knowledgeBatchLabels = { add_tags: "添加标签", remove_tags: "�
 function failureReason(error: NonNullable<KnowledgeBatchReport["results"][number]["error"]>) {
   if (error.code === "FORBIDDEN") return "没有管理此条目的权限：需要本人条目的编辑权限或知识管理权限。";
   if (error.code === "NOT_FOUND") return "条目不存在或无权查看。";
-  if (error.message.startsWith("Illegal knowledge status transition:") || error.message.startsWith("Illegal transition:")) {
+  if (error.reason === "knowledge-illegal-status-transition") {
     return "条目状态不允许此操作：发布仅适用于草稿，归档仅适用于已发布条目。";
   }
-  if (error.message.startsWith("Archived knowledge entries cannot be edited")) return "已归档条目不能修改标签，请先恢复条目。";
+  if (error.reason === "knowledge-entry-archived") return "已归档条目不能修改标签，请先恢复条目。";
   if (error.code === "CONFLICT") return "条目已有其他修改，请刷新最新修订后重试。";
   return presentError(new WiseEffApiError(error.code, error.message, {}, ""), "条目写入失败，请刷新检查后重试。");
 }
@@ -36,9 +37,9 @@ export function KnowledgeBatchDialog({ action, entries, repository, onComplete, 
   const submit = async () => {
     if (pending || report) return;
     const tags = parseTagsInput(tagsText);
-    if (entries.length > 200) { setError("每批最多操作 200 条，请减少选择。"); return; }
-    if (tagging && (!tags.length || tags.length > 20 || tags.some((tag) => tag.length > 60))) {
-      setError("请输入 1–20 个标签，每个标签不超过 60 个字符。"); return;
+    if (entries.length > KNOWLEDGE_BATCH_ENTRY_LIMIT) { setError(`每批最多操作 ${KNOWLEDGE_BATCH_ENTRY_LIMIT} 条，请减少选择。`); return; }
+    if (tagging && (!tags.length || tags.length > KNOWLEDGE_TAG_LIMIT || tags.some((tag) => tag.length > KNOWLEDGE_TAG_CHARACTER_LIMIT))) {
+      setError(`请输入 1–${KNOWLEDGE_TAG_LIMIT} 个标签，每个标签不超过 ${KNOWLEDGE_TAG_CHARACTER_LIMIT} 个字符。`); return;
     }
     setPending(true);
     setError("");
@@ -55,7 +56,7 @@ export function KnowledgeBatchDialog({ action, entries, repository, onComplete, 
   };
 
   return <ModalDialog open onDismiss={() => { if (!pending) onClose(); }} describedBy backdropClassName="knowledge-modal-backdrop"
-    className="flex max-h-[calc(100vh-48px)] w-[min(720px,calc(100vw-48px))] min-w-0 flex-col gap-4 rounded-xl bg-card p-5 shadow-xl">
+    className="submission-dialog modal-card--lg flex min-w-0 flex-col gap-4">
     {({ titleId, descriptionId }) => <>
       <div>
         <h2 id={titleId} className="text-base font-semibold">{label}</h2>
@@ -73,7 +74,7 @@ export function KnowledgeBatchDialog({ action, entries, repository, onComplete, 
         </label> : null}
       </div> : <div className="min-h-0 overflow-y-auto">
         <p role="status" className="mb-2 text-sm">成功 {report.results.filter((row) => row.status === "succeeded").length} 条 · 拒绝或失败 {report.results.filter((row) => row.status !== "succeeded").length} 条</p>
-        <DataTable ariaLabel="批量操作结果" rows={report.results} rowKey={(row) => row.entryId} pageSize={200} fluid columns={[
+        <DataTable ariaLabel="批量操作结果" rows={report.results} rowKey={(row) => row.entryId} pageSize={KNOWLEDGE_BATCH_ENTRY_LIMIT} fluid columns={[
           { key: "title", header: "条目", render: (row) => <span className="break-words">{row.title ?? entries.find((entry) => entry.id === row.entryId)?.title ?? row.entryId}</span> },
           { key: "status", header: "结果", render: (row) => ({ succeeded: "成功", refused: "拒绝", failed: "失败" })[row.status] },
           { key: "reason", header: "原因", render: (row) => <span className="break-words">{row.error ? failureReason(row.error) : `已${label}`}</span> }

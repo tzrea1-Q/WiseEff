@@ -353,6 +353,7 @@ async function knowledgeEntryDbSummary(entryId: string) {
   return withPgClient(async (client) => {
     const result = await client.query<{
       status: string;
+      content_form: KnowledgeEntryApiItem["contentForm"];
       head_revision_number: number;
       revision_count: string;
       extraction_status: string | null;
@@ -360,6 +361,7 @@ async function knowledgeEntryDbSummary(entryId: string) {
       `
       select
         entry.status,
+        entry.content_form,
         entry.head_revision_number,
         (select count(*)::text from knowledge_revisions where entry_id = entry.id) as revision_count,
         (
@@ -379,7 +381,7 @@ async function knowledgeEntryDbSummary(entryId: string) {
       table: "knowledge_entries,knowledge_revisions,knowledge_files",
       predicate: `entryId=${entryId}`,
       observed: row
-        ? `status=${row.status}; headRevision=${row.head_revision_number}; revisions=${row.revision_count}; extraction=${row.extraction_status ?? "n/a"}`
+        ? `status=${row.status}; contentForm=${row.content_form}; headRevision=${row.head_revision_number}; revisions=${row.revision_count}; extraction=${row.extraction_status ?? "n/a"}`
         : "missing",
       rowCount: result.rowCount ?? result.rows.length
     };
@@ -543,6 +545,10 @@ test.describe("Knowledge base browser acceptance", () => {
     expect(entryIds).toHaveLength(3);
     await importer.getByRole("button", { name: "关闭", exact: true }).click();
     const table = page.getByRole("table", { name: "知识条目列表" });
+    await table.getByText(names[2], { exact: true }).click();
+    const textDetail = page.getByRole("dialog", { name: names[2], exact: true });
+    await expect(textDetail.getByRole("button", { name: "编辑", exact: true })).toBeVisible();
+    await textDetail.getByRole("button", { name: "关闭", exact: true }).click();
     for (const name of names) {
       await table.getByRole("checkbox", { name: `选择 ${name}`, exact: true }).check();
     }
@@ -593,9 +599,11 @@ test.describe("Knowledge base browser acceptance", () => {
     await expect(page.getByRole("dialog").locator('[data-status="published"]')).toBeVisible();
 
     const db = await Promise.all(entryIds.map(knowledgeEntryDbSummary));
-    for (const summary of db) {
+    for (const [index, summary] of db.entries()) {
       expect(summary.observed).toContain("status=published");
-      expect(summary.observed).toContain("extraction=succeeded");
+      const isFile = names[index].endsWith(".pdf");
+      expect(summary.observed).toContain(`contentForm=${isFile ? "file" : "markdown"}`);
+      expect(summary.observed).toContain(`extraction=${isFile ? "succeeded" : "n/a"}`);
     }
     await recordOperationEvidence({
       operationId: "KB-IMPORT-001", title: "import report batch publish search and definition related knowledge",
@@ -778,7 +786,7 @@ test.describe("Knowledge base browser acceptance", () => {
     // @acceptance KB-FILE-001
     // @operation KB-FILE-001
     const title = `${titlePrefix} 文件条目 ${runStamp}`;
-    const extractedKeyword = `充电泵手册关键词${runStamp}`;
+    const extractedKeyword = "WiseEff knowledge pdf fixture";
 
     await openKnowledgePage(page);
 
@@ -787,9 +795,9 @@ test.describe("Knowledge base browser acceptance", () => {
     await upload.getByLabel("条目标题").fill(title);
     await upload.getByLabel("标签(逗号分隔)").fill("硬件手册");
     await upload.getByLabel("选择文件").setInputFiles({
-      name: "kb-acceptance-manual.txt",
-      mimeType: "text/plain",
-      buffer: Buffer.from(`SC8562 charge pump manual excerpt. ${extractedKeyword}`, "utf8")
+      name: "kb-acceptance-manual.pdf",
+      mimeType: "application/pdf",
+      buffer: readFileSync(new URL("../../server/modules/knowledge/testing/fixtures/sample.pdf", import.meta.url))
     });
     await upload.getByRole("button", { name: "上传并创建草稿" }).click();
 
@@ -797,7 +805,7 @@ test.describe("Knowledge base browser acceptance", () => {
     const detail = page.getByRole("dialog", { name: new RegExp(title) });
     await expect(detail).toBeVisible();
     await expect(detail.getByText("提取成功")).toBeVisible();
-    await expect(detail.getByText("kb-acceptance-manual.txt")).toBeVisible();
+    await expect(detail.getByText("kb-acceptance-manual.pdf")).toBeVisible();
 
     // Extraction status is also visible in the entry list column.
     await detail.getByRole("button", { name: "关闭" }).click();
@@ -812,7 +820,7 @@ test.describe("Knowledge base browser acceptance", () => {
     const listBody = (await listResponse.json()) as { items: KnowledgeEntryApiItem[] };
     const entry = listBody.items.find((item) => item.title === title);
     expect(entry).toBeTruthy();
-    expect(entry!.file).toMatchObject({ fileName: "kb-acceptance-manual.txt", extractionStatus: "succeeded" });
+    expect(entry).toMatchObject({ contentForm: "file", file: { fileName: "kb-acceptance-manual.pdf", extractionStatus: "succeeded" } });
 
     // Publish and prove the extracted text is retrievable (published-only gate).
     await publishEntryViaApi(page, entry!.id);

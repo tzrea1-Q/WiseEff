@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { KnowledgeRevisionConflictError } from "@/application/ports/KnowledgeRepository";
+import { KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT, KNOWLEDGE_TITLE_CHARACTER_LIMIT, KNOWLEDGE_TAG_LIMIT, KNOWLEDGE_TAG_CHARACTER_LIMIT } from "@/domain/knowledge/limits";
 import type { KnowledgeEntry } from "@/domain/knowledge/types";
 import { presentError } from "@/infrastructure/http/presentError";
 import { ModalDialog } from "@/components/common/ModalDialog";
@@ -51,12 +52,19 @@ export function KnowledgeFileUploadDialog({ open, entry, onSubmit, onClose }: Kn
       setError("请选择要上传的文件。");
       return;
     }
+    const tags = parseTagsInput(tagsText);
+    if (title.trim().length > KNOWLEDGE_TITLE_CHARACTER_LIMIT) {
+      setError(`标题不能超过 ${KNOWLEDGE_TITLE_CHARACTER_LIMIT} 个字符。`); return;
+    }
+    if (tags.length > KNOWLEDGE_TAG_LIMIT || tags.some((tag) => tag.length > KNOWLEDGE_TAG_CHARACTER_LIMIT)) {
+      setError(`最多 ${KNOWLEDGE_TAG_LIMIT} 个标签，每个标签不超过 ${KNOWLEDGE_TAG_CHARACTER_LIMIT} 个字符。`); return;
+    }
     setPending(true);
     setError("");
     try {
       await onSubmit({
         title: title.trim() || entry?.title || file.name,
-        tags: parseTagsInput(tagsText),
+        tags,
         file,
         ...(entry ? { expectedHeadRevisionNumber: entry.headRevisionNumber } : {})
       });
@@ -91,7 +99,7 @@ export function KnowledgeFileUploadDialog({ open, entry, onSubmit, onClose }: Kn
             <p id={descriptionId} className="mt-0.5 text-xs text-muted-foreground">
               {entry
                 ? "替换会产生新的不可变修订;旧文件保留在历史修订中。"
-                : "Markdown（.md）和纯文本（.txt）创建可编辑草稿，须为 UTF-8 编码且正文不超过 200,000 字符；PDF、Word 保留为文件条目。"}
+                : `Markdown（.md）和纯文本（.txt）创建可编辑草稿，须为 UTF-8 编码且正文不超过 ${KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT.toLocaleString("en-US")} 字符；PDF、Word 保留为文件条目。`}
             </p>
           </div>
 
@@ -99,6 +107,7 @@ export function KnowledgeFileUploadDialog({ open, entry, onSubmit, onClose }: Kn
             条目标题
             <input
               aria-label="条目标题"
+              maxLength={KNOWLEDGE_TITLE_CHARACTER_LIMIT}
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder={entry ? entry.title : "如:MT5788 无线充手册"}

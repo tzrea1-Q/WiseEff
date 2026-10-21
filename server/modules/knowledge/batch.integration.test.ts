@@ -37,7 +37,7 @@ describe.skipIf(!available)("knowledge batches over HTTP and PostgreSQL", () => 
       item: KnowledgeEntryDto;
       items: { entryId: string }[];
       summaryError: string | null;
-      results: { entryId: string; title: string | null; status: string; entry: KnowledgeEntryDto | null; error: { code: string; message: string } | null }[];
+      results: { entryId: string; title: string | null; status: string; entry: KnowledgeEntryDto | null; error: { code: string; message: string; reason?: string } | null }[];
     }>(createHttpServer(router), `/api/v1/knowledge/${path}`, { method, ...(method === "GET" ? {} : { body: JSON.stringify(body) }) });
   }
   async function create(title: string, auth = owner, tags = ["k1331"]) {
@@ -45,6 +45,17 @@ describe.skipIf(!available)("knowledge batches over HTTP and PostgreSQL", () => 
     expect(result.status).toBe(201);
     return result.body.item;
   }
+  it("returns stable reasons for illegal transitions and archived edits", async () => {
+    const draft = await create("reason codes");
+    const illegal = await request("entries/batch", { action: "archive", entryIds: [draft.id] });
+    expect(illegal.body.results[0].error).toMatchObject({ code: "VALIDATION_FAILED", reason: "knowledge-illegal-status-transition" });
+    await request(`entries/${draft.id}/publish`);
+    await request(`entries/${draft.id}/archive`);
+    const archived = await request("entries/batch", { action: "add_tags", entryIds: [draft.id], tags: ["new"] });
+    expect(archived.body.results[0].error).toMatchObject({ code: "VALIDATION_FAILED", reason: "knowledge-entry-archived" });
+    expect((await request(`entries/${draft.id}`, {}, owner, "GET")).body.item).toMatchObject({ status: "archived", tags: ["k1331"] });
+  });
+
   async function drainIndex() {
     for (let round = 0; round < 50; round++) {
       if (await processNextKnowledgeIndexJob({ db }) === "idle") return;

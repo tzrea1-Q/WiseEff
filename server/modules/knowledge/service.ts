@@ -14,7 +14,7 @@ import { readCatalogDefinitionForKnowledge } from "../parameter-catalog-api/prod
 import { buildLogAnalysisProvenanceNotice, buildLogDistillationDraft } from "./distillation";
 import { buildReloadDistillationDraft, isReloadRunDistillable } from "./reloadDistillation";
 import type { KnowledgeTextExtractor } from "./extraction";
-import { KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT, knowledgeTagsSchema, type BatchKnowledgeEntriesInput } from "./schemas";
+import { KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT, KNOWLEDGE_FILE_BYTE_LIMIT, KNOWLEDGE_TAG_LIMIT, knowledgeTagsSchema, type BatchKnowledgeEntriesInput } from "./schemas";
 import { fuseKnowledgeSearchResults } from "./hybridSearch";
 import type { KnowledgeEmbeddingClient } from "./indexing/embeddingClient";
 import {
@@ -99,8 +99,6 @@ export type UpdateKnowledgeEntryInput = {
   file?: KnowledgeFileUploadInput;
 };
 
-const MAX_FILE_BYTES = 20 * 1024 * 1024;
-
 function knowledgeEntryNotFound(entryId: string) {
   return new ApiError("NOT_FOUND", "Knowledge entry was not found.", { entryId });
 }
@@ -119,10 +117,10 @@ function decodeFileUpload(input: KnowledgeFileUploadInput) {
   if (bytes.byteLength === 0) {
     throw new ApiError("VALIDATION_FAILED", "Knowledge file content is empty.", { fileName: input.fileName });
   }
-  if (bytes.byteLength > MAX_FILE_BYTES) {
-    throw new ApiError("VALIDATION_FAILED", "Knowledge file exceeds the 20MB limit.", {
+  if (bytes.byteLength > KNOWLEDGE_FILE_BYTE_LIMIT) {
+    throw new ApiError("VALIDATION_FAILED", `Knowledge file exceeds the ${KNOWLEDGE_FILE_BYTE_LIMIT / 1024 / 1024}MB limit.`, {
       fileName: input.fileName,
-      maxBytes: MAX_FILE_BYTES,
+      maxBytes: KNOWLEDGE_FILE_BYTE_LIMIT,
       sizeBytes: bytes.byteLength
     });
   }
@@ -201,34 +199,38 @@ async function runFileExtraction(
   });
 }
 
+function prepareKnowledgeEntry(input: CreateKnowledgeEntryInput) {
+  if (input.contentForm === "markdown") return { ...input, sourceChecksum: null };
+  const bytes = decodeFileUpload(input.file);
+  const sourceChecksum = createHash("sha256").update(bytes).digest("hex");
+  if (!/\.(md|txt)$/i.test(input.file.fileName)) return { ...input, bytes, sourceChecksum };
+  if (!isUtf8(bytes)) {
+    throw new ApiError("VALIDATION_FAILED", "文本文件必须使用有效的 UTF-8 编码，请转换编码后重新上传。", {
+      reason: "knowledge-upload-invalid-utf8"
+    });
+  }
+  const contentMarkdown = bytes.toString("utf8");
+  if (contentMarkdown.length > KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT) {
+    throw new ApiError("VALIDATION_FAILED", `正文超过知识库 ${KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT.toLocaleString("en-US")} 字符上限，请精简后重新上传。`, {
+      reason: "knowledge-markdown-too-long", maxCharacters: KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT
+    });
+  }
+  return { contentForm: "markdown" as const, title: input.title, tags: input.tags, contentMarkdown, origin: "uploaded" as const, sourceChecksum };
+}
+
 export async function createKnowledgeEntry(
   db: Database,
   objectStore: ObjectStore,
   extractor: KnowledgeTextExtractor,
   auth: AuthContext,
-  input: CreateKnowledgeEntryInput,
+  rawInput: CreateKnowledgeEntryInput,
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
   const invocation = createUserInvocation(auth);
   requireKnowledgeEdit(auth);
 
-  const uploadBytes = input.contentForm === "file" ? decodeFileUpload(input.file) : null;
-  const sourceChecksum = uploadBytes ? createHash("sha256").update(uploadBytes).digest("hex") : null;
-  if (input.contentForm === "file" && /\.(md|txt)$/i.test(input.file.fileName)) {
-    const bytes = uploadBytes!;
-    if (!isUtf8(bytes)) {
-      throw new ApiError("VALIDATION_FAILED", "文本文件必须使用有效的 UTF-8 编码，请转换编码后重新上传。", {
-        reason: "knowledge-upload-invalid-utf8"
-      });
-    }
-    const contentMarkdown = bytes.toString("utf8");
-    if (contentMarkdown.length > KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT) {
-      throw new ApiError("VALIDATION_FAILED", "正文超过知识库 200,000 字符上限，请精简后重新上传。", {
-        reason: "knowledge-markdown-too-long", maxCharacters: KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT
-      });
-    }
-    input = { contentForm: "markdown", title: input.title, tags: input.tags, contentMarkdown, origin: "uploaded" };
-  }
+  const input = prepareKnowledgeEntry(rawInput);
+  const sourceChecksum = input.sourceChecksum;
 
   const entryId = randomUUID();
   const revisionId = randomUUID();
@@ -285,7 +287,7 @@ export async function createKnowledgeEntry(
     return entry;
   }
 
-  const bytes = uploadBytes!;
+  const bytes = input.bytes;
   const stored = await objectStore.put({
     organizationId: auth.organization.id,
     fileName: `knowledge-${randomUUID()}-${input.file.fileName}`,
@@ -697,6 +699,7 @@ export async function updateKnowledgeEntry(
 
     if (entry.status === "archived") {
       throw new ApiError("VALIDATION_FAILED", "Archived knowledge entries cannot be edited. Restore the entry first.", {
+        reason: "knowledge-entry-archived",
         entryId,
         status: entry.status
       });
@@ -847,7 +850,7 @@ async function transitionKnowledgeEntry(
       throw new ApiError(
         "VALIDATION_FAILED",
         `Illegal knowledge status transition: ${entry.status} -> ${input.toStatus}.`,
-        { entryId, currentStatus: entry.status, nextStatus: input.toStatus }
+        { reason: "knowledge-illegal-status-transition", entryId, currentStatus: entry.status, nextStatus: input.toStatus }
       );
     }
 
@@ -918,7 +921,7 @@ export async function batchKnowledgeEntries(
   const requestId = context.requestId ?? randomUUID();
   const results: {
     entryId: string; title: string | null; status: "succeeded" | "refused" | "failed";
-    entry: KnowledgeEntryDto | null; error: { code: string; message: string } | null;
+    entry: KnowledgeEntryDto | null; error: { code: string; message: string; reason?: string } | null;
   }[] = [];
   for (const entryId of input.entryIds) {
     let title: string | null = null;
@@ -936,7 +939,7 @@ export async function batchKnowledgeEntries(
           ? [...new Set([...current.tags, ...input.tags])]
           : current.tags.filter((tag) => !input.tags.includes(tag));
         if (!knowledgeTagsSchema.safeParse(tags).success) {
-          throw new ApiError("VALIDATION_FAILED", "标签合并后超过每条 20 个标签的上限。");
+          throw new ApiError("VALIDATION_FAILED", `标签合并后超过每条 ${KNOWLEDGE_TAG_LIMIT} 个标签的上限。`);
         }
         entry = await updateKnowledgeEntry(db, objectStore, extractor, auth, entryId, {
           expectedHeadRevisionNumber: current.headRevisionNumber, tags
@@ -945,8 +948,9 @@ export async function batchKnowledgeEntries(
       results.push({ entryId, title: entry.title, status: "succeeded", entry, error: null });
     } catch (failure) {
       const { code, message } = serializeApiError(failure, requestId).error;
+      const reason = failure instanceof ApiError && typeof failure.details.reason === "string" ? failure.details.reason : undefined;
       results.push({ entryId, title, status: code === "FORBIDDEN" || code === "NOT_FOUND" ? "refused" : "failed",
-        entry: null, error: { code, message } });
+        entry: null, error: { code, message, ...(reason ? { reason } : {}) } });
     }
   }
   let summaryError: string | null = null;
@@ -1277,6 +1281,7 @@ export async function restoreKnowledgeRevision(
 
     if (entry.status === "archived") {
       throw new ApiError("VALIDATION_FAILED", "Archived knowledge entries cannot be edited. Restore the entry first.", {
+        reason: "knowledge-entry-archived",
         entryId,
         status: entry.status
       });

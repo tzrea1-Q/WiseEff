@@ -43,7 +43,7 @@ export function SubAppEntryRow({ onNavigate }: SubAppEntryRowProps) {
     },
     {
       workflowId: "knowledge",
-      accent: "#15803D",
+      accent: "var(--success)",
       icon: BookOpen,
       kicker: "组织知识",
       title: "知识库",

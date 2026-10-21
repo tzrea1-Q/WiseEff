@@ -4,6 +4,14 @@ import { knowledgeContentForms, knowledgeOrigins, knowledgeSourceTypes, knowledg
 
 const nonEmptyString = z.string().min(1);
 export const KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT = 200_000;
+export const KNOWLEDGE_TITLE_CHARACTER_LIMIT = 200;
+export const KNOWLEDGE_TAG_CHARACTER_LIMIT = 60;
+export const KNOWLEDGE_TAG_LIMIT = 20;
+export const KNOWLEDGE_BATCH_ENTRY_LIMIT = 200;
+export const KNOWLEDGE_IMPORT_DOCUMENT_LIMIT = 200;
+export const KNOWLEDGE_FILE_BYTE_LIMIT = 20 * 1024 * 1024;
+export const KNOWLEDGE_IMPORT_BYTE_LIMIT = 100 * 1024 * 1024;
+export const KNOWLEDGE_IMPORT_FOLDER_DEPTH_LIMIT = 20;
 const base64String = nonEmptyString.refine(
   (value) => {
     try {
@@ -15,15 +23,15 @@ const base64String = nonEmptyString.refine(
   { message: "Expected valid base64 content." }
 );
 
-export const knowledgeTagSchema = z.string().min(1).max(60);
-export const knowledgeTagsSchema = z.array(knowledgeTagSchema).max(20).default([]);
+export const knowledgeTagSchema = z.string().min(1).max(KNOWLEDGE_TAG_CHARACTER_LIMIT);
+export const knowledgeTagsSchema = z.array(knowledgeTagSchema).max(KNOWLEDGE_TAG_LIMIT).default([]);
 
-const batchEntryIds = z.array(z.string().uuid()).min(1).max(200).refine(
+const batchEntryIds = z.array(z.string().uuid()).min(1).max(KNOWLEDGE_BATCH_ENTRY_LIMIT).refine(
   (ids) => new Set(ids).size === ids.length, "Entry IDs must be unique."
 );
 export const batchKnowledgeEntriesBodySchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("add_tags"), entryIds: batchEntryIds, tags: z.array(knowledgeTagSchema).min(1).max(20) }).strict(),
-  z.object({ action: z.literal("remove_tags"), entryIds: batchEntryIds, tags: z.array(knowledgeTagSchema).min(1).max(20) }).strict(),
+  z.object({ action: z.literal("add_tags"), entryIds: batchEntryIds, tags: z.array(knowledgeTagSchema).min(1).max(KNOWLEDGE_TAG_LIMIT) }).strict(),
+  z.object({ action: z.literal("remove_tags"), entryIds: batchEntryIds, tags: z.array(knowledgeTagSchema).min(1).max(KNOWLEDGE_TAG_LIMIT) }).strict(),
   z.object({ action: z.literal("publish"), entryIds: batchEntryIds }).strict(),
   z.object({ action: z.literal("archive"), entryIds: batchEntryIds }).strict()
 ]);
@@ -56,13 +64,13 @@ export const createKnowledgeEntryBodySchema = z.discriminatedUnion("contentForm"
   z.object({
     contentForm: z.literal("markdown"),
     origin: z.enum(["authored", "uploaded"]).optional(),
-    title: nonEmptyString.max(200),
+    title: nonEmptyString.max(KNOWLEDGE_TITLE_CHARACTER_LIMIT),
     tags: knowledgeTagsSchema,
     contentMarkdown: z.string().max(KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT).default("")
   }),
   z.object({
     contentForm: z.literal("file"),
-    title: nonEmptyString.max(200),
+    title: nonEmptyString.max(KNOWLEDGE_TITLE_CHARACTER_LIMIT),
     tags: knowledgeTagsSchema,
     file: knowledgeFileUploadSchema
   })
@@ -71,7 +79,7 @@ export const createKnowledgeEntryBodySchema = z.discriminatedUnion("contentForm"
 export const updateKnowledgeEntryBodySchema = z
   .object({
     expectedHeadRevisionNumber: z.number().int().min(0),
-    title: nonEmptyString.max(200).optional(),
+    title: nonEmptyString.max(KNOWLEDGE_TITLE_CHARACTER_LIMIT).optional(),
     tags: knowledgeTagsSchema.optional(),
     contentMarkdown: z.string().max(KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT).optional(),
     file: knowledgeFileUploadSchema.optional()

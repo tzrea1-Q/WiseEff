@@ -25,7 +25,7 @@ export type KnowledgeBatchResult = {
   title: string | null;
   status: "succeeded" | "refused" | "failed";
   entry: KnowledgeEntry | null;
-  error: { code: string; message: string } | null;
+  error: { code: string; message: string; reason?: string } | null;
 };
 export type KnowledgeBatchReport = { results: KnowledgeBatchResult[]; summaryError: string | null };
 
@@ -35,6 +35,7 @@ export type KnowledgeImportOutcome = {
   status: "created" | "duplicate_skipped" | "unsupported_skipped" | "extraction_failed" | "rejected";
   entryId: string | null;
   error: string | null;
+  warnings?: string[];
 };
 
 export type KnowledgeImportReport = {

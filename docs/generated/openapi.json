@@ -58505,6 +58505,9 @@
                     },
                     "message": {
                       "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -58605,6 +58608,12 @@
                   "string",
                   "null"
                 ]
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             },
             "required": [
@@ -58691,6 +58700,12 @@
                         "string",
                         "null"
                       ]
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
@@ -58800,6 +58815,12 @@
                         "string",
                         "null"
                       ]
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [

@@ -15,9 +15,7 @@ import { Input } from "@/components/ui/input";
 import { KnowledgeStatusBadge } from "@/features/knowledge/badges";
 import type { SkillSpec } from "./types";
 
-// Knowledge module limits: schemas.ts Markdown body and service.ts file upload.
-const markdownCharacterLimit = 200_000;
-const knowledgeFileByteLimit = 20 * 1024 * 1024;
+import { KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT, KNOWLEDGE_FILE_BYTE_LIMIT, KNOWLEDGE_TITLE_CHARACTER_LIMIT, KNOWLEDGE_TAG_CHARACTER_LIMIT } from "@/domain/knowledge/limits";
 type UploadFile = { id: number; file: File; content?: string; status: "validating" | "ready" | "invalid" | "uploading" | "success" | "failed"; error?: string };
 const uploadStatus = { validating: "正在校验…", ready: "待上传", invalid: "文件无效", uploading: "正在创建…", success: "已创建并链接", failed: "创建失败" };
 
@@ -48,7 +46,7 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
   const tagId = useId();
   const canRead = apiMode && !!repository && !!capability?.canView;
   const atLimit = ids.length >= 200;
-  const uploadReason = !capability?.canEdit ? "上传 Markdown 需要知识编辑权限。" : atLimit ? "每个技能最多链接 200 个知识条目，请先取消部分链接。" : "";
+  const uploadReason = !capability?.canEdit ? "上传 Markdown / 文本 需要知识编辑权限。" : atLimit ? "每个技能最多链接 200 个知识条目，请先取消部分链接。" : "";
   const canUpload = canRead && !disabled && !!capability?.canEdit && !atLimit;
   const readyFiles = files.filter((item) => item.status === "ready" || item.status === "failed");
   const visibleEntries = (canRead ? entries ?? [] : ids.map((id) => ({ id, entry: null, deleted: false }))).map(({ id, entry, deleted }) => ({
@@ -78,7 +76,7 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
   async function selectFiles(selected: File[]) {
     let capacity = Math.max(0, 200 - ids.length - files.filter((item) => ["ready", "validating", "failed"].includes(item.status)).length);
     const selectedItems: UploadFile[] = selected.map((file) => {
-      const error = !/\.md$/i.test(file.name) ? "仅支持 .md 文件。" : file.size > knowledgeFileByteLimit ? "文件超过知识库 20 MiB 上限。"
+      const error = !/\.(md|txt)$/i.test(file.name) ? "仅支持 .md 和 .txt 文件。" : file.size > KNOWLEDGE_FILE_BYTE_LIMIT ? `文件超过知识库 ${KNOWLEDGE_FILE_BYTE_LIMIT / 1024 / 1024} MiB 上限。`
         : capacity <= 0 ? "每个技能最多链接 200 个知识条目，请先移除部分文件或取消已有链接。" : undefined;
       if (!error) capacity--;
       return { id: ++fileSequence.current, file, status: error ? "invalid" : "validating", error };
@@ -88,7 +86,7 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
       if (item.error) continue;
       try {
         const content = await item.file.text();
-        const error = content.length > markdownCharacterLimit ? "正文超过知识库 200,000 字符上限。" : undefined;
+        const error = content.length > KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT ? `正文超过知识库 ${KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT.toLocaleString("en-US")} 字符上限。` : undefined;
         setFiles((current) => current.map((row) => row.id === item.id ? { ...row, content: error ? undefined : content, status: error ? "invalid" : "ready", error } : row));
       } catch {
         setFiles((current) => current.map((row) => row.id === item.id ? { ...row, status: "invalid", error: "无法读取文件，请重新选择。" } : row));
@@ -128,7 +126,7 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
         }
         setFiles((current) => current.map((row) => row.id === item.id ? { ...row, status: "uploading", error: undefined } : row));
         try {
-          const entry = await repository!.createMarkdown({ origin: "uploaded", title: item.file.name.replace(/\.md$/i, "").slice(0, 200) || item.file.name, tags: [], contentMarkdown: item.content! });
+          const entry = await repository!.createFile({ title: item.file.name.replace(/\.(md|txt)$/i, "").slice(0, KNOWLEDGE_TITLE_CHARACTER_LIMIT) || item.file.name, tags: [], file: item.file });
           linked.push(entry.id);
           setFiles((current) => current.map((row) => row.id === item.id ? { ...row, status: "success" } : row));
         } catch (cause) {
@@ -145,14 +143,14 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
     <p>链接和上传结果需保存草稿，再随技能版本发布。仅已发布的知识进入分析检索；上传会创建知识草稿，请在知识库按正常流程发布。</p>
     <div className="flex flex-wrap gap-2">
       <Button variant="outline" disabled={disabled || !canRead || atLimit} onClick={() => { setQuery(""); setTag(""); setTagError(null); setTagResult(null); setLinkOpen(true); }}>链接已有条目</Button>
-      <Button disabled={!canUpload} aria-describedby={uploadReason ? reasonId : undefined} onClick={() => { setFiles([]); setUploadOpen(true); }}>上传 Markdown</Button>
+      <Button disabled={!canUpload} aria-describedby={uploadReason ? reasonId : undefined} onClick={() => { setFiles([]); setUploadOpen(true); }}>上传 Markdown / 文本</Button>
     </div>
     {uploadReason ? <p id={reasonId}>{uploadReason}</p> : null}
     {!canRead ? <p>{apiMode ? "查看知识条目需要知识查看权限；仍可管理技能中保存的链接。" : "请在 API 模式下管理知识链接。"}</p> : null}
     {loadFailed ? <SectionError message="无法加载已链接知识" onRetry={() => setRefresh((value) => value + 1)} />
       : !entries ? <SectionSkeleton label="正在加载已链接知识" />
       : <DataTable rows={visibleEntries} rowKey={(row) => row.id} ariaLabel="已链接知识条目" tableClassName="table-fixed"
-        emptyState={<SectionEmpty title="尚未链接知识" message="链接已发布条目，或上传 Markdown 创建知识草稿。" />}
+        emptyState={<SectionEmpty title="尚未链接知识" message="链接已发布条目，或上传 Markdown / 文本 创建知识草稿。" />}
         columns={[
           { key: "title", header: "标题", render: ({ entry, deleted }) => entry ? <span className="break-words" title={entry.title}>{entry.title}</span> : <span>{deleted ? "已删除" : "无权查看的条目"}</span> },
           { key: "status", header: "状态", widthClass: "w-44", render: ({ entry }) => entry?.status === "archived" ? <span>已归档，不参与检索</span> : entry ? <KnowledgeStatusBadge status={entry.status} /> : null },
@@ -168,7 +166,7 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
         <div className="grid gap-2">
           <label htmlFor={tagId}>知识标签</label>
           <div className="flex flex-wrap gap-2">
-            <Input id={tagId} className="flex-1" value={tag} maxLength={60} disabled={!canRead || disabled || pending}
+            <Input id={tagId} className="flex-1" value={tag} maxLength={KNOWLEDGE_TAG_CHARACTER_LIMIT} disabled={!canRead || disabled || pending}
               onChange={(event) => { setTag(event.target.value); setTagError(null); setTagResult(null); }} placeholder="输入完整标签" />
             <Button variant="outline" disabled={!canRead || disabled || pending || atLimit || !tag.trim()} onClick={() => void addTag()}>{pending ? "正在添加…" : "添加此标签的全部已发布条目"}</Button>
           </div>
@@ -189,9 +187,9 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
     </ModalDialog>
     <ModalDialog open={uploadOpen} initialFocusRef={chooseRef} onDismiss={pending ? undefined : () => setUploadOpen(false)} className="skill-publish-dialog">
       {({ titleId }) => <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); void upload(); }}>
-        <h2 id={titleId}>上传 Markdown</h2><p>支持多选或拖放 .md 文件。每个文件创建一个知识草稿，标题取文件名；不会自动发布。</p>
-        <FileDropZone label="Markdown 文件" regionLabel="拖放 Markdown 文件" browseRef={chooseRef} accept=".md" multiple disabled={pending || !canUpload}
-          hint="支持多选 .md；每个文件不超过 20 MiB，正文不超过 200,000 字符。" files={files.map((item) => item.file)} listLabel="待上传文件"
+        <h2 id={titleId}>上传 Markdown / 文本</h2><p>支持多选或拖放 .md、.txt 文件，须为 UTF-8 编码。每个文件创建一个知识草稿，标题取文件名；不会自动发布。</p>
+        <FileDropZone label="Markdown / 文本文件" regionLabel="拖放 Markdown / 文本文件" browseRef={chooseRef} accept=".md,.txt" multiple disabled={pending || !canUpload}
+          hint={`支持多选 .md、.txt；每个文件不超过 ${KNOWLEDGE_FILE_BYTE_LIMIT / 1024 / 1024} MiB，正文不超过 ${KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT.toLocaleString("en-US")} 字符。`} files={files.map((item) => item.file)} listLabel="待上传文件"
           onSelect={(selected) => { void selectFiles(selected); }} onRemove={(index) => setFiles((current) => current.filter((_, at) => at !== index))}
           canRemove={(index) => files[index].status !== "success"} renderFileDetails={(index) => <>
             <span role="status" className="text-xs text-muted-foreground">{uploadStatus[files[index].status]}</span>
