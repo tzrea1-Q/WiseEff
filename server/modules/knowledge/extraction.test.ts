@@ -42,6 +42,19 @@ describe("createDefaultKnowledgeTextExtractor", () => {
     }
   });
 
+  it("keeps a line break between PDF pages without page-number markers", async () => {
+    const outcome = await extractor.extract({
+      fileName: "multipage.pdf",
+      contentType: "application/pdf",
+      bytes: readFileSync(join(fixturesDir, "multipage.pdf"))
+    });
+
+    expect(outcome.status).toBe("succeeded");
+    if (outcome.status === "succeeded") {
+      expect(outcome.text).toMatch(/^First page text\n+Second page text$/);
+    }
+  });
+
   it("extracts text from a real .docx via mammoth", async () => {
     const outcome = await extractor.extract({
       fileName: "sample.docx",

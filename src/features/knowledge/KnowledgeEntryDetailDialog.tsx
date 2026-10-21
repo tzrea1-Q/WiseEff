@@ -232,9 +232,9 @@ export function KnowledgeEntryDetailDialog({
                   </span>
                   <KnowledgeExtractionBadge status={entry.file.extractionStatus} error={entry.file.extractionError} />
                 </div>
-                {entry.file.extractionStatus === "failed" && entry.file.extractionError ? (
-                  <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-900">
-                    提取失败:{entry.file.extractionError}
+                {entry.file.extractionStatus === "failed" ? (
+                  <p className="rounded-md bg-[var(--warning-soft)] px-3 py-2 text-xs text-[var(--warning)]">
+                    不可检索：{entry.file.extractionError || "正文提取失败"}。请替换为包含可提取文本的文件，成功提取并发布后才能参与检索。
                   </p>
                 ) : null}
                 {entry.file.extractionStatus === "succeeded" ? (

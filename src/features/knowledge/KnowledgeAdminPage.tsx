@@ -18,7 +18,7 @@ import { useCollectionTab } from "@/hooks/useCollectionTab";
 import { PageInsightBar, type Column } from "@/components/admin";
 import { Button } from "@/components/ui/button";
 import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
-import { KnowledgeTagList } from "./badges";
+import { KnowledgeTagList, KnowledgeUnsearchableBadge } from "./badges";
 
 const collectionTabs = ["drafts", "index", "archived"] as const;
 
@@ -250,6 +250,12 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
       render: (item) => (
         <div className="min-w-0">
           <p className="truncate font-medium text-foreground">{item.title}</p>
+          {item.entryStatus === "published" && (item.status === "succeeded" || item.status === "failed") && item.chunkCount === 0 ? (
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <KnowledgeUnsearchableBadge />
+              <span className="text-xs text-[var(--warning)]">无已索引分块，请检查文件是否包含可提取文本并替换文件。</span>
+            </div>
+          ) : null}
           <p className="text-xs text-muted-foreground">
             {knowledgeStatusLabels[item.entryStatus]}
             {item.indexedRevisionNumber !== null ? ` · 已索引修订 #${item.indexedRevisionNumber}` : ""}
