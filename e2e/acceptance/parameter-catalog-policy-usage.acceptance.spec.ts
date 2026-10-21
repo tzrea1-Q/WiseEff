@@ -26,7 +26,7 @@ import { createUserInvocation } from "../../server/modules/auth/trustedInvocatio
 
 test.use({
   viewport: { width: 1440, height: 900 },
-  catalogRuntimeDatabaseUrl: process.env.DATABASE_URL ?? process.env.TEST_DATABASE_URL,
+  catalogRuntimeScope: import.meta.url,
 });
 useBrowserDiagnostics(test, {
   expectedApiFailures: [{ method: "GET", path: "/api/v1/parameters/projects", status: 404 }],

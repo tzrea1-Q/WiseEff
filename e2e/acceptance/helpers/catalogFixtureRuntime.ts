@@ -15,12 +15,13 @@ import {
  * The shared lane already carries the seeded Catalog (`crel_acme_1` plus
  * the localized vendor successor), and the installer refuses a second bootstrap there.
  * Catalog specs that assert the A-to-F fixture chain therefore run in one
- * fixture-owned disposable runtime per Playwright worker: a fresh database with
+ * fixture-owned disposable runtime per spec file: a fresh database with
  * no seeded Catalog, and a dedicated API and frontend. Playwright's static
  * `baseURL` cannot follow a runtime started at worker time, so catalog helpers
  * build absolute URLs with `catalogAppUrl`.
  */
 type CatalogFixtureRuntimeWorker = {
+  catalogRuntimeScope: string;
   catalogRuntimeDatabaseUrl: string | undefined;
   catalogRuntime: DisposablePostCutoverRuntime;
 };
@@ -57,8 +58,11 @@ export function catalogAppUrl(route: string): string {
 }
 
 export const catalogRuntimeTest = base.extend<{}, CatalogFixtureRuntimeWorker>({
+  catalogRuntimeScope: ["", { scope: "worker", option: true }],
   catalogRuntimeDatabaseUrl: [undefined, { scope: "worker", option: true }],
-  catalogRuntime: [async ({ catalogRuntimeDatabaseUrl }, use) => {
+  catalogRuntime: [async ({ catalogRuntimeDatabaseUrl, catalogRuntimeScope }, use) => {
+    // A stable file identity separates worker fixture pools after a spec advances the immutable Catalog.
+    if (!catalogRuntimeScope) throw new Error("Catalog runtime requires a stable spec-file scope.");
     const lane = catalogRuntimeDatabaseUrl ?? await catalogLaneConnectionString();
     const snapshot = captureProcessEnvForDisposableRuntime();
     const runtime = await startDisposablePostCutoverRuntime(lane, {

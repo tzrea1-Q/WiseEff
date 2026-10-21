@@ -17,6 +17,7 @@ import { createCatalogInstaller } from "../../server/modules/catalog-kernel/inst
 import { runPublicationManagerOnce } from "../../server/modules/catalog-publication/jobs/manager";
 import { catalogDefinitionListResponseSchema, catalogDefinitionResponseSchema } from "../../server/modules/contracts/dtoSchemas/parameterCatalog";
 
+test.use({ catalogRuntimeScope: import.meta.url });
 useBrowserDiagnostics(test, { expectedApiFailures: CATALOG_EXPECTED_API_FAILURES });
 
 test("#1298 administrator clears published optional content and reads it back after refresh", async ({ page, catalogAcceptanceRuntime }, testInfo) => {

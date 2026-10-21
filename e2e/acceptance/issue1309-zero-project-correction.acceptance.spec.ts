@@ -18,7 +18,7 @@ import { createCatalogInstaller } from "../../server/modules/catalog-kernel/inst
 import { runPublicationManagerOnce } from "../../server/modules/catalog-publication/jobs/manager";
 import { catalogDefinitionListResponseSchema } from "../../server/modules/contracts/dtoSchemas/parameterCatalog";
 
-test.use({ catalogRuntimeDatabaseUrl: process.env.DATABASE_URL ?? process.env.TEST_DATABASE_URL });
+test.use({ catalogRuntimeScope: import.meta.url });
 useBrowserDiagnostics(test, { expectedApiFailures: [...CATALOG_EXPECTED_API_FAILURES,
   { method: "POST", path: "/api/v2/catalog/definition-replacements", status: 503 },
   { method: "POST", path: "/api/v2/catalog/definition-replacements", status: 409 }] });

@@ -31,9 +31,9 @@ test("administrator inspects a real log's deletion scope, retained audit and fai
   const trigger = page.getByRole("row").filter({ hasText: fileName }).getByRole("button", { name: "删除影响预览" });
   let release: () => void = () => undefined;
   const pending = new Promise<void>((resolve) => { release = resolve; });
-  let holdFirst = true, failOnce = false;
+  let failOnce = false;
   await page.route(`**${path}`, async (route) => {
-    if (holdFirst) { holdFirst = false; await pending; }
+    await pending;
     if (failOnce) {
       failOnce = false;
       await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: { code: "INTERNAL_ERROR", message: "范围暂不可用" } }) });

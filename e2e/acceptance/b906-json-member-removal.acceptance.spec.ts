@@ -253,7 +253,7 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
 });
 
 for (const format of ["json", "dts"] as const) {
-test(`#906 B explains unsupported canonical member actions for ${format} without mutation`, async ({ page, request }, testInfo) => {
+test(`#906 B previews canonical member actions for ${format} without mutation`, async ({ page, request }, testInfo) => {
   test.setTimeout(180_000);
   let runtime: DisposablePostCutoverRuntime | undefined;
   let restore: RestoreDisposablePostCutoverRuntime | undefined;
@@ -348,7 +348,7 @@ test(`#906 B explains unsupported canonical member actions for ${format} without
         const path = new URL(browserRequest.url()).pathname;
         if (path.includes(`/config-sets/${setId}/files`) || path.includes("/parameter-value-change-requests/member-removals")) {
           network.push(`${browserRequest.method()} ${path}`);
-          if (browserRequest.method() !== "GET") mutationRequests.push(`${browserRequest.method()} ${path}`);
+          if (browserRequest.method() !== "GET" && !path.endsWith("/removal-preview")) mutationRequests.push(`${browserRequest.method()} ${path}`);
         }
       });
       page.on("response", (response) => {
@@ -365,18 +365,32 @@ test(`#906 B explains unsupported canonical member actions for ${format} without
       await expect(filePanel.getByRole("combobox", { name: "待加入文件", exact: true })).toHaveCount(0);
       await expect(filePanel.getByRole("combobox", { name: "文件用途", exact: true })).toHaveCount(0);
       await expect(filePanel.getByRole("spinbutton", { name: "文件顺序", exact: true })).toHaveCount(0);
-      const restriction = filePanel.getByText("此配置已登记来源，暂不支持添加文件或移除 DTS 文件；更新及 JSON 移除需审核。", { exact: true });
+      await expect(filePanel.getByRole("button", { name: "添加配置文件", exact: true })).toBeEnabled();
+      const restriction = filePanel.getByText("此配置已登记来源。添加或移除文件均需预览并确认，项目文件及历史会保留。", { exact: true });
       await expect(restriction).toBeVisible();
       const initialActions = await openWorkbenchFileActions(page, members[0]!.name);
-      const memberRemove = initialActions.getByRole("menuitem", { name: "申请从配置移除", exact: true });
+      const previewPath = `/api/v1/projects/aurora/config-sets/${setId}/files/${members[0]!.id}/removal-preview`;
+      const previewResponse = page.waitForResponse(response => new URL(response.url()).pathname === previewPath && response.request().method() === "POST");
+      await initialActions.getByRole("menuitem", { name: "预览移除影响", exact: true }).click();
+      const preview = await previewResponse;
+      const previewDialog = page.getByRole("dialog", { name: "预览移除影响", exact: true });
       if (format === "json") {
+        expect(preview.status(), await preview.text()).toBe(200);
+        await expect(previewDialog).toContainText("个当前参数");
+      } else {
+        expect(preview.status()).toBe(400);
+        await expect(previewDialog.getByRole("alert")).toContainText("不能移除当前 DTS 根文件");
+      }
+      await expect(previewDialog.getByRole("button", { name: "确认移除", exact: true })).toBeDisabled();
+      await page.keyboard.press("Escape");
+      if (format === "json") {
+        const memberRemove = (await openWorkbenchFileActions(page, members[0]!.name)).getByRole("menuitem", { name: "申请从配置移除", exact: true });
         await expect(memberRemove).toBeEnabled();
         await memberRemove.click();
         await expect(page.getByRole("dialog", { name: "申请从配置移除文件" })).toBeVisible();
         await page.keyboard.press("Escape");
       } else {
-        await expect(initialActions.getByRole("menuitem", { name: /从配置移除/ })).toHaveCount(0);
-        await page.keyboard.press("Escape");
+        await expect(page.getByRole("dialog", { name: "申请从配置移除文件" })).toHaveCount(0);
       }
       await filePanel.getByRole("button", { name: "关闭文件管理", exact: true }).click();
       const treeAssign = page.getByRole("button", { name: `加入 ${ungrouped.name}` });
@@ -408,12 +422,14 @@ test(`#906 B explains unsupported canonical member actions for ${format} without
         await expect(page.getByRole("dialog", { name: "申请从配置移除文件" })).toBeVisible();
         await page.keyboard.press("Escape");
       } else {
+        await expect(restoredActions.getByRole("menuitem", { name: "预览移除影响", exact: true })).toBeEnabled();
         await expect(restoredActions.getByRole("menuitem", { name: /从配置移除/ })).toHaveCount(0);
         await page.keyboard.press("Escape");
       }
       await expect(restriction).toBeVisible();
       await expect(page.getByRole("dialog", { name: "申请从配置移除文件" })).toHaveCount(0);
       expect(mutationRequests).toEqual([]);
+      expect(network).toContain(`POST ${previewPath}`);
       expect(network.some((entry) => entry.startsWith("GET 200") && entry.endsWith(`/${members[0]!.id}/source-workflow`))).toBe(true);
       const after = (await db.query<{ count: number }>(
         "select count(*)::int as count from project_parameter_value_change_requests where project_id='aurora'"

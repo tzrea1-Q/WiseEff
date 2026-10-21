@@ -28,7 +28,7 @@ import {
   type CatalogAcceptanceFixture
 } from "./helpers/catalogEvidence";
 
-test.use({ viewport: { width: 1440, height: 900 } });
+test.use({ viewport: { width: 1440, height: 900 }, catalogRuntimeScope: import.meta.url });
 
 useBrowserDiagnostics(test, { expectedApiFailures: CATALOG_EXPECTED_API_FAILURES });
 
@@ -42,8 +42,6 @@ useBrowserDiagnostics(test, { expectedApiFailures: CATALOG_EXPECTED_API_FAILURES
  * server suites.
  */
 let fixture: CatalogAcceptanceFixture;
-
-test.use({ catalogRuntimeDatabaseUrl: process.env.DATABASE_URL ?? process.env.TEST_DATABASE_URL });
 
 test.describe("canonical parameter catalog negative and responsive contract", () => {
   test.beforeAll(async ({ catalogAcceptanceRuntime }) => {
