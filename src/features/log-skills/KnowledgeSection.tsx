@@ -104,7 +104,7 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
         }
         setFiles((current) => current.map((row) => row.id === item.id ? { ...row, status: "uploading", error: undefined } : row));
         try {
-          const entry = await repository!.createMarkdown({ title: item.file.name.replace(/\.md$/i, "").slice(0, 200) || item.file.name, tags: [], contentMarkdown: item.content! });
+          const entry = await repository!.createMarkdown({ origin: "uploaded", title: item.file.name.replace(/\.md$/i, "").slice(0, 200) || item.file.name, tags: [], contentMarkdown: item.content! });
           linked.push(entry.id);
           setFiles((current) => current.map((row) => row.id === item.id ? { ...row, status: "success" } : row));
         } catch (cause) {

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isUtf8 } from "node:buffer";
 
 import { asAuditTx, writeAuditEventInTx, type AuditSpec, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext, AuditSeverity } from "../audit/types";
@@ -13,6 +14,7 @@ import { readCatalogDefinitionForKnowledge } from "../parameter-catalog-api/prod
 import { buildLogAnalysisProvenanceNotice, buildLogDistillationDraft } from "./distillation";
 import { buildReloadDistillationDraft, isReloadRunDistillable } from "./reloadDistillation";
 import type { KnowledgeTextExtractor } from "./extraction";
+import { KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT } from "./schemas";
 import { fuseKnowledgeSearchResults } from "./hybridSearch";
 import type { KnowledgeEmbeddingClient } from "./indexing/embeddingClient";
 import {
@@ -209,6 +211,22 @@ export async function createKnowledgeEntry(
 ): Promise<KnowledgeEntryDto> {
   const invocation = createUserInvocation(auth);
   requireKnowledgeEdit(auth);
+
+  if (input.contentForm === "file" && /\.(md|txt)$/i.test(input.file.fileName)) {
+    const bytes = decodeFileUpload(input.file);
+    if (!isUtf8(bytes)) {
+      throw new ApiError("VALIDATION_FAILED", "文本文件必须使用有效的 UTF-8 编码，请转换编码后重新上传。", {
+        reason: "knowledge-upload-invalid-utf8"
+      });
+    }
+    const contentMarkdown = bytes.toString("utf8");
+    if (contentMarkdown.length > KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT) {
+      throw new ApiError("VALIDATION_FAILED", "正文超过知识库 200,000 字符上限，请精简后重新上传。", {
+        reason: "knowledge-markdown-too-long", maxCharacters: KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT
+      });
+    }
+    input = { contentForm: "markdown", title: input.title, tags: input.tags, contentMarkdown, origin: "uploaded" };
+  }
 
   const entryId = randomUUID();
   const revisionId = randomUUID();

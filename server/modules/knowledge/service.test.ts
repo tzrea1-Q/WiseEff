@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../auth/types";
@@ -420,25 +421,25 @@ describe.skipIf(!databaseAvailable)("knowledge service", () => {
       title: "SC8562 datasheet notes",
       tags: ["hardware"],
       file: {
-        fileName: "sc8562-notes.txt",
-        contentType: "text/plain",
-        contentBase64: Buffer.from("SC8562 charge pump ratio configuration guide", "utf8").toString("base64")
+        fileName: "sc8562-notes.pdf",
+        contentType: "application/pdf",
+        contentBase64: readFileSync(new URL("./testing/fixtures/sample.pdf", import.meta.url)).toString("base64")
       }
     });
 
     expect(entry.contentForm).toBe("file");
     expect(entry.file?.extractionStatus).toBe("succeeded");
-    expect(entry.file?.fileName).toBe("sc8562-notes.txt");
-    expect(entry.file?.storageKey).not.toBe(`${editor.organization.id}/${entry.file?.checksum}-sc8562-notes.txt`);
+    expect(entry.file?.fileName).toBe("sc8562-notes.pdf");
+    expect(entry.file?.storageKey).not.toBe(`${editor.organization.id}/${entry.file?.checksum}-sc8562-notes.pdf`);
     expect(objectStore.objects.size).toBe(1);
 
-    expect((await searchKnowledge(db, viewer, { q: "charge pump ratio" })).items).toHaveLength(0);
+    expect((await searchKnowledge(db, viewer, { q: "knowledge pdf fixture" })).items).toHaveLength(0);
     await publishKnowledgeEntry(db, editor, entry.id);
-    const results = await searchKnowledge(db, viewer, { q: "charge pump ratio" });
+    const results = await searchKnowledge(db, viewer, { q: "knowledge pdf fixture" });
     expect(results.items.map((item) => item.entryId)).toContain(entry.id);
 
     const download = await getKnowledgeFileContent(db, objectStore, viewer, entry.id);
-    expect(download.bytes.toString("utf8")).toContain("charge pump ratio");
+    expect(download.bytes).toEqual(readFileSync(new URL("./testing/fixtures/sample.pdf", import.meta.url)));
   });
 
   it("records extraction failures honestly while keeping the entry durable", async () => {
@@ -468,8 +469,8 @@ describe.skipIf(!databaseAvailable)("knowledge service", () => {
       title: "Replaceable binary",
       tags: [],
       file: {
-        fileName: "v1.txt",
-        contentType: "text/plain",
+        fileName: "v1.doc",
+        contentType: "application/msword",
         contentBase64: Buffer.from("first binary content", "utf8").toString("base64")
       }
     });
@@ -516,8 +517,8 @@ describe.skipIf(!databaseAvailable)("knowledge service", () => {
       title: "File form entry",
       tags: [],
       file: {
-        fileName: "y.txt",
-        contentType: "text/plain",
+        fileName: "y.doc",
+        contentType: "application/msword",
         contentBase64: Buffer.from("y", "utf8").toString("base64")
       }
     });
