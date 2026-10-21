@@ -104,9 +104,13 @@ export const S2_SCH_0232_FINGERPRINT =
 export const S2_SCH_0236_FINGERPRINT =
   "413de8e2379309ca3675e8f030629d96ebc0f62d412e05660ff62872aca82864";
 
-/** Combined current chain; refreshed against the unchanged six queries. */
-export const S2_SCH_LIVE_FINGERPRINT =
+/** Combined main #1323 and administration chain through 0236. */
+export const S2_SCH_0236_MAIN_FINGERPRINT =
   "6a450990794e80feb3ba3baf1020d810f91cfbd9608f781b46e4ccf911d9935a";
+
+/** 0237 adds only the zero-project replacement activation function and trigger. */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "cea17596201ab46874728187121ba0c5e1a4fe98e366db456fd9d2c35762d64f";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

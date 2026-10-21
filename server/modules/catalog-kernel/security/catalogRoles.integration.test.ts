@@ -1551,6 +1551,10 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
           ('parameter_catalog.protect_source_request_administration()', 'users',
             array['id','organization_id','is_active']),
           ('parameter_catalog.protect_source_request_administration()', 'user_role_bindings',
+            array['user_id','organization_id','project_id','role_id']),
+          ('parameter_catalog.assert_zero_project_replacement_activation()', 'users',
+            array['id','organization_id','is_active']),
+          ('parameter_catalog.assert_zero_project_replacement_activation()', 'user_role_bindings',
             array['user_id','organization_id','project_id','role_id'])
       ), refs as (
         select
