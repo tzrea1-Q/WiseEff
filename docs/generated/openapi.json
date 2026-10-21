@@ -1461,6 +1461,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "sourceConfigRevisionId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit actual historical composition for a legacy snapshot without saved source composition.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1481,6 +1490,9 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -1514,6 +1526,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseBaselineRestoreRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -1532,6 +1554,9 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -12310,6 +12335,178 @@
         }
       }
     },
+    "/api/v1/log-skills/deletions": {
+      "get": {
+        "operationId": "logs.listSkillDeletions",
+        "summary": "List this organization's deleted skills with remaining storage cleanup",
+        "tags": [
+          "logs"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillDeletionListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-skills/{skillId}/deletion-preview": {
+      "get": {
+        "operationId": "logs.previewSkillDeletion",
+        "summary": "Inspect exact references and owned objects before deleting an unpublished experimental skill",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillDeletionPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-skills/{skillId}/deletion-status": {
+      "get": {
+        "operationId": "logs.getSkillDeletionStatus",
+        "summary": "Read the durable database and object cleanup result for a deleted skill",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillDeletionStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-skills/{skillId}/purge": {
+      "post": {
+        "operationId": "logs.purgeSkill",
+        "summary": "Delete an unchanged unpublished, unreferenced experimental skill and retry owned object cleanup",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillDeletionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillDeletionStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/log-skills/recommend": {
       "post": {
         "operationId": "logs.recommendSkills",
@@ -20728,10 +20925,374 @@
       },
       "ReleaseBaselineRestorePreviewResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "baselineId": {
+                "type": "string"
+              },
+              "configSetId": {
+                "type": "string"
+              },
+              "releasedBaselineId": {
+                "type": "string"
+              },
+              "releasedBaselineUnchanged": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              },
+              "driftedCount": {
+                "type": "number"
+              },
+              "members": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "fileId": {
+                      "type": "string"
+                    },
+                    "canonicalOwned": {
+                      "type": "boolean"
+                    },
+                    "fileName": {
+                      "type": "string"
+                    },
+                    "fromVersionId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "fromVersionNumber": {
+                      "type": "number"
+                    },
+                    "toVersionId": {
+                      "type": "string"
+                    },
+                    "toVersionNumber": {
+                      "type": "number"
+                    },
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "noop",
+                        "rollback-pointer"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "fileId",
+                    "canonicalOwned",
+                    "fromVersionId",
+                    "toVersionId",
+                    "toVersionNumber",
+                    "action"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "canonical": {
+                "type": "object",
+                "properties": {
+                  "canRestore": {
+                    "type": "boolean"
+                  },
+                  "proofToken": {
+                    "type": "string"
+                  },
+                  "sourceConfigRevisionId": {
+                    "type": "string"
+                  },
+                  "missingInformation": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "historicalRevisions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "revisionNumber": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "revisionNumber"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "editorHref": {
+                    "type": "string"
+                  },
+                  "requiresCompositionConfirmation": {
+                    "type": "boolean"
+                  },
+                  "members": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "fileId": {
+                          "type": "string"
+                        },
+                        "fileName": {
+                          "type": "string"
+                        },
+                        "fromVersionId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "toVersionId": {
+                          "type": "string"
+                        },
+                        "versionNumber": {
+                          "type": "number"
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "sortOrder": {
+                          "type": "number"
+                        },
+                        "action": {
+                          "type": "string",
+                          "enum": [
+                            "restore",
+                            "reattach",
+                            "retain-added",
+                            "unchanged"
+                          ]
+                        },
+                        "compositionChanged": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "fileId",
+                        "fileName",
+                        "fromVersionId",
+                        "toVersionId",
+                        "versionNumber",
+                        "role",
+                        "sortOrder",
+                        "action",
+                        "compositionChanged"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "entryFile": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "includeSearchPaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "overlayOrder": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "impact": {
+                    "type": "object",
+                    "properties": {
+                      "parameterChanges": {
+                        "type": "number"
+                      },
+                      "retainedBindings": {
+                        "type": "number"
+                      },
+                      "restoredBindings": {
+                        "type": "number"
+                      },
+                      "sourceReplacements": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "parameterChanges",
+                      "retainedBindings",
+                      "restoredBindings",
+                      "sourceReplacements"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "canRestore",
+                  "missingInformation",
+                  "historicalRevisions",
+                  "editorHref",
+                  "requiresCompositionConfirmation",
+                  "members",
+                  "entryFile",
+                  "includeSearchPaths",
+                  "overlayOrder",
+                  "impact"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "baselineId",
+              "configSetId",
+              "releasedBaselineUnchanged",
+              "driftedCount",
+              "members"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ReleaseBaselineRestorePreviewResponse"
+      },
+      "ReleaseBaselineRestoreRequest": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sourceConfigRevisionId": {
+                "type": "string"
+              },
+              "proofToken": {
+                "type": "string"
+              },
+              "confirmCompositionChanges": {
+                "type": "boolean"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "clientMutationId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "proofToken",
+              "confirmCompositionChanges",
+              "reason",
+              "clientMutationId"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "x-wiseeff-schema": "ReleaseBaselineRestoreRequest"
       },
       "ReleaseBaselineRollbackResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "baselineId": {
+                    "type": "string"
+                  },
+                  "restored": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "baselineId",
+                  "restored"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "requestId": {
+                    "type": "string"
+                  },
+                  "baselineId": {
+                    "type": "string"
+                  },
+                  "restored": {
+                    "type": "number"
+                  },
+                  "configRevisionId": {
+                    "type": "string"
+                  },
+                  "sourceRevisionProofDigest": {
+                    "type": "string"
+                  },
+                  "results": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "bindingId": {
+                          "type": "string"
+                        },
+                        "oldValueId": {
+                          "type": "string"
+                        },
+                        "newValueId": {
+                          "type": "string"
+                        },
+                        "sourcePinId": {
+                          "type": "string"
+                        },
+                        "historyEventId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "bindingId",
+                        "oldValueId",
+                        "newValueId",
+                        "sourcePinId",
+                        "historyEventId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "requestId",
+                  "baselineId",
+                  "restored",
+                  "configRevisionId",
+                  "sourceRevisionProofDigest",
+                  "results"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ReleaseBaselineRollbackResponse"
       },
       "ReleaseBaselineRequest": {
@@ -40014,6 +40575,270 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "LogDeletionStatusListResponse"
       },
+      "SkillDeletionListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "skillId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "skillKey": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "database": {
+                  "type": "string",
+                  "enum": [
+                    "deleted"
+                  ]
+                },
+                "objects": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "complete"
+                  ]
+                },
+                "pendingObjects": {
+                  "type": "number"
+                },
+                "retainedObjects": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "skillId",
+                "name",
+                "skillKey",
+                "version",
+                "database",
+                "objects",
+                "pendingObjects",
+                "retainedObjects"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SkillDeletionListResponse"
+      },
+      "SkillDeletionPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "skillId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "skillKey": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "archived"
+                ]
+              },
+              "generatedAt": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "canDelete": {
+                "type": "boolean"
+              },
+              "inventory": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "number"
+                    },
+                    "disposition": {
+                      "type": "string",
+                      "enum": [
+                        "delete",
+                        "retain"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "label",
+                    "count",
+                    "disposition"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "objects": {
+                "type": "object",
+                "properties": {
+                  "total": {
+                    "type": "number"
+                  },
+                  "shared": {
+                    "type": "number"
+                  },
+                  "exclusive": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "total",
+                  "shared",
+                  "exclusive"
+                ],
+                "additionalProperties": false
+              },
+              "blockers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "number"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "count",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "notes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "skillId",
+              "name",
+              "skillKey",
+              "status",
+              "generatedAt",
+              "version",
+              "canDelete",
+              "inventory",
+              "objects",
+              "blockers",
+              "notes"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SkillDeletionPreviewResponse"
+      },
+      "SkillDeletionStatusResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "skillId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "skillKey": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "database": {
+                "type": "string",
+                "enum": [
+                  "deleted"
+                ]
+              },
+              "objects": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "complete"
+                ]
+              },
+              "pendingObjects": {
+                "type": "number"
+              },
+              "retainedObjects": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "skillId",
+              "name",
+              "skillKey",
+              "version",
+              "database",
+              "objects",
+              "pendingObjects",
+              "retainedObjects"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SkillDeletionStatusResponse"
+      },
+      "SkillDeletionRequest": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SkillDeletionRequest"
+      },
       "LogRunListResponse": {
         "type": "object",
         "properties": {
@@ -41459,6 +42284,13 @@
             "type": "string"
           },
           "formatProfile": {},
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "published"
+            ]
+          },
           "startingPoint": {
             "anyOf": [
               {

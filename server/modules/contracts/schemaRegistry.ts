@@ -251,13 +251,15 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "Preview member/version blast radius for restoring a baseline without applying it",
     tags: ["parameters"],
     responseBody: "ReleaseBaselineRestorePreviewResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+    requestParameters: [{ name: "sourceConfigRevisionId", in: "query", description: "Explicit actual historical composition for a legacy snapshot without saved source composition.", schema: { type: "string" } }],
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameters.rollbackReleaseBaseline": {
     summary: "Atomically restore working member versions from a baseline without changing the released tip",
     tags: ["parameters"],
+    requestBody: "ReleaseBaselineRestoreRequest",
     responseBody: "ReleaseBaselineRollbackResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameters.releaseReleaseBaseline": {
     summary: "Release a draft baseline tip with readiness gate evidence and demote the previous tip to historical",
@@ -1061,6 +1063,23 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "List this organization's logs with remaining storage cleanup",
     tags: ["logs"], responseBody: "LogDeletionStatusListResponse",
     additionalResponses: { "403": "ErrorResponse" }
+  },
+  "logs.listSkillDeletions": {
+    summary: "List this organization's deleted skills with remaining storage cleanup", tags: ["logs"],
+    responseBody: "SkillDeletionListResponse", additionalResponses: { "403": "ErrorResponse" }
+  },
+  "logs.previewSkillDeletion": {
+    summary: "Inspect exact references and owned objects before deleting an unpublished experimental skill", tags: ["logs"],
+    responseBody: "SkillDeletionPreviewResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "logs.getSkillDeletionStatus": {
+    summary: "Read the durable database and object cleanup result for a deleted skill", tags: ["logs"],
+    responseBody: "SkillDeletionStatusResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "logs.purgeSkill": {
+    summary: "Delete an unchanged unpublished, unreferenced experimental skill and retry owned object cleanup", tags: ["logs"],
+    requestBody: "SkillDeletionRequest", responseBody: "SkillDeletionStatusResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "logs.getLines": {
     summary: "Read an inclusive window of at most 400 indexed log lines",

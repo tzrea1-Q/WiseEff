@@ -86,8 +86,14 @@ export const S2_SCH_0226_FINGERPRINT =
 /** Current available chain through 0228 adds only the log erasure relation,
  * its primary key/index, nine inventory attributes and six functions. All
  * preceding entries and every historical pin remain unchanged. */
-export const S2_SCH_LIVE_FINGERPRINT =
+export const S2_SCH_0228_FINGERPRINT =
   "60ef3ac1e6873e012fff56627136e7f1740d00482a11a73106a51a5287997e6a";
+
+/** Combined 0227/0230/0232 chain adds three configuration restore functions and
+ * updates six source/restore/Definition-erasure bodies; all five relation,
+ * attribute, constraint, index and trigger inventories above are unchanged. */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "9c31755dae942bd052f9be556a106e2715c13ca09d0d36a89511eff975ee2f70";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
