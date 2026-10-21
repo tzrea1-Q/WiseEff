@@ -248,6 +248,12 @@ export function MyFeedbackView({ productFeedbackRepository, onEditDraft, onFeedb
   const descriptionBody = selectedFeedback && descriptionLines[0] === summary(selectedFeedback)
     ? descriptionLines.slice(1).join("\n").trim() : selectedFeedback?.description.trim();
   const canReopen = selectedFeedback?.status === "resolved" || selectedFeedback?.status === "closed";
+  const deleteAttachment = productFeedbackRepository.deleteAttachment && selectedFeedback && !isDraft ? async (attachmentId: string) => {
+    const updated = await productFeedbackRepository.deleteAttachment!(selectedFeedback.id, attachmentId);
+    setSelectedFeedback(updated);
+    setItems((current) => current.map((item) => item.id === updated.id ? updated : item));
+    itemsRef.current = itemsRef.current.map((item) => item.id === updated.id ? updated : item);
+  } : undefined;
   const replyIntentValid = selectedFeedback?.status === "closed" ? reopen : !reopen || canReopen;
 
   return (
@@ -302,7 +308,7 @@ export function MyFeedbackView({ productFeedbackRepository, onEditDraft, onFeedb
           {descriptionBody && <section className="feedback-mine-section" aria-label="问题详情"><p className="feedback-mine-description">{descriptionBody}</p></section>}
           {selectedFeedback.attachments.some((item) => !item.messageId) && <section className="feedback-mine-section"><h3>{isDraft ? "草稿截图" : "历史截图（无法确认所属消息）"}</h3>
             <FeedbackAttachments feedbackId={selectedFeedback.id} attachments={selectedFeedback.attachments.filter((item) => !item.messageId)}
-              getAttachmentObjectUrl={productFeedbackRepository.getMineAttachmentObjectUrl ?? productFeedbackRepository.getAttachmentObjectUrl} /></section>}
+              getAttachmentObjectUrl={productFeedbackRepository.getMineAttachmentObjectUrl ?? productFeedbackRepository.getAttachmentObjectUrl} onDelete={deleteAttachment} /></section>}
           {!isDraft && productFeedbackRepository.replyToMine && replyOpen && <form className="feedback-mine-reply" aria-label={reopen ? "补充并重新打开反馈" : "补充反馈说明"} onSubmit={handleReply} onPaste={(event) => {
             const files = Array.from(event.clipboardData.files ?? []); if (files.length) { event.preventDefault(); addReplyFiles(files); }
           }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); addReplyFiles(Array.from(event.dataTransfer.files)); }}>
@@ -327,7 +333,7 @@ export function MyFeedbackView({ productFeedbackRepository, onEditDraft, onFeedb
               <Button type="submit" disabled={replyPending || !replyMessage.trim() || !replyIntentValid}><Send size={14} />{replyPending ? "发送中…" : reopen ? "发送并重新打开" : "发送补充"}</Button></div>
           </form>}
           {!isDraft && <section className="feedback-mine-section"><h3>处理记录</h3><FeedbackProgressTimeline events={selectedFeedback.progressEvents} isAdmin={false} initialVisibleCount={4}
-            attachments={selectedFeedback.attachments} getAttachmentObjectUrl={productFeedbackRepository.getMineAttachmentObjectUrl ?? productFeedbackRepository.getAttachmentObjectUrl} /></section>}
+            attachments={selectedFeedback.attachments} getAttachmentObjectUrl={productFeedbackRepository.getMineAttachmentObjectUrl ?? productFeedbackRepository.getAttachmentObjectUrl} onDeleteAttachment={deleteAttachment} /></section>}
         </>}
       </> : <>
         <div className="feedback-mine-toolbar"><SearchField className="feedback-mine-search" ariaLabel="搜索我的反馈" placeholder="搜索问题描述或来源页面" value={query} onValueChange={setQuery} />

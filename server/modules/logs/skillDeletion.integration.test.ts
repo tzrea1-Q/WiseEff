@@ -1,4 +1,5 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -7,6 +8,7 @@ import { Readable } from "node:stream";
 import JSZip from "jszip";
 import { createWiseEffServer } from "../../app";
 import { createPostgresDatabase } from "../../shared/database/client";
+import { applyMigrations } from "../../shared/database/migrations";
 import { requestJson } from "../../test/testClient";
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
@@ -229,11 +231,12 @@ describe("unpublished experiment skill deletion HTTP", () => {
     await db.query(`insert into log_source_snapshots(id,organization_id,skill_id,version_label,storage_key,file_name) values($1,$2,$3,'upgrade','upgrade-source-key','source.zip')`, [sourceId, auth.organization.id, skill.id]);
     await db.query(`insert into log_skill_analysis_cases(id,organization_id,skill_id,name,expectations,uploads,files)
       values($1,$2,$3,'Existing case','{}',$4::jsonb,'[]')`, [randomUUID(), auth.organization.id, skill.id, JSON.stringify([{ objectKey: "upgrade-case-key" }])]);
-    const migration = await readFile(new URL("../../migrations/0230_unpublished_skill_deletion.sql", import.meta.url), "utf8");
     // Restore the pre-0230 shape only inside this disposable transaction; rollback keeps the harness migration ledger intact.
     await expect(db.transaction(async tx => {
       await tx.query("drop trigger log_skill_deleted_identity on log_domains; drop function reject_deleted_log_skill_identity(); drop table log_skill_artifact_objects,log_skill_deletions");
-      await tx.query(migration);
+      await tx.query("delete from schema_migrations where name='0230_unpublished_skill_deletion.sql'");
+      expect(await applyMigrations(tx,fileURLToPath(new URL("../../migrations",import.meta.url)),{ through: "0230_unpublished_skill_deletion.sql" }))
+        .toEqual(["0230_unpublished_skill_deletion.sql"]);
       expect((await tx.query<{ object_key: string }>("select object_key from log_skill_artifact_objects where skill_id=$1 order by object_key", [skill.id])).rows.map(row => row.object_key))
         .toEqual([sampleKey, "upgrade-case-key", "upgrade-source-key"].sort());
       throw new Error("rollback-upgrade-probe");

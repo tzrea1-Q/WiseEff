@@ -4,7 +4,7 @@ import { asAuditTx, writeAuditEventInTx, type AuditSpec, type AuditTx } from "..
 import type { AuditCorrelationContext, AuditSeverity } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import { assertTrustedInvocationMatchesAuth, createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
-import type { ObjectStore } from "../logs/objectStore";
+import { sanitizeFileName, type ObjectStore } from "../logs/objectStore";
 import { getLogRecord } from "../logs/service";
 import { getReloadRunRecord } from "../dts-reload/service";
 import type { Database, Queryable } from "../../shared/database/client";
@@ -264,11 +264,12 @@ export async function createKnowledgeEntry(
   const bytes = decodeFileUpload(input.file);
   const stored = await objectStore.put({
     organizationId: auth.organization.id,
-    fileName: input.file.fileName,
+    fileName: `knowledge-${randomUUID()}-${input.file.fileName}`,
     contentType: input.file.contentType,
     bytes
   });
 
+  stored.fileName = sanitizeFileName(input.file.fileName);
   const fileId = randomUUID();
   const storedFile = await db.transaction(async (tx) => {
     await insertEntry(tx, auth, {
@@ -714,10 +715,11 @@ export async function updateKnowledgeEntry(
         uploadedBytes = decodeFileUpload(input.file);
         const stored = await objectStore.put({
           organizationId: auth.organization.id,
-          fileName: input.file.fileName,
+          fileName: `knowledge-${randomUUID()}-${input.file.fileName}`,
           contentType: input.file.contentType,
           bytes: uploadedBytes
         });
+        stored.fileName = sanitizeFileName(input.file.fileName);
         const file = await insertFile(tx, auth, {
           id: randomUUID(),
           entryId,

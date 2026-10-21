@@ -40,7 +40,7 @@ const BASELINE: Record<string, readonly [number, number]> = {
   "modules/parameter-files/exportService.ts": [0, 2],
   "modules/parameter-files/service.ts": [0, 2],
   "modules/parameter-files/syncService.ts": [0, 2],
-  "modules/parameter-files/validationGate.ts": [0, 4],
+  "modules/parameter-files/validationGate.ts": [0, 1],
   "modules/parameter-modules/parameterCatalogComparisonContribution.ts": [0, 1],
   "modules/parameter-modules/service.ts": [0, 1],
   "modules/parameter-specs/parameterCatalogComparisonContribution.ts": [0, 1],

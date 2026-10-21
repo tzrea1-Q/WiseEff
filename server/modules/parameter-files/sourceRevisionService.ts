@@ -92,14 +92,28 @@ export async function loadSnapshot(db: Database, provided?: CatalogSnapshot): Pr
 }
 
 /** Role updates take this same user fence; never authorize a commit from an old request context. */
+function hasSourceAdministration(auth: AuthContext, projectId: string): boolean {
+  return canAdminParameters(auth) && canEditParameters(auth,projectId)
+    && auth.roles.some((role) => role.roleId === "admin" || role.roleId === "platform-admin");
+}
+
+export async function isCurrentSourceAdministrator(tx: Database, auth: AuthContext, projectId: string): Promise<boolean> {
+  try {
+    const current = await getAuthContext(tx,auth.user.id);
+    return current.organization.id === auth.organization.id && hasSourceAdministration(current,projectId);
+  } catch (error) {
+    if (error instanceof ApiError && (error.code === "UNAUTHENTICATED" || error.code === "FORBIDDEN")) return false;
+    throw error;
+  }
+}
+
 export async function requireCurrentSourceAdministrator(tx: Database, auth: AuthContext, projectId: string): Promise<AuthContext> {
   const user = (await tx.query<{ id: string }>(
     "select id from public.users where id=$1 and organization_id=$2 and is_active for no key update",
     [auth.user.id, auth.organization.id])).rows[0];
   if (!user) throw new ApiError("FORBIDDEN", "A current active file administrator is required.");
   const current = await getAuthContext(tx, auth.user.id);
-  if (current.organization.id !== auth.organization.id || !canAdminParameters(current) || !canEditParameters(current, projectId)
-    || !current.roles.some((role) => role.roleId === "admin" || role.roleId === "platform-admin")) {
+  if (current.organization.id !== auth.organization.id || !hasSourceAdministration(current,projectId)) {
     throw new ApiError("FORBIDDEN", "Current file administration and project edit permission are required.");
   }
   return current;
@@ -123,12 +137,12 @@ export async function loadSourceRevisionCatalogSnapshots(db: Database, projectId
   return snapshots;
 }
 
-async function sourceRevisionReviewers(tx: Database, auth: AuthContext, projectId: string) {
+export async function sourceRevisionReviewers(tx: Database, auth: AuthContext, projectId: string, excludedUserId: string | null = auth.user.id) {
   const candidates = (await tx.query<{ userId: string; name: string }>(
     `select distinct users.id as "userId",users.name from public.users
      join public.user_role_bindings role on role.user_id=users.id and role.organization_id=users.organization_id
-     where users.organization_id=$1 and users.is_active and users.id<>$2 and role.role_id in ('admin','platform-admin') order by users.id`,
-    [auth.organization.id, auth.user.id])).rows;
+     where users.organization_id=$1 and users.is_active and users.id is distinct from $2 and role.role_id in ('admin','platform-admin') order by users.id`,
+    [auth.organization.id, excludedUserId])).rows;
   const eligible = [];
   for (const candidate of candidates) {
     const current = await getAuthContext(tx, candidate.userId);

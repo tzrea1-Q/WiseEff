@@ -253,6 +253,7 @@ export function FeedbackAdminPage({ productFeedbackRepository, search, onSearchC
       emptyState={{ message: errorMessage ? "反馈列表暂不可用" : hasActiveFilters ? "没有符合筛选条件的反馈" : "暂无产品反馈", actionLabel: errorMessage ? "重试列表" : hasActiveFilters ? "重置筛选" : "刷新", onAction: errorMessage ? () => void loadFeedback() : hasActiveFilters ? resetFilters : () => void loadFeedback() }}
     />
     </div>
-    <FeedbackAdminDrawer feedback={selectedFeedback} open={Boolean(location.id)} onClose={() => changeLocation({ id: null })} onUpdate={updateFeedback} onAppendProgress={appendFeedbackProgress} onRefresh={refreshDetail} loading={detailLoading} loadError={detailError} listAssignees={productFeedbackRepository.listAssignees} getAttachmentObjectUrl={productFeedbackRepository.getAttachmentObjectUrl} />
+    <FeedbackAdminDrawer feedback={selectedFeedback} open={Boolean(location.id)} onClose={() => changeLocation({ id: null })} onUpdate={updateFeedback} onAppendProgress={appendFeedbackProgress} onRefresh={refreshDetail} loading={detailLoading} loadError={detailError} listAssignees={productFeedbackRepository.listAssignees} getAttachmentObjectUrl={productFeedbackRepository.getAttachmentObjectUrl}
+      onDeleteAttachment={productFeedbackRepository.deleteAttachment ? async (feedbackId, attachmentId) => recordMutation(await productFeedbackRepository.deleteAttachment!(feedbackId, attachmentId)) : undefined} />
   </div>;
 }

@@ -12,6 +12,7 @@ import { feedbackPriorities, feedbackResolutionCodes, feedbackStatuses, feedback
 import { itemEnvelopeSchema } from "./envelopes";
 
 const attachment = z.object({
+  deletedAt: z.string().nullable().optional(), cleanupPending: z.boolean().optional(), canDelete: z.boolean().optional(),
   messageId: z.string().nullable().optional(), uploadedByUserId: z.string().nullable().optional(),
   id: z.string(), feedbackId: z.string(), organizationId: z.string(), storageKey: z.string(),
   fileName: z.string(), contentType: z.enum(["image/png", "image/jpeg", "image/webp"]),
@@ -54,6 +55,7 @@ export const productFeedbackDtoSchemaCatalog = {
   ProductFeedbackListResponse: z.object({ items: z.array(productFeedbackAdminDtoSchema), nextCursor: z.string().nullable() }),
   ProductFeedbackUserListResponse: z.object({ items: z.array(productFeedbackUserDtoSchema), nextCursor: z.string().nullable(), pendingAttachmentCleanupCount: z.number().int().nonnegative().optional() }),
   ProductFeedbackAttachmentCleanupResponse: z.object({ pendingAttachmentCleanupCount: z.number().int().nonnegative() }),
+  ProductFeedbackAttachmentDeletionResponse: z.object({ item: z.union([productFeedbackAdminDtoSchema,productFeedbackUserDtoSchema]), pendingAttachmentCleanupCount: z.number().int().nonnegative() }),
   ProductFeedbackAssigneesResponse: z.object({ items: z.array(assignee) }),
   ProductFeedbackStatsResponse: z.object({ total: z.number(), open: z.number(), inProgress: z.number(), resolved: z.number(), closed: z.number() }),
   DeleteProductFeedbackDraftResponse: z.object({ ok: z.literal(true) })

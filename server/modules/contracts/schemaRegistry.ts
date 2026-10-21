@@ -1070,6 +1070,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "List this organization's deleted skills with remaining storage cleanup", tags: ["logs"],
     responseBody: "SkillDeletionListResponse", additionalResponses: { "403": "ErrorResponse" }
   },
+  "logs.retrySourceSnapshot": {
+    summary: "Retry a failed source snapshot's original uploaded content and index inputs under the same identity",
+    tags: ["logs"], requestBody: "RetryLogSourceSnapshotRequest", requestBodyRequired: false,
+    responseBody: "LogSourceSnapshotResponse", successStatus: 202,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "logs.previewSkillDeletion": {
     summary: "Inspect exact references and owned objects before deleting an unpublished experimental skill", tags: ["logs"],
     responseBody: "SkillDeletionPreviewResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
