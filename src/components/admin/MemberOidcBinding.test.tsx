@@ -26,7 +26,7 @@ it("edits an existing member's explicit identity with its previous binding, reta
 it("shows why an organization administrator cannot redirect a platform administrator identity", () => {
   const base = createPrototypeState(), state = { ...base,users: base.users.map((user) => user.id === base.currentUserId ? { ...user,roleId: "admin" as const,roles: [{ projectId: null,roleId: "admin" as const }] } : user) };
   const user = { ...base.users.find((member) => member.id !== base.currentUserId)!,roleId: "platform-admin" as const,roles: [{ projectId: null,roleId: "platform-admin" as const }] };
-  render(<MemberDetailsDialog user={user} state={state} actions={createTestUserGovernanceActions()} oidcIssuer="https://identity.example"
+  render(<MemberDetailsDialog user={user} state={state} actions={{ ...createTestUserGovernanceActions(),setOidcIdentity: vi.fn() }} oidcIssuer="https://identity.example"
     roleEditor={<span>组织角色</span>} roleLabel={(role) => role} onUpdated={vi.fn()} onClose={vi.fn()} />);
   const form = screen.getByRole("form",{ name: "OIDC 身份绑定" });
   expect(within(form).getByLabelText("Subject")).toBeDisabled();

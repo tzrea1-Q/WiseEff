@@ -123,9 +123,8 @@ export function createUserGovernanceClient(
     },
     async createUser(input: CreateGovernedUserInput) {
       const response = await apiClient.post<ItemEnvelope<UserGovernanceDto>>("/api/v1/users", {
-        ...("authentication" in input ? { authentication: input.authentication, issuer: input.issuer, subject: input.subject, ...(input.email ? { email: input.email } : {}) } : { username: input.username, password: input.password }),
-        name: input.name,
-        title: input.title,
+        ...("authentication" in input ? { authentication: input.authentication, issuer: input.issuer, subject: input.subject, ...(input.email ? { email: input.email } : {}),name: input.name,title: input.title }
+          : { name: input.name,username: input.username,title: input.title,password: input.password }),
         roles: [{ projectId: "projectId" in input ? input.projectId ?? null : null, roleId: input.roleId }]
       });
       return userFromDto(response.item);
