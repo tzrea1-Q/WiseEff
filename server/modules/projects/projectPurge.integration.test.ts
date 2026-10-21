@@ -51,14 +51,14 @@ describe("confirmed project purge HTTP", () => {
   }
   const purge = (id: string, digest: string, objectStore = store) => requestJson<{ item: ProjectDeletionStatus }>(
     createWiseEffServer({ db, objectStore }), `${url(id)}/purge`, { method: "POST", headers, body: JSON.stringify({ stateDigest: digest }) });
-  async function canonical(id: string, limit: number) {
+  async function canonical(id: string, limit: number, objectStore = store) {
     await createProject(db, { organizationId: "purge-org", id, name: id, code: id.toUpperCase() });
     const set = await createConfigSet(db, auth, { projectId: id, name: "Canonical" });
-    const file = await uploadProjectParameterFile(db, store, auth, { projectId: id, fileName: "settings.json", bytes: Buffer.from(JSON.stringify({ limit })) });
+    const file = await uploadProjectParameterFile(db, objectStore, auth, { projectId: id, fileName: "settings.json", bytes: Buffer.from(JSON.stringify({ limit })) });
     await addConfigSetFile(db, auth, { configSetId: set.id, fileId: file.file.id, role: "base", sortOrder: 0 });
     const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
     if (!snapshot) throw new Error("Published fixture unavailable");
-    const registered = await db.transaction(tx => registerCanonicalJsonSource(tx, store, auth, snapshot, {
+    const registered = await db.transaction(tx => registerCanonicalJsonSource(tx, objectStore, auth, snapshot, {
       projectId: id, configSetId: set.id, fileId: file.file.id, fileVersionId: file.version.id,
       configurationSchemaId: "wiseeff.project.purge", rootPointer: "", mappings: [{ definitionId: "pdef_acme_power_iin_max", pointer: "/limit" }],
       invocation: createUserInvocation(auth), requestId: id, refusalSink: createTrustedRefusalAuditSink(db)
@@ -84,7 +84,13 @@ describe("confirmed project purge HTTP", () => {
 
   it("purges Canonical source, values and baselines while retaining shared objects and Catalog definitions", async () => {
     const first = await canonical("purge-canonical", 41);
-    const retained = await canonical("purge-retained", 41);
+    // Model a legacy deduplicating store without mutating immutable source pins.
+    const retained = await canonical("purge-retained", 41, { ...store, put: async (input) => {
+      const uploaded = await store.put(input);
+      expect(uploaded.storageKey).not.toBe(first.version.storageKey);
+      expect(uploaded.checksumSha256).toBe(first.version.checksum);
+      return { ...uploaded, storageKey: first.version.storageKey };
+    } });
     expect(first.version.storageKey).toBe(retained.version.storageKey);
     await db.query("insert into debug_nodes(id,organization_id,name,canonical_binding_id,canonical_project_id) values ('purge-kept-node','purge-org','Independent node',$1,'purge-canonical')", [first.bindingId]);
     const impact = await preview("purge-canonical");
