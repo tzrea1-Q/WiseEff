@@ -8,7 +8,7 @@ const bridge = { id: "br-member", ownerUserId: "member", ownerName: "离职成�
 it("retries directory loading into its empty state", async () => {
   const actions = { list: vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce([]), revoke: vi.fn() };
   render(<OrganizationBridgePanel enabled actions={actions} />);
-  await screen.findByRole("alert"); await userEvent.click(screen.getByRole("button", { name: "重试", exact: true }));
+  await screen.findByRole("alert"); await userEvent.click(screen.getByRole("button", { name: "重试" }));
   expect(await screen.findByText("本组织尚无设备代理")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "撤销配对" })).not.toBeInTheDocument();
 });
