@@ -23,6 +23,11 @@ async function retireFlatIdentity(db: Database) {
       ('upgrade-target-definition','upgrade-retain-org','Target','Target','','json','Legacy','','','Low')`);
   await db.query(`insert into parameter_identity_migration_runs(id,mode,status)
     values ('upgrade-cutover-run','apply','finalized')`);
+  // The historical identity was validated while its real source was active.
+  // After cutover it is retained evidence; never bypass the fixed source-owner
+  // guard to manufacture a new identity against an empty compatibility table.
+  await db.query(`insert into parameter_catalog.legacy_identities(id,source_system,source_kind,owner_scope_kind,owner_scope_id,source_id)
+    values ('upgrade-flat-identity','wiseeff-v1','legacy-flat-parameter-definition','organization','upgrade-retain-org','upgrade-target-definition')`);
   const cutover = (await readFile(path.resolve(migrationsDir, "../cutovers/2026-07-16-parameter-identity-cutover.sql"), "utf8"))
     .replaceAll("{{MIGRATION_RUN_ID}}", "upgrade-cutover-run").replaceAll("{{CUTOVER_ID}}", "upgrade-cutover");
   await db.transaction(async tx => { await tx.query(cutover); });
@@ -64,8 +69,6 @@ describe.skipIf(!databaseAvailable)("immutable 0214 replacement on populated his
 
       const fixture = await createDefinitionDeletionFixture("upgraded_erasure", { url: connectionString, drop: async () => {} });
       try {
-        await fixture.root.query(`insert into parameter_catalog.legacy_identities(id,source_system,source_kind,owner_scope_kind,owner_scope_id,source_id)
-          values ('upgrade-flat-identity','wiseeff-v1','legacy-flat-parameter-definition','organization','upgrade-retain-org','upgrade-target-definition')`);
         await fixture.root.query(`insert into parameter_catalog.parameter_catalog_cutover_runs(id,source_snapshot_fingerprint,target_artifact_sha,target_catalog_release_digest,migration_contract_version,plan_digest,current_phase,state)
           values ('upgrade-catalog-map','fixture',$1,$2,'1.0.0','upgrade-plan','P0','planned')`, ["a".repeat(40), fixture.chain.pinC.digest]);
         await fixture.root.query(`insert into parameter_catalog.legacy_mapping_versions(id,legacy_identity_id,cutover_run_id,version_number,source_checksum,graph_fingerprint,r_class,target_kind,target_id)
