@@ -142,12 +142,19 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse" }
   },
   "users.create": {
-    summary: "Create local account user",
+    summary: "Create a local account or provision a configured OIDC member",
     tags: ["users"],
     requestBody: "CreateLocalAccountUserRequest",
     responseBody: "UserGovernanceResponse",
     successStatus: 201,
-    additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "users.setOidcIdentity": {
+    summary: "Bind a member to the configured OIDC issuer and subject with optimistic concurrency",
+    tags: ["users"],
+    requestBody: "SetUserOidcIdentityRequest",
+    responseBody: "UserGovernanceResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "users.listRegistrationRoleRequests": {
     summary: "List pending local registration role requests",

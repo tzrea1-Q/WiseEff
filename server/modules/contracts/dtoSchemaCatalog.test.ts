@@ -9,6 +9,27 @@ import { projectBindingDtoSchema } from "../parameter-topology/schemas";
 const leftoverSchemaNames = new Set(["GenericObjectResponse"]);
 
 describe("DTO schema catalog coverage", () => {
+  it("documents passwordless OIDC provisioning and optimistic identity binding", () => {
+    const document = buildOpenApiDocument();
+    expect(document.paths["/api/v1/users/{userId}/oidc-identity"]?.put).toMatchObject({
+      requestBody: { content: { "application/json": { schema: { $ref: "#/components/schemas/SetUserOidcIdentityRequest" } } } },
+      responses: { "200": {}, "400": {}, "403": {}, "404": {}, "409": {} }
+    });
+    const identity = { issuer: "https://identity.example", subject: "external-member" };
+    const member = { authentication: "oidc", name: "Member", ...identity, roles: [{ roleId: "software-user" }] };
+    expect(dtoSchemaCatalog.CreateLocalAccountUserRequest.safeParse(member).success).toBe(true);
+    expect(dtoSchemaCatalog.CreateLocalAccountUserRequest.safeParse({ ...member, subject: " " }).success).toBe(false);
+    expect(dtoSchemaCatalog.SetUserOidcIdentityRequest.safeParse({ ...identity, expectedIdentity: null }).success).toBe(true);
+    expect(dtoSchemaCatalog.SetUserOidcIdentityRequest.safeParse(identity).success).toBe(false);
+    expect(dtoSchemaCatalog.UserGovernanceResponse.safeParse({ item: {
+      id: "stable-id", organizationId: "org", name: "Member", email: null, username: null, title: "",
+      isActive: true, createdAt: "2026-10-20T00:00:00.000Z", lastActiveAt: null,
+      roles: [{ roleId: "software-user", projectId: null }], oidcIdentity: identity
+    } }).success).toBe(true);
+    expect(document.components.schemas.LocalAuthPublicConfigResponse).toMatchObject({
+      properties: { oidcIssuer: { type: "string" } }
+    });
+  });
   it("documents complete Canonical restore proof without requiring a payload for legacy restores", () => {
     const document = buildOpenApiDocument();
     const paths = document.paths as Record<string, Record<string, { requestBody?: { required?: boolean } }>>;

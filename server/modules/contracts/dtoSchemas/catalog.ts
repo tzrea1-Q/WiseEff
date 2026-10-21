@@ -9,6 +9,8 @@ import { signalPreviewRequestSchema, signalPreviewResponseSchema } from "../../l
 import { extractorPreviewRequestSchema, extractorPreviewResponseSchema } from "../../logs/parsing/extractorBuilder";
 import { formatPreviewRequestSchema, formatPreviewResponseSchema } from "../../logs/formatProfile";
 import { organizationBridgeListResponseSchema, organizationBridgeResponseSchema, revokeOrganizationBridgeBodySchema } from "../../deviceBridge/schemas";
+import { createUserBodySchema, roleBindingSchema } from "../../users/schemas";
+import { oidcIdentitySchema, setOidcIdentityBodySchema } from "./oidcMembers";
 
 import {
   xiaozeAgUiRunRequestSchema,
@@ -90,7 +92,21 @@ import { releaseBaselineRestoreRequestSchema, releaseBaselineRestorePreviewRespo
  * OpenAPI component names realized with Zod (parameters / logs / debugging /
  * Xiaoze). Names not listed here stay as `x-wiseeff-schema` placeholders.
  */
+const userGovernanceDtoSchema = z.object({
+  id: z.string(), organizationId: z.string(), name: z.string(), email: z.string().nullable(),
+  username: z.string().nullable(), title: z.string(), isActive: z.boolean(), createdAt: z.string(),
+  lastActiveAt: z.string().nullable(), roles: z.array(roleBindingSchema.extend({ projectId: z.string().nullable() })),
+  oidcIdentity: oidcIdentitySchema.optional(), legacyOidcEmail: z.string().optional()
+});
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
+  CreateLocalAccountUserRequest: createUserBodySchema,
+  SetUserOidcIdentityRequest: setOidcIdentityBodySchema,
+  UserGovernanceResponse: z.object({ item: userGovernanceDtoSchema }),
+  UserGovernanceListResponse: z.object({ items: z.array(userGovernanceDtoSchema) }),
+  LocalAuthPublicConfigResponse: z.object({
+    provider: z.enum(["local", "oidc", "hmac", "development"]), selfRegisterEnabled: z.boolean(),
+    hasLocalAdmin: z.boolean(), evaluationOrganizationName: z.string().nullable(), oidcIssuer: z.string().optional()
+  }),
   OrganizationDeviceBridgeListResponse: organizationBridgeListResponseSchema,
   OrganizationDeviceBridgeResponse: organizationBridgeResponseSchema,
   RevokeOrganizationDeviceBridgeRequest: revokeOrganizationBridgeBodySchema,
@@ -236,6 +252,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 };
 
 export const dtoSchemaCoveredRouteIds = [
+  "auth.localConfig", "users.list", "users.create", "users.setOidcIdentity",
   "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.revokeOrganizationBridge",
   "logs.restoreSourceSnapshot",
   "logs.retrySourceSnapshot",
