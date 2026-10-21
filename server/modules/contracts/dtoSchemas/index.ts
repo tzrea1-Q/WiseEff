@@ -51,6 +51,7 @@ export {
 export * from "./parameters";
 export * from "./parameterDashboard";
 export * from "./logs";
+export * from "./skillDeletion";
 export * from "./debugging";
 export * from "./agent";
 export * from "./parameterCatalog";

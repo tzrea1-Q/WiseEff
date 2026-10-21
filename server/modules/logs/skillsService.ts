@@ -130,6 +130,7 @@ export async function listLogSkillSourceVersions(db: Queryable, auth: AuthContex
 
 export async function createLogSkill(db: Database, auth: AuthContext, input: {
   name: string; description?: string; formatProfile?: unknown;
+  status?: "draft" | "published";
   startingPoint?: { templateId: string } | { copyFromSkillId: string };
 }, invocation: TrustedInvocationContext, context: AuditedWriteContext, caps = defaultLogSkillBudgetCaps) {
   assertTrustedInvocationMatchesAuth(auth, invocation, "Create analysis skill");
@@ -159,7 +160,7 @@ export async function createLogSkill(db: Database, auth: AuthContext, input: {
     const skill = await insertLogDomain(tx, { id: randomUUID(), organizationId: auth.organization.id, name,
       description: spec.description, formatProfile: spec.formatProfile });
     if (spec.modelOverride) await updateLogDomainRow(tx, { organizationId: auth.organization.id, domainId: skill.id, modelOverride: spec.modelOverride });
-    await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId: skill.id, spec, userId: auth.user.id, published: true });
+    await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId: skill.id, spec, userId: auth.user.id, published: input.status !== "draft" });
     return { result: await readSkill(tx, auth.organization.id, skill.id, caps),
       audit: skillAudit(skill.id, "log-skill-create", start ?? (input.formatProfile == null ? { templateId: "generic-text" } : {})) };
   });
