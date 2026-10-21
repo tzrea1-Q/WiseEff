@@ -221,6 +221,62 @@ describe("whole-source HTTP through the real API database role", () => {
     expect((await post(endpoint,body,outsider)).status).toBe(409);
   });
 
+  it("rechecks current administration and rolls back cancellation when its audit fails", async () => {
+    const pending = await stage(`${source}\n/* administrative refusals */\n`,"http-admin-refusals");
+    const body = { proofDigest: pending.proofDigest,expectedAssignedToUserId: REVIEWER,reason: "Cancel with a committed audit" };
+    expect((await post(`${path}/${pending.id}/cancel`,body,foreign)).status).toBe(404);
+    await db.query("update user_role_bindings set role_id='software-user' where id='source-http-outsider-role'");
+    try {
+      expect((await post(`${path}/${pending.id}/cancel`,body,outsider)).status).toBe(403);
+      expect((await requestJson(route(outsider),`${path}/${pending.id}`)).status).toBe(404);
+      const queue = await requestJson<{ items: SourceRevisionRequestDto[] }>(route(outsider),`${path}?status=pending`);
+      expect(queue.body.items).toEqual([]);
+    } finally { await db.query("update user_role_bindings set role_id='admin' where id='source-http-outsider-role'"); }
+    await db.query(`create function public.fail_source_administration_audit_test() returns trigger language plpgsql as $$ begin
+      if new.action='source-request-cancelled' then raise exception 'Synthetic audit failure'; end if; return new; end $$`);
+    await db.query("create trigger fail_source_administration_audit_test before insert on audit_events for each row execute function public.fail_source_administration_audit_test()");
+    try { expect((await post(`${path}/${pending.id}/cancel`,body,outsider)).status).toBe(500); }
+    finally { await db.query("drop trigger fail_source_administration_audit_test on audit_events"); await db.query("drop function public.fail_source_administration_audit_test()"); }
+    const stillPending = await requestJson<{ item: SourceRevisionRequestDto }>(route(),`${path}/${pending.id}`);
+    expect(stillPending.body.item).toMatchObject({ status: "pending",cancellation: null,assignedToUserId: REVIEWER });
+    await expect(api.transaction((tx) => tx.query("update project_parameter_value_change_requests set status='withdrawn' where id=$1",[pending.id])))
+      .rejects.toMatchObject({ code: "23514" });
+    expect((await post(`${path}/${pending.id}/cancel`,body,outsider)).status).toBe(200);
+    await expect(api.transaction((tx) => tx.query("update project_parameter_value_change_requests set status='pending' where id=$1",[pending.id])))
+      .rejects.toMatchObject({ code: "23514" });
+  });
+
+  it("serializes cancellation with approval and reassignment with rejection without partial source changes", async () => {
+    const activeText = async () => (await storage.get((await db.query<{ storage_key: string }>("select storage_key from project_parameter_file_versions where id=$1",[versionId])).rows[0]!.storage_key)).toString("utf8");
+    const original = await activeText();
+    const pending = await stage(`${original}\n/* cancel versus approve */\n`,"http-admin-cancel-race");
+    const outcomes = await Promise.all([
+      post<{ item: SourceRevisionRequestDto }>(`${path}/${pending.id}/cancel`,{ proofDigest: pending.proofDigest,expectedAssignedToUserId: REVIEWER,reason: "Cancel race" },outsider),
+      post<{ item: SourceRevisionRequestDto }>(`${path}/${pending.id}/review`,{ decision: "approve",proofDigest: pending.proofDigest },reviewer)
+    ]);
+    expect(outcomes.map((reply) => reply.status).sort(),outcomes.map((reply) => reply.bodyText).join("\n")).toEqual([200,409]);
+    const final = await requestJson<{ item: SourceRevisionRequestDto }>(route(outsider),`${path}/${pending.id}`);
+    expect(["withdrawn","approved"]).toContain(final.body.item.status);
+    if (final.body.item.status === "approved") {
+      expect(final.body.item.reviewerUserId).toBe(REVIEWER);
+      versionId = final.body.item.appliedSourceResult!.fileVersionId; revisionId = final.body.item.appliedSourceResult!.configRevisionId;
+      expect(await activeText()).toBe(pending.text);
+    } else { expect(final.body.item.reviewerUserId).toBeNull(); expect(await activeText()).toBe(original); }
+    expect((await db.query("select id from audit_events where target_id=$1 and action in ('source-request-cancelled','value-change-applied')",[pending.id])).rows).toHaveLength(1);
+    const second = await stage(`${await activeText()}\n/* reassign versus reject */\n`,"http-admin-reassign-race");
+    const competing = await Promise.all([
+      post(`${path}/${second.id}/reassign`,{ proofDigest: second.proofDigest,expectedAssignedToUserId: REVIEWER,assignedToUserId: outsider.user.id },outsider),
+      post(`${path}/${second.id}/review`,{ decision: "reject",proofDigest: second.proofDigest,note: "Review race" },reviewer)
+    ]);
+    expect(competing.filter((reply) => reply.status===200),competing.map((reply) => reply.bodyText).join("\n")).toHaveLength(1);
+    expect(competing.every((reply) => [200,403,409].includes(reply.status))).toBe(true);
+    const current = await requestJson<{ item: SourceRevisionRequestDto }>(route(outsider),`${path}/${second.id}`);
+    if (current.body.item.status === "pending") {
+      expect(current.body.item.assignedToUserId).toBe(outsider.user.id); expect(current.body.item.reviewerUserId).toBeNull();
+      expect((await post(`${path}/${second.id}/review`,{ decision: "reject",proofDigest: second.proofDigest },outsider)).status).toBe(200);
+    } else expect(current.body.item).toMatchObject({ status: "rejected",reviewerUserId: REVIEWER });
+  });
+
   it("lets one current administrator directly apply a preview without inventing a reviewer", async () => {
     const text = source.replace("<36>", "<43>") + "\n/* directly applied by the sole administrator */\n";
     const { candidateId, preview } = await prepare(text, "http-direct");

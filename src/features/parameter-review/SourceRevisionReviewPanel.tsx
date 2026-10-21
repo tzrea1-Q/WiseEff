@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ParameterFileRepository, SourceRevisionRequest } from "@/application/ports/ParameterFileRepository";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { SelectControl } from "@/components/common/SelectControl";
 import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { ReviewSourceDiff } from "./ReviewSourceDiff";
@@ -84,12 +85,12 @@ export function SourceRevisionReviewPanel({ projectId, requestId, repository, cu
     {request.cancellation ? <p>管理员取消：{request.cancellation.name ?? "已注销管理员"} · {request.cancellation.reason}</p> : null}
     {pending && request.canAdminister ? <fieldset disabled={busy}>
       <legend>管理员接管</legend>
-      <label>新的审核人<SelectControl ariaLabel="新的源码审核人" value={assignee} onValueChange={(userId) => setAssignee({ scope,userId })}
+      <label className="review-inspector__field">新的审核人<SelectControl ariaLabel="新的源码审核人" value={assignee} onValueChange={(userId) => setAssignee({ scope,userId })}
         options={(request.eligibleReviewers ?? []).filter((user) => user.userId !== request.assignedToUserId).map((user) => ({ value: user.userId,label: user.name }))}
         placeholder="选择当前有资格的审核人" disabled={busy} /></label>
       <Button variant="outline" disabled={busy || !assignee} onClick={() => void decide("reassign")}>重新指派审核人</Button>
       {!request.eligibleReviewers?.some((user) => user.userId !== request.assignedToUserId) ? <p>暂无其他合格审核人；可以填写理由取消请求，解除配置阻塞。</p> : null}
-      <label>取消理由<textarea aria-label="取消源码请求的理由" value={cancelReason} maxLength={2000} rows={2}
+      <label className="review-inspector__field">取消理由<Textarea aria-label="取消源码请求的理由" value={cancelReason} maxLength={2000} rows={2}
         onChange={(event) => setCancelReason({ scope,text: event.target.value })} /></label>
       <Button variant="outline" disabled={busy || !cancelReason.trim()} onClick={() => void decide("cancel")}>取消源码请求</Button>
     </fieldset> : null}
