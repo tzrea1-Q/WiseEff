@@ -32,6 +32,19 @@ function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status });
 }
 
+it.each([
+  { entry: { ...baseEntryDto, status: "archived" as const }, deleted: false },
+  { entry: null, deleted: false },
+  { entry: null, deleted: true }
+])("loads bound knowledge without conflating deletion and private entries: $deleted / $entry.status", async (binding) => {
+  const fetchMock = vi.fn(async () => jsonResponse(binding));
+  const repository = createRepository(fetchMock);
+  const result = await repository.getBinding("entry-1");
+  expect(result.deleted).toBe(binding.deleted);
+  expect(result.entry?.status ?? null).toBe(binding.entry?.status ?? null);
+  expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/v1/knowledge/entries/entry-1/binding");
+});
+
 function createRepository(fetchMock: typeof fetch) {
   return createHttpKnowledgeRepository({
     apiClient: createApiClient({ baseUrl: "http://127.0.0.1:8787", authorization: "Bearer test-token", fetchImpl: fetchMock }),

@@ -493,7 +493,8 @@ describe("skill workspace", () => {
       contentMarkdown: "# 检查步骤", file: null, parameterReferences: []
     }));
     const knowledgeRepository = {
-      list: vi.fn(async () => ({ items: [entries[0]] })), get: vi.fn(async (id: string) => entries.find((entry) => entry.id === id) ?? null),
+      list: vi.fn(async () => ({ items: [entries[0]] })),
+      getBinding: vi.fn(async (id: string) => ({ entry: entries.find((entry) => entry.id === id) ?? null, deleted: false })),
       createMarkdown: vi.fn(async ({ title }: { title: string }) => entries.find((entry) => entry.title === title)!)
     };
     const { repository } = setup({ section: "knowledge", knowledgeCanEdit: true, knowledgeRepository: knowledgeRepository as unknown as KnowledgeRepository });

@@ -64,6 +64,48 @@ async function createFixture() {
 }
 
 describe.skipIf(!available)("skill knowledge runs over PostgreSQL", () => {
+  it("reads archived and missing bindings without exposing private or foreign knowledge", async () => {
+    const fixture = await createFixture();
+    const { admin, request, createMarkdown, setAuth } = fixture;
+    try {
+      const entry = await createMarkdown("Bound notes", "Cooling guidance.");
+      const privateEntry = await createMarkdown("Private notes", "Private guidance.");
+      expect((await request(`/api/v1/knowledge/entries/${entry.id}/publish`, "POST", {})).status).toBe(200);
+      const skill = await request<{ item: Skill }>("/api/v1/log-skills", "POST", { name: "Bound knowledge states" });
+      expect(skill.status).toBe(201);
+      const skillPath = `/api/v1/log-skills/${skill.body.item.id}`;
+      const spec = { schemaVersion: "skill/v1", knowledgeEntryIds: [entry.id] };
+      const draft = await request<{ item: LogSkillRevisionDto }>(`${skillPath}/draft`, "PUT", {
+        spec, baseDraftRevisionId: null, basePublishedRevisionId: skill.body.item.currentRevision.id
+      });
+      expect(draft.status).toBe(200);
+      expect((await request(`${skillPath}/publish`, "POST", { draftRevisionId: draft.body.item.id })).status).toBe(200);
+      expect((await request(`/api/v1/knowledge/entries/${entry.id}/archive`, "POST", {})).status).toBe(200);
+      expect(await request(`/api/v1/knowledge/entries/${entry.id}/binding`)).toMatchObject({ status: 200,
+        body: { deleted: false, entry: { id: entry.id, title: entry.title, status: "archived" } } });
+      setAuth({ ...admin, user: { ...admin.user, id: "another-reader" } });
+      expect(await request(`/api/v1/knowledge/entries/${privateEntry.id}/binding`)).toMatchObject({ status: 200,
+        body: { deleted: false, entry: null } });
+      setAuth(makeTestAuthContext({ organizationId: "org-other-knowledge", userId: "org-other-knowledge-admin", permissions: ["knowledge:view"] }));
+      expect(await request(`/api/v1/knowledge/entries/${entry.id}/binding`)).toMatchObject({ status: 200,
+        body: { deleted: true, entry: null } });
+      setAuth({ ...admin, permissions: [] });
+      expect((await request(`/api/v1/knowledge/entries/${entry.id}/binding`)).status).toBe(403);
+      setAuth(admin);
+      expect((await request(`/api/v1/knowledge/entries/${entry.id}`, "DELETE")).status).toBe(403);
+      setAuth({ ...admin, permissions: [...admin.permissions, "knowledge:manage"] });
+      expect((await request(`/api/v1/knowledge/entries/${entry.id}`, "DELETE")).status).toBe(200);
+      expect(await request(`/api/v1/knowledge/entries/${entry.id}/binding`)).toMatchObject({ status: 200,
+        body: { deleted: true, entry: null } });
+      expect((await request<{ item: Skill }>(skillPath)).body.item.currentRevision.spec.knowledgeEntryIds).toEqual([entry.id]);
+      const saved = await request<{ item: LogSkillRevisionDto }>(`${skillPath}/draft`, "PUT", {
+        spec: { ...spec, description: "Keep the deleted binding visible" },
+        baseDraftRevisionId: null, basePublishedRevisionId: draft.body.item.id
+      });
+      expect(saved.status).toBe(200);
+      expect((await request(`${skillPath}/publish`, "POST", { draftRevisionId: saved.body.item.id })).status).toBe(200);
+    } finally { await fixture.close(); }
+  }, 120_000);
   it("hides unreadable knowledge status in compatibility link mutations", async () => {
     const fixture = await createFixture();
     const { db, admin, request, createMarkdown, setAuth } = fixture;
@@ -359,7 +401,7 @@ describe.skipIf(!available)("skill knowledge runs over PostgreSQL", () => {
 
   it("retrieves the pinned skill's links and records only revisions actually retrieved, preserving earlier run provenance", async () => {
     const fixture = await createFixture();
-    const { db, objectStore, request, createMarkdown } = fixture;
+    const { db, objectStore, request, createMarkdown, admin, setAuth } = fixture;
     try {
       const entry = await createMarkdown("Thermal guidance", "thermal foldback means the cooling guard limited current.");
       expect(entry).toMatchObject({ status: "draft", headRevisionNumber: 1, sourceType: "human", publishedAt: null });
@@ -442,6 +484,27 @@ describe.skipIf(!available)("skill knowledge runs over PostgreSQL", () => {
       expect((await request<{ item: LogRecordDto }>(reportPath)).body.item.knowledgeRevisions).toEqual([
         { entryId: entry.id, revisionId: revised.body.item.headRevisionId }
       ]);
+      const provenance = parsedRuns.map(({ id, knowledgeRevisions }) => ({ id, knowledgeRevisions }));
+      for (const action of ["archive", "delete"]) {
+        setAuth({ ...admin, permissions: [...admin.permissions, "knowledge:manage"] });
+        expect((await request(`/api/v1/knowledge/entries/${entry.id}${action === "archive" ? "/archive" : ""}`,
+          action === "archive" ? "POST" : "DELETE", action === "archive" ? {} : undefined)).status).toBe(200);
+        expect((await request<{ items: LogRunDto[] }>(`${reportPath}/runs`)).body.items
+          .map(({ id, knowledgeRevisions }) => ({ id, knowledgeRevisions }))).toEqual(provenance);
+        expect((await request<{ item: LogRecordDto }>(reportPath)).body.item.knowledgeRevisions).toEqual([
+          { entryId: entry.id, revisionId: revised.body.item.headRevisionId }
+        ]);
+        expect((await request<{ items: LogRecordDto[] }>("/api/v1/logs")).body.items
+          .find((log) => log.id === uploaded.body.log.id)?.knowledgeRevisions).toEqual([
+          { entryId: entry.id, revisionId: revised.body.item.headRevisionId }
+        ]);
+        setAuth({ ...admin, permissions: admin.permissions.filter((permission) => permission !== "knowledge:view") });
+        expect((await request<{ item: LogRecordDto }>(reportPath)).body.item.knowledgeRevisions).toEqual([{ entryId: entry.id }]);
+        setAuth(admin);
+        expect((await request<{ item: Skill }>(skillPath)).body.item.currentRevision.spec.knowledgeEntryIds).toEqual([distractor.id]);
+        const pinned = await request<{ item: LogSkillRevisionDto }>(`${skillPath}/revisions/${draft.body.item.id}`);
+        expect(pinned.body.item.spec.knowledgeEntryIds).toEqual([entry.id, unmatched.id]);
+      }
     } finally { await fixture.close(); }
   }, 120_000);
 

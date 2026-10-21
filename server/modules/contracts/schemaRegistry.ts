@@ -1475,6 +1475,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "KnowledgeEntryResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "knowledge.getBinding": {
+    summary: "Read a knowledge binding, retaining deleted and unavailable identities",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeBindingResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
   "knowledge.updateEntry": {
     summary: "Save a knowledge entry edit as a new immutable revision (optimistic concurrency)",
     tags: ["knowledge"],

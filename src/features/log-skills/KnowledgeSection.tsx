@@ -26,7 +26,7 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
 }) {
   const ids = spec.knowledgeEntryIds ?? [];
   const idsKey = JSON.stringify(ids);
-  const [entries, setEntries] = useState<Array<{ id: string; entry: KnowledgeEntry | null }> | null>(null);
+  const [entries, setEntries] = useState<Array<{ id: string; entry: KnowledgeEntry | null; deleted: boolean }> | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [linkOpen, setLinkOpen] = useState(false);
@@ -46,15 +46,15 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
   const uploadReason = !capability?.canEdit ? "上传 Markdown 需要知识编辑权限。" : atLimit ? "每个技能最多链接 200 个知识条目，请先取消部分链接。" : "";
   const canUpload = canRead && !disabled && !!capability?.canEdit && !atLimit;
   const readyFiles = files.filter((item) => item.status === "ready" || item.status === "failed");
-  const visibleEntries = (canRead ? entries ?? [] : ids.map((id) => ({ id, entry: null }))).map(({ id, entry }) => ({
-    id, entry: canRead && capability && entry && canSeeEntry(entry, capability) ? entry : null
+  const visibleEntries = (canRead ? entries ?? [] : ids.map((id) => ({ id, entry: null, deleted: false }))).map(({ id, entry, deleted }) => ({
+    id, deleted, entry: canRead && capability && entry && canSeeEntry(entry, capability) ? entry : null
   }));
 
   useEffect(() => {
     let active = true;
     setLoadFailed(false); setEntries(null);
-    if (!canRead) { setEntries((JSON.parse(idsKey) as string[]).map((id) => ({ id, entry: null }))); return; }
-    void Promise.all((JSON.parse(idsKey) as string[]).map(async (id) => ({ id, entry: await repository!.get(id) })))
+    if (!canRead) { setEntries((JSON.parse(idsKey) as string[]).map((id) => ({ id, entry: null, deleted: false }))); return; }
+    void Promise.all((JSON.parse(idsKey) as string[]).map(async (id) => ({ id, ...await repository!.getBinding(id) })))
       .then((items) => { if (active) setEntries(items); })
       .catch(() => { if (active) setLoadFailed(true); });
     return () => { active = false; };
@@ -130,11 +130,11 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
       : <DataTable rows={visibleEntries} rowKey={(row) => row.id} ariaLabel="已链接知识条目" tableClassName="table-fixed"
         emptyState={<SectionEmpty title="尚未链接知识" message="链接已发布条目，或上传 Markdown 创建知识草稿。" />}
         columns={[
-          { key: "title", header: "标题", render: ({ entry }) => entry ? <span className="break-words" title={entry.title}>{entry.title}</span> : <span>无权查看的条目</span> },
-          { key: "status", header: "状态", widthClass: "w-24", render: ({ entry }) => entry ? <KnowledgeStatusBadge status={entry.status} /> : null },
+          { key: "title", header: "标题", render: ({ entry, deleted }) => entry ? <span className="break-words" title={entry.title}>{entry.title}</span> : <span>{deleted ? "已删除" : "无权查看的条目"}</span> },
+          { key: "status", header: "状态", widthClass: "w-44", render: ({ entry }) => entry?.status === "archived" ? <span>已归档，不参与检索</span> : entry ? <KnowledgeStatusBadge status={entry.status} /> : null },
           { key: "revision", header: "修订", widthClass: "w-20", render: ({ entry }) => entry ? `v${entry.headRevisionNumber}` : null },
           { key: "updated", header: "更新时间", widthClass: "w-32", render: ({ entry }) => entry ? <span title={formatAbsolute(entry.updatedAt).slice(0, 16).replaceAll("-", "/")}>{formatAbsolute(entry.updatedAt).slice(0, 16).replaceAll("-", "/")}</span> : null }
-        ]} renderRowActions={({ id, entry }) => <Button variant="outline" size="sm" disabled={disabled} aria-label={`取消链接 ${entry?.title ?? "无权查看的条目"}`}
+        ]} renderRowActions={({ id, entry, deleted }) => <Button variant="outline" size="sm" disabled={disabled} aria-label={`取消链接 ${entry?.title ?? (deleted ? "已删除" : "无权查看的条目")}`}
           onClick={() => setUnlinking(id)}>取消链接</Button>} />}
     <ConfirmDialog open={!!unlinking} title="取消知识链接？" description="此知识条目将从当前草稿中移除，知识库中的原条目保留。" tone="danger" confirmLabel="取消链接"
       onCancel={() => setUnlinking(null)} onConfirm={() => { setSpec({ ...spec, knowledgeEntryIds: ids.filter((id) => id !== unlinking) }); setUnlinking(null); }} />

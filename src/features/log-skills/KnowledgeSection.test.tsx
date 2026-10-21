@@ -18,7 +18,7 @@ const entry = (id: string, status: KnowledgeEntry["status"] = "published"): Know
 });
 function setup(options: { ids?: string[]; canViewKnowledge?: boolean; canEditKnowledge?: boolean; disabled?: boolean; get?: (id: string) => Promise<KnowledgeEntry | null>; create?: (input: { title: string }) => Promise<KnowledgeEntry> } = {}) {
   const repository = {
-    get: vi.fn(options.get ?? (async (id: string) => entry(id))),
+    getBinding: vi.fn(async (id: string) => ({ entry: options.get ? await options.get(id) : entry(id), deleted: id === "deleted" })),
     list: vi.fn(async () => ({ items: [entry("existing"), entry("draft", "draft")] })),
     createMarkdown: vi.fn(options.create ?? (async ({ title }: { title: string }) => ({ ...entry(title, "draft"), title })))
   };
@@ -39,14 +39,35 @@ const markdownFile = (name: string, content: string) => {
 };
 
 describe("knowledge skill section", () => {
+  it("shows a read failure as retryable rather than deleted", async () => {
+    let failed = false;
+    setup({ ids: ["linked"], get: async (id) => {
+      if (!failed) { failed = true; throw new Error("Network unavailable"); }
+      return entry(id);
+    } });
+    expect(await screen.findByText("无法加载已链接知识")).toBeVisible();
+    expect(screen.queryByText("已删除")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect(await screen.findByText("linked 知识")).toBeVisible();
+  });
+  it("keeps archived and deleted bindings visible and removable", async () => {
+    const { changed } = setup({ ids: ["archived", "deleted"], get: async (id) => id === "deleted" ? null : entry(id, "archived") });
+    const table = await screen.findByRole("table", { name: "已链接知识条目" });
+    expect(within(table).getByText("archived 知识")).toBeVisible();
+    expect(within(table).getByText("已归档，不参与检索")).toBeVisible();
+    expect(within(table).getByText("已删除")).toBeVisible();
+    await userEvent.click(within(table).getByRole("button", { name: "取消链接 已删除" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "取消链接" }));
+    expect(changed).toHaveBeenLastCalledWith({ schemaVersion: "skill/v1", knowledgeEntryIds: ["archived"] });
+  });
   it.each([
     { name: "manager loses knowledge management", before: { userId: "viewer", canManage: true }, after: { userId: "viewer", canManage: false } },
     { name: "draft owner changes to another user", before: { userId: "owner", canManage: false }, after: { userId: "viewer", canManage: false } }
   ])("redacts cached private metadata when $name", async ({ before, after }) => {
     const privateEntry = { ...entry("private-id", "draft"), title: "Private draft title", createdByUserId: "owner" };
-    const get = vi.fn(async () => privateEntry);
+    const get = vi.fn(async () => ({ entry: privateEntry, deleted: false }));
     const props = { spec: { schemaVersion: "skill/v1" as const, knowledgeEntryIds: ["private-id"] }, setSpec: vi.fn(), disabled: false, apiMode: true,
-      knowledgeRepository: { get } as unknown as KnowledgeRepository, onBusyChange: vi.fn() };
+      knowledgeRepository: { getBinding: get } as unknown as KnowledgeRepository, onBusyChange: vi.fn() };
     const { rerender } = render(<KnowledgeSection {...props} knowledgeCapability={{ canView: true, canEdit: true, ...before }} />);
     expect(await screen.findByText(privateEntry.title)).toBeVisible();
     rerender(<KnowledgeSection {...props} knowledgeCapability={{ canView: true, canEdit: true, ...after }} />);
@@ -67,7 +88,7 @@ describe("knowledge skill section", () => {
     expect(within(table).queryByText("hidden-entry")).not.toBeInTheDocument();
     const cells = within(table).getAllByRole("cell");
     expect(cells.slice(1, 4).map((cell) => cell.textContent)).toEqual(["", "", ""]);
-    if (!canViewKnowledge) expect(repository.get).not.toHaveBeenCalled();
+    if (!canViewKnowledge) expect(repository.getBinding).not.toHaveBeenCalled();
     await userEvent.click(within(table).getByRole("button", { name: "取消链接 无权查看的条目" }));
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "取消链接" }));
     expect(changed).toHaveBeenLastCalledWith({ schemaVersion: "skill/v1", knowledgeEntryIds: [] });

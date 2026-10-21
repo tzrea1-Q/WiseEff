@@ -35,6 +35,7 @@ export const knowledgeDtoSchemaCatalog = {
   CreateKnowledgeEntryRequest: createKnowledgeEntryBodySchema,
   UpdateKnowledgeEntryRequest: updateKnowledgeEntryBodySchema,
   KnowledgeEntryResponse: itemEnvelopeSchema(knowledgeEntryDtoSchema),
+  KnowledgeBindingResponse: z.object({ entry: knowledgeEntryDtoSchema.nullable(), deleted: z.boolean() }),
   KnowledgeEntryListResponse: itemsEnvelopeSchema(knowledgeEntryDtoSchema)
 };
-export const knowledgeCoveredRouteIds = ["knowledge.createEntry", "knowledge.getEntry", "knowledge.listEntries", "knowledge.updateEntry"] as const;
+export const knowledgeCoveredRouteIds = ["knowledge.createEntry", "knowledge.getEntry", "knowledge.getBinding", "knowledge.listEntries", "knowledge.updateEntry"] as const;
