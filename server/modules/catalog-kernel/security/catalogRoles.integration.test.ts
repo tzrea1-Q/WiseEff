@@ -1543,11 +1543,17 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       )
       select distinct function_name, table_name
       from refs
-      where not pg_catalog.has_table_privilege(
-        function_owner,
-        format('public.%I', table_name),
-        'select'
-      )
+      -- Historical cutover archives are optional on a fresh installation.
+      -- Existing archives and every other referenced relation still require SELECT.
+      where case
+        when table_name in ('legacy_parameter_definitions', 'legacy_project_parameter_values')
+          and pg_catalog.to_regclass(format('public.%I', table_name)) is null then false
+        else not coalesce(pg_catalog.has_table_privilege(
+          function_owner,
+          pg_catalog.to_regclass(format('public.%I', table_name)),
+          'select'
+        ), false)
+      end
       order by function_name, table_name
     `);
     expect(missing.rows).toEqual([]);

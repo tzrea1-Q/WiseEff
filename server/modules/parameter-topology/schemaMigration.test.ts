@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Database } from "../../shared/database/client";
-import { applyMigrations } from "../../shared/database/migrations";
+import { applyMigrations, getEffectiveMigrationOrder } from "../../shared/database/migrations";
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 import {
   migrationsDir,
@@ -16,13 +16,23 @@ const migration0062 = "0062_parameter_change_action.sql";
 const migration0063 = "0063_parameter_submission_candidate_identity.sql";
 
 /**
- * Expected pending list computed from the migrations directory, so appending a
- * new migration never requires editing this test again.
+ * Expected pending list follows the packaged execution order, including an
+ * explicit successor when the superseded migration was never applied.
  */
 async function migrationsFromInclusive(first: string): Promise<string[]> {
-  const files = await fs.readdir(migrationsDir);
-  return files.filter((file) => file.endsWith(".sql") && file >= first).sort();
+  const files = (await fs.readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
+  return getEffectiveMigrationOrder(files, files.filter((file) => file < first)).filter((file) => file >= first);
 }
+
+describe("schema migration receipt inventory through the Vitest migration facade", () => {
+  it("keeps an unapplied replacement at its dependency position", async () => {
+    const pending = await migrationsFromInclusive("0213_parameter_definition_purge.sql");
+    expect(pending.slice(0, 3)).toEqual([
+      "0213_parameter_definition_purge.sql", "0220_parameter_definition_purge_compatibility.sql", "0215_definition_erasure_source_fences.sql",
+    ]);
+    expect(pending).not.toContain("0214_parameter_definition_purge_scope.sql");
+  });
+});
 
 const REQUIRED_TABLES = [
   "parameter_specs",

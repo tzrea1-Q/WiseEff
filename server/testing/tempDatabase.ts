@@ -46,6 +46,9 @@ export async function applyTestMigrations(
 }
 
 export { applyTestMigrations as applyMigrations };
+// Vitest redirects migration-module imports here to retain the role-DDL lease.
+// Pure ordering helpers must remain available through the same module surface.
+export { getEffectiveMigrationOrder } from "../shared/database/migrations";
 
 export function resolveTestDatabaseUrl(): string {
   return (

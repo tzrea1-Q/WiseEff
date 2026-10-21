@@ -128,6 +128,7 @@ describe("fresh database fixture policy", () => {
       "server/modules/parameter-topology/schemaMigration.test.ts": ["schema_mig:false"],
       "server/modules/parameters/moduleParentRepairMigration.test.ts": ["mig0109:false"],
       "server/modules/release-verification/core/migration.integration.test.ts": ["s10per:false"],
+      "server/shared/database/migrationCompatibility.integration.test.ts": ["purge_bounds:false", "purge_cutover:false", "purge_existing:false", "purge_retry:false"],
       "server/testing/testDatabase.test.ts": ["cleanup_race:false", "emptycompare:false", "freshcompare:true", "freshguard:true", "role_lease_a:false", "role_lease_b:false"]
     });
     expect(manual.sort()).toEqual([
