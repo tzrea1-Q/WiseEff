@@ -381,6 +381,9 @@ function createFakeWorkerDb(fixture = createFixture()) {
         fixture.job.lease_expires_at = null;
         return { rows: [], rowCount: 1 };
       }
+      if (normalized.startsWith("update log_records set id=id")) {
+        return { rows: values[1] === fixture.log.id ? [{ id: fixture.log.id } as Row] : [], rowCount: values[1] === fixture.log.id ? 1 : 0 };
+      }
       if (normalized.startsWith("update log_records set status = 'failed'")) {
         fixture.log.status = "failed";
         fixture.log.failure_reason = values[3] as string;

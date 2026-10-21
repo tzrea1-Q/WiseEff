@@ -58,6 +58,16 @@ function knowledgeApi(entry = draft) {
 }
 
 describe("human knowledge draft deletion through the HTTP adapter", () => {
+  it("keeps the independent body visible and replaces a removed log's navigation with its source status", async () => {
+    const { repository } = knowledgeApi({ ...draft, sourceLogDeleted: true });
+    render(<KnowledgePage repository={repository} capability={manager} />);
+    const table = await screen.findByRole("table", { name: "知识条目列表" });
+    await userEvent.click(within(table).getByText(draft.title));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("来源已删除")).toBeVisible();
+    expect(within(dialog).queryByRole("button", { name: "查看日志分析" })).toBeNull();
+    expect(within(dialog).getByText(draft.contentMarkdown!)).toBeVisible();
+  });
   it("deletes directly from the list only after confirmation and refreshes the list", async () => {
     const { repository } = knowledgeApi();
     render(<KnowledgePage repository={repository} capability={manager} />);

@@ -156,7 +156,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
       key: "sourceLog",
       header: "来源分析",
       render: (entry) =>
-        entry.sourceLogId ? (
+        entry.sourceLogDeleted ? <span className="text-xs text-muted-foreground">来源已删除</span> : entry.sourceLogId ? (
           <Button
             variant="link"
             size="sm"

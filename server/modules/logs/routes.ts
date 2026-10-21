@@ -1,5 +1,6 @@
 import { logValidationIssues } from "./validationMessages";
 import { previewLogDeletion } from "./deletionPreview";
+import { logDeletionStatus, pendingLogDeletions, purgeLog } from "./purge";
 import type { MultipartBody } from "../../shared/http/server";
 import { MAX_LOG_JSON_UPLOAD_BYTES } from "./bundleIntake";
 import { z } from "zod";
@@ -406,6 +407,21 @@ export function registerLogRoutes(
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const { logId } = parseWithSchema(paramsWithLogIdSchema, request.params);
     return { status: 200, body: { item: await previewLogDeletion(requireDb(options.db), auth, logId) } };
+  });
+  router.get("/api/v1/logs/deletions", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, body: { items: await pendingLogDeletions(requireDb(options.db), auth) } };
+  });
+  router.get("/api/v1/logs/:logId/deletion-status", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { logId } = parseWithSchema(paramsWithLogIdSchema, request.params);
+    return { status: 200, body: { item: await logDeletionStatus(requireDb(options.db), auth, logId) } };
+  });
+  router.delete("/api/v1/logs/:logId", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { logId } = parseWithSchema(paramsWithLogIdSchema, request.params);
+    const { version } = parseWithSchema(z.object({ version: z.string().regex(/^[a-f0-9]{64}$/) }).strict(), request.body);
+    return { status: 200, body: { item: await purgeLog(requireDb(options.db), createUserInvocation(auth), logId, version, request.requestId, options.objectStore) } };
   });
 
   router.get("/api/v1/logs/:logId/lines", async (request) => {

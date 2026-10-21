@@ -118,7 +118,12 @@ export function createLogAnalysisQueueRuntime({
         }
         if (result.status === "idle") {
           const persisted = await getJobSnapshot(db, jobId);
-          if (!persisted) throw new Error("Log-analysis delivery has no persisted job.");
+          if (!persisted) {
+            const erased = (await db.query<{ erased: boolean }>("select public.is_erased_log_job($1,$2,$3) erased",
+              [job.data.organizationId, job.data.logId, jobId])).rows[0]?.erased;
+            if (erased === true) return "idle";
+            throw new Error("Log-analysis delivery has no persisted job.");
+          }
           if (persisted.status === "queued" || persisted.status === "processing") {
             // ponytail: pending legacy deliveries poll at the configured retry
             // interval; expose the database wakeup deadline if this becomes hot.

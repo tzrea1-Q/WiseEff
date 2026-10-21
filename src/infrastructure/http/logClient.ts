@@ -49,6 +49,8 @@ import {
   logRecordResponseSchema,
   logLineRangeResponseSchema,
   logDeletionPreviewResponseSchema,
+  logDeletionStatusResponseSchema,
+  logDeletionStatusListResponseSchema,
   logRunResponseSchema,
   logWebhookDeliveryListResponseSchema,
   logWebhookTestOutcomeResponseSchema
@@ -410,6 +412,18 @@ export function createHttpLogAnalysisRepository(
     async previewLogDeletion(logId: string) {
       return parseContractDto(logDeletionPreviewResponseSchema,
         await apiClient.get(`${routeLogPath(logId)}/deletion-preview`), "LogDeletionPreviewResponse").item;
+    },
+    async purgeLog(logId: string, version: string) {
+      return parseContractDto(logDeletionStatusResponseSchema,
+        await apiClient.delete(routeLogPath(logId), { version }), "LogDeletionStatusResponse").item;
+    },
+    async getLogDeletionStatus(logId: string) {
+      return parseContractDto(logDeletionStatusResponseSchema,
+        await apiClient.get(`${routeLogPath(logId)}/deletion-status`), "LogDeletionStatusResponse").item;
+    },
+    async pendingLogDeletions() {
+      return parseContractDto(logDeletionStatusListResponseSchema,
+        await apiClient.get("/api/v1/logs/deletions"), "LogDeletionStatusListResponse").items;
     },
     async unarchiveLog(logId: string) {
       await apiClient.post<ItemEnvelope<LogRecordDto>>(`${routeLogPath(logId)}/unarchive`, {});

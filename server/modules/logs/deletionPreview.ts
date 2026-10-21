@@ -11,6 +11,7 @@ const recordObjectKeys = `select storage_key object_key from log_file_objects wh
   union select object_key from log_files where organization_id=$1 and record_id=$2 and object_key is not null
   union select line_index_key from log_files where organization_id=$1 and record_id=$2 and line_index_key is not null
   union select object_key from log_original_uploads where organization_id=$1 and record_id=$2
+  union select object_key from log_artifact_objects where organization_id=$1 and record_id=$2
   union select decoded_events_object_key from log_analysis_runs where organization_id=$1 and log_record_id=$2 and decoded_events_object_key is not null`;
 const retainedKnowledge = `select * from knowledge_entries where organization_id=$1 and (source_log_id=$2 or id::text in
   (select revision->>'entryId' from log_analysis_runs r cross join lateral jsonb_array_elements(r.knowledge_revisions) revision where r.organization_id=$1 and r.log_record_id=$2
@@ -18,12 +19,14 @@ const retainedKnowledge = `select * from knowledge_entries where organization_id
 const inventoryLabels: readonly (readonly [string, string, "delete" | "retain"])[] = [
   ["records", "日志记录", "delete"], ["original-uploads", "原始上传文件", "delete"],
   ["files", "文件清单及行索引", "delete"], ["file-objects", "独占原文件元数据", "delete"],
+  ["artifacts", "分析及索引对象写入记录", "delete"], ["notification-outbox", "日志站内通知待投递", "delete"], ["notifications", "日志站内通知", "delete"],
   ["runs", "分析运行及解码产物", "delete"], ["stages", "分析阶段", "delete"],
   ["reports", "分析报告", "delete"], ["evidence", "分析证据", "delete"], ["traces", "分析轨迹", "delete"],
   ["feedback", "质量反馈", "delete"], ["deliveries", "Webhook 投递历史", "delete"],
   ["outbox", "Webhook 待投递事件", "delete"], ["jobs", "分析任务", "delete"],
   ["skills", "分析技能", "retain"], ["skill-revisions", "钉住的技能修订", "retain"],
   ["source-snapshots", "共享源码快照及索引", "retain"], ["knowledge", "独立知识条目", "retain"],
+  ["audit", "管理审计身份与时间（移除日志内容）", "retain"],
   ["knowledge-revisions", "独立知识正文及历史修订", "retain"], ["analysis-cases", "共享原文件的独立测试用例", "retain"]
 ];
 
@@ -36,6 +39,7 @@ const objectReferences = `
   union all select 'line-index', id, record_id, line_index_key, to_jsonb(f) from log_files f where line_index_key is not null
   union all select 'upload', position::text, record_id, object_key, to_jsonb(u) from log_original_uploads u
   union all select 'decoded', id, log_record_id, decoded_events_object_key, to_jsonb(r) from log_analysis_runs r where decoded_events_object_key is not null
+  union all select 'artifact', record_id, record_id, object_key, to_jsonb(r) from log_artifact_objects r
   union all select 'sample', id, null, object_key, to_jsonb(s) from log_skill_samples s
   union all select 'dry-run', id, null, sample_object_key, to_jsonb(r) from log_skill_dry_runs r
   union all select 'case', c.id, null, u->>'objectKey', to_jsonb(c) from log_skill_analysis_cases c cross join lateral jsonb_array_elements(c.uploads) u
@@ -66,6 +70,11 @@ export async function readLogDeletionPreview(tx: Queryable, organizationId: stri
     select 'records',to_jsonb(r) from log_records r where organization_id=$1 and id=$2
     union all select 'original-uploads',to_jsonb(r) from log_original_uploads r where organization_id=$1 and record_id=$2
     union all select 'files',to_jsonb(r) from log_files r where organization_id=$1 and record_id=$2
+    union all select 'artifacts',to_jsonb(r) from log_artifact_objects r where organization_id=$1 and record_id=$2
+    union all select 'notification-outbox',to_jsonb(r) from notification_outbox r where organization_id=$1 and
+      ((payload->>'sourceKind'='log-analysis-run' and payload->>'sourceId' in (${runs})) or payload->'metadata'->>'logId'=$2)
+    union all select 'notifications',to_jsonb(r) from user_notifications r where organization_id=$1 and
+      ((source_kind='log-analysis-run' and source_id in (${runs})) or metadata->>'logId'=$2)
     union all select 'file-objects',to_jsonb(f) from log_file_objects f where id in (${ownFiles}) and not exists (select 1 from log_records r where r.file_object_id=f.id and r.id<>$2)
     union all select 'runs',to_jsonb(r) from log_analysis_runs r where organization_id=$1 and log_record_id=$2
     union all select 'stages',to_jsonb(r) from log_analysis_stages r where organization_id=$1 and run_id in (${runs})
@@ -76,6 +85,7 @@ export async function readLogDeletionPreview(tx: Queryable, organizationId: stri
     union all select 'deliveries',to_jsonb(r) from log_webhook_deliveries r where organization_id=$1 and log_record_id=$2
     union all select 'outbox',to_jsonb(r) from log_webhook_outbox r where organization_id=$1 and log_record_id=$2
     union all select 'jobs',to_jsonb(r) from jobs r where organization_id=$1 and kind='log-analysis' and target_id in (${runs})
+    union all select 'audit',to_jsonb(r) from audit_events r where organization_id=$1 and target_type='log-record' and target_id=$2
     union all select 'skills',to_jsonb(r) from log_domains r where organization_id=$1 and id in
       (select log_domain_id from log_records where organization_id=$1 and id=$2 union select skill_id from log_skill_revisions where id in (select skill_revision_id from log_analysis_runs where organization_id=$1 and log_record_id=$2))
     union all select 'skill-revisions',to_jsonb(r) from log_skill_revisions r where organization_id=$1 and id in (select skill_revision_id from log_analysis_runs where organization_id=$1 and log_record_id=$2)
@@ -112,7 +122,14 @@ export async function readLogDeletionPreview(tx: Queryable, organizationId: stri
       { code: "analysis-runs", count: pending.runs, message: "尚未结束的分析运行须与清理操作协调。" },
       { code: "webhook-events", count: pending.deliveries, message: "待投递、重试或投递中的 Webhook 事件须停止或隔离。" }
     ],
-    notes: ["仅检查影响范围，不会删除任何业务数据或存储对象。", "共享存储对象按真实引用保留，包括其他日志、测试用例、技能样例及独立业务引用。",
-      "分析技能、技能修订、源码快照和试跑/测试用例历史保留。", "独立知识正文、已保存的引用内容及历史修订保留；后续删除仅解除日志来源关系。",
+    notes: ["预览本身不会修改数据；勾选确认并执行后才永久删除。", "共享存储对象按真实引用保留，包括其他日志、测试用例、技能样例及独立业务引用。",
+      "分析技能、技能修订、源码快照和试跑/测试用例历史保留。", "独立知识正文、已保存的引用内容及历史修订保留；确认删除后解除日志来源关系并显示来源已删除。",
       "日志、任务或引用变化后请重新获取预览；此快照不构成删除授权。"] };
+}
+
+/** Physical references across retained businesses, read only under the erasure fence. */
+export async function referencedLogObjects(tx: Queryable, keys: string[]): Promise<Set<string>> {
+  const rows = (await tx.query<{ object_key: string }>(`with refs as (${objectReferences})
+    select distinct object_key from refs where object_key=any($1::text[])`, [keys])).rows;
+  return new Set(rows.map((row) => row.object_key));
 }

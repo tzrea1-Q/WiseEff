@@ -267,7 +267,7 @@ describe.skipIf(!databaseAvailable)("log service", () => {
 
     expect(objectStore.entries.size).toBe(1);
     expect(result.fileObject).toMatchObject({
-      storageKey: `org-1/${checksum}-pack-controller.log`,
+      storageKey: expect.stringMatching(new RegExp(`^org-1/${checksum}-[a-f0-9-]{36}\\.log$`)),
       fileName: "pack-controller.log",
       checksumSha256: checksum,
       uploadedByUserId: "user-1"

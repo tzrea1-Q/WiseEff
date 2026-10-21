@@ -56,6 +56,7 @@ export type KnowledgeEntryDto = {
   sourceType: KnowledgeSourceType;
   sourceSessionId: string | null;
   sourceLogId: string | null;
+  sourceLogDeleted?: boolean;
   sourceReloadRunId: string | null;
   createdByUserId: string | null;
   headRevisionId: string | null;
@@ -105,6 +106,7 @@ function entryFromDto(dto: KnowledgeEntryDto): KnowledgeEntry {
     sourceType: dto.sourceType,
     sourceSessionId: dto.sourceSessionId,
     sourceLogId: dto.sourceLogId,
+    sourceLogDeleted: dto.sourceLogDeleted ?? false,
     sourceReloadRunId: dto.sourceReloadRunId,
     createdByUserId: dto.createdByUserId,
     headRevisionNumber: dto.headRevisionNumber,

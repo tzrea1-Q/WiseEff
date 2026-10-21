@@ -26,6 +26,7 @@ import {
   updateRunStageProgress
 } from "./repository";
 import { notifyLogAnalysisCompleted, notifyLogAnalysisFailed } from "../notifications/producers";
+import { putLogArtifact } from "./artifactObjects";
 import type { LogWebhookDeliverer } from "./webhookDelivery";
 import type { LogStage } from "./status";
 import { requireRelatedParameterRunSnapshot } from "./relatedParameter";
@@ -314,7 +315,7 @@ async function processClaimedLogAnalysisJob(
     const prefilterBudget = createPrefilterBudget(createSignalEvaluationBudget(preprocessingDeadline));
     const prepare = (file: typeof inventory[number]) => {
       const reader = createLogFileReader(objectStore, file, file.skillMatched === false ? undefined : formatProfile,
-        () => lease.run(() => ensureStoredLogIndex(db, objectStore, snapshot.organizationId, snapshot.logId, file)));
+        () => lease.run(() => ensureStoredLogIndex(db, lease.rawObjectStore, snapshot.organizationId, snapshot.logId, file)));
       const entries = reader.entries({ deadline: preprocessingDeadline });
       const first = entries.next();
       // A later file may fail while the current file is still being consumed.
@@ -404,8 +405,8 @@ async function processClaimedLogAnalysisJob(
         // Shipped local/S3 stores use this content-addressed key. Retain it before
         // the write so even an upload with a lost response can be cleaned up.
         cleanupKey = `${sanitizePathSegment(snapshot.organizationId, "organization id")}/${createHash("sha256").update(bytes).digest("hex")}-${fileName}`;
-        decodedArtifact.objectKey = (await objectStore.put({ organizationId: snapshot.organizationId, fileName,
-          contentType: "application/gzip", bytes })).storageKey;
+        decodedArtifact.objectKey = (await lease.run(() => putLogArtifact(db, lease.rawObjectStore, snapshot.logId,
+          { organizationId: snapshot.organizationId, fileName, contentType: "application/gzip", bytes }))).storageKey;
       } catch {
         decodedArtifact.counts.errors[failureCode] = (decodedArtifact.counts.errors[failureCode] ?? 0) + 1;
         decoding = undefined;
