@@ -82,7 +82,7 @@ const asSupportedContent = (value: unknown): SupportedDefinitionContent | null =
   if (!isRecord(value.valueSchema) || typeof value.valueSchema.type !== "string") {
     return null;
   }
-  if (value.description !== undefined && typeof value.description !== "string") {
+  if (value.description != null && typeof value.description !== "string") {
     return null;
   }
   if (value.lifecycle !== undefined && value.lifecycle !== "active" && value.lifecycle !== "retired") {

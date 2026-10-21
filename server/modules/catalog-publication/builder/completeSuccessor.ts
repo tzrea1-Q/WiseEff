@@ -428,14 +428,14 @@ const buildDefinitionDocument = (
     lifecycle: content.lifecycle ?? ("active" as const),
     displayName: content.displayName,
     documentation: content.documentation,
-    ...(content.description !== undefined ? { description: content.description } : {}),
-    ...(content.unit !== undefined ? { unit: content.unit } : {}),
+    ...(content.description != null ? { description: content.description } : {}),
+    ...(content.unit != null ? { unit: content.unit } : {}),
     valueSchema: content.valueSchema,
     matching: {
       sourceProperty: propertyKey,
       selectorKind: subject.content.selector.kind,
     },
-    ...(content.examples !== undefined ? { examples: content.examples } : {}),
+    ...(content.examples != null ? { examples: content.examples } : {}),
     contentDigest: "sha256:" + "0".repeat(64),
   };
   revision.contentDigest = canonicalDigest(revisionContentModel(revision));
@@ -513,6 +513,25 @@ const applyCreateDefinition = (
   return buildDefinitionDocument(subject, parsed.value, content.value, allocation);
 };
 
+const revisedDefinitionContent = (
+  current: CatalogReleaseDefinitionDocument["content"]["revision"],
+  content: SupportedDefinitionContent,
+) => {
+  const { description: oldDescription, unit: oldUnit, examples: oldExamples, ...retained } = current;
+  const description = content.description === undefined ? oldDescription : content.description;
+  const unit = content.unit === undefined ? oldUnit : content.unit;
+  const examples = content.examples === undefined ? oldExamples : content.examples;
+  return {
+    ...retained,
+    displayName: content.displayName,
+    documentation: content.documentation,
+    valueSchema: content.valueSchema,
+    ...(description != null ? { description } : {}),
+    ...(unit != null ? { unit } : {}),
+    ...(examples != null ? { examples } : {}),
+  };
+};
+
 /**
  * Apply one reversible lifecycle change. The new revision keeps the permanent
  * identity, subject and property key, and only the lifecycle value (plus any
@@ -559,26 +578,8 @@ const applyDefinitionLifecycleChange = (
     };
   }
   const nextRevisionFields = {
-    ...current.content.revision,
+    ...revisedDefinitionContent(current.content.revision, content.value),
     lifecycle: targetLifecycle,
-    displayName: content.value.displayName,
-    documentation: content.value.documentation,
-    ...(content.value.description !== undefined
-      ? { description: content.value.description }
-      : current.content.revision.description !== undefined
-        ? { description: current.content.revision.description }
-        : {}),
-    ...(content.value.unit !== undefined
-      ? { unit: content.value.unit }
-      : current.content.revision.unit !== undefined
-        ? { unit: current.content.revision.unit }
-        : {}),
-    valueSchema: content.value.valueSchema,
-    ...(content.value.examples !== undefined
-      ? { examples: content.value.examples }
-      : current.content.revision.examples !== undefined
-        ? { examples: current.content.revision.examples }
-        : {}),
   };
   const nextDigest = canonicalDigest(revisionContentModel(nextRevisionFields));
   const revision = {
@@ -620,27 +621,7 @@ const applyReviseDefinition = (
   if (!current) {
     return { kind: "invalid-input", reason: `definition not found:${change.definitionId}` };
   }
-  const nextRevisionFields = {
-    ...current.content.revision,
-    displayName: content.value.displayName,
-    documentation: content.value.documentation,
-    ...(content.value.description !== undefined
-      ? { description: content.value.description }
-      : current.content.revision.description !== undefined
-        ? { description: current.content.revision.description }
-        : {}),
-    ...(content.value.unit !== undefined
-      ? { unit: content.value.unit }
-      : current.content.revision.unit !== undefined
-        ? { unit: current.content.revision.unit }
-        : {}),
-    valueSchema: content.value.valueSchema,
-    ...(content.value.examples !== undefined
-      ? { examples: content.value.examples }
-      : current.content.revision.examples !== undefined
-        ? { examples: current.content.revision.examples }
-        : {}),
-  };
+  const nextRevisionFields = revisedDefinitionContent(current.content.revision, content.value);
   const previousDigest = canonicalDigest(revisionContentModel(current.content.revision));
   const nextDigest = canonicalDigest(revisionContentModel(nextRevisionFields));
   if (previousDigest === nextDigest) {

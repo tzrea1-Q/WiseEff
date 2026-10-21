@@ -73,7 +73,7 @@ export type DefinitionEditorBodyProps = {
 /** Editor state for the definition's content, derived from its current revision. */
 type ContentDraft = Pick<
   PublicationDraft,
-  "displayName" | "documentation" | "description" | "unit" | "valueType" | "minimum" | "maximum"
+  "displayName" | "documentation" | "description" | "unit" | "valueType" | "minimum" | "maximum" | "examples"
 >;
 
 const contentDraftOf = (definition: CatalogDefinitionResponse["item"]): ContentDraft => {
@@ -91,6 +91,7 @@ const contentDraftOf = (definition: CatalogDefinitionResponse["item"]): ContentD
     documentation: revision.documentation ?? "",
     description: "",
     unit: revision.unit?.symbol ?? "",
+    examples: revision.examples?.length ? JSON.stringify(revision.examples) : "",
     valueType,
     minimum,
     maximum
@@ -155,7 +156,7 @@ const schemaValueTypeLabels: Record<PublicationValueType, string> = {
 };
 
 const fingerprintContent = (draft: ContentDraft): string =>
-  [draft.displayName, draft.documentation, draft.unit, draft.valueType, draft.minimum, draft.maximum].join(
+  [draft.displayName, draft.documentation, draft.unit, draft.valueType, draft.minimum, draft.maximum, draft.examples].join(
     "\u0000"
   );
 
@@ -296,6 +297,10 @@ export function DefinitionEditorBody({
       fingerprintContent(content) !== fingerprintContent(currentContent),
     [content, currentContent]
   );
+  const removedOptionalContent = [
+    currentContent.unit.trim() && !content.unit.trim() ? "单位" : null,
+    currentContent.examples.trim() && !content.examples.trim() ? "示例" : null
+  ].filter(Boolean);
   const schemaChanged =
     content.valueType !== currentContent.valueType ||
     content.minimum !== currentContent.minimum ||
@@ -354,6 +359,7 @@ export function DefinitionEditorBody({
 
   const runPreview = async () => {
     if (!editable || !targetSubjectAllowed || pending) return;
+    if (!validateExamples()) return;
     if (selectedProjects.length === 0) {
       setError("请选择至少一个受影响的项目。");
       return;
@@ -400,9 +406,21 @@ export function DefinitionEditorBody({
     reason: reason.trim()
   });
 
+  const validateExamples = () => {
+    if (!content.examples.trim()) return true;
+    try {
+      if (Array.isArray(JSON.parse(content.examples))) return true;
+    } catch {
+      // Keep invalid text in the editor so the operator can correct it.
+    }
+    setError("示例必须为有效的 JSON 数组，当前输入已保留。");
+    return false;
+  };
+
   /** Content-only edit: publish a revision, no project reference moves. */
   const saveContentRevision = async () => {
     if (!canPublish || pending) return;
+    if (!validateExamples()) return;
     if (!reason.trim()) {
       setError("请填写修改原因，用于审计。");
       return;
@@ -618,6 +636,16 @@ export function DefinitionEditorBody({
                   <div className="definition-editor__field-placeholder" aria-hidden="true" />
                 )}
                 <label className="definition-editor__field definition-editor__field--full">
+                  <span className="definition-editor__field-label">示例（JSON 数组）</span>
+                  <textarea
+                    value={content.examples}
+                    aria-label="示例（JSON 数组）"
+                    rows={2}
+                    placeholder="例如 [100, 200]；留空移除示例"
+                    onChange={(event) => setContent({ ...content, examples: event.target.value })}
+                  />
+                </label>
+                <label className="definition-editor__field definition-editor__field--full">
                   <span className="definition-editor__field-label">说明</span>
                   <textarea
                     value={content.documentation}
@@ -755,7 +783,7 @@ export function DefinitionEditorBody({
                     {identityChanged
                       ? "保存会发布替代身份，并把选定项目的当前引用迁移过去；旧身份与历史保持不变。"
                       : contentChanged
-                        ? "内容修订只发布新修订，不迁移项目引用。"
+                        ? `内容修订只发布新修订，不迁移项目引用。${removedOptionalContent.length ? `本次将移除：${removedOptionalContent.join("、")}。` : ""}`
                         : "未做任何修改。"}
                   </p>
                 </div>

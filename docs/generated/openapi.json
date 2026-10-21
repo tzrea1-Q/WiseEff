@@ -23259,6 +23259,12 @@
                           ],
                           "additionalProperties": false
                         },
+                        "examples": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
                         "publishedInCatalogReleaseId": {
                           "type": "string"
                         }
@@ -23546,6 +23552,12 @@
                               "symbol"
                             ],
                             "additionalProperties": false
+                          },
+                          "examples": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
                           },
                           "publishedInCatalogReleaseId": {
                             "type": "string"
@@ -23914,6 +23926,12 @@
                             ],
                             "additionalProperties": false
                           },
+                          "examples": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
                           "publishedInCatalogReleaseId": {
                             "type": "string"
                           }
@@ -24201,6 +24219,12 @@
                                 "symbol"
                               ],
                               "additionalProperties": false
+                            },
+                            "examples": {
+                              "type": "array",
+                              "items": {
+                                "type": "object"
+                              }
                             },
                             "publishedInCatalogReleaseId": {
                               "type": "string"
@@ -60635,6 +60659,12 @@
                       ],
                       "additionalProperties": false
                     },
+                    "examples": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
                     "publishedInCatalogReleaseId": {
                       "type": "string"
                     }
@@ -60943,6 +60973,12 @@
                     ],
                     "additionalProperties": false
                   },
+                  "examples": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
                   "publishedInCatalogReleaseId": {
                     "type": "string"
                   }
@@ -61179,6 +61215,12 @@
                   ],
                   "additionalProperties": false
                 },
+                "examples": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
                 "publishedInCatalogReleaseId": {
                   "type": "string"
                 }
@@ -61319,6 +61361,12 @@
                   "symbol"
                 ],
                 "additionalProperties": false
+              },
+              "examples": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
               },
               "publishedInCatalogReleaseId": {
                 "type": "string"
@@ -63788,16 +63836,25 @@
                           "type": "string"
                         },
                         "description": {
-                          "type": "string"
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         },
                         "unit": {
-                          "type": "string"
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         },
                         "valueSchema": {
                           "type": "object"
                         },
                         "examples": {
-                          "type": "array",
+                          "type": [
+                            "array",
+                            "null"
+                          ],
                           "items": {
                             "type": "object"
                           }
@@ -63890,16 +63947,25 @@
                                 "type": "string"
                               },
                               "description": {
-                                "type": "string"
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
                               },
                               "unit": {
-                                "type": "string"
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
                               },
                               "valueSchema": {
                                 "type": "object"
                               },
                               "examples": {
-                                "type": "array",
+                                "type": [
+                                  "array",
+                                  "null"
+                                ],
                                 "items": {
                                   "type": "object"
                                 }
@@ -63959,16 +64025,25 @@
                           "type": "string"
                         },
                         "description": {
-                          "type": "string"
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         },
                         "unit": {
-                          "type": "string"
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         },
                         "valueSchema": {
                           "type": "object"
                         },
                         "examples": {
-                          "type": "array",
+                          "type": [
+                            "array",
+                            "null"
+                          ],
                           "items": {
                             "type": "object"
                           }
@@ -64022,16 +64097,25 @@
                           "type": "string"
                         },
                         "description": {
-                          "type": "string"
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         },
                         "unit": {
-                          "type": "string"
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         },
                         "valueSchema": {
                           "type": "object"
                         },
                         "examples": {
-                          "type": "array",
+                          "type": [
+                            "array",
+                            "null"
+                          ],
                           "items": {
                             "type": "object"
                           }
@@ -64084,16 +64168,25 @@
                           "type": "string"
                         },
                         "description": {
-                          "type": "string"
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         },
                         "unit": {
-                          "type": "string"
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         },
                         "valueSchema": {
                           "type": "object"
                         },
                         "examples": {
-                          "type": "array",
+                          "type": [
+                            "array",
+                            "null"
+                          ],
                           "items": {
                             "type": "object"
                           }

@@ -33,6 +33,51 @@ function EditorDialog({ children }: PropsWithChildren) {
  * through preview -> confirm -> execute -> continue.
  */
 describe("DefinitionEditorBody", () => {
+  it("shows published examples and lets the operator clear unit and examples together", async () => {
+    const user = userEvent.setup();
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const preview = vi.spyOn(ports.catalog, "createPublicationCandidate");
+    render(<DefinitionEditorBody authoringAllowed publishingAllowed history={<div />} actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={ready} catalog={ports.catalog}
+      catalogReleaseId={CATALOG_RELEASE_ID} definition={{ ...activeDefinition, currentRevision: {
+        ...activeDefinition.currentRevision, unit: { kind: "symbol", symbol: "mA" }, examples: [100, 200]
+      } }} subjects={[registeredSubject]} />);
+    expect(screen.getByLabelText("示例（JSON 数组）")).toHaveValue("[100,200]");
+    await user.clear(screen.getByLabelText("单位"));
+    await user.clear(screen.getByLabelText("示例（JSON 数组）"));
+    expect(screen.getByText(/本次将移除：单位、示例/)).toBeVisible();
+    await user.type(screen.getByLabelText("修改原因"), "清除错误的单位与示例");
+    await user.click(screen.getByRole("button", { name: "保存内容修订" }));
+    await waitFor(() => expect(preview).toHaveBeenCalledWith({ changeSet: [expect.objectContaining({
+      content: expect.objectContaining({ unit: null, examples: null })
+    })] }, expect.anything()));
+  });
+
+  it("retains invalid example text and round-trips string examples without coercion", async () => {
+    const user = userEvent.setup();
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const preview = vi.spyOn(ports.catalog, "createPublicationCandidate");
+    render(<DefinitionEditorBody authoringAllowed publishingAllowed history={<div />} actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={ready} catalog={ports.catalog}
+      catalogReleaseId={CATALOG_RELEASE_ID} definition={{ ...activeDefinition, currentRevision: {
+        ...activeDefinition.currentRevision, valueShape: { kind: "json-schema", schema: { type: "string" } },
+        examples: ["with,comma", "", "123"]
+      } }} subjects={[registeredSubject]} />);
+    const examples = screen.getByLabelText("示例（JSON 数组）");
+    expect(examples).toHaveValue('["with,comma","","123"]');
+    fireEvent.change(examples, { target: { value: "[invalid" } });
+    await user.type(screen.getByLabelText("修改原因"), "更新示例");
+    await user.click(screen.getByRole("button", { name: "保存内容修订" }));
+    expect(screen.getByText("示例必须为有效的 JSON 数组，当前输入已保留。")).toBeVisible();
+    expect(examples).toHaveValue("[invalid");
+    expect(preview).not.toHaveBeenCalled();
+    fireEvent.change(examples, { target: { value: '["with,comma","","123","new"]' } });
+    await user.click(screen.getByRole("button", { name: "保存内容修订" }));
+    await waitFor(() => expect(preview).toHaveBeenCalledWith({ changeSet: [expect.objectContaining({
+      content: expect.objectContaining({ examples: ["with,comma", "", "123", "new"] })
+    })] }, expect.anything()));
+  });
+
   it.each([true, false])("preserves complete multiline published documentation with authoring=%s", (authoringAllowed) => {
     const documentation = `first documentation line ${"x".repeat(300)}\nlast documentation line`;
     const ports = createMockCatalogPorts({ scenario: "ready" });
@@ -395,6 +440,7 @@ describe("DefinitionEditorBody", () => {
           content: {
             displayName: activeDefinition.currentRevision.displayName,
             documentation: activeDefinition.currentRevision.documentation,
+            examples: null,
             unit: "us",
             valueSchema: { type: "integer", maximum: 32 }
           }
