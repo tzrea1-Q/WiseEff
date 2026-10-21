@@ -14,6 +14,8 @@ import { KnowledgeParameterReferenceChips } from "./KnowledgeParameterReferenceC
 export type KnowledgeEntryDetailDialogProps = {
   open: boolean;
   entry: KnowledgeEntry | null;
+  citation?: { page: number | null; historical: boolean } | null;
+  onOpenPage?: () => Promise<void>;
   capability: KnowledgeCapability;
   onEdit: (entry: KnowledgeEntry) => void;
   onReplaceFile: (entry: KnowledgeEntry) => void;
@@ -50,6 +52,8 @@ function formatSize(bytes: number) {
 export function KnowledgeEntryDetailDialog({
   open,
   entry,
+  citation,
+  onOpenPage,
   capability,
   onEdit,
   onReplaceFile,
@@ -216,6 +220,15 @@ export function KnowledgeEntryDetailDialog({
           ) : null}
 
           <div className="min-h-0 flex-1 overflow-auto">
+            {citation?.historical ? <p className="mb-3 text-sm text-muted-foreground">引用的是历史修订</p> : null}
+            {citation?.page && entry.contentForm === "file" ? (
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <span className="text-sm text-foreground">引用位置：第 {citation.page} 页</span>
+                <Button variant="outline" size="sm" disabled={pendingAction !== null} onClick={() => void runAction("download", () => onOpenPage!())}>
+                  打开第 {citation.page} 页
+                </Button>
+              </div>
+            ) : null}
             {entry.contentForm === "markdown" ? (
               <div
                 aria-label="条目内容"

@@ -108,7 +108,7 @@ export interface KnowledgeRepository {
   removeDefinitionReference(entryId: string, definitionId: string): Promise<KnowledgeEntry>;
   /** Remove a structural definition reference (entry-edit gated). */
   removeParameterReference(entryId: string, specId: string): Promise<KnowledgeEntry>;
-  getFileObjectUrl(entryId: string): Promise<string>;
+  getFileObjectUrl(entryId: string, revisionId?: string): Promise<string>;
   /** Index health governance surface (knowledge:manage). */
   getIndexHealth(): Promise<KnowledgeIndexHealth>;
   retryEntryIndex(entryId: string): Promise<void>;
