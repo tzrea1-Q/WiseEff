@@ -4,7 +4,7 @@ import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPostgresDatabase, type Database } from "../server/shared/database/client";
-import { MIGRATION_ADVISORY_LOCK_KEY } from "../server/shared/database/migrations";
+import { getEffectiveMigrationOrder, MIGRATION_ADVISORY_LOCK_KEY } from "../server/shared/database/migrations";
 import { readCurrentCatalogPointer, type CatalogPointerClient } from "../server/modules/catalog-kernel/install/currentPointer";
 import { loadProjection } from "../server/modules/catalog-kernel/runtime/currentSnapshot";
 
@@ -45,8 +45,13 @@ export async function runParameterDataMode(db: Database, input: {
       await tx.query("set transaction isolation level repeatable read, read only");
     }
     const applied = await tx.query<{ name: string; checksum: string | null }>("select name, checksum from schema_migrations order by name");
-    if (applied.rows.length === 0 || applied.rows.length > inventory.length || applied.rows.some((row, i) =>
-      row.name !== inventory[i].name || row.checksum !== inventory[i].checksum)) {
+    const effectiveOrder = getEffectiveMigrationOrder(files, applied.rows.map(row => row.name));
+    // The ledger is read in lexical order; a replacement executes at the
+    // superseded migration's position and records only its own file name.
+    const expectedAppliedNames = effectiveOrder.slice(0, applied.rows.length).sort();
+    const checksums = new Map(inventory.map(row => [row.name, row.checksum]));
+    if (applied.rows.length === 0 || applied.rows.length > effectiveOrder.length || applied.rows.some((row, i) =>
+      row.name !== expectedAppliedNames[i] || row.checksum !== checksums.get(row.name))) {
       throw new Error("parameter-data-mode-ledger-unknown-or-drifted");
     }
     const legacyCount = files.filter(name => name < "0129_").length;
@@ -100,7 +105,7 @@ export async function runParameterDataMode(db: Database, input: {
       }
       return { parameterDataMode: "new-empty", state: "legacy-populated", migrationsApplied: applied.rows.length } as const;
     }
-    if (applied.rows.length < canonicalCount || (input.phase === "initialize" && applied.rows.length !== files.length)) {
+    if (applied.rows.length < canonicalCount || (input.phase === "initialize" && applied.rows.length !== effectiveOrder.length)) {
       throw new Error("parameter-data-mode-partial-migration");
     }
     const state = await tx.query<{ states: string; releases: string; subjects: string; definitions: string }>(`select

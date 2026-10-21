@@ -8,7 +8,7 @@ import {
   privilegeVerificationGateIds,
   serializeContract,
 } from "../../parameter-catalog-contract";
-import { applyMigrations } from "../../../shared/database/migrations";
+import { applyMigrations, getEffectiveMigrationOrder } from "../../../shared/database/migrations";
 import { withTestClusterRoleCatalogLock } from "../../../testing/testDatabase";
 import {
   createEphemeralTestDatabase,
@@ -696,8 +696,9 @@ async function applyFeedbackSuccessors(db: Database, connectionString: string) {
   // Erasure deliberately adds its own private capability tables and controlled
   // writer RPCs. Keep the original source-revision ACL proof at its real phase,
   // then compare the complete upgraded ACL with the fresh live database in T13.
-  expect(await applyMigrations(db, migrationsDir)).toEqual(files.filter(name => name > sourceLast));
-  expect((await db.query<{ name: string }>("select name from schema_migrations order by name")).rows.map(row => row.name)).toEqual(files);
+  const effectiveFiles = getEffectiveMigrationOrder(files, current.map(({ name }) => name));
+  expect(await applyMigrations(db, migrationsDir)).toEqual(effectiveFiles.filter(name => name > sourceLast));
+  expect((await db.query<{ name: string }>("select name from schema_migrations order by name")).rows.map(row => row.name)).toEqual([...effectiveFiles].sort());
   expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
   expect(await applyMigrations(db, migrationsDir)).toEqual([]);
 }
@@ -1542,11 +1543,17 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       )
       select distinct function_name, table_name
       from refs
-      where not pg_catalog.has_table_privilege(
-        function_owner,
-        format('public.%I', table_name),
-        'select'
-      )
+      -- Historical cutover archives are optional on a fresh installation.
+      -- Existing archives and every other referenced relation still require SELECT.
+      where case
+        when table_name in ('legacy_parameter_definitions', 'legacy_project_parameter_values')
+          and pg_catalog.to_regclass(format('public.%I', table_name)) is null then false
+        else not coalesce(pg_catalog.has_table_privilege(
+          function_owner,
+          pg_catalog.to_regclass(format('public.%I', table_name)),
+          'select'
+        ), false)
+      end
       order by function_name, table_name
     `);
     expect(missing.rows).toEqual([]);
