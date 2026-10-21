@@ -164,6 +164,8 @@ describe("publication runtime login ACL threat matrix", () => {
       const selected = await api.query("select count(*)::int as n from parameter_catalog.catalog_state");
       expect(selected.rows[0]?.n).toBeGreaterThanOrEqual(0);
       await assertCanonicalSourceAcl(api, true);
+      expect((await api.query("select public.is_erased_log_job('missing-org','missing-log','missing-job') as erased")).rows)
+        .toEqual([{ erased: false }]);
       await assert42501(api, `set role ${quoteIdent(CATALOG_MIGRATION_OWNER)}`);
       await assert42501(api, `set role ${quoteIdent(CATALOG_SYNCHRONIZER_ROLE)}`);
       for (const sql of catalogDml) {
@@ -211,6 +213,8 @@ describe("publication runtime login ACL threat matrix", () => {
     await worker.connect();
     try {
       await assertCanonicalSourceAcl(worker, false);
+      expect((await worker.query("select public.is_erased_log_job('missing-org','missing-log','missing-job') as erased")).rows)
+        .toEqual([{ erased: false }]);
       await assert42501(worker, "select * from parameter_catalog.catalog_state");
       await assert42501(
         worker,
@@ -229,6 +233,7 @@ describe("publication runtime login ACL threat matrix", () => {
     await manager.connect();
     try {
       await assertCanonicalSourceAcl(manager, false);
+      await assert42501(manager, "select public.is_erased_log_job('missing-org','missing-log','missing-job')");
       await assert42501(manager, "update parameter_catalog.catalog_releases set id = id where false");
       await manager.query("begin");
       await manager.query(`set local role ${quoteIdent(CATALOG_SYNCHRONIZER_ROLE)}`);

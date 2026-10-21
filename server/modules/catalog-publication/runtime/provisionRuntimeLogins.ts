@@ -440,6 +440,13 @@ export async function provisionPublicationRuntimeLogins(
 
       await grantPublicAppDml(admin, names.api);
       await grantPublicAppDml(admin, names.worker);
+      const erasedLogJob = await admin.query<{ exists: boolean }>(
+        "select to_regprocedure('public.is_erased_log_job(text,text,text)') is not null as exists",
+      );
+      if (erasedLogJob.rows[0]?.exists) {
+        await admin.query(`revoke execute on function public.is_erased_log_job(text,text,text) from public, ${quoteIdent(names.manager)}`);
+        await admin.query(`grant execute on function public.is_erased_log_job(text,text,text) to ${quoteIdent(names.api)}, ${quoteIdent(names.worker)}`);
+      }
       await revokePublicDml(admin, names.manager);
       await grantPublicSelect(admin, names.manager);
       await revokeLegacyStructuralDml(admin, [names.api, names.worker, names.manager]);

@@ -1047,6 +1047,21 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["logs"], responseBody: "LogDeletionPreviewResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "logs.purge": {
+    summary: "Permanently delete the confirmed organization-owned log and retry remaining object cleanup",
+    tags: ["logs"], requestBody: "LogDeletionRequest", responseBody: "LogDeletionStatusResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "logs.deletionStatus": {
+    summary: "Read the authorized durable database and storage cleanup result for a deleted log",
+    tags: ["logs"], responseBody: "LogDeletionStatusResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "logs.pendingDeletions": {
+    summary: "List this organization's logs with remaining storage cleanup",
+    tags: ["logs"], responseBody: "LogDeletionStatusListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
   "logs.getLines": {
     summary: "Read an inclusive window of at most 400 indexed log lines",
     tags: ["logs"], responseBody: "LogLineRangeResponse",

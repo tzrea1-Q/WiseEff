@@ -11118,6 +11118,60 @@
             "$ref": "#/components/responses/ErrorResponse"
           }
         }
+      },
+      "delete": {
+        "operationId": "logs.purge",
+        "summary": "Permanently delete the confirmed organization-owned log and retry remaining object cleanup",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogDeletionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogDeletionStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
       }
     },
     "/api/v1/logs/{logId}/deletion-preview": {
@@ -11155,6 +11209,79 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/logs/{logId}/deletion-status": {
+      "get": {
+        "operationId": "logs.deletionStatus",
+        "summary": "Read the authorized durable database and storage cleanup result for a deleted log",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogDeletionStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/logs/deletions": {
+      "get": {
+        "operationId": "logs.pendingDeletions",
+        "summary": "List this organization's logs with remaining storage cleanup",
+        "tags": [
+          "logs"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogDeletionStatusListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -39780,6 +39907,112 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "LogDeletionPreviewResponse"
+      },
+      "LogDeletionRequest": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogDeletionRequest"
+      },
+      "LogDeletionStatusResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "logId": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "database": {
+                "type": "string",
+                "enum": [
+                  "deleted"
+                ]
+              },
+              "objects": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "complete"
+                ]
+              },
+              "pendingObjects": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "logId",
+              "version",
+              "database",
+              "objects",
+              "pendingObjects"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogDeletionStatusResponse"
+      },
+      "LogDeletionStatusListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "logId": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "database": {
+                  "type": "string",
+                  "enum": [
+                    "deleted"
+                  ]
+                },
+                "objects": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "complete"
+                  ]
+                },
+                "pendingObjects": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "logId",
+                "version",
+                "database",
+                "objects",
+                "pendingObjects"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogDeletionStatusListResponse"
       },
       "LogRunListResponse": {
         "type": "object",
