@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { isUtf8 } from "node:buffer";
 
 import { asAuditTx, writeAuditEventInTx, type AuditSpec, type AuditTx } from "../audit/auditedWrite";
@@ -79,7 +79,7 @@ import type {
   ListKnowledgeEntriesQuery
 } from "./types";
 
-export type KnowledgeServiceContext = AuditCorrelationContext;
+export type KnowledgeServiceContext = AuditCorrelationContext & { importBatchId?: string };
 
 export type KnowledgeFileUploadInput = {
   fileName: string;
@@ -212,8 +212,10 @@ export async function createKnowledgeEntry(
   const invocation = createUserInvocation(auth);
   requireKnowledgeEdit(auth);
 
+  const uploadBytes = input.contentForm === "file" ? decodeFileUpload(input.file) : null;
+  const sourceChecksum = uploadBytes ? createHash("sha256").update(uploadBytes).digest("hex") : null;
   if (input.contentForm === "file" && /\.(md|txt)$/i.test(input.file.fileName)) {
-    const bytes = decodeFileUpload(input.file);
+    const bytes = uploadBytes!;
     if (!isUtf8(bytes)) {
       throw new ApiError("VALIDATION_FAILED", "文本文件必须使用有效的 UTF-8 编码，请转换编码后重新上传。", {
         reason: "knowledge-upload-invalid-utf8"
@@ -252,6 +254,7 @@ export async function createKnowledgeEntry(
         title: input.title,
         tags: input.tags,
         contentMarkdown: input.contentMarkdown,
+        sourceChecksum,
         fileId: null,
         restoredFromRevisionId: null
       });
@@ -270,7 +273,8 @@ export async function createKnowledgeEntry(
           kind: "knowledge-entry-create",
           action: "create",
           entryId,
-          metadata: { contentForm: "markdown", title: input.title, tagCount: input.tags.length, revisionNumber: 1 }
+          metadata: { contentForm: "markdown", title: input.title, tagCount: input.tags.length, revisionNumber: 1,
+            ...(context.importBatchId ? { importBatchId: context.importBatchId } : {}) }
         },
         context
       );
@@ -281,7 +285,7 @@ export async function createKnowledgeEntry(
     return entry;
   }
 
-  const bytes = decodeFileUpload(input.file);
+  const bytes = uploadBytes!;
   const stored = await objectStore.put({
     organizationId: auth.organization.id,
     fileName: `knowledge-${randomUUID()}-${input.file.fileName}`,
@@ -344,7 +348,8 @@ export async function createKnowledgeEntry(
           tagCount: input.tags.length,
           revisionNumber: 1,
           fileName: stored.fileName,
-          sizeBytes: stored.fileSizeBytes
+          sizeBytes: stored.fileSizeBytes,
+          ...(context.importBatchId ? { importBatchId: context.importBatchId } : {})
         }
       },
       context

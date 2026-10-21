@@ -11,6 +11,8 @@ import type {
   KnowledgeEntry,
   KnowledgeExtractionStatus,
   KnowledgeIndexHealth,
+  KnowledgeImportOutcome,
+  KnowledgeImportReport,
   KnowledgeOrigin,
   KnowledgeParameterReference,
   KnowledgeRetrievalInfo,
@@ -211,6 +213,20 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
   const apiClient = options.apiClient ?? createDefaultApiClient({ baseUrl, fetchImpl: options.fetchImpl });
 
   return {
+    async openImport(tags) {
+      return (await apiClient.post<ItemEnvelope<{ id: string }>>("/api/v1/knowledge/imports", { tags })).item;
+    },
+    async importDocument(batchId, input) {
+      return (await apiClient.post<ItemEnvelope<KnowledgeImportOutcome>>(`/api/v1/knowledge/imports/${encodeURIComponent(batchId)}/documents`, {
+        relativePath: input.relativePath, file: await fileBody(input.file)
+      })).item;
+    },
+    async getImport(batchId) {
+      return (await apiClient.get<ItemEnvelope<KnowledgeImportReport>>(`/api/v1/knowledge/imports/${encodeURIComponent(batchId)}`)).item;
+    },
+    async completeImport(batchId) {
+      return (await apiClient.post<ItemEnvelope<KnowledgeImportReport>>(`/api/v1/knowledge/imports/${encodeURIComponent(batchId)}/complete`, {})).item;
+    },
     async list(query) {
       const response = await apiClient.get<ListEnvelope<KnowledgeEntryDto>>(buildListPath(query));
       return { items: response.items.map(entryFromDto) };

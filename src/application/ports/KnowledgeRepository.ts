@@ -2,6 +2,8 @@ import type {
   KnowledgeContentForm,
   KnowledgeEntry,
   KnowledgeIndexHealth,
+  KnowledgeImportOutcome,
+  KnowledgeImportReport,
   KnowledgeOrigin,
   KnowledgeRevision,
   KnowledgeSearchResponse,
@@ -56,6 +58,10 @@ export class KnowledgeRevisionConflictError extends Error {
 }
 
 export interface KnowledgeRepository {
+  openImport(tags: string[]): Promise<{ id: string }>;
+  importDocument(batchId: string, input: { file: File; relativePath: string }): Promise<KnowledgeImportOutcome>;
+  getImport(batchId: string): Promise<KnowledgeImportReport>;
+  completeImport(batchId: string): Promise<KnowledgeImportReport>;
   list(query?: KnowledgeListQuery): Promise<{ items: KnowledgeEntry[] }>;
   get(entryId: string): Promise<KnowledgeEntry | null>;
   createMarkdown(input: CreateMarkdownKnowledgeInput): Promise<KnowledgeEntry>;

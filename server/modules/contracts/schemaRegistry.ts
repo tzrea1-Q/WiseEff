@@ -1369,6 +1369,25 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     successStatus: 201,
     additionalResponses: { "403": "ErrorResponse" }
   },
+  "knowledge.openImport": {
+    summary: "Open an organization-scoped, importer-owned batch with fixed tags (knowledge:edit)",
+    tags: ["knowledge"], requestBody: "OpenKnowledgeImportRequest", responseBody: "OpenKnowledgeImportResponse", successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "knowledge.importDocument": {
+    summary: "Import one document through the existing upload path; enforce 200 documents / 100 MB per batch and 20 MB per file; skip readable SHA-256 duplicates",
+    tags: ["knowledge"], requestBody: "ImportKnowledgeDocumentRequest", responseBody: "ImportKnowledgeDocumentResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "knowledge.getImport": {
+    summary: "Read the importer's persisted document outcomes and server-computed totals",
+    tags: ["knowledge"], responseBody: "KnowledgeImportReportResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.completeImport": {
+    summary: "Complete a batch once and audit its server-recorded outcome counts (knowledge:edit)",
+    tags: ["knowledge"], requestBody: "CompleteKnowledgeImportRequest", responseBody: "KnowledgeImportReportResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "knowledge.listEntries": {
     summary: "List knowledge entries visible to the caller",
     tags: ["knowledge"],

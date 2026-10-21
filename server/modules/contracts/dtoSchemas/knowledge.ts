@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createKnowledgeEntryBodySchema, updateKnowledgeEntryBodySchema } from "../../knowledge/schemas";
+import { createKnowledgeEntryBodySchema, updateKnowledgeEntryBodySchema, openKnowledgeImportSchema, importKnowledgeDocumentSchema } from "../../knowledge/schemas";
 import { knowledgeContentForms, knowledgeOrigins, knowledgeSourceTypes, knowledgeStatuses, knowledgeExtractionStatuses } from "../../knowledge/types";
 import { itemEnvelopeSchema, itemsEnvelopeSchema } from "./envelopes";
 
@@ -31,10 +31,26 @@ export const knowledgeEntryDtoSchema = z.object({
   parameterReferences: z.array(referenceSchema)
 });
 
+const importOutcomeSchema = z.object({
+  id: z.string().uuid(), relativePath: z.string(),
+  status: z.enum(["created", "duplicate_skipped", "unsupported_skipped", "extraction_failed", "rejected"]),
+  entryId: z.string().uuid().nullable(), error: z.string().nullable()
+});
+const importCountsSchema = z.object({ created: z.number().int(), duplicate_skipped: z.number().int(), unsupported_skipped: z.number().int(),
+  extraction_failed: z.number().int(), rejected: z.number().int() });
+
 export const knowledgeDtoSchemaCatalog = {
+  OpenKnowledgeImportRequest: openKnowledgeImportSchema,
+  OpenKnowledgeImportResponse: itemEnvelopeSchema(z.object({ id: z.string().uuid() })),
+  ImportKnowledgeDocumentRequest: importKnowledgeDocumentSchema,
+  ImportKnowledgeDocumentResponse: itemEnvelopeSchema(importOutcomeSchema),
+  CompleteKnowledgeImportRequest: z.object({}).strict(),
+  KnowledgeImportReportResponse: itemEnvelopeSchema(z.object({ id: z.string().uuid(), tags: z.array(z.string()), completed: z.boolean(),
+    documentCount: z.number().int(), totalBytes: z.number().int(), counts: importCountsSchema, outcomes: z.array(importOutcomeSchema) })),
   CreateKnowledgeEntryRequest: createKnowledgeEntryBodySchema,
   UpdateKnowledgeEntryRequest: updateKnowledgeEntryBodySchema,
   KnowledgeEntryResponse: itemEnvelopeSchema(knowledgeEntryDtoSchema),
   KnowledgeEntryListResponse: itemsEnvelopeSchema(knowledgeEntryDtoSchema)
 };
-export const knowledgeCoveredRouteIds = ["knowledge.createEntry", "knowledge.getEntry", "knowledge.listEntries", "knowledge.updateEntry"] as const;
+export const knowledgeCoveredRouteIds = ["knowledge.openImport", "knowledge.importDocument", "knowledge.getImport", "knowledge.completeImport",
+  "knowledge.createEntry", "knowledge.getEntry", "knowledge.listEntries", "knowledge.updateEntry"] as const;

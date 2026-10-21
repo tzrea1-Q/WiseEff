@@ -237,9 +237,12 @@ export async function insertRevision(
   const result = await db.query<KnowledgeRevisionRow>(
     `
     insert into knowledge_revisions (
-      id, entry_id, organization_id, revision_number, title, tags, content_markdown, file_id, author_user_id, restored_from_revision_id
+      id, entry_id, organization_id, revision_number, title, tags, content_markdown, file_id, author_user_id, restored_from_revision_id, source_checksum
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+      coalesce($11, (select source_checksum from knowledge_revisions
+        where entry_id = $2 and organization_id = $3 and content_markdown = $7 and source_checksum is not null
+        order by revision_number desc limit 1)))
     returning *
     `,
     [
@@ -252,7 +255,8 @@ export async function insertRevision(
       input.contentMarkdown,
       input.fileId,
       auth.user.id,
-      input.restoredFromRevisionId
+      input.restoredFromRevisionId,
+      input.sourceChecksum ?? null
     ]
   );
 

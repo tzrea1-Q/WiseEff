@@ -156,6 +156,7 @@ export type InsertKnowledgeEntryInput = {
 };
 
 export type InsertKnowledgeRevisionInput = {
+  sourceChecksum?: string | null;
   id: string;
   entryId: string;
   revisionNumber: number;
