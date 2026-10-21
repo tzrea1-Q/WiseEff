@@ -20,6 +20,7 @@ function setup(options: { items?: SourceSnapshot[]; canEdit?: boolean; apiMode?:
     uploadSourceSnapshot: vi.fn(async () => snapshot),
     setDefaultSourceSnapshot: vi.fn(async () => skill),
     archiveSourceSnapshot: vi.fn(async () => ({ ...snapshot, status: "archived" as const })),
+    retrySourceSnapshot: vi.fn(async () => ({ ...snapshot, status: "queued" as const, error: null })),
     locateSourceStatement: vi.fn(async () => ({ items: [{ snapshotId: snapshot.id, path: "drivers/thermal.c", line: 9,
       versionLabel: snapshot.versionLabel, startLine: 8, excerpt: 'if (hot) {\n  pr_warn("thermal foldback: temp=%d\\n", temp);\n} // <img src=x onerror=alert(1)>', confidence: 0.95 }], truncated: true }))
   };
@@ -33,6 +34,23 @@ function setup(options: { items?: SourceSnapshot[]; canEdit?: boolean; apiMode?:
 }
 
 describe("source snapshots section", () => {
+  it("retries a failed snapshot without discarding the current line and preserves failure for another attempt", async () => {
+    const failed = { ...snapshot, status: "failed" as const, error: "读取源码原始文件失败，请检查对象存储后重试。" };
+    const { repository, onBusyChange, onSkillUpdated } = setup({ items: [failed, { ...snapshot, id: "ready", versionLabel: "ready" }] });
+    const line = await screen.findByRole("textbox", { name: "日志行" });
+    fireEvent.change(line, { target: { value: "thermal foldback: temp=71" } });
+    repository.retrySourceSnapshot.mockRejectedValueOnce(new Error("private storage details"));
+    await userEvent.click(screen.getByRole("button", { name: "重试索引" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("重新排队失败，请重试");
+    expect(line).toHaveValue("thermal foldback: temp=71");
+    expect(screen.queryByText("private storage details")).not.toBeInTheDocument();
+    repository.listSourceSnapshots.mockResolvedValueOnce([{ ...failed, status: "queued", error: null }]);
+    await userEvent.click(screen.getByRole("button", { name: "重试索引" }));
+    expect(await screen.findByText("等待索引")).toBeVisible();
+    expect(repository.retrySourceSnapshot).toHaveBeenLastCalledWith("skill-charging", snapshot.id);
+    expect(onBusyChange).toHaveBeenCalledWith(true); expect(onBusyChange).toHaveBeenLastCalledWith(false);
+    expect(onSkillUpdated).not.toHaveBeenCalled();
+  });
   it("shows status, default marker, bounded skipped paths and archived rows", async () => {
     setup({ items: [snapshot, { ...snapshot, id: "archived", versionLabel: "old", status: "archived" }, { ...snapshot, id: "bad", versionLabel: "broken", status: "failed", error: "backend stack trace" }] });
     const table = await screen.findByRole("table", { name: "源码快照" });
@@ -98,10 +116,11 @@ describe("source snapshots section", () => {
   });
 
   it.each([{ canEdit: false }, { apiMode: false }])("hides all source actions for viewers and mock: %j", async (options) => {
-    setup(options);
+    setup({ ...options, items: [{ ...snapshot, status: "failed" }] });
     await screen.findByRole("table", { name: "源码快照" });
     expect(screen.queryByRole("button", { name: "上传快照" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "设为默认" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试索引" })).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: /快照操作/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "日志语句试一试" })).not.toBeInTheDocument();
   });

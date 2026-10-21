@@ -110,14 +110,24 @@ export function SourceSnapshots({ skill, repository, apiMode, canEdit, disabled,
         </div> : "无" },
         { key: "createdAt", header: "上传时间", widthClass: "w-28 whitespace-nowrap", render: (item) => <span title={formatAbsolute(item.createdAt).slice(0, 16).replaceAll("-", "/")}>{formatAbsolute(item.createdAt).slice(0, 16).replaceAll("-", "/")}</span> },
         { key: "default", header: "默认", widthClass: "w-20 whitespace-nowrap", render: (item) => item.id === defaultId ? <span className="badge whitespace-nowrap">{skill.draft ? "草稿默认" : "已发布默认"}</span> : "—" }
-      ]} renderRowActions={editable ? (item) => item.status === "archived" ? null : <RowActionMenu label={`${item.versionLabel} 快照操作`}
-        primaryAction={{ id: "default", label: "设为默认", disabled: disabled || dirty || item.id === defaultId, onSelect: async () => {
+      ]} renderRowActions={editable ? (item) => {
+        if (item.status === "archived") return null;
+        const defaultAction = { id: "default", label: "设为默认", disabled: disabled || dirty || item.id === defaultId, onSelect: async () => {
           try { await mutate(async () => onSkillUpdated(await repository!.setDefaultSourceSnapshot!(skill.id, item.id))); }
           catch (cause) { setError(presentError(cause, "设置默认快照失败，请刷新后重试。")); }
-        } }} items={[{ id: "archive", label: "归档", destructive: true, disabled,
+        } };
+        return <RowActionMenu label={`${item.versionLabel} 快照操作`}
+        primaryAction={item.status === "failed" ? { id: "retry", label: "重试索引", disabled: disabled || pending || !repository?.retrySourceSnapshot, onSelect: async () => {
+          try { await mutate(async () => {
+            const queued = await repository!.retrySourceSnapshot!(skill.id, item.id);
+            setItems(current => current?.map(snapshot => snapshot.id === queued.id ? queued : snapshot) ?? null);
+            setRefresh(value => value + 1);
+          }); } catch (cause) { setError(presentError(cause, "重新排队失败，请重试。")); }
+        } } : defaultAction} items={[...(item.status === "failed" ? [defaultAction] : []), { id: "archive", label: "归档", destructive: true, disabled,
           confirmation: { title: "归档源码快照？", description: `将归档“${item.versionLabel}”。已发布版本的引用保留，使用此快照的后续分析将注明源码不可用。`, confirmLabel: "归档" },
           onSelect: async () => { await mutate(async () => { await repository!.archiveSourceSnapshot!(skill.id, item.id); setRefresh((value) => value + 1); }); }
-        }]} /> : undefined} />}
+        }]} />;
+      } : undefined} />}
     {editable && items && !loadFailed ? <section className="grid gap-3" aria-label="日志语句试一试">
       <h3>试一试</h3><p>粘贴一条日志，在就绪快照中定位输出语句；结果仅供核对。</p>
       {!readySnapshots.length ? <SectionEmpty title="暂无就绪快照" message="快照索引完成后可定位日志语句。" /> : <form className="grid gap-3" onSubmit={(event) => { event.preventDefault(); void tryLocate(); }}>

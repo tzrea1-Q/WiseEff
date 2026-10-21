@@ -52,7 +52,7 @@ import { previewLogSkillParsing, previewLogSkillExtractor, previewLogSkillFormat
 import { parsePreviewRequestSchema } from "./parsing/spec";
 import { extractorPreviewRequestSchema } from "./parsing/extractorBuilder";
 import { formatPreviewRequestSchema } from "./formatProfile";
-import { archiveSourceSnapshot, getSourceEvidence, listSourceSnapshots, setDefaultSourceSnapshot, trySourceStatement, uploadSourceSnapshot } from "./sourceSnapshots";
+import { archiveSourceSnapshot, getSourceEvidence, listSourceSnapshots, retrySourceSnapshot, setDefaultSourceSnapshot, trySourceStatement, uploadSourceSnapshot } from "./sourceSnapshots";
 import { sourceSnapshotUploadSchema } from "./schemas";
 import { recommendOrganizationLogSkills } from "./skillRecommendationService";
 import { logSkillRecommendationRequestSchema } from "./schemas";
@@ -299,6 +299,13 @@ export function registerLogRoutes(
     const item = await archiveSourceSnapshot(requireDb(options.db), auth, request.params.skillId, request.params.snapshotId,
       createUserInvocation(auth), { requestId: request.requestId });
     return { status: 200, body: { item } };
+  });
+  router.post("/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/retry", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    parseWithSchema(z.object({}).strict(), request.body ?? {});
+    const item = await retrySourceSnapshot(requireDb(options.db), auth, request.params.skillId, request.params.snapshotId,
+      createUserInvocation(auth), { requestId: request.requestId });
+    return { status: 202, body: { item } };
   });
   router.post("/api/v1/log-files", async (request) => {
     const db = requireDb(options.db);

@@ -80,5 +80,6 @@ export interface SkillWorkspaceRepository {
   uploadSourceSnapshot(id: string, input: { versionLabel: string; file: File }): Promise<SourceSnapshot>;
   setDefaultSourceSnapshot(id: string, snapshotId: string): Promise<AnalysisSkill>;
   archiveSourceSnapshot(id: string, snapshotId: string): Promise<SourceSnapshot>;
+  retrySourceSnapshot?(id: string, snapshotId: string): Promise<SourceSnapshot>;
   locateSourceStatement(id: string, snapshotId: string, line: string): Promise<SourceStatementMatches>;
 }

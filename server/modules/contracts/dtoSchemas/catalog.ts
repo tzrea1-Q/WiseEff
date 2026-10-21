@@ -90,6 +90,7 @@ import { releaseBaselineRestoreRequestSchema, releaseBaselineRestorePreviewRespo
  * Xiaoze). Names not listed here stay as `x-wiseeff-schema` placeholders.
  */
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
+  RetryLogSourceSnapshotRequest: z.object({}).strict(),
   SkillDeletionRequest: skillDeletionRequestSchema,
   SkillDeletionPreviewResponse: skillDeletionPreviewResponseSchema,
   SkillDeletionStatusResponse: skillDeletionStatusResponseSchema,
@@ -227,6 +228,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 };
 
 export const dtoSchemaCoveredRouteIds = [
+  "logs.retrySourceSnapshot",
   "parameters.previewRestoreReleaseBaseline", "parameters.rollbackReleaseBaseline",
   "logs.listSkillDeletions", "logs.previewSkillDeletion", "logs.getSkillDeletionStatus", "logs.purgeSkill",
   "parameterFiles.previewCanonicalMemberAddition", "parameterFiles.applyCanonicalMemberAddition",

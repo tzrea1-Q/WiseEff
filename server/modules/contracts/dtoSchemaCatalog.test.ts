@@ -9,6 +9,16 @@ import { projectBindingDtoSchema } from "../parameter-topology/schemas";
 const leftoverSchemaNames = new Set(["GenericObjectResponse"]);
 
 describe("DTO schema catalog coverage", () => {
+  it("documents complete Canonical restore proof without requiring a payload for legacy restores", () => {
+    const document = buildOpenApiDocument();
+    const paths = document.paths as Record<string, Record<string, { requestBody?: { required?: boolean } }>>;
+    expect(paths["/api/v1/projects/{projectId}/baselines/{baselineId}/rollback"].post.requestBody?.required).toBe(false);
+    const request = dtoSchemaCatalog.ReleaseBaselineRestoreRequest;
+    expect(request.safeParse({}).success).toBe(true);
+    expect(request.safeParse({ proofToken: "0".repeat(64) }).success).toBe(false);
+    expect(request.safeParse({ proofToken: "0".repeat(64), confirmCompositionChanges: true,
+      reason: "Restore the inspected complete source", clientMutationId: "restore-once" }).success).toBe(true);
+  });
   it("documents skill ZIP import status and revision-selectable ZIP export", () => {
     const request = dtoSchemaCatalog.LogSkillPackageMultipartImport;
     expect(request.parse({ file: "package.zip" })).toEqual({ file: "package.zip", status: "draft" });

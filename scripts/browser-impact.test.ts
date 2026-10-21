@@ -29,7 +29,9 @@ describe("browser impact selection", () => {
       "e2e/acceptance/log-skill-knowledge.acceptance.spec.ts",
       "e2e/acceptance/log904-related-parameter.acceptance.spec.ts",
       "e2e/acceptance/shell-navigation.acceptance.spec.ts",
+      "e2e/acceptance/skill-experiment-deletion.acceptance.spec.ts",
       "e2e/acceptance/skill-lifecycle.acceptance.spec.ts",
+      "e2e/acceptance/source-snapshot-retry.acceptance.spec.ts",
     ]);
     const grep = new RegExp(selection.qualityGrep!);
     expect(grep.test("keeps stable visual baseline for /logs (light)")).toBe(true);

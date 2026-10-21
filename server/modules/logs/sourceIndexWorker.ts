@@ -46,12 +46,17 @@ export async function processNextSourceIndexJob(options: SourceIndexWorkerOption
     directory = await mkdtemp(join(tmpdir(), "wiseeff-source-index-"));
     const archivePath = join(directory, "archive");
     let compressedBytes = 0;
-    await pipeline(await objectStore.getStream(snapshot.storage_key), new Transform({
-      transform(chunk: Buffer, _encoding, callback) {
-        compressedBytes += chunk.length;
-        callback(compressedBytes > limits.maxCompressedBytes ? new Error("源码压缩上传大小超过上限") : null, chunk);
-      }
-    }), createWriteStream(archivePath, { flags: "wx", mode: 0o600 }));
+    try {
+      await pipeline(await objectStore.getStream(snapshot.storage_key), new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          compressedBytes += chunk.length;
+          callback(compressedBytes > limits.maxCompressedBytes ? new Error("源码压缩上传大小超过上限") : null, chunk);
+        }
+      }), createWriteStream(archivePath, { flags: "wx", mode: 0o600 }));
+    } catch (error) {
+      if (compressedBytes > limits.maxCompressedBytes) throw error;
+      throw new Error("源码原始文件读取失败，请检查对象存储连接或文件是否存在后重试。");
+    }
     let statementCount = 0, statementsTruncated = false;
     const statementBudget = createSourceStatementBudget();
     const summary = await indexSourceArchive({

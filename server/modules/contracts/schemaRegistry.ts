@@ -20,6 +20,7 @@ export type ContractSchemaRef = {
   summary: string;
   tags: RouteManifestEntry["module"][];
   requestBody?: string;
+  requestBodyRequired?: boolean;
   responseBody: string;
   responseMedia?: "json" | "binary" | "zip";
   successStatus?: 200 | 201 | 202 | 204 | 410;
@@ -258,6 +259,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "Atomically restore working member versions from a baseline without changing the released tip",
     tags: ["parameters"],
     requestBody: "ReleaseBaselineRestoreRequest",
+    requestBodyRequired: false,
     responseBody: "ReleaseBaselineRollbackResponse",
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
@@ -1067,6 +1069,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "logs.listSkillDeletions": {
     summary: "List this organization's deleted skills with remaining storage cleanup", tags: ["logs"],
     responseBody: "SkillDeletionListResponse", additionalResponses: { "403": "ErrorResponse" }
+  },
+  "logs.retrySourceSnapshot": {
+    summary: "Retry a failed source snapshot's original uploaded content and index inputs under the same identity",
+    tags: ["logs"], requestBody: "RetryLogSourceSnapshotRequest", requestBodyRequired: false,
+    responseBody: "LogSourceSnapshotResponse", successStatus: 202,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "logs.previewSkillDeletion": {
     summary: "Inspect exact references and owned objects before deleting an unpublished experimental skill", tags: ["logs"],

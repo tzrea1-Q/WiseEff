@@ -201,7 +201,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     await expect(restore.getByRole("link",{ name: "进入配置编辑器" })).toBeVisible();
     await expect(restore.getByRole("button",{ name: "确认恢复" })).toHaveCount(0);
     const screenshot = testInfo.outputPath("canonical-baseline-restore-1440x900.png");
-    await page.screenshot({ path: screenshot });
+    await page.screenshot({ path: screenshot, animations: "disabled" });
     await testInfo.attach("canonical baseline read-only restore", { path: screenshot, contentType: "image/png" });
     expect(rollbackRequests).toEqual([]);
     await recordOperationEvidence({
