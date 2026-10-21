@@ -126,6 +126,7 @@ export type LogFeedbackInsightsQuery = {
 };
 
 export interface LogAnalysisRepository extends Partial<SkillWorkspaceRepository>, Partial<SkillAuthoringRepository> {
+  previewLogDeletion?(logId: string): Promise<import("@/domain/logs/deletionPreview").LogDeletionPreview>;
   getLogTrace?(logId: string): Promise<import("@/features/log-skills/types").AnalysisTraceStep[]>;
   getSourceEvidence?(logId: string, evidenceId: string): Promise<import("@/features/log-skills/types").SourceExcerpt>;
   listLogs(query?: LogListQuery): Promise<LogRecord[]>;
