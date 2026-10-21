@@ -848,6 +848,7 @@ export const routeManifest = [
   },
 
   { id: "productFeedback.create", method: "POST", path: "/api/v1/product-feedback", module: "product-feedback", stability: "mvp" },
+  { id: "productFeedback.retryAttachmentCleanup", method: "POST", path: "/api/v1/product-feedback/mine/attachment-cleanup", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.createDraft", method: "POST", path: "/api/v1/product-feedback/drafts", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.patchDraft", method: "PATCH", path: "/api/v1/product-feedback/drafts/:id", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.deleteDraft", method: "DELETE", path: "/api/v1/product-feedback/drafts/:id", module: "product-feedback", stability: "mvp" },

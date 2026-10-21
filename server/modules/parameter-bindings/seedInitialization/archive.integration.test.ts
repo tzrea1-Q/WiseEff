@@ -928,6 +928,11 @@ describe("legacy parameter plane archive", () => {
         view_name: "parameter_catalog.current_project_parameter_bindings",
         parent: "parameter_catalog.project_value_source_pins",
       },
+      // 0227 keeps restored membership current through its approved complete-source receipt.
+      {
+        view_name: "parameter_catalog.current_project_parameter_bindings",
+        parent: "public.project_parameter_value_change_requests",
+      },
     ]);
   }, 120_000);
 });

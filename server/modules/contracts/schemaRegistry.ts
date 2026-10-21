@@ -1262,6 +1262,11 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseMedia: "binary",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "productFeedback.retryAttachmentCleanup": {
+    summary: "Retry this user's pending feedback attachment upload cleanup in the current organization",
+    tags: ["product-feedback"], requestBody: "ProductFeedbackAttachmentCleanupRequest", responseBody: "ProductFeedbackAttachmentCleanupResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse" }
+  },
   "productFeedback.replyToMine": {
     summary: "Submitter adds public details and optional images, or reopens resolved/closed feedback",
     tags: ["product-feedback"],

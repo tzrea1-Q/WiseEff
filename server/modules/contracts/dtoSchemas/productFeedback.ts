@@ -41,6 +41,7 @@ export const productFeedbackAdminDtoSchema = productFeedbackUserDtoSchema.extend
 });
 
 export const productFeedbackDtoSchemaCatalog = {
+  ProductFeedbackAttachmentCleanupRequest: z.object({}).strict(),
   CreateProductFeedbackRequest: createProductFeedbackBodySchema,
   CreateProductFeedbackDraftRequest: createProductFeedbackDraftBodySchema,
   PatchProductFeedbackDraftRequest: patchProductFeedbackDraftBodySchema,
@@ -59,6 +60,7 @@ export const productFeedbackDtoSchemaCatalog = {
 };
 
 export const productFeedbackCoveredRouteIds = [
+  "productFeedback.retryAttachmentCleanup",
   "productFeedback.create", "productFeedback.createDraft", "productFeedback.patchDraft",
   "productFeedback.deleteDraft", "productFeedback.submitDraft", "productFeedback.listMine",
   "productFeedback.getMine", "productFeedback.replyToMine", "productFeedback.list",
