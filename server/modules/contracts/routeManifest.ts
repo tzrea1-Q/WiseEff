@@ -882,6 +882,7 @@ export const routeManifest = [
   { id: "productFeedback.appendProgress", method: "POST", path: "/api/v1/product-feedback/:id/progress", module: "product-feedback", stability: "mvp" },
   { id: "knowledge.createEntry", method: "POST", path: "/api/v1/knowledge/entries", module: "knowledge", stability: "mvp" },
   { id: "knowledge.openImport", method: "POST", path: "/api/v1/knowledge/imports", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.batchEntries", method: "POST", path: "/api/v1/knowledge/entries/batch", module: "knowledge", stability: "mvp" },
   { id: "knowledge.importDocument", method: "POST", path: "/api/v1/knowledge/imports/:batchId/documents", module: "knowledge", stability: "mvp" },
   { id: "knowledge.importArchive", method: "POST", path: "/api/v1/knowledge/imports/:batchId/archive", module: "knowledge", stability: "mvp" },
   { id: "knowledge.getImport", method: "GET", path: "/api/v1/knowledge/imports/:batchId", module: "knowledge", stability: "mvp" },

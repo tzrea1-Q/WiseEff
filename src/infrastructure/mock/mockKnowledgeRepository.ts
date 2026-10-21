@@ -9,6 +9,7 @@ import { buildReloadDistillationDraft, isReloadRunDistillable } from "@/domain/k
 import type { DtsReloadRun } from "@/domain/dtsReload/types";
 import type {
   KnowledgeEntry,
+  KnowledgeBatchResult,
   KnowledgeImportOutcome,
   KnowledgeImportReport,
   KnowledgeIndexState,
@@ -848,6 +849,39 @@ export function createMockKnowledgeRepository(
       entry.archivedAt = MOCK_KNOWLEDGE_NOW;
       entry.updatedAt = MOCK_KNOWLEDGE_NOW;
       return clone(entry);
+    },
+
+    async batch(input) {
+      const results: KnowledgeBatchResult[] = [];
+      for (const entryId of input.entryIds) {
+        let title: string | null = null;
+        try {
+          const current = requireEntry(entryId);
+          title = current.title;
+          if (!canManage && current.createdByUserId !== userId) {
+            throw mockApiError("FORBIDDEN", "仅条目作者或知识管理员可以管理此条目。");
+          }
+          let entry: KnowledgeEntry;
+          if (input.action === "publish") entry = await this.publish(entryId);
+          else if (input.action === "archive") entry = await this.archive(entryId);
+          else {
+            const requestedTags = input.tags;
+            const tags = input.action === "add_tags" ? [...new Set([...current.tags, ...requestedTags])]
+              : current.tags.filter((tag) => !requestedTags.includes(tag));
+            if (tags.length > 20 || tags.some((tag) => !tag.length || tag.length > 60)) {
+              throw mockApiError("VALIDATION_FAILED", "每条最多 20 个标签，每个标签为 1–60 个字符。");
+            }
+            entry = await this.update(entryId, { tags, expectedHeadRevisionNumber: current.headRevisionNumber });
+          }
+          results.push({ entryId, title: entry.title, status: "succeeded", entry, error: null });
+        } catch (failure) {
+          const error = failure as { code?: string; message?: string };
+          const code = error.code ?? "INTERNAL_ERROR";
+          results.push({ entryId, title, status: code === "FORBIDDEN" || code === "NOT_FOUND" ? "refused" : "failed", entry: null,
+            error: { code, message: error.message ?? "操作失败。" } });
+        }
+      }
+      return { results, summaryError: null };
     },
 
     async update(entryId, input: UpdateKnowledgeInput) {

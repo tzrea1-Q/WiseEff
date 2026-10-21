@@ -1,5 +1,7 @@
 import type {
   KnowledgeContentForm,
+  KnowledgeBatchInput,
+  KnowledgeBatchReport,
   KnowledgeEntry,
   KnowledgeIndexHealth,
   KnowledgeImportOutcome,
@@ -61,6 +63,7 @@ export class KnowledgeRevisionConflictError extends Error {
 }
 
 export interface KnowledgeRepository {
+  batch(input: KnowledgeBatchInput): Promise<KnowledgeBatchReport>;
   openImport(tags: string[]): Promise<{ id: string }>;
   importDocument(batchId: string, input: { file: File; relativePath: string }): Promise<KnowledgeImportOutcome>;
   importArchive(batchId: string, file: File): Promise<{ outcomes: KnowledgeImportOutcome[] }>;

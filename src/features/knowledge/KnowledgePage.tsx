@@ -6,6 +6,7 @@ import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { canGovernEntry, collectKnownTags } from "@/domain/knowledge/rules";
 import type {
   KnowledgeEntry,
+  KnowledgeBatchInput,
   KnowledgeOrigin,
   KnowledgeRetrievalInfo,
   KnowledgeSearchResult,
@@ -36,6 +37,7 @@ import {
 import { KnowledgeFileUploadDialog, type KnowledgeFileUploadSubmit } from "./KnowledgeFileUploadDialog";
 import { KnowledgeImportDialog } from "./KnowledgeImportDialog";
 import { KnowledgeRevisionsDialog } from "./KnowledgeRevisionsDialog";
+import { KnowledgeBatchDialog, knowledgeBatchLabels } from "./KnowledgeBatchDialog";
 
 export type KnowledgePageProps = {
   repository: KnowledgeRepository;
@@ -86,6 +88,8 @@ export function KnowledgePage({
   const [searchRetrieval, setSearchRetrieval] = useState<KnowledgeRetrievalInfo | null>(null);
   const [searching, setSearching] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [checkedIds, setCheckedIds] = useState<string[]>([]);
+  const [batch, setBatch] = useState<{ action: KnowledgeBatchInput["action"]; entries: KnowledgeEntry[] } | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorEntry, setEditorEntry] = useState<KnowledgeEntry | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -121,6 +125,8 @@ export function KnowledgePage({
 
   useEffect(() => {
     setRows([]);
+    setCheckedIds([]);
+    setBatch(null);
     setSearchInput("");
     setSearchQuery("");
     setSearchResults([]);
@@ -231,11 +237,24 @@ export function KnowledgePage({
     [rows, statusFilter, originFilter, tagFilter]
   );
   const selectedEntry = selectedId ? rows.find((entry) => entry.id === selectedId) ?? null : null;
+  const checkedEntries = filteredRows.filter((entry) => checkedIds.includes(entry.id));
+  const canBatch = capability.canEdit || capability.canManage;
   const errorMessage = (searchQuery ? searchError : listError) || citationError;
   const publishedCount = useMemo(() => rows.filter((entry) => entry.status === "published").length, [rows]);
   const draftCount = useMemo(() => rows.filter((entry) => entry.status === "draft").length, [rows]);
 
   const columns: Column<KnowledgeEntry>[] = [
+    ...(canBatch ? [{
+      key: "selection", widthClass: "w-12",
+      header: <input type="checkbox" aria-label={`全选筛选结果（${filteredRows.length} 条）`}
+        checked={filteredRows.length > 0 && checkedEntries.length === filteredRows.length}
+        ref={(input) => { if (input) input.indeterminate = checkedEntries.length > 0 && checkedEntries.length < filteredRows.length; }}
+        disabled={!filteredRows.length}
+        onChange={() => setCheckedIds(checkedEntries.length === filteredRows.length ? [] : filteredRows.map((entry) => entry.id))} />,
+      render: (entry: KnowledgeEntry) => <input type="checkbox" aria-label={`选择 ${entry.title}`}
+        checked={checkedIds.includes(entry.id)} onClick={(event) => event.stopPropagation()}
+        onChange={() => setCheckedIds((current) => current.includes(entry.id) ? current.filter((id) => id !== entry.id) : [...current, entry.id])} />
+    }] : []),
     {
       key: "title",
       header: "标题",
@@ -441,6 +460,15 @@ export function KnowledgePage({
         }
       />
 
+      {canBatch && !searchQuery && checkedEntries.length > 0 ? <div role="group" aria-label="批量管理" className="flex flex-wrap items-center gap-2">
+        <span className="text-sm">已选择 {checkedEntries.length} 条</span>
+        {(Object.keys(knowledgeBatchLabels) as KnowledgeBatchInput["action"][]).map((action) =>
+          <Button key={action} type="button" variant="outline" size="sm" onClick={() => setBatch({ action, entries: checkedEntries })}>
+            {knowledgeBatchLabels[action]}
+          </Button>)}
+        <Button type="button" variant="ghost" size="sm" onClick={() => setCheckedIds([])}>取消选择</Button>
+      </div> : null}
+
       <AdminListPage label="知识检索" headerActions={<span className="ml-auto flex items-center gap-2">
             {askXiaozeEnabled ? (
               <Button
@@ -556,7 +584,8 @@ export function KnowledgePage({
           (loading || citationLoading) && rows.length === 0 ? <SectionSkeleton label="正在加载知识条目" /> : (listError || citationError) && rows.length === 0 ? <></> : undefined
         )}
         table={{ ariaLabel: "知识条目列表", rows: filteredRows, rowKey: (entry) => entry.id, columns,
-          onRowClick: (entry) => setSelectedId(entry.id), selectedRowKey: selectedId ?? undefined, pageSize: 10 }}
+          onRowClick: (entry) => setSelectedId(entry.id), selectedRowKeys: checkedEntries.length ? checkedIds : undefined,
+          selectedRowKey: selectedId ?? undefined, pageSize: 10 }}
         rowActions={(entry) => ({ label: `${entry.title} 操作`,
           primaryAction: { id: "view", label: "查看", onSelect: () => setSelectedId(entry.id) },
           items: [
@@ -567,6 +596,11 @@ export function KnowledgePage({
         emptyState={{ message: rows.length === 0 ? "知识库还是空的。创建第一条调参经验或上传一份硬件手册。" : "当前筛选条件下没有条目。",
           actionLabel: "重新加载", onAction: () => { void loadEntries(); } }}
       />
+
+      {batch ? <KnowledgeBatchDialog {...batch} repository={repository} onClose={() => setBatch(null)} onComplete={(report) => {
+        setRows((current) => current.map((entry) => report.results.find((row) => row.entryId === entry.id)?.entry ?? entry));
+        setCheckedIds([]);
+      }} /> : null}
 
       <KnowledgeEntryDetailDialog
         open={Boolean(selectedEntry)}

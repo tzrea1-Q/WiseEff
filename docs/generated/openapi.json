@@ -15345,6 +15345,46 @@
         }
       }
     },
+    "/api/v1/knowledge/entries/batch": {
+      "post": {
+        "operationId": "knowledge.batchEntries",
+        "summary": "Tag, publish or archive up to 200 entries through individually authorized audited writes; return every outcome",
+        "tags": [
+          "knowledge"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchKnowledgeEntriesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchKnowledgeEntriesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/knowledge/imports/{batchId}/documents": {
       "post": {
         "operationId": "knowledge.importDocument",
@@ -58212,6 +58252,291 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "OpenKnowledgeImportResponse"
+      },
+      "BatchKnowledgeEntriesRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "BatchKnowledgeEntriesRequest"
+      },
+      "BatchKnowledgeEntriesResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "entryId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "succeeded",
+                    "refused",
+                    "failed"
+                  ]
+                },
+                "entry": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "contentForm": {
+                      "type": "string",
+                      "enum": [
+                        "markdown",
+                        "file"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "published",
+                        "archived"
+                      ]
+                    },
+                    "origin": {
+                      "type": "string",
+                      "enum": [
+                        "authored",
+                        "uploaded",
+                        "distilled",
+                        "agent-drafted",
+                        "imported"
+                      ]
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "sourceType": {
+                      "type": "string",
+                      "enum": [
+                        "human",
+                        "agent"
+                      ]
+                    },
+                    "sourceSessionId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "sourceLogId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "sourceLogDeleted": {
+                      "type": "boolean"
+                    },
+                    "sourceReloadRunId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "createdByUserId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "headRevisionId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "headRevisionNumber": {
+                      "type": "number"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "publishedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "archivedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "contentMarkdown": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "file": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "entryId": {
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "type": "string"
+                        },
+                        "storageKey": {
+                          "type": "string"
+                        },
+                        "fileName": {
+                          "type": "string"
+                        },
+                        "contentType": {
+                          "type": "string"
+                        },
+                        "sizeBytes": {
+                          "type": "number"
+                        },
+                        "checksum": {
+                          "type": "string"
+                        },
+                        "extractionStatus": {
+                          "type": "string",
+                          "enum": [
+                            "pending",
+                            "succeeded",
+                            "failed"
+                          ]
+                        },
+                        "extractionError": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "entryId",
+                        "organizationId",
+                        "storageKey",
+                        "fileName",
+                        "contentType",
+                        "sizeBytes",
+                        "checksum",
+                        "extractionStatus",
+                        "extractionError",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "parameterReferences": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "title",
+                    "contentForm",
+                    "status",
+                    "origin",
+                    "tags",
+                    "sourceType",
+                    "sourceSessionId",
+                    "sourceLogId",
+                    "sourceReloadRunId",
+                    "createdByUserId",
+                    "headRevisionId",
+                    "headRevisionNumber",
+                    "createdAt",
+                    "updatedAt",
+                    "publishedAt",
+                    "archivedAt",
+                    "contentMarkdown",
+                    "file",
+                    "parameterReferences"
+                  ],
+                  "additionalProperties": false
+                },
+                "error": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "entryId",
+                "title",
+                "status",
+                "entry",
+                "error"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "summaryError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "results",
+          "summaryError"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "BatchKnowledgeEntriesResponse"
       },
       "ImportKnowledgeDocumentRequest": {
         "type": "object",

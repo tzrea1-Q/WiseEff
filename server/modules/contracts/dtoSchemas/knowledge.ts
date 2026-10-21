@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createKnowledgeEntryBodySchema, updateKnowledgeEntryBodySchema, openKnowledgeImportSchema, importKnowledgeDocumentSchema, importKnowledgeArchiveSchema } from "../../knowledge/schemas";
+import { batchKnowledgeEntriesBodySchema, createKnowledgeEntryBodySchema, updateKnowledgeEntryBodySchema, openKnowledgeImportSchema, importKnowledgeDocumentSchema, importKnowledgeArchiveSchema } from "../../knowledge/schemas";
 import { knowledgeContentForms, knowledgeOrigins, knowledgeSourceTypes, knowledgeStatuses, knowledgeExtractionStatuses } from "../../knowledge/types";
 import { itemEnvelopeSchema, itemsEnvelopeSchema } from "./envelopes";
 
@@ -40,6 +40,11 @@ const importCountsSchema = z.object({ created: z.number().int(), duplicate_skipp
   extraction_failed: z.number().int(), rejected: z.number().int() });
 
 export const knowledgeDtoSchemaCatalog = {
+  BatchKnowledgeEntriesRequest: batchKnowledgeEntriesBodySchema,
+  BatchKnowledgeEntriesResponse: z.object({ results: z.array(z.object({
+    entryId: z.string().uuid(), title: z.string().nullable(), status: z.enum(["succeeded", "refused", "failed"]),
+    entry: knowledgeEntryDtoSchema.nullable(), error: z.object({ code: z.string(), message: z.string() }).nullable()
+  })), summaryError: z.string().nullable() }),
   OpenKnowledgeImportRequest: openKnowledgeImportSchema,
   OpenKnowledgeImportResponse: itemEnvelopeSchema(z.object({ id: z.string().uuid() })),
   ImportKnowledgeDocumentRequest: importKnowledgeDocumentSchema,
@@ -55,5 +60,5 @@ export const knowledgeDtoSchemaCatalog = {
   KnowledgeBindingResponse: z.object({ entry: knowledgeEntryDtoSchema.nullable(), deleted: z.boolean() }),
   KnowledgeEntryListResponse: itemsEnvelopeSchema(knowledgeEntryDtoSchema)
 };
-export const knowledgeCoveredRouteIds = ["knowledge.openImport", "knowledge.importDocument", "knowledge.importArchive", "knowledge.getImport", "knowledge.completeImport",
+export const knowledgeCoveredRouteIds = ["knowledge.batchEntries", "knowledge.openImport", "knowledge.importDocument", "knowledge.importArchive", "knowledge.getImport", "knowledge.completeImport",
   "knowledge.createEntry", "knowledge.getEntry", "knowledge.getBinding", "knowledge.listEntries", "knowledge.updateEntry"] as const;

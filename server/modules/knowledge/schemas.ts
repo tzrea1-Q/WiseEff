@@ -18,6 +18,17 @@ const base64String = nonEmptyString.refine(
 export const knowledgeTagSchema = z.string().min(1).max(60);
 export const knowledgeTagsSchema = z.array(knowledgeTagSchema).max(20).default([]);
 
+const batchEntryIds = z.array(z.string().uuid()).min(1).max(200).refine(
+  (ids) => new Set(ids).size === ids.length, "Entry IDs must be unique."
+);
+export const batchKnowledgeEntriesBodySchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("add_tags"), entryIds: batchEntryIds, tags: z.array(knowledgeTagSchema).min(1).max(20) }).strict(),
+  z.object({ action: z.literal("remove_tags"), entryIds: batchEntryIds, tags: z.array(knowledgeTagSchema).min(1).max(20) }).strict(),
+  z.object({ action: z.literal("publish"), entryIds: batchEntryIds }).strict(),
+  z.object({ action: z.literal("archive"), entryIds: batchEntryIds }).strict()
+]);
+export type BatchKnowledgeEntriesInput = z.infer<typeof batchKnowledgeEntriesBodySchema>;
+
 export const knowledgeFileUploadSchema = z.object({
   fileName: nonEmptyString.max(255),
   contentType: z.enum([

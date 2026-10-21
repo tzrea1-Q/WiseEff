@@ -16,6 +16,19 @@ export type KnowledgeStatus = (typeof knowledgeStatuses)[number];
 export type KnowledgeExtractionStatus = (typeof knowledgeExtractionStatuses)[number];
 export type KnowledgeSourceType = "human" | "agent";
 
+export type KnowledgeBatchInput =
+  | { action: "add_tags" | "remove_tags"; entryIds: string[]; tags: string[] }
+  | { action: "publish"; entryIds: string[] }
+  | { action: "archive"; entryIds: string[] };
+export type KnowledgeBatchResult = {
+  entryId: string;
+  title: string | null;
+  status: "succeeded" | "refused" | "failed";
+  entry: KnowledgeEntry | null;
+  error: { code: string; message: string } | null;
+};
+export type KnowledgeBatchReport = { results: KnowledgeBatchResult[]; summaryError: string | null };
+
 export type KnowledgeImportOutcome = {
   id: string;
   relativePath: string;
