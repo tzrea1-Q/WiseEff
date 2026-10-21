@@ -28,7 +28,13 @@ export type ProductFeedbackResolutionCode = (typeof productFeedbackResolutionCod
 export type ProductFeedbackProgressEventKind = (typeof progressEventKinds)[number];
 export type ProductFeedbackAttachmentContentType = "image/png" | "image/jpeg" | "image/webp";
 
+export const MAX_FEEDBACK_ATTACHMENT_COUNT = 5;
+export const MAX_FEEDBACK_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+export const MAX_FEEDBACK_MESSAGE_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+
 export type ProductFeedbackAttachment = {
+  messageId?: string | null;
+  uploadedByUserId?: string | null;
   id: string;
   feedbackId: string;
   fileName: string;

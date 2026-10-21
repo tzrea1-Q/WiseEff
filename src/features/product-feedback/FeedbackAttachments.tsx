@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { Download, ImageIcon, RefreshCw, Trash2, X, ZoomIn } from "lucide-react";
 import type { ProductFeedbackAttachment } from "@/domain/productFeedback/types";
+import { MAX_FEEDBACK_ATTACHMENT_COUNT, MAX_FEEDBACK_ATTACHMENT_BYTES, MAX_FEEDBACK_MESSAGE_ATTACHMENT_BYTES } from "@/domain/productFeedback/types";
 import { Button } from "@/components/ui/button";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import "./feedback-user.css";
 
 export const feedbackImageAccept = "image/png,image/jpeg,image/webp";
-export const feedbackImageHint = "支持 PNG、JPG、WebP，最多 5 张，单张不超过 5 MB，总计不超过 15 MB。";
+export const feedbackImageHint = "支持 PNG、JPG、WebP，每次提交或回复最多 5 张，单张不超过 5 MB，当次总计不超过 15 MB。";
+export const feedbackAttachmentQuota = (count: number, bytes: number) => `${count} / ${MAX_FEEDBACK_ATTACHMENT_COUNT} 张 · ${(bytes / 1024 / 1024).toFixed(2)} / ${MAX_FEEDBACK_MESSAGE_ATTACHMENT_BYTES / 1024 / 1024} MB`;
 
 export function acceptFeedbackFiles(files: File[], count: number, bytes: number) {
   const accepted: File[] = [];
@@ -14,11 +16,11 @@ export function acceptFeedbackFiles(files: File[], count: number, bytes: number)
   for (const file of files) {
     if (!/^image\/(png|jpeg|webp)$/i.test(file.type)) {
       error = "请上传 PNG、JPG 或 WebP 格式截图。";
-    } else if (file.size > 5 * 1024 * 1024) {
+    } else if (file.size > MAX_FEEDBACK_ATTACHMENT_BYTES) {
       error = "单张截图不能超过 5 MB。";
-    } else if (count + accepted.length >= 5) {
+    } else if (count + accepted.length >= MAX_FEEDBACK_ATTACHMENT_COUNT) {
       error = "最多可附加 5 张截图，请先移除已有截图后再粘贴。";
-    } else if (bytes + file.size > 15 * 1024 * 1024) {
+    } else if (bytes + file.size > MAX_FEEDBACK_MESSAGE_ATTACHMENT_BYTES) {
       error = "截图总大小不能超过 15 MB。";
     } else {
       accepted.push(file);

@@ -68,11 +68,13 @@ For debugging modules, open Debugging admin's Node debugging area (`/debugging-a
 
 ## Send product feedback with screenshots
 
-Problem feedback opens a dialog on the current route and has no separate page. Open it from Problem feedback in the navigation or, where available, the page footer. Start from the affected page so the feedback records the correct page title and path.
+Problem feedback opens a dialog on the current route. Open it from Problem feedback in the navigation or, where available, the page footer. Start from the affected page so the feedback records the correct page title and path; revisit the conversation in My feedback (`/feedback`).
 
 1. Choose Experience issue, Data issue, Export/submission failure, or Feature suggestion. Describe what you did, what you expected and what happened; a nonblank description is required.
-2. Paste optional screenshots from the clipboard into the form. Preview them and remove irrelevant images before submission. The service accepts PNG, JPEG and WebP: up to five images, 5 MiB per image and 15 MiB total. Remove secrets and unrelated personal information before pasting.
+2. Paste optional screenshots from the clipboard into the form. Preview them and remove irrelevant images before submission. Each initial submission or later reply accepts PNG, JPEG and WebP: up to five images, 5 MiB per image and 15 MiB for that message. Existing images do not consume a later reply's allowance; the form shows the current message's count and size. Remove secrets and unrelated personal information before pasting.
 3. Submit feedback and wait for confirmation. Save draft keeps an unfinished report for later submission. If you close the dialog with unsent edits, the app asks whether to discard them.
 4. Open My feedback in the same dialog to revisit drafts or check submitted records, attachments, status and public progress. Internal admin notes are not part of the submitter's view.
+
+New screenshots appear with the submission or reply that added them. Historical screenshots without verifiable attribution remain in a separate section rather than being assigned to a guessed message. Failed uploads do not publish a partial reply. If storage cleanup also fails, My feedback shows the pending upload objects and **Retry upload cleanup**; this only cleans failed uploads, preserving submitted screenshots. Deployment storage capacity or object-size errors are reported separately from the current message's allowance.
 
 Admins use Feedback management (`/feedback-admin`) to search or filter reports by status and type, inspect descriptions and screenshots, and record progress. They can start handling a report, mark it resolved after entering a resolution and public explanation, or confirm closure. Resolved reports can be reopened with a reason; closed reports are read-only. Distinguish public progress from internal notes when recording an update. Product feedback and ratings of log-analysis results use separate workflows.

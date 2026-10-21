@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_FEEDBACK_ATTACHMENT_COUNT } from "../../../src/domain/productFeedback/types";
 
 import { feedbackPriorities, feedbackResolutionCodes, feedbackStatuses, feedbackTypes } from "./types";
 
@@ -25,7 +26,7 @@ export const createProductFeedbackBodySchema = z.object({
   pageTitle: z.string().min(1).max(200),
   feedbackType: z.enum(feedbackTypes),
   description: z.string().min(1).max(4000),
-  attachments: z.array(productFeedbackAttachmentBodySchema).max(5).optional()
+  attachments: z.array(productFeedbackAttachmentBodySchema).max(MAX_FEEDBACK_ATTACHMENT_COUNT).optional()
 });
 
 export const listProductFeedbackQuerySchema = z.object({
@@ -62,7 +63,7 @@ export const listMyFeedbackQuerySchema = z.object({
 
 export const replyToProductFeedbackBodySchema = z.object({
   message: z.string().trim().min(1).max(2000),
-  attachments: z.array(productFeedbackAttachmentBodySchema).max(5).optional(),
+  attachments: z.array(productFeedbackAttachmentBodySchema).max(MAX_FEEDBACK_ATTACHMENT_COUNT).optional(),
   reopen: z.boolean().optional()
 });
 
@@ -77,7 +78,7 @@ export const createProductFeedbackDraftBodySchema = z.object({
   pageTitle: z.string().max(200).optional(),
   feedbackType: z.enum(feedbackTypes).optional(),
   description: z.string().max(4000).optional(),
-  attachments: z.array(productFeedbackAttachmentBodySchema).max(5).optional()
+  attachments: z.array(productFeedbackAttachmentBodySchema).max(MAX_FEEDBACK_ATTACHMENT_COUNT).optional()
 });
 
 export const patchProductFeedbackDraftBodySchema = z
@@ -87,13 +88,13 @@ export const patchProductFeedbackDraftBodySchema = z
     feedbackType: z.enum(feedbackTypes).optional(),
     description: z.string().max(4000).optional(),
     retainedAttachmentIds: z.array(z.string().uuid()).optional(),
-    newAttachments: z.array(productFeedbackAttachmentBodySchema).max(5).optional()
+    newAttachments: z.array(productFeedbackAttachmentBodySchema).max(MAX_FEEDBACK_ATTACHMENT_COUNT).optional()
   })
   .refine(
     (value) => {
       const retainedCount = value.retainedAttachmentIds?.length ?? 0;
       const newCount = value.newAttachments?.length ?? 0;
-      return retainedCount + newCount <= 5;
+      return retainedCount + newCount <= MAX_FEEDBACK_ATTACHMENT_COUNT;
     },
     { message: "Total attachments cannot exceed 5." }
   );

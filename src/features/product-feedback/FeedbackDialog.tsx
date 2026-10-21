@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { TabPanel } from "@/components/ui/tab-panel";
 import { MyFeedbackView } from "./MyFeedbackView";
-import { acceptFeedbackFiles, FeedbackAttachments, feedbackImageAccept, feedbackImageHint } from "./FeedbackAttachments";
+import { acceptFeedbackFiles, FeedbackAttachments, feedbackImageAccept, feedbackImageHint, feedbackAttachmentQuota } from "./FeedbackAttachments";
 import "./feedback-user.css";
 
 const feedbackTypeOptions = [
@@ -258,6 +258,7 @@ export function FeedbackDialog({ open, pagePath, pageTitle, productFeedbackRepos
                 <input id={fileInputId} ref={fileInputRef} type="file" accept={feedbackImageAccept} multiple hidden aria-label="选择反馈截图" disabled={busy}
                   onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
                 <p className="feedback-help">拖入图片，或在此窗口任意位置粘贴截图。{feedbackImageHint}</p>
+                <p className="feedback-help">本次提交：{feedbackAttachmentQuota(existingAttachments.length + images.length, existingAttachments.reduce((sum, item) => sum + item.sizeBytes, 0) + images.reduce((sum, image) => sum + image.file.size, 0))}</p>
                 {existingAttachments.length > 0 && activeDraftId && <FeedbackAttachments feedbackId={activeDraftId} attachments={existingAttachments}
                   getAttachmentObjectUrl={productFeedbackRepository.getMineAttachmentObjectUrl ?? productFeedbackRepository.getAttachmentObjectUrl} disabled={busy}
                   onRemove={(id) => { setExistingAttachments((items) => items.filter((item) => item.id !== id)); clearMessages(); }} />}
