@@ -883,6 +883,7 @@ export const routeManifest = [
   { id: "knowledge.createEntry", method: "POST", path: "/api/v1/knowledge/entries", module: "knowledge", stability: "mvp" },
   { id: "knowledge.openImport", method: "POST", path: "/api/v1/knowledge/imports", module: "knowledge", stability: "mvp" },
   { id: "knowledge.importDocument", method: "POST", path: "/api/v1/knowledge/imports/:batchId/documents", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.importArchive", method: "POST", path: "/api/v1/knowledge/imports/:batchId/archive", module: "knowledge", stability: "mvp" },
   { id: "knowledge.getImport", method: "GET", path: "/api/v1/knowledge/imports/:batchId", module: "knowledge", stability: "mvp" },
   { id: "knowledge.completeImport", method: "POST", path: "/api/v1/knowledge/imports/:batchId/complete", module: "knowledge", stability: "mvp" },
   { id: "knowledge.listEntries", method: "GET", path: "/api/v1/knowledge/entries", module: "knowledge", stability: "mvp" },

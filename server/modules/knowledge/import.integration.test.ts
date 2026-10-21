@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import JSZip from "jszip";
 import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { createPostgresDatabase, type RootDatabase } from "../../shared/database/client";
 import { seedCoreGraph } from "../../testing/fixtures";
@@ -20,7 +21,7 @@ describe.skipIf(!available)("knowledge import over HTTP and PostgreSQL", () => {
   let db: RootDatabase;
   const store = createMemoryObjectStore();
   beforeAll(async () => {
-    fixture = await createEphemeralTestDatabase("k1329import");
+    fixture = await createEphemeralTestDatabase("k1330import");
     db = createPostgresDatabase(fixture.url);
     await seedCoreGraph(db, { organization: { id: auth.organization.id }, users: [{ id: auth.user.id }, { id: other.user.id }] });
     await seedCoreGraph(db, { organization: { id: foreign.organization.id }, users: [{ id: foreign.user.id }] });
@@ -31,7 +32,8 @@ describe.skipIf(!available)("knowledge import over HTTP and PostgreSQL", () => {
     const router = createRouter();
     registerKnowledgeRoutes(router, { db, objectStore: store, getCurrentAuthContext: () => context });
     return requestJson<{
-      item: { id: string; headRevisionId: string; status: string; entryId: string | null; tags: string[]; contentMarkdown: string; outcomes: { status: string; entryId: string | null }[]; counts: Record<string, number> };
+      item: { id: string; headRevisionId: string; status: string; entryId: string | null; tags: string[]; contentMarkdown: string; documentCount: number; totalBytes: number; outcomes: { relativePath: string; status: string; entryId: string | null }[]; counts: Record<string, number> };
+      items: { id: string }[];
       error: { message: string };
     }>(createHttpServer(router), `/api/v1/knowledge/${path}`, { method, ...(method === "GET" ? {} : { body: JSON.stringify(body) }) });
   }
@@ -41,6 +43,98 @@ describe.skipIf(!available)("knowledge import over HTTP and PostgreSQL", () => {
     return result.body.item.id;
   }
   const submit = (id: string, upload: ReturnType<typeof file>, context = auth) => request(`imports/${id}/documents`, { relativePath: upload.fileName, file: upload }, context);
+
+  async function archive(id: string, members: Record<string, string | Buffer>, context = auth) {
+    const zip = new JSZip();
+    for (const [path, bytes] of Object.entries(members)) zip.file(path, bytes, { createFolders: false });
+    return request(`imports/${id}/archive`, { file: { fileName: "knowledge.zip", contentType: "application/zip",
+      contentBase64: await zip.generateAsync({ type: "base64", compression: "DEFLATE", compressionOptions: { level: 1 } }) } }, context);
+  }
+
+  it("imports ZIP folder tags and member outcomes through the document path, ignoring OS junk", async () => {
+    const batch = await open();
+    const result = await archive(batch, { " batch / topic /topic/guide.md": "# ZIP guide", "image.png": "unsupported",
+      "__MACOSX/._guide.md": "metadata", "nested/.DS_Store": "metadata", "empty/": "" });
+    expect(result.status).toBe(200);
+    expect(result.body.item.outcomes).toEqual([
+      expect.objectContaining({ relativePath: " batch / topic /topic/guide.md", status: "created" }),
+      expect.objectContaining({ relativePath: "image.png", status: "unsupported_skipped", entryId: null })
+    ]);
+    const entryId = result.body.item.outcomes[0].entryId;
+    const entry = await request(`entries/${entryId}`, undefined, auth, "GET");
+    expect(entry.body.item).toMatchObject({ status: "draft", tags: ["k1329", "batch", "topic"], contentMarkdown: "# ZIP guide" });
+    expect((await submit(batch, file("copy.md", "# ZIP guide"))).body.item).toMatchObject({ status: "duplicate_skipped", entryId });
+    const summary = await request(`imports/${batch}/complete`);
+    expect(summary.body.item.counts).toMatchObject({ created: 1, unsupported_skipped: 1, duplicate_skipped: 1 });
+  });
+
+  it.each(["../escape.md", "/absolute.md", "C:/drive.md", "folder\\..\\escape.md", "folder/../escape.md",
+    `${"deep/".repeat(21)}guide.md`, "deep/".repeat(21), "bad\u0001.md", `${"x".repeat(256)}.md`])("refuses unsafe or excessive ZIP paths before creating any entry: %s", async (path) => {
+    const batch = await open();
+    const before = await request("entries", undefined, auth, "GET");
+    const result = await archive(batch, { "valid-first.md": `must not import ${path}`, [path]: "unsafe" });
+    expect(result.status).toBe(400);
+    const report = await request(`imports/${batch}`, undefined, auth, "GET");
+    expect(report.body.item).toMatchObject({ documentCount: 0, totalBytes: 0, outcomes: [] });
+    expect((await request("entries", undefined, auth, "GET")).body.items).toEqual(before.body.items);
+  });
+
+  it("refuses too many ZIP documents and excessive metadata entries before creating anything", async () => {
+    for (const count of [201, 4081]) {
+      const batch = await open();
+      const members = Object.fromEntries(Array.from({ length: count }, (_, index) => [`${index}.md`, `unique ${index}`]));
+      expect((await archive(batch, members)).status).toBe(400);
+      expect((await request(`imports/${batch}`, undefined, auth, "GET")).body.item)
+        .toMatchObject({ documentCount: 0, totalBytes: 0, outcomes: [] });
+    }
+  });
+
+  it("refuses oversized expanded ZIP totals and members before creating any entry", async () => {
+    const twentyMb = Buffer.alloc(20 * 1024 * 1024, 97);
+    for (const members of [
+      { "valid-first.md": "not created", "large.bin": Buffer.alloc(20 * 1024 * 1024 + 1, 97) },
+      { "valid-first.md": "not created", ...Object.fromEntries(Array.from({ length: 5 }, (_, index) => [`${index}.bin`, twentyMb])) }
+    ]) {
+      const batch = await open();
+      expect((await archive(batch, members)).status).toBe(400);
+      expect((await request(`imports/${batch}`, undefined, auth, "GET")).body.item)
+        .toMatchObject({ documentCount: 0, totalBytes: 0, outcomes: [] });
+    }
+  }, 30_000);
+
+  it("shares document capacity with files and ignores junk when charging the batch", async () => {
+    const batch = await open();
+    for (let index = 0; index < 199; index++) expect((await submit(batch, file(`${index}.bin`))).status).toBe(200);
+    expect((await archive(batch, { "first.md": "no partial creation", "second.md": "also refused" })).status).toBe(400);
+    expect((await request(`imports/${batch}`, undefined, auth, "GET")).body.item.documentCount).toBe(199);
+    expect((await archive(batch, { "last.md": "last ZIP document", "__MACOSX/._last.md": "junk", ".DS_Store": "junk" })).status).toBe(200);
+    expect((await submit(batch, file("over.bin"))).status).toBe(400);
+    const report = await request(`imports/${batch}/complete`);
+    expect(report.body.item.documentCount).toBe(200);
+    expect(report.body.item.counts).toMatchObject({ created: 1, unsupported_skipped: 199 });
+  }, 30_000);
+
+  it("requires edit permission and importer ownership, and refuses archives after completion", async () => {
+    const batch = await open();
+    const members = { "owned.md": "archive authorization" };
+    expect((await archive(batch, members, { ...auth, permissions: ["knowledge:view"] })).status).toBe(403);
+    for (const context of [other, foreign]) expect((await archive(batch, members, context)).status).toBe(404);
+    await request(`imports/${batch}/complete`);
+    expect((await archive(batch, members)).status).toBe(409);
+  });
+
+  it("imports overlapping archives in opposite member order without deadlocking duplicate detection", async () => {
+    const first = await open();
+    const second = await open();
+    const results = await Promise.all([
+      archive(first, { "one.md": "ZIP concurrent one", "two.md": "ZIP concurrent two" }),
+      archive(second, { "renamed-two.md": "ZIP concurrent two", "renamed-one.md": "ZIP concurrent one" })
+    ]);
+    expect(results.map((result) => result.status)).toEqual([200, 200]);
+    const outcomes = results.flatMap((result) => result.body.item.outcomes);
+    expect(outcomes.filter((outcome) => outcome.status === "created")).toHaveLength(2);
+    expect(outcomes.filter((outcome) => outcome.status === "duplicate_skipped")).toHaveLength(2);
+  });
 
   it("reuses uploaded drafts, skips identical readable bytes and never overwrites changed content", async () => {
     const batch = await open();
@@ -184,6 +278,10 @@ describe.skipIf(!available)("knowledge import over HTTP and PostgreSQL", () => {
     const overBatch = await submit(batch, file("one-more.bin", "x"));
     expect(overBatch.status).toBe(400);
     expect(overBatch.body.error.message).toContain("100 MB");
+    const overArchive = await archive(batch, { "one-more.md": "x" });
+    expect(overArchive.status).toBe(400);
+    expect(overArchive.body.error.message).toContain("100 MB");
+    expect((await request(`imports/${batch}`, undefined, auth, "GET")).body.item.documentCount).toBe(5);
     const fresh = await open();
     const oversized = await submit(fresh, { ...twentyMb, contentBase64: Buffer.alloc(20 * 1024 * 1024 + 1).toString("base64") });
     expect(oversized.status).toBe(400);

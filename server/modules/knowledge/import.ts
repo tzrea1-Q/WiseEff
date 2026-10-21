@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import JSZip from "jszip";
 import type { z } from "zod";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -6,9 +7,10 @@ import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import type { ObjectStore } from "../logs/objectStore";
+import { AnalysisCaseArchiveError, analysisCaseArchiveLimits, readBoundedZipArchive } from "../logs/analysisCaseArchive";
 import type { KnowledgeTextExtractor } from "./extraction";
 import { canReadEntry, requireKnowledgeEdit } from "./policy";
-import type { importKnowledgeDocumentSchema } from "./schemas";
+import { importKnowledgeDocumentSchema, type importKnowledgeArchiveSchema } from "./schemas";
 import { createKnowledgeEntry, type KnowledgeServiceContext } from "./service";
 
 type BatchRow = { id: string; tags: string[]; document_count: number; total_bytes: string; completed_at: Date | null };
@@ -41,6 +43,61 @@ export async function openKnowledgeImport(db: Database, auth: AuthContext, tags:
   return { id };
 }
 
+function requireBatchCapacity(batch: BatchRow, documentCount: number, totalBytes: number) {
+  if (batch.completed_at) throw new ApiError("CONFLICT", "导入批次已完成。");
+  if (batch.document_count + documentCount > 200) throw new ApiError("VALIDATION_FAILED", "每批最多导入 200 个文档。");
+  if (Number(batch.total_bytes) + totalBytes > 100 * 1024 * 1024) {
+    throw new ApiError("VALIDATION_FAILED", "每批文件总大小不能超过 100 MB。");
+  }
+}
+
+export async function importKnowledgeArchive(
+  db: Database, objectStore: ObjectStore, extractor: KnowledgeTextExtractor, auth: AuthContext,
+  batchId: string, input: z.infer<typeof importKnowledgeArchiveSchema>, context: KnowledgeServiceContext = {}
+): Promise<{ outcomes: KnowledgeImportOutcome[] }> {
+  requireKnowledgeEdit(auth);
+  const archiveBytes = Buffer.from(input.file.contentBase64, "base64");
+  let members: Map<string, Buffer>;
+  try {
+    members = await readBoundedZipArchive(archiveBytes, {
+      ...analysisCaseArchiveLimits, maxCompressedBytes: 100 * 1024 * 1024,
+      maxUnpackedBytes: 100 * 1024 * 1024, maxFileBytes: 20 * 1024 * 1024
+    });
+  } catch (error) {
+    if (error instanceof AnalysisCaseArchiveError) throw new ApiError("VALIDATION_FAILED", error.message);
+    throw error;
+  }
+  // The bounded reader omits directories; inspect their metadata only after its preflight.
+  const zip = await JSZip.loadAsync(archiveBytes);
+  if (Object.values(zip.files).some((entry) => entry.name.replace(/\/$/, "").split("/").length > (entry.dir ? 20 : 21))) {
+    throw new ApiError("VALIDATION_FAILED", "ZIP 文件夹最多嵌套 20 层。");
+  }
+  // Validate every member before persisting any, including paths the reader does not normalize.
+  for (const path of members.keys()) {
+    if (!importKnowledgeDocumentSchema.shape.relativePath.safeParse(path).success
+      || !importKnowledgeDocumentSchema.shape.file.shape.fileName.safeParse(path.split("/").at(-1)).success) {
+      throw new ApiError("VALIDATION_FAILED", "ZIP 文档路径无效。");
+    }
+  }
+  // Keep the reader's bounded metadata allowance; OS junk does not consume batch document slots.
+  const documents = [...members].filter(([path]) => !path.split("/").some((part) => part === "__MACOSX" || part === ".DS_Store"));
+  return db.transaction(async (tx) => {
+    const batch = await lockBatch(tx, auth, batchId);
+    // Keep the lock through all member imports so files and archives share one capacity check.
+    requireBatchCapacity(batch, documents.length, documents.reduce((total, [, bytes]) => total + bytes.length, 0));
+    // Acquire document duplicate locks in content order across batches, preserving report order.
+    const ordered = documents.map(([relativePath, bytes], index) => ({ relativePath, bytes, index,
+      checksum: createHash("sha256").update(bytes).digest("hex") })).sort((a, b) => a.checksum.localeCompare(b.checksum));
+    const outcomes: KnowledgeImportOutcome[] = [];
+    for (const { relativePath, bytes, index } of ordered) {
+      outcomes[index] = await importKnowledgeDocument(tx, objectStore, extractor, auth, batchId, {
+        relativePath, file: { fileName: relativePath.split("/").at(-1)!, contentType: "application/octet-stream", contentBase64: bytes.toString("base64") }
+      }, context);
+    }
+    return { outcomes };
+  });
+}
+
 export async function importKnowledgeDocument(
   db: Database, objectStore: ObjectStore, extractor: KnowledgeTextExtractor, auth: AuthContext,
   batchId: string, input: z.infer<typeof importKnowledgeDocumentSchema>, context: KnowledgeServiceContext = {}
@@ -51,11 +108,7 @@ export async function importKnowledgeDocument(
   const checksum = createHash("sha256").update(bytes).digest("hex");
   return db.transaction(async (tx) => {
     const batch = await lockBatch(tx, auth, batchId);
-    if (batch.completed_at) throw new ApiError("CONFLICT", "导入批次已完成。");
-    if (batch.document_count >= 200) throw new ApiError("VALIDATION_FAILED", "每批最多导入 200 个文档。");
-    if (Number(batch.total_bytes) + bytes.length > 100 * 1024 * 1024) {
-      throw new ApiError("VALIDATION_FAILED", "每批文件总大小不能超过 100 MB。");
-    }
+    requireBatchCapacity(batch, 1, bytes.length);
     const outcome: KnowledgeImportOutcome = { id: randomUUID(), relativePath: input.relativePath,
       status: "unsupported_skipped", entryId: null, error: null };
     const extension = /\.([^.]+)$/.exec(input.file.fileName)?.[1]?.toLowerCase() ?? "";

@@ -54,6 +54,19 @@ function createRepository(fetchMock: typeof fetch) {
 }
 
 describe("createHttpKnowledgeRepository", () => {
+  it("uploads ZIP bytes to the batch archive endpoint and returns member outcomes", async () => {
+    const outcomes = [{ id: "outcome-1", relativePath: "folder/guide.md", status: "created", entryId: "draft-1", error: null }];
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ item: { outcomes } }));
+    const file = new File([new Uint8Array([80, 75, 3, 4])], "guides.zip", { type: "application/zip" });
+    Object.defineProperty(file, "arrayBuffer", { value: async () => new Uint8Array([80, 75, 3, 4]).buffer });
+    const repository = createRepository(fetchMock);
+    expect(await repository.importArchive("batch-1", file)).toEqual({ outcomes });
+    expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:8787/api/v1/knowledge/imports/batch-1/archive");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      file: { fileName: "guides.zip", contentType: "application/zip", contentBase64: "UEsDBA==" }
+    });
+  });
+
   it("lists entries with encoded filters", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ items: [baseEntryDto] }));
     const repository = createRepository(fetchMock);

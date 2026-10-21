@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import JSZip from "jszip";
 import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
 import type { KnowledgeImportOutcome } from "@/domain/knowledge/types";
 import { KnowledgePage } from "./KnowledgePage";
@@ -17,11 +18,50 @@ async function chooseFiles(files: File[], repository = createMockKnowledgeReposi
 }
 
 describe("knowledge batch import on the knowledge page", () => {
+  it("chooses one ZIP and renders its member paths, outcomes and draft links", async () => {
+    const zip = new JSZip();
+    zip.file("guides/start.md", "# ZIP from page");
+    zip.file("image.png", "unsupported");
+    zip.file("__MACOSX/._start.md", "junk");
+    const { user, dialog, repository } = await chooseFiles([
+      new File(["before ZIP"], "before.md"),
+      new File([await zip.generateAsync({ type: "uint8array" }) as BlobPart], "guides.ZIP", { type: "application/zip" }),
+      new File(["after ZIP"], "after.md")
+    ]);
+    expect(within(dialog).getByTestId("file-drop-zone-input")).toHaveAttribute("accept", expect.stringContaining(".zip"));
+    await user.click(within(dialog).getByRole("button", { name: "开始导入" }));
+    const report = await within(dialog).findByRole("table", { name: "导入报告" });
+    expect(within(report).getByText("guides/start.md")).toBeInTheDocument();
+    expect(within(report).getByText("格式不支持，已跳过")).toBeInTheDocument();
+    expect(within(report).queryByText(/__MACOSX/)).not.toBeInTheDocument();
+    expect(within(report).getAllByRole("link", { name: "查看草稿" })).toHaveLength(3);
+    expect((await repository.list()).items.find((entry) => entry.title === "start.md"))
+      .toMatchObject({ tags: ["guides"], status: "draft", contentMarkdown: "# ZIP from page" });
+  });
+
+  it("reports a refused archive and continues with the next file", async () => {
+    const { user, dialog } = await chooseFiles([new File(["invalid"], "broken.zip"), new File(["after refusal"], "next.md")]);
+    await user.click(within(dialog).getByRole("button", { name: "开始导入" }));
+    const report = await within(dialog).findByRole("table", { name: "导入报告" });
+    expect(within(report).getByText("broken.zip")).toBeInTheDocument();
+    expect(within(report).getByText("导入失败")).toBeInTheDocument();
+    expect(within(report).getByText("next.md")).toBeInTheDocument();
+    expect(within(report).getByText("已创建草稿")).toBeInTheDocument();
+  });
+
+  it("refuses selecting multiple ZIP archives before opening a batch", async () => {
+    const { user, dialog } = await chooseFiles([new File(["one"], "one.zip"), new File(["two"], "two.ZIP")]);
+    await user.click(within(dialog).getByRole("button", { name: "开始导入" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("每批最多选择一个 ZIP 压缩包。");
+    expect(within(dialog).getByRole("button", { name: "开始导入" })).toBeEnabled();
+    expect(within(dialog).queryByRole("table", { name: "导入报告" })).not.toBeInTheDocument();
+  });
+
   it("imports multiple files with batch tags and reports every outcome with draft links", async () => {
     const { user, dialog, repository } = await chooseFiles([
       new File(["# First"], "first.md", { type: "text/markdown" }),
       new File(["# First"], "copy.txt", { type: "text/plain" }),
-      new File(["zip"], "later.zip", { type: "application/zip" })
+      new File(["binary"], "later.bin", { type: "application/octet-stream" })
     ]);
     await user.type(within(dialog).getByLabelText("批次标签（逗号分隔）"), "batch, shared");
     await user.click(within(dialog).getByRole("button", { name: "开始导入" }));

@@ -224,6 +224,11 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
         relativePath: input.relativePath, file: await fileBody(input.file)
       })).item;
     },
+    async importArchive(batchId, file) {
+      return (await apiClient.post<ItemEnvelope<{ outcomes: KnowledgeImportOutcome[] }>>(`/api/v1/knowledge/imports/${encodeURIComponent(batchId)}/archive`, {
+        file: { fileName: file.name, contentType: "application/zip", contentBase64: await fileToBase64(file) }
+      })).item;
+    },
     async getImport(batchId) {
       return (await apiClient.get<ItemEnvelope<KnowledgeImportReport>>(`/api/v1/knowledge/imports/${encodeURIComponent(batchId)}`)).item;
     },
