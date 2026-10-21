@@ -38,6 +38,10 @@ export type RegistrationRoleRequestDto = {
   createdAt: string;
   decidedAt: string | null;
   decidedByUserId: string | null;
+  decisionOutcome?: "requested-role-enabled" | "basic-enabled" | "rejected-disabled" | "rejected-preserved" | null;
+  decisionCanLogin?: boolean | null;
+  decisionRoleIds?: PlatformRoleId[] | null;
+  accountChanged?: boolean;
 };
 
 type ItemsEnvelope<T> = { items: T[] };
@@ -203,6 +207,9 @@ export function createUserGovernanceClient(
         {}
       );
       return response.item;
+    },
+    async enableBasicRegistrationRoleRequest(requestId: string) {
+      return (await apiClient.post<ItemEnvelope<RegistrationRoleRequestDto>>(`/api/v1/users/registration-role-requests/${encodeURIComponent(requestId)}/enable-basic`, {})).item;
     },
     async getOrganization() {
       const response = await apiClient.get<{ organization: OrganizationRecordDto }>("/api/v1/organization");

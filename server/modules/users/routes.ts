@@ -5,6 +5,7 @@ import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
   approveRegistrationRoleRequest,
+  enableBasicRegistrationRoleRequest,
   createUser,
   deactivateUser,
   deleteUser,
@@ -133,6 +134,14 @@ export function registerUserRoutes(
     const params = parseWithSchema(registrationRoleRequestParamsSchema, request.params);
     const item = await approveRegistrationRoleRequest(db, auth, params.requestId, { requestId: request.requestId });
 
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/users/registration-role-requests/:requestId/enable-basic", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(registrationRoleRequestParamsSchema, request.params);
+    const item = await enableBasicRegistrationRoleRequest(db, auth, params.requestId, { requestId: request.requestId });
     return { status: 200, body: { item } };
   });
 

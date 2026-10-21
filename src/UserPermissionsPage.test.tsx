@@ -847,6 +847,26 @@ describe("UserPermissionsPage", () => {
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ASSIGN_USER_ROLE" }));
   });
 
+  it("enables the corresponding ordinary role after a failed request without granting the requested MDE role", async () => {
+    const actions: UserGovernanceActions = {
+      listUsers: vi.fn(async () => []), createUser: vi.fn(async () => undefined), updateOrganizationRoles: vi.fn(async () => undefined),
+      setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
+      listRegistrationRoleRequests: vi.fn(async () => [registrationRoleRequest()]),
+      enableBasicRegistrationRoleRequest: vi.fn().mockRejectedValueOnce(new Error("temporary failure")).mockResolvedValueOnce(registrationRoleRequest({ status: "rejected", decisionOutcome: "basic-enabled" }))
+    };
+    const { dispatch } = renderPageWithActions(actions); await openApprovalsWorkspace();
+    const trigger = await screen.findByRole("button", { name: "按普通成员启用" }); trigger.focus(); await userEvent.keyboard("{Enter}");
+    const dialog = screen.getByRole("dialog", { name: "按普通成员启用？" });
+    expect(dialog).toHaveTextContent("软件开发"); expect(dialog).toHaveTextContent("不授予");
+    await userEvent.click(within(dialog).getByRole("button", { name: "启用普通成员" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("重试"); expect(dialog).toHaveTextContent("Committer Candidate");
+    await userEvent.click(within(dialog).getByRole("button", { name: "启用普通成员" }));
+    expect(actions.enableBasicRegistrationRoleRequest).toHaveBeenLastCalledWith("registration-role-request-1");
+    expect(dispatch).toHaveBeenCalledWith({ type: "ASSIGN_USER_ROLE", userId: "u-candidate", roleId: "software-user" });
+    expect(dispatch).toHaveBeenCalledWith({ type: "TOGGLE_USER_ACTIVE", userId: "u-candidate", isActive: true });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "ASSIGN_USER_ROLE", userId: "u-candidate", roleId: "software-committer" });
+  });
+
   it("renders pending registration role requests and dispatches approval decisions", async () => {
     const userGovernanceActions: UserGovernanceActions = {
       listUsers: vi.fn(async () => []),
@@ -896,12 +916,12 @@ describe("UserPermissionsPage", () => {
     const approveRequest = within(queue).getByText("Committer Candidate").closest("article")!;
     const rejectRequest = within(queue).getByText("Reject Candidate").closest("article")!;
 
-    expect(within(approveRequest).getByRole("button", { name: "通过" })).toBeInTheDocument();
-    expect(within(approveRequest).getByRole("button", { name: "拒绝" })).toBeInTheDocument();
+    expect(within(approveRequest).getByRole("button", { name: "批准申请角色" })).toBeInTheDocument();
+    expect(within(approveRequest).getByRole("button", { name: "拒绝并保持停用" })).toBeInTheDocument();
     expect(within(approveRequest).queryByRole("button", { name: "Approve Committer Candidate" })).not.toBeInTheDocument();
     expect(within(rejectRequest).queryByRole("button", { name: "Reject Reject Candidate" })).not.toBeInTheDocument();
 
-    await userEvent.click(within(approveRequest).getByRole("button", { name: "通过" }));
+    await userEvent.click(within(approveRequest).getByRole("button", { name: "批准申请角色" }));
     expect(userGovernanceActions.approveRegistrationRoleRequest).not.toHaveBeenCalled();
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ASSIGN_USER_ROLE" }));
     await userEvent.click(within(screen.getByRole("dialog", { name: "通过注册申请？" })).getByRole("button", { name: "通过并启用" }));
@@ -910,10 +930,35 @@ describe("UserPermissionsPage", () => {
     expect(dispatch).toHaveBeenCalledWith({ type: "TOGGLE_USER_ACTIVE", userId: "u-candidate", isActive: true });
     await waitFor(() => expect(userGovernanceActions.listUsers).toHaveBeenCalledTimes(2));
 
-    await userEvent.click(within(rejectRequest).getByRole("button", { name: "拒绝" }));
+    await userEvent.click(within(rejectRequest).getByRole("button", { name: "拒绝并保持停用" }));
     expect(userGovernanceActions.rejectRegistrationRoleRequest).not.toHaveBeenCalled();
     await userEvent.click(within(screen.getByRole("dialog", { name: "拒绝注册申请？" })).getByRole("button", { name: "确认拒绝" }));
     expect(userGovernanceActions.rejectRegistrationRoleRequest).toHaveBeenCalledWith("registration-role-request-2");
+  });
+
+  it("shows recorded access outcomes in history and lets an obsolete request close without overwriting account settings", async () => {
+    const actions: UserGovernanceActions = {
+      listUsers: vi.fn(async () => []), createUser: vi.fn(async () => undefined), updateOrganizationRoles: vi.fn(async () => undefined),
+      setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
+      listRegistrationRoleRequests: vi.fn(async status => status === "decided" ? [
+        registrationRoleRequest({ id: "basic", status: "rejected", decisionOutcome: "basic-enabled", decisionCanLogin: true, decisionRoleIds: ["software-user"] }),
+        registrationRoleRequest({ id: "legacy", userName: "Legacy candidate", status: "rejected" })
+      ] : [registrationRoleRequest({ accountChanged: true })]),
+      approveRegistrationRoleRequest: vi.fn(), enableBasicRegistrationRoleRequest: vi.fn(),
+      rejectRegistrationRoleRequest: vi.fn(async () => registrationRoleRequest({ status: "rejected", decisionOutcome: "rejected-preserved", decisionCanLogin: true, decisionRoleIds: ["hardware-user"] }))
+    };
+    const { dispatch } = renderPageWithActions(actions); await openApprovalsWorkspace();
+    expect(await screen.findByRole("button", { name: "批准申请角色" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "按普通成员启用" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "关闭申请，保留现状" }));
+    const dialog = screen.getByRole("dialog", { name: "拒绝注册申请？" }); expect(dialog).toHaveTextContent("保留最新设置");
+    await userEvent.click(within(dialog).getByRole("button", { name: "确认拒绝" }));
+    expect(actions.rejectRegistrationRoleRequest).toHaveBeenCalledWith("registration-role-request-1");
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "TOGGLE_USER_ACTIVE" }));
+    await userEvent.click(screen.getByRole("radio", { name: "处理历史" }));
+    expect(await screen.findByText("已按软件开发启用")).toBeInTheDocument();
+    expect(screen.getByText("决定时：可登录 · 软件开发")).toBeInTheDocument();
+    expect(screen.getByText("已拒绝提升（未记录账号结果）")).toBeInTheDocument();
   });
 
   it("shows request loading and retry states without claiming an empty approval queue", async () => {
@@ -954,8 +999,8 @@ describe("UserPermissionsPage", () => {
     expect(await screen.findByText("Committer Candidate")).toBeInTheDocument();
     expect(screen.getByText("研发组织")).toBeInTheDocument();
     expect(screen.getByText("已通过")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "通过" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "拒绝" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "批准申请角色" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "拒绝并保持停用" })).not.toBeInTheDocument();
     expect(actions.listRegistrationRoleRequests).toHaveBeenCalledWith("decided");
     await userEvent.click(screen.getByRole("radio", { name: "待处理" }));
     expect(await screen.findByText("暂无待处理角色申请。")).toBeInTheDocument();
@@ -974,7 +1019,7 @@ describe("UserPermissionsPage", () => {
     };
     const { dispatch } = renderPageWithActions(actions);
     await openApprovalsWorkspace();
-    await userEvent.click(await screen.findByRole("button", { name: "通过" }));
+    await userEvent.click(await screen.findByRole("button", { name: "批准申请角色" }));
     const dialog = screen.getByRole("dialog", { name: "通过注册申请？" });
     expect(dialog).toHaveTextContent("软件组织");
     expect(dialog).toHaveTextContent("通过后立即启用账号");

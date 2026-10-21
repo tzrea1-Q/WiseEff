@@ -1,6 +1,6 @@
 import pg from "pg";
 import { afterEach, describe, expect, it } from "vitest";
-import { createDatabase, type Database, type QueryResult, type Queryable } from "../../shared/database/client";
+import { createDatabase, type Database, type QueryResult } from "../../shared/database/client";
 import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import type { AuthContext } from "../auth/types";
 import { updateUserBodySchema } from "./schemas";
@@ -51,7 +51,8 @@ function createDb(
 ) {
   const calls: QueryCall[] = [];
   const txCalls: QueryCall[] = [];
-  const tx: Queryable = {
+  const tx: Database = {
+    transaction: async (fn) => fn(tx),
     query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
       txCalls.push({ text, values });
       return { rows: rowsForQuery(text, values) as Row[], rowCount: rowCountForQuery(text, values) };
@@ -548,7 +549,7 @@ describe("user governance service", () => {
         ];
       }
       if (text.includes("returning") || text.includes("select")) {
-        return [userRow({ id: "u-candidate", roles: [{ projectId: null, roleId: "software-committer" }] })];
+        return [userRow({ id: "u-candidate", is_active: false, roles: [{ projectId: null, roleId: "software-user" }] })];
       }
       return [];
     });
@@ -601,7 +602,7 @@ describe("user governance service", () => {
                 decided_by_user_id: "u-admin"
               }
             ]
-          : []
+          : text.includes("from users") ? [userRow({ id: "u-candidate", is_active: false, roles: [{ projectId: null, roleId: "software-user" }] })] : []
     );
 
     const result = await rejectRegistrationRoleRequest(db, adminAuth, "registration-role-request-1", { requestId: "request-1" });
@@ -897,7 +898,7 @@ describe.skipIf(!postgresAvailable)("user governance registration concurrency", 
       );
       await roleClient.query("commit");
 
-      await expect(approval).resolves.toMatchObject({ status: "approved", organizationName: "Registration Lock Org" });
+      await expect(approval).rejects.toMatchObject({ code: "CONFLICT", details: { code: "registration-account-changed" } });
       const final = await roleClient.query<{ is_active: boolean; role_id: string }>(
         `select users.is_active, user_role_bindings.role_id
            from users
@@ -905,7 +906,7 @@ describe.skipIf(!postgresAvailable)("user governance registration concurrency", 
           where users.id = $1 and user_role_bindings.project_id is null`,
         [targetId]
       );
-      expect(final.rows).toEqual([{ is_active: true, role_id: "hardware-committer" }]);
+      expect(final.rows).toEqual([{ is_active: false, role_id: "software-user" }]);
     } finally {
       await roleClient.query("rollback").catch(() => undefined);
       if (approval) await approval.catch(() => undefined);

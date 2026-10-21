@@ -28,13 +28,16 @@ If you only need to stop access, disable the account. Delete user is permanent a
 
 ## Decide a Committer registration request
 
-In People management (`/organization/members`), switch to Registration requests. Check the applicant's account identifier, current role and requested hardware/software committer role, then choose Approve or Reject.
+In People management (`/organization/members`), switch to Registration requests. Check the applicant's Organization, account identifier, current role and requested hardware/software committer role, then choose one of three outcomes.
 
 - Approval assigns the requested Committer role and activates the account. The applicant can then sign in with the original credentials.
-- Rejection records the decision but does not activate the account or grant the requested role. A pending Committer account remains inactive after rejection.
-- Organization Admins review their own Organization's requests. Platform Admins' queue can include other Organizations. The current queue shows account and role details, not an Organization label; verify the applicant's Organization separately before a cross-Organization decision.
+- Enable as ordinary member rejects the promotion, confirms the corresponding hardware/software User role, and activates the account. The applicant can sign in with the original credentials, without the requested Committer role.
+- Reject and keep disabled closes the request without activating the account or granting the requested role.
+- Organization Admins review their own Organization's requests. Platform Admins' queue can include other Organizations; check the Organization shown before deciding.
 
-This queue handles self-registration requests; change existing members' roles in Account library. If a request has already been handled or the action fails, refresh and check the result. After choosing Approve, check that approval succeeded.
+The request closes atomically with account changes, audit and notifications. If an administrator has since adjusted the account's activation or Organization roles, approval/enabling refuses to overwrite those settings. Close the obsolete request to preserve the current settings, then manage the member directly. Profile changes and project duties do not invalidate a request. A failed action keeps its confirmation available for retry.
+
+Processing history and notifications record the roles and ability to sign in at the time of the decision. Later account changes do not rewrite that history. Older rejected requests without a recorded account outcome are labeled as unknown; their outcome is not inferred from today's account status. This queue handles self-registration requests; change existing members' roles in Account library.
 
 ## Find who changed what, when and why
 

@@ -11,6 +11,7 @@ const CJK_PATTERN = /[\u4e00-\u9fff]/;
 
 /** Known backend English messages that deserve specific product copy. */
 const MESSAGE_LABELS: Array<{ match: RegExp; label: string | ((match: RegExpMatchArray) => string) }> = [
+  { match: /^Account settings changed after registration\./, label: "账号已有后续管理调整，不能用旧申请覆盖。请关闭申请以保留现状，再直接管理成员。" },
   { match: /^OIDC identity matches another member;/, label: "该身份已关联其他成员或旧账号。请核对 Subject 和原始迁移邮箱，使用对应成员，不能合并账号。" },
   { match: /^OIDC binding changed;/, label: "身份绑定已被其他管理员修改，请刷新成员资料后重试。" },
   { match: /^OIDC binding requires the configured issuer/, label: "请选择当前部署配置的 Issuer，并填写有效 Subject。" },
@@ -29,7 +30,7 @@ const MESSAGE_LABELS: Array<{ match: RegExp; label: string | ((match: RegExpMatc
   { match: /^Too many authentication attempts\. Try again later\.?$/i, label: "尝试次数过多，请稍后再试。" },
   { match: /^Self-registration is disabled\.?$/i, label: "当前环境已关闭自助注册，请联系管理员创建账号。" },
   { match: /^Local password credential was not found\.?$/i, label: "该账号没有本地密码凭据。" },
-  { match: /^User is pending Admin approval\.?$/i, label: "账号等待管理员批准后才能登录。" },
+  { match: /^User is pending Admin approval\.?$/i, label: "账号等待管理员审核并启用后才能登录。" },
   { match: /^User is inactive\.?$/i, label: "账号已被停用，请联系管理员。" },
   { match: /^Username is already registered\.?$/i, label: "该用户名已被注册。" },
   { match: /^Username must be 3 to 64 characters\.?$/i, label: "用户名须为 3–64 个字符，仅限字母、数字、点、下划线和连字符。" },

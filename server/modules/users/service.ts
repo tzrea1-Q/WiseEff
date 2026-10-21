@@ -33,7 +33,7 @@ import {
   updateUser,
   updateUserActive
 } from "./repository";
-import { notifyUserDeactivated, notifyUserRoleChanged } from "../notifications/producers";
+import { notifyRegistrationRoleDecided, notifyUserDeactivated, notifyUserRoleChanged } from "../notifications/producers";
 import { revokeLocalUserSessions } from "../auth/localAuth";
 import type {
   CreateUserInput,
@@ -210,7 +210,7 @@ async function auditRegistrationRoleRequestDecision(
   tx: AuditTx,
   invocation: TrustedInvocationContext,
   input: {
-    action: "approve" | "reject";
+    action: "approve" | "reject" | "enable-basic";
     requestId: string;
     userId: string;
     metadata: Record<string, unknown>;
@@ -573,116 +573,65 @@ export async function listRegistrationRoleRequests(
   });
 }
 
-export async function approveRegistrationRoleRequest(
-  db: Database,
-  auth: AuthContext,
-  requestId: string,
-  context: AuditCorrelationContext = {}
-) {
-  requireUserManager(auth);
-
-  return db.transaction(async (tx) => {
-    const request = callerHasPlatformAdmin(auth)
-      ? await getPendingRegistrationRoleRequestByIdForAdmin(tx, requestId)
-      : await getPendingRegistrationRoleRequestById(tx, { organizationId: auth.organization.id, requestId });
-    if (!request) {
-      throw new ApiError("NOT_FOUND", "Pending registration role request was not found.", { requestId });
-    }
-
-    // User-role and review authorization serialize on the target users row. Lock it
-    // before touching role bindings or activation, then re-read the target under
-    // that lock so a concurrent deactivation/role replacement cannot be bypassed.
-    const lockedUserId = await lockUserById(tx, {
-      organizationId: request.organizationId,
-      userId: request.userId
-    });
-    if (!lockedUserId || !(await getUserById(tx, {
-      organizationId: request.organizationId,
-      userId: request.userId
-    }))) {
-      throw new ApiError("NOT_FOUND", "User was not found.", { userId: request.userId });
-    }
-
-    await updateOrganizationRoles(tx, {
-      organizationId: request.organizationId,
-      userId: request.userId,
-      roles: [request.requestedRoleId]
-    });
-    const activated = await updateUserActive(tx, { organizationId: request.organizationId, userId: request.userId, isActive: true });
-    if (!activated) {
-      throw new ApiError("NOT_FOUND", "User was not found.", { userId: request.userId });
-    }
-    const decided = await decideRegistrationRoleRequest(tx, {
-      organizationId: request.organizationId,
-      requestId,
-      status: "approved",
-      decidedByUserId: auth.user.id,
-      decidedAt: new Date().toISOString()
-    });
-    if (!decided) {
-      throw new ApiError("CONFLICT", "Registration role request was already decided.", { requestId });
-    }
-    await auditRegistrationRoleRequestDecision(asAuditTx(tx), createUserInvocation(auth), {
-      action: "approve",
-      requestId,
-      userId: request.userId,
-      metadata: {
-        username: request.username,
-        previousRoleId: request.currentRoleId,
-        requestedRoleId: request.requestedRoleId
-      }
-    }, context);
-
-    const adminUserIds = await listActiveAdminUserIds(tx, request.organizationId);
-    await notifyUserRoleChanged(tx, {
-      organizationId: request.organizationId,
-      userId: request.userId,
-      actorName: auth.user.name,
-      roles: [{ projectId: null, roleId: request.requestedRoleId }],
-      adminUserIds: adminUserIds.filter((id) => id !== request.userId)
-    });
-
-    return decided;
-  });
+export function approveRegistrationRoleRequest(db: Database, auth: AuthContext, requestId: string, context: AuditCorrelationContext = {}) {
+  return decidePendingRegistration(db, auth, requestId, "approve", context);
 }
 
-export async function rejectRegistrationRoleRequest(
-  db: Database,
-  auth: AuthContext,
-  requestId: string,
-  context: AuditCorrelationContext = {}
+export function enableBasicRegistrationRoleRequest(db: Database, auth: AuthContext, requestId: string, context: AuditCorrelationContext = {}) {
+  return decidePendingRegistration(db, auth, requestId, "enable-basic", context);
+}
+
+export function rejectRegistrationRoleRequest(db: Database, auth: AuthContext, requestId: string, context: AuditCorrelationContext = {}) {
+  return decidePendingRegistration(db, auth, requestId, "reject", context);
+}
+
+async function decidePendingRegistration(
+  db: Database, auth: AuthContext, requestId: string, decision: "approve" | "enable-basic" | "reject", context: AuditCorrelationContext
 ) {
   requireUserManager(auth);
-
   return db.transaction(async (tx) => {
-    const request = callerHasPlatformAdmin(auth)
-      ? await getPendingRegistrationRoleRequestByIdForAdmin(tx, requestId)
-      : await getPendingRegistrationRoleRequestById(tx, { organizationId: auth.organization.id, requestId });
-    if (!request) {
-      throw new ApiError("NOT_FOUND", "Pending registration role request was not found.", { requestId });
+    const readRequest = (lock = false) => callerHasPlatformAdmin(auth)
+      ? getPendingRegistrationRoleRequestByIdForAdmin(tx, requestId, lock)
+      : getPendingRegistrationRoleRequestById(tx, { organizationId: auth.organization.id, requestId }, lock);
+    const initial = await readRequest();
+    if (!initial) throw new ApiError("NOT_FOUND", "Pending registration role request was not found.", { requestId });
+    const scope = { organizationId: initial.organizationId, userId: initial.userId };
+    // All three decisions share governance's user -> request order. Re-read only
+    // after the user lock, including after waiting for a newer manual adjustment.
+    if (!(await lockUserById(tx, scope))) throw new ApiError("NOT_FOUND", "User was not found.", { userId: scope.userId });
+    const request = await readRequest(true);
+    if (!request) throw new ApiError("CONFLICT", "Registration role request was already decided.", { requestId });
+    const user = await getUserById(tx, scope);
+    if (!user) throw new ApiError("NOT_FOUND", "User was not found.", { userId: scope.userId });
+    const currentRoles = user.roles.filter(role => role.projectId === null && !role.roleId.startsWith("catalog-capability-")).map(role => role.roleId).sort();
+    const stale = request.accountChanged || user.isActive || currentRoles.length !== 1 || currentRoles[0] !== request.currentRoleId;
+    if (decision !== "reject" && stale) {
+      throw new ApiError("CONFLICT", "Account settings changed after registration. Close this request to preserve the current account settings, then manage the member directly.", {
+        code: "registration-account-changed", requestId, currentRoles, isActive: user.isActive
+      });
     }
-
+    const roles = decision === "reject" ? currentRoles : [decision === "approve" ? request.requestedRoleId : request.currentRoleId];
+    const canLogin = decision === "reject" ? user.isActive : true;
+    const outcome = decision === "approve" ? "requested-role-enabled" : decision === "enable-basic" ? "basic-enabled"
+      : stale ? "rejected-preserved" : "rejected-disabled";
+    if (decision !== "reject") {
+      await updateOrganizationRoles(tx, { ...scope, roles });
+      if (!(await updateUserActive(tx, { ...scope, isActive: true }))) throw new ApiError("NOT_FOUND", "User was not found.", { userId: scope.userId });
+    }
     const decided = await decideRegistrationRoleRequest(tx, {
-      organizationId: request.organizationId,
-      requestId,
-      status: "rejected",
-      decidedByUserId: auth.user.id,
-      decidedAt: new Date().toISOString()
+      organizationId: scope.organizationId, requestId, status: decision === "approve" ? "approved" : "rejected",
+      decidedByUserId: auth.user.id, decidedAt: new Date().toISOString(), outcome, canLogin, roles
     });
-    if (!decided) {
-      throw new ApiError("CONFLICT", "Registration role request was already decided.", { requestId });
-    }
+    if (!decided) throw new ApiError("CONFLICT", "Registration role request was already decided.", { requestId });
     await auditRegistrationRoleRequestDecision(asAuditTx(tx), createUserInvocation(auth), {
-      action: "reject",
-      requestId,
-      userId: request.userId,
-      metadata: {
-        username: request.username,
-        currentRoleId: request.currentRoleId,
-        requestedRoleId: request.requestedRoleId
-      }
+      action: decision, requestId, userId: request.userId,
+      metadata: { username: request.username, currentRoleId: request.currentRoleId, requestedRoleId: request.requestedRoleId,
+        outcome, canLogin, roles, organizationId: request.organizationId }
     }, context);
-
+    await notifyRegistrationRoleDecided(tx, {
+      ...scope, requestId, actorName: auth.user.name, outcome, canLogin, roles,
+      adminUserIds: await listActiveAdminUserIds(tx, scope.organizationId)
+    });
     return decided;
   });
 }

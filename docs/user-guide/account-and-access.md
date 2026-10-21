@@ -25,9 +25,9 @@ The screen tells you which Evaluation Organization your account will join. It is
 
 ## Wait for Committer approval
 
-On Register (`/`), requesting either Committer role creates an inactive account and a pending role request. The account records the matching base User role, but you can sign in and receive a session only after approval.
+On Register (`/`), requesting either Committer role creates an inactive account and a pending role request. The account records the matching base User role, but remains unable to sign in until an Admin enables it.
 
-Ask your Organization Admin to review the request. Once approved, return to Sign in (`/`) and use the same username and password. Approval activates the account and assigns the requested Committer role.
+Ask your Organization Admin to review the request. They may approve the requested Committer role, reject the promotion while enabling the corresponding ordinary User role, or reject and keep the account disabled. Either enabling outcome lets you return to Sign in (`/`) with the same username and password; only approval grants the Committer role. The decision notification records the actual role and ability to sign in.
 
 ## Approve a Committer request
 
