@@ -484,43 +484,59 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
     await createParameterModule(request, { name: childName, parentId: parent.item.id });
     const leaf = await createParameterModule(request, { name: leafName });
     const binding = await seedAssignableBinding(request, "MOD-TREE-AUTHZ-001 populated canonical driver leaf");
-    const target = await withPgClient(async (client) => {
-      const rows = (await client.query<{ registration_id: string; module_id: string }>(
-        `select binding.registration_id, placement.module_id
-         from parameter_catalog.project_parameter_bindings binding
-         join parameter_catalog.organization_subject_registrations registration
-           on registration.id=binding.registration_id and registration.organization_id=binding.organization_id
-         join parameter_catalog.subject_placements placement
-           on placement.id=registration.current_placement_id and placement.registration_id=registration.id
-         where binding.id=$1 and binding.organization_id=$2`,
-        [binding.bindingId, organizationId]
-      )).rows;
-      expect(rows).toHaveLength(1);
-      expect(rows[0]!.module_id).toBeTruthy();
-      return rows[0]!;
+    const seededBindings = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), {
+      headers: adminHeaders()
     });
-    const registrationId = target.registration_id;
-    const driverModuleId = target.module_id;
-    const canonicalSnapshot = () => withPgClient(async (client) => ({
-      registration: (await client.query(
-        "select * from parameter_catalog.organization_subject_registrations where id=$1 and organization_id=$2",
-        [registrationId, organizationId]
-      )).rows,
-      bindings: (await client.query<{ id: string }>(
-        "select * from parameter_catalog.project_parameter_bindings where registration_id=$1 and organization_id=$2 order by id",
-        [registrationId, organizationId]
-      )).rows,
-      values: (await client.query(
-        `select value.* from parameter_catalog.project_parameter_values value
-         join parameter_catalog.project_parameter_bindings binding on binding.id=value.binding_id
-         where binding.registration_id=$1 and binding.organization_id=$2 order by value.id`,
-        [registrationId, organizationId]
-      )).rows
-    }));
+    expect(seededBindings.status(), await seededBindings.text()).toBe(200);
+    const projectBindings = (await seededBindings.json()).items as ParameterRecordDto[];
+    const driverModuleId = projectBindings.find(item => item.id === binding.bindingId)?.moduleId;
+    expect(driverModuleId).toBeTruthy();
+    if (!driverModuleId) throw new Error("Seeded Binding must have a Placement module");
+    const matches: Array<{ id: string; placement: { moduleId?: string } }> = [];
+    let registrationCursor: string | null = null;
+    do {
+      const params = new URLSearchParams({ limit: "100" });
+      if (registrationCursor) params.set("cursor", registrationCursor);
+      const registrations = await request.get(apiRoute(`/api/v2/organizations/${organizationId}/subject-registrations?${params}`), {
+        headers: adminHeaders()
+      });
+      expect(registrations.status(), await registrations.text()).toBe(200);
+      const registrationPage = await registrations.json();
+      matches.push(...(registrationPage.items as Array<{ id: string; placement: { moduleId?: string } }>)
+        .filter(item => item.placement.moduleId === driverModuleId));
+      registrationCursor = registrationPage.nextCursor ?? null;
+    } while (registrationCursor);
+    expect(matches).toHaveLength(1);
+    const registrationId = matches[0]!.id;
+    const retainedBindingIds = projectBindings.filter(item => item.moduleId === driverModuleId).map(item => item.id).sort();
+    const canonicalSnapshot = async () => {
+      const registration = await request.get(apiRoute(`/api/v2/organizations/${organizationId}/subject-registrations/${registrationId}`), {
+        headers: adminHeaders()
+      });
+      expect(registration.status(), await registration.text()).toBe(200);
+      const { placement: _placement, ...identity } = (await registration.json()).item;
+      const bindings = [];
+      for (const id of retainedBindingIds) {
+        const detail = await request.get(apiRoute(`/api/v1/parameters/${id}`), { headers: adminHeaders() });
+        expect(detail.status(), await detail.text()).toBe(200);
+        const item = (await detail.json()).item;
+        expect(item.currentValueId).toBeTruthy();
+        const history = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings/${id}/change-history`), {
+          headers: adminHeaders()
+        });
+        expect(history.status(), await history.text()).toBe(200);
+        const historyBody = await history.json();
+        expect(historyBody.items).toContainEqual(expect.objectContaining({ bindingId: id, newCurrentValueId: item.currentValueId }));
+        bindings.push({ id: item.id, definitionId: item.definitionId, effectiveRevisionId: item.effectiveRevisionId,
+          currentValueId: item.currentValueId, currentValue: item.currentValue,
+          sourceFileId: item.sourceFileId, sourceOccurrenceId: item.sourceOccurrenceId,
+          history: historyBody });
+      }
+      return { registration: identity, bindings };
+    };
     const canonicalBefore = await canonicalSnapshot();
-    expect(canonicalBefore.registration).toHaveLength(1);
+    expect(canonicalBefore.registration.id).toBe(registrationId);
     expect(canonicalBefore.bindings.map(item => item.id)).toContain(binding.bindingId);
-    expect(canonicalBefore.values.length).toBeGreaterThanOrEqual(1);
     const placementUrl = apiRoute(`/api/v2/organizations/${organizationId}/subject-registrations/${registrationId}/placement`);
     const placementBefore = await request.get(placementUrl, { headers: adminHeaders() });
     expect(placementBefore.status(), await placementBefore.text()).toBe(200);
@@ -581,7 +597,8 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
       headers: adminHeaders()
     });
     expect(bindingsAfterDelete.status(), await bindingsAfterDelete.text()).toBe(200);
-    expect(((await bindingsAfterDelete.json()).items as ParameterRecordDto[]).map(item => item.id)).toContain(binding.bindingId);
+    expect(((await bindingsAfterDelete.json()).items as ParameterRecordDto[]).map(item => item.id).sort())
+      .toEqual(projectBindings.map(item => item.id).sort());
     const deleteEmptyLeafResponse = await page.request.delete(apiRoute(`/api/v1/parameter-modules/${leaf.item.id}`), {
       headers: adminHeaders()
     });
@@ -633,16 +650,10 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
         })
       ],
       db: [
-        { table: "parameter_modules", predicate: `organization_id=${organizationId} and id=${driverModuleId}`,
-          observed: "deleted", rowCount: 0 },
         { table: "parameter_catalog.subject_placements", predicate: `id=${placement.id}`,
-          observed: `registration_id=${registrationId}; module_id=null`, rowCount: persisted.placements.length },
-        { table: "parameter_catalog.project_parameter_bindings", predicate: `registration_id=${registrationId}`,
-          observed: "all canonical Binding rows unchanged", rowCount: canonicalAfter.bindings.length },
-        { table: "parameter_catalog.project_parameter_values", predicate: `binding.registration_id=${registrationId}`,
-          observed: "all canonical value rows unchanged", rowCount: canonicalAfter.values.length }
+          observed: `registration_id=${registrationId}; module_id=null; typed module repository returns null`, rowCount: persisted.placements.length }
       ],
-      notes: "Non-admin module create, move and delete returned 403; deleting a parent with children returned 409. Admin deletion of a populated driver leaf returned 204, retained its Placement with module_id=null, and preserved every canonical Registration, Binding and value row. An empty taxonomy leaf also returned 204."
+      notes: "Non-admin module create, move and delete returned 403; deleting a parent with children returned 409. Admin deletion of a populated driver leaf returned 204, retained its Placement with module_id=null, and preserved Registration identity, every placed Binding's current value/source pin and complete change-history API responses. Project Binding IDs remain unchanged. An empty taxonomy leaf also returned 204."
     });
   });
 });
