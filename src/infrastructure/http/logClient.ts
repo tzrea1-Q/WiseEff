@@ -48,6 +48,7 @@ import {
   logRecordListResponseSchema,
   logRecordResponseSchema,
   logLineRangeResponseSchema,
+  logDeletionPreviewResponseSchema,
   logRunResponseSchema,
   logWebhookDeliveryListResponseSchema,
   logWebhookTestOutcomeResponseSchema
@@ -405,6 +406,10 @@ export function createHttpLogAnalysisRepository(
     },
     async archiveLog(logId: string) {
       await apiClient.post<ItemEnvelope<LogRecordDto>>(`${routeLogPath(logId)}/archive`, {});
+    },
+    async previewLogDeletion(logId: string) {
+      return parseContractDto(logDeletionPreviewResponseSchema,
+        await apiClient.get(`${routeLogPath(logId)}/deletion-preview`), "LogDeletionPreviewResponse").item;
     },
     async unarchiveLog(logId: string) {
       await apiClient.post<ItemEnvelope<LogRecordDto>>(`${routeLogPath(logId)}/unarchive`, {});
