@@ -2,6 +2,7 @@ import { ApiError } from "../../../shared/http/errors";
 import type { Queryable } from "../../../shared/database/client";
 import type { KnowledgeEmbeddingClient } from "../../knowledge/indexing/embeddingClient";
 import { getPublishedKnowledgeDocument, searchKnowledge } from "../../knowledge/service";
+import { formatKnowledgePageLabel } from "../../knowledge/citations";
 import type { AgentCitation } from "../types";
 import type { AgentToolDefinition } from "../toolRegistry";
 import { requireAgentToolMetadata } from "../toolMetadata";
@@ -45,7 +46,7 @@ export function createKnowledgeTools(options: KnowledgeToolOptions): AgentToolDe
           type: "knowledge" as const,
           id: item.entryId,
           label: item.pageStart != null
-            ? `${item.title}（第 ${item.pageStart}${item.pageEnd != null && item.pageEnd !== item.pageStart ? `–${item.pageEnd}` : ""} 页）`
+            ? `${item.title}（${formatKnowledgePageLabel(item.pageStart, item.pageEnd ?? item.pageStart)}）`
             : item.title,
           href: knowledgeEntryHref(item.entryId, item.revisionId, item.pageStart),
           snippet: item.excerpt || undefined

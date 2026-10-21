@@ -7,7 +7,9 @@ import {
   deleteChunksForEntry,
   hasKnowledgeVectorSupport,
   insertChunks,
-  markIndexOutcome
+  markIndexOutcome,
+  persistKnowledgeIndexJob,
+  type KnowledgeIndexJobClaim
 } from "./repository";
 
 export type KnowledgeIndexEntrySnapshot = {
@@ -104,7 +106,7 @@ export async function indexKnowledgeEntry(
     entryId: string;
     organizationId: string;
     embeddingClient?: KnowledgeEmbeddingClient;
-    claimedStartedAt?: string;
+    claim?: KnowledgeIndexJobClaim;
   }
 ): Promise<IndexEntryResult> {
   const snapshot = await loadIndexEntrySnapshot(db, input);
@@ -113,26 +115,8 @@ export async function indexKnowledgeEntry(
     return { outcome: "missing" };
   }
 
-  const persist = (write: (tx: Database) => Promise<void>) => db.transaction(async (tx) => {
-    if (input.claimedStartedAt !== undefined) {
-      // Backfill and authoring use this same entry lock. A re-enqueue or failure
-      // supersedes our claim; never overwrite it with a pre-extraction snapshot.
-      const entry = await tx.query(
-        `select id from knowledge_entries where organization_id = $1 and id = $2 for update`,
-        [input.organizationId, input.entryId]
-      );
-      if (!entry.rows.length) return false;
-      const claim = await tx.query(
-        `select entry_id from knowledge_index_status
-         where organization_id = $1 and entry_id = $2 and status = 'processing'
-           and started_at = $3::timestamptz for update`,
-        [input.organizationId, input.entryId, input.claimedStartedAt]
-      );
-      if (!claim.rows.length) return false;
-    }
-    await write(tx);
-    return true;
-  });
+  const persist = (write: (tx: Database) => Promise<void>) =>
+    persistKnowledgeIndexJob(db, input.claim, write);
 
   if (snapshot.entryStatus !== "published") {
     const committed = await persist(async (tx) => {

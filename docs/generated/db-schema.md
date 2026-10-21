@@ -3814,6 +3814,7 @@ Indexes:
 | `created_at` | `timestamp with time zone` | no | `now()` |
 | `updated_at` | `timestamp with time zone` | no | `now()` |
 | `page_offsets` | `integer[]` | yes | — |
+| `page_backfill_error` | `text` | yes | — |
 
 Constraints:
 

@@ -1,6 +1,6 @@
 import type { Database } from "../../../shared/database/client";
 import type { KnowledgeEmbeddingClient } from "./embeddingClient";
-import { claimNextIndexJob, markIndexOutcome } from "./repository";
+import { claimNextIndexJob, markIndexOutcome, persistKnowledgeIndexJob } from "./repository";
 import { indexKnowledgeEntry } from "./service";
 
 export type KnowledgeIndexWorkerOptions = {
@@ -16,28 +16,27 @@ export type KnowledgeIndexWorkerOptions = {
 export async function processNextKnowledgeIndexJob(
   options: KnowledgeIndexWorkerOptions
 ): Promise<"processed" | "idle"> {
-  const claimed = await claimNextIndexJob(options.db);
-  if (!claimed) {
+  const claim = await claimNextIndexJob(options.db);
+  if (!claim) {
     return "idle";
   }
 
   try {
     await indexKnowledgeEntry(options.db, {
-      entryId: claimed.entryId,
-      organizationId: claimed.organizationId,
-      claimedStartedAt: claimed.startedAt,
+      entryId: claim.entryId,
+      organizationId: claim.organizationId,
+      claim,
       embeddingClient: options.embeddingClient
     });
   } catch (error) {
     // indexKnowledgeEntry records expected failures itself; this catch keeps
     // unexpected errors (connection loss mid-write, etc.) honest in the queue.
-    await markIndexOutcome(options.db, {
-      entryId: claimed.entryId,
-      organizationId: claimed.organizationId,
+    await persistKnowledgeIndexJob(options.db, claim, (tx) => markIndexOutcome(tx, {
+      entryId: claim.entryId,
+      organizationId: claim.organizationId,
       status: "failed",
-      expectedStartedAt: claimed.startedAt,
       error: error instanceof Error ? error.message : String(error)
-    }).catch(() => undefined);
+    })).catch(() => undefined);
   }
   return "processed";
 }

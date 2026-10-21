@@ -77,6 +77,18 @@ describe("chunkMarkdown", () => {
 });
 
 describe("chunkExtractedText", () => {
+  it("drops all page attribution if a normalized paragraph cannot be located, preserving chunk texts", () => {
+    const text = "alpha\n\nbeta\u0000gamma\n\nomega";
+    const options = { maxChars: 12, overlapChars: 4 };
+    const chunks = chunkExtractedText({ title: "T", text, pageOffsets: [0, 7, 19] }, options);
+    expect(chunks).toEqual(chunkExtractedText({ title: "T", text }, options));
+    expect(chunks).toEqual([
+      { chunkIndex: 0, text: "T\nalpha" },
+      { chunkIndex: 1, text: "T\nlpha\n\nbetagamma" },
+      { chunkIndex: 2, text: "T\namma\n\nomega" }
+    ]);
+  });
+
   it("keeps PDF windows and tracks physical pages across overlap and repeated paragraphs", () => {
     const input = { title: "T", text: "  alpha\n\nalpha\n\n  omega  ", pageOffsets: [0, 9, 16] };
     expect(chunkExtractedText(input, { maxChars: 12, overlapChars: 5 })).toEqual([

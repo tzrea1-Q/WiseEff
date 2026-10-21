@@ -69,33 +69,46 @@ function windowParagraphs(
   paragraphs: string[],
   options: Required<ChunkingOptions>,
   contextPrefix: string,
-  source?: { text: string; onChunk: (start: number, end: number) => void }
+  source?: { text: string; onChunk: (start: number, end: number) => void; onMissing: () => void }
 ): string[] {
   const chunks: string[] = [];
   let current = "";
   let sourceCursor = 0;
-  let offsets: number[] = [];
+  let pieces: Array<{ start: number; end: number; bodyStart: number; bodyEnd: number }> = [];
+  let sourceLocated = true;
 
   const flush = () => {
     const body = current.trim();
     if (body) {
       chunks.push(contextPrefix ? `${contextPrefix}\n${body}` : body);
-      source?.onChunk(offsets[0], offsets[offsets.length - 1]);
+      if (sourceLocated && pieces.length) source?.onChunk(pieces[0].start, pieces[pieces.length - 1].end - 1);
     }
   };
 
   for (const paragraph of paragraphs.flatMap((p) => splitOversizedParagraph(p, options.maxChars))) {
     if (current && current.length + paragraph.length + 2 > options.maxChars) {
       flush();
-      current = overlapTail(current, options.overlapChars);
-      offsets = current ? offsets.slice(-current.length) : [];
+      const tail = overlapTail(current, options.overlapChars);
+      const removed = current.length - tail.length;
+      pieces = pieces.filter((piece) => piece.bodyEnd > removed).map((piece) => ({
+        start: piece.start + Math.max(0, removed - piece.bodyStart),
+        end: piece.end,
+        bodyStart: Math.max(0, piece.bodyStart - removed),
+        bodyEnd: piece.bodyEnd - removed
+      }));
+      current = tail;
     }
-    if (source) {
+    if (source && sourceLocated) {
       // Locate each piece in source order, so repeated paragraphs stay distinct.
       const start = source.text.indexOf(paragraph, sourceCursor);
-      sourceCursor = start + paragraph.length;
-      if (current) offsets.push(sourceCursor, sourceCursor); // synthetic paragraph separator
-      offsets.push(...Array.from({ length: paragraph.length }, (_, index) => start + index));
+      if (start < 0) {
+        sourceLocated = false;
+        source.onMissing();
+      } else {
+        sourceCursor = start + paragraph.length;
+        const bodyStart = current ? current.length + 2 : 0;
+        pieces.push({ start, end: sourceCursor, bodyStart, bodyEnd: bodyStart + paragraph.length });
+      }
     }
     current = current ? `${current}\n\n${paragraph}` : paragraph;
   }
@@ -198,13 +211,15 @@ export function chunkExtractedText(
         .filter(Boolean);
 
   const ranges: Array<{ pageStart: number; pageEnd: number }> = [];
+  let sourceLocated = true;
   const pageAt = (offset: number) => input.pageOffsets!.findLastIndex((start) => start <= offset) + 1;
   const texts = windowParagraphs(paragraphs, resolved, input.title.trim(), input.pageOffsets?.length ? {
     text: input.text,
-    onChunk: (start, end) => ranges.push({ pageStart: pageAt(start), pageEnd: pageAt(end) })
+    onChunk: (start, end) => ranges.push({ pageStart: pageAt(start), pageEnd: pageAt(end) }),
+    onMissing: () => { sourceLocated = false; }
   } : undefined);
   if (texts.length === 0 && input.title.trim()) {
     texts.push(input.title.trim());
   }
-  return texts.map((text, chunkIndex) => ({ chunkIndex, text, ...ranges[chunkIndex] }));
+  return texts.map((text, chunkIndex) => ({ chunkIndex, text, ...(sourceLocated ? ranges[chunkIndex] : {}) }));
 }

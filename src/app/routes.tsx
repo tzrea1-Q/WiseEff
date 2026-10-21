@@ -1,3 +1,4 @@
+import { knowledgeEntryHref, parseKnowledgeEntryQuery } from "@/domain/knowledge/citations";
 import { useMemo, type Dispatch, type ReactNode } from "react";
 
 import type {
@@ -194,7 +195,7 @@ export function PageRouter({
           updatedAt: item.updatedAt
         }));
       },
-      onOpenEntry: (entryId: string) => onNavigate(`/knowledge?entryId=${encodeURIComponent(entryId)}`)
+      onOpenEntry: (entryId: string) => onNavigate(knowledgeEntryHref({ entryId }))
     };
   }, [knowledgeRepository, canViewKnowledge, onNavigate]);
   const definitionRelatedKnowledge = useMemo<SpecRelatedKnowledgeSource | undefined>(() => {
@@ -213,7 +214,7 @@ export function PageRouter({
           await knowledgeRepository.addDefinitionReference(entryId, definitionId);
         }
       } } : {}),
-      onOpenEntry: (entryId) => onNavigate(`/knowledge?entryId=${encodeURIComponent(entryId)}`)
+      onOpenEntry: (entryId) => onNavigate(knowledgeEntryHref({ entryId }))
     };
   }, [knowledgeRepository, canViewKnowledge, knowledgeCapability?.canEdit, onNavigate]);
 
@@ -431,15 +432,16 @@ export function PageRouter({
       return productFeedbackRepository ? <FeedbackAdminPage productFeedbackRepository={productFeedbackRepository} search={search} onSearchChange={onSearchChange} /> : null;
     case "feedback":
       return productFeedbackRepository ? <FeedbackCenterPage productFeedbackRepository={productFeedbackRepository} search={search} onSearchChange={onSearchChange} /> : null;
-    case "knowledge":
+    case "knowledge": {
+      const citation = parseKnowledgeEntryQuery(new URLSearchParams(search));
       return knowledgeRepository && knowledgeCapability ? (
         <KnowledgePage
           repository={knowledgeRepository}
           capability={knowledgeCapability}
           askXiaozeEnabled={runtimeMode === "api"}
-          initialEntryId={new URLSearchParams(search).get("entryId")}
-          initialRevisionId={new URLSearchParams(search).get("revisionId")}
-          initialPage={new URLSearchParams(search).get("page")}
+          initialEntryId={citation.entryId}
+          initialRevisionId={citation.revisionId}
+          initialPage={citation.page?.toString()}
           searchParameterDefinitions={searchParameterDefinitions}
           onOpenDefinition={canViewParameterDefinitions && runtime?.parameterCatalogRepository
             ? (definitionId) => onNavigate(buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, definitionId })
@@ -448,6 +450,7 @@ export function PageRouter({
           onNavigate={onNavigate}
         />
       ) : null;
+    }
     case "knowledge-admin":
       return knowledgeRepository && knowledgeCapability ? (
         <KnowledgeAdminPage repository={knowledgeRepository} capability={knowledgeCapability} onNavigate={onNavigate} />

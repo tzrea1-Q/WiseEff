@@ -136,7 +136,7 @@ describe.skipIf(!databaseAvailable)("Existing PDF page backfill over HTTP and Po
     expect(await request<KnowledgeIndexHealthDto>("GET", "/index/status")).toEqual(health);
   });
 
-  it.each(["missing", "invalid"])("keeps a searchable index and reports health when the stored PDF is %s, then permits retry", async (failure) => {
+  it.each(["missing", "invalid"])("keeps a searchable index and reports health when the stored PDF is %s, and records the failure once until explicitly repaired", async (failure) => {
     const item = await legacyPdf();
     const healthy = await legacyPdf();
     const before = await request("GET", `/entries/${item.id}`);
@@ -163,7 +163,14 @@ describe.skipIf(!databaseAvailable)("Existing PDF page backfill over HTTP and Po
     expect(await request("GET", `/entries/${item.id}/revisions`)).toEqual(revisions);
     expect((await db.query("select * from audit_events order by id")).rows).toEqual(audits.rows);
 
+    const failedHealth = await request<KnowledgeIndexHealthDto>("GET", "/index/status");
+    expect((await db.query<{ page_backfill_error: string }>("select page_backfill_error from knowledge_files where id = $1", [item.file!.id])).rows[0].page_backfill_error).toContain("PDF page backfill failed:");
     await writeFile(objectPath, bytes);
+    expect(await backfillKnowledgePdfPages(db, {
+      ...objectStore, async get() { throw new Error("Failed files must not be retried"); }
+    })).toEqual({ updated: 0, failed: 0 });
+    expect(await request<KnowledgeIndexHealthDto>("GET", "/index/status")).toEqual(failedHealth);
+    await db.query("update knowledge_files set page_backfill_error = null where id = $1", [item.file!.id]);
     expect(await backfillKnowledgePdfPages(db, objectStore)).toEqual({ updated: 1, failed: 0 });
     await drainIndexQueue();
     expect((await search()).items.find((row) => row.entryId === item.id)).toMatchObject({ pageStart: 1, pageEnd: 2 });
@@ -212,6 +219,36 @@ describe.skipIf(!databaseAvailable)("Existing PDF page backfill over HTTP and Po
     expect(await backfillKnowledgePdfPages(db, objectStore)).toEqual({ updated: 0, failed: 0 });
   });
 
+  it("never changes stored text when re-extraction differs", async () => {
+    const item = await legacyPdf();
+    await db.query("update knowledge_files set extracted_text = 'original stored text' where id = $1", [item.file!.id]);
+    const chunks = await db.query("select * from knowledge_chunks where entry_id = $1 order by chunk_index", [item.id]);
+    expect(await backfillKnowledgePdfPages(db, objectStore)).toEqual({ updated: 0, failed: 1 });
+    expect((await db.query("select extracted_text, page_offsets, page_backfill_error from knowledge_files where id = $1", [item.file!.id])).rows).toEqual([{
+      extracted_text: "original stored text", page_offsets: null,
+      page_backfill_error: "PDF page backfill failed: extracted text changed; pages not applied"
+    }]);
+    expect((await db.query("select * from knowledge_chunks where entry_id = $1 order by chunk_index", [item.id])).rows).toEqual(chunks.rows);
+    expect(await backfillKnowledgePdfPages(db, objectStore)).toEqual({ updated: 0, failed: 0 });
+  });
+
+  it("records historical file failures without touching head index health", async () => {
+    const item = await legacyPdf();
+    await request("PATCH", `/entries/${item.id}`, {
+      expectedHeadRevisionNumber: 1,
+      file: { fileName: "sample.pdf", contentType: "application/pdf",
+        contentBase64: readFileSync(new URL("./testing/fixtures/sample.pdf", import.meta.url)).toString("base64") }
+    });
+    await drainIndexQueue();
+    const health = await request<KnowledgeIndexHealthDto>("GET", "/index/status");
+    await writeFile(join(root, item.file!.storageKey), "broken PDF");
+    expect(await backfillKnowledgePdfPages(db, objectStore)).toEqual({ updated: 0, failed: 1 });
+    expect(await request<KnowledgeIndexHealthDto>("GET", "/index/status")).toEqual(health);
+    expect((await db.query<{ page_backfill_error: string }>("select page_backfill_error from knowledge_files where id = $1", [item.file!.id])).rows[0].page_backfill_error).toContain("PDF page backfill failed:");
+    expect(await backfillKnowledgePdfPages(db, objectStore)).toEqual({ updated: 0, failed: 0 });
+    expect(await request<KnowledgeIndexHealthDto>("GET", "/index/status")).toEqual(health);
+  });
+
   it("rolls back an entry's partial extraction if one stored revision fails", async () => {
     const original = await legacyPdf();
     const replacement = await request("PATCH", `/entries/${original.id}`, {
@@ -235,6 +272,7 @@ describe.skipIf(!databaseAvailable)("Existing PDF page backfill over HTTP and Po
     expect(await request("GET", `/entries/${original.id}/revisions`)).toEqual(revisions);
 
     await writeFile(join(root, lastFile.storageKey), bytes);
+    await db.query("update knowledge_files set page_backfill_error = null where id = $1", [lastFile.id]);
     expect(await backfillKnowledgePdfPages(db, objectStore)).toEqual({ updated: 2, failed: 0 });
     await drainIndexQueue();
     expect((await request<KnowledgeSearchResponseDto>("GET", "/search?q=thermal%20derating")).items.find((row) => row.entryId === original.id)).toMatchObject({ pageStart: 1, pageEnd: 1 });
@@ -270,6 +308,8 @@ describe.skipIf(!databaseAvailable)("Existing PDF page backfill over HTTP and Po
     if (outcome === "success") expect(match).toMatchObject({ pageStart: 1, pageEnd: 2 });
     else {
       expect(match).not.toHaveProperty("pageStart");
+      expect(await backfillKnowledgePdfPages(db, objectStore)).toEqual({ updated: 0, failed: 0 });
+      await db.query("update knowledge_files set page_backfill_error = null where id = $1", [item.file!.id]);
       expect(await backfillKnowledgePdfPages(db, objectStore)).toEqual({ updated: 1, failed: 0 });
       await drainIndexQueue();
     }

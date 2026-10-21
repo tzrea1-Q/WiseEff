@@ -25,8 +25,12 @@ export interface KnowledgeTextExtractor {
 
 const MAX_EXTRACTED_TEXT_CHARS = 500_000;
 
-function normalizeExtractedText(text: string): KnowledgeExtractionOutcome {
-  const normalized = text.replace(/\r\n/g, "\n").replace(/\u0000/g, "").trim();
+function normalizeText(text: string) {
+  return text.replace(/\r\n/g, "\n").replace(/\u0000/g, "");
+}
+
+function normalizedTextOutcome(text: string): KnowledgeExtractionOutcome {
+  const normalized = text.trim();
   return normalized
     ? { status: "succeeded", text: normalized.slice(0, MAX_EXTRACTED_TEXT_CHARS) }
     : { status: "failed", reason: "无可提取文本" };
@@ -43,17 +47,18 @@ async function extractPdfText(bytes: Buffer): Promise<KnowledgeExtractionOutcome
   const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse({ data: bytes });
   try {
-    const result = await parser.getText({ pageJoiner: "\n" });
-    const outcome = normalizeExtractedText(result.text ?? "");
+    const pageJoiner = "\n";
+    // pdf-parse appends a newline, pageJoiner, and two newlines after each page.
+    const pageSeparatorLength = 1 + pageJoiner.length + 2;
+    const result = await parser.getText({ pageJoiner });
+    const normalized = normalizeText(result.text ?? "");
+    const outcome = normalizedTextOutcome(normalized);
     if (outcome.status === "failed") return outcome;
-    const normalize = (text: string) => text.replace(/\r\n/g, "\n").replace(/\u0000/g, "");
-    const normalized = normalize(result.text ?? "");
     const leading = normalized.length - normalized.trimStart().length;
     let offset = 0;
-    // pdf-parse appends a newline, the pageJoiner, and two newlines per page.
     const pageOffsets = result.pages.map((page) => {
       const start = Math.min(outcome.text.length, Math.max(0, offset - leading));
-      offset += normalize(page.text).length + 4;
+      offset += normalizeText(page.text).length + pageSeparatorLength;
       return start;
     });
     return { ...outcome, pageOffsets };
@@ -73,13 +78,13 @@ export function createDefaultKnowledgeTextExtractor(): KnowledgeTextExtractor {
     async extract(input) {
       try {
         if (input.contentType === "text/plain" || input.contentType === "text/markdown") {
-          return normalizeExtractedText(input.bytes.toString("utf8"));
+          return normalizedTextOutcome(normalizeText(input.bytes.toString("utf8")));
         }
         if (input.contentType === "application/pdf") {
           return await extractPdfText(input.bytes);
         }
         if (input.contentType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-          return normalizeExtractedText(await extractDocxText(input.bytes));
+          return normalizedTextOutcome(normalizeText(await extractDocxText(input.bytes)));
         }
         if (input.contentType === "application/msword") {
           return {

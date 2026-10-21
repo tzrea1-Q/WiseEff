@@ -1,4 +1,32 @@
-import type { Queryable } from "../../../shared/database/client";
+import type { Database, Queryable } from "../../../shared/database/client";
+
+export type KnowledgeIndexJobClaim = { entryId: string; organizationId: string; startedAt: string };
+
+/** Lock authoring/backfill first, then verify the claim before any projection or outcome write. */
+export async function persistKnowledgeIndexJob(
+  db: Database,
+  claim: KnowledgeIndexJobClaim | undefined,
+  write: (tx: Database) => Promise<void>
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    if (claim) {
+      const entry = await tx.query(
+        `select id from knowledge_entries where organization_id = $1 and id = $2 for update`,
+        [claim.organizationId, claim.entryId]
+      );
+      if (!entry.rows.length) return false;
+      const current = await tx.query(
+        `select entry_id from knowledge_index_status
+         where organization_id = $1 and entry_id = $2 and status = 'processing'
+           and started_at = $3::timestamptz for update`,
+        [claim.organizationId, claim.entryId, claim.startedAt]
+      );
+      if (!current.rows.length) return false;
+    }
+    await write(tx);
+    return true;
+  });
+}
 
 export const knowledgeIndexStates = ["pending", "processing", "succeeded", "failed"] as const;
 export type KnowledgeIndexState = (typeof knowledgeIndexStates)[number];
@@ -161,7 +189,7 @@ const STALE_PROCESSING_INTERVAL = "5 minutes";
  */
 export async function claimNextIndexJob(
   db: Queryable
-): Promise<{ entryId: string; organizationId: string; startedAt: string } | null> {
+): Promise<KnowledgeIndexJobClaim | null> {
   const result = await db.query<{ entry_id: string; organization_id: string; started_at: string }>(
     `
     update knowledge_index_status
@@ -194,7 +222,6 @@ export async function markIndexOutcome(
     chunkCount?: number;
     embeddedChunkCount?: number;
     embeddingModel?: string | null;
-    expectedStartedAt?: string;
   }
 ): Promise<void> {
   await db.query(
@@ -211,7 +238,6 @@ export async function markIndexOutcome(
         updated_at = now()
     where entry_id = $1
       and organization_id = $2
-      and ($10::timestamptz is null or (status = 'processing' and started_at = $10::timestamptz))
     `,
     [
       input.entryId,
@@ -222,8 +248,7 @@ export async function markIndexOutcome(
       input.indexedRevisionNumber ?? null,
       input.chunkCount ?? 0,
       input.embeddedChunkCount ?? 0,
-      input.embeddingModel ?? null,
-      input.expectedStartedAt ?? null
+      input.embeddingModel ?? null
     ]
   );
 }

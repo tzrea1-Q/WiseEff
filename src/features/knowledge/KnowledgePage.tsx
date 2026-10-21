@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, FilePlus2, RefreshCw, SquarePen } from "lucide-react";
 
+import { formatKnowledgePageLabel, knowledgeEntryHref, parseKnowledgeEntryQuery } from "@/domain/knowledge/citations";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { canGovernEntry, collectKnownTags } from "@/domain/knowledge/rules";
@@ -69,17 +70,17 @@ export function KnowledgePage({
   repository,
   capability,
   askXiaozeEnabled = false,
-  initialEntryId: linkedEntryId = null,
-  initialRevisionId: linkedRevisionId = null,
-  initialPage: linkedPage = null,
+  initialEntryId = null,
+  initialRevisionId = null,
+  initialPage = null,
   searchParameterDefinitions,
   onOpenDefinition,
   onNavigate
 }: KnowledgePageProps) {
   const [searchCitation, setSearchCitation] = useState<{ entryId: string; revisionId: string | null; page: string | null } | null>(null);
-  const initialEntryId = searchCitation?.entryId ?? linkedEntryId;
-  const initialRevisionId = searchCitation ? searchCitation.revisionId : linkedRevisionId;
-  const initialPage = searchCitation ? searchCitation.page : linkedPage;
+  const linkedEntryId = searchCitation?.entryId ?? initialEntryId;
+  const linkedRevisionId = searchCitation ? searchCitation.revisionId : initialRevisionId;
+  const linkedPage = searchCitation ? searchCitation.page : initialPage;
   const [citation, setCitation] = useState<{ revisionId: string; page: number | null; historical: boolean } | null>(null);
   const [rows, setRows] = useState<KnowledgeEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,7 +88,7 @@ export function KnowledgePage({
   const [searchError, setSearchError] = useState("");
   const [citationError, setCitationError] = useState("");
   const [citationLoading, setCitationLoading] = useState(Boolean(initialEntryId));
-  const [citationRetry, setCitationRetry] = useState(0);
+  const citationRequest = useRef(0);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [originFilter, setOriginFilter] = useState<string[]>([]);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
@@ -157,31 +158,31 @@ export function KnowledgePage({
   }, [loadEntries]);
 
   // Citation deep link (/knowledge?entryId=…) opens the entry detail directly.
-  useEffect(() => {
+  const loadCitation = useCallback(async () => {
+    const request = ++citationRequest.current;
     citationResult.current = null;
     setCitationError("");
-    setCitationLoading(Boolean(initialEntryId));
+    setCitationLoading(Boolean(linkedEntryId));
     setSelectedId(null);
     setCitation(null);
-    if (!initialEntryId) {
+    if (!linkedEntryId) {
       return;
     }
-    let cancelled = false;
-    void repository.get(initialEntryId).then(async (entry) => {
-      if (cancelled) return;
-      if (!entry || entry.id !== initialEntryId) {
+    await repository.get(linkedEntryId).then(async (entry) => {
+      if (request !== citationRequest.current) return;
+      if (!entry || entry.id !== linkedEntryId) {
         setCitationError("引用的知识条目不存在或不可访问。");
         return;
       }
-      if (initialRevisionId || initialPage) {
+      if (linkedRevisionId || linkedPage) {
         const revisions = await repository.listRevisions(entry.id);
-        if (cancelled) return;
-        const revision = initialRevisionId ? revisions.find((item) => item.id === initialRevisionId) : revisions.find((item) => item.revisionNumber === entry.headRevisionNumber);
+        if (request !== citationRequest.current) return;
+        const revision = linkedRevisionId ? revisions.find((item) => item.id === linkedRevisionId) : revisions.find((item) => item.revisionNumber === entry.headRevisionNumber);
         if (!revision) {
           setCitationError("引用的知识条目不存在或不可访问。");
           return;
         }
-        const page = initialPage && /^[1-9]\d*$/.test(initialPage) && Number.isSafeInteger(Number(initialPage)) ? Number(initialPage) : null;
+        const { page } = parseKnowledgeEntryQuery(new URLSearchParams(linkedPage ? { page: linkedPage } : {}));
         setCitation({ revisionId: revision.id, page: revision.fileId ? page : null, historical: revision.revisionNumber !== entry.headRevisionNumber });
       }
       citationResult.current = { entry };
@@ -190,14 +191,16 @@ export function KnowledgePage({
         : [entry, ...current]));
       setSelectedId(entry.id);
     }).catch((error: unknown) => {
-      if (!cancelled) setCitationError(presentError(error, "知识条目加载失败，请稍后重试。"));
+      if (request === citationRequest.current) setCitationError(presentError(error, "知识条目加载失败，请稍后重试。"));
     }).finally(() => {
-      if (!cancelled) setCitationLoading(false);
+      if (request === citationRequest.current) setCitationLoading(false);
     });
-    return () => {
-      cancelled = true;
-    };
-  }, [initialEntryId, initialRevisionId, initialPage, repository, citationRetry]);
+  }, [linkedEntryId, linkedRevisionId, linkedPage, repository, searchCitation]);
+
+  useEffect(() => {
+    void loadCitation();
+    return () => { ++citationRequest.current; };
+  }, [loadCitation]);
 
   const runSearch = async () => {
     const request = ++searchRequest.current;
@@ -537,7 +540,7 @@ export function KnowledgePage({
             ) : null}
             <Button type="button" variant={capability.canEdit ? "outline" : "default"} size="sm" onClick={() => {
               void loadEntries();
-              if (citationError || (initialEntryId && selectedId === initialEntryId)) setCitationRetry((current) => current + 1);
+              if (citationError || (linkedEntryId && selectedId === linkedEntryId)) void loadCitation();
             }} disabled={loading || citationLoading} aria-busy={loading || citationLoading || undefined}>
               <RefreshCw data-icon="inline-start" />
               刷新
@@ -597,13 +600,16 @@ export function KnowledgePage({
               {searchResults.map((result) => (
                 <li key={result.entryId}>
                   <a
-                    href={`/knowledge?${new URLSearchParams({ entryId: result.entryId, ...(result.revisionId ? { revisionId: result.revisionId } : {}), ...(result.pageStart ? { page: String(result.pageStart) } : {}) })}`}
+                    href={knowledgeEntryHref({ entryId: result.entryId, revisionId: result.pageStart ? result.revisionId : null, page: result.pageStart })}
                     onClick={(event) => {
                       if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
                       event.preventDefault();
-                      setCitationRetry((current) => current + 1);
-                      if (onNavigate) onNavigate(event.currentTarget.getAttribute("href")!);
-                      else setSearchCitation({ entryId: result.entryId, revisionId: result.revisionId, page: result.pageStart ? String(result.pageStart) : null });
+                      if (onNavigate) {
+                        onNavigate(event.currentTarget.pathname + event.currentTarget.search);
+                        if (linkedEntryId === result.entryId && linkedRevisionId === (result.pageStart ? result.revisionId : null)
+                          && linkedPage === (result.pageStart ? String(result.pageStart) : null)) void loadCitation();
+                      }
+                      else setSearchCitation({ entryId: result.entryId, revisionId: result.pageStart ? result.revisionId : null, page: result.pageStart ? String(result.pageStart) : null });
                     }}
                     className="block w-full rounded-md border border-border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/40"
                   >
@@ -613,7 +619,7 @@ export function KnowledgePage({
                     </span>
                     <span className="mt-1 flex gap-2 text-xs text-muted-foreground">
                       {result.pageStart != null && result.pageEnd != null ? (
-                        <span className="shrink-0">第 {result.pageStart}{result.pageEnd !== result.pageStart ? `–${result.pageEnd}` : ""} 页</span>
+                        <span className="shrink-0">{formatKnowledgePageLabel(result.pageStart, result.pageEnd)}</span>
                       ) : null}
                       <span className="truncate">{result.excerpt}</span>
                     </span>
@@ -675,8 +681,7 @@ export function KnowledgePage({
           setRows((current) => current.map((item) => (item.id === updated.id ? updated : item)));
         }}
         onDownloadFile={handleDownload}
-        citation={citation}
-        onOpenPage={handleOpenPage}
+        citation={citation ? { ...citation, openPage: handleOpenPage } : undefined}
         onRequestDelete={selectedEntry && canDeleteDraft(selectedEntry) ? requestDelete : undefined}
         onOpenDefinition={onOpenDefinition}
         onNavigate={onNavigate}
