@@ -20,6 +20,20 @@ function createTraceRecorder() {
 }
 
 describe("log analysis queue runtime", () => {
+  it.each([false, true])("acknowledges a missing durable job only when the exact erasure tuple is recorded=%s", async (erased) => {
+    let processor!: (job: { data: { jobId: string; logId: string; runId: string; organizationId: string }; moveToDelayed: () => Promise<void> }) => Promise<string>;
+    const query = vi.fn(async (sql: string) => sql.includes("is_erased_log_job") ? { rows: [{ erased }], rowCount: 1 } : { rows: [], rowCount: 0 });
+    const runtime = createLogAnalysisQueueRuntime({ db: { query } as unknown as Database, objectStore: {} as ObjectStore,
+      env: { REDIS_URL: "redis://redis:6379", LOG_ANALYSIS_QUEUE_PREFIX: "wiseeff", LOG_ANALYSIS_QUEUE_ATTEMPTS: 4, LOG_ANALYSIS_QUEUE_BACKOFF_MS: 1000, LOG_ANALYSIS_QUEUE_CONCURRENCY: 1 },
+      QueueCtor: vi.fn(function () { return { close: vi.fn() }; }) as never,
+      WorkerCtor: vi.fn(function (_name: string, handler: typeof processor) { processor = handler; return { close: vi.fn() }; }) as never,
+      processByJobId: async () => ({ status: "idle" }) });
+    const result = processor({ data: { jobId: "job", organizationId: "org", logId: "log", runId: "run" }, moveToDelayed: vi.fn() });
+    if (erased) await expect(result).resolves.toBe("idle");
+    else await expect(result).rejects.toThrow("Log-analysis delivery has no persisted job.");
+    expect(query).toHaveBeenLastCalledWith("select public.is_erased_log_job($1,$2,$3) erased", ["org", "log", "job"]);
+    await runtime.close();
+  });
   it.each(["queued", "processing"])("does not acknowledge an idle delivery while its database job is %s", async status => {
     let processor!: (job: { data: { jobId: string }; moveToDelayed(timestamp: number, token?: string): Promise<void> }, token?: string) => Promise<string>;
     const db = { query: vi.fn(async () => ({ rows: [{ id: "job", status, updated_at: "2026-09-09T00:00:00Z" }], rowCount: 1 })) } as unknown as Database;

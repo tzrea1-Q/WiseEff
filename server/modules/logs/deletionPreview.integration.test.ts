@@ -154,7 +154,8 @@ describe.skipIf(!available)("log deletion impact over HTTP and PostgreSQL", () =
       current = auth;
       expect((await requestJson(server, path, { headers: { Authorization: "Bearer wie_log_test" } })).status).toBe(401);
       expect((await requestJson(server, "/api/v1/logs/nonexistent/deletion-preview")).status).toBe(404);
-      expect((await requestJson(server, `/api/v1/logs/${upload.body.log.id}`, { method: "DELETE" })).status).toBe(404);
+      expect((await requestJson(server, `/api/v1/logs/${upload.body.log.id}`, { method: "DELETE" })).status).toBe(400);
+      expect((await requestJson(server, `/api/v1/logs/${upload.body.log.id}`)).status).toBe(200);
     } finally { await db.close(); await ephemeral.drop(); }
   }, 120_000);
 });

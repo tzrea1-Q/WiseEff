@@ -98,10 +98,11 @@ export function createApiClient({ baseUrl, authorization, getAuthorization, onAu
         headers: { Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify(body)
       }),
-    delete: <T>(path: string) =>
+    delete: <T>(path: string, body?: unknown) =>
       request<T>(path, {
         method: "DELETE",
-        headers: { Accept: "application/json" }
+        headers: { Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) })
       }),
     upload: <T>(path: string, file: File, fields: Record<string, string> = {}) => {
       const formData = new FormData();

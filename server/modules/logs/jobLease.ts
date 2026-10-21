@@ -75,7 +75,7 @@ export function keepLogJobLease(db: Database, store: ObjectStore, input: {
       return stream;
     }) } : {})
   };
-  return { signal, run, objectStore, remainingMs,
+  return { signal, run, objectStore, rawObjectStore: store, remainingMs,
     stop() { finished = true; clearTimeout(heartbeat); clearTimeout(expires); clearTimeout(deadline); }
   };
 }

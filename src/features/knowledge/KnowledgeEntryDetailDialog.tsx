@@ -120,9 +120,9 @@ export function KnowledgeEntryDetailDialog({
                   />
                 </div>
               ) : null}
-              {onNavigate && (entry.sourceLogId || entry.sourceReloadRunId) ? (
+              {entry.sourceLogDeleted || onNavigate && (entry.sourceLogId || entry.sourceReloadRunId) ? (
                 <div className="mt-2 flex flex-wrap items-center gap-2" aria-label="蒸馏来源">
-                  {entry.sourceLogId ? (
+                  {entry.sourceLogDeleted ? <span className="text-xs text-muted-foreground">来源已删除</span> : entry.sourceLogId && onNavigate ? (
                     <Button
                       variant="link"
                       size="sm"
@@ -133,7 +133,7 @@ export function KnowledgeEntryDetailDialog({
                       查看日志分析
                     </Button>
                   ) : null}
-                  {entry.sourceReloadRunId ? (
+                  {entry.sourceReloadRunId && onNavigate ? (
                     <Button
                       variant="link"
                       size="sm"
