@@ -14,6 +14,7 @@ import {
   validateLocalAccountUsername
 } from "./localAccountCredentials";
 import type { AuthContext, BackendRoleId } from "./types";
+export type { UpdateCurrentUserProfileInput } from "./profile";
 
 const scryptAsync = promisify(scrypt);
 const passwordHashPrefix = "scrypt";
@@ -105,11 +106,6 @@ export type RegisterLocalAccountResult = LocalAuthSessionResult | PendingLocalRe
 export type LoginLocalAccountInput = {
   username: string;
   password: string;
-};
-
-export type UpdateCurrentUserProfileInput = {
-  name?: string;
-  title?: string;
 };
 
 export type ChangeLocalAccountPasswordInput = {
@@ -597,33 +593,6 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
       });
 
       return { ok: true as const };
-    },
-
-    async updateCurrentUserProfile(auth: AuthContext, input: UpdateCurrentUserProfileInput, context: { requestId: string }) {
-      const name = input.name?.trim();
-      const title = input.title?.trim();
-      if (name === "" || title === "") {
-        throw new ApiError("VALIDATION_FAILED", "Profile fields cannot be blank.");
-      }
-
-      return db.transaction(async (tx) => {
-        await tx.query(
-          `
-          update users
-          set name = coalesce($3, name), title = coalesce($4, title)
-          where organization_id = $1 and id = $2
-          `,
-          [auth.organization.id, auth.user.id, name, title]
-        );
-        await auditAuthEvent(tx, {
-          organizationId: auth.organization.id,
-          userId: auth.user.id,
-          action: "update-profile",
-          metadata: { fields: Object.keys(input) },
-          traceId: context.requestId
-        });
-        return getAuthContext(tx, auth.user.id);
-      });
     }
   };
 }

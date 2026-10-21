@@ -164,6 +164,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
 
   registerAuthRoutes(router, {
+    db: options.db,
     getCurrentAuthContext: authResolver,
     localAuthService,
     authPublicConfig: localAuthService
