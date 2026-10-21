@@ -1539,7 +1539,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       table_name: string;
     }>(`
       with limited_reads(function_identity, table_name, required_columns) as (
-        -- 0221 reads only these actor columns; every required column must remain
+        -- 0222 reads only these actor columns; every required column must remain
         -- readable. Other DEFINER references still require table-wide SELECT.
         values
           ('parameter_catalog.preview_project_deletion_catalog(text,text,text)', 'users',
@@ -1596,7 +1596,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
             )
           )
       )
-      -- These two 0223 references lock/delete role rows; their actor reads
+      -- These two 0224 references lock/delete role rows; their actor reads
       -- remain checked separately on require_project_erasure_admin above.
       and not (
         refs.table_name = 'user_role_bindings'

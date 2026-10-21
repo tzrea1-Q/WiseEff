@@ -250,8 +250,8 @@ export const runP01 = async (db: Database): Promise<GateResult> => {
   });
 };
 
-// #930 / 0169, extended by #1304 / 0222: exact audited tombstone entry point.
-// 0222 adds the separately checked administrator_direct actor/mode branch;
+// #930 / 0169, extended by #1304 / 0223: exact audited tombstone entry point.
+// 0223 adds the separately checked administrator_direct actor/mode branch;
 // the former 0169 body pin was 34ac6fdf032badb57c998b3597810048b06d78e480fd8edb4c052c25d967edd5.
 // Re-review the migration body and role matrix before changing this fingerprint.
 const REVIEWED_TOMBSTONE_IDENTITY =
