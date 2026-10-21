@@ -4,7 +4,7 @@ import type { ParameterFileRepository, SourceRevisionRequest } from "@/applicati
 import { SourceRevisionReviewPanel } from "./SourceRevisionReviewPanel";
 
 const pending: SourceRevisionRequest = { id: "request", projectId: "project", candidateId: "candidate", fileId: "file", fileName: "board.dts",
-  configSetId: "set", status: "pending", reason: "保留源码表达", submitterUserId: "author", assignedToUserId: "reviewer", reviewerUserId: null,
+  configSetId: "set", status: "pending", applicationMode: "separate_review", reason: "保留源码表达", submitterUserId: "author", assignedToUserId: "reviewer", reviewerUserId: null,
   reviewerNote: null, createdAt: "2026-10-19T00:00:00Z", updatedAt: "2026-10-19T00:00:00Z", proofDigest: "a".repeat(64),
   impact: { parameterChanges: 0, nodeAdditions: 0, nodeRemovals: 0 },
   before: '/ { names = "", "same", "same"; values = /bits/ 64 <9007199254740993>; };\n',
@@ -28,6 +28,14 @@ function setup() {
 }
 
 describe("whole-DTS source review", () => {
+  it("labels an administrator's own application honestly without naming a separate reviewer", async () => {
+    const f = setup();
+    f.get.mockResolvedValue({ ...pending, status: "approved", applicationMode: "administrator_direct", assignedToUserId: null, submitterName: "管理员" });
+    render(f.element({ userId: "author" }));
+    expect(await screen.findByText("管理员本人直接应用 · 未经过独立审核")).toBeInTheDocument();
+    expect(screen.queryByText(/指定软件审核人/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "批准并应用 DTS" })).not.toBeInTheDocument();
+  });
   it("submits the exact frozen proof and trimmed note, preserving verified source after a summary-only receipt", async () => {
     const f = setup(); render(f.element());
     const approve = await screen.findByRole("button", { name: "批准并应用 DTS" });

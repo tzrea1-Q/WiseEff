@@ -62,7 +62,7 @@ async function ensureInspectorOpen(page: Page) {
   await ensureWorkbenchInspectorOpen(page);
 }
 
-async function submitSourceFromEditor(page: Page, source: string, reason: string) {
+async function prepareSourceFromEditor(page: Page, source: string, keyboardSave = false) {
   const editor = page.getByRole("textbox", { name: "DTS 源码", exact: true });
   await expect(editor).toHaveAttribute("aria-readonly", "true");
   await page.getByRole("radio", { name: "编辑", exact: true }).click();
@@ -75,7 +75,8 @@ async function submitSourceFromEditor(page: Page, source: string, reason: string
     && new URL(response.url()).pathname === `/api/v1/projects/${projectId}/parameter-file-candidates`);
   const previewResponse = page.waitForResponse((response) => response.request().method() === "GET"
     && new URL(response.url()).pathname.endsWith("/source-preview"), { timeout: 60_000 });
-  await page.getByRole("button", { name: "保存修改", exact: true }).click();
+  const save = page.getByRole("button", { name: "保存修改", exact: true });
+  if (keyboardSave) { await save.focus(); await page.keyboard.press("Enter"); } else await save.click();
   const candidate = await candidateResponse;
   expect(candidate.status(), await candidate.text()).toBe(201);
   expect(candidate.request().postDataJSON()).toMatchObject({ intent: "source_revision",
@@ -85,11 +86,16 @@ async function submitSourceFromEditor(page: Page, source: string, reason: string
   const item = (await preview.json()).item as ParameterFileSourcePreview;
   expect(item).toMatchObject({ kind: "source_revision", format: "dts", canSubmit: true, after: source,
     baseVersionId: expect.any(String), configRevisionId: expect.any(String), proofToken: expect.any(String) });
+  const dialog = page.getByRole("dialog", { name: "保存 DTS 修改" });
+  await expect(dialog.getByRole("region", { name: "DTS 修改差异", exact: true })).toBeVisible();
+  return { candidate, preview, item, dialog };
+}
+
+async function submitSourceFromEditor(page: Page, source: string, reason: string) {
+  const { candidate, preview, item, dialog } = await prepareSourceFromEditor(page, source);
   const reviewer = item.reviewers?.find((entry) => entry.userId === acceptanceCast.acceptanceAdmin.userId)
     ?? item.reviewers?.find((entry) => Object.values(acceptanceCast).some((actor) => actor.userId === entry.userId));
   expect(reviewer, "server must offer an eligible non-author reviewer").toBeDefined();
-  const dialog = page.getByRole("dialog", { name: "保存 DTS 修改" });
-  await expect(dialog.getByRole("region", { name: "DTS 修改差异", exact: true })).toBeVisible();
   await dialog.getByRole("textbox", { name: "DTS 修改原因" }).fill(reason);
   await selectControlOption(dialog.getByRole("combobox", { name: "DTS 软件审核人" }), reviewer!.userId);
   const submittedResponse = page.waitForResponse((response) => response.request().method() === "POST"
@@ -2878,6 +2884,69 @@ test.describe("project configuration workbench post-cutover semantic identity", 
         summarizeApiResponse(content, { method: "GET", path: contentPath, responseSummary: "exact reviewed source bytes" })],
       notes: "Real registered Binding fixture on the disposable API runtime. The whole-file editor stages immutable source; current file and Value stay unchanged while pending. The server-eligible assigned reviewer approves in a separate browser context; exact source, stable Binding identity, new Value and config/file receipt agree."
     });
+  });
+
+  test("administrator directly applies a complete DTS preview with keyboard confirmation and keeps invalid input", async ({ page, request }, testInfo) => {
+    // @acceptance PROJ-CONFIG-EDIT-001
+    // @operation PROJ-CONFIG-EDIT-001
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
+    const sample = `/dts-v1/;\n/ { board { compatible = "mt,mt5788"; rx_mod_cm_cfg = "DirectV1"; }; };\n`;
+    const binding = await seedIsolatedBinding(request, { propertyKey: "rx_mod_cm_cfg", dts: sample,
+      rawValuePattern: '"DirectV1"', nodeLocatorPattern: "board", reason: "#1303 administrator direct source application", timeoutMs: 60_000 });
+    const file = await lookupParameterFileVersion({ fileName: binding.fileName });
+    const workbenchPath = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({ configSet: binding.configSetId, file: file.fileId })}`;
+    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, workbenchPath));
+    await dismissXiaozeHint(page);
+    await expect(page.getByRole("heading", { name: binding.fileName })).toBeVisible({ timeout: 30_000 });
+    const editor = page.getByRole("textbox", { name: "DTS 源码", exact: true });
+    const invalid = '/dts-v1/;\n/ { board { rx_mod_cm_cfg = <; };';
+    await page.getByRole("radio", { name: "编辑", exact: true }).click();
+    await editor.fill(invalid);
+    await page.getByRole("button", { name: "保存修改", exact: true }).click();
+    const invalidDialog = page.getByRole("dialog", { name: "保存 DTS 修改" });
+    await expect(invalidDialog.getByRole("alert").first()).toContainText(/DTS|校验/);
+    await expect(invalidDialog.getByRole("button", { name: "直接应用修改", exact: true })).toBeDisabled();
+    expect((await lookupParameterFileVersion({ fileName: binding.fileName })).versionId).toBe(file.versionId);
+    await invalidDialog.getByRole("button", { name: "返回编辑", exact: true }).click();
+    await expect(editor).toContainText("rx_mod_cm_cfg = <;");
+    await page.getByRole("radio", { name: "预览", exact: true }).click();
+    const sourcePath = `/api/v1/projects/${projectId}/parameter-files/${file.fileId}/versions/${file.versionId}/content`;
+    const source = await request.get(apiRoute(sourcePath), { headers: adminHeaders() });
+    expect(source.status(), await source.text()).toBe(200);
+    const edited = (await source.text()).replace('"DirectV1"', '"DirectV2"') + "\n/* administrator confirmed the whole source */\n";
+    const prepared = await prepareSourceFromEditor(page, edited, true);
+    expect(prepared.item.impact?.parameterChanges).toBe(1);
+    await prepared.dialog.getByRole("textbox", { name: "DTS 修改原因" }).fill("#1303 checked complete diff, directly apply");
+    const applying = page.waitForResponse((response) => response.request().method() === "POST"
+      && new URL(response.url()).pathname.endsWith("/source-apply"), { timeout: 60_000 });
+    await prepared.dialog.getByRole("button", { name: "直接应用修改", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    const applied = await applying;
+    expect(applied.status(), await applied.text()).toBe(200);
+    expect(applied.request().postDataJSON()).not.toHaveProperty("assignedToUserId");
+    const receipt = (await applied.json()).item as SourceRevisionRequest;
+    expect(receipt).toMatchObject({ status: "approved", applicationMode: "administrator_direct", submitterUserId: acceptanceCast.xuYun.userId,
+      assignedToUserId: null, reviewerUserId: null });
+    await expect(prepared.dialog).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole("textbox", { name: "DTS 源码", exact: true })).toContainText("DirectV2");
+    await expect(page.getByText("当前工作配置", { exact: true })).toBeVisible();
+    const bindingsPath = `/api/v2/projects/${projectId}/parameter-bindings`;
+    const current = await request.get(apiRoute(bindingsPath), { headers: adminHeaders() });
+    expect(current.status(), await current.text()).toBe(200);
+    expect((await current.json()).items.find((row: { id: string }) => row.id === binding.bindingId)).toMatchObject({ rawValue: '"DirectV2"' });
+    const activeFile = await lookupParameterFileVersion({ fileName: binding.fileName });
+    expect(activeFile.versionId).toBe(receipt.appliedSourceResult!.fileVersionId);
+    const contentPath = `/api/v1/projects/${projectId}/parameter-files/${file.fileId}/versions/${activeFile.versionId}/content`;
+    const content = await request.get(apiRoute(contentPath), { headers: adminHeaders() });
+    expect(content.status(), await content.text()).toBe(200); expect(await content.text()).toBe(edited);
+    await recordOperationEvidence({ operationId: "PROJ-CONFIG-EDIT-001", title: "Administrator direct DTS application",
+      status: "passed", role: "Admin", route: workbenchPath, page, testInfo, assertions: ["ui", "api", "screenshot"],
+      api: [summarizeApiResponse(applied, { method: "POST", path: `/api/v1/projects/${projectId}/parameter-file-candidates/${prepared.item.candidateId}/source-apply` }),
+        summarizeApiResponse(current, { method: "GET", path: bindingsPath })],
+      notes: "1440x900 real API: invalid source stays local, keyboard activates preview and the explicit administrator action; reload retains exact source, stable Binding and updated value. No reviewer is selected or fabricated." });
   });
 
   test("activates existing- and new-file candidates with CAS stale safety", async ({ page, request }, testInfo) => {

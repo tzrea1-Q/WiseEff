@@ -1295,6 +1295,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameterFiles.applySourceRevisionCandidate",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-apply",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
     id: "parameterFiles.submitCanonicalCandidate",
     method: "POST",
     path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-submit",
