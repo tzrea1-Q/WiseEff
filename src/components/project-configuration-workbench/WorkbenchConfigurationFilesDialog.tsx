@@ -37,6 +37,7 @@ export type WorkbenchConfigurationFilesDialogProps = {
   onMemberSortOrderChange: (sortOrder: number) => void;
   onAddMember: () => void;
   onRemoveMember: (member: DtsConfigSetMemberFile) => void;
+  onReviewedMemberRemoval?: (member: DtsConfigSetMemberFile) => void;
   canRequestReviewedMemberRemoval: boolean;
   onOpenFile: (fileId: string) => void;
   onUpdateFile: (fileId: string) => void;
@@ -49,15 +50,15 @@ export function WorkbenchConfigurationFilesDialog({
   open, onClose, configSet, members, canAdmin, pendingAction, loading, error, operationError = "", ready, canonical, onRetry,
   availableFiles, addErrors, memberFileId, memberRole, memberSortOrder, onMemberFileIdChange,
   onMemberRoleChange, onMemberSortOrderChange, onAddMember, onRemoveMember, canRequestReviewedMemberRemoval,
-  onOpenFile, onUpdateFile, onOpenVersions, onAddSourceFile, onCanonicalAdd
+  onOpenFile, onUpdateFile, onOpenVersions, onAddSourceFile, onCanonicalAdd, onReviewedMemberRemoval
 }: WorkbenchConfigurationFilesDialogProps) {
   const addErrorId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
   const busy = pendingAction === "add-member" || pendingAction === "remove-member" || Boolean(pendingAction?.startsWith("remove-member-"));
   const checked = ready && !loading && !error;
   const canAdd = canAdmin && checked && !canonical;
-  const canRemove = (member: DtsConfigSetMemberFile) => canAdmin && checked
-    && (!canonical || (canRequestReviewedMemberRemoval && member.format === "json"));
+  const canRemove = () => canAdmin && checked
+    && (!canonical || canRequestReviewedMemberRemoval);
   const addError = addErrors[memberFileId];
   const selectedFileAvailable = availableFiles.some((file) => file.id === memberFileId);
 
@@ -74,7 +75,7 @@ export function WorkbenchConfigurationFilesDialog({
         </Button>
       </header>
       <div className="workbench-configuration-files-dialog__body" aria-busy={loading || busy}>
-        {canonical ? <p className="workbench-configuration-files-dialog__note">此配置已登记来源。添加文件需预览并确认，当前文件及历史会保留。</p> : null}
+        {canonical ? <p className="workbench-configuration-files-dialog__note">此配置已登记来源。添加或移除文件均需预览并确认，项目文件及历史会保留。</p> : null}
         {canonical && canAdmin && checked && onCanonicalAdd ? <Button type="button" disabled={busy} onClick={onCanonicalAdd}>添加配置文件</Button> : null}
         {loading ? <p role="status">正在核对配置文件…</p> : null}
         {busy && pendingAction !== "add-member" ? <p role="status">正在移除文件…</p> : null}
@@ -102,8 +103,10 @@ export function WorkbenchConfigurationFilesDialog({
               <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onUpdateFile(member.fileId)}>{canAdmin ? "更新文件" : "更新记录"}</Button>
               <RowActionMenu label={`${member.fileName} 文件操作`} triggerLabel={`${member.fileName} 更多`} items={[
                 { id: "versions", label: "版本历史与下载", disabled: busy, onSelect: () => onOpenVersions(member.fileId) },
-                ...(canRemove(member) ? [{ id: "remove", label: canonical ? "申请从配置移除" : "从配置移除", destructive: true as const,
-                  disabled: busy, onRequestConfirmation: () => onRemoveMember(member) }] : [])
+                ...(canRemove() ? [{ id: "remove", label: canonical ? "预览移除影响" : "从配置移除", destructive: true as const,
+                  disabled: busy, onRequestConfirmation: () => onRemoveMember(member) }] : []),
+                ...(canRemove() && canonical && member.format === "json" && onReviewedMemberRemoval ? [{ id: "remove-review", label: "申请从配置移除", destructive: true as const,
+                  disabled: busy, onRequestConfirmation: () => onReviewedMemberRemoval(member) }] : [])
               ]} />
             </div></TableCell>
           </TableRow>)}</TableBody>

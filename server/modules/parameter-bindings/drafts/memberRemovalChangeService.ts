@@ -61,7 +61,7 @@ async function ownedProject(db: Database, auth: AuthContext, projectId: string) 
 }
 async function load(db: Database, auth: AuthContext, projectId: string, requestId: string, lock = false) {
   return (await db.query<Row>(`select * from public.project_parameter_value_change_requests
-    where id=$1 and organization_id=$2 and project_id=$3 and request_kind='member-removal'
+    where id=$1 and organization_id=$2 and project_id=$3 and request_kind='member-removal' and member_application_mode='separate_review'
     ${lock ? "for update" : ""}`,
   [requestId, auth.organization.id, projectId])).rows[0] ?? null;
 }
@@ -152,7 +152,8 @@ export async function getCanonicalMemberRemovalForAuth(db: Database, auth: AuthC
     left join public.users submitter on submitter.id=request.submitter_user_id and submitter.organization_id=request.organization_id
     left join public.users assignee on assignee.id=request.assigned_to_user_id and assignee.organization_id=request.organization_id
     left join public.users reviewer on reviewer.id=request.reviewer_user_id and reviewer.organization_id=request.organization_id
-    where request.id=$1 and request.organization_id=$2 and request.project_id=$3 and request.request_kind='member-removal'`,
+    where request.id=$1 and request.organization_id=$2 and request.project_id=$3 and request.request_kind='member-removal'
+      and request.member_application_mode='separate_review'`,
     [input.requestId, auth.organization.id, input.projectId])).rows[0];
   if (!row) return null;
   if (row.submitter_user_id === auth.user.id) return dto(row);
@@ -180,6 +181,7 @@ export async function listCanonicalMemberRemovalsForAuth(db: Database, auth: Aut
     left join public.users assignee on assignee.id=request.assigned_to_user_id and assignee.organization_id=request.organization_id
     left join public.users reviewer on reviewer.id=request.reviewer_user_id and reviewer.organization_id=request.organization_id
     where request.organization_id=$1 and request.project_id=$2 and request.request_kind='member-removal'
+      and request.member_application_mode='separate_review'
       and ($3::text is null or request.status=$3)
       and (request.submitter_user_id=$4 or ($5::boolean and request.assigned_to_user_id=$4))
     order by request.updated_at desc,request.id`, [auth.organization.id, input.projectId,

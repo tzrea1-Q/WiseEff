@@ -553,20 +553,29 @@ export const casCurrentTip = async (
              and next_pin.source_occurrence_id=binding.source_occurrence_id
              and next_pin.definition_id=binding.definition_id
              and next_pin.config_revision_id=next_value.config_revision_id
-             and next_pin.file_id=base_pin.file_id and next_pin.file_version_id=base_pin.file_version_id
-             and next_pin.format=base_pin.format and next_pin.locator=base_pin.locator
-             and next_pin.locator_digest=base_pin.locator_digest and next_pin.value_state='present'
+             and ((next_pin.file_id=base_pin.file_id and next_pin.file_version_id=base_pin.file_version_id)
+               or (request.member_application_mode='administrator_direct' and request.member_frozen_proof->'originTransfers' @>
+                 jsonb_build_array(jsonb_build_object('bindingId',binding.id,'oldValueId',$2::text,'sourcePinId',base_pin.id,
+                   'fromFileId',base_pin.file_id,'toFileId',next_pin.file_id))))
+             and next_pin.format=base_pin.format and next_pin.value_state='present'
+             and ((next_pin.locator=base_pin.locator and next_pin.locator_digest=base_pin.locator_digest)
+               or (request.member_application_mode='administrator_direct' and next_pin.format='dts'
+                 and next_pin.locator->>'kind'='dts-property' and base_pin.locator->>'kind'='dts-property'
+                 and next_pin.locator->>'propertyName'=base_pin.locator->>'propertyName'))
             where request.id=$4 and request.request_kind='member-removal'
               and request.status='pending' and request.organization_id=binding.organization_id
               and request.project_id=binding.project_id
               and request.member_config_set_id=occurrence.config_set_id
-              and occurrence.file_id=base_pin.file_id
-              and request.member_file_id<>base_pin.file_id
+              and base_pin.source_occurrence_id=occurrence.id
+              and (request.member_file_id<>base_pin.file_id or request.member_frozen_proof->'originTransfers' @>
+                jsonb_build_array(jsonb_build_object('bindingId',binding.id,'fromFileId',base_pin.file_id,'toFileId',next_pin.file_id)))
               and base_pin.config_revision_id=request.member_frozen_proof->>'configRevisionId'
               and next_value.config_revision_id<>base_pin.config_revision_id
               and next_value.value_state='present' and old_value.value_state='present'
               and next_value.value_kind=old_value.value_kind
-              and next_value.value_digest=old_value.value_digest
+              and (next_value.value_digest=old_value.value_digest or (request.member_application_mode='administrator_direct'
+                and request.member_frozen_proof->'originTransfers' @> jsonb_build_array(jsonb_build_object('bindingId',binding.id,
+                  'oldValueId',$2::text,'sourcePinId',base_pin.id,'fromFileId',base_pin.file_id,'toFileId',next_pin.file_id))))
               and request.member_frozen_proof->'cohort' @> jsonb_build_array(jsonb_build_object(
                 'bindingId',binding.id,'oldValueId',$2::text,'sourcePinId',base_pin.id,
                 'sourceOccurrenceId',binding.source_occurrence_id,'fileId',base_pin.file_id,

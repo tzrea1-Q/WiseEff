@@ -67,19 +67,29 @@ describe("WorkbenchConfigurationFilesDialog", () => {
     expect(values.onRemoveMember).toHaveBeenCalledWith(values.members[1]);
   });
 
-  it("keeps the legacy Canonical addition form absent while allowing reviewed JSON removal", async () => {
+  it("offers administrator impact preview for both Canonical DTS and JSON members", async () => {
     const user = userEvent.setup();
     const values = props({ canonical: true });
     render(<WorkbenchConfigurationFilesDialog {...values} />);
-    expect(screen.getByRole("dialog")).toHaveTextContent("添加文件需预览并确认");
+    expect(screen.getByRole("dialog")).toHaveTextContent("添加或移除文件均需预览并确认");
     expect(screen.queryByRole("button", { name: "添加文件" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "主板.dts 更多" }));
-    expect(screen.getAllByRole("menuitem")).toHaveLength(1);
-    expect(screen.getByRole("menuitem", { name: "版本历史与下载" })).toBeInTheDocument();
-    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("menuitem", { name: "预览移除影响" }));
+    expect(values.onRemoveMember).toHaveBeenCalledWith(values.members[0]);
     await user.click(screen.getByRole("button", { name: "charging.json 更多" }));
+    await user.click(screen.getByRole("menuitem", { name: "预览移除影响" }));
+    expect(values.onRemoveMember).toHaveBeenCalledWith(values.members[1]);
+  });
+
+  it("retains the optional existing JSON review action alongside direct impact preview", async () => {
+    const user = userEvent.setup();
+    const reviewed = vi.fn();
+    const values = props({ canonical: true, onReviewedMemberRemoval: reviewed });
+    render(<WorkbenchConfigurationFilesDialog {...values} />);
+    await user.click(screen.getByRole("button", { name: "charging.json 更多" }));
+    expect(screen.getByRole("menuitem", { name: "预览移除影响" })).toBeInTheDocument();
     await user.click(screen.getByRole("menuitem", { name: "申请从配置移除" }));
-    expect(values.onRemoveMember).toHaveBeenCalledExactlyOnceWith(values.members[1]);
+    expect(reviewed).toHaveBeenCalledWith(values.members[1]);
   });
 
   it.each([

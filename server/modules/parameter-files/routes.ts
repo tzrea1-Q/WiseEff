@@ -72,6 +72,7 @@ import {
 import { searchProjectDts } from "./dtsSearchService";
 import { registerSourceRevisionRoutes } from "./sourceRevisionRoutes";
 import { registerCanonicalMemberAdditionRoutes } from "./canonicalMemberAdditionRoutes";
+import { registerMemberRemovalRoutes } from "./memberRemovalRoutes";
 import { previewSourceRevisionCandidate, submitSourceRevisionCandidate } from "./sourceRevisionService";
 import { getParameterFileVersionStructure } from "./structuralReadService";
 import { syncFileVersion } from "./syncService";
@@ -295,6 +296,7 @@ export function registerParameterFileRoutes(
     : options.db && isRootDatabase(options.db)
       ? createTrustedRefusalAuditSink(options.db)
       : undefined;
+  registerMemberRemovalRoutes(router, { ...options, refusalAuditSink });
 
   function requireSubmissionRefusalSink() {
     if (!refusalAuditSink) {

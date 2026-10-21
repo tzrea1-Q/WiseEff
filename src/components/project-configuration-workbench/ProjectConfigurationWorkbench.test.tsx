@@ -850,7 +850,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await waitFor(() => expect(getSourceWorkflow).toHaveBeenCalledWith(PROJECT.id, "file-overlay"));
     expect(within(files).getByRole("table", { name: "配置文件" })).toBeVisible();
     expect(within(files).queryByRole("button", { name: "添加文件" })).not.toBeInTheDocument();
-    expect(await within(files).findByText("此配置已登记来源。添加文件需预览并确认，当前文件及历史会保留。")).toBeVisible();
+    expect(await within(files).findByText("此配置已登记来源。添加或移除文件均需预览并确认，项目文件及历史会保留。")).toBeVisible();
     const overlayRow = within(files).getByRole("button", { name: "charging-overlay.dtsi" }).closest("tr")!;
     expect(within(overlayRow).getByRole("button", { name: "更新文件" })).toBeEnabled();
     await userEvent.click(within(overlayRow).getByRole("button", { name: "charging-overlay.dtsi 更多" }));
@@ -2916,7 +2916,7 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(activateCandidate).not.toHaveBeenCalled();
     if (kind === "canonical") {
       const files = await openSchemeFiles();
-      expect(within(files).getByText("此配置已登记来源。添加文件需预览并确认，当前文件及历史会保留。")).toBeVisible();
+      expect(within(files).getByText("此配置已登记来源。添加或移除文件均需预览并确认，项目文件及历史会保留。")).toBeVisible();
       expect(within(files).queryByText(/同一文件可用于多个方案/)).not.toBeInTheDocument();
       expect(within(files).queryByRole("button", { name: "添加文件" })).not.toBeInTheDocument();
       await userEvent.click(within(files).getByRole("button", { name: "aurora-board.dts 更多" }));
