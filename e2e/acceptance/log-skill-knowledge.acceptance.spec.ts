@@ -53,15 +53,15 @@ test("skill knowledge links, Markdown draft uploads, and upload permission reaso
   const saved = await page.request.get(apiRoute(`/api/v1/log-skills/${skill.id}`), { headers });
   expect((await saved.json()).item.draft.spec.knowledgeEntryIds).toEqual([knowledge.id]);
 
-  await page.getByRole("button", { name: "上传 Markdown", exact: true }).click();
-  const upload = page.getByRole("dialog", { name: "上传 Markdown", exact: true });
+  await page.getByRole("button", { name: "上传 Markdown / 文本", exact: true }).click();
+  const upload = page.getByRole("dialog", { name: "上传 Markdown / 文本", exact: true });
   const names = [`Cooling ${stamp}`, `Protocol ${stamp}`];
   const transfer = await page.evaluateHandle((fileNames) => {
     const data = new DataTransfer();
     for (const name of fileNames) data.items.add(new File([`# ${name}\nEngineering checks.`], `${name}.md`, { type: "text/markdown" }));
     return data;
   }, names);
-  await upload.getByRole("region", { name: "拖放 Markdown 文件" }).dispatchEvent("drop", { dataTransfer: transfer });
+  await upload.getByRole("region", { name: "拖放 Markdown / 文本文件" }).dispatchEvent("drop", { dataTransfer: transfer });
   await expect(upload.getByRole("list", { name: "待上传文件" })).toContainText(`${names[0]}.md`);
   await testInfo.attach("knowledge-markdown-drop-1440x900", { body: await page.screenshot(), contentType: "image/png" });
   await upload.getByRole("button", { name: "创建并链接", exact: true }).click();
@@ -102,9 +102,9 @@ test("skill knowledge links, Markdown draft uploads, and upload permission reaso
   const emptyId = (await emptySkill.json()).item.id;
   await signInBrowserAsUser(page, viewerId, `${viewerId}@example.test`, "Skill knowledge viewer", `/log-admin/skills/${emptyId}?section=knowledge`);
   await prepareInteractionSurface(page);
-  const disabledUpload = page.getByRole("button", { name: "上传 Markdown", exact: true });
+  const disabledUpload = page.getByRole("button", { name: "上传 Markdown / 文本", exact: true });
   await expect(disabledUpload).toBeDisabled();
-  await expect(disabledUpload).toHaveAccessibleDescription("上传 Markdown 需要知识编辑权限。");
+  await expect(disabledUpload).toHaveAccessibleDescription("上传 Markdown / 文本 需要知识编辑权限。");
   await expect(page.getByRole("button", { name: "链接已有条目", exact: true })).toBeDisabled();
   await testInfo.attach("knowledge-upload-permission-1440x900", { body: await page.screenshot(), contentType: "image/png" });
 });
