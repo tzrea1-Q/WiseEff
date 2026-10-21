@@ -168,6 +168,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "RegistrationRoleRequestResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "users.enableBasicRegistrationRoleRequest": {
+    summary: "Reject role promotion and enable the ordinary member account atomically",
+    tags: ["users"],
+    responseBody: "RegistrationRoleRequestResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "users.rejectRegistrationRoleRequest": {
     summary: "Reject a pending local registration role request",
     tags: ["users"],

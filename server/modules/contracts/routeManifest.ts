@@ -91,6 +91,13 @@ export const routeManifest = [
     stability: "commercial-readiness"
   },
   {
+    id: "users.enableBasicRegistrationRoleRequest",
+    method: "POST",
+    path: "/api/v1/users/registration-role-requests/:requestId/enable-basic",
+    module: "users",
+    stability: "commercial-readiness"
+  },
+  {
     id: "users.rejectRegistrationRoleRequest",
     method: "POST",
     path: "/api/v1/users/registration-role-requests/:requestId/reject",

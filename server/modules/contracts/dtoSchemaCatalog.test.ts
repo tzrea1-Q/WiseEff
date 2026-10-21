@@ -9,6 +9,20 @@ import { projectBindingDtoSchema } from "../parameter-topology/schemas";
 const leftoverSchemaNames = new Set(["GenericObjectResponse"]);
 
 describe("DTO schema catalog coverage", () => {
+  it("documents registration decisions without inventing historical login outcomes", () => {
+    const document = buildOpenApiDocument();
+    expect(document.paths["/api/v1/users/registration-role-requests/{requestId}/enable-basic"]?.post).toMatchObject({
+      responses: { "200": { content: { "application/json": { schema: { $ref: "#/components/schemas/RegistrationRoleRequestResponse" } } } }, "409": {} }
+    });
+    const legacy = { id: "request", organizationId: "org", organizationName: "Organization", userId: "member", userName: "Member",
+      username: "member", currentRoleId: "software-user", requestedRoleId: "software-committer", status: "rejected",
+      createdAt: "2026-10-20T00:00:00.000Z", decidedAt: "2026-10-20T01:00:00.000Z", decidedByUserId: "admin",
+      decisionOutcome: null, decisionCanLogin: null, decisionRoleIds: null, accountChanged: false };
+    const response = dtoSchemaCatalog.RegistrationRoleRequestResponse;
+    expect(response.safeParse({ item: legacy }).success).toBe(true);
+    expect(response.safeParse({ item: { ...legacy, decisionOutcome: "basic-enabled", decisionCanLogin: true, decisionRoleIds: ["software-user"] } }).success).toBe(true);
+    expect(response.safeParse({ item: { ...legacy, decisionOutcome: "unknown" } }).success).toBe(false);
+  });
   it("documents debug module relocation preview and optional legacy deletion body", () => {
     const document = buildOpenApiDocument();
     expect(document.paths["/api/v1/debugging/admin/modules/{moduleId}/deletion-preview"]?.get).toMatchObject({

@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { debugConnectionProtocols, defaultDebugConnectionProtocol } from "./protocol";
 import { debugAccessModes } from "./status";
+export {
+  debugModuleDeletionBodySchema,
+  debugModuleDeletionPreviewSchema,
+  debugModuleDeletionPreviewResponseSchema,
+  type DebugModuleDeletionInput
+} from "../contracts/dtoSchemas/debugging";
 import {
   DEBUG_NORMALIZATION_MODES,
   DEBUG_VALUE_FORMATS,
@@ -204,24 +210,6 @@ export const moveDebugNodeModuleBodySchema = z.object({
 });
 
 export const debugModuleDeletionQuerySchema = z.object({ targetModuleId: nonEmptyString.optional() }).strict();
-export const debugModuleDeletionBodySchema = z.object({
-  targetModuleId: nonEmptyString.nullable(),
-  previewDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
-  clientMutationId: nonEmptyString.max(200)
-}).strict();
-const debugModuleDeletionIdentitySchema = z.object({ id: nonEmptyString, name: nonEmptyString });
-export const debugModuleDeletionPreviewSchema = z.object({
-  module: debugModuleDeletionIdentitySchema,
-  target: debugModuleDeletionIdentitySchema.nullable(),
-  nodeCount: z.number().int().nonnegative(),
-  legacyNodeCount: z.number().int().nonnegative(),
-  children: z.array(debugModuleDeletionIdentitySchema),
-  ambiguousNodes: z.array(debugModuleDeletionIdentitySchema),
-  canDelete: z.boolean(),
-  previewDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/)
-});
-export const debugModuleDeletionPreviewResponseSchema = z.object({ item: debugModuleDeletionPreviewSchema });
-export type DebugModuleDeletionInput = z.infer<typeof debugModuleDeletionBodySchema>;
 
 export const DEBUG_CATALOG_FORMAT_V1 = "wiseeff.debug-node-catalog.v1" as const;
 export const DEBUG_CATALOG_FORMAT_V2 = "wiseeff.debug-node-catalog.v2" as const;

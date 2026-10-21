@@ -11,7 +11,6 @@ import { formatPreviewRequestSchema, formatPreviewResponseSchema } from "../../l
 import { organizationBridgeListResponseSchema, organizationBridgeResponseSchema, revokeOrganizationBridgeBodySchema } from "../../deviceBridge/schemas";
 import { createUserBodySchema, roleBindingSchema } from "../../users/schemas";
 import { oidcIdentitySchema, setOidcIdentityBodySchema } from "./oidcMembers";
-import { debugModuleDeletionBodySchema, debugModuleDeletionPreviewResponseSchema } from "../../debugging/schemas";
 
 import {
   xiaozeAgUiRunRequestSchema,
@@ -27,6 +26,8 @@ import {
 } from "./agent";
 import {
   debugDeviceListResponseSchema,
+  debugModuleDeletionBodySchema,
+  debugModuleDeletionPreviewResponseSchema,
   debugNodeListResponseSchema,
   debugNodeOperationResponseSchema,
   debugParameterListResponseSchema,
@@ -99,7 +100,17 @@ const userGovernanceDtoSchema = z.object({
   lastActiveAt: z.string().nullable(), roles: z.array(roleBindingSchema.extend({ projectId: z.string().nullable() })),
   oidcIdentity: oidcIdentitySchema.optional(), legacyOidcEmail: z.string().optional()
 });
+const registrationRoleRequestDtoSchema = z.object({
+  id: z.string(), organizationId: z.string(), organizationName: z.string(), userId: z.string(), userName: z.string(),
+  username: z.string().nullable(), currentRoleId: roleBindingSchema.shape.roleId, requestedRoleId: roleBindingSchema.shape.roleId,
+  status: z.enum(["pending", "approved", "rejected"]), createdAt: z.string(), decidedAt: z.string().nullable(),
+  decidedByUserId: z.string().nullable(),
+  decisionOutcome: z.enum(["requested-role-enabled", "basic-enabled", "rejected-disabled", "rejected-preserved"]).nullable(),
+  decisionCanLogin: z.boolean().nullable(), decisionRoleIds: z.array(roleBindingSchema.shape.roleId).nullable(), accountChanged: z.boolean()
+});
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
+  RegistrationRoleRequestResponse: z.object({ item: registrationRoleRequestDtoSchema }),
+  RegistrationRoleRequestListResponse: z.object({ items: z.array(registrationRoleRequestDtoSchema) }),
   DeleteDebugModuleRequest: debugModuleDeletionBodySchema,
   DebugModuleDeletionPreviewResponse: debugModuleDeletionPreviewResponseSchema,
   CreateLocalAccountUserRequest: createUserBodySchema,
@@ -255,6 +266,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 };
 
 export const dtoSchemaCoveredRouteIds = [
+  "users.listRegistrationRoleRequests", "users.approveRegistrationRoleRequest", "users.rejectRegistrationRoleRequest", "users.enableBasicRegistrationRoleRequest",
   "debugging.admin.previewModuleDeletion",
   "auth.localConfig", "users.list", "users.create", "users.setOidcIdentity",
   "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.revokeOrganizationBridge",
