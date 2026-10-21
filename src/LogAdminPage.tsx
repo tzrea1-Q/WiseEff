@@ -1,6 +1,7 @@
 import "./log-admin.css";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { ExportSkillPackageDialog } from "@/features/log-skills/SkillPackageDialogs";
+import { LogDeletionPreviewDialog } from "@/features/log-analysis/LogDeletionPreviewDialog";
 import type { AnalysisSkill } from "@/features/log-skills/types";
 import { Download, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -43,8 +44,9 @@ export type LogAdminPageProps = {
   onNavigate: (path: string) => void;
   search: string;
   logActions?: LogRuntimeActions;
-  skillRepository?: Partial<SkillAuthoringRepository & SkillWorkspaceRepository & Pick<LogAnalysisRepository, "getLog">>;
+  skillRepository?: Partial<SkillAuthoringRepository & SkillWorkspaceRepository & Pick<LogAnalysisRepository, "getLog" | "previewLogDeletion">>;
   apiMode?: boolean;
+  sessionPermissions?: readonly string[] | null;
   /** Kept for page composition; knowledge editing lives in the workspace. */
   knowledgeRepository?: KnowledgeRepository;
 };
@@ -415,7 +417,7 @@ function FeedbackQualityInsightsSection({
   );
 }
 
-export function LogAdminPage({ state, dispatch, onNavigate, search: _search, logActions, skillRepository, apiMode = false }: LogAdminPageProps) {
+export function LogAdminPage({ state, dispatch, onNavigate, search: _search, logActions, skillRepository, apiMode = false, sessionPermissions }: LogAdminPageProps) {
   const [collection, selectCollection] = useCollectionTab(collectionTabs, new URLSearchParams(window.location.search).get("tab") === "domains" ? "skills" : "overview");
   const [timeWindow, setTimeWindow] = useState<TimeWindow>("today");
   const [tableQuery, setTableQuery] = useState("");
@@ -423,6 +425,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   const [overviewFilter, setOverviewFilter] = useState<OverviewRecordFilter | null>(null);
   const [sortBy, setSortBy] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "updatedAtIso", dir: "desc" });
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  const [deletionPreviewLogId, setDeletionPreviewLogId] = useState<string | null>(null);
   const [undoArchive, setUndoArchive] = useState<{ logId: string; fileName: string } | null>(null);
   const [insightDismissed, setInsightDismissed] = useState<boolean>(() => readInsightDismissed());
   const [pendingActions, setPendingActions] = useState<Set<string>>(() => new Set());
@@ -492,6 +495,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   );
   const insight = useMemo(() => deriveInsight(windowLogs, visibleLogs), [visibleLogs, windowLogs]);
   const canAct = canPerform(state.activeRoleId, "admin.access");
+  const canPreviewDeletion = apiMode && (sessionPermissions ? sessionPermissions.includes("logs:admin-domains") : canPerform(state.activeRoleId, "logs.admin-domains")) && !!skillRepository?.previewLogDeletion;
   const selectedRecord = selectedRecordId ? state.logs.find((log) => log.id === selectedRecordId) ?? null : null;
 
   const unarchiveLog = (logId: string) => {
@@ -746,7 +750,8 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
             </>}
             table={{ "aria-label": "日志分析记录", rows: filteredRows, rowKey: (record) => record.id, columns,
               onRowClick: (record) => setSelectedRecordId(record.id), selectedRowKey: selectedRecordId ?? undefined, pageSize: 8 }}
-            rowActions={logView === "archived" && canAct ? (record) => ({ label: record.fileName,
+            rowActions={canPreviewDeletion || logView === "archived" && canAct ? (record) => ({ label: record.fileName,
+              primaryAction: canPreviewDeletion ? { id: "deletion-preview", label: "删除影响预览", onSelect: () => setDeletionPreviewLogId(record.id) } : undefined,
               items: logView === "archived" && canAct ? [{ id: "restore", label: "恢复", disabled: pendingActions.has(pendingKey("unarchive", record.id)), onSelect: () => unarchiveLog(record.id) }] : []
             }) : undefined}
             emptyState={{ message: hasActiveFilters ? "未匹配任何记录" : logView === "archived" ? "暂无已归档日志" : "当前时间窗口内暂无日志",
@@ -754,6 +759,8 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
         ) : null}
       </TabPanel>
 
+      {deletionPreviewLogId && skillRepository?.previewLogDeletion ? <LogDeletionPreviewDialog key={deletionPreviewLogId}
+        logId={deletionPreviewLogId} loadPreview={skillRepository.previewLogDeletion} onClose={() => setDeletionPreviewLogId(null)} /> : null}
       <LogRecordDrawer
         key={selectedRecord?.id ?? "closed"}
         record={selectedRecord}

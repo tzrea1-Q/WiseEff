@@ -61,6 +61,17 @@ function createRepository(fetchMock: typeof fetch) {
   });
 }
 
+it("reads a deletion preview through the protected record route and rejects an invalid snapshot", async () => {
+  const item = { organizationId: "org", logId: "log/1", fileName: "owned.log", generatedAt: "2026-10-20T12:00:00.000Z",
+    version: "a".repeat(64), inventory: [], objects: { total: 0, shared: 0, exclusive: 0 }, conditions: [], notes: [] };
+  const fetchMock = createFetchMock({ item });
+  const repository = createRepository(fetchMock);
+  await expect(repository.previewLogDeletion!("log/1")).resolves.toEqual(item);
+  expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8787/api/v1/logs/log%2F1/deletion-preview", expect.objectContaining({ method: "GET" }));
+  fetchMock.mockResolvedValueOnce(jsonResponse({ item: { ...item, version: "invalid" } }));
+  await expect(repository.previewLogDeletion!("log/1")).rejects.toThrow();
+});
+
 it.each([undefined, "  ", "  充电（导入）  "])("uploads skill packages with an optional trimmed name (%s)", async (name) => {
   const skill = mockSkillWorkspace("skill-charging")!;
   const fetchMock = createFetchMock({ item: skill });

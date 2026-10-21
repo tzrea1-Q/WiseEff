@@ -1,4 +1,5 @@
 import { logValidationIssues } from "./validationMessages";
+import { previewLogDeletion } from "./deletionPreview";
 import type { MultipartBody } from "../../shared/http/server";
 import { MAX_LOG_JSON_UPLOAD_BYTES } from "./bundleIntake";
 import { z } from "zod";
@@ -399,6 +400,12 @@ export function registerLogRoutes(
     const items = await listLogRuns(db, auth, params.logId);
 
     return { status: 200, body: { items } };
+  });
+
+  router.get("/api/v1/logs/:logId/deletion-preview", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { logId } = parseWithSchema(paramsWithLogIdSchema, request.params);
+    return { status: 200, body: { item: await previewLogDeletion(requireDb(options.db), auth, logId) } };
   });
 
   router.get("/api/v1/logs/:logId/lines", async (request) => {

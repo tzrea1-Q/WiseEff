@@ -8,6 +8,8 @@ Intelligent analysis (`/logs`), under Log analysis, is available to hardware use
 
 Turning a report into a knowledge draft also requires `knowledge:edit`. Admins with `logs:admin-domains` can maintain analysis skills in Log administration (`/log-admin?tab=skills`). This guide describes the real API workflow. Mock mode simulates uploads and cannot confirm whether an analysis or feedback was saved on the server.
 
+In API mode, administrators with `logs:admin-domains` can open `/log-admin?tab=records` and choose **Deletion impact preview** on an active or archived record. It counts the selected record's original files, file/index and decoded artifacts, analysis runs, stages, reports, evidence, traces, feedback, deliveries and jobs. Shared physical storage objects, analysis skills and revisions, source snapshots, independently saved analysis cases, and independent knowledge bodies and history are retained. The preview identifies queued/running analysis and pending/retrying deliveries that must be stopped or isolated before cleanup. It is read-only and provides no deletion execution button; use **Refresh** after related state changes. Independent knowledge content, including previously saved references, is not rewritten by log cleanup.
+
 ## From a template to a result webhook
 
 1. In Log administration, choose Create skill. Enter a name and choose Generic text, Linux kernel dmesg, Android logcat or JSON Lines, or copy an existing skill. Attach a text sample up to 2 MiB, then open the workspace.

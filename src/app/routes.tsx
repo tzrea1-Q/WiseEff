@@ -415,6 +415,7 @@ export function PageRouter({
           knowledgeRepository={knowledgeRepository}
           skillRepository={runtime?.logAnalysisRepository}
           apiMode={runtimeMode === "api"}
+          sessionPermissions={sessionPermissions}
         />
       );
     case "feedback-admin":
