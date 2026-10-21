@@ -349,7 +349,7 @@ export const catalogDefinitionRevisionDtoSchema = catalogObject({
   /** Symbol unit descriptor, absent when the definition declares no unit. */
   unit: catalogObject({ kind: z.literal("symbol"), symbol: z.string() }).nullable(),
   /** Published examples, available for lossless content editing. */
-  examples: z.lazy(() => z.array(catalogJsonValueSchema)).optional(),
+  examples: z.array(z.lazy(() => catalogJsonValueSchema)).optional(),
   publishedInCatalogReleaseId: z.string()
 });
 

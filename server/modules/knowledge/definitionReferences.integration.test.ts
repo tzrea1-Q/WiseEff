@@ -548,20 +548,22 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     expect((await request(auth, "GET", `/api/v1/knowledge/entries/${entryId}/file/content`)).status).toBe(404);
     expect((await request(auth, "GET", `/api/v1/knowledge/entries/${shared.body.item.id}`)).body.item.file.storageKey).toBe(storageKey);
     expect(await objectStore.get(storageKey)).toEqual(bytes);
+    const retainedDefinition = await request(auth, "GET", `/api/v2/catalog/definitions/${activeDefinitionId}`);
+    expect(retainedDefinition.status).toBe(200);
+    expect(retainedDefinition.body.item.id).toBe(activeDefinitionId);
 
     const pool = getRootPostgresPool(db)!;
     const counts = await pool.query<{
-      revisions: number; files: number; references: number; definitions: number; deletion_audits: number;
+      revisions: number; files: number; references: number; deletion_audits: number;
     }>(
       `select
         (select count(*)::int from knowledge_revisions where entry_id = $1) as revisions,
         (select count(*)::int from knowledge_files where entry_id = $1) as files,
         (select count(*)::int from knowledge_definition_references where entry_id = $1) as references,
-        (select count(*)::int from parameter_catalog.parameter_definitions where id = $2) as definitions,
         (select count(*)::int from audit_events where target_id = $1::text and kind = 'knowledge-entry-delete') as deletion_audits`,
-      [entryId, activeDefinitionId]
+      [entryId]
     );
-    expect(counts.rows[0]).toEqual({ revisions: 0, files: 0, references: 0, definitions: 1, deletion_audits: 1 });
+    expect(counts.rows[0]).toEqual({ revisions: 0, files: 0, references: 0, deletion_audits: 1 });
     const deletionAudit = await pool.query<{ metadata: Record<string, unknown> }>(
       "select metadata from audit_events where target_id = $1 and kind = 'knowledge-entry-delete'", [entryId]
     );

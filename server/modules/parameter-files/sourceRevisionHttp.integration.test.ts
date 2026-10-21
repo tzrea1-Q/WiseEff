@@ -10,6 +10,7 @@ import { makeTestAuthContext } from "../../testing/authContext";
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
 import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
+import { createAgentInvocation, createSystemInvocation } from "../auth/trustedInvocation";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { createLocalObjectStore } from "../logs/objectStore";
 import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
@@ -19,6 +20,7 @@ import { registerParameterFileRoutes } from "./routes";
 import { uploadProjectParameterFile } from "./service";
 import type { SourceRevisionRequestDto } from "./sourceRevisionRoutes";
 import type { SourceRevisionPreview } from "./sourceRevisionService";
+import { applySourceRevisionCandidate } from "./sourceRevisionCommit";
 
 const ORG = "org-source-http", PROJECT = "project-source-http", AUTHOR = "user-source-http-author", REVIEWER = "user-source-http-reviewer";
 const author = makeTestAuthContext({ organizationId: ORG, userId: AUTHOR, roles: [{ roleId: "admin", projectId: null }] });
@@ -46,7 +48,7 @@ describe("whole-source HTTP through the real API database role", () => {
   function post<T>(url: string, body: unknown, auth = author) {
     return requestJson<T>(route(auth), url, { method: "POST", body: JSON.stringify(body) });
   }
-  async function stage(text: string, mutation: string) {
+  async function prepare(text: string, mutation: string) {
     const created = await post<{ item: { id: string } }>(`/api/v1/projects/${PROJECT}/parameter-file-candidates`, {
       fileId, fileName: "board.dts", contentBase64: Buffer.from(text).toString("base64"), intent: "source_revision",
       expectedCurrentVersionId: versionId, expectedConfigRevisionId: revisionId, clientMutationId: mutation
@@ -55,12 +57,16 @@ describe("whole-source HTTP through the real API database role", () => {
     const candidateId = created.body.item.id;
     const preview = await requestJson<{ item: SourceRevisionPreview }>(route(), `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-preview`);
     expect(preview.status, preview.bodyText).toBe(200);
+    return { candidateId, preview: preview.body.item };
+  }
+  async function stage(text: string, mutation: string) {
+    const { candidateId, preview } = await prepare(text, mutation);
     const submitted = await post<{ item: { requestId: string; status: string } }>(`/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-submit`, {
-      expectedCurrentVersionId: versionId, expectedProofToken: preview.body.item.proofToken,
+      expectedCurrentVersionId: versionId, expectedProofToken: preview.proofToken,
       clientMutationId: `${mutation}-submit`, reason: "Synthetic HTTP source revision", assignedToUserId: REVIEWER
     });
     expect(submitted.status, submitted.bodyText).toBe(200);
-    return { id: submitted.body.item.requestId, proofDigest: preview.body.item.proofToken, preview: preview.body.item, text };
+    return { id: submitted.body.item.requestId, proofDigest: preview.proofToken, preview, text };
   }
 
   beforeAll(async () => {
@@ -123,7 +129,7 @@ describe("whole-source HTTP through the real API database role", () => {
     expect((await post(`${path}/${pending.id}/review`, { decision: "approve", proofDigest: "0".repeat(64) }, reviewer)).status).toBe(409);
     const approved = await post<{ item: SourceRevisionRequestDto }>(`${path}/${pending.id}/review`, { decision: "approve", proofDigest: pending.proofDigest }, reviewer);
     expect(approved.status, approved.bodyText).toBe(200);
-    expect(approved.body.item.status).toBe("approved");
+    expect(approved.body.item).toMatchObject({ status: "approved", applicationMode: "separate_review", reviewerUserId: REVIEWER });
     const receipt = approved.body.item.appliedSourceResult!;
     expect(receipt.fileVersionId).not.toBe(versionId); expect(receipt.configRevisionId).not.toBe(revisionId);
     versionId = receipt.fileVersionId; revisionId = receipt.configRevisionId;
@@ -153,5 +159,112 @@ describe("whole-source HTTP through the real API database role", () => {
     const file = (await db.query<{ current_version_id: string }>("select current_version_id from project_parameter_files where id=$1", [fileId])).rows[0]!;
     expect(file.current_version_id).toBe(versionId);
     expect((await listCatalogBindingRowsForProject(api, author, { projectId: PROJECT }))[0]).toMatchObject({ id: bindingId, rawValue: "<42>" });
+  });
+
+  it("lets one current administrator directly apply a preview without inventing a reviewer", async () => {
+    const text = source.replace("<36>", "<43>") + "\n/* directly applied by the sole administrator */\n";
+    const { candidateId, preview } = await prepare(text, "http-direct");
+    const body = { expectedCurrentVersionId: versionId, expectedProofToken: preview.proofToken,
+      clientMutationId: "http-direct-apply", reason: "Administrator verified the complete source diff" };
+    const apply = () => post<{ item: SourceRevisionRequestDto }>(`/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-apply`, body);
+    expect((await post(`/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-apply`, { ...body, assignedToUserId: AUTHOR })).status).toBe(400);
+    await db.query("update users set is_active=false where id=any($1::text[])", [[REVIEWER, outsider.user.id]]);
+    const singleAdminPreview = await requestJson<{ item: SourceRevisionPreview }>(route(), `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-preview`);
+    expect(singleAdminPreview.body.item.reviewers).toHaveLength(0);
+    const applied = await apply().finally(() => db.query("update users set is_active=true where id=any($1::text[])", [[REVIEWER, outsider.user.id]]));
+    expect(applied.status, applied.bodyText).toBe(200);
+    expect(applied.body.item).toMatchObject({ status: "approved", applicationMode: "administrator_direct",
+      submitterUserId: AUTHOR, assignedToUserId: null, reviewerUserId: null });
+    const receipt = applied.body.item.appliedSourceResult!;
+    expect(receipt.fileVersionId).not.toBe(versionId);
+    expect(receipt.configRevisionId).not.toBe(revisionId);
+    const retry = await apply();
+    expect(retry.status, retry.bodyText).toBe(200);
+    expect(retry.body.item.appliedSourceResult).toEqual(receipt);
+    const detail = await requestJson<{ item: SourceRevisionRequestDto }>(route(), `${path}/${applied.body.item.id}`);
+    expect(detail.body.item.after).toBe(text);
+    expect((await listCatalogBindingRowsForProject(api, author, { projectId: PROJECT }))[0]).toMatchObject({ id: bindingId, rawValue: "<43>" });
+    expect((await db.query(`select actor_type,actor_user_id,metadata->>'applicationMode' as application_mode
+      from audit_events where target_id=$1 and action='value-change-applied'`, [applied.body.item.id])).rows).toEqual([
+      { actor_type: "user", actor_user_id: AUTHOR, application_mode: "administrator_direct" }
+    ]);
+    await expect(db.transaction((tx) => tx.query("update project_parameter_value_change_requests set source_revision_application_mode='separate_review' where id=$1",
+      [applied.body.item.id]))).rejects.toMatchObject({ code: "23514" });
+    expect((await post(`${path}/${applied.body.item.id}/review`, { decision: "approve", proofDigest: preview.proofToken })).status).toBe(403);
+    versionId = receipt.fileVersionId; revisionId = receipt.configRevisionId;
+  });
+
+  it("rechecks the preview, organization, current administrator role, sensitive nodes and pending reviews before direct application", async () => {
+    const text = source.replace("<36>", "<43>") + "\n/* checked refusals */\n";
+    const { candidateId, preview } = await prepare(text, "http-direct-refusals");
+    const url = `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-apply`;
+    const body = { expectedCurrentVersionId: versionId, expectedProofToken: preview.proofToken,
+      clientMutationId: "http-direct-refusals", reason: "Refusal paths leave source untouched" };
+    expect((await post(url, { ...body, expectedProofToken: "0".repeat(64) })).status).toBe(409);
+    expect((await post(url, { ...body, expectedCurrentVersionId: "old-version" })).status).toBe(409);
+    expect((await post(url, body, foreign)).status).toBe(404);
+    await db.query("update user_role_bindings set role_id='software-user' where id='source-http-author-role'");
+    try { expect((await post(url, body)).status).toBe(403); }
+    finally { await db.query("update user_role_bindings set role_id='admin' where id='source-http-author-role'"); }
+    await db.query(`insert into dts_sensitive_node_rules(id,organization_id,project_id,match_type,pattern,risk_tier,required_capability)
+      values ('source-http-sensitive',$1,$2,'compatible','acme,power','critical','platform:access')`, [ORG, PROJECT]);
+    try { expect((await post(url, body)).status).toBe(403); }
+    finally { await db.query("delete from dts_sensitive_node_rules where id='source-http-sensitive'"); }
+    const pending = await stage(`${text}\n/* independent review remains pending */\n`, "http-pending-direct-conflict");
+    const conflict = await post(url, body);
+    expect(conflict.status, conflict.bodyText).toBe(409);
+    expect((await post(`${path}/${pending.id}/withdraw`, {})).status).toBe(200);
+    expect((await db.query("select current_version_id from project_parameter_files where id=$1", [fileId])).rows[0]).toMatchObject({ current_version_id: versionId });
+    expect((await listCatalogBindingRowsForProject(api, author, { projectId: PROJECT }))[0]).toMatchObject({ id: bindingId, rawValue: "<43>" });
+  });
+
+  it("refuses Agent and system invocations even when an Agent already has a human approval", async () => {
+    const first = await prepare(source.replace("<36>", "<43>") + "\n/* human operation only */\n", "http-direct-user-only");
+    for (const invocation of [createAgentInvocation(author, { sessionId: "source-agent", toolCallId: "source-tool",
+      approval: { required: true, approvalId: "already-approved" } }), createSystemInvocation({ kind: "job", name: "source-job" })]) {
+      await expect(applySourceRevisionCandidate(api, storage, author, { projectId: PROJECT, candidateId: first.candidateId,
+        expectedCurrentVersionId: versionId, expectedProofToken: first.preview.proofToken, reason: "Not a direct human operation", clientMutationId: "user-only" },
+      { invocation, requestId: "source-human-only", refusalSink: createTrustedRefusalAuditSink(db) })).rejects.toMatchObject({
+        code: "FORBIDDEN", details: { code: "parameter-source-user-required", requireHuman: true }
+      });
+    }
+    expect((await db.query("select id from project_parameter_value_change_requests where candidate_id=$1", [first.candidateId])).rows).toHaveLength(0);
+  });
+
+  it("applies comment-only edits once under concurrent retries and rejects a competing stale preview", async () => {
+    const text = source.replace("<36>", "<43>") + "\n/* comment-only direct application */\n";
+    const first = await prepare(text, "http-direct-comments");
+    const stale = await prepare(`${text}\n/* competing preview */\n`, "http-direct-competing");
+    expect(first.preview.impact.parameterChanges).toBe(0);
+    const body = { expectedCurrentVersionId: versionId, expectedProofToken: first.preview.proofToken,
+      clientMutationId: "http-direct-comments", reason: "Comments do not require a second administrator" };
+    const apply = () => post<{ item: SourceRevisionRequestDto }>(`/api/v1/projects/${PROJECT}/parameter-file-candidates/${first.candidateId}/source-apply`, body);
+    const [one, two] = await Promise.all([apply(), apply()]);
+    expect(one.status, one.bodyText).toBe(200); expect(two.status, two.bodyText).toBe(200);
+    expect(one.body.item.appliedSourceResult).toEqual(two.body.item.appliedSourceResult);
+    expect((await db.query("select id from audit_events where target_id=$1 and action='value-change-applied'", [one.body.item.id])).rows).toHaveLength(1);
+    const competed = await post(`/api/v1/projects/${PROJECT}/parameter-file-candidates/${stale.candidateId}/source-apply`, {
+      ...body, clientMutationId: "http-direct-competing", expectedProofToken: stale.preview.proofToken
+    }, outsider);
+    expect(competed.status, competed.bodyText).toBe(409);
+    expect((await listCatalogBindingRowsForProject(api, author, { projectId: PROJECT }))[0]).toMatchObject({ id: bindingId, rawValue: "<43>" });
+    const receipt = one.body.item.appliedSourceResult!;
+    versionId = receipt.fileVersionId; revisionId = receipt.configRevisionId;
+  });
+
+  it("returns a conflict when different administrators race to apply different confirmed source previews", async () => {
+    const first = await prepare(source.replace("<36>", "<44>") + "\n/* first administrator */\n", "http-direct-race-a");
+    const second = await prepare(source.replace("<36>", "<45>") + "\n/* second administrator */\n", "http-direct-race-b");
+    const apply = (prepared: typeof first, mutation: string, auth = author) => post<{ item: SourceRevisionRequestDto }>(
+      `/api/v1/projects/${PROJECT}/parameter-file-candidates/${prepared.candidateId}/source-apply`, {
+        expectedCurrentVersionId: versionId, expectedProofToken: prepared.preview.proofToken, clientMutationId: mutation, reason: "Race uses frozen proofs"
+      }, auth);
+    const replies = await Promise.all([apply(first, "http-direct-race-a"), apply(second, "http-direct-race-b", outsider)]);
+    expect(replies.map((reply) => reply.status).sort(), replies.map((reply) => reply.bodyText).join("\n")).toEqual([200, 409]);
+    const winner = replies.find((reply) => reply.status === 200)!.body.item;
+    const receipt = winner.appliedSourceResult!;
+    versionId = receipt.fileVersionId; revisionId = receipt.configRevisionId;
+    expect((await listCatalogBindingRowsForProject(api, author, { projectId: PROJECT }))[0]).toMatchObject({ id: bindingId,
+      rawValue: replies[0]!.status === 200 ? "<44>" : "<45>" });
   });
 });

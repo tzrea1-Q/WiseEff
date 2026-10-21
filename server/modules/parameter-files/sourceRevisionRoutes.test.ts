@@ -33,7 +33,7 @@ const proof = { ...proofFacts, proofDigest: sourceRevisionDigest(proofFacts) };
 function row() {
   return { id: "request", project_id: "project", candidate_id: "candidate", source_file_id: "file", source_file_name: "board.dts",
     source_revision_config_set_id: "set", source_revision_proof_digest: proof.proofDigest, source_revision_context: structuredClone(proof),
-    status: "pending", reason: "source only", submitter_user_id: "author", assigned_to_user_id: "reviewer", reviewer_user_id: null as string | null,
+    status: "pending", source_revision_application_mode: "separate_review", reason: "source only", submitter_user_id: "author", assigned_to_user_id: "reviewer", reviewer_user_id: null as string | null,
     submitter_name: "Author", assigned_to_name: "Reviewer", reviewer_name: null, reviewer_note: null, created_at: "2026-10-19T00:00:00Z",
     updated_at: "2026-10-19T00:00:00Z", applied_source_result: null, before_storage_key: "before", after_storage_key: "after",
     before_checksum: proof.baseDigest, after_checksum: proof.proposedDigest, node_removals: 0 };

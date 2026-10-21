@@ -153,6 +153,8 @@ Key UI:
 
 ## Workbench sessions (project configuration)
 
+Complete DTS saving offers **Directly apply changes** to a current file administrator with project edit permission after preview and a required reason. It uses `ParameterFileRepository.applyCandidateSourceRevision`, acknowledges the exact applied generation and retains newer local typing. Failed or interrupted responses keep the captured confirmation for an identical retry. **Submit review** continues to require a different eligible reviewer. Source history identifies `administrator_direct` applications and their actual actor without displaying a fictional reviewer; release/device operations keep their separate authority.
+
 Domain acts for the configuration workbench live as Workbench sessions under `src/application/project-configuration/` (see `CONTEXT.md`):
 
 | Session | Owns |

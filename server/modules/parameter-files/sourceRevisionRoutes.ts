@@ -13,7 +13,8 @@ import { requireCanViewProject } from "../parameter-topology/service";
 import { getProjectById } from "../projects/repository";
 import { recordCanonicalPermissionRefusal, requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "./canonicalSource";
 import { MAX_PARAMETER_SOURCE_BYTES } from "./jsonSource";
-import { commitSourceRevision } from "./sourceRevisionCommit";
+import { applySourceRevisionCandidate, commitSourceRevision } from "./sourceRevisionCommit";
+import { sourceRevisionDirectApplyRequestSchema } from "../contracts/dtoSchemas/sourceRevision";
 import { isSourceRevisionReviewer, loadSourceRevisionCatalogSnapshots, sourceRevisionDigest, type SourceRevisionProof } from "./sourceRevisionService";
 
 type Status = "pending" | "approved" | "rejected" | "withdrawn";
@@ -25,6 +26,7 @@ export type SourceRevisionRequestDto = {
   impact: { parameterChanges: number; nodeAdditions: number; nodeRemovals: number };
   before?: string; after?: string;
   appliedSourceResult?: { configRevisionId: string; fileVersionId: string } | null;
+  applicationMode: "separate_review" | "administrator_direct";
 };
 type Row = {
   id: string; project_id: string; candidate_id: string; source_file_id: string; source_file_name: string;
@@ -34,6 +36,7 @@ type Row = {
   submitter_name: string | null; assigned_to_name: string | null; reviewer_name: string | null;
   reviewer_note: string | null; created_at: Date | string; updated_at: Date | string;
   applied_source_result: SourceRevisionRequestDto["appliedSourceResult"];
+  source_revision_application_mode: SourceRevisionRequestDto["applicationMode"];
   before_storage_key: string | null; after_storage_key: string | null;
   before_checksum: string | null; after_checksum: string | null; node_removals: number;
 };
@@ -101,7 +104,7 @@ function dto(row: Row, auth: AuthContext): SourceRevisionRequestDto {
     reviewerNote: row.reviewer_note, createdAt: iso(row.created_at), updatedAt: iso(row.updated_at), proofDigest: proof.proofDigest,
     impact: { parameterChanges: proof.targets.length + proof.newProperties.length,
       nodeAdditions: proof.continuity.nodes.filter((node) => node.isNew).length, nodeRemovals: Number(row.node_removals) },
-    appliedSourceResult: row.applied_source_result
+    appliedSourceResult: row.applied_source_result, applicationMode: row.source_revision_application_mode
   };
 }
 async function withSource(row: Row, auth: AuthContext, storage: ObjectStore | undefined): Promise<SourceRevisionRequestDto> {
@@ -139,6 +142,18 @@ export function registerSourceRevisionRoutes(router: WiseEffRouter, options: {
     return { invocation: createUserInvocation(auth), requestId: request.requestId, refusalSink };
   }
   const path = "/api/v2/projects/:projectId/source-revision-requests";
+  router.post("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-apply", async (request) => {
+    const db = database(), auth = await options.getCurrentAuthContext(request);
+    const params = parse(z.object({ projectId: z.string().min(1), candidateId: z.string().min(1) }), request.params);
+    const body = parse(sourceRevisionDirectApplyRequestSchema, request.body);
+    const context = security(auth, request);
+    await ownedProject(db, auth, params.projectId);
+    if (!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source application requires source storage.");
+    const result = await applySourceRevisionCandidate(db, options.objectStore, auth, { ...params, ...body }, context);
+    const row = await load(db, auth, params.projectId, result.requestId);
+    if (!row) throw new ApiError("CONFLICT", "Source application receipt is unavailable.");
+    return { status: 200, body: { item: dto(row, auth) } };
+  });
   router.get(path, async (request) => {
     const db = database(), auth = await options.getCurrentAuthContext(request);
     const { projectId } = parse(z.object({ projectId: z.string().min(1) }), request.params);

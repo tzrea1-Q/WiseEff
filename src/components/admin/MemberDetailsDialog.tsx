@@ -79,7 +79,7 @@ export function MemberDetailsDialog({ user, state, actions, roleEditor, roleLabe
                 return <div className="member-details__project" key={project.id}><div><strong>{project.name}</strong>
                   <span className="member-details__hint">{roles.length ? roles.map((role) => roleLabel(role.roleId)).join("、") : "未分配审核职责"}</span></div>
                   {actions ? <Button type="button" variant="outline" size="sm" aria-label={`配置 ${user.name} 在 ${project.name} 的职责`}
-                    onClick={() => { if (dirty) setError("请先保存基本资料，再配置项目职责。"); else setProjectId(project.id); }}>配置</Button> : null}
+                    onClick={() => { if (dirty) setError("请先保存基本资料，再配置项目职责。"); else void (async () => { if (await requestSettingsLeave()) setProjectId(project.id); })(); }}>配置</Button> : null}
                 </div>;
               })}</div>
             </section>

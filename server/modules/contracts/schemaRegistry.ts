@@ -1957,6 +1957,13 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "CanonicalSourceSubmissionResponse",
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterFiles.applySourceRevisionCandidate": {
+    summary: "Apply a confirmed complete DTS preview as the current human administrator without a separate reviewer",
+    tags: ["parameter-files"],
+    requestBody: "SourceRevisionDirectApplyRequest",
+    responseBody: "SourceRevisionRequestResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameterFiles.rollbackCanonicalSource": {
     summary: "Submit a historical source version through canonical draft and human review",
     tags: ["parameter-files"],
