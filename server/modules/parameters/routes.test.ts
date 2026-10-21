@@ -199,7 +199,7 @@ describe("parameter routes", () => {
       { projectId: "nebula", roleId: "software-user" }
     ] });
     vi.mocked(service.listSubmissionRounds).mockImplementation(async (_db, _auth, query) =>
-      rounds.filter((round) => round.projectId === query.projectId)
+      rounds.filter((round) => round.projectId === query?.projectId)
     );
     const scopedAll = await requestJson<{ items: typeof rounds }>(
       makeServer({ db, auth: scoped }),
@@ -630,6 +630,7 @@ describe("parameter routes", () => {
     const db = makeDb();
     const mergedRequest = {
       id: "request-1",
+      action: "set" as const,
       projectId: "aurora",
       parameterId: "param-1",
       module: "Charging Policy",
@@ -791,6 +792,7 @@ describe("parameter routes", () => {
     const db = makeDb();
     vi.mocked(service.reviewChange).mockResolvedValue({
       id: "request-1",
+      action: "set",
       parameterId: "param-1",
       module: "Charging",
       title: "Merge request",
@@ -845,6 +847,7 @@ describe("parameter routes", () => {
       code: "AUR",
       status: "initialized",
       initializationStatus: "initialized",
+      canonicalOwned: false,
       moduleCount: 3,
       parameterCount: 12,
       openConflictCount: 1,
@@ -864,12 +867,14 @@ describe("parameter routes", () => {
 
   it("POST /api/v1/parameters/admin/projects creates a project", async () => {
     const db = makeDb();
+    vi.mocked(db.query).mockResolvedValue({ rows: [{ item: null }], rowCount: 1 });
     const item = {
       id: "nova",
       name: "Nova",
       code: "NOVA",
       status: "initialized",
       initializationStatus: "not_initialized",
+      canonicalOwned: false,
       moduleCount: 0,
       parameterCount: 0,
       openConflictCount: 0,
@@ -908,6 +913,9 @@ describe("parameter routes", () => {
       name: "Nova",
       code: "NOVA",
       status: "initialized",
+      initializationStatus: "not_initialized",
+      canonicalOwned: false,
+      modules: [],
       moduleCount: 0,
       parameterCount: 0,
       openConflictCount: 0,
@@ -957,7 +965,8 @@ describe("parameter routes", () => {
       depth: 1,
       sortOrder: 0,
       description: "",
-      scope: ""
+      scope: "",
+      importance: "medium" as const, kind: "business" as const, origin: "curated" as const, sourceKey: null
     };
     vi.mocked(service.listParameterModulesForAuth).mockResolvedValue([module]);
 
@@ -1000,7 +1009,8 @@ describe("parameter routes", () => {
       depth: 2,
       sortOrder: 0,
       description: "",
-      scope: ""
+      scope: "",
+      importance: "medium" as const, kind: "business" as const, origin: "curated" as const, sourceKey: null
     };
     vi.mocked(service.createParameterModuleForAuth).mockResolvedValue(item);
 
@@ -1033,7 +1043,8 @@ describe("parameter routes", () => {
       depth: 2,
       sortOrder: 0,
       description: "",
-      scope: ""
+      scope: "",
+      importance: "medium" as const, kind: "business" as const, origin: "curated" as const, sourceKey: null
     };
     vi.mocked(service.moveParameterModuleForAuth).mockResolvedValue(item);
 

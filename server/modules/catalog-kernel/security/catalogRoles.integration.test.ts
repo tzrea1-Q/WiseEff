@@ -1525,8 +1525,17 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       function_name: string;
       table_name: string;
     }>(`
-      with refs as (
+      with limited_reads(function_identity, table_name, required_columns) as (
+        -- 0221 reads only these actor columns; every required column must remain
+        -- readable. Other DEFINER references still require table-wide SELECT.
+        values
+          ('parameter_catalog.preview_project_deletion_catalog(text,text,text)', 'users',
+            array['id','organization_id','is_active']),
+          ('parameter_catalog.preview_project_deletion_catalog(text,text,text)', 'user_role_bindings',
+            array['user_id','organization_id','project_id','role_id'])
+      ), refs as (
         select
+          procedure.oid as function_oid,
           procedure.proname as function_name,
           pg_catalog.pg_get_userbyid(procedure.proowner) as function_owner,
           match[1] as table_name
@@ -1546,6 +1555,17 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
         function_owner,
         format('public.%I', table_name),
         'select'
+      )
+      and not exists (
+        select 1 from limited_reads limited
+        where refs.function_oid = pg_catalog.to_regprocedure(limited.function_identity)
+          and refs.table_name = limited.table_name
+          and not exists (
+            select 1 from unnest(limited.required_columns) required(column_name)
+            where not pg_catalog.has_column_privilege(
+              refs.function_owner, format('public.%I', refs.table_name), required.column_name, 'select'
+            )
+          )
       )
       order by function_name, table_name
     `);

@@ -112,7 +112,7 @@ describe("canonical project admin summaries", () => {
       inventory: { key: string; count: number; disposition: string }[]; executionAvailable: boolean } }>(server,
       `/api/v1/parameters/admin/projects/${PROJECTS[0]}/deletion-preview`, { headers: { "X-WiseEff-User": USER } });
     expect(response.status).toBe(200);
-    expect(response.body.item).toMatchObject({ projectId: PROJECTS[0], organizationId: ORG, executionAvailable: false,
+    expect(response.body.item).toMatchObject({ projectId: PROJECTS[0], organizationId: ORG, executionAvailable: true,
       stateDigest: expect.stringMatching(/^[a-f0-9]{64}$/) });
     expect(response.body.item.inventory).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: "configurations", count: 1, disposition: "delete" }),
