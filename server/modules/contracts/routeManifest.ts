@@ -756,6 +756,7 @@ export const routeManifest = [
   { id: "logs.list", method: "GET", path: "/api/v1/logs", module: "logs", stability: "mvp" },
   { id: "logs.feedbackInsights", method: "GET", path: "/api/v1/logs/feedback-insights", module: "logs", stability: "mvp" },
   { id: "logs.get", method: "GET", path: "/api/v1/logs/:logId", module: "logs", stability: "mvp" },
+  { id: "logs.previewDeletion", method: "GET", path: "/api/v1/logs/:logId/deletion-preview", module: "logs", stability: "mvp" },
   { id: "logs.getTrace", method: "GET", path: "/api/v1/logs/:logId/trace", module: "logs", stability: "mvp" },
   { id: "logs.listAnalysisCases", method: "GET", path: "/api/v1/log-skills/:skillId/analysis-cases", module: "logs", stability: "mvp" },
   { id: "logs.createAnalysisCase", method: "POST", path: "/api/v1/log-skills/:skillId/analysis-cases", module: "logs", stability: "mvp" },
@@ -1237,6 +1238,10 @@ export const routeManifest = [
     stability: "mvp"
   },
   { id: "parameterFiles.listConfigSets", method: "GET", path: "/api/v1/projects/:projectId/config-sets", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.previewCanonicalMemberAddition", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/member-addition/preview", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.applyCanonicalMemberAddition", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/member-addition/apply", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.previewAdministratorMemberRemoval", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId/removal-preview", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.applyAdministratorMemberRemoval", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId/removal-apply", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.createConfigSet", method: "POST", path: "/api/v1/projects/:projectId/config-sets", module: "parameter-files", stability: "mvp" },
   {
     id: "parameterFiles.addConfigSetFile",

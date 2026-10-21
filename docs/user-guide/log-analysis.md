@@ -23,6 +23,8 @@ Shared physical objects, analysis skills and revisions, source snapshots, saved 
 
 Workspace navigation groups Overview, Diagnostic procedure, Samples and parsing, Decode, Signals, Knowledge, Source, Tests, Integration and Versions. The sample remains available across form sections; Diagnostic procedure, Source and Versions use the wider task area without the sample pane. The draft bar distinguishes saved unpublished changes from the published revision. Source snapshots and analysis cases have their own lifecycle; check their state before relying on them in a run.
 
+In the skill list, use a row's **Rename** action to change its display name, or **Restore** on an archived skill. Both keep the same skill identity, versions, historical analyses and links. A name conflict identifies the occupying skill and links to it; choose another name or inspect that skill. Failed requests preserve the entered name for retry. Restoring keeps existing publication rules and does not reactivate revoked integration credentials.
+
 ## Connect an external uploader
 
 In the skill workspace, open Integration → Integration credentials. Administrators with `logs:admin-domains` can issue a named credential; Bind to this skill is on by default. The list shows its name, bound skill, status, creation time and last use. Unbound credentials can upload to other skills in the same organization. Copy the skill key and upload example, replacing the credential placeholder with the secret from your secret manager.

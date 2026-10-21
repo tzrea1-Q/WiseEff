@@ -1042,6 +1042,11 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       { name: "endLine", in: "query", required: true, schema: { type: "integer" } }
     ] },
   "logs.get": { summary: "Get log record with run-owned signals and line templates", tags: ["logs"], responseBody: "LogRecordResponse" },
+  "logs.previewDeletion": {
+    summary: "Preview organization-owned log deletion, task effects and retained shared data without writes",
+    tags: ["logs"], responseBody: "LogDeletionPreviewResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "logs.getLines": {
     summary: "Read an inclusive window of at most 400 indexed log lines",
     tags: ["logs"], responseBody: "LogLineRangeResponse",
@@ -1882,6 +1887,29 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["parameter-files"],
     responseBody: "ConfigSetMembershipResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.previewAdministratorMemberRemoval": {
+    summary: "Preview an administrator's complete Canonical member removal and effective parameter impact",
+    tags: ["parameter-files"], responseBody: "AdministratorMemberRemovalPreviewResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.previewCanonicalMemberAddition": {
+    summary: "Preview a staged or existing member against the complete Canonical configuration",
+    tags: ["parameter-files"], requestBody: "CanonicalMemberAdditionPreviewRequest",
+    responseBody: "CanonicalMemberAdditionPreviewResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.applyCanonicalMemberAddition": {
+    summary: "Atomically add the confirmed Canonical member as the current human administrator",
+    tags: ["parameter-files"], requestBody: "CanonicalMemberAdditionApplyRequest",
+    responseBody: "CanonicalMemberAdditionApplyResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.applyAdministratorMemberRemoval": {
+    summary: "Atomically apply a confirmed Canonical member removal as the current human administrator",
+    tags: ["parameter-files"], requestBody: "AdministratorMemberRemovalApplyRequest",
+    responseBody: "AdministratorMemberRemovalApplyResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameterFiles.exportConfigSet": {
     summary: "Export a config set as a lossless manifest with validation evidence",

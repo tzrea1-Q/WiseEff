@@ -23,6 +23,17 @@ function props(overrides: Partial<WorkbenchConfigurationFilesDialogProps> = {}):
 }
 
 describe("WorkbenchConfigurationFilesDialog", () => {
+  it("opens the Canonical composition preview only for an administrator after source checks", async () => {
+    const user = userEvent.setup(), onCanonicalAdd = vi.fn();
+    const values = props({ canonical: true, onCanonicalAdd });
+    const view = render(<WorkbenchConfigurationFilesDialog {...values} />);
+    await user.click(screen.getByRole("button", { name: "添加配置文件" }));
+    expect(onCanonicalAdd).toHaveBeenCalledOnce();
+    view.rerender(<WorkbenchConfigurationFilesDialog {...values} canAdmin={false} />);
+    expect(screen.queryByRole("button", { name: "添加配置文件" })).not.toBeInTheDocument();
+    view.rerender(<WorkbenchConfigurationFilesDialog {...values} ready={false} />);
+    expect(screen.queryByRole("button", { name: "添加配置文件" })).not.toBeInTheDocument();
+  });
   it("shows configuration file metadata without default seed descriptions or single-file order noise", () => {
     const values = props();
     const view = render(<WorkbenchConfigurationFilesDialog {...values} />);
@@ -60,7 +71,7 @@ describe("WorkbenchConfigurationFilesDialog", () => {
     const user = userEvent.setup();
     const values = props({ canonical: true });
     render(<WorkbenchConfigurationFilesDialog {...values} />);
-    expect(screen.getByRole("dialog")).toHaveTextContent("管理员可预览并确认移除 DTS 或 JSON 文件");
+    expect(screen.getByRole("dialog")).toHaveTextContent("添加或移除文件均需预览并确认");
     expect(screen.queryByRole("button", { name: "添加文件" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "主板.dts 更多" }));
     await user.click(screen.getByRole("menuitem", { name: "预览移除影响" }));

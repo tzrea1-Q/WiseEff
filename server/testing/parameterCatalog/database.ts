@@ -66,13 +66,22 @@ export const S2_SCH_0219_FINGERPRINT =
   "2bd66075a223cd87daf165f4ba353258edd9a845c8027bf1de140b25ae19fad6";
 
 /**
- * Current 0221 stage: the unchanged six-category inventory adds only three
+ * Retained 0221 stage: the unchanged six-category inventory adds only three
  * functions for direct-source receipts/mode immutability and read-only project
  * deletion preview. Relations, columns, constraints, indexes and triggers are
  * unchanged from 0219; the historical fingerprint above remains intact.
  */
-export const S2_SCH_LIVE_FINGERPRINT =
+export const S2_SCH_0221_FINGERPRINT =
   "d9907a04610bdcc83f0662fc3030fca1b480488858fdce4583315bd0bfd5005d";
+
+/**
+ * Current 0226 stage: project erasure adds one relation/primary key, while
+ * member addition/removal and surviving Definition-erasure origins update
+ * three constraints and nine function bodies, and add twelve functions.
+ * The unchanged inventory query retains all prior schema pins above.
+ */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "82c8c47c82b6f4fcdbd744fa3cfcfedd74dfbd85aba811227d6d5f468c0f6e7e";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
