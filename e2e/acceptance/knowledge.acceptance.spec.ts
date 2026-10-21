@@ -893,13 +893,16 @@ test.describe("Knowledge base browser acceptance", () => {
     await expect(detail.getByText("引用位置：第 1 页")).toBeVisible();
     const fileRead = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/knowledge/entries/${entry!.id}/file/content`);
     const popupPromise = page.waitForEvent("popup");
+    // Headless Chromium has no PDF viewer, so the popup's navigation to the cited page surfaces as a download.
+    const pageNavigation = popupPromise.then((popup) => popup.waitForEvent("download"));
     await detail.getByRole("button", { name: "打开第 1 页" }).click();
     const popup = await popupPromise;
     const fileResponse = await fileRead;
     expect(new URL(fileResponse.url()).searchParams.get("revisionId")).toBe(revisionId);
     expect(fileResponse.headers()["content-disposition"]).toContain("attachment");
-    await expect.poll(() => popup.url()).toMatch(/^blob:.*#page=1$/);
-    expect(await page.evaluate(async (url) => (await (await fetch(url)).blob()).type, popup.url())).toBe("application/pdf");
+    const pdfUrl = (await pageNavigation).url();
+    expect(pdfUrl).toMatch(/^blob:.*#page=1$/);
+    expect(await page.evaluate(async (url) => (await (await fetch(url)).blob()).type, pdfUrl)).toBe("application/pdf");
     await testInfo.attach("pdf-page-citation-1440x900", { body: await page.screenshot(), contentType: "image/png" });
     await popup.close();
 
