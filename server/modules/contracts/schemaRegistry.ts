@@ -1379,6 +1379,11 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["knowledge"], requestBody: "ImportKnowledgeDocumentRequest", responseBody: "ImportKnowledgeDocumentResponse",
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "knowledge.importArchive": {
+    summary: "Validate a bounded ZIP before importing members through the shared document path; folder names become tags; OS junk is ignored",
+    tags: ["knowledge"], requestBody: "ImportKnowledgeArchiveRequest", responseBody: "ImportKnowledgeArchiveResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "knowledge.getImport": {
     summary: "Read the importer's persisted document outcomes and server-computed totals",
     tags: ["knowledge"], responseBody: "KnowledgeImportReportResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }

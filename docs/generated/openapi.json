@@ -15383,6 +15383,62 @@
         }
       }
     },
+    "/api/v1/knowledge/imports/{batchId}/archive": {
+      "post": {
+        "operationId": "knowledge.importArchive",
+        "summary": "Validate a bounded ZIP before importing members through the shared document path; folder names become tags; OS junk is ignored",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportKnowledgeArchiveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportKnowledgeArchiveResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/knowledge/imports/{batchId}": {
       "get": {
         "operationId": "knowledge.getImport",
@@ -58223,6 +58279,99 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "ImportKnowledgeDocumentResponse"
+      },
+      "ImportKnowledgeArchiveRequest": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "object",
+            "properties": {
+              "fileName": {
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              },
+              "contentBase64": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "fileName",
+              "contentType",
+              "contentBase64"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ImportKnowledgeArchiveRequest"
+      },
+      "ImportKnowledgeArchiveResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "outcomes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "relativePath": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "created",
+                        "duplicate_skipped",
+                        "unsupported_skipped",
+                        "extraction_failed",
+                        "rejected"
+                      ]
+                    },
+                    "entryId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "error": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "relativePath",
+                    "status",
+                    "entryId",
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "outcomes"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ImportKnowledgeArchiveResponse"
       },
       "KnowledgeImportReportResponse": {
         "type": "object",

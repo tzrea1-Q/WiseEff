@@ -11,6 +11,7 @@ import { parseTagsInput } from "./KnowledgeEntryEditorDialog";
 type Row = { name: string; outcome?: KnowledgeImportOutcome; requestError?: string };
 const labels = { created: "已创建草稿", duplicate_skipped: "重复，已跳过", unsupported_skipped: "格式不支持，已跳过",
   extraction_failed: "提取失败，草稿已保留", rejected: "导入失败" };
+const isZip = (file: File) => /\.zip$/i.test(file.name);
 
 export function KnowledgeImportDialog({ open, repository, onClose, onComplete }: {
   open: boolean; repository: KnowledgeRepository; onClose: () => void; onComplete: () => void;
@@ -40,8 +41,10 @@ export function KnowledgeImportDialog({ open, repository, onClose, onComplete }:
   };
   const submit = async () => {
     if (!files.length) { setError("请选择要导入的文档。"); return; }
-    if (files.length > 200) { setError("每批最多导入 200 个文档。"); return; }
-    if (files.reduce((total, file) => total + file.size, 0) > 100 * 1024 * 1024) {
+    if (files.filter(isZip).length > 1) { setError("每批最多选择一个 ZIP 压缩包。"); return; }
+    if (files.filter((file) => !isZip(file)).length > 200) { setError("每批最多导入 200 个文档。"); return; }
+    if (files.filter((file) => !isZip(file)).reduce((total, file) => total + file.size, 0) > 100 * 1024 * 1024
+      || files.some((file) => isZip(file) && file.size > 100 * 1024 * 1024)) {
       setError("每批文件总大小不能超过 100 MB。"); return;
     }
     setPending(true);
@@ -57,12 +60,20 @@ export function KnowledgeImportDialog({ open, repository, onClose, onComplete }:
     setBatchId(id);
     const progress: Row[] = files.map((file) => ({ name: file.webkitRelativePath || file.name }));
     setRows([...progress]);
+    let offset = 0;
     for (const [index, file] of files.entries()) {
-      setCurrent(index);
+      const rowIndex = index + offset;
+      setCurrent(rowIndex);
       try {
-        progress[index].outcome = await repository.importDocument(id, { file, relativePath: progress[index].name });
+        if (isZip(file)) {
+          const { outcomes } = await repository.importArchive(id, file);
+          progress.splice(rowIndex, 1, ...outcomes.map((outcome) => ({ name: outcome.relativePath, outcome })));
+          offset += outcomes.length - 1;
+        } else {
+          progress[rowIndex].outcome = await repository.importDocument(id, { file, relativePath: progress[rowIndex].name });
+        }
       } catch (failure) {
-        progress[index].requestError = presentError(failure, "导入请求失败，请检查知识库中的结果后重试。");
+        progress[rowIndex].requestError = presentError(failure, "导入请求失败，请检查知识库中的结果后重试。");
       }
       setRows(progress.map((row) => ({ ...row })));
     }
@@ -78,12 +89,12 @@ export function KnowledgeImportDialog({ open, repository, onClose, onComplete }:
       <div>
         <h2 id={titleId} className="text-base font-semibold text-foreground">批量导入</h2>
         <p id={descriptionId} className="mt-1 text-xs text-muted-foreground">
-          PDF、DOCX、TXT、MD，每批最多 200 个文档、100 MB，每个文档最多 20 MB。每份文档创建独立草稿，重复内容跳过。
+          支持 PDF、DOCX、TXT、MD 和一个 ZIP 压缩包，文件夹名转为标签。每批最多 200 个文档、解压后 100 MB，每个文档最多 20 MB。每份文档创建独立草稿，重复内容跳过。
         </p>
       </div>
       <div className="min-h-0 overflow-auto">
         {!batchId ? <div className="flex flex-col gap-4">
-          <FileDropZone label="选择多个文档" multiple accept=".pdf,.docx,.txt,.md" files={files} disabled={pending}
+          <FileDropZone label="选择文档或 ZIP" multiple accept=".pdf,.docx,.txt,.md,.zip" files={files} disabled={pending}
             onSelect={(selected) => setFiles((previous) => [...previous, ...selected])}
             onRemove={(index) => setFiles((previous) => previous.filter((_, i) => i !== index))} />
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">

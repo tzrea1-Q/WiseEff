@@ -31,9 +31,12 @@ export const knowledgeFileUploadSchema = z.object({
 });
 
 export const openKnowledgeImportSchema = z.object({ tags: knowledgeTagsSchema }).strict();
+export const importKnowledgeArchiveSchema = z.object({
+  file: z.object({ fileName: nonEmptyString.max(255).regex(/\.zip$/i), contentType: z.string().max(255), contentBase64: base64String })
+}).strict();
 export const importKnowledgeDocumentSchema = z.object({
   relativePath: z.string().min(1).max(1024).refine((path) =>
-    !path.includes("\\") && !/[\u0000-\u001f]/.test(path) && path.split("/").every((part) => part && part !== "." && part !== ".."),
+    !/^[a-z]:/i.test(path) && !path.includes("\\") && !/[\u0000-\u001f]/.test(path) && path.split("/").every((part) => part && part !== "." && part !== ".."),
   "Expected a relative document path."),
   file: z.object({ fileName: nonEmptyString.max(255), contentType: z.string().max(255), contentBase64: base64String })
 }).strict();

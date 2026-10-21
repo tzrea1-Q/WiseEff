@@ -663,6 +663,32 @@ export function createMockKnowledgeRepository(
       batch.counts[outcome.status]++;
       return clone(outcome);
     },
+    async importArchive(batchId, file) {
+      const batch = requireImport(batchId);
+      if (batch.completed) throw mockApiError("CONFLICT", "导入批次已完成。");
+      if (file.size > 100 * 1024 * 1024) throw mockApiError("VALIDATION_FAILED", "ZIP 压缩包不能超过 100 MB。");
+      const { default: JSZip } = await import("jszip");
+      const zip = await JSZip.loadAsync(await sourceBytes(file), { base64: true });
+      const documents: { file: File; relativePath: string }[] = [];
+      for (const entry of Object.values(zip.files)) {
+        const original = (entry as typeof entry & { unsafeOriginalName?: string }).unsafeOriginalName ?? entry.name;
+        if (/^[a-z]:/i.test(original) || /[\\\u0000-\u001f]/.test(original)
+          || original.replace(/\/$/, "").split("/").some((part) => !part || part === "." || part === "..")
+          || original.replace(/\/$/, "").split("/").length > (entry.dir ? 20 : 21)) {
+          throw mockApiError("VALIDATION_FAILED", "ZIP 文档路径无效或嵌套超过 20 层。");
+        }
+        if (entry.dir || entry.name.split("/").some((part) => part === "__MACOSX" || part === ".DS_Store")) continue;
+        documents.push({ relativePath: entry.name, file: new File([await entry.async("uint8array") as BlobPart], entry.name.split("/").at(-1)!) });
+      }
+      if (documents.some((document) => document.file.size > 20 * 1024 * 1024)) throw mockApiError("VALIDATION_FAILED", "文件超过 20 MB 上限。");
+      if (batch.documentCount + documents.length > 200) throw mockApiError("VALIDATION_FAILED", "每批最多导入 200 个文档。");
+      if (batch.totalBytes + documents.reduce((total, document) => total + document.file.size, 0) > 100 * 1024 * 1024) {
+        throw mockApiError("VALIDATION_FAILED", "每批文件总大小不能超过 100 MB。");
+      }
+      const outcomes: KnowledgeImportOutcome[] = [];
+      for (const document of documents) outcomes.push(await repository.importDocument(batchId, document));
+      return { outcomes };
+    },
     async getImport(batchId) { return clone(requireImport(batchId)); },
     async completeImport(batchId) {
       const batch = requireImport(batchId);

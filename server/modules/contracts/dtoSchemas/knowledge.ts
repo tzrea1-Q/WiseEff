@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createKnowledgeEntryBodySchema, updateKnowledgeEntryBodySchema, openKnowledgeImportSchema, importKnowledgeDocumentSchema } from "../../knowledge/schemas";
+import { createKnowledgeEntryBodySchema, updateKnowledgeEntryBodySchema, openKnowledgeImportSchema, importKnowledgeDocumentSchema, importKnowledgeArchiveSchema } from "../../knowledge/schemas";
 import { knowledgeContentForms, knowledgeOrigins, knowledgeSourceTypes, knowledgeStatuses, knowledgeExtractionStatuses } from "../../knowledge/types";
 import { itemEnvelopeSchema, itemsEnvelopeSchema } from "./envelopes";
 
@@ -44,6 +44,8 @@ export const knowledgeDtoSchemaCatalog = {
   OpenKnowledgeImportResponse: itemEnvelopeSchema(z.object({ id: z.string().uuid() })),
   ImportKnowledgeDocumentRequest: importKnowledgeDocumentSchema,
   ImportKnowledgeDocumentResponse: itemEnvelopeSchema(importOutcomeSchema),
+  ImportKnowledgeArchiveRequest: importKnowledgeArchiveSchema,
+  ImportKnowledgeArchiveResponse: itemEnvelopeSchema(z.object({ outcomes: z.array(importOutcomeSchema) })),
   CompleteKnowledgeImportRequest: z.object({}).strict(),
   KnowledgeImportReportResponse: itemEnvelopeSchema(z.object({ id: z.string().uuid(), tags: z.array(z.string()), completed: z.boolean(),
     documentCount: z.number().int(), totalBytes: z.number().int(), counts: importCountsSchema, outcomes: z.array(importOutcomeSchema) })),
@@ -53,5 +55,5 @@ export const knowledgeDtoSchemaCatalog = {
   KnowledgeBindingResponse: z.object({ entry: knowledgeEntryDtoSchema.nullable(), deleted: z.boolean() }),
   KnowledgeEntryListResponse: itemsEnvelopeSchema(knowledgeEntryDtoSchema)
 };
-export const knowledgeCoveredRouteIds = ["knowledge.openImport", "knowledge.importDocument", "knowledge.getImport", "knowledge.completeImport",
+export const knowledgeCoveredRouteIds = ["knowledge.openImport", "knowledge.importDocument", "knowledge.importArchive", "knowledge.getImport", "knowledge.completeImport",
   "knowledge.createEntry", "knowledge.getEntry", "knowledge.getBinding", "knowledge.listEntries", "knowledge.updateEntry"] as const;
