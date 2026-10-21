@@ -1514,7 +1514,7 @@ export const catalogReplacementPreviewRequestSchema = catalogObject({
   unit: z.string().min(1).max(32).optional(),
   valueSchema: catalogSupportedValueSchemaSchema,
   examples: z.array(catalogJsonValueSchema).optional(),
-  projectIds: z.array(z.string()).min(1).max(200),
+  projectIds: z.array(z.string()).max(200),
   reason: z.string().min(1).max(512)
 });
 
@@ -1546,6 +1546,11 @@ export const catalogReplacementDtoSchema = catalogObject({
   etag: z.string(),
   version: z.number().int().positive(),
   projects: z.array(catalogReplacementProjectDtoSchema),
+  retirementEvidence: catalogObject({
+    scope: z.literal("platform"),
+    remainingCurrentReferenceCount: z.number().int().nonnegative(),
+    authoritative: z.literal(true)
+  }).optional(),
   createdAt: z.string()
 });
 

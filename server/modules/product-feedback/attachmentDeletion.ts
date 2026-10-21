@@ -2,16 +2,16 @@ import { randomUUID } from "node:crypto";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
-import { createUserInvocation } from "../auth/trustedInvocation";
+import type { TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { cleanupFeedbackAttachmentUploads, queueFeedbackAttachmentCleanup } from "./attachmentUploads";
 import { getFeedbackById, getFeedbackForUpdate, getMyFeedbackById } from "./repository";
 import { requireProductFeedbackSubmit } from "./policy";
 
-export async function deleteProductFeedbackAttachment(db: Database, store: ObjectStore, auth: AuthContext, feedbackId: string, attachmentId: string, requestId: string = randomUUID()) {
+export async function deleteProductFeedbackAttachment(db: Database, store: ObjectStore, auth: AuthContext, feedbackId: string, attachmentId: string, invocation: TrustedInvocationContext, requestId: string = randomUUID()) {
   requireProductFeedbackSubmit(auth);
-  const invocation = createUserInvocation(auth), administrator = auth.permissions.includes("admin:access");
+  const administrator = auth.permissions.includes("admin:access");
   const receiptId = await db.transaction(async (tx) => {
     const feedback = await getFeedbackForUpdate(tx, auth, feedbackId);
     if (!feedback || feedback.submitted_at === null || (!administrator && feedback.submitter_user_id !== auth.user.id)) throw new ApiError("NOT_FOUND", "反馈附件不存在。");

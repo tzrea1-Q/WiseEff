@@ -1275,6 +1275,11 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["product-feedback"], requestBody: "ProductFeedbackAttachmentCleanupRequest", responseBody: "ProductFeedbackAttachmentCleanupResponse",
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse" }
   },
+  "productFeedback.deleteAttachment": {
+    summary: "Remove an owned submitted feedback attachment, retain a content-free message marker and retry exclusive object cleanup",
+    tags: ["product-feedback"], responseBody: "ProductFeedbackAttachmentDeletionResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "productFeedback.replyToMine": {
     summary: "Submitter adds public details and optional images, or reopens resolved/closed feedback",
     tags: ["product-feedback"],
@@ -1835,6 +1840,16 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["parameter-files"],
     requestBody: "SourceRevisionWithdrawRequest",
     responseBody: "SourceRevisionRequestResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.cancelSourceRevisionRequest": {
+    summary: "Cancel this organization's unchanged pending source request as its file administrator with an audit reason",
+    tags: ["parameter-files"], requestBody: "SourceRevisionCancelRequest", responseBody: "SourceRevisionRequestResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.reassignSourceRevisionRequest": {
+    summary: "Reassign the unchanged pending source proof to a currently eligible reviewer without changing its author or diff",
+    tags: ["parameter-files"], requestBody: "SourceRevisionReassignRequest", responseBody: "SourceRevisionRequestResponse",
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameterFiles.uploadFile": {

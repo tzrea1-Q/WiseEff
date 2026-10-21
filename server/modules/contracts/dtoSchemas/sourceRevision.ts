@@ -47,6 +47,9 @@ export const sourceRevisionRequestDtoSchema = z.object({
   submitterName: z.string().nullable().optional(), assignedToName: z.string().nullable().optional(), reviewerName: z.string().nullable().optional(),
   reviewerNote: z.string().nullable(), createdAt: id, updatedAt: id, proofDigest: digest,
   impact: sourceRevisionImpactSchema, before: z.string().optional(), after: z.string().optional(),
+  canAdminister: z.boolean().optional(),
+  eligibleReviewers: z.array(z.object({ userId: id, name: z.string() }).strict()).optional(),
+  cancellation: z.object({ userId: id.nullable(), name: z.string().nullable(), reason }).strict().nullable().optional(),
   appliedSourceResult: z.object({ configRevisionId: id, fileVersionId: id }).passthrough().nullable().optional()
 }).strict();
 
@@ -59,6 +62,10 @@ export const sourceRevisionReviewRequestSchema = z.object({
   decision: z.enum(["approve", "reject"]), proofDigest: digest, note: z.string().trim().max(2000).optional()
 }).strict();
 export const sourceRevisionWithdrawRequestSchema = z.object({}).strict();
+export const sourceRevisionCancelRequestSchema = z.object({ proofDigest: digest,
+  expectedAssignedToUserId: id.nullable(), reason }).strict();
+export const sourceRevisionReassignRequestSchema = sourceRevisionCancelRequestSchema.omit({ reason: true })
+  .extend({ assignedToUserId: id }).strict();
 export const canonicalSourceSubmissionResponseSchema = z.object({ item: z.object({
   requestId: id, status: sourceRevisionStatusSchema, replayed: z.boolean()
 }).strict() }).strict();
@@ -72,6 +79,8 @@ export const sourceRevisionDtoSchemaCatalog = {
   SourceRevisionRequestDetailResponse: sourceRevisionRequestDetailResponseSchema,
   SourceRevisionReviewRequest: sourceRevisionReviewRequestSchema,
   SourceRevisionWithdrawRequest: sourceRevisionWithdrawRequestSchema,
+  SourceRevisionCancelRequest: sourceRevisionCancelRequestSchema,
+  SourceRevisionReassignRequest: sourceRevisionReassignRequestSchema,
   SourceRevisionDirectApplyRequest: sourceRevisionDirectApplyRequestSchema
 };
 
@@ -79,5 +88,6 @@ export const sourceRevisionCoveredRouteIds = [
   "parameterFiles.previewCanonicalCandidate", "parameterFiles.submitCanonicalCandidate",
   "parameterFiles.applySourceRevisionCandidate",
   "parameterFiles.listSourceRevisionRequests", "parameterFiles.getSourceRevisionRequest",
-  "parameterFiles.reviewSourceRevisionRequest", "parameterFiles.withdrawSourceRevisionRequest"
+  "parameterFiles.reviewSourceRevisionRequest", "parameterFiles.withdrawSourceRevisionRequest",
+  "parameterFiles.cancelSourceRevisionRequest", "parameterFiles.reassignSourceRevisionRequest"
 ] as const;

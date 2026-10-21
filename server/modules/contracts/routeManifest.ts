@@ -850,6 +850,7 @@ export const routeManifest = [
 
   { id: "productFeedback.create", method: "POST", path: "/api/v1/product-feedback", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.retryAttachmentCleanup", method: "POST", path: "/api/v1/product-feedback/mine/attachment-cleanup", module: "product-feedback", stability: "mvp" },
+  { id: "productFeedback.deleteAttachment", method: "DELETE", path: "/api/v1/product-feedback/:id/attachments/:attachmentId", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.createDraft", method: "POST", path: "/api/v1/product-feedback/drafts", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.patchDraft", method: "PATCH", path: "/api/v1/product-feedback/drafts/:id", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.deleteDraft", method: "DELETE", path: "/api/v1/product-feedback/drafts/:id", module: "product-feedback", stability: "mvp" },
@@ -1206,6 +1207,8 @@ export const routeManifest = [
   { id: "parameterFiles.getSourceRevisionRequest", method: "GET", path: "/api/v2/projects/:projectId/source-revision-requests/:requestId", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.reviewSourceRevisionRequest", method: "POST", path: "/api/v2/projects/:projectId/source-revision-requests/:requestId/review", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.withdrawSourceRevisionRequest", method: "POST", path: "/api/v2/projects/:projectId/source-revision-requests/:requestId/withdraw", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.cancelSourceRevisionRequest", method: "POST", path: "/api/v2/projects/:projectId/source-revision-requests/:requestId/cancel", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.reassignSourceRevisionRequest", method: "POST", path: "/api/v2/projects/:projectId/source-revision-requests/:requestId/reassign", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.uploadFile", method: "POST", path: "/api/v1/projects/:projectId/parameter-files", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.listFileVersions", method: "GET", path: "/api/v1/projects/:projectId/parameter-files/:fileId/versions", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.uploadFileVersion", method: "POST", path: "/api/v1/projects/:projectId/parameter-files/:fileId/versions", module: "parameter-files", stability: "mvp" },

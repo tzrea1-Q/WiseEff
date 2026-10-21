@@ -62,6 +62,7 @@ export const productFeedbackDtoSchemaCatalog = {
 };
 
 export const productFeedbackCoveredRouteIds = [
+  "productFeedback.deleteAttachment",
   "productFeedback.retryAttachmentCleanup",
   "productFeedback.create", "productFeedback.createDraft", "productFeedback.patchDraft",
   "productFeedback.deleteDraft", "productFeedback.submitDraft", "productFeedback.listMine",

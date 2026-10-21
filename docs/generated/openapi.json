@@ -14347,6 +14347,60 @@
         }
       }
     },
+    "/api/v1/product-feedback/{id}/attachments/{attachmentId}": {
+      "delete": {
+        "operationId": "productFeedback.deleteAttachment",
+        "summary": "Remove an owned submitted feedback attachment, retain a content-free message marker and retry exclusive object cleanup",
+        "tags": [
+          "product-feedback"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "attachmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductFeedbackAttachmentDeletionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/product-feedback/drafts": {
       "post": {
         "operationId": "productFeedback.createDraft",
@@ -18289,6 +18343,134 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/SourceRevisionWithdrawRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRevisionRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/source-revision-requests/{requestId}/cancel": {
+      "post": {
+        "operationId": "parameterFiles.cancelSourceRevisionRequest",
+        "summary": "Cancel this organization's unchanged pending source request as its file administrator with an audit reason",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceRevisionCancelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRevisionRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/source-revision-requests/{requestId}/reassign": {
+      "post": {
+        "operationId": "parameterFiles.reassignSourceRevisionRequest",
+        "summary": "Reassign the unchanged pending source proof to a currently eligible reviewer without changing its author or diff",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceRevisionReassignRequest"
               }
             }
           }
@@ -54163,6 +54345,18 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "deletedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "cleanupPending": {
+                      "type": "boolean"
+                    },
+                    "canDelete": {
+                      "type": "boolean"
+                    },
                     "messageId": {
                       "type": [
                         "string",
@@ -54567,6 +54761,18 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "deletedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "cleanupPending": {
+                      "type": "boolean"
+                    },
+                    "canDelete": {
+                      "type": "boolean"
+                    },
                     "messageId": {
                       "type": [
                         "string",
@@ -54922,6 +55128,18 @@
                   "items": {
                     "type": "object",
                     "properties": {
+                      "deletedAt": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "cleanupPending": {
+                        "type": "boolean"
+                      },
+                      "canDelete": {
+                        "type": "boolean"
+                      },
                       "messageId": {
                         "type": [
                           "string",
@@ -55135,6 +55353,632 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "ProductFeedbackAttachmentCleanupResponse"
       },
+      "ProductFeedbackAttachmentDeletionResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "organizationId": {
+                    "type": "string"
+                  },
+                  "pagePath": {
+                    "type": "string"
+                  },
+                  "pageTitle": {
+                    "type": "string"
+                  },
+                  "feedbackType": {
+                    "type": "string",
+                    "enum": [
+                      "experience",
+                      "data",
+                      "export_submit",
+                      "feature"
+                    ]
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "open",
+                      "in_progress",
+                      "resolved",
+                      "closed"
+                    ]
+                  },
+                  "resolutionCode": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "completed",
+                      "duplicate",
+                      "cannot_reproduce",
+                      "not_planned",
+                      "invalid",
+                      "other"
+                    ]
+                  },
+                  "submittedAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "deletedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "cleanupPending": {
+                          "type": "boolean"
+                        },
+                        "canDelete": {
+                          "type": "boolean"
+                        },
+                        "messageId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "uploadedByUserId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "feedbackId": {
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "type": "string"
+                        },
+                        "storageKey": {
+                          "type": "string"
+                        },
+                        "fileName": {
+                          "type": "string"
+                        },
+                        "contentType": {
+                          "type": "string",
+                          "enum": [
+                            "image/png",
+                            "image/jpeg",
+                            "image/webp"
+                          ]
+                        },
+                        "sizeBytes": {
+                          "type": "number"
+                        },
+                        "checksum": {
+                          "type": "string"
+                        },
+                        "sortOrder": {
+                          "type": "number"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "feedbackId",
+                        "organizationId",
+                        "storageKey",
+                        "fileName",
+                        "contentType",
+                        "sizeBytes",
+                        "checksum",
+                        "sortOrder",
+                        "createdAt"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "progressEvents": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "feedbackId": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "submitted",
+                            "status_changed",
+                            "progress",
+                            "reopened",
+                            "legacy_note"
+                          ]
+                        },
+                        "fromStatus": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "open",
+                            "in_progress",
+                            "resolved",
+                            "closed"
+                          ]
+                        },
+                        "toStatus": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "open",
+                            "in_progress",
+                            "resolved",
+                            "closed"
+                          ]
+                        },
+                        "resolutionCode": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "completed",
+                            "duplicate",
+                            "cannot_reproduce",
+                            "not_planned",
+                            "invalid",
+                            "other"
+                          ]
+                        },
+                        "publicMessage": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "author": {
+                          "type": "string",
+                          "enum": [
+                            "submitter",
+                            "team"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "actorUserId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "internalMessage": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "feedbackId",
+                        "kind",
+                        "fromStatus",
+                        "toStatus",
+                        "resolutionCode",
+                        "publicMessage",
+                        "createdAt",
+                        "actorUserId",
+                        "internalMessage"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "latestPublicProgress": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "submitterUserId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "submitter": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "username": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "username"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "adminNote": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "priority": {
+                    "type": "string",
+                    "enum": [
+                      "low",
+                      "normal",
+                      "high"
+                    ]
+                  },
+                  "assigneeUserId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "assignee": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "username": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "username"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "id",
+                  "organizationId",
+                  "pagePath",
+                  "pageTitle",
+                  "feedbackType",
+                  "description",
+                  "status",
+                  "resolutionCode",
+                  "submittedAt",
+                  "createdAt",
+                  "updatedAt",
+                  "attachments",
+                  "progressEvents",
+                  "submitterUserId",
+                  "submitter",
+                  "adminNote",
+                  "priority",
+                  "assigneeUserId",
+                  "assignee"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "organizationId": {
+                    "type": "string"
+                  },
+                  "pagePath": {
+                    "type": "string"
+                  },
+                  "pageTitle": {
+                    "type": "string"
+                  },
+                  "feedbackType": {
+                    "type": "string",
+                    "enum": [
+                      "experience",
+                      "data",
+                      "export_submit",
+                      "feature"
+                    ]
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "open",
+                      "in_progress",
+                      "resolved",
+                      "closed"
+                    ]
+                  },
+                  "resolutionCode": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "completed",
+                      "duplicate",
+                      "cannot_reproduce",
+                      "not_planned",
+                      "invalid",
+                      "other"
+                    ]
+                  },
+                  "submittedAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "deletedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "cleanupPending": {
+                          "type": "boolean"
+                        },
+                        "canDelete": {
+                          "type": "boolean"
+                        },
+                        "messageId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "uploadedByUserId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "feedbackId": {
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "type": "string"
+                        },
+                        "storageKey": {
+                          "type": "string"
+                        },
+                        "fileName": {
+                          "type": "string"
+                        },
+                        "contentType": {
+                          "type": "string",
+                          "enum": [
+                            "image/png",
+                            "image/jpeg",
+                            "image/webp"
+                          ]
+                        },
+                        "sizeBytes": {
+                          "type": "number"
+                        },
+                        "checksum": {
+                          "type": "string"
+                        },
+                        "sortOrder": {
+                          "type": "number"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "feedbackId",
+                        "organizationId",
+                        "storageKey",
+                        "fileName",
+                        "contentType",
+                        "sizeBytes",
+                        "checksum",
+                        "sortOrder",
+                        "createdAt"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "progressEvents": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "feedbackId": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "submitted",
+                            "status_changed",
+                            "progress",
+                            "reopened",
+                            "legacy_note"
+                          ]
+                        },
+                        "fromStatus": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "open",
+                            "in_progress",
+                            "resolved",
+                            "closed"
+                          ]
+                        },
+                        "toStatus": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "open",
+                            "in_progress",
+                            "resolved",
+                            "closed"
+                          ]
+                        },
+                        "resolutionCode": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "completed",
+                            "duplicate",
+                            "cannot_reproduce",
+                            "not_planned",
+                            "invalid",
+                            "other"
+                          ]
+                        },
+                        "publicMessage": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "author": {
+                          "type": "string",
+                          "enum": [
+                            "submitter",
+                            "team"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "feedbackId",
+                        "kind",
+                        "fromStatus",
+                        "toStatus",
+                        "resolutionCode",
+                        "publicMessage",
+                        "createdAt"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "latestPublicProgress": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "organizationId",
+                  "pagePath",
+                  "pageTitle",
+                  "feedbackType",
+                  "description",
+                  "status",
+                  "resolutionCode",
+                  "submittedAt",
+                  "createdAt",
+                  "updatedAt",
+                  "attachments",
+                  "progressEvents"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "pendingAttachmentCleanupCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "item",
+          "pendingAttachmentCleanupCount"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProductFeedbackAttachmentDeletionResponse"
+      },
       "ReplyToProductFeedbackRequest": {
         "type": "object",
         "properties": {
@@ -55251,6 +56095,18 @@
                   "items": {
                     "type": "object",
                     "properties": {
+                      "deletedAt": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "cleanupPending": {
+                        "type": "boolean"
+                      },
+                      "canDelete": {
+                        "type": "boolean"
+                      },
                       "messageId": {
                         "type": [
                           "string",
@@ -58587,6 +59443,57 @@
                 "after": {
                   "type": "string"
                 },
+                "canAdminister": {
+                  "type": "boolean"
+                },
+                "eligibleReviewers": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "userId": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "userId",
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "cancellation": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "userId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "userId",
+                    "name",
+                    "reason"
+                  ],
+                  "additionalProperties": false
+                },
                 "appliedSourceResult": {
                   "type": [
                     "object",
@@ -58755,6 +59662,57 @@
               },
               "after": {
                 "type": "string"
+              },
+              "canAdminister": {
+                "type": "boolean"
+              },
+              "eligibleReviewers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "userId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "userId",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "cancellation": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "userId",
+                  "name",
+                  "reason"
+                ],
+                "additionalProperties": false
               },
               "appliedSourceResult": {
                 "type": [
@@ -58950,6 +59908,57 @@
               "after": {
                 "type": "string"
               },
+              "canAdminister": {
+                "type": "boolean"
+              },
+              "eligibleReviewers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "userId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "userId",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "cancellation": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "userId",
+                  "name",
+                  "reason"
+                ],
+                "additionalProperties": false
+              },
               "appliedSourceResult": {
                 "type": [
                   "object",
@@ -59003,6 +60012,54 @@
         "properties": {},
         "additionalProperties": false,
         "x-wiseeff-schema": "SourceRevisionWithdrawRequest"
+      },
+      "SourceRevisionCancelRequest": {
+        "type": "object",
+        "properties": {
+          "proofDigest": {
+            "type": "string"
+          },
+          "expectedAssignedToUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "proofDigest",
+          "expectedAssignedToUserId",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SourceRevisionCancelRequest"
+      },
+      "SourceRevisionReassignRequest": {
+        "type": "object",
+        "properties": {
+          "proofDigest": {
+            "type": "string"
+          },
+          "expectedAssignedToUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "assignedToUserId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "proofDigest",
+          "expectedAssignedToUserId",
+          "assignedToUserId"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SourceRevisionReassignRequest"
       },
       "UploadParameterFileRequest": {
         "type": "object",
@@ -62500,6 +63557,32 @@
                     "additionalProperties": false
                   }
                 },
+                "retirementEvidence": {
+                  "type": "object",
+                  "properties": {
+                    "scope": {
+                      "type": "string",
+                      "enum": [
+                        "platform"
+                      ]
+                    },
+                    "remainingCurrentReferenceCount": {
+                      "type": "number"
+                    },
+                    "authoritative": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "remainingCurrentReferenceCount",
+                    "authoritative"
+                  ],
+                  "additionalProperties": false
+                },
                 "createdAt": {
                   "type": "string"
                 }
@@ -62770,6 +63853,32 @@
                   ],
                   "additionalProperties": false
                 }
+              },
+              "retirementEvidence": {
+                "type": "object",
+                "properties": {
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "platform"
+                    ]
+                  },
+                  "remainingCurrentReferenceCount": {
+                    "type": "number"
+                  },
+                  "authoritative": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  }
+                },
+                "required": [
+                  "scope",
+                  "remainingCurrentReferenceCount",
+                  "authoritative"
+                ],
+                "additionalProperties": false
               },
               "createdAt": {
                 "type": "string"

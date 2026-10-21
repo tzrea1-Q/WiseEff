@@ -3,6 +3,7 @@ import { cleanupFeedbackAttachmentUploads } from "./attachmentUploads";
 import { deleteProductFeedbackAttachment } from "./attachmentDeletion";
 
 import type { AuthContext } from "../auth/types";
+import { createUserInvocation } from "../auth/trustedInvocation";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -161,7 +162,7 @@ export function registerProductFeedbackRoutes(
   router.delete("/api/v1/product-feedback/:id/attachments/:attachmentId", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const params = parseWithSchema(z.object({ id: z.string().uuid(), attachmentId: z.string().uuid() }), request.params);
-    return { status: 200, body: await deleteProductFeedbackAttachment(requireDb(options.db), requireObjectStore(options.objectStore), auth, params.id, params.attachmentId, request.requestId) };
+    return { status: 200, body: await deleteProductFeedbackAttachment(requireDb(options.db), requireObjectStore(options.objectStore), auth, params.id, params.attachmentId, createUserInvocation(auth), request.requestId) };
   });
 
   router.get("/api/v1/product-feedback/mine/:id", async (request) => {

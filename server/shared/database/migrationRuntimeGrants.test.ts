@@ -16,13 +16,18 @@ function missingRuntimeGrants(sql: string): string[] {
       if (block.index! <= create.index! || !new RegExp(`\\b${table}\\b`).test(block[2])) return false;
       const runtimeDml = /has_table_privilege\s*\(\s*oid\s*,\s*'public\.log_domains'\s*,\s*'INSERT'\s*\)/i.test(block[2])
         && /grant\s+select\s*,\s*insert\s*,\s*update\s*,\s*delete\s+on\b/i.test(block[2]);
+      // Feedback cleanup companions inherit the existing attachment writers,
+      // including deployments whose feedback role cannot write log domains.
+      const feedbackPrivileges = ["product_feedback_attachment_uploads", "product_feedback_attachment_deletions"].includes(table)
+        && /has_table_privilege\s*\(\s*oid\s*,\s*'public\.product_feedback_attachments'\s*,\s*'INSERT'\s*\)/i.test(block[2])
+        && new RegExp(`grant\\s+select\\s*,\\s*insert\\s*,\\s*update\\s*,\\s*delete\\s+on\\s+public\\.${table}\\s+to\\s+%I`, "i").test(block[2]);
       // Recognition settings mirror each existing module privilege separately;
       // a read-only module role must not receive all runtime DML privileges.
       const modulePrivileges = /select\s+grantee\s*,\s*privilege_type\s+from\s+information_schema\.role_table_grants/i.test(block[2])
         && /table_schema\s*=\s*'public'\s+and\s+table_name\s*=\s*'parameter_modules'/i.test(block[2])
         && /privilege_type\s+in\s*\(\s*'SELECT'\s*,\s*'INSERT'\s*,\s*'UPDATE'\s*,\s*'DELETE'\s*\)/i.test(block[2])
         && new RegExp(`execute\\s+format\\(\\s*'grant %s on public\\.${table} to %I'\\s*,\\s*(\\w+)\\.privilege_type\\s*,\\s*\\1\\.grantee\\s*\\)`, "i").test(block[2]);
-      return runtimeDml || modulePrivileges;
+      return runtimeDml || feedbackPrivileges || modulePrivileges;
     });
     if (!hasGrant) missing.push(table);
   }
@@ -71,6 +76,24 @@ describe("public table runtime grants (0185 onward)", () => {
       expect(missingRuntimeGrants(`${create}\n${invalid}`)).toEqual(["example"]);
     }
     expect(missingRuntimeGrants(`${block}\n${create}`)).toEqual(["example"]);
+  });
+
+  it("recognizes only exact feedback companion grants from existing attachment writers", () => {
+    for (const table of ["product_feedback_attachment_uploads", "product_feedback_attachment_deletions"]) {
+      const create = `create table public.${table}(id text);`;
+      const block = `do $$ declare r record; begin
+        for r in select rolname from pg_roles where has_table_privilege(oid,'public.product_feedback_attachments','INSERT') loop
+          execute format('grant select,insert,update,delete on public.${table} to %I',r.rolname);
+        end loop; end $$;`;
+      expect(missingRuntimeGrants(create + block)).toEqual([]);
+      for (const invalid of [block.replace("product_feedback_attachments", "unrelated"),
+        block.replace("'INSERT'", "'SELECT'"), block.replace(`on public.${table}`, "on public.unrelated"),
+        block.replace("select,insert,update,delete", "all")]) {
+        expect(missingRuntimeGrants(create + invalid)).toEqual([table]);
+      }
+      expect(missingRuntimeGrants((create + block).replaceAll(table, "unrelated"))).toEqual(["unrelated"]);
+      expect(missingRuntimeGrants(block + create)).toEqual([table]);
+    }
   });
 
   const migrationsDir = new URL("../../migrations/", import.meta.url);
