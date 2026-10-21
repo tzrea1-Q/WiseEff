@@ -59,6 +59,7 @@ export type UserGovernanceActions = {
   listRegistrationRoleRequests?(status?: "pending" | "decided"): Promise<RegistrationRoleRequest[]>;
   approveRegistrationRoleRequest?(requestId: string): Promise<RegistrationRoleRequest | void>;
   rejectRegistrationRoleRequest?(requestId: string): Promise<RegistrationRoleRequest | void>;
+  enableBasicRegistrationRoleRequest?(requestId: string): Promise<RegistrationRoleRequest | void>;
   getOrganization?(): Promise<{ id: string; name: string; createdAt: string }>;
   updateOrganization?(input: { name: string }): Promise<{ id: string; name: string; createdAt: string }>;
 };
@@ -76,6 +77,10 @@ export type RegistrationRoleRequest = {
   createdAt: string;
   decidedAt: string | null;
   decidedByUserId: string | null;
+  decisionOutcome?: "requested-role-enabled" | "basic-enabled" | "rejected-disabled" | "rejected-preserved" | null;
+  decisionCanLogin?: boolean | null;
+  decisionRoleIds?: PlatformRoleId[] | null;
+  accountChanged?: boolean;
 };
 
 export const roleLabels: Record<PlatformRoleId, string> = {
@@ -268,7 +273,7 @@ export function UserPermissionsPage({
   const [approvalView, setApprovalView] = useState<"pending" | "decided">(() => new URLSearchParams(search).get("requests") === "decided" ? "decided" : "pending");
   const [requestStatus, setRequestStatus] = useState<UserDirectoryStatus>("loading");
   const [requestReloadToken, setRequestReloadToken] = useState(0);
-  const [pendingRequestDecision, setPendingRequestDecision] = useState<{ request: RegistrationRoleRequest; decision: "approve" | "reject" } | null>(null);
+  const [pendingRequestDecision, setPendingRequestDecision] = useState<{ request: RegistrationRoleRequest; decision: "approve" | "reject" | "enable-basic" } | null>(null);
   const [memberId, setMemberId] = useState<string | null>(null);
   const selectedMember = state.users.find((user) => user.id === memberId);
   const inactiveWorkspace = workspace === "accounts" ? "approvals" : "accounts";
@@ -394,28 +399,36 @@ export function UserPermissionsPage({
     };
   }, [userGovernanceActions, approvalView, requestReloadToken]);
 
-  async function decideRegistrationRoleRequest(request: RegistrationRoleRequest, decision: "approve" | "reject") {
+  async function decideRegistrationRoleRequest(request: RegistrationRoleRequest, decision: "approve" | "reject" | "enable-basic") {
     if (decidingRequestId) return;
     setRegistrationRoleRequestError("");
     setDecidingRequestId(request.id);
 
     try {
+      let result: RegistrationRoleRequest | void;
       if (decision === "approve") {
         if (!userGovernanceActions?.approveRegistrationRoleRequest) {
           throw new Error("注册角色申请审批尚未启用。");
         }
-        await userGovernanceActions.approveRegistrationRoleRequest(request.id);
+        result = await userGovernanceActions.approveRegistrationRoleRequest(request.id);
         dispatch({ type: "ASSIGN_USER_ROLE", userId: request.userId, roleId: request.requestedRoleId });
+        dispatch({ type: "TOGGLE_USER_ACTIVE", userId: request.userId, isActive: true });
+      } else if (decision === "enable-basic") {
+        if (!userGovernanceActions?.enableBasicRegistrationRoleRequest) throw new Error("普通成员启用尚未启用。");
+        result = await userGovernanceActions.enableBasicRegistrationRoleRequest(request.id);
+        dispatch({ type: "ASSIGN_USER_ROLE", userId: request.userId, roleId: request.currentRoleId });
         dispatch({ type: "TOGGLE_USER_ACTIVE", userId: request.userId, isActive: true });
       } else {
         if (!userGovernanceActions?.rejectRegistrationRoleRequest) {
           throw new Error("注册角色申请拒绝尚未启用。");
         }
-        await userGovernanceActions.rejectRegistrationRoleRequest(request.id);
+        result = await userGovernanceActions.rejectRegistrationRoleRequest(request.id);
       }
       setRegistrationRoleRequests((items) => items.filter((item) => item.id !== request.id));
       setPendingRequestDecision(null);
-      dispatch({ type: "ADD_NOTIFICATION", message: `${decision === "approve" ? "已通过并启用" : "已拒绝"} ${request.userName} 的注册申请` });
+      const access = result?.decisionCanLogin === undefined || result.decisionCanLogin === null ? ""
+        : `；${result.decisionCanLogin ? "可登录" : "不可登录"} · ${result.decisionRoleIds?.map(roleLabelOf).join("、") || "未分配组织角色"}`;
+      dispatch({ type: "ADD_NOTIFICATION", message: `${decision === "approve" ? "已批准申请角色并启用：" : decision === "enable-basic" ? "已拒绝提升并按普通成员启用：" : "已拒绝提升，保留账号设置："}${request.userName}${access}` });
       setDirectoryReloadToken((value) => value + 1);
     } catch (error) {
       setRegistrationRoleRequestError(presentError(error, "注册角色申请处理失败，请稍后重试。"));
@@ -703,7 +716,7 @@ export function UserPermissionsPage({
         >
           <div className="user-permissions-approval-queue__header">
             <div>
-              <p className="user-permissions-approval-queue__hint">核对申请人的组织与角色后审批，通过将立即启用账号。</p>
+              <p className="user-permissions-approval-queue__hint">核对申请人的组织与角色，选择授予申请角色、按普通成员启用或拒绝并保持停用。</p>
             </div>
             <Button type="button" size="sm" variant="outline" disabled={requestStatus === "loading" || Boolean(decidingRequestId)} onClick={() => setRequestReloadToken((value) => value + 1)}><RefreshCw size={16} aria-hidden="true" />刷新申请</Button>
           </div>
@@ -723,6 +736,7 @@ export function UserPermissionsPage({
                     <time className="member-approval-item-meta" dateTime={request.createdAt}>申请于 {formatAbsolute(request.createdAt)}</time>
                   </div>
                   <div className="user-permissions-approval-role-change">
+                    {request.status !== "pending" ? <span>申请角色：</span> : null}
                     <span>{roleLabelOf(request.currentRoleId)}</span>
                     <span aria-hidden="true">→</span>
                     <span>{roleLabelOf(request.requestedRoleId)}</span>
@@ -732,20 +746,28 @@ export function UserPermissionsPage({
                     <button
                       className="button primary"
                       type="button"
-                      disabled={Boolean(decidingRequestId)}
+                      disabled={Boolean(decidingRequestId) || request.accountChanged}
                       onClick={() => { setRegistrationRoleRequestError(""); setPendingRequestDecision({ request, decision: "approve" }); }}
                     >
-                      通过
+                      批准申请角色
                     </button>
+                    <button className="button" type="button" disabled={Boolean(decidingRequestId) || request.accountChanged || !userGovernanceActions?.enableBasicRegistrationRoleRequest}
+                      onClick={() => { setRegistrationRoleRequestError(""); setPendingRequestDecision({ request, decision: "enable-basic" }); }}>按普通成员启用</button>
                     <button
                       className="button"
                       type="button"
                       disabled={Boolean(decidingRequestId)}
                       onClick={() => { setRegistrationRoleRequestError(""); setPendingRequestDecision({ request, decision: "reject" }); }}
                     >
-                      拒绝
+                      {request.accountChanged ? "关闭申请，保留现状" : "拒绝并保持停用"}
                     </button>
-                    </> : <div><Badge variant={request.status === "approved" ? "secondary" : "outline"}>{request.status === "approved" ? "已通过" : "已拒绝"}</Badge>
+                    {request.accountChanged ? <p className="member-approval-item-meta">账号已有后续管理调整。关闭此申请将保留当前角色与启停状态。</p> : null}
+                    </> : <div><Badge variant={request.status === "approved" ? "secondary" : "outline"}>{request.decisionOutcome === "basic-enabled" ? `已按${roleLabelOf(request.currentRoleId)}启用`
+                      : request.decisionOutcome === "requested-role-enabled" ? "已批准申请角色并启用"
+                      : request.decisionOutcome === "rejected-disabled" ? "已拒绝提升，保持停用"
+                      : request.decisionOutcome === "rejected-preserved" ? "已拒绝提升，保留账号设置"
+                      : request.status === "approved" ? "已通过" : "已拒绝提升（未记录账号结果）"}</Badge>
+                      {request.decisionCanLogin !== undefined && request.decisionCanLogin !== null ? <p className="member-approval-item-meta">决定时：{request.decisionCanLogin ? "可登录" : "不可登录"} · {request.decisionRoleIds?.map(roleLabelOf).join("、") || "未分配组织角色"}</p> : null}
                       {request.decidedAt ? <p className="member-approval-item-meta">{formatAbsolute(request.decidedAt)}</p> : null}</div>}
                   </div>
                 </article>
@@ -785,12 +807,12 @@ export function UserPermissionsPage({
             return updated;
           }} />} /> : null}
 
-      <ConfirmDialog open={pendingRequestDecision !== null} title={pendingRequestDecision?.decision === "approve" ? "通过注册申请？" : "拒绝注册申请？"}
+      <ConfirmDialog open={pendingRequestDecision !== null} title={pendingRequestDecision?.decision === "approve" ? "通过注册申请？" : pendingRequestDecision?.decision === "enable-basic" ? "按普通成员启用？" : "拒绝注册申请？"}
         description={pendingRequestDecision ? <div><p>{pendingRequestDecision.request.userName} · {pendingRequestDecision.request.organizationName ?? pendingRequestDecision.request.organizationId}</p>
           <p>申请角色：{roleLabelOf(pendingRequestDecision.request.requestedRoleId)}</p>
           <p>{roleCapabilityDescriptions[pendingRequestDecision.request.requestedRoleId]}</p>
-          <p>{pendingRequestDecision.decision === "approve" ? "通过后立即启用账号，并授予上述组织角色。" : "拒绝后，该注册角色申请将结束处理。"}</p></div> : undefined}
-        confirmLabel={pendingRequestDecision?.decision === "approve" ? "通过并启用" : "确认拒绝"} tone={pendingRequestDecision?.decision === "approve" ? "primary" : "danger"}
+          <p>{pendingRequestDecision.decision === "approve" ? "通过后立即启用账号，并授予上述组织角色。" : pendingRequestDecision.decision === "enable-basic" ? `不授予申请角色，按${roleLabelOf(pendingRequestDecision.request.currentRoleId)}启用，账号可登录。` : "拒绝提升，不更改账号当前的角色与启停状态。初始停用状态将保持；如已有后续管理调整，将保留最新设置。"}</p></div> : undefined}
+        confirmLabel={pendingRequestDecision?.decision === "approve" ? "通过并启用" : pendingRequestDecision?.decision === "enable-basic" ? "启用普通成员" : "确认拒绝"} tone={pendingRequestDecision?.decision === "reject" ? "danger" : "primary"}
         pending={Boolean(decidingRequestId)} error={registrationRoleRequestError || null}
         onCancel={() => { if (!decidingRequestId) { setPendingRequestDecision(null); setRegistrationRoleRequestError(""); } }}
         onConfirm={() => { if (pendingRequestDecision) void decideRegistrationRoleRequest(pendingRequestDecision.request, pendingRequestDecision.decision); }} />

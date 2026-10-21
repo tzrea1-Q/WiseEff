@@ -74,6 +74,7 @@ export type ReplaceUserRolesInput = {
 
 export type RegistrationRoleRequestStatus = "pending" | "approved" | "rejected";
 export type RegistrationRoleRequestListStatus = "pending" | "decided";
+export type RegistrationDecisionOutcome = "requested-role-enabled" | "basic-enabled" | "rejected-disabled" | "rejected-preserved";
 
 export type OrganizationDto = {
   id: string;
@@ -98,4 +99,8 @@ export type RegistrationRoleRequestDto = {
   createdAt: string;
   decidedAt: string | null;
   decidedByUserId: string | null;
+  decisionOutcome: RegistrationDecisionOutcome | null;
+  decisionCanLogin: boolean | null;
+  decisionRoleIds: BackendRoleId[] | null;
+  accountChanged: boolean;
 };
