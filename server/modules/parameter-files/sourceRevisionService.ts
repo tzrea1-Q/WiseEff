@@ -25,7 +25,7 @@ import { isStructuralPropertyKey } from "../parameter-topology/parameterSurface"
 import { hasCurrentCanonicalReviewRole } from "../parameters/reviewWorkflowRepository";
 import { getParameterFileCandidateById } from "./candidateRepository";
 import { createDtsToolchainRunner, type DtsToolchainRunner } from "./dtsToolchain";
-import { MAX_PARAMETER_SOURCE_BYTES } from "./jsonSource";
+import { MAX_PARAMETER_SOURCE_BYTES, parseJsonSource, readJsonSourceValue } from "./jsonSource";
 import { requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "./canonicalSource";
 
 export const sourceRevisionDigest = (input: string | Buffer | object) => createHash("sha256")
@@ -34,13 +34,13 @@ export const sameSourceRevision = (left: unknown, right: unknown) => serializeCo
 function conflict(message: string, reason = "source-revision-stale"): never { throw new ApiError("CONFLICT", message, { reason }); }
 
 export type SourceRevisionMember = {
-  memberId: string; fileId: string; fileVersionId: string; sourceName: string; format: "dts";
+  memberId: string; fileId: string; fileVersionId: string; sourceName: string; format: "dts" | "json";
   role: string; sortOrder: number; checksum: string; sizeBytes: number;
 };
 export type SourceRevisionCohort = {
   bindingId: string; oldValueId: string; sourcePinId: string; sourceOccurrenceId: string;
   definitionId: string; effectiveRevisionId: string; catalogReleaseId: string; valueDigest: string;
-  fileId: string; fileVersionId: string; logicalNodeId: string; propertyName: string;
+  fileId: string; fileVersionId: string; logicalNodeId: string | null; propertyName: string; format?: "json";
   valueState: "present"; locator: Record<string, ContractJsonValue>;
 };
 export type SourceRevisionTarget = {
@@ -179,19 +179,22 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     [revision.id, auth.organization.id, input.projectId, context.configSetId])).rows;
   const currentCount = (await tx.query<{ count: number }>("select count(*)::int as count from public.project_parameter_files where config_set_id=$1 and organization_id=$2 and project_id=$3",
     [context.configSetId, auth.organization.id, input.projectId])).rows[0]?.count;
-  if (!rows.length || rows.length !== currentCount || rows.some((row) => row.format !== "dts"
+  if (!rows.length || rows.length !== currentCount || rows.some((row) => !["dts", "json"].includes(row.format)
     || row.fileVersionId !== row.currentVersionId || !row.sourceName
     || (row.role === "include" ? "misc" : row.role) !== row.currentRole || row.sortOrder !== row.currentOrder)
-    || !rows.some((row) => row.fileId === candidate.fileId && row.fileVersionId === context.baseVersionId)) {
-    conflict("Whole-source revision requires the exact current DTS configuration members.");
+    || !rows.some((row) => row.fileId === candidate.fileId && row.format === "dts" && row.fileVersionId === context.baseVersionId)) {
+    conflict("Whole-source revision requires the exact current configuration members and an edited DTS file.");
   }
   const files = new Map<string, { content: string; fileVersionId: string }>();
+  const memberContents = new Map<string, string>();
   let before = "";
   for (const member of rows) {
     const bytes = await storage.getBounded(member.storageKey, MAX_PARAMETER_SOURCE_BYTES);
     if (bytes.length !== member.sizeBytes || sourceRevisionDigest(bytes) !== member.checksum.replace(/^sha256:/, "")) conflict("Pinned source bytes failed integrity verification.");
     const content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
-    files.set(member.sourceName, { content, fileVersionId: member.fileVersionId });
+    memberContents.set(member.fileId, content);
+    if (member.format === "dts") files.set(member.sourceName, { content, fileVersionId: member.fileVersionId });
+    else parseJsonSource(content);
     if (member.fileId === candidate.fileId) before = content;
   }
   const bytes = await storage.getBounded(candidate.storageKey, MAX_PARAMETER_SOURCE_BYTES);
@@ -261,9 +264,10 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     const pin = await loadOwnedProjectValueSourcePin(tx, { organizationId: auth.organization.id, projectId: input.projectId,
       bindingId: entry.bindingId, projectValueId: entry.oldValueId });
     const pinnedSnapshot = options.snapshots?.get(entry.catalogReleaseId) ?? (snapshot?.release.id === entry.catalogReleaseId ? snapshot : null);
-    if (!pinnedSnapshot || !pin || pin.format !== "dts" || !pin.logicalNodeId || pin.valueState !== "present"
-      || pin.configRevisionId !== revision.id || typeof pin.locator.propertyName !== "string"
-      || pin.locator.kind !== "dts-property") conflict("A current source Binding has stale or unsupported provenance.");
+    if (!pinnedSnapshot || !pin || pin.valueState !== "present" || pin.configRevisionId !== revision.id
+      || !rows.some(member => member.fileId === pin.fileId && member.fileVersionId === pin.fileVersionId && member.format === pin.format)) {
+      conflict("A current source Binding has stale or unsupported provenance.");
+    }
     const currentBinding = await readOwnedCurrentBinding(tx, { organizationId: auth.organization.id,
       projectId: input.projectId, bindingId: entry.bindingId });
     if (currentBinding.status !== "current" || registered.get(currentBinding.binding.subjectId) !== currentBinding.binding.registrationId) {
@@ -272,6 +276,22 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     const registration = currentBinding.binding;
     const definition = pinnedSnapshot.getDefinitionRevision({ definitionId: ParameterDefinitionId(entry.definitionId), revisionId: DefinitionRevisionId(entry.effectiveRevisionId) });
     if (definition.status !== "found") conflict("A pinned parameter Definition is unavailable.");
+    const old = await readOwnedProjectValueIdentity(tx, { organizationId: auth.organization.id,
+      projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
+    if (!old) conflict("A current source value is unavailable.");
+    if (pin.format === "json") {
+      if (pin.locator.kind !== "json-pointer" || typeof pin.locator.pointer !== "string" || pin.rootPointer === null
+        || !sameSourceRevision(old.value.payload, { kind: "json", value: readJsonSourceValue(memberContents.get(pin.fileId)!, pin.locator.pointer, pin.rootPointer) })) {
+        conflict("An unchanged JSON parameter does not match its exact owned source.");
+      }
+      assertCanonicalValueConstraints(definition.revision, old.value.payload);
+      cohort.push({ ...entry, fileId: pin.fileId, fileVersionId: pin.fileVersionId, logicalNodeId: null,
+        propertyName: "", format: "json", valueState: "present", locator: pin.locator });
+      continue;
+    }
+    if (!pin.logicalNodeId || typeof pin.locator.propertyName !== "string" || pin.locator.kind !== "dts-property") {
+      conflict("A current DTS Binding has unsupported provenance.");
+    }
     const logical = continuity.nodes.find((row) => row.logicalNodeId === pin.logicalNodeId);
     const node = logical ? resolved.effective.nodesByLocator.get(logical.nodeLocator) : undefined;
     const property = node?.properties.get(pin.locator.propertyName);
@@ -288,9 +308,6 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
       && resolvedSubject?.subjectId === registration.subjectId
       ? { payload: rawTextToPayload(pin.locator.propertyName, property.rawText), fileId: pin.fileId, propertyName: pin.locator.propertyName }
       : null;
-    const old = await readOwnedProjectValueIdentity(tx, { organizationId: auth.organization.id,
-      projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
-    if (!old) conflict("A current source value is unavailable.");
     const frozen = { ...entry, fileId: pin.fileId, fileVersionId: pin.fileVersionId, logicalNodeId: pin.logicalNodeId,
       propertyName: pin.locator.propertyName, valueState: "present" as const, locator: pin.locator };
     cohort.push(frozen);

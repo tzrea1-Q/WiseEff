@@ -138,10 +138,11 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
       || current.binding.effectiveRevisionId !== entry.effectiveRevisionId) conflict("Reviewed Binding base is stale.");
     const binding = current.binding;
     const target = frozen.targets.find((row) => row.bindingId === entry.bindingId);
+    if (entry.format === "json" && target) conflict("A DTS source edit cannot mutate an unchanged JSON parameter.");
     const deleted = target?.action === "delete";
     const property = observed.find((row) => row.logicalNodeId === entry.logicalNodeId && row.propertyKey === entry.propertyName && row.fileId === entry.fileId);
-    if (!deleted && !property) conflict("Reviewed source property disappeared during ingest.");
-    const payload = deleted ? target.payload : rawTextToPayload(property!.propertyKey, property!.rawText);
+    if (entry.format !== "json" && !deleted && !property) conflict("Reviewed source property disappeared during ingest.");
+    const payload = entry.format === "json" ? old.value.payload : deleted ? target.payload : rawTextToPayload(property!.propertyKey, property!.rawText);
     if (target && !sameSourceRevision(target.payload, payload)) conflict("Ingested source differs from its reviewed parameter value.");
     const appended = await appendProjectValue(asValueClient(tx), {
       snapshot: pinnedSnapshot, binding: { ...binding, catalogRelease: pinnedSnapshot.release },
@@ -151,7 +152,7 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
     });
     if (!appended.ok) conflict(`Whole-source value append refused: ${appended.error.kind}`);
     const fileVersionId = entry.fileId === frozen.fileId ? version.id : entry.fileVersionId;
-    const locator = deleted ? { kind: "dts-source-absence", basePropertyOccurrenceId: entry.locator.propertyOccurrenceId,
+    const locator = entry.format === "json" ? entry.locator : deleted ? { kind: "dts-source-absence", basePropertyOccurrenceId: entry.locator.propertyOccurrenceId,
       baseNodeOccurrenceId: entry.locator.nodeOccurrenceId, baseFileVersionId: entry.fileVersionId,
       fileVersionId, propertyName: entry.propertyName, logicalNodeId: entry.logicalNodeId }
       : { kind: "dts-property", propertyOccurrenceId: property!.propertyOccurrenceId,
@@ -165,11 +166,11 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
     await tx.query(`insert into parameter_catalog.project_value_source_pins
       (id,project_value_id,binding_id,definition_id,organization_id,project_id,source_occurrence_id,config_revision_id,
        file_id,file_version_id,format,property_occurrence_id,locator,locator_digest,value_state,base_source_pin_id,delete_request_id,delete_proof)
-      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'dts',$11,$12::jsonb,$13,$14,$15,$16,$17::jsonb)`,
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$18,$11,$12::jsonb,$13,$14,$15,$16,$17::jsonb)`,
       [sourcePinId, appended.value.currentTip, entry.bindingId, entry.definitionId, auth.organization.id, input.projectId,
-        entry.sourceOccurrenceId, revision.id, entry.fileId, fileVersionId, deleted ? null : property!.propertyOccurrenceId,
+        entry.sourceOccurrenceId, revision.id, entry.fileId, fileVersionId, deleted || entry.format === "json" ? null : property!.propertyOccurrenceId,
         JSON.stringify(locator), `sha256:${sourceRevisionDigest(locator)}`, deleted ? "deleted" : "present",
-        deleted ? entry.sourcePinId : null, deleted ? request.id : null, deletionProof ? JSON.stringify(deletionProof) : null]);
+        deleted ? entry.sourcePinId : null, deleted ? request.id : null, deletionProof ? JSON.stringify(deletionProof) : null, entry.format ?? "dts"]);
     results.push({ bindingId: entry.bindingId, oldValueId: entry.oldValueId, newValueId: appended.value.currentTip, sourcePinId,
       historyEventId: deriveHistoryEventId({ bindingId: entry.bindingId, oldCurrentValueId: entry.oldValueId, newCurrentValueId: appended.value.currentTip }),
       kind: deleted ? "deleted" : target ? "changed" : "derived" });
