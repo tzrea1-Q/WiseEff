@@ -104,6 +104,7 @@ export const AUDIT_KIND_LABELS: Record<string, string> = {
   "device-bridge-pair": "Bridge 配对",
   "device-bridge-rename": "Bridge 重命名",
   "device-bridge-revoke": "Bridge 撤销",
+  "device-bridge-admin-revoke": "管理员撤销 Bridge",
   "device-bridge-pairing-code-issue": "Bridge 配对码签发",
   "dts-reload-configuration-update": "重载配置更新",
   "dts-reload-agent-refused": "Agent 重载拒绝",

@@ -520,6 +520,7 @@ export function PageRouter({
           onNavigate={onNavigate}
           search={search}
           area={parseOrganizationAdminArea(page.path) ?? "profile"}
+          apiMode={runtimeMode === "api"}
           userGovernanceActions={userGovernanceActions}
           organizationActions={organizationActions}
           onOrganizationUpdated={async () => {

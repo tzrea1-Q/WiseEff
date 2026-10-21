@@ -1,4 +1,4 @@
-import { Building2, Users } from "lucide-react";
+import { Building2, Monitor, Users } from "lucide-react";
 
 import {
   ORGANIZATION_ADMIN_UI,
@@ -14,7 +14,7 @@ export type OrganizationAdminScopeNavProps = {
 
 /**
  * Peer top-level destinations for Organization administration.
- * Canonical routes: /organization (profile) and /organization/members.
+ * Canonical routes: /organization, /organization/members and /organization/bridges.
  */
 export function OrganizationAdminScopeNav({ active, onNavigate }: OrganizationAdminScopeNavProps) {
   return (
@@ -25,7 +25,8 @@ export function OrganizationAdminScopeNav({ active, onNavigate }: OrganizationAd
       onValueChange={(value) => onNavigate(buildOrganizationAdminPath(value as OrganizationAdminArea))}
       items={[
         { value: "profile", label: <><Building2 size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.profileScope}</> },
-        { value: "members", label: <><Users size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.membersScope}</> }
+        { value: "members", label: <><Users size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.membersScope}</> },
+        { value: "bridges", label: <><Monitor size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.bridgesScope}</> }
       ]}
     />
   );

@@ -209,8 +209,9 @@ export async function touchBridgeLastSeen(
   await db.query(
     `
     update device_bridges
-    set last_seen_at = $2
+    set last_seen_at = greatest(last_seen_at, $2::timestamptz)
     where id = $1
+      and revoked_at is null
     `,
     [input.bridgeId, input.seenAt.toISOString()]
   );
@@ -244,6 +245,21 @@ export async function listBridgesForUser(
   );
 
   return result.rows.map(toDeviceBridgeRecord);
+}
+
+const organizationBridgeSelect = `select b.*,u.name as owner_name from device_bridges b
+  left join users u on u.id=b.user_id and u.organization_id=b.organization_id`;
+type OrganizationBridgeRow = DeviceBridgeRow & { owner_name: string | null };
+const toOrganizationBridge = (row: OrganizationBridgeRow) => ({ ...toDeviceBridgeRecord(row), ownerName: row.owner_name });
+
+export async function listBridgesForOrganization(db: Queryable, organizationId: string) {
+  const result = await db.query<OrganizationBridgeRow>(`${organizationBridgeSelect} where b.organization_id=$1 order by b.created_at desc,b.id`, [organizationId]);
+  return result.rows.map(toOrganizationBridge);
+}
+
+export async function getBridgeForOrganization(db: Queryable, organizationId: string, bridgeId: string, lock = false) {
+  const row = (await db.query<OrganizationBridgeRow>(`${organizationBridgeSelect} where b.organization_id=$1 and b.id=$2${lock ? " for update of b" : ""}`, [organizationId, bridgeId])).rows[0];
+  return row ? toOrganizationBridge(row) : null;
 }
 
 export async function listActiveBridgesForMachine(

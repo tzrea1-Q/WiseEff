@@ -12,6 +12,7 @@ type PendingRequest = {
 type BridgeConnection = {
   socket: BridgeSocket;
   lastSeenAt: string | null;
+  authorized: boolean;
 };
 
 export type BridgeConnectionPool = ReturnType<typeof createBridgeConnectionPool>;
@@ -60,7 +61,7 @@ export function createBridgeConnectionPool(options: BridgeConnectionPoolOptions 
   }
 
   return {
-    register(bridgeId: string, socket: BridgeSocket) {
+    register(bridgeId: string, socket: BridgeSocket, authorized = true) {
       const existing = connections.get(bridgeId);
       if (existing && existing.socket !== socket) {
         try {
@@ -72,7 +73,8 @@ export function createBridgeConnectionPool(options: BridgeConnectionPoolOptions 
 
       connections.set(bridgeId, {
         socket,
-        lastSeenAt: now().toISOString()
+        lastSeenAt: now().toISOString(),
+        authorized
       });
     },
 
@@ -90,7 +92,24 @@ export function createBridgeConnectionPool(options: BridgeConnectionPoolOptions 
     },
 
     isConnected(bridgeId: string) {
-      return connections.has(bridgeId);
+      return connections.get(bridgeId)?.authorized === true;
+    },
+
+    activate(bridgeId: string, socket: BridgeSocket) {
+      const connection = connections.get(bridgeId);
+      if (!connection || connection.socket !== socket) return false;
+      connection.authorized = true;
+      return true;
+    },
+
+    isCurrent(bridgeId: string, socket: BridgeSocket) {
+      return connections.get(bridgeId)?.socket === socket;
+    },
+
+    disconnect(bridgeId: string) {
+      const connection = connections.get(bridgeId);
+      this.unregister(bridgeId);
+      try { connection?.socket.close(4401, "Bridge pairing revoked."); } catch { /* Already disconnected. */ }
     },
 
     getLastSeenAt(bridgeId: string) {
@@ -125,7 +144,7 @@ export function createBridgeConnectionPool(options: BridgeConnectionPoolOptions 
     send(bridgeId: string, request: BridgeRpcRequest) {
       return withBridgeLock(bridgeId, () => {
         const connection = getConnection(bridgeId);
-        if (!connection || connection.socket.readyState !== WebSocket.OPEN) {
+        if (!connection?.authorized || connection.socket.readyState !== WebSocket.OPEN) {
           return Promise.reject(new Error(`Bridge ${bridgeId} is not connected.`));
         }
 

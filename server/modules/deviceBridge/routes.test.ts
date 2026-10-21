@@ -31,10 +31,11 @@ function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
 }
 
 function makeDb(): Database {
-  return {
+  const db: Database = {
     query: vi.fn(),
-    transaction: vi.fn()
+    transaction: vi.fn(async task => task(db))
   };
+  return db;
 }
 
 function bridgeRecord(overrides: Partial<Record<string, unknown>> = {}) {

@@ -500,13 +500,15 @@ function buildDeviceBridgeRouteOptions(
   if (!runtime) {
     return {
       db: options.db,
-      getCurrentAuthContext
+      getCurrentAuthContext,
+      connectionPool: options.deviceBridge?.connectionPool
     };
   }
 
   return {
     db: options.db,
     getCurrentAuthContext,
+    connectionPool: options.deviceBridge?.connectionPool,
     pairingService: runtime.pairingService,
     loadReleaseManifest: runtime.loadReleaseManifest,
     loadToolReleaseManifest: runtime.loadToolReleaseManifest

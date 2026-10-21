@@ -30,6 +30,15 @@ export const renameBridgeBodySchema = z.object({
   machineLabel: nonEmptyString
 });
 
+export const revokeOrganizationBridgeBodySchema = z.object({ reason: z.string().trim().min(1).max(500) }).strict();
+export const organizationBridgeItemSchema = z.object({
+  id: nonEmptyString, machineLabel: nonEmptyString, platform: z.enum(["windows", "darwin", "linux"]), arch: nonEmptyString,
+  clientVersion: z.string().nullable(), createdAt: nonEmptyString, lastSeenAt: z.string().nullable(), revokedAt: z.string().nullable(),
+  ownerUserId: nonEmptyString, ownerName: z.string().nullable(), online: z.boolean()
+}).strict();
+export const organizationBridgeListResponseSchema = z.object({ items: z.array(organizationBridgeItemSchema) }).strict();
+export const organizationBridgeResponseSchema = z.object({ item: organizationBridgeItemSchema }).strict();
+
 export type PairWithCodeBody = z.infer<typeof pairWithCodeBodySchema>;
 export type RenameBridgeBody = z.infer<typeof renameBridgeBodySchema>;
 export type IssuePairingCodeResponse = z.infer<typeof issuePairingCodeResponseSchema>;
