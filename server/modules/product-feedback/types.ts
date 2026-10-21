@@ -25,6 +25,8 @@ export type ProductFeedbackProgressEventKind = (typeof progressEventKinds)[numbe
 export type ProductFeedbackAttachmentContentType = "image/png" | "image/jpeg" | "image/webp";
 
 export type ProductFeedbackAttachmentDto = {
+  messageId?: string | null;
+  uploadedByUserId?: string | null;
   id: string;
   feedbackId: string;
   organizationId: string;
@@ -112,6 +114,7 @@ export type InsertProductFeedbackInput = {
 };
 
 export type InsertProductFeedbackAttachmentInput = {
+  messageId?: string | null;
   id: string;
   storageKey: string;
   fileName: string;

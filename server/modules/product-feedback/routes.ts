@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cleanupFeedbackAttachmentUploads } from "./attachmentUploads";
 
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
@@ -149,6 +150,11 @@ export function registerProductFeedbackRoutes(
       ...result,
       nextCursor: result.nextCursor ? Buffer.from(JSON.stringify(result.nextCursor)).toString("base64url") : null
     } };
+  });
+
+  router.post("/api/v1/product-feedback/mine/attachment-cleanup", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, body: await cleanupFeedbackAttachmentUploads(requireDb(options.db), requireObjectStore(options.objectStore), auth) };
   });
 
   router.get("/api/v1/product-feedback/mine/:id", async (request) => {

@@ -31,6 +31,7 @@ import type { LogSkillSpec } from "./skillSpec";
 import type { LogAnalysisTraceStep } from "./traceTypes";
 import { compileLogPattern } from "./adminPattern";
 import { importAnalysisCaseArchive, exportAnalysisCaseArchive, AnalysisCaseArchiveError, type ArchivedAnalysisCase } from "./analysisCaseArchive";
+import { recordSkillArtifacts } from "./skillArtifacts";
 
 export const ANALYSIS_CASE_MAX = 20;
 export const ANALYSIS_CASE_MAX_BYTES = 10 * 1024 * 1024;
@@ -202,6 +203,7 @@ export async function createAnalysisCase(db: Database, store: ObjectStore, auth:
       if ((await readAnalysisCases(tx, auth.organization.id, skillId)).length >= ANALYSIS_CASE_MAX) throw new ApiError("CONFLICT", "每个技能最多保存 20 个分析用例。");
       for (const file of files) uploads.push({ fileName: posix.normalize(file.fileName.replaceAll("\\", "/")), sizeBytes: file.bytes.length,
         objectKey: (await store.put({ organizationId: auth.organization.id, fileName: `case-${randomUUID()}.bin`, contentType: "application/octet-stream", bytes: file.bytes })).storageKey });
+      await recordSkillArtifacts(tx, auth.organization.id, skillId, uploads.map(upload => upload.objectKey));
       await tx.query(`insert into log_skill_analysis_cases (id, organization_id, skill_id, name, expectations, uploads, files, archive_path, source_yaml)
         values ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8,$9)`, [id, auth.organization.id, skillId, name, JSON.stringify(expectations), JSON.stringify(uploads),
         JSON.stringify(intake.files.map(({ bytes: _bytes, sha256: _sha256, ...file }) => file)), input.archivePath ?? null, input.sourceYaml?.toString("base64") ?? null]);
@@ -283,6 +285,7 @@ export async function importArchivedSkillAnalysisCases(db: Database, store: Obje
           objectKey: (await store.put({ organizationId: auth.organization.id, fileName: `case-${randomUUID()}.bin`, contentType: "application/octet-stream", bytes: file.bytes })).storageKey };
         uploads.push(upload); uploadsWritten.push(upload);
       }
+      await recordSkillArtifacts(tx, auth.organization.id, skillId, uploads.map(upload => upload.objectKey));
       await tx.query(`insert into log_skill_analysis_cases (id, organization_id, skill_id, name, expectations, uploads, files, archive_path, source_yaml)
         values ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8,$9)`, [item.id, auth.organization.id, skillId, item.annotation.caseName ?? item.annotation.summary.slice(0, 200), JSON.stringify(item.annotation), JSON.stringify(uploads), JSON.stringify(item.files), item.archivePath, item.sourceYaml?.toString("base64") ?? null]);
     }

@@ -76,6 +76,16 @@ describe("createHttpProductFeedbackRepository", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ message: "问题仍存在", reopen: true, attachments: [{ fileName: "evidence.png", contentType: "image/png", contentBase64: btoa("image") }] });
   });
 
+  it("reads message/uploader attribution and the pending upload cleanup count, then retries the owned cleanup route", async () => {
+    const fetchMock = createFetchMock({ items: [{ ...baseFeedbackDto, attachments: baseFeedbackDto.attachments.map((attachment) => ({ ...attachment, messageId: "actual-message", uploadedByUserId: "owner" })) }], nextCursor: null, pendingAttachmentCleanupCount: 2 });
+    const repo = createRepository(fetchMock), result = await repo.listMine!();
+    expect(result.pendingAttachmentCleanupCount).toBe(2);
+    expect(result.items[0].attachments[0]).toMatchObject({ messageId: "actual-message", uploadedByUserId: "owner" });
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ pendingAttachmentCleanupCount: 0 }), { status: 200 }));
+    await expect(repo.retryAttachmentCleanup!()).resolves.toEqual({ pendingAttachmentCleanupCount: 0 });
+    expect(fetchMock).toHaveBeenLastCalledWith("http://127.0.0.1:8787/api/v1/product-feedback/mine/attachment-cleanup", expect.objectContaining({ method: "POST", body: "{}" }));
+  });
+
   it("updates routing without discarding the selected owner or priority", async () => {
     const fetchMock = createFetchMock({ item: baseFeedbackDto });
     const repo = createRepository(fetchMock);
@@ -180,7 +190,7 @@ describe("createHttpProductFeedbackRepository", () => {
 
   it("fetches attachment content as an object URL with auth headers", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(new Blob(["png"], { type: "image/png" }), { status: 200 }));
-    const createObjectURL = vi.fn(() => "blob:http://localhost/preview");
+    const createObjectURL = vi.fn<typeof URL.createObjectURL>(() => "blob:http://localhost/preview");
     vi.stubGlobal("URL", { ...URL, createObjectURL });
     const repository = createRepository(fetchMock);
 

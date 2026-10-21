@@ -1,6 +1,8 @@
 import { logValidationIssues } from "./validationMessages";
 import { previewLogDeletion } from "./deletionPreview";
 import { logDeletionStatus, pendingLogDeletions, purgeLog } from "./purge";
+import { getSkillDeletionStatus, listSkillDeletions, previewSkillDeletion, purgeSkill } from "./skillDeletion";
+import { skillDeletionRequestSchema } from "../contracts/dtoSchemas/skillDeletion";
 import type { MultipartBody } from "../../shared/http/server";
 import { MAX_LOG_JSON_UPLOAD_BYTES } from "./bundleIntake";
 import { z } from "zod";
@@ -511,6 +513,26 @@ export function registerLogRoutes(
       request.params.skillId, query.revision), contentType: "application/zip", fileName: "skill-package.zip" };
   });
   const skillParams = z.object({ skillId: z.string().min(1) });
+  router.get("/api/v1/log-skills/deletions", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, body: { items: await listSkillDeletions(requireDb(options.db), auth) } };
+  });
+  router.get("/api/v1/log-skills/:skillId/deletion-preview", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { skillId } = parseWithSchema(skillParams, request.params);
+    return { status: 200, body: { item: await previewSkillDeletion(requireDb(options.db), auth, skillId) } };
+  });
+  router.get("/api/v1/log-skills/:skillId/deletion-status", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { skillId } = parseWithSchema(skillParams, request.params);
+    return { status: 200, body: { item: await getSkillDeletionStatus(requireDb(options.db), auth, skillId) } };
+  });
+  router.post("/api/v1/log-skills/:skillId/purge", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { skillId } = parseWithSchema(skillParams, request.params);
+    const { version } = parseWithSchema(skillDeletionRequestSchema, request.body);
+    return { status: 200, body: { item: await purgeSkill(requireDb(options.db), createUserInvocation(auth), skillId, version, request.requestId, options.objectStore) } };
+  });
   router.get("/api/v1/log-skills/:skillId/sample", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const { skillId } = parseWithSchema(skillParams, request.params);

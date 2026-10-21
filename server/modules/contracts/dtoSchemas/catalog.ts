@@ -82,12 +82,21 @@ import { parameterDashboardSummaryResponseSchema } from "./parameterDashboard";
 import { administratorMemberRemovalApplyRequestSchema, administratorMemberRemovalPreviewResponseSchema, administratorMemberRemovalApplyResponseSchema } from "./memberRemoval";
 import { logDeletionPreviewResponseSchema, logDeletionStatusResponseSchema, logDeletionStatusListResponseSchema } from "./logs";
 import { memberAdditionBodySchema, memberAdditionApplyBodySchema, memberAdditionPreviewResponseSchema, memberAdditionApplyResponseSchema } from "./canonicalMemberAddition";
+import { skillDeletionRequestSchema, skillDeletionPreviewResponseSchema, skillDeletionStatusResponseSchema, skillDeletionListResponseSchema } from "./skillDeletion";
+import { releaseBaselineRestoreRequestSchema, releaseBaselineRestorePreviewResponseSchema, releaseBaselineRollbackResponseSchema } from "./canonicalConfigurationRestore";
 
 /**
  * OpenAPI component names realized with Zod (parameters / logs / debugging /
  * Xiaoze). Names not listed here stay as `x-wiseeff-schema` placeholders.
  */
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
+  SkillDeletionRequest: skillDeletionRequestSchema,
+  SkillDeletionPreviewResponse: skillDeletionPreviewResponseSchema,
+  SkillDeletionStatusResponse: skillDeletionStatusResponseSchema,
+  SkillDeletionListResponse: skillDeletionListResponseSchema,
+  ReleaseBaselineRestoreRequest: releaseBaselineRestoreRequestSchema,
+  ReleaseBaselineRestorePreviewResponse: releaseBaselineRestorePreviewResponseSchema,
+  ReleaseBaselineRollbackResponse: releaseBaselineRollbackResponseSchema,
   CanonicalMemberAdditionPreviewRequest: memberAdditionBodySchema,
   CanonicalMemberAdditionApplyRequest: memberAdditionApplyBodySchema,
   CanonicalMemberAdditionPreviewResponse: memberAdditionPreviewResponseSchema,
@@ -218,6 +227,8 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 };
 
 export const dtoSchemaCoveredRouteIds = [
+  "parameters.previewRestoreReleaseBaseline", "parameters.rollbackReleaseBaseline",
+  "logs.listSkillDeletions", "logs.previewSkillDeletion", "logs.getSkillDeletionStatus", "logs.purgeSkill",
   "parameterFiles.previewCanonicalMemberAddition", "parameterFiles.applyCanonicalMemberAddition",
   "parameterFiles.previewAdministratorMemberRemoval", "parameterFiles.applyAdministratorMemberRemoval",
   "logs.previewDeletion",

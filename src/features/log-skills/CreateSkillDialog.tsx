@@ -46,7 +46,7 @@ export function CreateSkillDialog({ repository, apiMode, skills, onDismiss, onNa
     let id = createdId;
     try {
       if (!id) {
-        const skill = await repository!.createLogSkill!({ name: name.trim(), ...(description.trim() ? { description: description.trim() } : {}),
+        const skill = await repository!.createLogSkill!({ name: name.trim(), status: "draft", ...(description.trim() ? { description: description.trim() } : {}),
           startingPoint: start === "copy" ? { copyFromSkillId: copyId } : { templateId: start } });
         id = skill.id; setCreatedId(id);
       }
@@ -60,6 +60,7 @@ export function CreateSkillDialog({ repository, apiMode, skills, onDismiss, onNa
   return <ModalDialog open onDismiss={pending ? undefined : onDismiss} initialFocusRef={nameRef} className="skill-authoring-dialog modal-card--md">
     {({ titleId }) => <form onSubmit={(event) => void submit(event)} noValidate>
       <h2 id={titleId}>新建技能</h2>
+      <p>新技能先保存为未发布草稿，可编辑、测试，发布后用于分析。</p>
       <div className="grid gap-2"><Label htmlFor="create-skill-name">名称</Label><Input id="create-skill-name" ref={nameRef} required maxLength={120} value={name} disabled={pending || !!createdId}
         aria-invalid={error.includes("名称") || error === "已存在同名技能" || undefined} aria-describedby={error ? "create-skill-error" : undefined}
         onChange={(e) => setName(e.target.value)} /></div>

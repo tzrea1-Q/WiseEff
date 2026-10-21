@@ -851,6 +851,7 @@ describe("legacy parameter plane archive", () => {
       { relation: "public.dts_config_revisions", trigger_name: "dts_config_revisions_execution_identity_default_user", function_name: "public.parameter_execution_identity_default_user" },
       { relation: "public.dts_config_revisions", trigger_name: "dts_config_revisions_pinned_provenance_immutable", function_name: "parameter_catalog.protect_pinned_source_provenance" },
       { relation: "public.dts_logical_node_revisions", trigger_name: "dts_logical_node_revisions_pinned_provenance_immutable", function_name: "parameter_catalog.protect_pinned_source_provenance" },
+      { relation: "public.dts_release_baseline", trigger_name: "dts_release_baseline_source_snapshot_immutable", function_name: "parameter_catalog.protect_baseline_source_snapshot" },
       { relation: "public.parameter_change_requests", trigger_name: "parameter_change_requests_execution_identity_default_user", function_name: "public.parameter_execution_identity_default_user" },
       { relation: "public.parameter_draft_identity_invalidations", trigger_name: "erased_project_reference", function_name: "parameter_catalog.reject_erased_project_reference" },
       { relation: "public.parameter_drafts", trigger_name: "parameter_drafts_execution_identity_default_user", function_name: "public.parameter_execution_identity_default_user" },
@@ -865,6 +866,7 @@ describe("legacy parameter plane archive", () => {
       { relation: "public.project_parameter_file_versions", trigger_name: "project_parameter_file_versions_pinned_source_immutable", function_name: "parameter_catalog.protect_pinned_source_file" },
       { relation: "public.project_parameter_files", trigger_name: "project_parameter_file_canonical_member_tombstone_ck", function_name: "parameter_catalog.assert_removed_member_has_tombstone" },
       { relation: "public.project_parameter_files", trigger_name: "project_parameter_files_pinned_source_immutable", function_name: "parameter_catalog.protect_pinned_source_file" },
+      { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_configuration_restore_ck", function_name: "parameter_catalog.assert_configuration_restore_receipt" },
       { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_direct_source_application_ck", function_name: "parameter_catalog.assert_direct_source_application" },
       { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_member_addition_receipt_ck", function_name: "parameter_catalog.assert_member_addition_receipt" },
       { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_member_application_immutable", function_name: "parameter_catalog.protect_member_application_mode" },
@@ -884,6 +886,7 @@ describe("legacy parameter plane archive", () => {
       { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_value_change_request_single_target_apply", function_name: "parameter_catalog.mirror_single_value_request_target" },
       { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_value_change_request_single_target_insert", function_name: "parameter_catalog.mirror_single_value_request_target" },
       { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_value_change_request_source_immutable", function_name: "parameter_catalog.protect_submitted_source_request" },
+      { relation: "public.project_parameter_value_change_targets", trigger_name: "project_parameter_configuration_restore_target_ck", function_name: "parameter_catalog.assert_configuration_restore_receipt" },
       { relation: "public.project_parameter_value_change_targets", trigger_name: "project_parameter_member_addition_target_ck", function_name: "parameter_catalog.assert_member_addition_receipt" },
       { relation: "public.project_parameter_value_change_targets", trigger_name: "project_parameter_source_revision_target_ck", function_name: "parameter_catalog.assert_source_revision_request" },
       { relation: "public.project_parameter_value_change_targets", trigger_name: "project_parameter_value_change_target_batch_ck", function_name: "parameter_catalog.assert_batch_value_request" },
@@ -924,6 +927,11 @@ describe("legacy parameter plane archive", () => {
       {
         view_name: "parameter_catalog.current_project_parameter_bindings",
         parent: "parameter_catalog.project_value_source_pins",
+      },
+      // 0227 keeps restored membership current through its approved complete-source receipt.
+      {
+        view_name: "parameter_catalog.current_project_parameter_bindings",
+        parent: "public.project_parameter_value_change_requests",
       },
     ]);
   }, 120_000);

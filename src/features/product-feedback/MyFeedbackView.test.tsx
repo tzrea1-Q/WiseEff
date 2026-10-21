@@ -22,6 +22,39 @@ async function beginReply(action = "补充说明") {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); window.history.replaceState(null, "", "/"); });
 
 describe("MyFeedbackView", () => {
+  it("shows unknown historical images separately and retries only a visible failed-upload receipt", async () => {
+    const old = feedback({ attachments: [{ id: "legacy", feedbackId: "feedback-1", fileName: "legacy.png", contentType: "image/png", sizeBytes: 20, sortOrder: 0,
+      createdAt: "2026-07-08T00:00:00Z", messageId: null, uploadedByUserId: null }] });
+    const retryAttachmentCleanup = vi.fn().mockRejectedValueOnce(new Error("Storage still offline")).mockResolvedValueOnce({ pendingAttachmentCleanupCount: 0 });
+    render(<MyFeedbackView productFeedbackRepository={repository({ getMine: async () => old,
+      listMine: async () => ({ items: [old], pendingAttachmentCleanupCount: 2 }), retryAttachmentCleanup })} selectedId="feedback-1" onEditDraft={vi.fn()} />);
+    expect(await screen.findByText("历史截图（无法确认所属消息）")).toBeVisible();
+    await userEvent.click(await screen.findByRole("button", { name: "重试上传清理" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("存储清理失败，请稍后重试。");
+    await userEvent.click(screen.getByRole("button", { name: "重试上传清理" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "重试上传清理" })).toBeNull());
+    expect(await screen.findByText("未完成上传对象已清理。")).toBeVisible();
+    expect(screen.getByText("legacy.png")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "移除截图 legacy.png" })).toBeNull();
+  });
+  it("gives a reply its own five-image allowance and groups persisted images by the actual message", async () => {
+    const attachments = Array.from({ length: 5 }, (_, index) => ({ id: `image-${index}`, feedbackId: "feedback-1", fileName: `initial-${index}.png`,
+      contentType: "image/png" as const, sizeBytes: 100, sortOrder: index, createdAt: "2026-07-08T00:00:00.000Z", messageId: "submitted", uploadedByUserId: "user" }));
+    const original = feedback({ attachments, progressEvents: [{ id: "submitted", feedbackId: "feedback-1", kind: "submitted", createdAt: "2026-07-08T00:00:00.000Z" }] });
+    const replyToMine = vi.fn().mockResolvedValue({ ...original, attachments: [...attachments, { ...attachments[0], id: "reply-image", fileName: "reply-0.png", messageId: "reply" }],
+      progressEvents: [...original.progressEvents!, { id: "reply", feedbackId: "feedback-1", kind: "progress", author: "submitter", publicMessage: "More evidence", createdAt: "2026-07-08T01:00:00.000Z" }] });
+    render(<MyFeedbackView productFeedbackRepository={repository({ getMine: async () => original, replyToMine })} selectedId="feedback-1" onEditDraft={vi.fn()} />);
+    fireEvent.change(await beginReply(), { target: { value: "More evidence" } });
+    const files = Array.from({ length: 5 }, (_, index) => new File(["png"], `reply-${index}.png`, { type: "image/png" }));
+    fireEvent.change(screen.getByLabelText("选择补充截图"), { target: { files } });
+    expect(await screen.findByText(/本次回复：5 \/ 5 张/)).toBeVisible();
+    expect(screen.queryByRole("alert")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "发送补充" }));
+    await waitFor(() => expect(replyToMine).toHaveBeenCalledWith("feedback-1", { message: "More evidence", files, reopen: false }));
+    const message = (await screen.findByText("More evidence")).closest("li")!;
+    expect(within(message).getByText("reply-0.png")).toBeVisible();
+    expect(within(message).queryByText("initial-0.png")).toBeNull();
+  });
   it("loads subsequent cursor pages and sends search/status filters to the repository", async () => {
     const first = Array.from({ length: 50 }, (_, index) => feedback({ id: `first-${index}`, description: `问题 ${index}` }));
     const listMine = vi.fn().mockResolvedValueOnce({ items: first, nextCursor: "older" }).mockResolvedValueOnce({ items: [feedback({ id: "older", description: "更早的问题" })] })

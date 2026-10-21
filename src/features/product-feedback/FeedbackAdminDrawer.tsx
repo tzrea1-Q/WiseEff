@@ -184,7 +184,7 @@ export function FeedbackAdminDrawer({ feedback, open, onClose, onUpdate, onAppen
             <h2 ref={headingRef} tabIndex={-1}>{title}</h2>
             <p className="feedback-record-byline">{author}<span>提交于 <time dateTime={feedback.submittedAt ?? feedback.createdAt} title={formatAbsolute(feedback.submittedAt ?? feedback.createdAt)}>{formatRelativeOrAbsolute(feedback.submittedAt ?? feedback.createdAt)}</time></span></p>
             {body && <p className="feedback-record-description">{body}</p>}
-            {feedback.attachments.length > 0 && <div className="feedback-record-evidence"><h3>附件 <span>{feedback.attachments.length}</span></h3><FeedbackAttachments feedbackId={feedback.id} attachments={feedback.attachments} getAttachmentObjectUrl={getAttachmentObjectUrl} /></div>}
+            {feedback.attachments.some((item) => !item.messageId) && <div className="feedback-record-evidence"><h3>历史截图（无法确认所属消息）</h3><FeedbackAttachments feedbackId={feedback.id} attachments={feedback.attachments.filter((item) => !item.messageId)} getAttachmentObjectUrl={getAttachmentObjectUrl} /></div>}
           </section>
           <section className="feedback-record-conversation" aria-label="沟通与进展">
             <div className="feedback-record-section-heading"><h3>沟通与进展</h3><span>{feedback.progressEvents?.length ?? 0} 条记录</span></div>
@@ -198,7 +198,7 @@ export function FeedbackAdminDrawer({ feedback, open, onClose, onUpdate, onAppen
             </form> : feedback.status !== "closed" ? <div className="feedback-record-reply-prompt"><button type="button" disabled={locked} onClick={() => beginReply("public")}><MessageSquare size={17} /><span>回复提交人…</span><ChevronRight size={15} /></button><Button variant="ghost" size="sm" disabled={locked} onClick={() => beginReply("internal")}><LockKeyhole data-icon="inline-start" />写内部备注</Button></div> : <p className="feedback-record-closed">反馈已关闭。需要继续沟通时，可在右上角重新打开。</p>}
             {errorMessage && !replyOpen && <p className="feedback-admin-inline-error" role="alert">{errorMessage}</p>}
             {successMessage && <p className="feedback-record-success" role="status">{successMessage}</p>}
-            <FeedbackProgressTimeline key={feedback.id} events={feedback.progressEvents} isAdmin initialVisibleCount={4} />
+            <FeedbackProgressTimeline key={feedback.id} events={feedback.progressEvents} isAdmin initialVisibleCount={4} attachments={feedback.attachments} getAttachmentObjectUrl={getAttachmentObjectUrl} />
             {feedback.adminNote && !feedback.progressEvents?.some((event) => event.internalMessage === feedback.adminNote) && <div className="feedback-admin-legacy-note"><h4>历史内部备注</h4><p>{feedback.adminNote}</p></div>}
           </section>
         </div>
