@@ -30,6 +30,10 @@ type EntrySearchRow = {
   tags: string[];
   search_text: string;
   head_revision_id: string | null;
+  chunk_text?: string | null;
+  chunk_revision_id?: string | null;
+  page_start?: number | null;
+  page_end?: number | null;
   updated_at: string | Date;
 };
 
@@ -40,6 +44,8 @@ type ChunkSearchRow = {
   tags: string[];
   revision_id: string;
   text: string;
+  page_start: number | null;
+  page_end: number | null;
   updated_at: string | Date;
 };
 
@@ -78,8 +84,19 @@ async function searchEntriesFts(
 
   const result = await db.query<EntrySearchRow>(
     `
-    select e.id, e.title, e.content_form, e.tags, e.search_text, e.head_revision_id, e.updated_at
+    select e.id, e.title, e.content_form, e.tags, e.search_text, e.head_revision_id, e.updated_at,
+           hit.text as chunk_text, hit.revision_id as chunk_revision_id, hit.page_start, hit.page_end
     from knowledge_entries e
+    left join lateral (
+      select c.text, c.revision_id, c.page_start, c.page_end
+      from knowledge_chunks c
+      where c.organization_id = e.organization_id and c.entry_id = e.id
+        and c.revision_id = e.head_revision_id and c.page_start is not null
+        and (to_tsvector('english', c.text) @@ plainto_tsquery('english', $2) or c.text ilike $3)
+      order by ts_rank(to_tsvector('english', c.text), plainto_tsquery('english', $2)) desc,
+               similarity(c.text, $2) desc, c.chunk_index asc
+      limit 1
+    ) hit on true
     where e.organization_id = $1
       and e.status = 'published'
       ${restriction}
@@ -101,9 +118,10 @@ async function searchEntriesFts(
     title: row.title,
     contentForm: row.content_form,
     tags: row.tags ?? [],
-    excerpt: buildExcerpt(row.search_text, input.query),
+    excerpt: buildExcerpt(row.chunk_text ?? row.search_text, input.query),
     updatedAt: dateTimeToIso(row.updated_at),
-    revisionId: row.head_revision_id
+    revisionId: row.chunk_revision_id ?? row.head_revision_id,
+    ...(row.page_start != null ? { pageStart: row.page_start, pageEnd: row.page_end } : {})
   }));
 }
 
@@ -124,7 +142,7 @@ async function searchChunksByEmbedding(
     select best.*
     from (
       select distinct on (c.entry_id)
-        c.entry_id, e.title, e.content_form, e.tags, c.revision_id, c.text, e.updated_at,
+        c.entry_id, e.title, e.content_form, e.tags, c.revision_id, c.text, c.page_start, c.page_end, e.updated_at,
         c.embedding <=> $2::vector as distance
       from knowledge_chunks c
       join knowledge_entries e
@@ -150,7 +168,8 @@ async function searchChunksByEmbedding(
     tags: row.tags ?? [],
     excerpt: buildChunkExcerpt(row.text),
     updatedAt: dateTimeToIso(row.updated_at),
-    revisionId: row.revision_id
+    revisionId: row.revision_id,
+    ...(row.page_start != null ? { pageStart: row.page_start, pageEnd: row.page_end } : {})
   }));
 }
 

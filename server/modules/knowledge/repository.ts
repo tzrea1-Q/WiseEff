@@ -77,6 +77,10 @@ type KnowledgeSearchRow = {
   search_text: string;
   head_revision_id: string | null;
   updated_at: string | Date;
+  chunk_text?: string | null;
+  chunk_revision_id?: string | null;
+  page_start?: number | null;
+  page_end?: number | null;
 };
 
 type KnowledgeChunkSearchRow = {
@@ -87,6 +91,8 @@ type KnowledgeChunkSearchRow = {
   revision_id: string;
   text: string;
   updated_at: string | Date;
+  page_start: number | null;
+  page_end: number | null;
 };
 
 function dateTimeToIso(value: string | Date) {
@@ -361,6 +367,7 @@ export async function updateFileExtraction(
     fileId: string;
     extractionStatus: KnowledgeExtractionStatus;
     extractedText: string | null;
+    pageOffsets: number[] | null;
     extractionError: string | null;
   }
 ): Promise<void> {
@@ -370,11 +377,12 @@ export async function updateFileExtraction(
     set extraction_status = $3,
         extracted_text = $4,
         extraction_error = $5,
+        page_offsets = $6,
         updated_at = now()
     where organization_id = $1
       and id = $2
     `,
-    [auth.organization.id, input.fileId, input.extractionStatus, input.extractedText, input.extractionError]
+    [auth.organization.id, input.fileId, input.extractionStatus, input.extractedText, input.extractionError, input.pageOffsets]
   );
 }
 
@@ -587,10 +595,21 @@ export async function searchPublishedEntries(
   const trimmed = query.q.trim();
   const result = await db.query<KnowledgeSearchRow>(
     `
-    select id, title, content_form, tags, search_text, head_revision_id, updated_at
-    from knowledge_entries
-    where organization_id = $1
-      and status = 'published'
+    select e.id, e.title, e.content_form, e.tags, e.search_text, e.head_revision_id, e.updated_at,
+           hit.text as chunk_text, hit.revision_id as chunk_revision_id, hit.page_start, hit.page_end
+    from knowledge_entries e
+    left join lateral (
+      select c.text, c.revision_id, c.page_start, c.page_end
+      from knowledge_chunks c
+      where c.organization_id = e.organization_id and c.entry_id = e.id
+        and c.revision_id = e.head_revision_id and c.page_start is not null
+        and (to_tsvector('english', c.text) @@ plainto_tsquery('english', $2) or c.text ilike $3)
+      order by ts_rank(to_tsvector('english', c.text), plainto_tsquery('english', $2)) desc,
+               similarity(c.text, $2) desc, c.chunk_index asc
+      limit 1
+    ) hit on true
+    where e.organization_id = $1
+      and e.status = 'published'
       and (
         to_tsvector('english', search_text) @@ plainto_tsquery('english', $2)
         or search_text ilike $3
@@ -609,9 +628,10 @@ export async function searchPublishedEntries(
     title: row.title,
     contentForm: row.content_form,
     tags: row.tags ?? [],
-    excerpt: buildExcerpt(row.search_text, trimmed),
+    excerpt: buildExcerpt(row.chunk_text ?? row.search_text, trimmed),
     updatedAt: dateTimeToIso(row.updated_at),
-    revisionId: row.head_revision_id
+    revisionId: row.chunk_revision_id ?? row.head_revision_id,
+    ...(row.page_start != null ? { pageStart: row.page_start, pageEnd: row.page_end } : {})
   }));
 }
 
@@ -683,7 +703,7 @@ export async function searchPublishedChunksByEmbedding(
     select best.*
     from (
       select distinct on (c.entry_id)
-        c.entry_id, e.title, e.content_form, e.tags, c.revision_id, c.text, e.updated_at,
+        c.entry_id, e.title, e.content_form, e.tags, c.revision_id, c.text, c.page_start, c.page_end, e.updated_at,
         c.embedding <=> $2::vector as distance
       from knowledge_chunks c
       join knowledge_entries e
@@ -708,6 +728,7 @@ export async function searchPublishedChunksByEmbedding(
     tags: row.tags ?? [],
     excerpt: buildChunkExcerpt(row.text),
     updatedAt: dateTimeToIso(row.updated_at),
-    revisionId: row.revision_id
+    revisionId: row.revision_id,
+    ...(row.page_start != null ? { pageStart: row.page_start, pageEnd: row.page_end } : {})
   }));
 }

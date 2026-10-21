@@ -1586,8 +1586,9 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "knowledge.fileContent": {
-    summary: "Download the current file binary of a file-form knowledge entry",
+    summary: "Download a readable revision's file binary; defaults to the current revision",
     tags: ["knowledge"],
+    requestParameters: [{ name: "revisionId", in: "query", description: "Revision UUID belonging to this entry; requires current access to its revisions.", schema: { type: "string" } }],
     responseBody: "BinaryAttachment",
     responseMedia: "binary",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }

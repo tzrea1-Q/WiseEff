@@ -12,6 +12,7 @@ import { createBridgeRpcClient } from "./modules/deviceBridge/rpc";
 import { resolveKnowledgeEmbeddingClient } from "./modules/knowledge/indexing/embeddingClient";
 import { ensureKnowledgeVectorColumn } from "./modules/knowledge/indexing/vectorEnsure";
 import { ensureKnowledgeReferenceSuggestions } from "./modules/knowledge/indexing/referenceSuggestionsEnsure";
+import { ensureKnowledgePdfPages } from "./modules/knowledge/pdfPageBackfill";
 import { startKnowledgeIndexWorkerLoop } from "./modules/knowledge/indexing/worker";
 import { startSourceIndexWorkerLoop } from "./modules/logs/sourceIndexWorker";
 import { createLogAnalyzerFromEnv } from "./modules/logs/analyzer/analyzerFromEnv";
@@ -282,10 +283,19 @@ async function start() {
     console.log(`WiseEff API listening on http://${env.HOST}:${env.PORT}`);
     if (db) {
       void ensureKnowledgeReferenceSuggestions(db).then(({ enqueued }) => {
-        if (enqueued) console.log(`[knowledge-reference-suggestions] backfill enqueued ${enqueued} entries`);
+        if (enqueued) console.log(`[knowledge-reference-suggestions] backfill scanned ${enqueued} entries`);
       }).catch((error) => {
         console.error("[knowledge-reference-suggestions] startup backfill failed; retry on next startup:", error);
       });
+    }
+    // Like vector ensure above, this runs on every start. PDF I/O and parsing
+    // run in the background after listen so upgrades do not delay readiness.
+    if (db && objectStore) {
+      void ensureKnowledgePdfPages(db, objectStore)
+        .then((result) => {
+          if (result.updated || result.failed) console.log("[knowledge-pdf-pages] ensure completed:", result);
+        })
+        .catch((error) => console.error("[knowledge-pdf-pages] ensure failed; existing indexes retained:", error));
     }
   });
 }

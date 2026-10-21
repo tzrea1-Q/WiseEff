@@ -84,6 +84,26 @@ it("uses an immutable database root without wrapping query for related-parameter
     ["org-1", "iin_max", "%iin_max%", ["36bb42b6-3cc6-4d57-a86c-5a684aa09c21"], 5]);
 });
 
+it("records only the pages of the returned PDF chunk, keeping non-PDF provenance unchanged", async () => {
+  const onKnowledgeRetrieved = vi.fn();
+  const query = vi.fn(async (sql: string) => ({ rows: sql.includes("knowledge_entries") ? [{
+    id: "pdf", title: "PDF", content_form: "file", tags: [], search_text: "all pages",
+    head_revision_id: "revision", updated_at: "2026-10-21T00:00:00.000Z",
+    chunk_text: "retrieved page", chunk_revision_id: "revision", page_start: 3, page_end: 4
+  }, {
+    id: "markdown", title: "Notes", content_form: "markdown", tags: [], search_text: "notes",
+    head_revision_id: "notes-revision", updated_at: "2026-10-21T00:00:00.000Z"
+  }] : [], rowCount: 0 }));
+  const tools = createWorkerLogAnalysisToolBackends({ db: createDatabase({ query } as unknown as Queryable),
+    organizationId: "org-1", onKnowledgeRetrieved });
+  const result = await tools.searchDomainKnowledge!("retrieved");
+  expect(result.items[0]).toMatchObject({ excerpt: "retrieved page", pageStart: 3, pageEnd: 4 });
+  expect(onKnowledgeRetrieved).toHaveBeenCalledWith([
+    { entryId: "pdf", revisionId: "revision", pages: [3, 4] },
+    { entryId: "markdown", revisionId: "notes-revision" }
+  ]);
+});
+
 it("fails closed when the related binding has no matching frozen snapshot", () => {
   const db = createDatabase({ query: vi.fn() } as unknown as Queryable);
   expect(() => createWorkerLogAnalysisToolBackends({ db, organizationId: "org-1", relatedParameterId: "binding-1" })).toThrow(

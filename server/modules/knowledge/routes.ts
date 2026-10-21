@@ -47,6 +47,7 @@ import {
   distillKnowledgeFromLogBodySchema,
   distillKnowledgeFromReloadRunBodySchema,
   listKnowledgeEntriesQuerySchema,
+  knowledgeFileContentQuerySchema,
   relatedKnowledgeForLogQuerySchema,
   relatedKnowledgeForDefinitionQuerySchema,
   relatedKnowledgeForSpecQuerySchema,
@@ -441,7 +442,8 @@ export function registerKnowledgeRoutes(
     const objectStore = requireObjectStore(options.objectStore);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(paramsWithEntryIdSchema, request.params);
-    const result = await getKnowledgeFileContent(db, objectStore, auth, params.entryId);
+    const query = parseWithSchema(knowledgeFileContentQuerySchema, flattenQuery(request.query));
+    const result = await getKnowledgeFileContent(db, objectStore, auth, params.entryId, query.revisionId);
 
     return {
       status: 200,

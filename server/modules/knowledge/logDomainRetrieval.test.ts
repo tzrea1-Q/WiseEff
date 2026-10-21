@@ -113,7 +113,7 @@ describe("searchPublishedKnowledgeForLogAnalysis", () => {
     expect(result.retrievalMode).toBe("semantic_fts");
     expect(result.items.map((item) => item.entryId).sort()).toEqual([entryRow.id, chunkRow.entry_id].sort());
 
-    const vectorCall = calls.find((call) => call.text.includes("from knowledge_chunks c"));
+    const vectorCall = calls.find((call) => call.text.includes("c.embedding <=>"));
     expect(vectorCall?.text).toContain("c.revision_id = e.head_revision_id");
     expect(vectorCall?.text).toContain("e.status = 'published'");
     expect(vectorCall?.text).toContain("c.entry_id = any(");

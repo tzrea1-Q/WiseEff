@@ -430,8 +430,9 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
       return entryFromDto(response.item);
     },
 
-    async getFileObjectUrl(entryId) {
-      const response = await apiClient.raw(`${entryPath(entryId)}/file/content`, {
+    async getFileObjectUrl(entryId, revisionId) {
+      const query = revisionId ? `?${new URLSearchParams({ revisionId })}` : "";
+      const response = await apiClient.raw(`${entryPath(entryId)}/file/content${query}`, {
         method: "GET",
         headers: { Accept: "*/*" }
       });

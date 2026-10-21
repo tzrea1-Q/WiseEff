@@ -70,7 +70,10 @@ export function createWorkerLogAnalysisToolBackends(input: {
         embeddingClient: input.embeddingClient
       });
       input.onKnowledgeRetrieved?.(result.items.flatMap((item) => item.revisionId
-        ? [{ entryId: item.entryId, revisionId: item.revisionId }] : []));
+        ? [{ entryId: item.entryId, revisionId: item.revisionId,
+          ...(item.pageStart != null ? { pages: Array.from(
+            { length: (item.pageEnd ?? item.pageStart) - item.pageStart + 1 }, (_, index) => item.pageStart! + index
+          ) } : {}) }] : []));
       return result;
     },
     ...(relatedParameterContext
