@@ -195,7 +195,7 @@ export function ProjectAdminTable({
       headerContent={<>
         <p>维护项目基础信息与初始化状态；冲突与基线列标出需要治理关注的项目。</p>
         {rows.some((row) => row.canonicalOwned) ?
-          <p id="canonical-project-retention-policy">项目需保留规范历史，不能删除；可归档后从默认清单收起。</p> : null}
+          <p id="canonical-project-retention-policy">{onPreviewDeletion ? "彻底删除前请打开删除影响预览，核对范围与保留资源。" : "项目需保留规范历史，不能删除；可归档后从默认清单收起。"}</p> : null}
       </>}
       table={{
         ariaLabel: "项目管理列表", rows: filteredRows, rowKey: (row) => row.id, columns, pageSize: 10,
@@ -240,9 +240,9 @@ export function ProjectAdminTable({
           ...(onArchiveProject ? [{ id: "archive", label: row.status === "archived" ? "恢复项目" : "归档",
             ariaLabel: `${row.status === "archived" ? "恢复项目" : "归档"} ${row.name}`,
             onSelect: () => onArchiveProject(row.id, row.status !== "archived") }] : []),
-          { id: "delete", label: "删除", ariaLabel: `删除 ${row.name}`, disabled: row.canonicalOwned,
+          ...(!onPreviewDeletion ? [{ id: "delete", label: "删除", ariaLabel: `删除 ${row.name}`, disabled: row.canonicalOwned,
             descriptionId: row.canonicalOwned ? "canonical-project-retention-policy" : undefined,
-            destructive: true, confirmation: projectDeleteConfirmation(row), onSelect: () => onDeleteProject(row.id) }
+            destructive: true as const, confirmation: projectDeleteConfirmation(row), onSelect: () => onDeleteProject(row.id) }] : [])
         ]
       })}
     />
