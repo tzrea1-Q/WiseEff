@@ -31,6 +31,7 @@ import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import type { AppAction } from "@/application/state/appState";
 
 import { CreateSkillDialog } from "@/features/log-skills/CreateSkillDialog";
+import { SkillIdentityDialog } from "@/features/log-skills/SkillIdentityDialog";
 import { ImportSkillPackageDialog } from "@/features/log-skills/SkillPackageDialogs";
 import { SectionSkeleton } from "@/components/common/SectionState";
 import { LogAdminOverview, matchesOverviewFilter, type OverviewRecordFilter } from "@/features/log-analysis/LogAdminOverview";
@@ -140,6 +141,7 @@ function LogDomainGovernanceSection({
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exportSkill, setExportSkill] = useState<AnalysisSkill | null>(null);
+  const [identityAction, setIdentityAction] = useState<{ skill: LogDomain; restore: boolean } | null>(null);
   const [pending, setPending] = useState(false);
   const [exportError, setExportError] = useState("");
   const [skillStatusFilter, setSkillStatusFilter] = useState<string[]>([]);
@@ -257,16 +259,23 @@ function LogDomainGovernanceSection({
               </div> }}
             rowActions={(domain) => ({ label: domain.name,
               items: [
+                { id: "rename", label: "改名", disabled: !apiMode || pending, onSelect: () => setIdentityAction({ skill: domain, restore: false }) },
                 { id: "export", label: "导出技能包", disabled: pending || !skillRepository?.getLogSkill || !skillRepository.exportSkillPackage, onSelect: () => openExport(domain) },
                 ...(domain.status === "active" ? [{ id: "archive", label: "归档", disabled: pending, destructive: true as const,
                   confirmation: { title: `归档「${domain.name}」`, description: "归档后，新日志不再推荐此技能；已有日志及分析记录保留。", confirmLabel: "归档技能" },
-                  onSelect: () => archiveDomain(domain.id) }] : [])
+                  onSelect: () => archiveDomain(domain.id) }] : [{ id: "restore", label: "恢复", disabled: !apiMode || pending,
+                  onSelect: () => setIdentityAction({ skill: domain, restore: true }) }])
               ]
             })}
             emptyState={{ message: "还没有分析技能", actionLabel: "", onAction: () => undefined }} />
 
           {createOpen ? <CreateSkillDialog repository={skillRepository} apiMode={apiMode} skills={domains ?? []}
             onDismiss={() => setCreateOpen(false)} onNavigate={onNavigate} /> : null}
+          {identityAction && logActions ? <SkillIdentityDialog skill={identityAction.skill} restore={identityAction.restore}
+            onSave={input => logActions.updateLogDomain(input)} onSaved={updated => {
+              setDomains(current => current?.map(domain => domain.id === updated.id ? { ...domain, ...updated } : domain) ?? null);
+              setIdentityAction(null);
+            }} onDismiss={() => setIdentityAction(null)} onNavigate={onNavigate} /> : null}
           {importOpen && skillRepository ? <ImportSkillPackageDialog repository={skillRepository} onDismiss={() => setImportOpen(false)} onNavigate={onNavigate}
             onImported={() => { void refreshDomains(); }} /> : null}
 
