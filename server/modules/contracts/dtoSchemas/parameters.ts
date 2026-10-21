@@ -30,7 +30,7 @@ export const projectDtoSchema = z.object({
 
 export const projectDeletionPreviewResponseSchema = itemEnvelopeSchema(z.object({
   organizationId: z.string().min(1), projectId: z.string().min(1), projectName: z.string(),
-  generatedAt: z.string(), stateDigest: z.string().min(1), executionAvailable: z.literal(false),
+  generatedAt: z.string(), stateDigest: z.string().min(1), executionAvailable: z.boolean(),
   inventory: z.array(z.object({ key: z.string(), label: z.string(), count: z.number().int().nonnegative(),
     disposition: z.enum(["delete", "detach", "retain"]) }).strict()),
   storage: z.object({ exclusiveObjects: z.number().int().nonnegative(), sharedObjects: z.number().int().nonnegative(),
@@ -38,6 +38,15 @@ export const projectDeletionPreviewResponseSchema = itemEnvelopeSchema(z.object(
   blockers: z.array(z.object({ code: z.string(), count: z.number().int().nonnegative(), message: z.string(), action: z.string() }).strict()),
   notes: z.array(z.string())
 }).strict());
+
+const projectDeletionStatusSchema = z.object({
+  projectId: z.string().min(1), stateDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  database: z.literal("deleted"), objects: z.enum(["pending", "complete"]),
+  pendingObjects: z.number().int().nonnegative()
+}).strict();
+export const projectPurgeRequestSchema = z.object({ stateDigest: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
+export const projectDeletionStatusResponseSchema = itemEnvelopeSchema(projectDeletionStatusSchema);
+export const projectDeletionStatusListResponseSchema = itemsEnvelopeSchema(projectDeletionStatusSchema);
 
 export const projectAdminSummaryDtoSchema = projectDtoSchema.extend({
   status: z.string(),

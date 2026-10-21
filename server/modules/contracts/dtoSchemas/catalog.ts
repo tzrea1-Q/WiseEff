@@ -72,7 +72,10 @@ import {
   projectAdminListResponseSchema,
   projectAdminDetailResponseSchema,
   projectAdminSummaryResponseSchema,
-  projectDeletionPreviewResponseSchema
+  projectDeletionPreviewResponseSchema,
+  projectPurgeRequestSchema,
+  projectDeletionStatusResponseSchema,
+  projectDeletionStatusListResponseSchema
 } from "./parameters";
 import { parameterModuleRegistryResponseSchema } from "./parameterModules";
 import { parameterDashboardSummaryResponseSchema } from "./parameterDashboard";
@@ -125,6 +128,9 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ProjectAdminDetailResponse: projectAdminDetailResponseSchema,
   ProjectAdminSummaryResponse: projectAdminSummaryResponseSchema,
   ProjectDeletionPreviewResponse: projectDeletionPreviewResponseSchema,
+  ProjectPurgeRequest: projectPurgeRequestSchema,
+  ProjectDeletionStatusResponse: projectDeletionStatusResponseSchema,
+  ProjectDeletionStatusListResponse: projectDeletionStatusListResponseSchema,
   ParameterListResponse: parameterListResponseSchema,
   ParameterResponse: parameterResponseSchema,
   ParameterHistoryResponse: parameterHistoryResponseSchema,
@@ -202,6 +208,8 @@ export const dtoSchemaCoveredRouteIds = [
   "parameters.admin.listProjects",
   "parameters.admin.getProject",
   "parameters.list",
+  "parameters.previewAdminProjectDeletion", "parameters.purgeAdminProject",
+  "parameters.getAdminProjectDeletionStatus", "parameters.listAdminProjectDeletions",
   "parameters.get",
   "parameters.history",
   "parameters.saveDraft",

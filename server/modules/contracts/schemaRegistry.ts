@@ -2017,6 +2017,21 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ProjectDeleteResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameters.purgeAdminProject": {
+    summary: "Permanently delete confirmed project-owned data and retry pending exclusive object cleanup",
+    tags: ["parameters"], requestBody: "ProjectPurgeRequest", responseBody: "ProjectDeletionStatusResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameters.getAdminProjectDeletionStatus": {
+    summary: "Read database and object cleanup status for a deleted project",
+    tags: ["parameters"], responseBody: "ProjectDeletionStatusResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameters.listAdminProjectDeletions": {
+    summary: "List project cleanup receipts in the current organization",
+    tags: ["parameters"], responseBody: "ProjectDeletionStatusListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
   "parameters.parseDtsImport": {
     summary: "Parse a full DTS source into import preview rows",
     tags: ["parameters"],
