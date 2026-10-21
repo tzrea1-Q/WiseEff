@@ -32,6 +32,8 @@
 ## 决策
 
 1. **统一的源出现位置身份层。** 引入 `parameter_catalog.project_parameter_source_occurrences`，其身份至少包含 organization + project + config-set + occurrence-kind + instance-id，并额外钉住不可变的源文件身份与格式专属 locator。DTS 出现位置关联既有 `logical_node_id`；ConfigurationSchema 出现位置使用稳定的 `configuration_instance_id`；JSON locator 采用严格定义的 JSON Pointer 语法——明确 `~0`/`~1` 转义与数组下标规则——而不是含糊的点号字符串。
+
+   管理员确认的配置组成变更（#1305）中，DTS 出现位置的不可变文件仍是逻辑节点身份锚点。覆盖层可改变有效属性的物理文件，但不修改该出现位置或 Binding ID；新 ProjectValue 钉住实际有效属性及成员版本。此切换必须同时具备已批准的冻结来源转移回执、精确的新旧 pin 与历史，以及证明同一逻辑节点和最终属性来源的编译图，不能仅凭调用者提供的文件 ID 或请求 JSON。后续修改沿用已证明的来源关系；历史 pin 和基线继续保留原成员及字节。彻底删除某个 Definition 而撤销共享请求时，须先验证原始证明，才能给仍存活的转移 pin 写入既有的不可变删除回执；后续读取仍验证有效属性图。被删 Definition 的冻结数据随请求一同移除。
 2. **Binding 唯一性跟随出现位置。** `project_parameter_bindings` 增加 `source_occurrence_id`，项目范围内唯一性收敛为 `(project_id, source_occurrence_id, definition_id)`。由于出现位置本身已区分 config-set 与实例，共享同一 Definition 的两个实例永不塌缩为一个 Binding。
 3. **不采用可空平铺的 DTS 列。** 不把 `logical_node_id` 简单改为可空、再平铺一组 JSON 专用可空列；那会让 Binding 永久背负 DTS/JSON 的 XOR，并把未来格式继续塞进同一张表。既有 DTS Binding 原地 backfill、保留现有 Binding ID，其身份永不被重新派生；只有新的 JSON Binding 从出现位置派生身份。
 4. **修订钉不是 Binding 身份。** 不可变的 file-version / config-revision 钉属于 ProjectValue 与源修订层。把它纳入 Binding 键会让每次合法写回都铸造一个新 Binding。

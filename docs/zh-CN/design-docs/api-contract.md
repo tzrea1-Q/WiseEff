@@ -777,6 +777,8 @@ Admin 项目摘要（`GET/POST /api/v1/parameters/admin/projects`）同时返回
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-apply` | 当前人工文件管理员直接应用已确认的完整 DTS 预览。请求 `{ expectedCurrentVersionId, expectedProofToken, clientMutationId, reason }`，不接受审核人字段；返回 `{ item: SourceRevisionRequest }`，状态为 approved，包含应用后的文件/配置回执。 |
+| `POST` | `/api/v1/projects/:projectId/config-sets/:configSetId/member-addition/preview` | 人工管理员预览一个上传候选（`candidateId`）或未归属配置的项目文件（`fileId`），明确指定 `role` 与 `sortOrder`。JSON 可选传 `json: { configurationSchemaId, rootPointer, mappings: [{ definitionId, pointer }] }` 登记参数；不传时加入已校验的来源成员，并明确预览 0 个新 Binding。返回完整成员、include/overlay 组成、结构与参数影响、诊断和 `proofToken`，不改变当前成员或值。 |
+| `POST` | `/api/v1/projects/:projectId/config-sets/:configSetId/member-addition/apply` | 在相同输入中增加 `proofToken`、`reason`、`clientMutationId` 进行确认。重新核对当前权限、Catalog 和来源 pin，在一个事务中提交成员、候选激活、结构、Binding/值 pin、历史及审计。返回 `{ item: { requestId, fileId, fileVersionId, configRevisionId } }`，相同操作重试返回原回执。过期、外部或无效组成不会消耗候选或部分改变当前状态。 |
 | `GET` | `/api/v2/projects/:projectId/source-revision-requests?mine=true&status=pending` | `mine=true` 读取本人提交，否则读取分配给当前合资格审核人的请求。 |
 | `GET` | `/api/v2/projects/:projectId/source-revision-requests/:requestId` | 按权限读取固定源码差异、上下文摘要、影响及应用后的文件/配置回执。 |
 | `POST` | `/api/v2/projects/:projectId/source-revision-requests/:requestId/review` | `{ decision: "approve" | "reject", proofDigest, note? }`；要求当前指定审核人且不能自审。 |
