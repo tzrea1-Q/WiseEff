@@ -83,10 +83,9 @@ describe.skipIf(!databaseAvailable)("empty knowledge extraction over HTTP and Po
   it.each([
     ["sample.pdf", "application/pdf"],
     ["sample.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
-    ["sample.txt", "text/plain"]
+    ["multipage.pdf", "application/pdf"]
   ])("keeps normal %s extraction successful and marks an empty replacement as failed", async (fileName, contentType) => {
-    const bytes = fileName.endsWith(".txt") ? Buffer.from("Normal text content")
-      : readFileSync(new URL(`./testing/fixtures/${fileName}`, import.meta.url));
+    const bytes = readFileSync(new URL(`./testing/fixtures/${fileName}`, import.meta.url));
     const { item } = await request("POST", "/entries", {
       contentForm: "file", title: fileName, tags: [],
       file: { fileName, contentType, contentBase64: bytes.toString("base64") }
@@ -97,8 +96,7 @@ describe.skipIf(!databaseAvailable)("empty knowledge extraction over HTTP and Po
     const before = await request<KnowledgeIndexHealthDto>("GET", "/index/status");
     expect(before.items.find((entry) => entry.entryId === item.id)?.chunkCount).toBeGreaterThan(0);
 
-    let emptyBytes = Buffer.from(" \r\n\t\u0000");
-    if (fileName.endsWith(".pdf")) emptyBytes = emptyPdf;
+    let emptyBytes = emptyPdf;
     if (fileName.endsWith(".docx")) {
       const zip = await JSZip.loadAsync(bytes);
       zip.file("word/document.xml", (await zip.file("word/document.xml")!.async("string")).replace(/<w:t[^>]*>.*?<\/w:t>/gs, "<w:t> </w:t>"));

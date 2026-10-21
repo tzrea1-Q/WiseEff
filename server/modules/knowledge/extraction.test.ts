@@ -19,6 +19,16 @@ describe("createDefaultKnowledgeTextExtractor", () => {
     expect(outcome).toEqual({ status: "succeeded", text: "充电参数调优笔记\nfast charge current" });
   });
 
+  it.each(["", " \r\n\t\u0000"])("reports empty plain text as failed (%j)", async (text) => {
+    const outcome = await extractor.extract({
+      fileName: "empty.txt",
+      contentType: "text/plain",
+      bytes: Buffer.from(text, "utf8")
+    });
+
+    expect(outcome).toEqual({ status: "failed", reason: "无可提取文本" });
+  });
+
   it("passes markdown through unchanged", async () => {
     const outcome = await extractor.extract({
       fileName: "notes.md",

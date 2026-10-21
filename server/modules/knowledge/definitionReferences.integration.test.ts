@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -532,12 +532,12 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
   });
 
   it("deletes a human file draft and its revisions once under concurrent requests, retaining shared files, definitions and audit", async () => {
-    const bytes = Buffer.from("Knowledge shared original file", "utf8");
+    const bytes = await readFile(new URL("./testing/fixtures/sample.pdf", import.meta.url));
     const input = {
       contentForm: "file",
       title: "Direct draft deletion",
       tags: [],
-      file: { fileName: "shared.txt", contentType: "text/plain", contentBase64: bytes.toString("base64") }
+      file: { fileName: "shared.pdf", contentType: "application/pdf", contentBase64: bytes.toString("base64") }
     };
     const created = await request(auth, "POST", "/api/v1/knowledge/entries", input);
     expect(created.status).toBe(201);
