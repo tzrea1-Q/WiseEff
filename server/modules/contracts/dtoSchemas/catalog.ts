@@ -8,6 +8,7 @@ import { parsePreviewRequestSchema, parsePreviewResponseSchema } from "../../log
 import { signalPreviewRequestSchema, signalPreviewResponseSchema } from "../../logs/signalRules";
 import { extractorPreviewRequestSchema, extractorPreviewResponseSchema } from "../../logs/parsing/extractorBuilder";
 import { formatPreviewRequestSchema, formatPreviewResponseSchema } from "../../logs/formatProfile";
+import { organizationBridgeListResponseSchema, organizationBridgeResponseSchema, revokeOrganizationBridgeBodySchema } from "../../deviceBridge/schemas";
 
 import {
   xiaozeAgUiRunRequestSchema,
@@ -90,6 +91,9 @@ import { releaseBaselineRestoreRequestSchema, releaseBaselineRestorePreviewRespo
  * Xiaoze). Names not listed here stay as `x-wiseeff-schema` placeholders.
  */
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
+  OrganizationDeviceBridgeListResponse: organizationBridgeListResponseSchema,
+  OrganizationDeviceBridgeResponse: organizationBridgeResponseSchema,
+  RevokeOrganizationDeviceBridgeRequest: revokeOrganizationBridgeBodySchema,
   UpdateCurrentUserProfileRequest: z.object({
     name: z.string().trim().min(1).optional(),
     title: z.string().trim().min(1).optional()
@@ -232,6 +236,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 };
 
 export const dtoSchemaCoveredRouteIds = [
+  "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.revokeOrganizationBridge",
   "logs.restoreSourceSnapshot",
   "logs.retrySourceSnapshot",
   "parameters.previewRestoreReleaseBaseline", "parameters.rollbackReleaseBaseline",
