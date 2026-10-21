@@ -546,7 +546,7 @@ test.describe("Knowledge base browser acceptance", () => {
     await importer.getByRole("button", { name: "关闭", exact: true }).click();
     const table = page.getByRole("table", { name: "知识条目列表" });
     await table.getByText(names[2], { exact: true }).click();
-    const textDetail = page.getByRole("dialog", { name: names[2], exact: true });
+    const textDetail = page.getByRole("dialog", { name: new RegExp(names[2].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) });
     await expect(textDetail.getByRole("button", { name: "编辑", exact: true })).toBeVisible();
     await textDetail.getByRole("button", { name: "关闭", exact: true }).click();
     for (const name of names) {
