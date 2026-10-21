@@ -16595,7 +16595,7 @@
     "/api/v1/knowledge/entries/{entryId}/file/content": {
       "get": {
         "operationId": "knowledge.fileContent",
-        "summary": "Download the current file binary of a file-form knowledge entry",
+        "summary": "Download a readable revision's file binary; defaults to the current revision",
         "tags": [
           "knowledge"
         ],
@@ -16604,6 +16604,15 @@
             "name": "entryId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revisionId",
+            "in": "query",
+            "required": false,
+            "description": "Revision UUID belonging to this entry; requires current access to its revisions.",
             "schema": {
               "type": "string"
             }

@@ -79,6 +79,41 @@ describe.skipIf(!databaseAvailable)("PDF search pages over HTTP and PostgreSQL",
 
   const search = (q: string) => request<KnowledgeSearchResponseDto>("GET", `/search?q=${encodeURIComponent(q)}`);
 
+  it("reads the cited revision's PDF with today's revision authorization and keeps attachment disposition", async () => {
+    const original = fixture("multipage.pdf");
+    const { item } = await request("POST", "/entries", { contentForm: "file", title: "Pinned PDF", tags: [], file: original });
+    await request("POST", `/entries/${item.id}/publish`);
+    await request("PATCH", `/entries/${item.id}`, { expectedHeadRevisionNumber: 1, file: fixture("sample.pdf") });
+    const url = `${baseUrl}/api/v1/knowledge/entries/${item.id}/file/content?revisionId=${item.headRevisionId}`;
+    const reader: AuthContext = { ...auth, user: { ...auth.user, id: "reader" }, permissions: ["knowledge:view"] };
+    currentAuth = reader;
+    try {
+      const response = await fetch(url);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain("application/pdf");
+      expect(response.headers.get("content-disposition")).toContain("attachment");
+      expect(Buffer.from(await response.arrayBuffer())).toEqual(Buffer.from(original.contentBase64, "base64"));
+      expect((await fetch(url.replace(item.headRevisionId!, "00000000-0000-4000-8000-000000000000"))).status).toBe(404);
+      currentAuth = { ...reader, organization: { id: "k1342-other", name: "Other" } };
+      expect((await fetch(url)).status).toBe(404);
+      currentAuth = { ...reader, permissions: [] };
+      expect((await fetch(url)).status).toBe(403);
+    } finally {
+      currentAuth = auth;
+    }
+    const { item: draft } = await request("POST", "/entries", { contentForm: "file", title: "Private draft", tags: [], file: original });
+    currentAuth = reader;
+    try {
+      expect((await fetch(`${baseUrl}/api/v1/knowledge/entries/${draft.id}/file/content?revisionId=${draft.headRevisionId}`)).status).toBe(404);
+      expect((await fetch(`${baseUrl}/api/v1/knowledge/entries/${draft.id}/revisions`)).status).toBe(404);
+      // A revision belonging to another entry must never select that entry's file.
+      expect((await fetch(url.replace(item.headRevisionId!, draft.headRevisionId!))).status).toBe(404);
+    } finally {
+      currentAuth = auth;
+    }
+    await request("POST", `/entries/${item.id}/archive`);
+  });
+
   it("returns the matching PDF chunk's physical range and revision after upload and replacement", async () => {
     const { item } = await request("POST", "/entries", {
       contentForm: "file", title: "Physical pages", tags: [], file: fixture("multipage.pdf")

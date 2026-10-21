@@ -410,7 +410,8 @@ export function registerKnowledgeRoutes(
     const objectStore = requireObjectStore(options.objectStore);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(paramsWithEntryIdSchema, request.params);
-    const result = await getKnowledgeFileContent(db, objectStore, auth, params.entryId);
+    const query = parseWithSchema(z.object({ revisionId: z.string().uuid().optional() }), request.query);
+    const result = await getKnowledgeFileContent(db, objectStore, auth, params.entryId, query.revisionId);
 
     return {
       status: 200,

@@ -438,6 +438,8 @@ export function PageRouter({
           capability={knowledgeCapability}
           askXiaozeEnabled={runtimeMode === "api"}
           initialEntryId={new URLSearchParams(search).get("entryId")}
+          initialRevisionId={new URLSearchParams(search).get("revisionId")}
+          initialPage={new URLSearchParams(search).get("page")}
           searchParameterDefinitions={searchParameterDefinitions}
           onOpenDefinition={canViewParameterDefinitions && runtime?.parameterCatalogRepository
             ? (definitionId) => onNavigate(buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, definitionId })
