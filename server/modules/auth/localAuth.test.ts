@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { Database, QueryResult, Queryable } from "../../shared/database/client";
+import type { Database, QueryResult } from "../../shared/database/client";
 import { createAuthAttemptLimiter } from "./authAttemptLimiter";
 import { createLocalAuthService, type RegisterLocalAccountResult } from "./localAuth";
+import { updateCurrentUserProfile } from "./profile";
+import { createUserInvocation } from "./trustedInvocation";
 
 type QueryCall = {
   text: string;
@@ -227,10 +229,9 @@ function createMemoryLocalAuthDb(extraOrganizations: Array<{ id: string; name: s
     return { rows: [], rowCount: 0 };
   }
 
-  const queryable: Queryable = { query };
   const db: Database = {
     query,
-    transaction: async (fn) => fn(queryable)
+    transaction: async (fn) => fn(db)
   };
 
   return { calls, db };
@@ -479,7 +480,7 @@ describe("local auth service", () => {
       { requestId: "request-1" }
     ));
 
-    const updated = await service.updateCurrentUserProfile(registered.auth, { name: "Renamed Admin", title: "Owner" }, { requestId: "request-2" });
+    const updated = await updateCurrentUserProfile(db, createUserInvocation(registered.auth), { name: "Renamed Admin", title: "Owner" }, { requestId: "request-2" });
 
     expect(updated.user).toMatchObject({ name: "Renamed Admin", title: "Owner", username: "pilot.admin" });
     expect(updated.user.email).toBeUndefined();

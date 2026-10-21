@@ -37,6 +37,12 @@ Admins with `users:manage` review applications in the Registration requests queu
 
 If Sign in (`/`) shows No administrator account yet, contact the deployment operator. The screen explains how to create the first Admin on the server; ordinary users cannot obtain an Admin role through registration. See the [authentication reference](../api/authentication.md) for the operator procedure.
 
+## Edit your profile
+
+Open the top-bar user menu and choose Profile. Local and OIDC users can update their display name and title. Saving these application-owned fields does not change the login identifier, external subject, Organization, or roles.
+
+The dialog checks the deployment's authentication mode before showing password actions. If that check fails, you can still save your profile and retry the capability check. On OIDC deployments, manage your password through your Organization's identity provider; the dialog does not offer local password changes or invent a provider link.
+
 ## Change your local password
 
 1. From a signed-in workspace, such as My workbench (`/parameter-home`), open the top-bar user menu and choose Profile. Profile opens as a dialog and has no separate route.

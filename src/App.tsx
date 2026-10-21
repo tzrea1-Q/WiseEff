@@ -1155,6 +1155,7 @@ function AppShell({
             onLogout={handleLogout}
             onUpdateCurrentUserProfile={handleUpdateCurrentUserProfile}
             onChangeCurrentUserPassword={handleChangeCurrentUserPassword}
+            getAuthConfig={appRuntime.authClient.getLocalAuthConfig}
             mockNotificationsClient={mockNotificationsClient}
             mobileNavOpen={mobileNavOpen}
             onToggleMobileNav={toggleMobileNav}
@@ -1440,6 +1441,7 @@ function TopBar({
   onLogout,
   onUpdateCurrentUserProfile,
   onChangeCurrentUserPassword,
+  getAuthConfig,
   mockNotificationsClient,
   mobileNavOpen = false,
   onToggleMobileNav
@@ -1455,6 +1457,7 @@ function TopBar({
   onLogout?: () => Promise<void> | void;
   onUpdateCurrentUserProfile?: (input: UpdateCurrentUserProfileInput) => Promise<void>;
   onChangeCurrentUserPassword?: (input: ChangeCurrentUserPasswordInput) => Promise<void>;
+  getAuthConfig?: WiseEffAuthClient["getLocalAuthConfig"];
   mockNotificationsClient?: import("@/infrastructure/http/notificationsClient").NotificationsClient;
   mobileNavOpen?: boolean;
   onToggleMobileNav?: () => void;
@@ -1608,6 +1611,7 @@ function TopBar({
             setProfileOpen(false);
           }}
           onChangePassword={onChangeCurrentUserPassword}
+          getAuthConfig={getAuthConfig}
         />
       ) : null}
       <ConfirmDialog
@@ -1906,17 +1910,29 @@ function ApiAuthPage({
   );
 }
 
-function ProfileDialog({
+export function ProfileDialog({
   user,
   onCancel,
   onSave,
-  onChangePassword
+  onChangePassword,
+  getAuthConfig
 }: {
   user: User;
   onCancel: () => void;
   onSave: (input: UpdateCurrentUserProfileInput) => Promise<void>;
   onChangePassword?: (input: ChangeCurrentUserPasswordInput) => Promise<void>;
+  getAuthConfig?: WiseEffAuthClient["getLocalAuthConfig"];
 }) {
+  const [provider, setProvider] = useState<LocalAuthPublicConfigDto["provider"] | null>(getAuthConfig ? null : onChangePassword ? "local" : "development");
+  const [capabilityError, setCapabilityError] = useState(false);
+  const [capabilityAttempt, setCapabilityAttempt] = useState(0);
+  useEffect(() => {
+    if (!getAuthConfig) return;
+    let active = true;
+    setProvider(null); setCapabilityError(false);
+    void getAuthConfig().then((config) => { if (active) setProvider(config.provider); }).catch(() => { if (active) setCapabilityError(true); });
+    return () => { active = false; };
+  }, [getAuthConfig, capabilityAttempt]);
   const [name, setName] = useState(user.name);
   const [title, setTitle] = useState(user.title);
   const [error, setError] = useState("");
@@ -1974,6 +1990,7 @@ function ProfileDialog({
               <span className="eyebrow">账号</span>
               <h2 id={titleId}>个人资料</h2>
               <p>{userAccountIdentifier(user)}</p>
+              {provider === "oidc" ? <p className="auth-field-hint">登录标识由组织身份提供方管理。姓名和职务仅更新雷泽中的显示资料。</p> : null}
             </header>
             <label>
               <span>姓名</span>
@@ -1993,7 +2010,11 @@ function ProfileDialog({
               </button>
             </footer>
           </form>
-          {onChangePassword ? (
+          {capabilityError ? <div role="alert" className="auth-error">无法确认密码修改能力，个人资料仍可保存。<button type="button" className="button ghost" onClick={() => setCapabilityAttempt((value) => value + 1)}>重试账号能力</button></div>
+            : !provider ? <p role="status" className="auth-field-hint">正在确认账号能力…</p>
+            : provider === "oidc" ? <p className="auth-field-hint">密码由组织身份提供方管理，请在组织身份系统中修改。</p>
+            : provider !== "local" ? <p className="auth-field-hint">当前登录方式不提供本地密码修改，请联系组织管理员。</p> : null}
+          {provider === "local" && onChangePassword ? (
             <form className="profile-dialog__password" onSubmit={submitPassword} aria-labelledby="profile-password-title">
               <h3 id="profile-password-title">修改密码</h3>
               <p className="auth-field-hint">更新后当前会话保持登录，其它会话会退出。</p>
