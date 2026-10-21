@@ -395,6 +395,9 @@ export type SourceRevisionRequest = {
   before?: string;
   after?: string;
   appliedSourceResult?: { configRevisionId: string; fileVersionId: string } | null;
+  canAdminister?: boolean;
+  eligibleReviewers?: Array<{ userId: string; name: string }>;
+  cancellation?: { userId: string | null; name: string | null; reason: string } | null;
 };
 
 export type RollbackParameterFileSourceReviewInput = {
@@ -413,6 +416,12 @@ export interface ParameterFileRepository {
     decision: "approve" | "reject"; proofDigest: string; note?: string;
   }): Promise<SourceRevisionRequest>;
   withdrawSourceRevisionRequest?(projectId: string, requestId: string): Promise<SourceRevisionRequest>;
+  cancelSourceRevisionRequest?(projectId: string, requestId: string, input: {
+    proofDigest: string; expectedAssignedToUserId: string | null; reason: string;
+  }): Promise<SourceRevisionRequest>;
+  reassignSourceRevisionRequest?(projectId: string, requestId: string, input: {
+    proofDigest: string; expectedAssignedToUserId: string | null; assignedToUserId: string;
+  }): Promise<SourceRevisionRequest>;
   listFiles(projectId: string): Promise<ProjectParameterFile[]>;
   uploadFile(projectId: string, input: UploadParameterFileInput): Promise<UploadParameterFileResult>;
   uploadVersion(

@@ -44,8 +44,13 @@ function fixture(userId = "reviewer", override: { dbRole?: boolean; admin?: bool
     permissions: override.admin === false ? ["parameter:view", "parameter:edit", "parameter:review"] : undefined });
   const state = row();
   const db: Database = { query: vi.fn(async (query, values) => {
+    if (query.includes("select distinct users.id")) return { rows: [],rowCount: 0 };
     if (query.includes("select distinct catalog_release_id")) return { rows: [], rowCount: 0 };
     if (query.startsWith("update public.project_parameter_value_change_requests")) {
+      if (query.includes("set assigned_to_user_id")) {
+        state.assigned_to_user_id = values?.[3] as string;
+        return { rows: [],rowCount: 1 };
+      }
       state.status = query.includes("status='rejected'") ? "rejected" : "withdrawn";
       state.reviewer_user_id = values?.[3] as string;
       return { rows: [], rowCount: 1 };
@@ -83,7 +88,7 @@ describe("whole-source request HTTP boundaries (mocked database)", () => {
   });
 
   it.each(["unassigned", "viewer"])("conceals source from an unrelated user (%s)", async (user) => {
-    const f = fixture(user);
+    const f = fixture(user,{ admin: false });
     await expect(f.request()).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(f.storage.getBounded).not.toHaveBeenCalled();
   });
@@ -96,7 +101,7 @@ describe("whole-source request HTTP boundaries (mocked database)", () => {
   });
 
   it("conceals source after the assigned review role is revoked", async () => {
-    const f = fixture("reviewer", { dbRole: false });
+    const f = fixture("reviewer", { dbRole: false,admin: false });
     await expect(f.request()).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(f.storage.getBounded).not.toHaveBeenCalled();
   });
@@ -114,9 +119,25 @@ describe("whole-source request HTTP boundaries (mocked database)", () => {
   it("restricts list SQL by tenant, project, ownership/assignment and mine flag without loading bytes", async () => {
     const f = fixture("reviewer");
     await f.request("", "GET", undefined, { mine: "true", status: "pending" });
-    expect(f.db.query).toHaveBeenCalledWith(expect.stringContaining("request.submitter_user_id=$4 or ($5::boolean and request.assigned_to_user_id=$4)"), ["org", "project", "pending", "reviewer", false]);
+    expect(f.db.query).toHaveBeenCalledWith(expect.stringContaining("request.submitter_user_id=$4 or ($5::boolean and request.assigned_to_user_id=$4)"), ["org", "project", "pending", "reviewer", false,false]);
     expect(f.storage.getBounded).not.toHaveBeenCalled();
     await expect(f.request("", "GET", undefined, { mine: "malformed" })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+  });
+
+  it("allows another current file administrator to inspect the frozen source without review authority", async () => {
+    const f = fixture("administrator",{ dbRole: false });
+    expect((await f.request()).body).toMatchObject({ item: { canAdminister: true,before: before.toString("utf8"),after: after.toString("utf8") } });
+    expect(commitSourceRevision).not.toHaveBeenCalled();
+  });
+
+  it("reassigns a pending request without changing its frozen proof or recording an approving reviewer", async () => {
+    const f = fixture("administrator");
+    vi.mocked(getAuthContext).mockImplementation(async (_db,userId) => makeTestAuthContext({ organizationId: "org",userId,
+      roles: [{ roleId: "admin",projectId: null }] }));
+    const response = await f.request("/request/reassign","POST",{ proofDigest: proof.proofDigest,
+      expectedAssignedToUserId: "reviewer",assignedToUserId: "new-reviewer" });
+    expect(response.body).toMatchObject({ item: { status: "pending",assignedToUserId: "new-reviewer",reviewerUserId: null,proofDigest: proof.proofDigest } });
+    expect(commitSourceRevision).not.toHaveBeenCalled();
   });
 
   it("rejects altered frozen context or mismatched stored bytes", async () => {

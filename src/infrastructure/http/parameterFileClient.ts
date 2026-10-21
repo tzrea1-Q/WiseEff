@@ -124,6 +124,16 @@ export function createParameterFileClient(client: ApiClient = createDefaultApiCl
         `/api/v2/projects/${encodeURIComponent(projectId)}/source-revision-requests/${encodeURIComponent(requestId)}/withdraw`, {});
       return response.item;
     },
+    async cancelSourceRevisionRequest(projectId, requestId, input) {
+      const response = await client.post<ItemEnvelope<SourceRevisionRequest>>(
+        `/api/v2/projects/${encodeURIComponent(projectId)}/source-revision-requests/${encodeURIComponent(requestId)}/cancel`, input);
+      return response.item;
+    },
+    async reassignSourceRevisionRequest(projectId, requestId, input) {
+      const response = await client.post<ItemEnvelope<SourceRevisionRequest>>(
+        `/api/v2/projects/${encodeURIComponent(projectId)}/source-revision-requests/${encodeURIComponent(requestId)}/reassign`, input);
+      return response.item;
+    },
     async listFiles(projectId: string) {
       const response = await client.get<ItemsEnvelope<ProjectParameterFile>>(routeProjectFiles(projectId));
       return response.items;

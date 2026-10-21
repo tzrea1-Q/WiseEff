@@ -140,9 +140,10 @@ export function ReviewInbox({ projectId, repository, sourceRepository, state, se
           assignedToId: request.assignedToUserId,
           assignedTo: request.assignedToName ?? userName(request.assignedToUserId),
           createdAt: request.createdAt, handledAt: request.status === "pending" ? undefined : request.updatedAt,
-          handledBy: request.status === "withdrawn" ? request.submitterName ?? userName(request.submitterUserId)
+          handledBy: request.cancellation ? request.cancellation.name ?? userName(request.cancellation.userId)
+            : request.status === "withdrawn" ? request.submitterName ?? userName(request.submitterUserId)
             : request.reviewerUserId ? request.reviewerName ?? userName(request.reviewerUserId) : undefined,
-          status: canonicalStatusLabels[request.status], view: request.status === "pending" ? "pending" : "history" })),
+          status: request.cancellation ? "已取消" : canonicalStatusLabels[request.status], view: request.status === "pending" ? "pending" : "history" })),
         ...[...values, ...batches].map((request): ReviewInboxRow => {
           const parameter = "bindingId" in request ? parameters.find((item) => item.id === request.bindingId) : undefined;
           return { id: request.id, kind: "value", projectId, project,
