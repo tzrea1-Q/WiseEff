@@ -283,10 +283,11 @@ export async function restoreLogSkillRevision(db: Database, auth: AuthContext, s
     parseSpec(source.spec, caps);
     await validateSkillKnowledge(tx, auth, source.spec, source.spec);
     await validateDefaultSourceSnapshot(tx, auth.organization.id, skillId, source.spec, true);
-    if (revisions.some((r) => r.status === "draft")) throw new ApiError("LOG_SKILL_DRAFT_EXISTS", "请先发布或放弃草稿。");
+    const replacedDraft = revisions.find((r) => r.status === "draft");
+    await tx.query(`delete from log_skill_revisions where organization_id = $1 and skill_id = $2 and status = 'draft'`, [auth.organization.id, skillId]);
     const id = await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId, spec: source.spec, userId: auth.user.id });
     await publishSkillRevision(tx, auth.organization.id, skillId, id, auth.user.id);
     return { result: await readSkill(tx, auth.organization.id, skillId, caps),
-      audit: skillAudit(skillId, "log-skill-restore", { fromRevisionId: revisionId, newRevisionId: id }) };
+      audit: skillAudit(skillId, "log-skill-restore", { fromRevisionId: revisionId, newRevisionId: id, ...(replacedDraft ? { replacedDraftRevisionId: replacedDraft.id } : {}) }) };
   });
 }

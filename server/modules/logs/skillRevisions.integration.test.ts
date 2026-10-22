@@ -239,7 +239,6 @@ describe.skipIf(!available)("analysis skill revisions over PostgreSQL", () => {
       });
       expect((await request<{ items: LogSkillRevisionDto[] }>(`${base}/revisions`)).body.items).toEqual(revisionsBeforeLegacyPatch);
       const discardPath = `${base}/draft?draftRevisionId=${encodeURIComponent(pendingDraft.body.item.id)}`;
-      expect(await request(restorePath, "POST", {})).toMatchObject({ status: 409, body: { error: { code: "LOG_SKILL_DRAFT_EXISTS" } } });
       currentAuth = { ...auth(), permissions: ["logs:view"] };
       expect((await request(discardPath, "DELETE")).status).toBe(403);
       expect((await request(restorePath, "POST", {})).status).toBe(403);
@@ -251,28 +250,34 @@ describe.skipIf(!available)("analysis skill revisions over PostgreSQL", () => {
       currentAuth = auth();
       expect((await request(discardPath, "DELETE")).status).toBe(204);
       expect((await request(discardPath, "DELETE")).status).toBe(204);
+      const replacementDraft = await request<{ item: LogSkillRevisionDto }>(`${base}/draft`, "PUT", { spec, baseDraftRevisionId: null, basePublishedRevisionId: next.body.item.id });
+      expect(replacementDraft.status).toBe(200);
       expect((await request(`${base}/revisions/${other.currentRevision.id}/restore`, "POST", {})).status).toBe(404);
       const restored = await request<{ item: Skill }>(restorePath, "POST", {});
       expect(restored.status).toBe(200);
       expect(restored.body.item).toMatchObject({ description: "初版描述", currentRevision: { number: 3, spec: skill.currentRevision.spec } });
       expect(restored.body.item.modelOverride).toBeUndefined();
+      expect(restored.body.item.draft).toBeNull();
       const after = (await request<{ items: LogSkillRevisionDto[] }>(`${base}/revisions`)).body.items;
       expect(after.find((r) => r.id === skill.currentRevision.id)).toEqual(history.find((r) => r.id === skill.currentRevision.id));
       expect(after.find((r) => r.id === next.body.item.id)).toEqual({ ...history.find((r) => r.id === next.body.item.id), status: "superseded" });
       expect(after).toHaveLength(3);
       const audits = (await db.query<{ kind: string; metadata: Record<string, unknown> }>(
         `select kind, metadata from audit_events where target_id = $1`, [skill.id])).rows;
-      expect(audits.filter((a) => a.kind === "log-skill-draft-save")).toHaveLength(3);
+      expect(audits.filter((a) => a.kind === "log-skill-draft-save")).toHaveLength(4);
       expect(audits.filter((a) => a.kind === "log-skill-draft-discard")).toHaveLength(2);
       expect(audits.filter((a) => a.kind === "log-skill-restore")).toEqual([expect.objectContaining({ metadata: expect.objectContaining({
-        fromRevisionId: skill.currentRevision.id, newRevisionId: restored.body.item.currentRevision.id
+        fromRevisionId: skill.currentRevision.id, newRevisionId: restored.body.item.currentRevision.id, replacedDraftRevisionId: replacementDraft.body.item.id
       }) })]);
       // Audit failure rolls the publication back in the same transaction (ADR-0027).
+      const preservedDraft = await request<{ item: LogSkillRevisionDto }>(`${base}/draft`, "PUT", { spec, baseDraftRevisionId: null, basePublishedRevisionId: restored.body.item.currentRevision.id });
+      const beforeFailedRestore = (await request<{ items: LogSkillRevisionDto[] }>(`${base}/revisions`)).body.items;
       await db.query(`create function reject_workspace_audit() returns trigger language plpgsql as $$ begin
         if new.kind = 'log-skill-restore' then raise exception 'audit unavailable'; end if; return new; end $$;
         create trigger reject_workspace_audit before insert on audit_events for each row execute function reject_workspace_audit();`);
       expect((await request(restorePath, "POST", {})).status).toBe(500);
-      expect((await request<{ items: LogSkillRevisionDto[] }>(`${base}/revisions`)).body.items).toEqual(after);
+      expect((await request<{ items: LogSkillRevisionDto[] }>(`${base}/revisions`)).body.items).toEqual(beforeFailedRestore);
+      expect((await request<{ item: Skill }>(base)).body.item.draft?.id).toBe(preservedDraft.body.item.id);
     } finally { await db.close(); await ephemeral.drop(); }
   }, 120_000);
 

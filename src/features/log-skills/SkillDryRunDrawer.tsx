@@ -6,13 +6,15 @@ import { presentError } from "@/infrastructure/http/presentError";
 import type { AnalysisTraceStep, SkillDryRun, SkillWorkspaceRepository } from "./types";
 import "@/features/log-analysis/log-analysis.css";
 
-export function SkillDryRunDrawer({ skillId, run, repository, open, onClose, onRunChange }: {
+export function SkillDryRunDrawer({ skillId, run, repository, open, onClose, onRunChange, onRetry, retryDisabled }: {
   skillId: string;
   run: SkillDryRun;
   repository: Partial<SkillWorkspaceRepository>;
   open: boolean;
   onClose: () => void;
   onRunChange: (run: SkillDryRun) => void;
+  onRetry?: () => Promise<SkillDryRun>;
+  retryDisabled?: boolean;
 }) {
   const [steps, setSteps] = useState<AnalysisTraceStep[]>([]);
   const [error, setError] = useState("");
@@ -37,7 +39,7 @@ export function SkillDryRunDrawer({ skillId, run, repository, open, onClose, onR
     if (run.status !== "failed") { setAttempt((value) => value + 1); return; }
     setStarting(true);
     try {
-      const started = await repository.startSkillDryRun!(skillId);
+      const started = onRetry ? await onRetry() : await repository.startSkillDryRun!(skillId);
       setSteps([]); onRunChange(started);
     } catch (cause) { setError(presentError(cause, "无法开始试运行，请重试。")); }
     finally { setStarting(false); }
@@ -56,7 +58,7 @@ export function SkillDryRunDrawer({ skillId, run, repository, open, onClose, onR
           </div>
           {error ? <p role="alert" className="text-destructive">{error}</p> : null}
           {run.error ? <p role="alert" className="text-destructive">{run.error === "服务重启，试运行已中断" ? run.error : run.error === "Dry run timed out." ? "试运行超时，请重试。" : "试运行失败，请重试。"}</p> : null}
-          {error || run.status === "failed" ? <Button variant="outline" size="sm" disabled={starting || (run.status === "failed" && !repository.startSkillDryRun)}
+          {error || run.status === "failed" ? <Button variant="outline" size="sm" disabled={starting || (run.status === "failed" && (retryDisabled || (!onRetry && !repository.startSkillDryRun)))}
             onClick={() => void retry()}>{starting ? "正在重试…" : "重试"}</Button> : null}
           {report ? <>
             <section aria-label="试运行结论" className="space-y-2"><h2 className="text-base font-medium">结论</h2>
