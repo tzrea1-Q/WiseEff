@@ -423,7 +423,7 @@ describe("archived skill deletion HTTP", () => {
       values($1,$2,$3,'Existing case','{}',$4::jsonb,'[]')`, [randomUUID(), auth.organization.id, skill.id, JSON.stringify([{ objectKey: "upgrade-case-key" }])]);
     // Restore the pre-0230 shape only inside this disposable transaction; rollback keeps the harness migration ledger intact.
     await expect(db.transaction(async tx => {
-      // Detached shared snapshots are a post-0251 state that did not exist in this historical upgrade.
+      // Detached shared snapshots are a post-0254 state that did not exist in this historical upgrade.
       await tx.query("delete from log_source_snapshots where skill_id is null");
       await tx.query("drop trigger log_skill_deleted_identity on log_domains; drop function reject_deleted_log_skill_identity(); drop table log_skill_artifact_objects,log_skill_deletions");
       await tx.query("delete from schema_migrations where name='0230_unpublished_skill_deletion.sql'");
