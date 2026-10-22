@@ -967,17 +967,19 @@ function ConfidenceBar({
 
 function AnalysisProvenanceBadges({ log, canViewSkill, onNavigate }: { log: LogRecord; canViewSkill: boolean; onNavigate: (path: string) => void }) {
   const degraded = classifyAnalysisDegradation(log);
+  const skillName = log.logDomainName ?? log.skillNameSnapshot;
+  const revisionNumber = log.skillRevision?.number ?? log.skillRevisionNumberSnapshot;
 
   return (
     <div className="analysis-provenance" data-testid="analysis-provenance">
       <div className="analysis-provenance__badges">
         <span className="analysis-provenance__badge">{log.analysisSource === "rules-fallback" ? "规则回退" : "AI 分析"}</span>
         {degraded && log.analysisSource !== "rules-fallback" ? <span className="analysis-provenance__badge">提前收敛</span> : null}
-        {log.logDomainName && log.skillSelection?.mode !== "generic" ? <>
-          {canViewSkill && log.logDomainId ? <a className="analysis-provenance__badge" href={`/log-admin/skills/${encodeURIComponent(log.logDomainId)}`}
+        {skillName && log.skillSelection?.mode !== "generic" ? <>
+          {canViewSkill && log.logDomainId && log.logDomainName ? <a className="analysis-provenance__badge" href={`/log-admin/skills/${encodeURIComponent(log.logDomainId)}`}
             onClick={(event) => { event.preventDefault(); onNavigate(`/log-admin/skills/${encodeURIComponent(log.logDomainId!)}`); }}>
-            技能：{log.logDomainName}{log.skillRevision ? ` v${log.skillRevision.number}` : ""}
-          </a> : <span className="analysis-provenance__badge">技能：{log.logDomainName}{log.skillRevision ? ` v${log.skillRevision.number}` : ""}</span>}
+            技能：{skillName}{revisionNumber ? ` v${revisionNumber}` : ""}
+          </a> : <span className="analysis-provenance__badge">技能：{skillName}{revisionNumber ? ` v${revisionNumber}` : ""}</span>}
           {log.skillSelection ? <span className="analysis-provenance__badge">{log.skillSelection.mode === "recommended" ? "自动推荐" : "手动选择"}</span> : null}
         </> : <span className="analysis-provenance__badge">通用分析</span>}
         {log.sourceSnapshot && log.sourceSnapshotSelection !== "none" ? (

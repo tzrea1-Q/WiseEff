@@ -456,7 +456,8 @@ async function analyzeCase(db: Database, store: ObjectStore, analyzer: LogAnalys
   if (!first) throw new Error("No analyzable case files");
   const signalSummary = await extractLogSignalsCooperatively(files, signalRules, { maxMs: Math.max(0, deadline - performance.now()) });
   const decoding = spec.parsing?.extractors.length ? { spec: spec.parsing, ...await decodeLogFilesCooperatively(spec.parsing, files.map((file) => ({ file: file.path, reader: file.reader! })), { maxMs: Math.max(0, deadline - performance.now()) }) } : undefined;
-  const sourceSnapshot = spec.defaultSourceSnapshotId ? (await db.query<NonNullable<AnalyzeLogInput["sourceSnapshot"]>>(`select id, status from log_source_snapshots where organization_id = $1 and skill_id = $2 and id = $3`, [organizationId, skillId, spec.defaultSourceSnapshotId])).rows[0] : undefined;
+  // The admitted revision pins the ID; shared snapshots can outlive their owner.
+  const sourceSnapshot = spec.defaultSourceSnapshotId ? (await db.query<NonNullable<AnalyzeLogInput["sourceSnapshot"]>>(`select id, status from log_source_snapshots where organization_id = $1 and (skill_id = $2 or skill_id is null) and id = $3`, [organizationId, skillId, spec.defaultSourceSnapshotId])).rows[0] : undefined;
   const steps: LogAnalysisTraceStep[] = [];
   let traceBytes = 0;
   const started = performance.now();
