@@ -53,6 +53,18 @@ describe("platform definition deletion client", () => {
     expect(() => client.deleteDefinition("pdef/a", { previewToken: "" })).toThrow();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
+
+  it("lists organization cleanup and retries a selected definition without a preview token", async () => {
+    const list = { items: [{ definitionId: "pdef/a", deletedAt: "2026-10-21T00:00:00.000Z", pendingObjectCount: 2 }] };
+    const fetchImpl = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => jsonResponse(init?.method === "POST" ? deleted : list));
+    const repository = createApiParameterCatalogRepository(createParameterCatalogClient({ fetchImpl }));
+    expect(await repository.listDefinitionErasures!()).toEqual(list);
+    expect(await repository.retryDefinitionCleanup!("pdef/a")).toEqual(deleted);
+    expect(fetchImpl.mock.calls[0]![0]).toBe("/api/v2/catalog/definition-erasures");
+    expect(fetchImpl.mock.calls[1]).toEqual(["/api/v2/catalog/definition-erasures/pdef%2Fa/retry-cleanup",
+      expect.objectContaining({ method: "POST" })]);
+    expect(fetchImpl.mock.calls[1]![1]?.body).toBeUndefined();
+  });
 });
 
 describe("protected project Binding client", () => {

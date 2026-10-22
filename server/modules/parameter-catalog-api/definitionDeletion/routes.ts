@@ -5,7 +5,7 @@ import type { AuthContext } from "../../auth/types";
 import { createUserInvocation } from "../../auth/trustedInvocation";
 import { catalogDeleteDefinitionRequestSchema } from "../../contracts/dtoSchemas/parameterDefinitionDeletion";
 import type { DefinitionArchiveStores } from "./archives";
-import { deleteDefinition, previewDefinitionDeletion, requireDefinitionErasureAdministrator } from "./service";
+import { deleteDefinition, listDefinitionErasures, retryDefinitionCleanup, previewDefinitionDeletion, requireDefinitionErasureAdministrator } from "./service";
 
 export function registerDefinitionDeletionRoutes(router: WiseEffRouter, options: DefinitionArchiveStores & {
   db?: Database; resolveAuth: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
@@ -15,6 +15,15 @@ export function registerDefinitionDeletionRoutes(router: WiseEffRouter, options:
     return options.db;
   };
   const path = "/api/v2/catalog/definitions/:definitionId";
+  router.get("/api/v2/catalog/definition-erasures", async request => {
+    const auth = await options.resolveAuth(request);
+    return { status: 200, body: await listDefinitionErasures(database(), auth) };
+  });
+  router.post("/api/v2/catalog/definition-erasures/:definitionId/retry-cleanup", async request => {
+    const auth = await options.resolveAuth(request);
+    return { status: 200, body: await retryDefinitionCleanup(database(), createUserInvocation(auth),
+      request.params.definitionId!, request.requestId, options) };
+  });
   router.get(`${path}/deletion-preview`, async request => {
     const auth = await options.resolveAuth(request);
     requireDefinitionErasureAdministrator(auth);

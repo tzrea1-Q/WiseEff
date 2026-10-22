@@ -59,6 +59,8 @@ describe("permanent definition deletion through the authenticated API LOGIN", ()
     const before = await fixture.root.query("select count(*) from parameter_catalog.parameter_definitions");
     expect((await request(actor, "GET", `${path(X_DEFINITION_ID)}/deletion-preview`)).status).toBe(403);
     expect((await request(actor, "DELETE", path(X_DEFINITION_ID), { previewToken: "not-authorized" })).status).toBe(403);
+    expect((await request(actor, "GET", "/api/v2/catalog/definition-erasures")).status).toBe(403);
+    expect((await request(actor, "POST", `/api/v2/catalog/definition-erasures/${X_DEFINITION_ID}/retry-cleanup`)).status).toBe(403);
     expect((await fixture.root.query("select count(*) from parameter_catalog.parameter_definitions")).rows).toEqual(before.rows);
     expect((await auditRows(X_DEFINITION_ID)).rows).toEqual([]);
   });
@@ -135,6 +137,15 @@ describe("permanent definition deletion through the authenticated API LOGIN", ()
   });
 
   let originalArchiveRef: string;
+  it("does not let the runtime writer claim a historical unscoped receipt", async () => {
+    await fixture.root.query("insert into parameter_catalog.definition_erasures(definition_id,erased_by,audit_event_id) values('historical-unscoped','missing-user','historical-audit')");
+    expect((await fixture.api.query("select to_regprocedure('parameter_catalog.scope_definition_erasure(text,text)') as routine")).rows)
+      .toEqual([{ routine: null }]);
+    await expect(fixture.api.query("update parameter_catalog.definition_erasures set organization_id=$1 where definition_id='historical-unscoped'",
+      [DELETION_ORGANIZATIONS[0]])).rejects.toMatchObject({ code: "42501" });
+    expect((await fixture.root.query("select organization_id from parameter_catalog.definition_erasures where definition_id='historical-unscoped'")).rows)
+      .toEqual([{ organization_id: null }]);
+  });
   it("rolls back deletion and sanitized archive staging when the same-transaction platform audit fails", async () => {
     const rows = await fixture.root.query(`select value.* from parameter_catalog.project_parameter_values value
       join parameter_catalog.project_parameter_bindings binding on binding.id=value.binding_id
@@ -166,7 +177,7 @@ describe("permanent definition deletion through the authenticated API LOGIN", ()
     expect(await objects()).toEqual(beforeObjects);
   });
 
-  it("reports unfinished physical cleanup, then retries idempotently without a second audit", async () => {
+  it("shares pending cleanup with another administrator, isolates organizations and retries without a preview", async () => {
     let failures = 1;
     const storage: ObjectStore = { ...fixture.storage, delete: async key => {
       if (key === originalArchiveRef && failures-- > 0) throw new Error("Injected object-store outage");
@@ -177,10 +188,35 @@ describe("permanent definition deletion through the authenticated API LOGIN", ()
     expect(first.status, first.bodyText).toBe(409);
     expect((first.body as ErrorBody).error.details.reason).toBe("definition-erasure-cleanup-pending");
     expect((await fixture.root.query("select id from parameter_catalog.parameter_definitions where id=$1", [Y_DEFINITION_ID])).rows).toEqual([]);
-    const retry = await request("platform", "DELETE", path(Y_DEFINITION_ID), { previewToken: impact.previewToken }, storage);
+    await fixture.root.query("update user_role_bindings set role_id='platform-admin' where user_id in ($1,$2) and project_id is null",
+      [DELETION_ACTORS.admin, DELETION_ACTORS.other]);
+    const list = await request("admin", "GET", "/api/v2/catalog/definition-erasures");
+    expect(list.status, list.bodyText).toBe(200);
+    expect(list.body).toMatchObject({ items: [{ definitionId: Y_DEFINITION_ID, deletedAt: expect.any(String), pendingObjectCount: 1 }] });
+    expect((await request("other", "GET", "/api/v2/catalog/definition-erasures")).body).toEqual({ items: [] });
+    const cleanupPath = `/api/v2/catalog/definition-erasures/${Y_DEFINITION_ID}/retry-cleanup`;
+    expect((await request("other", "POST", cleanupPath, undefined, storage)).status).toBe(404);
+    expect((await request("admin", "POST", `/api/v2/catalog/definition-erasures/not-deleted/retry-cleanup`)).status).toBe(404);
+    await fixture.root.query(`create function public.reject_cleanup_audit() returns trigger language plpgsql as $$
+      begin if new.action='definition-cleanup-retried' then raise exception 'Injected audit failure'; end if; return new; end; $$`);
+    await fixture.root.query("create trigger reject_cleanup_audit before insert on audit_events for each row execute function public.reject_cleanup_audit()");
+    try {
+      expect((await request("admin", "POST", cleanupPath, undefined, storage)).status).toBe(500);
+      await expect(fixture.storage.get(originalArchiveRef)).resolves.toBeDefined();
+    } finally {
+      await fixture.root.query("drop trigger reject_cleanup_audit on audit_events");
+      await fixture.root.query("drop function public.reject_cleanup_audit()");
+    }
+    const retry = await request("admin", "POST", cleanupPath, undefined, storage);
     expect(retry.status, retry.bodyText).toBe(200);
-    const again = await request("platform", "DELETE", path(Y_DEFINITION_ID), { previewToken: impact.previewToken }, storage);
+    const again = await request("admin", "POST", cleanupPath, undefined, storage);
     expect(again.status, again.bodyText).toBe(200);
+    const originalDeleteReplay = await request("platform", "DELETE", path(Y_DEFINITION_ID), { previewToken: impact.previewToken }, storage);
+    expect(originalDeleteReplay.status, originalDeleteReplay.bodyText).toBe(200);
+    expect((await request("platform", "GET", "/api/v2/catalog/definition-erasures")).body).toEqual({ items: [] });
+    const cleanupAudits = await fixture.root.query("select actor_user_id,metadata from audit_events where action='definition-cleanup-retried' and target_id=$1 and organization_id is null", [Y_DEFINITION_ID]);
+    expect(cleanupAudits.rows).toHaveLength(2);
+    expect(cleanupAudits.rows[0]).toMatchObject({ actor_user_id: DELETION_ACTORS.admin });
     expect((await auditRows(Y_DEFINITION_ID)).rows).toHaveLength(1);
     expect((await fixture.root.query<{ pending_object_refs: string[] }>("select pending_object_refs from parameter_catalog.definition_erasures where definition_id=$1", [Y_DEFINITION_ID])).rows[0]?.pending_object_refs).toEqual([]);
     await expect(fixture.storage.get(originalArchiveRef)).rejects.toThrow();
