@@ -132,7 +132,7 @@ describe("log report signals", () => {
     renderReport();
     expect(screen.getByRole("tab", { name: "报告", selected: true })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "信号" }));
-    expect(screen.getByText("暂无信号。历史记录可能尚未提取通用信号。")).toBeInTheDocument();
+    expect(screen.getByText("暂无信号。")).toBeInTheDocument();
     expect(screen.getByText("暂无行模板。")).toBeInTheDocument();
   });
 

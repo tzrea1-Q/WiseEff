@@ -35857,6 +35857,9 @@
               "fileSizeBytes": {
                 "type": "number"
               },
+              "canDelete": {
+                "type": "boolean"
+              },
               "status": {
                 "type": "string",
                 "enum": [
@@ -36777,6 +36780,9 @@
               "fileSizeBytes": {
                 "type": "number"
               },
+              "canDelete": {
+                "type": "boolean"
+              },
               "status": {
                 "type": "string",
                 "enum": [
@@ -37558,6 +37564,9 @@
                 },
                 "fileSizeBytes": {
                   "type": "number"
+                },
+                "canDelete": {
+                  "type": "boolean"
                 },
                 "status": {
                   "type": "string",
@@ -43573,6 +43582,9 @@
               },
               "fileSizeBytes": {
                 "type": "number"
+              },
+              "canDelete": {
+                "type": "boolean"
               },
               "status": {
                 "type": "string",

@@ -1063,6 +1063,8 @@ for (const route of consistencyReadOnlyRoutes) {
             contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
           });
           if (routePath === "/logs") {
+            await expect(page.getByRole("region", { name: "日志任务区", exact: true }).getByRole("tablist", { name: "日志辅助信息" })).toBeVisible();
+            await expect(page.getByRole("region", { name: "日志记录", exact: true }).getByRole("tablist")).toHaveCount(0);
             await page.getByRole("complementary", { name: "历史日志记录" })
               .getByRole("button", { name: /charging-foldback\.log/ }).click();
             await expect(page.getByRole("region", { name: "分析结果" })).toBeVisible();

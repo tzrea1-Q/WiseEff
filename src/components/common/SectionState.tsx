@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import type { ReactNode } from "react";
 
 type SectionSkeletonProps = {
   label: string;
@@ -18,15 +19,17 @@ export function SectionSkeleton({ label }: SectionSkeletonProps) {
 }
 
 type SectionEmptyProps = {
+  icon?: ReactNode;
   title?: string;
   message: string;
   actionLabel?: string;
   onAction?: () => void;
 };
 
-export function SectionEmpty({ title, message, actionLabel, onAction }: SectionEmptyProps) {
+export function SectionEmpty({ icon, title, message, actionLabel, onAction }: SectionEmptyProps) {
   return (
     <div className="section-empty">
+      {icon}
       {title ? <strong>{title}</strong> : null}
       <p>{message}</p>
       {actionLabel && onAction ? (

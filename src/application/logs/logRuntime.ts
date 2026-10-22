@@ -34,7 +34,7 @@ export type LogRuntimeActions = {
   forgetLog?(logId: string): void;
   refresh(query?: LogListQuery, options?: { notifyOnFailure?: boolean }): Promise<void>;
   upload(input: LogUploadInput): Promise<void>;
-  rerun(input: LogRerunInput): Promise<void>;
+  rerun(input: LogRerunInput, options?: { notifyOnFailure?: boolean }): Promise<void>;
   archive(logId: string): Promise<void>;
   unarchive(logId: string): Promise<void>;
   submitFeedback(input: LogFeedbackInput): Promise<void>;
@@ -252,10 +252,11 @@ export function createLogRuntimeActions({
     }
   };
 
-  const runApiMutation = async (mutation: (api: LogAnalysisRepository) => Promise<void>) => {
+  const runApiMutation = async (mutation: (api: LogAnalysisRepository) => Promise<void>, options?: { notifyOnFailure?: boolean }) => {
     try {
       await mutation(requireRepository(repository));
     } catch (error) {
+      if (options?.notifyOnFailure === false) throw error;
       if (isAlreadyNotified(error)) {
         throw error;
       }
@@ -301,7 +302,7 @@ export function createLogRuntimeActions({
         }
       });
     },
-    async rerun(input) {
+    async rerun(input, options) {
       if (mode !== "api") {
         dispatch({ type: "LOG_ADMIN_REANALYZE_LOG", logId: input.logId });
         return;
@@ -315,7 +316,7 @@ export function createLogRuntimeActions({
         }
         dispatch({ type: "UPSERT_LOG_RECORD", log: result.log });
         await pollJobUntilTerminal(api, result.job, dispatch, pollSchedule, generations, activeGeneration);
-      });
+      }, options);
     },
     async archive(logId) {
       if (mode !== "api") {

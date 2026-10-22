@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { AuthContext, BackendPermission } from "../auth/types";
 import { ApiError } from "../../shared/http/errors";
 import { makeTestAuthContext } from "../../testing/authContext";
-import { requireLogAnalyze, requireLogArchive, requireLogFeedback, requireLogUpload, requireLogView } from "./policy";
+import { canDeleteLog, requireLogAnalyze, requireLogArchive, requireLogFeedback, requireLogUpload, requireLogView } from "./policy";
 
 function authContext(permissions: BackendPermission[], isActive = true): AuthContext {
   return makeTestAuthContext({
@@ -32,6 +32,16 @@ function expectForbidden(action: () => void, permission: BackendPermission) {
 }
 
 describe("log policy", () => {
+  it("allows only active same-organization owners of failed logs while preserving admin powers", () => {
+    const owner = authContext(["logs:view"]);
+    expect(canDeleteLog(owner, { status: "failed", submitted_by_user_id: owner.user.id })).toBe(true);
+    expect(canDeleteLog(owner, { status: "failed", submitted_by_user_id: "someone-else" })).toBe(false);
+    expect(canDeleteLog(owner, { status: "complete", submitted_by_user_id: owner.user.id })).toBe(false);
+    expect(canDeleteLog(owner, { status: "processing", submitted_by_user_id: owner.user.id })).toBe(false);
+    expect(canDeleteLog(authContext(["logs:view"], false), { status: "failed", submitted_by_user_id: owner.user.id })).toBe(false);
+    expect(canDeleteLog({ ...owner, user: { ...owner.user, organizationId: "foreign" } }, { status: "failed", submitted_by_user_id: owner.user.id })).toBe(false);
+    expect(canDeleteLog(authContext(["logs:admin-domains"]), { status: "complete", submitted_by_user_id: "someone-else" })).toBe(true);
+  });
   it("allows log view permission even when the user is inactive", () => {
     expect(() => requireLogView(authContext(["logs:view"], false))).not.toThrow();
   });
