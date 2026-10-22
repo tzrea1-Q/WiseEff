@@ -19,7 +19,7 @@ const organizationId = "org-chargelab";
 const submitterUserId = "acceptance-product-feedback-user";
 const submitterRoleBindingId = "acceptance-product-feedback-user-hardware-user";
 const descriptionPrefix = "PFB acceptance product feedback";
-const submitDescription = `${descriptionPrefix} sidebar submit ${Date.now()}`;
+const submitDescription = `${descriptionPrefix} footer submit ${Date.now()}`;
 const adminDescription = `${descriptionPrefix} admin triage ${Date.now()}`;
 const adminNote = "Acceptance triage note: routed to beta response owner.";
 const onePixelPngBase64 =
@@ -210,12 +210,12 @@ test.describe("Product feedback browser acceptance", () => {
     await cleanupProductFeedbackAcceptanceRows();
   });
 
-  test("submits sidebar feedback with an optional image and persists it", async ({ page }, testInfo) => {
+  test("submits footer feedback with an optional image and persists it", async ({ page }, testInfo) => {
     // @acceptance PFB-SUBMIT-001
     // @operation PFB-SUBMIT-001
     await page.goto("/parameters");
 
-    await page.getByRole("complementary", { name: "主导航侧边栏" }).getByRole("button", { name: "问题反馈" }).click();
+    await page.locator('footer[aria-label="页脚信息"]').getByRole("button", { name: "问题反馈" }).click();
     const dialog = page.getByRole("dialog", { name: "问题反馈" });
     await expect(dialog).toBeVisible();
     const feedbackType = dialog.getByRole("combobox", { name: "反馈类型", exact: true });
@@ -268,7 +268,7 @@ test.describe("Product feedback browser acceptance", () => {
 
     await recordOperationEvidence({
       operationId: "PFB-SUBMIT-001",
-      title: "sidebar feedback submit with optional image",
+      title: "footer feedback submit with optional image",
       status: "passed",
       role: "Admin",
       route: "/parameters",

@@ -64,7 +64,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "PFB-SUBMIT-001",
     workflow: "I",
-    title: "Active user submits product feedback from the sidebar with description and optional images; API persists it and the UI shows success.",
+    title: "Active user submits product feedback from the footer with description and optional images; API persists it and the UI shows success.",
     required: true
   },
   {
@@ -162,7 +162,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "SHELL-FOOTER-001",
     workflow: "A",
     title:
-      "Included routes expose one page-ending footer with current-page feedback; the homepage does not duplicate its footer, approved contact protocols remain safe, and auth/bootstrap/error/download/full-height-workbench exclusions stay unchanged.",
+      "Included routes expose one page-ending footer with current-page feedback; the homepage does not duplicate its footer, approved contact protocols remain safe, and auth/bootstrap/error/download exclusions stay unchanged.",
     required: true
   },
   {

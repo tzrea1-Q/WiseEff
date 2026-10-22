@@ -268,11 +268,6 @@
   --shell-sidebar-border: #dfe5f3;
   --shell-nav-text: #566070;
   --shell-topbar-shadow: 0 4px 16px rgba(16, 28, 45, 0.04);
-  --feedback-entry-bg: #e8f7fb;
-  --feedback-entry-bg-hover: #dff3f8;
-  --feedback-entry-text: #003d74;
-  --feedback-entry-text-hover: #002d59;
-  --feedback-entry-meta: #456474;
 
   /* ── Xiaoze assistant tokens ── */
   --xiaoze-brand: var(--app-primary);
@@ -400,11 +395,6 @@
   --shell-sidebar-border: var(--border);
   --shell-nav-text: var(--text-secondary);
   --shell-topbar-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-  --feedback-entry-bg: color-mix(in srgb, var(--app-secondary) 12%, var(--surface));
-  --feedback-entry-bg-hover: color-mix(in srgb, var(--app-secondary) 18%, var(--surface));
-  --feedback-entry-text: var(--text);
-  --feedback-entry-text-hover: var(--text);
-  --feedback-entry-meta: var(--text-muted);
 
   /* Xiaoze assistant */
   --xiaoze-surface-muted: color-mix(in srgb, var(--accent) 12%, var(--bg));
@@ -782,13 +772,6 @@ body {
   padding-top: var(--space-3);
 }
 
-.sidebar-collapsed :is(.feedback-entry) {
-  align-items: center;
-  margin-bottom: var(--space-2);
-  min-height: var(--space-10);
-  padding: 0;
-}
-
 .sidebar-collapsed :is(.primary-nav-action, .nav-item) {
   justify-content: center;
   width: calc(var(--space-12) + var(--space-1));
@@ -822,11 +805,11 @@ body {
 }
 
 .nav-group {
-  margin: 0 0 var(--space-4);
+  margin: 0 0 var(--space-2);
 }
 
 .nav-group-label {
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-3);
 }
 
 .nav-item {
@@ -881,43 +864,6 @@ body {
   flex: 0 0 auto;
   padding: var(--space-4) 0 0;
   border-top: 1px solid var(--shell-sidebar-border);
-}
-
-.feedback-entry {
-  align-items: flex-start;
-  margin-bottom: var(--space-3);
-  min-height: calc(var(--space-12) + var(--space-2));
-  padding: var(--space-3);
-  color: var(--feedback-entry-text);
-  background: var(--feedback-entry-bg);
-  border: 1px solid color-mix(in srgb, var(--app-secondary) 18%, transparent);
-  box-shadow: var(--shadow-1);
-}
-
-.feedback-entry:hover {
-  color: var(--feedback-entry-text-hover);
-  background: var(--feedback-entry-bg-hover);
-}
-
-.feedback-entry span,
-.feedback-entry strong,
-.feedback-entry small {
-  display: block;
-}
-
-.feedback-entry span {
-  min-width: 0;
-  line-height: 1.22;
-}
-
-.feedback-entry small {
-  margin-top: 2px;
-  overflow: hidden;
-  color: var(--feedback-entry-meta);
-  font-size: var(--text-xs);
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .main-shell {
@@ -1859,6 +1805,15 @@ body {
   border-top: 1px solid var(--border);
   color: var(--text-muted);
   font-size: var(--text-xs);
+}
+
+.shell-footer .app-footer {
+  margin: 0 var(--page-gutter);
+  padding: var(--space-2) 0;
+}
+
+.shell-footer {
+  flex: 0 0 auto;
 }
 
 .app-footer__meta,

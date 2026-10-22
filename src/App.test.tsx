@@ -2196,7 +2196,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it.each(["/parameter-review", "/parameter-submissions"])("keeps %s focused on work and moves version metadata into the account popover", async (path) => {
     window.history.replaceState(null, "", path);
     renderAppForCurrentPath();
-    expect(screen.queryByLabelText("页脚信息", { selector: "footer" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("页脚信息", { selector: "footer" })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "问题反馈" })).toHaveLength(1);
     expect(screen.queryByText("Driven by AI")).not.toBeInTheDocument();
     expect(document.querySelector(".topbar-subtitle")).not.toBeInTheDocument();
@@ -3792,23 +3792,24 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(dialog).getByText("/parameter-home")).toBeInTheDocument();
   });
 
-  it("omits the application footer from the full-height project configuration workbench", () => {
+  it("keeps feedback available in a footer below the full-height project configuration workbench", () => {
     window.history.replaceState(null, "", "/parameter-admin/projects/project-1/configuration");
 
     renderAppForCurrentPath();
 
-    expect(screen.queryByLabelText("页脚信息", { selector: "footer" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("页脚信息", { selector: "footer" })).toBeInTheDocument();
   });
 
-  it("provides a left-bottom feedback entry for internal testing feedback", async () => {
+  it("provides a single footer feedback entry for internal testing feedback", async () => {
     window.history.replaceState(null, "", "/parameter-home");
 
     renderAppForCurrentPath();
 
     const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
-    const feedbackEntry = within(sidebar).getByRole("button", { name: "问题反馈" });
+    const feedbackEntry = within(screen.getByLabelText("页脚信息", { selector: "footer" })).getByRole("button", { name: "问题反馈" });
     expect(feedbackEntry).toBeInTheDocument();
-    expect(feedbackEntry.closest(".feedback-entry")).toBeInTheDocument();
+    expect(within(sidebar).queryByRole("button", { name: "问题反馈" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "问题反馈" })).toHaveLength(1);
     expect(within(sidebar).queryByRole("button", { name: "我的反馈" })).not.toBeInTheDocument();
 
     fireEvent.click(feedbackEntry);
@@ -3918,8 +3919,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     renderAppForCurrentPath();
 
-    const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
-    fireEvent.click(within(sidebar).getByRole("button", { name: "问题反馈" }));
+    const footer = screen.getByLabelText("页脚信息", { selector: "footer" });
+    fireEvent.click(within(footer).getByRole("button", { name: "问题反馈" }));
 
     const dialog = screen.getByRole("dialog", { name: "问题反馈" });
     expect(dialog).toHaveClass("feedback-dialog");
