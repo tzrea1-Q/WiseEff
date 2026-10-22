@@ -12,6 +12,35 @@ const editorCapability: KnowledgeCapability = { userId: "u-xu-yun", canView: tru
 describe("KnowledgeAdminPage", () => {
   beforeEach(() => window.history.replaceState(null, "", "/knowledge-admin"));
 
+  it.each([
+    ["drafts", "小泽知识草稿", "暂无待审阅的小泽知识草稿。"],
+    ["index", "知识索引状态", "暂无索引记录。"],
+    ["archived", "已归档知识条目", "暂无已归档条目。"]
+  ])("offers one knowledge-library next step in the empty %s list", async (tab, tableName, message) => {
+    window.history.replaceState(null, "", `/knowledge-admin?tab=${tab}`);
+    const repository = createMockKnowledgeRepository();
+    vi.spyOn(repository, "list").mockResolvedValue({ items: [] });
+    const health = await repository.getIndexHealth();
+    vi.spyOn(repository, "getIndexHealth").mockResolvedValue({ ...health, items: [] });
+    render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
+    const table = await screen.findByRole("table", { name: tableName });
+    await within(table).findByText(message);
+    const emptyState = table.querySelector<HTMLElement>(".section-empty")!;
+    const nextSteps = emptyState.querySelectorAll("button, a");
+    expect(nextSteps).toHaveLength(1);
+    expect(within(emptyState).getByRole("link", { name: "前往知识库" })).toHaveAttribute("href", "/knowledge");
+    expect(screen.getAllByRole("button", { name: "刷新" })).toHaveLength(1);
+  });
+
+  it("names the draft panel from its tab and explains capabilities without permission codes", async () => {
+    render(<KnowledgeAdminPage repository={createMockKnowledgeRepository()} capability={manageCapability} />);
+    await screen.findByRole("table", { name: "小泽知识草稿" });
+    expect(screen.getByRole("tabpanel")).toHaveAccessibleName("小泽草稿");
+    expect(screen.getAllByText("小泽草稿")).toHaveLength(1);
+    expect(screen.getByText(/知识编辑者可发布本人会话的草稿/)).toBeInTheDocument();
+    expect(screen.queryByText(/knowledge:(edit|manage)/)).not.toBeInTheDocument();
+  });
+
   it.each(["markdown", "file"] as const)("edits an archived %s entry in place without restoring it", async (contentForm) => {
     window.history.replaceState(null, "", "/knowledge-admin?tab=archived");
     const repository = createMockKnowledgeRepository();
@@ -39,7 +68,7 @@ describe("KnowledgeAdminPage", () => {
     const entry = (await repository.list({ status: "draft", sourceType: "agent" })).items[0]!;
     render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
     const user = userEvent.setup();
-    const table = await screen.findByRole("table", { name: "Agent 知识草稿队列" });
+    const table = await screen.findByRole("table", { name: "小泽知识草稿" });
     const row = within(table).getByText(entry.title).closest("tr")!;
     await user.click(within(row).getByRole("button", { name: /：更多$/ }));
     await user.click(screen.getByRole("menuitem", { name: "彻底删除" }));
@@ -92,7 +121,7 @@ describe("KnowledgeAdminPage", () => {
     expect(await screen.findByRole("table", { name: "知识索引状态" })).toBeVisible();
     window.history.pushState(null, "", "/knowledge-admin?tab=unknown");
     page.rerender(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
-    expect(screen.getByRole("tab", { name: "Agent 草稿发布队列" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "小泽草稿" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getAllByRole("table")).toHaveLength(1);
   });
 
@@ -100,7 +129,7 @@ describe("KnowledgeAdminPage", () => {
     window.history.replaceState(null, "", "/knowledge-admin?tab=archived&keep=1#detail");
     render(<KnowledgeAdminPage repository={createMockKnowledgeRepository()} capability={manageCapability} />);
     expect(await screen.findByRole("table", { name: "已归档知识条目" })).toBeVisible();
-    expect(screen.queryByRole("table", { name: "Agent 知识草稿队列" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "小泽知识草稿" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "检索索引健康" }));
     expect(screen.getByRole("tabpanel")).toHaveAccessibleName("检索索引健康");
     expect(window.location.search).toBe("?tab=index&keep=1");
@@ -190,7 +219,7 @@ describe("KnowledgeAdminPage", () => {
     render(<KnowledgeAdminPage repository={repository} capability={manageCapability} onNavigate={onNavigate} />);
     const user = userEvent.setup();
 
-    const queue = await screen.findByRole("table", { name: "Agent 知识草稿队列" });
+    const queue = await screen.findByRole("table", { name: "小泽知识草稿" });
     const ownRow = within(queue).getByText("小泽沉淀:充电异常断电根因排查").closest("tr")! as HTMLElement;
     expect(within(ownRow).getByText(/创建人 u-xu-yun/)).toBeInTheDocument();
     expect(within(ownRow).getByText("mock-xiaoze-session-1")).toBeInTheDocument();
@@ -223,7 +252,7 @@ describe("KnowledgeAdminPage", () => {
 
     render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
 
-    const queue = await screen.findByRole("table", { name: "Agent 知识草稿队列" });
+    const queue = await screen.findByRole("table", { name: "小泽知识草稿" });
     const row = within(queue).getByText("小泽沉淀:充电异常断电根因排查").closest("tr")! as HTMLElement;
     expect(within(row).getByText(/创建人 已注销用户/)).toBeInTheDocument();
   });
@@ -233,7 +262,7 @@ describe("KnowledgeAdminPage", () => {
     render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
     const user = userEvent.setup();
 
-    const queue = await screen.findByRole("table", { name: "Agent 知识草稿队列" });
+    const queue = await screen.findByRole("table", { name: "小泽知识草稿" });
     const row = within(queue).getByText("小泽沉淀:充电异常断电根因排查").closest("tr")! as HTMLElement;
     await user.click(within(row).getByRole("button", { name: /：更多$/ }));
     await user.click(screen.getByRole("menuitem", { name: "发布" }));
@@ -250,7 +279,7 @@ describe("KnowledgeAdminPage", () => {
     render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
     const user = userEvent.setup();
 
-    const queue = await screen.findByRole("table", { name: "Agent 知识草稿队列" });
+    const queue = await screen.findByRole("table", { name: "小泽知识草稿" });
     const row = within(queue).getByText("小泽沉淀:无线充异物检测误报处置").closest("tr")! as HTMLElement;
     await user.click(within(row).getByRole("button", { name: /：更多$/ }));
     await user.click(screen.getByRole("menuitem", { name: "拒绝归档" }));
@@ -276,7 +305,7 @@ describe("KnowledgeAdminPage", () => {
     const repository = createMockKnowledgeRepository({ canManage: false });
     render(<KnowledgeAdminPage repository={repository} capability={editorCapability} />);
 
-    const queue = await screen.findByRole("table", { name: "Agent 知识草稿队列" });
+    const queue = await screen.findByRole("table", { name: "小泽知识草稿" });
     const ownRow = within(queue).getByText("小泽沉淀:充电异常断电根因排查").closest("tr")! as HTMLElement;
     await userEvent.click(within(ownRow).getByRole("button", { name: /：更多$/ }));
     expect(screen.getByRole("menuitem", { name: "发布" })).not.toHaveAttribute("data-disabled");
@@ -296,6 +325,7 @@ describe("KnowledgeAdminPage", () => {
     expect(within(table).getByText("快充温控调参经验")).toBeInTheDocument();
     expect(within(table).getByText("失败")).toBeInTheDocument();
     expect(within(table).getByText("索引失败，请稍后重试或联系管理员。")).toBeInTheDocument();
+    expect(within(table).getByText("索引失败，请稍后重试或联系管理员。")).toHaveAttribute("title", "服务暂时不可用，请稍后重试。");
   });
 
   it("retries a failed entry back into the queue", async () => {

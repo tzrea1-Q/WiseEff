@@ -130,7 +130,10 @@ describe("knowledge batch management", () => {
     expect(batch).toHaveBeenCalledTimes(2);
   });
 
-  it("names failed entries and keeps successful outcomes visible when summary auditing fails", async () => {
+  it.each([
+    ["批次汇总审计写入失败，逐条结果已保留。", "批次汇总审计写入失败"],
+    ["Error: /srv/knowledge/audit.js", "服务暂时不可用，请稍后重试。"]
+  ])("names failed entries and keeps successful outcomes visible when summary auditing fails: %s", async (summaryError, expectedMessage) => {
     const repository = createMockKnowledgeRepository();
     const own = await repository.createMarkdown({ title: "失败条目", tags: [], contentMarkdown: "test" });
     const removed = await repository.createMarkdown({ title: "已删除条目", tags: [], contentMarkdown: "test" });
@@ -139,7 +142,7 @@ describe("knowledge batch management", () => {
       { entryId: own.id, title: own.title, status: "failed", entry: null, error: { code: "INTERNAL_ERROR", message: "Internal server error." } },
       { entryId: removed.id, title: null, status: "refused", entry: null, error: { code: "NOT_FOUND", message: "Knowledge entry was not found." } },
       { entryId: success.id, title: success.title, status: "succeeded", entry: { ...success, status: "published" }, error: null }
-    ], summaryError: "批次汇总审计写入失败，逐条结果已保留。" });
+    ], summaryError });
     render(<KnowledgePage repository={repository} capability={capability} />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("checkbox", { name: `选择 ${own.title}` }));
@@ -154,7 +157,8 @@ describe("knowledge batch management", () => {
     expect(report).toHaveTextContent("失败");
     expect(report).toHaveTextContent("条目写入失败");
     expect(report).toHaveTextContent("条目不存在或无权查看");
-    expect(screen.getByRole("alert")).toHaveTextContent("批次汇总审计写入失败");
+    expect(screen.getByRole("alert")).toHaveTextContent(expectedMessage);
+    expect(screen.getByRole("alert")).not.toHaveTextContent("/srv/knowledge");
   });
 
   it("clears the batch on repository changes and ignores completion from the previous context", async () => {

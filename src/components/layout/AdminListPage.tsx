@@ -12,7 +12,7 @@ type AdminListPageProps<Row> = {
   notice?: ReactNode;
   table: Omit<DataTableProps<Row>, "toolbar" | "renderRowActions" | "compactControls">;
   rowActions?: (row: Row) => RowActionMenuProps;
-  emptyState: Required<Pick<ComponentProps<typeof SectionEmpty>, "message" | "actionLabel" | "onAction">>;
+  emptyState: ComponentProps<typeof SectionEmpty>;
   detailDrawer?: ReactNode;
   tableState?: ReactNode;
 };

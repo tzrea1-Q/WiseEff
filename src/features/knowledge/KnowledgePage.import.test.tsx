@@ -11,7 +11,8 @@ const capability = { userId: "u-xu-yun", canView: true, canEdit: true, canManage
 async function chooseFiles(files: File[], repository = createMockKnowledgeRepository()) {
   const view = render(<KnowledgePage repository={repository} capability={capability} />);
   const user = userEvent.setup({ applyAccept: false });
-  await user.click(screen.getByRole("button", { name: "批量导入" }));
+  await user.click(screen.getByRole("button", { name: "新建条目" }));
+  await user.click(screen.getByRole("menuitem", { name: "批量导入" }));
   const dialog = screen.getByRole("dialog", { name: "批量导入" });
   await user.upload(within(dialog).getByTestId("file-drop-zone-input"), files);
   return { ...view, user, dialog, repository };

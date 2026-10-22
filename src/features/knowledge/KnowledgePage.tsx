@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, FilePlus2, RefreshCw, SquarePen } from "lucide-react";
+import { DropdownMenu } from "radix-ui";
+import { Bot, ChevronDown, RefreshCw, SquarePen, Search } from "lucide-react";
 
 import { formatKnowledgePageLabel, knowledgeEntryHref, parseKnowledgeEntryQuery } from "@/domain/knowledge/citations";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
@@ -23,6 +24,7 @@ import {
 import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import { PageInsightBar, type Column } from "@/components/admin";
 import { Button } from "@/components/ui/button";
+import { Empty, EmptyHeader, EmptyMedia, EmptyDescription } from "@/components/ui/empty";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { AdminListPage } from "@/components/layout/AdminListPage";
@@ -103,6 +105,7 @@ export function KnowledgePage({
   const [checkedIds, setCheckedIds] = useState<string[]>([]);
   const [batch, setBatch] = useState<{ action: KnowledgeBatchInput["action"]; entries: KnowledgeEntry[] } | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const createTrigger = useRef<HTMLButtonElement>(null);
   const [editorEntry, setEditorEntry] = useState<KnowledgeEntry | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -483,21 +486,7 @@ export function KnowledgePage({
       <PageInsightBar
         variant="info"
         headline={loading ? "知识条目统计加载中…" : listError ? "知识条目统计暂不可用" : `已发布 ${publishedCount} 条 · 草稿 ${draftCount} 条`}
-        description="组织级工程知识库:调参经验、故障案例、硬件手册与流程规范。发布是进入检索的唯一门槛。"
-        actions={
-          capability.canEdit
-            ? [
-                {
-                  label: "新建 Markdown 条目",
-                  onClick: () => {
-                    setEditorEntry(null);
-                    setEditorOpen(true);
-                  },
-                  variant: "primary"
-                }
-              ]
-            : []
-        }
+        actions={[]}
       />
 
       {canBatch && !searchQuery && checkedEntries.length > 0 ? <div role="group" aria-label="批量管理" className="flex flex-wrap items-center gap-2">
@@ -518,26 +507,8 @@ export function KnowledgePage({
                 onClick={() => dispatchXiaozeOpenHandoff("knowledge-ask")}
               >
                 <Bot data-icon="inline-start" />
-                问知识库(小泽)
+                问小泽
               </Button>
-            ) : null}
-            {capability.canEdit ? (
-              <>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setUploadEntry(null);
-                    setUploadOpen(true);
-                  }}
-                >
-                  <FilePlus2 data-icon="inline-start" />
-                  上传文件条目
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => setImportOpen(true)}>批量导入</Button>
-              </>
             ) : null}
             <Button type="button" variant={capability.canEdit ? "outline" : "default"} size="sm" onClick={() => {
               void loadEntries();
@@ -547,39 +518,40 @@ export function KnowledgePage({
               刷新
             </Button>
             {capability.canEdit ? (
-                <Button
-                  type="button"
-                  variant="default"
-                  size="sm"
-                  onClick={() => {
-                    setEditorEntry(null);
-                    setEditorOpen(true);
-                  }}
-                >
-                  <SquarePen data-icon="inline-start" />
-                  新建条目
-                </Button>
+              <DropdownMenu.Root modal={false}>
+                <DropdownMenu.Trigger asChild>
+                  <Button ref={createTrigger} type="button" size="sm"><SquarePen data-icon="inline-start" />新建条目<ChevronDown aria-hidden="true" /></Button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content className="row-action-menu__content" align="end"
+                    onCloseAutoFocus={(event) => { if (editorOpen || uploadOpen || importOpen) event.preventDefault(); }}>
+                    <DropdownMenu.Item className="row-action-menu__item button-size-sm" onSelect={() => { createTrigger.current?.focus(); setEditorEntry(null); setEditorOpen(true); }}>编写条目</DropdownMenu.Item>
+                    <DropdownMenu.Item className="row-action-menu__item button-size-sm" onSelect={() => { createTrigger.current?.focus(); setUploadEntry(null); setUploadOpen(true); }}>上传文件</DropdownMenu.Item>
+                    <DropdownMenu.Item className="row-action-menu__item button-size-sm" onSelect={() => { createTrigger.current?.focus(); setImportOpen(true); }}>批量导入</DropdownMenu.Item>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
             ) : null}
           </span>} filterBar={
         <form
-          className="flex flex-wrap items-center gap-2"
+          className="flex w-full min-w-0 items-center gap-2"
           onSubmit={(event) => {
             event.preventDefault();
             void runSearch();
           }}
         >
           <SearchField
-            className="knowledge-search"
+            className="min-w-0 flex-1"
             value={searchInput}
             onValueChange={setSearchInput}
-            placeholder="检索已发布知识(支持中文与英文全文)"
+            placeholder="检索已发布知识"
             ariaLabel="检索知识库"
             loading={searching}
           />
-          <Button type="submit" variant="outline" size="sm" disabled={searching} aria-busy={searching || undefined}>
+          <Button type="submit" variant="outline" size="sm" className="shrink-0" disabled={searching} aria-busy={searching || undefined}>
             检索
           </Button>
-          {!searchQuery && canBatch ? <label className="flex items-center gap-2 text-sm">
+          {!searchQuery && canBatch ? <label className="flex shrink-0 items-center gap-2 text-sm">
             <input type="checkbox" checked={pendingSuggestions} onChange={(event) => { setCheckedIds([]); setPendingSuggestions(event.target.checked); }} />
             待处理建议
           </label> : null}
@@ -594,10 +566,10 @@ export function KnowledgePage({
         tableState={searchQuery ? (
           <div className="flex flex-col gap-2" aria-label="检索结果">
             {!searching && !searchError ? <p className="text-xs text-muted-foreground">
-              “{searchQuery}” 命中 {searchResults.length} 条已发布知识(草稿与已归档不参与检索)。
+              “{searchQuery}” 命中 {searchResults.length} 条已发布知识（草稿与已归档不参与检索）。
               {searchRetrieval ? (
                 <span className="ml-1" data-retrieval-mode={searchRetrieval.mode}>
-                  检索模式:{knowledgeRetrievalModeLabels[searchRetrieval.mode]}
+                  检索模式：{knowledgeRetrievalModeLabels[searchRetrieval.mode]}
                 </span>
               ) : null}
             </p> : null}
@@ -632,9 +604,7 @@ export function KnowledgePage({
                 </li>
               ))}
               {!searching && !searchError && searchResults.length === 0 ? (
-                <li className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
-                  没有命中已发布的知识条目。
-                </li>
+                <li><Empty><EmptyHeader><EmptyMedia variant="icon"><Search /></EmptyMedia><EmptyDescription>没有命中已发布的知识条目。</EmptyDescription></EmptyHeader></Empty></li>
               ) : null}
             </ul>
           </div>
@@ -643,7 +613,7 @@ export function KnowledgePage({
         )}
         table={{ ariaLabel: "知识条目列表", rows: filteredRows, rowKey: (entry) => entry.id, columns,
           onRowClick: (entry) => { setCitation(null); setSelectedId(entry.id); }, selectedRowKeys: checkedEntries.length ? checkedIds : undefined,
-          selectedRowKey: selectedId ?? undefined, pageSize: 10 }}
+          selectedRowKey: selectedId ?? undefined, pageSize: 10, emptyState: <Empty><EmptyHeader><EmptyMedia variant="icon"><Search /></EmptyMedia><EmptyDescription>{rows.length === 0 ? "暂无知识条目。" : "当前筛选条件下没有条目。"}</EmptyDescription></EmptyHeader></Empty> }}
         rowActions={(entry) => ({ label: `${entry.title} 操作`,
           primaryAction: { id: "view", label: "查看", onSelect: () => { setCitation(null); setSelectedId(entry.id); } },
           items: [
@@ -651,8 +621,7 @@ export function KnowledgePage({
             ...(capability.canManage ? [{ id: "delete", label: "彻底删除", destructive: true as const, onRequestConfirmation: () => requestDelete(entry) }] : [])
           ]
         })}
-        emptyState={{ message: rows.length === 0 ? "知识库还是空的。创建第一条调参经验或上传一份硬件手册。" : "当前筛选条件下没有条目。",
-          actionLabel: "重新加载", onAction: () => { void loadEntries(); } }}
+        emptyState={{ message: rows.length === 0 ? "暂无知识条目。" : "当前筛选条件下没有条目。" }}
       />
 
       {batch ? <KnowledgeBatchDialog {...batch} repository={repository} onClose={() => {
@@ -738,6 +707,18 @@ export function KnowledgePage({
         open={Boolean(revisionsEntry)}
         entry={revisionsEntry}
         loadRevisions={(entryId) => repository.listRevisions(entryId)}
+        onViewFile={async (revision) => {
+          if (!revisionsEntry) return;
+          const tab = window.open("", "_blank");
+          if (!tab) throw new Error("无法打开新标签页，请允许弹出窗口后重试。");
+          tab.opener = null;
+          try {
+            tab.location.href = await repository.getFileObjectUrl(revisionsEntry.id, revision.id);
+          } catch (error) {
+            tab.close();
+            throw error;
+          }
+        }}
         canRestore={Boolean(revisionsEntry && canGovernEntry(revisionsEntry, capability))}
         onRestore={async (revision, expectedHeadRevisionNumber) => {
           if (!revisionsEntry) return;
