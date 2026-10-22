@@ -119,7 +119,7 @@ export const S2_SCH_0241_FINGERPRINT =
 export const S2_SCH_0245_FINGERPRINT =
   "6b373aebaeae82091d7d3e86de2a385ba1ab73786a7b14d131333c486b66db38";
 
-/** 0248, measured with the unchanged readCanonicalSchemaFingerprint inventory on
+/** 0255, measured with the unchanged readCanonicalSchemaFingerprint inventory on
  * fresh PostgreSQL: adds source_anchor_restoration_matches and
  * assert_administrator_source_transitions; changes protect_pinned_source_file,
  * assert_member_removal_tombstone and assert_project_value_source_pin_owner.
