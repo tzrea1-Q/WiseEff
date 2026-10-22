@@ -7,6 +7,6 @@ export const administratorMemberRemovalPreviewResponseSchema = z.object({ item: 
     sourceName: z.string(), format: z.enum(["json", "dts"]), role: z.string(), sortOrder: z.number(), checksum: z.string(), sizeBytes: z.number() })),
   dependencies: z.array(z.object({ file: z.string(), kind: z.enum(["include", "overlay"]), target: z.string() })),
   parameterImpacts: z.array(z.object({ propertyName: z.string(), fromSource: z.string().nullable(), toSource: z.string().nullable() })),
-  impact: z.object({ nodeRemovals: z.number().int().nonnegative(), nodeAdditions: z.number().int().nonnegative(), removedBindings: z.number().int().nonnegative(), retainedBindings: z.number().int().nonnegative(), exposedBindings: z.number().int().nonnegative() }) }) });
+  impact: z.object({ restoredParameters: z.number().int().nonnegative().optional(), nodeRemovals: z.number().int().nonnegative(), nodeAdditions: z.number().int().nonnegative(), removedBindings: z.number().int().nonnegative(), retainedBindings: z.number().int().nonnegative(), exposedBindings: z.number().int().nonnegative() }) }) });
 export const administratorMemberRemovalApplyResponseSchema = z.object({ item: z.object({ requestId: z.string(), tombstoneId: z.string(),
   successorConfigRevisionId: z.string(), replayed: z.boolean() }) });

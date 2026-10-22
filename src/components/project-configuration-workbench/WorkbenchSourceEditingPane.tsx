@@ -302,6 +302,7 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
         {mixedEndings ? <p role="note">原文件混用了换行形式，编辑后可能统一为 LF，请在差异中核对。</p> : null}
         {attempt?.preview ? <>
           <p>{attempt.preview.impact?.parameterChanges ?? 0} 项参数变化 · 新增 {attempt.preview.impact?.nodeAdditions ?? 0} 个节点 · 删除 {attempt.preview.impact?.nodeRemovals ?? 0} 个节点</p>
+          {attempt.preview.impact?.restoredParameters ? <p>恢复 {attempt.preview.impact.restoredParameters} 个已删除参数，保留原身份及历史。</p> : null}
           <div className="workbench-source-save-dialog__diff" role="region" aria-label="DTS 修改差异">
             <Suspense fallback={<p role="status">正在加载差异…</p>}><DtsEditor sessionKey={`${key}:save-diff`} resetKey={previewDiff}
               text={previewDiff} readOnly ariaLabel="DTS 修改差异源码" /></Suspense>

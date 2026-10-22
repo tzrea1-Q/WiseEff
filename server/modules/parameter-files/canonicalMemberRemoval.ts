@@ -13,7 +13,7 @@ import { DefinitionRevisionId, ParameterDefinitionId, serializeContract, type Co
 import { readSourceRegistrationAgreement } from "../parameter-bindings/binding";
 import { asValueClient, listObservedProperties, rawTextToPayload, syncPublishedCatalogProjectValuesInTransaction,
   resolveObservedSubject, parseCompatibles, loadActiveOrganizationSourceRegistrations, lockSourceCatalogGovernance } from "../parameter-bindings/catalogProjectValueSync";
-import { loadSourceBindingCohortReadOnly, hasSourceConfigurationDrafts, hasDeletedSourceBinding, readOwnedCurrentBinding } from "../parameter-bindings/values";
+import { loadSourceBindingCohortReadOnly, hasSourceConfigurationDrafts, readOwnedCurrentBinding } from "../parameter-bindings/values";
 import { assertCanonicalValueConstraints } from "../parameter-bindings/values/service";
 import { digestProjectValuePayload, deriveHistoryEventId, deriveProjectValueId,
   casCurrentTip, insertBindingHistoryEvent, insertProjectValue, loadBindingById, loadProjectValueById,
@@ -31,11 +31,13 @@ import { canonicalSourceMemberMatchesCurrentFile, loadCanonicalSourceCohort,
   loadCanonicalSourceSnapshot, lockCanonicalSourceCohort, recordCanonicalPermissionRefusal,
   requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "./canonicalSource";
 import { MAX_PARAMETER_SOURCE_BYTES, parseJsonSource, readJsonSourceValue } from "./jsonSource";
-import { createDtsToolchainRunner } from "./dtsToolchain";
+import { createDtsToolchainRunner, type DtsToolchainRunner } from "./dtsToolchain";
+import { loadFormerRootOverlayFiles } from "./configSetSnapshot";
 import { loadSnapshot, loadSourceRevisionCatalogSnapshots, requireCurrentSourceAdministrator, sourceRevisionDigest, type SourceRevisionNewProperty } from "./sourceRevisionService";
 import { isStructuralPropertyKey } from "../parameter-topology/parameterSurface";
 import { deriveDtsSourceRef } from "../dts/sourceRef";
 import { rethrowSourceTransactionError } from "./sourceVersion";
+import { applySourceRestoration, matchingDeletedSourceAnchors, prepareSourceRestorations, sourceRestorationNodes, type SourceRestoration } from "./sourceRestoration";
 
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 const same = (left: unknown, right: unknown) => serializeContract(left as ContractJsonValue) === serializeContract(right as ContractJsonValue);
@@ -62,6 +64,7 @@ export type CanonicalMemberRemovalProof = Readonly<{
   proofDigest: string;
   configuration?: { entryFile: string; includeSearchPaths: string[]; overlayOrder: string[]; continuity?: ReviewedSourceContinuity };
   newProperties?: SourceRevisionNewProperty[];
+  restorations?: SourceRestoration[];
   originTransfers?: Array<{ bindingId: string; oldValueId: string; sourcePinId: string; fromFileId: string; toFileId: string }>;
 }>;
 
@@ -169,7 +172,7 @@ async function inspectMemberRemoval(
 /** Composition is rooted in the saved manifest, including files with no Binding. */
 async function inspectAdministratorMemberRemoval(tx: Database, storage: ObjectStore, auth: AuthContext,
   input: { projectId: string; configSetId: string; fileId: string }, snapshot: CatalogSnapshot | null,
-  snapshots?: ReadonlyMap<string, CatalogSnapshot>, requestId?: string) {
+  snapshots?: ReadonlyMap<string, CatalogSnapshot>, requestId?: string, toolchain?: DtsToolchainRunner) {
   const currentCatalog = await lockSourceCatalogGovernance(tx, auth.organization.id);
   if (snapshot ? currentCatalog?.id !== snapshot.release.id || currentCatalog.digest !== snapshot.release.digest : currentCatalog) {
     conflict("Catalog 已更新，请刷新配置并重新预览。");
@@ -219,23 +222,29 @@ async function inspectAdministratorMemberRemoval(tx: Database, storage: ObjectSt
   }
   for (const target of revision.overlay_order) dependencies.push({ file: revision.entry_file, kind: "overlay", target });
   let nodeRemovals = 0;
+  let nodeAdditions = 0;
   const sourceProperties: SourceRevisionNewProperty[] = [];
   let effective: ReturnType<typeof resolveDtsConfigSet>["effective"] | undefined;
+  const restorationScope = { organizationId: auth.organization.id, projectId: input.projectId, configSetId: input.configSetId };
+  let anchors: Awaited<ReturnType<typeof matchingDeletedSourceAnchors>> = [];
   if (members.some((member) => member.format === "dts")) {
     const sourceFiles = new Map(survivors.filter((member) => member.format === "dts").map((member) => [member.sourceName,
       { content: files.find((row) => row.name === member.sourceName)!.content, fileVersionId: member.fileVersionId }]));
     if (!survivors.some((row) => row.format === "dts" && row.role === "base" && row.sourceName === revision.entry_file)) {
-      throw new ApiError("VALIDATION_FAILED", "不能移除当前 DTS 根文件。请先在配置管理中设置有效的替代根文件。", { reason: "missing-base" });
+      throw new ApiError("VALIDATION_FAILED", "不能移除当前 DTS 根文件。请先将其他 DTS 文件设为根文件。", { reason: "missing-base" });
     }
     const resolved = resolveDtsConfigSet({ ...configuration, files: sourceFiles, requireExactOrigins: true });
     effective = resolved.effective;
     const errors = resolved.diagnostics.filter((row) => row.severity === "error" || /dangling|unresolved/.test(row.code));
     if (errors.length) throw new ApiError("VALIDATION_FAILED", `移除后存在未解决的 include 或节点引用：${errors.map((row) => `${row.fileName ?? "配置"}：${row.message}`).join("；")}。请先更新引用文件，再重新预览。`, { reason: "unresolved-source-dependency", diagnostics: errors });
-    const validation = await createDtsToolchainRunner().validate({ ...configuration, files: sourceFiles }, { mode: "release" });
+    const formerRootOverlayFiles = await loadFormerRootOverlayFiles(tx, input.configSetId, survivors, overlayOrder);
+    const validation = await (toolchain ?? createDtsToolchainRunner()).validate({ ...configuration, files: sourceFiles, formerRootOverlayFiles }, { mode: "release" });
     if (!validation.ok || validation.mode !== "release") throw new ApiError("VALIDATION_FAILED", "移除后的 DTS 配置无法构建，请修复配置文件后重新预览。", { reason: validation.failureCode, diagnostics: validation.diagnostics });
+    anchors = await matchingDeletedSourceAnchors(tx, restorationScope, resolved.effective.nodesByLocator, survivors);
     configuration.continuity = await prepareReviewedSourceContinuity(tx, { organizationId: auth.organization.id, projectId: input.projectId,
       configSetId: input.configSetId, baseConfigRevisionId: revision.id, effectiveNodes: resolved.effective.nodesByLocator,
-      sourceDigest: sourceRevisionDigest(survivors.map((member) => [member.fileId, member.checksum])) });
+      sourceDigest: sourceRevisionDigest(survivors.map((member) => [member.fileId, member.checksum])),
+      restorationNodes: sourceRestorationNodes(anchors) });
     if (snapshot) {
       snapshot = await loadOrganizationCatalogSnapshot(tx, auth.organization.id, snapshot);
       const registrations = new Map((await loadActiveOrganizationSourceRegistrations(tx, { organizationId: auth.organization.id })).map((row) => [row.subjectId, row.id]));
@@ -258,8 +267,10 @@ async function inspectAdministratorMemberRemoval(tx: Database, storage: ObjectSt
         }
       }
     }
-    nodeRemovals = (await tx.query<{ count: number }>(`select count(*)::int as count from public.dts_logical_node_revisions
-      where config_revision_id=$1 and logical_node_id<>all($2::text[])`, [revision.id, configuration.continuity.nodes.map((node) => node.logicalNodeId)])).rows[0]!.count;
+    const previousNodes = (await tx.query<{ logical_node_id: string }>(
+      "select logical_node_id from public.dts_logical_node_revisions where config_revision_id=$1", [revision.id])).rows;
+    nodeRemovals = previousNodes.filter((row) => !configuration.continuity!.nodes.some((node) => node.logicalNodeId === row.logical_node_id)).length;
+    nodeAdditions = configuration.continuity.nodes.filter((node) => !previousNodes.some((row) => row.logical_node_id === node.logicalNodeId)).length;
   }
   const cohort: CanonicalMemberRemovalProof["cohort"][number][] = [];
   const originTransfers: NonNullable<CanonicalMemberRemovalProof["originTransfers"]> = [];
@@ -293,14 +304,13 @@ async function inspectAdministratorMemberRemoval(tx: Database, storage: ObjectSt
       sourceProperties.splice(existing, 1);
     }
   }
+  const restorations = await prepareSourceRestorations(tx, restorationScope, sourceProperties, anchors,
+    snapshots ?? new Map(snapshot ? [[snapshot.release.id, snapshot]] : []));
+  for (const restored of restorations) cohort.push({ ...restored, locator: restored.locator as Record<string, ContractJsonValue> });
   for (const property of sourceProperties) {
     const definition = snapshot?.getDefinitionRevision({ definitionId: ParameterDefinitionId(property.definitionId), revisionId: DefinitionRevisionId(property.definitionRevisionId) });
     if (!definition || definition.status !== "found") conflict("重新生效的参数定义不可用。");
     assertCanonicalValueConstraints(definition.revision, property.payload, true);
-    if (await hasDeletedSourceBinding(tx, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: input.configSetId,
-      fileId: property.fileId, logicalNodeId: property.logicalNodeId, definitionId: property.definitionId })) {
-      throw new ApiError("CONFLICT", "移除后将恢复曾删除的参数身份，请先在身份映射中明确恢复关系。", { reason: "source-occurrence-restoration-requires-mapping", nodePath: property.nodeLocator, propertyName: property.propertyName });
-    }
   }
   const pending = await tx.query(`select id from public.project_parameter_value_change_requests where organization_id=$1 and project_id=$2 and status='pending'
     and (source_revision_config_set_id=$3 or batch_config_set_id=$3 or member_config_set_id=$3 or config_revision_id=$4)
@@ -310,18 +320,18 @@ async function inspectAdministratorMemberRemoval(tx: Database, storage: ObjectSt
   }
   const base = { kind: "canonical-member-removal" as const, organizationId: auth.organization.id, ...input,
     fileVersionId: removed.fileVersionId, configRevisionId: revision.id, members: members.map(({ storageKey: _key, ...row }) => row), cohort, configuration,
-    newProperties: sourceProperties, originTransfers };
-  return { proof: { ...base, proofDigest: sourceRevisionDigest(base) }, files, dependencies, nodeRemovals };
+    newProperties: sourceProperties, ...(restorations.length ? { restorations } : {}), originTransfers };
+  return { proof: { ...base, proofDigest: sourceRevisionDigest(base) }, files, dependencies, nodeRemovals, nodeAdditions };
 }
 
 export async function previewAdministratorMemberRemoval(db: Database, storage: ObjectStore, auth: AuthContext,
-  input: { projectId: string; configSetId: string; fileId: string }) {
+  input: { projectId: string; configSetId: string; fileId: string }, options: { toolchain?: DtsToolchainRunner } = {}) {
   if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) throw new ApiError("FORBIDDEN", "配置管理员权限不足。");
   const snapshot = await loadSnapshot(db);
   const snapshots = await loadSourceRevisionCatalogSnapshots(db, input.projectId, auth.organization.id, snapshot);
   try {
     return await db.transaction(async (tx) => {
-      const inspected = await inspectAdministratorMemberRemoval(tx, storage, auth, input, snapshot, snapshots);
+      const inspected = await inspectAdministratorMemberRemoval(tx, storage, auth, input, snapshot, snapshots, undefined, options.toolchain);
       return { canApply: true as const, proofToken: inspected.proof.proofDigest, members: inspected.proof.members,
         removedFileId: input.fileId, dependencies: inspected.dependencies,
         parameterImpacts: [...inspected.proof.cohort.flatMap((row) => {
@@ -330,11 +340,12 @@ export async function previewAdministratorMemberRemoval(db: Database, storage: O
           return [{ propertyName: String(row.locator.propertyName ?? row.locator.pointer ?? "参数"),
             fromSource: inspected.proof.members.find((member) => member.fileId === row.fileId)!.sourceName,
             toSource: transfer ? inspected.proof.members.find((member) => member.fileId === transfer.toFileId)!.sourceName : null }];
-        }), ...inspected.proof.newProperties.map((row) => ({ propertyName: row.propertyName, fromSource: null,
+        }), ...[...inspected.proof.newProperties, ...(inspected.proof.restorations ?? [])].map((row) => ({ propertyName: row.propertyName, fromSource: null,
           toSource: inspected.proof.members.find((member) => member.fileId === row.fileId)!.sourceName }))],
-        impact: { nodeRemovals: inspected.nodeRemovals, nodeAdditions: inspected.proof.configuration.continuity?.nodes.filter((node) => node.isNew).length ?? 0,
+        impact: { restoredParameters: inspected.proof.restorations?.length ?? 0, nodeRemovals: inspected.nodeRemovals, nodeAdditions: inspected.nodeAdditions,
           removedBindings: inspected.proof.cohort.filter((row) => row.fileId === input.fileId && !inspected.proof.originTransfers.some((transfer) => transfer.bindingId === row.bindingId)).length,
-          retainedBindings: inspected.proof.cohort.filter((row) => row.fileId !== input.fileId || inspected.proof.originTransfers.some((transfer) => transfer.bindingId === row.bindingId)).length,
+          retainedBindings: inspected.proof.cohort.filter((row) => !inspected.proof.restorations?.some((restored) => restored.bindingId === row.bindingId)
+            && (row.fileId !== input.fileId || inspected.proof.originTransfers.some((transfer) => transfer.bindingId === row.bindingId))).length,
           exposedBindings: inspected.proof.newProperties.length + inspected.proof.originTransfers.length } };
     });
   } catch (error) { rethrowSourceTransactionError(error); }
@@ -342,7 +353,7 @@ export async function previewAdministratorMemberRemoval(db: Database, storage: O
 
 export async function applyAdministratorMemberRemoval(db: Database, storage: ObjectStore, auth: AuthContext,
   input: { projectId: string; configSetId: string; fileId: string; expectedProofToken: string; reason: string; clientMutationId: string },
-  security: CanonicalSourceSecurityContext) {
+  security: CanonicalSourceSecurityContext, options: { toolchain?: DtsToolchainRunner } = {}) {
   await requireCanonicalUserInvocation(auth, security, { projectId: input.projectId, operation: "administrator configuration member removal",
     targetType: "project-parameter-file", targetId: input.fileId });
   const snapshot = await loadSnapshot(db);
@@ -361,7 +372,7 @@ export async function applyAdministratorMemberRemoval(db: Database, storage: Obj
         if (previous.member_mutation_digest !== mutationDigest) conflict("移除操作标识已用于其他输入，请重新预览。");
         requestId = previous.id; proof = previous.member_frozen_proof;
       } else {
-        const inspected = await inspectAdministratorMemberRemoval(tx, storage, auth, { projectId: input.projectId, configSetId: input.configSetId, fileId: input.fileId }, snapshot, snapshots);
+        const inspected = await inspectAdministratorMemberRemoval(tx, storage, auth, { projectId: input.projectId, configSetId: input.configSetId, fileId: input.fileId }, snapshot, snapshots, undefined, options.toolchain);
         proof = inspected.proof;
         if (proof.proofDigest !== input.expectedProofToken) conflict("配置成员、来源或参数值已变化。请重新预览后确认，未移除任何文件。");
         requestId = `pvcr_${randomUUID()}`;
@@ -374,7 +385,7 @@ export async function applyAdministratorMemberRemoval(db: Database, storage: Obj
       }
       return applyReviewedCanonicalMemberRemoval(tx, storage, auth, snapshot, { requestId, submitterUserId: auth.user.id,
         reviewerUserId: auth.user.id, decision: "approve", frozen: proof }, { invocation: security.invocation, traceId: security.requestId,
-        refusalSink: security.refusalSink, applicationMode: "administrator_direct", catalogSnapshots: snapshots });
+        refusalSink: security.refusalSink, applicationMode: "administrator_direct", catalogSnapshots: snapshots, toolchain: options.toolchain });
     });
   } catch (error) { rethrowSourceTransactionError(error); }
 }
@@ -409,7 +420,7 @@ export async function applyReviewedCanonicalMemberRemoval(
   tx: Database, storage: ObjectStore, auth: AuthContext, snapshot: CatalogSnapshot | null,
   review: ReviewedCanonicalMemberRemoval,
   context: { invocation: TrustedInvocationContext; traceId: string; refusalSink: TrustedRefusalAuditSink;
-    applicationMode?: "administrator_direct"; catalogSnapshots?: ReadonlyMap<string, CatalogSnapshot> }
+    applicationMode?: "administrator_direct"; catalogSnapshots?: ReadonlyMap<string, CatalogSnapshot>; toolchain?: DtsToolchainRunner }
 ): Promise<{ requestId: string; tombstoneId: string; successorConfigRevisionId: string; replayed: boolean }> {
   const frozen = review.frozen;
   const security: CanonicalSourceSecurityContext = {
@@ -480,7 +491,7 @@ export async function applyReviewedCanonicalMemberRemoval(
     }
     if (request.status !== 'pending') conflict("Member removal request is not pending.");
     const inspected = direct
-      ? await inspectAdministratorMemberRemoval(tx, storage, auth, { projectId: frozen.projectId, configSetId: frozen.configSetId, fileId: frozen.fileId }, snapshot, context.catalogSnapshots, review.requestId)
+      ? await inspectAdministratorMemberRemoval(tx, storage, auth, { projectId: frozen.projectId, configSetId: frozen.configSetId, fileId: frozen.fileId }, snapshot, context.catalogSnapshots, review.requestId, context.toolchain)
       : await inspectMemberRemoval(tx, storage, auth.organization.id, frozen);
     if (!same(inspected.proof, frozen)) conflict("Member removal source proof is stale.");
     const attribution = trustedDomainAttribution(invocation);
@@ -523,6 +534,15 @@ export async function applyReviewedCanonicalMemberRemoval(
       historyEventId: string; fileId: string; fileVersionId: string;
     }> = [];
     for (const entry of frozen.cohort.filter((row) => row.fileId !== frozen.fileId || frozen.originTransfers?.some((transfer) => transfer.bindingId === row.bindingId))) {
+      const restoration = frozen.restorations?.find((row) => row.bindingId === entry.bindingId);
+      if (restoration) {
+        const property = observed.find((row) => row.fileId === restoration.fileId && row.logicalNodeId === restoration.logicalNodeId && row.propertyKey === restoration.propertyName);
+        const pinned = context.catalogSnapshots?.get(restoration.catalogReleaseId) ?? snapshot;
+        if (!property || !pinned) conflict("恢复参数缺少实际来源或固定定义，所有变更已回滚。");
+        successorBindings.push(await applySourceRestoration(tx, { organizationId: auth.organization.id, projectId: frozen.projectId, configSetId: frozen.configSetId },
+          restoration, { requestId: review.requestId, configRevisionId: successorConfigRevisionId, auditRef: auditEventId, derived: true }, pinned, property));
+        continue;
+      }
       const transfer = frozen.originTransfers?.find((row) => row.bindingId === entry.bindingId);
       const pinnedSnapshot = context.catalogSnapshots?.get(entry.catalogReleaseId) ?? snapshot;
       const binding = await loadBindingById(asValueClient(tx), entry.bindingId, "update");
@@ -622,6 +642,7 @@ export async function applyReviewedCanonicalMemberRemoval(
         tombstoneId, configSetId: frozen.configSetId, configRevisionId: frozen.configRevisionId,
         fileVersionId: frozen.fileVersionId, bindings: removedBindings,
         successorConfigRevisionId, successorBindings,
+        restoredParameters: frozen.restorations?.length ?? 0,
         reviewRequestId: review.requestId, submitterUserId: review.submitterUserId,
         proofDigest: frozen.proofDigest, applicationMode: direct ? "administrator_direct" : "separate_review", appliedByUserId: auth.user.id
       }, traceId: context.traceId

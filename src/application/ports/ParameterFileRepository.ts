@@ -321,7 +321,7 @@ export type ParameterFileSourcePreview = {
   proposedDigest?: string;
   configSetId?: string;
   diagnostics?: ParameterFileCandidateDiagnostic[];
-  impact?: { parameterChanges: number; nodeAdditions: number; nodeRemovals: number };
+  impact?: { parameterChanges: number; nodeAdditions: number; nodeRemovals: number; restoredParameters?: number };
   reviewers?: Array<{ userId: string; name: string }>;
   /** Server-frozen cohort/source-pin proof; present for canonical previews. */
   proofToken?: string;
@@ -391,7 +391,7 @@ export type SourceRevisionRequest = {
   createdAt: string;
   updatedAt: string;
   proofDigest: string;
-  impact: { parameterChanges: number; nodeAdditions: number; nodeRemovals: number };
+  impact: { parameterChanges: number; nodeAdditions: number; nodeRemovals: number; restoredParameters?: number };
   before?: string;
   after?: string;
   appliedSourceResult?: { configRevisionId: string; fileVersionId: string } | null;

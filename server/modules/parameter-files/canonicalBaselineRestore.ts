@@ -18,6 +18,7 @@ import { insertConfigRevision, insertConfigRevisionMembers, nextConfigRevisionNu
 import type { ConfigRevisionMemberRole } from "../parameter-topology/types";
 import { loadOrganizationCatalogSnapshot, lockOrganizationModuleRecognition } from "../parameter-modules/recognitionSettings";
 import { createDtsToolchainRunner } from "./dtsToolchain";
+import { loadFormerRootOverlayFiles } from "./configSetSnapshot";
 import { MAX_PARAMETER_SOURCE_BYTES, parseJsonSource, readJsonSourceValue } from "./jsonSource";
 import { freezeSourceRevisionRequest, loadSnapshot, loadSourceRevisionCatalogSnapshots, requireCurrentSourceAdministrator, sameSourceRevision, sourceRevisionDigest } from "./sourceRevisionService";
 import { requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "./canonicalSource";
@@ -160,7 +161,8 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     const files = new Map(dts.map((row) => [row.sourceName,{ content: contents.get(`${row.fileId}:${row.fileVersionId}`)!,fileVersionId: row.fileVersionId }]));
     resolved = resolveDtsConfigSet({ entryFile,includeSearchPaths,overlayOrder,files,requireExactOrigins: true });
     if (resolved.diagnostics.some((row) => row.severity === "error" || /dangling|unresolved/.test(row.code))) throw new ApiError("VALIDATION_FAILED","恢复组合包含未解决的 include/overlay 引用。",{ diagnostics: resolved.diagnostics });
-    const validated = await createDtsToolchainRunner().validate({ entryFile,includeSearchPaths,overlayOrder,files },{ mode: "release" });
+    const formerRootOverlayFiles = await loadFormerRootOverlayFiles(tx, configSetId, members, overlayOrder);
+    const validated = await createDtsToolchainRunner().validate({ entryFile,includeSearchPaths,overlayOrder,files,formerRootOverlayFiles },{ mode: "release" });
     if (!validated.ok || validated.mode !== "release") throw new ApiError("VALIDATION_FAILED","恢复组合未通过 DTS 工具链；当前配置未改变。",{ diagnostics: validated.diagnostics });
     continuity = await prepareReviewedSourceContinuity(tx,{ organizationId: auth.organization.id,projectId: input.projectId,
       configSetId,baseConfigRevisionId: current.id,restorationBaseConfigRevisionId: targetRevision.id,

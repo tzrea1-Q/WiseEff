@@ -63,6 +63,7 @@ const allowedCatalogIdentifiers = new Set([
   "is_replaced_current_binding",
   // #1305: read-only exact logical-anchor/effective-property agreement.
   "source_origin_matches",
+  "source_anchor_restoration_matches",
 ]);
 
 const snapshotRelease = {

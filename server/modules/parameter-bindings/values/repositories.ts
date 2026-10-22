@@ -49,6 +49,10 @@ export type ProjectValueRow = {
 };
 
 export type DeletedSourceAnchorRow = {
+  bindingId: string; oldValueId: string; sourcePinId: string; sourceOccurrenceId: string;
+  definitionId: string; effectiveRevisionId: string; catalogReleaseId: string; valueDigest: string;
+  subjectId: string; registrationId: string; fileVersionId: string; baseConfigRevisionId: string;
+  valueKind: string; configSetId: string;
   format: "dts" | "json";
   locator: Record<string, unknown>;
   fileId: string;
@@ -79,16 +83,25 @@ export async function loadDeletedSourceAnchors(
   input: { organizationId: string; projectId: string; configSetId: string },
 ): Promise<DeletedSourceAnchorRow[]> {
   return (await tx.query<DeletedSourceAnchorRow>(
-    `select pin.format,pin.locator,pin.file_id as "fileId",occurrence.logical_node_id as "logicalNodeId",
+    `select binding.id as "bindingId",value.id as "oldValueId",pin.id as "sourcePinId",
+       binding.source_occurrence_id as "sourceOccurrenceId",binding.definition_id as "definitionId",
+       binding.effective_revision_id as "effectiveRevisionId",binding.catalog_release_id as "catalogReleaseId",
+       binding.subject_id as "subjectId",binding.registration_id as "registrationId",value.value_digest as "valueDigest",
+       value.value_kind as "valueKind",occurrence.config_set_id as "configSetId",
+       pin.file_version_id as "fileVersionId",base_pin.config_revision_id as "baseConfigRevisionId",
+       pin.format,pin.locator,pin.file_id as "fileId",occurrence.logical_node_id as "logicalNodeId",
        coalesce(logical.node_locator,base_node.node_path) as "nodeLocator"
        from parameter_catalog.project_value_source_pins pin
        join parameter_catalog.${projectParameterValues} value on value.id=pin.project_value_id and value.value_state='deleted'
        join parameter_catalog.project_parameter_bindings binding on binding.id=pin.binding_id and binding.current_value_id=value.id
        join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=pin.source_occurrence_id
+       join parameter_catalog.project_value_source_pins base_pin on base_pin.id=pin.base_source_pin_id
        left join public.dts_logical_node_revisions logical on logical.logical_node_id=occurrence.logical_node_id
          and logical.config_revision_id=pin.config_revision_id
        left join public.dts_node_occurrences base_node on base_node.id=pin.locator->>'baseNodeOccurrenceId'
-      where pin.organization_id=$1 and pin.project_id=$2 and occurrence.config_set_id=$3 and pin.value_state='deleted'`,
+      where pin.organization_id=$1 and pin.project_id=$2 and occurrence.config_set_id=$3 and pin.value_state='deleted'
+        and not parameter_catalog.is_replaced_current_binding(binding.id)
+      order by value.created_at desc,pin.id desc`,
     [input.organizationId, input.projectId, input.configSetId],
   )).rows;
 }
@@ -403,6 +416,28 @@ export const loadBindingById = async (
   return result.rows[0] ?? null;
 };
 
+/** Only the exact frozen deleted anchor and its newly resolved property can reopen a Binding. */
+async function sourceAnchorRestorationMatches(client: ValueClient, requestId: string, bindingId: string, oldValueId: string, configRevisionId: string) {
+  // Runtime logins are NOINHERIT. Use their existing governance membership for
+  // this read-only definer predicate, then restore the caller before any DML.
+  await client.query("set local role parameter_governance_writer_role");
+  try {
+    return (await client.query<{ allowed: boolean }>("select parameter_catalog.source_anchor_restoration_matches($1,$2,$3,$4) as allowed",
+      [requestId,bindingId,oldValueId,configRevisionId])).rows[0]?.allowed === true;
+  } finally { await client.query("reset role"); }
+}
+
+export async function loadRestorableSourceBinding(client: ValueClient, input: {
+  organizationId: string; projectId: string; bindingId: string; oldValueId: string; requestId: string; configRevisionId: string;
+}) {
+  if (!await sourceAnchorRestorationMatches(client,input.requestId,input.bindingId,input.oldValueId,input.configRevisionId)) return null;
+  return (await client.query<BindingTipRow>(`select binding.* from parameter_catalog.project_parameter_bindings binding
+    where binding.id=$1 and binding.organization_id=$2 and binding.project_id=$3 and binding.current_value_id=$4
+      and exists(select 1 from public.project_parameter_value_change_requests request where request.id=$5 and request.status='pending')
+      and not parameter_catalog.is_replaced_current_binding(binding.id)
+    for update of binding`, [input.bindingId,input.organizationId,input.projectId,input.oldValueId,input.requestId])).rows[0] ?? null;
+}
+
 /** True when a completed definition replacement superseded this Binding.  The
  * port layer uses this to reject a write naming a replaced Binding before it
  * appends anything. */
@@ -511,6 +546,10 @@ export const casCurrentTip = async (
     readonly sourceCommitRequestId?: string;
   },
 ): Promise<boolean> => {
+  const old = input.sourceCommitRequestId ? await loadProjectValueById(client,input.expectedTip) : null;
+  const next = old?.value_state === "deleted" ? await loadProjectValueById(client,input.nextTip) : null;
+  const restoring = next?.binding_id === input.bindingId && next.value_state === "present" && input.sourceCommitRequestId
+    ? await sourceAnchorRestorationMatches(client,input.sourceCommitRequestId,input.bindingId,input.expectedTip,next.config_revision_id) : false;
   const result = await client.query(
     `update parameter_catalog.project_parameter_bindings binding
         set current_value_id = $3,
@@ -534,6 +573,8 @@ export const casCurrentTip = async (
                 'bindingId',binding.id,'oldValueId',$2::text,'sourcePinId',base_pin.id))
               and next_value.value_state=case when exists(select 1 from jsonb_array_elements(request.source_revision_context->'targets') target
                 where target->>'bindingId'=binding.id and target->>'action'='delete') then 'deleted' else 'present' end)
+          or ($5::boolean and exists(select 1 from public.project_parameter_value_change_requests request
+            where request.id=$4 and request.status='pending'))
           or exists (select 1 from public.project_parameter_value_change_requests request
             join parameter_catalog.project_value_source_pins base_pin on base_pin.id=request.source_pin_id
               and base_pin.binding_id=request.binding_id and base_pin.project_value_id=request.base_current_value_id
@@ -609,7 +650,7 @@ export const casCurrentTip = async (
                 'sourceOccurrenceId',binding.source_occurrence_id,'fileId',base_pin.file_id,
                 'fileVersionId',base_pin.file_version_id)))
         )`,
-    [input.bindingId, input.expectedTip, input.nextTip, input.sourceCommitRequestId ?? null],
+    [input.bindingId, input.expectedTip, input.nextTip, input.sourceCommitRequestId ?? null, restoring],
   );
   return (result.rowCount ?? 0) === 1;
 };

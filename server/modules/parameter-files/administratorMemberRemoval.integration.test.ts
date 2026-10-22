@@ -166,7 +166,7 @@ describe("administrator Canonical member removal through the API database role",
     const before = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
     const invalid = await requestJson(server(), path(f.configSetId, f.a.file.id, "removal-preview"), { method: "POST", body: "{}" });
     expect(invalid.status, invalid.bodyText).toBe(400);
-    expect(invalid.bodyText).toContain("替代根文件");
+    expect(invalid.bodyText).toContain("请先将其他 DTS 文件设为根文件");
     expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
     const dependent = await fixture(false, false, true);
     const dependencyBefore = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });

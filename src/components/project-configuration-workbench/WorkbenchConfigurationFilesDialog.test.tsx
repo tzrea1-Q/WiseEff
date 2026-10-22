@@ -2,6 +2,9 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkbenchConfigurationFilesDialog, type WorkbenchConfigurationFilesDialogProps } from "./WorkbenchConfigurationFilesDialog";
+import { WorkbenchSetRootDialog } from "./WorkbenchSetRootDialog";
+import { createCanonicalMemberAdditionClient } from "@/infrastructure/http/canonicalMemberAdditionClient";
+import { createApiClient } from "@/infrastructure/http/apiClient";
 
 afterEach(cleanup);
 
@@ -23,6 +26,57 @@ function props(overrides: Partial<WorkbenchConfigurationFilesDialogProps> = {}):
 }
 
 describe("WorkbenchConfigurationFilesDialog", () => {
+  it("offers set-root only for a checked non-root DTS member", async () => {
+    const user = userEvent.setup(), onSetRoot = vi.fn();
+    const values = props({ canonical: true, onSetRoot });
+    values.members.push({ configSetId: "set", fileId: "next", fileName: "next.dts", format: "dts", role: "misc", sortOrder: 3 });
+    const view = render(<WorkbenchConfigurationFilesDialog {...values} />);
+    for (const name of ["主板.dts", "charging.json"]) {
+      await user.click(screen.getByRole("button", { name: `${name} 更多` }));
+      expect(screen.queryByRole("menuitem", { name: "设为根文件" })).not.toBeInTheDocument();
+      await user.keyboard("{Escape}");
+    }
+    await user.click(screen.getByRole("button", { name: "next.dts 更多" }));
+    await user.click(screen.getByRole("menuitem", { name: "设为根文件" }));
+    expect(onSetRoot).toHaveBeenCalledWith(values.members[2]);
+    for (const gate of [{ canAdmin: false }, { ready: false }, { loading: true }, { error: "读取失败" }]) {
+      view.rerender(<WorkbenchConfigurationFilesDialog {...values} {...gate} />);
+      await user.click(screen.getByRole("button", { name: "next.dts 更多" }));
+      expect(screen.queryByRole("menuitem", { name: "设为根文件" })).not.toBeInTheDocument();
+      await user.keyboard("{Escape}");
+    }
+  });
+
+  it("retries root-swap diagnostics and confirms the exact impact with the keyboard", async () => {
+    const user = userEvent.setup(), onApplied = vi.fn(), requests: Array<Record<string, unknown>> = [];
+    let fail = true;
+    const fetchImpl: typeof fetch = async (input, init) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      if (fail) {
+        fail = false;
+        return new Response(JSON.stringify({ error: { code: "VALIDATION_FAILED", message: "配置引用无法解析，当前配置已保留。",
+          details: { diagnostics: [{ message: "next.dts：找不到引用的节点。" }] } } }), { status: 400 });
+      }
+      return new Response(JSON.stringify({ item: String(input).endsWith("/apply") ? {
+        requestId: "request", fileId: "next", fileVersionId: "version", configRevisionId: "revision"
+      } : { proofToken: "a".repeat(64), configSetId: "set", fileName: "next.dts", format: "dts", members: [],
+        entryFile: "next.dts", includeSearchPaths: ["."], overlayOrder: ["board.dts"], diagnostics: [],
+        impact: { parameterChanges: 1, nodeAdditions: 2, nodeRemovals: 3, retainedBindings: 4, sourceReplacements: 1 } } }), { status: 200 });
+    };
+    render(<WorkbenchSetRootDialog projectId="project" configSetId="set" fileId="next" fileName="next.dts"
+      client={createCanonicalMemberAdditionClient(createApiClient({ baseUrl: "", fetchImpl }))} onDismiss={vi.fn()} onApplied={onApplied} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("当前配置已保留");
+    expect(screen.getByLabelText("来源校验诊断")).toHaveTextContent("找不到引用的节点");
+    expect(screen.getByRole("button", { name: "确认设为根文件" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "重新预览" }));
+    expect(await screen.findByText("参数变化：1；新增节点：2；移除节点：3。")).toBeInTheDocument();
+    expect(screen.getByText("确认后由当前管理员直接提交，并记录实际操作人。")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("切换原因"), "更换根文件");
+    screen.getByRole("button", { name: "确认设为根文件" }).focus();
+    await user.keyboard("{Enter}");
+    expect(onApplied).toHaveBeenCalledOnce();
+    expect(requests.at(-1)).toMatchObject({ fileId: "next", role: "base", setAsRoot: true, proofToken: "a".repeat(64), reason: "更换根文件" });
+  });
   it("opens the Canonical composition preview only for an administrator after source checks", async () => {
     const user = userEvent.setup(), onCanonicalAdd = vi.fn();
     const values = props({ canonical: true, onCanonicalAdd });

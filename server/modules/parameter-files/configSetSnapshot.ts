@@ -6,6 +6,18 @@ import type { ConfigSetRole, ParameterFileFormat } from "./types";
 /** Roles applied over the base when assembling/compiling a config set. */
 const OVERLAY_ROLES = new Set<ConfigSetRole>(["overlay", "charging", "thermal", "misc"]);
 
+/** A normal DTS becomes a compile overlay only after it actually served as this set's root. */
+export async function loadFormerRootOverlayFiles(db: Queryable, configSetId: string,
+  members: ReadonlyArray<{ fileId: string; sourceName: string }>, overlayOrder: string[]) {
+  const roots = (await db.query<{ file_id: string }>(`select distinct member.file_id
+    from public.dts_config_revision_members member
+    join public.dts_config_revisions revision on revision.id=member.config_revision_id
+    where revision.config_set_id=$1 and revision.status='resolved' and member.role='base' and revision.entry_file=member.source_name
+      and member.file_id=any($2::text[])`, [configSetId, members.map((row) => row.fileId)])).rows;
+  return members.filter((row) => overlayOrder.includes(row.sourceName) && roots.some((root) => root.file_id === row.fileId))
+    .map((row) => row.sourceName);
+}
+
 export type ConfigSetSnapshotMember = {
   fileId: string;
   fileName: string;
@@ -37,6 +49,7 @@ export type ConfigSetSnapshot = {
   includeSearchPaths: string[];
   /** DTS overlay file names in application order (all non-base roles). */
   overlayOrder: string[];
+  formerRootOverlayFiles?: string[];
   /** DTS members as validator input. */
   dtsFiles: Array<{ name: string; content: string }>;
   /** DTS members keyed by file name, the shape the DTS toolchain consumes. */
@@ -117,6 +130,7 @@ export async function loadConfigSetSnapshot(
     order by revision.revision_number desc limit 1`,[configSetId,members.length])).rows[0];
   const exactManifest = manifest && Array.isArray(manifest.members) ? manifest : null;
   const sourceName = (fileId: string,fileName: string) => exactManifest?.members.find((row) => row.fileId===fileId)?.sourceName ?? fileName;
+  const overlayOrder = exactManifest?.overlay_order ?? overlays.map((overlay) => overlay.name);
 
   return {
     configSetId,
@@ -124,7 +138,8 @@ export async function loadConfigSetSnapshot(
     skipped,
     entryFile: exactManifest ? exactManifest.entry_file : entryFile,
     includeSearchPaths: exactManifest?.include_search_paths ?? [],
-    overlayOrder: exactManifest?.overlay_order ?? overlays.map((overlay) => overlay.name),
+    overlayOrder,
+    formerRootOverlayFiles: exactManifest ? await loadFormerRootOverlayFiles(db, configSetId, exactManifest.members, overlayOrder) : [],
     dtsFiles: dts.map((member) => ({ name: member.fileName, content: member.content })),
     toolchainFiles: new Map(dts.map((member) => [sourceName(member.fileId,member.fileName), { content: member.content }]))
   };

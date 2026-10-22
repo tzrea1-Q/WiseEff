@@ -127,8 +127,14 @@ export const S2_SCH_0251_FINGERPRINT =
 
 /** 0252 records erasure ownership in the purge INSERT and adds its organization
  * column and scoped receipt reader. 0253 only grants runtime access. */
-export const S2_SCH_LIVE_FINGERPRINT =
+export const S2_SCH_0253_FINGERPRINT =
   "30efc5b90c3c4e8a4a4e70744103ac63a9657d109c2efd4e873926104bdefcb6";
+
+/** 0255 adds the root-swap receipt guard and exact-anchor restoration predicate,
+ * updating three source guards. Measured on fresh PostgreSQL including 0251–0254;
+ * the other five inventory categories and all historical pins remain intact. */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "b91687374e810d2223f8ad7a87212032af99a5ae8dff78e9fce496d2b32d404e";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

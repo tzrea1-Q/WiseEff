@@ -9,6 +9,7 @@ import type {
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { WorkbenchMemberRemovalDialog } from "./WorkbenchMemberRemovalDialog";
+import { WorkbenchSetRootDialog } from "./WorkbenchSetRootDialog";
 import { CanonicalMemberRemovalSubmitDialog } from "@/features/parameter-review/CanonicalMemberRemovalSubmitDialog";
 import { CanonicalBatchSubmitDialog } from "@/features/parameter-review/CanonicalBatchSubmitDialog";
 import { permitsFreshBatchRequest } from "@/application/project-configuration/candidateRequestReceipt";
@@ -158,6 +159,7 @@ export function ProjectConfigurationWorkbench({
 }: ProjectConfigurationWorkbenchProps) {
   const { toast } = useToast();
   const [memberRemovalTarget, setMemberRemovalTarget] = useState<DtsConfigSetMemberFile | null>(null);
+  const [setRootTarget, setSetRootTarget] = useState<DtsConfigSetMemberFile | null>(null);
   const [reviewedMemberRemovalTarget, setReviewedMemberRemovalTarget] = useState<DtsConfigSetMemberFile | null>(null);
   const [sourceUpdateReviewTarget, setSourceUpdateReviewTarget] = useState<HTMLDivElement | null>(null);
   const [singleConflictReview, setSingleConflictReview] = useState<{ candidateId: string; active: boolean } | null>(null);
@@ -2027,6 +2029,7 @@ export function ProjectConfigurationWorkbench({
         onOpenVersions={(fileId) => openInspector("versions", fileId)}
         onAddSourceFile={() => openInspector("candidates")}
         onCanonicalAdd={apiMode ? () => setMemberAdditionOpen(true) : undefined}
+        onSetRoot={apiMode ? setSetRootTarget : undefined}
       /> : null}
       {memberAdditionOpen && selectedConfigSet ? <WorkbenchMemberAdditionDialog projectId={project.id} configSets={configSets}
         initialConfigSetId={selectedConfigSet.id} availableFiles={ungroupedFiles} onDismiss={() => setMemberAdditionOpen(false)}
@@ -2104,6 +2107,14 @@ export function ProjectConfigurationWorkbench({
 
       {taskDock}
 
+      {setRootTarget && selectedConfigSet ? <WorkbenchSetRootDialog projectId={project.id} configSetId={selectedConfigSet.id}
+        fileId={setRootTarget.fileId} fileName={setRootTarget.fileName} onDismiss={() => setSetRootTarget(null)}
+        onApplied={() => {
+          setSetRootTarget(null); workspaceLoadSession.retryMembers(); workspaceLoadSession.retryFiles();
+          workspaceLoadSession.retrySource(); workspaceLoadSession.retryStructure();
+          setSourceWorkflowReloadToken((value) => value + 1); setVersionsReloadToken((value) => value + 1);
+          if (topologyRepository) void revisionGate.session.load(project.id, selectedConfigSet.id, topologyRepository);
+        }} /> : null}
       {memberRemovalTarget && selectedConfigSet ? <WorkbenchMemberRemovalDialog
         projectId={project.id}
         configSetId={selectedConfigSet.id}

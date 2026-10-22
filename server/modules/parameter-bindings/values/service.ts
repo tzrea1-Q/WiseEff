@@ -30,6 +30,7 @@ import {
   insertProjectValue,
   insertSuccessAudit,
   loadBindingById,
+  loadRestorableSourceBinding,
   loadBindingReplacementState,
   loadHistoryByRevision,
   loadOwnedSourceRefs,
@@ -178,11 +179,13 @@ export async function hasDeletedCurrentValue(tx: Queryable, input: { organizatio
  * row is never current. Locks use the caller's Queryable, without a new connection. */
 export async function readOwnedCurrentBinding(
   tx: Queryable,
-  input: { organizationId: string; projectId: string; bindingId: string; lock?: boolean },
+  input: { organizationId: string; projectId: string; bindingId: string; lock?: boolean;
+    restoration?: { oldValueId: string; requestId: string; configRevisionId: string } },
 ): Promise<OwnedCurrentBindingRead> {
   assertSourceReadScope(input);
   if (!controlFree(input.bindingId)) return { status: "missing" };
-  const row = await loadBindingById(tx as ValueClient, input.bindingId, input.lock ? "update" : "none", { ...input, currentOnly: true });
+  const row = await loadBindingById(tx as ValueClient, input.bindingId, input.lock ? "update" : "none", { ...input, currentOnly: true })
+    ?? (input.restoration ? await loadRestorableSourceBinding(tx as ValueClient, { ...input, ...input.restoration }) : null);
   if (!row) {
     const retained = await loadBindingById(tx as ValueClient, input.bindingId, "none", input);
     return { status: retained ? "replaced" : "missing" };
@@ -514,7 +517,12 @@ const writeAppend = async (
   client: ValueClient,
   command: AppendProjectValueCommand,
 ): Promise<Result<ProjectValueWriteResult, ProjectValueConflict>> => {
-  const stored = await loadBindingById(client, command.binding.id, "update");
+  const active = await loadBindingById(client, command.binding.id, "update");
+  const restoration = !active && command.sourceCommit && command.valueState !== "deleted" ? await loadRestorableSourceBinding(client, {
+    organizationId: command.binding.organizationId, projectId: command.binding.projectId, bindingId: command.binding.id,
+    oldValueId: command.expectedTip, requestId: command.sourceCommit.requestId, configRevisionId: command.source.configRevisionId
+  }) : null;
+  const stored = active ?? restoration;
   if (!stored) {
     return fail({ kind: "agreement-conflict", reason: "binding-not-found" });
   }
@@ -573,14 +581,14 @@ const writeAppend = async (
     [command.sourceCommit.requestId,stored.organization_id,stored.project_id,
       JSON.stringify([{ bindingId: stored.id,oldValueId: command.expectedTip }]),
       command.sourceCommit.derived,stored.id,command.expectedTip,command.valueState ?? "present"]);
-    if (request.rows.length !== 1) {
+    if (request.rows.length !== 1 && !restoration) {
       if (stored.current_value_id !== command.expectedTip) return fail({
         kind: "cas-mismatch", bindingId: ParameterBindingId(stored.id),
         expectedTip: command.expectedTip, actualTip: ProjectValueId(stored.current_value_id),
       });
       return fail({ kind: "invalid-command", reason: "source-commit-cohort" });
     }
-    if (expected?.value_state === "deleted" && !(await client.query(`select id from public.project_parameter_value_change_requests
+    if (expected?.value_state === "deleted" && !restoration && !(await client.query(`select id from public.project_parameter_value_change_requests
       where id=$1 and request_kind='configuration_restore' and status='pending'
         and source_revision_context->'cohort' @> $2::jsonb`,[command.sourceCommit.requestId,
       JSON.stringify([{ bindingId: stored.id,oldValueId: command.expectedTip }])])).rows.length) {
@@ -608,7 +616,7 @@ const writeAppend = async (
     return fail({ kind: "invalid-command", reason: "payload" });
   }
 
-  if (command.sourceCommit?.derived && (expected?.value_kind !== command.payload.kind || expected.value_digest !== valueDigest)) {
+  if (command.sourceCommit?.derived && !restoration && (expected?.value_kind !== command.payload.kind || expected.value_digest !== valueDigest)) {
     return fail({ kind: "invalid-command", reason: "source-propagation-value-changed" });
   }
 

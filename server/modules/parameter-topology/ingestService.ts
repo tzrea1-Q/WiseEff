@@ -81,6 +81,7 @@ export type ConfigRevisionIngestOptions = {
 export type ReviewedSourceContinuity = {
   baseConfigRevisionId: string;
   restorationBaseConfigRevisionId?: string;
+  restorationNodes?: Array<{ baseConfigRevisionId: string; nodeLocator: string; logicalNodeId: string }>;
   nodes: Array<Omit<PersistedLogicalNodeRevision, "id"> & { isNew: boolean }>;
 };
 
@@ -359,6 +360,7 @@ async function buildLogicalRevisionsWithContinuity(
     reviewedSource?: ReviewedSourceContinuity;
     continuityBaseConfigRevisionId?: string;
     restorationBaseConfigRevisionId?: string;
+    restorationNodes?: ReviewedSourceContinuity["restorationNodes"];
   },
 ): Promise<ContinuityBuildResult> {
   const previousRows = await listPreviousLogicalNodeSnapshots(tx, {
@@ -378,6 +380,27 @@ async function buildLogicalRevisionsWithContinuity(
       const existing = previousRows.find((entry) => entry.nodeLocator === row.nodeLocator);
       if (existing && existing.logicalNodeId !== row.logicalNodeId) throw new ApiError("CONFLICT","Current and snapshot node identities disagree; explicit mapping is required.");
       if (!existing) previousRows.push(row);
+    }
+  }
+  // Exact deleted anchors can come from different revisions. Import only each
+  // anchor and its parents, never unrelated historical identities at reused paths.
+  for (const anchor of input.reviewedSource?.restorationNodes ?? input.restorationNodes ?? []) {
+    const owned = (await tx.query(`select id from dts_config_revisions where id=$1 and organization_id=$2 and project_id=$3 and config_set_id=$4`,
+      [anchor.baseConfigRevisionId,input.organizationId,input.projectId,input.configSetId])).rows[0];
+    if (!owned) throw new ApiError("CONFLICT", "已删除参数的历史修订不可用。");
+    const historical = await listPreviousLogicalNodeSnapshots(tx, { configSetId: input.configSetId,
+      beforeRevisionNumber: input.revisionNumber, baseConfigRevisionId: anchor.baseConfigRevisionId });
+    if (historical.find((row) => row.nodeLocator === anchor.nodeLocator)?.logicalNodeId !== anchor.logicalNodeId) {
+      throw new ApiError("CONFLICT", "已删除参数的历史节点身份不匹配。");
+    }
+    let locator: string | null = anchor.nodeLocator;
+    while (locator) {
+      const row = historical.find((node) => node.nodeLocator === locator);
+      if (!row) throw new ApiError("CONFLICT", "已删除参数的历史父节点不可用。");
+      const existing = previousRows.find((node) => node.nodeLocator === locator);
+      if (existing && existing.logicalNodeId !== row.logicalNodeId) throw new ApiError("CONFLICT", "当前节点与已删除参数的历史身份不一致，无法安全恢复。");
+      if (!existing) previousRows.push(row);
+      locator = parentLocator(locator);
     }
   }
   const previousSnapshotsBase = previousRows.map(toPreviousSnapshot);
@@ -632,6 +655,7 @@ export async function prepareReviewedSourceContinuity(tx: Queryable, input: {
   organizationId: string; projectId: string; configSetId: string; baseConfigRevisionId: string;
   effectiveNodes: Map<string, DtsEffectiveNode>; sourceDigest: string;
   restorationBaseConfigRevisionId?: string;
+  restorationNodes?: ReviewedSourceContinuity["restorationNodes"];
 }): Promise<ReviewedSourceContinuity> {
   const base = (await tx.query<{ revision_number: number }>(
     "select revision_number from dts_config_revisions where id=$1 and organization_id=$2 and project_id=$3 and config_set_id=$4",
@@ -649,6 +673,7 @@ export async function prepareReviewedSourceContinuity(tx: Queryable, input: {
   }));
   return { baseConfigRevisionId: input.baseConfigRevisionId,
     ...(input.restorationBaseConfigRevisionId ? { restorationBaseConfigRevisionId: input.restorationBaseConfigRevisionId } : {}),
+    ...(input.restorationNodes?.length ? { restorationNodes: input.restorationNodes } : {}),
     nodes: prepared.revisions.map(({ id: _id, unitAddress, compatible, ...row }) => ({
     ...row, ...(unitAddress === undefined ? {} : { unitAddress }), ...(compatible === undefined ? {} : { compatible }),
     logicalNodeId: newIds.get(row.logicalNodeId) ?? row.logicalNodeId,

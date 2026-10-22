@@ -62905,6 +62905,9 @@
                     "parameterChanges": {
                       "type": "number"
                     },
+                    "restoredParameters": {
+                      "type": "number"
+                    },
                     "nodeAdditions": {
                       "type": "number"
                     },
@@ -63123,6 +63126,9 @@
                 "type": "object",
                 "properties": {
                   "parameterChanges": {
+                    "type": "number"
+                  },
+                  "restoredParameters": {
                     "type": "number"
                   },
                   "nodeAdditions": {
@@ -63368,6 +63374,9 @@
                 "type": "object",
                 "properties": {
                   "parameterChanges": {
+                    "type": "number"
+                  },
+                  "restoredParameters": {
                     "type": "number"
                   },
                   "nodeAdditions": {
@@ -63748,6 +63757,9 @@
               "impact": {
                 "type": "object",
                 "properties": {
+                  "restoredParameters": {
+                    "type": "number"
+                  },
                   "nodeRemovals": {
                     "type": "number"
                   },
@@ -63800,6 +63812,12 @@
           },
           "fileId": {
             "type": "string"
+          },
+          "setAsRoot": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
           },
           "role": {
             "type": "string",
@@ -63984,6 +64002,9 @@
                   "nodeRemovals": {
                     "type": "number"
                   },
+                  "restoredParameters": {
+                    "type": "number"
+                  },
                   "retainedBindings": {
                     "type": "number"
                   },
@@ -64030,6 +64051,12 @@
           },
           "fileId": {
             "type": "string"
+          },
+          "setAsRoot": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
           },
           "role": {
             "type": "string",
@@ -64384,6 +64411,9 @@
                     "type": "object",
                     "properties": {
                       "parameterChanges": {
+                        "type": "number"
+                      },
+                      "restoredParameters": {
                         "type": "number"
                       },
                       "nodeAdditions": {
