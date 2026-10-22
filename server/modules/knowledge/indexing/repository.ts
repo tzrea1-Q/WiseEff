@@ -1,4 +1,32 @@
-import type { Queryable } from "../../../shared/database/client";
+import type { Database, Queryable } from "../../../shared/database/client";
+
+export type KnowledgeIndexJobClaim = { entryId: string; organizationId: string; startedAt: string };
+
+/** Lock authoring/backfill first, then verify the claim before any projection or outcome write. */
+export async function persistKnowledgeIndexJob(
+  db: Database,
+  claim: KnowledgeIndexJobClaim | undefined,
+  write: (tx: Database) => Promise<void>
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    if (claim) {
+      const entry = await tx.query(
+        `select id from knowledge_entries where organization_id = $1 and id = $2 for update`,
+        [claim.organizationId, claim.entryId]
+      );
+      if (!entry.rows.length) return false;
+      const current = await tx.query(
+        `select entry_id from knowledge_index_status
+         where organization_id = $1 and entry_id = $2 and status = 'processing'
+           and started_at = $3::timestamptz for update`,
+        [claim.organizationId, claim.entryId, claim.startedAt]
+      );
+      if (!current.rows.length) return false;
+    }
+    await write(tx);
+    return true;
+  });
+}
 
 export const knowledgeIndexStates = ["pending", "processing", "succeeded", "failed"] as const;
 export type KnowledgeIndexState = (typeof knowledgeIndexStates)[number];
@@ -161,8 +189,8 @@ const STALE_PROCESSING_INTERVAL = "5 minutes";
  */
 export async function claimNextIndexJob(
   db: Queryable
-): Promise<{ entryId: string; organizationId: string } | null> {
-  const result = await db.query<{ entry_id: string; organization_id: string }>(
+): Promise<KnowledgeIndexJobClaim | null> {
+  const result = await db.query<{ entry_id: string; organization_id: string; started_at: string }>(
     `
     update knowledge_index_status
     set status = 'processing', started_at = now(), updated_at = now()
@@ -175,11 +203,11 @@ export async function claimNextIndexJob(
       limit 1
       for update skip locked
     )
-    returning entry_id, organization_id
+    returning entry_id, organization_id, started_at::text
     `
   );
   const row = result.rows[0];
-  return row ? { entryId: row.entry_id, organizationId: row.organization_id } : null;
+  return row ? { entryId: row.entry_id, organizationId: row.organization_id, startedAt: row.started_at } : null;
 }
 
 export async function markIndexOutcome(
@@ -245,7 +273,7 @@ export async function insertChunks(
     entryId: string;
     organizationId: string;
     revisionId: string;
-    chunks: Array<{ id: string; chunkIndex: number; text: string; embedding: number[] | null }>;
+    chunks: Array<{ id: string; chunkIndex: number; text: string; embedding: number[] | null; pageStart?: number; pageEnd?: number }>;
     vectorSupport: boolean;
   }
 ): Promise<void> {
@@ -253,8 +281,8 @@ export async function insertChunks(
     if (input.vectorSupport) {
       await db.query(
         `
-        insert into knowledge_chunks (id, organization_id, entry_id, revision_id, chunk_index, text, embedding)
-        values ($1, $2, $3, $4, $5, $6, $7::vector)
+        insert into knowledge_chunks (id, organization_id, entry_id, revision_id, chunk_index, text, embedding, page_start, page_end)
+        values ($1, $2, $3, $4, $5, $6, $7::vector, $8, $9)
         `,
         [
           chunk.id,
@@ -263,16 +291,18 @@ export async function insertChunks(
           input.revisionId,
           chunk.chunkIndex,
           chunk.text,
-          chunk.embedding ? toVectorLiteral(chunk.embedding) : null
+          chunk.embedding ? toVectorLiteral(chunk.embedding) : null,
+          chunk.pageStart ?? null,
+          chunk.pageEnd ?? null
         ]
       );
     } else {
       await db.query(
         `
-        insert into knowledge_chunks (id, organization_id, entry_id, revision_id, chunk_index, text)
-        values ($1, $2, $3, $4, $5, $6)
+        insert into knowledge_chunks (id, organization_id, entry_id, revision_id, chunk_index, text, page_start, page_end)
+        values ($1, $2, $3, $4, $5, $6, $7, $8)
         `,
-        [chunk.id, input.organizationId, input.entryId, input.revisionId, chunk.chunkIndex, chunk.text]
+        [chunk.id, input.organizationId, input.entryId, input.revisionId, chunk.chunkIndex, chunk.text, chunk.pageStart ?? null, chunk.pageEnd ?? null]
       );
     }
   }

@@ -101,6 +101,7 @@ Ordered next candidates after the MVP, all compatible with this model:
 5. External agent surface (an MCP wrapper over the HTTP API).
 6. Agent-curated maintenance: dedup, staleness flags, knowledge-gap detection.
 7. User-curated knowledge: editable Markdown/text uploads, knowledge import (files or `.zip`), batch management, the workflow launch, and one consumer contract (knowledge scope, ADR-0049). — **Designed and implemented 2026-10-21** ([#1337](https://github.com/tzrea1-Q/WiseEff/pull/1337)); see [`2026-10-21-knowledge-user-curation.md`](../exec-plans/active/2026-10-21-knowledge-user-curation.md).
+8. Reference suggestions (definition references proposed from property-key mentions, accepted or dismissed by the entry's governors) and PDF page citations (revision-pinned, open at page). — **Designed 2026-10-21**; see [`2026-10-21-knowledge-reference-suggestions-and-page-citations.md`](../exec-plans/active/2026-10-21-knowledge-reference-suggestions-and-page-citations.md).
 
 ## Decision log
 

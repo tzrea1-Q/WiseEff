@@ -40,6 +40,18 @@ const importCountsSchema = z.object({ created: z.number().int(), duplicate_skipp
   extraction_failed: z.number().int(), rejected: z.number().int() });
 
 export const knowledgeDtoSchemaCatalog = {
+  KnowledgeSearchResponse: z.object({
+    items: z.array(z.object({
+      entryId: z.string(), title: z.string(), contentForm: z.enum(knowledgeContentForms), tags: z.array(z.string()),
+      excerpt: z.string(), updatedAt: z.string(), revisionId: z.string().nullable(),
+      pageStart: z.number().int().min(1).nullable().optional().describe("1-based physical PDF start page of the excerpt's chunk; absent for non-PDF or legacy indexes."),
+      pageEnd: z.number().int().min(1).nullable().optional().describe("1-based physical PDF end page of the same chunk and revision.")
+    })),
+    retrieval: z.object({
+      mode: z.enum(["semantic_fts", "fts_only"]), vectorAvailable: z.boolean(), embeddingConfigured: z.boolean(),
+      degradedReason: z.string().optional()
+    })
+  }),
   BatchKnowledgeEntriesRequest: batchKnowledgeEntriesBodySchema,
   BatchKnowledgeEntriesResponse: z.object({ results: z.array(z.object({
     entryId: z.string().uuid(), title: z.string().nullable(), status: z.enum(["succeeded", "refused", "failed"]),

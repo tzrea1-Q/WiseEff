@@ -94,6 +94,8 @@ export const restoreKnowledgeRevisionBodySchema = z.object({
   expectedHeadRevisionNumber: z.number().int().min(1)
 });
 
+export const knowledgeFileContentQuerySchema = z.object({ revisionId: z.string().uuid().optional() });
+
 export const listKnowledgeEntriesQuerySchema = z.object({
   governable: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
   origin: z.enum(knowledgeOrigins).optional(),

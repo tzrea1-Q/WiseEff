@@ -548,7 +548,7 @@ describe("knowledge routes", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(service.getKnowledgeFileContent).toHaveBeenCalledWith(db, objectStore, makeAuth(), ENTRY_ID);
+    expect(service.getKnowledgeFileContent).toHaveBeenCalledWith(db, objectStore, makeAuth(), ENTRY_ID, undefined);
   });
 
   it("maps service NOT_FOUND to a 404 envelope", async () => {

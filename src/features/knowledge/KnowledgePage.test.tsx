@@ -76,6 +76,128 @@ describe("KnowledgePage", () => {
     expect(await repository.get(entry.id)).toMatchObject({ status, title: "新文件标题", tags: ["修正"], headRevisionNumber: 2, file: entry.file });
   });
 
+  it("opens a historical PDF citation at its physical page and pins the file request", async () => {
+    const repository = createMockKnowledgeRepository();
+    const entry = (await repository.list()).items.find((item) => item.file?.contentType === "application/pdf")!;
+    const revisionId = (await repository.listRevisions(entry.id))[0].id;
+    await repository.update(entry.id, { expectedHeadRevisionNumber: entry.headRevisionNumber, title: "新修订" });
+    const getFile = vi.spyOn(repository, "getFileObjectUrl").mockResolvedValue("blob:cited-pdf");
+    const tab = { opener: window, location: { href: "" }, close: vi.fn() };
+    const opened = vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
+    render(<KnowledgePage repository={repository} capability={viewerCapability} initialEntryId={entry.id} initialRevisionId={revisionId} initialPage="3" />);
+    const detail = await screen.findByRole("dialog");
+    expect(within(detail).getByText("引用位置：第 3 页")).toBeInTheDocument();
+    expect(within(detail).getByText("引用的是历史修订")).toBeInTheDocument();
+    await userEvent.setup().click(within(detail).getByRole("button", { name: "打开第 3 页" }));
+    expect(getFile).toHaveBeenCalledWith(entry.id, revisionId);
+    expect(opened).toHaveBeenCalledWith("", "_blank");
+    expect(tab.location.href).toBe("blob:cited-pdf#page=3");
+    expect(tab.opener).toBeNull();
+    opened.mockRestore();
+  });
+  it("shows physical PDF pages beside snippets and leaves results without pages unchanged", async () => {
+    const repository = createMockKnowledgeRepository();
+    const base = (await repository.search("快充")).items[0];
+    vi.spyOn(repository, "search").mockResolvedValue({
+      items: [
+        { ...base, entryId: "pdf-single", title: "单页 PDF", contentForm: "file", excerpt: "单页摘录", pageStart: 3, pageEnd: 3 },
+        { ...base, entryId: "pdf-range", title: "跨页 PDF", contentForm: "file", excerpt: "跨页摘录", pageStart: 7, pageEnd: 9 },
+        { ...base, entryId: "non-pdf", title: "其他格式", excerpt: "章节摘录" },
+        { ...base, entryId: "legacy-pdf", title: "旧 PDF", contentForm: "file", excerpt: "旧摘录", pageStart: null, pageEnd: null }
+      ],
+      retrieval: { mode: "fts_only", vectorAvailable: false, embeddingConfigured: false }
+    });
+    render(<KnowledgePage repository={repository} capability={viewerCapability} />);
+    const user = userEvent.setup();
+    await screen.findByRole("table", { name: "知识条目列表" });
+    await user.type(screen.getByRole("searchbox", { name: "检索知识库" }), "页码");
+    await user.click(screen.getByRole("button", { name: "检索" }));
+    const results = await screen.findByLabelText("检索结果");
+    const single = within(results).getByRole("link", { name: /单页 PDF/ });
+    const href = new URL(single.getAttribute("href")!, "http://localhost");
+    expect(href.searchParams.get("entryId")).toBe("pdf-single");
+    expect(href.searchParams.get("revisionId")).toBe(base.revisionId);
+    expect(href.searchParams.get("page")).toBe("3");
+    expect(within(single).getByText("第 3 页")).toBeInTheDocument();
+    expect(within(single).getByText("单页摘录")).toBeInTheDocument();
+    const range = within(results).getByRole("link", { name: /跨页 PDF/ });
+    expect(within(range).getByText("第 7–9 页")).toBeInTheDocument();
+    expect(within(range).getByText("跨页摘录")).toBeInTheDocument();
+    expect(within(results).getByRole("link", { name: /其他格式/ })).toHaveTextContent("章节摘录");
+    expect(within(results).getByRole("link", { name: /其他格式/ })).toHaveAttribute("href", "/knowledge?entryId=non-pdf");
+    expect(within(results).getByRole("link", { name: /旧 PDF/ })).toHaveAttribute("href", "/knowledge?entryId=legacy-pdf");
+    expect(within(results).getAllByText(/^第 .* 页$/)).toHaveLength(2);
+  });
+
+  it("refuses a missing cited revision rather than opening the head file", async () => {
+    const repository = createMockKnowledgeRepository();
+    const entry = (await repository.list()).items.find((item) => item.file?.contentType === "application/pdf")!;
+    render(<KnowledgePage repository={repository} capability={viewerCapability} initialEntryId={entry.id} initialRevisionId="missing" initialPage="2" />);
+    expect(await screen.findByText("引用的知识条目不存在或不可访问。")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("can reopen the same search citation after closing its detail", async () => {
+    const repository = createMockKnowledgeRepository();
+    const entry = (await repository.list()).items.find((item) => item.file?.contentType === "application/pdf")!;
+    const revision = (await repository.listRevisions(entry.id))[0];
+    vi.spyOn(repository, "search").mockResolvedValue({ items: [{ entryId: entry.id, revisionId: revision.id, title: entry.title, tags: entry.tags, contentForm: "file", excerpt: "PDF 摘录", updatedAt: entry.updatedAt, pageStart: 2, pageEnd: 2 }], retrieval: { mode: "fts_only", vectorAvailable: false, embeddingConfigured: false } });
+    render(<KnowledgePage repository={repository} capability={viewerCapability} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("searchbox", { name: "检索知识库" }), "PDF");
+    await user.click(screen.getByRole("button", { name: "检索" }));
+    const link = await within(await screen.findByLabelText("检索结果")).findByRole("link");
+    await user.click(link);
+    expect(await screen.findByText("引用位置：第 2 页")).toBeInTheDocument();
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "关闭" }));
+    await user.click(link);
+    expect(await screen.findByText("引用位置：第 2 页")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["文件不可访问", "文件不可访问"],
+    ["File unavailable", "打开引用页失败，请稍后重试。"]
+  ])("reports open-page failures (%s) without leaving a blank tab", async (message, copy) => {
+    const repository = createMockKnowledgeRepository();
+    const entry = (await repository.list()).items.find((item) => item.file?.contentType === "application/pdf")!;
+    const revision = (await repository.listRevisions(entry.id))[0];
+    vi.spyOn(repository, "getFileObjectUrl").mockRejectedValue(new Error(message));
+    const tab = { opener: window, location: { href: "" }, close: vi.fn() };
+    const opened = vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
+    render(<KnowledgePage repository={repository} capability={viewerCapability} initialEntryId={entry.id} initialRevisionId={revision.id} initialPage="2" />);
+    const detail = await screen.findByRole("dialog");
+    expect(within(detail).queryByText("引用的是历史修订")).not.toBeInTheDocument();
+    await userEvent.setup().click(within(detail).getByRole("button", { name: "打开第 2 页" }));
+    expect(await within(detail).findByText(copy)).toBeInTheDocument();
+    expect(tab.close).toHaveBeenCalledOnce();
+    opened.mockRestore();
+  });
+
+  it("opens non-PDF search results without loading revisions", async () => {
+    const repository = createMockKnowledgeRepository();
+    const result = (await repository.search("快充")).items[0];
+    const revisions = vi.spyOn(repository, "listRevisions");
+    vi.spyOn(repository, "search").mockResolvedValue({ items: [result], retrieval: { mode: "fts_only", vectorAvailable: false, embeddingConfigured: false } });
+    render(<KnowledgePage repository={repository} capability={viewerCapability} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("searchbox", { name: "检索知识库" }), "快充");
+    await user.click(screen.getByRole("button", { name: "检索" }));
+    const link = within(await screen.findByLabelText("检索结果")).getByRole("link");
+    expect(link).toHaveAttribute("href", `/knowledge?entryId=${result.entryId}`);
+    await user.click(link);
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(revisions).not.toHaveBeenCalled();
+  });
+
+  it.each(["0", "-1", "1.5", "NaN", "9007199254740992"])("ignores invalid physical page %s", async (page) => {
+    const repository = createMockKnowledgeRepository();
+    const entry = (await repository.list()).items.find((item) => item.file?.contentType === "application/pdf")!;
+    render(<KnowledgePage repository={repository} capability={viewerCapability} initialEntryId={entry.id} initialPage={page} />);
+    const detail = await screen.findByRole("dialog");
+    expect(within(detail).queryByText(/引用位置/)).not.toBeInTheDocument();
+    expect(within(detail).queryByRole("button", { name: /打开第/ })).not.toBeInTheDocument();
+  });
+
   it("shows origin in the list and detail and filters by origin", async () => {
     const repository = createMockKnowledgeRepository();
     const uploadedMarkdown = await repository.createMarkdown({ title: "上传的 Markdown", tags: [], contentMarkdown: "文档内容", origin: "uploaded" });

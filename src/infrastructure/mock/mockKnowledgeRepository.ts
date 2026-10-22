@@ -1152,9 +1152,12 @@ export function createMockKnowledgeRepository(
       return clone(entry);
     },
 
-    async getFileObjectUrl(entryId) {
+    async getFileObjectUrl(entryId, revisionId) {
       const entry = requireEntry(entryId);
-      const file = entry.file ? store.files.get(entry.file.id) : undefined;
+      const revision = revisionId ? store.revisions.find((item) => item.entryId === entryId && item.id === revisionId) : null;
+      if (revisionId && !revision) throw mockApiError("NOT_FOUND", "Knowledge revision was not found.");
+      const fileId = revision ? revision.fileId : entry.file?.id;
+      const file = fileId ? store.files.get(fileId) : undefined;
       if (file && typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
         return URL.createObjectURL(file);
       }
