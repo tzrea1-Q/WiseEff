@@ -929,7 +929,7 @@ export async function batchKnowledgeEntries(
           { fromStatuses: ["draft"], toStatus: "published", kind: "knowledge-entry-publish", action: "publish" }, { ...context, requestId });
       } else if (input.action === "archive") {
         entry = await transitionKnowledgeEntry(db, auth, invocation, entryId,
-          { fromStatuses: ["published"], toStatus: "archived", kind: "knowledge-entry-archive", action: "archive" }, { ...context, requestId });
+          { fromStatuses: ["draft", "published"], toStatus: "archived", kind: "knowledge-entry-archive", action: "archive" }, { ...context, requestId });
       } else if (input.action === "accept_suggestions") {
         await db.transaction(async (tx) => {
           await requireReferenceEditableEntry(tx, auth, entryId);
