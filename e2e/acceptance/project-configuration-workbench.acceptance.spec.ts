@@ -617,7 +617,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     let submitted: Awaited<ReturnType<typeof submitSourceFromEditor>> | undefined;
     try {
       submitted = await submitSourceFromEditor(page, edited, "PROJ-CONFIG-EDIT-001 source comment review");
-      expect(submitted.item.impact).toEqual({ parameterChanges: 0, nodeAdditions: 0, nodeRemovals: 0 });
+      expect(submitted.item.impact).toEqual({ parameterChanges: 0, nodeAdditions: 0, nodeRemovals: 0, restoredParameters: 0 });
       const detail = await request.get(apiRoute(`/api/v2/projects/${projectId}/source-revision-requests/${submitted.receipt.requestId}`), { headers });
       expect(detail.status(), await detail.text()).toBe(200);
       expect((await detail.json()).item).toMatchObject({ status: "pending", before, after: edited,
@@ -3198,7 +3198,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await files.getByRole("button", { name: `${rootName} 更多`, exact: true }).click();
     await page.getByRole("menuitem", { name: "预览移除影响", exact: true }).click();
     let dialog = page.getByRole("dialog", { name: "预览移除影响", exact: true });
-    await expect(dialog.getByRole("alert")).toContainText("替代根文件");
+    await expect(dialog.getByRole("alert")).toContainText("请先将其他 DTS 文件设为根文件");
     await expect(dialog.getByRole("button", { name: "确认移除", exact: true })).toBeDisabled();
     await dialog.getByRole("button", { name: "取消", exact: true }).click();
     await files.getByRole("button", { name: `${overlayName} 更多`, exact: true }).click();
