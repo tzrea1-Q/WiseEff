@@ -83,10 +83,8 @@ test("skill knowledge links, Markdown draft uploads, and upload permission reaso
   await testInfo.attach("knowledge-linked-drafts-1440x900", { body: await page.screenshot(), contentType: "image/png" });
 
   await linked.getByRole("button", { name: `取消链接 ${title}`, exact: true }).click();
-  const unlinkDialog = page.getByRole("dialog", { name: "取消知识链接？", exact: true });
-  await expect(unlinkDialog).toBeVisible();
-  await unlinkDialog.getByRole("button", { name: "取消链接", exact: true }).click();
-  await expect(unlinkDialog).toBeHidden();
+  await expect(linked.getByRole("link", { name: title, exact: true })).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await saveDraft();
   const unlinked = await page.request.get(apiRoute(`/api/v1/log-skills/${skill.id}`), { headers });
   expect((await unlinked.json()).item.draft.spec.knowledgeEntryIds).not.toContain(knowledge.id);
