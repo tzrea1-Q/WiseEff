@@ -29,8 +29,7 @@ import { getCanonicalMemberRemovalForAuth, listCanonicalMemberRemovalsForAuth,
 import { assertSingleRequestReview } from "./drafts/changeService";
 import { withCanonicalSourceAttemptTransaction } from "../parameter-files/canonicalSourceAttemptTransaction";
 import { loadPublishedCatalog } from "./catalogProjectValueSync";
-import { listConfigSets } from "../parameter-files/configSetService";
-import { getLatestConfigRevision } from "../parameter-topology/repository";
+import type { DtsConfigRevisionDto } from "../parameter-topology/types";
 import { requireCanViewProject } from "../parameter-topology/service";
 import {
   createBindingDraftParamsSchema,
@@ -247,23 +246,21 @@ function decodeContentBase64(contentBase64: string) {
   }
 }
 
-async function syncLatestPublishedValues(
+/**
+ * Materializes values only for the revision the upload itself ingested.  Other
+ * configuration sets keep their own reviewed source state; re-syncing them here
+ * would make an unrelated upload fail on their Canonical composition.
+ */
+async function syncIngestedPublishedValues(
   db: Database,
   auth: AuthContext,
   projectId: string,
+  revision: DtsConfigRevisionDto | undefined,
   context: { requestId: string }
 ) {
   const pool = getRootPostgresPool(db);
   if (!pool) return;
-  const sets = await listConfigSets(db, auth, projectId);
-  const configSet = sets.find((item) => item.name === "default") ?? sets[0];
-  if (!configSet) return;
-  const revision = await getLatestConfigRevision(db, {
-    organizationId: auth.organization.id,
-    projectId,
-    configSetId: configSet.id
-  });
-  if (!revision || revision.status !== "resolved") return;
+  if (!revision || revision.projectId !== projectId || revision.status !== "resolved") return;
   const snapshot = await loadPublishedCatalog(pool);
   if (!snapshot) return;
   await withAuditedWrite(db, createUserInvocation(auth), { requestId: context.requestId }, async (tx) => {
@@ -272,7 +269,7 @@ async function syncLatestPublishedValues(
       {
         organizationId: auth.organization.id,
         projectId,
-        configSetId: configSet.id,
+        configSetId: revision.configSetId,
         configRevisionId: revision.id
       }
     );
@@ -291,7 +288,7 @@ async function syncLatestPublishedValues(
         targetId: revision.id,
         metadata: {
           writeTargetRole: "canonical-project-value",
-          sourceRef: `config-set:${configSet.id}`,
+          sourceRef: `config-set:${revision.configSetId}`,
           configRevisionId: revision.id,
           written
         }
@@ -709,7 +706,7 @@ export function registerCatalogProjectValueConsumerRoutes(
       { requestId: request.requestId },
       db
     );
-    await syncLatestPublishedValues(db, auth, params.projectId, { requestId: request.requestId });
+    await syncIngestedPublishedValues(db, auth, params.projectId, result.ingestedRevision, { requestId: request.requestId });
     return {
       status: 201,
       body: {

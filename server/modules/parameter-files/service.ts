@@ -16,6 +16,7 @@ import { produceDtsReviewEvidenceInTransaction } from "../parameter-catalog-api/
 import type {
   ConfigRevisionManifest,
   ConfigRevisionManifestMember,
+  DtsConfigRevisionDto,
 } from "../parameter-topology/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -238,13 +239,13 @@ export async function maybeIngestSemanticConfigRevision(
     frozenSource: string;
   },
   producerRoot?: Database,
-): Promise<void> {
+): Promise<DtsConfigRevisionDto | null> {
   const membership = await getFileConfigSetMembership(db, {
     organizationId: auth.organization.id,
     fileId: input.fileId,
   });
   if (!membership?.configSetId) {
-    return;
+    return null;
   }
 
   const configSet = await getConfigSetById(db, {
@@ -252,7 +253,7 @@ export async function maybeIngestSemanticConfigRevision(
     configSetId: membership.configSetId,
   });
   if (!configSet) {
-    return;
+    return null;
   }
 
   const memberFiles = await listConfigSetMemberFiles(
@@ -263,7 +264,7 @@ export async function maybeIngestSemanticConfigRevision(
     memberFiles.length === 0 ||
     memberFiles.some((member) => !member.currentVersionId)
   ) {
-    return;
+    return null;
   }
 
   const members: ConfigRevisionManifestMember[] = [];
@@ -284,7 +285,7 @@ export async function maybeIngestSemanticConfigRevision(
     const versionId = member.currentVersionId as string;
     const version = await getFileVersionById(db, { versionId });
     if (!version) {
-      return;
+      return null;
     }
 
     const content =
@@ -311,7 +312,7 @@ export async function maybeIngestSemanticConfigRevision(
     );
   if (baseMembers.length === 0) {
     // Incomplete manifest: overlays/includes without a base entry are not ingestible alone.
-    return;
+    return null;
   }
 
   const overlayOrder = members
@@ -336,6 +337,7 @@ export async function maybeIngestSemanticConfigRevision(
   if (producerRoot) {
     await produceDtsReviewEvidenceInTransaction(db,producerRoot,objectStore,auth,revision.id);
   }
+  return revision;
 }
 
 export async function uploadProjectParameterFile(
@@ -349,6 +351,8 @@ export async function uploadProjectParameterFile(
   file: ProjectParameterFileDto;
   version: ProjectParameterFileVersionDto;
   driverSummary?: IngestDriverSummary;
+  /** The configuration revision this upload ingested, when the file is a member of a set. */
+  ingestedRevision?: DtsConfigRevisionDto;
 }> {
   requireParameterFileAdmin(auth);
   const normalized = parseUploadInput(input);
@@ -414,13 +418,13 @@ export async function uploadProjectParameterFile(
         versionId: version.id,
       });
     }
-    if (format === "dts") {
-      await maybeIngestSemanticConfigRevision(tx, uploadStore, auth, {
+    const ingestedRevision = format === "dts"
+      ? await maybeIngestSemanticConfigRevision(tx, uploadStore, auth, {
         fileId: file.id,
         frozenVersionId: version.id,
         frozenSource: source,
-      }, producerRoot);
-    }
+      }, producerRoot)
+      : null;
     await createParameterFileUploadAudit(
       asAuditTx(tx),
       createUserInvocation(auth),
@@ -456,6 +460,7 @@ export async function uploadProjectParameterFile(
       },
       version,
       ...(driverSummary ? { driverSummary } : {}),
+      ...(ingestedRevision ? { ingestedRevision } : {}),
     };
   };
   return producerRoot
