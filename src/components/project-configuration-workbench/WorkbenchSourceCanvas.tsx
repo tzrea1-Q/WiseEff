@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { CheckCircle2, Info } from "lucide-react";
 import { SectionEmpty } from "@/components/common/SectionState";
+import { presentErrorMessage } from "@/infrastructure/http/presentError";
 
 import type { DtsConfigSetMemberFile } from "@/application/ports/DtsStructuredRepository";
 import type {
@@ -176,7 +177,7 @@ export function WorkbenchSourceCanvas({
       ) : null}
       {candidateError ? (
         <div className="configuration-workbench__setup-state" role="alert">
-          {candidateError}
+          {presentErrorMessage(candidateError, "候选源码加载失败。")}
         </div>
       ) : null}
       {!sourceLoading && !modeSourceLoading && !candidateLoading && !sourceError && !modeSourceError && !candidateError && selectedMember && emptyState ? (
@@ -194,7 +195,7 @@ export function WorkbenchSourceCanvas({
         <div className="configuration-workbench__source-state" role="alert">
           <Info size={20} aria-hidden="true" />
           <strong>源码读取失败</strong>
-          <p>{sourceError || modeSourceError}</p>
+          <p>{presentErrorMessage(sourceError || modeSourceError, "源码加载失败。")}</p>
           <button
             className="button subtle configuration-workbench__retry"
             type="button"

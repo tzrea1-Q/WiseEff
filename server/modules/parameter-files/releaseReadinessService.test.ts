@@ -309,6 +309,17 @@ describe.skipIf(!databaseAvailable)("evaluateReleaseReadiness", () => {
     expect(pending?.message).toContain("1 server-visible");
   });
 
+  it("hides toolchain paths in release blockers", async () => {
+    const result = await evaluateReleaseReadiness(db, adminAuth(), { configSetId: "cs-1" }, {
+      validationGate: { ...gateOk(), ok: false, failureCode: "toolchain-unavailable",
+        diagnostics: [{ file: "board.dts", severity: "error", message: "spawn /private/server/venv/bin/dt-validate ENOENT" }] }
+    });
+    expect(result.blockers.find((item) => item.code === "hard-validation-error")).toMatchObject({
+      message: "DTS 校验工具不可用，请联系管理员。",
+      remediation: { label: "请修复配置校验问题。" }
+    });
+  });
+
   it("surfaces policy warnings with acknowledgement state and blocks release until acknowledged", async () => {
     const result = await evaluateReleaseReadiness(db, adminAuth(), { configSetId: "cs-1" }, {
       validationGate: gateWarn()

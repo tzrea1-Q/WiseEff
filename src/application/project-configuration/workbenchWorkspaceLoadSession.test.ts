@@ -248,15 +248,15 @@ describe("WorkbenchWorkspaceLoadSession", () => {
     });
 
     expect(session.configSets).toEqual([]);
-    expect(session.configSetsError).toMatch(/cs boom/);
+    expect(session.configSetsError).toBe("配置加载失败。");
     expect(session.projectFiles).toEqual([]);
-    expect(session.filesError).toMatch(/files boom/);
+    expect(session.filesError).toBe("项目文件加载失败。");
     expect(session.members).toEqual([]);
-    expect(session.membersError).toMatch(/members boom/);
+    expect(session.membersError).toBe("配置文件加载失败。");
     expect(session.source).toBe("");
-    expect(session.sourceError).toMatch(/source boom/);
+    expect(session.sourceError).toBe("源码加载失败。");
     expect(session.structureNodes).toEqual([]);
-    expect(session.structureError).toMatch(/structure boom/);
+    expect(session.structureError).toBe("结构树加载失败。");
   });
 
   it("bumps independent retry tokens without product state changes", () => {

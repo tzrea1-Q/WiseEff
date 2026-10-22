@@ -1,5 +1,6 @@
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { presentError } from "@/infrastructure/http/presentError";
 
 export type CanvasHistoryRepository = Pick<ParameterFileRepository, "downloadVersion">;
 
@@ -184,7 +185,7 @@ export function createWorkbenchCanvasHistorySession(): WorkbenchCanvasHistorySes
         compareSource = "";
         modeSourceError = !counterpartLoaded && error instanceof WiseEffApiError && (error.code === "NOT_FOUND" || error.code === "GONE")
           ? ""
-          : error instanceof Error ? error.message : "历史源码加载失败。";
+          : presentError(error, "历史源码加载失败。");
       } finally {
         if (generation === loadGeneration) {
           modeSourceLoading = false;

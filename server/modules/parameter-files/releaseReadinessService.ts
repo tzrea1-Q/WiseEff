@@ -427,8 +427,8 @@ export async function evaluateReleaseReadiness(
             id: issueId("hard-validation-error", input.configSetId),
             severity: "blocker",
             code: "hard-validation-error",
-            message: error instanceof Error ? error.message : "Validation gate unavailable.",
-            remediation: { kind: "fix-validation", label: "Fix or restore validation toolchain" }
+            message: "服务暂时不可用，请稍后重试。",
+            remediation: { kind: "fix-validation", label: "请联系管理员检查 DTS 校验工具。" }
           });
           gate = null;
         }
@@ -444,9 +444,9 @@ export async function evaluateReleaseReadiness(
           id: issueId("hard-validation-error", `${diagnostic.file ?? "config-set"}:${diagnostic.message}`),
           severity: "blocker",
           code: "hard-validation-error",
-          message: diagnostic.message,
+          message: gate.failureCode === "toolchain-unavailable" ? "DTS 校验工具不可用，请联系管理员。" : diagnostic.message,
           target: diagnostic.file ? { fileName: diagnostic.file } : undefined,
-          remediation: { kind: "fix-validation", label: "Fix hard validation errors" }
+          remediation: { kind: "fix-validation", label: "请修复配置校验问题。" }
         });
       }
     } else if (gate.requiresConfirmation) {
