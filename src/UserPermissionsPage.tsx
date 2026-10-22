@@ -803,8 +803,8 @@ export function UserPermissionsPage({
         onUpdated={applyUpdatedUser} onClose={() => { setMemberId(null); setDirectoryReloadToken((value) => value + 1); }} roleLabel={roleLabelOf}
         roleEditor={<MemberOrganizationRolesPanel user={selectedMember}
           options={assignableRolesForUser(state, organizationRoleOf(selectedMember)).map((role) => ({ id: role.id, label: roleLabelOf(role.id), description: roleCapabilityDescriptions[role.id] }))}
-          disabledReason={selectedMember.id === state.currentUserId ? "不能调整当前登录账号的角色。"
-            : isPlatformAdminLocked(state, selectedMember) ? "只有平台超级管理员可以调整此账号的角色。" : undefined}
+          isSelf={selectedMember.id === state.currentUserId}
+          disabledReason={isPlatformAdminLocked(state, selectedMember) ? "只有平台超级管理员可以调整此账号的角色。" : undefined}
           onSave={async (roles, expectedRoles) => {
             const updated = await userGovernanceActions?.updateOrganizationRoles(selectedMember.id, { roles, expectedRoles }) ?? {
               ...selectedMember, roleId: pickPrimaryPlatformRoleId(roles),

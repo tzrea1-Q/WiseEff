@@ -586,7 +586,7 @@ describe("LogAdminPage · page header actions", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /导出报表/ }));
 
-    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "LOG_ADMIN_EXPORT_REPORT", timeWindow: "today" }));
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "LOG_ADMIN_EXPORT_REPORT", timeWindow: "all" }));
   });
 
   it("dispatches LOG_ADMIN_SYNC_LOGS on 刷新 click without runtime actions", async () => {
@@ -892,7 +892,7 @@ describe("LogAdminPage 分析质量洞察", () => {
     renderPage({ logActions });
 
     const table = await screen.findByRole("table", { name: "分析质量反馈聚合" });
-    await waitFor(() => expect(logActions.listFeedbackInsights).toHaveBeenCalledWith({ timeWindow: "today" }));
+    await waitFor(() => expect(logActions.listFeedbackInsights).toHaveBeenCalledWith({ timeWindow: "7d" }));
     expect(within(table).getByText("charging-power")).toBeInTheDocument();
     expect(within(table).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual(["技能", "分析来源", "反馈数", "有帮助率"]);
     expect(within(table).queryByText("log-analysis/v2")).not.toBeInTheDocument();
@@ -909,7 +909,7 @@ describe("LogAdminPage 分析质量洞察", () => {
     const listFeedbackInsights = vi.fn().mockResolvedValue([agentInsight]);
     renderPage({ logActions: createLogActions({ listFeedbackInsights }) });
 
-    await waitFor(() => expect(listFeedbackInsights).toHaveBeenCalledWith({ timeWindow: "today" }));
+    await waitFor(() => expect(listFeedbackInsights).toHaveBeenCalledWith({ timeWindow: "7d" }));
     await userEvent.click(screen.getByRole("button", { name: "7 日" }));
     await waitFor(() => expect(listFeedbackInsights).toHaveBeenCalledWith({ timeWindow: "7d" }));
   });
@@ -922,7 +922,7 @@ describe("LogAdminPage 分析质量洞察", () => {
     await userEvent.click(screen.getByRole("button", { name: "导出报表" }));
     expect(blobs).toHaveLength(1);
     const exported = await new Promise<string>((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.readAsText(blobs[0]); });
-    expect(JSON.parse(exported)).toMatchObject({ timeWindow: "today", rows: [agentInsight] });
+    expect(JSON.parse(exported)).toMatchObject({ timeWindow: "7d", rows: [agentInsight] });
     expect(JSON.parse(exported)).not.toHaveProperty("metrics");
   });
 

@@ -95,7 +95,7 @@ function appendQuery(path: string, params: URLSearchParams) {
 function buildLogsPath(query?: LogListQuery) {
   const params = new URLSearchParams();
   if (query?.status) params.set("status", backendStatus(query.status));
-  if (query?.timeWindow) params.set("timeWindow", query.timeWindow);
+  if (query?.timeWindow && query.timeWindow !== "all") params.set("timeWindow", query.timeWindow);
   if (query?.includeArchived !== undefined) params.set("includeArchived", String(query.includeArchived));
   return appendQuery("/api/v1/logs", params);
 }
@@ -590,7 +590,7 @@ export function createHttpLogAnalysisRepository(
     },
     async listFeedbackInsights(query?: LogFeedbackInsightsQuery) {
       const params = new URLSearchParams();
-      if (query?.timeWindow) params.set("timeWindow", query.timeWindow);
+      if (query?.timeWindow && query.timeWindow !== "all") params.set("timeWindow", query.timeWindow);
       const response = parseContractDto(
         logFeedbackInsightsResponseSchema,
         await apiClient.get<{ items: LogFeedbackInsightDto[] }>(

@@ -10,11 +10,12 @@ type Props = {
   user: UserAccount;
   options: Array<{ id: PlatformRoleId; label: string; description: string }>;
   disabledReason?: string;
+  isSelf?: boolean;
   onSave: (roles: PlatformRoleId[], expectedRoles: PlatformRoleId[]) => Promise<UserAccount>;
   onReload: () => Promise<UserAccount>;
 };
 
-export function MemberOrganizationRolesPanel({ user, options, disabledReason, onSave, onReload }: Props) {
+export function MemberOrganizationRolesPanel({ user, options, disabledReason, isSelf = false, onSave, onReload }: Props) {
   // Keep the original role set while editing, even if the directory refreshes.
   // The server compares that set with its current bindings before writing.
   const [savedRoles, setSavedRoles] = useState(() => organizationRoleIds(user));
@@ -26,6 +27,8 @@ export function MemberOrganizationRolesPanel({ user, options, disabledReason, on
   const [saved, setSaved] = useState(false);
   const label = (ids: PlatformRoleId[]) => ids.map((id) => options.find((option) => option.id === id)?.label ?? id).join("、") || "未授予组织级角色";
   const dirty = [...roles].sort().join() !== [...savedRoles].sort().join();
+  const lastAdminRole = isSelf && roles.filter((role) => role === "admin" || role === "platform-admin").length === 1
+    ? roles.find((role) => role === "admin" || role === "platform-admin") : undefined;
 
   async function save() {
     if (pending || conflictRoles !== null) return;
@@ -62,11 +65,13 @@ export function MemberOrganizationRolesPanel({ user, options, disabledReason, on
       <fieldset className="member-organization-roles" aria-label="组织角色选择" disabled={pending || Boolean(disabledReason)}>
         {options.map((option) => <label key={option.id} className="member-organization-roles__option">
           <input type="checkbox" aria-label={option.label} checked={roles.includes(option.id)}
+            disabled={option.id === lastAdminRole} aria-describedby={option.id === lastAdminRole ? "self-admin-role-reason" : undefined}
             onChange={(event) => { setRoles(options.filter((item) => item.id === option.id ? event.target.checked : roles.includes(item.id)).map((item) => item.id)); setSaved(false); }} />
-          <span><strong>{option.label}</strong><span className="member-details__hint">{option.description}</span></span>
+          <span><strong>{option.label}</strong><span className="member-details__hint">{option.description}</span>
+            {option.id === lastAdminRole ? <span id="self-admin-role-reason" className="member-details__hint">需保留至少一个管理员角色，避免当前账号失去管理权限。</span> : null}</span>
         </label>)}
       </fieldset>
-      <p className="member-details__hint">已授予：{label(savedRoles)}。支持组合角色或全部取消；项目职责独立保留。</p>
+      <p className="member-details__hint">已授予：{label(savedRoles)}。{isSelf ? "支持组合角色；项目职责独立保留。" : "支持组合角色或全部取消；项目职责独立保留。"}</p>
       {disabledReason ? <p className="member-details__hint">{disabledReason}</p> : null}
       {saved ? <p role="status" className="member-details__hint">组织角色已保存。</p> : null}
       {!confirm && conflictRoles !== null ? <div role="alert"><p>{error}</p><p>当前组织角色：{label(conflictRoles)}</p>

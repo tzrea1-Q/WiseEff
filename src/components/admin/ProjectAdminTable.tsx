@@ -235,7 +235,7 @@ export function ProjectAdminTable({
         items: [
           ...(onConfigureReviewRoles ? [{ id: "review-roles", label: "审核角色", ariaLabel: `审核角色 ${row.name}`, onSelect: () => onConfigureReviewRoles(row.id) }] : []),
           { id: "edit", label: "编辑", ariaLabel: `编辑 ${row.name}`, onSelect: () => onEditProject(row.id) },
-          ...(onPreviewDeletion ? [{ id: "deletion-preview", label: "删除影响预览", ariaLabel: `删除影响预览 ${row.name}`,
+          ...(onPreviewDeletion ? [{ id: "deletion-preview", label: "彻底删除…", ariaLabel: `彻底删除… ${row.name}`,
             onSelect: () => onPreviewDeletion(row.id) }] : []),
           ...(onArchiveProject ? [{ id: "archive", label: row.status === "archived" ? "恢复项目" : "归档",
             ariaLabel: `${row.status === "archived" ? "恢复项目" : "归档"} ${row.name}`,
