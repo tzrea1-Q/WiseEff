@@ -94,7 +94,8 @@ async function readPreview(tx: Queryable, auth: AuthContext, skillId: string): P
     (select count(*)::int from log_integration_credentials where organization_id=$1 and skill_id=$2) credentials,
     (select count(*)::int from log_skill_revisions where organization_id=$1 and skill_id<>$2 and spec->>'defaultSourceSnapshotId' in (select id from log_source_snapshots where organization_id=$1 and skill_id=$2)) references,
     (select count(*)::int from log_webhook_deliveries where organization_id=$1 and log_domain_id=$2 and kind<>'test') deliveries`, values)).rows[0]!;
-  const blockers = skill.status === "archived" ? [] : [{ code: "active", count: 1, message: "请先归档技能，再彻底删除。" }];
+  const blockers = skill.status === "archived" || Object.values(counts).every(count => count === 0)
+    ? [] : [{ code: "active", count: 1, message: "请先归档技能，再彻底删除。" }];
   const unfinished = (await tx.query<{ count: number }>(`select count(*)::int count from (
     select a.id from log_analysis_runs a
       join log_records l on l.id=a.log_record_id and l.organization_id=a.organization_id
@@ -121,7 +122,7 @@ async function readPreview(tx: Queryable, auth: AuthContext, skillId: string): P
   return { skillId, name: skill.name, skillKey: skill.skill_key, status: skill.status, version, generatedAt: new Date().toISOString(), canDelete: !blockers.length,
     inventory: inventoryLabels.map(([key, label, disposition]) => ({ key, label, disposition, count: summaries.find((r) => r.key === key)?.count ?? 0 })),
     objects: { total: keys.length, shared: shared.size, exclusive: keys.length - shared.size }, blockers,
-    notes: ["已归档的技能可以彻底删除；名称和技能标识可重新使用。", "历史日志与分析报告保留技能名称和版本快照；其他技能引用的源码快照及共享知识保留。", "独占存储对象一起清理，失败可重试。"] };
+    notes: ["已归档或从未发布且无外部使用的技能可以彻底删除；名称和技能标识可重新使用。", "历史日志与分析报告保留技能名称和版本快照；其他技能引用的源码快照及共享知识保留。", "独占存储对象一起清理，失败可重试。"] };
 }
 
 // ponytail: deletion briefly pauses public metadata writers; replace with per-object writer fences if this becomes a measured bottleneck.
@@ -191,7 +192,7 @@ export async function purgeSkill(db: Database, invocation: TrustedInvocationCont
         where organization_id=$1 and source_snapshot_id in (select id from log_source_snapshots where organization_id=$1 and skill_id=$2)`, values);
       await tx.query("delete from log_domains where organization_id=$1 and id=$2", values);
       await writeTrustedAuditEventInTx(asAuditTx(tx), { invocation: trusted, projectId: null, app: "log-analysis", kind: "skill-experiment-purged",
-        action: "彻底删除已归档技能及专属数据", severity: "High", targetType: "log-skill", targetId: skillId, traceId: requestId,
+        action: "彻底删除技能及专属数据", severity: "High", targetType: "log-skill", targetId: skillId, traceId: requestId,
         metadata: { version, inventory: preview.inventory, objects: preview.objects } });
     });
     try {

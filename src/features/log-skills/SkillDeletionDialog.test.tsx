@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { SkillDeletionDialog } from "./SkillDeletionDialog";
 import type { SkillDeletionPreview, SkillDeletionStatus } from "./types";
-const preview: SkillDeletionPreview = { skillId: "experiment", name: "实验技能", skillKey: "experiment", status: "archived", version: "a".repeat(64),
+const preview: SkillDeletionPreview = { skillId: "experiment", name: "实验技能", skillKey: "experiment", status: "active", version: "a".repeat(64),
   generatedAt: "2026-10-20T12:00:00Z", canDelete: true, inventory: [{ key: "draft", label: "初始草稿", count: 1, disposition: "delete" }],
   objects: { total: 2, shared: 1, exclusive: 1 }, blockers: [], notes: ["共享知识保留"] };
 const pending: SkillDeletionStatus = { skillId: preview.skillId, name: preview.name, skillKey: preview.skillKey, version: preview.version,
@@ -20,6 +20,7 @@ describe("SkillDeletionDialog", () => {
     expect(screen.getAllByRole("list")).toHaveLength(2);
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "彻底删除" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /归档/ })).not.toBeInTheDocument();
   });
   it("keeps confirmation after failure and retries honest pending object cleanup", async () => {
     const purgeSkill = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(pending).mockResolvedValueOnce({ ...pending, objects: "complete", pendingObjects: 0 });

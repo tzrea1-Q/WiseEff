@@ -270,7 +270,7 @@ function LogDomainGovernanceSection({
               items: [
                 { id: "rename", label: "改名", disabled: !apiMode || pending, onSelect: () => setIdentityAction({ skill: domain, restore: false }) },
                 { id: "export", label: "导出技能包", disabled: pending || !skillRepository?.getLogSkill || !skillRepository.exportSkillPackage, onSelect: () => openExport(domain) },
-                ...(domain.status === "archived" ? [{ id: "delete-experiment", label: "彻底删除…", disabled: !apiMode || pending || !skillRepository?.previewSkillDeletion,
+                ...(domain.status === "archived" || domain.currentRevision?.publishedAt === null ? [{ id: "delete-experiment", label: "彻底删除…", disabled: !apiMode || pending || !skillRepository?.previewSkillDeletion,
                   destructive: true as const, onRequestConfirmation: () => setDeletion({ id: domain.id }) }] : []),
                 ...(domain.status === "active" ? [{ id: "archive", label: "归档", disabled: pending, destructive: true as const,
                   confirmation: { title: `归档「${domain.name}」`, description: "归档后，新日志不再推荐此技能；已有日志及分析记录保留。", confirmLabel: "归档技能" },

@@ -34,7 +34,7 @@ export function SkillDeletionDialog({ skillId, repository, initialStatus, onDism
   return <ModalDialog open describedBy initialFocusRef={closeRef} onDismiss={pending ? undefined : onDismiss} className="skill-authoring-dialog modal-card--md">
     {({ titleId, descriptionId }) => <form onSubmit={event => { event.preventDefault(); void purge(); }}>
       <h2 id={titleId}>彻底删除技能</h2>
-      <p id={descriptionId}>{receipt ? receipt.name : preview?.name ?? "正在读取技能"}：彻底删除前须先归档，删除后无法恢复。</p>
+      <p id={descriptionId}>{receipt ? receipt.name : preview?.name ?? "正在读取技能"}：删除后无法恢复；已发布或已有外部使用的技能须先归档。</p>
       {receipt ? <div role="status"><p>{receipt.objects === "pending" ? `数据库已删除；仍有 ${receipt.pendingObjects} 个对象待清理。可关闭后从技能列表继续。` : "数据库及独占对象已清理完成。共享对象保留。"}</p>
         <p>名称和技能标识已释放。保留共享对象 {receipt.retainedObjects} 个。</p></div> : preview ? <>
         {(["delete", "retain"] as const).map(disposition => <div key={disposition}>

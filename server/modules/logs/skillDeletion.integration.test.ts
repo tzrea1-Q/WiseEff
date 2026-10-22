@@ -81,10 +81,10 @@ describe("archived skill deletion HTTP", () => {
   });
   it("previews and deletes a clean initial draft, frees its name/key and keeps an idempotent receipt", async () => {
     const skill = await create("Delete clean experiment");
-    await archive(skill.id);
     const preview = await request<{ item: SkillDeletionPreview }>(`/api/v1/log-skills/${skill.id}/deletion-preview`);
     expect(preview.status, preview.bodyText).toBe(200);
     expect(preview.body.item.canDelete).toBe(true);
+    expect(preview.body.item.status).toBe("active");
     const purge = () => request<{ item: SkillDeletionStatus }>(`/api/v1/log-skills/${skill.id}/purge`, "POST", { version: preview.body.item.version });
     const deleted = await purge();
     expect(deleted.status, deleted.bodyText).toBe(200);
@@ -163,6 +163,9 @@ describe("archived skill deletion HTTP", () => {
     const bound = await create("Externally bound experiment");
     await db.query(`insert into log_integration_credentials(id,organization_id,name,skill_id,secret_hash,status,revoked_at)
       values($1,$2,'Historical credential',$3,$4,'revoked',now())`, [randomUUID(), auth.organization.id, bound.id, "a".repeat(64)]);
+    const usedExperiment = await preview(bound.id, false);
+    expect(usedExperiment.canDelete).toBe(false);
+    expect((await purge(bound.id, usedExperiment.version)).status).toBe(409);
     const external = await preview(bound.id); expect(external.canDelete).toBe(true);
     expect(external.inventory).toContainEqual(expect.objectContaining({ key: "credentials", count: 1, disposition: "delete" }));
     expect((await purge(bound.id, external.version)).status).toBe(200);
