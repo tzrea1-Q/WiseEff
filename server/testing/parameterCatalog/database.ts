@@ -119,7 +119,7 @@ export const S2_SCH_0241_FINGERPRINT =
 export const S2_SCH_0245_FINGERPRINT =
   "6b373aebaeae82091d7d3e86de2a385ba1ab73786a7b14d131333c486b66db38";
 
-/** 0248 extends the project purge function to delete project-owned deployment
+/** 0251 extends the project purge function to delete project-owned deployment
  * and offline migration evidence. The other five inventory categories and
  * every historical schema pin remain unchanged. */
 export const S2_SCH_LIVE_FINGERPRINT =
