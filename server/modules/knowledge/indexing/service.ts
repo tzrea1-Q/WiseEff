@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { detectKnowledgeReferenceSuggestions } from "../referenceSuggestions";
 
 import type { Database } from "../../../shared/database/client";
 import { chunkExtractedText, chunkMarkdown } from "./chunking";
@@ -7,7 +8,9 @@ import {
   deleteChunksForEntry,
   hasKnowledgeVectorSupport,
   insertChunks,
-  markIndexOutcome
+  markIndexOutcome,
+  persistKnowledgeIndexJob,
+  type KnowledgeIndexJobClaim
 } from "./repository";
 
 export type KnowledgeIndexEntrySnapshot = {
@@ -21,8 +24,10 @@ export type KnowledgeIndexEntrySnapshot = {
   headRevisionNumber: number;
   contentMarkdown: string | null;
   extractedText: string | null;
+  pageOffsets: number[] | null;
   extractionStatus: string | null;
   extractionError: string | null;
+  authorUserId: string | null;
 };
 
 /** Worker-side load: the indexing worker is a system actor scoped by explicit org id. */
@@ -41,14 +46,17 @@ export async function loadIndexEntrySnapshot(
     head_revision_number: number | string;
     content_markdown: string | null;
     extracted_text: string | null;
+    page_offsets: number[] | null;
+    content_type: string | null;
     extraction_status: string | null;
     extraction_error: string | null;
+    author_user_id: string | null;
   }>(
     `
     select e.id, e.organization_id, e.status, e.content_form, e.title, e.tags,
            e.head_revision_id, e.head_revision_number,
            r.content_markdown,
-           f.extracted_text, f.extraction_status, f.extraction_error
+           f.extracted_text, f.page_offsets, f.content_type, f.extraction_status, f.extraction_error, r.author_user_id
     from knowledge_entries e
     left join knowledge_revisions r on r.id = e.head_revision_id
     left join knowledge_files f on f.id = r.file_id
@@ -73,8 +81,10 @@ export async function loadIndexEntrySnapshot(
     headRevisionNumber: Number(row.head_revision_number),
     contentMarkdown: row.content_markdown,
     extractedText: row.extracted_text,
+    pageOffsets: row.content_type === "application/pdf" ? row.page_offsets : null,
     extractionStatus: row.extraction_status,
-    extractionError: row.extraction_error
+    extractionError: row.extraction_error,
+    authorUserId: row.author_user_id
   };
 }
 
@@ -82,6 +92,7 @@ export type IndexEntryResult =
   | { outcome: "indexed"; chunkCount: number; embeddedChunkCount: number }
   | { outcome: "removed" }
   | { outcome: "failed"; reason: string }
+  | { outcome: "superseded" }
   | { outcome: "missing" };
 
 /**
@@ -99,6 +110,7 @@ export async function indexKnowledgeEntry(
     entryId: string;
     organizationId: string;
     embeddingClient?: KnowledgeEmbeddingClient;
+    claim?: KnowledgeIndexJobClaim;
   }
 ): Promise<IndexEntryResult> {
   const snapshot = await loadIndexEntrySnapshot(db, input);
@@ -107,8 +119,18 @@ export async function indexKnowledgeEntry(
     return { outcome: "missing" };
   }
 
+  const detectSuggestions = async () => {
+    try {
+      await detectKnowledgeReferenceSuggestions(db, snapshot, randomUUID());
+    } catch (error) {
+      console.warn("[knowledge-reference-suggestions] Detection failed; indexing outcome is unchanged:", { entryId: snapshot.entryId, error });
+    }
+  };
+  const persist = (write: (tx: Database) => Promise<void>) =>
+    persistKnowledgeIndexJob(db, input.claim, write);
+
   if (snapshot.entryStatus !== "published") {
-    await db.transaction(async (tx) => {
+    const committed = await persist(async (tx) => {
       await deleteChunksForEntry(tx, input);
       await markIndexOutcome(tx, {
         entryId: input.entryId,
@@ -120,7 +142,8 @@ export async function indexKnowledgeEntry(
         embeddedChunkCount: 0
       });
     });
-    return { outcome: "removed" };
+    if (committed) await detectSuggestions();
+    return { outcome: committed ? "removed" : "superseded" };
   }
 
   if (snapshot.contentForm === "file" && snapshot.extractionStatus !== "succeeded") {
@@ -128,21 +151,21 @@ export async function indexKnowledgeEntry(
       snapshot.extractionStatus === "failed"
         ? `Text extraction failed: ${snapshot.extractionError ?? "unknown reason"}`
         : "Extracted text is not available yet; the entry re-enqueues when extraction completes.";
-    await markIndexOutcome(db, {
+    const committed = await persist((tx) => markIndexOutcome(tx, {
       entryId: input.entryId,
       organizationId: input.organizationId,
       status: "failed",
       error: reason,
       indexedRevisionId: snapshot.headRevisionId,
       indexedRevisionNumber: snapshot.headRevisionNumber
-    });
-    return { outcome: "failed", reason };
+    }));
+    return committed ? { outcome: "failed", reason } : { outcome: "superseded" };
   }
 
   const drafts =
     snapshot.contentForm === "markdown"
       ? chunkMarkdown({ title: snapshot.title, markdown: snapshot.contentMarkdown ?? "" })
-      : chunkExtractedText({ title: snapshot.title, text: snapshot.extractedText ?? "" });
+      : chunkExtractedText({ title: snapshot.title, text: snapshot.extractedText ?? "", pageOffsets: snapshot.pageOffsets });
 
   const vectorSupport = await hasKnowledgeVectorSupport(db);
   let embeddings: number[][] | null = null;
@@ -156,7 +179,7 @@ export async function indexKnowledgeEntry(
   }
 
   const embeddedChunkCount = embeddings ? drafts.length : 0;
-  await db.transaction(async (tx) => {
+  const committed = await persist(async (tx) => {
     await deleteChunksForEntry(tx, input);
     if (snapshot.headRevisionId) {
       await insertChunks(tx, {
@@ -168,6 +191,8 @@ export async function indexKnowledgeEntry(
           id: randomUUID(),
           chunkIndex: draft.chunkIndex,
           text: draft.text,
+          pageStart: draft.pageStart,
+          pageEnd: draft.pageEnd,
           embedding: embeddings ? embeddings[position] : null
         }))
       });
@@ -185,6 +210,8 @@ export async function indexKnowledgeEntry(
     });
   });
 
+  if (!committed) return { outcome: "superseded" };
+  await detectSuggestions();
   if (embeddingError) {
     return { outcome: "failed", reason: embeddingError };
   }

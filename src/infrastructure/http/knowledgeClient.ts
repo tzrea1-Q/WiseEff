@@ -8,6 +8,7 @@ import type {
 import { KnowledgeRevisionConflictError } from "@/application/ports/KnowledgeRepository";
 import type {
   KnowledgeContentForm,
+  KnowledgeReferenceSuggestion,
   KnowledgeBatchResult,
   KnowledgeEntry,
   KnowledgeExtractionStatus,
@@ -51,6 +52,7 @@ export type KnowledgeFileDto = {
 export type KnowledgeParameterReferenceDto = KnowledgeParameterReference;
 
 export type KnowledgeEntryDto = {
+  pendingSuggestionCount?: number;
   origin: KnowledgeOrigin;
   id: string;
   organizationId: string;
@@ -132,7 +134,8 @@ function entryFromDto(dto: KnowledgeEntryDto): KnowledgeEntry {
           createdAt: dto.file.createdAt
         }
       : null,
-    parameterReferences: (dto.parameterReferences ?? []).map((reference) => ({ ...reference }))
+    parameterReferences: (dto.parameterReferences ?? []).map((reference) => ({ ...reference })),
+    ...(dto.pendingSuggestionCount !== undefined ? { pendingSuggestionCount: dto.pendingSuggestionCount } : {})
   };
 }
 
@@ -186,6 +189,7 @@ function buildListPath(query?: KnowledgeListQuery) {
   const params = new URLSearchParams();
   if (query?.status) params.set("status", query.status);
   if (query?.governable) params.set("governable", "true");
+  if (query?.pendingSuggestions) params.set("pendingSuggestions", "true");
   if (query?.contentForm) params.set("contentForm", query.contentForm);
   if (query?.sourceType) params.set("sourceType", query.sourceType);
   if (query?.origin) params.set("origin", query.origin);
@@ -397,6 +401,21 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
       return entryFromDto(response.item);
     },
 
+    async listReferenceSuggestions(entryId) {
+      return (await apiClient.get<ListEnvelope<KnowledgeReferenceSuggestion>>(`${entryPath(entryId)}/reference-suggestions`)).items;
+    },
+
+    async acceptReferenceSuggestion(entryId, definitionId) {
+      const response = await apiClient.post<ItemEnvelope<KnowledgeEntryDto>>(
+        `${entryPath(entryId)}/reference-suggestions/${encodeURIComponent(definitionId)}/accept`, {}
+      );
+      return entryFromDto(response.item);
+    },
+
+    async dismissReferenceSuggestion(entryId, definitionId) {
+      await apiClient.post(`${entryPath(entryId)}/reference-suggestions/${encodeURIComponent(definitionId)}/dismiss`, {});
+    },
+
     async removeDefinitionReference(entryId, definitionId) {
       const response = await apiClient.delete<ItemEnvelope<KnowledgeEntryDto>>(
         `${entryPath(entryId)}/definition-references/${encodeURIComponent(definitionId)}`
@@ -411,8 +430,9 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
       return entryFromDto(response.item);
     },
 
-    async getFileObjectUrl(entryId) {
-      const response = await apiClient.raw(`${entryPath(entryId)}/file/content`, {
+    async getFileObjectUrl(entryId, revisionId) {
+      const query = revisionId ? `?${new URLSearchParams({ revisionId })}` : "";
+      const response = await apiClient.raw(`${entryPath(entryId)}/file/content${query}`, {
         method: "GET",
         headers: { Accept: "*/*" }
       });
@@ -429,6 +449,10 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
 
     async rebuildIndex() {
       return apiClient.post<{ enqueued: number }>("/api/v1/knowledge/index/rebuild", {});
+    },
+
+    async rescanReferenceSuggestions() {
+      return apiClient.post<{ enqueued: number }>("/api/v1/knowledge/reference-suggestions/rescan", {});
     }
   };
 }

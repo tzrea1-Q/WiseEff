@@ -26,7 +26,7 @@ export type LogRecordDto = {
   skillSelection?: LogRecord["skillSelection"];
   createdByCredentialId?: string | null;
   createdByCredentialName?: string | null;
-  knowledgeRevisions?: Array<{ entryId: string; revisionId?: string }>;
+  knowledgeRevisions?: Array<{ entryId: string; revisionId?: string; pages?: number[] }>;
   sourceSnapshot?: LogRecord["sourceSnapshot"];
   sourceSnapshotSelection?: LogRecord["sourceSnapshotSelection"];
   requestedSourceVersion?: string;

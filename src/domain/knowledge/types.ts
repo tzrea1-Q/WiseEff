@@ -16,10 +16,23 @@ export type KnowledgeStatus = (typeof knowledgeStatuses)[number];
 export type KnowledgeExtractionStatus = (typeof knowledgeExtractionStatuses)[number];
 export type KnowledgeSourceType = "human" | "agent";
 
+export type KnowledgeReferenceSuggestion = {
+  definitionId: string;
+  propertyKey: string;
+  displayName: string | null;
+  driverModule: string;
+  lifecycle: "active" | "deprecated";
+  mentionCount: number;
+  snippet: string;
+  page: number | null;
+  detectedRevisionId: string;
+};
+
 export type KnowledgeBatchInput =
   | { action: "add_tags" | "remove_tags"; entryIds: string[]; tags: string[] }
   | { action: "publish"; entryIds: string[] }
-  | { action: "archive"; entryIds: string[] };
+  | { action: "archive"; entryIds: string[] }
+  | { action: "accept_suggestions"; entryIds: string[] };
 export type KnowledgeBatchResult = {
   entryId: string;
   title: string | null;
@@ -89,6 +102,7 @@ export type KnowledgeParameterReference = KnowledgeReferenceFields & (
 );
 
 export type KnowledgeEntry = {
+  pendingSuggestionCount?: number;
   origin: KnowledgeOrigin;
   id: string;
   title: string;
@@ -129,13 +143,16 @@ export type KnowledgeRevision = {
 };
 
 export type KnowledgeSearchResult = {
+  /** 1-based physical PDF pages of the excerpt's chunk; absent for other formats/legacy indexes. */
+  pageStart?: number | null;
+  pageEnd?: number | null;
   entryId: string;
   title: string;
   contentForm: KnowledgeContentForm;
   tags: string[];
   excerpt: string;
   updatedAt: string;
-  /** Head revision at match time — citation-ready deep-link identity. */
+  /** Revision of the matched excerpt. */
   revisionId: string | null;
 };
 

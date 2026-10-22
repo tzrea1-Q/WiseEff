@@ -1,3 +1,4 @@
+import { knowledgeEntryHref } from "@/domain/knowledge/citations";
 import { SelectControl } from "@/components/common/SelectControl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
@@ -680,7 +681,7 @@ export function DtsReloadPage({
       if (batchSnapshot === JSON.stringify([currentBatch.projectId, currentBatch.selectedBindingIds, currentBatch.debugValues])) {
         session.clearBatch();
       }
-      onNavigate(`/knowledge?entryId=${encodeURIComponent(draft.id)}`);
+      onNavigate(knowledgeEntryHref({ entryId: draft.id }));
     } catch (error) {
       setDistilError(
         error instanceof Error && error.message ? `沉淀为知识失败:${error.message}` : "沉淀为知识失败,请稍后重试"

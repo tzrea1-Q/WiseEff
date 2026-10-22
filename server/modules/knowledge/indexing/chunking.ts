@@ -1,6 +1,8 @@
 export type KnowledgeChunkDraft = {
   chunkIndex: number;
   text: string;
+  pageStart?: number;
+  pageEnd?: number;
 };
 
 export type ChunkingOptions = {
@@ -66,22 +68,47 @@ function overlapTail(text: string, overlapChars: number) {
 function windowParagraphs(
   paragraphs: string[],
   options: Required<ChunkingOptions>,
-  contextPrefix: string
+  contextPrefix: string,
+  source?: { text: string; onChunk: (start: number, end: number) => void; onMissing: () => void }
 ): string[] {
   const chunks: string[] = [];
   let current = "";
+  let sourceCursor = 0;
+  let pieces: Array<{ start: number; end: number; bodyStart: number; bodyEnd: number }> = [];
+  let sourceLocated = true;
 
   const flush = () => {
     const body = current.trim();
     if (body) {
       chunks.push(contextPrefix ? `${contextPrefix}\n${body}` : body);
+      if (sourceLocated && pieces.length) source?.onChunk(pieces[0].start, pieces[pieces.length - 1].end - 1);
     }
   };
 
   for (const paragraph of paragraphs.flatMap((p) => splitOversizedParagraph(p, options.maxChars))) {
     if (current && current.length + paragraph.length + 2 > options.maxChars) {
       flush();
-      current = overlapTail(current, options.overlapChars);
+      const tail = overlapTail(current, options.overlapChars);
+      const removed = current.length - tail.length;
+      pieces = pieces.filter((piece) => piece.bodyEnd > removed).map((piece) => ({
+        start: piece.start + Math.max(0, removed - piece.bodyStart),
+        end: piece.end,
+        bodyStart: Math.max(0, piece.bodyStart - removed),
+        bodyEnd: piece.bodyEnd - removed
+      }));
+      current = tail;
+    }
+    if (source && sourceLocated) {
+      // Locate each piece in source order, so repeated paragraphs stay distinct.
+      const start = source.text.indexOf(paragraph, sourceCursor);
+      if (start < 0) {
+        sourceLocated = false;
+        source.onMissing();
+      } else {
+        sourceCursor = start + paragraph.length;
+        const bodyStart = current ? current.length + 2 : 0;
+        pieces.push({ start, end: sourceCursor, bodyStart, bodyEnd: bodyStart + paragraph.length });
+      }
     }
     current = current ? `${current}\n\n${paragraph}` : paragraph;
   }
@@ -168,7 +195,7 @@ export function chunkMarkdown(
  * structure): overlapping windows of whole paragraphs prefixed with the title.
  */
 export function chunkExtractedText(
-  input: { title: string; text: string },
+  input: { title: string; text: string; pageOffsets?: number[] | null },
   options: ChunkingOptions = {}
 ): KnowledgeChunkDraft[] {
   const resolved = {
@@ -183,9 +210,16 @@ export function chunkExtractedText(
         .map((line) => line.trim())
         .filter(Boolean);
 
-  const texts = windowParagraphs(paragraphs, resolved, input.title.trim());
+  const ranges: Array<{ pageStart: number; pageEnd: number }> = [];
+  let sourceLocated = true;
+  const pageAt = (offset: number) => input.pageOffsets!.findLastIndex((start) => start <= offset) + 1;
+  const texts = windowParagraphs(paragraphs, resolved, input.title.trim(), input.pageOffsets?.length ? {
+    text: input.text,
+    onChunk: (start, end) => ranges.push({ pageStart: pageAt(start), pageEnd: pageAt(end) }),
+    onMissing: () => { sourceLocated = false; }
+  } : undefined);
   if (texts.length === 0 && input.title.trim()) {
     texts.push(input.title.trim());
   }
-  return texts.map((text, chunkIndex) => ({ chunkIndex, text }));
+  return texts.map((text, chunkIndex) => ({ chunkIndex, text, ...(sourceLocated ? ranges[chunkIndex] : {}) }));
 }

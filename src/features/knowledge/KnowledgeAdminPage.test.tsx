@@ -289,6 +289,39 @@ describe("KnowledgeAdminPage", () => {
     expect(health.items.every((item) => item.entryStatus !== "published" || item.status === "pending")).toBe(true);
   });
 
+  it("rescans non-archived entries without rebuilding the retrieval index", async () => {
+    window.history.replaceState(null, "", "/knowledge-admin?tab=index");
+    const repository = createMockKnowledgeRepository();
+    const published = await repository.list({ status: "published" });
+    const drafts = await repository.list({ status: "draft" });
+    const before = await repository.getIndexHealth();
+    render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
+    await screen.findByRole("table", { name: "知识索引状态" });
+    await userEvent.click(screen.getByRole("button", { name: "重新检测建议关联" }));
+    expect(await screen.findByText(new RegExp(`已发起 ${published.items.length + drafts.items.length} 条未归档条目的后台建议检测`))).toHaveAttribute("role", "status");
+    const health = await repository.getIndexHealth();
+    expect(health).toEqual(before);
+  });
+
+  it("disables the rescan while pending and reports failure with a retry", async () => {
+    window.history.replaceState(null, "", "/knowledge-admin?tab=index");
+    const repository = createMockKnowledgeRepository();
+    let refuse: (error: Error) => void = () => undefined;
+    vi.spyOn(repository, "rescanReferenceSuggestions").mockImplementationOnce(() => new Promise((_resolve, reject) => { refuse = reject; }));
+    render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
+    await screen.findByRole("table", { name: "知识索引状态" });
+    const button = screen.getByRole("button", { name: "重新检测建议关联" });
+    await userEvent.click(button);
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-busy", "true");
+    await act(async () => { refuse(new Error("Unavailable")); });
+    expect(await screen.findByRole("alert")).toHaveTextContent("发起建议关联检测失败，请稍后重试。");
+    expect(button).toBeEnabled();
+    await userEvent.click(button);
+    expect(await screen.findByText(/已发起 .* 条未归档条目的后台建议检测/)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("gates index health behind knowledge:manage", async () => {
     window.history.replaceState(null, "", "/knowledge-admin?tab=index");
     const repository = createMockKnowledgeRepository({ canManage: false });
@@ -296,6 +329,7 @@ describe("KnowledgeAdminPage", () => {
 
     expect(screen.getByText(/索引健康与重建操作需要知识管理员权限/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "全量重建索引" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重新检测建议关联" })).not.toBeInTheDocument();
   });
 
   it("maps API failures to product-language copy when list load fails", async () => {

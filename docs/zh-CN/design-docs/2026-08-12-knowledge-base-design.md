@@ -100,7 +100,8 @@ MVP 之后的候选项（按序），均与本模型兼容：
 4. 单层合集（若标签导航被证明不够用）。
 5. 外部 Agent 接入面（HTTP API 之上的 MCP 包装）。
 6. Agent 自主维护：去重、过期标记、知识空洞发现。
-7. 用户自管知识：可编辑的 Markdown/文本上传、知识导入（多文件或 `.zip`）、批量管理、工作流上线，以及统一的消费方契约（知识范围，ADR-0049）。——**已于 2026-10-21 完成设计与实现**（[#1337](https://github.com/tzrea1-Q/WiseEff/pull/1337)），见 [`2026-10-21-knowledge-user-curation.md`](../exec-plans/active/2026-10-21-knowledge-user-curation.md)。
+7. 用户自管知识：可编辑的 Markdown/文本上传、知识导入（多文件或 `.zip`）、批量管理、工作流上线，以及统一的消费方契约（知识范围，ADR-0049）。——**已于 2026-10-21 完成设计与实现**（[#1337](https://github.com/tzrea1-Q/WiseEff/pull/1337)），见 [`2026-10-21-knowledge-user-curation.md`](../exec-plans/completed/2026-10-21-knowledge-user-curation.md)。
+8. 引用建议（根据属性键提及建议定义引用，由条目治理者接受或忽略）和 PDF 页级引用（固定修订，可打开到该页）。——**已于 2026-10-21 完成设计与实现**（[#1347](https://github.com/tzrea1-Q/WiseEff/pull/1347)、[#1348](https://github.com/tzrea1-Q/WiseEff/pull/1348)），见 [`2026-10-21-knowledge-reference-suggestions-and-page-citations.md`](../exec-plans/completed/2026-10-21-knowledge-reference-suggestions-and-page-citations.md)。
 
 ## 决策记录
 

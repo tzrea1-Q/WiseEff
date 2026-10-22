@@ -17,7 +17,8 @@ import { decodedEventSchema } from "../../logs/parsing/spec";
 export { parsePreviewRequestSchema, parsePreviewResponseSchema, decodedEventSchema, decodedValueSchema } from "../../logs/parsing/spec";
 
 export const skillRevisionPinSchema = z.object({ id: z.string(), number: z.number().int().positive() });
-const knowledgeRevisionSchema = z.object({ entryId: z.string().uuid(), revisionId: z.string().uuid().optional() });
+const knowledgeRevisionSchema = z.object({ entryId: z.string().uuid(), revisionId: z.string().uuid().optional(),
+  pages: z.array(z.number().int().positive()).optional() });
 const sourceProvenanceShape = {
   sourceSnapshot: z.object({ id: z.string(), versionLabel: z.string().optional(), status: z.enum(["queued", "indexing", "ready", "failed", "archived"]) }).optional(),
   sourceSnapshotSelection: z.enum(["matched_version", "default", "none"]).optional(),

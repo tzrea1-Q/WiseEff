@@ -1406,7 +1406,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       { name: "limit", in: "query", description: "Page size from 1 to 200; defaults to 100.", schema: { type: "integer" } },
       { name: "offset", in: "query", description: "Nonnegative number of entries to skip; defaults to 0.", schema: { type: "integer" } },
       { name: "origin", in: "query", schema: { type: "string", enum: ["authored", "uploaded", "distilled", "agent-drafted", "imported"] } },
-      { name: "governable", in: "query", description: "Only non-archived entries owned by the caller, or any owner for knowledge:manage. Requires knowledge:edit or knowledge:manage.", schema: { type: "string", enum: ["true", "false"] } }
+      { name: "governable", in: "query", description: "Only non-archived entries owned by the caller, or any owner for knowledge:manage. Requires knowledge:edit or knowledge:manage.", schema: { type: "string", enum: ["true", "false"] } },
+      { name: "pendingSuggestions", in: "query", description: "Only entries with pending reference suggestions governed by the caller; counts are omitted for other entries.", schema: { type: "string", enum: ["true", "false"] } }
     ],
     additionalResponses: { "403": "ErrorResponse" }
   },
@@ -1462,6 +1463,21 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "KnowledgeEntryResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "knowledge.listReferenceSuggestions": {
+    summary: "List authenticated Catalog reference suggestions for entry governors only; suggestions are never bindings",
+    tags: ["knowledge"], responseBody: "KnowledgeReferenceSuggestionsResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.acceptReferenceSuggestion": {
+    summary: "Accept a pending suggestion through the audited definition reference add path",
+    tags: ["knowledge"], responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "knowledge.dismissReferenceSuggestion": {
+    summary: "Remember an entry governor's dismissal with an in-transaction audit",
+    tags: ["knowledge"], responseBody: "OkResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "knowledge.removeDefinitionReference": {
     summary: "Idempotently remove an exact Catalog Definition reference from a knowledge entry (entry owner or knowledge:manage; audited)",
     tags: ["knowledge"],
@@ -1490,6 +1506,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   },
   "knowledge.indexRebuild": {
     summary: "Re-enqueue every published entry for index rebuild (knowledge:manage only)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeIndexRebuildResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "knowledge.referenceSuggestionsRescan": {
+    summary: "Re-enqueue every non-archived entry for reference suggestion detection (knowledge:manage only)",
     tags: ["knowledge"],
     responseBody: "KnowledgeIndexRebuildResponse",
     additionalResponses: { "403": "ErrorResponse" }
@@ -1564,8 +1586,9 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "knowledge.fileContent": {
-    summary: "Download the current file binary of a file-form knowledge entry",
+    summary: "Download a readable revision's file binary; defaults to the current revision",
     tags: ["knowledge"],
+    requestParameters: [{ name: "revisionId", in: "query", description: "Revision UUID belonging to this entry; requires current access to its revisions.", schema: { type: "string" } }],
     responseBody: "BinaryAttachment",
     responseMedia: "binary",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
