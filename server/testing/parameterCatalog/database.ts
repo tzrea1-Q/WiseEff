@@ -116,8 +116,14 @@ export const S2_SCH_0241_FINGERPRINT =
  * become five) and update six historical receipt/provenance functions. The
  * unchanged six-category query adds no relations, table columns, triggers or
  * functions; every earlier schema pin remains intact. */
-export const S2_SCH_LIVE_FINGERPRINT =
+export const S2_SCH_0245_FINGERPRINT =
   "6b373aebaeae82091d7d3e86de2a385ba1ab73786a7b14d131333c486b66db38";
+
+/** 0248 extends the project purge function to delete project-owned deployment
+ * and offline migration evidence. The other five inventory categories and
+ * every historical schema pin remain unchanged. */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "705cb5b5f925657a92eb852ae77d52bc850212d8cc4aef12ef9e7777188c4b70";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
