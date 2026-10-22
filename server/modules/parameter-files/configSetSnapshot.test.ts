@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { loadConfigSetSnapshot } from "./configSetSnapshot";
+import { loadConfigSetSnapshot, loadFormerRootOverlayFiles } from "./configSetSnapshot";
 import type { ObjectStore } from "../logs/objectStore";
 
 function makeDb(rows: Array<Record<string, unknown>>) {
@@ -31,6 +31,16 @@ function makeObjectStore(contents: Record<string, string>): ObjectStore {
 }
 
 describe("loadConfigSetSnapshot", () => {
+  it("identifies only historical roots that are explicitly present in the overlay manifest", async () => {
+    const db = makeDb([{ file_id: "old-root" }, { file_id: "current-root" }]);
+    expect(await loadFormerRootOverlayFiles(db as never, "cs-1", [
+      { fileId: "old-root", sourceName: "old.dts" }, { fileId: "current-root", sourceName: "current.dts" },
+      { fileId: "ordinary-overlay", sourceName: "overlay.dts" }
+    ], ["old.dts", "overlay.dts"])).toEqual(["old.dts"]);
+    expect(db.query).toHaveBeenCalledWith(expect.stringContaining("revision.entry_file=member.source_name"),
+      ["cs-1", ["old-root", "current-root", "ordinary-overlay"]]);
+  });
+
   it("loads members with contents in one pass and derives entry/overlay order", async () => {
     const db = makeDb([
       memberRow(),

@@ -273,6 +273,7 @@ export async function runValidationGate(
       entryFile,
       includeSearchPaths: snapshot.includeSearchPaths,
       overlayOrder: snapshot.overlayOrder,
+      formerRootOverlayFiles: snapshot.formerRootOverlayFiles,
       files
     },
     { mode: toolchainMode }

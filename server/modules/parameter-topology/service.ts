@@ -10,6 +10,7 @@ import {
   type DtsToolchainDiagnostic,
   type DtsToolchainRunner
 } from "../parameter-files/dtsToolchain";
+import { loadFormerRootOverlayFiles } from "../parameter-files/configSetSnapshot";
 import {
   countDismissedSpecBlockersForRevision,
   countOpenSpecReviewTasksForRevision
@@ -1113,7 +1114,9 @@ export async function validateConfigRevision(
       entryFile,
       includeSearchPaths,
       overlayOrder,
-      files: toolchainFiles
+      files: toolchainFiles,
+      formerRootOverlayFiles: await loadFormerRootOverlayFiles(db, revision.configSetId,
+        members.map((member) => ({ fileId: member.fileId, sourceName: member.fileName })), overlayOrder)
     },
     { mode: "release" }
   );

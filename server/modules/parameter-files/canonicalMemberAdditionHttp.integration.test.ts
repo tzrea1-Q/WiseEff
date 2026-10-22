@@ -111,6 +111,48 @@ describe("Canonical member addition through the real API role", () => {
     expect(exported.status, exported.bodyText).toBe(200);
   });
 
+  it("previews an atomic root swap, preserves identities and then removes the old root", async () => {
+    const before = await listCatalogBindingRowsForProject(api, admin, { projectId: PROJECT });
+    const uploaded = await post<{ item: { id: string } }>(`/api/v1/projects/${PROJECT}/parameter-file-candidates`, {
+      fileName: "replacement.dts", contentBase64: Buffer.from(source.replace("<36>", "<50>")).toString("base64") });
+    const add = { candidateId: uploaded.body.item.id, role: "misc", sortOrder: 4 };
+    const joinedPreview = await post<{ item: MemberAdditionPreview }>(`${path()}/preview`, add);
+    expect(joinedPreview.status, joinedPreview.bodyText).toBe(200);
+    const joined = await post<{ item: { fileId: string } }>(`${path()}/apply`, { ...add, proofToken: joinedPreview.body.item.proofToken,
+      reason: "Add replacement root", clientMutationId: "replacement-add" });
+    expect(joined.status, joined.bodyText).toBe(200);
+    const body = { fileId: joined.body.item.fileId, setAsRoot: true, role: "base", sortOrder: 0 };
+    const initial = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    const preview = await post<{ item: MemberAdditionPreview }>(`${path()}/preview`, body);
+    expect(preview.status, preview.bodyText).toBe(200);
+    expect(preview.body.item).toMatchObject({ entryFile: "replacement.dts", overlayOrder: ["board.dts", "limits-overlay.dts"] });
+    expect(preview.body.item.members.filter((member) => member.role === "base").map((member) => member.fileId)).toEqual([body.fileId]);
+    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(initial);
+    const apply = { ...body, proofToken: preview.body.item.proofToken, reason: "Replace root", clientMutationId: "replace-root" };
+    expect((await post(`${path()}/apply`, { ...apply, proofToken: "0".repeat(64) })).status).toBe(409);
+    await db.query(`create function public.refuse_root_swap_audit() returns trigger language plpgsql as $$begin
+      if new.metadata->>'operation'='set_root' then raise exception 'synthetic audit failure'; end if; return new; end$$;
+      create trigger refuse_root_swap_audit before insert on public.audit_events for each row execute function public.refuse_root_swap_audit()`);
+    try { expect((await post(`${path()}/apply`, apply)).status).toBe(500); }
+    finally { await db.query("drop trigger refuse_root_swap_audit on public.audit_events; drop function public.refuse_root_swap_audit()"); }
+    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(initial);
+    const applied = await post(`${path()}/apply`, apply);
+    expect(applied.status, applied.bodyText).toBe(200);
+    expect((await post(`${path()}/apply`, apply)).body).toEqual(applied.body);
+    const removalPath = `/api/v1/projects/${PROJECT}/config-sets/${configSetId}/files/${baseFileId}`;
+    const removal = await post<{ item: { proofToken: string } }>(`${removalPath}/removal-preview`, {});
+    expect(removal.status, removal.bodyText).toBe(200);
+    const removed = await post(`${removalPath}/removal-apply`, { expectedProofToken: removal.body.item.proofToken,
+      reason: "Remove former root", clientMutationId: "remove-former-root" });
+    expect(removed.status, removed.bodyText).toBe(200);
+    const after = await listCatalogBindingRowsForProject(api, admin, { projectId: PROJECT });
+    expect(after.map((binding) => binding.id)).toEqual(before.map((binding) => binding.id));
+    const members = (await db.query<{ file_id: string; role: string }>(`select file_id,role from public.dts_config_revision_members
+      where config_revision_id=(select id from public.dts_config_revisions where config_set_id=$1 order by revision_number desc limit 1)`, [configSetId])).rows;
+    expect(members.some((member) => member.file_id === baseFileId)).toBe(false);
+    expect(members.filter((member) => member.role === "base")).toEqual([{ file_id: body.fileId, role: "base" }]);
+  });
+
   it("rejects invalid roles, unresolved references and stale previews while preserving candidates; concurrent additions have one winner", async () => {
     const uploaded = await post<{ item: { id: string } }>(`/api/v1/projects/${PROJECT}/parameter-file-candidates`, {
       fileName: "next-overlay.dts", contentBase64: Buffer.from('/dts-v1/; /plugin/; &charger { iin_max = <45>; };').toString("base64") });

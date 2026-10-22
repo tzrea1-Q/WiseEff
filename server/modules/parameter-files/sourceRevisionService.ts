@@ -11,9 +11,9 @@ import { resolveDtsConfigSet } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import { loadPublishedCatalog, rawTextToPayload, resolveObservedSubject, parseCompatibles,
   lockSourceCatalogGovernance, loadActiveOrganizationSourceRegistrations } from "../parameter-bindings/catalogProjectValueSync";
-import { loadDeletedSourceAnchors, loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin,
+import { loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin,
   loadProjectBindingCatalogReleaseIds, readOwnedCurrentBinding, readOwnedProjectValueIdentity,
-  hasDeletedSourceBinding, hasSourceConfigurationDrafts } from "../parameter-bindings/values";
+  hasSourceConfigurationDrafts } from "../parameter-bindings/values";
 import type { ProjectValuePayload } from "../parameter-bindings/values";
 import { assertCanonicalValueConstraints } from "../parameter-bindings/values/service";
 import { CatalogReleaseId, CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId, serializeContract, type ContractJsonValue } from "../parameter-catalog-contract";
@@ -25,8 +25,10 @@ import { isStructuralPropertyKey } from "../parameter-topology/parameterSurface"
 import { hasCurrentCanonicalReviewRole } from "../parameters/reviewWorkflowRepository";
 import { getParameterFileCandidateById } from "./candidateRepository";
 import { createDtsToolchainRunner, type DtsToolchainRunner } from "./dtsToolchain";
+import { loadFormerRootOverlayFiles } from "./configSetSnapshot";
 import { MAX_PARAMETER_SOURCE_BYTES, parseJsonSource, readJsonSourceValue } from "./jsonSource";
 import { requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "./canonicalSource";
+import { matchingDeletedSourceAnchors, prepareSourceRestorations, sourceRestorationNodes, type SourceRestoration } from "./sourceRestoration";
 
 export const sourceRevisionDigest = (input: string | Buffer | object) => createHash("sha256")
   .update(typeof input === "string" || Buffer.isBuffer(input) ? input : serializeContract(input as ContractJsonValue)).digest("hex");
@@ -41,7 +43,7 @@ export type SourceRevisionCohort = {
   bindingId: string; oldValueId: string; sourcePinId: string; sourceOccurrenceId: string;
   definitionId: string; effectiveRevisionId: string; catalogReleaseId: string; valueDigest: string;
   fileId: string; fileVersionId: string; logicalNodeId: string | null; propertyName: string; format?: "json";
-  valueState: "present"; locator: Record<string, ContractJsonValue>;
+  valueState: "present" | "deleted"; locator: Record<string, ContractJsonValue>;
 };
 export type SourceRevisionTarget = {
   bindingId: string; action: "set" | "delete"; payload: ProjectValuePayload;
@@ -62,6 +64,7 @@ export type SourceRevisionProof = {
   pinnedCatalogReleases: Array<{ id: string; digest: string }>;
   registrations: Array<{ id: string; subjectId: string }>;
   targets: SourceRevisionTarget[]; newProperties: SourceRevisionNewProperty[];
+  restorations?: SourceRestoration[];
   proofDigest: string;
 };
 export type SourceRevisionDiagnostic = { severity: "error" | "warning"; code: string; message: string; file?: string; line?: number; column?: number };
@@ -70,7 +73,7 @@ export type SourceRevisionPreview = {
   baseVersionId: string; configRevisionId: string; before: string; after: string;
   proofToken: string; baseDigest: string; proposedDigest: string; canSubmit: boolean; reason?: string;
   diagnostics: SourceRevisionDiagnostic[];
-  impact: { parameterChanges: number; nodeAdditions: number; nodeRemovals: number };
+  impact: { parameterChanges: number; nodeAdditions: number; nodeRemovals: number; restoredParameters?: number };
   reviewers: Array<{ userId: string; name: string }>;
   request?: { id: string; status: "pending" | "approved" | "rejected" | "withdrawn"; kind: "source_revision" };
 };
@@ -120,7 +123,7 @@ export async function requireCurrentSourceAdministrator(tx: Database, auth: Auth
 }
 
 export async function loadSourceRevisionCatalogSnapshots(db: Database, projectId: string,
-  organizationId: string, current: CatalogSnapshot | null, includeRetained = false): Promise<ReadonlyMap<string, CatalogSnapshot>> {
+  organizationId: string, current: CatalogSnapshot | null, includeRetained = true): Promise<ReadonlyMap<string, CatalogSnapshot>> {
   const snapshots = new Map<string, CatalogSnapshot>(current ? [[current.release.id, current]] : []);
   const releases = await loadProjectBindingCatalogReleaseIds(db, { organizationId, projectId,includeRetained });
   const pool = getRootPostgresPool(db);
@@ -224,22 +227,12 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
   if (diagnostics.some((row) => row.severity === "error" || row.code.includes("dangling") || row.code.includes("unresolved"))) {
     throw new ApiError("VALIDATION_FAILED", "DTS configuration has unresolved source diagnostics.", { diagnostics });
   }
-  for (const anchor of await loadDeletedSourceAnchors(tx, {
-    organizationId: auth.organization.id, projectId: input.projectId, configSetId: context.configSetId
-  })) {
-    if (anchor.format !== "dts" || !anchor.nodeLocator || typeof anchor.locator.propertyName !== "string") continue;
-    const node = resolved.effective.nodesByLocator.get(anchor.nodeLocator);
-    const property = node?.properties.get(anchor.locator.propertyName);
-    const originMember = rows.find((row) => row.sourceName === property?.sourceChain.at(-1)?.fileName);
-    if (node && !node.deleted && property && !property.deleted && originMember?.fileId === anchor.fileId) {
-      throw new ApiError("CONFLICT", `Restoring ${anchor.nodeLocator}/${anchor.locator.propertyName} requires an explicit source identity mapping.`, {
-        reason: "source-occurrence-restoration-requires-mapping", nodePath: anchor.nodeLocator, propertyName: anchor.locator.propertyName
-      });
-    }
-  }
+  const restorationScope = { organizationId: auth.organization.id, projectId: input.projectId, configSetId: context.configSetId };
+  const anchors = await matchingDeletedSourceAnchors(tx, restorationScope, resolved.effective.nodesByLocator, rows);
   const toolchain = await (options.toolchain ?? createDtsToolchainRunner()).validate({
     entryFile: revision.entry_file, includeSearchPaths: revision.include_search_paths,
-    overlayOrder: revision.overlay_order, files
+    overlayOrder: revision.overlay_order, files,
+    formerRootOverlayFiles: await loadFormerRootOverlayFiles(tx, context.configSetId, rows, revision.overlay_order)
   }, { mode: "release" });
   diagnostics.push(...toolchain.diagnostics.map((row) => ({ ...row, code: row.code ?? "toolchain" })));
   if (!toolchain.ok || toolchain.mode !== "release") throw new ApiError("VALIDATION_FAILED", "The DTS toolchain did not validate this source revision.", {
@@ -247,7 +240,8 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
   });
   const continuity = await prepareReviewedSourceContinuity(tx, { organizationId: auth.organization.id,
     projectId: input.projectId, configSetId: context.configSetId, baseConfigRevisionId: revision.id,
-    effectiveNodes: resolved.effective.nodesByLocator, sourceDigest: sourceRevisionDigest(bytes) });
+    effectiveNodes: resolved.effective.nodesByLocator, sourceDigest: sourceRevisionDigest(bytes),
+    restorationNodes: sourceRestorationNodes(anchors) });
   const registrations = await loadActiveOrganizationSourceRegistrations(tx, { organizationId: auth.organization.id });
   const registered = new Map(registrations.map((row) => [row.subjectId, row.id]));
   const sourceProperties: SourceRevisionNewProperty[] = [];
@@ -337,12 +331,14 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     } else targets.push({ bindingId: entry.bindingId, action: "delete", payload: old.value.payload,
       afterFileId: pin.fileId, propertyName: pin.locator.propertyName });
   }
+  const restorations = await prepareSourceRestorations(tx, restorationScope, sourceProperties, anchors,
+    options.snapshots ?? new Map(snapshot ? [[snapshot.release.id, snapshot]] : []));
+  for (const restored of restorations) {
+    const { format: _format, ...identity } = restored;
+    cohort.push({ ...identity, valueState: "deleted", locator: restored.locator as Record<string, ContractJsonValue> });
+    targets.push({ bindingId: restored.bindingId, action: "set", payload: restored.payload, afterFileId: restored.fileId, propertyName: restored.propertyName });
+  }
   for (const property of sourceProperties) {
-    const terminal = await hasDeletedSourceBinding(tx, { organizationId: auth.organization.id, projectId: input.projectId,
-      configSetId: context.configSetId, fileId: property.fileId, logicalNodeId: property.logicalNodeId, definitionId: property.definitionId });
-    if (terminal) throw new ApiError("CONFLICT", `Restoring ${property.nodeLocator}/${property.propertyName} requires an explicit source identity mapping.`, {
-      reason: "source-occurrence-restoration-requires-mapping", nodePath: property.nodeLocator, propertyName: property.propertyName
-    });
     const definition = snapshot!.getDefinitionRevision({ definitionId: ParameterDefinitionId(property.definitionId),
       revisionId: DefinitionRevisionId(property.definitionRevisionId) });
     if (definition.status !== "found") conflict("New source property Definition is unavailable.");
@@ -358,7 +354,7 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     pinnedCatalogReleases: [...new Set(cohort.map((row) => row.catalogReleaseId))].sort().map((id) => {
       const pinned = options.snapshots?.get(id) ?? snapshot!;
       return { id, digest: pinned.release.digest };
-    }), registrations, targets, newProperties: sourceProperties };
+    }), registrations, targets, newProperties: sourceProperties, ...(restorations.length ? { restorations } : {}) };
   return { proof: { ...base, proofDigest: sourceRevisionDigest(base) }, before, after, diagnostics };
 }
 
@@ -393,13 +389,16 @@ export async function previewSourceRevisionCandidate(db: Database, storage: Obje
   const snapshots = await loadSourceRevisionCatalogSnapshots(db, input.projectId, auth.organization.id, snapshot);
   const inspected = await inspectSourceRevision(db, storage, auth, input, snapshot, { ...options, snapshots });
   const { proof, before, after, diagnostics } = inspected;
-  const removed = (await db.query<{ count: number }>(`select count(*)::int as count from public.dts_logical_node_revisions
-    where config_revision_id=$1 and logical_node_id<>all($2::text[])`, [proof.baseConfigRevisionId, proof.continuity.nodes.map((row) => row.logicalNodeId)])).rows[0]?.count ?? 0;
+  const previousNodes = (await db.query<{ logical_node_id: string }>(
+    "select logical_node_id from public.dts_logical_node_revisions where config_revision_id=$1", [proof.baseConfigRevisionId])).rows;
+  const removed = previousNodes.filter((row) => !proof.continuity.nodes.some((node) => node.logicalNodeId === row.logical_node_id)).length;
   return { kind: "source_revision", format: "dts", candidateId: proof.candidateId, fileId: proof.fileId, configSetId: proof.configSetId,
     baseVersionId: proof.baseVersionId, configRevisionId: proof.baseConfigRevisionId, before, after, proofToken: proof.proofDigest,
     baseDigest: proof.baseDigest, proposedDigest: proof.proposedDigest, canSubmit: !request && before !== after,
     ...(!request && before === after ? { reason: "source-unchanged" } : {}), diagnostics,
-    impact: { parameterChanges: proof.targets.length + proof.newProperties.length, nodeAdditions: proof.continuity.nodes.filter((row) => row.isNew).length, nodeRemovals: removed },
+    impact: { parameterChanges: proof.targets.length + proof.newProperties.length,
+      nodeAdditions: proof.continuity.nodes.filter((node) => !previousNodes.some((row) => row.logical_node_id === node.logicalNodeId)).length, nodeRemovals: removed,
+      restoredParameters: proof.restorations?.length ?? 0 },
     reviewers: await sourceRevisionReviewers(db, auth, input.projectId),
     ...(request ? { request: { id: request.requestId, status: request.status, kind: "source_revision" as const } } : {}) };
 }

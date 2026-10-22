@@ -1,11 +1,13 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { spawn as nodeSpawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, normalize, relative, resolve, sep } from "node:path";
+import { dirname, join, normalize, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { withEphemeralDanglingAnchorStub } from "../dts/danglingAnchorStub";
+import { lexDts } from "../dts/lexer";
+import { stripDtsComments } from "../dts/preprocess";
 
 export type DtsToolchainMode = "release" | "warn" | "off";
 
@@ -67,6 +69,8 @@ export type DtsToolchainConfigSet = {
   entryFile: string;
   includeSearchPaths?: string[];
   overlayOrder: string[];
+  /** Former base members explicitly identified by the configuration owner. */
+  formerRootOverlayFiles?: string[];
   files: ReadonlyMap<string, DtsToolchainFile>;
 };
 
@@ -479,6 +483,7 @@ function inputManifestHash(configSet: DtsToolchainConfigSet): string {
       entryFile: configSet.entryFile,
       overlayOrder: configSet.overlayOrder,
       includeSearchPaths: configSet.includeSearchPaths ?? [],
+      ...(configSet.formerRootOverlayFiles?.length ? { formerRootOverlayFiles: [...configSet.formerRootOverlayFiles].sort() } : {}),
       files: entries
     })
   );
@@ -535,7 +540,7 @@ export function withEphemeralEntryCompileStub(configSet: DtsToolchainConfigSet):
  * Never persist. Never run missingReferencedLabels on overlay members.
  */
 export function wrapPluginRootOverlayForFdtoverlay(source: string): string {
-  if (!/^\s*\/plugin\/\s*;/m.test(source)) return source;
+  if (!/\/plugin\/\s*;/.test(stripDtsComments(source))) return source;
   if (/\b__overlay__\b/.test(source) || /fragment@\d+/.test(source)) return source;
   const pluginMatch = source.match(/\/plugin\/\s*;/);
   if (!pluginMatch || pluginMatch.index === undefined) return source;
@@ -555,6 +560,53 @@ export function withEphemeralOverlayFragmentWrap(configSet: DtsToolchainConfigSe
     if (overlayName === configSet.entryFile) continue;
     const file = files.get(overlayName);
     if (!file) continue;
+    // A former base is a normal root DTS, not a plugin. Plain DTBs are a
+    // fdtoverlay no-op. Clone its include tree into the compile workspace and
+    // wrap each root declaration, preserving the entry's shared include bytes.
+    let tokens;
+    try { tokens = lexDts(file.content); } catch { continue; } // Native dtc reports malformed source.
+    if (tokens.some((row) => row.value === "__overlay__" || /^fragment@/.test(row.value))) continue;
+    if (!tokens.some((row) => row.kind === "directive" && row.value === "/plugin/")) {
+      if (!configSet.formerRootOverlayFiles?.includes(overlayName)) continue;
+      const prefix = `__wiseeff_overlay_${randomUUID()}`, cloned = new Map<string, string>();
+      let fragment = 0;
+      const clone = (name: string): string => {
+        const cached = cloned.get(name);
+        if (cached) return cached;
+        const target = name === overlayName ? overlayName : posix.join(prefix, name), source = configSet.files.get(name)!.content;
+        cloned.set(name, target);
+        const parsed = lexDts(source), edits: Array<{ start: number; end: number; text: string }> = [];
+        let depth = 0, root = false;
+        for (const [index, token] of parsed.entries()) {
+          if (depth === 0 && token.kind === "slash" && parsed[index + 1]?.kind === "lbrace") {
+            root = true;
+            edits.push({ ...token.span, text: `/ { fragment@${fragment++} { target-path = "/"; __overlay__ ` });
+          }
+          if (token.kind === "lbrace") depth++;
+          if (token.kind === "rbrace" && --depth === 0 && root) {
+            edits.push({ start: token.span.start, end: token.span.start, text: "}; }; " }); root = false;
+          }
+          const argument = parsed[index + 1];
+          if (token.kind !== "directive" || token.value !== "/include/" || argument?.kind !== "string") continue;
+          const requested = argument.value.slice(1, -1);
+          const included = [posix.join(posix.dirname(name), requested), ...(configSet.includeSearchPaths ?? []).map((path) => posix.join(path, requested))]
+            .map((path) => posix.normalize(path)).find((path) => isSafeLogicalPath(path) && configSet.files.has(path));
+          if (included) edits.push({ ...argument.span, text: JSON.stringify(posix.relative(posix.dirname(target), clone(included))) });
+        }
+        if (name === overlayName) {
+          const header = parsed.findIndex((row) => row.kind === "directive" && row.value === "/dts-v1/");
+          const offset = header < 0 ? 0 : parsed[header + 1]?.kind === "semi" ? parsed[header + 1]!.span.end : parsed[header]!.span.end;
+          edits.push({ start: offset, end: offset, text: `${header < 0 ? "/dts-v1/;" : ""}\n/plugin/;\n` });
+        }
+        let content = source;
+        for (const edit of edits.sort((a, b) => b.start - a.start || b.end - a.end)) content = content.slice(0, edit.start) + edit.text + content.slice(edit.end);
+        files.set(target, { content });
+        return target;
+      };
+      clone(overlayName);
+      changed = true;
+      continue;
+    }
     const wrapped = wrapPluginRootOverlayForFdtoverlay(file.content);
     if (wrapped === file.content) continue;
     files.set(overlayName, { ...file, content: wrapped });

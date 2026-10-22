@@ -116,8 +116,18 @@ export const S2_SCH_0241_FINGERPRINT =
  * become five) and update six historical receipt/provenance functions. The
  * unchanged six-category query adds no relations, table columns, triggers or
  * functions; every earlier schema pin remains intact. */
-export const S2_SCH_LIVE_FINGERPRINT =
+export const S2_SCH_0245_FINGERPRINT =
   "6b373aebaeae82091d7d3e86de2a385ba1ab73786a7b14d131333c486b66db38";
+
+/** 0248, measured with the unchanged readCanonicalSchemaFingerprint inventory on
+ * fresh PostgreSQL: adds source_anchor_restoration_matches and
+ * assert_administrator_source_transitions; changes protect_pinned_source_file,
+ * assert_member_removal_tombstone and assert_project_value_source_pin_owner.
+ * Relations, columns, constraints, indexes and Catalog triggers are unchanged
+ * (the deferred request trigger belongs to public). All historical pins remain.
+ */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "8e9d58e1ac15c5bf8e75358368432a8aac69b4eba3a41454c850895fe5b40231";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

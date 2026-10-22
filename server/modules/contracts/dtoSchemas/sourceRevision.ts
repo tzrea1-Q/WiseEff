@@ -8,6 +8,7 @@ const reason = z.string().trim().min(1).max(2000);
 
 export const sourceRevisionImpactSchema = z.object({
   parameterChanges: z.number().int().nonnegative(),
+  restoredParameters: z.number().int().nonnegative().optional(),
   nodeAdditions: z.number().int().nonnegative(),
   nodeRemovals: z.number().int().nonnegative()
 }).strict();

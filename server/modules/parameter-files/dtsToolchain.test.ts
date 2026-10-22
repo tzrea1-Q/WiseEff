@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ChildProcess, spawn as nodeSpawn } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -504,6 +505,53 @@ describe("createDtsToolchainRunner", () => {
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 describe("ephemeral overlay fragment wrap", () => {
+  it("preserves explicit fragments without a plugin marker and leaves unidentified root overlays alone", () => {
+    const fragment = '/dts-v1/; / { fragment@0 { target-path = "/charger"; __overlay__ { iin_max = <40>; }; }; };';
+    const plain = '/dts-v1/; / { iin_max = <50>; };';
+    const configuration = happyConfigSet({ overlayOrder: ["fragment.dts", "plain.dts"], files: new Map([
+      ["board.dts", { content: '/dts-v1/; / { charger { iin_max = <36>; }; };' }],
+      ["fragment.dts", { content: fragment }], ["plain.dts", { content: plain }]
+    ]) });
+    const wrapped = withEphemeralOverlayFragmentWrap(configuration);
+    expect(wrapped.files.get("fragment.dts")?.content).toBe(fragment);
+    expect(wrapped.files.get("plain.dts")?.content).toBe(plain);
+  });
+
+  it("compiles a former root and its shared includes as a real overlay without changing source bytes", async ({ skip }) => {
+    const probe = await probeDtsToolchain();
+    if (!probe.dtc.path || !probe.fdtoverlay.path) return skip();
+    const original = '/dts-v1/; /include/ "../common.dtsi" / { root_value = <1>; };';
+    const shared = '/ { shared: shared { /include/ "limits.dtsi" }; };';
+    const config: DtsToolchainConfigSet = { entryFile: "new.dts", includeSearchPaths: ["."], overlayOrder: ["boards/old.dts"], formerRootOverlayFiles: ["boards/old.dts"], files: new Map([
+      ["new.dts", { content: '/dts-v1/; / { root_value = <99>; shared { limit = <50>; }; };' }],
+      ["boards/old.dts", { content: original }], ["common.dtsi", { content: shared }], ["limits.dtsi", { content: "limit = <2>;" }]
+    ]) };
+    const wrapped = withEphemeralOverlayFragmentWrap(config), directory = trackingTmpDirFactory();
+    expect(wrapped.files.get("common.dtsi")?.content).toBe(shared);
+    expect(config.files.get("boards/old.dts")?.content).toBe(original);
+    for (const [path, file] of wrapped.files) {
+      mkdirSync(dirname(join(directory, path)), { recursive: true }); writeFileSync(join(directory, path), file.content);
+    }
+    const run = (command: string, args: string[]) => {
+      const result = spawnSync(command, args, { cwd: directory, encoding: "utf8" });
+      expect(result.status, result.stderr).toBe(0); return result.stdout;
+    };
+    run(probe.dtc.path, ["-@", "-I", "dts", "-O", "dtb", "-o", "base.dtb", "new.dts"]);
+    run(probe.dtc.path, ["-@", "-I", "dts", "-O", "dtb", "-o", "old.dtbo", "boards/old.dts"]);
+    run(probe.fdtoverlay.path, ["-i", "base.dtb", "-o", "effective.dtb", "old.dtbo"]);
+    const effective = run(probe.dtc.path, ["-I", "dtb", "-O", "dts", "effective.dtb"]);
+    expect(effective).toMatch(/root_value\s*=\s*<0x0*1>/);
+    expect(effective).toMatch(/limit\s*=\s*<0x0*2>/);
+    const fragmented = '/dts-v1/; / { fragment@0 { target-path = "/shared"; __overlay__ { limit = <3>; }; }; };';
+    const fragmentConfig = withEphemeralOverlayFragmentWrap({ ...config, overlayOrder: ["fragment.dts"],
+      formerRootOverlayFiles: ["fragment.dts"], files: new Map([...config.files, ["fragment.dts", { content: fragmented }]]) });
+    expect(fragmentConfig.files.get("fragment.dts")?.content).toBe(fragmented);
+    writeFileSync(join(directory, "fragment.dts"), fragmentConfig.files.get("fragment.dts")!.content);
+    run(probe.dtc.path, ["-@", "-I", "dts", "-O", "dtb", "-o", "fragment.dtbo", "fragment.dts"]);
+    run(probe.fdtoverlay.path, ["-i", "base.dtb", "-o", "fragment-effective.dtb", "fragment.dtbo"]);
+    expect(run(probe.dtc.path, ["-I", "dtb", "-O", "dts", "fragment-effective.dtb"])).toMatch(/limit\s*=\s*<0x0*3>/);
+  });
+
   const chargingThermal = readFileSync(
     join(repoRoot, "src/config/seed-sources/atlas/charging-thermal.dts"),
     "utf8"

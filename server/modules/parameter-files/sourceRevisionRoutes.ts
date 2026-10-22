@@ -24,7 +24,7 @@ export type SourceRevisionRequestDto = {
   status: Status; reason: string; submitterUserId: string | null; assignedToUserId: string | null; reviewerUserId: string | null;
   submitterName?: string | null; assignedToName?: string | null; reviewerName?: string | null;
   reviewerNote: string | null; createdAt: string; updatedAt: string; proofDigest: string;
-  impact: { parameterChanges: number; nodeAdditions: number; nodeRemovals: number };
+  impact: { parameterChanges: number; nodeAdditions: number; nodeRemovals: number; restoredParameters?: number };
   before?: string; after?: string;
   appliedSourceResult?: { configRevisionId: string; fileVersionId: string } | null;
   applicationMode: "separate_review" | "administrator_direct";
@@ -42,7 +42,7 @@ type Row = {
   applied_source_result: SourceRevisionRequestDto["appliedSourceResult"];
   source_revision_application_mode: SourceRevisionRequestDto["applicationMode"];
   before_storage_key: string | null; after_storage_key: string | null;
-  before_checksum: string | null; after_checksum: string | null; node_removals: number;
+  before_checksum: string | null; after_checksum: string | null; node_removals: number; node_additions?: number;
   cancellation_user_id: string | null; cancellation_name: string | null; cancellation_reason: string | null;
 };
 const paramsSchema = z.object({ projectId: z.string().min(1), requestId: z.string().min(1) });
@@ -67,7 +67,11 @@ const selection = `select request.*, candidate.file_id as source_file_id, candid
   (select count(*)::int from public.dts_logical_node_revisions node
     where node.config_revision_id=request.source_revision_context->>'baseConfigRevisionId'
       and not exists(select 1 from jsonb_array_elements(request.source_revision_context->'continuity'->'nodes') planned
-        where planned->>'logicalNodeId'=node.logical_node_id)) as node_removals
+        where planned->>'logicalNodeId'=node.logical_node_id)) as node_removals,
+  (select count(*)::int from jsonb_array_elements(request.source_revision_context->'continuity'->'nodes') planned
+    where not exists(select 1 from public.dts_logical_node_revisions node
+      where node.config_revision_id=request.source_revision_context->>'baseConfigRevisionId'
+        and node.logical_node_id=planned->>'logicalNodeId')) as node_additions
   from public.project_parameter_value_change_requests request
   join public.project_parameter_file_candidates candidate on candidate.id=request.candidate_id
     and candidate.organization_id=request.organization_id and candidate.project_id=request.project_id
@@ -118,7 +122,8 @@ function dto(row: Row, auth: AuthContext): SourceRevisionRequestDto {
     submitterName: row.submitter_name, assignedToName: row.assigned_to_name, reviewerName: row.reviewer_name,
     reviewerNote: row.reviewer_note, createdAt: iso(row.created_at), updatedAt: iso(row.updated_at), proofDigest: proof.proofDigest,
     impact: { parameterChanges: proof.targets.length + proof.newProperties.length,
-      nodeAdditions: proof.continuity.nodes.filter((node) => node.isNew).length, nodeRemovals: Number(row.node_removals) },
+      restoredParameters: proof.restorations?.length ?? 0,
+      nodeAdditions: Number(row.node_additions ?? proof.continuity.nodes.filter((node) => node.isNew).length), nodeRemovals: Number(row.node_removals) },
     appliedSourceResult: row.applied_source_result, applicationMode: row.source_revision_application_mode,
     cancellation: row.cancellation_reason ? { userId: row.cancellation_user_id,name: row.cancellation_name,reason: row.cancellation_reason } : null
   };

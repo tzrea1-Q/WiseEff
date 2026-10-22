@@ -111,7 +111,7 @@ describe("DTS whole-source workbench integration", () => {
   it("directly applies an administrator's confirmed preview without choosing a reviewer and keeps later typing", async () => {
     const { props, rerender, getCandidateSourcePreview, submitCandidateSourceReview, session } = setup();
     getCandidateSourcePreview.mockResolvedValue({ kind: "source_revision", candidateId: "candidate", canSubmit: true,
-      proofToken: "proof", before: "/ { old; };", after: "/ { next; };", impact: { parameterChanges: 0, nodeAdditions: 0, nodeRemovals: 0 }, reviewers: [] });
+      proofToken: "proof", before: "/ { old; };", after: "/ { next; };", impact: { parameterChanges: 1, nodeAdditions: 0, nodeRemovals: 0, restoredParameters: 1 }, reviewers: [] });
     let resolve!: (value: object) => void;
     const apply = vi.fn().mockImplementation(() => new Promise((done) => { resolve = done; }));
     rerender(<WorkbenchSourceEditingPane {...props} repository={{ ...props.repository, applyCandidateSourceRevision: apply }} />);
@@ -120,6 +120,7 @@ describe("DTS whole-source workbench integration", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "test DTS" }), { target: { value: "/ { next; };" } });
     fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
     fireEvent.change(await screen.findByRole("textbox", { name: "DTS 修改原因" }), { target: { value: "管理员已核对差异" } });
+    expect(await screen.findByText("恢复 1 个已删除参数，保留原身份及历史。")).toBeInTheDocument();
     const direct = screen.getByRole("button", { name: "直接应用修改" });
     await waitFor(() => expect(direct).toBeEnabled());
     fireEvent.click(direct);

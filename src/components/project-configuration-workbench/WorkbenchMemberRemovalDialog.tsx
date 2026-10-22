@@ -52,6 +52,7 @@ export function WorkbenchMemberRemovalDialog({ projectId, configSetId, fileId, f
         <h3>依赖关系</h3>{preview.dependencies.length ? <ul>{preview.dependencies.map((dependency, index) => <li key={index}>{dependency.file} → {dependency.kind === "overlay" ? "覆盖文件" : "引用文件"}：{dependency.target}</li>)}</ul> : <p>无引用或覆盖依赖。</p>}
         <p>移除 {preview.impact.nodeRemovals} 个结构节点、{preview.impact.removedBindings} 个当前参数；保留并同步 {preview.impact.retainedBindings} 个参数的来源。</p>
         {preview.impact.nodeAdditions ? <p>恢复 {preview.impact.nodeAdditions} 个此前被覆盖的结构节点。</p> : null}
+        {preview.impact.restoredParameters ? <p>恢复 {preview.impact.restoredParameters} 个已删除参数，保留原身份及历史。</p> : null}
         {preview.impact.exposedBindings ? <p>另有 {preview.impact.exposedBindings} 个参数将在移除覆盖后重新生效，按保留文件的实际值更新。</p> : null}
         {preview.parameterImpacts.length ? <ul aria-label="参数影响">{preview.parameterImpacts.map((item, index) => <li key={index}>{item.propertyName}：{item.toSource ? `${item.fromSource ?? "被覆盖的来源"} → ${item.toSource}` : `从当前配置移除（${item.fromSource}）`}</li>)}</ul> : null}
         <p>确认后由当前管理员直接提交，并记录实际操作人。</p>

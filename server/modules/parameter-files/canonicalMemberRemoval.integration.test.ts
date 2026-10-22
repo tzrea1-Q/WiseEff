@@ -11,7 +11,7 @@ import { installConfigurationSourceFixture } from "../../testing/parameterCatalo
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createUserInvocation } from "../auth/trustedInvocation";
-import { asValueClient, loadPublishedCatalog, readCanonicalBindingChangeHistory } from "../parameter-bindings/catalogProjectValueSync";
+import { asValueClient, loadPublishedCatalog, readCanonicalBindingChangeHistory, listCatalogBindingRowsForProject } from "../parameter-bindings/catalogProjectValueSync";
 import { loadBindingById, loadHistoryByRevision, loadOwnedProjectValueSourcePin } from "../parameter-bindings/values/repositories";
 import { createLocalObjectStore } from "../logs/objectStore";
 import { createConfigSet, addConfigSetFile } from "./configSetService";
@@ -21,6 +21,12 @@ import { applyReviewedCanonicalMemberRemoval, prepareCanonicalMemberRemoval,
   type CanonicalMemberRemovalProof, type ReviewedCanonicalMemberRemoval } from "./canonicalMemberRemoval";
 import { insertFileVersion } from "./repository";
 import type { ParsedIndex } from "./types";
+import { applyAdministratorMemberRemoval, previewAdministratorMemberRemoval } from "./canonicalMemberRemoval";
+import { applyCanonicalMemberAddition, previewCanonicalMemberAddition } from "./canonicalMemberAddition";
+import { createCandidate } from "./candidateService";
+import { createSourceAdminFixture, sourceAdminText, sourceAdminToolchain } from "./sourceAdministration.testHelpers";
+import { captureConfigurationSourceState } from "../../testing/parameterCatalog/configurationSource";
+import { freezeSourceRevisionRequest, sourceRevisionDigest } from "./sourceRevisionService";
 
 const organizationId = "org-906-member-cohort";
 const projectId = "project-906-member-cohort";
@@ -33,6 +39,98 @@ const admin = makeTestAuthContext({
   userId: adminId, organizationId,
   permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
   roles: [{ roleId: "admin", projectId: null }]
+});
+
+describe("administrator DTS composition transitions (PostgreSQL with injected validation)", { timeout: 120_000 }, () => {
+  let f: Awaited<ReturnType<typeof createSourceAdminFixture>>;
+  beforeAll(async () => { f = await createSourceAdminFixture("root-swap", createUserInvocation); }, 120_000);
+  afterAll(async () => { await f?.close(); });
+  const options = { toolchain: sourceAdminToolchain };
+  async function add(fileName: string, text: string, role: "misc" | "overlay", key: string) {
+    const candidate = await createCandidate(f.api, f.storage, f.auth, { projectId: f.projectId, fileName, bytes: Buffer.from(text) });
+    const body = { projectId: f.projectId, configSetId: f.configSetId, candidateId: candidate.id, role, sortOrder: 1 };
+    const preview = await previewCanonicalMemberAddition(f.api, f.storage, f.auth, body, f.security, options);
+    return applyCanonicalMemberAddition(f.api, f.storage, f.auth, { ...body, proofToken: preview.proofToken, reason: "Add test member", clientMutationId: key }, f.security, options);
+  }
+
+  it("rejects unreviewed role changes, swaps the unique base atomically, then removes the former root", async () => {
+    const original = (await listCatalogBindingRowsForProject(f.api, f.auth, { projectId: f.projectId }))[0]!;
+    await expect(f.db.query("update public.project_parameter_files set config_set_role='overlay' where id=$1", [f.fileId])).rejects.toMatchObject({ code: "55000" });
+    const unused = await add("unused.dtsi", "/ {};", "misc", "add-unused");
+    const replacement = await add("replacement.dts", sourceAdminText.replace("<36>", "<50>"), "misc", "add-root");
+    const body = { projectId: f.projectId, configSetId: f.configSetId, fileId: replacement.fileId, role: "base" as const, sortOrder: 0, setAsRoot: true };
+    const before = await captureConfigurationSourceState(f.db, { organizationId: f.organizationId, projectId: f.projectId });
+    const preview = await previewCanonicalMemberAddition(f.api, f.storage, f.auth, body, f.security, options);
+    expect(preview).toMatchObject({ entryFile: "replacement.dts", overlayOrder: ["board.dts"] });
+    expect(await captureConfigurationSourceState(f.db, { organizationId: f.organizationId, projectId: f.projectId })).toEqual(before);
+    const input = { ...body, proofToken: preview.proofToken, reason: "Swap root", clientMutationId: "swap-root" };
+    await expect(applyCanonicalMemberAddition(f.api, f.storage, f.auth, { ...input, proofToken: "0".repeat(64) }, f.security, options)).rejects.toMatchObject({ code: "CONFLICT" });
+    await f.db.query(`create function public.refuse_root_transition_audit() returns trigger language plpgsql as $$begin
+      if new.metadata->>'operation'='set_root' then raise exception 'root audit failure'; end if; return new; end$$;
+      create trigger refuse_root_transition_audit before insert on public.audit_events for each row execute function public.refuse_root_transition_audit()`);
+    try { await expect(applyCanonicalMemberAddition(f.api, f.storage, f.auth, input, f.security, options)).rejects.toThrow("root audit failure"); }
+    finally { await f.db.query("drop trigger refuse_root_transition_audit on public.audit_events; drop function public.refuse_root_transition_audit()"); }
+    expect(await captureConfigurationSourceState(f.db, { organizationId: f.organizationId, projectId: f.projectId })).toEqual(before);
+    const applied = await applyCanonicalMemberAddition(f.api, f.storage, f.auth, input, f.security, options);
+    expect(await applyCanonicalMemberAddition(f.api, f.storage, f.auth, input, f.security, options)).toEqual(applied);
+    const revision = (await f.api.query<{ entry_file: string; bases: string[] }>(`select revision.entry_file,array_agg(member.source_name) filter(where member.role='base') as bases
+      from public.dts_config_revisions revision join public.dts_config_revision_members member on member.config_revision_id=revision.id
+      where revision.id=$1 group by revision.id`, [applied.configRevisionId])).rows[0];
+    expect(revision).toEqual({ entry_file: "replacement.dts", bases: ["replacement.dts"] });
+    const frozen = (await f.db.query<{ source_revision_context: Parameters<typeof freezeSourceRevisionRequest>[2] }>(
+      "select source_revision_context from public.project_parameter_value_change_requests where id=$1", [applied.requestId])).rows[0]!.source_revision_context;
+    await expect(f.db.transaction(async (tx) => {
+      const altered = { ...frozen, members: frozen.members.map((member) => {
+        const row = member as { fileId: string; role: string };
+        return row.fileId === unused.fileId ? { ...row, role: "thermal" } : member;
+      }) };
+      await freezeSourceRevisionRequest(tx, f.auth, altered, { projectId: f.projectId, reason: "Unrelated role change",
+        assignedToUserId: null, clientMutationId: "unrelated-root-role" }, sourceRevisionDigest("unrelated-root-role"), "administrator_direct");
+      await tx.query("update public.project_parameter_files set config_set_role='thermal' where id=$1", [unused.fileId]);
+    })).rejects.toMatchObject({ code: "55000" });
+    await expect(f.db.transaction(async (tx) => {
+      await freezeSourceRevisionRequest(tx, f.auth, frozen, { projectId: f.projectId, reason: "Incomplete root transition",
+        assignedToUserId: null, clientMutationId: "incomplete-root" }, sourceRevisionDigest("incomplete-root"), "administrator_direct");
+      await tx.query("set constraints project_parameter_administrator_source_transitions_ck immediate");
+    })).rejects.toMatchObject({ code: "23514", message: "Source transition requires its committed receipt" });
+    const target = { projectId: f.projectId, configSetId: f.configSetId, fileId: f.fileId };
+    const removal = await previewAdministratorMemberRemoval(f.api, f.storage, f.auth, target, options);
+    await applyAdministratorMemberRemoval(f.api, f.storage, f.auth, { ...target, expectedProofToken: removal.proofToken,
+      reason: "Remove former root", clientMutationId: "remove-old-root" }, f.security, options);
+    expect((await listCatalogBindingRowsForProject(f.api, f.auth, { projectId: f.projectId }))[0]).toMatchObject({ id: original.id, rawValue: "<50>" });
+  });
+
+  it("keeps the configuration on resolver failure and reports Chinese diagnostics", async () => {
+    const invalid = await add("dangling-root.dts", '/dts-v1/; /plugin/; &unknown { iin_max = <60>; };', "misc", "add-dangling-root");
+    const before = await captureConfigurationSourceState(f.db, { organizationId: f.organizationId, projectId: f.projectId });
+    await expect(previewCanonicalMemberAddition(f.api, f.storage, f.auth, { projectId: f.projectId, configSetId: f.configSetId,
+      fileId: invalid.fileId, role: "base", sortOrder: 0, setAsRoot: true }, f.security, options)).rejects.toMatchObject({
+      code: "VALIDATION_FAILED", details: { diagnostics: expect.arrayContaining([expect.objectContaining({ message: expect.stringContaining("找不到覆盖目标节点") })]) }
+    });
+    expect(await captureConfigurationSourceState(f.db, { organizationId: f.organizationId, projectId: f.projectId })).toEqual(before);
+  });
+
+  it("restores a deleted base property when its deleting overlay is removed", async () => {
+    const g = await createSourceAdminFixture("remove-restore", createUserInvocation);
+    try {
+      const original = (await listCatalogBindingRowsForProject(g.api, g.auth, { projectId: g.projectId }))[0]!;
+      const candidate = await createCandidate(g.api, g.storage, g.auth, { projectId: g.projectId, fileName: "delete.dts",
+        bytes: Buffer.from('/dts-v1/; /plugin/; &charger { /delete-property/ iin_max; };') });
+      const body = { projectId: g.projectId, configSetId: g.configSetId, candidateId: candidate.id, role: "overlay" as const, sortOrder: 1 };
+      const preview = await previewCanonicalMemberAddition(g.api, g.storage, g.auth, body, g.security, options);
+      const added = await applyCanonicalMemberAddition(g.api, g.storage, g.auth, { ...body, proofToken: preview.proofToken,
+        reason: "Delete base property", clientMutationId: "delete-base-property" }, g.security, options);
+      expect(await listCatalogBindingRowsForProject(g.api, g.auth, { projectId: g.projectId })).toHaveLength(0);
+      const target = { projectId: g.projectId, configSetId: g.configSetId, fileId: added.fileId };
+      const removal = await previewAdministratorMemberRemoval(g.api, g.storage, g.auth, target, options);
+      expect(removal.impact.restoredParameters).toBe(1);
+      await applyAdministratorMemberRemoval(g.api, g.storage, g.auth, { ...target, expectedProofToken: removal.proofToken,
+        reason: "Restore deleted property", clientMutationId: "restore-by-removal" }, g.security, options);
+      const after = await listCatalogBindingRowsForProject(g.api, g.auth, { projectId: g.projectId });
+      expect(after).toHaveLength(1);
+      expect(after[0]).toMatchObject({ id: original.id, rawValue: "<36>" });
+    } finally { await g.close(); }
+  });
 });
 const reviewer = makeTestAuthContext({
   userId: reviewerId, organizationId,

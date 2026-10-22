@@ -23,6 +23,8 @@ import { requireCanonicalUserInvocation } from "./canonicalSource";
 import { assertSourceRevisionWriteAllowed, freezeSourceRevisionRequest, inspectSourceRevision, isSourceRevisionReviewer,
   loadSnapshot, loadSourceRevisionCatalogSnapshots, requireCurrentSourceAdministrator, sameSourceRevision, sourceRevisionDigest, type SourceRevisionProof } from "./sourceRevisionService";
 import type { CanonicalSourceSecurityContext } from "./canonicalSource";
+import { applySourceRestoration } from "./sourceRestoration";
+import type { DtsToolchainRunner } from "./dtsToolchain";
 
 function conflict(message: string): never { throw new ApiError("CONFLICT", message, { reason: "source-revision-stale" }); }
 
@@ -38,7 +40,7 @@ type RequestRow = { id: string; status: string; submitter_user_id: string; assig
 export async function commitSourceRevision(tx: Database, storage: ObjectStore, auth: AuthContext, snapshot: CatalogSnapshot | null,
   input: { projectId: string; requestId: string; invocation: TrustedInvocationContext; traceId: string;
     refusalSink: TrustedRefusalAuditSink; note?: string | null; catalogSnapshots?: ReadonlyMap<string, CatalogSnapshot>;
-    applicationMode?: "administrator_direct" }
+    applicationMode?: "administrator_direct"; toolchain?: DtsToolchainRunner }
 ): Promise<{ requestId: string; status: "approved"; sourceRevisionProofDigest: string }> {
   const security = { invocation: input.invocation, requestId: input.traceId, refusalSink: input.refusalSink };
   await requireCanonicalUserInvocation(auth, security, { projectId: input.projectId, operation: "whole DTS source revision apply",
@@ -81,7 +83,7 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
   if (visible.status !== "pending") conflict("Source revision request is already closed.");
   const frozen = visible.source_revision_context;
   const inspected = await inspectSourceRevision(tx, storage, auth, { projectId: input.projectId, candidateId: frozen.candidateId }, snapshot,
-    { lock: true, snapshots: input.catalogSnapshots });
+    { lock: true, snapshots: input.catalogSnapshots, toolchain: input.toolchain });
   await assertSourceRevisionWriteAllowed(tx, auth, inspected.proof, security);
   if (!sameSourceRevision(inspected.proof, frozen) || inspected.proof.proofDigest !== visible.source_revision_proof_digest) {
     conflict("Source, definitions, registrations or current parameter values changed after review submission.");
@@ -129,6 +131,18 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
     const pinnedSnapshot = input.catalogSnapshots?.get(entry.catalogReleaseId)
       ?? (snapshot?.release.id === entry.catalogReleaseId ? snapshot : null);
     if (!pinnedSnapshot) conflict("Reviewed source values require their pinned Catalog.");
+    const restoration = frozen.restorations?.find((row) => row.bindingId === entry.bindingId);
+    if (restoration) {
+      const property = observed.find((row) => row.fileId === restoration.fileId && row.logicalNodeId === restoration.logicalNodeId && row.propertyKey === restoration.propertyName);
+      if (!property) conflict("恢复参数缺少实际生效来源，所有变更已回滚。");
+      const restored = await applySourceRestoration(tx, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: frozen.configSetId },
+        restoration, { requestId: request.id, configRevisionId: revision.id, auditRef }, pinnedSnapshot, property);
+      results.push({ ...restored, kind: "changed" });
+      await tx.query(`update public.project_parameter_value_change_targets set applied_value_id=$3,applied_history_event_id=$4,
+        applied_source_pin_id=$5,applied_file_version_id=$6 where request_id=$1 and binding_id=$2 and applied_value_id is null`,
+      [request.id,entry.bindingId,restored.newValueId,restored.historyEventId,restored.sourcePinId,restored.fileVersionId]);
+      continue;
+    }
     const current = await readOwnedCurrentBinding(tx, { organizationId: auth.organization.id,
       projectId: input.projectId, bindingId: entry.bindingId, lock: true });
     const old = await readOwnedProjectValueIdentity(tx, { organizationId: auth.organization.id,
@@ -209,7 +223,7 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
     kind: "parameter-topology-governance", action: "value-change-applied", severity: "Medium", projectId: input.projectId,
     targetType: "project-parameter-value-change-request", targetId: request.id,
     metadata: { requestId: request.id, requestKind: "source_revision", applicationMode: request.source_revision_application_mode,
-      appliedByUserId: auth.user.id, sourceRevisionProofDigest: frozen.proofDigest, result }, traceId: input.traceId });
+      appliedByUserId: auth.user.id, sourceRevisionProofDigest: frozen.proofDigest, restoredParameters: frozen.restorations?.length ?? 0, result }, traceId: input.traceId });
   await tx.query(`update public.project_parameter_file_candidates set status='active',activated_at=now(),activated_by_user_id=$2,activated_version_id=$3 where id=$1`,
     [candidate.id, auth.user.id, version.id]);
   const approved = await tx.query(`update public.project_parameter_value_change_requests set status='approved',reviewer_user_id=$2,
@@ -223,7 +237,8 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
 /** Preview, freeze and apply in one transaction; the durable record honestly has no second reviewer. */
 export async function applySourceRevisionCandidate(db: Database, storage: ObjectStore, auth: AuthContext,
   input: { projectId: string; candidateId: string; expectedCurrentVersionId: string; expectedProofToken: string;
-    reason: string; clientMutationId: string }, security: CanonicalSourceSecurityContext
+    reason: string; clientMutationId: string }, security: CanonicalSourceSecurityContext,
+  options: { toolchain?: DtsToolchainRunner } = {}
 ): Promise<{ requestId: string }> {
   await requireCanonicalUserInvocation(auth, security, { projectId: input.projectId, operation: "administrator direct DTS source application",
     targetType: "project-parameter-file-candidate", targetId: input.candidateId });
@@ -249,7 +264,7 @@ export async function applySourceRevisionCandidate(db: Database, storage: Object
       }
       requestId = replay.id;
     } else {
-      const { proof, before, after } = await inspectSourceRevision(tx, storage, auth, input, snapshot, { lock: true, snapshots });
+      const { proof, before, after } = await inspectSourceRevision(tx, storage, auth, input, snapshot, { lock: true, snapshots, toolchain: options.toolchain });
       await assertSourceRevisionWriteAllowed(tx, auth, proof, security);
       if (proof.baseVersionId !== input.expectedCurrentVersionId || proof.proofDigest !== input.expectedProofToken) {
         conflict("Source revision no longer matches the confirmed preview.");
@@ -259,7 +274,7 @@ export async function applySourceRevisionCandidate(db: Database, storage: Object
     }
     await commitSourceRevision(tx, storage, auth, snapshot, { projectId: input.projectId, requestId,
       invocation: security.invocation, traceId: security.requestId, refusalSink: security.refusalSink,
-      catalogSnapshots: snapshots, applicationMode: "administrator_direct" });
+      catalogSnapshots: snapshots, applicationMode: "administrator_direct", toolchain: options.toolchain });
     return { requestId };
   });
 }

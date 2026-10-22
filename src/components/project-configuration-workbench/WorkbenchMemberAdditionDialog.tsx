@@ -106,6 +106,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
           <h3>确认后的文件组成</h3><ul>{preview.members.map((member) => <li key={member.fileId}>{member.sourceName} · {roleLabels[member.role as keyof typeof roleLabels] ?? member.role} · 顺序 {member.sortOrder}</li>)}</ul>
           {preview.entryFile ? <p>入口：{preview.entryFile}；include 路径：{preview.includeSearchPaths.join("、")}；覆盖顺序：{preview.overlayOrder.join(" → ") || "无"}。</p> : null}
           <p>参数变化：{preview.impact.parameterChanges}；新增节点：{preview.impact.nodeAdditions}；移除节点：{preview.impact.nodeRemovals}。</p>
+          {preview.impact.restoredParameters ? <p>恢复 {preview.impact.restoredParameters} 个已删除参数，保留原身份及历史。</p> : null}
           <p>保留 {preview.impact.retainedBindings} 个参数关联；{preview.impact.sourceReplacements} 个参数将切换有效来源文件，关联身份及历史保留。</p>
           {preview.diagnostics.map((item, index) => <p key={`${item.code}-${index}`}>{item.message}</p>)}
           <label>加入原因<Input aria-label="加入原因" value={reason} disabled={busy} maxLength={2000} onChange={(event) => setReason(event.target.value)} /></label>
