@@ -123,3 +123,34 @@ export async function deleteDefinition(db: Database, invocation: TrustedInvocati
   await finishObjectCleanup(db, definitionId, result, stores);
   return { item: { definitionId, deleted: true as const, counts: result.counts, originalFilesRetained: true as const } };
 }
+
+export async function listDefinitionErasures(db: Database, auth: AuthContext) {
+  requireDefinitionErasureAdministrator(auth);
+  const result = await db.query<{ definition_id: string; erased_at: Date; pending_object_refs: string[] }>(
+    "select * from parameter_catalog.list_definition_erasures($1) where cardinality(pending_object_refs)>0", [auth.organization.id]);
+  return { items: result.rows.map(row => ({ definitionId: row.definition_id,
+    deletedAt: row.erased_at.toISOString(), pendingObjectCount: row.pending_object_refs.length })) };
+}
+
+export async function retryDefinitionCleanup(db: Database, invocation: TrustedInvocationContext, definitionId: string,
+  requestId: string, stores: DefinitionArchiveStores = {}) {
+  const trusted = assertTrustedInvocationContext(invocation);
+  if (trusted.initiator !== "user") throw new ApiError("FORBIDDEN", "存储清理必须由平台超级管理员本人执行。");
+  const auth = trusted.principal;
+  requireDefinitionErasureAdministrator(auth);
+  const actor = projectTrustedInvocationForAudit(trusted);
+  const state = await db.transaction(async tx => {
+    const result = await tx.query<ErasureState>(
+      "select * from parameter_catalog.list_definition_erasures($1) where definition_id=$2", [auth.organization.id, definitionId]);
+    const receipt = result.rows[0];
+    if (!receipt) throw new ApiError("NOT_FOUND", "本组织没有此参数定义的删除回执。");
+    await writePlatformAuditEvent(tx, { id: randomUUID(), app: "parameters", kind: "governance",
+      action: "definition-cleanup-retried", severity: "High", projectId: null,
+      targetType: "parameter-definition", targetId: definitionId, actorUserId: actor.actorUserId,
+      actorType: actor.actorType, traceId: requestId, affectedOrganizationIds: [auth.organization.id],
+      metadata: { ...actor.metadata, pendingObjectCount: receipt.pending_object_refs.length } });
+    return receipt;
+  });
+  await finishObjectCleanup(db, definitionId, state, stores);
+  return { item: { definitionId, deleted: true as const, counts: state.counts, originalFilesRetained: true as const } };
+}

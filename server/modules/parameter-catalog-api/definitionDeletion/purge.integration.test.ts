@@ -98,6 +98,8 @@ describe("platform Definition erasure through the runtime API database role", ()
       await tx.query("select parameter_catalog.purge_parameter_definition($1,$2::jsonb,$3,$4)", [X_DEFINITION_ID,
         JSON.stringify({ ...plan, archiveErasure: { planeUpdates: [{ id: "shared-erasure-archive", oldObjectRef: "old-owned-archive", newObjectRef: "new-sanitized-archive", contentDigest: `sha256:${"c".repeat(64)}`, archiveDigest: `sha256:${"d".repeat(64)}`, counts: {} }],
           catalogDeletes: [], pendingObjectRefs: ["plane::old-owned-archive"] } }), "erase-platform", "audit-purge-success"]);
+      expect((await tx.query("select definition_id from parameter_catalog.list_definition_erasures($1) where definition_id=$2",
+        [fixture.owners[0]!.organizationId, X_DEFINITION_ID])).rows).toEqual([{ definition_id: X_DEFINITION_ID }]);
     });
     for (const table of ["parameter_catalog.parameter_definitions", "parameter_catalog.definition_revisions", "parameter_catalog.project_parameter_bindings", "parameter_catalog.project_parameter_values"]) {
       const column = table.endsWith(".parameter_definitions") ? "id" : "definition_id";

@@ -112,7 +112,6 @@ export type CatalogPageProps = {
   /** Called when the editor dialog closes, so the host can refresh its evidence. */
   onEditorClosed?: () => void;
   onDefinitionDeleted?: (definitionId: string) => void;
-  onDefinitionDeletionCleanupPending?: (entry: { definitionId: string; previewToken: string }) => void;
   renderDefinitionEditor?: (
     definition: DefinitionItem,
     history: {
@@ -238,7 +237,6 @@ export function CatalogPage({
   reviewCountOverride,
   onEditorClosed,
   onDefinitionDeleted,
-  onDefinitionDeletionCleanupPending,
   renderDefinitionEditor,
   onDefinitionCommand,
   definitionPublishingAllowed = false,
@@ -1251,7 +1249,6 @@ export function CatalogPage({
       ) : null}
       {deletingDefinition && canDeleteDefinition ? <DefinitionDeletionDialog
         definition={deletingDefinition} repository={repository} onCancel={() => setDeletingDefinition(null)}
-        onCleanupPending={onDefinitionDeletionCleanupPending}
         onDeleted={() => {
           onDefinitionDeleted?.(deletingDefinition.id);
           setDeletingDefinition(null);

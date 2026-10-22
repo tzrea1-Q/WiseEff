@@ -377,6 +377,17 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
         originalFilesRetained: true, previewToken: `delete:${definitionId}:${store.catalog.item.digest}`
       } };
     },
+    async listDefinitionErasures() {
+      const session = options.getSession?.();
+      if (session && (!session.isActive || session.actorKind !== "platform-admin")) throw catalogApiFailure("forbidden");
+      return { items: [] };
+    },
+    async retryDefinitionCleanup(definitionId) {
+      const session = options.getSession?.();
+      if (session && (!session.isActive || session.actorKind !== "platform-admin")) throw catalogApiFailure("forbidden");
+      if (definitionId !== store.definition.id || !store.definitionDeleted) throw catalogApiFailure("definition-not-found");
+      return { item: { definitionId, deleted: true, counts: {}, originalFilesRetained: true } };
+    },
     async deleteDefinition(definitionId, body) {
       const preview = await catalog.previewDefinitionDeletion!(definitionId);
       if (body.previewToken !== preview.item.previewToken) throw catalogApiFailure("revision-conflict");

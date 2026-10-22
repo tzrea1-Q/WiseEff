@@ -35,21 +35,9 @@ import { modulePathSegments } from "@/components/admin/moduleManagementTreeUtils
 import { toAttributionFlatNodes } from "@/components/parameter-topology/moduleAttributionTreeUtils";
 
 import { ReviewQueue } from "./ReviewQueue";
-import type { CatalogDefinitionResponse } from "@/infrastructure/http/parameterCatalogDtos";
+import type { CatalogDefinitionResponse, CatalogDefinitionErasureListResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
 import type { AuthContextDto } from "@/infrastructure/http/authClient";
-
-type DefinitionCleanup = { definitionId: string; previewToken: string };
-
-function readDefinitionCleanup(key: string): DefinitionCleanup[] {
-  try {
-    const entries: unknown = JSON.parse(localStorage.getItem(key) ?? "[]");
-    return Array.isArray(entries) ? entries.flatMap((entry: unknown) =>
-      entry && typeof entry === "object" && "definitionId" in entry && "previewToken" in entry &&
-        typeof entry.definitionId === "string" && entry.definitionId && typeof entry.previewToken === "string" && entry.previewToken
-        ? [{ definitionId: entry.definitionId, previewToken: entry.previewToken }] : []) : [];
-  } catch { return []; }
-}
 
 export type CatalogOrganizationSurfaceProps = {
   catalog: ParameterCatalogRepository;
@@ -86,34 +74,25 @@ export function CatalogOrganizationSurface({
 }: CatalogOrganizationSurfaceProps) {
   const actor = actorProp ?? catalogActorForRole(roleId ?? "");
   const definitionDeletionAllowed = Boolean(sessionRoles?.some((role) => role.roleId === "platform-admin" && role.projectId === null));
-  const cleanupKey = `wiseeff:definition-deletion-cleanup:${encodeURIComponent(currentPersonId)}:${encodeURIComponent(organizationId ?? "")}`;
-  const [cleanupState, setCleanupState] = useState<{ key: string; entries: DefinitionCleanup[] }>({ key: "", entries: [] });
-  const [cleanupRetry, setCleanupRetry] = useState<{ key: string; pending: boolean; error: string }>({ key: "", pending: false, error: "" });
+  const cleanupKey = JSON.stringify([currentPersonId, organizationId]);
+  const [cleanupState, setCleanupState] = useState<{ key: string; entries: CatalogDefinitionErasureListResponse["items"]; error: string }>({ key: "", entries: [], error: "" });
+  const [cleanupRetry, setCleanupRetry] = useState<{ key: string; definitionId: string; error: string }>({ key: "", definitionId: "", error: "" });
+  const [cleanupEpoch, setCleanupEpoch] = useState(0);
   const cleanupGeneration = useRef(0);
   const pendingCleanup = definitionDeletionAllowed && cleanupState.key === cleanupKey ? cleanupState.entries : [];
+  const cleanupError = definitionDeletionAllowed && cleanupState.key === cleanupKey ? cleanupState.error : "";
   useEffect(() => {
-    cleanupGeneration.current += 1;
-    if (definitionDeletionAllowed) setCleanupState({ key: cleanupKey, entries: readDefinitionCleanup(cleanupKey) });
-    return () => { cleanupGeneration.current += 1; };
-  }, [cleanupKey, definitionDeletionAllowed]);
-  const writeCleanup = (entries: DefinitionCleanup[]) => {
-    if (!definitionDeletionAllowed) return;
-    try {
-      if (entries.length) localStorage.setItem(cleanupKey, JSON.stringify(entries));
-      else localStorage.removeItem(cleanupKey);
-    } catch {
-      setCleanupRetry({ key: cleanupKey, pending: false, error: "无法保存归档清理进度，请在当前页面完成清理。" });
+    const generation = ++cleanupGeneration.current;
+    setCleanupRetry({ key: cleanupKey, definitionId: "", error: "" });
+    if (definitionDeletionAllowed && catalog.listDefinitionErasures) {
+      void catalog.listDefinitionErasures().then(({ items }) => {
+        if (generation === cleanupGeneration.current) setCleanupState({ key: cleanupKey, entries: items, error: "" });
+      }).catch(() => {
+        if (generation === cleanupGeneration.current) setCleanupState({ key: cleanupKey, entries: [], error: "无法读取待完成存储清理。" });
+      });
     }
-    setCleanupState({ key: cleanupKey, entries });
-  };
-  const retainCleanup = (entry: DefinitionCleanup) => {
-    if (!definitionDeletionAllowed) return;
-    writeCleanup([...readDefinitionCleanup(cleanupKey).filter((existing) => existing.definitionId !== entry.definitionId), entry]);
-  };
-  const clearCleanup = (definitionId: string) => {
-    if (!definitionDeletionAllowed) return;
-    writeCleanup(readDefinitionCleanup(cleanupKey).filter((entry) => entry.definitionId !== definitionId));
-  };
+    return () => { cleanupGeneration.current += 1; };
+  }, [catalog, cleanupKey, definitionDeletionAllowed, cleanupEpoch]);
   const reviewActor = sessionRoles === undefined ? actor
     : sessionRoles?.some((role) => role.roleId === "admin" && role.projectId === null) ? "org-admin" : "user";
   const reviewQueueAllowed = catalogActionsForSession({ actor: reviewActor, permissions: sessionPermissions }).includes("resolve-review-item");
@@ -268,22 +247,18 @@ export function CatalogOrganizationSurface({
   const operatorAudience = sessionRoles === undefined
     ? actor === "platform-admin" || roleId === "operator"
     : sessionRoles?.some((role) => role.projectId === null && ["platform-admin", "operator"].includes(role.roleId));
-  const retryCleanup = async () => {
-    const entry = pendingCleanup[0];
-    if (!definitionDeletionAllowed || !entry || !catalog.deleteDefinition || (cleanupRetry.key === cleanupKey && cleanupRetry.pending)) return;
+  const retryCleanup = async (definitionId: string) => {
+    if (!definitionDeletionAllowed || !catalog.retryDefinitionCleanup || (cleanupRetry.key === cleanupKey && cleanupRetry.definitionId)) return;
     const generation = cleanupGeneration.current;
-    setCleanupRetry({ key: cleanupKey, pending: true, error: "" });
+    setCleanupRetry({ key: cleanupKey, definitionId, error: "" });
     try {
-      await catalog.deleteDefinition(entry.definitionId, { previewToken: entry.previewToken });
+      await catalog.retryDefinitionCleanup(definitionId);
       if (generation !== cleanupGeneration.current) return;
-      clearCleanup(entry.definitionId);
-      setCleanupRetry({ key: cleanupKey, pending: false, error: "" });
-      onAnchorChange(buildCatalogHref({ ...anchor, definitionId: anchor.definitionId === entry.definitionId ? null : anchor.definitionId,
-        catalogReleaseId: null, cursor: null }), "replace");
-      setSurfaceEpoch((value) => value + 1);
+      setCleanupRetry({ key: cleanupKey, definitionId: "", error: "" });
+      setCleanupEpoch(value => value + 1);
     } catch (reason) {
-      if (generation === cleanupGeneration.current) setCleanupRetry({ key: cleanupKey, pending: false,
-        error: `归档清理未完成，请重试。${reason instanceof Error ? reason.message : ""}` });
+      if (generation === cleanupGeneration.current) setCleanupRetry({ key: cleanupKey, definitionId: "",
+        error: `存储清理未完成，请重试。${reason instanceof Error ? reason.message : ""}` });
     }
   };
 
@@ -293,12 +268,20 @@ export function CatalogOrganizationSurface({
         refreshEpoch={surfaceEpoch}
         reviewCountOverride={reviewCount}
         taskContent={taskContent}
-        notice={publicationSurfaceLoad === "error" || surfaceStatus || platformOnly || pendingCleanup.length > 0 ? <>
-          {definitionDeletionAllowed && pendingCleanup.length > 0 ? (
-            <section className="parameter-catalog__banner" data-tone="warning" aria-label="待完成归档清理">
-              <p>有参数删除待确认或待完成归档清理。</p>
-              <button type="button" className="button subtle" disabled={cleanupRetry.key === cleanupKey && cleanupRetry.pending}
-                onClick={() => void retryCleanup()}>{cleanupRetry.key === cleanupKey && cleanupRetry.pending ? "正在清理…" : "重试清理"}</button>
+        notice={publicationSurfaceLoad === "error" || surfaceStatus || platformOnly || pendingCleanup.length > 0 || cleanupError ? <>
+          {definitionDeletionAllowed && (pendingCleanup.length > 0 || cleanupError) ? (
+            <section className="parameter-catalog__banner" data-tone="warning" aria-label="待完成存储清理">
+              <p>待完成存储清理（{pendingCleanup.length}）</p>
+              {pendingCleanup.map(entry => <div key={entry.definitionId}>
+                <span>{entry.definitionId} · {new Date(entry.deletedAt).toLocaleString("zh-CN")} · {entry.pendingObjectCount} 个对象</span>
+                <button type="button" className="button subtle" aria-label={`继续清理 ${entry.definitionId}`}
+                  disabled={cleanupRetry.key === cleanupKey && Boolean(cleanupRetry.definitionId)}
+                  onClick={() => void retryCleanup(entry.definitionId)}>
+                  {cleanupRetry.key === cleanupKey && cleanupRetry.definitionId === entry.definitionId ? "正在清理…" : "继续清理"}
+                </button>
+              </div>)}
+              {cleanupError ? <><p role="alert">{cleanupError}</p><button type="button" className="button subtle"
+                onClick={() => setCleanupEpoch(value => value + 1)}>重试读取</button></> : null}
               {cleanupRetry.key === cleanupKey && cleanupRetry.error ? <p role="alert">{cleanupRetry.error}</p> : null}
             </section>
           ) : null}
@@ -341,8 +324,7 @@ export function CatalogOrganizationSurface({
         onAction={handleAction}
         onOpenPendingWork={reviewQueueAllowed ? () => setPendingWorkOpen(true) : undefined}
         onEditorClosed={() => setSurfaceEpoch((value) => value + 1)}
-        onDefinitionDeleted={clearCleanup}
-        onDefinitionDeletionCleanupPending={retainCleanup}
+        onDefinitionDeleted={() => setCleanupEpoch(value => value + 1)}
         organizationId={organizationId}
         listReviewItems={
           organizationId && reviewQueueAllowed ? (orgId, query) => governance.listReviewItems(orgId, query) : undefined
