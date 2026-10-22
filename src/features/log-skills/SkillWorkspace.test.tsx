@@ -167,13 +167,15 @@ describe("skill workspace", () => {
     for (const name of ["保存草稿", "发布", "放弃草稿"]) expect(within(actions).getByRole("button", { name })).toBeEnabled();
   });
 
-  it("explains the disabled dry run beside its button without requiring hover", async () => {
+  it("explains the disabled dry run through its description and keyboard tooltip", async () => {
     setup({ noSample: true });
     const button = await screen.findByRole("button", { name: "试运行" });
     expect(button).toBeDisabled();
     expect(button).toHaveAccessibleDescription("先上传样例日志");
-    expect(screen.getByText("先上传样例日志")).toBeVisible();
-    expect(button.previousElementSibling).toHaveTextContent("先上传样例日志");
+    expect(button.previousElementSibling).toHaveClass("sr-only");
+    expect(button.parentElement).toHaveAttribute("tabindex", "0");
+    button.parentElement!.focus();
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("先上传样例日志");
   });
 
   it("hides version comparisons until two revisions exist", async () => {
@@ -731,6 +733,7 @@ describe("skill workspace", () => {
   });
   it("edits parsing in the shared draft, saves and publishes it, and blocks invalid YAML", async () => {
     const { repository } = setup({ section: "parsing" });
+    await userEvent.click(await screen.findByRole("tab", { name: "抽取规则" }));
     await userEvent.click(await screen.findByRole("tab", { name: "代码视图" }));
     const editor = await screen.findByRole("textbox", { name: "代码视图 · YAML" });
     fireEvent.change(editor, { target: { value: "schemaVersion: parsing/v1\nextractors: [" } });

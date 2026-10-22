@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { parseDocument, stringify } from "yaml";
 import { parsingSpecSchema, logSkillSpecSchema } from "@wiseeff/dto-schemas";
 import { matchSkillFile } from "@/domain/logs/fileApplicability";
@@ -33,6 +33,12 @@ export function ParsingSection({ skillId, yaml, onChange, disabled, repository, 
   const id = useId();
   const [view, setView] = useState("form");
   const [section, setSection] = useState("files");
+  const [filesYamlDraft, setFilesYamlDraft] = useState<string | null>(null);
+  const filesYaml = filesYamlDraft ?? stringify(files ?? []);
+  const parsedFiles = parseParsingYaml(filesYaml);
+  const filesCodeValid = !parsedFiles.error && logSkillSpecSchema.safeParse({ schemaVersion: "skill/v1", files: parsedFiles.value }).success;
+  const [profileValid, setProfileValid] = useState(true);
+  useEffect(() => { onProfileValidityChange?.(filesCodeValid && profileValid); }, [filesCodeValid, profileValid, onProfileValidityChange]);
   const parsed = parseParsingYaml(yaml);
   const previewPath = sample?.contentFilePath ?? sample?.fileName ?? "";
   const filesValid = logSkillSpecSchema.safeParse({ schemaVersion: "skill/v1", files }).success;
@@ -49,18 +55,25 @@ export function ParsingSection({ skillId, yaml, onChange, disabled, repository, 
       { value: "code", label: "代码视图", id: `${id}-code`, panelId: `${id}-code-panel` }
     ]} /></div>
     <TabPanel id={`${id}-${view}-panel`} aria-labelledby={`${id}-${view}`}>
-      <TabPanel id={`${id}-files-panel`} aria-labelledby={`${id}-files`} hidden={view !== "form" || section !== "files"}>
-        <FileApplicabilitySection spec={{ schemaVersion: "skill/v1", files }} onChange={(spec) => onFilesChange?.(spec.files)} disabled={disabled || !onFilesChange} sample={sample ?? null} />
+      <TabPanel id={`${id}-files-panel`} aria-labelledby={`${id}-files`} hidden={section !== "files"}>
+        {view === "code" ? <label>适用文件 YAML<Textarea spellCheck={false} disabled={disabled || !onFilesChange} value={filesYaml}
+          aria-invalid={!filesCodeValid} aria-describedby={!filesCodeValid ? `${id}-files-error` : undefined} onChange={(event) => {
+            const text = event.target.value; setFilesYamlDraft(text);
+            const parsed = parseParsingYaml(text);
+            const validated = logSkillSpecSchema.safeParse({ schemaVersion: "skill/v1", files: parsed.value });
+            if (!parsed.error && validated.success) onFilesChange?.(validated.data.files);
+          }} /></label> : <FileApplicabilitySection spec={{ schemaVersion: "skill/v1", files }} onChange={(spec) => { setFilesYamlDraft(null); onFilesChange?.(spec.files); }} disabled={disabled || !onFilesChange} sample={sample ?? null} />}
+        {!filesCodeValid ? <p id={`${id}-files-error`} role="alert">{parsedFiles.error ?? "文件规则无效，请检查通配模式、角色和规则数量。"}</p> : null}
       </TabPanel>
-      <TabPanel id={`${id}-format-panel`} aria-labelledby={`${id}-format`} hidden={view === "form" && section !== "format"}>
+      <TabPanel id={`${id}-format-panel`} aria-labelledby={`${id}-format`} hidden={section !== "format"}>
         {onProfileChange ? <FormatProfileForm skillId={skillId} profile={profile} onChange={onProfileChange} disabled={disabled} repository={repository} sample={sample ?? null}
-          view={view === "code" ? "code" : "form"} previewEnabled={skillMatched} onValidityChange={onProfileValidityChange} /> : <p>暂无基础格式配置。</p>}
+          view={view === "code" ? "code" : "form"} previewEnabled={skillMatched} onValidityChange={setProfileValid} /> : <p>暂无基础格式配置。</p>}
       </TabPanel>
       <TabPanel id={`${id}-extractors-panel`} aria-labelledby={`${id}-extractors`} hidden={view !== "form" || section !== "extractors"}>
         <ExtractorBuilder skillId={skillId} parsing={validation.success ? validation.data : null} onChange={(value) => onChange(stringify(value))}
           disabled={disabled} repository={repository} sampleText={storedPreview.content} selectedLine={selectedLine} onLineSelect={onLineSelect} timestampPattern={profile?.timestampPattern} />
       </TabPanel>
-      <div hidden={view !== "code"}>
+      <div hidden={view !== "code" || section !== "extractors"}>
         <label htmlFor={`${id}-parsing-yaml`}>代码视图 · YAML</label>
         <div className="skill-yaml-editor">
           <pre aria-hidden="true">{yaml.split("\n").map((_, i) => i + 1).join("\n")}</pre>

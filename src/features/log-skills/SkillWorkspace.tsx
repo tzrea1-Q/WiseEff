@@ -410,13 +410,16 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
         highlightPreview={currentHighlights?.preview} highlightError={currentHighlights?.error} />}
       toolbar={<header className="skill-workspace-header"><Button variant="link" asChild><a href="/log-admin?tab=skills" onClick={(event) => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); back(); } }}>← 分析技能</a></Button>
         <div className="skill-workspace-identity"><h1 title={skill.name}>{skill.name}</h1><span className="badge" role="status">{workspaceStatus}</span></div>
-        {apiMode && canEdit ? <div className="skill-dry-run-action"><small id="skill-dry-run-reason">{dryRunReason}</small><Button variant="outline" disabled={!!dryRunReason}
+        {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Disabled buttons cannot receive focus; the wrapper exposes their reason to keyboard users. */}
+        {apiMode && canEdit ? <TooltipProvider><Tooltip><TooltipTrigger asChild><span className="skill-dry-run-action" tabIndex={dryRunReason ? 0 : undefined}>
+          <span className="sr-only" id="skill-dry-run-reason">{dryRunReason}</span><Button variant="outline" disabled={!!dryRunReason}
           aria-describedby={dryRunReason ? "skill-dry-run-reason" : undefined} onClick={() => {
             if (dryRun?.status === "processing") { setDryRunOpen(true); return; }
             void run(async () => {
               await startDryRun();
             });
-          }}>{dryRun?.status === "processing" ? "查看试运行" : "试运行"}</Button></div> : null}
+          }}>{dryRun?.status === "processing" ? "查看试运行" : "试运行"}</Button></span></TooltipTrigger>
+          {dryRunReason ? <TooltipContent>{dryRunReason}</TooltipContent> : null}</Tooltip></TooltipProvider> : null}
         <div className="skill-draft-actions-slot">{skill.draft || dirty ? <div className="skill-draft-bar" role="group" aria-label="未发布更改">
           {skill.currentRevision.status === "draft" && repository?.previewSkillDeletion ? <Button variant="ghost" disabled={disabled} onClick={() => setDeletionOpen(true)}>彻底删除…</Button> : <Button variant="ghost" disabled={disabled || (skill.currentRevision.status === "draft" && !dirty)} onClick={() => ask("放弃草稿？", skill.currentRevision.status === "draft" ? "将放弃未保存的更改，保留已导入的首个草稿。" : skill.draft ? "将删除已保存的草稿并放弃未保存的更改，当前发布版本不受影响。" : "将放弃未保存的更改，当前发布版本不受影响。", () => {
             if (skill.currentRevision.status === "draft") { setSpec(structuredClone((skill.draft ?? skill.currentRevision).spec)); setProcedureEdited(false); setParsingYamlDraft(null); setFormatValid(true); setEditorReset((value) => value + 1); setEditReset((generation) => generation + 1); return; }
