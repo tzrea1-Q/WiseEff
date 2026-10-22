@@ -10,12 +10,14 @@ describe("definition deletion contract registration", () => {
   it("publishes both real production routes with their exact DTO contracts", () => {
     const router = createRouter();
     registerParameterCatalogApi(router, { resolveAuth: () => { throw new Error("Registration does not authenticate"); } });
-    for (const id of ["catalog.previewDefinitionDeletion", "catalog.deleteDefinition"]) {
+    for (const [id, response] of Object.entries({ "catalog.previewDefinitionDeletion": "CatalogDefinitionDeletionPreviewResponse",
+      "catalog.deleteDefinition": "CatalogDefinitionDeletedResponse", "catalog.listDefinitionErasures": "CatalogDefinitionErasureListResponse",
+      "catalog.retryDefinitionCleanup": "CatalogDefinitionDeletedResponse" })) {
       const route = routeManifest.find(entry => entry.id === id)!;
       expect(route).toBeDefined();
       expect(router.listRoutes()).toContainEqual({ method: route.method, pattern: route.path });
       expect(dtoSchemaCoveredRouteIds as readonly string[]).toContain(id);
-      expect(schemaRegistry[id]?.responseBody).toBe(id === "catalog.deleteDefinition" ? "CatalogDefinitionDeletedResponse" : "CatalogDefinitionDeletionPreviewResponse");
+      expect(schemaRegistry[id]?.responseBody).toBe(response);
     }
   });
 });

@@ -116,8 +116,14 @@ export const S2_SCH_0241_FINGERPRINT =
  * become five) and update six historical receipt/provenance functions. The
  * unchanged six-category query adds no relations, table columns, triggers or
  * functions; every earlier schema pin remains intact. */
-export const S2_SCH_LIVE_FINGERPRINT =
+export const S2_SCH_0245_FINGERPRINT =
   "6b373aebaeae82091d7d3e86de2a385ba1ab73786a7b14d131333c486b66db38";
+
+/** 0249 adds the erasure organization column and scoped receipt reader, and
+ * records ownership in the existing purge INSERT. 0250 only grants runtime
+ * access; all preceding schema pins and the six-category inventory stay intact. */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "25b1a094b833f6a9b825513e3791892d7f7cb2c13bbe4d27203ab3ff1a8cece0";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

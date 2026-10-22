@@ -6,6 +6,8 @@ export const PARAMETER_CATALOG_REPOSITORY_METHODS = [
   "listDefinitions",
   "getDefinition",
   "previewDefinitionDeletion",
+  "listDefinitionErasures",
+  "retryDefinitionCleanup",
   "deleteDefinition",
   "listDefinitionRevisions",
   "getDefinitionRevision",

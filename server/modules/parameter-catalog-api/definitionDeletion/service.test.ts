@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Database } from "../../../shared/database/client";
 import { makeTestAuthContext } from "../../../testing/authContext";
 import { createAgentInvocation, createSystemInvocation } from "../../auth/trustedInvocation";
-import { deleteDefinition, previewDefinitionDeletion, requireDefinitionErasureAdministrator } from "./service";
+import { deleteDefinition, listDefinitionErasures, retryDefinitionCleanup, previewDefinitionDeletion, requireDefinitionErasureAdministrator } from "./service";
 
 describe("definition deletion boundary", () => {
   it("rejects non-human invocations before any database write", async () => {
@@ -14,8 +14,16 @@ describe("definition deletion boundary", () => {
       createAgentInvocation(auth, { sessionId: "session", toolCallId: "call", approval: { required: false } })]) {
       await expect(deleteDefinition(db, invocation, "pdef_selected", "preview", "request"))
         .rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+      await expect(retryDefinitionCleanup(db, invocation, "pdef_selected", "request"))
+        .rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
     }
     expect(db.transaction).not.toHaveBeenCalled();
+    expect(db.query).not.toHaveBeenCalled();
+  });
+  it("refuses organization administrators before reading receipts", async () => {
+    const db: Database = { query: vi.fn(), transaction: vi.fn() };
+    await expect(listDefinitionErasures(db, makeTestAuthContext({ roleId: "admin" })))
+      .rejects.toMatchObject({ code: "FORBIDDEN" });
     expect(db.query).not.toHaveBeenCalled();
   });
   it.each([

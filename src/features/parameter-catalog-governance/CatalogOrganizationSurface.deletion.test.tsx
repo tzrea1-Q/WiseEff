@@ -127,98 +127,79 @@ describe("platform definition deletion", () => {
     expect(remove).not.toHaveBeenCalled();
   });
 
-  it("retries committed archive cleanup with the original token instead of loading a missing definition", async () => {
+  it("lists every server receipt for another administrator and retries the chosen entry after a failure", async () => {
+    const ports = createMockCatalogPorts();
+    const entries = ["deleted-a", "deleted-b"].map(definitionId => ({ definitionId,
+      deletedAt: "2026-10-21T00:00:00.000Z", pendingObjectCount: 2 }));
+    const list = vi.spyOn(ports.catalog, "listDefinitionErasures").mockImplementation(async () => ({ items: entries }));
+    const retry = vi.spyOn(ports.catalog, "retryDefinitionCleanup").mockRejectedValueOnce(new Error("存储暂不可用"))
+      .mockImplementationOnce(async definitionId => {
+        entries.splice(entries.findIndex(entry => entry.definitionId === definitionId), 1);
+        return { item: { definitionId, deleted: true, counts: {}, originalFilesRetained: true } };
+      });
+    const remove = vi.spyOn(ports.catalog, "deleteDefinition");
+    const reads = vi.spyOn(Storage.prototype, "getItem");
+    localStorage.setItem("wiseeff:definition-deletion-cleanup:admin:org-a", "obsolete");
+    render(<CatalogOrganizationSurface {...ports} actor="platform-admin" currentPersonId="another-admin" organizationId="org-a"
+      sessionRoles={[{ roleId: "platform-admin", projectId: null }]} search="" onAnchorChange={vi.fn()} />);
+    const region = await screen.findByRole("region", { name: "待完成存储清理" });
+    expect(region).toHaveTextContent("待完成存储清理（2）");
+    const user = userEvent.setup();
+    await user.click(within(region).getByRole("button", { name: "继续清理 deleted-a" }));
+    expect(await within(region).findByRole("alert")).toHaveTextContent("存储暂不可用");
+    await user.click(within(region).getByRole("button", { name: "继续清理 deleted-b" }));
+    await waitFor(() => expect(region).toHaveTextContent("待完成存储清理（1）"));
+    expect(retry.mock.calls).toEqual([["deleted-a"], ["deleted-b"]]);
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(remove).not.toHaveBeenCalled();
+    expect(reads.mock.calls.some(([key]) => String(key).startsWith("wiseeff:definition-deletion-cleanup:"))).toBe(false);
+    reads.mockRestore();
+  });
+
+  it.each([false, true])("re-reads an uncertain deletion (committed: %s) instead of replaying its token", async committed => {
     const { catalog } = setup();
-    const remove = vi.spyOn(catalog, "deleteDefinition").mockRejectedValueOnce(new WiseEffApiError(
-      "INTERNAL_ERROR", "Object storage unavailable", { reason: "definition-erasure-cleanup-pending" }, "test"
-    )).mockRejectedValueOnce(new TypeError("network unavailable"))
-      .mockResolvedValueOnce({ item: { definitionId: activeDefinition.id, deleted: true,
-      counts: { definitions: 1 }, originalFilesRetained: true } });
+    const actualDelete = catalog.deleteDefinition!;
+    const list = vi.spyOn(catalog, "listDefinitionErasures");
+    const remove = vi.spyOn(catalog, "deleteDefinition").mockImplementationOnce(async (id, body) => {
+      if (committed) {
+        await actualDelete(id, body);
+        list.mockResolvedValue({ items: [{ definitionId: id, deletedAt: "2026-10-21T00:00:00.000Z", pendingObjectCount: 1 }] });
+      }
+      throw new TypeError("Failed to fetch");
+    });
     const preview = vi.spyOn(catalog, "previewDefinitionDeletion");
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: `彻底删除 ${activeDefinition.propertyKey}` }));
     const dialog = await screen.findByRole("dialog", { name: `彻底删除 ${activeDefinition.propertyKey}` });
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "彻底删除" })).toBeEnabled());
     await user.click(within(dialog).getByRole("button", { name: "彻底删除" }));
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent("定义记录已移除，但归档清理未完成。请重试完成清理。");
-    expect(within(dialog).getByRole("button", { name: "刷新删除影响" })).toBeDisabled();
-    await user.click(within(dialog).getByRole("button", { name: "重试清理归档" }));
-    await waitFor(() => expect(within(dialog).getByRole("button", { name: "重试清理归档" })).toBeEnabled());
-    expect(preview).toHaveBeenCalledTimes(1);
-    await user.click(within(dialog).getByRole("button", { name: "重试清理归档" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(remove).toHaveBeenCalledTimes(3);
-    expect(remove.mock.calls[1]).toEqual(remove.mock.calls[0]);
-    expect(remove.mock.calls[2]).toEqual(remove.mock.calls[0]);
-    expect(preview).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+    if (committed) {
+      expect(await screen.findByRole("region", { name: "待完成存储清理" })).toHaveTextContent(activeDefinition.id);
+      expect(await screen.findByLabelText("结果计数")).toHaveTextContent("共 0 项");
+    } else {
+      await user.click(await screen.findByRole("button", { name: `彻底删除 ${activeDefinition.propertyKey}` }));
+      await waitFor(() => expect(preview).toHaveBeenCalledTimes(2));
+      expect(screen.queryByRole("region", { name: "待完成存储清理" })).not.toBeInTheDocument();
+    }
+    expect(remove).toHaveBeenCalledTimes(1);
   });
 
-  it("restores pending cleanup after remount and retries the same definition and token without another preview", async () => {
-    const first = setup({ currentPersonId: "admin-a", organizationId: "org-a" });
-    const remove = vi.spyOn(first.catalog, "deleteDefinition").mockRejectedValueOnce(new WiseEffApiError(
-      "INTERNAL_ERROR", "archive unavailable", { reason: "definition-erasure-cleanup-pending" }, "test"
-    )).mockRejectedValueOnce(new TypeError("network unavailable"))
-      .mockResolvedValueOnce({ item: { definitionId: activeDefinition.id, deleted: true, counts: {}, originalFilesRetained: true } });
-    const preview = vi.spyOn(first.catalog, "previewDefinitionDeletion");
+  it("refreshes durable receipts after committed cleanup fails", async () => {
+    const { catalog } = setup();
+    const list = vi.spyOn(catalog, "listDefinitionErasures");
+    vi.spyOn(catalog, "deleteDefinition").mockImplementationOnce(async () => {
+      list.mockResolvedValue({ items: [{ definitionId: activeDefinition.id, deletedAt: "2026-10-21T00:00:00.000Z", pendingObjectCount: 1 }] });
+      throw new WiseEffApiError("CONFLICT", "清理未完成", { reason: "definition-erasure-cleanup-pending" }, "test");
+    });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: `彻底删除 ${activeDefinition.propertyKey}` }));
     const dialog = await screen.findByRole("dialog", { name: `彻底删除 ${activeDefinition.propertyKey}` });
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "彻底删除" })).toBeEnabled());
     await user.click(within(dialog).getByRole("button", { name: "彻底删除" }));
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent("定义记录已移除");
-    const key = "wiseeff:definition-deletion-cleanup:admin-a:org-a";
-    const saved = JSON.parse(localStorage.getItem(key)!);
-    expect(saved).toEqual([{ definitionId: activeDefinition.id, previewToken: remove.mock.calls[0]![1].previewToken }]);
-    first.unmount();
-
-    render(<CatalogOrganizationSurface catalog={first.catalog} governance={first.governance} actor="platform-admin"
-      sessionRoles={[{ roleId: "platform-admin", projectId: null }]} currentPersonId="admin-a" organizationId="org-a"
-      search="" onAnchorChange={vi.fn()} />);
-    const recovery = await screen.findByRole("region", { name: "待完成归档清理" });
-    expect(recovery).toHaveTextContent("有参数删除待确认或待完成归档清理");
-    await user.click(within(recovery).getByRole("button", { name: "重试清理" }));
-    expect(await within(recovery).findByRole("alert")).toHaveTextContent("network unavailable");
-    expect(JSON.parse(localStorage.getItem(key)!)).toEqual(saved);
-    await user.click(within(recovery).getByRole("button", { name: "重试清理" }));
-    await waitFor(() => expect(screen.queryByRole("region", { name: "待完成归档清理" })).not.toBeInTheDocument());
-    expect(remove.mock.calls[1]).toEqual(remove.mock.calls[0]);
-    expect(remove.mock.calls[2]).toEqual(remove.mock.calls[0]);
-    expect(preview).toHaveBeenCalledTimes(1);
-    expect(localStorage.getItem(key)).toBeNull();
-  });
-
-  it("retains an unknown initial DELETE result across closing and remounting, then retries the same token", async () => {
-    const first = setup({ currentPersonId: "network-admin", organizationId: "org-a" });
-    const remove = vi.spyOn(first.catalog, "deleteDefinition").mockRejectedValueOnce(new TypeError("Failed to fetch"))
-      .mockResolvedValueOnce({ item: { definitionId: activeDefinition.id, deleted: true, counts: {}, originalFilesRetained: true } });
-    const preview = vi.spyOn(first.catalog, "previewDefinitionDeletion");
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: `彻底删除 ${activeDefinition.propertyKey}` }));
-    const dialog = await screen.findByRole("dialog", { name: `彻底删除 ${activeDefinition.propertyKey}` });
-    await waitFor(() => expect(within(dialog).getByRole("button", { name: "彻底删除" })).toBeEnabled());
-    await user.click(within(dialog).getByRole("button", { name: "彻底删除" }));
-    const error = await within(dialog).findByRole("alert");
-    expect(error).toHaveTextContent("删除结果待确认，可重试核实并完成清理");
-    expect(error).not.toHaveTextContent("已移除");
-    expect(within(dialog).getByRole("button", { name: "重试确认删除" })).toBeEnabled();
-    expect(within(dialog).getByRole("button", { name: "刷新删除影响" })).toBeDisabled();
-    const key = "wiseeff:definition-deletion-cleanup:network-admin:org-a";
-    expect(JSON.parse(localStorage.getItem(key)!)).toEqual([
-      { definitionId: activeDefinition.id, previewToken: remove.mock.calls[0]![1].previewToken }
-    ]);
-    await user.click(within(dialog).getByRole("button", { name: "取消" }));
-    expect(screen.getByRole("region", { name: "待完成归档清理" })).toHaveTextContent("有参数删除待确认或待完成归档清理");
-    first.unmount();
-    render(<CatalogOrganizationSurface catalog={first.catalog} governance={first.governance} actor="platform-admin"
-      sessionRoles={[{ roleId: "platform-admin", projectId: null }]} currentPersonId="network-admin" organizationId="org-a"
-      search="" onAnchorChange={vi.fn()} />);
-    const recovery = await screen.findByRole("region", { name: "待完成归档清理" });
-    await user.click(within(recovery).getByRole("button", { name: "重试清理" }));
-    await waitFor(() => expect(screen.queryByRole("region", { name: "待完成归档清理" })).not.toBeInTheDocument());
-    expect(remove).toHaveBeenCalledTimes(2);
-    expect(remove.mock.calls[1]).toEqual(remove.mock.calls[0]);
-    expect(preview).toHaveBeenCalledTimes(1);
-    expect(localStorage.getItem(key)).toBeNull();
+    expect(await screen.findByRole("region", { name: "待完成存储清理" })).toHaveTextContent(activeDefinition.id);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it.each([
@@ -237,32 +218,21 @@ describe("platform definition deletion", () => {
     expect(localStorage.getItem("wiseeff:definition-deletion-cleanup:admin:")).toBeNull();
   });
 
-  it("isolates cleanup by account and organization and never reads it without a platform role", async () => {
+  it("does not read cleanup without a platform role", async () => {
+    const { catalog } = setup({ roles: [{ roleId: "admin", projectId: null }] });
+    const list = vi.spyOn(catalog, "listDefinitionErasures");
+    await screen.findByRole("button", { name: `查看 ${activeDefinition.propertyKey}` });
+    expect(list).not.toHaveBeenCalled();
+  });
+  it("allows a failed server-list read to be retried", async () => {
     const ports = createMockCatalogPorts();
-    const key = "wiseeff:definition-deletion-cleanup:admin-a:org-a";
-    localStorage.setItem(key, JSON.stringify([{ definitionId: activeDefinition.id, previewToken: "saved-token" }]));
-    const reads = vi.spyOn(Storage.prototype, "getItem");
-    const remove = vi.spyOn(ports.catalog, "deleteDefinition").mockResolvedValue({ item: {
-      definitionId: activeDefinition.id, deleted: true, counts: {}, originalFilesRetained: true
-    } });
-    const base = { ...ports, actor: "platform-admin" as const, search: "", onAnchorChange: vi.fn() };
-    const { rerender } = render(<CatalogOrganizationSurface {...base} currentPersonId="admin-b" organizationId="org-a"
-      sessionRoles={[{ roleId: "platform-admin", projectId: null }]} />);
-    await screen.findByRole("button", { name: new RegExp(`^(编辑|查看) ${activeDefinition.propertyKey}$`) });
-    expect(screen.queryByRole("region", { name: "待完成归档清理" })).not.toBeInTheDocument();
-    rerender(<CatalogOrganizationSurface {...base} currentPersonId="admin-a" organizationId="org-b"
-      sessionRoles={[{ roleId: "platform-admin", projectId: null }]} />);
-    expect(screen.queryByRole("region", { name: "待完成归档清理" })).not.toBeInTheDocument();
-    rerender(<CatalogOrganizationSurface {...base} currentPersonId="admin-a" organizationId="org-a"
-      sessionRoles={[{ roleId: "admin", projectId: null }]} />);
-    expect(screen.queryByRole("region", { name: "待完成归档清理" })).not.toBeInTheDocument();
-    expect(reads.mock.calls.some(([readKey]) => readKey === key)).toBe(false);
-    expect(remove).not.toHaveBeenCalled();
-    rerender(<CatalogOrganizationSurface {...base} currentPersonId="admin-a" organizationId="org-a"
-      sessionRoles={[{ roleId: "platform-admin", projectId: null }]} />);
-    const recovery = await screen.findByRole("region", { name: "待完成归档清理" });
-    await userEvent.click(within(recovery).getByRole("button", { name: "重试清理" }));
-    await waitFor(() => expect(remove).toHaveBeenCalledWith(activeDefinition.id, { previewToken: "saved-token" }));
-    reads.mockRestore();
+    const list = vi.spyOn(ports.catalog, "listDefinitionErasures").mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue({ items: [{ definitionId: "deleted", deletedAt: "2026-10-21T00:00:00.000Z", pendingObjectCount: 1 }] });
+    render(<CatalogOrganizationSurface {...ports} actor="platform-admin" currentPersonId="admin"
+      sessionRoles={[{ roleId: "platform-admin", projectId: null }]} search="" onAnchorChange={vi.fn()} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("无法读取待完成存储清理");
+    await userEvent.setup().click(screen.getByRole("button", { name: "重试读取" }));
+    expect(await screen.findByRole("button", { name: "继续清理 deleted" })).toBeEnabled();
+    expect(list).toHaveBeenCalledTimes(2);
   });
 });

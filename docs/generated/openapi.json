@@ -10900,6 +10900,88 @@
         }
       }
     },
+    "/api/v2/catalog/definition-erasures": {
+      "get": {
+        "operationId": "catalog.listDefinitionErasures",
+        "summary": "List this organization's unfinished definition storage cleanup",
+        "tags": [
+          "catalog"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogDefinitionErasureListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/catalog/definition-erasures/{definitionId}/retry-cleanup": {
+      "post": {
+        "operationId": "catalog.retryDefinitionCleanup",
+        "summary": "Finish storage cleanup for an already deleted definition in this organization",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "definitionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogDefinitionDeletedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/catalog/definitions/{definitionId}/deletion-preview": {
       "get": {
         "operationId": "catalog.previewDefinitionDeletion",
@@ -21620,6 +21702,82 @@
           }
         }
       },
+      "CatalogDefinitionErasureListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "definitionId": {
+                  "type": "string"
+                },
+                "deletedAt": {
+                  "type": "string"
+                },
+                "pendingObjectCount": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "definitionId",
+                "deletedAt",
+                "pendingObjectCount"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogDefinitionErasureListResponse"
+      },
+      "CatalogDefinitionDeletedResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "definitionId": {
+                "type": "string"
+              },
+              "deleted": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              },
+              "counts": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number"
+                }
+              },
+              "originalFilesRetained": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              }
+            },
+            "required": [
+              "definitionId",
+              "deleted",
+              "counts",
+              "originalFilesRetained"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogDefinitionDeletedResponse"
+      },
       "CatalogDefinitionDeletionPreviewResponse": {
         "type": "object",
         "properties": {
@@ -21732,49 +21890,6 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogDeleteDefinitionRequest"
-      },
-      "CatalogDefinitionDeletedResponse": {
-        "type": "object",
-        "properties": {
-          "item": {
-            "type": "object",
-            "properties": {
-              "definitionId": {
-                "type": "string"
-              },
-              "deleted": {
-                "type": "boolean",
-                "enum": [
-                  true
-                ]
-              },
-              "counts": {
-                "type": "object",
-                "additionalProperties": {
-                  "type": "number"
-                }
-              },
-              "originalFilesRetained": {
-                "type": "boolean",
-                "enum": [
-                  true
-                ]
-              }
-            },
-            "required": [
-              "definitionId",
-              "deleted",
-              "counts",
-              "originalFilesRetained"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "required": [
-          "item"
-        ],
-        "additionalProperties": false,
-        "x-wiseeff-schema": "CatalogDefinitionDeletedResponse"
       },
       "LocalAuthPublicConfigResponse": {
         "type": "object",

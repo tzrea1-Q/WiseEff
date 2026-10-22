@@ -4,19 +4,16 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { CatalogDefinitionDeletionPreviewResponse, CatalogDefinitionResponse } from "@/infrastructure/http/parameterCatalogDtos";
 
-export function DefinitionDeletionDialog({ definition, repository, onDeleted, onCancel, onCleanupPending }: {
+export function DefinitionDeletionDialog({ definition, repository, onDeleted, onCancel }: {
   definition: CatalogDefinitionResponse["item"];
   repository: ParameterCatalogRepository;
   onDeleted: () => void;
   onCancel: () => void;
-  onCleanupPending?: (entry: { definitionId: string; previewToken: string }) => void;
 }) {
   const [preview, setPreview] = useState<CatalogDefinitionDeletionPreviewResponse["item"] | null>(null);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const [cleanupPending, setCleanupPending] = useState(false);
-  const [outcomeUnknown, setOutcomeUnknown] = useState(false);
   const [previewEpoch, setPreviewEpoch] = useState(0);
   const readPreview = useCallback(() => repository.previewDefinitionDeletion!(definition.id), [repository, definition.id]);
 
@@ -41,19 +38,11 @@ export function DefinitionDeletionDialog({ definition, repository, onDeleted, on
       await repository.deleteDefinition!(definition.id, { previewToken: preview.previewToken });
       onDeleted();
     } catch (reason) {
-      if (cleanupPending || (reason instanceof WiseEffApiError && reason.details.reason === "definition-erasure-cleanup-pending")) {
-        setCleanupPending(true);
-        setOutcomeUnknown(false);
-        onCleanupPending?.({ definitionId: definition.id, previewToken: preview.previewToken });
-        setError("定义记录已移除，但归档清理未完成。请重试完成清理。");
-      } else if (!(reason instanceof WiseEffApiError)) {
-        setOutcomeUnknown(true);
-        onCleanupPending?.({ definitionId: definition.id, previewToken: preview.previewToken });
-        setError("删除结果待确认，可重试核实并完成清理。");
+      if (!(reason instanceof WiseEffApiError) || reason.details.reason === "definition-erasure-cleanup-pending") {
+        // Refresh the catalog and durable receipts instead of replaying an uncertain DELETE.
+        onDeleted();
       } else {
         setPreview(null);
-        setCleanupPending(false);
-        setOutcomeUnknown(false);
         setError(`删除未完成，请刷新删除影响后重试。${reason instanceof Error ? reason.message : ""}`);
       }
     } finally {
@@ -62,8 +51,7 @@ export function DefinitionDeletionDialog({ definition, repository, onDeleted, on
   };
 
   return <ConfirmDialog open title={`彻底删除 ${preview?.definition.propertyKey ?? definition.propertyKey}`} tone="danger"
-    confirmLabel={outcomeUnknown ? "重试确认删除" : cleanupPending ? "重试清理归档" : "彻底删除"}
-    pendingLabel={outcomeUnknown ? "正在确认删除…" : cleanupPending ? "正在清理归档…" : "正在彻底删除…"} pending={pending}
+    confirmLabel="彻底删除" pendingLabel="正在彻底删除…" pending={pending}
     confirmDisabled={loading || !preview} onConfirm={() => void remove()} onCancel={onCancel}
     error={error}
     description={<>
@@ -78,7 +66,7 @@ export function DefinitionDeletionDialog({ definition, repository, onDeleted, on
         <dt>关联记录总数</dt><dd>{preview.affected.relatedRecords}</dd>
       </dl> : null}
     </>}
-    extra={<button type="button" className="button subtle" disabled={loading || pending || cleanupPending || outcomeUnknown}
+    extra={<button type="button" className="button subtle" disabled={loading || pending}
       onClick={() => setPreviewEpoch((value) => value + 1)}>刷新删除影响</button>}
   />;
 }
