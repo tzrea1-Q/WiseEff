@@ -30,6 +30,7 @@ function renderDialogs(overrides: Partial<Parameters<typeof WorkbenchBaselineDia
       onConfirmRestore={vi.fn()}
       onCancelLeave={vi.fn()}
       onConfirmLeave={vi.fn()}
+      onKeepDraftsAndLeave={vi.fn()}
       confirmation={null}
       onCancelConfirmation={vi.fn()}
       onConfirmConfirmation={vi.fn()}
@@ -39,6 +40,18 @@ function renderDialogs(overrides: Partial<Parameters<typeof WorkbenchBaselineDia
 }
 
 describe("WorkbenchBaselineDialogs", () => {
+  it("defaults to keeping drafts and keeps discard and cancel separate", () => {
+    const keep = vi.fn(), discard = vi.fn(), cancel = vi.fn();
+    renderDialogs({ leaveOpen: true, onKeepDraftsAndLeave: keep, onConfirmLeave: discard, onCancelLeave: cancel });
+    const primary = screen.getByRole("button", { name: "保留草稿并离开" });
+    expect(primary).toHaveAttribute("data-variant", "default");
+    expect(primary).toHaveFocus();
+    fireEvent.click(primary); expect(keep).toHaveBeenCalledOnce(); expect(discard).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "留在本页" })); expect(cancel).toHaveBeenCalledOnce();
+    const destructive = screen.getByRole("button", { name: "丢弃并离开" });
+    expect(destructive).toHaveAttribute("data-variant", "destructive");
+    fireEvent.click(destructive); expect(discard).toHaveBeenCalledOnce();
+  });
   it("shows the complete Canonical restore plan and requires a reason and explicit membership confirmation", () => {
     const onConfirmRestore = vi.fn();
     renderDialogs({ restoreOpen: true,onConfirmRestore,restorePreview: {

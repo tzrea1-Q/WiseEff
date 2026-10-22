@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import type { ApplyParameterFileSourceInput, ParameterFileCandidate, ParameterFileCandidateDiagnostic, ParameterFileRepository, ParameterFileSourcePreview, SubmitParameterFileSourceReviewInput } from "@/application/ports/ParameterFileRepository";
 import type { SourceEditSaveSnapshot, SourceEditSession } from "@/application/project-configuration/sourceEditSession";
 import { sourceDraftKey, type SourceDraftScope } from "@/application/project-configuration/sourceDraftStorage";
@@ -32,6 +32,7 @@ type Props = {
   legacyDraftsDirty: boolean;
   onOpenLegacyDrafts: () => void;
   onDirtyChange: (dirty: boolean) => void;
+  flushRef?: RefObject<(() => void) | null>;
   onRefresh: () => void;
   focusSpan: DtsViewerFocusSpan | null;
   focusLine: number | null;
@@ -45,7 +46,7 @@ type Attempt = { saved: SourceEditSaveSnapshot; mutationId: string; candidate?: 
 
 export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVersionId, configRevisionId, source,
   session, editorSessions, repository, canEdit, visible, legacyDraftsDirty, onOpenLegacyDrafts, onDirtyChange,
-  onRefresh, focusSpan, focusLine, findQuery, findNextToken, onVisibleLineChange }: Props) {
+  onRefresh, focusSpan, focusLine, findQuery, findNextToken, onVisibleLineChange, flushRef }: Props) {
   const scope = useMemo(() => ({ userId: inputScope.userId, organizationId: inputScope.organizationId, projectId: inputScope.projectId,
     configSetId: inputScope.configSetId, fileId: inputScope.fileId }), [inputScope.userId, inputScope.organizationId, inputScope.projectId, inputScope.configSetId, inputScope.fileId]);
   const key = sourceDraftKey(scope);
@@ -64,6 +65,7 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const attempts = useRef(new Map<string, Attempt>());
   const editor = useRef<WorkbenchDtsEditorHandle>(null);
+  const mergeEditor = useRef<WorkbenchDtsEditorHandle>(null);
   const [reason, setReason] = useState("");
   const [reviewerId, setReviewerId] = useState("");
   const reviewers = attempt?.preview?.reviewers ?? [];
@@ -79,7 +81,7 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
     void Promise.resolve().then(() => crypto.subtle.digest("SHA-256", new TextEncoder().encode(source))).then(async (bytes) => {
       if (cancelled) return;
       const sourceDigest = Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
-      const buffered = editor.current?.flush();
+      const buffered = mergeEditor.current?.flush() ?? editor.current?.flush();
       if (buffered?.sessionKey === key) {
         const current = session.getFile(scope);
         if (current && !current.loading) session.change(scope, buffered.text, { ...current.position, ...buffered.selection, firstVisibleLine: buffered.firstVisibleLine });
@@ -101,6 +103,11 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
     if (!target || target.loading) return;
     session.change(target.scope, value.text, { ...target.position, ...value.selection, firstVisibleLine: value.firstVisibleLine });
   }, [session]);
+  useLayoutEffect(() => {
+    if (!flushRef) return;
+    flushRef.current = () => { if (mergeEditor.current) mergeEditor.current.flush(); else editor.current?.flush(); };
+    return () => { flushRef.current = null; };
+  }, [flushRef]);
 
   const beginSave = useCallback(async (editorSnapshot?: WorkbenchDtsEditorSnapshot) => {
     if (!canEdit || busy || legacyDraftsDirty || !configRevisionId) return;
@@ -202,9 +209,9 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
     } finally { if (latestScope.current === key && operationEpoch.current === epoch) setBusy(false); }
   };
 
-  const download = () => {
-    const value = editor.current?.flush();
-    const url = URL.createObjectURL(new Blob([value?.text ?? file?.sourceText ?? source], { type: "text/plain;charset=utf-8" }));
+  const download = (original = false) => {
+    const value = compareOpen && file?.rebased ? mergeEditor.current?.flush() : editor.current?.flush();
+    const url = URL.createObjectURL(new Blob([original ? file?.originalDraft?.sourceText ?? "" : value?.text ?? file?.sourceText ?? source], { type: "text/plain;charset=utf-8" }));
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = fileName; anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 0);
   };
@@ -243,6 +250,37 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
   [attempt, source]);
   const recoveryDiff = useMemo(() => compareOpen
     ? buildUnifiedDiff(source, file?.sourceText ?? source, "最新工作来源", "本地草稿") : "", [compareOpen, file?.sourceText, source]);
+  const closeCompare = () => {
+    if (file?.rebased) {
+      mergeEditor.current?.flush();
+      setResetKeys((current) => ({ ...current, [key]: (current[key] ?? 0) + 1 }));
+    }
+    setCompareOpen(false);
+  };
+  const rebase = async () => {
+    const epoch = ++operationEpoch.current;
+    editor.current?.flush();
+    setBusy(true); setError("");
+    try {
+      const current = session.getFile(scope);
+      if (!current) return;
+      let originalBase = current.baseSourceText;
+      if (originalBase === undefined) {
+        const version = await repository.downloadVersion(scope.projectId, scope.fileId, current.base.fileVersionId);
+        originalBase = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(version.bytes);
+      }
+      if (latestScope.current !== key || operationEpoch.current !== epoch) return;
+      editor.current?.flush();
+      const merged = session.rebase(scope, originalBase);
+      setResetKeys((current) => ({ ...current, [key]: (current[key] ?? 0) + 1 }));
+      setEditingKeys((current) => new Set([...current, key]));
+      onDirtyChange(true);
+      if (merged.conflicts) setCompareOpen(true);
+      await session.flush(scope);
+    } catch (cause) {
+      if (latestScope.current === key && operationEpoch.current === epoch) setError(presentError(cause, "合并最新来源失败，原稿仍保留。"));
+    } finally { if (latestScope.current === key && operationEpoch.current === epoch) setBusy(false); }
+  };
 
   return <section className="workbench-source-editing" hidden={!visible} aria-label="DTS 编辑工作区">
     <div className="workbench-source-editing__toolbar">
@@ -251,16 +289,17 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
         onValueChange={(value) => setEditingKeys((current) => { const next = new Set(current); if (value === "edit") next.add(key); else next.delete(key); return next; })} />
       <span role="status">{!ready ? "正在准备源码…" : requestId ? "已提交审核 · 工作配置尚未更新" : dirty ? "未保存修改" : "当前工作配置"}</span>
       <div className="workbench-source-editing__actions">
-        <Button variant="outline" size="sm" disabled={!canEdit || !dirty || busy || stale || legacyDraftsDirty || !ready} onClick={() => void beginSave()}>保存修改</Button>
+        <Button variant="outline" size="sm" disabled={!canEdit || !dirty || busy || stale || file?.mergeConflicts || legacyDraftsDirty || !ready} onClick={() => void beginSave()}>保存修改</Button>
         <Button variant="ghost" size="sm" disabled={!dirty || busy} onClick={() => setDiscardOpen(true)}>放弃修改</Button>
       </div>
     </div>
     {!canEdit ? <p className="workbench-source-editing__notice">当前为只读预览，需要项目文件修改权限才能编辑。</p> : null}
     {!configRevisionId ? <p className="workbench-source-editing__notice" role="status">配置修订尚未就绪，当前可预览源码。</p> : null}
     {mixedEndings && dirty ? <p className="workbench-source-editing__notice" role="note">原文件混用了换行形式，编辑后可能统一为 LF，请在保存差异中核对。</p> : null}
-    {stale ? <p className="workbench-source-editing__notice" role="alert">文件或配置版本已更新，旧草稿仍保留。请核对最新版本后继续。<Button size="sm" variant="ghost" onClick={() => setCompareOpen(true)}>对照最新来源</Button><Button size="sm" variant="ghost" onClick={download}>下载草稿</Button><Button size="sm" variant="ghost" onClick={onRefresh}>刷新来源</Button></p> : null}
+    {stale ? <p className="workbench-source-editing__notice" role="alert">文件或配置版本已更新，旧草稿仍保留。请核对最新版本后继续。<Button size="sm" variant="outline" disabled={!canEdit || busy || file?.mergeConflicts} onClick={() => void rebase()}>基于最新版本继续编辑</Button><Button size="sm" variant="ghost" onClick={() => setCompareOpen(true)}>对照最新来源</Button><Button size="sm" variant="ghost" onClick={() => download()}>下载草稿</Button><Button size="sm" variant="ghost" onClick={onRefresh}>刷新来源</Button></p> : null}
+    {file?.rebased ? <p className="workbench-source-editing__notice" role="status">{file.mergeConflicts ? "合并存在冲突，请编辑冲突块并删除标记后保存。" : "已合并最新版本，请核对后保存"}{!stale ? <Button size="sm" variant="ghost" onClick={() => setCompareOpen(true)}>对照最新来源</Button> : null}<Button size="sm" variant="ghost" onClick={() => download(true)}>下载合并前原稿</Button></p> : null}
     {legacyDraftsDirty ? <p className="workbench-source-editing__notice">已有参数草稿，请先处理后保存完整 DTS。<Button size="sm" variant="ghost" onClick={onOpenLegacyDrafts}>查看已有草稿</Button></p> : null}
-    {file?.storageError ? <p className="workbench-source-editing__notice" role="alert">本地恢复不可用：{file.storageError}<Button size="sm" variant="ghost" onClick={download}>下载草稿</Button></p> : null}
+    {file?.storageError ? <p className="workbench-source-editing__notice" role="alert">本地恢复不可用：{file.storageError}<Button size="sm" variant="ghost" onClick={() => download()}>下载草稿</Button></p> : null}
     {requestId ? <p className="workbench-source-editing__notice">待审核请求 <code>{requestId}</code>
       <a href={`/parameter-submissions?project=${encodeURIComponent(scope.projectId)}&request=${encodeURIComponent(requestId)}`}>查看提交记录</a>
       <Button size="sm" variant="ghost" onClick={() => void checkRequest()}>检查审核结果</Button></p> : null}
@@ -284,13 +323,15 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
             discarding.current = false; setError(presentError(cause, "放弃本地修改失败，请重试。")); setDiscardOpen(false);
           }).finally(() => setDiscardPending(false));
       }} />
-    <ModalDialog open={compareOpen} className="workbench-source-save-dialog" backdropClassName="param-admin-modal-backdrop" onDismiss={() => setCompareOpen(false)} describedBy>
+    <ModalDialog open={compareOpen} className="workbench-source-save-dialog" backdropClassName="param-admin-modal-backdrop" onDismiss={closeCompare} describedBy>
       {({ titleId, descriptionId }) => <>
-        <header><h2 id={titleId}>DTS 草稿对照</h2><p id={descriptionId}>对照最新工作来源与保留的本地草稿。旧基线草稿不能直接提交。</p></header>
+        <header><h2 id={titleId}>DTS 草稿对照</h2><p id={descriptionId}>{file?.rebased ? "编辑合并文本，保留所需内容并删除冲突标记后保存。" : "对照最新工作来源与保留的本地草稿。旧基线草稿不能直接提交。"}</p></header>
         <div className="workbench-source-save-dialog__diff"><Suspense fallback={<p role="status">正在加载差异…</p>}>
-          <DtsEditor sessionKey={`${key}:recovery-diff`} resetKey={recoveryDiff} text={recoveryDiff} readOnly ariaLabel="DTS 草稿差异源码" />
+          {file?.rebased ? <DtsEditor ref={mergeEditor} sessionKey={`${key}:merge`} text={file.sourceText} baseText={source} readOnly={!canEdit}
+            ariaLabel="DTS 合并源码" onChange={(value) => change({ ...value, sessionKey: key })} />
+            : <DtsEditor sessionKey={`${key}:recovery-diff`} resetKey={recoveryDiff} text={recoveryDiff} readOnly ariaLabel="DTS 草稿差异源码" />}
         </Suspense></div>
-        <footer className="dialog-actions"><Button variant="outline" onClick={download}>下载草稿</Button><Button onClick={() => setCompareOpen(false)}>返回草稿</Button></footer>
+        <footer className="dialog-actions"><Button variant="outline" onClick={() => download()}>下载草稿</Button><Button onClick={closeCompare}>返回草稿</Button></footer>
       </>}
     </ModalDialog>
     <ModalDialog open={saveOpen} className="workbench-source-save-dialog" backdropClassName="param-admin-modal-backdrop"

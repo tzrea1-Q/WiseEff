@@ -31,6 +31,9 @@ export type SourceDraftRecord = {
   scope: SourceDraftScope;
   base: SourceDraftBase;
   sourceText: string;
+  baseSourceText?: string;
+  originalDraft?: { base: SourceDraftBase; sourceText: string; baseSourceText: string };
+  rebased?: boolean;
   position: SourceDraftPosition;
   generation: number;
   updatedAt: string;
@@ -72,6 +75,12 @@ function readStoredDraft(value: unknown, scope: SourceDraftScope): StoredSourceD
     || !draft.base || ![draft.base.fileVersionId, draft.base.configRevisionId, draft.base.sourceDigest]
       .every((item) => typeof item === "string" && item.length > 0)
     || typeof draft.sourceText !== "string" || !Number.isSafeInteger(draft.generation) || draft.generation < 0
+    || (draft.baseSourceText !== undefined && typeof draft.baseSourceText !== "string")
+    || (draft.rebased !== undefined && typeof draft.rebased !== "boolean")
+    || (draft.originalDraft !== undefined && (!draft.originalDraft || typeof draft.originalDraft.sourceText !== "string"
+      || typeof draft.originalDraft.baseSourceText !== "string" || !draft.originalDraft.base
+      || ![draft.originalDraft.base.fileVersionId, draft.originalDraft.base.configRevisionId, draft.originalDraft.base.sourceDigest]
+        .every((item) => typeof item === "string" && item.length > 0)))
     || typeof draft.updatedAt !== "string" || !draft.position
     || ![draft.position.anchor, draft.position.head, draft.position.firstVisibleLine,
       draft.position.scrollTop, draft.position.scrollLeft].every((item) => Number.isFinite(item) && item >= 0)

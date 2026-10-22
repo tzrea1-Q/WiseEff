@@ -1561,6 +1561,19 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(screen.getByRole("button", { name: "保存修改" })).toBeDisabled(); expect(screen.getByRole("button", { name: "下载草稿" })).toBeEnabled();
   });
 
+  it("keeps an undebounced source draft when leaving and restores it on return", async () => {
+    const { onNavigate } = renderSourceWorkbench();
+    const input = await enterSourceEdit();
+    fireEvent.change(input, { target: { value: '/ { keep = "return later"; };' } });
+    fireEvent.click(screen.getByRole("button", { name: "项目清单" }));
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "离开配置工作台" })).getByRole("button", { name: "保留草稿并离开" }));
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/projects"));
+    cleanup();
+    renderSourceWorkbench();
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "DTS 源码" })).toHaveValue('/ { keep = "return later"; };'));
+    expect(screen.getByText("未保存修改")).toBeInTheDocument();
+  });
+
   it("asks before leaving dirty source and resets recovery only on confirmed discard", async () => {
     const { onNavigate } = renderSourceWorkbench();
     const input = await enterSourceEdit(); const original = (input as HTMLTextAreaElement).value;
