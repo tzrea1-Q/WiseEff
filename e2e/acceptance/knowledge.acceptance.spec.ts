@@ -710,6 +710,7 @@ test.describe("Knowledge base browser acceptance", () => {
     const detail = page.getByRole("dialog", { name: new RegExp(title) });
     await expect(detail).toBeVisible();
     await expect(detail.locator('[data-status="draft"]')).toBeVisible();
+    await expect(detail.getByRole("button", { name: "归档", exact: true })).toBeEnabled();
 
     // Publish it into retrieval.
     await detail.getByRole("button", { name: "发布", exact: true }).click();
@@ -735,6 +736,28 @@ test.describe("Knowledge base browser acceptance", () => {
     await confirm.getByRole("button", { name: "恢复为新修订" }).click();
     await expect(revisions).not.toBeVisible();
     await expect(detail.getByText("修订 #3", { exact: false })).toBeVisible();
+    await expect(detail.getByText("第一版正文。", { exact: true })).toBeVisible();
+
+    // Correct an archived entry without putting it back into retrieval.
+    await detail.getByRole("button", { name: "归档", exact: true }).click();
+    await expect(detail.locator('[data-status="archived"]')).toBeVisible();
+    await detail.getByRole("button", { name: "编辑", exact: true }).click();
+    await editDialog.getByLabel("Markdown 内容").fill("# 初版\n\n归档后的校正正文。");
+    await editDialog.getByLabel("标签(逗号分隔)").fill("project-aurora, 归档校正");
+    await editDialog.getByRole("button", { name: "保存为新修订" }).click();
+    await expect(editDialog).not.toBeVisible();
+    await expect(detail.locator('[data-status="archived"]')).toBeVisible();
+    await expect(detail.getByText("修订 #4", { exact: false })).toBeVisible();
+    const archivedList = await page.request.get(apiRoute(`/api/v1/knowledge/entries?q=${encodeURIComponent(title)}`), { headers: editorHeaders() });
+    expect(archivedList.ok()).toBe(true);
+    const archivedEntry = ((await archivedList.json()) as { items: KnowledgeEntryApiItem[] }).items.find((item) => item.title === title)!;
+    expect(archivedEntry).toMatchObject({ status: "archived", headRevisionNumber: 4, tags: ["project-aurora", "归档校正"] });
+    expect(archivedEntry.contentMarkdown).toContain("归档后的校正正文");
+    const archivedSearch = await page.request.get(apiRoute(`/api/v1/knowledge/search?q=${encodeURIComponent(title)}`), { headers: editorHeaders() });
+    expect(archivedSearch.ok()).toBe(true);
+    expect(((await archivedSearch.json()) as { items: KnowledgeSearchApiItem[] }).items.map((item) => item.entryId)).not.toContain(archivedEntry.id);
+    await detail.getByRole("button", { name: "恢复为已发布" }).click();
+    await expect(detail.locator('[data-status="published"]')).toBeVisible();
 
     // API + DB + audit assertions.
     const listResponse = await page.request.get(
@@ -745,12 +768,12 @@ test.describe("Knowledge base browser acceptance", () => {
     const listBody = (await listResponse.json()) as { items: KnowledgeEntryApiItem[] };
     const entry = listBody.items.find((item) => item.title === title);
     expect(entry).toBeTruthy();
-    expect(entry).toMatchObject({ status: "published", headRevisionNumber: 3 });
+    expect(entry).toMatchObject({ status: "published", headRevisionNumber: 4 });
     expect(entry!.contentMarkdown).toContain("初版");
 
     const dbSummary = await knowledgeEntryDbSummary(entry!.id);
-    expect(dbSummary.observed).toContain("headRevision=3");
-    expect(dbSummary.observed).toContain("revisions=3");
+    expect(dbSummary.observed).toContain("headRevision=4");
+    expect(dbSummary.observed).toContain("revisions=4");
 
     const audit = await knowledgeAuditSummaries(entry!.id);
     expect(audit).toEqual(
@@ -758,7 +781,9 @@ test.describe("Knowledge base browser acceptance", () => {
         expect.objectContaining({ kind: "knowledge-entry-create", action: "create" }),
         expect.objectContaining({ kind: "knowledge-entry-publish", action: "publish" }),
         expect.objectContaining({ kind: "knowledge-entry-update", action: "update" }),
-        expect.objectContaining({ kind: "knowledge-revision-restore", action: "restore-revision" })
+        expect.objectContaining({ kind: "knowledge-revision-restore", action: "restore-revision" }),
+        expect.objectContaining({ kind: "knowledge-entry-archive", action: "archive" }),
+        expect.objectContaining({ kind: "knowledge-entry-restore", action: "restore" })
       ])
     );
 
@@ -800,13 +825,34 @@ test.describe("Knowledge base browser acceptance", () => {
       mimeType: "application/pdf",
       buffer: readFileSync(new URL("../../server/modules/knowledge/testing/fixtures/sample.pdf", import.meta.url))
     });
+    const uploaded = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/v1/knowledge/entries");
     await upload.getByRole("button", { name: "上传并创建草稿" }).click();
+    const uploadedResponse = await uploaded;
+    expect(uploadedResponse.ok()).toBe(true);
+    const uploadedEntry = ((await uploadedResponse.json()) as { item: KnowledgeEntryApiItem }).item;
 
     // The detail dialog opens with the visible extraction status.
     const detail = page.getByRole("dialog", { name: new RegExp(title) });
     await expect(detail).toBeVisible();
     await expect(detail.getByText("提取成功")).toBeVisible();
     await expect(detail.getByText("kb-acceptance-manual.pdf")).toBeVisible();
+
+    // Metadata edits keep the uploaded binary and its extraction result.
+    await detail.getByRole("button", { name: "编辑", exact: true }).click();
+    const fileEditor = page.getByRole("dialog", { name: "编辑", exact: true });
+    await expect(fileEditor.getByLabel("替换文件（可选）")).toBeVisible();
+    await expect(fileEditor.getByLabel("替换文件（可选）")).toHaveValue("");
+    await fileEditor.getByLabel("标签(逗号分隔)").fill("硬件手册, 元数据校正");
+    const metadataSave = page.waitForResponse((response) => response.request().method() === "PATCH" && new URL(response.url()).pathname.startsWith("/api/v1/knowledge/entries/"));
+    await fileEditor.getByRole("button", { name: "保存", exact: true }).click();
+    const metadataResponse = await metadataSave;
+    expect(metadataResponse.ok()).toBe(true);
+    expect(metadataResponse.request().postDataJSON()).not.toHaveProperty("file");
+    const metadataEntry = ((await metadataResponse.json()) as { item: KnowledgeEntryApiItem }).item;
+    expect(metadataEntry.file?.id).toBe(uploadedEntry.file?.id);
+    expect(metadataEntry).toMatchObject({ status: "draft", headRevisionNumber: 2, tags: ["硬件手册", "元数据校正"], file: { fileName: "kb-acceptance-manual.pdf", extractionStatus: "succeeded" } });
+    await expect(fileEditor).not.toBeVisible();
+    await expect(detail.getByText("修订 #2", { exact: false })).toBeVisible();
 
     // Extraction status is also visible in the entry list column.
     await detail.getByRole("button", { name: "关闭" }).click();
@@ -822,6 +868,7 @@ test.describe("Knowledge base browser acceptance", () => {
     const entry = listBody.items.find((item) => item.title === title);
     expect(entry).toBeTruthy();
     expect(entry).toMatchObject({ contentForm: "file", file: { fileName: "kb-acceptance-manual.pdf", extractionStatus: "succeeded" } });
+    expect(entry!.file?.id).toBe(metadataEntry.file?.id);
 
     // Publish and prove the extracted text is retrievable (published-only gate).
     await publishEntryViaApi(page, entry!.id);

@@ -45,6 +45,7 @@ describe("KnowledgeAdminPage", () => {
     await user.click(screen.getByRole("menuitem", { name: "彻底删除" }));
     const confirmation = await screen.findByRole("dialog", { name: /彻底删除/ });
     expect(confirmation).toHaveTextContent(`全部 ${entry.headRevisionNumber} 个修订`);
+    expect(confirmation).toHaveTextContent("存储中的原始文件保留");
     expect(within(confirmation).queryByRole("checkbox")).not.toBeInTheDocument();
     await user.click(within(confirmation).getByRole("button", { name: "彻底删除" }));
     await waitFor(async () => expect(await repository.get(entry.id)).toBeNull());
@@ -149,6 +150,7 @@ describe("KnowledgeAdminPage", () => {
 
     const confirm = await screen.findByRole("dialog", { name: /彻底删除/ });
     const confirmButton = within(confirm).getByRole("button", { name: "彻底删除" });
+    expect(confirm).toHaveTextContent("存储中的原始文件保留");
     expect(confirmButton).toBeEnabled();
     expect(within(confirm).queryByRole("checkbox")).not.toBeInTheDocument();
     await user.click(confirmButton);

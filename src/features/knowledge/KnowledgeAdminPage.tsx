@@ -388,7 +388,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
                   confirmation: { title: `拒绝并归档「${entry.title}」`, description: "该 Agent 草稿将被归档,不会发布进入检索。归档后可在「已归档条目」标签中查看;操作会写入审计记录。", confirmLabel: "拒绝归档" },
                   onSelect: () => rejectAgentDraft(entry) },
                 ...(canManage ? [{ id: "delete", label: "彻底删除", destructive: true as const,
-                  confirmation: { title: `彻底删除「${entry.title}」`, description: `将永久删除该条目及其全部 ${entry.headRevisionNumber} 个修订，不可恢复。删除会写入审计记录。`, confirmLabel: "彻底删除" },
+                  confirmation: { title: `彻底删除「${entry.title}」`, description: `将永久删除该条目及其全部 ${entry.headRevisionNumber} 个修订，不可恢复。存储中的原始文件保留。删除会写入审计记录。`, confirmLabel: "彻底删除" },
                   onSelect: () => deleteEntry(entry) }] : [])
               ]
             })}
@@ -418,7 +418,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
               primaryAction: { id: "restore", label: "恢复", disabled: restorePendingId !== null, onSelect: () => restoreEntry(entry) },
               items: [{ id: "edit", label: "编辑", disabled: !canGovernEntry(entry, capability), onSelect: () => setEditingEntry(entry) },
                 ...(canManage ? [{ id: "delete", label: "彻底删除", destructive: true as const,
-                confirmation: { title: `彻底删除「${entry.title}」`, description: `将永久删除该条目及其全部 ${entry.headRevisionNumber} 个修订，不可恢复。删除会写入审计记录。`, confirmLabel: "彻底删除" },
+                confirmation: { title: `彻底删除「${entry.title}」`, description: `将永久删除该条目及其全部 ${entry.headRevisionNumber} 个修订，不可恢复。存储中的原始文件保留。删除会写入审计记录。`, confirmLabel: "彻底删除" },
                 onSelect: () => deleteEntry(entry) }] : [])]
             })}
             emptyState={{ message: loading ? "正在加载已归档条目…" : "暂无已归档条目。", actionLabel: "刷新", onAction: () => void loadArchived() }} />

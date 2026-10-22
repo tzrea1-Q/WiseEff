@@ -78,6 +78,7 @@ describe("knowledge deletion through the HTTP adapter", () => {
     await user.click(screen.getByRole("menuitem", { name: "彻底删除" }));
     const confirmation = await screen.findByRole("dialog", { name: /彻底删除/ });
     expect(confirmation).toHaveTextContent("全部 2 个修订");
+    expect(confirmation).toHaveTextContent("存储中的原始文件保留");
     expect(within(confirmation).queryByRole("checkbox")).not.toBeInTheDocument();
     await user.click(within(confirmation).getByRole("button", { name: "取消" }));
     expect(within(table).getByText(draft.title)).toBeInTheDocument();

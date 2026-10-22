@@ -15,8 +15,9 @@ useBrowserDiagnostics(test, {
 test.use({ viewport: { width: 1440, height: 900 } });
 test.beforeAll(seedAcceptanceRoleMatrix);
 
-test("knowledge managers directly delete human drafts with confirmation, failure recovery and editor restrictions", async ({ page }, testInfo) => {
-  const title = `KB-ACCEPT human draft cleanup ${randomUUID()}`;
+for (const status of ["draft", "published", "archived"] as const) {
+test(`knowledge managers directly delete human ${status} entries with confirmation, failure recovery and editor restrictions`, async ({ page }, testInfo) => {
+  const title = `KB-ACCEPT human ${status} cleanup ${randomUUID()}`;
   const created = await page.request.post(apiRoute("/api/v1/knowledge/entries"), {
     headers: authHeadersForRole("hardware-user"),
     data: { contentForm: "markdown", title, tags: [], contentMarkdown: "Human draft awaiting cleanup." }
@@ -25,9 +26,19 @@ test("knowledge managers directly delete human drafts with confirmation, failure
   const { item } = await created.json() as { item: { id: string } };
   const path = `/api/v1/knowledge/entries/${item.id}`;
   try {
+    if (status === "published") {
+      const transition = await page.request.post(apiRoute(`${path}/publish`), {
+        headers: authHeadersForRole("hardware-user")
+      });
+      expect(transition.status()).toBe(200);
+    }
     await signInBrowserAsRole(page, "hardware-user", `/knowledge?entryId=${item.id}`);
     const editorDetail = page.getByRole("dialog", { name: new RegExp(title) });
     await expect(editorDetail).toBeVisible();
+    if (status === "archived") {
+      await editorDetail.getByRole("button", { name: "归档", exact: true }).click();
+      await expect(editorDetail.locator('[data-status="archived"]')).toBeVisible();
+    }
     await expect(editorDetail.getByRole("button", { name: "彻底删除" })).toHaveCount(0);
 
     await signInBrowserAsRole(page, "admin", "/knowledge");
@@ -36,7 +47,9 @@ test("knowledge managers directly delete human drafts with confirmation, failure
     await page.getByRole("menuitem", { name: "彻底删除" }).click();
     const confirmation = page.getByRole("dialog", { name: /彻底删除/ });
     await expect(confirmation).toContainText("存储中的原始文件保留");
-    await expect(confirmation.getByRole("button", { name: "彻底删除" })).toBeDisabled();
+    await expect(confirmation).toContainText("全部 1 个修订");
+    await expect(confirmation.getByRole("checkbox")).toHaveCount(0);
+    await expect(confirmation.getByRole("button", { name: "彻底删除" })).toBeEnabled();
     await page.keyboard.press("Escape");
     await expect(confirmation).toHaveCount(0);
     await expect(row).toBeVisible();
@@ -49,7 +62,7 @@ test("knowledge managers directly delete human drafts with confirmation, failure
     await page.keyboard.press("Escape");
     await expect(detail.getByRole("button", { name: "彻底删除" })).toBeFocused();
     await page.keyboard.press("Enter");
-    await confirmation.getByRole("checkbox").check();
+    await expect(confirmation.getByRole("checkbox")).toHaveCount(0);
     const screenshot = testInfo.outputPath("human-draft-delete-confirmation.png");
     await page.screenshot({ path: screenshot });
     await testInfo.attach("human-draft-delete-confirmation", { path: screenshot, contentType: "image/png" });
@@ -87,3 +100,4 @@ test("knowledge managers directly delete human drafts with confirmation, failure
     await page.request.delete(apiRoute(path), { headers: authHeadersForRole("admin") });
   }
 });
+}

@@ -688,7 +688,7 @@ export function KnowledgePage({
       <ConfirmDialog
         open={Boolean(deleteEntry)}
         title={`彻底删除「${deleteEntry?.title ?? ""}」`}
-        description={`将永久删除该条目及其全部 ${deleteEntry?.headRevisionNumber ?? 0} 个修订，不可恢复。删除会写入审计记录。`}
+        description={`将永久删除该条目及其全部 ${deleteEntry?.headRevisionNumber ?? 0} 个修订，不可恢复。存储中的原始文件保留。删除会写入审计记录。`}
         confirmLabel="彻底删除"
         tone="danger"
         pending={deletePending}
