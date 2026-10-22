@@ -215,6 +215,8 @@ export type LogRecord = {
   signalSummary?: import("@/domain/logs/types").LogSignalSummary;
   files?: import("@/domain/logs/types").LogFile[];
   skillRevision?: { id: string; number: number } | null;
+  skillNameSnapshot?: string;
+  skillRevisionNumberSnapshot?: number;
   id: string;
   reportId: string;
   fileName: string;

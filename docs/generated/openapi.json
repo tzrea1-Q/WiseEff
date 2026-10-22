@@ -35530,6 +35530,12 @@
                 ],
                 "additionalProperties": false
               },
+              "skillNameSnapshot": {
+                "type": "string"
+              },
+              "skillRevisionNumberSnapshot": {
+                "type": "number"
+              },
               "id": {
                 "type": "string"
               },
@@ -36444,6 +36450,12 @@
                 ],
                 "additionalProperties": false
               },
+              "skillNameSnapshot": {
+                "type": "string"
+              },
+              "skillRevisionNumberSnapshot": {
+                "type": "number"
+              },
               "id": {
                 "type": "string"
               },
@@ -37219,6 +37231,12 @@
                     "number"
                   ],
                   "additionalProperties": false
+                },
+                "skillNameSnapshot": {
+                  "type": "string"
+                },
+                "skillRevisionNumberSnapshot": {
+                  "type": "number"
                 },
                 "id": {
                   "type": "string"
@@ -42770,6 +42788,12 @@
                   ],
                   "additionalProperties": false
                 },
+                "skillNameSnapshot": {
+                  "type": "string"
+                },
+                "skillRevisionNumberSnapshot": {
+                  "type": "number"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -43222,6 +43246,12 @@
                   "number"
                 ],
                 "additionalProperties": false
+              },
+              "skillNameSnapshot": {
+                "type": "string"
+              },
+              "skillRevisionNumberSnapshot": {
+                "type": "number"
               },
               "id": {
                 "type": "string"
@@ -43765,6 +43795,12 @@
                     "number"
                   ],
                   "additionalProperties": false
+                },
+                "skillNameSnapshot": {
+                  "type": "string"
+                },
+                "skillRevisionNumberSnapshot": {
+                  "type": "number"
                 },
                 "id": {
                   "type": "string"

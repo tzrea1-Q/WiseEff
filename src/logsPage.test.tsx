@@ -47,6 +47,16 @@ afterEach(() => {
 });
 
 describe("LogsPage · Header", () => {
+  it.each([undefined, "deleted-skill"])("已删除技能的名称和版本快照以纯文本显示（残留 ID：%s）", (logDomainId) => {
+    const log = { ...initialState.logs[1], logDomainId, logDomainName: undefined, skillRevision: null,
+      skillNameSnapshot: "历史设备诊断", skillRevisionNumberSnapshot: 3,
+      skillSelection: { mode: "explicit" as const, reasons: [] } };
+    render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined}
+      sessionPermissions={["logs:admin-domains"]} />);
+    const provenance = screen.getByTestId("analysis-provenance");
+    expect(provenance).toHaveTextContent("技能：历史设备诊断 v3");
+    expect(within(provenance).queryByRole("link")).not.toBeInTheDocument();
+  });
   it("历史记录按上传时间倒序，搜索与状态筛选仅过滤列表", async () => {
     const logs = [
       { ...initialState.logs[0], id: "old", fileName: "旧记录.log", capturedAt: "2026-10-17T10:00:00Z", status: "Complete" as const },

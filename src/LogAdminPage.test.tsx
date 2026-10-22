@@ -761,6 +761,21 @@ describe("LogAdminPage 分析技能治理", () => {
     expect(within(bodyRows[1]).getByText("legacy")).toBeInTheDocument();
   });
 
+  it("offers permanent deletion only for archived skills", async () => {
+    window.history.replaceState(null, "", "/log-admin?tab=skills");
+    const archived = { ...chargingDomain, id: "archived-skill", name: "已归档技能", status: "archived" as const };
+    const previewSkillDeletion = vi.fn().mockResolvedValue({ skillId: archived.id, name: archived.name, skillKey: "archived", status: "archived",
+      version: "a".repeat(64), generatedAt: "2026-10-20T12:00:00Z", canDelete: true, inventory: [], objects: { total: 0, shared: 0, exclusive: 0 }, blockers: [], notes: [] });
+    renderPage({ apiMode: true, logActions: createLogActions({ listLogDomains: vi.fn().mockResolvedValue([archived]) }),
+      skillRepository: { previewSkillDeletion } });
+    const row = (await screen.findByText(archived.name)).closest("tr")!;
+    await userEvent.click(within(row).getByRole("button", { name: /：更多$/ }));
+    expect(screen.queryByRole("menuitem", { name: "归档" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("menuitem", { name: "彻底删除…" }));
+    expect(await screen.findByRole("heading", { name: "彻底删除技能" })).toBeVisible();
+    expect(previewSkillDeletion).toHaveBeenCalledWith(archived.id);
+  });
+
   it("filters the domain list from the 状态 column header", async () => {
     const logActions = createLogActions({
       listLogDomains: vi.fn().mockResolvedValue([
@@ -793,8 +808,8 @@ describe("LogAdminPage 分析技能治理", () => {
     await userEvent.click(row);
     expect(onNavigate).toHaveBeenCalledWith("/log-admin/skills/domain-charging");
     await userEvent.click(within(row).getByRole("button", { name: /：更多$/ }));
-    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["改名", "导出技能包", "删除实验技能", "归档"]);
-    expect(screen.getByRole("menuitem", { name: "删除实验技能" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["改名", "导出技能包", "归档"]);
+    expect(screen.queryByRole("menuitem", { name: "彻底删除…" })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "改名" })).toHaveAttribute("aria-disabled", "true");
     expect(screen.queryByRole("menuitem", { name: "知识条目" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "集成与结果回调" })).not.toBeInTheDocument();

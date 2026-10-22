@@ -36,6 +36,8 @@ export type LogRecordDto = {
   signalSummary?: import("./genericSignals").LogSignalSummary;
   files?: import("./filesRepository").LogFileDto[];
   skillRevision: { id: string; number: number } | null;
+  skillNameSnapshot?: string;
+  skillRevisionNumberSnapshot?: number;
   id: string;
   reportId: string;
   fileName: string;

@@ -210,8 +210,9 @@ async function executeDryRun(db: Database, store: ObjectStore, analyzer: LogAnal
     const signalSummary = await extractLogSignalsCooperatively(files, signalRules,
       { eventsByLine: events, evaluation: prefilterBudget.evaluation,
         maxMs: Math.min(logSignalLimits().maxMs, Math.max(0, preprocessingDeadline - performance.now())) });
+    // The admitted revision pins the ID; shared snapshots can outlive their owner.
     const sourceSnapshot = admitted.spec.defaultSourceSnapshotId
-      ? (await db.query<NonNullable<AnalyzeLogInput["sourceSnapshot"]>>(`select id, status from log_source_snapshots where organization_id = $1 and skill_id = $2 and id = $3`,
+      ? (await db.query<NonNullable<AnalyzeLogInput["sourceSnapshot"]>>(`select id, status from log_source_snapshots where organization_id = $1 and (skill_id = $2 or skill_id is null) and id = $3`,
         [organizationId, skillId, admitted.spec.defaultSourceSnapshotId])).rows[0] : undefined;
     const report = await analyzeWithDegradation({ analyzer, job: { attemptCount: 1 }, maxAttempts: 1,
       retryBaseDelayMs: 0, now: () => new Date(), analyzeInput: {
