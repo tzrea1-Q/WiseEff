@@ -94,15 +94,13 @@ describe("LogsPage · 相关知识", () => {
     expect(screen.queryByRole("region", { name: "相关知识" })).not.toBeInTheDocument();
   });
 
-  it("没有相关条目时展示诚实空态「暂无相关知识」", async () => {
+  it("没有相关条目时隐藏相关知识区", async () => {
     renderStandaloneLogsPage({
       relatedToLog: async () => ({ items: [], retrieval: { mode: "fts_only", vectorAvailable: false, embeddingConfigured: false } })
     });
 
     const section = await screen.findByRole("region", { name: "相关知识" });
-    expect(await within(section).findByText("暂无相关知识")).toBeInTheDocument();
-    expect(within(section).queryByText(/检索模式|仅全文检索/)).not.toBeInTheDocument();
-    expect(within(section).getByText("暂无相关知识").tagName).toBe("P");
+    await waitFor(() => expect(section).not.toBeInTheDocument());
   });
 
   it("加载失败时展示错误态与重试入口", async () => {
@@ -122,6 +120,6 @@ describe("LogsPage · 相关知识", () => {
     expect(alert).toHaveTextContent("检索服务不可用");
 
     fireEvent.click(within(alert).getByRole("button", { name: "重试" }));
-    expect(await within(section).findByText("暂无相关知识")).toBeInTheDocument();
+    await waitFor(() => expect(section).not.toBeInTheDocument());
   });
 });

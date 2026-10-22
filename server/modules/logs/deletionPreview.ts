@@ -3,7 +3,7 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import type { LogDeletionPreview } from "../../../src/domain/logs/deletionPreview";
-import { requireLogAdminDomains } from "./policy";
+import { requireLogDeletion } from "./policy";
 
 const runs = "select id from log_analysis_runs where organization_id=$1 and log_record_id=$2";
 const ownFiles = "select file_object_id from log_records where organization_id=$1 and id=$2";
@@ -53,10 +53,9 @@ const objectReferences = `
   union all select 'reload-artifact', id, null, overlay_artifact_storage_key, to_jsonb(r) from dts_reload_runs r where overlay_artifact_storage_key is not null`;
 
 export async function previewLogDeletion(db: Database, auth: AuthContext, logId: string): Promise<LogDeletionPreview> {
-  requireLogAdminDomains(auth);
-  if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "无权访问此组织的日志。");
   return db.transaction(async (tx) => {
     await tx.query("set transaction isolation level repeatable read read only");
+    await requireLogDeletion(tx, auth, logId);
     return readLogDeletionPreview(tx, auth.organization.id, logId, auth.user.id);
   });
 }

@@ -48,6 +48,10 @@ const baseLogDto: LogRecordDto = {
 };
 
 describe("log http dto mappers", () => {
+  it("preserves the server's deletion capability without inferring ownership from a display name", () => {
+    expect(logRecordFromDto({ ...baseLogDto, canDelete: true }).canDelete).toBe(true);
+    expect(logRecordFromDto(baseLogDto).canDelete).toBeUndefined();
+  });
   it("preserves the creating integration credential for record provenance", () => {
     expect(logRecordFromDto({ ...baseLogDto, createdByCredentialId: "credential-1", createdByCredentialName: "Factory" }))
       .toMatchObject({ createdByCredentialId: "credential-1", createdByCredentialName: "Factory" });

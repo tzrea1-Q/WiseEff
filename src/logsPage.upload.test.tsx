@@ -466,7 +466,9 @@ describe("LogsPage api upload wiring", () => {
     vi.mocked(parameters.listParameters).mockClear();
     openUploadDialog();
     fireEvent.click(screen.getByText("高级选项"));
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索关联参数的项目（可选）" }), { target: { value: "CAN" } });
     await selectControlOption(screen.getByLabelText("关联参数的项目（可选）"), project.id);
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索项目参数" }), { target: { value: "current" } });
     await userEvent.click(await screen.findByRole("combobox", { name: /^项目参数$/ }));
     const selectedBindingOption = await screen.findByRole("option", { name: "Canonical current parameter" });
     expect(listProtectedProjectBindings).toHaveBeenCalledWith(project.id);
@@ -601,7 +603,7 @@ describe("LogsPage api upload wiring", () => {
     await act(async () => { vi.advanceTimersByTime(250); });
     expect(dialog).toHaveTextContent("未识别文件扩展名，可仍然上传，由服务端校验是否为文本日志。");
     expect(within(dialog).getByRole("button", { name: "取消" })).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "开始分析" })).toBeDisabled();
+    expect(within(dialog).queryByRole("button", { name: "开始分析" })).not.toBeInTheDocument();
     expect(repository.uploadLog).not.toHaveBeenCalled();
     const uploadButton = within(dialog).getByRole("button", { name: "仍然上传" });
     expect(uploadButton).toHaveClass("subtle");
@@ -853,7 +855,7 @@ describe("LogsPage · 上传日志对话框", () => {
     expect(screen.queryByText(/格式不支持/)).not.toBeInTheDocument();
   });
 
-  it("始终展示开始分析，选择支持格式后立即可提交并新增 Processing 日志", () => {
+  it("未选择文件时禁用开始分析，选择支持格式后立即可提交并新增 Processing 日志", () => {
     vi.useFakeTimers();
     renderApp({ path: "/logs", initialAppState: userState });
 

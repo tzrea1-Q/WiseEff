@@ -205,6 +205,7 @@ export type ParameterSubmissionRound = {
 };
 
 export type LogRecord = {
+  canDelete?: boolean;
   skillSelection?: import("../logs/types").LogSkillSelection;
   createdByCredentialId?: string | null;
   createdByCredentialName?: string | null;

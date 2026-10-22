@@ -23,6 +23,7 @@ export type LogEvidenceDto = {
 };
 
 export type LogRecordDto = {
+  canDelete?: boolean;
   skillSelection?: LogRecord["skillSelection"];
   createdByCredentialId?: string | null;
   createdByCredentialName?: string | null;
@@ -146,6 +147,7 @@ export function logRecordFromDto(dto: LogRecordDto): LogRecord {
     updatedAt: dto.updatedAt,
     updatedAtIso: dto.updatedAt,
     submittedBy: dto.submittedBy,
+    canDelete: dto.canDelete,
     relatedParameterId: dto.relatedParameterId,
     relatedParameterProjectId: dto.relatedParameterProjectId,
     device: dto.device,
