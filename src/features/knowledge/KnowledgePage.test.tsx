@@ -32,6 +32,50 @@ function renderPage(
 }
 
 describe("KnowledgePage", () => {
+  it("archives a draft from detail and corrects its title, tags and content without restoring it", async () => {
+    const repository = createMockKnowledgeRepository({ canManage: false });
+    const entry = await repository.createMarkdown({ title: "待归档草稿", tags: [], contentMarkdown: "旧正文" });
+    render(<KnowledgePage repository={repository} capability={editorCapability} initialEntryId={entry.id} />);
+    const user = userEvent.setup();
+    const detail = await screen.findByRole("dialog", { name: new RegExp(entry.title) });
+    await user.click(within(detail).getByRole("button", { name: "归档" }));
+    await waitFor(() => expect(within(detail).getByRole("button", { name: "恢复为已发布" })).toBeEnabled());
+    await user.click(within(detail).getByRole("button", { name: "编辑" }));
+    const editor = await screen.findByRole("dialog", { name: /编辑知识条目/ });
+    await user.clear(within(editor).getByLabelText("条目标题"));
+    await user.type(within(editor).getByLabelText("条目标题"), "归档纠正");
+    await user.type(within(editor).getByLabelText("标签(逗号分隔)"), "纠正");
+    await user.clear(within(editor).getByLabelText("Markdown 内容"));
+    await user.type(within(editor).getByLabelText("Markdown 内容"), "纠正正文");
+    await user.click(within(editor).getByRole("button", { name: "保存为新修订" }));
+    await screen.findByRole("dialog", { name: /归档纠正/ });
+    expect(await repository.get(entry.id)).toMatchObject({ status: "archived", publishedAt: null, title: "归档纠正", tags: ["纠正"], contentMarkdown: "纠正正文", headRevisionNumber: 2 });
+    expect((await repository.search("纠正正文")).items).toHaveLength(0);
+    expect(await repository.listRevisions(entry.id)).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: "恢复为已发布" }));
+    await waitFor(async () => expect((await repository.get(entry.id))?.status).toBe("published"));
+  });
+
+  it.each(["draft", "archived"] as const)("saves %s file title and tags without selecting a replacement", async (status) => {
+    const repository = createMockKnowledgeRepository();
+    const entry = await repository.createFile({ title: "文件标题", tags: [], file: new File(["pdf"], "manual.pdf", { type: "application/pdf" }) });
+    if (status === "archived") await repository.archive(entry.id);
+    const update = vi.spyOn(repository, "update");
+    render(<KnowledgePage repository={repository} capability={editorCapability} initialEntryId={entry.id} />);
+    const user = userEvent.setup();
+    const detail = await screen.findByRole("dialog", { name: new RegExp(entry.title) });
+    await user.click(within(detail).getByRole("button", { name: "编辑" }));
+    const editor = await screen.findByRole("dialog", { name: "编辑" });
+    expect(within(editor).getByLabelText("替换文件（可选）")).toBeInTheDocument();
+    await user.clear(within(editor).getByLabelText("条目标题"));
+    await user.type(within(editor).getByLabelText("条目标题"), "新文件标题");
+    await user.type(within(editor).getByLabelText("标签(逗号分隔)"), "修正");
+    await user.click(within(editor).getByRole("button", { name: "保存" }));
+    await screen.findByRole("dialog", { name: /新文件标题/ });
+    expect(update).toHaveBeenCalledWith(entry.id, { expectedHeadRevisionNumber: 1, title: "新文件标题", tags: ["修正"] });
+    expect(await repository.get(entry.id)).toMatchObject({ status, title: "新文件标题", tags: ["修正"], headRevisionNumber: 2, file: entry.file });
+  });
+
   it("opens a historical PDF citation at its physical page and pins the file request", async () => {
     const repository = createMockKnowledgeRepository();
     const entry = (await repository.list()).items.find((item) => item.file?.contentType === "application/pdf")!;
@@ -197,11 +241,11 @@ describe("KnowledgePage", () => {
     const detail = await screen.findByRole("dialog", { name: /旧版工艺规范/ });
     expect(within(detail).getByText(/不可检索：无可提取文本/)).toBeInTheDocument();
     expect(within(detail).getByText(/替换为包含可提取文本的文件/)).toBeInTheDocument();
-    await userEvent.click(within(detail).getByRole("button", { name: "替换文件" }));
-    const replace = await screen.findByRole("dialog", { name: /替换文件/ });
+    await userEvent.click(within(detail).getByRole("button", { name: "编辑" }));
+    const replace = await screen.findByRole("dialog", { name: "编辑" });
     const user = userEvent.setup();
-    await user.upload(within(replace).getByLabelText("选择文件"), new File(["Readable text"], "readable.txt", { type: "text/plain" }));
-    await user.click(within(replace).getByRole("button", { name: "替换并生成新修订" }));
+    await user.upload(within(replace).getByLabelText("替换文件（可选）"), new File(["Readable text"], "readable.txt", { type: "text/plain" }));
+    await user.click(within(replace).getByRole("button", { name: "保存" }));
     const recovered = await screen.findByRole("dialog", { name: /旧版工艺规范/ });
     expect(within(recovered).getByText("提取成功")).toBeInTheDocument();
     expect(within(recovered).queryByText(/不可检索/)).not.toBeInTheDocument();
@@ -213,7 +257,7 @@ describe("KnowledgePage", () => {
     renderPage({ capability: viewerCapability, initialEntryId: "mock-kb-4" });
     const detail = await screen.findByRole("dialog", { name: /旧版工艺规范/ });
     expect(within(detail).getByText(/不可检索/)).toBeInTheDocument();
-    expect(within(detail).queryByRole("button", { name: "替换文件" })).not.toBeInTheDocument();
+    expect(within(detail).queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
   });
 
   it("shows unavailable statistics through cold failure and restores counts only after a successful list", async () => {

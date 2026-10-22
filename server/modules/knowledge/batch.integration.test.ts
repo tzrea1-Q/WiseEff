@@ -45,15 +45,16 @@ describe.skipIf(!available)("knowledge batches over HTTP and PostgreSQL", () => 
     expect(result.status).toBe(201);
     return result.body.item;
   }
-  it("returns stable reasons for illegal transitions and archived edits", async () => {
+  it("archives drafts directly and edits archived tags without republishing", async () => {
     const draft = await create("reason codes");
+    const shelved = await request("entries/batch", { action: "archive", entryIds: [draft.id] });
+    expect(shelved.body.results[0]).toMatchObject({ status: "succeeded", entry: { status: "archived", publishedAt: null } });
     const illegal = await request("entries/batch", { action: "archive", entryIds: [draft.id] });
     expect(illegal.body.results[0].error).toMatchObject({ code: "VALIDATION_FAILED", reason: "knowledge-illegal-status-transition" });
-    await request(`entries/${draft.id}/publish`);
-    await request(`entries/${draft.id}/archive`);
     const archived = await request("entries/batch", { action: "add_tags", entryIds: [draft.id], tags: ["new"] });
-    expect(archived.body.results[0].error).toMatchObject({ code: "VALIDATION_FAILED", reason: "knowledge-entry-archived" });
-    expect((await request(`entries/${draft.id}`, {}, owner, "GET")).body.item).toMatchObject({ status: "archived", tags: ["k1331"] });
+    expect(archived.body.results[0]).toMatchObject({ status: "succeeded", entry: { status: "archived", tags: ["k1331", "new"], headRevisionNumber: 2 } });
+    await drainIndex();
+    expect((await request("search?q=k1331", {}, owner, "GET")).body.items.map((item) => item.entryId)).not.toContain(draft.id);
   });
 
   async function drainIndex() {
@@ -85,14 +86,14 @@ describe.skipIf(!available)("knowledge batches over HTTP and PostgreSQL", () => 
     expect((await request("search?q=k1331", {}, owner, "GET")).body.items.map((entry) => entry.entryId)).toEqual(expect.arrayContaining([first.id, last.id, refused.id]));
     const archive = await request("entries/batch", { action: "archive", entryIds: [first.id, hidden.id, isolated.id, last.id] }, manager);
     expect(archive.body.results.map((row) => [row.status, row.error?.code ?? null])).toEqual([
-      ["succeeded", null], ["failed", "VALIDATION_FAILED"], ["refused", "NOT_FOUND"], ["succeeded", null]
+      ["succeeded", null], ["succeeded", null], ["refused", "NOT_FOUND"], ["succeeded", null]
     ]);
     expect((await request(`entries/${first.id}`, {}, owner, "GET")).body.item.status).toBe("archived");
     expect((await request(`entries/${last.id}`, {}, owner, "GET")).body.item.status).toBe("archived");
     const audits = await db.query<{ target_id: string; kind: string }>(
       "select target_id, kind from audit_events where target_id = any($1::text[]) and kind in ('knowledge-entry-publish', 'knowledge-entry-archive') order by target_id, kind",
       [[first.id, last.id, hidden.id]]);
-    expect(audits.rows).toHaveLength(4);
+    expect(audits.rows).toHaveLength(5);
     // Archive excludes stale chunks immediately, and the worker removes their projection.
     expect((await request("search?q=k1331", {}, owner, "GET")).body.items.map((entry) => entry.entryId)).not.toContain(first.id);
     await drainIndex();

@@ -36,13 +36,13 @@ export function canEditContent(
   entry: Pick<KnowledgeEntry, "status" | "createdByUserId">,
   capability: KnowledgeCapability
 ): boolean {
-  return entry.status !== "archived" && canGovernEntry(entry, capability);
+  return canGovernEntry(entry, capability);
 }
 
 export function allowedTransitions(status: KnowledgeStatus): KnowledgeStatus[] {
   switch (status) {
     case "draft":
-      return ["published"];
+      return ["published", "archived"];
     case "published":
       return ["archived"];
     case "archived":
@@ -55,7 +55,7 @@ export function canPublish(entry: Pick<KnowledgeEntry, "status" | "createdByUser
 }
 
 export function canArchive(entry: Pick<KnowledgeEntry, "status" | "createdByUserId">, capability: KnowledgeCapability) {
-  return entry.status === "published" && canGovernEntry(entry, capability);
+  return entry.status !== "archived" && canGovernEntry(entry, capability);
 }
 
 export function canRestore(entry: Pick<KnowledgeEntry, "status" | "createdByUserId">, capability: KnowledgeCapability) {
