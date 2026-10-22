@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { detectKnowledgeReferenceSuggestions } from "../referenceSuggestions";
 
 import type { Database } from "../../../shared/database/client";
 import { chunkExtractedText, chunkMarkdown } from "./chunking";
@@ -26,6 +27,7 @@ export type KnowledgeIndexEntrySnapshot = {
   pageOffsets: number[] | null;
   extractionStatus: string | null;
   extractionError: string | null;
+  authorUserId: string | null;
 };
 
 /** Worker-side load: the indexing worker is a system actor scoped by explicit org id. */
@@ -48,12 +50,13 @@ export async function loadIndexEntrySnapshot(
     content_type: string | null;
     extraction_status: string | null;
     extraction_error: string | null;
+    author_user_id: string | null;
   }>(
     `
     select e.id, e.organization_id, e.status, e.content_form, e.title, e.tags,
            e.head_revision_id, e.head_revision_number,
            r.content_markdown,
-           f.extracted_text, f.page_offsets, f.content_type, f.extraction_status, f.extraction_error
+           f.extracted_text, f.page_offsets, f.content_type, f.extraction_status, f.extraction_error, r.author_user_id
     from knowledge_entries e
     left join knowledge_revisions r on r.id = e.head_revision_id
     left join knowledge_files f on f.id = r.file_id
@@ -80,7 +83,8 @@ export async function loadIndexEntrySnapshot(
     extractedText: row.extracted_text,
     pageOffsets: row.content_type === "application/pdf" ? row.page_offsets : null,
     extractionStatus: row.extraction_status,
-    extractionError: row.extraction_error
+    extractionError: row.extraction_error,
+    authorUserId: row.author_user_id
   };
 }
 
@@ -115,6 +119,13 @@ export async function indexKnowledgeEntry(
     return { outcome: "missing" };
   }
 
+  const detectSuggestions = async () => {
+    try {
+      await detectKnowledgeReferenceSuggestions(db, snapshot, randomUUID());
+    } catch (error) {
+      console.warn("[knowledge-reference-suggestions] Detection failed; indexing outcome is unchanged:", { entryId: snapshot.entryId, error });
+    }
+  };
   const persist = (write: (tx: Database) => Promise<void>) =>
     persistKnowledgeIndexJob(db, input.claim, write);
 
@@ -131,6 +142,7 @@ export async function indexKnowledgeEntry(
         embeddedChunkCount: 0
       });
     });
+    if (committed) await detectSuggestions();
     return { outcome: committed ? "removed" : "superseded" };
   }
 
@@ -199,6 +211,7 @@ export async function indexKnowledgeEntry(
   });
 
   if (!committed) return { outcome: "superseded" };
+  await detectSuggestions();
   if (embeddingError) {
     return { outcome: "failed", reason: embeddingError };
   }

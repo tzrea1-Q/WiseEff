@@ -9,7 +9,7 @@ import { presentError } from "@/infrastructure/http/presentError";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { parseTagsInput } from "./KnowledgeEntryEditorDialog";
 
-export const knowledgeBatchLabels = { add_tags: "添加标签", remove_tags: "移除标签", publish: "发布", archive: "归档" };
+export const knowledgeBatchLabels = { add_tags: "添加标签", remove_tags: "移除标签", publish: "发布", archive: "归档", accept_suggestions: "接受建议关联" };
 
 function failureReason(error: NonNullable<KnowledgeBatchReport["results"][number]["error"]>) {
   if (error.code === "FORBIDDEN") return "没有管理此条目的权限：需要本人条目的编辑权限或知识管理权限。";
@@ -62,7 +62,7 @@ export function KnowledgeBatchDialog({ action, entries, repository, onComplete, 
         <h2 id={titleId} className="text-base font-semibold">{label}</h2>
         <p id={descriptionId} className="mt-1 text-sm text-muted-foreground">
           已选择 {entries.length} 条。逐条检查权限并执行，失败不影响其他条目。
-          {action === "publish" ? "发布后进入知识检索。" : action === "archive" ? "归档后退出知识检索，保留内容和修订。" : "保留其他标签与条目内容。"}
+          {action === "publish" ? "发布后进入知识检索。" : action === "archive" ? "归档后退出知识检索，保留内容和修订。" : action === "accept_suggestions" ? "接受每条的全部待处理建议，建立参数定义关联。" : "保留其他标签与条目内容。"}
         </p>
       </div>
       {!report ? <div className="min-h-0 overflow-y-auto">

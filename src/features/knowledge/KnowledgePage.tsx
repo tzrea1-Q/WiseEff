@@ -23,6 +23,7 @@ import {
 import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import { PageInsightBar, type Column } from "@/components/admin";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { AdminListPage } from "@/components/layout/AdminListPage";
 import { SectionSkeleton } from "@/components/common/SectionState";
@@ -90,6 +91,7 @@ export function KnowledgePage({
   const [citationLoading, setCitationLoading] = useState(Boolean(initialEntryId));
   const citationRequest = useRef(0);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [pendingSuggestions, setPendingSuggestions] = useState(false);
   const [originFilter, setOriginFilter] = useState<string[]>([]);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [searchInput, setSearchInput] = useState("");
@@ -119,7 +121,7 @@ export function KnowledgePage({
     setLoading(true);
     setListError("");
     try {
-      const result = await repository.list();
+      const result = await repository.list(pendingSuggestions ? { pendingSuggestions: true } : undefined);
       if (request !== listRequest.current) return;
       // Preserve only a get completed after this list started, never an older cached lookup.
       const citation = citationResult.current !== citationAtStart ? citationResult.current?.entry : null;
@@ -131,7 +133,7 @@ export function KnowledgePage({
     } finally {
       if (request === listRequest.current) setLoading(false);
     }
-  }, [repository]);
+  }, [repository, pendingSuggestions]);
 
   useEffect(() => {
     setRows([]);
@@ -285,6 +287,8 @@ export function KnowledgePage({
       render: (entry) => (
         <div className="min-w-0">
           <p className="truncate font-medium text-foreground">{entry.title}</p>
+          {canGovernEntry(entry, capability) && (entry.pendingSuggestionCount ?? 0) > 0
+            ? <Badge variant="secondary">待处理建议 {entry.pendingSuggestionCount}</Badge> : null}
           {entry.contentForm === "file" && entry.file?.extractionStatus === "failed" ? <KnowledgeUnsearchableBadge /> : null}
           <p className="text-xs text-muted-foreground">修订 #{entry.headRevisionNumber}</p>
         </div>
@@ -578,6 +582,10 @@ export function KnowledgePage({
           <Button type="submit" variant="outline" size="sm" disabled={searching} aria-busy={searching || undefined}>
             检索
           </Button>
+          {!searchQuery && canBatch ? <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={pendingSuggestions} onChange={(event) => { setCheckedIds([]); setPendingSuggestions(event.target.checked); }} />
+            待处理建议
+          </label> : null}
           {searchQuery ? (
             <Button type="button" variant="outline" size="sm" onClick={clearSearch}>
               清除检索
@@ -650,7 +658,10 @@ export function KnowledgePage({
           actionLabel: "重新加载", onAction: () => { void loadEntries(); } }}
       />
 
-      {batch ? <KnowledgeBatchDialog {...batch} repository={repository} onClose={() => setBatch(null)} onComplete={(report) => {
+      {batch ? <KnowledgeBatchDialog {...batch} repository={repository} onClose={() => {
+        setBatch(null);
+        void loadEntries();
+      }} onComplete={(report) => {
         setRows((current) => current.map((entry) => report.results.find((row) => row.entryId === entry.id)?.entry ?? entry));
         setCheckedIds([]);
       }} /> : null}
@@ -706,9 +717,12 @@ export function KnowledgePage({
         entry={editorEntry}
         onSubmit={handleEditorSubmit}
         parameterReferencePicker={parameterReferencePicker}
+        suggestionRepository={repository}
+        onReferenceUpdate={applyReferenceUpdate}
         onClose={() => {
           setEditorOpen(false);
           setEditorEntry(null);
+          void loadEntries();
         }}
       />
 
