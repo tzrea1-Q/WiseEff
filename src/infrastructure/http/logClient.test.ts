@@ -342,6 +342,16 @@ describe("createHttpLogAnalysisRepository", () => {
     expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/logs?status=complete&includeArchived=true");
   });
 
+  it("omits the time filter for all logs and feedback insights", async () => {
+    const fetchMock = createFetchMock({ items: [] });
+    const repository = createRepository(fetchMock);
+    await expect(repository.listLogs({ timeWindow: "all" })).resolves.toEqual([]);
+    await expect(repository.listFeedbackInsights!({ timeWindow: "all" })).resolves.toEqual([]);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8787/api/v1/logs", "http://127.0.0.1:8787/api/v1/logs/feedback-insights"
+    ]);
+  });
+
   it("gets a log by id", async () => {
     const fetchMock = createFetchMock({ item: baseLogDto });
     const repository = createRepository(fetchMock);

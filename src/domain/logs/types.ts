@@ -6,7 +6,7 @@ export type LogSeverity = "Critical" | "Warning" | "Info";
 
 export type LogArchiveState = "active" | "archived";
 
-export type TimeWindow = "today" | "7d" | "30d";
+export type TimeWindow = "all" | "today" | "7d" | "30d";
 
 export type LogAnalysisSource = "agent" | "rules-fallback";
 

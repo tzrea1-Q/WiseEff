@@ -167,20 +167,57 @@ describe("confirmed project purge HTTP", () => {
       method: "POST", headers: { "X-WiseEff-User": "purge-member" }, body: JSON.stringify({ stateDigest: impact.stateDigest }) })).status).toBe(403);
   });
 
-  it("retains protected offline archives and the associated project instead of bypassing their contract", async () => {
+  it("purges offline archives, disposal and DTS reload evidence while retaining objects shared with another project", async () => {
     await createProject(db, { organizationId: "purge-org", id: "purge-protected", name: "Protected", code: "PROTECTED" });
+    await createProject(db, { organizationId: "purge-org", id: "purge-evidence-shared", name: "Shared", code: "EVIDENCE-SHARED" });
     const object = await store.put({ organizationId: "purge-org", fileName: "offline.json", contentType: "application/json", bytes: Buffer.from('{"retained":true}') });
+    const overlay = await store.put({ organizationId: "purge-org", fileName: "overlay.dts", contentType: "text/plain", bytes: Buffer.from("/dts-v1/;") });
+    const artifact = await store.put({ organizationId: "purge-org", fileName: "overlay.dtbo", contentType: "application/octet-stream", bytes: Buffer.from("artifact") });
     await db.query(`insert into project_parameter_plane_archives(id,organization_id,project_id,scope,object_ref,content_digest,archive_digest,counts,created_by)
       values ('purge-archive','purge-org','purge-protected','legacy-parameter-plane',$1,$2,$2,'{}','purge-admin')`, [object.storageKey, `sha256:${"a".repeat(64)}`]);
-    const impact = await preview("purge-protected");
-    expect(impact.blockers).toEqual(expect.arrayContaining([expect.objectContaining({ code: "protected-offline-archive" })]));
-    expect((await purge("purge-protected", impact.stateDigest)).status).toBe(409);
-    expect((await requestJson(createWiseEffServer({ db }), url("purge-protected"), { headers })).status).toBe(200);
-    expect((await store.get(object.storageKey)).toString()).toBe('{"retained":true}');
+    await db.query(`insert into parameter_catalog.plane_disposal_runs(id,organization_id,project_id,archive_id,archive_digest,approval_ref,phase,created_by)
+      values ('purge-disposal','purge-org','purge-protected','purge-archive',$1,'owner-D1','residue-deleted','purge-admin')`, [`sha256:${"a".repeat(64)}`]);
+    await db.query(`insert into dts_reload_runs(id,organization_id,project_id,status,overlay_source_storage_key,overlay_artifact_storage_key,overlay_artifact_bytes)
+      values ('purge-reload','purge-org','purge-protected','validated',$1,$2,8),
+        ('purge-reload-shared','purge-org','purge-evidence-shared','validated',$1,null,null)`, [overlay.storageKey, artifact.storageKey]);
+    await db.query(`insert into dts_reload_device_residue(organization_id,device_id,project_id,source_run_id)
+      values ('purge-org','purge-device','purge-protected','purge-reload')`);
+    await db.query("insert into dts_reload_run_targets(id,reload_run_id,node_path,property_key,debug_value) values ('purge-target','purge-reload','/','limit','42')");
+    let impact = await preview("purge-protected");
+    expect(impact.blockers).toEqual([]);
+    expect(impact.executionAvailable).toBe(true);
+    expect(impact.inventory).toEqual(expect.arrayContaining(["offline-archives", "deployment-evidence", "deployment-targets", "device-residue", "plane-disposal"]
+      .map(key => expect.objectContaining({ key, count: 1, disposition: "delete" }))));
+    expect(impact.storage).toMatchObject({ exclusiveObjects: 2, sharedObjects: 1 });
+    await db.query("update dts_reload_runs set diagnostics='[{\"message\":\"updated\"}]' where id='purge-reload'");
+    expect(await purge("purge-protected", impact.stateDigest)).toMatchObject({ status: 409, body: { error: { details: { reason: "project-purge-preview-stale" } } } });
+    impact = await preview("purge-protected");
+    expect(await purge("purge-protected", impact.stateDigest, { ...store, delete: async () => { throw new Error("offline"); } }))
+      .toMatchObject({ status: 200, body: { item: { database: "deleted", objects: "pending", pendingObjects: 2 } } });
+    expect(await purge("purge-protected", impact.stateDigest)).toMatchObject({ status: 200, body: { item: { objects: "complete" } } });
+    expect((await requestJson(createWiseEffServer({ db }), url("purge-protected"), { headers })).status).toBe(404);
+    expect((await db.query("select id from dts_reload_runs where id='purge-reload'")).rows).toEqual([]);
+    expect((await db.query("select id from dts_reload_run_targets where id='purge-target'")).rows).toEqual([]);
+    expect((await db.query("select device_id from dts_reload_device_residue where project_id='purge-protected'")).rows).toEqual([]);
+    expect((await db.query("select id from project_parameter_plane_archives where id='purge-archive'")).rows).toEqual([]);
+    expect((await db.query("select id from parameter_catalog.plane_disposal_runs where id='purge-disposal'")).rows).toEqual([]);
+    expect((await store.get(overlay.storageKey)).toString()).toBe("/dts-v1/;");
+    await expect(store.get(object.storageKey)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(store.get(artifact.storageKey)).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await db.query<{ metadata: unknown }>("select metadata from audit_events where kind='project-purged' and target_id='purge-protected'")).rows[0]?.metadata).toMatchObject({
+      deletedEvidenceCounts: { "offline-archives": 1, "deployment-evidence": 1, "deployment-targets": 1, "device-residue": 1, "plane-disposal": 1 }
+    });
+    expect((await db.query("select count(*)::int as count from audit_events where kind='project-purged' and target_id='purge-protected'")).rows).toEqual([{ count: 1 }]);
   });
 
   it("keeps private tables inaccessible to a non-superuser runtime role while its authorized purge capability works", async () => {
     await createProject(db, { organizationId: "purge-org", id: "purge-runtime", name: "Runtime", code: "RUNTIME" });
+    await db.query(`insert into project_parameter_plane_archives(id,organization_id,project_id,scope,object_ref,content_digest,archive_digest,counts,created_by)
+      values ('runtime-archive','purge-org','purge-runtime','legacy-parameter-plane','runtime-evidence',$1,$1,'{}','purge-admin')`, [`sha256:${"b".repeat(64)}`]);
+    await db.query(`insert into parameter_catalog.plane_disposal_runs(id,organization_id,project_id,archive_id,archive_digest,approval_ref,phase,created_by)
+      values ('runtime-disposal','purge-org','purge-runtime','runtime-archive',$1,'owner-D1','residue-deleted','purge-admin')`, [`sha256:${"b".repeat(64)}`]);
+    await db.query("insert into dts_reload_runs(id,organization_id,project_id,status) values ('runtime-reload','purge-org','purge-runtime','validated')");
+    await db.query("insert into dts_reload_device_residue(organization_id,device_id,project_id,source_run_id) values ('purge-org','runtime-device','purge-runtime','runtime-reload')");
     const impact = await preview("purge-runtime");
     await withTestClusterRoleCatalogLock(async () => {
       const client = await getRootPostgresPool(db)!.connect();
@@ -190,7 +227,7 @@ describe("confirmed project purge HTTP", () => {
         await client.query("grant parameter_governance_writer_role to admin1308_runtime");
         await client.query("set local role admin1308_runtime");
         await client.query("select parameter_catalog.purge_project($1,$2,$3,$4)", ["purge-org", "purge-runtime", "purge-admin", impact.stateDigest]);
-        expect((await client.query("select parameter_catalog.read_project_erasure($1,$2,$3) as item", ["purge-org", "purge-runtime", "purge-admin"])).rows[0]?.item).toMatchObject({ digest: impact.stateDigest, pending: [] });
+        expect((await client.query("select parameter_catalog.read_project_erasure($1,$2,$3) as item", ["purge-org", "purge-runtime", "purge-admin"])).rows[0]?.item).toMatchObject({ digest: impact.stateDigest, pending: ["runtime-evidence"] });
         await client.query("savepoint cross_tenant");
         await expect(client.query("select parameter_catalog.purge_project($1,$2,$3,$4)", ["purge-foreign", "purge-foreign", "purge-admin", impact.stateDigest])).rejects.toMatchObject({ code: "42501" });
         await client.query("rollback to cross_tenant");

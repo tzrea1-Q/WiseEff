@@ -6,21 +6,30 @@ import type { ProjectDeletionPreview, ProjectDeletionStatus } from "@/domain/par
 
 const preview: ProjectDeletionPreview = { organizationId: "org", projectId: "old-project", projectName: "Old project",
   generatedAt: "2026-10-20T00:00:00Z", stateDigest: "a".repeat(64), executionAvailable: true,
-  inventory: [{ key: "values", label: "项目值与历史", count: 12, disposition: "delete" }],
-  storage: { exclusiveObjects: 1, sharedObjects: 2, totalBytes: 50 }, blockers: [], notes: [] };
+  inventory: [{ key: "values", label: "项目值与历史", count: 12, disposition: "delete" },
+    { key: "source-files", label: "项目源文件", count: 2, disposition: "delete" },
+    { key: "canonical-bindings", label: "项目参数", count: 3, disposition: "delete" },
+    { key: "config-revisions", label: "配置解析修订", count: 4, disposition: "delete" },
+    { key: "source-versions", label: "源文件历史版本", count: 5, disposition: "delete" },
+    { key: "deployment-evidence", label: "设备部署运行与证据", count: 1, disposition: "delete" }],
+  storage: { exclusiveObjects: 1, sharedObjects: 2, totalBytes: 2048 }, blockers: [], notes: [] };
 const pending: ProjectDeletionStatus = { projectId: preview.projectId, stateDigest: preview.stateDigest,
   database: "deleted", objects: "pending", pendingObjects: 1 };
 
 describe("project deletion confirmation", () => {
-  it("requires acknowledgement, keeps the partial state visible and retries object cleanup using the same confirmation", async () => {
+  it("confirms with the destructive button and retries object cleanup using the same confirmation", async () => {
     const user = userEvent.setup();
     const purgeProject = vi.fn().mockResolvedValueOnce(pending).mockResolvedValueOnce({ ...pending, objects: "complete", pendingObjects: 0 });
     render(<ProjectDeletionPreviewDialog projectId={preview.projectId} loadPreview={async () => preview}
       purgeProject={purgeProject} onClose={() => {}} />);
-    const button = await screen.findByRole("button", { name: "确认彻底删除" });
-    expect(button).toBeDisabled();
-    const acknowledgement = await screen.findByRole("checkbox", { name: /我确认永久删除/ });
-    acknowledgement.focus(); await user.keyboard(" ");
+    const button = await screen.findByRole("button", { name: "彻底删除" });
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.getByText(/永久删除项目配置、参数、历史修订、部署记录及离线迁移归档/)).toBeVisible();
+    expect(screen.getByText("已记录存储大小：2.0 KB。")).toBeVisible();
+    expect(screen.getByText("配置文件 2 个，参数 3 项，历史修订 9 项，部署记录 1 项。")).toBeVisible();
+    expect(screen.getByText("项目值与历史")).not.toBeVisible();
+    await user.click(screen.getByText("明细"));
+    expect(screen.getByText("项目值与历史")).toBeVisible();
     expect(button).toBeEnabled();
     button.focus(); await user.keyboard("{Enter}");
     const result = await screen.findByRole("status");
@@ -36,13 +45,20 @@ describe("project deletion confirmation", () => {
     const user = userEvent.setup();
     render(<ProjectDeletionPreviewDialog projectId={preview.projectId} loadPreview={async () => preview}
       purgeProject={async () => { throw new Error("Network unavailable"); }} onClose={() => {}} />);
-    await user.click(await screen.findByRole("checkbox"));
-    await user.click(screen.getByRole("button", { name: "确认彻底删除" }));
+    await user.click(await screen.findByRole("button", { name: "彻底删除" }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox")).toBeChecked();
-    expect(screen.getByRole("button", { name: "确认彻底删除" })).toBeEnabled();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "彻底删除" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "重试预览" }));
-    expect(await screen.findByRole("checkbox")).not.toBeChecked();
+    expect(await screen.findByText("当前没有删除阻塞。")).toBeVisible();
+  });
+
+  it("keeps deletion disabled while work is in progress", async () => {
+    render(<ProjectDeletionPreviewDialog projectId={preview.projectId} loadPreview={async () => ({ ...preview,
+      executionAvailable: false, blockers: [{ code: "pending-review", count: 1, message: "有待处理的审核。", action: "请先处理。" }] })}
+      purgeProject={vi.fn()} onClose={() => {}} />);
+    expect(await screen.findByText("请先处理。")).toBeVisible();
+    expect(screen.getByRole("button", { name: "彻底删除" })).toBeDisabled();
   });
 
   it("loads a persisted cleanup receipt without attempting to read the deleted project", async () => {

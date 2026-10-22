@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
+import type { TimeWindow } from "@/domain/logs/types";
 
-export type TimeWindow = "today" | "7d" | "30d";
+export type { TimeWindow } from "@/domain/logs/types";
 
 export type TimeWindowOption = {
   value: TimeWindow;
@@ -15,6 +16,7 @@ export type TimeWindowSelectProps = {
 };
 
 const DEFAULT_OPTIONS: TimeWindowOption[] = [
+  { value: "all", label: "全部" },
   { value: "today", label: "今日" },
   { value: "7d", label: "7 日" },
   { value: "30d", label: "30 日" }
