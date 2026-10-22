@@ -6,7 +6,7 @@ Date: 2026-10-21
 
 ## Status
 
-Accepted. Settled in the 2026-10-21 user-curated knowledge design session; delivered by the [user-curated knowledge plan](../exec-plans/active/2026-10-21-knowledge-user-curation.md).
+Accepted. Settled in the 2026-10-21 user-curated knowledge design session; delivered by the [user-curated knowledge plan](../exec-plans/completed/2026-10-21-knowledge-user-curation.md).
 
 ## Decision
 

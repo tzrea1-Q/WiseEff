@@ -1,8 +1,8 @@
 # 知识引用建议与 PDF 页级引用
 
-> English: [English](../../../exec-plans/active/2026-10-21-knowledge-reference-suggestions-and-page-citations.md)
+> English: [English](../../../exec-plans/completed/2026-10-21-knowledge-reference-suggestions-and-page-citations.md)
 
-状态：设计已于 2026-10-21 敲定（拷问式设计会话，三轮，所有建议均被采纳）。规格：[#1338](https://github.com/tzrea1-Q/WiseEff/issues/1338)；工单 #1339–#1341（引用建议）和 #1342–#1345（页级引用）。承接[用户自管知识](2026-10-21-knowledge-user-curation.md)延后的两项：导入时识别参数名（K15）和 PDF 页级引用（K22）。
+状态：已于 2026-10-21 交付。设计于同日敲定（拷问式设计会话，三轮，所有建议均被采纳）；页级引用经 [#1347](https://github.com/tzrea1-Q/WiseEff/pull/1347) 合入，引用建议经叠加在 #1347 之上的 [#1348](https://github.com/tzrea1-Q/WiseEff/pull/1348) 合入（R25 按两个 PR 交付）。验证证据记录在各 PR 中。规格：[#1338](https://github.com/tzrea1-Q/WiseEff/issues/1338)；工单 #1339–#1341（引用建议）和 #1342–#1345（页级引用）。承接[用户自管知识](2026-10-21-knowledge-user-curation.md)延后的两项：导入时识别参数名（K15）和 PDF 页级引用（K22）。
 
 ## 授权目标
 
