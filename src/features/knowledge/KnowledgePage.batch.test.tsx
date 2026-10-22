@@ -7,6 +7,23 @@ import { KnowledgePage } from "./KnowledgePage";
 const capability = { userId: "u-xu-yun", canView: true, canEdit: true, canManage: false };
 
 describe("knowledge batch management", () => {
+  it("archives selected drafts without publishing them", async () => {
+    const repository = createMockKnowledgeRepository({ canManage: false });
+    const first = await repository.createMarkdown({ title: "归档草稿一", tags: [], contentMarkdown: "草稿一" });
+    const second = await repository.createMarkdown({ title: "归档草稿二", tags: [], contentMarkdown: "草稿二" });
+    render(<KnowledgePage repository={repository} capability={capability} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("checkbox", { name: `选择 ${first.title}` }));
+    await user.click(screen.getByRole("checkbox", { name: `选择 ${second.title}` }));
+    await user.click(screen.getByRole("button", { name: "归档" }));
+    await user.click(screen.getByRole("button", { name: "确认归档" }));
+    const report = await screen.findByRole("table", { name: "批量操作结果" });
+    expect(within(report).getAllByText("成功")).toHaveLength(2);
+    for (const entry of [first, second]) {
+      expect(await repository.get(entry.id)).toMatchObject({ status: "archived", publishedAt: null, headRevisionNumber: 1 });
+      expect((await repository.search(entry.title)).items).toHaveLength(0);
+    }
+  });
   it.each([
     ["knowledge-illegal-status-transition", "条目状态不允许此操作"],
     ["knowledge-entry-archived", "已归档条目不能修改标签"]

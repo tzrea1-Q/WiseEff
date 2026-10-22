@@ -74,6 +74,14 @@ function renderTable(overrides: {
 }
 
 describe("ProjectAdminTable", () => {
+  it("opens the deletion preview from the permanent-delete row action", async () => {
+    const onPreviewDeletion = vi.fn();
+    render(<ProjectAdminTable rows={rows} search={defaultSearch} onUpdateSearch={vi.fn()}
+      onCreateProject={vi.fn()} onEditProject={vi.fn()} onDeleteProject={vi.fn()} onManageFiles={vi.fn()} onPreviewDeletion={onPreviewDeletion} />);
+    await userEvent.click(screen.getByRole("button", { name: "Alpha操作：更多" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "彻底删除… Alpha" }));
+    expect(onPreviewDeletion).toHaveBeenCalledWith("project-alpha");
+  });
   it("hides archived projects by default while the archived filter exposes them", () => {
     const archived = { ...rows[0]!, status: "archived" as const, statusLabel: "已归档" };
     const view = renderTable({ rows: [archived, rows[1]!] });

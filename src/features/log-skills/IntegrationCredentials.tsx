@@ -21,7 +21,6 @@ export function IntegrationCredentials({ skill, repository, apiMode, canEdit, di
   const [bound, setBound] = useState(true);
   const [action, setAction] = useState<{ kind: "rotate" | "revoke"; item: IntegrationCredential } | null>(null);
   const [reveal, setReveal] = useState<IntegrationCredentialSecret | null>(null);
-  const [acknowledged, setAcknowledged] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
@@ -51,7 +50,7 @@ export function IntegrationCredentials({ skill, repository, apiMode, canEdit, di
         const result = action ? await repository!.rotateIntegrationCredential!(action.item.id)
           : await repository!.issueIntegrationCredential!({ name: name.trim(), skillId: bound ? skill.id : null });
         setItems((previous) => [result.item, ...previous.filter((old) => old.id !== result.item.id)]);
-        setAcknowledged(false); setCopyStatus(""); setReveal(result);
+        setCopyStatus(""); setReveal(result);
       }
       setAction(null); setIssuing(false);
     } catch { setError("操作失败，请重试。"); }
@@ -87,14 +86,13 @@ export function IntegrationCredentials({ skill, repository, apiMode, canEdit, di
       description={action?.kind === "rotate" ? `轮换「${action.item.name}」后，旧密钥立即失效。请更新调用方。` : `撤销「${action?.item.name ?? ""}」后，该凭据立即失效且无法恢复。`}
       confirmLabel={action?.kind === "rotate" ? "轮换凭据" : "撤销凭据"} tone="danger" pending={pending} error={error}
       onConfirm={() => void save()} onCancel={() => setAction(null)} />
-    <ModalDialog open={!!reveal} onDismiss={acknowledged ? () => setReveal(null) : undefined} className="skill-publish-dialog" describedBy>
+    <ModalDialog open={!!reveal} onDismiss={() => setReveal(null)} className="skill-publish-dialog" describedBy>
       {({ titleId, descriptionId }) => <><h2 id={titleId}>保存集成凭据</h2><p id={descriptionId}>密钥仅显示一次。请保存到安全的密钥管理工具，不要写入日志或代码仓库。</p>
         <div className="grid gap-2"><label htmlFor={tokenId}>集成凭据</label><div className="skill-credential-secret">
           <Input id={tokenId} readOnly value={reveal?.token ?? ""} autoComplete="off" spellCheck={false} />
           <Button variant="outline" onClick={() => { void navigator.clipboard.writeText(reveal?.token ?? "").then(() => setCopyStatus("已复制密钥"), () => setCopyStatus("复制失败，请手动复制。")); }}>复制密钥</Button>
         </div>{copyStatus ? <p role="status" className="text-xs text-muted-foreground">{copyStatus}</p> : null}</div>
-        <label className="skill-credential-checkbox"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />我已安全保存密钥</label>
-        <div className="dialog-actions"><Button disabled={!acknowledged} onClick={() => setReveal(null)}>完成</Button></div></>}
+        <div className="dialog-actions"><Button onClick={() => setReveal(null)}>完成</Button></div></>}
     </ModalDialog>
   </section>;
 }

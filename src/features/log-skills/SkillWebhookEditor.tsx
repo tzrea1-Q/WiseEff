@@ -32,11 +32,15 @@ export function SkillWebhookEditor({
   domain,
   logActions,
   onSaved,
+  onDirtyChange,
+  onBusyChange,
   disabled = false
 }: {
   domain: LogDomain;
   logActions: Required<Pick<LogAnalysisRepository, "listLogDomainWebhookDeliveries" | "setLogDomainWebhook" | "sendLogDomainWebhookTest">>;
   onSaved: () => Promise<void>;
+  onDirtyChange?: (dirty: boolean) => void;
+  onBusyChange?: (busy: boolean) => void;
   disabled?: boolean;
 }) {
   const [enabled, setEnabled] = useState(domain.webhook?.enabled ?? false);
@@ -49,6 +53,10 @@ export function SkillWebhookEditor({
   const [testing, setTesting] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [savedConfig, setSavedConfig] = useState({ enabled, url });
+  const dirty = enabled !== savedConfig.enabled || url !== savedConfig.url || secretInput !== "";
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => { onBusyChange?.(saving || testing); }, [saving, testing, onBusyChange]);
 
   const refreshDeliveries = useCallback(async () => {
     setDeliveries(await logActions.listLogDomainWebhookDeliveries(domain.id, 10));
@@ -74,14 +82,18 @@ export function SkillWebhookEditor({
         ...(secretInput.trim() === "" ? {} : { secret: secretInput.trim() })
       });
       if (saved) {
+        setSavedConfig({ enabled, url });
         setSecretConfigured(saved.webhook?.secretConfigured ?? false);
         setSecretLastFour(saved.webhook?.secretLastFour);
         setSecretInput("");
         setStatusText("配置已保存");
         await onSaved();
+        return true;
       }
+      return false;
     } catch {
       setErrorText("保存失败：请检查回调地址与签名密钥。");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -95,6 +107,7 @@ export function SkillWebhookEditor({
     setStatusText(null);
     setErrorText(null);
     try {
+      if (dirty && !await save()) return;
       const outcome = await logActions.sendLogDomainWebhookTest(domain.id);
       if (outcome) {
         if (outcome.status === "delivered") {
@@ -171,10 +184,10 @@ export function SkillWebhookEditor({
             variant="outline"
             size="sm"
             onClick={() => void sendTest()}
-            disabled={disabled || testing || saving || !secretConfigured || url.trim() === ""}
+            disabled={disabled || testing || saving || (!secretConfigured && !secretInput.trim()) || url.trim() === ""}
             aria-busy={testing || undefined}
           >
-            发送测试投递
+            {dirty ? "保存并测试" : "发送测试投递"}
           </Button>
           <Button size="sm" onClick={() => void save()} disabled={disabled || saving || testing} aria-busy={saving || undefined}>
             保存配置

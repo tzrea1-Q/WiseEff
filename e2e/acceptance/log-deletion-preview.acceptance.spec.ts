@@ -28,7 +28,7 @@ test("administrator inspects a real log's deletion scope, retained audit and fai
 
   await signInBrowserAsRole(page, "admin", "/log-admin?tab=records");
   await page.getByRole("searchbox", { name: "搜索日志分析记录" }).fill(fileName);
-  const trigger = page.getByRole("row").filter({ hasText: fileName }).getByRole("button", { name: "删除影响预览" });
+  const trigger = page.getByRole("row").filter({ hasText: fileName }).getByRole("button", { name: "彻底删除…", exact: true });
   let release: () => void = () => undefined;
   const pending = new Promise<void>((resolve) => { release = resolve; });
   let failOnce = false;
@@ -44,9 +44,11 @@ test("administrator inspects a real log's deletion scope, retained audit and fai
   await expect(dialog.getByRole("status")).toHaveText("正在检查日志及关联数据…");
   await expect(dialog.getByRole("button", { name: "重新获取" })).toBeDisabled();
   release();
+  await dialog.getByText("明细", { exact: true }).click();
   await expect(dialog.getByText("管理审计身份与时间（移除日志内容）")).toBeVisible();
   await expect(dialog.getByText(`${fileName} · ${log.id}`, { exact: true })).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "彻底删除" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "彻底删除", exact: true })).toBeEnabled();
+  await expect(dialog.getByRole("checkbox")).toHaveCount(0);
   await expect(dialog.getByLabel("存储对象范围")).toContainText(`共享对象 ${item.objects.shared}`);
   await page.screenshot({ path: testInfo.outputPath("log-deletion-preview.png"), fullPage: true });
   failOnce = true;
@@ -54,13 +56,14 @@ test("administrator inspects a real log's deletion scope, retained audit and fai
   await expect(dialog.getByRole("alert")).toHaveText("范围暂不可用");
   await expect(dialog.getByLabel("日志专属数据")).toHaveCount(0);
   await dialog.getByRole("button", { name: "重试" }).focus(); await page.keyboard.press("Enter");
+  await dialog.getByText("明细", { exact: true }).click();
   await expect(dialog.getByText("管理审计身份与时间（移除日志内容）")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0); await expect(trigger).toBeFocused();
   expect((await page.request.get(apiRoute(`/api/v1/logs/${log.id}`), { headers: authHeadersForRole("admin") })).status()).toBe(200);
   await page.reload();
   await page.getByRole("searchbox", { name: "搜索日志分析记录" }).fill(fileName);
-  await expect(page.getByRole("row").filter({ hasText: fileName }).getByRole("button", { name: "删除影响预览" })).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: fileName }).getByRole("button", { name: "彻底删除…", exact: true })).toBeVisible();
 });
 
 test("permanent deletion recovers a committed request's failed response and retains independent knowledge with its removed source", async ({ page }, testInfo) => {
@@ -81,14 +84,15 @@ test("permanent deletion recovers a committed request's failed response and reta
   const history = await revisions.json(); expect(revisions.status()).toBe(200);
   await signInBrowserAsRole(page, "admin", "/log-admin?tab=records");
   await page.getByRole("searchbox", { name: "搜索日志分析记录" }).fill(fileName);
-  const row = page.getByRole("row").filter({ hasText: fileName }), trigger = row.getByRole("button", { name: "删除影响预览" });
+  const row = page.getByRole("row").filter({ hasText: fileName }), trigger = row.getByRole("button", { name: "彻底删除…", exact: true });
   await trigger.focus(); await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", { name: "日志删除影响预览" });
-  await expect(dialog.getByRole("button", { name: "彻底删除" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "彻底删除", exact: true })).toBeEnabled();
+  await expect(dialog.getByRole("checkbox")).toHaveCount(0);
   await page.keyboard.press("Escape"); await expect(trigger).toBeFocused();
   expect((await page.request.get(apiRoute(path), { headers })).status()).toBe(200);
   await trigger.focus(); await page.keyboard.press("Enter");
-  await dialog.getByRole("checkbox", { name: /我确认永久删除/ }).focus(); await page.keyboard.press("Space");
+  await expect(dialog.getByRole("button", { name: "彻底删除", exact: true })).toBeEnabled();
   let sent = 0;
   await page.route(`**${path}`, async (route) => {
     if (route.request().method() !== "DELETE") { await route.continue(); return; }
@@ -96,7 +100,10 @@ test("permanent deletion recovers a committed request's failed response and reta
     const committed = await route.fetch(); expect(committed.status()).toBe(200);
     await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "SERVICE_UNAVAILABLE", message: "删除响应传输失败" } }) });
   });
-  await dialog.getByRole("button", { name: "彻底删除" }).focus(); await page.keyboard.press("Enter");
+  await dialog.getByRole("button", { name: "重新获取", exact: true }).focus();
+  await page.keyboard.press("Tab");
+  await expect(dialog.getByRole("button", { name: "彻底删除", exact: true })).toBeFocused();
+  await page.keyboard.press("Enter");
   const result = page.getByRole("dialog", { name: "日志删除结果" });
   await expect(result.getByRole("status")).toContainText("日志数据库数据已永久删除。");
   await expect(result.getByRole("status")).toContainText("存储清理完成。");

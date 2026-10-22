@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../../auth/types";
+import { createUserInvocation } from "../../auth/trustedInvocation";
 import type { ObjectStore } from "../../logs/objectStore";
 import type { InMemoryTestDatabase } from "../../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../../testing/testDatabase";
@@ -107,17 +108,22 @@ describe.skipIf(!databaseAvailable)("knowledge index lifecycle", () => {
     await db.rollback();
   });
 
-  it("publish enqueues, the worker builds chunks with entry/revision identity, and drafts never index", async () => {
+  it("draft detection enqueues without indexing content, and publish builds chunks with entry/revision identity", async () => {
     const draft = await createKnowledgeEntry(db, objectStore, extractor, editor, {
       contentForm: "markdown",
       title: "快充温控调参经验",
       tags: ["快充"],
-      contentMarkdown: "# 背景\n\n当电池温度超过 45 度时,按 0.5A 步长下调快充电流。"
+      contentMarkdown: "# 背景\n\ndraftpublicationprobe 当电池温度超过 45 度时,按 0.5A 步长下调快充电流。"
     });
 
-    // Draft creation never touches the index queue (published-only invariant).
-    expect(await getIndexStatusForEntry(db, { entryId: draft.id, organizationId: ORG_ID })).toBeNull();
+    // Drafts enqueue detection, but never gain retrieval chunks or search visibility.
+    expect(await getIndexStatusForEntry(db, { entryId: draft.id, organizationId: ORG_ID })).toMatchObject({ status: "pending" });
+    await drainIndexQueue(db);
     expect(await listChunks(db, draft.id)).toHaveLength(0);
+    expect(await getIndexStatusForEntry(db, { entryId: draft.id, organizationId: ORG_ID })).toMatchObject({
+      status: "succeeded", chunkCount: 0, indexedRevisionId: draft.headRevisionId, indexedRevisionNumber: 1
+    });
+    expect((await searchKnowledge(db, editor, { q: "draftpublicationprobe" })).items).toEqual([]);
 
     const published = await publishKnowledgeEntry(db, editor, draft.id);
     const queued = await getIndexStatusForEntry(db, { entryId: draft.id, organizationId: ORG_ID });
@@ -139,6 +145,7 @@ describe.skipIf(!databaseAvailable)("knowledge index lifecycle", () => {
     expect(chunks.length).toBe(indexed!.chunkCount);
     expect(chunks[0].revision_id).toBe(published.headRevisionId);
     expect(chunks.map((chunk) => chunk.text).join("\n")).toContain("45 度");
+    expect((await searchKnowledge(db, viewer, { q: "draftpublicationprobe" })).items.map((item) => item.entryId)).toContain(published.id);
   });
 
   it("edit-of-published re-enqueues and reindexes the new head revision; archive removes chunks; restore re-adds them", async () => {
@@ -178,18 +185,25 @@ describe.skipIf(!databaseAvailable)("knowledge index lifecycle", () => {
     expect((await listChunks(db, entry.id)).length).toBeGreaterThan(0);
   });
 
-  it("draft edits do not enqueue index refreshes", async () => {
+  it("draft edits refresh detection but never index content", async () => {
     const entry = await createKnowledgeEntry(db, objectStore, extractor, editor, {
       contentForm: "markdown",
       title: "草稿条目",
       tags: [],
       contentMarkdown: "尚未发布。"
     });
-    await updateKnowledgeEntry(db, objectStore, extractor, editor, entry.id, {
+    await drainIndexQueue(db);
+    const updated = await updateKnowledgeEntry(db, objectStore, extractor, editor, entry.id, {
       expectedHeadRevisionNumber: 1,
-      contentMarkdown: "还是草稿。"
+      contentMarkdown: "drafteditdetectionprobe 还是草稿。"
     });
-    expect(await getIndexStatusForEntry(db, { entryId: entry.id, organizationId: ORG_ID })).toBeNull();
+    expect(await getIndexStatusForEntry(db, { entryId: entry.id, organizationId: ORG_ID })).toMatchObject({ status: "pending" });
+    await drainIndexQueue(db);
+    expect(await listChunks(db, entry.id)).toHaveLength(0);
+    expect(await getIndexStatusForEntry(db, { entryId: entry.id, organizationId: ORG_ID })).toMatchObject({
+      status: "succeeded", chunkCount: 0, indexedRevisionId: updated.headRevisionId, indexedRevisionNumber: 2
+    });
+    expect((await searchKnowledge(db, editor, { q: "drafteditdetectionprobe" })).items).toEqual([]);
   });
 
   it("published file entries index their extracted text; failed extraction surfaces as an honest index failure", async () => {
@@ -272,7 +286,7 @@ describe.skipIf(!databaseAvailable)("knowledge index lifecycle", () => {
 
     await expect(getKnowledgeIndexHealth(db, viewer)).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(retryKnowledgeEntryIndex(db, viewer, entry.id)).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(rebuildKnowledgeIndex(db, viewer)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(rebuildKnowledgeIndex(db, viewer, createUserInvocation(viewer))).rejects.toMatchObject({ code: "FORBIDDEN" });
 
     const health = await getKnowledgeIndexHealth(db, manager);
     expect(health.retrieval).toMatchObject({ mode: "fts_only", embeddingConfigured: false });
@@ -284,7 +298,7 @@ describe.skipIf(!databaseAvailable)("knowledge index lifecycle", () => {
       status: "pending"
     });
 
-    const { enqueued } = await rebuildKnowledgeIndex(db, manager, { requestId: "req-rebuild" });
+    const { enqueued } = await rebuildKnowledgeIndex(db, manager, createUserInvocation(manager), { requestId: "req-rebuild" });
     expect(enqueued).toBeGreaterThanOrEqual(1);
 
     const audits = await db.query<{ kind: string }>(

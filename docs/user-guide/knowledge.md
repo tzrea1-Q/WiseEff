@@ -58,7 +58,19 @@ On `/knowledge`, select Batch import, choose several PDF, DOCX, TXT or MD files 
 
 Select Start import to follow per-document progress. Each supported document creates an independent draft; byte-identical readable content is skipped, never overwritten. Changed content creates a new draft. The report lists created drafts, duplicates, unsupported formats, extraction failures and refused documents, with links to available entries and tag warnings. Extraction failures retain file drafts for replacement. Review the report and publish drafts after checking them. Closing the dialog or leaving the page does not cancel documents already submitted. If the summary fails, Retry summary preserves document results without uploading again.
 
+## Review suggested definition references
+
+Indexing drafts and published revisions detects exact, case-sensitive property keys of at least four characters in the entry text. Open entry detail and select Edit (or Link parameter definitions for a file), then review Suggested links. Suggestions are grouped by key, ordered by mention count, and show the module, evidence snippet and PDF page when available. Deprecated definitions are labelled as deprecated; retired definitions are excluded.
+
+Only the entry owner with edit permission or a knowledge manager can read or act on suggestions. Accept creates an audited definition reference; Ignore remembers the dismissal for that entry and definition. Accept all processes each remaining suggestion separately and retains completed decisions if one fails. The same key in several modules produces separate candidates. Until accepted, suggestions change neither related knowledge nor retrieval; accepted references enter related knowledge only once the entry is published.
+
+Suggestions follow the latest revision: a pending suggestion is withdrawn when its key disappears and may return when the key reappears. Archived entries hide suggestions and skip detection; restoring an entry queues detection against its head revision. Accepted references and dismissals stay unchanged.
+
+Existing non-archived entries that have never completed detection are queued on server startup. After the catalog gains definitions, a knowledge manager can select Rescan suggested links in the index health tab on `/knowledge-admin` to enqueue all the organization's non-archived entries, including drafts. Detection runs in the background; the admin action is audited and preserves accepted references and dismissals.
+
 ## Manage entries in batches
+
+Use Pending suggestions on `/knowledge` to find entries awaiting review. Count badges appear only on entries you govern; other entries reveal no count. Select Accept suggested links in the batch bar to accept each selected entry's pending suggestions. Each entry commits its references and normal suggestion-acceptance audits together, or rolls back together on failure. Other entries retain their results, and one batch summary audit records all outcomes.
 
 Select entries in the list, then choose Add tags, Remove tags, Publish or Archive, up to 200 entries at a time. Tag changes preserve other tags and content. Publishing applies to drafts; archiving applies to published entries and removes them from retrieval while retaining history. Permissions are checked per entry: owners need edit permission, and knowledge managers may maintain others’ entries. The result table reports each success or refusal; one failure does not undo other successful entries.
 

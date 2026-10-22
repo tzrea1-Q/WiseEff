@@ -119,7 +119,7 @@ export function ExtractorBuilder({ skillId, parsing, onChange, disabled, reposit
           { key: "name", header: "字段名", render: (row) => <Input aria-label={`片段 ${draft.line.slice(row.start, row.end)} 的字段名`} disabled={disabled} value={row.name} maxLength={100}
             onChange={(event) => setDraft({ ...draft, pattern: undefined, manuallyEdited: false, segments: draft.segments.map((segment) => segment === row ? { ...row, name: event.target.value } : segment) })} /> },
           { key: "type", header: "类型", render: (row) => <SelectControl ariaLabel={`字段 ${row.name} 的类型`} disabled={disabled} value={row.type}
-            options={(["int", "uint", "hex", "float", "string", "quoted"] as const).map((value) => ({ value, label: { int: "整数", uint: "非负整数", hex: "十六进制", float: "小数", string: "文本", quoted: "引号内文本" }[value] }))}
+            options={(["int", "uint", "hex", "float", "string", "quoted", "bytes", "hexbytes", "base64bytes"] as const).map((value) => ({ value, label: { int: "整数", uint: "非负整数", hex: "十六进制", float: "小数", string: "文本", quoted: "引号内文本", bytes: "字节（bytes）", hexbytes: "十六进制字节（hexbytes）", base64bytes: "Base64 字节（base64bytes）" }[value] }))}
             onValueChange={(type) => setDraft({ ...draft, pattern: undefined, manuallyEdited: false, segments: draft.segments.map((segment) => segment === row ? { ...row, type } : segment) })} /> },
           { key: "remove", header: "操作", render: (row) => <Button variant="ghost" size="sm" disabled={disabled} onClick={() => setDraft({ ...draft, pattern: undefined, manuallyEdited: false, segments: draft.segments.filter((segment) => segment !== row) })}>移除 {row.name}</Button> }
         ]} /> : <p>点击上方片段选择字段。</p>}

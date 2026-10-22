@@ -24,6 +24,23 @@ const webhookDomain = {
     updatedAt: "2026-08-12T00:00:00.000Z"
   };
 describe("workspace result webhook", () => {
+  it("saves edits before testing and stops after a failed save", async () => {
+    const onDirtyChange = vi.fn();
+    const logActions = createLogActions({ sendLogDomainWebhookTest: vi.fn().mockResolvedValue({ status: "delivered" }) });
+    render(<SkillWebhookEditor domain={webhookDomain} logActions={logActions} onSaved={async () => undefined} onDirtyChange={onDirtyChange} />);
+    fireEvent.change(screen.getByLabelText("回调地址"), { target: { value: "https://hooks.example.com/new" } });
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    await userEvent.click(screen.getByRole("button", { name: "保存并测试" }));
+    await waitFor(() => expect(logActions.sendLogDomainWebhookTest).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(logActions.setLogDomainWebhook).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(logActions.sendLogDomainWebhookTest).mock.invocationCallOrder[0]);
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    fireEvent.change(screen.getByLabelText("回调地址"), { target: { value: "https://hooks.example.com/failed" } });
+    vi.mocked(logActions.setLogDomainWebhook).mockRejectedValueOnce(new Error("save failed"));
+    await userEvent.click(screen.getByRole("button", { name: "保存并测试" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("保存失败");
+    expect(logActions.sendLogDomainWebhookTest).toHaveBeenCalledTimes(1);
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+  });
   it("rotates the write-only secret and respects read-only access", async () => {
     const logActions = createLogActions({});
     const { rerender } = render(<SkillWebhookEditor domain={webhookDomain} logActions={logActions} onSaved={async () => undefined} />);

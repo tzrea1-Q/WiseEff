@@ -6,7 +6,7 @@
 
 ## 状态
 
-已接受。于 2026-10-21 用户自管知识设计会话中敲定，由[用户自管知识计划](../exec-plans/active/2026-10-21-knowledge-user-curation.md)交付。
+已接受。于 2026-10-21 用户自管知识设计会话中敲定，由[用户自管知识计划](../exec-plans/completed/2026-10-21-knowledge-user-curation.md)交付。
 
 ## 决策
 

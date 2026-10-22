@@ -447,7 +447,10 @@ function FeedbackQualityInsightsSection({
 
 export function LogAdminPage({ state, dispatch, onNavigate, search: _search, logActions, skillRepository, apiMode = false, sessionPermissions }: LogAdminPageProps) {
   const [collection, selectCollection] = useCollectionTab(collectionTabs, new URLSearchParams(window.location.search).get("tab") === "domains" ? "skills" : "overview");
-  const [timeWindow, setTimeWindow] = useState<TimeWindow>("today");
+  const [overviewTimeWindow, setOverviewTimeWindow] = useState<TimeWindow>("7d");
+  const [recordsTimeWindow, setRecordsTimeWindow] = useState<TimeWindow>("all");
+  const timeWindow = collection === "records" ? recordsTimeWindow : overviewTimeWindow;
+  const setTimeWindow = collection === "records" ? setRecordsTimeWindow : setOverviewTimeWindow;
   const [tableQuery, setTableQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<LogStatus[]>([]);
   const [overviewFilter, setOverviewFilter] = useState<OverviewRecordFilter | null>(null);
@@ -519,7 +522,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   );
   const windowLogs = useMemo(() => applyTimeWindow(visibleLogs, timeWindow), [timeWindow, visibleLogs]);
   const metrics = useMemo(() => deriveMetrics(windowLogs, timeWindow, visibleLogs), [timeWindow, visibleLogs, windowLogs]);
-  const tableSourceLogs = useMemo(() => (logView === "archived" ? archivedLogs : windowLogs).filter((log) => matchesOverviewFilter(log, overviewFilter)), [archivedLogs, logView, overviewFilter, windowLogs]);
+  const tableSourceLogs = useMemo(() => (logView === "archived" ? applyTimeWindow(archivedLogs, timeWindow) : windowLogs).filter((log) => matchesOverviewFilter(log, overviewFilter)), [archivedLogs, logView, overviewFilter, timeWindow, windowLogs]);
   const filteredRows = useMemo(
     () => applyTableFilters(tableSourceLogs, { tableQuery, statusFilter, moduleFilter: [], sortBy }),
     [sortBy, statusFilter, tableQuery, tableSourceLogs]
@@ -754,14 +757,14 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
       <TabPanel id={`log-panel-${collection}`} aria-labelledby={`log-tab-${collection}`}>
         {collection === "overview" ? <LogAdminOverview logs={windowLogs} allLogs={visibleLogs} timeWindow={timeWindow} feedback={qualityRows} feedbackLoading={qualityLoading} feedbackUnavailable={qualityUnavailable}
           controls={<><TimeWindowSelect value={timeWindow} onChange={setTimeWindow} /><div className="flex items-center gap-2">{refreshAction}<Button onClick={() => onNavigate("/logs")}>进入智能分析</Button></div></>}
-          onViewRecords={(filter) => { resetFilters(); setOverviewFilter(filter); setLogView("active"); selectCollection("records"); }} /> : null}
+          onViewRecords={(filter) => { resetFilters(); setOverviewFilter(filter); setLogView("active"); setRecordsTimeWindow(timeWindow); selectCollection("records"); }} /> : null}
         <div hidden={collection !== "skills"}>
           <LogDomainGovernanceSection canGovern={canPerform(state.activeRoleId, "logs.admin-domains")} logActions={logActions} refreshKey={skillsRefreshKey} onNavigate={onNavigate}
             skillRepository={skillRepository} apiMode={apiMode} refreshAction={refreshAction} />
         </div>
         <div hidden={collection !== "quality"}>
-          <FeedbackQualityInsightsSection timeWindow={timeWindow} logActions={logActions} refreshKey={feedbackInsightsRefreshKey} onRowsChange={setQualityRows} onLoadingChange={setQualityLoading} onErrorChange={setQualityUnavailable}
-            headerActions={reportHeaderActions} onTimeWindowChange={setTimeWindow} onViewRecords={() => { resetFilters(); selectCollection("records"); }} />
+          <FeedbackQualityInsightsSection timeWindow={overviewTimeWindow} logActions={logActions} refreshKey={feedbackInsightsRefreshKey} onRowsChange={setQualityRows} onLoadingChange={setQualityLoading} onErrorChange={setQualityUnavailable}
+            headerActions={reportHeaderActions} onTimeWindowChange={setOverviewTimeWindow} onViewRecords={() => { resetFilters(); selectCollection("records"); }} />
         </div>
         {collection === "records" ? (
           <AdminListPage label="日志分析记录"
@@ -795,7 +798,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
             table={{ "aria-label": "日志分析记录", rows: filteredRows, rowKey: (record) => record.id, columns,
               onRowClick: (record) => setSelectedRecordId(record.id), selectedRowKey: selectedRecordId ?? undefined, pageSize: 8 }}
             rowActions={canPreviewDeletion || logView === "archived" && canAct ? (record) => ({ label: record.fileName,
-              primaryAction: canPreviewDeletion ? { id: "deletion-preview", label: "删除影响预览", onSelect: () => setDeletionPreviewLogId(record.id) } : undefined,
+              primaryAction: canPreviewDeletion ? { id: "deletion-preview", label: "彻底删除…", onSelect: () => setDeletionPreviewLogId(record.id) } : undefined,
               items: logView === "archived" && canAct ? [{ id: "restore", label: "恢复", disabled: pendingActions.has(pendingKey("unarchive", record.id)), onSelect: () => unarchiveLog(record.id) }] : []
             }) : undefined}
             emptyState={{ message: hasActiveFilters ? "未匹配任何记录" : logView === "archived" ? "暂无已归档日志" : "当前时间窗口内暂无日志",

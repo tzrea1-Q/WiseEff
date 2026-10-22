@@ -4,12 +4,20 @@ import { describe, expect, it, vi } from "vitest";
 import { TimeWindowSelect } from "./TimeWindowSelect";
 
 describe("TimeWindowSelect", () => {
-  it("renders three default options", () => {
+  it("renders all four default options", () => {
     render(<TimeWindowSelect value="today" onChange={() => {}} />);
 
     expect(screen.getByRole("button", { name: "今日" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "全部" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "7 日" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "30 日" })).toBeInTheDocument();
+  });
+
+  it("selects all without requiring a bounded time window", async () => {
+    const onChange = vi.fn();
+    render(<TimeWindowSelect value="7d" onChange={onChange} />);
+    await userEvent.click(screen.getByRole("button", { name: "全部" }));
+    expect(onChange).toHaveBeenCalledWith("all");
   });
 
   it("marks the current value with aria-pressed=true", () => {

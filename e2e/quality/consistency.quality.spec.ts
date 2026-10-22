@@ -1167,12 +1167,14 @@ for (const route of consistencyReadOnlyRoutes) {
           const trigger = page.getByRole("table", { name: "项目管理列表" }).getByRole("button", { name: /：更多$/ }).first();
           await trigger.click();
           await expect(page.getByRole("menuitem", { name: /^(归档|恢复项目) / })).toBeEnabled();
-          await page.getByRole("menuitem", { name: /^删除影响预览 / }).click();
+          await page.getByRole("menuitem", { name: /^彻底删除… / }).click();
           const confirmation = page.getByRole("dialog", { name: /^项目删除影响预览/ });
+          await confirmation.getByText("明细", { exact: true }).click();
           await expect(confirmation.getByRole("region", { name: "项目专属数据：计划清理" })).toBeVisible();
           await expect(confirmation).toContainText("无法恢复");
-          await expect(confirmation).toContainText("共享定义及独立知识、日志、设备保留");
-          await expect(confirmation.getByRole("button", { name: "确认彻底删除", exact: true })).toBeDisabled();
+          await expect(confirmation).toContainText("共享定义、独立知识正文、日志及设备保留。");
+          await expect(confirmation.getByRole("button", { name: "彻底删除", exact: true })).toBeVisible();
+          await expect(confirmation.getByRole("checkbox")).toHaveCount(0);
           await page.keyboard.press("Escape");
           await expect(confirmation).toHaveCount(0);
           await expect(trigger).toBeFocused();

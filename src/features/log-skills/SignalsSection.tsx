@@ -116,21 +116,29 @@ export function SignalsSection({ skillId, spec, onChange, disabled, sample, repo
   };
   const conditionEditor = (condition: Condition, path: (string | number)[], change: (condition: Condition) => void, remove?: () => void, nested = false) => {
     const label = `规则 ${Number(path[2]) + 1} 条件 ${Number(path[4]) + 1}${nested ? "子条件" : ""}`;
-    const legacy = condition.type === "numericComparison" || condition.type === "severityToken";
     const field = condition.type === "field" ? resolveField(condition.field) : undefined;
     const values = condition.type === "field" && Array.isArray(condition.values) ? condition.values : [];
     return <div className={nested ? "skill-signal-subcondition" : "skill-signal-condition"}>
       <div className={`skill-condition-row${condition.type === "field" ? " skill-condition-row--field" : ""}`}>
-        {legacy ? <div className="skill-condition-legacy"><span>{conditionSummary(condition)}</span><small>仅可在代码视图编辑</small></div> : <>
+        <>
           <SelectControl className="skill-condition-type" ariaLabel={`${label}类型`} value={condition.type} disabled={disabled} options={[
-            { value: "text", label: "消息匹配" }, { value: "field", label: "抽取字段" }, ...(!nested ? [{ value: "window", label: "时间窗内计数" }] : [])
+            { value: "text", label: "消息匹配" }, { value: "field", label: "抽取字段" }, ...(!nested ? [{ value: "window", label: "时间窗内计数" }, { value: "numericComparison", label: "数值比较" }, { value: "severityToken", label: "级别与关键字" }] : [])
           ]} onValueChange={(type) => change(type === "field" ? newFieldCondition(fields[0]?.path ?? "")
+            : type === "numericComparison" ? { type, leftTokens: [], operator: "lt", rightTokens: [] }
+            : type === "severityToken" ? { type, severity: "error", token: "" }
             : type === "window" ? { type: "window", condition: { type: "text", pattern: "" }, count: 2, seconds: 10 } : { type: "text", pattern: "" })} />
           {condition.type === "text" ? <>
             <Input className="skill-condition-value" aria-label={`${label}消息正则`} placeholder="消息正则" value={condition.pattern} disabled={disabled} aria-invalid={!!pathIssues([...path, "pattern"]).length}
               onChange={(event) => change({ ...condition, pattern: event.target.value })} />
             <Input className="skill-condition-flags" aria-label={`${label}正则标记`} value={condition.flags ?? ""} disabled={disabled} placeholder="i / m / s" aria-invalid={!!pathIssues([...path, "flags"]).length}
               onChange={(event) => change({ ...condition, flags: event.target.value })} />
+          </> : condition.type === "numericComparison" ? <>
+            <Input aria-label={`${label}左侧 token`} placeholder="左侧 token，以逗号分隔" disabled={disabled} value={condition.leftTokens.join(",")} onChange={(event) => change({ ...condition, leftTokens: event.target.value.split(",") })} />
+            <SelectControl ariaLabel={`${label}比较方式`} disabled={disabled} value={condition.operator} options={(["lt", "lte", "gt", "gte", "eq", "neq"] as const).map((value) => ({ value, label: comparisonLabels[value] }))} onValueChange={(operator: typeof condition.operator) => change({ ...condition, operator })} />
+            <Input aria-label={`${label}右侧 token`} placeholder="右侧 token，以逗号分隔" disabled={disabled} value={condition.rightTokens.join(",")} onChange={(event) => change({ ...condition, rightTokens: event.target.value.split(",") })} />
+          </> : condition.type === "severityToken" ? <>
+            <SelectControl ariaLabel={`${label}日志级别`} disabled={disabled} value={condition.severity} options={[{ value: "error", label: "错误" }, { value: "warn", label: "警告" }, { value: "info", label: "信息" }]} onValueChange={(severity: typeof condition.severity) => change({ ...condition, severity })} />
+            <Input aria-label={`${label}token`} placeholder="关键字 token" disabled={disabled} value={condition.token} onChange={(event) => change({ ...condition, token: event.target.value })} />
           </> : condition.type === "field" ? <>
             <SelectControl className="skill-condition-field" title={condition.field} ariaLabel={`${label}抽取字段：${condition.field}`} value={condition.field} disabled={disabled} options={[
               ...(!fields.some((item) => item.path === condition.field) ? [{ value: condition.field, label: fieldOptionLabel(condition.field || "请先配置抽取字段", field?.unit) }] : []), ...fieldOptions
@@ -154,8 +162,8 @@ export function SignalsSection({ skillId, spec, onChange, disabled, sample, repo
               onChange={(event) => change({ ...condition, seconds: numberInput(event.target.value) })} /><span>秒内</span>
             {conditionEditor(condition.condition, [...path, "condition"], (sub) => change({ ...condition, condition: sub as Extract<Condition, { type: "text" | "field" }> }), undefined, true)}
           </> : null}
-        </>}
-        {remove ? <Button className="skill-condition-remove" variant="ghost" size="icon-sm" disabled={disabled} aria-label={`删除${label}`} title="删除条件" onClick={() => setDeleting({ label: "删除条件", remove })}><X /></Button> : null}
+        </>
+        {remove ? <Button className="skill-condition-remove" variant="ghost" size="icon-sm" disabled={disabled} aria-label={`删除${label}`} title="删除条件" onClick={remove}><X /></Button> : null}
       </div>
       {fieldError(path)}
     </div>;

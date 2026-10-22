@@ -143,15 +143,17 @@ test.describe("parameter-admin project list", () => {
     await dismissXiaozeHint(page);
     const row = page.getByRole("row").filter({ hasText: project.name }).first();
     await row.getByRole("button", { name: `${project.name}操作：更多`, exact: true }).click();
-    const deleteAction = page.getByRole("menuitem", { name: `删除影响预览 ${project.name}`, exact: true });
+    const deleteAction = page.getByRole("menuitem", { name: `彻底删除… ${project.name}`, exact: true });
     await expect(deleteAction).toBeEnabled();
     await expect(page.getByRole("menuitem", { name: `${project.status === "archived" ? "恢复项目" : "归档"} ${project.name}`, exact: true })).toBeEnabled();
     await deleteAction.click();
     const dialog = page.getByRole("dialog", { name: /项目删除影响预览/ });
+    await dialog.getByText("明细", { exact: true }).click();
     await expect(dialog.getByRole("region", { name: "项目专属数据：计划清理" })).toBeVisible();
     await expect(dialog).toContainText("平台共享参数定义");
     await expect(dialog).toContainText("共享保留");
-    await expect(dialog.getByRole("button", { name: "确认彻底删除", exact: true })).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "彻底删除", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("checkbox")).toHaveCount(0);
     expect(project.canonicalOwned).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     const screenshot = testInfo.outputPath("canonical-project-delete-1440.png");
@@ -164,10 +166,12 @@ test.describe("parameter-admin project list", () => {
         responseSummary: `project=${project.id}; canonicalOwned=true` })],
       db: [{ table: "parameter_catalog.project_parameter_bindings", predicate: `project_id=${project.id}`,
         observed: "Canonical Bindings retained", rowCount: bindings.rows[0].count }],
-      notes: "At 1440x900 the administrator opens a real canonical deletion preview, inspects planned project data and retained shared resources, and cannot delete without explicit confirmation. Archive or restore remains available."
+      notes: "At 1440x900 the administrator opens a real canonical deletion preview and expands its details to inspect planned project data and retained shared resources. The destructive button is the confirmation; closing the preview retains the project. Archive or restore remains available."
     });
     await dialog.getByRole("button", { name: "关闭预览", exact: true }).click();
-    expect((await request.get(apiRoute(`/api/v1/parameters/admin/projects/${project.id}`), { headers: adminHeaders() })).status()).toBe(200);
+    const retained = await request.get(apiRoute(`/api/v1/parameters/admin/projects/${project.id}`), { headers: adminHeaders() });
+    expect(retained.status()).toBe(200);
+    expect((await retained.json()).item).toMatchObject({ id: project.id, canonicalOwned: true, parameterCount: project.parameterCount });
   });
 
   test("preserves DataTable behavior and URL history at PC 1440x900", async ({ page, request }, testInfo) => {
@@ -296,12 +300,14 @@ test.describe("parameter-admin project list", () => {
       await expect(page.getByRole("dialog", { name: "编辑项目详情" })).toBeVisible();
       await page.getByRole("dialog", { name: "编辑项目详情" }).getByRole("button", { name: "取消" }).click();
       await firstRow.getByRole("button", { name: /更多/ }).click();
-      await page.getByRole("menuitem", { name: /^删除影响预览 / }).click();
+      await page.getByRole("menuitem", { name: /^彻底删除… / }).click();
       const deletePreview = page.getByRole("dialog", { name: /项目删除影响预览/ });
       await expect(deletePreview).toBeVisible();
       await expect(deletePreview).toContainText("无法恢复");
+      await deletePreview.getByText("明细", { exact: true }).click();
       await expect(deletePreview).toContainText("平台共享参数定义");
-      await expect(deletePreview.getByRole("button", { name: "确认彻底删除", exact: true })).toBeDisabled();
+      await expect(deletePreview.getByRole("button", { name: "彻底删除", exact: true })).toBeEnabled();
+      await expect(deletePreview.getByRole("checkbox")).toHaveCount(0);
       await deletePreview.getByRole("button", { name: "关闭预览", exact: true }).click();
       await expect(page).toHaveURL(/\/parameter-admin\/projects\?/);
 

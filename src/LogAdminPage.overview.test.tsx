@@ -28,6 +28,22 @@ function page(logs: LogRecord[], archivedLogIds: string[] = [], feedbackFailure 
 }
 
 describe("log admin overview", () => {
+  it("defaults overview to 7 days and records to all, including older logs", async () => {
+    const old = log({ id: "old", fileName: "历史日志.log", updatedAtIso: "2020-01-01T00:00:00Z" });
+    page([log(), old]);
+    expect(screen.getByRole("button", { name: "7 日" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("overview-total")).toHaveTextContent("1");
+    await userEvent.click(screen.getByRole("tab", { name: "日志分析记录" }));
+    expect(screen.getByRole("button", { name: "全部" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(screen.getByRole("table", { name: "日志分析记录" })).getByText("历史日志.log")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "30 日" }));
+    expect(screen.queryByText("历史日志.log")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "概览" }));
+    expect(screen.getByRole("button", { name: "7 日" })).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(screen.getByRole("button", { name: "全部" }));
+    expect(screen.getByTestId("overview-total")).toHaveTextContent("2");
+  });
+
   it("distinguishes unavailable feedback from no feedback and retries on refresh", async () => {
     page([log()], [], true);
     expect(await screen.findByRole("alert")).toHaveTextContent("反馈数据暂不可用，请刷新重试。");
@@ -96,15 +112,17 @@ describe("log admin overview", () => {
     expect(within(records).getAllByRole("row")).toHaveLength(2);
   });
 
-  it("shows a dash when yesterday has no baseline (D4)", () => {
+  it("shows a dash when today is selected and yesterday has no baseline (D4)", async () => {
     page([log()]);
+    await userEvent.click(screen.getByRole("button", { name: "今日" }));
     expect(screen.getAllByText("较昨日 —")).toHaveLength(2);
     expect(screen.queryByText("较昨日 +0%")).not.toBeInTheDocument();
   });
 
-  it("shows real day deltas when a baseline exists (D4)", () => {
+  it("shows real day deltas when today is selected and a baseline exists (D4)", async () => {
     const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
     page([log({ confidence: 90 }), log({ id: "second", confidence: 90 }), log({ id: "baseline", confidence: 80, updatedAtIso: yesterday.toISOString() })]);
+    await userEvent.click(screen.getByRole("button", { name: "今日" }));
     expect(screen.getByText("较昨日 +100%")).toBeInTheDocument();
     expect(screen.getByText("较昨日 +10 点")).toBeInTheDocument();
   });
@@ -153,9 +171,10 @@ describe("log admin overview", () => {
     expect(card).not.toHaveTextContent("历史记录未标注来源");
   });
 
-  it("shares the time window with records and quality and refreshes both data sources (D7)", async () => {
+  it("shares overview's window with quality, keeps records independent and refreshes both data sources (D7)", async () => {
     const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
     const { logActions } = page([log(), log({ id: "old", fileName: "昨天.log", updatedAtIso: yesterday.toISOString() })]);
+    await userEvent.click(screen.getByRole("button", { name: "今日" }));
     expect(screen.getByTestId("overview-total")).toHaveTextContent("1");
     await userEvent.click(screen.getByRole("button", { name: "7 日" }));
     expect(screen.getByTestId("overview-total")).toHaveTextContent("2");
@@ -164,7 +183,7 @@ describe("log admin overview", () => {
     await userEvent.click(screen.getByRole("button", { name: "刷新" }));
     expect(logActions.refresh).toHaveBeenCalledWith({ includeArchived: true });
     await userEvent.click(screen.getByRole("tab", { name: "日志分析记录" }));
-    expect(screen.getByRole("button", { name: "7 日" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "全部" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("table", { name: "日志分析记录" })).toHaveTextContent("昨天.log");
     await userEvent.click(screen.getByRole("tab", { name: "分析质量" }));
     expect(screen.getByRole("button", { name: "7 日" })).toHaveAttribute("aria-pressed", "true");

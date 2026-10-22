@@ -213,9 +213,14 @@ test("integration only: copied UI curl and newly revealed credential reach a sig
     await expect(issue.getByRole("checkbox", { name: "绑定到当前技能", exact: true })).toBeChecked();
     await issue.getByRole("button", { name: "签发", exact: true }).click();
     const reveal = page.getByRole("dialog", { name: "保存集成凭据", exact: true });
+    await expect(reveal.getByText(/密钥仅显示一次/)).toBeVisible();
+    await expect(reveal.getByLabel("集成凭据", { exact: true })).toBeVisible();
     const token = await reveal.getByLabel("集成凭据", { exact: true }).inputValue();
     expect(/^wie_\S+$/.test(token)).toBe(true);
-    await reveal.getByRole("checkbox", { name: "我已安全保存密钥", exact: true }).check();
+    await reveal.getByRole("button", { name: "复制密钥", exact: true }).click();
+    await expect(reveal.getByRole("status")).toHaveText("已复制密钥");
+    const copiedToken = await page.evaluate(() => navigator.clipboard.readText());
+    expect(copiedToken === token).toBe(true);
     await reveal.getByRole("button", { name: "完成", exact: true }).click();
     await expect(reveal).toBeHidden();
 

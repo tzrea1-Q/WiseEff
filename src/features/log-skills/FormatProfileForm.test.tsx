@@ -67,9 +67,7 @@ describe("basic format form", () => {
     expect(screen.getByRole("table", { name: "基础格式条目分组" })).toHaveTextContent("1, 2");
     expect(changed).toHaveBeenLastCalledWith({ timestampPattern: "^\\[(\\d+\\.\\d+)\\]", multiline: { mode: "indent" }, severityMap: { error: ["<3>"] } });
     fireEvent.click(screen.getByRole("button", { name: "删除 error 模式 1" }));
-    const confirm = within(screen.getByRole("dialog")).getByRole("button", { name: "删除模式" });
-    expect(confirm).toHaveClass("danger");
-    fireEvent.click(confirm);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(changed).toHaveBeenLastCalledWith({ timestampPattern: "^\\[(\\d+\\.\\d+)\\]", multiline: { mode: "indent" }, severityMap: { error: [] } });
   });
   it("keeps invalid form patterns and malformed code editable while blocking stale saves", () => {

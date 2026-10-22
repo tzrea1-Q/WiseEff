@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../auth/types";
 import { ApiError } from "../../shared/http/errors";
-import { canReadEntry, requireKnowledgeEdit, requireKnowledgeGovern, requireKnowledgeManage, requireKnowledgeView } from "./policy";
+import { canReadEntry, canGovernKnowledgeEntry, requireKnowledgeEdit, requireKnowledgeGovern, requireKnowledgeManage, requireKnowledgeView } from "./policy";
 
 function makeAuth(permissions: BackendPermission[], overrides: Partial<AuthContext["user"]> = {}): AuthContext {
   return {
@@ -21,6 +21,15 @@ function makeAuth(permissions: BackendPermission[], overrides: Partial<AuthConte
 }
 
 describe("knowledge policy", () => {
+  it("governs only with active manager or active owner edit authority", () => {
+    const own = { createdByUserId: "user-1" };
+    const other = { createdByUserId: "user-2" };
+    expect(canGovernKnowledgeEntry(makeAuth(["knowledge:edit"]), own)).toBe(true);
+    expect(canGovernKnowledgeEntry(makeAuth(["knowledge:edit"]), other)).toBe(false);
+    expect(canGovernKnowledgeEntry(makeAuth(["knowledge:manage"]), other)).toBe(true);
+    expect(canGovernKnowledgeEntry(makeAuth(["knowledge:view"]), own)).toBe(false);
+    expect(canGovernKnowledgeEntry(makeAuth(["knowledge:manage", "knowledge:edit"], { isActive: false }), own)).toBe(false);
+  });
   it("requires the matching permission for view/edit/manage", () => {
     expect(() => requireKnowledgeView(makeAuth(["knowledge:view"]))).not.toThrow();
     expect(() => requireKnowledgeView(makeAuth([]))).toThrow(ApiError);

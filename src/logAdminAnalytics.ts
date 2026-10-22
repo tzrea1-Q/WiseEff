@@ -9,6 +9,7 @@ function startOfDay(date: Date): Date {
 }
 
 export function applyTimeWindow(logs: LogRecord[], timeWindow: TimeWindow, now: Date = new Date()): LogRecord[] {
+  if (timeWindow === "all") return logs;
   const today00 = startOfDay(now);
   let thresholdMs: number;
 

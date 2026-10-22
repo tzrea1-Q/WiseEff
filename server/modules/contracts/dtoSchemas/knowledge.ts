@@ -28,7 +28,8 @@ export const knowledgeEntryDtoSchema = z.object({
     fileName: z.string(), contentType: z.string(), sizeBytes: z.number(), checksum: z.string(),
     extractionStatus: z.enum(knowledgeExtractionStatuses), extractionError: z.string().nullable(),
     createdAt: z.string(), updatedAt: z.string() }).nullable(),
-  parameterReferences: z.array(referenceSchema)
+  parameterReferences: z.array(referenceSchema),
+  pendingSuggestionCount: z.number().int().nonnegative().optional()
 });
 
 const importOutcomeSchema = z.object({
@@ -40,6 +41,11 @@ const importCountsSchema = z.object({ created: z.number().int(), duplicate_skipp
   extraction_failed: z.number().int(), rejected: z.number().int() });
 
 export const knowledgeDtoSchemaCatalog = {
+  KnowledgeReferenceSuggestionsResponse: itemsEnvelopeSchema(z.object({
+    definitionId: z.string(), propertyKey: z.string(), displayName: z.string().nullable(), driverModule: z.string(),
+    lifecycle: z.enum(["active", "deprecated"]), mentionCount: z.number().int().positive(), snippet: z.string(),
+    page: z.number().int().positive().nullable(), detectedRevisionId: z.string().uuid()
+  })),
   KnowledgeSearchResponse: z.object({
     items: z.array(z.object({
       entryId: z.string(), title: z.string(), contentForm: z.enum(knowledgeContentForms), tags: z.array(z.string()),

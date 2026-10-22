@@ -7,6 +7,48 @@ import type { LogRecord } from "@/domain/prototype/types";
 import { createMockKnowledgeRepository } from "./mockKnowledgeRepository";
 import { createMockDtsReloadRepository, MOCK_DTS_RELOAD_DEVICE_ID } from "./mockDtsReloadRepository";
 
+it("detects and governs mock suggestions, remembers dismissal, and hides archived pending counts", async () => {
+  const repository = createMockKnowledgeRepository();
+  const entry = await repository.createMarkdown({ title: "Mock detection", tags: [], contentMarkdown: "gpio-int gpio-int" });
+  const suggestions = await repository.listReferenceSuggestions(entry.id);
+  expect(suggestions).toHaveLength(3);
+  expect(suggestions.every((item) => item.mentionCount === 2)).toBe(true);
+  await repository.acceptReferenceSuggestion(entry.id, suggestions[0]!.definitionId);
+  await repository.dismissReferenceSuggestion(entry.id, suggestions[1]!.definitionId);
+  await repository.rescanReferenceSuggestions();
+  expect(await repository.listReferenceSuggestions(entry.id)).toEqual([suggestions[2]]);
+  expect((await repository.list({ pendingSuggestions: true })).items).toContainEqual(expect.objectContaining({ id: entry.id, pendingSuggestionCount: 1 }));
+  await repository.publish(entry.id);
+  await repository.archive(entry.id);
+  expect(await repository.listReferenceSuggestions(entry.id)).toEqual([]);
+  expect((await repository.list({ pendingSuggestions: true })).items.some((item) => item.id === entry.id)).toBe(false);
+  expect((await repository.list()).items.find((item) => item.id === entry.id)?.pendingSuggestionCount).toBe(0);
+  await repository.restore(entry.id);
+  const beforeIndex = await repository.getIndexHealth();
+  await repository.rescanReferenceSuggestions();
+  expect(await repository.getIndexHealth()).toEqual(beforeIndex);
+  const batch = await repository.batch({ action: "accept_suggestions", entryIds: [entry.id] });
+  expect(batch.results[0]?.status).toBe("succeeded");
+  expect(batch.results[0]?.entry?.parameterReferences).toHaveLength(2);
+  expect(await repository.listReferenceSuggestions(entry.id)).toEqual([]);
+});
+
+it("withdraws and redetects mock head mentions, and seeds PDF suggestion evidence", async () => {
+  const repository = createMockKnowledgeRepository();
+  const file = (await repository.list()).items.find((item) => item.contentForm === "file" && item.file?.extractionStatus === "succeeded")!;
+  expect(await repository.listReferenceSuggestions(file.id)).toEqual(expect.arrayContaining([
+    expect.objectContaining({ propertyKey: "gpio-int", mentionCount: 2, page: 2 })
+  ]));
+  const entry = await repository.createMarkdown({ title: "Withdrawal", tags: [], contentMarkdown: "gpio-int" });
+  await repository.update(entry.id, { expectedHeadRevisionNumber: 1, contentMarkdown: "gpio-intx GPIO-INT .gpio-int" });
+  expect(await repository.listReferenceSuggestions(entry.id)).toEqual([]);
+  await repository.update(entry.id, { expectedHeadRevisionNumber: 2, contentMarkdown: "(gpio-int)" });
+  expect(await repository.listReferenceSuggestions(entry.id)).toHaveLength(3);
+  const batch = await repository.batch({ action: "accept_suggestions", entryIds: [entry.id, "missing"] });
+  expect(batch.results.map((result) => result.status)).toEqual(["succeeded", "refused"]);
+  expect(batch.results[0]?.entry?.parameterReferences).toHaveLength(3);
+});
+
 function makeLogRecord(overrides: Partial<LogRecord> = {}): LogRecord {
   return {
     id: "log-auth",
@@ -199,6 +241,7 @@ describe("createMockKnowledgeRepository", () => {
     const repository = createMockKnowledgeRepository({ canManage: false });
     await expect(repository.getIndexHealth()).rejects.toThrow(/knowledge:manage/);
     await expect(repository.rebuildIndex()).rejects.toThrow(/knowledge:manage/);
+    await expect(repository.rescanReferenceSuggestions()).rejects.toThrow(/knowledge:manage/);
   });
 
   it("publishing adds an entry to the simulated index; hard delete removes it", async () => {

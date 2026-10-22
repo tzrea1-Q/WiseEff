@@ -106,7 +106,7 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
   const [view, setView] = useState("form");
   const [registerId, setRegisterId] = useState("");
   const [mapIdSelection, setMapIdSelection] = useState("");
-  const [deleting, setDeleting] = useState<{ label: string; remove: () => void } | null>(null);
+  const [deleting, setDeleting] = useState<{ label: string; description?: string; remove: () => void } | null>(null);
   const [occurrence, setOccurrence] = useState<{ register: string; line: typeof selectedLine; key: string } | null>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [paste, setPaste] = useState("");
@@ -179,7 +179,23 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
         <section aria-label="寄存器"><h3>寄存器</h3>
           <div className="skill-register-toolbar"><label>选择寄存器<SelectControl ariaLabel="选择寄存器" value={activeId} onValueChange={setRegisterId}
             options={Object.keys(registers).map((value) => ({ value, label: value }))} placeholder="暂无寄存器" /></label>
-            <Button variant="outline" disabled={disabled} onClick={() => { const key = nextId("register", registers); write({ ...spec, registers: { ...registers, [key]: { width: 8, fields: [] } } }); setRegisterId(key); }}>新增寄存器</Button></div>
+            <Button variant="outline" disabled={disabled} onClick={() => { const key = nextId("register", registers); write({ ...spec, registers: { ...registers, [key]: { width: 8, fields: [] } } }); setRegisterId(key); }}>新增寄存器</Button>
+            {register ? <Button variant="ghost" disabled={disabled} onClick={() => {
+              const references: string[] = [];
+              for (const [id, map] of Object.entries(spec.registerMaps ?? {})) {
+                for (const [key, target] of Object.entries(map.cases)) if (target === activeId) references.push(`映射 ${id}：${key}`);
+                if (map.default === activeId) references.push(`映射 ${id}：默认寄存器`);
+              }
+              for (const [id, frame] of Object.entries(spec.frames ?? {})) for (const field of frame.fields) {
+                if ("register" in field && field.register === activeId) references.push(`帧 ${id}：${field.name}`);
+                if ("cases" in field) for (const [key, ref] of Object.entries(field.cases)) if ("register" in ref && ref.register === activeId) references.push(`帧 ${id}：${field.name} 分支 ${key}`);
+                if ("default" in field && field.default && "register" in field.default && field.default.register === activeId) references.push(`帧 ${id}：${field.name} 默认分支`);
+              }
+              for (const extractor of spec.extractors) for (const [name, field] of Object.entries(extractor.fields)) if ("decode" in field && field.decode && "register" in field.decode && field.decode.register === activeId) references.push(`抽取字段 ${extractor.id}.${name}`);
+              const remove = () => { const next = { ...registers }; delete next[activeId]; write({ ...spec, registers: next }); };
+              if (references.length) setDeleting({ label: "删除寄存器", description: `以下引用需要重新绑定：${references.join("；")}。删除后请修正引用再保存草稿。`, remove });
+              else remove();
+            }}>删除寄存器</Button> : null}</div>
           {register ? <>
             <div className="skill-register-toolbar"><label>寄存器标识<Input value={activeId} disabled={disabled} onChange={(event) => {
               const key = event.target.value;
@@ -259,7 +275,7 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
         </section>
       </>}
     </TabPanel>
-    <ConfirmDialog open={!!deleting} title={`${deleting?.label ?? "删除"}？`} description="此项内容将从当前草稿中移除。" tone="danger" confirmLabel={deleting?.label ?? "删除"}
+    <ConfirmDialog open={!!deleting} title={`${deleting?.label ?? "删除"}？`} description={deleting?.description ?? "此项内容将从当前草稿中移除。"} tone="danger" confirmLabel={deleting?.label ?? "删除"}
       onCancel={() => setDeleting(null)} onConfirm={() => { deleting?.remove(); setDeleting(null); }} />
     <ModalDialog open={pasteOpen} onDismiss={() => setPasteOpen(false)} describedBy className="skill-authoring-dialog skill-register-paste-dialog modal-card--lg">
       {({ titleId, descriptionId }) => <><h2 id={titleId}>粘贴寄存器表</h2><p id={descriptionId}>粘贴位、名称、说明三列，支持制表符、逗号、多空格或竖线分隔。最多 64 KiB、512 行。确认后将替换当前寄存器的全部字段，仅导入有效行。</p>

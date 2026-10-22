@@ -55,13 +55,15 @@ export async function purgeProject(db: Database, invocation: TrustedInvocationCo
       }
       const preview = await readProjectDeletionPreview(tx, auth.organization.id, projectId, auth.user.id);
       if (preview.stateDigest !== stateDigest) throw new ApiError("CONFLICT", "项目数据已变化，请刷新删除影响预览后确认。", { reason: "project-purge-preview-stale" });
-      if (preview.blockers.length) throw new ApiError("CONFLICT", "项目仍有运行或保留阻塞，请先处理后刷新。", { reason: "project-purge-blocked", blockers: preview.blockers });
+      if (preview.blockers.length) throw new ApiError("CONFLICT", "项目仍有未完成的工作，请先处理后刷新。", { reason: "project-purge-blocked", blockers: preview.blockers });
       await tx.query("select parameter_catalog.purge_project($1,$2,$3,$4)", [...values, stateDigest]);
       await writeTrustedAuditEventInTx(asAuditTx(tx), { invocation: trusted, projectId: null,
         app: "parameter-admin", kind: "project-purged", action: "永久清理项目专属数据", severity: "High",
         targetType: "project", targetId: projectId, traceId: requestId,
         metadata: { stateDigest, inventory: preview.inventory, exclusiveObjects: preview.storage.exclusiveObjects,
-          sharedObjectsRetained: preview.storage.sharedObjects } });
+          sharedObjectsRetained: preview.storage.sharedObjects,
+          deletedEvidenceCounts: Object.fromEntries(preview.inventory.filter(row =>
+            ["offline-archives", "deployment-evidence", "deployment-targets", "device-residue", "plane-disposal"].includes(row.key)).map(row => [row.key, row.count])) } });
     });
     // A durable receipt survives object-store failure. Each retry rechecks all
     // retained references under the same write fence before removing any bytes.

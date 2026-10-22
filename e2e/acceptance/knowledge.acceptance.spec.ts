@@ -518,6 +518,23 @@ test.describe("Knowledge base browser acceptance", () => {
     // @acceptance KB-IMPORT-001
     // @operation KB-IMPORT-001
     await page.setViewportSize({ width: 1440, height: 900 });
+    const definitionId = await withPgClient(async (client) => {
+      const binding = (await client.query<{ id: string; project_id: string }>(
+        `select id, project_id from parameter_catalog.current_project_parameter_bindings
+         where organization_id = $1 order by id limit 1`, [organizationId]
+      )).rows[0];
+      expect(binding).toBeDefined();
+      const pins = await loadCanonicalBindingPins(client, {
+        organizationId, projectId: binding.project_id, bindingId: binding.id
+      });
+      expect(pins).not.toBeNull();
+      return pins!.definitionId;
+    });
+    const catalog = await page.request.get(apiRoute(`/api/v2/catalog/definitions/${encodeURIComponent(definitionId)}`), {
+      headers: authHeadersForRole("admin")
+    });
+    expect(catalog.status()).toBe(200);
+    const { item: definition } = await catalog.json() as { item: { propertyKey: string } };
     const keyword = `组织调参经验${runStamp}`;
     const names = [
       `${titlePrefix} 调参经验 ${runStamp}.md`,
@@ -528,9 +545,9 @@ test.describe("Knowledge base browser acceptance", () => {
     await page.getByRole("button", { name: "批量导入", exact: true }).click();
     const importer = page.getByRole("dialog", { name: "批量导入", exact: true });
     await importer.getByTestId("file-drop-zone-input").setInputFiles([
-      { name: names[0], mimeType: "text/markdown", buffer: Buffer.from(`# 调参经验\n${keyword}：温度超过阈值时降低快充电流。`) },
+      { name: names[0], mimeType: "text/markdown", buffer: Buffer.from(`# 调参经验\n${keyword}：温度超过阈值时降低快充电流。\n(${definition.propertyKey})`) },
       { name: names[1], mimeType: "application/pdf", buffer: readFileSync(new URL("../../server/modules/knowledge/testing/fixtures/sample.pdf", import.meta.url)) },
-      { name: names[2], mimeType: "text/plain", buffer: Buffer.from(`发布前检查文档来源与修订。${runStamp}`) }
+      { name: names[2], mimeType: "text/plain", buffer: Buffer.from(`发布前检查文档来源与修订。${runStamp}\n(${definition.propertyKey})`) }
     ]);
     await importer.getByLabel("批次标签（逗号分隔）").fill("组织文档");
     await importer.getByRole("button", { name: "开始导入", exact: true }).click();
@@ -562,6 +579,51 @@ test.describe("Knowledge base browser acceptance", () => {
     await expect(batch.getByRole("status")).toHaveText("成功 3 条 · 拒绝或失败 0 条");
     await batch.getByRole("button", { name: "关闭", exact: true }).click();
 
+    // Indexing proposes evidence; only the governor's acceptance makes a binding.
+    await expect.poll(async () => {
+      const response = await page.request.get(apiRoute(`/api/v1/knowledge/entries/${entryIds[0]}/reference-suggestions`), {
+        headers: editorHeaders()
+      });
+      expect(response.status()).toBe(200);
+      return (await response.json() as { items: { definitionId: string }[] }).items.map((item) => item.definitionId);
+    }, { timeout: 30_000 }).toContain(definitionId);
+    await table.getByText(names[0], { exact: true }).click();
+    const knowledgeDetail = page.getByRole("dialog");
+    await knowledgeDetail.getByRole("button", { name: "编辑", exact: true }).click();
+    const editor = page.getByRole("dialog", { name: "编辑知识条目", exact: true });
+    const suggestions = editor.getByRole("region", { name: "建议关联" });
+    const accepted = page.waitForResponse((response) => response.request().method() === "POST"
+      && new URL(response.url()).pathname === `/api/v1/knowledge/entries/${entryIds[0]}/reference-suggestions/${definitionId}/accept`);
+    await suggestions.locator(`[data-definition-id="${definitionId}"]`).getByRole("button", { name: "接受", exact: true }).click();
+    const acceptResponse = await accepted;
+    expect(acceptResponse.status()).toBe(200);
+    await expect(suggestions.locator(`[data-definition-id="${definitionId}"]`)).toHaveCount(0);
+    await editor.getByRole("button", { name: "取消", exact: true }).click();
+    await knowledgeDetail.getByRole("button", { name: "关闭", exact: true }).click();
+
+    await expect.poll(async () => {
+      const response = await page.request.get(apiRoute(`/api/v1/knowledge/entries/${entryIds[2]}/reference-suggestions`), { headers: editorHeaders() });
+      expect(response.status()).toBe(200);
+      return (await response.json() as { items: { definitionId: string }[] }).items.map((item) => item.definitionId);
+    }, { timeout: 30_000 }).toContain(definitionId);
+    await page.getByRole("checkbox", { name: "待处理建议", exact: true }).check();
+    const pendingRow = table.getByRole("row").filter({ hasText: names[2] });
+    await expect(pendingRow.getByText(/待处理建议 [1-9]/)).toBeVisible();
+    await testInfo.attach("knowledge-pending-suggestions-1440x900", { body: await page.screenshot(), contentType: "image/png" });
+    await pendingRow.getByRole("checkbox", { name: `选择 ${names[2]}`, exact: true }).check();
+    await page.getByRole("group", { name: "批量管理" }).getByRole("button", { name: "接受建议关联", exact: true }).click();
+    const acceptBatch = page.getByRole("dialog", { name: "接受建议关联", exact: true });
+    const batchAccepted = page.waitForResponse((response) => response.request().method() === "POST"
+      && new URL(response.url()).pathname === "/api/v1/knowledge/entries/batch");
+    await acceptBatch.getByRole("button", { name: "确认接受建议关联", exact: true }).click();
+    const batchAcceptResponse = await batchAccepted;
+    expect(batchAcceptResponse.status()).toBe(200);
+    await expect(acceptBatch.getByRole("status")).toHaveText("成功 1 条 · 拒绝或失败 0 条");
+    await testInfo.attach("knowledge-batch-suggestions-1440x900", { body: await page.screenshot(), contentType: "image/png" });
+    await acceptBatch.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(table.getByText(names[2], { exact: true })).toHaveCount(0);
+    await page.getByRole("checkbox", { name: "待处理建议", exact: true }).uncheck();
+
     const searched = page.waitForResponse((response) => response.request().method() === "GET"
       && new URL(response.url()).pathname === "/api/v1/knowledge/search");
     await page.getByRole("searchbox", { name: "检索知识库" }).fill(keyword);
@@ -570,28 +632,9 @@ test.describe("Knowledge base browser acceptance", () => {
     expect(searchResponse.status()).toBe(200);
     await expect(page.getByLabel("检索结果").getByText(names[0], { exact: true })).toBeVisible();
 
-    // Reuse the M1 canonical Binding pins already used by KB-DISTILL-002.
-    const definitionId = await withPgClient(async (client) => {
-      const binding = (await client.query<{ id: string; project_id: string }>(
-        `select id, project_id from parameter_catalog.current_project_parameter_bindings
-         where organization_id = $1 order by id limit 1`, [organizationId]
-      )).rows[0];
-      expect(binding).toBeDefined();
-      const pins = await loadCanonicalBindingPins(client, {
-        organizationId, projectId: binding.project_id, bindingId: binding.id
-      });
-      expect(pins).not.toBeNull();
-      return pins!.definitionId;
-    });
     await signInBrowserAsRole(page, "admin", `/parameter-admin/specs?definitionId=${encodeURIComponent(definitionId)}`);
     const detail = page.getByRole("region", { name: "定义详情" });
     await detail.locator("summary").filter({ hasText: /^相关知识$/ }).click();
-    await detail.getByRole("button", { name: "关联已有知识", exact: true }).click();
-    const picker = page.getByRole("dialog", { name: "关联已有知识" });
-    await picker.getByRole("searchbox", { name: "搜索已有知识" }).fill(names[0]);
-    await picker.getByRole("button", { name: "搜索", exact: true }).click();
-    await picker.getByRole("button", { name: names[0], exact: true }).click();
-    await expect(picker).toBeHidden();
     const related = detail.getByTestId("spec-related-knowledge");
     await expect(related.getByText(names[0], { exact: true })).toBeVisible();
     await related.getByText(names[0], { exact: true }).click();
@@ -609,6 +652,8 @@ test.describe("Knowledge base browser acceptance", () => {
       operationId: "KB-IMPORT-001", title: "import report batch publish search and definition related knowledge",
       status: "passed", role: "Hardware User / Admin", route: "/knowledge", page, testInfo,
       api: [
+        summarizeApiResponse(acceptResponse, { method: "POST", path: `/api/v1/knowledge/entries/${entryIds[0]}/reference-suggestions/${definitionId}/accept`, responseSummary: "detected suggestion accepted as an explicit definition reference" }),
+        summarizeApiResponse(batchAcceptResponse, { method: "POST", path: "/api/v1/knowledge/entries/batch", responseSummary: "pending filter and count badge followed by audited batch suggestion acceptance" }),
         summarizeApiResponse(publishResponse, { method: "POST", path: "/api/v1/knowledge/entries/batch", responseSummary: "three imported drafts published" }),
         summarizeApiResponse(searchResponse, { method: "GET", path: "/api/v1/knowledge/search", responseSummary: "published organization document found" })
       ],
@@ -710,6 +755,7 @@ test.describe("Knowledge base browser acceptance", () => {
     const detail = page.getByRole("dialog", { name: new RegExp(title) });
     await expect(detail).toBeVisible();
     await expect(detail.locator('[data-status="draft"]')).toBeVisible();
+    await expect(detail.getByRole("button", { name: "归档", exact: true })).toBeEnabled();
 
     // Publish it into retrieval.
     await detail.getByRole("button", { name: "发布", exact: true }).click();
@@ -735,6 +781,28 @@ test.describe("Knowledge base browser acceptance", () => {
     await confirm.getByRole("button", { name: "恢复为新修订" }).click();
     await expect(revisions).not.toBeVisible();
     await expect(detail.getByText("修订 #3", { exact: false })).toBeVisible();
+    await expect(detail.getByText("第一版正文。", { exact: true })).toBeVisible();
+
+    // Correct an archived entry without putting it back into retrieval.
+    await detail.getByRole("button", { name: "归档", exact: true }).click();
+    await expect(detail.locator('[data-status="archived"]')).toBeVisible();
+    await detail.getByRole("button", { name: "编辑", exact: true }).click();
+    await editDialog.getByLabel("Markdown 内容").fill("# 初版\n\n归档后的校正正文。");
+    await editDialog.getByLabel("标签(逗号分隔)").fill("project-aurora, 归档校正");
+    await editDialog.getByRole("button", { name: "保存为新修订" }).click();
+    await expect(editDialog).not.toBeVisible();
+    await expect(detail.locator('[data-status="archived"]')).toBeVisible();
+    await expect(detail.getByText("修订 #4", { exact: false })).toBeVisible();
+    const archivedList = await page.request.get(apiRoute(`/api/v1/knowledge/entries?q=${encodeURIComponent(title)}`), { headers: editorHeaders() });
+    expect(archivedList.ok()).toBe(true);
+    const archivedEntry = ((await archivedList.json()) as { items: KnowledgeEntryApiItem[] }).items.find((item) => item.title === title)!;
+    expect(archivedEntry).toMatchObject({ status: "archived", headRevisionNumber: 4, tags: ["project-aurora", "归档校正"] });
+    expect(archivedEntry.contentMarkdown).toContain("归档后的校正正文");
+    const archivedSearch = await page.request.get(apiRoute(`/api/v1/knowledge/search?q=${encodeURIComponent(title)}`), { headers: editorHeaders() });
+    expect(archivedSearch.ok()).toBe(true);
+    expect(((await archivedSearch.json()) as { items: KnowledgeSearchApiItem[] }).items.map((item) => item.entryId)).not.toContain(archivedEntry.id);
+    await detail.getByRole("button", { name: "恢复为已发布" }).click();
+    await expect(detail.locator('[data-status="published"]')).toBeVisible();
 
     // API + DB + audit assertions.
     const listResponse = await page.request.get(
@@ -745,12 +813,12 @@ test.describe("Knowledge base browser acceptance", () => {
     const listBody = (await listResponse.json()) as { items: KnowledgeEntryApiItem[] };
     const entry = listBody.items.find((item) => item.title === title);
     expect(entry).toBeTruthy();
-    expect(entry).toMatchObject({ status: "published", headRevisionNumber: 3 });
+    expect(entry).toMatchObject({ status: "published", headRevisionNumber: 4 });
     expect(entry!.contentMarkdown).toContain("初版");
 
     const dbSummary = await knowledgeEntryDbSummary(entry!.id);
-    expect(dbSummary.observed).toContain("headRevision=3");
-    expect(dbSummary.observed).toContain("revisions=3");
+    expect(dbSummary.observed).toContain("headRevision=4");
+    expect(dbSummary.observed).toContain("revisions=4");
 
     const audit = await knowledgeAuditSummaries(entry!.id);
     expect(audit).toEqual(
@@ -758,7 +826,9 @@ test.describe("Knowledge base browser acceptance", () => {
         expect.objectContaining({ kind: "knowledge-entry-create", action: "create" }),
         expect.objectContaining({ kind: "knowledge-entry-publish", action: "publish" }),
         expect.objectContaining({ kind: "knowledge-entry-update", action: "update" }),
-        expect.objectContaining({ kind: "knowledge-revision-restore", action: "restore-revision" })
+        expect.objectContaining({ kind: "knowledge-revision-restore", action: "restore-revision" }),
+        expect.objectContaining({ kind: "knowledge-entry-archive", action: "archive" }),
+        expect.objectContaining({ kind: "knowledge-entry-restore", action: "restore" })
       ])
     );
 
@@ -800,13 +870,34 @@ test.describe("Knowledge base browser acceptance", () => {
       mimeType: "application/pdf",
       buffer: readFileSync(new URL("../../server/modules/knowledge/testing/fixtures/sample.pdf", import.meta.url))
     });
+    const uploaded = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/v1/knowledge/entries");
     await upload.getByRole("button", { name: "上传并创建草稿" }).click();
+    const uploadedResponse = await uploaded;
+    expect(uploadedResponse.ok()).toBe(true);
+    const uploadedEntry = ((await uploadedResponse.json()) as { item: KnowledgeEntryApiItem }).item;
 
     // The detail dialog opens with the visible extraction status.
     const detail = page.getByRole("dialog", { name: new RegExp(title) });
     await expect(detail).toBeVisible();
     await expect(detail.getByText("提取成功")).toBeVisible();
     await expect(detail.getByText("kb-acceptance-manual.pdf")).toBeVisible();
+
+    // Metadata edits keep the uploaded binary and its extraction result.
+    await detail.getByRole("button", { name: "编辑", exact: true }).click();
+    const fileEditor = page.getByRole("dialog", { name: "编辑", exact: true });
+    await expect(fileEditor.getByLabel("替换文件（可选）")).toBeVisible();
+    await expect(fileEditor.getByLabel("替换文件（可选）")).toHaveValue("");
+    await fileEditor.getByLabel("标签(逗号分隔)").fill("硬件手册, 元数据校正");
+    const metadataSave = page.waitForResponse((response) => response.request().method() === "PATCH" && new URL(response.url()).pathname.startsWith("/api/v1/knowledge/entries/"));
+    await fileEditor.getByRole("button", { name: "保存", exact: true }).click();
+    const metadataResponse = await metadataSave;
+    expect(metadataResponse.ok()).toBe(true);
+    expect(metadataResponse.request().postDataJSON()).not.toHaveProperty("file");
+    const metadataEntry = ((await metadataResponse.json()) as { item: KnowledgeEntryApiItem }).item;
+    expect(metadataEntry.file?.id).toBe(uploadedEntry.file?.id);
+    expect(metadataEntry).toMatchObject({ status: "draft", headRevisionNumber: 2, tags: ["硬件手册", "元数据校正"], file: { fileName: "kb-acceptance-manual.pdf", extractionStatus: "succeeded" } });
+    await expect(fileEditor).not.toBeVisible();
+    await expect(detail.getByText("修订 #2", { exact: false })).toBeVisible();
 
     // Extraction status is also visible in the entry list column.
     await detail.getByRole("button", { name: "关闭" }).click();
@@ -822,6 +913,7 @@ test.describe("Knowledge base browser acceptance", () => {
     const entry = listBody.items.find((item) => item.title === title);
     expect(entry).toBeTruthy();
     expect(entry).toMatchObject({ contentForm: "file", file: { fileName: "kb-acceptance-manual.pdf", extractionStatus: "succeeded" } });
+    expect(entry!.file?.id).toBe(metadataEntry.file?.id);
 
     // Publish and prove the extracted text is retrievable (published-only gate).
     await publishEntryViaApi(page, entry!.id);
