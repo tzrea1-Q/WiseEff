@@ -94,6 +94,27 @@ describe("DTS whole-source workbench integration", () => {
     expect(createCandidate).not.toHaveBeenCalled();
     await session.flush();
   });
+  it("opens conflicting merge text for editing and enables saving once markers are resolved", async () => {
+    const { props, session, rerender } = setup();
+    await waitFor(() => expect(screen.getByRole("radio", { name: "编辑" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("radio", { name: "编辑" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "test DTS" }), { target: { value: "/ { local; };" } });
+    act(() => { session.change(props.scope, "/ { local; };"); });
+    rerender(<WorkbenchSourceEditingPane {...props} source="/ { remote; };" baseVersionId="v2" configRevisionId="c2" />);
+    fireEvent.click(await screen.findByRole("button", { name: "基于最新版本继续编辑" }));
+    const dialog = await screen.findByRole("dialog", { name: "DTS 草稿对照" });
+    const input = within(dialog).getByRole("textbox", { name: "test DTS" });
+    expect(input).not.toHaveAttribute("readonly");
+    expect((input as HTMLTextAreaElement).value).toContain("<<<<<<< 本地草稿");
+    expect(session.getFile(props.scope)?.originalDraft?.sourceText).toBe("/ { local; };");
+    expect(screen.getByRole("button", { name: "保存修改" })).toBeDisabled();
+    fireEvent.change(input, { target: { value: "/ { resolved; };" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "返回草稿" }));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "test DTS" })).toHaveValue("/ { resolved; };"));
+    expect(screen.getByRole("button", { name: "保存修改" })).toBeEnabled();
+    expect(screen.getByText("已合并最新版本，请核对后保存")).toBeInTheDocument();
+    await session.flush();
+  });
   it("opens read-only and preserves direct source input across preview switching", async () => {
     const { session, props } = setup();
     const input = await screen.findByRole("textbox", { name: "test DTS" });

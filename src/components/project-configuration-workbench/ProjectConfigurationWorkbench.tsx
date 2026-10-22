@@ -220,6 +220,7 @@ export function ProjectConfigurationWorkbench({
     } };
   }, []);
   const sourceEditorSessions = useMemo<WorkbenchDtsEditorSessions>(() => new Map(), []);
+  const sourceFlushRef = useRef<(() => void) | null>(null);
   const sourceEditSnapshot = useSyncExternalStore(sourceEditSession.subscribe, sourceEditSession.getSnapshot, sourceEditSession.getSnapshot);
   const [sourceBufferDirty, setSourceBufferDirty] = useState(false);
   const sourceDraftsDirty = sourceBufferDirty || Object.values(sourceEditSnapshot.files).some((file) => file.dirty);
@@ -1490,12 +1491,29 @@ export function ProjectConfigurationWorkbench({
   }, [structuredEditSession]);
 
   const handleLeaveWorkbench = useCallback(() => {
+    sourceFlushRef.current?.();
     if (sessionDraftsDirty || sourceDraftsDirty) {
       setLeaveConfirmOpen(true);
       return;
     }
     onNavigate(resolveParamAdminProjectsReturnPath(search));
   }, [onNavigate, search, sessionDraftsDirty, sourceDraftsDirty]);
+
+  const handleKeepDraftsAndLeave = useCallback(() => {
+    if (sourceDiscarding.current) return;
+    sourceFlushRef.current?.();
+    sourceDiscarding.current = true;
+    setLeavePending(true); setLeaveError("");
+    void sourceEditSession.flush().then((ok) => {
+      if (!ok) throw new Error("无法保存本地恢复草稿，请重试或先下载草稿。");
+      if (structuredEditSession.getSnapshot().storageError) throw new Error("参数恢复草稿保存失败，请留在本页重试或复制草稿。");
+      setLeaveConfirmOpen(false);
+      onNavigate(resolveParamAdminProjectsReturnPath(search));
+    }).catch((cause) => {
+      sourceDiscarding.current = false;
+      setLeaveError(presentError(cause, "保留草稿失败，请重试。"));
+    }).finally(() => setLeavePending(false));
+  }, [onNavigate, search, sourceEditSession, structuredEditSession]);
 
   const handleDiscardAndLeave = useCallback(() => {
     if (sourceDiscarding.current) return;
@@ -1917,7 +1935,7 @@ export function ProjectConfigurationWorkbench({
               && !sourceLoading && !sourceError && sourceIdentity?.projectId === project.id
               && sourceIdentity.fileId === selectedMember.fileId && sourceIdentity.versionId === selectedMember.currentVersionId ? <WorkbenchSourceEditingPane
               scope={{ userId: currentUserId, organizationId: resolvedOrganizationId, projectId: project.id, configSetId: selectedConfigSet.id, fileId: selectedMember.fileId }}
-              session={sourceEditSession} editorSessions={sourceEditorSessions} fileName={selectedMember.fileName} baseVersionId={selectedMember.currentVersionId}
+              session={sourceEditSession} editorSessions={sourceEditorSessions} flushRef={sourceFlushRef} fileName={selectedMember.fileName} baseVersionId={selectedMember.currentVersionId}
               configRevisionId={revisionGate.loading || revisionGate.error ? null : revisionGate.revisions
                 .filter((revision) => revision.configSetId === selectedConfigSet.id && ["resolved", "validated", "compiled", "pending_approval"].includes(revision.status))
                 .sort((left, right) => right.revisionNumber - left.revisionNumber)[0]?.id ?? null}
@@ -2032,6 +2050,7 @@ export function ProjectConfigurationWorkbench({
         onSetRoot={apiMode ? setSetRootTarget : undefined}
       /> : null}
       {memberAdditionOpen && selectedConfigSet ? <WorkbenchMemberAdditionDialog projectId={project.id} configSets={configSets}
+        catalogRepository={memberRemovalRepository} fileRepository={fileRepository}
         initialConfigSetId={selectedConfigSet.id} availableFiles={ungroupedFiles} onDismiss={() => setMemberAdditionOpen(false)}
         onApplied={(configSetId, fileId) => {
           setMemberAdditionOpen(false); setInspectorOpen(false); workspaceLoadSession.retryFiles(); workspaceLoadSession.retryMembers();
@@ -2185,6 +2204,7 @@ export function ProjectConfigurationWorkbench({
         }}
         onCancelLeave={() => setLeaveConfirmOpen(false)}
         onConfirmLeave={handleDiscardAndLeave}
+        onKeepDraftsAndLeave={handleKeepDraftsAndLeave}
         confirmation={confirmation}
         onCancelConfirmation={() => {
           if (pendingAction) return;

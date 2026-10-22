@@ -1,3 +1,5 @@
+import { diffLines, type DiffLine } from "@/application/project-configuration/sourceTextMerge";
+
 export type WorkbenchCanvasMode = "working" | "history" | "unified-diff" | "candidate";
 
 export type InspectorLevel = "config-set" | "file" | "node" | "property" | "activity" | "release" | "versions" | "candidates";
@@ -114,51 +116,6 @@ export function classifyNodeRisk(_status: string | undefined): string {
   return "未评估";
 }
 
-type DiffLine = { marker: " " | "+" | "-"; text: string };
-
-function diffLines(left: string[], right: string[]): { lines: DiffLine[]; bounded: boolean } {
-  const trace: Map<number, number>[] = [];
-  let frontier = new Map([[1, 0]]);
-  let work = 0;
-  for (let depth = 0; depth <= left.length + right.length; depth += 1) {
-    const next = new Map<number, number>();
-    for (let diagonal = -depth; diagonal <= depth; diagonal += 2) {
-      // ponytail: cap Myers trace work at 1M steps for unrelated large files; use
-      // linear-space Myers if minimal hunks beyond this ceiling become necessary.
-      if (++work > 1_000_000) return { bounded: true, lines: [
-        ...left.map((text): DiffLine => ({ marker: "-", text })),
-        ...right.map((text): DiffLine => ({ marker: "+", text }))
-      ] };
-      let x = diagonal === -depth || (diagonal !== depth &&
-        (frontier.get(diagonal - 1) ?? -1) < (frontier.get(diagonal + 1) ?? -1))
-        ? frontier.get(diagonal + 1) ?? 0 : (frontier.get(diagonal - 1) ?? 0) + 1;
-      let y = x - diagonal;
-      while (x < left.length && y < right.length && left[x] === right[y]) { x += 1; y += 1; }
-      next.set(diagonal, x);
-      if (x < left.length || y < right.length) continue;
-      trace.push(next);
-      const result: DiffLine[] = [];
-      for (let step = trace.length - 1; step > 0; step -= 1) {
-        const previous = trace[step - 1]!;
-        const k = x - y;
-        const previousK = k === -step || (k !== step &&
-          (previous.get(k - 1) ?? -1) < (previous.get(k + 1) ?? -1)) ? k + 1 : k - 1;
-        const previousX = previous.get(previousK) ?? 0;
-        const previousY = previousX - previousK;
-        while (x > previousX && y > previousY) {
-          result.push({ marker: " ", text: left[--x]! }); y -= 1;
-        }
-        if (x === previousX) result.push({ marker: "+", text: right[--y]! });
-        else result.push({ marker: "-", text: left[--x]! });
-      }
-      while (x > 0 && y > 0) { result.push({ marker: " ", text: left[--x]! }); y -= 1; }
-      return { lines: result.reverse(), bounded: false };
-    }
-    trace.push(next);
-    frontier = next;
-  }
-  return { lines: [], bounded: false };
-}
 
 export function buildUnifiedDiff(left: string, right: string, leftLabel: string, rightLabel: string): string {
   const split = (text: string) => text === "" ? [] : text.match(/[^\n]*\n|[^\n]+$/g) ?? [];

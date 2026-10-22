@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import type {
   DtsReleaseBaseline,
@@ -8,6 +8,7 @@ import type {
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { SelectControl } from "@/components/common/SelectControl";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { baselineRestoreBlockedReason } from "@/application/project-configuration/releaseBaselineSession";
@@ -39,6 +40,7 @@ export type WorkbenchBaselineDialogsProps = {
   onRefreshRestorePreview?: (sourceConfigRevisionId?: string) => void;
   onCancelLeave: () => void;
   onConfirmLeave: () => void;
+  onKeepDraftsAndLeave: () => void;
   confirmation: {
     key: string;
     title: string;
@@ -79,11 +81,13 @@ export function WorkbenchBaselineDialogs({
   onRefreshRestorePreview,
   onCancelLeave,
   onConfirmLeave,
+  onKeepDraftsAndLeave,
   confirmation,
   onCancelConfirmation,
   onConfirmConfirmation,
   releaseRequiresConfirmation = false
 }: WorkbenchBaselineDialogsProps) {
+  const keepDraftsRef = useRef<HTMLButtonElement>(null);
   const [restoreReason, setRestoreReason] = useState({ baselineId: selectedBaselineId,value: "" });
   const reason = restoreReason.baselineId === selectedBaselineId ? restoreReason.value : "";
   const canonical = restorePreview?.canonical;
@@ -221,22 +225,27 @@ export function WorkbenchBaselineDialogs({
         onConfirm={() => canonical ? onConfirmRestore({ reason: reason.trim(),confirmCompositionChanges: canonical.requiresCompositionConfirmation }) : onConfirmRestore()}
       />}
 
-      <ConfirmDialog
+      <ModalDialog
         open={leaveOpen}
-        title="离开配置工作台"
-        description={
-          <>
-            <p>还有未提交的会话变更。离开将丢弃本机可恢复草稿；若仅想稍后继续，请留在本页或先复制草稿。</p>
+        className="confirm-dialog governance-confirm-dialog"
+        backdropClassName="param-admin-modal-backdrop"
+        initialFocusRef={keepDraftsRef}
+        onDismiss={leavePending ? undefined : onCancelLeave}
+        describedBy
+      >
+        {({ titleId, descriptionId }) => <>
+          <h2 id={titleId}>离开配置工作台</h2>
+          <div className="confirm-dialog__scroll">
+            <p id={descriptionId}>还有未保存的修改。保留草稿后，返回本页可继续编辑。</p>
             {leaveError ? <p role="alert">{leaveError}</p> : null}
-          </>
-        }
-        confirmLabel="丢弃并离开"
-        cancelLabel="留在本页"
-        pending={leavePending}
-        tone="danger"
-        onCancel={onCancelLeave}
-        onConfirm={onConfirmLeave}
-      />
+          </div>
+          <div className="dialog-actions">
+            <Button variant="outline" disabled={leavePending} onClick={onCancelLeave}>留在本页</Button>
+            <Button variant="destructive" disabled={leavePending} onClick={onConfirmLeave}>丢弃并离开</Button>
+            <Button ref={keepDraftsRef} disabled={leavePending} onClick={onKeepDraftsAndLeave}>{leavePending ? "处理中…" : "保留草稿并离开"}</Button>
+          </div>
+        </>}
+      </ModalDialog>
 
       <ConfirmDialog
         open={Boolean(confirmation)}

@@ -32,6 +32,54 @@ function memoryStorage(): SourceDraftStorage & { records: Map<string, StoredSour
 }
 
 describe("whole-source draft recovery", () => {
+  it("keeps the original draft and merge base through leaving and returning, and saves after resolving conflicts", async () => {
+    const storage = memoryStorage();
+    const session = createSourceEditSession({ storage, persistDelayMs: 60_000 });
+    await session.open({ scope, base, sourceText: "a\nb\n" });
+    session.change(scope, "local\nb\n");
+    await session.open({ scope, base: nextBase, sourceText: "remote\nb\n" });
+    expect(session.rebase(scope)).toEqual({ conflicts: true });
+    const merged = session.getFile(scope)!.sourceText;
+    expect(() => session.captureSave(scope)).toThrow("冲突");
+    expect(await session.close()).toBe(true);
+    const returned = createSourceEditSession({ storage, persistDelayMs: 60_000 });
+    await returned.open({ scope, base: nextBase, sourceText: "remote\nb\n" });
+    expect(returned.getFile(scope)).toMatchObject({ sourceText: merged, base: nextBase, dirty: true, mergeConflicts: true,
+      originalDraft: { base, sourceText: "local\nb\n", baseSourceText: "a\nb\n" } });
+    returned.change(scope, "resolved\nb\n");
+    const saved = returned.captureSave(scope);
+    expect(saved.sourceText).toBe("resolved\nb\n");
+    returned.acknowledgeApplied(saved, { ...nextBase, fileVersionId: "v3" });
+    expect(returned.getFile(scope)?.originalDraft).toBeUndefined();
+    await returned.close();
+  });
+
+  it("rebases a clean merge onto the latest base but retains it as an unsaved draft", async () => {
+    const session = createSourceEditSession({ storage: memoryStorage() });
+    await session.open({ scope, base, sourceText: "a\nb\n" });
+    session.change(scope, "A\nb\n");
+    await session.open({ scope, base: nextBase, sourceText: "a\nB\n" });
+    expect(session.rebase(scope)).toEqual({ conflicts: false });
+    expect(session.getFile(scope)).toMatchObject({ sourceText: "A\nB\n", dirty: true, recoveryStatus: "compatible", base: nextBase });
+    expect(session.captureSave(scope).base).toEqual(nextBase);
+    await session.close();
+  });
+
+  it("reads an old recovery record's historical base without overwriting the draft on a failed rebase", async () => {
+    const storage = memoryStorage();
+    const first = createSourceEditSession({ storage });
+    await first.open({ scope, base, sourceText: "a\nb\n" });
+    first.change(scope, "A\nb\n"); await first.close();
+    delete storage.records.get(sourceDraftKey(scope))!.draft!.baseSourceText;
+    const returned = createSourceEditSession({ storage });
+    await returned.open({ scope, base: nextBase, sourceText: "a\nB\n" });
+    expect(() => returned.rebase(scope)).toThrow("原始基线");
+    expect(returned.getFile(scope)?.sourceText).toBe("A\nb\n");
+    expect(returned.rebase(scope, "a\nb\n")).toEqual({ conflicts: false });
+    expect(returned.getFile(scope)?.sourceText).toBe("A\nB\n");
+    await returned.close();
+  });
+
   it("recovers exact BOM, CRLF, unfinished text and positions, isolated by every scope field", async () => {
     const storage = memoryStorage();
     const first = createSourceEditSession({ storage, persistDelayMs: 60_000 });

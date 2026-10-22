@@ -4,8 +4,101 @@ import { afterEach, expect, it, vi } from "vitest";
 import { createApiClient } from "@/infrastructure/http/apiClient";
 import { createCanonicalMemberAdditionClient } from "@/infrastructure/http/canonicalMemberAdditionClient";
 import { WorkbenchMemberAdditionDialog } from "./WorkbenchMemberAdditionDialog";
+import type { ParameterCatalogRepository, CatalogSubjectListResponse, CatalogDefinitionListResponse } from "@/application/ports/ParameterCatalogRepository";
+import { jsonLeafPaths } from "@/application/project-configuration/jsonRegistration";
 
 afterEach(cleanup);
+
+function jsonDialog(options: { definitionFailure?: boolean } = {}) {
+  const subject: CatalogSubjectListResponse["items"][number] = { id: "spec-internal", type: "configuration-schema", canonicalName: "电源配置",
+    aliases: [], membership: { status: "active", catalogReleaseId: "release" }, registration: { status: "active", id: "registered" },
+    definitionCounts: { active: 2, deprecated: 0, retired: 0 } };
+  const definition: CatalogDefinitionListResponse["items"][number] = { id: "definition-internal", propertyKey: "limit", lifecycle: "active",
+    subject: { id: subject.id, type: subject.type, canonicalName: subject.canonicalName }, registration: subject.registration,
+    currentRevision: { id: "revision", definitionId: "definition-internal", revisionNumber: 1, contentDigest: "digest", displayName: "电流上限",
+      valueShape: { kind: "json-schema", schema: { type: "number" } }, constraints: { kind: "none" }, documentation: null, unit: null, publishedInCatalogReleaseId: "release" },
+    usageSummary: { policyCount: 0, projectCount: 0, currentValueCount: 0 }, links: { revisions: "", timeline: "" } };
+  const catalog: Pick<ParameterCatalogRepository, "listSubjects" | "listSubjectDefinitions"> = {
+    listSubjects: vi.fn(async () => ({ items: [subject, { ...subject, id: "not-registered", canonicalName: "未登记规范", registration: { status: "unregistered" as const } }], catalogReleaseId: "release", totalCount: 2, hasMore: false, nextCursor: null })),
+    listSubjectDefinitions: vi.fn(async () => {
+      if (options.definitionFailure) throw new Error("参数定义列表暂不可用。");
+      return { items: [definition, { ...definition, id: "other", propertyKey: "enabled", currentRevision: { ...definition.currentRevision, displayName: "启用" } }], catalogReleaseId: "release", totalCount: 2, hasMore: false, nextCursor: null };
+    })
+  };
+  const bodies: Record<string, unknown>[] = [];
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    return new Response(JSON.stringify({ item: { proofToken: "b".repeat(64), configSetId: "set", fileName: "power.json", format: "json",
+      members: [], entryFile: null, includeSearchPaths: [], overlayOrder: [], diagnostics: [],
+      impact: { parameterChanges: 1, nodeAdditions: 0, nodeRemovals: 0, retainedBindings: 0, sourceReplacements: 0 } } }), { status: 200 });
+  };
+  const files = { downloadVersion: vi.fn(async () => ({ contentType: "application/json", bytes: new TextEncoder().encode('{"limits":{"a/b~c":1200},"enabled":true}') })) };
+  const client = createCanonicalMemberAdditionClient(createApiClient({ baseUrl: "", fetchImpl }));
+  vi.spyOn(client, "upload").mockResolvedValue({ id: "candidate", fileName: "power.json", format: "json" });
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{ id: "set", name: "默认配置" }]} initialConfigSetId="set"
+    availableFiles={[{ id: "json", projectId: "project", fileName: "power.json", format: "json", enabled: true, currentVersionId: "v1", updatedAt: "" }]}
+    catalogRepository={catalog} fileRepository={files} client={client} onDismiss={vi.fn()} onApplied={vi.fn()} />);
+  return { catalog, files, bodies };
+}
+
+it("picks a registered spec, searchable definition and escaped JSON field with value preview", async () => {
+  const user = userEvent.setup(), { catalog, files, bodies } = jsonDialog();
+  await user.click(screen.getByRole("combobox", { name: "文件来源" })); await user.click(screen.getByRole("option", { name: "选择已有项目文件" }));
+  await user.click(screen.getByText("登记 JSON 字段为参数（可选）"));
+  await user.click(await screen.findByRole("combobox", { name: "配置规范" }));
+  expect(screen.queryByRole("option", { name: "未登记规范" })).not.toBeInTheDocument();
+  await user.click(await screen.findByRole("option", { name: "电源配置" }));
+  await user.type(screen.getByRole("searchbox", { name: "搜索参数定义 1" }), "电流");
+  await user.click(screen.getByRole("combobox", { name: "参数定义 1" }));
+  expect(screen.queryByRole("option", { name: /启用/ })).not.toBeInTheDocument();
+  await user.click(await screen.findByRole("option", { name: "电流上限（limit）" }));
+  await user.type(screen.getByRole("searchbox", { name: "搜索JSON 字段 1" }), "a~1b~0c");
+  await user.click(screen.getByRole("combobox", { name: "JSON 字段 1" }));
+  await user.click(screen.getByRole("option", { name: "/limits/a~1b~0c：1200" }));
+  expect(screen.queryByRole("textbox", { name: "字段映射" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "预览加入配置" }));
+  expect(bodies.at(-1)).toMatchObject({ json: { configurationSchemaId: "电源配置", rootPointer: "", mappings: [{ definitionId: "definition-internal", pointer: "/limits/a~1b~0c" }] } });
+  expect(files.downloadVersion).toHaveBeenCalledWith("project", "json", "v1");
+  expect(catalog.listSubjectDefinitions).toHaveBeenCalledWith("spec-internal", expect.objectContaining({ catalogReleaseId: "release", lifecycle: "active" }));
+});
+
+it("reads uploaded JSON leaf paths and offers manual mappings only when definitions fail to load", async () => {
+  const user = userEvent.setup(), { bodies } = jsonDialog({ definitionFailure: true });
+  const file = new File(['{"limit":5}'], "power.json", { type: "application/json" });
+  Object.defineProperty(file, "text", { value: async () => '{"limit":5}' });
+  await user.upload(screen.getByLabelText("上传文件"), file);
+  await user.click(screen.getByText("登记 JSON 字段为参数（可选）"));
+  await user.click(await screen.findByRole("combobox", { name: "配置规范" }));
+  await user.click(await screen.findByRole("option", { name: "电源配置" }));
+  const fallback = await screen.findByRole("textbox", { name: "字段映射" });
+  await user.type(fallback, "definition-internal = /limit");
+  await user.click(screen.getByRole("button", { name: "预览加入配置" }));
+  expect(bodies.at(-1)).toMatchObject({ candidateId: "candidate", json: { mappings: [{ definitionId: "definition-internal", pointer: "/limit" }] } });
+});
+
+it("selects a leaf path from uploaded JSON without entering IDs", async () => {
+  const user = userEvent.setup(), { bodies, files } = jsonDialog();
+  const file = new File(['{"limit":5}'], "power.json", { type: "application/json" });
+  Object.defineProperty(file, "text", { value: async () => '{"limit":5}' });
+  await user.upload(screen.getByLabelText("上传文件"), file);
+  await user.click(screen.getByText("登记 JSON 字段为参数（可选）"));
+  await user.click(await screen.findByRole("combobox", { name: "配置规范" }));
+  await user.click(await screen.findByRole("option", { name: "电源配置" }));
+  await user.click(await screen.findByRole("combobox", { name: "参数定义 1" }));
+  await user.click(await screen.findByRole("option", { name: "电流上限（limit）" }));
+  await user.click(screen.getByRole("combobox", { name: "JSON 字段 1" }));
+  await user.click(screen.getByRole("option", { name: "/limit：5" }));
+  await user.click(screen.getByRole("button", { name: "预览加入配置" }));
+  expect(bodies.at(-1)).toMatchObject({ candidateId: "candidate", json: { mappings: [{ definitionId: "definition-internal", pointer: "/limit" }] } });
+  expect(files.downloadVersion).not.toHaveBeenCalled();
+});
+
+it("enumerates arrays, root values, empty containers and special JSON Pointer characters", () => {
+  expect(jsonLeafPaths('{"a/b~c":[null,true],"empty":{}}')).toEqual([
+    { pointer: "/a~1b~0c/0", preview: "null" }, { pointer: "/a~1b~0c/1", preview: "true" }, { pointer: "/empty", preview: "{}" }
+  ]);
+  expect(jsonLeafPaths("5")).toEqual([{ pointer: "", preview: "5" }]);
+});
 it("retains choices on a refused preview and confirms the complete preview with the keyboard", async () => {
   const user = userEvent.setup(), submitted = vi.fn(), requests: Array<{ path: string; body: Record<string, unknown> }> = [];
   let failed = false;

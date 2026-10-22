@@ -10,6 +10,7 @@ import {
   type SourceDraftStorage,
   type SourceDraftSubmission
 } from "./sourceDraftStorage";
+import { hasSourceMergeConflicts, mergeSourceText } from "./sourceTextMerge";
 
 export type SourceEditSaveSnapshot = {
   scope: SourceDraftScope;
@@ -19,6 +20,10 @@ export type SourceEditSaveSnapshot = {
 };
 
 export type SourceEditFileSnapshot = SourceEditSaveSnapshot & {
+  baseSourceText?: string;
+  originalDraft?: SourceDraftRecord["originalDraft"];
+  rebased: boolean;
+  mergeConflicts: boolean;
   latestBase: SourceDraftBase;
   position: SourceDraftPosition;
   dirty: boolean;
@@ -39,6 +44,7 @@ export type SourceEditSession = {
   getFile(scope: SourceDraftScope): SourceEditFileSnapshot | undefined;
   open(input: SourceEditOpenInput): Promise<void>;
   change(scope: SourceDraftScope, sourceText: string, position?: SourceDraftPosition): void;
+  rebase(scope: SourceDraftScope, originalBaseText?: string): { conflicts: boolean };
   setPosition(scope: SourceDraftScope, position: SourceDraftPosition): void;
   flush(scope?: SourceDraftScope): Promise<boolean>;
   captureSave(scope: SourceDraftScope): SourceEditSaveSnapshot;
@@ -55,6 +61,9 @@ const storageErrorMessage = (error: unknown, fallback: string): string => error 
 type FileState = {
   scope: SourceDraftScope;
   base: SourceDraftBase;
+  baseSourceText?: string;
+  originalDraft?: SourceDraftRecord["originalDraft"];
+  rebased?: boolean;
   latestBase: SourceDraftBase;
   latestSourceText: string;
   sourceText: string;
@@ -98,13 +107,15 @@ export function createSourceEditSession(options: {
   let closed = false;
 
   function dirty(file: FileState): boolean {
-    return file.sourceText !== file.latestSourceText || !sameSourceDraftBase(file.base, file.latestBase);
+    return Boolean(file.rebased) || file.sourceText !== file.latestSourceText || !sameSourceDraftBase(file.base, file.latestBase);
   }
   function publish(): void {
     const next: Record<string, SourceEditFileSnapshot> = {};
     for (const [key, file] of files) next[key] = {
       scope: { ...file.scope }, base: { ...file.base }, latestBase: { ...file.latestBase },
       sourceText: file.sourceText, generation: file.generation, position: { ...file.position },
+      baseSourceText: file.baseSourceText, originalDraft: file.originalDraft ? structuredClone(file.originalDraft) : undefined,
+      rebased: Boolean(file.rebased), mergeConflicts: Boolean(file.rebased && hasSourceMergeConflicts(file.sourceText)),
       dirty: dirty(file), loading: file.loading, recoveryStatus: file.recoveryStatus,
       storageError: file.storageError, storageConflict: file.storageConflict,
       persisting: file.persisting, recoveryPending: file.persistedGeneration !== file.generation,
@@ -128,6 +139,7 @@ export function createSourceEditSession(options: {
       if (file.persistedGeneration === file.generation) return true;
       const record: SourceDraftRecord = {
         version: 1, scope: { ...file.scope }, base: { ...file.base }, sourceText: file.sourceText,
+        baseSourceText: file.baseSourceText, originalDraft: file.originalDraft, rebased: file.rebased,
         position: { ...file.position }, generation: file.generation, updatedAt: now(),
         ...(file.submission ? { submission: { ...file.submission } } : {})
       };
@@ -181,6 +193,7 @@ export function createSourceEditSession(options: {
           const baseChanged = !sameSourceDraftBase(existing.base, input.base) || existing.sourceText !== input.sourceText;
           existing.base = { ...input.base };
           existing.sourceText = input.sourceText;
+          existing.baseSourceText = input.sourceText;
           existing.position = clampPosition(existing.position, input.sourceText.length);
           if (baseChanged) changed(existing);
         }
@@ -192,6 +205,7 @@ export function createSourceEditSession(options: {
       const file: FileState = {
         scope: { ...input.scope }, base: { ...input.base }, latestBase: { ...input.base },
         latestSourceText: input.sourceText, sourceText: input.sourceText, position: initialPosition(),
+        baseSourceText: input.sourceText,
         generation: 0, storedGeneration: 0, persistedGeneration: 0, loading: true,
         recoveryStatus: "none", storageError: "", storageConflict: false, persisting: false,
         ready: Promise.resolve(), writes: Promise.resolve(true)
@@ -205,6 +219,9 @@ export function createSourceEditSession(options: {
             const draft = stored.draft;
             file.base = { ...draft.base };
             file.sourceText = draft.sourceText;
+            file.baseSourceText = draft.baseSourceText ?? (sameSourceDraftBase(draft.base, input.base) ? input.sourceText : undefined);
+            file.originalDraft = draft.originalDraft;
+            file.rebased = draft.rebased;
             file.position = clampPosition(draft.position, draft.sourceText.length);
             file.generation = draft.generation;
             file.persistedGeneration = draft.generation;
@@ -233,11 +250,28 @@ export function createSourceEditSession(options: {
       file.position = next;
       changed(file);
     },
+    rebase(scope, originalBaseText) {
+      const file = fileFor(scope);
+      const baseText = file.baseSourceText ?? originalBaseText;
+      if (baseText === undefined) throw new Error("无法读取草稿的原始基线；原稿仍保留，请重试或下载草稿。");
+      if (file.rebased && hasSourceMergeConflicts(file.sourceText)) throw new Error("请先解决当前合并冲突，再合并最新版本。");
+      const merged = mergeSourceText(baseText, file.sourceText, file.latestSourceText);
+      file.originalDraft ??= { base: { ...file.base }, sourceText: file.sourceText, baseSourceText: baseText };
+      file.base = { ...file.latestBase };
+      file.baseSourceText = file.latestSourceText;
+      file.sourceText = merged.text;
+      file.position = clampPosition(file.position, merged.text.length);
+      file.rebased = true;
+      file.recoveryStatus = "compatible";
+      changed(file);
+      return { conflicts: merged.conflicts };
+    },
     flush,
     captureSave(scope) {
       const file = fileFor(scope);
       if (!dirty(file)) throw new Error("DTS 文件没有未保存修改。");
       if (!sameSourceDraftBase(file.base, file.latestBase)) throw new Error("DTS 草稿基于旧版本，请先比较最新来源。");
+      if (file.rebased && hasSourceMergeConflicts(file.sourceText)) throw new Error("请先解决 DTS 合并冲突并删除冲突标记，再保存。");
       return Object.freeze({ scope: Object.freeze({ ...file.scope }), base: Object.freeze({ ...file.base }),
         sourceText: file.sourceText, generation: file.generation });
     },
@@ -255,6 +289,9 @@ export function createSourceEditSession(options: {
       const observedAnotherBase = !sameSourceDraftBase(file.latestBase, saved.base)
         && !sameSourceDraftBase(file.latestBase, base);
       file.base = { ...base };
+      file.baseSourceText = saved.sourceText;
+      file.originalDraft = undefined;
+      file.rebased = false;
       if (!observedAnotherBase) {
         file.latestBase = { ...base };
         file.latestSourceText = saved.sourceText;
@@ -274,6 +311,7 @@ export function createSourceEditSession(options: {
         if (file.generation !== generation) return true;
         const record: SourceDraftRecord = {
           version: 1, scope: { ...file.scope }, base: { ...file.latestBase }, sourceText: file.latestSourceText,
+          baseSourceText: file.latestSourceText,
           position: clampPosition(file.position, file.latestSourceText.length), generation: generation + 1, updatedAt: now(),
           ...(file.submission ? { submission: { ...file.submission } } : {})
         };
@@ -284,6 +322,9 @@ export function createSourceEditSession(options: {
           file.storageError = "";
           if (file.generation === generation && sameSourceDraftBase(file.latestBase, record.base) && file.latestSourceText === record.sourceText) {
             file.base = record.base;
+            file.baseSourceText = record.baseSourceText;
+            file.originalDraft = undefined;
+            file.rebased = false;
             file.sourceText = record.sourceText;
             file.position = record.position;
             file.recoveryStatus = "none";
