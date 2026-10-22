@@ -38,7 +38,7 @@ describe("AdminListPage", () => {
       description: "筛选结果", files: [] });
     const page = route === "/audit"
       ? <AuditWorkspace isApiMode={false} query={{ appGroup: "all", severity: "all", search: "", timeWindow: "all" }}
-          mockEvents={[{ id: "audit-1", app: "parameters", kind: "parameter-topology-governance",
+          mockEvents={[{ id: "audit-1", app: "parameters", kind: "parameter-update",
             action: "value-change-applied", actor: "用户", severity: "Medium", time: "刚刚" }]} />
       : route === "/knowledge"
         ? <KnowledgePage repository={createMockKnowledgeRepository()}
@@ -56,7 +56,7 @@ describe("AdminListPage", () => {
       expect(row.actions).toHaveLength(["/audit", "/feedback-admin"].includes(route) ? 1 : 2);
       expect(row.statuses.some((status) => status.dom.startsWith("span"))).toBe(true);
     }
-    if (route === "/feedback-admin") expect(screen.getByRole("button", { name: "查看", exact: true })).toBeVisible();
+    if (route === "/feedback-admin") expect(screen.getByRole("button", { name: "查看" })).toBeVisible();
     for (const cell of container.querySelectorAll('td[data-label="操作"]')) cell.replaceChildren();
     expect(() => requireRowActionVisibility(collectConsistencyMeasurements().rowActions, route))
       .toThrow(/missing action or status measurements/);

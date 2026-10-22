@@ -4,7 +4,6 @@ import {
   FileText,
   LoaderCircle,
   Menu,
-  MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
   UserRound
@@ -1130,7 +1129,6 @@ function AppShell({
             isCollapsed={effectiveSidebarCollapsed}
             onNavigate={navigateFromSidebar}
             onToggleCollapsed={toggleSidebarCollapsed}
-            onFeedback={() => setFeedbackOpen(true)}
           />
         ) : null}
         {!isPlatformHome && mobileNavOpen ? (
@@ -1255,6 +1253,11 @@ function AppShell({
             </main>
           )}
         </TopBarActionsContext.Provider>
+        {!isPlatformHome && !showsApplicationFooter ? (
+          <div className="shell-footer">
+            <AppFooter config={appFooterConfig} onFeedback={() => setFeedbackOpen(true)} />
+          </div>
+        ) : null}
       </div>
       {runtimeMode === "api" && !isPlatformHome && canAccessCurrentPage ? (
         <XiaozePageContextRegistrar
@@ -1299,15 +1302,13 @@ function Sidebar({
   currentRoleId,
   isCollapsed,
   onNavigate,
-  onToggleCollapsed,
-  onFeedback
+  onToggleCollapsed
 }: {
   activePath: string;
   currentRoleId: string;
   isCollapsed: boolean;
   onNavigate: (path: string) => void;
   onToggleCollapsed: () => void;
-  onFeedback: () => void;
 }) {
   const activePageKey = getPageByPath(activePath).key;
   const visibleNavigationItems = navigationItems.filter(
@@ -1382,19 +1383,6 @@ function Sidebar({
         </nav>
       </ScrollArea>
       <div className="utility-nav">
-        <Button
-          aria-label="问题反馈"
-          className="nav-item compact feedback-entry"
-          type="button"
-          variant="ghost"
-          onClick={onFeedback}
-        >
-          <MessageSquareText size={18} />
-          <span>
-            <strong>问题反馈</strong>
-            <small>内测收集 · 当前页</small>
-          </span>
-        </Button>
         {utilityItems
           .filter((item) => !item.path || canAccessPage(currentRoleId, getPageByPath(item.path).key))
           .map((item) => {

@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
+import { SectionEmpty } from "@/components/common/SectionState";
 import { cn } from "@/lib/utils";
 import { ColumnFilter } from "../ColumnFilter";
 import {
@@ -354,7 +355,7 @@ export function DataTable<TData>({
             ) : (
               <tr>
                 <td colSpan={columnCount} className="p-8 text-center">
-                  {emptyState ?? <p className="text-sm text-muted-foreground">{emptyMessage}</p>}
+                  {emptyState ?? <SectionEmpty message={emptyMessage} />}
                 </td>
               </tr>
             )}
