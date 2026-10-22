@@ -22,7 +22,7 @@ describe("KnowledgeAdminPage", () => {
     render(<KnowledgeAdminPage repository={repository} capability={{ ...manageCapability, canEdit: false }} />);
     const user = userEvent.setup();
     const table = await screen.findByRole("table", { name: "已归档知识条目" });
-    const row = within(table).getByText(entry.title).closest("tr")!;
+    const row = (await within(table).findByText(entry.title)).closest("tr")!;
     await user.click(within(row).getByRole("button", { name: /：更多$/ }));
     await user.click(screen.getByRole("menuitem", { name: "编辑" }));
     const editor = await screen.findByRole("dialog", { name: /编辑/ });
@@ -31,7 +31,7 @@ describe("KnowledgeAdminPage", () => {
     await user.click(within(editor).getByRole("button", { name: contentForm === "markdown" ? "保存为新修订" : "保存" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(await repository.get(entry.id)).toMatchObject({ title: "治理页已纠正", status: "archived", headRevisionNumber: 2 });
-    expect(within(table).getByText("治理页已纠正")).toBeInTheDocument();
+    expect(await within(table).findByText("治理页已纠正")).toBeInTheDocument();
   });
 
   it("deletes an Agent draft from its queue without publishing or rejecting it", async () => {
