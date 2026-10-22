@@ -20,7 +20,6 @@ function setup(items: IntegrationCredential[] = [], options: { canEdit?: boolean
   return { repository, onBusyChange, user: userEvent.setup() };
 }
 async function acknowledge(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("checkbox", { name: "我已安全保存密钥" }));
   await user.click(screen.getByRole("button", { name: "完成" }));
 }
 
@@ -51,7 +50,7 @@ describe("integration credentials", () => {
       .toContainElement(screen.getByRole("button", { name: "签发凭据" }));
   });
 
-  it("issues bound by default, requires acknowledgement for every dismiss path and clears the one-time secret", async () => {
+  it("issues bound by default and closes the one-time secret with Done without acknowledgement", async () => {
     const { user, repository, onBusyChange } = setup();
     const copy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
     await user.click(await screen.findByRole("button", { name: "签发凭据" }));
@@ -64,15 +63,13 @@ describe("integration credentials", () => {
     expect(repository.issueIntegrationCredential).toHaveBeenCalledWith({ name: "Factory", skillId: skill.id });
     const reveal = await screen.findByRole("dialog", { name: "保存集成凭据" });
     expect(reveal).toHaveTextContent("密钥仅显示一次");
-    expect(screen.getByRole("button", { name: "完成" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "完成" })).toBeEnabled();
     expect(onBusyChange).toHaveBeenLastCalledWith(true);
-    await user.keyboard("{Escape}");
-    expect(reveal).toBeVisible();
     await user.click(screen.getByRole("button", { name: "复制密钥" }));
     expect(copy).toHaveBeenCalledWith("wie_credential-1_one-time-secret");
     expect(screen.getByRole("textbox", { name: "集成凭据" }).parentElement).toContainElement(screen.getByRole("button", { name: "复制密钥" }));
     expect(screen.getByRole("status")).toHaveClass("text-xs", "text-muted-foreground");
-    expect(screen.getByRole("checkbox", { name: "我已安全保存密钥" }).closest("label")).toHaveClass("skill-credential-checkbox");
+    expect(screen.queryByRole("checkbox", { name: "我已安全保存密钥" })).not.toBeInTheDocument();
     await acknowledge(user);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue("wie_credential-1_one-time-secret")).not.toBeInTheDocument();

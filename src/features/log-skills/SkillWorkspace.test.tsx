@@ -54,9 +54,13 @@ function setup(options: { section?: string; tab?: string; draft?: boolean; draft
       skill.currentRevision = { ...old, id: "restored", number: 3, status: "published" }; return structuredClone(skill);
     }),
     listLogSkills: vi.fn(async () => [{ ...skill, currentRevision: { id: "current", number: 2, publishedAt: skill.currentRevision.publishedAt }, analyses7d: 7, helpfulRate7d: 0.5 }]),
+    updateLogDomain: vi.fn(async () => skill),
+    setLogDomainWebhook: vi.fn(async () => skill),
+    listLogDomainWebhookDeliveries: vi.fn(async () => []),
+    sendLogDomainWebhookTest: vi.fn(async () => ({ status: "skipped" as const, attempts: 0 })),
     startSkillDryRun: vi.fn(async () => ({ id: "dry-run", skillRevisionId: skill.draft!.id, status: "processing" as const,
       progress: 0, report: null, error: null, createdAt: skill.createdAt })),
-    getSkillDryRun: vi.fn(async () => ({ run: { id: "dry-run", skillRevisionId: skill.draft!.id, status: "complete" as const,
+    getSkillDryRun: vi.fn<NonNullable<SkillWorkspaceRepository["getSkillDryRun"]>>(async () => ({ run: { id: "dry-run", skillRevisionId: skill.draft!.id, status: "complete" as const,
       progress: 100, report: null, error: null, createdAt: skill.createdAt }, steps: [] })),
     listAnalysisCases: vi.fn<NonNullable<SkillWorkspaceRepository["listAnalysisCases"]>>(async () => ({ items: [], latestRun: null, current: false })),
     startAnalysisCaseRun: vi.fn<NonNullable<SkillWorkspaceRepository["startAnalysisCaseRun"]>>(async () => ({ id: "case-run", skillRevisionId: skill.draft!.id,
@@ -88,6 +92,40 @@ function setup(options: { section?: string; tab?: string; draft?: boolean; draft
 }
 
 describe("skill workspace", () => {
+  it("saves unsaved changes before retrying a failed dry run", async () => {
+    const { repository } = setup({ draft: true });
+    repository.getSkillDryRun.mockImplementation(async () => ({ run: { id: "dry-run", skillRevisionId: "draft", status: "failed", progress: 100, report: null, error: null, createdAt: "2026-10-19" }, steps: [] }));
+    const description = await screen.findByRole("textbox", { name: "描述" });
+    await userEvent.click(await screen.findByRole("button", { name: "试运行" }));
+    const drawer = await screen.findByRole("dialog", { name: "试运行" });
+    await within(drawer).findByText("试运行失败");
+    fireEvent.change(description, { target: { value: "重试前的新描述" } });
+    await userEvent.click(within(drawer).getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(repository.startSkillDryRun).toHaveBeenCalledTimes(2));
+    expect(repository.saveSkillDraft.mock.lastCall?.[1]).toMatchObject({ description: "重试前的新描述" });
+  });
+  it("retains webhook edits across sections and guards leaving the workspace", async () => {
+    setup({ section: "integration" });
+    const url = await screen.findByLabelText("回调地址");
+    fireEvent.change(url, { target: { value: "https://hooks.example.com/new" } });
+    await userEvent.click(screen.getByRole("button", { name: "概览" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "集成" }));
+    expect(screen.getByLabelText("回调地址")).toHaveValue("https://hooks.example.com/new");
+    await userEvent.click(screen.getByRole("link", { name: "← 分析技能" }));
+    expect(screen.getByRole("dialog", { name: "放弃未保存的更改？" })).toBeVisible();
+  });
+  it("preserves unsaved spec when updating identity", async () => {
+    const { repository } = setup();
+    fireEvent.change(await screen.findByRole("textbox", { name: "描述" }), { target: { value: "保留未保存描述" } });
+    await userEvent.click(screen.getByRole("button", { name: "集成" }));
+    await userEvent.click(screen.getByRole("button", { name: "编辑技能标识" }));
+    fireEvent.change(screen.getByLabelText("技能标识"), { target: { value: "new-key" } });
+    await userEvent.click(screen.getByRole("button", { name: "保存标识" }));
+    await waitFor(() => expect(repository.updateLogDomain).toHaveBeenCalled());
+    await userEvent.click(screen.getByRole("button", { name: "概览" }));
+    expect(screen.getByRole("textbox", { name: "描述" })).toHaveValue("保留未保存描述");
+  });
   it("keeps workspace identity and draft actions in one stable header", async () => {
     setup();
     const heading = await screen.findByRole("heading", { level: 1, name: "充电诊断" });
@@ -529,10 +567,7 @@ describe("skill workspace", () => {
     expect(repository.saveSkillDraft.mock.calls[0][1].knowledgeEntryIds).toEqual([entries[0].id]);
 
     await userEvent.click(await screen.findByRole("button", { name: "取消链接 热管理知识" }));
-    const confirmation = screen.getByRole("dialog", { name: "取消知识链接？" });
-    expect(save).toBeDisabled();
-    expect(repository.saveSkillDraft).toHaveBeenCalledTimes(2);
-    await userEvent.click(within(confirmation).getByRole("button", { name: "取消链接" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(save).toBeEnabled();
     expect(repository.saveSkillDraft).toHaveBeenCalledTimes(2);
     await userEvent.click(save);
@@ -690,7 +725,7 @@ describe("skill workspace", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "发布" }));
     await waitFor(() => expect(repository.publishSkill).toHaveBeenCalledWith("skill-charging", "saved"));
   });
-  it("blocks saving and section changes for invalid format drafts and explicitly discards the local draft", async () => {
+  it("allows section changes while retaining invalid format drafts and blocking writes", async () => {
     const { repository } = setup({ section: "parsing" });
     await userEvent.click(await screen.findByRole("tab", { name: "基础格式" }));
     fireEvent.change(screen.getByRole("textbox", { name: "时间戳模式" }), { target: { value: "(?=bad)" } });
@@ -698,8 +733,10 @@ describe("skill workspace", () => {
     expect(screen.getByRole("button", { name: "发布" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "试运行" })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "概览" }));
+    expect(screen.queryByRole("textbox", { name: "时间戳模式" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "发布" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "样例与解析" }));
     expect(screen.getByRole("textbox", { name: "时间戳模式" })).toHaveValue("(?=bad)");
-    expect(screen.getByText("请先修正基础格式，再切换分区。")).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "放弃草稿" }));
     await userEvent.click(within(screen.getByRole("dialog", { name: "放弃草稿？" })).getByRole("button", { name: "放弃草稿" }));
     await userEvent.click(screen.getByRole("tab", { name: "基础格式" }));
@@ -865,21 +902,23 @@ describe("skill workspace", () => {
     await waitFor(() => expect(repository.restoreSkillRevision).toHaveBeenCalledWith("skill-charging", "old"));
     expect(onPublished).toHaveBeenCalledWith("已发布 v3");
   });
-  it("explains a server-side draft-exists restore refusal", async () => {
+  it("reports a server-side restore failure", async () => {
     const { repository } = setup({ section: "versions" });
-    repository.restoreSkillRevision.mockRejectedValueOnce(new WiseEffApiError("LOG_SKILL_DRAFT_EXISTS", "draft exists", {}, "req"));
+    repository.restoreSkillRevision.mockRejectedValueOnce(new Error("restore failed"));
     await userEvent.click(await screen.findByRole("button", { name: "回滚到此版本" }));
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认" }));
     const error = await screen.findByRole("alert");
-    expect(error).toHaveTextContent("请先发布或放弃现有草稿");
+    expect(error).toHaveTextContent("操作失败，请重试。");
     expect(error).toHaveClass("status-banner");
     expect(error).toHaveAttribute("data-tone", "danger");
   });
-  it("blocks rollback locally when a draft exists", async () => {
+  it("confirms replacement and rolls back directly when a draft exists", async () => {
     const { repository } = setup({ section: "versions", draft: true });
     await userEvent.click(await screen.findByRole("button", { name: "回滚到此版本" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("请先发布或放弃现有草稿");
+    expect(screen.getByRole("dialog")).toHaveTextContent("回滚将替换当前未发布的草稿");
     expect(repository.restoreSkillRevision).not.toHaveBeenCalled();
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认" }));
+    await waitFor(() => expect(repository.restoreSkillRevision).toHaveBeenCalledWith("skill-charging", "old"));
   });
   it("enables every section and switches freely without dropping local edits", async () => {
     const { onNavigate } = setup();

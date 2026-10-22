@@ -36,6 +36,17 @@ function setup(options: { items?: SourceSnapshot[]; canEdit?: boolean; apiMode?:
 }
 
 describe("source snapshots section", () => {
+  it("clears the default only in the unsaved spec", async () => {
+    const skill = mockSkillWorkspace("skill-charging")!;
+    const spec = { ...skill.currentRevision.spec, defaultSourceSnapshotId: snapshot.id };
+    const setSpec = vi.fn();
+    const repository = { listSourceSnapshots: vi.fn().mockResolvedValue([snapshot]) };
+    render(<SourceSnapshots skill={skill} spec={spec} setSpec={setSpec} repository={repository} apiMode canEdit disabled={false} dirty
+      onSkillUpdated={vi.fn()} onBusyChange={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "不使用默认快照" }));
+    expect(setSpec).toHaveBeenCalledWith(skill.currentRevision.spec);
+    expect(spec.defaultSourceSnapshotId).toBe(snapshot.id);
+  });
   it("restores archived snapshots and links to the actual occupant when its matching version label conflicts", async () => {
     const { repository, onSkillUpdated } = setup({ items: [{ ...snapshot, status: "archived" }, { ...snapshot, id: "occupant", status: "ready" }] });
     repository.restoreSourceSnapshot.mockRejectedValueOnce(new WiseEffApiError("CONFLICT", "该版本标签已被其他快照占用，请先处理占用项。", {

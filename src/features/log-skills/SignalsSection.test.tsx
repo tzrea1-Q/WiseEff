@@ -29,6 +29,22 @@ async function choose(label: string, option: string) {
   await userEvent.click(await screen.findByRole("option", { name: option }));
 }
 describe("signal authoring", () => {
+  it("creates both token conditions from the type selector and removes a condition immediately", async () => {
+    const { onChange } = setup();
+    await userEvent.click(screen.getByRole("button", { name: "展开规则 1" }));
+    await choose("规则 1 条件 1类型", "数值比较");
+    fireEvent.change(screen.getByRole("textbox", { name: "规则 1 条件 1左侧 token" }), { target: { value: "current" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "规则 1 条件 1右侧 token" }), { target: { value: "target" } });
+    await choose("规则 1 条件 1比较方式", "大于或等于");
+    expect(onChange.mock.lastCall![0].signalRules.rules[0].anyOf[0]).toEqual({ type: "numericComparison", leftTokens: ["current"], operator: "gte", rightTokens: ["target"] });
+    await choose("规则 1 条件 1类型", "级别与关键字");
+    await choose("规则 1 条件 1日志级别", "警告");
+    fireEvent.change(screen.getByRole("textbox", { name: "规则 1 条件 1token" }), { target: { value: "fault" } });
+    expect(onChange.mock.lastCall![0].signalRules.rules[0].anyOf[0]).toEqual({ type: "severityToken", severity: "warn", token: "fault" });
+    await userEvent.click(screen.getByRole("button", { name: "删除规则 1 条件 1" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(onChange.mock.lastCall![0].signalRules.rules[0].anyOf).toHaveLength(1);
+  });
   it("compacts text alternatives under one label and keeps the complete summary as its title", () => {
     const spec = structuredClone(initial);
     spec.signalRules!.rules[0] = { ...spec.signalRules!.rules[0], name: "热降额", severity: "Critical", anyOf: [
@@ -46,12 +62,14 @@ describe("signal authoring", () => {
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expect(screen.getByTitle(/当 消息匹配 timeout \/ 日志级别为 错误 且包含 code 时，产生 规则 1/)).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "展开规则 1" }));
-    expect(screen.getByText("日志级别为 错误 且包含 code")).toBeVisible();
-    expect(screen.getByText("仅可在代码视图编辑")).toBeVisible();
+    expect(screen.queryByText("仅可在代码视图编辑")).not.toBeInTheDocument();
+    const token = screen.getByRole("textbox", { name: "规则 1 条件 2token" });
+    expect(token).toHaveValue("code");
+    fireEvent.change(token, { target: { value: "fault" } });
     expect(screen.getByRole("textbox", { name: "规则 1名称" })).toHaveValue("规则 1");
     expect(screen.queryByText("legacy")).not.toBeInTheDocument();
     expect(screen.queryByText(/兼容条件：/)).not.toBeInTheDocument();
-    expect(onChange).not.toHaveBeenCalled();
+    expect(onChange.mock.lastCall![0].signalRules.rules[0].anyOf[1]).toEqual({ type: "severityToken", severity: "error", token: "fault" });
   });
   it("keeps text being typed into a scalar value without inserting JSON quotes", async () => {
     const spec = structuredClone(initial);
@@ -70,9 +88,11 @@ describe("signal authoring", () => {
     spec.signalRules!.rules[0].anyOf = [{ type: "numericComparison", leftTokens: ["current", "current_ma"], operator: "lt", rightTokens: ["requested_ma"] }];
     const { onChange } = setup(spec);
     await userEvent.click(screen.getByRole("button", { name: "展开规则 1" }));
-    expect(screen.getByText("current / current_ma 小于 requested_ma")).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "规则 1 条件 1左侧 token" })).toHaveValue("current,current_ma");
     fireEvent.change(screen.getByRole("textbox", { name: "规则 1名称" }), { target: { value: "电流不足" } });
     expect(onChange.mock.lastCall![0].signalRules.rules[0]).toEqual({ ...spec.signalRules!.rules[0], name: "电流不足" });
+    fireEvent.change(screen.getByRole("textbox", { name: "规则 1 条件 1右侧 token" }), { target: { value: "target,requested" } });
+    expect(onChange.mock.lastCall![0].signalRules.rules[0].anyOf[0].rightTokens).toEqual(["target", "requested"]);
   });
   it("preserves readable set input while typing", async () => {
     const spec = structuredClone(initial);

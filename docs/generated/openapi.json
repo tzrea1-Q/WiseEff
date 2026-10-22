@@ -50915,7 +50915,10 @@
                     "hex",
                     "float",
                     "string",
-                    "quoted"
+                    "quoted",
+                    "bytes",
+                    "hexbytes",
+                    "base64bytes"
                   ]
                 }
               },

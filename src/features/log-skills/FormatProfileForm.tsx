@@ -1,6 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { DataTable } from "@/components/admin/DataTable";
-import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { SelectControl } from "@/components/common/SelectControl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +23,6 @@ export function FormatProfileForm({ skillId, profile, onChange, disabled = false
   const [preview, setPreview] = useState<FormatPreview | null>(null);
   const [previewError, setPreviewError] = useState("");
   const [pending, setPending] = useState(false);
-  const [deletePattern, setDeletePattern] = useState<{ level: typeof levels[number]; index: number } | null>(null);
   const emitted = useRef(formatProfileCode(profile));
   const parsed = parseFormatProfileCode(code);
   const valid = !parsed.error;
@@ -80,7 +78,7 @@ export function FormatProfileForm({ skillId, profile, onChange, disabled = false
         {levels.map((level) => <div className="skill-format-level" key={level}><strong>{levelNames[level]}</strong>
           {(formProfile.severityMap?.[level] ?? []).map((pattern, index) => <div className="skill-format-row" key={index}><Input aria-label={`${level} 模式 ${index + 1}`} value={pattern} aria-invalid={!valid} disabled={disabled} onChange={(event) => {
             const patterns = [...(formProfile.severityMap?.[level] ?? [])]; patterns[index] = event.target.value; update({ ...formProfile, severityMap: { ...formProfile.severityMap, [level]: patterns } });
-          }} /><Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => setDeletePattern({ level, index })} aria-label={`删除 ${level} 模式 ${index + 1}`}>删除</Button></div>)}
+          }} /><Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => update({ ...formProfile, severityMap: { ...formProfile.severityMap, [level]: formProfile.severityMap?.[level]?.filter((_, at) => at !== index) } })} aria-label={`删除 ${level} 模式 ${index + 1}`}>删除</Button></div>)}
           <Button type="button" variant="outline" size="sm" disabled={disabled || (formProfile.severityMap?.[level]?.length ?? 0) >= 32} onClick={() => update({ ...formProfile, severityMap: { ...formProfile.severityMap, [level]: [...(formProfile.severityMap?.[level] ?? []), ""] } })}>添加{levelNames[level]}模式</Button>
         </div>)}
       </fieldset>
@@ -102,13 +100,5 @@ export function FormatProfileForm({ skillId, profile, onChange, disabled = false
       {preview.entries.length ? <DataTable fluid ariaLabel="基础格式条目分组" rows={preview.entries} rowKey={(entry) => entry.lineNumbers.join(",")} columns={[
         { key: "lines", header: "原始行", render: (entry) => entry.lineNumbers.join(", ") }, { key: "text", header: "合并后的条目", render: (entry) => <pre>{entry.text}</pre> }
       ]} /> : <p>暂无合并条目。</p>}</> : null}
-    <ConfirmDialog open={deletePattern !== null} title="删除级别模式" description="删除后，该模式将不再用于识别日志级别；保存草稿后生效。" tone="danger" confirmLabel="删除模式"
-      onCancel={() => setDeletePattern(null)} onConfirm={() => {
-        if (deletePattern) {
-          const patterns = (formProfile.severityMap?.[deletePattern.level] ?? []).filter((_, index) => index !== deletePattern.index);
-          update({ ...formProfile, severityMap: { ...formProfile.severityMap, [deletePattern.level]: patterns } });
-        }
-        setDeletePattern(null);
-      }} />
   </section>;
 }

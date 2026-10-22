@@ -27,6 +27,14 @@ function setup(overrides: Partial<SectionProps> = {}) {
 }
 
 describe("skill integration", () => {
+  it("edits the identity with unsaved skill changes", async () => {
+    const { repository } = setup({ dirty: true });
+    await userEvent.click(screen.getByRole("button", { name: "编辑技能标识" }));
+    fireEvent.change(screen.getByLabelText("技能标识"), { target: { value: "new-key" } });
+    await userEvent.click(screen.getByRole("button", { name: "保存标识" }));
+    expect(repository.updateLogDomain).toHaveBeenCalledWith({ domainId: "skill-charging", skillKey: "new-key" });
+    expect(screen.getByLabelText("技能标识")).toHaveValue("new-key");
+  });
   it("copies the key, endpoint, and both runnable examples with a token placeholder", async () => {
     const user = userEvent.setup();
     vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "");
