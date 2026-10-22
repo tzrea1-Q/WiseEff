@@ -1,3 +1,4 @@
+import { knowledgeEntryHref } from "@/domain/knowledge/citations";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DatabaseZap, ExternalLink, RefreshCw } from "lucide-react";
 
@@ -368,7 +369,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
             table={{ "aria-label": "Agent 知识草稿队列", rows: agentDrafts, rowKey: (entry) => entry.id, columns: agentDraftColumns, pageSize: 10 }}
             rowActions={(entry) => ({
               label: entry.title,
-              primaryAction: { id: "review", label: "审阅", onSelect: () => onNavigate?.(`/knowledge?entryId=${encodeURIComponent(entry.id)}`) },
+              primaryAction: { id: "review", label: "审阅", onSelect: () => onNavigate?.(knowledgeEntryHref({ entryId: entry.id })) },
               items: [
                 { id: "publish", label: "发布", disabled: !canGovernEntry(entry, capability) || agentActionPendingId !== null, onSelect: () => publishAgentDraft(entry) },
                 { id: "reject", label: "拒绝归档", disabled: !canGovernEntry(entry, capability) || agentActionPendingId !== null, destructive: true,

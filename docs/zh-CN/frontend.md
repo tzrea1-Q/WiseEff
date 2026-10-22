@@ -302,7 +302,7 @@ API 模式的参数指标读取 canonical Binding、值、草稿、请求和历�
 
 知识库：
 
-- `/knowledge`（侧栏分组「知识库」）：条目列表用共享 `ColumnFilter` 做状态/标签列筛选;检索框只命中 `published` 条目,结果如实标注检索模式（语义 + 全文 vs 仅全文）;分栏编辑/预览的 Markdown 编辑器（`src/domain/knowledge/markdown.ts` 先转义再渲染）;文件条目上传后展示提取状态徽章;修订历史支持「恢复为新修订」。API 模式额外提供「问知识库(小泽)」入口,派发小泽打开 handoff——mock 模式无 Agent UI,入口隐藏。`?entryId=…` 深链（小泽引用使用）直接打开条目详情。
+- `/knowledge`（侧栏分组「知识库」）：条目列表用共享 `ColumnFilter` 做状态/标签列筛选;检索框只命中 `published` 条目,结果如实标注检索模式（语义 + 全文 vs 仅全文）;分栏编辑/预览的 Markdown 编辑器（`src/domain/knowledge/markdown.ts` 先转义再渲染）;文件条目上传后展示提取状态徽章;修订历史支持「恢复为新修订」。API 模式额外提供「问知识库(小泽)」入口,派发小泽打开 handoff——mock 模式无 Agent UI,入口隐藏。`?entryId=…` 深链直接打开条目详情，可选 `revisionId` 和正整数物理页码 `page` 由 `parseKnowledgeEntryQuery` 解析；所有调用方使用 `src/domain/knowledge/citations.ts` 的 `knowledgeEntryHref` 构建链接。PDF 引用展示「引用位置：第 N 页」和「打开第 N 页」；操作获取对应修订的文件，以带 `#page=N` 的指定 MIME 类型 blob URL 在新标签页打开。历史修订展示「引用的是历史修订」。无 PDF 页码的检索结果保留仅含条目 ID 的链接，不加载修订。单页、页码范围和已记录页码列表共用 `formatKnowledgePageLabel`。
 - `/knowledge-admin`：Agent 草稿发布队列（Phase 3）——`list({ status: "draft", sourceType: "agent" })` 行含创建人、会话来源、来源深链（日志来源为 `/logs?logId=…`,重载来源为 `/dts-reload?runId=…`）与创建时间;逐行审阅（`/knowledge?entryId=…`）、发布、以及 `ConfirmDialog` 确认后的拒绝归档（`rejectAgentDraft`）;另有已归档条目恢复、manage 门控的彻底删除（带确认勾选的 `ConfirmDialog`）,以及检索索引健康区——诚实的检索模式横幅（pgvector/嵌入可用性）、逐条目索引状态与失败原因、单条重试与全量重建。条目详情对话框展示同样的来源链接。
 - 沉淀为知识（Phase 3）:日志分析结果页（`src/features/log-analysis/LogsPage.tsx`）在分析完成且用户持有 `knowledge:edit` 时显示「沉淀为知识」;点击调用 `KnowledgeRepository.distillFromLog(logId)`,随后经 `/knowledge?entryId=…` 深链交接到草稿详情审阅并发布。mock 模式用 `src/domain/knowledge/distill.ts` 从原型日志记录构建同样的预填草稿（端口形状一致）;服务端预填只耦合已存储的分析记录 DTO。
 - 重载运行沉淀为知识（延后路线图第 3 项）:`/dts-reload` 运行结果区仅在**终态**运行（已验证 / 不可验证 / 矛盾 / 失败）且用户持有 `knowledge:edit` 时显示「沉淀为知识」;点击调用 `KnowledgeRepository.distillFromReloadRun(runId)`,经 `/knowledge?entryId=…` 深链交接到草稿详情。`/dts-reload?runId=…` 深链打开历史运行详情,知识条目的来源链接由此回指证据。mock 模式用 `src/domain/knowledge/distillReload.ts` 从运行时共享的 mock `DtsReloadRepository` 实例构建同样的预填草稿;两侧预填都只耦合已存储的运行/快照 DTO,并诚实陈述结局。
@@ -311,7 +311,7 @@ API 模式的参数指标读取 canonical Binding、值、草稿、请求和历�
 - 参数定义引用：条目编辑器通过受保护的 Catalog `listDefinitions` 分页检索，后续页带发布 pin；`parameter.view` 仅控制界面显示，服务端仍独立鉴权。添加/移除即时调用 `KnowledgeRepository.addDefinitionReference` / `removeDefinitionReference`，独立于正文保存并写审计。条目 chip 区分 canonical `definitionId` 与历史 `legacy-spec`；仅可见的 canonical 定义深链到 `/parameter-admin/specs?definitionId=…`，不可用定义和未映射旧引用明确标示且不伪造跳转。canonical 定义编辑器在具备 `knowledge:view` 时调用 `relatedToDefinition(definitionId)` 显示已发布知识；历史 Spec 详情继续使用独立的 `relatedToSpec` 读取。
 - 端口 `KnowledgeRepository`：mock 用 `src/infrastructure/mock/mockKnowledgeRepository.ts`；API 用 `src/infrastructure/http/knowledgeClient.ts` 对接 `/api/v1/knowledge/*`，包括 canonical 的 `related-to-definition` 和 `entries/:id/definition-references/:definitionId`。旧 `related-to-spec` 与 `parameter-references/:specId` 仅服务历史读取、删除及已存在键回放。过期正文保存仍映射为 `KnowledgeRevisionConflictError`，绝不静默覆盖。
 - 能力接线:`App.tsx` 由 `/api/v1/me` 权限（API mode 的 `knowledge:view` / `knowledge:edit` / `knowledge:manage`）或角色检查（mock mode,`canView` 在 mock 下为成员默认）构造 `KnowledgeCapability`（`userId`、`canView`、`canEdit`、`canManage`）;UI 门控仅是 UX,后端路由才是安全边界。纯生命周期/可见性规则在 `src/domain/knowledge/rules.ts`。
-- 小泽回答在助手 markdown 下渲染引用来源（`src/features/agent/XiaozeCitationSources.tsx`）：turn-reply 自定义事件与持久化线程消息携带 `citations`,知识引用深链到 `/knowledge?entryId=…`。
+- 小泽回答在助手 markdown 下渲染引用来源（`src/features/agent/XiaozeCitationSources.tsx`）：turn-reply 自定义事件与持久化线程消息携带 `citations`,知识引用深链到 `/knowledge?entryId=…`，PDF 分块增加 `revisionId` 和 `page`，在已记录修订的物理页打开。新日志报告同样将已记录 PDF 页码链接到对应修订；旧报告的来源记录保持原样。
 
 设备调试：
 

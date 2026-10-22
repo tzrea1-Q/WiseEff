@@ -1,3 +1,4 @@
+import { knowledgeEntryHref } from "@/domain/knowledge/citations";
 import { useEffect, useState } from "react";
 import { BookOpen } from "lucide-react";
 
@@ -72,7 +73,7 @@ export function RelatedKnowledgeSection({
               <button
                 className="logs-related-knowledge__entry"
                 type="button"
-                onClick={() => onNavigate(`/knowledge?entryId=${encodeURIComponent(item.entryId)}`)}
+                onClick={() => onNavigate(knowledgeEntryHref({ entryId: item.entryId }))}
               >
                 <BookOpen size={14} aria-hidden />
                 <span>{item.title}</span>

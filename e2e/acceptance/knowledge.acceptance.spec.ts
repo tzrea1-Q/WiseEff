@@ -787,6 +787,7 @@ test.describe("Knowledge base browser acceptance", () => {
     // @operation KB-FILE-001
     const title = `${titlePrefix} 文件条目 ${runStamp}`;
     const extractedKeyword = "WiseEff knowledge pdf fixture";
+    await page.setViewportSize({ width: 1440, height: 900 });
 
     await openKnowledgePage(page);
 
@@ -831,6 +832,34 @@ test.describe("Knowledge base browser acceptance", () => {
     expect(searchResponse.ok()).toBe(true);
     const searchBody = (await searchResponse.json()) as { items: KnowledgeSearchApiItem[] };
     expect(searchBody.items.map((item) => item.entryId)).toContain(entry!.id);
+
+    // Search → revision-pinned detail → browser PDF viewer at its physical page.
+    await waitForIndexStatus(page, entry!.id, (item) => item.status === "succeeded");
+    await page.getByRole("searchbox", { name: "检索知识库" }).fill(title);
+    await page.getByRole("button", { name: "检索", exact: true }).click();
+    const citationLink = page.getByLabel("检索结果").getByRole("link", { name: new RegExp(title) });
+    await expect(citationLink).toContainText("第 1 页");
+    const citationHref = await citationLink.getAttribute("href");
+    const citationUrl = new URL(citationHref!, "http://localhost");
+    const revisionId = citationUrl.searchParams.get("revisionId");
+    expect(revisionId).toBeTruthy();
+    expect(citationUrl.searchParams.get("page")).toBe("1");
+    await citationLink.click();
+    await expect(detail.getByText("引用位置：第 1 页")).toBeVisible();
+    const fileRead = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/knowledge/entries/${entry!.id}/file/content`);
+    const popupPromise = page.waitForEvent("popup");
+    // Headless Chromium has no PDF viewer, so the popup's navigation to the cited page surfaces as a download.
+    const pageNavigation = popupPromise.then((popup) => popup.waitForEvent("download"));
+    await detail.getByRole("button", { name: "打开第 1 页" }).click();
+    const popup = await popupPromise;
+    const fileResponse = await fileRead;
+    expect(new URL(fileResponse.url()).searchParams.get("revisionId")).toBe(revisionId);
+    expect(fileResponse.headers()["content-disposition"]).toContain("attachment");
+    const pdfUrl = (await pageNavigation).url();
+    expect(pdfUrl).toMatch(/^blob:.*#page=1$/);
+    expect(await page.evaluate(async (url) => (await (await fetch(url)).blob()).type, pdfUrl)).toBe("application/pdf");
+    await testInfo.attach("pdf-page-citation-1440x900", { body: await page.screenshot(), contentType: "image/png" });
+    await popup.close();
 
     const dbSummary = await knowledgeEntryDbSummary(entry!.id);
     expect(dbSummary.observed).toContain("extraction=succeeded");

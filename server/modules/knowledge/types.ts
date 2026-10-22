@@ -106,13 +106,16 @@ export type KnowledgeRevisionDto = {
 };
 
 export type KnowledgeSearchResultDto = {
+  /** 1-based physical PDF pages of the excerpt's chunk; absent for other formats/legacy indexes. */
+  pageStart?: number | null;
+  pageEnd?: number | null;
   entryId: string;
   title: string;
   contentForm: KnowledgeContentForm;
   tags: string[];
   excerpt: string;
   updatedAt: string;
-  /** Head revision at match time — citation-ready deep-link identity. */
+  /** Revision of the matched excerpt. */
   revisionId: string | null;
 };
 

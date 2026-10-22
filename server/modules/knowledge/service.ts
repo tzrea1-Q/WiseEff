@@ -53,6 +53,7 @@ import {
   deleteEntry,
   getEntryById,
   getEntryForUpdate,
+  getFileById,
   getRevisionById,
   insertEntry,
   insertFile,
@@ -178,6 +179,7 @@ async function runFileExtraction(
       fileId: input.file.id,
       extractionStatus: outcome.status,
       extractedText: outcome.status === "succeeded" ? outcome.text : null,
+      pageOffsets: outcome.status === "succeeded" && input.file.contentType === "application/pdf" ? outcome.pageOffsets ?? null : null,
       extractionError: outcome.status === "failed" ? outcome.reason : null
     });
 
@@ -1365,16 +1367,23 @@ export async function getKnowledgeFileContent(
   db: Queryable,
   objectStore: ObjectStore,
   auth: AuthContext,
-  entryId: string
+  entryId: string,
+  revisionId?: string
 ): Promise<{ file: KnowledgeFileDto; bytes: Buffer }> {
   const entry = await getKnowledgeEntry(db, auth, entryId);
-  if (entry.contentForm !== "file" || !entry.file) {
+  // Same current-entry authorization as listKnowledgeRevisions; never bypass it for a pinned file.
+  const revision = revisionId ? await getRevisionById(db, auth, entryId, revisionId) : null;
+  if (revisionId && !revision) {
+    throw new ApiError("NOT_FOUND", "Knowledge revision was not found.", { entryId, revisionId });
+  }
+  const file = revision ? (revision.fileId ? await getFileById(db, auth, revision.fileId) : null) : entry.file;
+  if (entry.contentForm !== "file" || !file) {
     throw new ApiError("VALIDATION_FAILED", "Knowledge entry has no file content.", { entryId });
   }
 
   return {
-    file: entry.file,
-    bytes: await objectStore.get(entry.file.storageKey)
+    file,
+    bytes: await objectStore.get(file.storageKey)
   };
 }
 

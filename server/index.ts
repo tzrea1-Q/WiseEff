@@ -11,6 +11,7 @@ import { createBridgeConnectionPool } from "./modules/deviceBridge/connectionPoo
 import { createBridgeRpcClient } from "./modules/deviceBridge/rpc";
 import { resolveKnowledgeEmbeddingClient } from "./modules/knowledge/indexing/embeddingClient";
 import { ensureKnowledgeVectorColumn } from "./modules/knowledge/indexing/vectorEnsure";
+import { ensureKnowledgePdfPages } from "./modules/knowledge/pdfPageBackfill";
 import { startKnowledgeIndexWorkerLoop } from "./modules/knowledge/indexing/worker";
 import { startSourceIndexWorkerLoop } from "./modules/logs/sourceIndexWorker";
 import { createLogAnalyzerFromEnv } from "./modules/logs/analyzer/analyzerFromEnv";
@@ -279,6 +280,15 @@ async function start() {
 
   server.listen(env.PORT, env.HOST, () => {
     console.log(`WiseEff API listening on http://${env.HOST}:${env.PORT}`);
+    // Like vector ensure above, this runs on every start. PDF I/O and parsing
+    // run in the background after listen so upgrades do not delay readiness.
+    if (db && objectStore) {
+      void ensureKnowledgePdfPages(db, objectStore)
+        .then((result) => {
+          if (result.updated || result.failed) console.log("[knowledge-pdf-pages] ensure completed:", result);
+        })
+        .catch((error) => console.error("[knowledge-pdf-pages] ensure failed; existing indexes retained:", error));
+    }
   });
 }
 
