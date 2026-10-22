@@ -33,6 +33,8 @@ export type LogRecordDto = {
   signalSummary?: LogRecord["signalSummary"];
   files?: import("@/domain/logs/types").LogFile[];
   skillRevision?: { id: string; number: number } | null;
+  skillNameSnapshot?: string;
+  skillRevisionNumberSnapshot?: number;
   id: string;
   reportId: string;
   fileName: string;
@@ -120,6 +122,8 @@ export function logRecordFromDto(dto: LogRecordDto): LogRecord {
     id: dto.id,
     reportId: dto.reportId,
     skillRevision: dto.skillRevision ?? null,
+    skillNameSnapshot: dto.skillNameSnapshot,
+    skillRevisionNumberSnapshot: dto.skillRevisionNumberSnapshot,
     knowledgeRevisions: dto.knowledgeRevisions ?? [],
     fileName: dto.fileName,
     files: dto.files,
