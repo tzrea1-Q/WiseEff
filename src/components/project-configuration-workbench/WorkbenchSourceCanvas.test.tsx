@@ -157,6 +157,11 @@ describe("source canvas empty states", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("源码读取失败");
     expect(screen.queryByText("选择要对比的版本")).not.toBeInTheDocument();
   });
+  it("hides raw internal failures in historical source reads", () => {
+    renderCanvas({ canvasMode: "history", modeSourceError: "Internal server error." });
+    expect(screen.getByRole("alert")).toHaveTextContent("源码加载失败。");
+    expect(screen.queryByText("Internal server error.")).not.toBeInTheDocument();
+  });
   it.each(["unified-diff", "history"] as const)("retries the actual working-source failure in %s", (canvasMode) => {
     const props = renderCanvas({ canvasMode, sourceError: "工作源码暂不可用" });
     fireEvent.click(screen.getByRole("button", { name: "重试源码" }));

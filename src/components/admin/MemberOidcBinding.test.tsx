@@ -13,6 +13,7 @@ it("edits an existing member's explicit identity with its previous binding, reta
   render(<MemberDetailsDialog user={user} state={state} actions={{ ...createTestUserGovernanceActions(), setOidcIdentity }} oidcIssuer="https://identity.example"
     roleEditor={<span>组织角色</span>} roleLabel={(role) => role} onUpdated={onUpdated} onClose={vi.fn()} />);
   const form = screen.getByRole("form", { name: "OIDC 身份绑定" });
+  expect(within(form).queryByRole("textbox", { name: /邮箱/ })).not.toBeInTheDocument();
   fireEvent.change(within(form).getByLabelText("Subject"), { target: { value: "updated-subject" } });
   await userEvent.click(within(form).getByRole("button", { name: "保存" }));
   expect(await within(form).findByRole("alert")).toHaveTextContent("绑定发生冲突");

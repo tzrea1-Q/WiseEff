@@ -666,9 +666,7 @@ export function createDtsToolchainRunner(deps: CreateDtsToolchainRunnerDeps = {}
             severity: mode === "release" ? "error" : "warning",
             code: "toolchain-unavailable",
             stage: "toolchain",
-            message:
-              "DTS toolchain incomplete (need dtc, fdtoverlay, and dt-validate). " +
-              `Pinned: dtc ${pinned.dtc.version} @ ${pinned.dtc.commit}, dtschema ${pinned.dtschema}.`
+            message: "DTS 校验工具不可用，请联系管理员。"
           }
         ];
         if (mode === "release") {
@@ -934,7 +932,7 @@ export function createDtsToolchainRunner(deps: CreateDtsToolchainRunnerDeps = {}
             severity: "error",
             code: "toolchain-unavailable",
             stage: "dt-validate",
-            message: schema.spawnError.message
+            message: "DTS 校验工具不可用，请联系管理员。"
           });
           const result = failed(mode, "toolchain-unavailable", versions, diagnostics, artifacts);
           return mode === "warn" ? { ...result, ok: true } : result;

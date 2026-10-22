@@ -1097,7 +1097,7 @@ describe("ProjectConfigurationWorkbench", () => {
     const summary = await screen.findByRole("status", { name: "配置版本状态" });
     fireEvent.click(within(summary).getByRole("button"));
     const issues = await screen.findByRole("region", { name: "版本检查问题" });
-    fireEvent.click(within(issues).getByRole("button", { name: /Review pending requests/ }));
+    fireEvent.click(within(issues).getByRole("button", { name: /前往变更审核/ }));
     expect(onNavigate).toHaveBeenLastCalledWith(href);
   });
 
@@ -1212,7 +1212,7 @@ describe("ProjectConfigurationWorkbench", () => {
       });
     renderWorkbench({ fileRepository: createFileRepository({ downloadVersion }) });
 
-    expect(await screen.findByText("source unavailable")).toBeInTheDocument();
+    expect(await screen.findByText("源码加载失败。")).toBeInTheDocument();
     expect(screen.getByRole("treeitem", { name: /aurora-board\.dts/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重试源码" }));
 
@@ -1231,7 +1231,7 @@ describe("ProjectConfigurationWorkbench", () => {
     const getStructure = vi.fn(async () => BOARD_STRUCTURE);
     const { onNavigate } = renderWorkbench({ search: `?configSet=cs-default&file=file-board&sourceMode=${mode}&version=version-board-11`,
       dtsRepository: createDtsRepository({ getStructure }), fileRepository: createFileRepository({ downloadVersion }) });
-    expect(await screen.findByText("historical source unavailable")).toBeInTheDocument();
+    expect(await screen.findByText("历史源码加载失败。")).toBeInTheDocument();
     const historyDownloads = downloadVersion.mock.calls.filter(([, , version]) => version === "version-board-11").length;
     const workingDownloads = downloadVersion.mock.calls.filter(([, , version]) => version === "version-board-12").length;
     const structureLoads = getStructure.mock.calls.length;
@@ -1241,7 +1241,7 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(downloadVersion.mock.calls.filter(([, , version]) => version === "version-board-11")).toHaveLength(historyDownloads + 1);
     expect(downloadVersion.mock.calls.filter(([, , version]) => version === "version-board-12")).toHaveLength(workingDownloads + (mode === "history" ? 0 : 1));
     expect(getStructure).toHaveBeenCalledTimes(structureLoads);
-    expect(screen.queryByText("historical source unavailable")).not.toBeInTheDocument();
+    expect(screen.queryByText("历史源码加载失败。")).not.toBeInTheDocument();
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
@@ -1947,7 +1947,7 @@ describe("ProjectConfigurationWorkbench", () => {
         ]
       });
     renderWorkbench({ dtsRepository: createDtsRepository({ getStructure }) });
-    expect(await screen.findByText("structure unavailable")).toBeInTheDocument();
+    expect(await screen.findByText("结构树加载失败。")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重试结构树" }));
     expect(await screen.findByRole("treeitem", { name: "节点 board" })).toBeInTheDocument();

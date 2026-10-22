@@ -44,9 +44,22 @@ describe("presentError", () => {
     expect(presentError(err, FALLBACK)).toBe("基线名称不能为空。");
   });
 
-  it("uses the caller fallback for unmapped codes and messages", () => {
+  it("preserves Chinese messages for codes outside the shared code labels", () => {
+    const message = "技能草稿已被其他人修改，请刷新后重试。";
+    expect(presentError(new WiseEffApiError("LOG_SKILL_DRAFT_CONFLICT", message, {}, "req-draft"), FALLBACK)).toBe(message);
+    expect(presentError(new WiseEffApiError("UNSUPPORTED_FORMAT", "Unsupported log format.", {}, "req-format"), FALLBACK)).toBe("暂不支持该日志格式，请上传 .log / .txt / .csv / .json 文本日志。");
+    expect(presentError(new WiseEffApiError("UNKNOWN", "Unmapped error.", {}, "req-unknown"), FALLBACK)).toBe(FALLBACK);
+  });
+
+  it("hides internal errors and server paths behind the caller's context", () => {
     const err = new WiseEffApiError("INTERNAL_ERROR", "Request failed.", {}, "req-4");
     expect(presentError(err, FALLBACK)).toBe(FALLBACK);
+    expect(presentError(new WiseEffApiError("INTERNAL_ERROR", "删除暂不可用", {}, "req-5"), FALLBACK)).toBe("删除暂不可用");
+    expect(presentError(new WiseEffApiError("UNKNOWN", "/private/server/tool", {}, ""), FALLBACK)).toBe("服务暂时不可用，请稍后重试。");
+    expect(presentError(new WiseEffApiError("CONFLICT", "/private/server/tool", { failureCode: "toolchain-unavailable" }, "req-tool"), FALLBACK)).toBe("DTS 校验工具不可用，请联系管理员。");
+    expect(presentErrorMessage("Internal server error.", FALLBACK)).toBe(FALLBACK);
+    expect(presentErrorMessage("无法读取 /private/server/tool", FALLBACK)).toBe(FALLBACK);
+    expect(presentErrorMessage("Internal server error.", "")).toBe("服务暂时不可用，请稍后重试。");
   });
 
   it("never leaks raw English messages from plain errors", () => {

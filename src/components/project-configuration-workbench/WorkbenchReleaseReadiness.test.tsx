@@ -122,9 +122,9 @@ describe("WorkbenchReleaseReadiness", () => {
               id: "w1",
               severity: "warning",
               code: "toolchain-warning",
-              message: "dtc advisory",
+              message: "请核对 DTS 校验警告。",
               acknowledgementRequired: true,
-              remediation: { kind: "acknowledge-warning", label: "Acknowledge" },
+              remediation: { kind: "acknowledge-warning", label: "确认警告" },
               target: { fileId: "file-1", nodePath: "/board", propertyName: "model" }
             }
           ]
@@ -135,10 +135,19 @@ describe("WorkbenchReleaseReadiness", () => {
         onRetry={vi.fn()}
       />
     );
-    fireEvent.click(screen.getByRole("button", { name: /dtc advisory/ }));
+    fireEvent.click(screen.getByRole("button", { name: /请核对 DTS 校验警告/ }));
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "w1" }));
-    fireEvent.click(screen.getByLabelText("确认警告 dtc advisory"));
+    fireEvent.click(screen.getByLabelText("确认警告 请核对 DTS 校验警告。"));
     expect(onAck).toHaveBeenCalledWith("w1");
+  });
+
+  it("presents an English toolchain remediation in product language", () => {
+    render(<WorkbenchReleaseReadinessIssues readiness={readiness({ blockers: [{ id: "tool", severity: "blocker",
+      code: "hard-validation-error", message: "DTS 校验工具不可用，请联系管理员。",
+      remediation: { kind: "fix-validation", label: "Fix or restore validation toolchain" } }] })}
+      acknowledgedWarningIds={new Set()} onAcknowledgeWarning={vi.fn()} onSelectIssue={vi.fn()} onRetry={vi.fn()} />);
+    expect(screen.getAllByText("DTS 校验工具不可用，请联系管理员。")).toHaveLength(2);
+    expect(screen.queryByText(/Fix or restore/)).not.toBeInTheDocument();
   });
 
   it("shows a warning as text when no location or review destination exists", () => {

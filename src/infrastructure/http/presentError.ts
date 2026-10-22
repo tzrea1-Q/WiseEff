@@ -8,6 +8,8 @@ import { WiseEffApiError } from "./apiClient";
  */
 
 const CJK_PATTERN = /[\u4e00-\u9fff]/;
+export const SERVICE_UNAVAILABLE_MESSAGE = "服务暂时不可用，请稍后重试。";
+export const DTS_TOOLCHAIN_UNAVAILABLE_MESSAGE = "DTS 校验工具不可用，请联系管理员。";
 
 /** Known backend English messages that deserve specific product copy. */
 const MESSAGE_LABELS: Array<{ match: RegExp; label: string | ((match: RegExpMatchArray) => string) }> = [
@@ -123,6 +125,11 @@ export function presentErrorMessage(message: string | null | undefined, fallback
   if (!trimmed) {
     return fallback;
   }
+  if (/toolchain-unavailable|DTS toolchain incomplete|Fix or restore validation toolchain/i.test(trimmed)) {
+    return DTS_TOOLCHAIN_UNAVAILABLE_MESSAGE;
+  }
+  if (/^Internal server error\.?$/i.test(trimmed)) return fallback || SERVICE_UNAVAILABLE_MESSAGE;
+  if (/\/(?:Users|home|private|tmp|var|opt|usr|srv|app|workspace)\/|[A-Za-z]:\\/.test(trimmed)) return fallback || SERVICE_UNAVAILABLE_MESSAGE;
   if (CJK_PATTERN.test(trimmed)) {
     return trimmed;
   }
@@ -145,6 +152,12 @@ export function presentError(err: unknown, fallback: string): string {
   }
 
   if (err instanceof WiseEffApiError) {
+    if (err.details.reason === "toolchain-unavailable" || err.details.failureCode === "toolchain-unavailable" || err.details.code === "toolchain-unavailable") {
+      return DTS_TOOLCHAIN_UNAVAILABLE_MESSAGE;
+    }
+    if (err.code === "INTERNAL_ERROR" && !CJK_PATTERN.test(err.message ?? "")) {
+      return fallback || SERVICE_UNAVAILABLE_MESSAGE;
+    }
     if (err.code === "CONFLICT" && err.details.reason === "pinned-source-graph-immutable") {
       return "该配置修订已被规范来源值固定，来源图不可更改。请创建后继修订后再校验。";
     }
