@@ -58,7 +58,7 @@ function knowledgeApi(entry = draft) {
   return { repository, failDelete: () => { deleteStatus = 500; }, allowDelete: () => { deleteStatus = 200; }, removeElsewhere: () => { retained = null; } };
 }
 
-describe("human knowledge draft deletion through the HTTP adapter", () => {
+describe("knowledge deletion through the HTTP adapter", () => {
   it("keeps the independent body visible and replaces a removed log's navigation with its source status", async () => {
     const { repository } = knowledgeApi({ ...draft, sourceLogDeleted: true });
     render(<KnowledgePage repository={repository} capability={manager} />);
@@ -78,16 +78,14 @@ describe("human knowledge draft deletion through the HTTP adapter", () => {
     await user.click(screen.getByRole("menuitem", { name: "彻底删除" }));
     const confirmation = await screen.findByRole("dialog", { name: /彻底删除/ });
     expect(confirmation).toHaveTextContent("全部 2 个修订");
-    expect(confirmation).toHaveTextContent("关联引用");
-    expect(confirmation).toHaveTextContent("存储中的原始文件保留");
+    expect(within(confirmation).queryByRole("checkbox")).not.toBeInTheDocument();
     await user.click(within(confirmation).getByRole("button", { name: "取消" }));
     expect(within(table).getByText(draft.title)).toBeInTheDocument();
 
     await user.click(within(table).getByRole("button", { name: /：更多$/ }));
     await user.click(screen.getByRole("menuitem", { name: "彻底删除" }));
     const confirmed = await screen.findByRole("dialog", { name: /彻底删除/ });
-    expect(within(confirmed).getByRole("button", { name: "彻底删除" })).toBeDisabled();
-    await user.click(within(confirmed).getByRole("checkbox"));
+    expect(within(confirmed).getByRole("button", { name: "彻底删除" })).toBeEnabled();
     await user.click(within(confirmed).getByRole("button", { name: "彻底删除" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(screen.queryByText(draft.title)).not.toBeInTheDocument();
@@ -103,7 +101,6 @@ describe("human knowledge draft deletion through the HTTP adapter", () => {
     const detail = await screen.findByRole("dialog", { name: new RegExp(draft.title) });
     await user.click(within(detail).getByRole("button", { name: "彻底删除" }));
     const confirmation = await screen.findByRole("dialog", { name: /彻底删除/ });
-    await user.click(within(confirmation).getByRole("checkbox"));
     await user.click(within(confirmation).getByRole("button", { name: "彻底删除" }));
     expect(await within(confirmation).findByRole("alert")).toHaveTextContent("删除暂不可用");
     expect(within(detail).getByText("待清理的正文")).toBeInTheDocument();
@@ -112,16 +109,14 @@ describe("human knowledge draft deletion through the HTTP adapter", () => {
     api.allowDelete();
     await user.click(within(detail).getByRole("button", { name: "彻底删除" }));
     const retry = await screen.findByRole("dialog", { name: /彻底删除/ });
-    await user.click(within(retry).getByRole("checkbox"));
     await user.click(within(retry).getByRole("button", { name: "彻底删除" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(screen.queryByText(draft.title)).not.toBeInTheDocument();
   });
 
   it.each([
-    { capability: { ...manager, canManage: false }, entry: draft, scenario: "an editor's human draft" },
-    { capability: manager, entry: { ...draft, sourceType: "agent" as const }, scenario: "an Agent draft" },
-    { capability: manager, entry: { ...draft, status: "published" as const }, scenario: "a published entry" }
+    { capability: { ...manager, canManage: false, userId: draft.createdByUserId! }, entry: draft, scenario: "an editor's own human draft" },
+    { capability: { ...manager, canManage: false, canEdit: false }, entry: { ...draft, status: "published" as const }, scenario: "a viewer's published entry" }
   ])("does not offer direct draft deletion for $scenario", async ({ capability, entry }) => {
     const { repository } = knowledgeApi(entry);
     render(<KnowledgePage repository={repository} capability={capability} />);
@@ -135,6 +130,29 @@ describe("human knowledge draft deletion through the HTTP adapter", () => {
     expect(within(detail).queryByRole("button", { name: "彻底删除" })).not.toBeInTheDocument();
   });
 
+  it.each([
+    { status: "draft" as const, sourceType: "agent" as const },
+    { status: "published" as const, sourceType: "human" as const },
+    { status: "archived" as const, sourceType: "human" as const }
+  ])("offers managers deletion in the row and detail for $sourceType $status entries", async (overrides) => {
+    const { repository } = knowledgeApi({ ...draft, ...overrides });
+    render(<KnowledgePage repository={repository} capability={{ ...manager, canEdit: false }} />);
+    const user = userEvent.setup();
+    const table = await screen.findByRole("table", { name: "知识条目列表" });
+    await user.click(within(table).getByRole("button", { name: /：更多$/ }));
+    expect(screen.getByRole("menuitem", { name: "彻底删除" })).toBeEnabled();
+    await user.keyboard("{Escape}");
+    await user.click(within(table).getByRole("button", { name: "查看" }));
+    const detail = await screen.findByRole("dialog", { name: new RegExp(draft.title) });
+    await user.click(within(detail).getByRole("button", { name: "彻底删除" }));
+    const confirmation = await screen.findByRole("dialog", { name: /彻底删除/ });
+    expect(confirmation).toHaveTextContent("全部 2 个修订");
+    expect(within(confirmation).queryByRole("checkbox")).not.toBeInTheDocument();
+    await user.click(within(confirmation).getByRole("button", { name: "彻底删除" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.queryByText(draft.title)).not.toBeInTheDocument();
+  });
+
   it("explains a concurrent deletion without hiding the current page or repeating a successful write", async () => {
     const api = knowledgeApi();
     render(<KnowledgePage repository={api.repository} capability={manager} initialEntryId={draft.id} />);
@@ -143,7 +161,6 @@ describe("human knowledge draft deletion through the HTTP adapter", () => {
     await user.click(within(detail).getByRole("button", { name: "彻底删除" }));
     const confirmation = await screen.findByRole("dialog", { name: /彻底删除/ });
     api.removeElsewhere();
-    await user.click(within(confirmation).getByRole("checkbox"));
     await user.click(within(confirmation).getByRole("button", { name: "彻底删除" }));
     expect(await within(confirmation).findByRole("alert")).toHaveTextContent("请求的内容不存在或已被移除");
     await user.keyboard("{Escape}");

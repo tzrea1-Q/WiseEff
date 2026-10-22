@@ -373,10 +373,10 @@ export function KnowledgePage({
         expectedHeadRevisionNumber: input.expectedHeadRevisionNumber,
         title: input.title,
         tags: input.tags,
-        file: input.file
+        ...(input.file ? { file: input.file } : {})
       });
       setRows((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-    } else {
+    } else if (input.file) {
       const created = await repository.createFile({ title: input.title, tags: input.tags, file: input.file });
       setRows((current) => [created, ...current]);
       setSelectedId(created.id);
@@ -392,9 +392,6 @@ export function KnowledgePage({
     anchor.click();
     anchor.remove();
   };
-
-  const canDeleteDraft = (entry: KnowledgeEntry) =>
-    capability.canManage && entry.status === "draft" && entry.sourceType === "human";
 
   const requestDelete = (entry: KnowledgeEntry) => {
     setDeleteError("");
@@ -590,7 +587,7 @@ export function KnowledgePage({
           primaryAction: { id: "view", label: "查看", onSelect: () => setSelectedId(entry.id) },
           items: [
             { id: "revisions", label: "修订历史", onSelect: () => setRevisionsEntry(entry) },
-            ...(canDeleteDraft(entry) ? [{ id: "delete", label: "彻底删除", destructive: true as const, onRequestConfirmation: () => requestDelete(entry) }] : [])
+            ...(capability.canManage ? [{ id: "delete", label: "彻底删除", destructive: true as const, onRequestConfirmation: () => requestDelete(entry) }] : [])
           ]
         })}
         emptyState={{ message: rows.length === 0 ? "知识库还是空的。创建第一条调参经验或上传一份硬件手册。" : "当前筛选条件下没有条目。",
@@ -628,7 +625,7 @@ export function KnowledgePage({
           setRows((current) => current.map((item) => (item.id === updated.id ? updated : item)));
         }}
         onDownloadFile={handleDownload}
-        onRequestDelete={selectedEntry && canDeleteDraft(selectedEntry) ? requestDelete : undefined}
+        onRequestDelete={selectedEntry && capability.canManage ? requestDelete : undefined}
         onOpenDefinition={onOpenDefinition}
         onNavigate={onNavigate}
         onClose={() => setSelectedId(null)}
@@ -637,10 +634,9 @@ export function KnowledgePage({
       <ConfirmDialog
         open={Boolean(deleteEntry)}
         title={`彻底删除「${deleteEntry?.title ?? ""}」`}
-        description={`将永久删除该人工草稿及其全部 ${deleteEntry?.headRevisionNumber ?? 0} 个修订、文件元数据、关联引用和检索索引，不可恢复。存储中的原始文件保留；其他知识、参数定义和来源日志不受影响。删除审计保留。`}
+        description={`将永久删除该条目及其全部 ${deleteEntry?.headRevisionNumber ?? 0} 个修订，不可恢复。删除会写入审计记录。`}
         confirmLabel="彻底删除"
         tone="danger"
-        acknowledgement="我确认删除该条目与全部修订历史。"
         pending={deletePending}
         error={deleteError}
         onConfirm={() => void confirmDelete()}
@@ -651,7 +647,7 @@ export function KnowledgePage({
         open={editorOpen}
         entry={editorEntry}
         onSubmit={handleEditorSubmit}
-        parameterReferencePicker={parameterReferencePicker}
+        parameterReferencePicker={editorEntry?.status === "archived" ? undefined : parameterReferencePicker}
         onClose={() => {
           setEditorOpen(false);
           setEditorEntry(null);

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DatabaseZap, ExternalLink, RefreshCw } from "lucide-react";
 
-import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
+import type { KnowledgeRepository, UpdateKnowledgeInput } from "@/application/ports/KnowledgeRepository";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { canGovernEntry } from "@/domain/knowledge/rules";
 import type { KnowledgeEntry, KnowledgeIndexHealth, KnowledgeIndexStatusItem } from "@/domain/knowledge/types";
@@ -19,6 +19,8 @@ import { PageInsightBar, type Column } from "@/components/admin";
 import { Button } from "@/components/ui/button";
 import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 import { KnowledgeTagList, KnowledgeUnsearchableBadge } from "./badges";
+import { KnowledgeEntryEditorDialog } from "./KnowledgeEntryEditorDialog";
+import { KnowledgeFileUploadDialog } from "./KnowledgeFileUploadDialog";
 
 const collectionTabs = ["drafts", "index", "archived"] as const;
 
@@ -61,6 +63,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
   const [agentDraftsLoading, setAgentDraftsLoading] = useState(true);
   const [agentDraftError, setAgentDraftError] = useState("");
   const [agentActionPendingId, setAgentActionPendingId] = useState<string | null>(null);
+  const [editingEntry, setEditingEntry] = useState<KnowledgeEntry | null>(null);
 
   const loadArchived = useCallback(async () => {
     setLoading(true);
@@ -206,6 +209,14 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
   const deleteEntry = async (entry: KnowledgeEntry) => {
     await repository.hardDelete(entry.id);
     setRows((current) => current.filter((item) => item.id !== entry.id));
+    setAgentDrafts((current) => current.filter((item) => item.id !== entry.id));
+  };
+
+  const saveEntry = async (input: Omit<UpdateKnowledgeInput, "expectedHeadRevisionNumber">) => {
+    if (!editingEntry) return;
+    const updated = await repository.update(editingEntry.id, { ...input, expectedHeadRevisionNumber: editingEntry.headRevisionNumber });
+    setRows((current) => current.map((item) => item.id === updated.id ? updated : item));
+    setAgentDrafts((current) => current.map((item) => item.id === updated.id ? updated : item));
   };
 
   const retryIndex = async (item: KnowledgeIndexStatusItem) => {
@@ -370,10 +381,14 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
               label: entry.title,
               primaryAction: { id: "review", label: "审阅", onSelect: () => onNavigate?.(`/knowledge?entryId=${encodeURIComponent(entry.id)}`) },
               items: [
+                { id: "edit", label: "编辑", disabled: !canGovernEntry(entry, capability), onSelect: () => setEditingEntry(entry) },
                 { id: "publish", label: "发布", disabled: !canGovernEntry(entry, capability) || agentActionPendingId !== null, onSelect: () => publishAgentDraft(entry) },
                 { id: "reject", label: "拒绝归档", disabled: !canGovernEntry(entry, capability) || agentActionPendingId !== null, destructive: true,
                   confirmation: { title: `拒绝并归档「${entry.title}」`, description: "该 Agent 草稿将被归档,不会发布进入检索。归档后可在「已归档条目」标签中查看;操作会写入审计记录。", confirmLabel: "拒绝归档" },
-                  onSelect: () => rejectAgentDraft(entry) }
+                  onSelect: () => rejectAgentDraft(entry) },
+                ...(canManage ? [{ id: "delete", label: "彻底删除", destructive: true as const,
+                  confirmation: { title: `彻底删除「${entry.title}」`, description: `将永久删除该条目及其全部 ${entry.headRevisionNumber} 个修订，不可恢复。删除会写入审计记录。`, confirmLabel: "彻底删除" },
+                  onSelect: () => deleteEntry(entry) }] : [])
               ]
             })}
             emptyState={{ message: agentDraftsLoading ? "正在加载 Agent 草稿…" : "当前没有待审阅的 Agent 知识草稿。", actionLabel: "刷新", onAction: () => void loadAgentDrafts() }} />
@@ -400,13 +415,18 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
             table={{ "aria-label": "已归档知识条目", rows, rowKey: (entry) => entry.id, columns, pageSize: 10 }}
             rowActions={(entry) => ({ label: entry.title,
               primaryAction: { id: "restore", label: "恢复", disabled: restorePendingId !== null, onSelect: () => restoreEntry(entry) },
-              items: canManage ? [{ id: "delete", label: "彻底删除", destructive: true,
-                confirmation: { title: `彻底删除「${entry.title}」`, description: `将永久删除该条目及其全部 ${entry.headRevisionNumber} 个修订,不可恢复。删除会写入审计记录。`, confirmLabel: "彻底删除", acknowledgement: "我确认删除该条目与全部修订历史。" },
-                onSelect: () => deleteEntry(entry) }] : []
+              items: [{ id: "edit", label: "编辑", disabled: !canGovernEntry(entry, capability), onSelect: () => setEditingEntry(entry) },
+                ...(canManage ? [{ id: "delete", label: "彻底删除", destructive: true as const,
+                confirmation: { title: `彻底删除「${entry.title}」`, description: `将永久删除该条目及其全部 ${entry.headRevisionNumber} 个修订，不可恢复。删除会写入审计记录。`, confirmLabel: "彻底删除" },
+                onSelect: () => deleteEntry(entry) }] : [])]
             })}
             emptyState={{ message: loading ? "正在加载已归档条目…" : "暂无已归档条目。", actionLabel: "刷新", onAction: () => void loadArchived() }} />
         )}
       </TabPanel>
+      <KnowledgeEntryEditorDialog open={editingEntry?.contentForm === "markdown"} entry={editingEntry}
+        onSubmit={saveEntry} onClose={() => setEditingEntry(null)} />
+      <KnowledgeFileUploadDialog open={editingEntry?.contentForm === "file"} entry={editingEntry}
+        onSubmit={saveEntry} onClose={() => setEditingEntry(null)} />
     </div>
   );
 }

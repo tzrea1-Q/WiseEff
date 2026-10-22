@@ -886,9 +886,6 @@ export function createMockKnowledgeRepository(
 
     async update(entryId, input: UpdateKnowledgeInput) {
       const entry = requireEntry(entryId);
-      if (entry.status === "archived") {
-        throw mockApiError("INTERNAL_ERROR", "Archived knowledge entries cannot be edited.");
-      }
       if (entry.headRevisionNumber !== input.expectedHeadRevisionNumber) {
         throw new KnowledgeRevisionConflictError(
           "知识条目已被其他保存修改,请刷新后重试。",
@@ -933,7 +930,7 @@ export function createMockKnowledgeRepository(
 
     async archive(entryId) {
       const entry = requireEntry(entryId);
-      if (entry.status !== "published") throw mockApiError("CONFLICT", `Illegal transition: ${entry.status} -> archived`, { status: entry.status });
+      if (entry.status === "archived") throw mockApiError("CONFLICT", `Illegal transition: ${entry.status} -> archived`, { status: entry.status });
       entry.status = "archived";
       entry.archivedAt = MOCK_KNOWLEDGE_NOW;
       entry.updatedAt = MOCK_KNOWLEDGE_NOW;

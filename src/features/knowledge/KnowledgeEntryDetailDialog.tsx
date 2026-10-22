@@ -159,7 +159,7 @@ export function KnowledgeEntryDetailDialog({
             {canEditContent(entry, capability) && entry.contentForm === "file" ? (
               <Button variant="outline" size="sm" onClick={() => onReplaceFile(entry)}>
                 <Upload data-icon="inline-start" />
-                替换文件
+                编辑
               </Button>
             ) : null}
             <Button variant="outline" size="sm" onClick={() => onShowRevisions(entry)}>

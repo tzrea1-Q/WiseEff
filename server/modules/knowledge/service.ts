@@ -697,13 +697,6 @@ export async function updateKnowledgeEntry(
     }
     requireKnowledgeGovern(auth, entry);
 
-    if (entry.status === "archived") {
-      throw new ApiError("VALIDATION_FAILED", "Archived knowledge entries cannot be edited. Restore the entry first.", {
-        reason: "knowledge-entry-archived",
-        entryId,
-        status: entry.status
-      });
-    }
     if (entry.headRevisionNumber !== input.expectedHeadRevisionNumber) {
       throw revisionConflict(entryId, input.expectedHeadRevisionNumber, entry.headRevisionNumber);
     }
@@ -904,7 +897,7 @@ export async function archiveKnowledgeEntry(
     auth,
     createUserInvocation(auth),
     entryId,
-    { fromStatuses: ["published"], toStatus: "archived", kind: "knowledge-entry-archive", action: "archive" },
+    { fromStatuses: ["draft", "published"], toStatus: "archived", kind: "knowledge-entry-archive", action: "archive" },
     context
   );
 }
@@ -1027,8 +1020,8 @@ export async function hardDeleteKnowledgeEntry(
 
 /**
  * Guard shared by the reference edit endpoints: same governance rule as entry
- * editing (`knowledge:edit` own / `knowledge:manage` any), and archived
- * entries refuse reference edits exactly like content edits.
+ * editing (`knowledge:edit` own / `knowledge:manage` any). Archived entries
+ * allow content corrections but keep their parameter references read-only.
  */
 async function requireReferenceEditableEntry(tx: Queryable, auth: AuthContext, entryId: string) {
   const entry = await getEntryForUpdate(tx, auth, entryId);

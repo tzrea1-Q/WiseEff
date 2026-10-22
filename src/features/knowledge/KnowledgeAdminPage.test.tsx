@@ -12,6 +12,45 @@ const editorCapability: KnowledgeCapability = { userId: "u-xu-yun", canView: tru
 describe("KnowledgeAdminPage", () => {
   beforeEach(() => window.history.replaceState(null, "", "/knowledge-admin"));
 
+  it.each(["markdown", "file"] as const)("edits an archived %s entry in place without restoring it", async (contentForm) => {
+    window.history.replaceState(null, "", "/knowledge-admin?tab=archived");
+    const repository = createMockKnowledgeRepository();
+    const entry = contentForm === "markdown"
+      ? await repository.createMarkdown({ title: "治理页归档编辑", tags: [], contentMarkdown: "归档正文" })
+      : await repository.createFile({ title: "治理页归档编辑", tags: [], file: new File(["pdf"], "manual.pdf", { type: "application/pdf" }) });
+    await repository.archive(entry.id);
+    render(<KnowledgeAdminPage repository={repository} capability={{ ...manageCapability, canEdit: false }} />);
+    const user = userEvent.setup();
+    const table = await screen.findByRole("table", { name: "已归档知识条目" });
+    const row = within(table).getByText(entry.title).closest("tr")!;
+    await user.click(within(row).getByRole("button", { name: /：更多$/ }));
+    await user.click(screen.getByRole("menuitem", { name: "编辑" }));
+    const editor = await screen.findByRole("dialog", { name: /编辑/ });
+    await user.clear(within(editor).getByLabelText("条目标题"));
+    await user.type(within(editor).getByLabelText("条目标题"), "治理页已纠正");
+    await user.click(within(editor).getByRole("button", { name: contentForm === "markdown" ? "保存为新修订" : "保存" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(await repository.get(entry.id)).toMatchObject({ title: "治理页已纠正", status: "archived", headRevisionNumber: 2 });
+    expect(within(table).getByText("治理页已纠正")).toBeInTheDocument();
+  });
+
+  it("deletes an Agent draft from its queue without publishing or rejecting it", async () => {
+    const repository = createMockKnowledgeRepository();
+    const entry = (await repository.list({ status: "draft", sourceType: "agent" })).items[0]!;
+    render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
+    const user = userEvent.setup();
+    const table = await screen.findByRole("table", { name: "Agent 知识草稿队列" });
+    const row = within(table).getByText(entry.title).closest("tr")!;
+    await user.click(within(row).getByRole("button", { name: /：更多$/ }));
+    await user.click(screen.getByRole("menuitem", { name: "彻底删除" }));
+    const confirmation = await screen.findByRole("dialog", { name: /彻底删除/ });
+    expect(confirmation).toHaveTextContent(`全部 ${entry.headRevisionNumber} 个修订`);
+    expect(within(confirmation).queryByRole("checkbox")).not.toBeInTheDocument();
+    await user.click(within(confirmation).getByRole("button", { name: "彻底删除" }));
+    await waitFor(async () => expect(await repository.get(entry.id)).toBeNull());
+    expect(within(table).queryByText(entry.title)).not.toBeInTheDocument();
+  });
+
   it("identifies completed zero-chunk entries as unsearchable without warning on pending or archived entries", async () => {
     window.history.replaceState(null, "", "/knowledge-admin?tab=index");
     const repository = createMockKnowledgeRepository();
@@ -98,7 +137,7 @@ describe("KnowledgeAdminPage", () => {
     expect(within(table).queryByText("已归档:旧平台日志格式说明")).not.toBeInTheDocument();
   });
 
-  it("hard deletes after an acknowledged confirmation", async () => {
+  it("hard deletes after confirmation without an acknowledgement checkbox", async () => {
     window.history.replaceState(null, "", "/knowledge-admin?tab=archived");
     const repository = createMockKnowledgeRepository();
     render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
@@ -110,8 +149,8 @@ describe("KnowledgeAdminPage", () => {
 
     const confirm = await screen.findByRole("dialog", { name: /彻底删除/ });
     const confirmButton = within(confirm).getByRole("button", { name: "彻底删除" });
-    expect(confirmButton).toBeDisabled();
-    await user.click(within(confirm).getByRole("checkbox"));
+    expect(confirmButton).toBeEnabled();
+    expect(within(confirm).queryByRole("checkbox")).not.toBeInTheDocument();
     await user.click(confirmButton);
 
     await waitFor(async () => {
@@ -138,7 +177,6 @@ describe("KnowledgeAdminPage", () => {
     await userEvent.click(within(table).getByRole("button", { name: /：更多$/ }));
     await userEvent.click(screen.getByRole("menuitem", { name: "彻底删除" }));
     const dialog = screen.getByRole("dialog");
-    await userEvent.click(within(dialog).getByRole("checkbox"));
     await userEvent.click(within(dialog).getByRole("button", { name: "彻底删除" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("操作失败，请重试。");
     expect(await repository.get("mock-kb-5")).not.toBeNull();

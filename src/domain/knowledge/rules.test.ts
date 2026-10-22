@@ -43,21 +43,25 @@ describe("knowledge domain rules", () => {
     expect(canGovernEntry(entry(), manager)).toBe(true);
   });
 
-  it("blocks content edits on archived entries", () => {
+  it("allows owners and managers to edit archived content", () => {
     expect(canEditContent(entry({ status: "published" }), owner)).toBe(true);
-    expect(canEditContent(entry({ status: "archived" }), owner)).toBe(false);
-    expect(canEditContent(entry({ status: "archived" }), manager)).toBe(false);
+    expect(canEditContent(entry({ status: "archived" }), owner)).toBe(true);
+    expect(canEditContent(entry({ status: "archived" }), manager)).toBe(true);
+    expect(canEditContent(entry({ status: "archived" }), otherEditor)).toBe(false);
   });
 
-  it("models the draft -> published -> archived -> published lifecycle", () => {
-    expect(allowedTransitions("draft")).toEqual(["published"]);
+  it("models draft shelving and the publish -> archive -> restore lifecycle", () => {
+    expect(allowedTransitions("draft")).toEqual(["published", "archived"]);
     expect(allowedTransitions("published")).toEqual(["archived"]);
     expect(allowedTransitions("archived")).toEqual(["published"]);
 
     expect(canPublish(entry(), owner)).toBe(true);
     expect(canPublish(entry({ status: "published" }), owner)).toBe(false);
     expect(canArchive(entry({ status: "published" }), owner)).toBe(true);
-    expect(canArchive(entry(), owner)).toBe(false);
+    expect(canArchive(entry(), owner)).toBe(true);
+    expect(canArchive(entry(), manager)).toBe(true);
+    expect(canArchive(entry(), otherEditor)).toBe(false);
+    expect(canArchive(entry({ status: "archived" }), manager)).toBe(false);
     expect(canRestore(entry({ status: "archived" }), owner)).toBe(true);
     expect(canRestore(entry({ status: "published" }), owner)).toBe(false);
   });
