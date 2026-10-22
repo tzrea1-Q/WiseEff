@@ -3,6 +3,7 @@ import type { ParameterRecord } from "@/domain/parameters/types";
 import type { ProjectParameterBinding } from "@/domain/parameter-topology/types";
 
 import type {
+  catalogDefinitionErasureListResponseSchema,
   catalogDefinitionDeletionPreviewResponseSchema,
   catalogDeleteDefinitionRequestSchema,
   catalogDefinitionDeletedResponseSchema,
@@ -85,6 +86,7 @@ import type {
 export type CatalogDefinitionDeletionPreviewResponse = z.infer<typeof catalogDefinitionDeletionPreviewResponseSchema>;
 export type CatalogDeleteDefinitionRequest = z.infer<typeof catalogDeleteDefinitionRequestSchema>;
 export type CatalogDefinitionDeletedResponse = z.infer<typeof catalogDefinitionDeletedResponseSchema>;
+export type CatalogDefinitionErasureListResponse = z.infer<typeof catalogDefinitionErasureListResponseSchema>;
 
 export type CatalogReplacement = z.infer<typeof catalogReplacementDtoSchema>;
 export type CatalogReplacementProject = z.infer<typeof catalogReplacementProjectDtoSchema>;
