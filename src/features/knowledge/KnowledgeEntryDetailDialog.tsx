@@ -6,9 +6,10 @@ import { renderMarkdownPreview } from "@/domain/knowledge/markdown";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { canArchive, canEditContent, canPublish, canRestore } from "@/domain/knowledge/rules";
 import type { KnowledgeEntry } from "@/domain/knowledge/types";
-import { presentError } from "@/infrastructure/http/presentError";
+import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { Button } from "@/components/ui/button";
+import { Empty, EmptyHeader, EmptyMedia, EmptyDescription } from "@/components/ui/empty";
 import { KnowledgeExtractionBadge, KnowledgeOriginBadge, KnowledgeStatusBadge, KnowledgeTagList } from "./badges";
 import { KnowledgeParameterReferenceChips } from "./KnowledgeParameterReferenceChips";
 
@@ -233,7 +234,7 @@ export function KnowledgeEntryDetailDialog({
                 aria-label="条目内容"
                 role="region"
                 className="knowledge-markdown-preview text-sm leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: previewHtml || "<p class='text-muted-foreground'>(空内容)</p>" }}
+                dangerouslySetInnerHTML={{ __html: previewHtml || "<p class='text-muted-foreground'>（空内容）</p>" }}
               />
             ) : entry.file ? (
               <div className="flex flex-col gap-3 rounded-md border border-border bg-muted/20 p-4">
@@ -246,11 +247,11 @@ export function KnowledgeEntryDetailDialog({
                 </div>
                 {entry.file.extractionStatus === "failed" ? (
                   <p className="rounded-md bg-[var(--warning-soft)] px-3 py-2 text-xs text-[var(--warning)]">
-                    不可检索：{entry.file.extractionError || "正文提取失败"}。请替换为包含可提取文本的文件，成功提取并发布后才能参与检索。
+                    不可检索：{presentErrorMessage(entry.file.extractionError, "服务暂时不可用，请稍后重试。").replace(/。$/, "")}。请替换为包含可提取文本的文件，成功提取并发布后才能参与检索。
                   </p>
                 ) : null}
                 {entry.file.extractionStatus === "succeeded" ? (
-                  <p className="text-xs text-muted-foreground">正文已提取;条目发布后可通过全文检索命中。</p>
+                  <p className="text-xs text-muted-foreground">正文已提取；条目发布后可通过全文检索命中。</p>
                 ) : null}
                 <div>
                   <Button
@@ -266,7 +267,7 @@ export function KnowledgeEntryDetailDialog({
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">该条目没有文件内容。</p>
+              <Empty><EmptyHeader><EmptyMedia variant="icon"><Download /></EmptyMedia><EmptyDescription>该条目没有文件内容。</EmptyDescription></EmptyHeader></Empty>
             )}
           </div>
 

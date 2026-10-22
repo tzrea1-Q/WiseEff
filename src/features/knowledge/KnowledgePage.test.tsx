@@ -32,6 +32,22 @@ function renderPage(
 }
 
 describe("KnowledgePage", () => {
+  it("offers creation once and returns focus to its menu trigger after cancelling", async () => {
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByRole("table", { name: "知识条目列表" });
+    const trigger = screen.getByRole("button", { name: "新建条目" });
+    expect(screen.queryByRole("button", { name: "上传文件条目" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "批量导入" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "新建 Markdown 条目" })).not.toBeInTheDocument();
+    await user.click(trigger);
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["编写条目", "上传文件", "批量导入"]);
+    await user.click(screen.getByRole("menuitem", { name: "编写条目" }));
+    const editor = screen.getByRole("dialog", { name: "新建 Markdown 条目" });
+    await user.click(within(editor).getByRole("button", { name: "取消" }));
+    expect(trigger).toHaveFocus();
+  });
+
   it("archives a draft from detail and corrects its title, tags and content without restoring it", async () => {
     const repository = createMockKnowledgeRepository({ canManage: false });
     const entry = await repository.createMarkdown({ title: "待归档草稿", tags: [], contentMarkdown: "旧正文" });
@@ -44,7 +60,7 @@ describe("KnowledgePage", () => {
     const editor = await screen.findByRole("dialog", { name: /编辑知识条目/ });
     await user.clear(within(editor).getByLabelText("条目标题"));
     await user.type(within(editor).getByLabelText("条目标题"), "归档纠正");
-    await user.type(within(editor).getByLabelText("标签(逗号分隔)"), "纠正");
+    await user.type(within(editor).getByLabelText("标签（逗号分隔）"), "纠正");
     await user.clear(within(editor).getByLabelText("Markdown 内容"));
     await user.type(within(editor).getByLabelText("Markdown 内容"), "纠正正文");
     await user.click(within(editor).getByRole("button", { name: "保存为新修订" }));
@@ -69,7 +85,7 @@ describe("KnowledgePage", () => {
     expect(within(editor).getByLabelText("替换文件（可选）")).toBeInTheDocument();
     await user.clear(within(editor).getByLabelText("条目标题"));
     await user.type(within(editor).getByLabelText("条目标题"), "新文件标题");
-    await user.type(within(editor).getByLabelText("标签(逗号分隔)"), "修正");
+    await user.type(within(editor).getByLabelText("标签（逗号分隔）"), "修正");
     await user.click(within(editor).getByRole("button", { name: "保存" }));
     await screen.findByRole("dialog", { name: /新文件标题/ });
     expect(update).toHaveBeenCalledWith(entry.id, { expectedHeadRevisionNumber: 1, title: "新文件标题", tags: ["修正"] });
@@ -227,10 +243,13 @@ describe("KnowledgePage", () => {
     expect(await screen.findByText("快充温控调参经验")).toBeInTheDocument();
   });
 
-  it("warns that a textless file is unsearchable and offers replacement from detail", async () => {
+  it.each([
+    ["无可提取文本", "不可检索：无可提取文本"],
+    ["ENOENT /srv/knowledge/extractor.js", "不可检索：服务暂时不可用，请稍后重试。"]
+  ])("warns that a textless file is unsearchable and offers replacement from detail: %s", async (extractionError, expectedMessage) => {
     const fixtures = createMockKnowledgeFixtures();
     const entry = fixtures.entries.find((item) => item.id === "mock-kb-4")!;
-    entry.file!.extractionError = "无可提取文本";
+    entry.file!.extractionError = extractionError;
     const repository = createMockKnowledgeRepository({}, fixtures);
     render(<KnowledgePage repository={repository} capability={editorCapability} />);
     const table = await screen.findByRole("table", { name: "知识条目列表" });
@@ -239,7 +258,8 @@ describe("KnowledgePage", () => {
     expect(within(table).getAllByText("不可检索")).toHaveLength(1);
     await userEvent.click(within(row).getByRole("button", { name: "查看" }));
     const detail = await screen.findByRole("dialog", { name: /旧版工艺规范/ });
-    expect(within(detail).getByText(/不可检索：无可提取文本/)).toBeInTheDocument();
+    expect(within(detail).getByText((text) => text.startsWith(expectedMessage))).toBeInTheDocument();
+    expect(detail).not.toHaveTextContent("ENOENT");
     expect(within(detail).getByText(/替换为包含可提取文本的文件/)).toBeInTheDocument();
     await userEvent.click(within(detail).getByRole("button", { name: "编辑" }));
     const replace = await screen.findByRole("dialog", { name: "编辑" });
@@ -279,7 +299,7 @@ describe("KnowledgePage", () => {
     expect(screen.getByText("知识条目统计加载中…")).toBeInTheDocument();
     await act(async () => retry.resolve({ items: [] }));
     expect(screen.getByText("已发布 0 条 · 草稿 0 条")).toBeInTheDocument();
-    expect(screen.getByText(/知识库还是空的/)).toBeInTheDocument();
+    expect(screen.getByText(/暂无知识条目/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "刷新" }));
     expect(await screen.findByText(`已发布 ${entries.items.filter((entry) => entry.status === "published").length} 条 · 草稿 ${entries.items.filter((entry) => entry.status === "draft").length} 条`)).toBeInTheDocument();
     expect(screen.queryByText("知识条目统计暂不可用")).not.toBeInTheDocument();
@@ -307,7 +327,7 @@ describe("KnowledgePage", () => {
     render(<KnowledgePage repository={repository} capability={viewerCapability} />);
     await screen.findByRole("alert");
     expect(screen.queryByText("当前筛选条件下没有数据。")).not.toBeInTheDocument();
-    expect(screen.queryByText(/知识库还是空的/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/暂无知识条目/)).not.toBeInTheDocument();
   });
 
   it.each(["stale", "omitted", "retry-stale", "retry-omitted"])("keeps a fresh citation when the pending list is %s, and refreshes it later", async (snapshot) => {
@@ -379,7 +399,7 @@ describe("KnowledgePage", () => {
     await screen.findByText("没有命中已发布的知识条目。");
     await user.click(screen.getByRole("button", { name: "清除检索" }));
     expect(screen.getByText("知识条目加载失败，请稍后重试。")).toBeInTheDocument();
-    expect(screen.queryByText(/知识库还是空的/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/暂无知识条目/)).not.toBeInTheDocument();
     expect(screen.queryByText("当前筛选条件下没有数据。")).not.toBeInTheDocument();
   });
 
@@ -424,7 +444,7 @@ describe("KnowledgePage", () => {
     expect(screen.queryByText("旧检索错误")).not.toBeInTheDocument();
     expect(screen.getByRole("searchbox", { name: "检索知识库" })).toHaveValue("");
     expect(screen.getByRole("button", { name: "检索" })).toBeEnabled();
-    expect(screen.getByText(/知识库还是空的/)).toBeInTheDocument();
+    expect(screen.getByText(/暂无知识条目/)).toBeInTheDocument();
   });
 
   it("recovers the same failed citation on refresh without reopening a closed successful detail", async () => {
@@ -435,7 +455,7 @@ describe("KnowledgePage", () => {
     const user = userEvent.setup();
 
     expect(await screen.findByText("知识条目加载失败，请稍后重试。")).toBeInTheDocument();
-    expect(screen.queryByText(/知识库还是空的/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/暂无知识条目/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "刷新" }));
     const detail = await screen.findByRole("dialog", { name: /快充温控调参经验/ });
     expect(within(detail).getByText(/当电池温度超过 45 度/)).toBeInTheDocument();
@@ -469,7 +489,7 @@ describe("KnowledgePage", () => {
     render(<KnowledgePage repository={repository} capability={viewerCapability} initialEntryId="missing-id" />);
     expect(await screen.findByText("引用的知识条目不存在或不可访问。")).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.queryByText(/知识库还是空的/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/暂无知识条目/)).not.toBeInTheDocument();
     expect(screen.queryByText("当前筛选条件下没有数据。")).not.toBeInTheDocument();
   });
 
@@ -517,7 +537,7 @@ describe("KnowledgePage", () => {
     const repository = createMockKnowledgeRepository();
     vi.spyOn(repository, "list").mockResolvedValue({ items: [] });
     render(<KnowledgePage repository={repository} capability={viewerCapability} />);
-    expect(await screen.findByText(/知识库还是空的/)).toBeInTheDocument();
+    expect(await screen.findByText(/暂无知识条目/)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -549,7 +569,7 @@ describe("KnowledgePage", () => {
 
     const results = await screen.findByLabelText("检索结果");
     expect(within(results).getByText("快充温控调参经验")).toBeInTheDocument();
-    expect(within(results).getByText(/检索模式:仅全文检索/)).toBeInTheDocument();
+    expect(within(results).getByText(/检索模式：仅全文检索/)).toBeInTheDocument();
     // The draft entry mentions sc8562 but drafts stay out of retrieval.
     await user.clear(screen.getByRole("searchbox", { name: "检索知识库" }));
     await user.type(screen.getByRole("searchbox", { name: "检索知识库" }), "充电泵比率切换");
@@ -565,7 +585,7 @@ describe("KnowledgePage", () => {
     });
 
     await screen.findByRole("table", { name: "知识条目列表" });
-    await user.click(screen.getByRole("button", { name: /问知识库/ }));
+    await user.click(screen.getByRole("button", { name: /问小泽/ }));
     const event = (await handoff) as CustomEvent<{ preset: string }>;
     expect(event.detail.preset).toBe("knowledge-ask");
   });
@@ -573,7 +593,7 @@ describe("KnowledgePage", () => {
   it("hides the ask entry when Xiaoze is unavailable (mock mode)", async () => {
     renderPage({ askXiaozeEnabled: false });
     await screen.findByRole("table", { name: "知识条目列表" });
-    expect(screen.queryByRole("button", { name: /问知识库/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /问小泽/ })).not.toBeInTheDocument();
   });
 
   it("opens the entry detail from a citation deep link (?entryId=…)", async () => {
@@ -587,11 +607,12 @@ describe("KnowledgePage", () => {
     const user = userEvent.setup();
 
     await screen.findByRole("table", { name: "知识条目列表" });
-    await user.click(screen.getByRole("button", { name: /新建条目/ }));
+    await user.click(screen.getByRole("button", { name: "新建条目" }));
+    await user.click(screen.getByRole("menuitem", { name: "编写条目" }));
 
     const dialog = await screen.findByRole("dialog", { name: "新建 Markdown 条目" });
     await user.type(within(dialog).getByLabelText("条目标题"), "全新调参笔记");
-    await user.type(within(dialog).getByLabelText("标签(逗号分隔)"), "tuning, project-aurora");
+    await user.type(within(dialog).getByLabelText("标签（逗号分隔）"), "tuning, project-aurora");
     await user.type(within(dialog).getByLabelText("Markdown 内容"), "# 摘要");
     expect(within(dialog).getByLabelText("预览").innerHTML).toContain("<h1>摘要</h1>");
     await user.click(within(dialog).getByRole("button", { name: "创建草稿" }));
@@ -631,6 +652,9 @@ describe("KnowledgePage", () => {
     expect(within(revisions).getByText("修订 #2")).toBeInTheDocument();
     expect(within(revisions).getByText("修订 #1")).toBeInTheDocument();
 
+    expect(within(revisions).queryByRole("button", { name: "恢复此版本" })).not.toBeInTheDocument();
+    await user.click(within(revisions).getByRole("button", { name: "查看修订 #1" }));
+    expect(within(revisions).getByLabelText("修订 #1 完整内容")).toHaveTextContent("初版");
     await user.click(within(revisions).getByRole("button", { name: "恢复此版本" }));
     const confirm = await screen.findByRole("dialog", { name: /恢复修订 #1/ });
     await user.click(within(confirm).getByRole("button", { name: "恢复为新修订" }));
@@ -673,7 +697,8 @@ describe("KnowledgePage", () => {
     const user = userEvent.setup();
 
     await screen.findByRole("table", { name: "知识条目列表" });
-    await user.click(screen.getByRole("button", { name: /上传文件条目/ }));
+    await user.click(screen.getByRole("button", { name: "新建条目" }));
+    await user.click(screen.getByRole("menuitem", { name: "上传文件" }));
 
     const dialog = await screen.findByRole("dialog", { name: "上传文件条目" });
     await user.type(within(dialog).getByLabelText("条目标题"), "上传的调参笔记");
@@ -689,7 +714,8 @@ describe("KnowledgePage", () => {
     const { repository } = renderPage();
     const user = userEvent.setup();
     await screen.findByRole("table", { name: "知识条目列表" });
-    await user.click(screen.getByRole("button", { name: /上传文件条目/ }));
+    await user.click(screen.getByRole("button", { name: "新建条目" }));
+    await user.click(screen.getByRole("menuitem", { name: "上传文件" }));
     const dialog = await screen.findByRole("dialog", { name: "上传文件条目" });
     await user.type(within(dialog).getByLabelText("条目标题"), "上传正文");
     await user.upload(within(dialog).getByLabelText("选择文件"), new File(["# 上传\n正文"], name, { type: "text/plain" }));
@@ -710,7 +736,8 @@ describe("KnowledgePage", () => {
     const { repository } = renderPage();
     const user = userEvent.setup();
     await screen.findByRole("table", { name: "知识条目列表" });
-    await user.click(screen.getByRole("button", { name: /上传文件条目/ }));
+    await user.click(screen.getByRole("button", { name: "新建条目" }));
+    await user.click(screen.getByRole("menuitem", { name: "上传文件" }));
     const dialog = await screen.findByRole("dialog", { name: "上传文件条目" });
     await user.type(within(dialog).getByLabelText("条目标题"), "无效正文");
     await user.upload(within(dialog).getByLabelText("选择文件"), new File([content], "invalid.md", { type: "text/markdown" }));

@@ -91,7 +91,7 @@ describe("knowledge deletion through the HTTP adapter", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(screen.queryByText(draft.title)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "刷新" }));
-    expect(await screen.findByText(/知识库还是空的/)).toBeInTheDocument();
+    expect(await screen.findByText(/暂无知识条目/)).toBeInTheDocument();
   });
 
   it("keeps a deep-linked draft and its error on failure, then closes it after a successful retry", async () => {

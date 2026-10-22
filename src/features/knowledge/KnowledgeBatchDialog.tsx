@@ -5,7 +5,7 @@ import type { KnowledgeBatchInput, KnowledgeBatchReport, KnowledgeEntry } from "
 import { DataTable } from "@/components/admin";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { Button } from "@/components/ui/button";
-import { presentError } from "@/infrastructure/http/presentError";
+import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { parseTagsInput } from "./KnowledgeEntryEditorDialog";
 
@@ -79,7 +79,7 @@ export function KnowledgeBatchDialog({ action, entries, repository, onComplete, 
           { key: "status", header: "结果", render: (row) => ({ succeeded: "成功", refused: "拒绝", failed: "失败" })[row.status] },
           { key: "reason", header: "原因", render: (row) => <span className="break-words">{row.error ? failureReason(row.error) : `已${label}`}</span> }
         ]} />
-        {report.summaryError ? <p role="alert" className="mt-2 text-destructive">{report.summaryError}</p> : null}
+        {report.summaryError ? <p role="alert" className="mt-2 text-destructive">{presentErrorMessage(report.summaryError, "服务暂时不可用，请稍后重试。")}</p> : null}
       </div>}
       {error ? <p id={`${titleId}-error`} role="alert" className="text-sm text-destructive">{error}</p> : null}
       <div className="flex justify-end gap-2">

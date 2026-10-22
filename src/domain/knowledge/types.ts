@@ -210,7 +210,7 @@ export const knowledgeExtractionStatusLabels: Record<KnowledgeExtractionStatus, 
 
 export const knowledgeSourceTypeLabels: Record<KnowledgeSourceType, string> = {
   human: "人工",
-  agent: "Agent"
+  agent: "小泽"
 };
 
 export const knowledgeIndexStateLabels: Record<KnowledgeIndexState, string> = {
@@ -222,7 +222,7 @@ export const knowledgeIndexStateLabels: Record<KnowledgeIndexState, string> = {
 
 export const knowledgeRetrievalModeLabels: Record<KnowledgeRetrievalMode, string> = {
   semantic_fts: "语义 + 全文混合检索",
-  fts_only: "仅全文检索(FTS-only)"
+  fts_only: "仅全文检索"
 };
 
 /** Mirrors the parameter admin's lifecycle vocabulary (已废弃 stays honest). */

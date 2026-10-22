@@ -542,7 +542,8 @@ test.describe("Knowledge base browser acceptance", () => {
       `${titlePrefix} 流程规范 ${runStamp}.txt`
     ];
     await openKnowledgePage(page);
-    await page.getByRole("button", { name: "批量导入", exact: true }).click();
+    await page.getByRole("button", { name: "新建条目", exact: true }).click();
+    await page.getByRole("menuitem", { name: "批量导入", exact: true }).click();
     const importer = page.getByRole("dialog", { name: "批量导入", exact: true });
     await importer.getByTestId("file-drop-zone-input").setInputFiles([
       { name: names[0], mimeType: "text/markdown", buffer: Buffer.from(`# 调参经验\n${keyword}：温度超过阈值时降低快充电流。\n(${definition.propertyKey})`) },
@@ -744,10 +745,11 @@ test.describe("Knowledge base browser acceptance", () => {
     await openKnowledgePage(page);
 
     // Create a markdown draft through the split editor.
-    await page.getByRole("button", { name: "新建条目" }).click();
+    await page.getByRole("button", { name: "新建条目", exact: true }).click();
+    await page.getByRole("menuitem", { name: "编写条目", exact: true }).click();
     const editor = page.getByRole("dialog", { name: "新建 Markdown 条目" });
     await editor.getByLabel("条目标题").fill(title);
-    await editor.getByLabel("标签(逗号分隔)").fill("project-aurora, 调参");
+    await editor.getByLabel("标签（逗号分隔）").fill("project-aurora, 调参");
     await editor.getByLabel("Markdown 内容").fill("# 初版\n\n第一版正文。");
     await expect(editor.getByLabel("预览").locator("h1")).toHaveText("初版");
     await editor.getByRole("button", { name: "创建草稿" }).click();
@@ -772,11 +774,15 @@ test.describe("Knowledge base browser acceptance", () => {
     // Restore revision 1 as a new revision 3.
     await detail.getByRole("button", { name: "修订历史" }).click();
     const revisions = page.getByRole("dialog", { name: /修订历史/ });
-    await expect(revisions.getByText("修订 #2")).toBeVisible();
-    await revisions
-      .locator("li", { hasText: "修订 #1" })
-      .getByRole("button", { name: "恢复此版本" })
-      .click();
+    const revisionList = revisions.getByRole("list", { name: "修订列表" });
+    await expect(revisionList.getByRole("listitem").filter({
+      has: page.getByRole("button", { name: "查看修订 #2", exact: true })
+    })).toBeVisible();
+    await revisionList.getByRole("button", { name: "查看修订 #1", exact: true }).click();
+    const revisionView = revisions.getByLabel("修订 #1 完整内容");
+    await expect(revisionView.getByRole("heading", { name: /修订 #1$/ })).toBeVisible();
+    await expect(revisionView).toContainText("第一版正文。");
+    await revisions.getByRole("button", { name: "恢复此版本" }).click();
     const confirm = page.getByRole("dialog", { name: /恢复修订 #1/ });
     await confirm.getByRole("button", { name: "恢复为新修订" }).click();
     await expect(revisions).not.toBeVisible();
@@ -788,7 +794,7 @@ test.describe("Knowledge base browser acceptance", () => {
     await expect(detail.locator('[data-status="archived"]')).toBeVisible();
     await detail.getByRole("button", { name: "编辑", exact: true }).click();
     await editDialog.getByLabel("Markdown 内容").fill("# 初版\n\n归档后的校正正文。");
-    await editDialog.getByLabel("标签(逗号分隔)").fill("project-aurora, 归档校正");
+    await editDialog.getByLabel("标签（逗号分隔）").fill("project-aurora, 归档校正");
     await editDialog.getByRole("button", { name: "保存为新修订" }).click();
     await expect(editDialog).not.toBeVisible();
     await expect(detail.locator('[data-status="archived"]')).toBeVisible();
@@ -861,10 +867,11 @@ test.describe("Knowledge base browser acceptance", () => {
 
     await openKnowledgePage(page);
 
-    await page.getByRole("button", { name: "上传文件条目" }).click();
+    await page.getByRole("button", { name: "新建条目", exact: true }).click();
+    await page.getByRole("menuitem", { name: "上传文件", exact: true }).click();
     const upload = page.getByRole("dialog", { name: "上传文件条目" });
     await upload.getByLabel("条目标题").fill(title);
-    await upload.getByLabel("标签(逗号分隔)").fill("硬件手册");
+    await upload.getByLabel("标签（逗号分隔）").fill("硬件手册");
     await upload.getByLabel("选择文件").setInputFiles({
       name: "kb-acceptance-manual.pdf",
       mimeType: "application/pdf",
@@ -887,7 +894,7 @@ test.describe("Knowledge base browser acceptance", () => {
     const fileEditor = page.getByRole("dialog", { name: "编辑", exact: true });
     await expect(fileEditor.getByLabel("替换文件（可选）")).toBeVisible();
     await expect(fileEditor.getByLabel("替换文件（可选）")).toHaveValue("");
-    await fileEditor.getByLabel("标签(逗号分隔)").fill("硬件手册, 元数据校正");
+    await fileEditor.getByLabel("标签（逗号分隔）").fill("硬件手册, 元数据校正");
     const metadataSave = page.waitForResponse((response) => response.request().method() === "PATCH" && new URL(response.url()).pathname.startsWith("/api/v1/knowledge/entries/"));
     await fileEditor.getByRole("button", { name: "保存", exact: true }).click();
     const metadataResponse = await metadataSave;
@@ -994,7 +1001,7 @@ test.describe("Knowledge base browser acceptance", () => {
 
     // Browser part: the API-mode ask entry opens Xiaoze on /knowledge.
     await openKnowledgePage(page);
-    const askButton = page.getByRole("button", { name: /问知识库/ });
+    const askButton = page.getByRole("button", { name: /问小泽/ });
     await expect(askButton).toBeVisible();
     await askButton.click();
     await expect(page.getByTestId("xiaoze-popup-layer")).toBeVisible();
@@ -1492,7 +1499,7 @@ test.describe("Knowledge base browser acceptance", () => {
 
     // Review the queue on /knowledge-admin as the knowledge manager.
     await signInBrowserAsRole(page, "admin", "/knowledge-admin");
-    const queue = page.getByRole("table", { name: "Agent 知识草稿队列" });
+    const queue = page.getByRole("table", { name: "小泽知识草稿" });
     await expect(queue).toBeVisible();
 
     const publishRow = queue.locator("tr", { hasText: publishTitle }).first();
