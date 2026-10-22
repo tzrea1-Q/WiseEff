@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
+import { createUserInvocation } from "../auth/trustedInvocation";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -160,7 +161,7 @@ describe("knowledge routes", () => {
       status: "draft",
       tag: "tuning",
       limit: 10
-    });
+    }, "test-request");
   });
 
   it("GET /api/v1/knowledge/search requires q, delegates, and reports the retrieval mode", async () => {
@@ -335,6 +336,7 @@ describe("knowledge routes", () => {
     expect(service.addKnowledgeDefinitionReference).toHaveBeenCalledWith(
       db,
       makeAuth(),
+      createUserInvocation(makeAuth()),
       { entryId: ENTRY_ID, definitionId: "pdef:abc" },
       expect.objectContaining({ requestId: expect.any(String) })
     );
@@ -476,7 +478,7 @@ describe("knowledge routes", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(service.listKnowledgeEntries).toHaveBeenCalledWith(db, makeAuth(), { status: "draft", sourceType: "agent" });
+    expect(service.listKnowledgeEntries).toHaveBeenCalledWith(db, makeAuth(), { status: "draft", sourceType: "agent" }, "test-request");
   });
 
   it("DELETE /api/v1/knowledge/entries/:entryId delegates to hard delete", async () => {

@@ -518,6 +518,23 @@ test.describe("Knowledge base browser acceptance", () => {
     // @acceptance KB-IMPORT-001
     // @operation KB-IMPORT-001
     await page.setViewportSize({ width: 1440, height: 900 });
+    const definitionId = await withPgClient(async (client) => {
+      const binding = (await client.query<{ id: string; project_id: string }>(
+        `select id, project_id from parameter_catalog.current_project_parameter_bindings
+         where organization_id = $1 order by id limit 1`, [organizationId]
+      )).rows[0];
+      expect(binding).toBeDefined();
+      const pins = await loadCanonicalBindingPins(client, {
+        organizationId, projectId: binding.project_id, bindingId: binding.id
+      });
+      expect(pins).not.toBeNull();
+      return pins!.definitionId;
+    });
+    const catalog = await page.request.get(apiRoute(`/api/v2/catalog/definitions/${encodeURIComponent(definitionId)}`), {
+      headers: authHeadersForRole("admin")
+    });
+    expect(catalog.status()).toBe(200);
+    const { item: definition } = await catalog.json() as { item: { propertyKey: string } };
     const keyword = `组织调参经验${runStamp}`;
     const names = [
       `${titlePrefix} 调参经验 ${runStamp}.md`,
@@ -528,9 +545,9 @@ test.describe("Knowledge base browser acceptance", () => {
     await page.getByRole("button", { name: "批量导入", exact: true }).click();
     const importer = page.getByRole("dialog", { name: "批量导入", exact: true });
     await importer.getByTestId("file-drop-zone-input").setInputFiles([
-      { name: names[0], mimeType: "text/markdown", buffer: Buffer.from(`# 调参经验\n${keyword}：温度超过阈值时降低快充电流。`) },
+      { name: names[0], mimeType: "text/markdown", buffer: Buffer.from(`# 调参经验\n${keyword}：温度超过阈值时降低快充电流。\n(${definition.propertyKey})`) },
       { name: names[1], mimeType: "application/pdf", buffer: readFileSync(new URL("../../server/modules/knowledge/testing/fixtures/sample.pdf", import.meta.url)) },
-      { name: names[2], mimeType: "text/plain", buffer: Buffer.from(`发布前检查文档来源与修订。${runStamp}`) }
+      { name: names[2], mimeType: "text/plain", buffer: Buffer.from(`发布前检查文档来源与修订。${runStamp}\n(${definition.propertyKey})`) }
     ]);
     await importer.getByLabel("批次标签（逗号分隔）").fill("组织文档");
     await importer.getByRole("button", { name: "开始导入", exact: true }).click();
@@ -562,6 +579,51 @@ test.describe("Knowledge base browser acceptance", () => {
     await expect(batch.getByRole("status")).toHaveText("成功 3 条 · 拒绝或失败 0 条");
     await batch.getByRole("button", { name: "关闭", exact: true }).click();
 
+    // Indexing proposes evidence; only the governor's acceptance makes a binding.
+    await expect.poll(async () => {
+      const response = await page.request.get(apiRoute(`/api/v1/knowledge/entries/${entryIds[0]}/reference-suggestions`), {
+        headers: editorHeaders()
+      });
+      expect(response.status()).toBe(200);
+      return (await response.json() as { items: { definitionId: string }[] }).items.map((item) => item.definitionId);
+    }, { timeout: 30_000 }).toContain(definitionId);
+    await table.getByText(names[0], { exact: true }).click();
+    const knowledgeDetail = page.getByRole("dialog");
+    await knowledgeDetail.getByRole("button", { name: "编辑", exact: true }).click();
+    const editor = page.getByRole("dialog", { name: "编辑知识条目", exact: true });
+    const suggestions = editor.getByRole("region", { name: "建议关联" });
+    const accepted = page.waitForResponse((response) => response.request().method() === "POST"
+      && new URL(response.url()).pathname === `/api/v1/knowledge/entries/${entryIds[0]}/reference-suggestions/${definitionId}/accept`);
+    await suggestions.locator(`[data-definition-id="${definitionId}"]`).getByRole("button", { name: "接受", exact: true }).click();
+    const acceptResponse = await accepted;
+    expect(acceptResponse.status()).toBe(200);
+    await expect(suggestions.locator(`[data-definition-id="${definitionId}"]`)).toHaveCount(0);
+    await editor.getByRole("button", { name: "取消", exact: true }).click();
+    await knowledgeDetail.getByRole("button", { name: "关闭", exact: true }).click();
+
+    await expect.poll(async () => {
+      const response = await page.request.get(apiRoute(`/api/v1/knowledge/entries/${entryIds[2]}/reference-suggestions`), { headers: editorHeaders() });
+      expect(response.status()).toBe(200);
+      return (await response.json() as { items: { definitionId: string }[] }).items.map((item) => item.definitionId);
+    }, { timeout: 30_000 }).toContain(definitionId);
+    await page.getByRole("checkbox", { name: "待处理建议", exact: true }).check();
+    const pendingRow = table.getByRole("row").filter({ hasText: names[2] });
+    await expect(pendingRow.getByText(/待处理建议 [1-9]/)).toBeVisible();
+    await testInfo.attach("knowledge-pending-suggestions-1440x900", { body: await page.screenshot(), contentType: "image/png" });
+    await pendingRow.getByRole("checkbox", { name: `选择 ${names[2]}`, exact: true }).check();
+    await page.getByRole("group", { name: "批量管理" }).getByRole("button", { name: "接受建议关联", exact: true }).click();
+    const acceptBatch = page.getByRole("dialog", { name: "接受建议关联", exact: true });
+    const batchAccepted = page.waitForResponse((response) => response.request().method() === "POST"
+      && new URL(response.url()).pathname === "/api/v1/knowledge/entries/batch");
+    await acceptBatch.getByRole("button", { name: "确认接受建议关联", exact: true }).click();
+    const batchAcceptResponse = await batchAccepted;
+    expect(batchAcceptResponse.status()).toBe(200);
+    await expect(acceptBatch.getByRole("status")).toHaveText("成功 1 条 · 拒绝或失败 0 条");
+    await testInfo.attach("knowledge-batch-suggestions-1440x900", { body: await page.screenshot(), contentType: "image/png" });
+    await acceptBatch.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(table.getByText(names[2], { exact: true })).toHaveCount(0);
+    await page.getByRole("checkbox", { name: "待处理建议", exact: true }).uncheck();
+
     const searched = page.waitForResponse((response) => response.request().method() === "GET"
       && new URL(response.url()).pathname === "/api/v1/knowledge/search");
     await page.getByRole("searchbox", { name: "检索知识库" }).fill(keyword);
@@ -570,28 +632,9 @@ test.describe("Knowledge base browser acceptance", () => {
     expect(searchResponse.status()).toBe(200);
     await expect(page.getByLabel("检索结果").getByText(names[0], { exact: true })).toBeVisible();
 
-    // Reuse the M1 canonical Binding pins already used by KB-DISTILL-002.
-    const definitionId = await withPgClient(async (client) => {
-      const binding = (await client.query<{ id: string; project_id: string }>(
-        `select id, project_id from parameter_catalog.current_project_parameter_bindings
-         where organization_id = $1 order by id limit 1`, [organizationId]
-      )).rows[0];
-      expect(binding).toBeDefined();
-      const pins = await loadCanonicalBindingPins(client, {
-        organizationId, projectId: binding.project_id, bindingId: binding.id
-      });
-      expect(pins).not.toBeNull();
-      return pins!.definitionId;
-    });
     await signInBrowserAsRole(page, "admin", `/parameter-admin/specs?definitionId=${encodeURIComponent(definitionId)}`);
     const detail = page.getByRole("region", { name: "定义详情" });
     await detail.locator("summary").filter({ hasText: /^相关知识$/ }).click();
-    await detail.getByRole("button", { name: "关联已有知识", exact: true }).click();
-    const picker = page.getByRole("dialog", { name: "关联已有知识" });
-    await picker.getByRole("searchbox", { name: "搜索已有知识" }).fill(names[0]);
-    await picker.getByRole("button", { name: "搜索", exact: true }).click();
-    await picker.getByRole("button", { name: names[0], exact: true }).click();
-    await expect(picker).toBeHidden();
     const related = detail.getByTestId("spec-related-knowledge");
     await expect(related.getByText(names[0], { exact: true })).toBeVisible();
     await related.getByText(names[0], { exact: true }).click();
@@ -609,6 +652,8 @@ test.describe("Knowledge base browser acceptance", () => {
       operationId: "KB-IMPORT-001", title: "import report batch publish search and definition related knowledge",
       status: "passed", role: "Hardware User / Admin", route: "/knowledge", page, testInfo,
       api: [
+        summarizeApiResponse(acceptResponse, { method: "POST", path: `/api/v1/knowledge/entries/${entryIds[0]}/reference-suggestions/${definitionId}/accept`, responseSummary: "detected suggestion accepted as an explicit definition reference" }),
+        summarizeApiResponse(batchAcceptResponse, { method: "POST", path: "/api/v1/knowledge/entries/batch", responseSummary: "pending filter and count badge followed by audited batch suggestion acceptance" }),
         summarizeApiResponse(publishResponse, { method: "POST", path: "/api/v1/knowledge/entries/batch", responseSummary: "three imported drafts published" }),
         summarizeApiResponse(searchResponse, { method: "GET", path: "/api/v1/knowledge/search", responseSummary: "published organization document found" })
       ],

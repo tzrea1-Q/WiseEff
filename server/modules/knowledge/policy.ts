@@ -28,12 +28,16 @@ export function hasKnowledgeManage(auth: AuthContext) {
   return auth.user.isActive && auth.permissions.includes("knowledge:manage");
 }
 
+export function canGovernKnowledgeEntry(auth: AuthContext, entry: Pick<KnowledgeEntryDto, "createdByUserId">): boolean {
+  return hasKnowledgeManage(auth) || (auth.user.isActive && entry.createdByUserId === auth.user.id && auth.permissions.includes("knowledge:edit"));
+}
+
 /**
  * Publisher accountability (D18): knowledge:edit governs OWN entries only;
  * cross-person governance requires knowledge:manage.
  */
 export function requireKnowledgeGovern(auth: AuthContext, entry: Pick<KnowledgeEntryDto, "createdByUserId">) {
-  if (hasKnowledgeManage(auth)) {
+  if (canGovernKnowledgeEntry(auth, entry)) {
     return;
   }
   requireKnowledgeEdit(auth);

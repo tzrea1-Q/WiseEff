@@ -33,7 +33,8 @@ export const batchKnowledgeEntriesBodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("add_tags"), entryIds: batchEntryIds, tags: z.array(knowledgeTagSchema).min(1).max(KNOWLEDGE_TAG_LIMIT) }).strict(),
   z.object({ action: z.literal("remove_tags"), entryIds: batchEntryIds, tags: z.array(knowledgeTagSchema).min(1).max(KNOWLEDGE_TAG_LIMIT) }).strict(),
   z.object({ action: z.literal("publish"), entryIds: batchEntryIds }).strict(),
-  z.object({ action: z.literal("archive"), entryIds: batchEntryIds }).strict()
+  z.object({ action: z.literal("archive"), entryIds: batchEntryIds }).strict(),
+  z.object({ action: z.literal("accept_suggestions"), entryIds: batchEntryIds }).strict()
 ]);
 export type BatchKnowledgeEntriesInput = z.infer<typeof batchKnowledgeEntriesBodySchema>;
 
@@ -98,6 +99,7 @@ export const knowledgeFileContentQuerySchema = z.object({ revisionId: z.string()
 
 export const listKnowledgeEntriesQuerySchema = z.object({
   governable: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
+  pendingSuggestions: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
   origin: z.enum(knowledgeOrigins).optional(),
   status: z.enum(knowledgeStatuses).optional(),
   contentForm: z.enum(knowledgeContentForms).optional(),

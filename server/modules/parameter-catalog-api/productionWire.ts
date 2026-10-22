@@ -50,6 +50,7 @@ export type { CompletedMappingManifest } from "../catalog-cutover/completedMappi
 import type { ObjectStore } from "../logs/objectStore";
 import {
   catalogDefinitionResponseSchema,
+  catalogDefinitionListResponseSchema,
   catalogRegistrationDtoSchema,
 } from "../contracts/dtoSchemas/parameterCatalog";
 
@@ -109,6 +110,56 @@ import type {
 
 const UNAVAILABLE_RELEASE_ID = "catalog-unready";
 const CATALOG_NOT_READY_RETRY_AFTER_SECONDS = 5;
+
+/** Authenticated, release-pinned candidate discovery for Knowledge indexing. */
+export async function listCatalogDefinitionsForKnowledge(db: Database, auth: AuthContext, requestId: string) {
+  const pool = getRootPostgresPool(db);
+  if (!pool) throw new ApiError("CONFLICT", "Catalog read is unavailable.", { reason: "catalog-unavailable" });
+  const ports = createReadPorts(pool, async () => auth, db, { env: process.env });
+  return listKnowledgeCatalogCandidates(ports, requestId);
+}
+
+/**
+ * Derived Knowledge detection is system work scoped by an explicit organization,
+ * independent of any entry author. Uses the Catalog read projection and release
+ * pinning, with no registration or write authority; acceptance still uses auth.
+ */
+export async function listCatalogDefinitionsForKnowledgeOrganization(db: Database, organizationId: string, requestId: string) {
+  const pool = getRootPostgresPool(db);
+  if (!pool) throw new ApiError("CONFLICT", "Catalog read is unavailable.", { reason: "catalog-unavailable" });
+  if (!organizationId.trim()) throw new ApiError("FORBIDDEN", "Organization scope is required.");
+  const ports = createReadPorts(pool, () => { throw new Error("System catalog read does not resolve a user."); }, db, { env: process.env });
+  return listKnowledgeCatalogCandidates({ ...ports, authenticate: async () => ({ ok: true, scope: {
+    principalId: "knowledge-reference-detection", organizationId, actorKind: "agent", canReadCatalog: true,
+    canRegister: false, projectScope: { kind: "all" }, subjects: { kind: "all" }, definitions: { kind: "all" }
+  } }) }, requestId);
+}
+
+async function listKnowledgeCatalogCandidates(ports: CatalogReadPorts, requestId: string) {
+  const items: ReturnType<typeof catalogDefinitionListResponseSchema.parse>["items"] = [];
+  let release: string | undefined;
+  for (const lifecycle of ["active", "deprecated"]) {
+    let cursor: string | null = null;
+    do {
+      const response = await handleCatalogRead(ports, {
+        method: "GET", path: "/api/v2/catalog/definitions", params: {},
+        query: { limit: "100", lifecycle, ...(cursor ? { cursor } : {}), ...(release ? { catalogReleaseId: release } : {}) },
+        headers: {}, requestId
+      });
+      if (response.status === 401 || response.status === 403) throw new ApiError("FORBIDDEN", "Catalog candidates are not visible.");
+      if (response.status !== 200) throw new ApiError("CONFLICT", "Catalog candidates are unavailable.", {
+        reason: (response.body as { error?: { details?: { reason?: string } } }).error?.details?.reason ?? "catalog-unavailable"
+      });
+      const parsed = catalogDefinitionListResponseSchema.safeParse(response.body);
+      if (!parsed.success) throw new ApiError("CONFLICT", "Catalog candidate proof is invalid.", { reason: "catalog-proof-invalid" });
+      const page = parsed.data;
+      items.push(...page.items);
+      cursor = page.nextCursor;
+      release = page.catalogReleaseId;
+    } while (cursor);
+  }
+  return items;
+}
 
 export type CatalogApiAuthResolver = (request: RouteRequest) => Promise<AuthContext> | AuthContext;
 

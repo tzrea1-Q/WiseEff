@@ -15280,6 +15280,19 @@
                 "false"
               ]
             }
+          },
+          {
+            "name": "pendingSuggestions",
+            "in": "query",
+            "required": false,
+            "description": "Only entries with pending reference suggestions governed by the caller; counts are omitted for other entries.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
           }
         ],
         "responses": {
@@ -15929,6 +15942,154 @@
         }
       }
     },
+    "/api/v1/knowledge/entries/{entryId}/reference-suggestions": {
+      "get": {
+        "operationId": "knowledge.listReferenceSuggestions",
+        "summary": "List authenticated Catalog reference suggestions for entry governors only; suggestions are never bindings",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "entryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeReferenceSuggestionsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/entries/{entryId}/reference-suggestions/{definitionId}/accept": {
+      "post": {
+        "operationId": "knowledge.acceptReferenceSuggestion",
+        "summary": "Accept a pending suggestion through the audited definition reference add path",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "entryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "definitionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeEntryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/entries/{entryId}/reference-suggestions/{definitionId}/dismiss": {
+      "post": {
+        "operationId": "knowledge.dismissReferenceSuggestion",
+        "summary": "Remember an entry governor's dismissal with an in-transaction audit",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "entryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "definitionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/knowledge/entries/{entryId}/parameter-references/{specId}": {
       "put": {
         "operationId": "knowledge.addParameterReference",
@@ -16066,6 +16227,36 @@
       "post": {
         "operationId": "knowledge.indexRebuild",
         "summary": "Re-enqueue every published entry for index rebuild (knowledge:manage only)",
+        "tags": [
+          "knowledge"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeIndexRebuildResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/reference-suggestions/rescan": {
+      "post": {
+        "operationId": "knowledge.referenceSuggestionsRescan",
+        "summary": "Re-enqueue every non-archived entry for reference suggestion detection (knowledge:manage only)",
         "tags": [
           "knowledge"
         ],
@@ -58229,6 +58420,9 @@
                 "items": {
                   "type": "object"
                 }
+              },
+              "pendingSuggestionCount": {
+                "type": "number"
               }
             },
             "required": [
@@ -58512,6 +58706,9 @@
                       "items": {
                         "type": "object"
                       }
+                    },
+                    "pendingSuggestionCount": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -59090,6 +59287,9 @@
                   "items": {
                     "type": "object"
                   }
+                },
+                "pendingSuggestionCount": {
+                  "type": "number"
                 }
               },
               "required": [
@@ -59235,6 +59435,73 @@
       "KnowledgeRelatedToSpecResponse": {
         "type": "object",
         "x-wiseeff-schema": "KnowledgeRelatedToSpecResponse"
+      },
+      "KnowledgeReferenceSuggestionsResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "definitionId": {
+                  "type": "string"
+                },
+                "propertyKey": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "driverModule": {
+                  "type": "string"
+                },
+                "lifecycle": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "deprecated"
+                  ]
+                },
+                "mentionCount": {
+                  "type": "number"
+                },
+                "snippet": {
+                  "type": "string"
+                },
+                "page": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "detectedRevisionId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "definitionId",
+                "propertyKey",
+                "displayName",
+                "driverModule",
+                "lifecycle",
+                "mentionCount",
+                "snippet",
+                "page",
+                "detectedRevisionId"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "KnowledgeReferenceSuggestionsResponse"
       },
       "KnowledgeIndexHealthResponse": {
         "type": "object",
@@ -59436,6 +59703,9 @@
                 "items": {
                   "type": "object"
                 }
+              },
+              "pendingSuggestionCount": {
+                "type": "number"
               }
             },
             "required": [

@@ -22,7 +22,7 @@ const BASELINE: Record<string, readonly [number, number]> = {
   "modules/debugging/catalogTransfer.ts": [0, 2],
   "modules/debugging/deviceWriteApproval.ts": [0, 2],
   "modules/debugging/service.ts": [0, 18],
-  "modules/knowledge/service.ts": [0, 15],
+  "modules/knowledge/service.ts": [0, 13],
   "modules/logs/domainsService.ts": [0, 6],
   "modules/logs/service.ts": [0, 9],
   "modules/parameter-bindings/catalogProjectValueSync.ts": [0, 1],

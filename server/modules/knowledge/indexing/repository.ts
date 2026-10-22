@@ -180,6 +180,29 @@ export async function enqueueAllPublishedEntriesAcrossOrganizations(db: Queryabl
   return result.rowCount ?? 0;
 }
 
+/** Detection-only scans never change chunks, embeddings or index job claims. */
+export async function listReferenceSuggestionDetectionBatch(
+  db: Queryable,
+  input: { organizationId?: string; neverDetected?: boolean; afterId?: string; limit?: number }
+) {
+  const result = await db.query<{ entry_id: string; organization_id: string }>(
+    `select id as entry_id, organization_id from knowledge_entries
+     where status <> 'archived' and ($1::text is null or organization_id = $1)
+       and (not $2::boolean or reference_suggestions_detected_at is null)
+       and ($3::uuid is null or id > $3)
+     order by id limit $4`,
+    [input.organizationId ?? null, input.neverDetected ?? false, input.afterId ?? null, input.limit ?? 50]
+  );
+  return result.rows;
+}
+
+export async function countReferenceSuggestionRescanEntries(db: Queryable, organizationId: string): Promise<number> {
+  const result = await db.query<{ count: number }>(
+    "select count(*)::int as count from knowledge_entries where organization_id = $1 and status <> 'archived'", [organizationId]
+  );
+  return result.rows[0].count;
+}
+
 const STALE_PROCESSING_INTERVAL = "5 minutes";
 
 /**
