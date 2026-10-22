@@ -1,8 +1,8 @@
 # User-curated knowledge
 
-> Chinese: [中文](../../zh-CN/exec-plans/active/2026-10-21-knowledge-user-curation.md)
+> Chinese: [中文](../../zh-CN/exec-plans/completed/2026-10-21-knowledge-user-curation.md)
 
-Status: design settled 2026-10-21 (grilling session, three rounds, all recommendations accepted). Spec: [#1324](https://github.com/tzrea1-Q/WiseEff/issues/1324). All slices S1–S6 (tickets #1326–#1336) are implemented and reviewed on the integration branch `feat/knowledge-user-curation`, delivered as one PR ([#1337](https://github.com/tzrea1-Q/WiseEff/pull/1337)) at the user's request; that PR records the verification evidence.
+Status: delivered 2026-10-21. Design settled the same day (grilling session, three rounds, all recommendations accepted). Spec: [#1324](https://github.com/tzrea1-Q/WiseEff/issues/1324). All slices S1–S6 (tickets #1326–#1336) were implemented and reviewed on the integration branch `feat/knowledge-user-curation` and merged as one PR ([#1337](https://github.com/tzrea1-Q/WiseEff/pull/1337)) at the user's request; that PR records the verification evidence.
 
 ## Authorized outcome
 

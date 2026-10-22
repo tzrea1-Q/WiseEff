@@ -1,8 +1,8 @@
 # Knowledge reference suggestions and PDF page citations
 
-> Chinese: [中文](../../zh-CN/exec-plans/active/2026-10-21-knowledge-reference-suggestions-and-page-citations.md)
+> Chinese: [中文](../../zh-CN/exec-plans/completed/2026-10-21-knowledge-reference-suggestions-and-page-citations.md)
 
-Status: design settled 2026-10-21 (grilling session, three rounds, all recommendations accepted). Spec: [#1338](https://github.com/tzrea1-Q/WiseEff/issues/1338); tickets #1339–#1341 (reference suggestions) and #1342–#1345 (page citations). Takes up two items deferred by [user-curated knowledge](2026-10-21-knowledge-user-curation.md): parameter-name detection on import (K15) and PDF page-level citations (K22).
+Status: delivered 2026-10-21. Design settled the same day (grilling session, three rounds, all recommendations accepted); page citations merged as [#1347](https://github.com/tzrea1-Q/WiseEff/pull/1347) and reference suggestions as [#1348](https://github.com/tzrea1-Q/WiseEff/pull/1348), stacked on #1347 (R25 delivered as two PRs). Each PR records its verification evidence. Spec: [#1338](https://github.com/tzrea1-Q/WiseEff/issues/1338); tickets #1339–#1341 (reference suggestions) and #1342–#1345 (page citations). Takes up two items deferred by [user-curated knowledge](2026-10-21-knowledge-user-curation.md): parameter-name detection on import (K15) and PDF page-level citations (K22).
 
 ## Authorized outcome
 

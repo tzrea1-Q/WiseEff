@@ -13,6 +13,7 @@ completed plan 是历史实施证据，可解释系统为何形成，但不得�
 - 2026-08-19 的 property-key source cutover 与余量计划经 #544/#549/#553/#555/#558 归档；TD-117 按接受残留关闭，余量是跨页导航。
 - 2026-08-18 的 CI feedback-loop 计划经 #523–#525 归档；TD-118 继续承接共享库 browser suite 时延。
 - 2026-08-17 两轮归档覆盖已落地的 path-reachable、产品反馈、topology review、DTS 工作台/seed、归属/driver registry/overlay、参数后台、批量导入、日志组织作用域、个人总览、ADB/HDC、调试后台、Device Bridge、小泽 UX 与 CORS 等计划。
+- 2026-10-21 两份知识库计划在合入后归档：用户自管知识（`2026-10-21-knowledge-user-curation.md`，#1324，PR #1337），以及引用建议与 PDF 页级引用（`2026-10-21-knowledge-reference-suggestions-and-page-citations.md`，#1338，PR #1347/#1348）。其“延后”部分列出仍未开展的知识库工作。
 - 2026-08-23 的有界计划治理清单归档了 organization administration（#560）、local evaluation auth hardening（#563）、node-only debugging 与 DTS parameter workbench 四组已知陈旧 active plan。该清单不构成 repo-wide completed-plan inventory，TD-005 因此仍须保持 Open。
 
 ## 历史状态合同

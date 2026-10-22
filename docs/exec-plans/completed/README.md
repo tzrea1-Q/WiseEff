@@ -46,6 +46,8 @@ On 2026-08-17, landed path-reachable C1–C4 (`2026-08-05-path-reachable-mock-ga
 
 On 2026-08-23, the bounded plan-hygiene inventory archived four known stale active-plan groups: Organization administration (#560), local evaluation auth hardening (#563), node-only debugging, and the DTS parameter workbench. This inventory is not repository-wide, so it does not close TD-005.
 
+On 2026-10-21, the two knowledge plans moved here once merged: user-curated knowledge (`2026-10-21-knowledge-user-curation.md`, #1324, PR #1337) and reference suggestions with PDF page citations (`2026-10-21-knowledge-reference-suggestions-and-page-citations.md`, #1338, PRs #1347/#1348). Their Deferred sections list the knowledge work still open.
+
 The dated feature plans from 2026-05-07 through 2026-05-24 record prototype and UI evolution. Treat them as history unless a current product, design, frontend, or architecture document explicitly points to them as still-current behavior.
 
 ## Reading Rule

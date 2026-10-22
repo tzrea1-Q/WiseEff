@@ -1,8 +1,8 @@
 # 用户自管知识
 
-> English: [English](../../../exec-plans/active/2026-10-21-knowledge-user-curation.md)
+> English: [English](../../../exec-plans/completed/2026-10-21-knowledge-user-curation.md)
 
-状态：设计已于 2026-10-21 敲定（拷问式设计会话，三轮，所有建议均被采纳）。规格：[#1324](https://github.com/tzrea1-Q/WiseEff/issues/1324)。S1–S6 全部切片（工单 #1326–#1336）已在集成分支 `feat/knowledge-user-curation` 上实现并完成审查，按用户要求以一个 PR（[#1337](https://github.com/tzrea1-Q/WiseEff/pull/1337)）交付，验证证据记录在该 PR 中。
+状态：已于 2026-10-21 交付。设计于同日敲定（拷问式设计会话，三轮，所有建议均被采纳）。规格：[#1324](https://github.com/tzrea1-Q/WiseEff/issues/1324)。S1–S6 全部切片（工单 #1326–#1336）已在集成分支 `feat/knowledge-user-curation` 上实现并完成审查，按用户要求以一个 PR（[#1337](https://github.com/tzrea1-Q/WiseEff/pull/1337)）合入，验证证据记录在该 PR 中。
 
 ## 授权目标
 
