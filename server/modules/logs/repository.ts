@@ -34,6 +34,8 @@ type LogFileObjectRow = {
 };
 
 type RevisionRow = {
+  skill_name_snapshot?: string | null;
+  skill_revision_number_snapshot?: number | null;
   skill_revision_id?: string | null; skill_revision_number?: number | null;
   source_snapshot_id?: string | null;
   source_snapshot_version_label?: string | null;
@@ -144,6 +146,8 @@ export type LogFileObjectDto = {
 };
 
 export type LogRunDto = {
+  skillNameSnapshot?: string;
+  skillRevisionNumberSnapshot?: number;
   knowledgeRevisions: Array<{ entryId: string; revisionId?: string; pages?: number[] }>;
   sourceSnapshot?: AnalyzeLogInput["sourceSnapshot"];
   sourceSnapshotSelection?: "matched_version" | "default" | "none";
@@ -322,6 +326,8 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"], 
     failureReason: row.failure_reason ?? undefined,
     analysisQuestion: row.analysis_question ?? undefined,
     skillRevision: row.skill_revision_id && row.skill_revision_number ? { id: row.skill_revision_id, number: row.skill_revision_number } : null,
+    skillNameSnapshot: row.skill_name_snapshot ?? undefined,
+    skillRevisionNumberSnapshot: row.skill_revision_number_snapshot ?? undefined,
     knowledgeRevisions: (row.knowledge_revisions ?? []).map(({ entryId, revisionId, pages }) => ({ entryId,
       ...(readableKnowledgeIds.has(entryId) ? { revisionId, ...(pages ? { pages } : {}) } : {}) })),
     logDomainId: row.log_domain_id ?? undefined,
@@ -366,6 +372,8 @@ function toRunDto(row: RunRow, readableKnowledgeIds: Set<string>): LogRunDto {
     id: row.id,
     logId: row.log_record_id,
     skillRevision: row.skill_revision_id && row.skill_revision_number ? { id: row.skill_revision_id, number: row.skill_revision_number } : null,
+    skillNameSnapshot: row.skill_name_snapshot ?? undefined,
+    skillRevisionNumberSnapshot: row.skill_revision_number_snapshot ?? undefined,
     status: row.status,
     currentStage: row.current_stage,
     progress: Number(row.progress),
@@ -448,6 +456,8 @@ const logSelect = `
     lr.log_domain_id,
     lr.skill_selection,
     ld.name as log_domain_name,
+    case when lar.id is not null then lar.skill_name_snapshot else lr.skill_name_snapshot end as skill_name_snapshot,
+    lar.skill_revision_number_snapshot,
     lar.skill_revision_id, sr.revision_number as skill_revision_number,
     lar.source_snapshot_id, lar.source_snapshot_status, lar.source_snapshot_selection, lar.requested_source_version,
     source.version_label as source_snapshot_version_label, lar.knowledge_revisions
@@ -538,9 +548,10 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
       `
       insert into log_records (
         id, organization_id, file_object_id, file_name, source, status,
-        analysis_question, related_parameter_id, related_parameter_project_id, submitted_by_user_id, log_domain_id, created_by_credential_id, skill_selection
+        analysis_question, related_parameter_id, related_parameter_project_id, submitted_by_user_id, log_domain_id, created_by_credential_id, skill_selection, skill_name_snapshot
       )
-      values ($1, $2, $3, $4, $5, 'processing', $6, $7, $8, $9, $10, $11, $12::jsonb)
+      values ($1, $2, $3, $4, $5, 'processing', $6, $7, $8, $9, $10, $11, $12::jsonb,
+        (select name from log_domains where organization_id=$2 and id=$10))
       returning id
       `,
       [
@@ -561,9 +572,12 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
     await tx.query<RunRow>(
       `
       insert into log_analysis_runs (
-        id, organization_id, log_record_id, status, current_stage, progress, related_parameter_snapshot, skill_revision_id, requested_source_version
+        id, organization_id, log_record_id, status, current_stage, progress, related_parameter_snapshot, skill_revision_id, requested_source_version,
+        skill_name_snapshot,skill_revision_number_snapshot
       )
-      values ($1, $2, $3, 'queued', 'parse', 0, $4::jsonb, $5, $6)
+      values ($1, $2, $3, 'queued', 'parse', 0, $4::jsonb, $5, $6,
+        (select d.name from log_skill_revisions r join log_domains d on d.id=r.skill_id and d.organization_id=r.organization_id where r.organization_id=$2 and r.id=$5),
+        (select revision_number from log_skill_revisions where organization_id=$2 and id=$5))
       returning id, log_record_id, status, current_stage, progress, error_message, updated_at
       `,
       [input.runId, input.organizationId, input.logId, input.relatedParameterSnapshot ? jsonb(input.relatedParameterSnapshot) : null, skillRevisionId, input.sourceVersion ?? null]
@@ -799,6 +813,7 @@ export async function listRuns(db: Queryable, auth: AuthContext, logId: string) 
   const result = await db.query<RunRow>(
     `
     select lar.id, lar.log_record_id, lar.status, lar.current_stage, lar.progress, lar.error_message, lar.updated_at, lar.skill_revision_id, sr.revision_number as skill_revision_number,
+      lar.skill_name_snapshot,lar.skill_revision_number_snapshot,
       lar.source_snapshot_id, lar.source_snapshot_status, lar.source_snapshot_selection, lar.requested_source_version,
       source.version_label as source_snapshot_version_label, lar.knowledge_revisions
     from log_analysis_runs lar
@@ -929,7 +944,7 @@ export async function getLogWorkerRunSnapshot(db: Queryable, jobId: string) {
       limit 1
     ) matched on true
     left join log_source_snapshots source on source.id = coalesce(matched.id, sr.spec->>'defaultSourceSnapshotId')
-      and source.organization_id = run.organization_id and source.skill_id = sr.skill_id
+      and source.organization_id = run.organization_id and (source.skill_id = sr.skill_id or source.skill_id is null)
     left join log_domains ld
       on ld.id = lr.log_domain_id
       and ld.organization_id = job.organization_id
@@ -1426,7 +1441,8 @@ export async function createRerunWithJob(
   await db.query<RunRow>(
     `
     insert into log_analysis_runs (
-      id, organization_id, log_record_id, status, current_stage, progress, related_parameter_snapshot, skill_revision_id, legacy_knowledge_entry_ids, requested_source_version
+      id, organization_id, log_record_id, status, current_stage, progress, related_parameter_snapshot, skill_revision_id, legacy_knowledge_entry_ids, requested_source_version,
+      skill_name_snapshot,skill_revision_number_snapshot
     )
     values ($1, $2, $3, 'queued', 'parse', 0, $4::jsonb, $5,
       case when $6::boolean then (select old.legacy_knowledge_entry_ids from log_records record
@@ -1434,7 +1450,9 @@ export async function createRerunWithJob(
         where record.organization_id = $2 and record.id = $3) end,
       (select prior.requested_source_version from log_records lr join log_analysis_runs prior
         on prior.id = lr.current_run_id and prior.organization_id = lr.organization_id
-        where lr.id = $3 and lr.organization_id = $2))
+        where lr.id = $3 and lr.organization_id = $2),
+      (select d.name from log_skill_revisions r join log_domains d on d.id=r.skill_id and d.organization_id=r.organization_id where r.organization_id=$2 and r.id=$5),
+      (select revision_number from log_skill_revisions where organization_id=$2 and id=$5))
     returning id, log_record_id, status, current_stage, progress, error_message, updated_at
     `,
     [input.runId, input.organizationId, input.logId, input.relatedParameterSnapshot ? jsonb(input.relatedParameterSnapshot) : null, input.skillRevisionId,

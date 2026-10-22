@@ -21,7 +21,7 @@ const analysisCase: AnalysisCase = { id: "case", name: "Case", expectations: { d
 const completeCaseRun: AnalysisCaseRun = { id: "case-run", skillRevisionId: "draft", publishedRevisionId: "current", status: "complete", progress: 100,
   results: [{ caseId: "case", name: "Case", draft: { score: 100, passed: true, traceReference: "trace", report: { confidence: 0.9, conclusion: "fault", impact: "fault",
     severity: "Warning", evidence: [], suggestedActions: ["inspect"], reportContext: { lineCount: 1, entryCount: 1 } } }, published: null, delta: 10 }], error: null, createdAt: "2026-10-19" };
-function setup(options: { section?: string; tab?: string; draft?: boolean; draftOnly?: boolean; singleVersion?: boolean; noSample?: boolean; apiMode?: boolean; canEdit?: boolean; legacyDescription?: boolean; procedure?: string;
+function setup(options: { section?: string; tab?: string; draft?: boolean; draftOnly?: boolean; deletion?: boolean; singleVersion?: boolean; noSample?: boolean; apiMode?: boolean; canEdit?: boolean; legacyDescription?: boolean; procedure?: string;
   spec?: Partial<SkillSpec>; runParseTests?: NonNullable<SkillWorkspaceRepository["runSkillParseTests"]>; knowledgeRepository?: KnowledgeRepository; knowledgeCanEdit?: boolean } = {}) {
   const skill = structuredClone(mockSkillWorkspace("skill-charging")!);
   const old: SkillRevision = { ...skill.currentRevision, id: "old", number: 1, status: "superseded", spec: { schemaVersion: "skill/v1", description: "旧描述" } };
@@ -32,6 +32,11 @@ function setup(options: { section?: string; tab?: string; draft?: boolean; draft
   if (options.draft) skill.draft = { ...skill.currentRevision, id: "draft", number: 3, status: "draft", spec: { ...skill.currentRevision.spec, description: "草稿描述" } };
   if (options.draftOnly) { skill.currentRevision = { ...skill.currentRevision, status: "draft", publishedAt: null }; skill.draft = skill.currentRevision; }
   const repository = {
+    ...(options.deletion ? { previewSkillDeletion: vi.fn<NonNullable<SkillWorkspaceRepository["previewSkillDeletion"]>>(async () => ({
+      skillId: skill.id, name: skill.name, skillKey: skill.skillKey, status: skill.status, version: "a".repeat(64),
+      generatedAt: "2026-10-20T12:00:00Z", canDelete: true, inventory: [], objects: { total: 0, shared: 0, exclusive: 0 }, blockers: [], notes: [] })),
+    purgeSkill: vi.fn<NonNullable<SkillWorkspaceRepository["purgeSkill"]>>(async (_id, version) => ({ skillId: skill.id, name: skill.name,
+      skillKey: skill.skillKey, version, database: "deleted", objects: "complete", pendingObjects: 0, retainedObjects: 0 })) } : {}),
     exportSkillPackage: vi.fn(async () => new Blob(["zip"])),
     getSkillSample: vi.fn(async () => options.noSample ? null : mockSkillSample),
     getSkillSampleText: vi.fn(async () => null),
@@ -92,6 +97,22 @@ function setup(options: { section?: string; tab?: string; draft?: boolean; draft
 }
 
 describe("skill workspace", () => {
+  it("deletes a never-published clean draft directly and keeps confirmation after failure", async () => {
+    const { repository, onNavigate } = setup({ draftOnly: true, deletion: true });
+    repository.purgeSkill!.mockRejectedValueOnce(new Error("offline"));
+    await userEvent.click(await screen.findByRole("button", { name: "彻底删除…" }));
+    const dialog = await screen.findByRole("dialog", { name: "彻底删除技能" });
+    const purge = await within(dialog).findByRole("button", { name: "彻底删除" });
+    expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /归档/ })).not.toBeInTheDocument();
+    await userEvent.click(purge);
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("请重试");
+    await userEvent.click(purge);
+    await userEvent.click(await screen.findByRole("button", { name: "关闭" }));
+    expect(await screen.findByText("实验技能已删除")).toBeVisible();
+    expect(repository.purgeSkill).toHaveBeenNthCalledWith(2, "skill-charging", "a".repeat(64));
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
   it("saves unsaved changes before retrying a failed dry run", async () => {
     const { repository } = setup({ draft: true });
     repository.getSkillDryRun.mockImplementation(async () => ({ run: { id: "dry-run", skillRevisionId: "draft", status: "failed", progress: 100, report: null, error: null, createdAt: "2026-10-19" }, steps: [] }));

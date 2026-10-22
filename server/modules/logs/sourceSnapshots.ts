@@ -56,7 +56,11 @@ export async function listSourceSnapshots(db: Queryable, auth: AuthContext, skil
 
 export async function validateDefaultSourceSnapshot(db: Queryable, organizationId: string, skillId: string, spec: LogSkillSpec, allowArchived = false) {
   if (!spec.defaultSourceSnapshotId) return;
-  const snapshot = await getSnapshot(db, organizationId, skillId, spec.defaultSourceSnapshotId);
+  const snapshot = (await db.query<{ status: SourceSnapshotDto["status"] }>(`select s.status from log_source_snapshots s
+    where s.organization_id=$1 and s.id=$3 and (s.skill_id=$2 or (s.skill_id is null and exists
+      (select 1 from log_skill_revisions r where r.organization_id=$1 and r.skill_id=$2 and r.spec->>'defaultSourceSnapshotId'=s.id)))`,
+    [organizationId, skillId, spec.defaultSourceSnapshotId])).rows[0];
+  if (!snapshot) throw new ApiError("NOT_FOUND", "源码快照不存在。");
   if (snapshot.status === "archived" && !allowArchived) throw new ApiError("CONFLICT", "已归档的源码快照不能设为默认。");
 }
 
