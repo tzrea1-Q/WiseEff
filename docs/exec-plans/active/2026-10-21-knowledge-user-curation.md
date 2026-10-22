@@ -92,7 +92,7 @@ Starting point: single-entry Markdown authoring and single-file upload (PDF, DOC
 
 ## Deferred
 
-PDF page citations; parameter-name detection on import; more formats (PPTX, XLSX, HTML, OCR); restricted knowledge; node-debugging distillation; collections; MCP surface; agent curation (dedup, staleness, gap detection).
+PDF page citations; parameter-name detection on import; more formats (PPTX, XLSX, HTML, OCR); restricted knowledge; node-debugging distillation; collections; MCP surface; agent curation (dedup, staleness, gap detection). Parameter-name detection (as reference suggestions) and PDF page citations are taken up by [knowledge reference suggestions and page citations](2026-10-21-knowledge-reference-suggestions-and-page-citations.md).
 
 ## Documentation Impact Matrix
 

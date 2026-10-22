@@ -92,7 +92,7 @@
 
 ## 延后
 
-PDF 页级引用；导入时识别参数名；更多格式（PPTX、XLSX、HTML、OCR）；受限知识；节点调试沉淀；合集；MCP 接入面；Agent 自主维护（去重、过期标记、知识空洞发现）。
+PDF 页级引用；导入时识别参数名；更多格式（PPTX、XLSX、HTML、OCR）；受限知识；节点调试沉淀；合集；MCP 接入面；Agent 自主维护（去重、过期标记、知识空洞发现）。导入时识别参数名（以引用建议的形式）和 PDF 页级引用由[知识引用建议与页级引用](2026-10-21-knowledge-reference-suggestions-and-page-citations.md)承接。
 
 ## 文档影响矩阵
 
