@@ -15,6 +15,7 @@ import type {
 import type { LogFormatProfile } from "./formatProfile";
 import type { LogSkillSpec } from "./skillSpec";
 import { currentSkillRevisionId } from "./skillsRepository";
+import { canDeleteLog } from "./policy";
 import { readableKnowledgeEntryIds } from "./skillKnowledge";
 import type { LogArchiveState, LogFeedbackRating, LogRecordDto } from "./types";
 import type { LogRecordStatus, LogRunStatus, LogStage } from "./status";
@@ -66,6 +67,7 @@ type LogRecordRow = RevisionRow & {
   captured_at: string | Date;
   updated_at: string | Date;
   submitted_by: string | null;
+  submitted_by_user_id?: string | null;
   created_by_credential_id?: string | null;
   created_by_credential_name?: string | null;
   related_parameter_id: string | null;
@@ -447,6 +449,7 @@ const logSelect = `
     lr.captured_at,
     lr.updated_at,
     users.name as submitted_by,
+    lr.submitted_by_user_id,
     lr.created_by_credential_id,
     credential.name as created_by_credential_name,
     lr.related_parameter_id,
@@ -759,7 +762,7 @@ export async function listLogs(
   );
 
   const readableKnowledgeIds = await readableKnowledgeEntryIds(db, auth, result.rows.flatMap((row) => (row.knowledge_revisions ?? []).map((revision) => revision.entryId)));
-  return Promise.all(result.rows.map(async (row) => ({ ...toLogDto(row, [], readableKnowledgeIds), files: fileInventory(await loadLogFiles(db, auth.organization.id, row.id)) })));
+  return Promise.all(result.rows.map(async (row) => ({ ...toLogDto(row, [], readableKnowledgeIds), canDelete: canDeleteLog(auth, row), files: fileInventory(await loadLogFiles(db, auth.organization.id, row.id)) })));
 }
 
 export async function getLogDetail(db: Queryable, auth: AuthContext | IntegrationPrincipal, logId: string) {
@@ -806,7 +809,7 @@ export async function getLogDetail(db: Queryable, auth: AuthContext | Integratio
   );
 
   const readableKnowledgeIds = integration ? new Set<string>() : await readableKnowledgeEntryIds(db, auth, (row.knowledge_revisions ?? []).map((revision) => revision.entryId));
-  return { ...toLogDto(row, evidenceResult.rows.map(toEvidenceDto), readableKnowledgeIds), files: fileInventory(await loadLogFiles(db, organizationId, logId)) };
+  return { ...toLogDto(row, evidenceResult.rows.map(toEvidenceDto), readableKnowledgeIds), canDelete: !integration && canDeleteLog(auth, row), files: fileInventory(await loadLogFiles(db, organizationId, logId)) };
 }
 
 export async function listRuns(db: Queryable, auth: AuthContext, logId: string) {

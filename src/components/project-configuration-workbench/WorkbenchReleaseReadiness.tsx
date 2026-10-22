@@ -118,7 +118,7 @@ export function WorkbenchReleaseReadinessIssues({
           const description = <>
             <span>{issue.severity === "blocker" ? "阻断" : "警告"}</span>
             <strong>{issue.message}</strong>
-            <small>{issue.remediation.label}</small>
+            <small>{presentErrorMessage(issue.remediation.label, issue.remediation.kind === "complete-pending-change" ? "前往变更审核" : "请检查配置后重试。")}</small>
           </>;
           return (
             <li key={issue.id} data-severity={issue.severity} data-code={issue.code}>

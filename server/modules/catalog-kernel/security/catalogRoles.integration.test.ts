@@ -1572,6 +1572,11 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
             array['user_id','organization_id','project_id','role_id']),
           ('parameter_catalog.require_project_erasure_admin(text,text)', 'user_role_bindings',
             array['user_id','organization_id','project_id','role_id']),
+          -- 0256 checks the log erasure actor and lists pending cleanups with the same role columns.
+          ('parameter_catalog.require_log_erasure_actor(text,text,text)', 'user_role_bindings',
+            array['user_id','organization_id','project_id','role_id']),
+          ('parameter_catalog.list_log_erasures(text,text)', 'user_role_bindings',
+            array['user_id','organization_id','project_id','role_id']),
           ('parameter_catalog.protect_source_request_administration()', 'users',
             array['id','organization_id','is_active']),
           ('parameter_catalog.protect_source_request_administration()', 'user_role_bindings',

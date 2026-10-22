@@ -175,7 +175,7 @@ export const navigationItems: PageConfig[] = [
     group: "知识库",
     icon: BookOpen,
     title: "工程知识库",
-    subtitle: "沉淀调参经验、故障案例、硬件手册与流程规范,发布后进入检索"
+    subtitle: "沉淀调参经验、故障案例、硬件手册与流程规范，发布后进入检索"
   },
   {
     key: "knowledge-admin",
@@ -184,7 +184,7 @@ export const navigationItems: PageConfig[] = [
     group: "知识库",
     icon: LibraryBig,
     title: "知识库管理后台",
-    subtitle: "已归档条目治理与彻底删除;Agent 草稿队列与索引健康后续阶段加入"
+    subtitle: "审阅小泽知识草稿，管理已归档条目与检索索引"
   }
 ];
 

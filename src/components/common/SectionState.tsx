@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import type { ReactNode } from "react";
 import { Inbox } from "lucide-react";
 import { Empty, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 
@@ -20,17 +21,18 @@ export function SectionSkeleton({ label }: SectionSkeletonProps) {
 }
 
 type SectionEmptyProps = {
+  icon?: ReactNode;
   title?: string;
   message: string;
   actionLabel?: string;
   onAction?: () => void;
 };
 
-export function SectionEmpty({ title, message, actionLabel, onAction }: SectionEmptyProps) {
+export function SectionEmpty({ icon, title, message, actionLabel, onAction }: SectionEmptyProps) {
   return (
     <Empty className="section-empty">
       <EmptyHeader>
-        <EmptyMedia variant="icon"><Inbox aria-hidden="true" /></EmptyMedia>
+        <EmptyMedia variant="icon">{icon ?? <Inbox aria-hidden="true" />}</EmptyMedia>
         <p>{title ? <><strong>{title}</strong>{" "}</> : null}{message}</p>
       </EmptyHeader>
       {actionLabel && onAction ? (

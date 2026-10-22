@@ -43,6 +43,7 @@ export type LogRecordDto = {
   fileName: string;
   source: string;
   fileSizeBytes: number;
+  canDelete?: boolean;
   status: LogRecordStatus;
   archiveState: LogArchiveState;
   stage: LogStage;

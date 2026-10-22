@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Bot, CheckCheck, ListRestart, Wrench } from "lucide-react";
+import { AlertTriangle, Bot, CheckCheck, FileText, ListRestart, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { formatBytes } from "@/domain/format/formatBytes";
@@ -59,7 +59,7 @@ export function AnalysisTrace({ steps, analysis, onOpenLine }: {
   analysis?: Pick<LogRecord, "analysisSource" | "degradedReason">;
   onOpenLine?: OpenTraceLine;
 }) {
-  if (!steps.length) return <SectionEmpty message="暂无分析轨迹。" />;
+  if (!steps.length) return <SectionEmpty icon={<FileText aria-hidden size={20} />} message="暂无分析轨迹。" />;
   const toolCalls = steps.filter((step) => step.kind === "tool-call").length;
   const hasTokens = steps.some((step) => step.inputTokens != null || step.outputTokens != null);
   const inputTokens = steps.reduce((sum, step) => sum + (step.inputTokens ?? 0), 0);

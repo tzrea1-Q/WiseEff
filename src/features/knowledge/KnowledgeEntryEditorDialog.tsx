@@ -5,10 +5,11 @@ import { KnowledgeRevisionConflictError, type KnowledgeRepository } from "@/appl
 import { renderMarkdownPreview } from "@/domain/knowledge/markdown";
 import type { KnowledgeEntry, KnowledgeParameterReference, KnowledgeReferenceSuggestion } from "@/domain/knowledge/types";
 import { definitionReferenceLifecycleLabels } from "@/domain/knowledge/types";
-import { presentError } from "@/infrastructure/http/presentError";
+import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SearchField } from "@/components/common/SearchField";
 import { Button } from "@/components/ui/button";
+import { Empty, EmptyHeader, EmptyMedia, EmptyDescription } from "@/components/ui/empty";
 import { KnowledgeParameterReferenceChips, referenceDisplayName } from "./KnowledgeParameterReferenceChips";
 
 export type KnowledgeEditorSubmit = {
@@ -128,7 +129,7 @@ export function KnowledgeEntryEditorDialog({
         const result = batch.results[0];
         if (result?.status !== "succeeded" || !result.entry) throw new Error(result?.error?.message ?? "建议处理失败，请重试。");
         updated = result.entry;
-        if (batch.summaryError) setSuggestionError(batch.summaryError);
+        if (batch.summaryError) setSuggestionError(presentErrorMessage(batch.summaryError, "服务暂时不可用，请稍后重试。"));
       } else if (accept) {
         updated = await suggestionRepository.acceptReferenceSuggestion(entry.id, item.definitionId);
       } else {
@@ -274,8 +275,8 @@ export function KnowledgeEntryEditorDialog({
             </h2>
             <p id={descriptionId} className="mt-0.5 text-xs text-muted-foreground">
               {entry?.contentForm === "file" ? "接受建议或手动关联参数定义，操作立即生效。" : entry
-                ? `每次保存都会产生新的不可变修订(当前修订 #${entry.headRevisionNumber})。`
-                : "新条目以草稿创建;发布后才进入检索。"}
+                ? `每次保存都会产生新的不可变修订（当前修订 #${entry.headRevisionNumber}）。`
+                : "新条目以草稿创建；发布后才进入检索。"}
             </p>
           </div>
 
@@ -288,10 +289,10 @@ export function KnowledgeEntryEditorDialog({
               className="h-9 min-w-64 flex-1 rounded-md border border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             <input
-              aria-label="标签(逗号分隔)"
+              aria-label="标签（逗号分隔）"
               value={tagsText}
               onChange={(event) => setTagsText(event.target.value)}
-              placeholder="标签,逗号分隔(可含项目标签)"
+              placeholder="标签，逗号分隔（可含项目标签）"
               className="h-9 w-72 rounded-md border border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div> : null}
@@ -323,7 +324,7 @@ export function KnowledgeEntryEditorDialog({
               {suggestionError ? <div role="alert" className="text-sm text-destructive">{suggestionError}
                 <Button type="button" size="sm" variant="ghost" disabled={suggestionPending} onClick={() => setSuggestionReload((value) => value + 1)}>重试</Button>
               </div> : null}
-              {!suggestionLoading && !suggestionError && suggestions.length === 0 ? <p className="text-xs text-muted-foreground">暂无建议关联。</p> : null}
+              {!suggestionLoading && !suggestionError && suggestions.length === 0 ? <Empty><EmptyHeader><EmptyMedia variant="icon"><Search /></EmptyMedia><EmptyDescription>暂无建议关联。</EmptyDescription></EmptyHeader></Empty> : null}
               {Array.from(new Set(suggestions.map((item) => item.propertyKey))).map((key) => (
                 <div key={key} className="space-y-2">
                   <h4 className="break-all text-sm font-medium">{key}</h4>
@@ -354,7 +355,7 @@ export function KnowledgeEntryEditorDialog({
               <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                 <span className="text-sm font-medium text-foreground">关联参数定义</span>
                 <span className="text-xs text-muted-foreground">
-                  {entry ? "添加/移除立即生效并写入审计；引用绑定定义本体，退役后仍保留。" : "先创建草稿,再关联参数定义。"}
+                  {entry ? "添加/移除立即生效并写入审计；引用绑定定义本体，退役后仍保留。" : "先创建草稿，再关联参数定义。"}
                 </span>
               </div>
 
@@ -430,9 +431,7 @@ export function KnowledgeEntryEditorDialog({
                         );
                       })}
                       {!specSearching && specOptions.length === 0 ? (
-                        <li className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-                          没有匹配的参数定义。
-                        </li>
+                        <li><Empty><EmptyHeader><EmptyMedia variant="icon"><Search /></EmptyMedia><EmptyDescription>没有匹配的参数定义。</EmptyDescription></EmptyHeader></Empty></li>
                       ) : null}
                     </ul>
                   ) : null}
@@ -455,8 +454,8 @@ export function KnowledgeEntryEditorDialog({
 
           {conflict ? (
             <div className="rounded-md bg-amber-100 px-3 py-2 text-sm text-amber-950" role="alert">
-              保存冲突:当前条目已被其他保存更新到修订 #{conflict.currentHeadRevisionNumber}
-              (你基于修订 #{conflict.expectedHeadRevisionNumber})。请复制你的改动,刷新条目后重试。
+              保存冲突：当前条目已被其他保存更新到修订 #{conflict.currentHeadRevisionNumber}
+              （你基于修订 #{conflict.expectedHeadRevisionNumber}）。请复制你的改动，刷新条目后重试。
             </div>
           ) : null}
           {error ? (

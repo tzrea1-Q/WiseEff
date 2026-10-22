@@ -4,6 +4,14 @@ import { createWorkbenchCanvasHistorySession } from "./workbenchCanvasHistorySes
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 
 describe("WorkbenchCanvasHistorySession", () => {
+  it("hides internal source errors behind the history context", async () => {
+    const session = createWorkbenchCanvasHistorySession();
+    await session.loadModeSource({ canvasMode: "history", projectId: "proj", fileId: "file",
+      versionId: "history", workingSource: "working", repo: {
+        downloadVersion: vi.fn().mockRejectedValue(new WiseEffApiError("INTERNAL_ERROR", "/private/server/source", {}, "req-source"))
+      } });
+    expect(session.modeSourceError).toBe("历史源码加载失败。");
+  });
   it.each(["NOT_FOUND", "GONE"])("keeps an absent counterpart (%s) separate from request failures", async (code) => {
     const session = createWorkbenchCanvasHistorySession();
     await session.loadModeSource({ canvasMode: "unified-diff", projectId: "proj", fileId: "file",

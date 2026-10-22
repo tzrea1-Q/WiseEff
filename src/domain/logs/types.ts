@@ -140,6 +140,7 @@ export type LogSignalSummary = {
 };
 
 export type LogRecord = {
+  canDelete?: boolean;
   skillSelection?: LogSkillSelection;
   createdByCredentialId?: string | null;
   createdByCredentialName?: string | null;

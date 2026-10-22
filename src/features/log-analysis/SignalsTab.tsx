@@ -1,6 +1,7 @@
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { SectionEmpty } from "@/components/common/SectionState";
 import { Badge } from "@/components/ui/badge";
+import { FileText } from "lucide-react";
 import type { LogLineTemplate, LogSignal, LogSignalAnchor, LogSignalSummary } from "@/domain/logs/types";
 import { SEVERITY_LABELS } from "@/domain/prototype/types";
 
@@ -76,7 +77,7 @@ export function SignalsTab({ summary, rawFilePath, rawLineCount, fileCount, allF
     {summary?.truncated || summary?.reason ? <p role="status" className="text-sm text-muted-foreground">
       {summary.reason ? truncationMessages[summary.reason] : "信号提取结果不完整，请结合原始日志核对。"}
     </p> : null}
-    {!signals.length && summary?.reason !== "extraction_error" ? <SectionEmpty message={summary ? "本次分析未保留信号。" : "暂无信号。历史记录可能尚未提取通用信号。"} /> : null}
+    {!signals.length && summary?.reason !== "extraction_error" ? <SectionEmpty icon={<FileText aria-hidden size={20} />} message={summary ? "本次分析未保留信号。" : "暂无信号。"} /> : null}
     {signalGroups.map((group) => <section key={group.key} aria-label={`信号类型 ${group.title}`} className="space-y-2">
       <h3 className="text-sm font-medium">{group.title}</h3>
       <DataTable ariaLabel={group.title} tableClassName="table-fixed" rows={group.rows} rowKey={(signal) => JSON.stringify(signal)} columns={signalColumns} />
@@ -85,7 +86,7 @@ export function SignalsTab({ summary, rawFilePath, rawLineCount, fileCount, allF
     <section aria-label="行模板" className="space-y-2">
       <h3 className="text-sm font-medium">行模板</h3>
       <DataTable ariaLabel="行模板" tableClassName="table-fixed" rows={summary?.templates ?? []} rowKey={(row) => row.template} columns={templateColumns}
-        emptyState={<SectionEmpty message="暂无行模板。" />} />
+        emptyState={<SectionEmpty icon={<FileText aria-hidden size={20} />} message="暂无行模板。" />} />
       {summary?.truncatedTemplates ? <p className="text-sm text-muted-foreground">行模板已达上限，仅显示已保留的模板。</p> : null}
     </section>
   </section>;

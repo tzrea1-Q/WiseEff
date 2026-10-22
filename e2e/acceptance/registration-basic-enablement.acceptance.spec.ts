@@ -69,6 +69,8 @@ test(`${local ? "local signup" : "existing request under HMAC"}: enables an appl
   await expect(row.getByRole("button", { name: "拒绝并保持停用", exact: true })).toBeVisible();
   await row.getByRole("button", { name: "按普通成员启用", exact: true }).focus(); await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", { name: "按普通成员启用？", exact: true });
+  await expect(dialog).toContainText("启用角色：软件开发");
+  await expect(dialog).not.toContainText("申请角色：");
   await expect(dialog).toContainText("软件开发"); await expect(dialog).toContainText("不授予申请角色"); await expect(dialog).toContainText(target.name);
   const path = `/api/v1/users/registration-role-requests/${item.id}/enable-basic`;
   await page.route(`**${path}`, route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "INTERNAL_ERROR", message: "启用暂时不可用，请重试。" } }) }), { times: 1 });

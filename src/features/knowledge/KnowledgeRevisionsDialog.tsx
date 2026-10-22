@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { History } from "lucide-react";
 
 import { KnowledgeRevisionConflictError } from "@/application/ports/KnowledgeRepository";
 import type { KnowledgeEntry, KnowledgeRevision } from "@/domain/knowledge/types";
@@ -6,11 +7,13 @@ import { presentError } from "@/infrastructure/http/presentError";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { Button } from "@/components/ui/button";
+import { Empty, EmptyHeader, EmptyMedia, EmptyDescription } from "@/components/ui/empty";
 
 export type KnowledgeRevisionsDialogProps = {
   open: boolean;
   entry: KnowledgeEntry | null;
   loadRevisions: (entryId: string) => Promise<KnowledgeRevision[]>;
+  onViewFile: (revision: KnowledgeRevision) => Promise<void>;
   /** Restoring creates a new head revision from the selected one. */
   onRestore: (revision: KnowledgeRevision, expectedHeadRevisionNumber: number) => Promise<void>;
   canRestore: boolean;
@@ -27,15 +30,16 @@ function formatDateTime(value: string) {
 }
 
 function snippet(value: string | null) {
-  if (!value) return "(文件修订)";
+  if (!value) return "（文件修订）";
   const flat = value.replace(/\s+/g, " ").trim();
-  return flat.length > 80 ? `${flat.slice(0, 80)}…` : flat || "(空内容)";
+  return flat.length > 80 ? `${flat.slice(0, 80)}…` : flat || "（空内容）";
 }
 
 export function KnowledgeRevisionsDialog({
   open,
   entry,
   loadRevisions,
+  onViewFile,
   onRestore,
   canRestore,
   onClose
@@ -46,12 +50,19 @@ export function KnowledgeRevisionsDialog({
   const [restoreTarget, setRestoreTarget] = useState<KnowledgeRevision | null>(null);
   const [restorePending, setRestorePending] = useState(false);
   const [restoreError, setRestoreError] = useState("");
+  const [viewedRevision, setViewedRevision] = useState<KnowledgeRevision | null>(null);
+  const [viewedFileRevisionId, setViewedFileRevisionId] = useState<string | null>(null);
+  const [filePending, setFilePending] = useState(false);
 
   useEffect(() => {
     if (!open || !entry) {
       return;
     }
     let cancelled = false;
+    setViewedRevision(null);
+    setViewedFileRevisionId(null);
+    setRestoreTarget(null);
+    setRestoreError("");
     setLoading(true);
     setError("");
     loadRevisions(entry.id)
@@ -81,7 +92,7 @@ export function KnowledgeRevisionsDialog({
       onClose();
     } catch (restoreFailure) {
       if (restoreFailure instanceof KnowledgeRevisionConflictError) {
-        setRestoreError(`条目已被更新到修订 #${restoreFailure.currentHeadRevisionNumber},请刷新后重试。`);
+        setRestoreError(`条目已被更新到修订 #${restoreFailure.currentHeadRevisionNumber}，请刷新后重试。`);
       } else {
         setRestoreError(presentError(restoreFailure, "恢复失败，请稍后重试。"));
       }
@@ -106,15 +117,31 @@ export function KnowledgeRevisionsDialog({
                 修订历史{entry ? ` · ${entry.title}` : ""}
               </h2>
               <p id={descriptionId} className="mt-0.5 text-xs text-muted-foreground">
-                每次保存都会追加一条不可变修订;恢复历史修订会生成新的修订,不会改写历史。
+                每次保存都会追加一条不可变修订；恢复历史修订会生成新的修订，不会改写历史。
               </p>
             </div>
 
             {error ? <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
 
-            <ul aria-label="修订列表" className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto">
+            {viewedRevision ? <div className="min-h-0 flex-1 overflow-auto" aria-label={`修订 #${viewedRevision.revisionNumber} 完整内容`}>
+              <h3 className="font-medium">{viewedRevision.title} · 修订 #{viewedRevision.revisionNumber}</h3>
+              <p className="text-sm text-muted-foreground">标签：{viewedRevision.tags.join("、") || "无"}</p>
+              {viewedRevision.fileId ? <Button variant="outline" size="sm" disabled={filePending} onClick={async () => {
+                setFilePending(true);
+                setRestoreError("");
+                try {
+                  await onViewFile(viewedRevision);
+                  setViewedFileRevisionId(viewedRevision.id);
+                } catch (failure) {
+                  setRestoreError(presentError(failure, "打开文件失败，请重试。"));
+                } finally {
+                  setFilePending(false);
+                }
+              }}>打开完整文件</Button> : <pre className="whitespace-pre-wrap break-words text-sm">{viewedRevision.contentMarkdown || "（空内容）"}</pre>}
+              {restoreError ? <p role="alert" className="text-sm text-destructive">{restoreError}</p> : null}
+            </div> : <ul aria-label="修订列表" className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto">
               {loading ? <li className="text-sm text-muted-foreground">正在加载修订…</li> : null}
-              {!loading && revisions.length === 0 ? <li className="text-sm text-muted-foreground">暂无修订。</li> : null}
+              {!loading && revisions.length === 0 ? <li><Empty><EmptyHeader><EmptyMedia variant="icon"><History /></EmptyMedia><EmptyDescription>暂无修订。</EmptyDescription></EmptyHeader></Empty></li> : null}
               {revisions.map((revision) => {
                 const isHead = entry?.headRevisionNumber === revision.revisionNumber;
                 return (
@@ -135,17 +162,19 @@ export function KnowledgeRevisionsDialog({
                         {revision.authorUserId ?? "已注销用户"} · {formatDateTime(revision.createdAt)}
                       </p>
                     </div>
-                    {canRestore && !isHead && entry?.status !== "archived" ? (
-                      <Button variant="outline" size="sm" onClick={() => setRestoreTarget(revision)}>
-                        恢复此版本
+                      <Button variant="outline" size="sm" onClick={() => { setViewedRevision(revision); setViewedFileRevisionId(null); setRestoreError(""); }}>
+                        查看修订 #{revision.revisionNumber}
                       </Button>
-                    ) : null}
                   </li>
                 );
               })}
-            </ul>
+            </ul>}
 
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              {viewedRevision ? <Button variant="outline" size="sm" disabled={filePending} onClick={() => setViewedRevision(null)}>返回修订列表</Button> : null}
+              {viewedRevision && canRestore && viewedRevision.revisionNumber !== entry?.headRevisionNumber && entry?.status !== "archived" ? (
+                <Button size="sm" disabled={Boolean(viewedRevision.fileId) && viewedFileRevisionId !== viewedRevision.id} onClick={() => setRestoreTarget(viewedRevision)}>恢复此版本</Button>
+              ) : null}
               <Button variant="outline" size="sm" onClick={onClose}>
                 关闭
               </Button>
@@ -160,7 +189,7 @@ export function KnowledgeRevisionsDialog({
         description={
           <p>
             将把修订 #{restoreTarget?.revisionNumber} 的内容恢复为新的修订 #
-            {(entry?.headRevisionNumber ?? 0) + 1}。历史修订不会被改写,条目状态保持不变。
+            {(entry?.headRevisionNumber ?? 0) + 1}。历史修订不会被改写，条目状态保持不变。
           </p>
         }
         confirmLabel="恢复为新修订"

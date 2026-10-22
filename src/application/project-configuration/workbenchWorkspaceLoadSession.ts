@@ -10,6 +10,7 @@ import type {
   ParameterFileRepository,
   ProjectParameterFile
 } from "@/application/ports/ParameterFileRepository";
+import { presentError } from "@/infrastructure/http/presentError";
 
 export type WorkspaceLoadDtsRepository = Pick<
   DtsStructuredRepository,
@@ -283,7 +284,7 @@ export function createWorkbenchWorkspaceLoadSession(): WorkbenchWorkspaceLoadSes
       } catch (error: unknown) {
         if (generation !== configGeneration) return;
         configSets = [];
-        configSetsError = error instanceof Error ? error.message : "配置加载失败。";
+        configSetsError = presentError(error, "配置加载失败。");
       } finally {
         if (generation === configGeneration) {
           configSetsLoading = false;
@@ -303,7 +304,7 @@ export function createWorkbenchWorkspaceLoadSession(): WorkbenchWorkspaceLoadSes
       } catch (error: unknown) {
         if (generation !== filesGeneration) return;
         projectFiles = [];
-        filesError = error instanceof Error ? error.message : "项目文件加载失败。";
+        filesError = presentError(error, "项目文件加载失败。");
       } finally {
         if (generation === filesGeneration) {
           filesLoading = false;
@@ -335,7 +336,7 @@ export function createWorkbenchWorkspaceLoadSession(): WorkbenchWorkspaceLoadSes
         if (generation !== membersGeneration) return;
         members = [];
         membersBoundConfigSetId = configSetId;
-        membersError = error instanceof Error ? error.message : "配置文件加载失败。";
+        membersError = presentError(error, "配置文件加载失败。");
       } finally {
         if (generation === membersGeneration) {
           membersLoading = false;
@@ -366,7 +367,7 @@ export function createWorkbenchWorkspaceLoadSession(): WorkbenchWorkspaceLoadSes
       } catch (error: unknown) {
         if (generation !== sourceGeneration) return;
         source = "";
-        sourceError = error instanceof Error ? error.message : "源码加载失败。";
+        sourceError = presentError(error, "源码加载失败。");
       } finally {
         if (generation === sourceGeneration) {
           sourceLoading = false;
@@ -403,7 +404,7 @@ export function createWorkbenchWorkspaceLoadSession(): WorkbenchWorkspaceLoadSes
       } catch (error: unknown) {
         if (generation !== structureGeneration) return;
         structureNodes = [];
-        structureError = error instanceof Error ? error.message : "结构树加载失败。";
+        structureError = presentError(error, "结构树加载失败。");
       } finally {
         if (generation === structureGeneration) {
           structureLoading = false;
