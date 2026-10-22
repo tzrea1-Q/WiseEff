@@ -349,6 +349,7 @@ export function TreeFilterOptions({
   );
   const [activeId, setActiveId] = useState<string | null>(visibleIds[0] ?? null);
   const optionRefs = useRef(new Map<string, HTMLDivElement>());
+  const rootRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const initialVisibleIdRef = useRef<string | null>(visibleIds[0] ?? null);
   const effectiveActiveId = activeId && visibleIds.includes(activeId) ? activeId : visibleIds[0] ?? null;
@@ -372,6 +373,8 @@ export function TreeFilterOptions({
   useEffect(() => {
     if (!focusOnOpen) return;
     const frame = window.requestAnimationFrame(() => {
+      // Focus that already moved into the options during this frame is the user's choice.
+      if (rootRef.current?.contains(document.activeElement)) return;
       if (focusOnOpen === "search") {
         searchInputRef.current?.focus();
         return;
@@ -400,7 +403,7 @@ export function TreeFilterOptions({
   };
 
   return (
-    <div className={`${classNamePrefix}-tree-options tree-filter-options`}>
+    <div ref={rootRef} className={`${classNamePrefix}-tree-options tree-filter-options`}>
       {searchable ? (
         <SearchField
           ref={searchInputRef}

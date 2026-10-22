@@ -17,19 +17,23 @@ export function DebugModuleDeletionDialog({ module, modules, onPreview, onDelete
   const [targetId, setTargetId] = useState("");
   const [preview, setPreview] = useState<DebugModuleDeletionPreview | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const [loading, setLoading] = useState(true);
+  // Derived, not set from the effect: React defers effect updates, and confirmation must
+  // stop in the same render that changes the target, before a stale preview can be confirmed.
+  const previewKey = JSON.stringify([module.id, targetId, attempt]);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const loading = loadedKey !== previewKey;
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [mutationId] = useState(() => crypto.randomUUID());
   const targetLabelId = useId();
   useEffect(() => {
     let cancelled = false;
-    setLoading(true); setPreview(null); setError("");
+    setPreview(null); setError("");
     onPreview(module.id, targetId || null).then(value => { if (!cancelled) setPreview(value); })
       .catch(failure => { if (!cancelled) setError(presentError(failure, "读取删除影响失败，请重试。")); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .finally(() => { if (!cancelled) setLoadedKey(previewKey); });
     return () => { cancelled = true; };
-  }, [module.id, targetId, attempt, onPreview]);
+  }, [module.id, targetId, attempt, onPreview, previewKey]);
   const confirm = async () => {
     if (!preview?.canDelete || pending) return;
     setPending(true); setError("");

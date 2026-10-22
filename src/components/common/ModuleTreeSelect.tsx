@@ -125,7 +125,9 @@ export function ModuleTreeSelect({
       setOpen(false);
     };
     const handleReposition = () => updateMenuPosition();
-    const handleScroll = () => {
+    const handleScroll = (event: Event) => {
+      // Scrolling the menu's own list keeps it anchored; only outside scrolls detach it.
+      if (menuRef.current?.contains(event.target as Node)) return;
       if (portalMenu) setOpen(false);
     };
     const handleEscape = (event: KeyboardEvent) => {

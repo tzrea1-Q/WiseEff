@@ -30,6 +30,22 @@ describe("ModuleTreeSelect", () => {
     expect(onDismiss).not.toHaveBeenCalled();
   });
 
+  it("keeps a module focused right after opening instead of jumping back to the first item", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<ModalDialog open className="confirm-dialog" onDismiss={() => undefined}>
+      {({ titleId }) => <><h2 id={titleId}>模块编辑</h2><ModuleTreeSelect mode="single" label="模块" nodes={nodes} value="" onChange={onChange} portalMenu /></>}
+    </ModalDialog>);
+    await user.click(screen.getByRole("button", { name: "模块" }));
+    const target = within(screen.getByRole("tree")).getByRole("button", { name: "充电" });
+    target.focus();
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
+    expect(target).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(onChange).toHaveBeenCalledWith("pm-c");
+    expect(onChange).not.toHaveBeenCalledWith("pm-a");
+  });
+
   it("expands and collapses tree nodes", () => {
     render(<ModuleTreeSelect mode="multi-filter" label="模块" nodes={[...nodes]} value={[]} onChange={() => undefined} />);
     fireEvent.click(screen.getByRole("button", { name: /模块/ }));
@@ -158,5 +174,16 @@ describe("ModuleTreeSelect", () => {
     fireEvent.click(screen.getByRole("button", { name: "模块" }));
 
     expect(screen.getByRole("tree").parentElement).toBe(document.body);
+  });
+
+  it("keeps a portaled menu open while its own list scrolls and closes it when the page scrolls", () => {
+    render(<ModuleTreeSelect mode="single" label="模块" nodes={[...nodes]} value="" onChange={() => undefined} portalMenu />);
+    fireEvent.click(screen.getByRole("button", { name: "模块" }));
+    const tree = screen.getByRole("tree");
+    fireEvent.scroll(tree);
+    fireEvent.scroll(within(tree).getByRole("button", { name: "充电" }));
+    expect(screen.getByRole("tree")).toBeInTheDocument();
+    fireEvent.scroll(document);
+    expect(screen.queryByRole("tree")).not.toBeInTheDocument();
   });
 });
