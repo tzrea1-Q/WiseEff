@@ -1343,6 +1343,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       { proname: "finish_parameter_definition_erasure_object" },
       { proname: "finish_project_erasure_object" },
       { proname: "insert_reviewed_member_tombstone" },
+      { proname: "list_definition_erasures" },
       { proname: "list_log_erasures" },
       { proname: "list_project_erasures" },
       { proname: "lock_log_erasure" },
@@ -1394,10 +1395,11 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
     expect(guardBody.rows[0]?.definition).not.toMatch(/\b(insert|update|delete)\b/i);
   });
 
-  it("keeps erasure row capabilities private and grants only the seven exact maintenance RPCs", async () => {
+  it("keeps erasure row capabilities private and grants only the eight exact maintenance RPCs", async () => {
     const rpc = [
       ["definition_erasure_object_is_referenced(p_store text, p_ref text)", "search_path=pg_catalog, parameter_catalog, public"],
       ["finish_parameter_definition_erasure_object(p_id text, p_ref text)", "search_path=pg_catalog, parameter_catalog"],
+      ["list_definition_erasures(p_organization text)", "search_path=pg_catalog, parameter_catalog"],
       ["lock_parameter_definition_purge(p_id text)", "search_path=pg_catalog, parameter_catalog, catalog_publication, public"],
       ["lock_parameter_plane_archive()", "search_path=pg_catalog, parameter_catalog, public"],
       ["preview_parameter_definition_purge(p_id text)", "search_path=pg_catalog, parameter_catalog, public"],

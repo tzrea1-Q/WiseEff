@@ -1,4 +1,5 @@
 import type {
+  CatalogDefinitionErasureListResponse,
   CatalogDefinitionDeletionPreviewResponse,
   CatalogDeleteDefinitionRequest,
   CatalogDefinitionDeletedResponse,
@@ -96,6 +97,8 @@ export interface ParameterCatalogRepository {
   listDefinitions(query?: CatalogListQuery): Promise<CatalogDefinitionListResponse>;
   getDefinition(definitionId: string, query?: CatalogListQuery): Promise<CatalogDefinitionResponse>;
   previewDefinitionDeletion?(definitionId: string): Promise<CatalogDefinitionDeletionPreviewResponse>;
+  listDefinitionErasures?(): Promise<CatalogDefinitionErasureListResponse>;
+  retryDefinitionCleanup?(definitionId: string): Promise<CatalogDefinitionDeletedResponse>;
   deleteDefinition?(definitionId: string, body: CatalogDeleteDefinitionRequest): Promise<CatalogDefinitionDeletedResponse>;
   listDefinitionRevisions(
     definitionId: string,

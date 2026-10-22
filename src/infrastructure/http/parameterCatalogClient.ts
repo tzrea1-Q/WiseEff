@@ -1,6 +1,7 @@
 import type { ZodTypeAny, z } from "zod";
 
 import {
+  catalogDefinitionErasureListResponseSchema,
   catalogDefinitionDeletionPreviewResponseSchema,
   catalogDeleteDefinitionRequestSchema,
   catalogDefinitionDeletedResponseSchema,
@@ -342,6 +343,11 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
       "GET", `/api/v2/catalog/definitions/${encodeURIComponent(definitionId)}/deletion-preview`,
       catalogDefinitionDeletionPreviewResponseSchema, "CatalogDefinitionDeletionPreviewResponse"
     ),
+    listDefinitionErasures: () => request("GET", "/api/v2/catalog/definition-erasures",
+      catalogDefinitionErasureListResponseSchema, "CatalogDefinitionErasureListResponse"),
+    retryDefinitionCleanup: (definitionId: string) => request("POST",
+      `/api/v2/catalog/definition-erasures/${encodeURIComponent(definitionId)}/retry-cleanup`,
+      catalogDefinitionDeletedResponseSchema, "CatalogDefinitionDeletedResponse"),
     deleteDefinition: (definitionId: string, body: CatalogDeleteDefinitionRequest) => request(
       "DELETE", `/api/v2/catalog/definitions/${encodeURIComponent(definitionId)}`,
       catalogDefinitionDeletedResponseSchema, "CatalogDefinitionDeletedResponse",

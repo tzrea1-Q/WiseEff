@@ -20,6 +20,8 @@ export function createApiParameterCatalogRepository(
     listDefinitions: (query) => client.listDefinitions(query),
     getDefinition: (definitionId, query) => client.getDefinition(definitionId, query),
     previewDefinitionDeletion: (definitionId) => client.previewDefinitionDeletion(definitionId),
+    listDefinitionErasures: () => client.listDefinitionErasures(),
+    retryDefinitionCleanup: (definitionId) => client.retryDefinitionCleanup(definitionId),
     deleteDefinition: (definitionId, body) => client.deleteDefinition(definitionId, body),
     listDefinitionRevisions: (definitionId, query) =>
       client.listDefinitionRevisions(definitionId, query),
