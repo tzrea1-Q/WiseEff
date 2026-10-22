@@ -13,7 +13,7 @@ import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { mockSourceSnapshots } from "@/infrastructure/mock/logSkills";
-import type { AnalysisSkill, SkillWorkspaceRepository, SourceSnapshot, SourceStatementMatches } from "./types";
+import type { AnalysisSkill, SkillSpec, SkillWorkspaceRepository, SourceSnapshot, SourceStatementMatches } from "./types";
 
 const labels = { queued: "等待索引", indexing: "索引中", ready: "就绪", failed: "索引失败", archived: "已归档" };
 const tones = { queued: "text-[var(--info)] bg-[var(--info-soft)]", indexing: "text-[var(--info)] bg-[var(--info-soft)]", ready: "text-[var(--success)] bg-[var(--success-soft)]", failed: "text-[var(--danger)] bg-[var(--danger-soft)]", archived: "text-muted-foreground bg-muted" };
@@ -29,9 +29,10 @@ function skippedSummary(item: SourceSnapshot) {
   return `${item.skippedCount} 个${reasons ? ` · ${item.skippedCount > item.skippedFiles.length ? "已列出：" : ""}${reasons}` : ""}`;
 }
 
-export function SourceSnapshots({ skill, repository, apiMode, canEdit, disabled, dirty, onSkillUpdated, onBusyChange }: {
+export function SourceSnapshots({ skill, spec, setSpec, repository, apiMode, canEdit, disabled, dirty, onSkillUpdated, onBusyChange }: {
   skill: AnalysisSkill; repository?: Partial<SkillWorkspaceRepository>; apiMode: boolean; canEdit: boolean; disabled: boolean; dirty: boolean;
   onSkillUpdated: (skill: AnalysisSkill) => void; onBusyChange: (busy: boolean) => void;
+  spec?: SkillSpec; setSpec?: (spec: SkillSpec) => void;
 }) {
   const [items, setItems] = useState<SourceSnapshot[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -52,7 +53,8 @@ export function SourceSnapshots({ skill, repository, apiMode, canEdit, disabled,
   const labelRef = useRef<HTMLInputElement>(null);
   const errorId = useId();
   const editable = apiMode && canEdit;
-  const defaultId = (skill.draft ?? skill.currentRevision).spec.defaultSourceSnapshotId;
+  const currentSpec = spec ?? (skill.draft ?? skill.currentRevision).spec;
+  const defaultId = currentSpec.defaultSourceSnapshotId;
   const readySnapshots = items?.filter((item) => item.status === "ready") ?? [];
   const selectedTrySnapshot = readySnapshots.find((item) => item.id === trySnapshotId) ?? readySnapshots.find((item) => item.id === defaultId) ?? readySnapshots[0];
   useEffect(() => {
@@ -108,6 +110,7 @@ export function SourceSnapshots({ skill, repository, apiMode, canEdit, disabled,
   return <section className="skill-section" aria-label="源码"><h2>源码</h2>
     <p>默认快照随下一次技能发布生效。快照尚未就绪时，日志分析会继续完成并注明未使用源码。</p>
     {editable ? <div><Button disabled={disabled} onClick={() => { setVersionLabel(""); setFile(null); setFormError(""); setUploadOpen(true); }}>上传快照</Button></div> : null}
+    {editable && setSpec ? <Button variant="outline" disabled={disabled || !defaultId} onClick={() => { const next = { ...currentSpec }; delete next.defaultSourceSnapshotId; setSpec(next); }}>不使用默认快照</Button> : null}
     {editable && dirty ? <p>请先保存或放弃未保存的更改，再设为默认快照。</p> : null}
     {error ? <div role="alert">{error}{conflict ? <Button asChild variant="link"><a href={`#source-snapshot-${encodeURIComponent(conflict.id)}`}>查看占用快照 {conflict.versionLabel}</a></Button> : null}</div> : null}
     {loadFailed ? <SectionError message="无法加载源码快照" onRetry={() => { setLoadFailed(false); setRefresh((value) => value + 1); }} />

@@ -11,13 +11,13 @@ import { parseTagsInput } from "./KnowledgeEntryEditorDialog";
 export type KnowledgeFileUploadSubmit = {
   title: string;
   tags: string[];
-  file: File;
+  file?: File;
   expectedHeadRevisionNumber?: number;
 };
 
 export type KnowledgeFileUploadDialogProps = {
   open: boolean;
-  /** null uploads a new document; an entry replaces its binary. */
+  /** null uploads a new document; an entry edits metadata and optionally replaces its binary. */
   entry: KnowledgeEntry | null;
   onSubmit: (input: KnowledgeFileUploadSubmit) => Promise<void>;
   onClose: () => void;
@@ -48,7 +48,7 @@ export function KnowledgeFileUploadDialog({ open, entry, onSubmit, onClose }: Kn
       setError("请填写条目标题。");
       return;
     }
-    if (!file) {
+    if (!entry && !file) {
       setError("请选择要上传的文件。");
       return;
     }
@@ -63,9 +63,9 @@ export function KnowledgeFileUploadDialog({ open, entry, onSubmit, onClose }: Kn
     setError("");
     try {
       await onSubmit({
-        title: title.trim() || entry?.title || file.name,
+        title: title.trim() || entry?.title || file?.name || "",
         tags,
-        file,
+        ...(file ? { file } : {}),
         ...(entry ? { expectedHeadRevisionNumber: entry.headRevisionNumber } : {})
       });
       onClose();
@@ -75,7 +75,7 @@ export function KnowledgeFileUploadDialog({ open, entry, onSubmit, onClose }: Kn
           `保存冲突:条目已被更新到修订 #${submitError.currentHeadRevisionNumber},请刷新后重试。`
         );
       } else {
-        setError(presentError(submitError, "上传失败，请稍后重试。"));
+        setError(presentError(submitError, "保存失败，请稍后重试。"));
       }
     } finally {
       setPending(false);
@@ -94,11 +94,11 @@ export function KnowledgeFileUploadDialog({ open, entry, onSubmit, onClose }: Kn
         <>
           <div>
             <h2 id={titleId} className="text-base font-semibold text-foreground">
-              {entry ? "替换文件" : "上传文件条目"}
+              {entry ? "编辑" : "上传文件条目"}
             </h2>
             <p id={descriptionId} className="mt-0.5 text-xs text-muted-foreground">
               {entry
-                ? "替换会产生新的不可变修订;旧文件保留在历史修订中。"
+                ? "保存会生成新修订；替换文件时，旧文件保留在历史修订中。"
                 : `Markdown（.md）和纯文本（.txt）创建可编辑草稿，须为 UTF-8 编码且正文不超过 ${KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT.toLocaleString("en-US")} 字符；PDF、Word 保留为文件条目。`}
             </p>
           </div>
@@ -127,9 +127,9 @@ export function KnowledgeFileUploadDialog({ open, entry, onSubmit, onClose }: Kn
           </label>
 
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            文件
+            {entry ? "替换文件（可选）" : "文件"}
             <input
-              aria-label="选择文件"
+              aria-label={entry ? "替换文件（可选）" : "选择文件"}
               type="file"
               accept={ACCEPTED}
               onChange={(event) => setFile(event.target.files?.[0] ?? null)}
@@ -148,7 +148,7 @@ export function KnowledgeFileUploadDialog({ open, entry, onSubmit, onClose }: Kn
               取消
             </Button>
             <Button size="sm" onClick={() => void submit()} disabled={pending} aria-busy={pending || undefined}>
-              {pending ? "上传中…" : entry ? "替换并生成新修订" : "上传并创建草稿"}
+              {pending ? "保存中…" : entry ? "保存" : "上传并创建草稿"}
             </Button>
           </div>
         </>

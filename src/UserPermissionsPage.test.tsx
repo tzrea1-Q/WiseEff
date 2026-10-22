@@ -86,6 +86,21 @@ async function openActivationAction(row: HTMLElement, name: "停用" | "启用")
 }
 
 describe("UserPermissionsPage", () => {
+  it("enables own role editing while protecting the final administrator role", async () => {
+    const base = createPrototypeState();
+    const current = base.users.find((user) => user.id === base.currentUserId)!;
+    const state = { ...base, activeRoleId: "admin", users: base.users.map((user) => user.id === current.id
+      ? { ...user, roleId: "admin" as const, roles: [{ projectId: null, roleId: "admin" as const }] } : user) };
+    render(<UserPermissionsPage state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
+    const dialog = await openMemberDetails(current.name);
+    const roles = within(dialog).getByRole("group", { name: "组织角色选择" });
+    expect(within(roles).getByRole("checkbox", { name: "管理员" })).toBeDisabled();
+    const software = within(roles).getByRole("checkbox", { name: "软件开发" });
+    expect(software).toBeEnabled();
+    await userEvent.click(software);
+    expect(software).toBeChecked();
+    expect(within(dialog).queryByText("不能调整当前登录账号的角色。")).not.toBeInTheDocument();
+  });
   it("edits a member's complete organization role set without replacing project duties", async () => {
     const base = createPrototypeState();
     const state = { ...base, activeRoleId: "admin", users: base.users.map((user) => ({ ...user })) };

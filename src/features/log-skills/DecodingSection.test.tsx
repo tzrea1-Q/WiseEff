@@ -32,6 +32,23 @@ function setup(repository: Partial<SkillWorkspaceRepository> = { parsePreview: v
   render(<Harness />); return repository;
 }
 describe("register decoding workspace", () => {
+  it("lists map, frame and extractor references before deleting a register", async () => {
+    setup(undefined, false, { ...spec, frames: { packet: { fields: [{ name: "status", type: "register", register: "REG0C", length: 1 }] } },
+      extractors: [{ id: "direct", pattern: "(?<v>.+)", fields: { v: { type: "uint", decode: { register: "REG0C" } } } }] });
+    await userEvent.click(screen.getByRole("button", { name: "删除寄存器" }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("映射 charger：0x0C");
+    expect(dialog).toHaveTextContent("帧 packet：status");
+    expect(dialog).toHaveTextContent("抽取字段 direct.v");
+    await userEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(screen.getByRole("textbox", { name: "寄存器标识" })).toHaveValue("REG0C");
+    await userEvent.click(screen.getByRole("button", { name: "删除寄存器" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "删除寄存器" }));
+    await userEvent.click(screen.getByRole("tab", { name: "代码视图" }));
+    const saved = parse((screen.getByRole("textbox", { name: "代码视图 · YAML" }) as HTMLTextAreaElement).value);
+    expect(saved.registers).toEqual({});
+    expect(saved.frames.packet.fields[0].register).toBe("REG0C");
+  });
   it("selects one register mapping at a time and selects a newly added mapping", async () => {
     setup(undefined, false, { ...spec, registerMaps: { ...spec.registerMaps, secondary: { selectBy: "val", cases: {} } } });
     expect(screen.getByRole("combobox", { name: "选择映射" })).toHaveTextContent("charger");

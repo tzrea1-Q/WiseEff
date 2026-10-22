@@ -15,7 +15,6 @@ export function LogDeletionPreviewDialog({ logId, loadPreview, onClose, purge, l
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(!initialStatus);
   const [refresh, setRefresh] = useState(0);
-  const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(initialStatus ?? null);
   useEffect(() => {
@@ -30,7 +29,7 @@ export function LogDeletionPreviewDialog({ logId, loadPreview, onClose, purge, l
     return () => { active = false; };
   }, [logId, loadPreview, refresh, initialStatus, result]);
   const remove = async () => {
-    if (!purge || !result && (!preview || !confirmed)) return;
+    if (!purge || !result && !preview) return;
     setSubmitting(true); setError("");
     try {
       let item: LogDeletionStatus;
@@ -43,7 +42,7 @@ export function LogDeletionPreviewDialog({ logId, loadPreview, onClose, purge, l
       }
       if (item.logId !== logId) throw new Error("删除回执记录不匹配。");
       setResult(item); setPreview(null); onDeleted?.(item);
-    } catch (cause) { setError(presentError(cause, "删除未完成，请重新获取预览后确认。")); setConfirmed(false); }
+    } catch (cause) { setError(presentError(cause, "删除未完成，请重新获取预览后确认。")); }
     finally { setSubmitting(false); }
   };
   const retained = preview?.inventory.filter((item) => item.disposition === "retain") ?? [];
@@ -60,6 +59,7 @@ export function LogDeletionPreviewDialog({ logId, loadPreview, onClose, purge, l
       </div> : null}
       {preview ? <div className="space-y-4">
         <p className="break-all text-sm">{preview.fileName} · {preview.logId}</p>
+        <details><summary>明细</summary>
         <section aria-label="日志专属数据">
           <h3 className="font-medium">日志专属数据</h3>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
@@ -76,23 +76,22 @@ export function LogDeletionPreviewDialog({ logId, loadPreview, onClose, purge, l
           {retained.some((item) => item.count > 0) ? <dl>{retained.map((item) => <div className="flex justify-between gap-3" key={item.key}>
             <dt>{item.label}</dt><dd>{item.count}</dd></div>)}</dl> : <p>没有关联的保留记录。</p>}
         </section>
+        <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">{preview.notes.map((note) => <li key={note}>{note}</li>)}</ul>
+        </details>
         <section aria-label="处理条件" className="text-sm">
           <h3 className="font-medium">处理条件</h3>
           {preview.conditions.some((item) => item.count > 0) ? <ul className="list-disc space-y-1 pl-5">
             {preview.conditions.filter((item) => item.count > 0).map((item) => <li key={item.code}>{item.count} 项：{item.message}</li>)}
           </ul> : <p>没有排队或进行中的日志分析、投递任务。</p>}
         </section>
-        <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">{preview.notes.map((note) => <li key={note}>{note}</li>)}</ul>
         <p className="text-xs text-muted-foreground">预览时间：{new Date(preview.generatedAt).toLocaleString()}</p>
-        {purge ? <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={confirmed} disabled={submitting}
-          onChange={(event) => setConfirmed(event.target.checked)} />我确认永久删除此日志及上述专属数据，保留独立知识及其历史。</label> : null}
       </div> : null}
       </div>
       <div className="dialog-actions">
         {!result ? <Button variant="outline" disabled={loading || submitting} onClick={() => {
-          setPreview(null); setConfirmed(false); setError(""); setLoading(true); setRefresh((value) => value + 1);
+          setPreview(null); setError(""); setLoading(true); setRefresh((value) => value + 1);
         }}>{error ? "重试" : "重新获取"}</Button> : null}
-        {purge && (!result || result.objects === "pending") ? <Button variant="destructive" disabled={loading || submitting || !result && !confirmed}
+        {purge && (!result || result.objects === "pending") ? <Button variant="destructive" disabled={loading || submitting || !result && !preview}
           onClick={() => void remove()}>{submitting ? "正在清理…" : result ? "重试存储清理" : "彻底删除"}</Button> : null}
         <Button disabled={submitting} onClick={onClose}>关闭</Button>
       </div>

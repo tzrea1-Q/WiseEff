@@ -40,6 +40,25 @@ const markdownFile = (name: string, content: string) => {
 };
 
 describe("knowledge skill section", () => {
+  it("pages searches and navigates linked titles", async () => {
+    const repository = { getBinding: vi.fn(async () => ({ entry: entry("linked"), deleted: false })),
+      list: vi.fn().mockResolvedValueOnce({ items: Array.from({ length: 100 }, (_, i) => entry(`page-${i}`)) })
+        .mockResolvedValueOnce({ items: [entry("next")] }).mockResolvedValue({ items: [entry("searched")] }) };
+    const onNavigate = vi.fn();
+    render(<KnowledgeSection spec={{ schemaVersion: "skill/v1", knowledgeEntryIds: ["linked"] }} setSpec={vi.fn()} disabled={false} apiMode
+      knowledgeRepository={repository as unknown as KnowledgeRepository} knowledgeCapability={{ canView: true, canEdit: true, canManage: false, userId: "user" }} onBusyChange={vi.fn()} onNavigate={onNavigate} />);
+    await userEvent.click(await screen.findByRole("link", { name: "linked 知识" }));
+    expect(onNavigate).toHaveBeenCalledWith("/knowledge?entryId=linked");
+    await userEvent.click(screen.getByRole("button", { name: "链接已有条目" }));
+    await userEvent.click(await screen.findByRole("button", { name: "加载更多" }));
+    expect(await screen.findByText("next 知识")).toBeVisible();
+    expect(screen.getByText("page-0 知识")).toBeVisible();
+    expect(repository.list).toHaveBeenLastCalledWith({ status: "published", q: undefined, limit: 100, offset: 100 });
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "search" } });
+    expect(await screen.findByText("searched 知识")).toBeVisible();
+    expect(screen.queryByText("page-0 知识")).not.toBeInTheDocument();
+    expect(repository.list).toHaveBeenLastCalledWith({ status: "published", q: "search", limit: 100, offset: 0 });
+  });
   it("expands an exact tag into published identities independently of title search, without subscribing to later tags", async () => {
     const repository = createMockKnowledgeRepository({ userId: "user" }, { revisions: [], entries: [
       { ...entry("linked"), tags: ["充电"] }, { ...entry("second"), tags: ["充电"] },
@@ -136,7 +155,7 @@ describe("knowledge skill section", () => {
     expect(within(table).getByText("已归档，不参与检索")).toBeVisible();
     expect(within(table).getByText("已删除")).toBeVisible();
     await userEvent.click(within(table).getByRole("button", { name: "取消链接 已删除" }));
-    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "取消链接" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(changed).toHaveBeenLastCalledWith({ schemaVersion: "skill/v1", knowledgeEntryIds: ["archived"] });
   });
   it.each([
@@ -169,7 +188,7 @@ describe("knowledge skill section", () => {
     expect(cells.slice(1, 4).map((cell) => cell.textContent)).toEqual(["", "", ""]);
     if (!canViewKnowledge) expect(repository.getBinding).not.toHaveBeenCalled();
     await userEvent.click(within(table).getByRole("button", { name: "取消链接 无权查看的条目" }));
-    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "取消链接" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(changed).toHaveBeenLastCalledWith({ schemaVersion: "skill/v1", knowledgeEntryIds: [] });
   });
   it("lists linked entry metadata and unlinks only from the skill draft", async () => {
@@ -180,7 +199,7 @@ describe("knowledge skill section", () => {
     expect(within(table).getByText("v3")).toBeVisible();
     expect(within(table).getAllByRole("cell")[3].querySelector("span")).toHaveAttribute("title");
     await userEvent.click(within(table).getByRole("button", { name: "取消链接 linked 知识" }));
-    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "取消链接" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(changed).toHaveBeenLastCalledWith({ schemaVersion: "skill/v1", knowledgeEntryIds: [] });
     expect(repository.createFile).not.toHaveBeenCalled();
     expect(await screen.findByText("尚未链接知识")).toBeVisible();
@@ -193,7 +212,7 @@ describe("knowledge skill section", () => {
     await within(dialog).findByRole("button", { name: "链接 existing 知识" });
     expect(within(dialog).queryByText("draft 知识")).not.toBeInTheDocument();
     fireEvent.change(within(dialog).getByRole("searchbox", { name: "搜索已发布知识" }), { target: { value: "thermal" } });
-    await waitFor(() => expect(repository.list).toHaveBeenLastCalledWith({ status: "published", q: "thermal" }));
+    await waitFor(() => expect(repository.list).toHaveBeenLastCalledWith({ status: "published", q: "thermal", limit: 100, offset: 0 }));
     await userEvent.click(await within(dialog).findByRole("button", { name: "链接 existing 知识" }));
     expect(changed).toHaveBeenLastCalledWith({ schemaVersion: "skill/v1", knowledgeEntryIds: ["existing"] });
     expect(await within(dialog).findByRole("button", { name: "已链接 existing 知识" })).toBeDisabled();

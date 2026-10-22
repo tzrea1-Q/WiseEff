@@ -66,9 +66,10 @@ const inventoryQueries: readonly InventoryQuery[] = [
   ["debug-nodes", "独立调试节点（仅解除项目参数关联）", "detach", `select * from debug_nodes where organization_id=$1 and canonical_project_id=$2`],
   ["node-operations", "设备操作历史（仅解除项目参数关联）", "detach", `select * from node_operations where organization_id=$1 and (canonical_project_id=$2 or project_parameter_binding_id in (${oldBindings}))`],
   ["logs", "独立日志（仅解除项目参数关联）", "detach", `select * from log_records where organization_id=$1 and related_parameter_project_id=$2`],
-  ["offline-archives", "受保留契约保护的离线迁移归档", "retain", `select * from project_parameter_plane_archives where ${projectScope}`],
-  ["deployment-evidence", "设备部署运行与证据", "retain", `select * from dts_reload_runs where ${projectScope}`],
-  ["device-residue", "设备部署残留状态", "retain", `select * from dts_reload_device_residue where ${projectScope}`],
+  ["offline-archives", "离线迁移归档", "delete", `select * from project_parameter_plane_archives where ${projectScope}`],
+  ["deployment-evidence", "设备部署运行与证据", "delete", `select * from dts_reload_runs where ${projectScope}`],
+  ["deployment-targets", "设备部署参数记录", "delete", `select * from dts_reload_run_targets where reload_run_id in (${reloads})`],
+  ["device-residue", "设备部署残留状态", "delete", `select * from dts_reload_device_residue where ${projectScope}`],
   ["knowledge", "独立知识条目及正文", "retain", `select * from knowledge_entries where organization_id=$1 and (source_reload_run_id in (${reloads}) or source_session_id in (${sessions}))`]
 ];
 
@@ -85,7 +86,7 @@ const catalogInventory: readonly (readonly [string, string, "delete" | "detach" 
   ["identity-replacements", "定义替代的项目关联", "detach"],
   ["canonical-external-replacements", "其他项目值的替代来源关联", "detach"],
   ["shared-definitions", "平台共享参数定义", "retain"],
-  ["plane-disposal", "离线迁移处置证据", "retain"]
+  ["plane-disposal", "离线迁移处置证据", "delete"]
 ];
 
 async function summarize(db: Queryable, sql: string, values: string[]) {
@@ -132,13 +133,17 @@ export async function readProjectDeletionPreview(tx: Queryable, organizationId: 
       with owned as (
         select v.storage_key, v.size_bytes from project_parameter_file_versions v where v.file_id in (${files})
         union all select c.storage_key, c.size_bytes from project_parameter_file_candidates c where ${projectScope}
-      ), objects as (select storage_key, max(size_bytes)::text as size_bytes from owned group by storage_key)
+        union all select a.object_ref, 0 from project_parameter_plane_archives a where ${projectScope}
+        union all select r.overlay_source_storage_key, 0 from dts_reload_runs r where ${projectScope}
+        union all select r.overlay_artifact_storage_key, coalesce(r.overlay_artifact_bytes, 0) from dts_reload_runs r where ${projectScope}
+      ), objects as (select storage_key, max(size_bytes)::text as size_bytes from owned where storage_key is not null group by storage_key)
       select o.size_bytes, encode(sha256(convert_to(o.storage_key, 'UTF8')), 'hex') as digest,
         (exists(select 1 from project_parameter_file_versions v join project_parameter_files f on f.id=v.file_id
           where v.storage_key=o.storage_key and not (f.organization_id=$1 and f.project_id=$2))
         or exists(select 1 from project_parameter_file_candidates c where c.storage_key=o.storage_key and not(c.organization_id=$1 and c.project_id=$2))
-        or exists(select 1 from project_parameter_plane_archives a where a.object_ref=o.storage_key)
-        or exists(select 1 from dts_reload_runs r where r.overlay_source_storage_key=o.storage_key or r.overlay_artifact_storage_key=o.storage_key)
+        or exists(select 1 from project_parameter_plane_archives a where a.object_ref=o.storage_key and not(a.organization_id=$1 and a.project_id=$2))
+        or exists(select 1 from dts_reload_runs r where (r.overlay_source_storage_key=o.storage_key or r.overlay_artifact_storage_key=o.storage_key)
+          and not(r.organization_id=$1 and r.project_id=$2))
         or exists(select 1 from knowledge_files k where k.storage_key=o.storage_key)
         or exists(select 1 from log_file_objects l where l.storage_key=o.storage_key)
         or exists(select 1 from log_source_snapshots s where s.storage_key=o.storage_key)
@@ -157,9 +162,7 @@ export async function readProjectDeletionPreview(tx: Queryable, organizationId: 
       ["configuration-resolving", "配置正在解析。", "等待解析完成或处理解析失败后刷新。", `select * from dts_config_revisions where ${projectScope} and status='resolving'`],
       ["initialization-review", "项目初始化仍待审核。", "处理或撤回初始化申请后刷新。", `select * from project_parameter_initialization_reviews where ${projectScope} and status='pending'`],
       ["agent-write", "项目有未结束的 Agent 审批或工具调用。", "处理审批并等待工具执行结束后刷新；预览不会批准或取消设备写入。", `select id from agent_tool_calls where ${projectScope} and status in ('requested','running','pending_approval') union all select id from agent_approvals where ${projectScope} and status='pending'`],
-      ["spec-migration", "项目有关联的待执行规范迁移。", "完成或按规范迁移流程处置后刷新。", `select id from parameter_spec_version_cutover_items where project_id=$2 and status in ('pending','ready') union all select id from parameter_spec_property_key_cutover_items where project_id=$2 and status in ('pending','ready')`],
-      ["protected-offline-archive", "项目关联专门保留的离线迁移归档。", "通过专用迁移保留流程处理；项目删除不能清除这些证据。", `select id from project_parameter_plane_archives where ${projectScope}`],
-      ["protected-deployment-evidence", "项目关联设备部署证据或设备残留。", "先通过设备部署与证据保留流程处置关联；项目删除不清除部署证据。", `select id from dts_reload_runs where ${projectScope} union all select device_id from dts_reload_device_residue where ${projectScope}`]
+      ["spec-migration", "项目有关联的待执行规范迁移。", "完成或按规范迁移流程处置后刷新。", `select id from parameter_spec_version_cutover_items where project_id=$2 and status in ('pending','ready') union all select id from parameter_spec_property_key_cutover_items where project_id=$2 and status in ('pending','ready')`]
     ] as const;
     const blockers: ProjectDeletionPreview["blockers"] = [];
     for (const [code, message, action, sql] of blockerQueries) {
@@ -170,9 +173,6 @@ export async function readProjectDeletionPreview(tx: Queryable, organizationId: 
     const migrationCount = Number(catalogRows.find((row) => row.key === "active-definition-migration")?.item_count ?? 0);
     if (migrationCount) blockers.push({ code: "definition-migration", count: migrationCount,
       message: "定义替代仍关联未完成的项目迁移。", action: "完成或按迁移流程处置该项目迁移后刷新。" });
-    const disposalCount = Number(catalogRows.find((row) => row.key === "plane-disposal")?.item_count ?? 0);
-    if (disposalCount) blockers.push({ code: "protected-plane-disposal", count: disposalCount,
-      message: "项目关联专门保留的离线迁移处置证据。", action: "通过专用迁移保留流程处理；项目删除不能清除这些证据。" });
     return { organizationId, projectId, projectName: project.name, generatedAt: new Date().toISOString(), stateDigest: state.digest("hex"),
       executionAvailable: blockers.length === 0, inventory, storage, blockers, notes: [
         "确认后永久清理项目专属数据。数据库与独占对象清理状态分别显示；对象失败后可以重试。",

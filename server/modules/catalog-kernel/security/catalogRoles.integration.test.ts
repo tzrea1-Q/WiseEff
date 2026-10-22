@@ -1333,8 +1333,8 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
         )
       order by procedure.proname
     `, [PARAMETER_GOVERNANCE_WRITER_ROLE]);
-    // These exact maintenance RPCs are the explicit server-authorized erasure
-    // seam; none grants a legacy structural INSERT or the private row marker.
+    // These exact maintenance RPCs and read-only source proof predicates are
+    // deliberate; none grants a legacy structural INSERT or the private row marker.
     expect(writerDefiners.rows).toEqual([
       { proname: "assert_catalog_subject_active" },
       { proname: "definition_erasure_object_is_referenced" },
@@ -1356,9 +1356,11 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       { proname: "read_log_erasure" },
       { proname: "read_parameter_definition_erasure" },
       { proname: "read_project_erasure" },
+      { proname: "source_anchor_restoration_matches" },
     ]);
 
-    const reviewedTombstoneGrant = await client.query<{
+    const sourceOwnerGrants = await client.query<{
+      proname: string;
       public_execute: boolean;
       synchronizer_execute: boolean;
       coordinator_execute: boolean;
@@ -1366,6 +1368,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       writer_execute: boolean;
     }>(`
       select
+        procedure.proname,
         pg_catalog.has_function_privilege('public', procedure.oid, 'execute') as public_execute,
         pg_catalog.has_function_privilege($1, procedure.oid, 'execute') as synchronizer_execute,
         pg_catalog.has_function_privilege('catalog_publication_coordinator_role', procedure.oid, 'execute') as coordinator_execute,
@@ -1374,15 +1377,34 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       from pg_catalog.pg_proc procedure
       join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
       where namespace.nspname = 'parameter_catalog'
-        and procedure.proname = 'insert_reviewed_member_tombstone'
+        and procedure.proname in ('insert_reviewed_member_tombstone','source_anchor_restoration_matches')
+      order by procedure.proname
     `, [CATALOG_SYNCHRONIZER_ROLE, PARAMETER_GOVERNANCE_WRITER_ROLE]);
-    expect(reviewedTombstoneGrant.rows).toEqual([{
+    expect(sourceOwnerGrants.rows).toEqual([{
+      proname: "insert_reviewed_member_tombstone",
+      public_execute: false,
+      synchronizer_execute: false,
+      coordinator_execute: false,
+      reader_execute: false,
+      writer_execute: true,
+    }, {
+      proname: "source_anchor_restoration_matches",
       public_execute: false,
       synchronizer_execute: false,
       coordinator_execute: false,
       reader_execute: false,
       writer_execute: true,
     }]);
+
+    const restorationPredicate = await client.query<{ owner: string; volatility: string; definition: string }>(`
+      select pg_catalog.pg_get_userbyid(procedure.proowner) as owner,
+        procedure.provolatile::text as volatility, pg_catalog.pg_get_functiondef(procedure.oid) as definition
+      from pg_catalog.pg_proc procedure
+      join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
+      where namespace.nspname = 'parameter_catalog' and procedure.proname = 'source_anchor_restoration_matches'
+    `);
+    expect(restorationPredicate.rows).toEqual([expect.objectContaining({ owner: "catalog_migration_owner", volatility: "s" })]);
+    expect(restorationPredicate.rows[0]?.definition).not.toMatch(/\b(insert|update|delete)\b/i);
 
     const guardBody = await client.query<{ definition: string }>(`
       select pg_catalog.pg_get_functiondef(procedure.oid) as definition

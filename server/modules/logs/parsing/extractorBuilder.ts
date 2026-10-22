@@ -8,7 +8,7 @@ const line = z.string().max(MAX_PARSING_LINE_CHARS).refine((value) => !/[\r\n]/.
 export const extractorSegmentSchema = z.object({
   start: z.number().int().nonnegative(), end: z.number().int().positive(),
   name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).max(100),
-  type: z.enum(["int", "uint", "hex", "float", "string", "quoted"])
+  type: z.enum(["int", "uint", "hex", "float", "string", "quoted", "bytes", "hexbytes", "base64bytes"])
 }).strict();
 export const extractorPreviewRequestSchema = z.object({
   line, segments: z.array(extractorSegmentSchema).max(32),
@@ -61,7 +61,7 @@ export function generateExtractorPattern(value: ExtractorPatternInput) {
     names.add(segment.name);
     generated += literalPattern(input.line.slice(cursor, segment.start), generalizeNumbers);
     const selected = input.line.slice(segment.start, segment.end);
-    const patterns = { int: "[+-]?\\d+", uint: "\\d+", hex: "(?:0x)?[0-9A-Fa-f]+", float: "[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?", string: /\s/.test(selected) ? "[^\\r\\n]+?" : "\\S+", quoted: '[^"]*' };
+    const patterns = { int: "[+-]?\\d+", uint: "\\d+", hex: "(?:0x)?[0-9A-Fa-f]+", float: "[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?", string: /\s/.test(selected) ? "[^\\r\\n]+?" : "\\S+", quoted: '[^"]*', bytes: "[0-9A-Fa-f]+(?:[ \\t]+[0-9A-Fa-f]+)*", hexbytes: "[0-9A-Fa-f]+(?:[ \\t]+[0-9A-Fa-f]+)*", base64bytes: "[A-Za-z0-9+/]+={0,2}" };
     const quoted = segment.type === "quoted";
     const includesQuotes = quoted && selected.startsWith('"') && selected.endsWith('"') && selected.length >= 2;
     if (quoted && !includesQuotes && !(input.line[segment.start - 1] === '"' && input.line[segment.end] === '"')) throw new Error("引号字段须选中完整双引号或其中的内容");

@@ -866,6 +866,7 @@ describe("legacy parameter plane archive", () => {
       { relation: "public.project_parameter_file_versions", trigger_name: "project_parameter_file_versions_pinned_source_immutable", function_name: "parameter_catalog.protect_pinned_source_file" },
       { relation: "public.project_parameter_files", trigger_name: "project_parameter_file_canonical_member_tombstone_ck", function_name: "parameter_catalog.assert_removed_member_has_tombstone" },
       { relation: "public.project_parameter_files", trigger_name: "project_parameter_files_pinned_source_immutable", function_name: "parameter_catalog.protect_pinned_source_file" },
+      { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_administrator_source_transitions_ck", function_name: "parameter_catalog.assert_administrator_source_transitions" },
       { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_configuration_restore_ck", function_name: "parameter_catalog.assert_configuration_restore_receipt" },
       { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_direct_source_application_ck", function_name: "parameter_catalog.assert_direct_source_application" },
       { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_member_addition_receipt_ck", function_name: "parameter_catalog.assert_member_addition_receipt" },

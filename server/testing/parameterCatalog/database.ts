@@ -119,15 +119,17 @@ export const S2_SCH_0241_FINGERPRINT =
 export const S2_SCH_0245_FINGERPRINT =
   "6b373aebaeae82091d7d3e86de2a385ba1ab73786a7b14d131333c486b66db38";
 
-/** 0255, measured with the unchanged readCanonicalSchemaFingerprint inventory on
- * fresh PostgreSQL: adds source_anchor_restoration_matches and
- * assert_administrator_source_transitions; changes protect_pinned_source_file,
- * assert_member_removal_tombstone and assert_project_value_source_pin_owner.
- * Relations, columns, constraints, indexes and Catalog triggers are unchanged
- * (the deferred request trigger belongs to public). All historical pins remain.
- */
+/** 0251 extends the project purge function to delete project-owned deployment
+ * and offline migration evidence. The other five inventory categories and
+ * every historical schema pin remain unchanged. */
+export const S2_SCH_0251_FINGERPRINT =
+  "705cb5b5f925657a92eb852ae77d52bc850212d8cc4aef12ef9e7777188c4b70";
+
+/** 0255 adds the root-swap receipt guard and exact-anchor restoration predicate,
+ * updating three source guards. Measured on fresh PostgreSQL including 0251;
+ * the other five inventory categories and all historical pins remain intact. */
 export const S2_SCH_LIVE_FINGERPRINT =
-  "8e9d58e1ac15c5bf8e75358368432a8aac69b4eba3a41454c850895fe5b40231";
+  "a869913ed93d10159b0058d76478f71a7497ed75db4cf55bd04317712baa4809";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
