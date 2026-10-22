@@ -417,7 +417,15 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     const currentAdminRow = table.getByRole("row").filter({ hasText: "Xu Yun" });
     await currentAdminRow.getByRole("button", { name: "查看 Xu Yun 的成员资料" }).click();
     const currentAdminDialog = page.getByRole("dialog", { name: "Xu Yun · 成员资料" });
-    await expect(currentAdminDialog.getByRole("checkbox", { name: "管理员", exact: true })).toBeDisabled();
+    const ownAdminRole = currentAdminDialog.getByRole("checkbox", { name: "管理员", exact: true });
+    const ownPlatformAdminRole = currentAdminDialog.getByRole("checkbox", { name: "平台超级管理员", exact: true });
+    await expect(ownAdminRole).toBeChecked();
+    await expect(ownPlatformAdminRole).toBeChecked();
+    await expect(ownAdminRole).toBeEnabled();
+    await ownAdminRole.uncheck();
+    await expect(ownPlatformAdminRole).toBeDisabled();
+    await expect(currentAdminDialog).toContainText("需保留至少一个管理员角色，避免当前账号失去管理权限。");
+    await ownAdminRole.check();
     await currentAdminDialog.getByRole("button", { name: "关闭", exact: true }).click();
     await currentAdminRow.getByRole("button", { name: /：更多$/ }).click();
     await expect(page.getByRole("menuitem", { name: /^停用/ })).toBeDisabled();
