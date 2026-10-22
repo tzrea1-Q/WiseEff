@@ -28,20 +28,23 @@ test("previews canonical project deletion read-only, retries failures and refres
     let release: () => void = () => {};
     const hold = new Promise<void>((resolve) => { release = resolve; });
     await page.route(`**${target}`, async (route) => { await hold; await route.continue(); }, { times: 1 });
-    await page.getByRole("menuitem", { name: `删除影响预览 ${project.name}`, exact: true }).click();
+    await page.getByRole("menuitem", { name: `彻底删除… ${project.name}`, exact: true }).click();
     const dialog = page.getByRole("dialog", { name: /项目删除影响预览/ });
     await expect(dialog.getByRole("status")).toContainText("正在检查");
     release();
+    await dialog.getByText("明细", { exact: true }).click();
     await expect(dialog.getByRole("region", { name: "项目专属数据：计划清理" })).toBeVisible();
     await expect(dialog).toContainText("平台共享参数定义");
     await expect(dialog).toContainText("共享保留");
-    await expect(dialog.getByRole("button", { name: "确认删除", exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "彻底删除", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("checkbox")).toHaveCount(0);
     await page.route(`**${target}`, (route) => route.fulfill({ status: 503,
       contentType: "application/json", body: JSON.stringify({ error: { code: "INTERNAL_ERROR", message: "预览服务暂时不可用" } }) }), { times: 1 });
     await dialog.getByRole("button", { name: "刷新预览" }).click();
     await expect(dialog.getByRole("alert")).toBeVisible();
     await dialog.getByRole("button", { name: "重试预览" }).focus();
     await page.keyboard.press("Enter");
+    await dialog.getByText("明细", { exact: true }).click();
     await expect(dialog.getByRole("region", { name: "项目专属数据：计划清理" })).toBeVisible();
     expect(writes).toEqual([]);
     const screenshot = testInfo.outputPath("project-deletion-preview-1440.png");
@@ -49,6 +52,7 @@ test("previews canonical project deletion read-only, retries failures and refres
     await testInfo.attach("project-deletion-preview-1440", { path: screenshot, contentType: "image/png" });
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
+    expect(writes).toEqual([]);
     const detail = await request.get(apiRoute(`/api/v1/parameters/admin/projects/${encodeURIComponent(project.id)}`), { headers: adminHeaders() });
     expect(detail.status()).toBe(200);
     expect((await detail.json()).item).toMatchObject({ id: project.id, canonicalOwned: true, parameterCount: project.parameterCount });
