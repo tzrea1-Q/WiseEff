@@ -1,5 +1,6 @@
 import type {
   KnowledgeContentForm,
+  KnowledgeReferenceSuggestion,
   KnowledgeBatchInput,
   KnowledgeBatchReport,
   KnowledgeEntry,
@@ -15,6 +16,7 @@ import type {
 } from "@/domain/knowledge/types";
 
 export type KnowledgeListQuery = {
+  pendingSuggestions?: boolean;
   governable?: boolean;
   origin?: KnowledgeOrigin;
   status?: KnowledgeStatus;
@@ -63,6 +65,9 @@ export class KnowledgeRevisionConflictError extends Error {
 }
 
 export interface KnowledgeRepository {
+  listReferenceSuggestions(entryId: string): Promise<KnowledgeReferenceSuggestion[]>;
+  acceptReferenceSuggestion(entryId: string, definitionId: string): Promise<KnowledgeEntry>;
+  dismissReferenceSuggestion(entryId: string, definitionId: string): Promise<void>;
   batch(input: KnowledgeBatchInput): Promise<KnowledgeBatchReport>;
   openImport(tags: string[]): Promise<{ id: string }>;
   importDocument(batchId: string, input: { file: File; relativePath: string }): Promise<KnowledgeImportOutcome>;
@@ -108,9 +113,10 @@ export interface KnowledgeRepository {
   removeDefinitionReference(entryId: string, definitionId: string): Promise<KnowledgeEntry>;
   /** Remove a structural definition reference (entry-edit gated). */
   removeParameterReference(entryId: string, specId: string): Promise<KnowledgeEntry>;
-  getFileObjectUrl(entryId: string): Promise<string>;
+  getFileObjectUrl(entryId: string, revisionId?: string): Promise<string>;
   /** Index health governance surface (knowledge:manage). */
   getIndexHealth(): Promise<KnowledgeIndexHealth>;
   retryEntryIndex(entryId: string): Promise<void>;
   rebuildIndex(): Promise<{ enqueued: number }>;
+  rescanReferenceSuggestions(): Promise<{ enqueued: number }>;
 }

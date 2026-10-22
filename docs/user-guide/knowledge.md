@@ -14,8 +14,12 @@ Drafts are visible only to their creator and knowledge managers. Members with vi
 
 1. Open Knowledge base (`/knowledge`). Without an active search, use the status and tag filters to browse entries you can read. Use tags to identify projects or topics; the knowledge base has no folder hierarchy.
 2. Enter a question or keywords in the knowledge search field and select Search. Full-text search supports Chinese and English. Results include only published entries; drafts and archived material are excluded.
+   Newly uploaded or replaced PDFs show the matching chunk's physical page range beside the snippet, either a single page or a range. Page numbers start at 1 and may differ from printed page labels. Other formats and older PDF indexes keep their existing snippets without page labels.
 3. Open a result to read its content, tags, source, and current revision. For a file entry, inspect its text-extraction status and download the original file when needed.
+   PDF page citations show the cited physical page in detail. Select Open page to open that revision's PDF in a new browser tab at the page. A historical-revision notice means the citation opens the older file, even if the entry's current file has been replaced. Access follows your current permission to read the entry's revisions.
 4. Check the retrieval-mode label to see whether semantic search is available. It reports either semantic plus full-text retrieval or full-text only. Select Clear search to return to the entry list and its filters.
+
+Xiaoze's PDF search citations name the retrieved chunk's page range and link to that revision at the first cited page. New log-analysis reports list the pages actually retrieved for each entry revision, with a link for each page. Earlier answers and completed runs without recorded pages keep their existing display; pages are hidden when you cannot read the cited revision.
 
 In an API-backed deployment, select Ask the knowledge base (Xiaoze) on Knowledge base (`/knowledge`) to open the Xiaoze conversation panel. Ask your question there; text in the search field is not sent automatically. Xiaoze can retrieve published knowledge through its tools and provide citation links to the original entries. Open those sources and check their applicability before relying on an answer. This entry point is unavailable in mock mode, and Xiaoze-created drafts must be published before they can be retrieved.
 
@@ -54,7 +58,19 @@ On `/knowledge`, select Batch import, choose several PDF, DOCX, TXT or MD files 
 
 Select Start import to follow per-document progress. Each supported document creates an independent draft; byte-identical readable content is skipped, never overwritten. Changed content creates a new draft. The report lists created drafts, duplicates, unsupported formats, extraction failures and refused documents, with links to available entries and tag warnings. Extraction failures retain file drafts for replacement. Review the report and publish drafts after checking them. Closing the dialog or leaving the page does not cancel documents already submitted. If the summary fails, Retry summary preserves document results without uploading again.
 
+## Review suggested definition references
+
+Indexing drafts and published revisions detects exact, case-sensitive property keys of at least four characters in the entry text. Open entry detail and select Edit (or Link parameter definitions for a file), then review Suggested links. Suggestions are grouped by key, ordered by mention count, and show the module, evidence snippet and PDF page when available. Deprecated definitions are labelled as deprecated; retired definitions are excluded.
+
+Only the entry owner with edit permission or a knowledge manager can read or act on suggestions. Accept creates an audited definition reference; Ignore remembers the dismissal for that entry and definition. Accept all processes each remaining suggestion separately and retains completed decisions if one fails. The same key in several modules produces separate candidates. Until accepted, suggestions change neither related knowledge nor retrieval; accepted references enter related knowledge only once the entry is published.
+
+Suggestions follow the latest revision: a pending suggestion is withdrawn when its key disappears and may return when the key reappears. Archived entries hide suggestions and skip detection; restoring an entry queues detection against its head revision. Accepted references and dismissals stay unchanged.
+
+Existing non-archived entries that have never completed detection are queued on server startup. After the catalog gains definitions, a knowledge manager can select Rescan suggested links in the index health tab on `/knowledge-admin` to enqueue all the organization's non-archived entries, including drafts. Detection runs in the background; the admin action is audited and preserves accepted references and dismissals.
+
 ## Manage entries in batches
+
+Use Pending suggestions on `/knowledge` to find entries awaiting review. Count badges appear only on entries you govern; other entries reveal no count. Select Accept suggested links in the batch bar to accept each selected entry's pending suggestions. Each entry commits its references and normal suggestion-acceptance audits together, or rolls back together on failure. Other entries retain their results, and one batch summary audit records all outcomes.
 
 Select entries in the list, then choose Add tags, Remove tags, Publish or Archive, up to 200 entries at a time. Tag changes preserve other tags and content. Publishing applies to drafts; archiving applies to published entries and removes them from retrieval while retaining history. Permissions are checked per entry: owners need edit permission, and knowledge managers may maintain others’ entries. The result table reports each success or refusal; one failure does not undo other successful entries.
 

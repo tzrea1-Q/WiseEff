@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Archive, ArchiveRestore, Download, ExternalLink, History, Pencil, Send, Trash2, Upload } from "lucide-react";
 
+import { formatKnowledgePageLabel } from "@/domain/knowledge/citations";
 import { renderMarkdownPreview } from "@/domain/knowledge/markdown";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { canArchive, canEditContent, canPublish, canRestore } from "@/domain/knowledge/rules";
@@ -14,6 +15,7 @@ import { KnowledgeParameterReferenceChips } from "./KnowledgeParameterReferenceC
 export type KnowledgeEntryDetailDialogProps = {
   open: boolean;
   entry: KnowledgeEntry | null;
+  citation?: { page: number | null; historical: boolean; openPage: () => Promise<void> };
   capability: KnowledgeCapability;
   onEdit: (entry: KnowledgeEntry) => void;
   onReplaceFile: (entry: KnowledgeEntry) => void;
@@ -50,6 +52,7 @@ function formatSize(bytes: number) {
 export function KnowledgeEntryDetailDialog({
   open,
   entry,
+  citation,
   capability,
   onEdit,
   onReplaceFile,
@@ -63,7 +66,7 @@ export function KnowledgeEntryDetailDialog({
   onNavigate,
   onClose
 }: KnowledgeEntryDetailDialogProps) {
-  const [pendingAction, setPendingAction] = useState<"publish" | "archive" | "restore" | "download" | null>(null);
+  const [pendingAction, setPendingAction] = useState<"publish" | "archive" | "restore" | "download" | "open-page" | null>(null);
   const [error, setError] = useState("");
   const previewHtml = useMemo(
     () => (entry?.contentMarkdown ? renderMarkdownPreview(entry.contentMarkdown) : ""),
@@ -74,13 +77,13 @@ export function KnowledgeEntryDetailDialog({
     return null;
   }
 
-  const runAction = async (kind: "publish" | "archive" | "restore" | "download", action: () => Promise<void>) => {
+  const runAction = async (kind: "publish" | "archive" | "restore" | "download" | "open-page", action: () => Promise<void>) => {
     setPendingAction(kind);
     setError("");
     try {
       await action();
     } catch (actionError) {
-      setError(presentError(actionError, "操作失败，请稍后重试。"));
+      setError(presentError(actionError, kind === "open-page" ? "打开引用页失败，请稍后重试。" : "操作失败，请稍后重试。"));
     } finally {
       setPendingAction(null);
     }
@@ -150,10 +153,10 @@ export function KnowledgeEntryDetailDialog({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
-            {canEditContent(entry, capability) && entry.contentForm === "markdown" ? (
+            {canEditContent(entry, capability) ? (
               <Button variant="outline" size="sm" onClick={() => onEdit(entry)}>
                 <Pencil data-icon="inline-start" />
-                编辑
+                {entry.contentForm === "markdown" ? "编辑" : "关联参数定义"}
               </Button>
             ) : null}
             {canEditContent(entry, capability) && entry.contentForm === "file" ? (
@@ -216,6 +219,15 @@ export function KnowledgeEntryDetailDialog({
           ) : null}
 
           <div className="min-h-0 flex-1 overflow-auto">
+            {citation?.historical ? <p className="mb-3 text-sm text-muted-foreground">引用的是历史修订</p> : null}
+            {citation?.page && entry.contentForm === "file" ? (
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <span className="text-sm text-foreground">引用位置：{formatKnowledgePageLabel(citation.page)}</span>
+                <Button variant="outline" size="sm" disabled={pendingAction !== null} onClick={() => void runAction("open-page", citation.openPage)}>
+                  打开{formatKnowledgePageLabel(citation.page)}
+                </Button>
+              </div>
+            ) : null}
             {entry.contentForm === "markdown" ? (
               <div
                 aria-label="条目内容"

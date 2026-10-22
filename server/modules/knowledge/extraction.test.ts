@@ -61,7 +61,8 @@ describe("createDefaultKnowledgeTextExtractor", () => {
 
     expect(outcome.status).toBe("succeeded");
     if (outcome.status === "succeeded") {
-      expect(outcome.text).toMatch(/^First page text\n+Second page text$/);
+      expect(outcome.text).toBe("First page text\n\n\n\nSecond page text");
+      expect(outcome).toMatchObject({ pageOffsets: [0, 19] });
     }
   });
 
@@ -76,6 +77,24 @@ describe("createDefaultKnowledgeTextExtractor", () => {
     if (outcome.status === "succeeded") {
       expect(outcome.text).toContain("WiseEff knowledge docx fixture");
     }
+  });
+
+  it("counts a leading blank physical page even when extraction trims its whitespace", async () => {
+    const bytes = readFileSync(join(fixturesDir, "multipage.pdf"));
+    const outcome = await extractor.extract({
+      fileName: "blank-first-page.pdf", contentType: "application/pdf",
+      bytes: Buffer.from(bytes.toString().replace("First page text", "               "))
+    });
+    expect(outcome).toEqual({ status: "succeeded", text: "Second page text", pageOffsets: [0, 0] });
+  });
+
+  it("retains a trailing blank page at the end of the trimmed extracted text", async () => {
+    const bytes = readFileSync(join(fixturesDir, "multipage.pdf"));
+    const outcome = await extractor.extract({
+      fileName: "blank-last-page.pdf", contentType: "application/pdf",
+      bytes: Buffer.from(bytes.toString().replace("Second page text", "                "))
+    });
+    expect(outcome).toEqual({ status: "succeeded", text: "First page text", pageOffsets: [0, 15] });
   });
 
   it("records a broken PDF as an honest failure instead of throwing", async () => {

@@ -1,3 +1,4 @@
+import { knowledgeEntryHref } from "@/domain/knowledge/citations";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DatabaseZap, ExternalLink, RefreshCw } from "lucide-react";
 
@@ -57,6 +58,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
   const [indexActionPendingId, setIndexActionPendingId] = useState<string | null>(null);
   const [rebuildPending, setRebuildPending] = useState(false);
   const [rebuildNotice, setRebuildNotice] = useState("");
+  const [rescanPending, setRescanPending] = useState(false);
   const [agentDrafts, setAgentDrafts] = useState<KnowledgeEntry[]>([]);
   const [agentDraftsLoading, setAgentDraftsLoading] = useState(true);
   const [agentDraftError, setAgentDraftError] = useState("");
@@ -236,6 +238,21 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
     }
   };
 
+  const rescanReferenceSuggestions = async () => {
+    setRescanPending(true);
+    setIndexError("");
+    setRebuildNotice("");
+    try {
+      const result = await repository.rescanReferenceSuggestions();
+      setRebuildNotice(`已发起 ${result.enqueued} 条未归档条目的后台建议检测，保留已接受和已忽略的决定。`);
+      await loadIndexHealth();
+    } catch (error) {
+      setIndexError(presentError(error, "发起建议关联检测失败，请稍后重试。"));
+    } finally {
+      setRescanPending(false);
+    }
+  };
+
   const indexStateTone: Record<KnowledgeIndexStatusItem["status"], string> = {
     pending: "bg-amber-100 text-amber-800",
     processing: "bg-sky-100 text-sky-800",
@@ -368,7 +385,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
             table={{ "aria-label": "Agent 知识草稿队列", rows: agentDrafts, rowKey: (entry) => entry.id, columns: agentDraftColumns, pageSize: 10 }}
             rowActions={(entry) => ({
               label: entry.title,
-              primaryAction: { id: "review", label: "审阅", onSelect: () => onNavigate?.(`/knowledge?entryId=${encodeURIComponent(entry.id)}`) },
+              primaryAction: { id: "review", label: "审阅", onSelect: () => onNavigate?.(knowledgeEntryHref({ entryId: entry.id })) },
               items: [
                 { id: "publish", label: "发布", disabled: !canGovernEntry(entry, capability) || agentActionPendingId !== null, onSelect: () => publishAgentDraft(entry) },
                 { id: "reject", label: "拒绝归档", disabled: !canGovernEntry(entry, capability) || agentActionPendingId !== null, destructive: true,
@@ -381,7 +398,8 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
           !canManage ? <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">索引健康与重建操作需要知识管理员权限。</p> :
           <AdminListPage label="检索索引健康"
             headerActions={<>
-              <Button variant="outline" size="sm" onClick={() => void rebuildIndex()} disabled={rebuildPending || indexLoading} aria-busy={rebuildPending || undefined}><DatabaseZap data-icon="inline-start" />全量重建索引</Button>
+              <Button variant="outline" size="sm" onClick={() => void rescanReferenceSuggestions()} disabled={rescanPending || rebuildPending || indexLoading} aria-busy={rescanPending || undefined}><RefreshCw data-icon="inline-start" />重新检测建议关联</Button>
+              <Button variant="outline" size="sm" onClick={() => void rebuildIndex()} disabled={rescanPending || rebuildPending || indexLoading} aria-busy={rebuildPending || undefined}><DatabaseZap data-icon="inline-start" />全量重建索引</Button>
               <Button size="sm" onClick={() => void loadIndexHealth()} disabled={indexLoading} aria-busy={indexLoading || undefined}><RefreshCw data-icon="inline-start" />刷新</Button>
             </>}
             filterBar={indexHealth ? <p data-retrieval-mode={indexHealth.retrieval.mode} aria-label="检索模式" className="text-sm text-foreground">

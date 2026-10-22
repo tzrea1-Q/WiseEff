@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../../auth/types";
@@ -125,6 +126,24 @@ describe.skipIf(!databaseAvailable)("knowledge tools against the knowledge servi
   function registryFor() {
     return createAgentToolRegistry({ db });
   }
+
+  it("cites the retrieved PDF chunk's page range and revision without extending the citation protocol", async () => {
+    const pdf = await createKnowledgeEntry(db, createFakeObjectStore(), extractor, editor, {
+      contentForm: "file", title: "PDF guidance", tags: [], file: {
+        fileName: "multipage.pdf", contentType: "application/pdf",
+        contentBase64: readFileSync(new URL("../../knowledge/testing/fixtures/multipage.pdf", import.meta.url)).toString("base64")
+      }
+    });
+    await publishKnowledgeEntry(db, editor, pdf.id);
+    while ((await processNextKnowledgeIndexJob({ db })) !== "idle") { /* drain */ }
+    const result = await registryFor().run("knowledge.search",
+      { auth: makeAuth(MEMBER, ["knowledge:view"]), requestId: "pdf", sessionId: "session-1" }, { query: "Second page" });
+    expect(result.citations).toEqual([{
+      type: "knowledge", id: pdf.id, label: "PDF guidance（第 1–2 页）",
+      href: `/knowledge?entryId=${pdf.id}&revisionId=${pdf.headRevisionId}&page=1`,
+      snippet: expect.stringContaining("Second page text")
+    }]);
+  });
 
   it("knowledge.search runs for a project-less org member under their AuthContext and returns citation payloads", async () => {
     const registry = registryFor();

@@ -143,7 +143,7 @@ export type LogRecord = {
   skillSelection?: LogSkillSelection;
   createdByCredentialId?: string | null;
   createdByCredentialName?: string | null;
-  knowledgeRevisions?: Array<{ entryId: string; revisionId?: string }>;
+  knowledgeRevisions?: Array<{ entryId: string; revisionId?: string; pages?: number[] }>;
   sourceSnapshot?: { id: string; versionLabel?: string; status: "queued" | "indexing" | "ready" | "failed" | "archived" };
   sourceSnapshotSelection?: "matched_version" | "default" | "none";
   requestedSourceVersion?: string;

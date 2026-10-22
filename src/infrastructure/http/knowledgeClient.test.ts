@@ -366,7 +366,7 @@ describe("createHttpKnowledgeRepository", () => {
           ]
         });
       }
-      if (url.endsWith("/index/rebuild")) {
+      if (url.endsWith("/index/rebuild") || url.endsWith("/reference-suggestions/rescan")) {
         return jsonResponse({ enqueued: 4 });
       }
       return jsonResponse({ enqueued: true });
@@ -384,6 +384,9 @@ describe("createHttpKnowledgeRepository", () => {
     const rebuild = await repository.rebuildIndex();
     expect(rebuild).toEqual({ enqueued: 4 });
     expect(String(fetchMock.mock.calls[2][0])).toContain("/api/v1/knowledge/index/rebuild");
+    expect(await repository.rescanReferenceSuggestions()).toEqual({ enqueued: 4 });
+    expect(String(fetchMock.mock.calls[3][0])).toContain("/api/v1/knowledge/reference-suggestions/rescan");
+    expect(fetchMock.mock.calls[3][1]?.method).toBe("POST");
   });
 
   it("normalizes file content types from extensions", () => {
