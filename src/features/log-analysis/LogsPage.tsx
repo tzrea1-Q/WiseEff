@@ -1,3 +1,4 @@
+import { formatKnowledgePageLabel, knowledgeEntryHref } from "@/domain/knowledge/citations";
 import { SelectControl } from "@/components/common/SelectControl";
 import { DecodedFields } from "./DecodedFields";
 import { SourceEvidence } from "./SourceEvidence";
@@ -435,7 +436,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
     try {
       const draft = await knowledgeRepository.distillFromLog(activeLog.id);
       dispatch({ type: "ADD_NOTIFICATION", message: "已生成知识草稿,请在知识库中审阅后发布" });
-      onNavigate(`/knowledge?entryId=${encodeURIComponent(draft.id)}`);
+      onNavigate(knowledgeEntryHref({ entryId: draft.id }));
     } catch (error) {
       dispatch({
         type: "ADD_NOTIFICATION",
@@ -990,11 +991,21 @@ function AnalysisProvenanceBadges({ log, canViewSkill, onNavigate }: { log: LogR
       ) : null}
       {log.knowledgeRevisions?.length ? <details className="analysis-provenance__reason">
         <summary>实际检索的知识修订（{log.knowledgeRevisions.length}）</summary>
-        <ul>{log.knowledgeRevisions.map(({ entryId, revisionId }) => <li key={`${entryId}:${revisionId}`}>
-          {revisionId ? <a href={`/knowledge?entryId=${encodeURIComponent(entryId)}`} onClick={(event) => {
-            event.preventDefault(); onNavigate(`/knowledge?entryId=${encodeURIComponent(entryId)}`);
-          }}>查看知识条目（已固定修订）</a> : <span>无权查看的条目</span>}
-        </li>)}</ul>
+        <ul>{log.knowledgeRevisions.map(({ entryId, revisionId, pages }) => {
+          const href = knowledgeEntryHref({ entryId, ...(revisionId && pages?.length ? { revisionId, page: pages[0] } : {}) });
+          return <li key={`${entryId}:${revisionId}`}>
+            {revisionId ? <><a href={href} onClick={(event) => {
+              event.preventDefault(); onNavigate(href);
+            }}>查看知识条目（已固定修订）</a>
+            {pages?.length ? <span> {formatKnowledgePageLabel(pages).split(/(\d+)/).map((part, index) => {
+              if (!/^\d+$/.test(part)) return part;
+              const page = Number(part);
+              const href = knowledgeEntryHref({ entryId, revisionId, page });
+              return <a key={index} href={href} aria-label={`打开${formatKnowledgePageLabel(page)}`}
+                onClick={(event) => { event.preventDefault(); onNavigate(href); }}>{part}</a>;
+            })}</span> : null}</> : <span>无权查看的条目</span>}
+          </li>;
+        })}</ul>
       </details> : null}
       {degraded ? (
         <p className="analysis-provenance__reason">{degraded.reason}</p>

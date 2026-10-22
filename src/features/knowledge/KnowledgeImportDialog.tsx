@@ -1,3 +1,4 @@
+import { knowledgeEntryHref } from "@/domain/knowledge/citations";
 import { useEffect, useRef, useState } from "react";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
 import { KNOWLEDGE_IMPORT_DOCUMENT_LIMIT, KNOWLEDGE_IMPORT_BYTE_LIMIT, KNOWLEDGE_FILE_BYTE_LIMIT, KNOWLEDGE_TAG_LIMIT, KNOWLEDGE_TAG_CHARACTER_LIMIT } from "@/domain/knowledge/limits";
@@ -118,7 +119,7 @@ export function KnowledgeImportDialog({ open, repository, onClose, onComplete }:
               </p> : null}
             </div> },
             { key: "entry", header: "条目", render: (row) => row.outcome?.entryId ?
-              <a className="text-primary underline" href={`/knowledge?entryId=${encodeURIComponent(row.outcome.entryId)}`}>
+              <a className="text-primary underline" href={knowledgeEntryHref({ entryId: row.outcome.entryId })}>
                 {row.outcome.status === "duplicate_skipped" ? "查看已有条目" : "查看草稿"}
               </a> : "—" }
           ]} /> : <div aria-live="polite">

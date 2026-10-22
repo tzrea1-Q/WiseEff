@@ -16595,7 +16595,7 @@
     "/api/v1/knowledge/entries/{entryId}/file/content": {
       "get": {
         "operationId": "knowledge.fileContent",
-        "summary": "Download the current file binary of a file-form knowledge entry",
+        "summary": "Download a readable revision's file binary; defaults to the current revision",
         "tags": [
           "knowledge"
         ],
@@ -16604,6 +16604,15 @@
             "name": "entryId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revisionId",
+            "in": "query",
+            "required": false,
+            "description": "Revision UUID belonging to this entry; requires current access to its revisions.",
             "schema": {
               "type": "string"
             }
@@ -35231,6 +35240,12 @@
                     },
                     "revisionId": {
                       "type": "string"
+                    },
+                    "pages": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      }
                     }
                   },
                   "required": [
@@ -36139,6 +36154,12 @@
                     },
                     "revisionId": {
                       "type": "string"
+                    },
+                    "pages": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      }
                     }
                   },
                   "required": [
@@ -36909,6 +36930,12 @@
                       },
                       "revisionId": {
                         "type": "string"
+                      },
+                      "pages": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
                       }
                     },
                     "required": [
@@ -42673,6 +42700,12 @@
                       },
                       "revisionId": {
                         "type": "string"
+                      },
+                      "pages": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
                       }
                     },
                     "required": [
@@ -42900,6 +42933,12 @@
                     },
                     "revisionId": {
                       "type": "string"
+                    },
+                    "pages": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      }
                     }
                   },
                   "required": [
@@ -43657,6 +43696,12 @@
                       },
                       "revisionId": {
                         "type": "string"
+                      },
+                      "pages": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
                       }
                     },
                     "required": [
@@ -59093,6 +59138,101 @@
       },
       "KnowledgeSearchResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "entryId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "contentForm": {
+                  "type": "string",
+                  "enum": [
+                    "markdown",
+                    "file"
+                  ]
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "excerpt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "revisionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pageStart": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "pageEnd": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "entryId",
+                "title",
+                "contentForm",
+                "tags",
+                "excerpt",
+                "updatedAt",
+                "revisionId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "retrieval": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "semantic_fts",
+                  "fts_only"
+                ]
+              },
+              "vectorAvailable": {
+                "type": "boolean"
+              },
+              "embeddingConfigured": {
+                "type": "boolean"
+              },
+              "degradedReason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode",
+              "vectorAvailable",
+              "embeddingConfigured"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "items",
+          "retrieval"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "KnowledgeSearchResponse"
       },
       "KnowledgeRelatedToSpecResponse": {
