@@ -62,7 +62,7 @@ export type LogSeverity = "Critical" | "Warning" | "Info";
 export type LogArchiveState = "active" | "archived";
 export type DeviceStatus = "未连接" | "连接中" | "已连接" | "连接失败";
 export type DebugDeviceTransport = "simulator" | "hdc" | "adb" | "multi";
-export type TimeWindow = "today" | "7d" | "30d";
+export type { TimeWindow } from "@/domain/logs/types";
 
 export type LogEvidence = {
   sourceLocation?: import("../logs/types").LogEvidence["sourceLocation"];

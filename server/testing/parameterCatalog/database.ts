@@ -119,11 +119,16 @@ export const S2_SCH_0241_FINGERPRINT =
 export const S2_SCH_0245_FINGERPRINT =
   "6b373aebaeae82091d7d3e86de2a385ba1ab73786a7b14d131333c486b66db38";
 
-/** 0249 adds the erasure organization column and scoped receipt reader, and
- * records ownership in the existing purge INSERT. 0250 only grants runtime
- * access; all preceding schema pins and the six-category inventory stay intact. */
+/** 0251 extends the project purge function to delete project-owned deployment
+ * and offline migration evidence. The other five inventory categories and
+ * every historical schema pin remain unchanged. */
+export const S2_SCH_0251_FINGERPRINT =
+  "705cb5b5f925657a92eb852ae77d52bc850212d8cc4aef12ef9e7777188c4b70";
+
+/** 0252 records erasure ownership in the purge INSERT and adds its organization
+ * column and scoped receipt reader. 0253 only grants runtime access. */
 export const S2_SCH_LIVE_FINGERPRINT =
-  "25b1a094b833f6a9b825513e3791892d7f7cb2c13bbe4d27203ab3ff1a8cece0";
+  "30efc5b90c3c4e8a4a4e70744103ac63a9657d109c2efd4e873926104bdefcb6";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

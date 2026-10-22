@@ -27,6 +27,17 @@ async function setup(spec = initial, sampleInput = sample, timestampPattern?: st
 }
 
 describe("extractor authoring", () => {
+  it.each(["bytes", "hexbytes", "base64bytes"] as const)("builds a %s capture without YAML", async (type) => {
+    const text = type === "base64bytes" ? "AP8K" : "00ff0a";
+    const { save } = await setup(initial, { ...sample, content: `data=${text}`, lineCount: 1 });
+    await userEvent.click(screen.getByRole("button", { name: "从此行创建抽取规则" }));
+    await userEvent.click(screen.getByRole("button", { name: `片段 data=${text}` }));
+    await userEvent.click(screen.getByRole("combobox", { name: "字段 data 的类型" }));
+    await userEvent.click(screen.getByRole("option", { name: type === "bytes" ? "字节（bytes）" : type === "hexbytes" ? "十六进制字节（hexbytes）" : "Base64 字节（base64bytes）" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存抽取规则" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "保存抽取规则" }));
+    expect(save.mock.lastCall![0].extractors[0].fields.data).toEqual({ type });
+  });
   it("selects a docked line, names and types key=value segments, previews coverage and saves into the spec", async () => {
     const { save } = await setup();
     expect(screen.queryByRole("spinbutton", { name: "样例行号" })).not.toBeInTheDocument();

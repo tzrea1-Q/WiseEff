@@ -14,6 +14,18 @@ const complete: SkillDryRunDetail = { run: { ...processing, status: "complete", 
   lines: [{ file: "sample.log", line: 2 }], outcome: "ok", reason: "sufficient-evidence" }] };
 
 describe("skill dry-run drawer", () => {
+  it("delegates failed-run retry to the workspace save-then-run callback", async () => {
+    const failed: SkillDryRun = { ...processing, status: "failed" };
+    const repository = { getSkillDryRun: vi.fn(async () => ({ run: failed, steps: [] })), startSkillDryRun: vi.fn() };
+    const onRetry = vi.fn(async () => processing);
+    const onRunChange = vi.fn();
+    render(<SkillDryRunDrawer skillId="skill" run={failed} repository={repository} open onClose={vi.fn()} onRunChange={onRunChange} onRetry={onRetry} />);
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await act(async () => undefined);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(repository.startSkillDryRun).not.toHaveBeenCalled();
+    expect(onRunChange).toHaveBeenCalledWith(processing);
+  });
   it("shows progress, then the conclusion, evidence and trace with plain-text lines", async () => {
     let finish!: (detail: SkillDryRunDetail) => void;
     const repository = { getSkillDryRun: vi.fn(() => new Promise<SkillDryRunDetail>((resolve) => { finish = resolve; })),

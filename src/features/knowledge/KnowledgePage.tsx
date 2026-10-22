@@ -23,6 +23,7 @@ import {
 import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import { PageInsightBar, type Column } from "@/components/admin";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { AdminListPage } from "@/components/layout/AdminListPage";
 import { SectionSkeleton } from "@/components/common/SectionState";
@@ -90,6 +91,7 @@ export function KnowledgePage({
   const [citationLoading, setCitationLoading] = useState(Boolean(initialEntryId));
   const citationRequest = useRef(0);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [pendingSuggestions, setPendingSuggestions] = useState(false);
   const [originFilter, setOriginFilter] = useState<string[]>([]);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [searchInput, setSearchInput] = useState("");
@@ -119,7 +121,7 @@ export function KnowledgePage({
     setLoading(true);
     setListError("");
     try {
-      const result = await repository.list();
+      const result = await repository.list(pendingSuggestions ? { pendingSuggestions: true } : undefined);
       if (request !== listRequest.current) return;
       // Preserve only a get completed after this list started, never an older cached lookup.
       const citation = citationResult.current !== citationAtStart ? citationResult.current?.entry : null;
@@ -131,7 +133,7 @@ export function KnowledgePage({
     } finally {
       if (request === listRequest.current) setLoading(false);
     }
-  }, [repository]);
+  }, [repository, pendingSuggestions]);
 
   useEffect(() => {
     setRows([]);
@@ -285,6 +287,8 @@ export function KnowledgePage({
       render: (entry) => (
         <div className="min-w-0">
           <p className="truncate font-medium text-foreground">{entry.title}</p>
+          {canGovernEntry(entry, capability) && (entry.pendingSuggestionCount ?? 0) > 0
+            ? <Badge variant="secondary">待处理建议 {entry.pendingSuggestionCount}</Badge> : null}
           {entry.contentForm === "file" && entry.file?.extractionStatus === "failed" ? <KnowledgeUnsearchableBadge /> : null}
           <p className="text-xs text-muted-foreground">修订 #{entry.headRevisionNumber}</p>
         </div>
@@ -397,10 +401,10 @@ export function KnowledgePage({
         expectedHeadRevisionNumber: input.expectedHeadRevisionNumber,
         title: input.title,
         tags: input.tags,
-        file: input.file
+        ...(input.file ? { file: input.file } : {})
       });
       setRows((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-    } else {
+    } else if (input.file) {
       const created = await repository.createFile({ title: input.title, tags: input.tags, file: input.file });
       setRows((current) => [created, ...current]);
       setSelectedId(created.id);
@@ -431,9 +435,6 @@ export function KnowledgePage({
       throw error;
     }
   };
-
-  const canDeleteDraft = (entry: KnowledgeEntry) =>
-    capability.canManage && entry.status === "draft" && entry.sourceType === "human";
 
   const requestDelete = (entry: KnowledgeEntry) => {
     setDeleteError("");
@@ -578,6 +579,10 @@ export function KnowledgePage({
           <Button type="submit" variant="outline" size="sm" disabled={searching} aria-busy={searching || undefined}>
             检索
           </Button>
+          {!searchQuery && canBatch ? <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={pendingSuggestions} onChange={(event) => { setCheckedIds([]); setPendingSuggestions(event.target.checked); }} />
+            待处理建议
+          </label> : null}
           {searchQuery ? (
             <Button type="button" variant="outline" size="sm" onClick={clearSearch}>
               清除检索
@@ -643,14 +648,17 @@ export function KnowledgePage({
           primaryAction: { id: "view", label: "查看", onSelect: () => { setCitation(null); setSelectedId(entry.id); } },
           items: [
             { id: "revisions", label: "修订历史", onSelect: () => setRevisionsEntry(entry) },
-            ...(canDeleteDraft(entry) ? [{ id: "delete", label: "彻底删除", destructive: true as const, onRequestConfirmation: () => requestDelete(entry) }] : [])
+            ...(capability.canManage ? [{ id: "delete", label: "彻底删除", destructive: true as const, onRequestConfirmation: () => requestDelete(entry) }] : [])
           ]
         })}
         emptyState={{ message: rows.length === 0 ? "知识库还是空的。创建第一条调参经验或上传一份硬件手册。" : "当前筛选条件下没有条目。",
           actionLabel: "重新加载", onAction: () => { void loadEntries(); } }}
       />
 
-      {batch ? <KnowledgeBatchDialog {...batch} repository={repository} onClose={() => setBatch(null)} onComplete={(report) => {
+      {batch ? <KnowledgeBatchDialog {...batch} repository={repository} onClose={() => {
+        setBatch(null);
+        void loadEntries();
+      }} onComplete={(report) => {
         setRows((current) => current.map((entry) => report.results.find((row) => row.entryId === entry.id)?.entry ?? entry));
         setCheckedIds([]);
       }} /> : null}
@@ -682,7 +690,7 @@ export function KnowledgePage({
         }}
         onDownloadFile={handleDownload}
         citation={citation ? { ...citation, openPage: handleOpenPage } : undefined}
-        onRequestDelete={selectedEntry && canDeleteDraft(selectedEntry) ? requestDelete : undefined}
+        onRequestDelete={selectedEntry && capability.canManage ? requestDelete : undefined}
         onOpenDefinition={onOpenDefinition}
         onNavigate={onNavigate}
         onClose={() => { setSelectedId(null); setCitation(null); }}
@@ -691,10 +699,9 @@ export function KnowledgePage({
       <ConfirmDialog
         open={Boolean(deleteEntry)}
         title={`彻底删除「${deleteEntry?.title ?? ""}」`}
-        description={`将永久删除该人工草稿及其全部 ${deleteEntry?.headRevisionNumber ?? 0} 个修订、文件元数据、关联引用和检索索引，不可恢复。存储中的原始文件保留；其他知识、参数定义和来源日志不受影响。删除审计保留。`}
+        description={`将永久删除该条目及其全部 ${deleteEntry?.headRevisionNumber ?? 0} 个修订，不可恢复。存储中的原始文件保留。删除会写入审计记录。`}
         confirmLabel="彻底删除"
         tone="danger"
-        acknowledgement="我确认删除该条目与全部修订历史。"
         pending={deletePending}
         error={deleteError}
         onConfirm={() => void confirmDelete()}
@@ -705,10 +712,13 @@ export function KnowledgePage({
         open={editorOpen}
         entry={editorEntry}
         onSubmit={handleEditorSubmit}
-        parameterReferencePicker={parameterReferencePicker}
+        parameterReferencePicker={editorEntry?.status === "archived" ? undefined : parameterReferencePicker}
+        suggestionRepository={editorEntry?.status === "archived" ? undefined : repository}
+        onReferenceUpdate={applyReferenceUpdate}
         onClose={() => {
           setEditorOpen(false);
           setEditorEntry(null);
+          void loadEntries();
         }}
       />
 

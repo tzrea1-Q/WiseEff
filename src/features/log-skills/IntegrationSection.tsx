@@ -11,7 +11,7 @@ import { SkillWebhookEditor } from "./SkillWebhookEditor";
 import { buildSkillUploadExamples } from "./integrationExamples";
 import { IntegrationCredentials } from "./IntegrationCredentials";
 
-export function IntegrationSection({ skill, disabled, repository, apiMode, canEdit, dirty, onSkillUpdated, onBusyChange }: SectionProps) {
+export function IntegrationSection({ skill, disabled, repository, apiMode, canEdit, onSkillUpdated, onBusyChange, onWebhookDirtyChange }: SectionProps) {
   const id = useId();
   const [domain, setDomain] = useState<LogDomain | null>(null);
   const [loading, setLoading] = useState(apiMode);
@@ -58,14 +58,13 @@ export function IntegrationSection({ skill, disabled, repository, apiMode, canEd
           aria-invalid={!!keyError} aria-describedby={keyError ? "skill-key-error" : undefined}
           onChange={(event) => { setKey(event.target.value); setKeyError(""); }} />
         <Button variant="outline" onClick={() => void copy(skill.skillKey, "技能标识")}>复制技能标识</Button>
-        {!editing ? <Button variant="outline" disabled={disabled || dirty || !repository?.updateLogDomain} onClick={() => { setKey(skill.skillKey); setKeyError(""); setEditing(true); }}>编辑技能标识</Button> : null}
+        {!editing ? <Button variant="outline" disabled={disabled || !repository?.updateLogDomain} onClick={() => { setKey(skill.skillKey); setKeyError(""); setEditing(true); }}>编辑技能标识</Button> : null}
       </div></div>
       {editing ? <div>
         {keyError ? <p id="skill-key-error" role="alert" className="skill-field-error">{keyError}</p> : null}
         <div className="skill-integration-actions"><Button disabled={saving || disabled} onClick={() => void saveKey()}>保存标识</Button>
           <Button variant="outline" disabled={saving} onClick={() => { setEditing(false); setKeyError(""); }}>取消编辑</Button></div>
       </div> : null}
-      {dirty ? <p>请先保存草稿，再修改技能标识。</p> : null}
       <div><label htmlFor={`${id}-endpoint`}>上传地址</label><div className="skill-integration-actions"><Input id={`${id}-endpoint`} readOnly value={examples.endpoint} /><Button variant="outline" onClick={() => void copy(examples.endpoint, "上传地址")}>复制上传地址</Button></div></div>
       <p>将集成凭据填入 Authorization: Bearer &lt;集成凭据&gt;；示例仅包含占位符和示例日志。</p>
       {([['json', '单文件 JSON / Base64'], ['multipart', '多文件表单']] as const).map(([kind, label]) => <details key={kind}><summary>{label}</summary>
@@ -78,7 +77,7 @@ export function IntegrationSection({ skill, disabled, repository, apiMode, canEd
     <section aria-label="结果回调"><h3>结果回调</h3>
       {loading ? <SectionSkeleton label="正在加载回调配置" /> : loadError ? <SectionError message="无法加载回调配置" onRetry={() => setReload((value) => value + 1)} />
         : domain && webhookRepository ? <SkillWebhookEditor key={domain.id} domain={domain} logActions={webhookRepository} disabled={disabled}
-          onSaved={async () => undefined} /> : <p>{apiMode ? "当前无法加载回调配置。" : "请在 API 模式下配置结果回调。"}</p>}
+          onDirtyChange={onWebhookDirtyChange} onBusyChange={onBusyChange} onSaved={async () => undefined} /> : <p>{apiMode ? "当前无法加载回调配置。" : "请在 API 模式下配置结果回调。"}</p>}
     </section>
   </div>;
 }

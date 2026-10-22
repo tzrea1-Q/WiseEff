@@ -9,6 +9,15 @@ function segment(line: string, text: string, name: string, type: ExtractorPatter
 }
 
 describe("extractor pattern engine interface", () => {
+  it.each(["bytes", "hexbytes", "base64bytes"] as const)("generates %s fields for frame binding", (type) => {
+    const text = type === "base64bytes" ? "AP8K" : "00 ff 0a";
+    const line = `data=${text}`;
+    const result = generateExtractorPattern({ line, segments: [segment(line, text, "data", type)], sampleLines: [line] });
+    expect(result.fields.data).toEqual({ type });
+    expect(result.matchCount).toBe(1);
+    const decoded = decodeLogFiles({ schemaVersion: "parsing/v1", extractors: [{ id: "x", pattern: result.pattern, fields: result.fields }] }, [{ file: "sample.log", lines: [line] }]);
+    expect(decoded.events[0].fields.data).toMatchObject({ value: { hex: "00ff0a", length: 3 } });
+  });
   it("generalizes all ISO timestamp numbers identified by the profile, including numbers beside T and Z", () => {
     const line = "2026-10-19T12:30:00Z charger vbus=9012";
     const result = generateExtractorPattern({ line, segments: [segment(line, "9012", "vbus", "uint")], timestampPattern: "^\\S+\\s+",

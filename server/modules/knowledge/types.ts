@@ -62,6 +62,7 @@ export type KnowledgeParameterReferenceDto =
   | KnowledgeLegacySpecReferenceDto;
 
 export type KnowledgeEntryDto = {
+  pendingSuggestionCount?: number;
   origin: KnowledgeOrigin;
   id: string;
   organizationId: string;
@@ -136,6 +137,7 @@ export type KnowledgeSearchResponseDto = {
 };
 
 export type ListKnowledgeEntriesQuery = {
+  pendingSuggestions?: boolean;
   governable?: boolean;
   origin?: KnowledgeOrigin;
   status?: KnowledgeStatus;

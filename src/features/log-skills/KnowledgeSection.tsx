@@ -6,7 +6,6 @@ import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { presentError } from "@/infrastructure/http/presentError";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { FileDropZone } from "@/components/common/FileDropZone";
-import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { SearchField } from "@/components/common/SearchField";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { DataTable } from "@/components/admin/DataTable";
@@ -19,9 +18,10 @@ import { KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT, KNOWLEDGE_FILE_BYTE_LIMIT, KNOWLEDG
 type UploadFile = { id: number; file: File; content?: string; status: "validating" | "ready" | "invalid" | "uploading" | "success" | "failed"; error?: string };
 const uploadStatus = { validating: "正在校验…", ready: "待上传", invalid: "文件无效", uploading: "正在创建…", success: "已创建并链接", failed: "创建失败" };
 
-export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRepository: repository, knowledgeCapability: capability, onBusyChange }: {
+export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRepository: repository, knowledgeCapability: capability, onBusyChange, onNavigate }: {
   spec: SkillSpec; setSpec: (spec: SkillSpec) => void; disabled: boolean; apiMode: boolean;
   knowledgeRepository?: KnowledgeRepository; knowledgeCapability?: KnowledgeCapability; onBusyChange: (busy: boolean) => void;
+  onNavigate?: (path: string) => void;
 }) {
   const ids = spec.knowledgeEntryIds ?? [];
   const idsKey = JSON.stringify(ids);
@@ -29,13 +29,15 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
   const [loadFailed, setLoadFailed] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [linkOpen, setLinkOpen] = useState(false);
-  const [unlinking, setUnlinking] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [tag, setTag] = useState("");
   const [tagError, setTagError] = useState<string | null>(null);
   const [tagResult, setTagResult] = useState<string | null>(null);
   const [choices, setChoices] = useState<KnowledgeEntry[] | null>(null);
   const [searchFailed, setSearchFailed] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [pending, setPending] = useState(false);
@@ -66,12 +68,17 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
   useEffect(() => {
     if (!linkOpen || !canRead) return;
     let active = true;
-    setChoices(null); setSearchFailed(false);
-    void repository!.list({ status: "published", q: query.trim() || undefined })
-      .then(({ items }) => { if (active) setChoices(items.filter((entry) => entry.status === "published")); })
-      .catch(() => { if (active) setSearchFailed(true); });
+    if (!page) setChoices(null);
+    setSearchFailed(false); setSearching(true);
+    void repository!.list({ status: "published", q: query.trim() || undefined, limit: 100, offset: page * 100 })
+      .then(({ items }) => { if (active) {
+        setChoices((previous) => [...new Map([...(page ? previous ?? [] : []), ...items.filter((entry) => entry.status === "published")].map((entry) => [entry.id, entry])).values()]);
+        setHasMore(items.length === 100);
+      } })
+      .catch(() => { if (active) setSearchFailed(true); })
+      .finally(() => { if (active) setSearching(false); });
     return () => { active = false; };
-  }, [linkOpen, canRead, repository, capability?.userId, capability?.canManage, query, refresh]);
+  }, [linkOpen, canRead, repository, capability?.userId, capability?.canManage, query, page, refresh]);
 
   async function selectFiles(selected: File[]) {
     let capacity = Math.max(0, 200 - ids.length - files.filter((item) => ["ready", "validating", "failed"].includes(item.status)).length);
@@ -142,7 +149,7 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
   return <section className="skill-section" aria-label="知识"><h2>知识</h2>
     <p>链接和上传结果需保存草稿，再随技能版本发布。仅已发布的知识进入分析检索；上传会创建知识草稿，请在知识库按正常流程发布。</p>
     <div className="flex flex-wrap gap-2">
-      <Button variant="outline" disabled={disabled || !canRead || atLimit} onClick={() => { setQuery(""); setTag(""); setTagError(null); setTagResult(null); setLinkOpen(true); }}>链接已有条目</Button>
+      <Button variant="outline" disabled={disabled || !canRead || atLimit} onClick={() => { setQuery(""); setPage(0); setTag(""); setTagError(null); setTagResult(null); setLinkOpen(true); }}>链接已有条目</Button>
       <Button disabled={!canUpload} aria-describedby={uploadReason ? reasonId : undefined} onClick={() => { setFiles([]); setUploadOpen(true); }}>上传 Markdown / 文本</Button>
     </div>
     {uploadReason ? <p id={reasonId}>{uploadReason}</p> : null}
@@ -152,17 +159,17 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
       : <DataTable rows={visibleEntries} rowKey={(row) => row.id} ariaLabel="已链接知识条目" tableClassName="table-fixed"
         emptyState={<SectionEmpty title="尚未链接知识" message="链接已发布条目，或上传 Markdown / 文本 创建知识草稿。" />}
         columns={[
-          { key: "title", header: "标题", render: ({ entry, deleted }) => entry ? <span className="break-words" title={entry.title}>{entry.title}</span> : <span>{deleted ? "已删除" : "无权查看的条目"}</span> },
+          { key: "title", header: "标题", render: ({ entry, deleted }) => entry ? <a className="break-words underline" title={entry.title} href={`/knowledge?entryId=${encodeURIComponent(entry.id)}`} onClick={(event) => {
+            if (onNavigate && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(event.currentTarget.getAttribute("href")!); }
+          }}>{entry.title}</a> : <span>{deleted ? "已删除" : "无权查看的条目"}</span> },
           { key: "status", header: "状态", widthClass: "w-44", render: ({ entry }) => entry?.status === "archived" ? <span>已归档，不参与检索</span> : entry ? <KnowledgeStatusBadge status={entry.status} /> : null },
           { key: "revision", header: "修订", widthClass: "w-20", render: ({ entry }) => entry ? `v${entry.headRevisionNumber}` : null },
           { key: "updated", header: "更新时间", widthClass: "w-32", render: ({ entry }) => entry ? <span title={formatAbsolute(entry.updatedAt).slice(0, 16).replaceAll("-", "/")}>{formatAbsolute(entry.updatedAt).slice(0, 16).replaceAll("-", "/")}</span> : null }
         ]} renderRowActions={({ id, entry, deleted }) => <Button variant="outline" size="sm" disabled={disabled} aria-label={`取消链接 ${entry?.title ?? (deleted ? "已删除" : "无权查看的条目")}`}
-          onClick={() => setUnlinking(id)}>取消链接</Button>} />}
-    <ConfirmDialog open={!!unlinking} title="取消知识链接？" description="此知识条目将从当前草稿中移除，知识库中的原条目保留。" tone="danger" confirmLabel="取消链接"
-      onCancel={() => setUnlinking(null)} onConfirm={() => { setSpec({ ...spec, knowledgeEntryIds: ids.filter((id) => id !== unlinking) }); setUnlinking(null); }} />
+          onClick={() => setSpec({ ...spec, knowledgeEntryIds: ids.filter((entryId) => entryId !== id) })}>取消链接</Button>} />}
     <ModalDialog open={linkOpen} initialFocusRef={searchRef} onDismiss={pending ? undefined : () => setLinkOpen(false)} className="skill-publish-dialog modal-card--lg">
       {({ titleId }) => <div className="grid gap-4"><h2 id={titleId}>链接已有条目</h2><p>选择当前组织已发布的知识条目。链接更改需先保存草稿，再发布技能。</p>
-        <SearchField ref={searchRef} value={query} onValueChange={setQuery} ariaLabel="搜索已发布知识" placeholder="搜索知识标题" disabled={!canRead} loading={canRead && !choices && !searchFailed} />
+        <SearchField ref={searchRef} value={query} onValueChange={(value) => { setQuery(value); setPage(0); }} ariaLabel="搜索已发布知识" placeholder="搜索知识标题" disabled={!canRead} loading={searching} />
         <div className="grid gap-2">
           <label htmlFor={tagId}>知识标签</label>
           <div className="flex flex-wrap gap-2">
@@ -176,12 +183,13 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
         </div>
         {!canRead ? <SectionEmpty title="无法查看知识条目" message="选择知识条目需要知识查看权限。" /> : searchFailed ? <SectionError message="无法搜索知识条目" onRetry={() => setRefresh((value) => value + 1)} />
           : !choices ? <SectionSkeleton label="正在搜索知识条目" />
-          : <DataTable fluid rows={choices} rowKey={(entry) => entry.id} ariaLabel="可链接知识条目" tableClassName="table-fixed [&_th:last-child]:w-24"
+          : <DataTable fluid rows={choices} pageSize={choices.length || 100} rowKey={(entry) => entry.id} ariaLabel="可链接知识条目" tableClassName="table-fixed [&_th:last-child]:w-24"
             emptyState={<SectionEmpty title="没有匹配的已发布知识" message="尝试其他关键词，或先在知识库发布条目。" />}
             columns={[{ key: "title", header: "标题", className: "min-w-0", render: (entry) => <span className="block min-w-0 break-all" title={entry.title}>{entry.title}</span> },
               { key: "revision", header: "修订", widthClass: "w-20", render: (entry) => `v${entry.headRevisionNumber}` }]}
             renderRowActions={(entry) => <Button variant="outline" size="sm" disabled={disabled || pending || atLimit || ids.includes(entry.id)} aria-label={`${ids.includes(entry.id) ? "已链接" : "链接"} ${entry.title}`}
               onClick={() => setSpec({ ...spec, knowledgeEntryIds: [...ids, entry.id] })}>{ids.includes(entry.id) ? "已链接" : "链接"}</Button>} />}
+        {hasMore && !searchFailed ? <Button variant="outline" disabled={searching} onClick={() => setPage((value) => value + 1)}>{searching ? "正在加载…" : "加载更多"}</Button> : null}
         <div className="dialog-actions"><Button variant="outline" disabled={pending} onClick={() => setLinkOpen(false)}>完成</Button></div>
       </div>}
     </ModalDialog>

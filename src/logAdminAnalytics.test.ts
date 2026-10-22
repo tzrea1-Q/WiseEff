@@ -44,6 +44,11 @@ describe("applyTimeWindow", () => {
   const now = new Date(2026, 4, 10, 12, 0, 0).getTime();
   const fakeNow = new Date(now);
 
+  it("all keeps logs older than 30 days", () => {
+    const logs = [mkLog("today", 5, now), mkLog("old", 365 * 24 * 60, now)];
+    expect(applyTimeWindow(logs, "all", fakeNow)).toEqual(logs);
+  });
+
   it("today includes logs from today's 00:00 onward", () => {
     const logs = [
       mkLog("t-5", 5, now),

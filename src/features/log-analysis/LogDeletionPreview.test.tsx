@@ -32,8 +32,12 @@ describe("selected log deletion scope", () => {
     render(<LogDeletionPreviewDialog logId={log.id} loadPreview={async () => preview} onClose={() => undefined}
       purge={purge} loadStatus={async () => status} onDeleted={onDeleted} />);
     const dialog = await screen.findByRole("dialog"), remove = await within(dialog).findByRole("button", { name: "彻底删除" });
-    expect(remove).toBeDisabled();
-    await user.click(within(dialog).getByRole("checkbox", { name: /我确认永久删除/ }));
+    await within(dialog).findByText(/对象总数/);
+    expect(remove).toBeEnabled();
+    expect(within(dialog).queryByRole("checkbox")).toBeNull();
+    expect(within(dialog).getByText(/对象总数/)).not.toBeVisible();
+    await user.click(within(dialog).getByText("明细"));
+    expect(within(dialog).getByText(/对象总数/)).toBeVisible();
     await user.click(remove);
     expect(await within(dialog).findByText(/日志数据库数据已永久删除/)).toBeVisible();
     expect(onDeleted).toHaveBeenCalledWith(status);
@@ -43,10 +47,12 @@ describe("selected log deletion scope", () => {
   });
   it("opens by keyboard, shows empty sections and retries a failed refresh without stale data", async () => {
     const { user, previewLogDeletion } = setup();
-    const trigger = screen.getByRole("button", { name: "删除影响预览" });
+    const trigger = screen.getByRole("button", { name: "彻底删除…" });
     trigger.focus(); await user.keyboard("{Enter}");
     const dialog = await screen.findByRole("dialog", { name: "日志删除影响预览" });
-    expect(await within(dialog).findByText("分析报告")).toBeVisible();
+    expect(await within(dialog).findByText("分析报告")).not.toBeVisible();
+    await user.click(within(dialog).getByText("明细"));
+    expect(within(dialog).getByText("分析报告")).toBeVisible();
     expect(within(dialog).getByText("没有关联的保留记录。")).toBeVisible();
     expect(within(dialog).queryByRole("button", { name: "彻底删除" })).toBeNull();
     previewLogDeletion.mockRejectedValueOnce(new Error("范围暂不可用"));
@@ -54,21 +60,21 @@ describe("selected log deletion scope", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("范围暂不可用");
     expect(within(dialog).queryByText("分析报告")).toBeNull();
     await user.click(within(dialog).getByRole("button", { name: "重试" }));
-    expect(await within(dialog).findByText("分析报告")).toBeVisible();
+    expect(await within(dialog).findByText("分析报告")).not.toBeVisible();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(trigger).toHaveFocus();
   });
   it("does not offer governance inspection to a viewer", () => {
     setup(["logs:view"]);
-    expect(screen.queryByRole("button", { name: "删除影响预览" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "彻底删除…" })).toBeNull();
   });
   it("does not offer a preview when there is no record", () => {
     setup(["logs:admin-domains"], []);
-    expect(screen.queryByRole("button", { name: "删除影响预览" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "彻底删除…" })).toBeNull();
   });
   it("does not present a real deletion scope in mock mode", () => {
     setup(["logs:admin-domains"], [log], false);
-    expect(screen.queryByRole("button", { name: "删除影响预览" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "彻底删除…" })).toBeNull();
   });
 });

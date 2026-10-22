@@ -343,18 +343,30 @@ describe.skipIf(!databaseAvailable)("knowledge service", () => {
     expect(audits.map((event) => event.kind)).toContain("knowledge-revision-restore");
   });
 
-  it("blocks editing archived entries until they are restored", async () => {
+  it("edits archived content, title and tags with revisions while keeping it out of retrieval", async () => {
     const editor = makeAuth(EDITOR_A, viewEdit);
     const entry = await createKnowledgeEntry(db, objectStore, extractor, editor, markdownInput());
     await publishKnowledgeEntry(db, editor, entry.id);
     await archiveKnowledgeEntry(db, editor, entry.id);
 
-    await expect(
-      updateKnowledgeEntry(db, objectStore, extractor, editor, entry.id, {
-        expectedHeadRevisionNumber: 1,
-        contentMarkdown: "should fail"
-      })
-    ).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    await expect(updateKnowledgeEntry(db, objectStore, extractor, makeAuth(EDITOR_B, viewEdit), entry.id, {
+      expectedHeadRevisionNumber: 1, contentMarkdown: "unauthorized"
+    })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(updateKnowledgeEntry(db, objectStore, extractor, makeAuth(OTHER_ORG_EDITOR, manageAll, OTHER_ORG_ID), entry.id, {
+      expectedHeadRevisionNumber: 1, contentMarkdown: "foreign"
+    })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    const updated = await updateKnowledgeEntry(db, objectStore, extractor, makeAuth(MANAGER, ["knowledge:view", "knowledge:manage"]), entry.id, {
+      expectedHeadRevisionNumber: 1, title: "Archived correction", tags: ["corrected"], contentMarkdown: "archivedcorrection"
+    });
+    expect(updated).toMatchObject({ status: "archived", title: "Archived correction", tags: ["corrected"], contentMarkdown: "archivedcorrection", headRevisionNumber: 2 });
+    expect(updated.archivedAt).not.toBeNull();
+    const revisions = await listKnowledgeRevisions(db, editor, entry.id);
+    expect(revisions).toHaveLength(2);
+    expect(revisions.find((revision) => revision.revisionNumber === 1)?.contentMarkdown).toBe(entry.contentMarkdown);
+    expect((await searchKnowledge(db, editor, { q: "archivedcorrection" })).items).toHaveLength(0);
+    expect((await listAuditEvents(db, entry.id)).find((event) => event.kind === "knowledge-entry-update")?.metadata).toMatchObject({ status: "archived" });
+    expect((await restoreKnowledgeEntry(db, editor, entry.id)).status).toBe("published");
+    expect((await searchKnowledge(db, editor, { q: "archivedcorrection" })).items.map((item) => item.entryId)).toContain(entry.id);
   });
 
   it("enforces publisher accountability: edit governs own entries only, manage governs any", async () => {
@@ -380,16 +392,17 @@ describe.skipIf(!databaseAvailable)("knowledge service", () => {
     const editor = makeAuth(EDITOR_A, viewEdit);
     const entry = await createKnowledgeEntry(db, objectStore, extractor, editor, markdownInput());
 
-    await expect(archiveKnowledgeEntry(db, editor, entry.id)).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
     await expect(restoreKnowledgeEntry(db, editor, entry.id)).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
 
     await publishKnowledgeEntry(db, editor, entry.id);
     await expect(publishKnowledgeEntry(db, editor, entry.id)).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
   });
 
-  it("hard delete requires knowledge:manage and leaves audit evidence", async () => {
+  it.each(["draft", "published", "archived"] as const)("hard deletes %s entries only with knowledge:manage and leaves audit evidence", async (status) => {
     const editor = makeAuth(EDITOR_A, viewEdit);
     const entry = await createKnowledgeEntry(db, objectStore, extractor, editor, markdownInput());
+    if (status === "published") await publishKnowledgeEntry(db, editor, entry.id);
+    if (status === "archived") await archiveKnowledgeEntry(db, editor, entry.id);
 
     await expect(hardDeleteKnowledgeEntry(db, editor, entry.id)).rejects.toMatchObject({
       code: "FORBIDDEN",
@@ -397,6 +410,7 @@ describe.skipIf(!databaseAvailable)("knowledge service", () => {
     });
 
     const manager = makeAuth(MANAGER, manageAll);
+    await expect(hardDeleteKnowledgeEntry(db, makeAuth(OTHER_ORG_EDITOR, manageAll, OTHER_ORG_ID), entry.id)).rejects.toMatchObject({ code: "NOT_FOUND" });
     await hardDeleteKnowledgeEntry(db, manager, entry.id, { requestId: "req-kb-delete" });
 
     await expect(getKnowledgeEntry(db, manager, entry.id)).rejects.toMatchObject({ code: "NOT_FOUND" });
@@ -407,10 +421,45 @@ describe.skipIf(!databaseAvailable)("knowledge service", () => {
     expect(Number(revisionCount.rows[0].count)).toBe(0);
 
     const audits = await listAuditEvents(db, entry.id);
-    expect(audits).toEqual([
+    expect(audits).toHaveLength(status === "draft" ? 2 : 3);
+    expect(audits).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "knowledge-entry-create" }),
       expect.objectContaining({ kind: "knowledge-entry-delete", action: "delete", severity: "High", trace_id: "req-kb-delete" })
-    ]);
+    ]));
+    expect(audits.find((event) => event.kind === "knowledge-entry-delete")?.metadata).toMatchObject({ status });
+  });
+
+  it("archives a draft directly for its owner or a manager without publishing", async () => {
+    const editor = makeAuth(EDITOR_A, viewEdit);
+    for (const auth of [editor, makeAuth(MANAGER, ["knowledge:view", "knowledge:manage"])]) {
+      const entry = await createKnowledgeEntry(db, objectStore, extractor, editor, markdownInput());
+      await expect(archiveKnowledgeEntry(db, makeAuth(EDITOR_B, viewEdit), entry.id)).rejects.toMatchObject({ code: "NOT_FOUND" });
+      await expect(archiveKnowledgeEntry(db, makeAuth(VIEWER, viewOnly), entry.id)).rejects.toMatchObject({ code: "NOT_FOUND" });
+      const archived = await archiveKnowledgeEntry(db, auth, entry.id);
+      expect(archived).toMatchObject({ status: "archived", publishedAt: null, headRevisionNumber: 1 });
+      expect(archived.archivedAt).not.toBeNull();
+      await expect(archiveKnowledgeEntry(db, auth, entry.id)).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+      const audits = await listAuditEvents(db, entry.id);
+      expect(audits.map((event) => event.kind)).toEqual(["knowledge-entry-archive", "knowledge-entry-create"]);
+    }
+  });
+
+  it.each(["draft", "published", "archived"] as const)("updates file metadata without replacing the binary in %s", async (status) => {
+    const editor = makeAuth(EDITOR_A, viewEdit);
+    const entry = await createKnowledgeEntry(db, objectStore, extractor, editor, {
+      contentForm: "file", title: "File metadata", tags: [],
+      file: { fileName: "fixture.pdf", contentType: "application/pdf", contentBase64: readFileSync(new URL("./testing/fixtures/sample.pdf", import.meta.url)).toString("base64") }
+    });
+    if (status === "published") await publishKnowledgeEntry(db, editor, entry.id);
+    if (status === "archived") await archiveKnowledgeEntry(db, editor, entry.id);
+    const updated = await updateKnowledgeEntry(db, objectStore, extractor, editor, entry.id, {
+      expectedHeadRevisionNumber: 1, title: "Corrected file", tags: ["corrected"]
+    });
+    expect(updated).toMatchObject({ status, title: "Corrected file", tags: ["corrected"], headRevisionNumber: 2, file: entry.file });
+    expect(objectStore.objects.size).toBe(1);
+    const revisions = await listKnowledgeRevisions(db, editor, entry.id);
+    expect(revisions).toHaveLength(2);
+    expect(revisions.every((revision) => revision.fileId === entry.file?.id)).toBe(true);
   });
 
   it("creates a file entry through the object store, extracts text, and makes it searchable after publish", async () => {

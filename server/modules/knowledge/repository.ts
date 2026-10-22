@@ -3,6 +3,7 @@ import { isRootDatabase, type Queryable } from "../../shared/database/client";
 import { readCatalogDefinitionForKnowledge } from "../parameter-catalog-api/productionWire";
 import { loadParameterReferencesByEntryIds } from "./parameterReferences";
 import { hasKnowledgeManage } from "./policy";
+import { enqueueEntryIndexRefresh } from "./indexing/repository";
 import type {
   InsertKnowledgeEntryInput,
   InsertKnowledgeFileInput,
@@ -320,6 +321,8 @@ export async function setEntryHead(
     `,
     [auth.organization.id, input.entryId, input.headRevisionId, input.headRevisionNumber, input.title, input.tags, input.searchText]
   );
+  // Every revision gets suggestion detection; the indexer keeps drafts out of retrieval.
+  await enqueueEntryIndexRefresh(db, { entryId: input.entryId, organizationId: auth.organization.id });
 }
 
 export async function setEntrySearchText(
@@ -426,10 +429,14 @@ export async function getEntryForUpdate(db: Queryable, auth: AuthContext, entryI
 export async function listEntries(
   db: Queryable,
   auth: AuthContext,
-  query: ListKnowledgeEntriesQuery & { visibleDraftOwnerUserId?: string | null }
+  query: ListKnowledgeEntriesQuery & { visibleDraftOwnerUserId?: string | null; pendingEntryIds?: string[] }
 ): Promise<KnowledgeEntryDto[]> {
   const values: unknown[] = [auth.organization.id];
   const where = ["organization_id = $1"];
+  if (query.pendingEntryIds) {
+    values.push(query.pendingEntryIds);
+    where.push(`id = any($${values.length}::uuid[])`);
+  }
 
   if (query.governable) {
     where.push("status <> 'archived'");
