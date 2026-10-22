@@ -66,15 +66,41 @@ describe("parsing section", () => {
     await userEvent.click(screen.getByRole("tab", { name: "适用文件" }));
     expect(validity).toHaveBeenLastCalledWith(false);
     await userEvent.click(screen.getByRole("tab", { name: "代码视图" }));
+    expect(screen.getByRole("textbox", { name: "适用文件 YAML" })).toHaveValue("[]\n");
+    expect(screen.queryByRole("textbox", { name: "基础格式 JSON" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "代码视图 · YAML" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "基础格式" }));
+    await userEvent.click(screen.getByRole("tab", { name: "代码视图" }));
     expect(screen.getByRole("textbox", { name: "基础格式 JSON" })).toHaveValue("{not json");
     fireEvent.change(screen.getByRole("textbox", { name: "基础格式 JSON" }), { target: { value: '{"timestampPattern":"^repaired"}' } });
     expect(profileChanged).toHaveBeenLastCalledWith({ timestampPattern: "^repaired" });
     expect(validity).toHaveBeenLastCalledWith(true);
+    expect(screen.queryByRole("textbox", { name: "代码视图 · YAML" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "抽取规则" }));
+    await userEvent.click(screen.getByRole("tab", { name: "代码视图" }));
     expect(screen.getByRole("textbox", { name: "代码视图 · YAML" })).toHaveValue(initial);
+  });
+
+  it("edits only file rules in their code view and keeps invalid drafts blocking save across tabs", async () => {
+    const { filesChanged, validity } = setup();
+    await userEvent.click(screen.getByRole("tab", { name: "代码视图" }));
+    const editor = screen.getByRole("textbox", { name: "适用文件 YAML" });
+    fireEvent.change(editor, { target: { value: '- glob: "*.log"\n' } });
+    expect(filesChanged).toHaveBeenLastCalledWith([{ glob: "*.log" }]);
+    fireEvent.change(editor, { target: { value: "[" } });
+    expect(validity).toHaveBeenLastCalledWith(false);
+    await userEvent.click(screen.getByRole("tab", { name: "基础格式" }));
+    expect(validity).toHaveBeenLastCalledWith(false);
+    await userEvent.click(screen.getByRole("tab", { name: "适用文件" }));
+    await userEvent.click(screen.getByRole("tab", { name: "代码视图" }));
+    expect(screen.getByRole("textbox", { name: "适用文件 YAML" })).toHaveValue("[");
+    fireEvent.change(screen.getByRole("textbox", { name: "适用文件 YAML" }), { target: { value: "[]" } });
+    expect(validity).toHaveBeenLastCalledWith(true);
   });
 
   it("shows line-numbered YAML errors and keeps the unsaved YAML editable", async () => {
     setup();
+    await userEvent.click(screen.getByRole("tab", { name: "抽取规则" }));
     await userEvent.click(screen.getByRole("tab", { name: "代码视图" }));
     const yaml = screen.getByRole("textbox", { name: "代码视图 · YAML" });
     fireEvent.change(yaml, { target: { value: "schemaVersion: parsing/v1\nextractors: [\n" } });

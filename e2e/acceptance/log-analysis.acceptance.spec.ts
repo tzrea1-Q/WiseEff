@@ -632,7 +632,11 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await page.goto("/log-admin");
     await expect(page.getByRole("tab", { name: "概览", exact: true })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByTestId("log-admin-overview")).toBeVisible();
+    await expect(page.getByRole("button", { name: "前往智能分析", exact: true })).toBeVisible();
     await page.goto("/log-admin?tab=records");
+    const reportDownload = page.waitForEvent("download");
+    await page.getByRole("button", { name: "导出 JSON", exact: true }).click();
+    expect((await reportDownload).suggestedFilename()).toMatch(/\.json$/);
     // The Xiaoze toggle hint floats over the detail panel's corner actions.
     await dismissXiaozeToggleHint(page);
     await page.locator('input[type="search"]').fill(supportedFileName);
