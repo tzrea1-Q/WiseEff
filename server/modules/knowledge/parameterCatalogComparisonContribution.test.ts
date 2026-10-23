@@ -102,10 +102,15 @@ async function seedKnwProtectedReferences(
   try {
     await database.query(
       `
-      insert into knowledge_parameter_references (id, organization_id, entry_id, parameter_spec_id, created_by_user_id)
-      values ($1, $2, $3, $4, $5)
+      insert into knowledge_parameter_references (id, organization_id, entry_id, parameter_spec_id, created_by_user_id, historical_attribution)
+      values ($1, $2, $3, $4, $5, $6::jsonb)
       `,
-      [randomUUID(), organizationId, entryId, "pspec:knw-populated-source", userId],
+      // This deliberate pre-activation fixture bypasses capture triggers; do not
+      // pretend its missing event-time names were recorded by the application.
+      [randomUUID(), organizationId, entryId, "pspec:knw-populated-source", userId, JSON.stringify({
+        organization: { id: organizationId, name: null, source: "unknown" },
+        actors: { created_by_user_id: { id: userId, name: null, source: "unknown" } }
+      })],
     );
   } finally {
     await database.query("set session_replication_role = origin");

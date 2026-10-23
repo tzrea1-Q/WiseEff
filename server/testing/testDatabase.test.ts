@@ -111,6 +111,8 @@ describe("fresh database fixture policy", () => {
         "wayfinder671_source:false", "wayfinder671_unknown:false", "wayfinder671_zero_source:false"
       ],
       "server/modules/agent/xiaoze/durableAgentResume.integration.test.ts": ["xiaoze_concurrent_admission:true", "xiaoze_owned_backend_loss:true"],
+      // Replay the pre-snapshot schema with populated, pinned parameter history.
+      "server/modules/audit/historicalAttributionUpgrade.integration.test.ts": ["history_upgrade:false"],
       "server/modules/catalog-kernel/schema/catalogSchemaPrivileges.integration.test.ts": ["pcat_compat:false", "pcat_floor:false", "pcat_fresh:false", "pcat_privileges:true", "pcat_upgrade:false"],
       "server/modules/catalog-kernel/security/catalogRoles.integration.test.ts": ["pcat_rbac_0138_replay:false", "pcat_rbac_0170_upgrade:false", "pcat_rbac_0179:false", "pcat_rbac_0179_v1:false", "pcat_rbac_floor:false", "pcat_rbac_fresh:true", "pcat_rbac_missing:false", "pcat_rbac_upgrade:false"],
       "server/modules/catalog-kernel/security/retainedDismissedIdentities.integration.test.ts": ["retainedfresh:true", "retainedids:false"],
@@ -118,6 +120,8 @@ describe("fresh database fixture policy", () => {
       // The cleanup upgrade must create its API LOGIN before the erasure routines exist.
       "server/modules/catalog-publication/runtime/definitionCleanupUpgrade.integration.test.ts": ["cleanup_acl_upgrade:false"],
       "server/modules/catalog-publication/runtime/draftReadUpgrade.integration.test.ts": ["draft_acl_upgrade:false"],
+      // Replay pre-0260 authors and published revisions to prove truthful backfill.
+      "server/modules/knowledge/historicalAttribution.migration.integration.test.ts": ["history1386upgrade:false"],
       "server/modules/logs/sourceIndexWorker.integration.test.ts": ["stmtupgrade:false"],
       "server/modules/parameter-bindings/binding/propertyDeleteMigration.integration.test.ts": ["deleteupgrade:false"],
       "server/modules/parameter-bindings/binding/sourceOccurrenceMigration.integration.test.ts": ["src_occ_0151:false"],

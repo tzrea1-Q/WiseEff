@@ -163,17 +163,21 @@ describe("#906 C reviewed JSON member removal HTTP entry", () => {
     expect(list.body).toMatchObject({ items: [{
       id: pendingId, submitterName: "admin", assignedToName: "reviewer", reviewerName: null
     }] });
-    // A stale actor reference must not reveal a name from a different organization.
+    // Account movement/rename must not replace the event-time submitter label
+    // with a name from its new organization. The pending assignee stays live.
     await db.transaction(tx => moveUnboundUsersToOrganization(tx, [adminId], foreign.organization.id));
     try {
+      await db.query("update users set name='Foreign renamed administrator' where id=$1", [adminId]);
       const staleActor = await requestJson(route(reviewer),
         `/api/v2/projects/${projectId}/parameter-value-change-requests/${pendingId}/member-removal`);
       expect(staleActor.status).toBe(200);
       expect(staleActor.body).toMatchObject({ item: {
-        submitterUserId: adminId, submitterName: null, assignedToName: "reviewer", reviewerName: null
+        submitterUserId: adminId, submitterName: "admin", assignedToName: "reviewer", reviewerName: null
       }});
+      expect(JSON.stringify(staleActor.body)).not.toContain("Foreign renamed administrator");
     } finally {
       await db.transaction(tx => moveUnboundUsersToOrganization(tx, [adminId], organizationId));
+      await db.query("update users set name='admin' where id=$1", [adminId]);
     }
   }, 120_000);
 
