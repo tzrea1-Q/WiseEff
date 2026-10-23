@@ -18,6 +18,14 @@ export type AcceptanceOperation = {
 
 export const acceptanceOperations: AcceptanceOperation[] = [
   {
+    id: "ORG-DELETION-PREVIEW-001", priority: "P1", area: "platform", coverage: "automated",
+    route: "/platform/organizations", roles: ["Platform Admin"],
+    action: "Read and refresh the selected Organization's erasure inventory, retry a failed preview, inspect account, shared-object and backup boundaries, and preserve all data while ordinary administrators are denied.",
+    acceptanceIds: ["ORG-DELETION-PREVIEW-001"],
+    specFiles: ["e2e/acceptance/organization-deletion-preview.acceptance.spec.ts", "server/modules/users/organizationDeletion.integration.test.ts"],
+    assertions: ["ui", "api", "db", "screenshot"]
+  },
+  {
     id: "ORG-LIFECYCLE-001", priority: "P1", area: "platform", coverage: "automated",
     route: "/platform/organizations → /organization", roles: ["Platform Admin", "Org Admin"],
     action: "Suspend and restore the selected organization with keyboard confirmation and safe retry, retain member read access with one clear readonly notice, reject business writes, and keep individually disabled members disabled.",

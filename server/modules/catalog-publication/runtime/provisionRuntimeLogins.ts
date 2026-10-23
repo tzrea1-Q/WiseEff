@@ -54,6 +54,7 @@ const CANONICAL_SOURCE_READ_FUNCTIONS = [
   "parameter_catalog.purge_log(text, text, text, text)",
   "parameter_catalog.finish_log_erasure_object(text, text, text, text)",
   "parameter_catalog.preview_project_deletion_catalog(text, text, text)",
+  "parameter_catalog.preview_organization_deletion(text, text)",
   "parameter_catalog.lock_project_erasure(text, text, text)",
   "parameter_catalog.read_project_erasure(text, text, text)",
   "parameter_catalog.purge_project(text, text, text, text)",

@@ -9,6 +9,10 @@ export type AcceptanceRequirement = {
 
 export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
+    id: "ORG-DELETION-PREVIEW-001", workflow: "H", required: true,
+    title: "A platform administrator reads a fixed Organization's complete erasure impact, retries failures, sees account and shared-resource boundaries, and cannot mistake a readonly preview for deletion authority."
+  },
+  {
     id: "ORG-LIFECYCLE-001", workflow: "H", required: true,
     title: "A platform administrator suspends and restores an explicit organization with keyboard confirmation and safe retry; members retain read access, business writes stop, and individually disabled members stay disabled."
   },

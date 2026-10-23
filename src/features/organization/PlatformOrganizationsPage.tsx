@@ -15,6 +15,7 @@ import { presentError } from "@/infrastructure/http/presentError";
 import "./platform-organizations.css";
 import { OrganizationAdministratorControls } from "./OrganizationAdministratorControls";
 import { ExperienceRegistrationSettings } from "./ExperienceRegistrationSettings";
+import { OrganizationDeletionPreviewDialog } from "./OrganizationDeletionPreviewDialog";
 
 export function PlatformOrganizationsPage({ client, authClient, onNavigate }: { client: PlatformOrganizationsClient; authClient: WiseEffAuthClient; onNavigate: (path: string) => void }) {
   const [items, setItems] = useState<PlatformOrganization[]>([]), [query, setQuery] = useState("");
@@ -24,6 +25,7 @@ export function PlatformOrganizationsPage({ client, authClient, onNavigate }: { 
   const [selected, setSelected] = useState<PlatformOrganization | null>(null), [notice, setNotice] = useState("");
   const [administratorPending, setAdministratorPending] = useState(false);
   const [registrationSettingsOpen, setRegistrationSettingsOpen] = useState(false);
+  const [deletionPreview, setDeletionPreview] = useState<string | null>(null);
   const [lifecycleOpen, setLifecycleOpen] = useState(false), [lifecycleError, setLifecycleError] = useState("");
   const [name, setName] = useState(""), [administratorName, setAdministratorName] = useState(""), [username, setUsername] = useState(""), [password, setPassword] = useState(""), [subject, setSubject] = useState("");
 
@@ -71,6 +73,7 @@ export function PlatformOrganizationsPage({ client, authClient, onNavigate }: { 
       ] }} rowActions={(row) => ({ label: `${row.name}操作`, items: [], primaryAction: { id: "view", label: "查看", onSelect: () => { setSelected(row); setNotice(""); } } })}
       emptyState={{ title: query ? "未找到匹配的组织" : "暂无组织", message: query ? "调整名称或编号后重试。" : "创建组织并指定初始管理员。" }} />
     {registrationSettingsOpen ? <ExperienceRegistrationSettings client={client} local={authentication?.provider === "local"} onClose={() => setRegistrationSettingsOpen(false)} /> : null}
+    {deletionPreview ? <OrganizationDeletionPreviewDialog key={deletionPreview} organizationId={deletionPreview} client={client} onClose={() => setDeletionPreview(null)} onNavigate={onNavigate} /> : null}
     <ModalDialog open={creating} onDismiss={saving ? undefined : () => { setCreating(false); setPassword(""); }} className="platform-organizations__dialog modal-card--sm">
       {({ titleId }) => <form className="modal-form-contents" onSubmit={(event) => void submit(event)} aria-busy={saving}>
         <h3 id={titleId}>创建组织</h3>
@@ -98,6 +101,7 @@ export function PlatformOrganizationsPage({ client, authClient, onNavigate }: { 
       </dl> : null}{selected ? <OrganizationAdministratorControls key={selected.id} organization={selected} authentication={authentication} client={client} onPendingChange={setAdministratorPending}
         onUpdated={(item) => { setSelected(item); setAttempt((value) => value + 1); setNotice("组织管理员已调整。"); }} /> : null}
       <div className="platform-organizations__actions"><Button variant="outline" disabled={administratorPending} onClick={() => setSelected(null)}>关闭</Button>
+        {selected ? <Button variant="outline" disabled={administratorPending} onClick={() => { setDeletionPreview(selected.id); setSelected(null); }}>删除影响</Button> : null}
         {selected ? <Button variant="outline" disabled={administratorPending} onClick={() => { setLifecycleError(""); setLifecycleOpen(true); }}>{selected.status === "suspended" ? "恢复组织" : "停用组织"}</Button> : null}
         {selected ? <Button disabled={administratorPending} onClick={() => onNavigate(`/organization?organizationId=${encodeURIComponent(selected.id)}`)}>进入组织</Button> : null}</div></>}
     </ModalDialog>

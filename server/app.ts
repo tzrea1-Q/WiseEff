@@ -213,6 +213,8 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerUserRoutes(router, {
     db: options.db,
+    selfRegisterEnabled: options.env?.AUTH_LOCAL_SELF_REGISTER,
+    registrationOrganizationId: options.env?.AUTH_LOCAL_REGISTRATION_ORGANIZATION_ID,
     localInvitationsEnabled: Boolean(localAuthService) && (options.env?.AUTH_PROVIDER === undefined || options.env.AUTH_PROVIDER === "local"),
     bridgeConnectionPool: options.deviceBridge?.connectionPool,
     authenticationProvider: options.auth?.mode === "production" ? options.env?.AUTH_PROVIDER : undefined,
