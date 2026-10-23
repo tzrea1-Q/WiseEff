@@ -52,7 +52,8 @@ const sqlQuote = (value: string): string => `'${value.replaceAll("'", "''")}'`;
 
 function comparisonCatalogBundle(additionalDrivers: number) {
   const complete = validCatalogReleaseBundle();
-  const release = structuredClone(complete.releases[0]!);
+  const originalRelease = structuredClone(complete.releases[0]!);
+  const release = { ...originalRelease, documents: [...originalRelease.documents] };
   const subject = release.documents.find((document) => document.kind === "subject");
   if (!subject || subject.kind !== "subject") throw new Error("MOD D02 Catalog subject fixture is missing");
   for (let index = 0; index < additionalDrivers; index += 1) {
@@ -217,7 +218,7 @@ it("writes only blocking MOD D02 evidence from a complete scoped inventory and p
         kind: "driver-group" as const,
         origin: "curated" as const,
         name: module.name,
-        attributionSubjectId: module.attributionSubjectId,
+        attributionSubjectId: module.attributionSubjectId ?? null,
       })),
     });
     const graph = graphForModules([moduleA, moduleB]);
@@ -654,7 +655,8 @@ it("writes only blocking MOD D02 evidence from a complete scoped inventory and p
     await client.query(`alter role ${sourceReaderRole} set log_parameter_max_length = 0`);
     await client.query(`grant usage on schema public, parameter_catalog, catalog_publication to ${sourceReaderRole}`);
     const sourceReaderSelectColumns = [
-      ["public.users", ["id", "organization_id", "name", "email", "title", "is_active"]],
+      ["public.users", ["id", "organization_id", "name", "email", "title", "is_active", "external_tokens_revoked_at"]],
+      ["public.project_members", ["organization_id", "project_id", "user_id", "roles"]],
       ["public.organizations", ["id", "name"]],
       ["public.user_role_bindings", ["user_id", "project_id", "role_id"]],
       ["public.user_password_credentials", ["user_id", "username"]],

@@ -194,6 +194,10 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       [RESTRICTED, ORG]
     );
     await pool.query(
+      "insert into project_members (organization_id, project_id, user_id, roles) values ($1,$2,$3,ARRAY['hardware-committer'])",
+      [ORG, PROJECT, RESTRICTED]
+    );
+    await pool.query(
       "insert into users (id, organization_id, name, title, is_active) values ($1, $2, 'R2 software committer', 'Software Committer', true)",
       [SOFTWARE_COMMITTER, ORG]
     );
@@ -630,6 +634,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
         public.agent_sessions, public.agent_messages, public.agent_tool_calls,
         public.agent_approvals, public.audit_events to %I`, role);
       await ddl("grant select (id, permissions) on public.roles to %I", role);
+      await ddl("grant select (organization_id, project_id, user_id, roles) on public.project_members to %I", role);
       // The real failure-terminal thread persistence also updates its session.
       await ddl("grant update on public.users, public.agent_sessions to %I", role);
       await ddl("grant insert, update on public.auth_sessions, public.agent_tool_calls to %I", role);
