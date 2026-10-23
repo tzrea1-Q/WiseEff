@@ -34,6 +34,7 @@ describe("organization workspace summary through HTTP and PostgreSQL", () => {
     const result = await request<{ item: OrganizationWorkspaceSummary }>(`${path}?organizationId=summary-target`);
     expect(result.status, result.bodyText).toBe(200);
     expect(result.body.item).toMatchObject({ organization: { id: "summary-target", name: "Target", status: "active" }, counts: { members: 2, teams: 1, projects: 2 }, administration: { pendingInvitations: 1, pendingHandovers: 1, pendingIdentitySync: 1 } });
+    expect((await request<{ item: OrganizationWorkspaceSummary }>(path, "summary-admin")).body.item).toEqual(result.body.item);
     expect((await request<{ organization: { id: string } }>("/api/v1/me")).body.organization.id).toBe("summary-home");
     expect((await request(`${path}?organizationId=summary-home`, "summary-admin")).status).toBe(403);
     expect((await request(`${path}?organizationId=missing`)).status).toBe(404);
