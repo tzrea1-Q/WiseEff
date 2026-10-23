@@ -39,6 +39,7 @@ export const routeManifest = [
   { id: "auth.login", method: "POST", path: "/api/v1/auth/login", module: "auth", stability: "commercial-readiness" },
   { id: "auth.logout", method: "POST", path: "/api/v1/auth/logout", module: "auth", stability: "commercial-readiness" },
   { id: "auth.me", method: "GET", path: "/api/v1/me", module: "auth", stability: "mvp" },
+  { id: "auth.enterOperatingContext", method: "POST", path: "/api/v1/organization/operating-scope", module: "auth", stability: "commercial-readiness" },
   { id: "auth.updateProfile", method: "PATCH", path: "/api/v1/me/profile", module: "auth", stability: "commercial-readiness" },
   { id: "auth.changePassword", method: "POST", path: "/api/v1/me/password", module: "auth", stability: "commercial-readiness" },
 

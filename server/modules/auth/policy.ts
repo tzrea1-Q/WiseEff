@@ -1,4 +1,4 @@
-import type { BackendPermission, BackendRoleId } from "./types";
+import type { AuthContext, BackendPermission, BackendRoleId } from "./types";
 
 const roleRank: Record<BackendRoleId, number> = {
   guest: 0,
@@ -139,4 +139,13 @@ export function permissionsForRoles(roleIds: BackendRoleId[]): BackendPermission
 
 export function canPerform(roleId: BackendRoleId, permission: BackendPermission) {
   return rolePermissions[roleId].includes(permission);
+}
+
+export function canOperateInOrganization(actor: AuthContext, organizationId: string): boolean {
+  return actor.user.isActive && actor.user.organizationId === actor.organization.id && (
+    organizationId === actor.organization.id || (
+      actor.permissions.includes("platform:access") &&
+      actor.roles.some((role) => role.roleId === "platform-admin" && role.projectId === null)
+    )
+  );
 }

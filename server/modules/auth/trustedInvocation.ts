@@ -1,4 +1,5 @@
 import { BACKEND_PERMISSIONS, BACKEND_ROLE_IDS, type AuthContext } from "./types";
+import { canOperateInOrganization } from "./policy";
 
 const trustedInvocationBrand = Symbol("wiseeff.trusted-invocation");
 
@@ -24,6 +25,7 @@ export type SystemInvocationInput = {
 export type UserInvocationContext = {
   readonly initiator: "user";
   readonly principal: AuthContext;
+  readonly operatingOrganization?: Readonly<AuthContext["organization"]>;
 } & TrustedInvocationBrand;
 
 export type AgentInvocationContext = {
@@ -215,9 +217,22 @@ function validateSystemInvocationInput(value: unknown): SystemInvocationInput {
   return { kind: value.kind, name: nonEmptyString(value.name, "system.name") };
 }
 
-export function createUserInvocation(principal: AuthContext): UserInvocationContext {
+function validateOperatingOrganization(principal: AuthContext, organization: AuthContext["organization"]) {
+  nonEmptyString(organization.id, "operatingOrganization.id");
+  nonEmptyString(organization.name, "operatingOrganization.name");
+  if (!canOperateInOrganization(principal, organization.id)) {
+    invalid("principal cannot operate in the selected Organization");
+  }
+}
+
+export function createUserInvocation(principal: AuthContext, operatingOrganization?: AuthContext["organization"]): UserInvocationContext {
   validateAuthContext(principal);
-  return brand({ initiator: "user" as const, principal: snapshotAuthContext(principal) });
+  if (operatingOrganization) validateOperatingOrganization(principal, operatingOrganization);
+  return brand({
+    initiator: "user" as const,
+    principal: snapshotAuthContext(principal),
+    ...(operatingOrganization ? { operatingOrganization: Object.freeze({ ...operatingOrganization }) } : {})
+  });
 }
 
 export function createAgentInvocation(principal: AuthContext, input: AgentInvocationInput): AgentInvocationContext {
@@ -252,6 +267,10 @@ function validateBrandedContext(value: unknown): TrustedInvocationContext {
 
   if (value.initiator === "user") {
     validateAuthContext(value.principal);
+    if (value.operatingOrganization !== undefined) {
+      if (!isRecord(value.operatingOrganization) || !Object.isFrozen(value.operatingOrganization)) invalid("operating Organization must be immutable");
+      validateOperatingOrganization(value.principal, value.operatingOrganization as AuthContext["organization"]);
+    }
     return value as UserInvocationContext;
   }
 
@@ -317,7 +336,9 @@ export function assertTrustedInvocationMatchesAuth(
     invocation.initiator !== "system" &&
     (invocation.principal.user.id !== auth.user.id ||
       invocation.principal.organization.id !== auth.organization.id ||
-      invocation.principal.user.organizationId !== auth.organization.id)
+      invocation.principal.user.organizationId !== auth.organization.id ||
+      (invocation.initiator === "user" && invocation.operatingOrganization !== undefined &&
+        invocation.operatingOrganization.id !== auth.organization.id))
   ) {
     throw new TrustedInvocationContextError(
       `${operation} invocation principal does not match the authenticated principal`

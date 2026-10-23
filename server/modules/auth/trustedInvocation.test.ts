@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { AuthContext } from "./types";
 import {
   assertTrustedInvocationContext,
+  assertTrustedInvocationMatchesAuth,
   createAgentInvocation,
   createSystemInvocation,
   createUserInvocation,
@@ -30,6 +31,12 @@ function auth(): AuthContext {
 }
 
 describe("trusted invocation context", () => {
+  it("does not let a scoped audit invocation claim to describe a legacy Home-organization write", () => {
+    const principal = { ...auth(), roles: [{ roleId: "platform-admin" as const, projectId: null }], permissions: ["platform:access" as const] };
+    const invocation = createUserInvocation(principal, { id: "org-2", name: "Target" });
+    expect(() => assertTrustedInvocationMatchesAuth(principal, invocation, "Legacy home write")).toThrow(TrustedInvocationContextError);
+  });
+
   it("constructs a frozen user invocation with the authenticated principal", () => {
     const principal = auth();
     const context = createUserInvocation(principal);

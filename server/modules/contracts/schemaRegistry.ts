@@ -82,6 +82,11 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "401": "ErrorResponse" }
   },
   "auth.me": { summary: "Get current user context", tags: ["auth"], responseBody: "MeResponse" },
+  "auth.enterOperatingContext": {
+    summary: "Resolve and audit a request-local operating Organization without changing account membership",
+    tags: ["auth"], requestBody: "EnterOperatingContextRequest", responseBody: "OperatingContextResponse",
+    additionalResponses: { "400": "ErrorResponse", "401": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "auth.updateProfile": {
     summary: "Update the current user profile",
     tags: ["auth"],
