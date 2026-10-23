@@ -70,6 +70,17 @@ describe("permission-aware routing", () => {
     });
   });
 
+  it.each(["admin", "platform-admin"])("uses one organization utility entry for %s", (activeRoleId) => {
+    window.history.replaceState(null, "", "/parameter-home");
+    render(<App initialAppState={{ ...initialState, activeRoleId }} />);
+
+    const sidebar = within(screen.getByRole("complementary", { name: "主导航侧边栏" }));
+    expect(sidebar.queryByRole("button", { name: "组织目录", exact: true })).not.toBeInTheDocument();
+    fireEvent.click(sidebar.getByRole("button", { name: "组织管理", exact: true }));
+    expect(window.location.pathname).toBe(activeRoleId === "platform-admin" ? "/platform/organizations" : "/organization");
+    expect(sidebar.getByRole("button", { name: "组织管理", exact: true })).toHaveClass("active");
+  });
+
   it("filters personal workbench entries by role", async () => {
     const renderRole = (activeRoleId: string) => {
       cleanup();
