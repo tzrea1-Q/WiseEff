@@ -908,7 +908,32 @@ describe("legacy parameter plane archive", () => {
       { relation: "public.project_parameter_value_change_targets", trigger_name: "project_parameter_value_change_target_immutable", function_name: "parameter_catalog.protect_batch_value_target" },
       { relation: "public.project_parameter_value_drafts", trigger_name: "project_parameter_value_draft_candidate_snapshot_ck", function_name: "parameter_catalog.assert_source_candidate_snapshot" },
       { relation: "public.project_parameter_values", trigger_name: "project_parameter_values_execution_identity_default_user", function_name: "public.parameter_execution_identity_default_user" },
-    ]);
+      { relation: "public.parameter_change_requests", trigger_name: "initialize_staged_workflow", function_name: "public.initialize_parameter_staged_workflow" },
+      { relation: "public.parameter_drafts", trigger_name: "aa_project_draft_owner_deleted", function_name: "public.project_draft_owner_deleted" },
+      { relation: "public.parameter_drafts", trigger_name: "zz_historical_attribution_capture", function_name: "public.capture_parameter_history_attribution" },
+      { relation: "public.parameter_drafts", trigger_name: "zzz_original_execution", function_name: "public.preserve_project_draft_execution" },
+      { relation: "public.project_parameter_file_candidates", trigger_name: "initialize_candidate_responsibility", function_name: "public.initialize_source_candidate_responsibility" },
+      { relation: "public.project_parameter_initialization_drafts", trigger_name: "zz_historical_attribution_capture", function_name: "public.capture_parameter_history_attribution" },
+      { relation: "public.project_parameter_value_drafts", trigger_name: "zz_historical_attribution_capture", function_name: "public.capture_parameter_history_attribution" },
+      ...[
+        "parameter_catalog.binding_history_events", "parameter_catalog.project_parameter_bindings",
+        "parameter_catalog.project_parameter_source_occurrences", "parameter_catalog.project_parameter_values",
+        "parameter_catalog.project_value_source_pins", "public.dts_config_revision_members", "public.dts_config_revisions",
+        "public.dts_config_set", "public.dts_logical_node_revisions", "public.dts_logical_nodes",
+        "public.dts_property_occurrence_spec_decisions", "public.dts_release_baseline", "public.dts_release_baseline_members",
+        "public.identity_mapping_tasks", "public.parameter_change_requests", "public.parameter_draft_identity_invalidations",
+        "public.parameter_drafts", "public.parameter_file_sync_conflicts", "public.parameter_history_entries",
+        "public.parameter_import_batches", "public.parameter_review_decisions", "public.parameter_spec_matcher_overrides",
+        "public.parameter_submission_items", "public.parameter_submission_rounds", "public.project_parameter_binding_revisions",
+        "public.project_parameter_bindings", "public.project_parameter_file_candidates", "public.project_parameter_file_versions",
+        "public.project_parameter_files", "public.project_parameter_initialization_drafts", "public.project_parameter_initialization_reviews",
+        "public.project_parameter_value_change_requests", "public.project_parameter_value_change_targets",
+        "public.project_parameter_value_drafts", "public.project_parameter_values",
+      ].map(relation => ({ relation, trigger_name: "organization_lifecycle_guard", function_name: "public.guard_organization_lifecycle" })),
+    ].sort((left, right) => {
+      const leftKey = `${left.relation}:${left.trigger_name}`, rightKey = `${right.relation}:${right.trigger_name}`;
+      return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+    }));
 
     const views = await pool.query<{ view_name: string; parent: string }>(
       `select distinct view_ns.nspname || '.' || view_relation.relname as view_name,

@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { decodeLogFilesCooperatively, gzipDecodedEvents, indexDecodedEvents, logDecodeLimits } from "./parsing/workerDecoding";
 import type { DecodeCounts } from "./parsing/spec";
 import { claimJobById, claimNextJob, failJob, getJobSnapshot, markJobDeadLettered, markJobRetryScheduled, updateJobProgress } from "../jobs/repository";
-import { admittedLogCompletionDatabase } from "./admittedCompletion";
+import { admittedLogArtifactWriter, admittedLogCompletionDatabase } from "./admittedCompletion";
 import type { ClaimedLogAnalysisJobDto } from "../jobs/types";
 import type { Database } from "../../shared/database/client";
 import { decideRetry } from "../jobs/retryPolicy";
@@ -27,7 +27,7 @@ import {
   updateRunStageProgress
 } from "./repository";
 import { notifyLogAnalysisCompleted, notifyLogAnalysisFailed } from "../notifications/producers";
-import { putLogArtifact } from "./artifactObjects";
+import type { LogArtifactWriter } from "./artifactObjects";
 import type { LogWebhookDeliverer } from "./webhookDelivery";
 import type { LogStage } from "./status";
 import { requireRelatedParameterRunSnapshot } from "./relatedParameter";
@@ -196,9 +196,10 @@ async function processClaimedLogAnalysisJob(
     metrics,
     webhooks,
     lease,
+    writeArtifact,
     notificationDb = db
   }: Required<Pick<ProcessLogWorkerOptions, "analyzer" | "workerId" | "maxAttempts" | "retryBaseDelayMs" | "preprocessingMs" | "now">> &
-    Pick<ProcessLogWorkerOptions, "db" | "objectStore" | "metrics" | "webhooks"> & { lease: LogJobLease; notificationDb?: Database },
+    Pick<ProcessLogWorkerOptions, "db" | "objectStore" | "metrics" | "webhooks"> & { lease: LogJobLease; writeArtifact: LogArtifactWriter; notificationDb?: Database },
   job: ClaimedLogAnalysisJobDto
 ): Promise<ProcessLogWorkerResult> {
   const leaseOwner = job.leaseOwner ?? workerId;
@@ -317,7 +318,7 @@ async function processClaimedLogAnalysisJob(
     const prefilterBudget = createPrefilterBudget(createSignalEvaluationBudget(preprocessingDeadline));
     const prepare = (file: typeof inventory[number]) => {
       const reader = createLogFileReader(objectStore, file, file.skillMatched === false ? undefined : formatProfile,
-        () => lease.run(() => ensureStoredLogIndex(db, lease.rawObjectStore, snapshot.organizationId, snapshot.logId, file)));
+        () => lease.run(() => ensureStoredLogIndex(db, lease.rawObjectStore, snapshot.organizationId, snapshot.logId, file, writeArtifact)));
       const entries = reader.entries({ deadline: preprocessingDeadline });
       const first = entries.next();
       // A later file may fail while the current file is still being consumed.
@@ -407,7 +408,7 @@ async function processClaimedLogAnalysisJob(
         // Shipped local/S3 stores use this content-addressed key. Retain it before
         // the write so even an upload with a lost response can be cleaned up.
         cleanupKey = `${sanitizePathSegment(snapshot.organizationId, "organization id")}/${createHash("sha256").update(bytes).digest("hex")}-${fileName}`;
-        decodedArtifact.objectKey = (await lease.run(() => putLogArtifact(db, lease.rawObjectStore, snapshot.logId,
+        decodedArtifact.objectKey = (await lease.run(() => writeArtifact(lease.rawObjectStore, snapshot.logId,
           { organizationId: snapshot.organizationId, fileName, contentType: "application/gzip", bytes }))).storageKey;
       } catch {
         decodedArtifact.counts.errors[failureCode] = (decodedArtifact.counts.errors[failureCode] ?? 0) + 1;
@@ -781,10 +782,11 @@ export async function processNextLogAnalysisJob({
   const job = await claimNextJob(db, { kind: "log-analysis", leaseOwner: workerId, leaseTtlMs });
   if (!job) return "idle";
   const notificationDb = db;
+  const writeArtifact = admittedLogArtifactWriter(db, job);
   db = admittedLogCompletionDatabase(db, job);
   const process = async () => {
     const lease = keepLogJobLease(db, objectStore, { jobId: job.id, leaseOwner: job.leaseOwner ?? workerId, leaseMs: leaseTtlMs, maxJobMs });
-    try { return await processClaimedLogAnalysisJob({ db, notificationDb, objectStore: lease.objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, preprocessingMs, now, metrics, webhooks, lease }, job); }
+    try { return await processClaimedLogAnalysisJob({ db, notificationDb, objectStore: lease.objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, preprocessingMs, now, metrics, webhooks, lease, writeArtifact }, job); }
     finally { lease.stop(); }
   };
   const result = await traceLogAnalysisJob(tracing, "polling", process);
@@ -810,10 +812,11 @@ export async function processLogAnalysisJobById({
   const job = await claimJobById(db, { kind: "log-analysis", jobId, leaseOwner: workerId, leaseTtlMs });
   if (!job) return { status: "idle" };
   const notificationDb = db;
+  const writeArtifact = admittedLogArtifactWriter(db, job);
   db = admittedLogCompletionDatabase(db, job);
   const process = async () => {
     const lease = keepLogJobLease(db, objectStore, { jobId: job.id, leaseOwner: job.leaseOwner ?? workerId, leaseMs: leaseTtlMs, maxJobMs });
-    try { return await processClaimedLogAnalysisJob({ db, notificationDb, objectStore: lease.objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, preprocessingMs, now, metrics, webhooks, lease }, job); }
+    try { return await processClaimedLogAnalysisJob({ db, notificationDb, objectStore: lease.objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, preprocessingMs, now, metrics, webhooks, lease, writeArtifact }, job); }
     finally { lease.stop(); }
   };
   return traceLogAnalysisJob(tracing, "queue", process);

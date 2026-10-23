@@ -129,6 +129,10 @@ function createDebuggingDetectDb() {
     query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
       calls.push({ text, values });
 
+      if (text.includes("from public.organizations")) {
+        return { rows: [{ id: "org-1", name: "ChargeLab", status: "active" }] as Row[], rowCount: 1 };
+      }
+
       if (text.includes("from users")) {
         return {
           rows: [
@@ -295,7 +299,7 @@ function createDevelopmentLocalAuthDb() {
 
       if (normalized.includes("from organizations") && normalized.includes("where id = $1")) {
         const organization = organizations.get(values[0] as string);
-        return { rows: (organization ? [organization] : []) as Row[], rowCount: organization ? 1 : 0 };
+        return { rows: (organization ? [{ ...organization, status: "active" }] : []) as Row[], rowCount: organization ? 1 : 0 };
       }
 
       if (normalized.includes("from organizations") && normalized.includes("id <> all($1::text[])")) {

@@ -18,7 +18,9 @@ vi.mock("./repository", async (importOriginal) => ({
 
 const auth = makeTestAuthContext();
 const db: Database = {
-  query: async () => ({ rows: [], rowCount: 0 }),
+  query: async <Row,>(sql: string) => sql.includes("from public.organizations")
+    ? { rows: [{ ...auth.organization, status: "active" }] as Row[], rowCount: 1 }
+    : { rows: [], rowCount: 0 },
   transaction: async (fn) => fn(db)
 };
 

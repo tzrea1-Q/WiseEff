@@ -43,7 +43,7 @@ import { MAX_PARAMETER_SOURCE_BYTES } from "./modules/parameter-files/jsonSource
 import { registerParameterRoutes } from "./modules/parameters/routes";
 import { registerParameterDashboardRoutes } from "./modules/parameters/dashboard/routes";
 import { registerParameterSpecRoutes } from "./modules/parameter-specs/routes";
-import { registerCatalogLegacyRetirementRoutes } from "./modules/parameter-catalog-api/legacy/routes";
+import { isRetiredCatalogWriteRoute, registerCatalogLegacyRetirementRoutes } from "./modules/parameter-catalog-api/legacy/routes";
 import { registerParameterModuleRoutes } from "./modules/parameter-modules/routes";
 import { registerParameterTopologyRoutes } from "./modules/parameter-topology/routes";
 import { registerCatalogProjectValueConsumerRoutes } from "./modules/parameter-bindings/catalogProjectValueRoutes";
@@ -140,6 +140,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     const pattern = router.matchRoutePattern(request.method, request.path);
     requireIntegrationRouteAccess(request.method, pattern, request.headers.authorization);
     if (options.db && pattern && request.method !== "GET" && !isIntegrationAuthorization(request.headers.authorization)
+      && !isRetiredCatalogWriteRoute(request.method, pattern)
       && !pattern.startsWith("/api/v1/auth/") && !pattern.startsWith("/api/v1/me/") && pattern !== "/api/v1/me"
       && !pattern.startsWith("/api/v1/notifications/") && !pattern.startsWith("/api/v1/platform/")
       && pattern !== "/api/v1/device-bridges/pair"
