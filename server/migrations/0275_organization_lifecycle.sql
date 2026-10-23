@@ -64,7 +64,8 @@ begin
     if current_setting('wiseeff.lifecycle_maintenance_org',true)=org and tg_table_name=any(array[
       'users','user_role_bindings','organization_team_members','project_members','parameter_drafts','project_parameter_value_drafts',
       'project_parameter_file_candidates','project_parameter_initialization_drafts','project_parameter_value_change_requests','parameter_change_requests',
-      'knowledge_entries','knowledge_import_batches','knowledge_import_documents','product_feedback']) then continue; end if;
+      'knowledge_entries','knowledge_import_batches','knowledge_import_documents','product_feedback',
+      'device_bridge_pairing_codes','local_registration_role_requests']) then continue; end if;
     if completion->>'organizationId'=org then
       if completion->>'kind'='dry-run' and (
         (tg_table_name='log_skill_dry_runs' and tg_op='UPDATE' and new_value->>'id'=completion->>'id') or

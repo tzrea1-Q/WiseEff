@@ -6,6 +6,8 @@
 
 ## 使用方式
 
+`ORG-LIFECYCLE-001`：平台管理员在 1440×900 的真实 API 模式组织目录中确认停用与恢复，支持键盘操作和服务失败后重试；成员仍可查看资料，显示一条准确的只读提示，后台拒绝业务写入，恢复不启用单独停用的成员。专属浏览器文件为 `e2e/acceptance/organization-lifecycle.acceptance.spec.ts`；真实 PostgreSQL 文件为 `server/modules/users/organizationLifecycle.integration.test.ts`，另覆盖 SQL LOGIN、并发、任务收尾、机器访问、通知领取、Webhook、设备及已有数据升级。
+
 `ORG-ACCOUNT-TRANSFER-001`：平台管理员在真实本地密码 API 模式、1440×900 的成员页预览源组织权限、凭据和待交接事项，明确配置目标组织角色，处理调动失败并重试。调动后旧会话和个人配对失效，原密码重新登录目标组织；源组织草稿、审核待办、历史署名及机器凭据保留。专属浏览器文件为 `e2e/acceptance/organization-account-transfer.acceptance.spec.ts`，真实 PostgreSQL 文件为 `server/modules/users/accountTransfer.integration.test.ts`。HMAC/OIDC 模式跳过本地密码交互，不作为本项本地登录验收。
 
 `LOG-REGISTER-001`：Admin 在 1440x900 的技能工作区编辑寄存器位段与映射，预览粘贴表格的有效行及逐行拒绝原因后导入，往返 YAML，并选择常驻样例面板中的日志行查看位条数值与枚举含义。组件和 PostgreSQL 集成测试已覆盖；协调者执行浏览器走查，专属浏览器自动化尚待补充，不记为已完成的自动化浏览器覆盖。

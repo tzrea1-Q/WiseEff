@@ -1025,46 +1025,47 @@ export function createDebuggingService(options: ServiceOptions) {
 
       const protocol = input.protocol;
       const gateway = gatewayRegistry.requireGateway(protocol);
-      const gatewayResult = await withGatewaySpan("detect", { hasDeviceFilter: Boolean(input.deviceId), protocol }, async (spanAttributes) => {
-        try {
-          const result = await gateway.detectTargets({ deviceId: input.deviceId });
-          spanAttributes.status = result.ok ? "succeeded" : "failed";
-          return result;
-        } catch (error) {
-          spanAttributes.status = "failed";
-          spanAttributes.errorType = error instanceof Error ? error.name : "unknown";
-          throw error;
-        }
-      });
-      recordGatewayOperation("detect", gatewayResult.ok ? "succeeded" : "failed");
+      const detection = await db.transaction<{ targets: DebugTargetRecord[] } | { error: string }>(async tx => {
+        await requireActiveOrganization(tx, organizationId, true);
+        const gatewayResult = await withGatewaySpan("detect", { hasDeviceFilter: Boolean(input.deviceId), protocol }, async (spanAttributes) => {
+          try {
+            const result = await gateway.detectTargets({ deviceId: input.deviceId });
+            spanAttributes.status = result.ok ? "succeeded" : "failed";
+            return result;
+          } catch (error) {
+            spanAttributes.status = "failed";
+            spanAttributes.errorType = error instanceof Error ? error.name : "unknown";
+            throw error;
+          }
+        });
+        recordGatewayOperation("detect", gatewayResult.ok ? "succeeded" : "failed");
 
-      const bridgeTargets =
-        options.bridgeRpcClient && options.bridgeConnectionPool && input.bridgeId
-          ? await detectTargetsAcrossBridges({
-              rpc: options.bridgeRpcClient,
-              bridges: (
-                await listBridgesForUser(db, {
-                  userId: auth.user.id,
-                  organizationId
-                })
-              )
-                .filter(
-                  (bridge) =>
-                    bridge.revokedAt === null &&
-                    bridge.id === input.bridgeId &&
-                    options.bridgeConnectionPool?.isConnected(bridge.id)
+        const bridgeTargets =
+          options.bridgeRpcClient && options.bridgeConnectionPool && input.bridgeId
+            ? await detectTargetsAcrossBridges({
+                rpc: options.bridgeRpcClient,
+                bridges: (
+                  await listBridgesForUser(tx, {
+                    userId: auth.user.id,
+                    organizationId
+                  })
                 )
-                .map((bridge) => ({
-                  id: bridge.id,
-                  machineLabel: bridge.machineLabel
-                })),
-              protocol,
-              timeoutMs: BRIDGE_DETECT_TIMEOUT_MS
-            })
-          : [];
+                  .filter(
+                    (bridge) =>
+                      bridge.revokedAt === null &&
+                      bridge.id === input.bridgeId &&
+                      options.bridgeConnectionPool?.isConnected(bridge.id)
+                  )
+                  .map((bridge) => ({
+                    id: bridge.id,
+                    machineLabel: bridge.machineLabel
+                  })),
+                protocol,
+                timeoutMs: BRIDGE_DETECT_TIMEOUT_MS
+              })
+            : [];
 
-      if (!gatewayResult.ok && bridgeTargets.length === 0) {
-        await db.transaction(async (tx) => {
+        if (!gatewayResult.ok && bridgeTargets.length === 0) {
           await insertDebugEvent(tx, {
             organizationId,
             kind: "target-detect-failed",
@@ -1072,25 +1073,23 @@ export function createDebuggingService(options: ServiceOptions) {
             message: failureReason(gatewayResult.error, "Debug target detection failed."),
             metadata: { deviceId: input.deviceId, protocol, error: gatewayResult.error }
           });
-        });
-        throw new ApiError("DEVICE_UNAVAILABLE", failureReason(gatewayResult.error, "Debug target detection failed."));
-      }
+          return { error: failureReason(gatewayResult.error, "Debug target detection failed.") };
+        }
 
-      const persistedTargets = [
-        ...(gatewayResult.ok
-          ? gatewayResult.targets.map((target) => ({
-              id: target.id,
-              deviceId: target.deviceId,
-              protocol,
-              targetRef: target.targetRef,
-              label: target.label,
-              online: target.online
-            }))
-          : []),
-        ...bridgeTargets
-      ];
+        const persistedTargets = [
+          ...(gatewayResult.ok
+            ? gatewayResult.targets.map((target) => ({
+                id: target.id,
+                deviceId: target.deviceId,
+                protocol,
+                targetRef: target.targetRef,
+                label: target.label,
+                online: target.online
+              }))
+            : []),
+          ...bridgeTargets
+        ];
 
-      return db.transaction(async (tx) => {
         const targets = await upsertDetectedTargets(tx, {
           organizationId,
           targets: persistedTargets
@@ -1119,8 +1118,10 @@ export function createDebuggingService(options: ServiceOptions) {
           )
         );
 
-        return targets;
+        return { targets };
       });
+      if ("error" in detection) throw new ApiError("DEVICE_UNAVAILABLE", detection.error);
+      return detection.targets;
     },
 
     async listParameters(auth: AuthContext, query: ParameterListQuery = {}) {

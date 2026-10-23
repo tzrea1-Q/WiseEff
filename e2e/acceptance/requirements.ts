@@ -9,6 +9,10 @@ export type AcceptanceRequirement = {
 
 export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
+    id: "ORG-LIFECYCLE-001", workflow: "H", required: true,
+    title: "A platform administrator suspends and restores an explicit organization with keyboard confirmation and safe retry; members retain read access, business writes stop, and individually disabled members stay disabled."
+  },
+  {
     id: "ORG-ACCOUNT-TRANSFER-001", workflow: "H", required: false,
     title: "A platform administrator previews and transfers a local account with explicit target roles, revoked old sessions and pairings, retained source work and machine credentials, and a successful target login."
   },

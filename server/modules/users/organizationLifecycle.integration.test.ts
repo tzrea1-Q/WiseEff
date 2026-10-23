@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createWiseEffServer } from "../../app";
 import { requestJson } from "../../test/testClient";
-import { createPostgresDatabase, type RootDatabase } from "../../shared/database/client";
+import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../shared/database/client";
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { seedBaselineAuthCatalog } from "../auth/baselineCatalog";
@@ -22,6 +22,19 @@ import { createAgentApproval, createAgentSession } from "../agent/repository";
 import { assertApprovedDeviceWrite } from "../debugging/deviceWriteApproval";
 import { deployReloadRun } from "../dts-reload/service";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
+import { randomBytes } from "node:crypto";
+import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../../testing/labRuntimeLogins";
+import { seedCanonicalParameterFixture } from "../agent/testing/canonicalParameterFixture";
+import { loadCanonicalBindingPins } from "../parameter-bindings/drafts/repository";
+import { createCanonicalValueDraft } from "../parameter-bindings/drafts/service";
+import { submitCanonicalValueChange, reviewCanonicalValueChange } from "../parameter-bindings/drafts/changeService";
+import { captureConfigurationSourceState } from "../../testing/parameterCatalog/configurationSource";
+import { loadPublishedCatalog } from "../parameter-bindings/catalogProjectValueSync";
+import { admittedLogCompletionDatabase } from "../logs/admittedCompletion";
+import { claimJobById } from "../jobs/repository";
+import { insertNotificationOutboxEntry } from "../notifications/outboxRepository";
+import { processNextNotificationOutboxEntry, processNotificationOutboxEntryById } from "../notifications/outboxWorker";
+import { applyMigrations, migrationsDir, withTempDatabase } from "../../testing/tempDatabase";
 
 describe("Organization lifecycle through real HTTP and PostgreSQL", () => {
   let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>>, db: RootDatabase;
@@ -39,6 +52,122 @@ describe("Organization lifecycle through real HTTP and PostgreSQL", () => {
     return requestJson<T>(createWiseEffServer({ db, objectStore, env: { AUTH_PROVIDER: "local" } }), path, { method, headers: { "x-wiseeff-user": user }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   }
   const path = "/api/v1/platform/organizations/lifecycle-target/lifecycle";
+  it("upgrades existing organizations and reload intents as active without changing retained business data", async () => {
+    await withTempDatabase({ prefix: "lifecycleupgrade", migrate: false }, async ({ db: upgrading }) => {
+      await applyMigrations(upgrading, migrationsDir, { through: "0274_offline_identity_membership_read_grants.sql" });
+      await seedCoreGraph(upgrading, { organization: { id: "lifecycle-existing", name: "Existing organization" }, users: [{ id: "lifecycle-existing-admin" }] });
+      await upgrading.query("insert into projects(id,organization_id,name,code) values('existing-project','lifecycle-existing','Existing project','EXISTING')");
+      await upgrading.query("insert into dts_reload_runs(id,organization_id,project_id,status,created_by_user_id) values('existing-intent','lifecycle-existing','existing-project','validated','lifecycle-existing-admin')");
+      await applyMigrations(upgrading, migrationsDir);
+      expect((await upgrading.query("select name,status,lifecycle_version::int from organizations where id='lifecycle-existing'")).rows)
+        .toEqual([{ name: "Existing organization", status: "active", lifecycle_version: 0 }]);
+      expect((await upgrading.query("select status,organization_lifecycle_version::int from dts_reload_runs where id='existing-intent'")).rows)
+        .toEqual([{ status: "validated", organization_lifecycle_version: 0 }]);
+    });
+  }, 120_000);
+  it("rolls back an admitted write transaction and never grants its completion exception to another record or later caller", async () => {
+    const upload = async () => {
+      const response = await request<{ log: { id: string }; job: { id: string } }>("/api/v1/log-files?organizationId=lifecycle-target", "POST", {
+        fileName: "rollback.log", contentType: "text/plain", skillSelection: "generic", contentBase64: Buffer.from("INFO rollback\n").toString("base64")
+      });
+      expect(response.status, response.bodyText).toBe(201); return response.body;
+    };
+    const own = await upload(), other = await upload();
+    const claim = await claimJobById(db, { kind: "log-analysis", jobId: own.job.id, leaseOwner: "lifecycle-rollback" });
+    if (!claim) throw new Error("Claim is unavailable");
+    const admitted = admittedLogCompletionDatabase(db, claim);
+    expect((await request(path, "PATCH", { status: "suspended", expectedStatus: "active" })).status).toBe(200);
+    await expect(admitted.transaction(async tx => {
+      await tx.query("update log_records set failure_reason='must roll back' where id=$1", [own.log.id]);
+      throw new Error("rollback admitted transaction");
+    })).rejects.toThrow("rollback admitted transaction");
+    expect((await db.query("select failure_reason from log_records where id=$1", [own.log.id])).rows).toEqual([{ failure_reason: null }]);
+    await expect(admitted.query("update log_records set failure_reason='wrong record' where id=$1", [other.log.id])).rejects.toMatchObject({ code: "55000" });
+    await expect(db.query("update log_records set failure_reason='leaked exception' where id=$1", [own.log.id])).rejects.toMatchObject({ code: "55000" });
+    await admitted.query("update log_records set failure_reason='actual admitted result' where id=$1", [own.log.id]);
+    expect((await db.query("select failure_reason from log_records where id=$1", [own.log.id])).rows).toEqual([{ failure_reason: "actual admitted result" }]);
+  });
+  it("pauses new station-notification claims in both transports while an already claimed in-app delivery finishes", async () => {
+    const runningId = "00000000-0000-4000-8000-000000000002", queuedId = "00000000-0000-4000-8000-000000000001";
+    for (const id of [runningId, queuedId]) await insertNotificationOutboxEntry(db, { id, payload: {
+      organizationId: "lifecycle-target", recipientUserId: "lifecycle-member", category: "lifecycle-test", title: id, body: "Actual in-app notification", sourceKind: "lifecycle-test", sourceId: id
+    } });
+    let enter!: () => void, release!: () => void;
+    const entered = new Promise<void>(resolve => { enter = resolve; }), held = new Promise<void>(resolve => { release = resolve; });
+    const processing = processNextNotificationOutboxEntry({ db, tracing: { async withSpan(_name, _attributes, run) { enter(); await held; return run(); } } });
+    await entered;
+    try {
+      expect((await request(path, "PATCH", { status: "suspended", expectedStatus: "active" })).status).toBe(200);
+      expect(await processNextNotificationOutboxEntry({ db })).toBe("idle");
+      expect(await processNotificationOutboxEntryById({ db, outboxId: queuedId })).toEqual({ status: "idle" });
+    } finally { release(); }
+    expect(await processing).toBe("processed");
+    expect((await db.query("select id,status from notification_outbox order by id")).rows).toEqual([{ id: queuedId, status: "pending" }, { id: runningId, status: "delivered" }]);
+    expect((await request(path, "PATCH", { status: "active", expectedStatus: "suspended" })).status).toBe(200);
+    expect(await processNotificationOutboxEntryById({ db, outboxId: queuedId })).toEqual({ status: "processed" });
+    expect((await db.query("select count(*)::int as n from user_notifications where organization_id='lifecycle-target'")).rows).toEqual([{ n: 2 }]);
+  });
+  it("enforces private Catalog lifecycle through the real API LOGIN while an admitted worker LOGIN can finish only its own run", async () => {
+    const fixture = await seedCanonicalParameterFixture(db, objectStore, { sourceFormat: "json" });
+    const token = `lifecycle${randomBytes(5).toString("hex")}`;
+    const runtime = await provisionPublicationRuntimeLogins(database.url, { mode: "lab", runToken: token });
+    const api = createPostgresDatabase(runtime.apiUrl), worker = createPostgresDatabase(runtime.workerUrl);
+    try {
+      expect((await api.query("select current_user as actor,session_user as login,rolsuper,rolinherit from pg_roles where rolname=current_user")).rows)
+        .toEqual([{ actor: runtime.apiRole, login: runtime.apiRole, rolsuper: false, rolinherit: false }]);
+      expect((await worker.query("select current_user as actor,rolsuper from pg_roles where rolname=current_user")).rows)
+        .toEqual([{ actor: runtime.workerRole, rolsuper: false }]);
+      for (const roleDb of [api, worker]) {
+        expect((await roleDb.query("select has_function_privilege(current_user,'public.lifecycle_organization(text,text,jsonb)','execute') as ownership,has_function_privilege(current_user,'public.guard_organization_lifecycle()','execute') as guard")).rows)
+          .toEqual([{ ownership: false, guard: false }]);
+        await expect(roleDb.query("update parameter_catalog.parameter_definitions set id=id where false")).rejects.toMatchObject({ code: "42501" });
+      }
+      const headers = { "x-wiseeff-user": "lifecycle-platform" };
+      const runtimeRequest = (route: string, method: string, body: unknown) => requestJson(createWiseEffServer({ db: api, objectStore }), route, { method, headers, body: JSON.stringify(body) });
+      const scope = { organizationId: fixture.organizationId, projectId: fixture.projectId };
+      const published = await loadPublishedCatalog(getRootPostgresPool(api)!);
+      if (!published) throw new Error("Published fixture is unavailable");
+      const draft = async (value: string) => {
+        const pins = await loadCanonicalBindingPins(api, { ...scope, bindingId: fixture.bindingId });
+        if (!pins) throw new Error("Fixture source pins are unavailable");
+        return createCanonicalValueDraft(api, fixture.editorAuth, { projectId: fixture.projectId, bindingId: fixture.bindingId,
+          baseRevisionId: pins.configRevisionId, baseCurrentValueId: pins.currentValueId, sourceTarget: { format: "json", sourceText: value }, reason: "Lifecycle API LOGIN" },
+        { objectStore, invocation: createUserInvocation(fixture.editorAuth), requestId: "lifecycle-api-draft", refusalSink: createTrustedRefusalAuditSink(api) });
+      };
+      const submit = async (value: string) => submitCanonicalValueChange(api, fixture.editorAuth, {
+        projectId: fixture.projectId, draftId: (await draft(value)).id, assignedToUserId: fixture.reviewerAuth.user.id,
+        invocation: createUserInvocation(fixture.editorAuth), requestId: "lifecycle-api-submit", refusalSink: createTrustedRefusalAuditSink(api)
+      });
+      const review = (requestId: string) => reviewCanonicalValueChange(api, fixture.reviewerAuth, { projectId: fixture.projectId, requestId, decision: "approve", note: "Lifecycle API LOGIN" },
+        { objectStore, snapshot: published, invocation: createUserInvocation(fixture.reviewerAuth), traceId: "lifecycle-api-review", refusalSink: createTrustedRefusalAuditSink(api) });
+      const approved = await review((await submit("9")).id);
+      expect(approved.status).toBe("approved");
+      const pending = await submit("10");
+      const snapshot = await captureConfigurationSourceState(db, scope);
+      expect((await runtimeRequest(`/api/v1/platform/organizations/${fixture.organizationId}/lifecycle`, "PATCH", { status: "suspended", expectedStatus: "active" })).status).toBe(200);
+      await expect(review(pending.id)).rejects.toMatchObject({ code: "55000", message: "Organization is suspended" });
+      expect(await captureConfigurationSourceState(db, scope)).toEqual(snapshot);
+      const foreign = await requestJson(createWiseEffServer({ db: api, objectStore }), `/api/v1/parameters/admin/projects/${fixture.projectId}`, { headers: { "x-wiseeff-user": fixture.otherAuth.user.id } });
+      expect(foreign.status).toBe(404);
+      const upload = await runtimeRequest("/api/v1/log-files?organizationId=lifecycle-target", "POST", {
+        fileName: "runtime.log", contentType: "text/plain", skillSelection: "generic", contentBase64: Buffer.from("INFO boot\nERROR lifecycle\n").toString("base64")
+      });
+      expect(upload.status, upload.bodyText).toBe(201);
+      const job = (upload.body as { job: { id: string } }).job;
+      let enter!: () => void, release!: () => void;
+      const entered = new Promise<void>(resolve => { enter = resolve; }), held = new Promise<void>(resolve => { release = resolve; });
+      const processing = processLogAnalysisJobById({ db: worker, objectStore, jobId: job.id, analyzer: { async analyze(input) { enter(); await held; return createRuleBasedLogAnalyzer().analyze(input); } } });
+      await entered;
+      try { expect((await runtimeRequest(path, "PATCH", { status: "suspended", expectedStatus: "active" })).status).toBe(200); }
+      finally { release(); }
+      expect(await processing).toEqual({ status: "processed" });
+      expect((await db.query("select status from jobs where id=$1", [job.id])).rows).toEqual([{ status: "complete" }]);
+      expect(await captureConfigurationSourceState(db, scope)).toEqual(snapshot);
+    } finally {
+      await api.close(); await worker.close();
+      expect((await dropLabRuntimeLogins(database.url, token)).failed).toEqual([]);
+    }
+  }, 120_000);
   it("only lets the platform suspend and restore; members keep read access while business writes stop", async () => {
     expect((await request(path, "PATCH", { status: "suspended", expectedStatus: "active" }, "lifecycle-member")).status).toBe(403);
     const suspended = await request<{ item: { status: string } }>(path, "PATCH", { status: "suspended", expectedStatus: "active" });

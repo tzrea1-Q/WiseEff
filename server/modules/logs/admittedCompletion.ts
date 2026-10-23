@@ -1,4 +1,4 @@
-import type { Database, Queryable } from "../../shared/database/client";
+import { withWriteTransactions, type Database } from "../../shared/database/client";
 import type { ClaimedLogAnalysisJobDto } from "../jobs/types";
 import { ApiError } from "../../shared/http/errors";
 import { JobLeaseLostError } from "./jobLease";
@@ -16,9 +16,7 @@ export function admittedLogCompletionDatabase(db: Database, job: ClaimedLogAnaly
       return write(tx);
     });
   }
-  const query: Queryable["query"] = (sql, values) => /^\s*(select|show)\b/i.test(sql)
-    ? db.query(sql, values) : transaction(tx => tx.query(sql, values));
-  return { query, transaction };
+  return withWriteTransactions(db, transaction);
 }
 
 /** Existing bounded test-run owners are checked on every result transaction. */
@@ -34,6 +32,5 @@ export function admittedLogTestDatabase(db: Database, input: { kind: "dry-run" |
       return write(tx);
     });
   }
-  const query: Queryable["query"] = (sql, values) => /^\s*(select|show)\b/i.test(sql) ? db.query(sql, values) : transaction(tx => tx.query(sql, values));
-  return { query, transaction };
+  return withWriteTransactions(db, transaction);
 }

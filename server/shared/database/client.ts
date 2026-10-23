@@ -14,6 +14,13 @@ export type Database = Queryable & {
   transaction<T>(fn: (tx: Database) => Promise<T>, options?: { onConfirmedRollback?: () => void }): Promise<T>;
 };
 
+/** Transparent read forwarding; a domain-owned transaction checks admission before every write. */
+export function withWriteTransactions(db: Database, transaction: Database["transaction"]): Database {
+  const query: Queryable["query"] = (text, values) => /^\s*(select|show)\b/i.test(text)
+    ? db.query(text, values) : transaction(tx => tx.query(text, values));
+  return { query, transaction };
+}
+
 const rootDatabaseBrand = Symbol("wiseeff.root-database");
 
 /** A pool-backed database root that can own work which must outlive caller transactions. */

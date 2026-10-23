@@ -142,6 +142,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     if (options.db && pattern && request.method !== "GET" && !isIntegrationAuthorization(request.headers.authorization)
       && !pattern.startsWith("/api/v1/auth/") && !pattern.startsWith("/api/v1/me/") && pattern !== "/api/v1/me"
       && !pattern.startsWith("/api/v1/notifications/") && !pattern.startsWith("/api/v1/platform/")
+      && pattern !== "/api/v1/device-bridges/pair"
       && pattern !== "/api/v1/organization/operating-scope" && !pattern.includes("/handovers/") && !pattern.includes("/project-handovers/")) {
       const actor = await authResolver(request);
       const requested = request.query.organizationId;

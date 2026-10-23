@@ -7,6 +7,10 @@ import { withPgClient } from "./helpers/database";
 import { apiRoute } from "./helpers/runtime";
 import { prepareInteractionSurface } from "./helpers/interactionSurface";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { recordOperationEvidence } from "./helpers/operationEvidence";
+
+// @acceptance ORG-LIFECYCLE-001
+// @operation ORG-LIFECYCLE-001
 
 test.use({ viewport: { width: 1440, height: 900 } });
 useBrowserDiagnostics(test, { expectedApiFailures: [
@@ -52,6 +56,7 @@ test("suspends and restores a fixed Organization, preserves readonly member acce
     const memberContext = await browser.newContext({ viewport: { width: 1440, height: 900 } }), memberPage = await memberContext.newPage();
     await signInBrowserAsUser(memberPage, member, `${member}@example.test`, memberName, "/organization", org);
     await expect(memberPage.getByRole("region", { name: "当前操作组织" })).toContainText("已停用 · 仅可查看");
+    await expect(memberPage.getByRole("status").filter({ hasText: "组织已停用" })).toHaveCount(1);
     await expect(memberPage.getByLabel("显示名称", { exact: true })).toHaveValue(name);
     await expect(memberPage.getByLabel("显示名称", { exact: true })).toBeDisabled();
     const forbidden = await memberPage.request.patch(apiRoute("/api/v1/organization"), { headers: authHeadersForUser(member, `${member}@example.test`, memberName, org), data: { name: "Must not change" } });
@@ -66,7 +71,20 @@ test("suspends and restores a fixed Organization, preserves readonly member acce
     await page.getByRole("dialog", { name: "恢复组织", exact: true }).getByRole("button", { name: "确认恢复组织", exact: true }).press("Enter");
     await expect(details.getByRole("button", { name: "停用组织", exact: true })).toBeVisible();
     expect((await page.request.patch(apiRoute("/api/v1/organization"), { headers: authHeadersForUser(member, `${member}@example.test`, memberName, org), data: { name: `${name}-已恢复` } })).status()).toBe(200);
-    await withPgClient(async client => { expect((await client.query("select is_active from users where id=$1", [disabled])).rows).toEqual([{ is_active: false }]); });
+    await withPgClient(async client => {
+      expect((await client.query("select is_active from users where id=$1", [disabled])).rows).toEqual([{ is_active: false }]);
+      expect((await client.query("select status from organizations where id=$1", [org])).rows).toEqual([{ status: "active" }]);
+      expect((await client.query("select action,actor_user_id from audit_events where organization_id=$1 and kind='organization-lifecycle' order by created_at", [org])).rows)
+        .toEqual([{ action: "suspend", actor_user_id: headers["x-wiseeff-user"] }, { action: "restore", actor_user_id: headers["x-wiseeff-user"] }]);
+    });
+    await recordOperationEvidence({ operationId: "ORG-LIFECYCLE-001", title: "Organization suspend and restore", status: "passed", page, testInfo,
+      artifacts: ["organization-suspend-confirmation-1440.png", "organization-suspended-directory-1440.png", "organization-member-readonly-1440.png"].map(file => testInfo.outputPath(file)),
+      api: [{ method: "PATCH", path: lifecycle, status: 200, responseSummary: "Suspended and restored with compare-and-set confirmation; injected 503 kept the dialog retryable." },
+        { method: "PATCH", path: "/api/v1/organization", status: forbidden.status(), responseSummary: "Suspended member business mutation refused." }],
+      db: [{ table: "organizations", predicate: "the selected organization", observed: "active after explicit restore", rowCount: 1 },
+        { table: "users", predicate: "the individually disabled fixture member", observed: "is_active remains false", rowCount: 1 }],
+      audit: [{ kind: "organization-lifecycle", action: "suspend", targetId: org }, { kind: "organization-lifecycle", action: "restore", targetId: org }]
+    });
   } finally {
     const current = await page.request.get(apiRoute(`/api/v1/platform/organizations/${org}`), { headers });
     if (current.ok() && (await current.json() as { item: { status: string } }).item.status === "suspended") await page.request.patch(apiRoute(lifecycle), { headers, data: { status: "active", expectedStatus: "suspended" } });

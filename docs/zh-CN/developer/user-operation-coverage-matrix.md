@@ -6,6 +6,8 @@
 
 ## 使用方式
 
+`ORG-LIFECYCLE-001`（P1，`coverage: automated`）：平台管理员从组织目录停用、重试并恢复明确的组织；组织管理员只读查看，业务写入返回拒绝，恢复保留成员单独停用状态。自动化记录界面、API、数据库、真实操作者审计和 1440×900 截图；后台专项覆盖在途工作收尾及各入口暂停。
+
 `ORG-ACCOUNT-TRANSFER-001`（P1，`coverage: conditional`）：平台管理员在 `/organization/members` 预览源组织影响，选择目标组织及新组织角色，确认调动。真实本地认证浏览器覆盖失败保留与重试、旧会话/配对失效、原密码登录新组织、源组织草稿及审核待交接、历史保全和机器凭据保留。HMAC/OIDC 通道跳过本地密码交互；后台 PostgreSQL 用例另外验证权限、身份冲突、管理员并发连续性和事务回滚。
 
 `LOG-REGISTER-001`（P1，`coverage: future`）：Admin 在 `/log-admin/skills/:skillId?section=decoding` 编辑寄存器字段与映射，预览并导入数据手册表格，往返 YAML，并选择样例行检查位条。组件与真实 PostgreSQL 集成覆盖已提供；协调者浏览器走查与专属自动化覆盖分别记录，后者尚待补充。

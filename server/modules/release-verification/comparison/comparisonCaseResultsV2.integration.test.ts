@@ -657,7 +657,7 @@ it("writes only blocking MOD D02 evidence from a complete scoped inventory and p
     const sourceReaderSelectColumns = [
       ["public.users", ["id", "organization_id", "name", "email", "title", "is_active", "external_tokens_revoked_at"]],
       ["public.project_members", ["organization_id", "project_id", "user_id", "roles"]],
-      ["public.organizations", ["id", "name"]],
+      ["public.organizations", ["id", "name", "status"]],
       ["public.user_role_bindings", ["user_id", "project_id", "role_id"]],
       ["public.user_password_credentials", ["user_id", "username"]],
       ["public.roles", ["id", "permissions"]],

@@ -1,4 +1,4 @@
-import type { Database, Queryable } from "../../shared/database/client";
+import { withWriteTransactions, type Database, type Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { requireActiveOrganization } from "../auth/organizationLifecycle";
 
@@ -10,15 +10,17 @@ export async function requireCurrentReloadLifecycle(db: Queryable, organizationI
 }
 
 /** Result bookkeeping is restricted to the already-selected run/device; new RPCs have their own gate. */
-export function reloadCompletionDatabase(db: Database, input: { runId: string; organizationId: string; deviceId: string }): Database {
+export function reloadCompletionDatabase(db: Database, input: { runId: string; organizationId: string; deviceId: string; wasClaimed: () => boolean }): Database {
   async function transaction<T>(write: (tx: Database) => Promise<T>): Promise<T> {
     return db.transaction(async tx => {
-      const run = await tx.query("select id from public.dts_reload_runs where id=$1 and organization_id=$2", [input.runId, input.organizationId]);
-      if (!run.rowCount) throw new ApiError("NOT_FOUND", "Reload run was not found.");
-      await tx.query("select set_config('wiseeff.lifecycle_completion',$1,true)", [JSON.stringify({ kind: "reload-device", ...input })]);
+      // Before the real compare-and-set claim, every write still uses normal admission.
+      if (input.wasClaimed()) {
+        const run = await tx.query("select id from public.dts_reload_runs where id=$1 and organization_id=$2 and deploy_claimed_at is not null", [input.runId, input.organizationId]);
+        if (!run.rowCount) throw new ApiError("CONFLICT", "Reload execution is no longer admitted.");
+        await tx.query("select set_config('wiseeff.lifecycle_completion',$1,true)", [JSON.stringify({ kind: "reload-device", organizationId: input.organizationId, runId: input.runId, deviceId: input.deviceId })]);
+      }
       return write(tx);
     });
   }
-  const query: Queryable["query"] = (sql, values) => /^\s*(select|show)\b/i.test(sql) ? db.query(sql, values) : transaction(tx => tx.query(sql, values));
-  return { query, transaction };
+  return withWriteTransactions(db, transaction);
 }

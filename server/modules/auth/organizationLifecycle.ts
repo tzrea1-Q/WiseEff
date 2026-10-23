@@ -21,6 +21,7 @@ export async function allowOrganizationMaintenance(tx: Database, invocation: Tru
   const organization = (await tx.query<{ status: string }>("select status from public.organizations where id=$1 for share", [organizationId])).rows[0];
   if (!organization) throw new ApiError("NOT_FOUND", "Organization was not found.");
   if (organization.status === "active") return;
+  if (organization.status !== "suspended") throw new ApiError("FORBIDDEN", "Organization is unavailable for maintenance.");
   const actor = await getAuthContext(tx, (invocation as UserInvocationContext).principal.user.id);
   requirePlatformOrganizationManager(actor);
   await tx.query("select set_config('wiseeff.lifecycle_maintenance_org',$1,true)", [organizationId]);

@@ -15,7 +15,6 @@ import {
   type Queryable
 } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { requireActiveOrganization } from "../auth/organizationLifecycle";
 import { reloadCompletionDatabase, requireCurrentReloadLifecycle } from "./lifecycle";
 import { buildReloadBaseSource } from "./baseSource";
 import { classifyReloadCandidate, normalizeReloadCandidates } from "./candidates";
@@ -1805,9 +1804,10 @@ export async function deployReloadRun(
   let result: ReloadRunDto;
   try {
     const admissionDb = db, rpc = deps.bridgeRpcClient;
-    db = reloadCompletionDatabase(db, { runId: run.id, organizationId: auth.organization.id, deviceId: canonicalDeviceId });
+    let deployWasClaimed = false;
+    db = reloadCompletionDatabase(db, { runId: run.id, organizationId: auth.organization.id, deviceId: canonicalDeviceId, wasClaimed: () => deployWasClaimed });
     deps = { ...deps, bridgeRpcClient: { ...rpc, call: (...args) => admissionDb.transaction(async tx => {
-      await requireActiveOrganization(tx, auth.organization.id, true);
+      await requireCurrentReloadLifecycle(tx, auth.organization.id, run.id);
       return rpc.call(...args);
     }) } };
     result = await db.transaction(async (tx) => {
@@ -1858,6 +1858,7 @@ export async function deployReloadRun(
               { code: "reload-deploy-already-in-progress", runId: run.id, status: run.status }
             );
           }
+          deployWasClaimed = true;
           return toReloadRunDto(claimed, run.targets, run.overlaySource);
         }
         if (update.completedAt === null) {
