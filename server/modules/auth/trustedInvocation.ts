@@ -31,6 +31,7 @@ export type UserInvocationContext = {
 export type AgentInvocationContext = {
   readonly initiator: "agent";
   readonly principal: AuthContext;
+  readonly operatingOrganization?: Readonly<AuthContext["organization"]>;
   readonly sessionId: string;
   readonly toolCallId: string;
   readonly approvalRequired: boolean;
@@ -256,6 +257,16 @@ export function createAgentInvocation(principal: AuthContext, input: AgentInvoca
   });
 }
 
+/** Preserve the authorized User target when the server starts an Agent tool execution. */
+export function createAgentInvocationFromUser(invocation: UserInvocationContext, input: AgentInvocationInput): AgentInvocationContext {
+  const trusted = assertTrustedInvocationContext(invocation);
+  if (trusted.initiator !== "user") invalid("Agent scope must derive from a trusted User invocation");
+  const agent = createAgentInvocation(trusted.principal, input);
+  return trusted.operatingOrganization
+    ? brand({ ...agent, operatingOrganization: trusted.operatingOrganization })
+    : agent;
+}
+
 export function createSystemInvocation(input: SystemInvocationInput): SystemInvocationContext {
   const identity = validateSystemInvocationInput(input);
   return brand({ initiator: "system" as const, identity: Object.freeze(identity) });
@@ -284,6 +295,10 @@ function validateBrandedContext(value: unknown): TrustedInvocationContext {
 
   if (value.initiator === "agent") {
     validateAuthContext(value.principal);
+    if (value.operatingOrganization !== undefined) {
+      if (!isRecord(value.operatingOrganization) || !Object.isFrozen(value.operatingOrganization)) invalid("operating Organization must be immutable");
+      validateOperatingOrganization(value.principal, value.operatingOrganization as AuthContext["organization"]);
+    }
     nonEmptyString(value.sessionId, "agent.sessionId");
     nonEmptyString(value.toolCallId, "agent.toolCallId");
     if (typeof value.approvalRequired !== "boolean") {
@@ -345,12 +360,34 @@ export function assertTrustedInvocationMatchesAuth(
     (invocation.principal.user.id !== auth.user.id ||
       invocation.principal.organization.id !== auth.organization.id ||
       invocation.principal.user.organizationId !== auth.organization.id ||
-      (invocation.initiator === "user" && invocation.operatingOrganization !== undefined &&
+      (invocation.operatingOrganization !== undefined &&
         invocation.operatingOrganization.id !== auth.organization.id))
   ) {
     throw new TrustedInvocationContextError(
       `${operation} invocation principal does not match the authenticated principal`
     );
+  }
+  return invocation;
+}
+
+/** Match a resource to an explicit trusted scope while keeping the authenticated Home actor. */
+export function assertTrustedInvocationMatchesScope(
+  auth: AuthContext,
+  value: unknown,
+  organizationId: string,
+  operation: string
+): UserInvocationContext | AgentInvocationContext {
+  const invocation = assertTrustedInvocationContext(value);
+  if (invocation.initiator !== "user" && invocation.initiator !== "agent") {
+    invalid(`${operation} requires a User or Agent invocation`);
+  }
+  validateAuthContext(auth);
+  const targetId = invocation.operatingOrganization?.id ?? invocation.principal.organization.id;
+  if (invocation.principal.user.id !== auth.user.id ||
+    invocation.principal.organization.id !== auth.organization.id ||
+    invocation.principal.user.organizationId !== auth.user.organizationId ||
+    targetId !== organizationId || !canOperateInOrganization(auth, targetId)) {
+    invalid(`${operation} invocation does not match the authenticated actor and resource Organization`);
   }
   return invocation;
 }

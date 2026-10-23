@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AuthContext } from "../auth/types";
-import { createAgentInvocation, createSystemInvocation, createUserInvocation } from "../auth/trustedInvocation";
+import { createAgentInvocation, createAgentInvocationFromUser, createSystemInvocation, createUserInvocation } from "../auth/trustedInvocation";
 import { asAuditTx, writeTrustedAuditEventInTx } from "./auditedWrite";
 import { buildTrustedAuditEventInput, projectTrustedInvocationForAudit } from "./trustedAudit";
 
@@ -33,6 +33,20 @@ const audit = {
 };
 
 describe("trusted audit seam", () => {
+  it("audits an Agent's authorized target while retaining the real Home actor and approval", () => {
+    const principal: AuthContext = { ...auth(), roles: [{ roleId: "platform-admin", projectId: null }], permissions: ["platform:access"] };
+    const agent = createAgentInvocationFromUser(createUserInvocation(principal, { id: "org-2", name: "Target" }), {
+      sessionId: "target-session", toolCallId: "target-tool", approval: { required: true, approvalId: "target-approval" }
+    });
+    const input = buildTrustedAuditEventInput({ ...audit, invocation: agent,
+      metadata: { actorHomeOrganizationId: "spoofed", operatingOrganizationId: "spoofed", initiator: "user" } });
+    expect(input).toMatchObject({ organizationId: "org-2", actorUserId: "user-1", actorType: "agent",
+      metadata: { initiator: "agent", sessionId: "target-session", toolCallId: "target-tool", approvalId: "target-approval",
+        actorHomeOrganizationId: "org-1", operatingOrganizationId: "org-2" } });
+    expect(agent.principal.organization.id).toBe("org-1");
+    expect(() => buildTrustedAuditEventInput({ ...audit, invocation: agent, organizationId: "org-3" })).toThrow();
+  });
+
   it("projects user and Agent actor identity from the trusted context", () => {
     const user = projectTrustedInvocationForAudit(createUserInvocation(auth()));
     const agent = projectTrustedInvocationForAudit(
