@@ -35,7 +35,7 @@ describe("permission-aware routing", () => {
     expect(sidebar.textContent?.includes("知识库")).toBe(canAccessPage(roleId, "knowledge"));
   });
 
-  it("hides admin and operational navigation for Guest", () => {
+  it("lets Guest enter the organization workspace while hiding admin and operational controls", () => {
     window.history.replaceState(null, "", "/parameter-home");
 
     render(<App initialAppState={guestState} />);
@@ -44,7 +44,32 @@ describe("permission-aware routing", () => {
     expect(navigation.getByRole("button", { name: "项目参数" })).toBeInTheDocument();
     expect(navigation.queryByRole("button", { name: /变更审阅|鍙傛暟瀹￠槄/ })).not.toBeInTheDocument();
     expect(navigation.queryByRole("button", { name: /参数调试|鍙傛暟璋冭瘯/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /组织管理/ })).not.toBeInTheDocument();
+    const sidebar = within(screen.getByRole("complementary", { name: "主导航侧边栏" }));
+    fireEvent.click(sidebar.getByRole("button", { name: "组织管理" }));
+    expect(window.location.pathname).toBe("/organization");
+    fireEvent.click(within(screen.getByRole("navigation", { name: "组织管理范围" })).getByRole("button", { name: "资源" }));
+    const resources = within(screen.getByRole("region", { name: "组织资源" }));
+    expect(resources.getByRole("button", { name: "参数资源" })).toBeInTheDocument();
+    expect(resources.getByRole("button", { name: "知识库" })).toBeInTheDocument();
+    expect(resources.queryByRole("button", { name: "设备代理" })).not.toBeInTheDocument();
+    expect(resources.queryByRole("button", { name: "集成凭据" })).not.toBeInTheDocument();
+  });
+
+  it.each(["guest", "user", "committer"])("keeps member management unavailable to %s through the legacy organization URL", (activeRoleId) => {
+    window.history.replaceState(null, "", "/user-permissions");
+    const userGovernanceActions = {
+      listUsers: vi.fn(), createUser: vi.fn(), updateOrganizationRoles: vi.fn(),
+      setUserActive: vi.fn(), deleteUser: vi.fn(), listRegistrationRoleRequests: vi.fn()
+    };
+    render(<App initialAppState={{ ...initialState, activeRoleId }} userGovernanceActions={userGovernanceActions} />);
+
+    expect(screen.getByText("此区域由组织管理员维护")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "用户权限" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "平台用户" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加用户" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "管理邀请" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "业务交接" })).not.toBeInTheDocument();
+    for (const action of Object.values(userGovernanceActions)) expect(action).not.toHaveBeenCalled();
   });
 
   it("removes the retired platform console utility entry for platform-admin", async () => {
@@ -158,22 +183,22 @@ describe("permission-aware routing", () => {
 });
 
 describe("permission route matrix", () => {
-  it("keeps User out of review and admin pages", () => {
+  it("lets User enter the organization workspace while keeping review and admin pages restricted", () => {
     expect(canAccessPage("user", "parameter-review")).toBe(false);
     expect(canAccessPage("software-user", "parameter-review")).toBe(true);
     expect(canAccessPage("user", "parameter-admin")).toBe(false);
     expect(canAccessPage("user", "log-admin")).toBe(false);
     expect(canAccessPage("user", "debugging-admin")).toBe(false);
-    expect(canAccessPage("user", "user-permissions")).toBe(false);
+    expect(canAccessPage("user", "user-permissions")).toBe(true);
     expect(canAccessPage("user", "logs")).toBe(true);
     expect(canAccessPage("user", "debugging")).toBe(true);
   });
 
-  it("keeps Committer out of admin pages while allowing review", () => {
+  it("lets Committer enter the organization workspace and review while keeping admin pages restricted", () => {
     expect(canAccessPage("committer", "parameter-review")).toBe(true);
     expect(canAccessPage("committer", "parameter-admin")).toBe(false);
     expect(canAccessPage("committer", "log-admin")).toBe(false);
     expect(canAccessPage("committer", "debugging-admin")).toBe(false);
-    expect(canAccessPage("committer", "user-permissions")).toBe(false);
+    expect(canAccessPage("committer", "user-permissions")).toBe(true);
   });
 });

@@ -5,10 +5,16 @@ import { JobLeaseLostError } from "./jobLease";
 import { putLogArtifact, type LogArtifactWriter } from "./artifactObjects";
 
 async function requireLogCompletion(tx: Database, job: ClaimedLogAnalysisJobDto, lock: boolean) {
-  const row = (await tx.query<{ target_id: string; log_record_id: string }>(`select j.target_id,r.log_record_id
-    from public.jobs j join public.log_analysis_runs r on r.id=j.target_id and r.organization_id=j.organization_id
-    where j.id=$1 and j.organization_id=$2 and j.status='processing' and j.lease_owner=$3
-      and j.lease_expires_at>clock_timestamp()${lock ? " for update of j" : ""}`, [job.id, job.organizationId, job.leaseOwner])).rows[0];
+  const args = [job.id, job.organizationId, job.leaseOwner];
+  const row = (lock
+    ? await tx.query<{ target_id: string; log_record_id: string }>(`select j.target_id,r.log_record_id
+        from public.jobs j join public.log_analysis_runs r on r.id=j.target_id and r.organization_id=j.organization_id
+        where j.id=$1 and j.organization_id=$2 and j.status='processing' and j.lease_owner=$3
+          and j.lease_expires_at>clock_timestamp() for update of j`, args)
+    : await tx.query<{ target_id: string; log_record_id: string }>(`select j.target_id,r.log_record_id
+        from public.jobs j join public.log_analysis_runs r on r.id=j.target_id and r.organization_id=j.organization_id
+        where j.id=$1 and j.organization_id=$2 and j.status='processing' and j.lease_owner=$3
+          and j.lease_expires_at>clock_timestamp()`, args)).rows[0];
   if (!row) throw new JobLeaseLostError();
   await tx.query("select set_config('wiseeff.lifecycle_completion',$1,true)", [JSON.stringify({ kind: "log-analysis", organizationId: job.organizationId, jobId: job.id, runId: row.target_id, logId: row.log_record_id })]);
   return row;
