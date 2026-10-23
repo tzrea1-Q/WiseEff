@@ -68,6 +68,7 @@ type ParametersPageAction =
   | { type: "DISCARD_STASHED_PARAMETER_DRAFTS"; projectId: string; parameterIds: string[] };
 
 type ParametersPageProps = {
+  parameterFileRepository?: import("@/application/ports/ParameterFileRepository").ParameterFileRepository;
   state: PrototypeState;
   dispatch: Dispatch<ParametersPageAction>;
   onNavigate: (path: string) => void;
@@ -93,6 +94,7 @@ export function ParametersPage({
   parameterActions,
   topologyRepository,
   canonicalRepository,
+  parameterFileRepository,
   listConfigSets,
   effectiveProjectId,
   topBarProjectId,
@@ -981,6 +983,7 @@ export function ParametersPage({
             runtimeMode="api"
             topologyRepository={topologyRepository}
             canonicalRepository={canonicalRepository}
+            parameterFileRepository={parameterFileRepository}
             listConfigSets={listConfigSets}
             listDrafts={listDrafts}
             deleteDraft={deleteDraft}
