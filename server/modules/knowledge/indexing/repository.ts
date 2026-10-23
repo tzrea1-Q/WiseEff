@@ -174,6 +174,7 @@ export async function enqueueAllPublishedEntriesAcrossOrganizations(db: Queryabl
     select id, organization_id, 'pending', null, now(), now()
     from knowledge_entries
     where status = 'published'
+      and exists(select 1 from public.organizations o where o.id=knowledge_entries.organization_id and o.status='active' for share)
     on conflict (entry_id) do update
       set status = 'pending', error = null, enqueued_at = now(), updated_at = now()
     `

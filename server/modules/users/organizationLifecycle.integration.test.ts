@@ -35,6 +35,7 @@ import { claimJobById } from "../jobs/repository";
 import { insertNotificationOutboxEntry } from "../notifications/outboxRepository";
 import { processNextNotificationOutboxEntry, processNotificationOutboxEntryById } from "../notifications/outboxWorker";
 import { applyMigrations, migrationsDir, withTempDatabase } from "../../testing/tempDatabase";
+import { enqueueAllPublishedEntriesAcrossOrganizations } from "../knowledge/indexing/repository";
 
 describe("Organization lifecycle through real HTTP and PostgreSQL", () => {
   let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>>, db: RootDatabase;
@@ -219,10 +220,10 @@ describe("Organization lifecycle through real HTTP and PostgreSQL", () => {
     expect(await processLogAnalysisJobById({ db, objectStore, jobId: queued.job.id })).toEqual({ status: "processed" });
   });
   it("allows an admitted knowledge index to finish and keeps queued indexes paused", async () => {
-    const create = async (title: string) => {
-      const entry = await request<{ item: { id: string } }>("/api/v1/knowledge/entries?organizationId=lifecycle-target", "POST", { title, contentForm: "markdown", tags: [], contentMarkdown: "suspendindexuniqueword" });
+    const create = async (title: string, organizationId = "lifecycle-target") => {
+      const entry = await request<{ item: { id: string } }>(`/api/v1/knowledge/entries?organizationId=${organizationId}`, "POST", { title, contentForm: "markdown", tags: [], contentMarkdown: "suspendindexuniqueword" });
       expect(entry.status, entry.bodyText).toBe(201);
-      expect((await request(`/api/v1/knowledge/entries/${entry.body.item.id}/publish?organizationId=lifecycle-target`, "POST", {})).status).toBe(200);
+      expect((await request(`/api/v1/knowledge/entries/${entry.body.item.id}/publish?organizationId=${organizationId}`, "POST", {})).status).toBe(200);
       return entry.body.item.id;
     };
     const running = await create("Running index"), queued = await create("Queued index");
@@ -233,6 +234,8 @@ describe("Organization lifecycle through real HTTP and PostgreSQL", () => {
     expect((await request(path, "PATCH", { status: "suspended", expectedStatus: "active" })).status).toBe(200);
     expect(await processNextKnowledgeIndexJob({ db })).toBe("idle");
     release(); expect(await work).toBe("processed");
+    await create("Active organization index", "lifecycle-home");
+    expect(await enqueueAllPublishedEntriesAcrossOrganizations(db)).toBe(1);
     expect((await db.query("select entry_id::text,status from knowledge_index_status where entry_id=any($1::uuid[]) order by status", [[running, queued]])).rows).toEqual(expect.arrayContaining([{ entry_id: running, status: "succeeded" }, { entry_id: queued, status: "pending" }]));
     const search = await request<{ items: Array<{ entryId: string }> }>("/api/v1/knowledge/search?q=suspendindexuniqueword", "GET", undefined, "lifecycle-member");
     expect(search.body.items.map(item => item.entryId)).toContain(running);
