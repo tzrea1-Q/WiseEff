@@ -77,7 +77,7 @@ export function PlatformOrganizationsPage({ client, authClient }: { client: Plat
             <label>外部身份标识（Subject）<Input value={subject} maxLength={255} onChange={(event) => setSubject(event.target.value)} required /></label>
             <p>创建后，请在身份系统为此账号设置新组织编号，再登录管理。</p>
           </> : <>
-            <label>管理员用户名<Input value={username} minLength={3} maxLength={64} pattern="[a-zA-Z0-9._-]+" autoComplete="off" onChange={(event) => setUsername(event.target.value)} required /></label>
+            <label>管理员用户名<Input value={username} minLength={3} maxLength={64} pattern={"[a-zA-Z0-9._\\-]+"} autoComplete="off" onChange={(event) => setUsername(event.target.value)} required /></label>
             <label>管理员初始密码<Input type="password" value={password} minLength={8} autoComplete="new-password" onChange={(event) => setPassword(event.target.value)} required /></label>
             <p>密码至少 8 个字符，创建后通过可信渠道交给初始管理员。</p>
           </>}
