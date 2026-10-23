@@ -32,6 +32,8 @@ In **Manage invitations**, select Organization roles, Teams, projects and the ed
 
 Open **Project participation** (`/organization/projects`) and choose a project. Use **Add participant** or **Modify** to select a member and editing roles. Clearing the roles and saving removes participation. Disabled accounts stay marked and are never activated by changing participation. Platform administrators can use the target Organization shown on the page; each tab keeps its own target.
 
+Use **Bulk grant project roles** to select a Team, choose concrete members and preview their existing and proposed roles. Grants add roles while preserving existing ones; disabled or unavailable members are marked and skipped. Each person is saved separately, so a failed operation does not undo other successful grants. Review the per-person results and **Recheck unfinished items** before retrying. Later Team membership changes neither inherit nor withdraw these individual grants.
+
 Organization members can view projects. Editing requires participation and an editing role in that project; committer editing roles can edit critical parameters there. Organization and platform administrators manage directly. Review, merge and device duties remain separate and are not granted by editing roles. Existing editing eligibility is migrated once; organization business roles do not grant implicit access to future projects.
 
 ## Group members into teams

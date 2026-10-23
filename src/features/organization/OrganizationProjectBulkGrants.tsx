@@ -80,7 +80,7 @@ export function OrganizationProjectBulkGrants({ client, projectId, projectName, 
       <p className="member-details__hint">从团队选择具体人员，添加角色并保留已有角色。后续团队增减不影响本次个人授权；审核与合入职责另行配置。</p>
       {error && <SectionError message={error} onRetry={() => { if (data) void preview(Boolean(rows)); else setAttempt((value) => value + 1); }} />}
       {!data && !error ? <SectionSkeleton label="正在加载团队与成员" /> : data && !rows ? <div className="member-details__section" inert={pending}>
-        <SelectControl withinModal ariaLabel="选择来源团队" value={teamId} options={data.teams.map((team) => ({ value: team.id, label: team.name }))} onValueChange={(id) => { setTeamId(id); setUserIds(data.teams.find((team) => team.id === id)?.memberIds ?? []); }} />
+        <SelectControl ariaLabel="选择来源团队" value={teamId} options={data.teams.map((team) => ({ value: team.id, label: team.name }))} onValueChange={(id) => { setTeamId(id); setUserIds(data.teams.find((team) => team.id === id)?.memberIds ?? []); }} />
         <MultiSelectDropdown label="选择实际授权成员" value={userIds} options={[...new Set([...(data.teams.find((team) => team.id === teamId)?.memberIds ?? []), ...userIds])].map((id) => {
           const user = data.users.find((item) => item.id === id);
           return { value: id, label: user ? `${user.name} · ${user.username ?? user.id}${user.isActive ? "" : "（已停用）"}` : `${id}（成员不可用）` };
