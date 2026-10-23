@@ -45,8 +45,8 @@ export async function exportLogSkillPackage(db: Database, store: ObjectStore, au
     if (!selected) throw new ApiError("NOT_FOUND", "未找到所选技能版本。");
     const ids = selected.spec.knowledgeEntryIds ?? [];
     const entries = (await tx.query<{ id: string; title: string; tags: string[]; status: "draft" | "published" | "archived";
-      createdByUserId: string | null; sourceType: "human" | "agent"; revisionId: string; revisionNumber: number; body: string | null }>(
-      `select e.id, r.title, r.tags, e.status, e.created_by_user_id as "createdByUserId", e.source_type as "sourceType",
+      createdByUserId: string | null; responsibleUserId: string | null; sourceType: "human" | "agent"; revisionId: string; revisionNumber: number; body: string | null }>(
+      `select e.id, r.title, r.tags, e.status, e.created_by_user_id as "createdByUserId", e.responsible_user_id as "responsibleUserId", e.source_type as "sourceType",
         r.id as "revisionId", r.revision_number as "revisionNumber", coalesce(r.content_markdown, f.extracted_text) as body
        from knowledge_entries e join knowledge_revisions r on r.id=e.head_revision_id and r.organization_id=e.organization_id
        left join knowledge_files f on f.id=r.file_id and f.organization_id=r.organization_id

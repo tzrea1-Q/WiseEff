@@ -65,6 +65,7 @@ export type KnowledgeParameterReferenceDto =
   | KnowledgeLegacySpecReferenceDto;
 
 export type KnowledgeEntryDto = {
+  responsibleUserId?: string | null;
   historicalAttribution?: HistoricalAttribution;
   pendingSuggestionCount?: number;
   origin: KnowledgeOrigin;

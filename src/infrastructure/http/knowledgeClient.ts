@@ -52,6 +52,7 @@ export type KnowledgeFileDto = {
 export type KnowledgeParameterReferenceDto = KnowledgeParameterReference;
 
 export type KnowledgeEntryDto = {
+  responsibleUserId?: string | null;
   historicalAttribution?: KnowledgeEntry["historicalAttribution"];
   pendingSuggestionCount?: number;
   origin: KnowledgeOrigin;
@@ -120,6 +121,7 @@ function entryFromDto(dto: KnowledgeEntryDto): KnowledgeEntry {
     sourceLogDeleted: dto.sourceLogDeleted ?? false,
     sourceReloadRunId: dto.sourceReloadRunId,
     createdByUserId: dto.createdByUserId,
+    responsibleUserId: dto.responsibleUserId,
     headRevisionNumber: dto.headRevisionNumber,
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,

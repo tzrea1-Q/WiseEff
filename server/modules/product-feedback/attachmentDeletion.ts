@@ -3,7 +3,7 @@ import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import type { TrustedInvocationContext } from "../auth/trustedInvocation";
-import type { AuthContext } from "../auth/types";
+import { feedbackOrganizationId, type ProductFeedbackAccessContext as AuthContext } from "./scope";
 import type { ObjectStore } from "../logs/objectStore";
 import { cleanupFeedbackAttachmentUploads, queueFeedbackAttachmentCleanup } from "./attachmentUploads";
 import { getFeedbackById, getFeedbackForUpdate, getMyFeedbackById } from "./repository";
@@ -14,8 +14,8 @@ export async function deleteProductFeedbackAttachment(db: Database, store: Objec
   const administrator = auth.permissions.includes("admin:access");
   const receiptId = await db.transaction(async (tx) => {
     const feedback = await getFeedbackForUpdate(tx, auth, feedbackId);
-    if (!feedback || feedback.submitted_at === null || (!administrator && feedback.submitter_user_id !== auth.user.id)) throw new ApiError("NOT_FOUND", "反馈附件不存在。");
-    const values = [auth.organization.id, feedbackId, attachmentId];
+    if (!feedback || feedback.submitted_at === null || (!administrator && feedback.submitter_user_id !== auth.user.id && feedback.draft_owner_user_id !== auth.user.id)) throw new ApiError("NOT_FOUND", "反馈附件不存在。");
+    const values = [feedbackOrganizationId(auth), feedbackId, attachmentId];
     const live = (await tx.query<{ storage_key: string; uploaded_by_user_id: string | null }>("select storage_key,uploaded_by_user_id from product_feedback_attachments where organization_id=$1 and feedback_id=$2 and id=$3 for update", values)).rows[0];
     const deleted = live ? undefined : (await tx.query<{ cleanup_upload_id: string; uploaded_by_user_id: string | null }>("select cleanup_upload_id,uploaded_by_user_id from product_feedback_attachment_deletions where organization_id=$1 and feedback_id=$2 and id=$3", values)).rows[0];
     const attachment = live ?? deleted;
@@ -23,9 +23,10 @@ export async function deleteProductFeedbackAttachment(db: Database, store: Objec
     // The original feedback submitter proves ownership of legacy screenshots;
     // preserve their unknown uploader/message fields rather than inventing them.
     if (!administrator && attachment.uploaded_by_user_id && attachment.uploaded_by_user_id !== auth.user.id) throw new ApiError("FORBIDDEN", "只能删除自己提交的附件。");
+    if (!administrator && !attachment.uploaded_by_user_id && feedback.submitter_user_id !== auth.user.id) throw new ApiError("FORBIDDEN", "历史上传者不明确的附件须由原提交者或管理员处理。");
     if (deleted) {
       // Only this authorized target receipt may be adopted for an administrator retry.
-      await tx.query("update product_feedback_attachment_uploads set uploaded_by_user_id=$3 where organization_id=$1 and id=$2", [auth.organization.id, deleted.cleanup_upload_id, auth.user.id]);
+      await tx.query("update product_feedback_attachment_uploads set uploaded_by_user_id=$3 where organization_id=$1 and id=$2", [feedbackOrganizationId(auth), deleted.cleanup_upload_id, auth.user.id]);
       return deleted.cleanup_upload_id;
     }
     const cleanupId = randomUUID();

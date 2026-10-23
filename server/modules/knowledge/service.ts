@@ -1169,7 +1169,7 @@ async function listPendingReferenceSuggestions(db: Queryable, auth: AuthContext,
      join knowledge_entries e on e.organization_id = s.organization_id and e.id = s.entry_id
      where s.organization_id = $1 and ($2::uuid is null or s.entry_id = $2) and s.status = 'pending'
        and e.status <> 'archived' and ($3::text[] is null or s.definition_id = any($3::text[]))
-       and ($4::boolean or (e.created_by_user_id = $5 and $6::boolean))
+       and ($4::boolean or (e.responsible_user_id = $5 and $6::boolean))
        and not exists (select 1 from knowledge_definition_references r
          where r.organization_id = s.organization_id and r.entry_id = s.entry_id and r.definition_id = s.definition_id)
      order by s.mention_count desc, s.property_key, s.definition_id`,

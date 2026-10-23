@@ -105,6 +105,7 @@ export type KnowledgeParameterReference = KnowledgeReferenceFields & (
 );
 
 export type KnowledgeEntry = {
+  responsibleUserId?: string | null;
   historicalAttribution?: HistoricalAttribution;
   pendingSuggestionCount?: number;
   origin: KnowledgeOrigin;
