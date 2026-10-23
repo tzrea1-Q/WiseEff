@@ -1,4 +1,4 @@
-export type OrganizationAdminArea = "profile" | "members" | "bridges" | "integrations";
+export type OrganizationAdminArea = "profile" | "members" | "teams" | "bridges" | "integrations";
 
 export const ORGANIZATION_ADMIN_PATH = "/organization";
 export const ORGANIZATION_ADMIN_MEMBERS_PATH = "/organization/members";
@@ -10,6 +10,8 @@ export const ORGANIZATION_ADMIN_UI = {
   scopeNavAria: "组织管理范围",
   profileScope: "组织信息",
   membersScope: "成员与权限",
+  teamsScope: "团队",
+  teamsSubtitle: "管理扁平团队和成员分组",
   bridgesScope: "设备代理",
   integrationsScope: "集成凭据",
   integrationsSubtitle: "管理组织机器凭据与技能绑定",
@@ -31,6 +33,7 @@ export function isOrganizationAdminPath(path: string) {
 }
 
 export function parseOrganizationAdminArea(path: string): OrganizationAdminArea | null {
+  if (path === "/organization/teams" || path.startsWith("/organization/teams/")) return "teams";
   if (path === ORGANIZATION_ADMIN_INTEGRATIONS_PATH || path.startsWith(`${ORGANIZATION_ADMIN_INTEGRATIONS_PATH}/`)) return "integrations";
   if (path === ORGANIZATION_ADMIN_BRIDGES_PATH || path.startsWith(`${ORGANIZATION_ADMIN_BRIDGES_PATH}/`)) return "bridges";
   if (
@@ -48,6 +51,7 @@ export function parseOrganizationAdminArea(path: string): OrganizationAdminArea 
 }
 
 export function buildOrganizationAdminPath(area: OrganizationAdminArea) {
+  if (area === "teams") return "/organization/teams";
   if (area === "integrations") return ORGANIZATION_ADMIN_INTEGRATIONS_PATH;
   if (area === "bridges") return ORGANIZATION_ADMIN_BRIDGES_PATH;
   return area === "members" ? ORGANIZATION_ADMIN_MEMBERS_PATH : ORGANIZATION_ADMIN_PATH;

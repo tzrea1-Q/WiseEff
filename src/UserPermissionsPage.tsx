@@ -30,7 +30,7 @@ import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { formatLastActive, normalizeTimestampInput } from "@/domain/format/formatLastActive";
 import { presentError } from "@/infrastructure/http/presentError";
 import { migrateLegacyRoleId, organizationRoleIds, pickPrimaryPlatformRoleId, platformRoles, type PlatformRoleId } from "@/domain/users/types";
-import type { CreateGovernedUserInput, UpdateOrganizationRolesInput } from "@/infrastructure/http/userGovernanceClient";
+import type { CreateGovernedUserInput, UpdateOrganizationRolesInput, OrganizationTeamsClient, OrganizationTeamDto } from "@/infrastructure/http/userGovernanceClient";
 import type { LocalAuthPublicConfigDto } from "@/infrastructure/http/authClient";
 import type { PrototypeState, User } from "@/domain/prototype/types";
 import type { DataTableSort } from "@/components/admin/DataTable";
@@ -44,6 +44,7 @@ export type UserPermissionsPageProps = {
   onNavigate: (path: string) => void;
   search: string;
   userGovernanceActions?: UserGovernanceActions;
+  teamActions?: OrganizationTeamsClient;
   /** Directory state belongs to this explicit organization, never to the shell identity. */
   directoryScope?: string;
   projectCandidates?: Array<{ id: string; name: string }>;
@@ -213,6 +214,7 @@ export function UserPermissionsPage({
   dispatch,
   search,
   userGovernanceActions,
+  teamActions,
   directoryScope,
   projectCandidates,
   reviewRolesClient,
@@ -234,6 +236,16 @@ export function UserPermissionsPage({
   );
   const [selfDirectoryError, setSelfDirectoryError] = useState("");
   const [directoryReloadToken, setDirectoryReloadToken] = useState(0);
+  const [teams, setTeams] = useState<OrganizationTeamDto[] | null>(null), [teamError, setTeamError] = useState("");
+  useEffect(() => {
+    if (!teamActions) return;
+    let cancelled = false;
+    setTeams(null); setTeamError("");
+    void teamActions.listTeams().then((items) => { if (!cancelled) setTeams(items); })
+      .catch((failure: unknown) => { if (!cancelled) setTeamError(presentError(failure, "团队归属加载失败，请刷新名录。")); });
+    return () => { cancelled = true; };
+  }, [teamActions, directoryReloadToken]);
+  const teamNames = (userId: string) => teams?.filter((team) => team.memberIds.includes(userId)).map((team) => team.name).join("、") || "未加入团队";
   const [authentication, setAuthentication] = useState<{ provider: string; oidcIssuer?: string }>({ provider: userGovernanceActions?.getAuthenticationConfig ? "pending" : "local" });
   useEffect(() => {
     if (!userGovernanceActions || !canPerform(migrateLegacyRoleId(state.activeRoleId), "users.manage")) {
@@ -670,6 +682,7 @@ export function UserPermissionsPage({
       render: (user) => <span title={lastActiveTooltip(user.lastActive)}>{user.lastActive === "never" ? "从未登录" : formatLastActive(user.lastActive)}</span>
     }
   ];
+  if (teamActions) accountColumns.splice(2, 0, { key: "teams", header: "团队", render: (user) => teamError ? "加载失败" : teams ? teamNames(user.id) : "正在加载" });
 
   return (
     <section className="user-permissions-page" aria-label="用户权限">
@@ -710,6 +723,7 @@ export function UserPermissionsPage({
 
       {workspace === "accounts" ? (
         <>
+          {teamError ? <SectionError message={teamError} onRetry={() => setDirectoryReloadToken((value) => value + 1)} /> : null}
           <TabPanel
             className="user-permissions-grid"
             role={approvalWorkflowEnabled ? "tabpanel" : undefined}
@@ -838,6 +852,7 @@ export function UserPermissionsPage({
       ) : null}
 
       {selectedMember ? <MemberDetailsDialog key={selectedMember.id} user={selectedMember} state={state} actions={userGovernanceActions} projects={projects} reviewRolesClient={reviewRolesClient}
+        teamMembership={teamActions ? <section className="member-details__section" aria-label="团队归属"><h3>团队</h3><p>{teamError || (teams ? teamNames(selectedMember.id) : "正在加载团队归属")}</p></section> : undefined}
         oidcIssuer={authentication.provider === "oidc" ? authentication.oidcIssuer : undefined}
         onUpdated={applyUpdatedUser} onClose={() => { setMemberId(null); setDirectoryReloadToken((value) => value + 1); }} roleLabel={roleLabelOf}
         roleEditor={<MemberOrganizationRolesPanel user={selectedMember}
