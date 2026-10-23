@@ -229,7 +229,7 @@ export async function commitCanonicalSourceBatchRevision(
         if (source.manifest.sourcePinId !== target.source_pin_id
           || source.manifest.fileId !== proof.fileId || source.manifest.fileVersionId !== proof.baseVersionId
           || source.manifest.format !== "dts") conflict("DTS batch target lost its exact source pin.");
-        await assertPinnedCanonicalSensitiveNodeWriteAllowed(tx, auth, source.manifest, security);
+        await assertPinnedCanonicalSensitiveNodeWriteAllowed(tx, auth, source.manifest, security, "review");
         pinned.push(source.manifest);
       }
       const changes = await readPinnedDtsSourceBatchChanges(tx, pinned, base.files[sourceIndex]!.content, after);

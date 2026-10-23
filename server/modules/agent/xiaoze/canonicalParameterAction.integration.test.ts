@@ -1281,12 +1281,15 @@ describe.skipIf(!databaseAvailable)(
       );
       const authorizedAgentAuth: AuthContext = {
         ...fixture.editorAuth,
+        projectMemberships: [{ projectId: fixture.projectId, roles: ["software-committer"] }],
         permissions: [
           ...fixture.editorAuth.permissions,
           "parameter:edit-critical",
         ],
       };
       try {
+        await pool.query("update project_members set roles=ARRAY['software-committer'] where organization_id=$1 and project_id=$2 and user_id=$3",
+          [fixture.organizationId,fixture.projectId,fixture.editorAuth.user.id]);
         const before = await canonicalState(root, fixture);
         const pending = await startAction({
           root,
@@ -1321,6 +1324,7 @@ describe.skipIf(!databaseAvailable)(
         const snapshot = await loadPublishedCatalog(pool);
         if (!snapshot)
           throw new Error("Issue 905 published snapshot is unavailable.");
+        expect(fixture.reviewerAuth.projectMemberships).toEqual([]);
         await reviewCanonicalValueChange(
           root,
           fixture.reviewerAuth,
@@ -1342,6 +1346,8 @@ describe.skipIf(!databaseAvailable)(
         expect(reviewed.historyCount).toBe(before.historyCount + 1);
         expect(reviewed.drafts).toHaveLength(0);
       } finally {
+        await pool.query("update project_members set roles=ARRAY['software-user'] where organization_id=$1 and project_id=$2 and user_id=$3",
+          [fixture.organizationId,fixture.projectId,fixture.editorAuth.user.id]);
         await pool.query("delete from dts_sensitive_node_rules where id=$1", [
           ruleId,
         ]);
