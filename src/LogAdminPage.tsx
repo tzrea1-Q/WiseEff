@@ -1,4 +1,5 @@
 import "./log-admin.css";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { ExportSkillPackageDialog } from "@/features/log-skills/SkillPackageDialogs";
 import { LogDeletionPreviewDialog } from "@/features/log-analysis/LogDeletionPreviewDialog";
@@ -127,6 +128,7 @@ function LogDomainGovernanceSection({
   logActions,
   onNavigate,
   skillRepository,
+  organizationId,
   apiMode,
   refreshKey,
   refreshAction
@@ -138,6 +140,7 @@ function LogDomainGovernanceSection({
   onNavigate: (path: string) => void;
   skillRepository?: Partial<SkillAuthoringRepository & SkillWorkspaceRepository>;
   apiMode: boolean;
+  organizationId?: string;
 }) {
   const [domains, setDomains] = useState<LogDomain[] | null>(null);
   const domainsLoading = Boolean(logActions) && domains === null;
@@ -203,7 +206,7 @@ function LogDomainGovernanceSection({
       render: (domain) => (
         <div className="log-admin-skill-name">
           <Button asChild variant="link" className={cn("font-medium", domain.status === "archived" && "opacity-60")}>
-            <a href={`/log-admin/skills/${encodeURIComponent(domain.id)}`}
+            <a href={withOrganizationScope(`/log-admin/skills/${encodeURIComponent(domain.id)}`, organizationId)}
               onClick={(event) => { event.stopPropagation(); if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(event.currentTarget.getAttribute("href")!); } }}>{domain.name}</a>
           </Button>
           {domain.description ? <span className="block truncate text-xs text-muted-foreground" title={domain.description}>{domain.description}</span> : null}
@@ -290,11 +293,12 @@ function LogDomainGovernanceSection({
               setPendingDeletions(current => [...current.filter(receipt => receipt.skillId !== item.skillId), ...(item.objects === "pending" ? [item] : [])]);
             }} /> : null}
           {identityAction && logActions ? <SkillIdentityDialog skill={identityAction.skill} restore={identityAction.restore}
+            organizationId={organizationId}
             onSave={input => logActions.updateLogDomain(input)} onSaved={updated => {
               setDomains(current => current?.map(domain => domain.id === updated.id ? { ...domain, ...updated } : domain) ?? null);
               setIdentityAction(null);
             }} onDismiss={() => setIdentityAction(null)} onNavigate={onNavigate} /> : null}
-          {importOpen && skillRepository ? <ImportSkillPackageDialog repository={skillRepository} onDismiss={() => setImportOpen(false)} onNavigate={onNavigate}
+          {importOpen && skillRepository ? <ImportSkillPackageDialog repository={skillRepository} organizationId={organizationId} onDismiss={() => setImportOpen(false)} onNavigate={onNavigate}
             onImported={() => { void refreshDomains(); }} /> : null}
 
           {exportError ? <p role="alert" className="text-sm text-destructive">{exportError}</p> : null}
@@ -759,7 +763,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
           onViewRecords={(filter) => { resetFilters(); setOverviewFilter(filter); setLogView("active"); setRecordsTimeWindow(timeWindow); selectCollection("records"); }} /> : null}
         <div hidden={collection !== "skills"}>
           <LogDomainGovernanceSection canGovern={canPerform(state.activeRoleId, "logs.admin-domains")} logActions={logActions} refreshKey={skillsRefreshKey} onNavigate={onNavigate}
-            skillRepository={skillRepository} apiMode={apiMode} refreshAction={refreshAction} />
+            skillRepository={skillRepository} organizationId={new URLSearchParams(_search).get("organizationId") ?? undefined} apiMode={apiMode} refreshAction={refreshAction} />
         </div>
         <div hidden={collection !== "quality"}>
           <FeedbackQualityInsightsSection timeWindow={overviewTimeWindow} logActions={logActions} refreshKey={feedbackInsightsRefreshKey} onRowsChange={setQualityRows} onLoadingChange={setQualityLoading} onErrorChange={setQualityUnavailable}

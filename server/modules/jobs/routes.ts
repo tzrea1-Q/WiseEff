@@ -1,5 +1,9 @@
 import { z } from "zod";
 import type { AuthContext } from "../auth/types";
+import { createUserInvocation } from "../auth/trustedInvocation";
+import { resolveOperatingContext } from "../auth/operatingContext";
+import { isIntegrationAuthorization } from "../auth/integrationCredentialResolver";
+import { organizationId, withLogInvocation, type LogAccessContext } from "../logs/principal";
 import { requireLogView } from "../logs/policy";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -34,10 +38,10 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function loadVisibleJob(db: Database, auth: AuthContext, jobId: string) {
+async function loadVisibleJob(db: Database, auth: LogAccessContext, jobId: string) {
   requireLogView(auth);
   const item = await getJobSnapshot(db, jobId);
-  if (!item || item.organizationId !== auth.organization.id) {
+  if (!item || item.organizationId !== organizationId(auth)) {
     throw new ApiError("NOT_FOUND", "Job was not found.", { jobId });
   }
 
@@ -46,7 +50,7 @@ async function loadVisibleJob(db: Database, auth: AuthContext, jobId: string) {
 
 async function* streamJobEvents(
   db: Database,
-  auth: AuthContext,
+  auth: LogAccessContext,
   jobId: string,
   initialSnapshot: LogAnalysisJobSnapshotDto
 ): AsyncIterable<{ event: string; data: LogAnalysisJobSnapshotDto }> {
@@ -65,9 +69,16 @@ export function registerJobRoutes(
   router: WiseEffRouter,
   options: { db?: Database; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
 ) {
+  async function scopedAuth(db: Database, request: RouteRequest) {
+    if (isIntegrationAuthorization(request.headers.authorization)) throw new ApiError("FORBIDDEN", "Job access requires a user account.");
+    const auth = await options.getCurrentAuthContext(request);
+    const target = parseWithSchema(z.string().trim().min(1).max(200).optional(), request.query.organizationId);
+    const invocation = createUserInvocation(auth);
+    return withLogInvocation(auth, target === undefined ? invocation : await resolveOperatingContext(db, invocation, target));
+  }
   router.get("/api/v1/jobs/:jobId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(db, request);
     const params = parseWithSchema(paramsWithJobIdSchema, request.params);
     const item = await loadVisibleJob(db, auth, params.jobId);
 
@@ -76,7 +87,7 @@ export function registerJobRoutes(
 
   router.get("/api/v1/jobs/:jobId/events", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(db, request);
     const params = parseWithSchema(paramsWithJobIdSchema, request.params);
     const initialSnapshot = await loadVisibleJob(db, auth, params.jobId);
 

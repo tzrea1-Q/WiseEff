@@ -4,6 +4,10 @@
 
 从第一份样例开始，用 WiseEff 表单发布分析技能，再用复制的请求上传日志包并收到签名结果回调。
 
+用户请求可通过查询参数 `organizationId`，把现有日志、技能、文件、任务及 SSE 接口绑定到明确的操作组织。服务端负责授权：普通用户仍只能操作所属组织，当前有效的平台管理员可保留真实身份管理其他组织；省略参数时使用所属组织。审计分别记录操作者与目标，上传文件、已排队分析和结果 Webhook outbox 固化当时的组织，不随之后的页面跳转变化。
+
+机器集成凭据始终使用自身组织。指定其他 `organizationId` 会返回 `403`，不会获得人类管理员的跨组织权限。前端日志客户端同时固定 HTTP 与 SSE 的目标，视图替换后清理订阅并忽略迟到事件。
+
 ## 1. 从模板通过表单构建技能
 
 需要 WiseEff 地址和组织内的「管理分析技能」权限（`logs:admin-domains`）。请管理员授权；无需仓库、YAML 编辑或 SDK。编写技能使用 API 模式，演示模式仅供查看。
@@ -207,7 +211,7 @@ curl --fail-with-body --get "$WISEEFF_API/api/v1/logs/$LOG_ID/lines" \
   "confidence": 0.82,
   "conclusionSummary": "充电表现符合过热保护降额特征。",
   "occurredAt": "2026-08-13T02:00:00.000Z",
-  "productPath": "/logs?id=report-run-..."
+  "productPath": "/logs?id=report-run-...&organizationId=org-..."
 }
 ```
 

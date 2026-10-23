@@ -370,7 +370,7 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
       recordId: logId,
       logDomainId: domainId,
       status: "complete",
-      productPath: "/logs?id=report-run-int-1"
+      productPath: "/logs?id=report-run-int-1&organizationId=org-log-webhooks"
     });
     expect(payload).not.toHaveProperty("rawLines");
 

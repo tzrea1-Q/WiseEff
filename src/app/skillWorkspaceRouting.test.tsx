@@ -8,13 +8,13 @@ import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { AppRuntime } from "./appRuntime";
 
 afterEach(cleanup);
-function renderWorkspace(permissions: string[], missing = false) {
+function renderWorkspace(permissions: string[], missing = false, search = "?section=overview") {
   const skill = mockSkillWorkspace("skill-charging")!;
   const getLogSkill = vi.fn(async () => {
     if (missing) throw new WiseEffApiError("NOT_FOUND", "missing", {}, "req");
     return skill;
   });
-  render(<PageRouter page={getPageByPath("/log-admin/skills/skill-charging")} search="?section=overview"
+  render(<PageRouter page={getPageByPath("/log-admin/skills/skill-charging")} search={search}
     state={{ ...createPrototypeState(), activeRoleId: "hardware-user" }} dispatch={vi.fn()}
     runtime={{ logAnalysisRepository: { getLogSkill, listSkillRevisions: async () => [skill.currentRevision] } } as unknown as AppRuntime}
     runtimeMode="api" sessionPermissions={permissions} onNavigate={vi.fn()} onFeedback={vi.fn()} DebuggingAdminPage={() => null} />);
@@ -38,4 +38,8 @@ it("keeps the page gate for users without logs view access", () => {
 it("shows the standard missing state for unknown or foreign organization ids", async () => {
   renderWorkspace(["logs:view"], true);
   expect(await screen.findByText("未找到分析技能")).toBeVisible();
+});
+it("keeps the target organization in native skill links", async () => {
+  renderWorkspace(["logs:view"], false, "?section=overview&organizationId=target-org");
+  expect(await screen.findByRole("link", { name: "← 分析技能" })).toHaveAttribute("href", "/log-admin?tab=skills&organizationId=target-org");
 });

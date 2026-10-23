@@ -13,6 +13,7 @@ import { isIntegrationAuthorization } from "../auth/integrationCredentialResolve
 import { issueLogIntegrationCredentialBodySchema, issueIntegrationCredential, listIntegrationCredentials, revokeIntegrationCredential, rotateIntegrationCredential } from "./integrationCredentials";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { resolveOperatingContext } from "../auth/operatingContext";
+import { withLogInvocation, type LogAccessContext } from "./principal";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -128,6 +129,15 @@ async function getAuth(getCurrentAuthContext: (request: RouteRequest) => Promise
   return getCurrentAuthContext(request);
 }
 
+async function getScopedAuth(getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext, request: RouteRequest, db?: Database): Promise<LogAccessContext> {
+  const auth = await getAuth(getCurrentAuthContext, request);
+  requireLocalOrganization(auth);
+  if (!auth.user.isActive) throw new ApiError("FORBIDDEN", "无权访问此组织的日志。");
+  const target = parseWithSchema(z.string().trim().min(1).max(200).optional(), request.query.organizationId);
+  const invocation = createUserInvocation(auth);
+  return withLogInvocation(auth, target === undefined ? invocation : await resolveOperatingContext(requireDb(db), invocation, target));
+}
+
 /** Route wiring for the P3b result-webhook governance endpoints. */
 export type LogWebhookRouteContext = {
   deliverer?: Pick<LogWebhookDeliverer, "sendTestDelivery">;
@@ -157,61 +167,61 @@ export function registerLogRoutes(
   }
 ) {
   router.get("/api/v1/logs/:logId/analysis-case-prefill", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     return { status: 200, body: await getAnalysisCasePrefill(requireDb(options.db), auth, request.params.logId) };
   });
   router.get("/api/v1/log-skills/:skillId/analysis-cases", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     return { status: 200, body: await listAnalysisCases(requireDb(options.db), auth, request.params.skillId) };
   });
   router.post("/api/v1/log-skills/:skillId/analysis-cases", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     requireLocalOrganization(auth); requireLogAdminDomains(auth);
     const body = parseWithSchema(z.object({ name: z.string().trim().min(1).max(200), expectations: z.unknown(), sourceRecordId: z.string().min(1).optional(),
       files: z.array(z.object({ fileName: z.string().min(1).max(1024), contentBase64: z.string().min(1).max(14 * 1024 * 1024).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/) })).min(1).max(100).optional() }).strict(), request.body);
     const item = await createAnalysisCase(requireDb(options.db), requireObjectStore(options.objectStore), auth, request.params.skillId,
-      { ...body, expectations: body.expectations, files: body.files?.map((file) => ({ fileName: file.fileName, bytes: Buffer.from(file.contentBase64, "base64") })) }, createUserInvocation(auth), { requestId: request.requestId });
+      { ...body, expectations: body.expectations, files: body.files?.map((file) => ({ fileName: file.fileName, bytes: Buffer.from(file.contentBase64, "base64") })) }, auth.logInvocation!, { requestId: request.requestId });
     return { status: 201, body: { item } };
   });
   router.patch("/api/v1/log-skills/:skillId/analysis-cases/:caseId", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const body = parseWithSchema(z.object({ name: z.string().trim().min(1).max(200), expectations: z.unknown() }).strict(), request.body);
-    const item = await updateAnalysisCase(requireDb(options.db), requireObjectStore(options.objectStore), auth, request.params.skillId, request.params.caseId, { ...body, expectations: body.expectations }, createUserInvocation(auth), { requestId: request.requestId });
+    const item = await updateAnalysisCase(requireDb(options.db), requireObjectStore(options.objectStore), auth, request.params.skillId, request.params.caseId, { ...body, expectations: body.expectations }, auth.logInvocation!, { requestId: request.requestId });
     return { status: 200, body: { item } };
   });
   router.delete("/api/v1/log-skills/:skillId/analysis-cases/:caseId", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
-    return { status: 200, body: await deleteAnalysisCase(requireDb(options.db), auth, request.params.skillId, request.params.caseId, createUserInvocation(auth), { requestId: request.requestId }) };
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
+    return { status: 200, body: await deleteAnalysisCase(requireDb(options.db), auth, request.params.skillId, request.params.caseId, auth.logInvocation!, { requestId: request.requestId }) };
   });
   router.post("/api/v1/log-skills/:skillId/analysis-case-runs", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     requireLocalOrganization(auth); requireLogAdminDomains(auth);
     if (!options.analyzer) throw new ApiError("INTERNAL_ERROR", "运行分析用例需要已配置的日志分析器。");
     const body = parseWithSchema(z.object({ caseIds: z.array(z.string().min(1)).min(1).max(20).optional() }).strict(), request.body ?? {});
-    return { status: 202, body: await startAnalysisCaseRun(requireDb(options.db), requireObjectStore(options.objectStore), options.analyzer, auth, request.params.skillId, body.caseIds, createUserInvocation(auth), { requestId: request.requestId }) };
+    return { status: 202, body: await startAnalysisCaseRun(requireDb(options.db), requireObjectStore(options.objectStore), options.analyzer, auth, request.params.skillId, body.caseIds, auth.logInvocation!, { requestId: request.requestId }) };
   });
   router.get("/api/v1/log-skills/:skillId/analysis-case-runs/:runId", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     return { status: 200, body: await getAnalysisCaseRun(requireDb(options.db), auth, request.params.skillId, request.params.runId) };
   });
   router.get("/api/v1/log-skills/:skillId/analysis-case-runs/:runId/cases/:caseId/trace", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const query = parseWithSchema(z.object({ revision: z.enum(["draft", "published"]).default("draft") }), request.query);
     return { status: 200, body: await getAnalysisCaseTrace(requireDb(options.db), auth, request.params.skillId, request.params.runId, request.params.caseId, query.revision ?? "draft") };
   });
   router.post("/api/v1/log-skills/:skillId/analysis-cases/import", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     requireLocalOrganization(auth); requireLogAdminDomains(auth);
     const multipart = (request.body as Partial<MultipartBody>)?.kind === "multipart" ? request.body as MultipartBody : undefined;
     if (!multipart || multipart.files.length !== 1) throw new ApiError("VALIDATION_FAILED", "请选择一个用例 ZIP 压缩包。");
-    return { status: 201, body: await importSkillAnalysisCases(requireDb(options.db), requireObjectStore(options.objectStore), auth, request.params.skillId, multipart.files[0].bytes, createUserInvocation(auth), { requestId: request.requestId }) };
+    return { status: 201, body: await importSkillAnalysisCases(requireDb(options.db), requireObjectStore(options.objectStore), auth, request.params.skillId, multipart.files[0].bytes, auth.logInvocation!, { requestId: request.requestId }) };
   });
   router.get("/api/v1/log-skills/:skillId/analysis-cases/export", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     return { status: 200, bytes: await exportSkillAnalysisCases(requireDb(options.db), requireObjectStore(options.objectStore), auth, request.params.skillId), contentType: "application/zip", fileName: "analysis-cases.zip" };
   });
   router.post("/api/v1/log-skills/recommend", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     requireLocalOrganization(auth);
     const body = parseWithSchema(logSkillRecommendationRequestSchema, request.body);
     return { status: 200, body: await recommendOrganizationLogSkills(requireDb(options.db), auth, body.files) };
@@ -219,9 +229,12 @@ export function registerLogRoutes(
   const getLogPrincipal = async (request: RouteRequest): Promise<AuthContext | IntegrationPrincipal> => {
     if (isIntegrationAuthorization(request.headers.authorization)) {
       if (!options.getIntegrationPrincipal) throw new ApiError("UNAUTHENTICATED", "尚未配置集成凭据解析服务。");
-      return options.getIntegrationPrincipal(request);
+      const principal = await options.getIntegrationPrincipal(request);
+      const target = parseWithSchema(z.string().trim().min(1).max(200).optional(), request.query.organizationId);
+      if (target !== undefined && target !== principal.organizationId) throw new ApiError("FORBIDDEN", "集成凭据只能访问自身组织的日志。");
+      return principal;
     }
-    return getAuth(options.getCurrentAuthContext, request);
+    return getScopedAuth(options.getCurrentAuthContext, request, options.db);
   };
   router.get("/api/v1/log-integration-credentials", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
@@ -245,15 +258,15 @@ export function registerLogRoutes(
     return { status: 200, body: await revokeIntegrationCredential(requireDb(options.db), auth, request.params.credentialId, invocation, { requestId: request.requestId }, invocation.operatingOrganization?.id ?? auth.organization.id) };
   });
   router.get("/api/v1/log-skills/:skillId/source-versions", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     return { status: 200, body: await listLogSkillSourceVersions(requireDb(options.db), auth, request.params.skillId) };
   });
   router.get("/api/v1/logs/:logId/trace", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     return { status: 200, body: await getLogTrace(requireDb(options.db), auth, request.params.logId) };
   });
   router.post("/api/v1/log-skills/:skillId/dry-runs", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     // Authorization happens before reporting analyzer availability.
     requireLocalOrganization(auth);
     requireLogAdminDomains(auth);
@@ -261,30 +274,30 @@ export function registerLogRoutes(
     return { status: 202, body: await startSkillDryRun(requireDb(options.db), requireObjectStore(options.objectStore), options.analyzer, auth, request.params.skillId) };
   });
   router.get("/api/v1/log-skills/:skillId/dry-runs/:runId", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     return { status: 200, body: await getSkillDryRun(requireDb(options.db), auth, request.params.skillId, request.params.runId) };
   });
   router.get("/api/v1/log-skills/:skillId/dry-runs/:runId/lines", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const item = await getSkillDryRunLines(requireDb(options.db), requireObjectStore(options.objectStore), auth,
       request.params.skillId, request.params.runId, parseWithSchema(logLineRangeQuerySchema, request.query));
     return { status: 200, body: { item } };
   });
   router.post("/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/locate", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const body = parseWithSchema(z.object({ line: z.string().trim().min(1).max(4000) }).strict(), request.body);
     return { status: 200, body: await trySourceStatement(requireDb(options.db), auth, request.params.skillId, request.params.snapshotId, body.line) };
   });
   router.get("/api/v1/logs/:logId/evidence/:evidenceId/source", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     return { status: 200, body: { item: await getSourceEvidence(requireDb(options.db), auth, request.params.logId, request.params.evidenceId) } };
   });
   router.get("/api/v1/log-skills/:skillId/source-snapshots", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     return { status: 200, body: await listSourceSnapshots(requireDb(options.db), auth, request.params.skillId) };
   });
   router.post("/api/v1/log-skills/:skillId/source-snapshots", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const multipart = (request.body as Partial<MultipartBody>)?.kind === "multipart" ? request.body as MultipartBody : undefined;
     const files = multipart?.files.filter((file) => file.fieldName === "file");
     if (!multipart || files?.length !== 1) throw new ApiError("VALIDATION_FAILED", "请选择一个源码压缩包。");
@@ -294,34 +307,34 @@ export function registerLogRoutes(
     const item = await uploadSourceSnapshot(requireDb(options.db), requireObjectStore(options.objectStore), auth,
       request.params.skillId, { versionLabel: body.versionLabel, fileName: body.fileName,
         bytes: files[0].bytes },
-      createUserInvocation(auth), { requestId: request.requestId });
+      auth.logInvocation!, { requestId: request.requestId });
     return { status: 201, body: { item } };
   });
   router.post("/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/default", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const db = requireDb(options.db);
     await setDefaultSourceSnapshot(db, auth, request.params.skillId, request.params.snapshotId,
-      createUserInvocation(auth), { requestId: request.requestId });
+      auth.logInvocation!, { requestId: request.requestId });
     return { status: 200, body: { item: await getLogSkill(db, auth, request.params.skillId, options.skillBudgetCaps) } };
   });
   router.post("/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/archive", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const item = await archiveSourceSnapshot(requireDb(options.db), auth, request.params.skillId, request.params.snapshotId,
-      createUserInvocation(auth), { requestId: request.requestId });
+      auth.logInvocation!, { requestId: request.requestId });
     return { status: 200, body: { item } };
   });
   router.post("/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/retry", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     parseWithSchema(z.object({}).strict(), request.body ?? {});
     const item = await retrySourceSnapshot(requireDb(options.db), auth, request.params.skillId, request.params.snapshotId,
-      createUserInvocation(auth), { requestId: request.requestId });
+      auth.logInvocation!, { requestId: request.requestId });
     return { status: 202, body: { item } };
   });
   router.post("/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/restore", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     parseWithSchema(z.object({}).strict(), request.body ?? {});
     const item = await restoreSourceSnapshot(requireDb(options.db), requireObjectStore(options.objectStore), auth, request.params.skillId, request.params.snapshotId,
-      createUserInvocation(auth), { requestId: request.requestId });
+      auth.logInvocation!, { requestId: request.requestId });
     return { status: 202, body: { item } };
   });
   router.post("/api/v1/log-files", async (request) => {
@@ -390,7 +403,7 @@ export function registerLogRoutes(
 
   router.get("/api/v1/logs", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const query = parseWithSchema(listLogsQuerySchema, request.query);
     const result = await listLogRecords(db, auth, {
       ...query,
@@ -403,7 +416,7 @@ export function registerLogRoutes(
   // Static path resolved before /api/v1/logs/:logId by the router's static-count precedence.
   router.get("/api/v1/logs/feedback-insights", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const query = parseWithSchema(feedbackInsightsQuerySchema, request.query);
     const result = await listLogFeedbackInsights(db, auth, query);
 
@@ -422,7 +435,7 @@ export function registerLogRoutes(
 
   router.get("/api/v1/logs/:logId/runs", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithLogIdSchema, request.params);
     const items = await listLogRuns(db, auth, params.logId);
 
@@ -430,24 +443,24 @@ export function registerLogRoutes(
   });
 
   router.get("/api/v1/logs/:logId/deletion-preview", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { logId } = parseWithSchema(paramsWithLogIdSchema, request.params);
     return { status: 200, body: { item: await previewLogDeletion(requireDb(options.db), auth, logId) } };
   });
   router.get("/api/v1/logs/deletions", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     return { status: 200, body: { items: await pendingLogDeletions(requireDb(options.db), auth) } };
   });
   router.get("/api/v1/logs/:logId/deletion-status", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { logId } = parseWithSchema(paramsWithLogIdSchema, request.params);
     return { status: 200, body: { item: await logDeletionStatus(requireDb(options.db), auth, logId) } };
   });
   router.delete("/api/v1/logs/:logId", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { logId } = parseWithSchema(paramsWithLogIdSchema, request.params);
     const { version } = parseWithSchema(z.object({ version: z.string().regex(/^[a-f0-9]{64}$/) }).strict(), request.body);
-    return { status: 200, body: { item: await purgeLog(requireDb(options.db), createUserInvocation(auth), logId, version, request.requestId, options.objectStore) } };
+    return { status: 200, body: { item: await purgeLog(requireDb(options.db), auth.logInvocation!, logId, version, request.requestId, options.objectStore) } };
   });
 
   router.get("/api/v1/logs/:logId/lines", async (request) => {
@@ -462,7 +475,7 @@ export function registerLogRoutes(
 
   router.post("/api/v1/logs/:logId/rerun", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithLogIdSchema, request.params);
     const body = parseWithSchema(rerunLogBodySchema, request.body ?? {});
     const result = await rerunLogAnalysis(db, auth, {
@@ -477,7 +490,7 @@ export function registerLogRoutes(
 
   router.post("/api/v1/logs/:logId/archive", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithLogIdSchema, request.params);
     const item = await archiveLogRecord(db, auth, params.logId, { requestId: request.requestId });
 
@@ -486,7 +499,7 @@ export function registerLogRoutes(
 
   router.post("/api/v1/logs/:logId/unarchive", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithLogIdSchema, request.params);
     const item = await unarchiveLogRecord(db, auth, params.logId, { requestId: request.requestId });
 
@@ -495,7 +508,7 @@ export function registerLogRoutes(
 
   router.post("/api/v1/logs/:logId/feedback", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithLogIdSchema, request.params);
     const body = parseWithSchema(logFeedbackBodySchema, request.body);
 
@@ -509,144 +522,144 @@ export function registerLogRoutes(
   });
 
   router.get("/api/v1/log-skills", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const query = parseWithSchema(listLogDomainsQuerySchema, request.query);
     return { status: 200, body: await listLogSkills(requireDb(options.db), auth, typeof query.includeArchived === "boolean" ? query.includeArchived : undefined) };
   });
   router.get("/api/v1/log-skill-templates", async (request) => ({
-    status: 200, body: listLogSkillTemplates(await getAuth(options.getCurrentAuthContext, request))
+    status: 200, body: listLogSkillTemplates(await getScopedAuth(options.getCurrentAuthContext, request, options.db))
   }));
   router.post("/api/v1/log-skills", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const body = parseWithSchema(createLogSkillBodySchema, request.body);
-    return { status: 201, body: { item: await createLogSkill(requireDb(options.db), auth, body, createUserInvocation(auth), { requestId: request.requestId }, options.skillBudgetCaps) } };
+    return { status: 201, body: { item: await createLogSkill(requireDb(options.db), auth, body, auth.logInvocation!, { requestId: request.requestId }, options.skillBudgetCaps) } };
   });
   router.post("/api/v1/log-skills/import", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     requireLocalOrganization(auth); requireLogAdminDomains(auth);
     const multipart = (request.body as Partial<MultipartBody>)?.kind === "multipart" ? request.body as MultipartBody : undefined;
     if (!multipart || multipart.files.length !== 1 || multipart.files[0].fieldName !== "file") throw new ApiError("VALIDATION_FAILED", "请选择一个技能包 ZIP 文件。");
     const fields = parseWithSchema(z.object({ status: z.enum(["draft", "published"]).default("draft"), name: z.string().optional() }).strict(), multipart.fields);
     return { status: 201, body: { item: await importLogSkillPackage(requireDb(options.db), requireObjectStore(options.objectStore), auth,
-      multipart.files[0].bytes, fields.status, createUserInvocation(auth), { requestId: request.requestId }, options.skillBudgetCaps, fields.name) } };
+      multipart.files[0].bytes, fields.status, auth.logInvocation!, { requestId: request.requestId }, options.skillBudgetCaps, fields.name) } };
   });
   router.get("/api/v1/log-skills/:skillId/package", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
-    const query = parseWithSchema(z.object({ revision: z.enum(["published", "draft"]).default("published") }).strict(), request.query);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
+    const query = parseWithSchema(z.object({ revision: z.enum(["published", "draft"]).default("published"), organizationId: z.string().optional() }).strict(), request.query);
     return { status: 200, bytes: await exportLogSkillPackage(requireDb(options.db), requireObjectStore(options.objectStore), auth,
       request.params.skillId, query.revision), contentType: "application/zip", fileName: "skill-package.zip" };
   });
   const skillParams = z.object({ skillId: z.string().min(1) });
   router.get("/api/v1/log-skills/deletions", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     return { status: 200, body: { items: await listSkillDeletions(requireDb(options.db), auth) } };
   });
   router.get("/api/v1/log-skills/:skillId/deletion-preview", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId } = parseWithSchema(skillParams, request.params);
     return { status: 200, body: { item: await previewSkillDeletion(requireDb(options.db), auth, skillId) } };
   });
   router.get("/api/v1/log-skills/:skillId/deletion-status", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId } = parseWithSchema(skillParams, request.params);
     return { status: 200, body: { item: await getSkillDeletionStatus(requireDb(options.db), auth, skillId) } };
   });
   router.post("/api/v1/log-skills/:skillId/purge", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId } = parseWithSchema(skillParams, request.params);
     const { version } = parseWithSchema(skillDeletionRequestSchema, request.body);
-    return { status: 200, body: { item: await purgeSkill(requireDb(options.db), createUserInvocation(auth), skillId, version, request.requestId, options.objectStore) } };
+    return { status: 200, body: { item: await purgeSkill(requireDb(options.db), auth.logInvocation!, skillId, version, request.requestId, options.objectStore) } };
   });
   router.get("/api/v1/log-skills/:skillId/sample", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId } = parseWithSchema(skillParams, request.params);
     return { status: 200, body: { item: await getLogSkillSample(requireDb(options.db), requireObjectStore(options.objectStore), auth, skillId) } };
   });
   router.put("/api/v1/log-skills/:skillId/sample", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId } = parseWithSchema(skillParams, request.params);
     const body = parseWithSchema(replaceLogSkillSampleBodySchema, request.body, "请选择一个不超过 2 MiB 的文本样例或压缩包。");
     return { status: 200, body: { item: await replaceLogSkillSample(requireDb(options.db), requireObjectStore(options.objectStore), auth, skillId, body,
-      createUserInvocation(auth), { requestId: request.requestId }) } };
+      auth.logInvocation!, { requestId: request.requestId }) } };
   });
   router.delete("/api/v1/log-skills/:skillId/sample", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId } = parseWithSchema(skillParams, request.params);
-    await deleteLogSkillSample(requireDb(options.db), auth, skillId, createUserInvocation(auth), { requestId: request.requestId });
+    await deleteLogSkillSample(requireDb(options.db), auth, skillId, auth.logInvocation!, { requestId: request.requestId });
     return { status: 204, body: undefined };
   });
   router.post("/api/v1/log-skills/:skillId/parse-preview", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId } = parseWithSchema(skillParams, request.params);
     const body = parseWithSchema(parsePreviewRequestSchema, request.body);
     return { status: 200, body: await previewLogSkillParsing(requireDb(options.db), auth, skillId, body) };
   });
   router.post("/api/v1/log-skills/:skillId/files/preview", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId } = parseWithSchema(skillParams, request.params);
     const body = parseWithSchema(skillFilePreviewRequestSchema, request.body);
     return { status: 200, body: await previewLogSkillFiles(requireDb(options.db), requireObjectStore(options.objectStore), auth, skillId, body) };
   });
   router.post("/api/v1/log-skills/:skillId/parse-tests", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId } = parseWithSchema(skillParams, request.params);
     const body = parseWithSchema(z.object({ spec: z.unknown().refine((value) => value !== undefined, "请提供技能配置") }).strict(), request.body);
     return { status: 200, body: await runLogSkillParseTests(requireDb(options.db), auth, skillId, body.spec) };
   });
   router.post("/api/v1/log-skills/:skillId/signals-preview", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId } = parseWithSchema(skillParams, request.params);
     const body = parseWithSchema(signalPreviewRequestSchema, request.body);
     return { status: 200, body: await previewLogSkillSignals(requireDb(options.db), requireObjectStore(options.objectStore), auth, skillId, body) };
   });
   router.post("/api/v1/log-skills/:skillId/extractor-preview", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId } = parseWithSchema(skillParams, request.params);
     const body = parseWithSchema(extractorPreviewRequestSchema, request.body);
     return { status: 200, body: await previewLogSkillExtractor(requireDb(options.db), auth, skillId, body) };
   });
   router.post("/api/v1/log-skills/:skillId/format-preview", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId } = parseWithSchema(skillParams, request.params);
     const body = parseWithSchema(formatPreviewRequestSchema, request.body);
     return { status: 200, body: await previewLogSkillFormat(requireDb(options.db), auth, skillId, body) };
   });
   router.get("/api/v1/log-skills/:skillId", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId } = parseWithSchema(skillParams, request.params);
     return { status: 200, body: { item: await getLogSkill(requireDb(options.db), auth, skillId, options.skillBudgetCaps) } };
   });
   router.put("/api/v1/log-skills/:skillId/draft", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId } = parseWithSchema(skillParams, request.params);
     const { spec, baseDraftRevisionId, basePublishedRevisionId } = parseWithSchema(z.object({ spec: logSkillSpecSchema, baseDraftRevisionId: z.string().min(1).nullable(), basePublishedRevisionId: z.string().min(1) }).strict(), request.body);
-    return { status: 200, body: { item: await saveLogSkillDraft(requireDb(options.db), auth, skillId, spec, baseDraftRevisionId, basePublishedRevisionId, createUserInvocation(auth), { requestId: request.requestId }, options.skillBudgetCaps) } };
+    return { status: 200, body: { item: await saveLogSkillDraft(requireDb(options.db), auth, skillId, spec, baseDraftRevisionId, basePublishedRevisionId, auth.logInvocation!, { requestId: request.requestId }, options.skillBudgetCaps) } };
   });
   router.delete("/api/v1/log-skills/:skillId/draft", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId } = parseWithSchema(skillParams, request.params);
-    const { draftRevisionId } = parseWithSchema(z.object({ draftRevisionId: z.string().min(1) }).strict(), request.query);
-    await discardLogSkillDraft(requireDb(options.db), auth, skillId, draftRevisionId, createUserInvocation(auth), { requestId: request.requestId });
+    const { draftRevisionId } = parseWithSchema(z.object({ draftRevisionId: z.string().min(1), organizationId: z.string().optional() }).strict(), request.query);
+    await discardLogSkillDraft(requireDb(options.db), auth, skillId, draftRevisionId, auth.logInvocation!, { requestId: request.requestId });
     return { status: 204, body: null };
   });
   router.post("/api/v1/log-skills/:skillId/revisions/:revisionId/restore", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId, revisionId } = parseWithSchema(skillParams.extend({ revisionId: z.string().min(1) }), request.params);
-    return { status: 200, body: { item: await restoreLogSkillRevision(requireDb(options.db), auth, skillId, revisionId, createUserInvocation(auth), { requestId: request.requestId }, options.skillBudgetCaps) } };
+    return { status: 200, body: { item: await restoreLogSkillRevision(requireDb(options.db), auth, skillId, revisionId, auth.logInvocation!, { requestId: request.requestId }, options.skillBudgetCaps) } };
   });
   router.post("/api/v1/log-skills/:skillId/publish", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId } = parseWithSchema(skillParams, request.params);
     const { draftRevisionId } = parseWithSchema(z.object({ draftRevisionId: z.string().min(1) }).strict(), request.body);
-    return { status: 200, body: { item: await publishLogSkill(requireDb(options.db), auth, skillId, draftRevisionId, createUserInvocation(auth), { requestId: request.requestId }, options.skillBudgetCaps) } };
+    return { status: 200, body: { item: await publishLogSkill(requireDb(options.db), auth, skillId, draftRevisionId, auth.logInvocation!, { requestId: request.requestId }, options.skillBudgetCaps) } };
   });
   router.get("/api/v1/log-skills/:skillId/revisions", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId } = parseWithSchema(skillParams, request.params);
     return { status: 200, body: { items: await readLogSkillRevisions(requireDb(options.db), auth, skillId) } };
   });
   router.get("/api/v1/log-skills/:skillId/revisions/:revisionId", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const { skillId, revisionId } = parseWithSchema(skillParams.extend({ revisionId: z.string().min(1) }), request.params);
     const item = (await readLogSkillRevisions(requireDb(options.db), auth, skillId)).find((r) => r.id === revisionId);
     if (!item) throw new ApiError("NOT_FOUND", "未找到技能版本。");
@@ -655,7 +668,7 @@ export function registerLogRoutes(
 
   router.get("/api/v1/log-domains", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const query = parseWithSchema(listLogDomainsQuerySchema, request.query);
     const result = await listLogDomainRecords(db, auth, {
       includeArchived: typeof query.includeArchived === "boolean" ? query.includeArchived : undefined
@@ -666,7 +679,7 @@ export function registerLogRoutes(
 
   router.post("/api/v1/log-domains", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const body = parseWithSchema(createLogDomainBodySchema, request.body);
     const item = await createLogDomainRecord(db, auth, body, { requestId: request.requestId });
 
@@ -675,7 +688,7 @@ export function registerLogRoutes(
 
   router.patch("/api/v1/log-domains/:domainId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithDomainIdSchema, request.params);
     const body = parseWithSchema(updateLogDomainBodySchema, request.body ?? {});
     const item = await updateLogDomainRecord(db, auth, {
@@ -693,7 +706,7 @@ export function registerLogRoutes(
 
   router.put("/api/v1/log-domains/:domainId/webhook", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithDomainIdSchema, request.params);
     const body = parseWithSchema(setLogDomainWebhookBodySchema, request.body);
     const item = await setLogDomainWebhookRecord(
@@ -709,7 +722,7 @@ export function registerLogRoutes(
 
   router.get("/api/v1/log-domains/:domainId/webhook-deliveries", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithDomainIdSchema, request.params);
     const query = parseWithSchema(webhookDeliveriesQuerySchema, request.query);
     const result = await listLogDomainWebhookDeliveryRecords(db, auth, { domainId: params.domainId, limit: query.limit });
@@ -719,7 +732,7 @@ export function registerLogRoutes(
 
   router.post("/api/v1/log-domains/:domainId/webhook-test", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithDomainIdSchema, request.params);
     const deliverer = requireWebhookDeliverer(options.webhooks);
     const outcome = await sendLogDomainWebhookTestDelivery(db, auth, params.domainId, deliverer, {
@@ -731,7 +744,7 @@ export function registerLogRoutes(
 
   router.post("/api/v1/log-domains/:domainId/archive", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithDomainIdSchema, request.params);
     const item = await archiveLogDomainRecord(db, auth, params.domainId, { requestId: request.requestId });
 
@@ -740,7 +753,7 @@ export function registerLogRoutes(
 
   router.get("/api/v1/log-domains/:domainId/knowledge-links", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithDomainIdSchema, request.params);
     const result = await listLogDomainKnowledgeLinkRecords(db, auth, params.domainId);
 
@@ -749,7 +762,7 @@ export function registerLogRoutes(
 
   router.put("/api/v1/log-domains/:domainId/knowledge-links", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithDomainIdSchema, request.params);
     const body = parseWithSchema(setLogDomainKnowledgeLinksBodySchema, request.body);
     const result = await setLogDomainKnowledgeLinkRecords(

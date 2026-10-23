@@ -1,11 +1,11 @@
+import { organizationId as logOrganizationId, assertLogInvocation, type LogAccessContext } from "./principal";
 import { logValidationIssues } from "./validationMessages";
 import { randomUUID } from "node:crypto";
 import { runInNewContext } from "node:vm";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { withAuditedWrite, type AuditedWriteContext, type AuditSpec } from "../audit/auditedWrite";
-import type { AuthContext } from "../auth/types";
-import { assertTrustedInvocationMatchesAuth, type TrustedInvocationContext } from "../auth/trustedInvocation";
+import { type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { findLogDomainByName, getLogDomainById, insertLogDomain, listLogDomains, updateLogDomainRow } from "./domainsRepository";
 import { requireLogAdminDomains, requireLogUpload, requireLogView } from "./policy";
 import { aggregateFeedbackInsights, relatedParameterVisibilityValues } from "./repository";
@@ -26,31 +26,31 @@ import type { ParseTestRun } from "./parseTestSpec";
 export const PARSE_PREVIEW_MAX_MS = 100;
 export const PARSE_PREVIEW_MAX_LINES = 5000;
 
-export async function previewLogSkillExtractor(db: Queryable, auth: AuthContext, skillId: string, input: ExtractorPatternInput) {
+export async function previewLogSkillExtractor(db: Queryable, auth: LogAccessContext, skillId: string, input: ExtractorPatternInput) {
   await requirePreviewSkill(db, auth, skillId);
   try { return runInNewContext("preview()", { preview: () => generateExtractorPattern(input) }, { timeout: PARSE_PREVIEW_MAX_MS }) as ReturnType<typeof generateExtractorPattern>; }
   catch (error) { throw new ApiError("VALIDATION_FAILED", error instanceof Error ? error.message : String(error)); }
 }
 
-export async function previewLogSkillFormat(db: Queryable, auth: AuthContext, skillId: string, input: Parameters<typeof previewLogFormat>[0]) {
+export async function previewLogSkillFormat(db: Queryable, auth: LogAccessContext, skillId: string, input: Parameters<typeof previewLogFormat>[0]) {
   await requirePreviewSkill(db, auth, skillId);
   try { return runInNewContext("preview()", { preview: () => previewLogFormat(input) }, { timeout: PARSE_PREVIEW_MAX_MS }) as ReturnType<typeof previewLogFormat>; }
   catch (error) { throw new ApiError("VALIDATION_FAILED", error instanceof Error ? error.message : String(error)); }
 }
 
-async function requirePreviewSkill(db: Queryable, auth: AuthContext, skillId: string) {
+async function requirePreviewSkill(db: Queryable, auth: LogAccessContext, skillId: string) {
   requireOrganization(auth);
   requireLogAdminDomains(auth);
-  if (!await getLogDomainById(db, { organizationId: auth.organization.id, domainId: skillId })) throw new ApiError("NOT_FOUND", "未找到分析技能。");
+  if (!await getLogDomainById(db, { organizationId: logOrganizationId(auth), domainId: skillId })) throw new ApiError("NOT_FOUND", "未找到分析技能。");
 }
 
-export function listLogSkillTemplates(auth: AuthContext) {
+export function listLogSkillTemplates(auth: LogAccessContext) {
   requireOrganization(auth);
   requireLogAdminDomains(auth);
   return { items: logSkillTemplates };
 }
 
-function requireOrganization(auth: AuthContext) {
+function requireOrganization(auth: LogAccessContext) {
   if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "无权访问此组织的日志。");
 }
 
@@ -75,16 +75,16 @@ export async function readSkill(db: Queryable, organizationId: string, skillId: 
     draft: revisions.find((r) => r.status === "draft") ?? null };
 }
 
-export async function getLogSkill(db: Queryable, auth: AuthContext, skillId: string, caps = defaultLogSkillBudgetCaps) {
+export async function getLogSkill(db: Queryable, auth: LogAccessContext, skillId: string, caps = defaultLogSkillBudgetCaps) {
   requireOrganization(auth);
   requireLogView(auth);
-  return readSkill(db, auth.organization.id, skillId, caps);
+  return readSkill(db, logOrganizationId(auth), skillId, caps);
 }
 
-export async function listLogSkills(db: Queryable, auth: AuthContext, includeArchived = false) {
+export async function listLogSkills(db: Queryable, auth: LogAccessContext, includeArchived = false) {
   requireOrganization(auth);
   requireLogView(auth);
-  const identities = await listLogDomains(db, { organizationId: auth.organization.id, includeArchived });
+  const identities = await listLogDomains(db, { organizationId: logOrganizationId(auth), includeArchived });
   const insights = await aggregateFeedbackInsights(db, auth, { timeWindow: "7d" });
   const { organizationWide, projectIds } = relatedParameterVisibilityValues(auth);
   const counts = await db.query<{ skill_id: string; count: number }>(`select s.skill_id, count(*)::int as count
@@ -95,14 +95,14 @@ export async function listLogSkills(db: Queryable, auth: AuthContext, includeArc
         lr.related_parameter_project_id is not null
         and exists (select 1 from projects p where p.id = lr.related_parameter_project_id and p.organization_id = lr.organization_id)
         and ($2::boolean or lr.related_parameter_project_id = any($3::text[]))))
-    group by s.skill_id`, [auth.organization.id, organizationWide, projectIds]);
+    group by s.skill_id`, [logOrganizationId(auth), organizationWide, projectIds]);
   const heads = await db.query<{ id: string; skill_id: string; revision_number: number; published_at: Date | null; status: string; has_source_snapshots: boolean; ready_source_versions: string[] }>(
     `select id, skill_id, revision_number, published_at, status,
       exists (select 1 from log_source_snapshots ss where ss.organization_id = sr.organization_id
         and ss.skill_id = sr.skill_id and ss.status <> 'archived') as has_source_snapshots,
       array(select ss.version_label from log_source_snapshots ss where ss.organization_id = sr.organization_id
         and ss.skill_id = sr.skill_id and ss.status = 'ready' order by ss.version_label) as ready_source_versions
-      from log_skill_revisions sr where organization_id = $1 and status in ('published', 'draft')`, [auth.organization.id]);
+      from log_skill_revisions sr where organization_id = $1 and status in ('published', 'draft')`, [logOrganizationId(auth)]);
   return { items: identities.map((identity) => {
     const current = (heads.rows.find((r) => r.skill_id === identity.id && r.status === "published")
       ?? heads.rows.find((r) => r.skill_id === identity.id && r.status === "draft"))!;
@@ -116,24 +116,24 @@ export async function listLogSkills(db: Queryable, auth: AuthContext, includeArc
   }) };
 }
 
-export async function listLogSkillSourceVersions(db: Queryable, auth: AuthContext, skillId: string) {
+export async function listLogSkillSourceVersions(db: Queryable, auth: LogAccessContext, skillId: string) {
   requireOrganization(auth);
   if (auth.permissions.includes("logs:view")) requireLogView(auth);
   else requireLogUpload(auth);
-  if (!await getLogDomainById(db, { organizationId: auth.organization.id, domainId: skillId })) {
+  if (!await getLogDomainById(db, { organizationId: logOrganizationId(auth), domainId: skillId })) {
     throw new ApiError("NOT_FOUND", "未找到分析技能。");
   }
   const result = await db.query<{ version_label: string }>(`select version_label from log_source_snapshots
-    where organization_id = $1 and skill_id = $2 and status = 'ready' order by version_label`, [auth.organization.id, skillId]);
+    where organization_id = $1 and skill_id = $2 and status = 'ready' order by version_label`, [logOrganizationId(auth), skillId]);
   return { items: result.rows.map((row) => row.version_label) };
 }
 
-export async function createLogSkill(db: Database, auth: AuthContext, input: {
+export async function createLogSkill(db: Database, auth: LogAccessContext, input: {
   name: string; description?: string; formatProfile?: unknown;
   status?: "draft" | "published";
   startingPoint?: { templateId: string } | { copyFromSkillId: string };
 }, invocation: TrustedInvocationContext, context: AuditedWriteContext, caps = defaultLogSkillBudgetCaps) {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Create analysis skill");
+  assertLogInvocation(auth, invocation, "Create analysis skill");
   requireOrganization(auth);
   requireLogAdminDomains(auth);
   const name = input.name.trim();
@@ -142,8 +142,8 @@ export async function createLogSkill(db: Database, auth: AuthContext, input: {
     const start = input.startingPoint;
     let source: LogSkillSpec;
     if (start && "copyFromSkillId" in start) {
-      await lockSkill(tx, auth.organization.id, start.copyFromSkillId);
-      const skill = await readSkill(tx, auth.organization.id, start.copyFromSkillId);
+      await lockSkill(tx, logOrganizationId(auth), start.copyFromSkillId);
+      const skill = await readSkill(tx, logOrganizationId(auth), start.copyFromSkillId);
       source = { ...(skill.draft ?? skill.currentRevision).spec };
       // Source snapshots belong to the original skill and cannot be copied as defaults.
       delete source.defaultSourceSnapshotId;
@@ -154,29 +154,29 @@ export async function createLogSkill(db: Database, auth: AuthContext, input: {
     }
     const spec = parseSpec({ ...source, ...(input.description !== undefined ? { description: input.description } : {}) }, caps);
     await validateSkillKnowledge(tx, auth, spec, source);
-    if (await findLogDomainByName(tx, { organizationId: auth.organization.id, name })) {
+    if (await findLogDomainByName(tx, { organizationId: logOrganizationId(auth), name })) {
       throw new ApiError("CONFLICT", "已存在同名分析技能。");
     }
-    const skill = await insertLogDomain(tx, { id: randomUUID(), organizationId: auth.organization.id, name,
+    const skill = await insertLogDomain(tx, { id: randomUUID(), organizationId: logOrganizationId(auth), name,
       description: spec.description, formatProfile: spec.formatProfile });
-    if (spec.modelOverride) await updateLogDomainRow(tx, { organizationId: auth.organization.id, domainId: skill.id, modelOverride: spec.modelOverride });
-    await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId: skill.id, spec, userId: auth.user.id, published: input.status !== "draft" });
-    return { result: await readSkill(tx, auth.organization.id, skill.id, caps),
+    if (spec.modelOverride) await updateLogDomainRow(tx, { organizationId: logOrganizationId(auth), domainId: skill.id, modelOverride: spec.modelOverride });
+    await insertSkillRevision(tx, { organizationId: logOrganizationId(auth), skillId: skill.id, spec, userId: auth.user.id, published: input.status !== "draft" });
+    return { result: await readSkill(tx, logOrganizationId(auth), skill.id, caps),
       audit: skillAudit(skill.id, "log-skill-create", start ?? (input.formatProfile == null ? { templateId: "generic-text" } : {})) };
   });
 }
 
-export async function saveLogSkillDraft(db: Database, auth: AuthContext, skillId: string, value: unknown, baseDraftRevisionId: string | null, basePublishedRevisionId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext, caps = defaultLogSkillBudgetCaps) {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Save analysis skill draft");
+export async function saveLogSkillDraft(db: Database, auth: LogAccessContext, skillId: string, value: unknown, baseDraftRevisionId: string | null, basePublishedRevisionId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext, caps = defaultLogSkillBudgetCaps) {
+  assertLogInvocation(auth, invocation, "Save analysis skill draft");
   requireOrganization(auth);
   requireLogAdminDomains(auth);
   const spec = parseSpec(value, caps);
   return withAuditedWrite(db, invocation, context, async (tx) => {
-    await lockSkill(tx, auth.organization.id, skillId);
-    const revisions = await listSkillRevisions(tx, auth.organization.id, skillId);
+    await lockSkill(tx, logOrganizationId(auth), skillId);
+    const revisions = await listSkillRevisions(tx, logOrganizationId(auth), skillId);
     const baseSpec = (revisions.find((r) => r.status === "draft") ?? revisions.find((r) => r.status === "published"))?.spec;
     await validateSkillKnowledge(tx, auth, spec, baseSpec);
-    await validateDefaultSourceSnapshot(tx, auth.organization.id, skillId, spec, spec.defaultSourceSnapshotId === baseSpec?.defaultSourceSnapshotId);
+    await validateDefaultSourceSnapshot(tx, logOrganizationId(auth), skillId, spec, spec.defaultSourceSnapshotId === baseSpec?.defaultSourceSnapshotId);
     if ((revisions.find((r) => r.status === "published") ?? revisions.find((r) => r.status === "draft"))?.id !== basePublishedRevisionId) {
       throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "技能发布状态已更新，请刷新后重试。");
     }
@@ -185,33 +185,33 @@ export async function saveLogSkillDraft(db: Database, auth: AuthContext, skillId
       throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "技能草稿已更新，请刷新后重试。");
     }
     // A new draft id on every save makes stale publish requests detectable.
-    await tx.query(`delete from log_skill_revisions where organization_id = $1 and skill_id = $2 and status = 'draft'`, [auth.organization.id, skillId]);
-    const id = await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId, spec, userId: auth.user.id });
+    await tx.query(`delete from log_skill_revisions where organization_id = $1 and skill_id = $2 and status = 'draft'`, [logOrganizationId(auth), skillId]);
+    const id = await insertSkillRevision(tx, { organizationId: logOrganizationId(auth), skillId, spec, userId: auth.user.id });
     const parseTestRun = spec.parseTests ? await runParseTests(spec) : undefined;
-    return { result: { ...(await listSkillRevisions(tx, auth.organization.id, skillId)).find((r) => r.id === id)!, ...(parseTestRun ? { parseTestRun } : {}) },
+    return { result: { ...(await listSkillRevisions(tx, logOrganizationId(auth), skillId)).find((r) => r.id === id)!, ...(parseTestRun ? { parseTestRun } : {}) },
       audit: skillAudit(skillId, "log-skill-draft-save", { draftRevisionId: id }) };
   });
 }
 
-export async function publishLogSkill(db: Database, auth: AuthContext, skillId: string, draftId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext, caps = defaultLogSkillBudgetCaps) {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Publish analysis skill");
+export async function publishLogSkill(db: Database, auth: LogAccessContext, skillId: string, draftId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext, caps = defaultLogSkillBudgetCaps) {
+  assertLogInvocation(auth, invocation, "Publish analysis skill");
   requireOrganization(auth);
   requireLogAdminDomains(auth);
   return withAuditedWrite(db, invocation, context, async (tx) => {
-    await lockSkill(tx, auth.organization.id, skillId);
+    await lockSkill(tx, logOrganizationId(auth), skillId);
     // Workspace saves validate both heads under this lock; publish consumes that
     // exact draft id, and restore refuses drafts, so no extra publish token is needed.
-    const draft = (await listSkillRevisions(tx, auth.organization.id, skillId)).find((revision) => revision.id === draftId && revision.status === "draft");
+    const draft = (await listSkillRevisions(tx, logOrganizationId(auth), skillId)).find((revision) => revision.id === draftId && revision.status === "draft");
     if (draft) parseSpec(draft.spec, caps);
     if (draft) await validateSkillKnowledge(tx, auth, draft.spec, draft.spec);
-    if (draft) await validateDefaultSourceSnapshot(tx, auth.organization.id, skillId, draft.spec, true);
+    if (draft) await validateDefaultSourceSnapshot(tx, logOrganizationId(auth), skillId, draft.spec, true);
     const parseTestRun = draft?.spec.parseTests ? await runParseTests(draft.spec) : undefined;
-    await publishSkillRevision(tx, auth.organization.id, skillId, draftId, auth.user.id);
-    return { result: { ...await readSkill(tx, auth.organization.id, skillId, caps), ...(parseTestRun ? { parseTestRun } : {}) }, audit: skillAudit(skillId, "log-skill-publish", { draftRevisionId: draftId }) };
+    await publishSkillRevision(tx, logOrganizationId(auth), skillId, draftId, auth.user.id);
+    return { result: { ...await readSkill(tx, logOrganizationId(auth), skillId, caps), ...(parseTestRun ? { parseTestRun } : {}) }, audit: skillAudit(skillId, "log-skill-publish", { draftRevisionId: draftId }) };
   });
 }
 
-export async function previewLogSkillParsing(db: Queryable, auth: AuthContext, skillId: string,
+export async function previewLogSkillParsing(db: Queryable, auth: LogAccessContext, skillId: string,
   input: { parsing?: unknown; sampleText: string; fileName?: string }) {
   await requirePreviewSkill(db, auth, skillId);
   const lines = input.sampleText === "" ? [] : input.sampleText.split(/\r\n|\n|\r/);
@@ -236,10 +236,10 @@ export async function previewLogSkillParsing(db: Queryable, auth: AuthContext, s
     events: decoded.events.slice(0, 500), truncated: !!reason, ...(reason ? { reason } : {}) };
 }
 
-export async function runLogSkillParseTests(db: Queryable, auth: AuthContext, skillId: string, spec: unknown) {
+export async function runLogSkillParseTests(db: Queryable, auth: LogAccessContext, skillId: string, spec: unknown) {
   requireOrganization(auth);
   requireLogAdminDomains(auth);
-  if (!await getLogDomainById(db, { organizationId: auth.organization.id, domainId: skillId })) throw new ApiError("NOT_FOUND", "未找到分析技能。");
+  if (!await getLogDomainById(db, { organizationId: logOrganizationId(auth), domainId: skillId })) throw new ApiError("NOT_FOUND", "未找到分析技能。");
   const started = performance.now();
   let parsed: LogSkillSpec;
   try {
@@ -251,43 +251,43 @@ export async function runLogSkillParseTests(db: Queryable, auth: AuthContext, sk
   return runParseTests(parsed, { maxMs: Math.max(0, PARSE_TEST_MAX_MS - (performance.now() - started)) });
 }
 
-export async function readLogSkillRevisions(db: Queryable, auth: AuthContext, skillId: string) {
+export async function readLogSkillRevisions(db: Queryable, auth: LogAccessContext, skillId: string) {
   await getLogSkill(db, auth, skillId);
-  return listSkillRevisions(db, auth.organization.id, skillId);
+  return listSkillRevisions(db, logOrganizationId(auth), skillId);
 }
 
-export async function discardLogSkillDraft(db: Database, auth: AuthContext, skillId: string, draftRevisionId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Discard analysis skill draft");
+export async function discardLogSkillDraft(db: Database, auth: LogAccessContext, skillId: string, draftRevisionId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  assertLogInvocation(auth, invocation, "Discard analysis skill draft");
   requireOrganization(auth);
   requireLogAdminDomains(auth);
   return withAuditedWrite(db, invocation, context, async (tx) => {
-    await lockSkill(tx, auth.organization.id, skillId);
-    const revisions = await listSkillRevisions(tx, auth.organization.id, skillId);
+    await lockSkill(tx, logOrganizationId(auth), skillId);
+    const revisions = await listSkillRevisions(tx, logOrganizationId(auth), skillId);
     const draft = revisions.find((r) => r.status === "draft");
     if (!revisions.some((r) => r.status === "published")) throw new ApiError("CONFLICT", "请先发布初始草稿，再放弃后续修改。");
     if (draft && draft.id !== draftRevisionId) throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "技能草稿已更新，请刷新后重试。");
-    await tx.query(`delete from log_skill_revisions where organization_id = $1 and skill_id = $2 and status = 'draft' and id = $3`, [auth.organization.id, skillId, draftRevisionId]);
+    await tx.query(`delete from log_skill_revisions where organization_id = $1 and skill_id = $2 and status = 'draft' and id = $3`, [logOrganizationId(auth), skillId, draftRevisionId]);
     return { result: undefined, audit: skillAudit(skillId, "log-skill-draft-discard") };
   });
 }
 
-export async function restoreLogSkillRevision(db: Database, auth: AuthContext, skillId: string, revisionId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext, caps = defaultLogSkillBudgetCaps) {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Restore analysis skill revision");
+export async function restoreLogSkillRevision(db: Database, auth: LogAccessContext, skillId: string, revisionId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext, caps = defaultLogSkillBudgetCaps) {
+  assertLogInvocation(auth, invocation, "Restore analysis skill revision");
   requireOrganization(auth);
   requireLogAdminDomains(auth);
   return withAuditedWrite(db, invocation, context, async (tx) => {
-    await lockSkill(tx, auth.organization.id, skillId);
-    const revisions = await listSkillRevisions(tx, auth.organization.id, skillId);
+    await lockSkill(tx, logOrganizationId(auth), skillId);
+    const revisions = await listSkillRevisions(tx, logOrganizationId(auth), skillId);
     const source = revisions.find((r) => r.id === revisionId && r.status !== "draft");
     if (!source) throw new ApiError("NOT_FOUND", "未找到技能版本。");
     parseSpec(source.spec, caps);
     await validateSkillKnowledge(tx, auth, source.spec, source.spec);
-    await validateDefaultSourceSnapshot(tx, auth.organization.id, skillId, source.spec, true);
+    await validateDefaultSourceSnapshot(tx, logOrganizationId(auth), skillId, source.spec, true);
     const replacedDraft = revisions.find((r) => r.status === "draft");
-    await tx.query(`delete from log_skill_revisions where organization_id = $1 and skill_id = $2 and status = 'draft'`, [auth.organization.id, skillId]);
-    const id = await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId, spec: source.spec, userId: auth.user.id });
-    await publishSkillRevision(tx, auth.organization.id, skillId, id, auth.user.id);
-    return { result: await readSkill(tx, auth.organization.id, skillId, caps),
+    await tx.query(`delete from log_skill_revisions where organization_id = $1 and skill_id = $2 and status = 'draft'`, [logOrganizationId(auth), skillId]);
+    const id = await insertSkillRevision(tx, { organizationId: logOrganizationId(auth), skillId, spec: source.spec, userId: auth.user.id });
+    await publishSkillRevision(tx, logOrganizationId(auth), skillId, id, auth.user.id);
+    return { result: await readSkill(tx, logOrganizationId(auth), skillId, caps),
       audit: skillAudit(skillId, "log-skill-restore", { fromRevisionId: revisionId, newRevisionId: id, ...(replacedDraft ? { replacedDraftRevisionId: replacedDraft.id } : {}) }) };
   });
 }
