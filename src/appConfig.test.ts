@@ -168,7 +168,7 @@ describe("WiseEff prototype configuration", () => {
   });
 
   it("keeps admin utilities discoverable", () => {
-    expect(utilityItems.map((item) => item.label)).toEqual(["反馈管理", "审计中心", "组织管理"]);
+    expect(utilityItems.map((item) => item.label)).toEqual(["工作流发布", "反馈管理", "审计中心", "组织管理"]);
   });
 
   it("does not expose a disabled Agent utility item", () => {

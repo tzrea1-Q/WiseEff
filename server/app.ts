@@ -52,6 +52,7 @@ import { createTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "./m
 import { createUserInvocation } from "./modules/auth/trustedInvocation";
 import { registerProductFeedbackRoutes } from "./modules/product-feedback/routes";
 import { registerUserRoutes } from "./modules/users/routes";
+import { registerWorkflowPublicationRoutes } from "./modules/workflow-publication/routes";
 import { registerParameterCatalogApi } from "./modules/parameter-catalog-api/productionWire";
 import { createHttpServer, DEFAULT_MAX_REQUEST_BODY_BYTES } from "./shared/http/server";
 import { DEBUG_CATALOG_MAX_DOCUMENT_BYTES } from "./modules/debugging/schemas";
@@ -182,6 +183,10 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
         }
   });
   registerAuditRoutes(router, {
+    db: options.db,
+    getCurrentAuthContext: authResolver
+  });
+  registerWorkflowPublicationRoutes(router, {
     db: options.db,
     getCurrentAuthContext: authResolver
   });

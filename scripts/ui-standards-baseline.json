@@ -34,12 +34,12 @@
       }
     },
     "raw-spacing": {
-      "count": 774,
+      "count": 773,
       "note": "Off-grid spacing stock after wave 3 exact --space-* burn; ratchet down as rem/em/off-grid px are migrated.",
       "files": {
         "src/features/agent/xiaozeAssistantMarkdown.css": 1,
         "src/linear-template/linear-template.css": 25,
-        "src/styles.css": 748
+        "src/styles.css": 747
       }
     },
     "raw-radius": {

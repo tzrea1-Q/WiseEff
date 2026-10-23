@@ -2131,6 +2131,25 @@ describe("DtsReloadPage", () => {
     expect(onNavigate).toHaveBeenCalledWith("/knowledge?entryId=kb-entry-1");
   });
 
+  it("keeps terminal-run knowledge references readable without distillation when knowledge is unpublished", async () => {
+    const terminalRun = run({ id: "run-terminal", status: "failed", failureCode: "transfer-failed" });
+    terminalRun.targets[0].canonicalDefinitionId = "definition-run";
+    const knowledgeRepository = { distillFromReloadRun: vi.fn() } as unknown as KnowledgeRepository;
+    renderPage(createRepository({ getRun: vi.fn(async () => terminalRun) }), {
+      knowledgeRepository,
+      knowledgeCapability: { userId: "u-1", canView: true, canEdit: true, canManage: false },
+      canOpenKnowledge: false,
+      onNavigate: vi.fn(),
+      initialRunId: "run-terminal",
+      relatedKnowledge: { load: async () => [{ entryId: "entry-1", title: "重载排查参考", excerpt: "传输失败时检查设备连接。", updatedAt: "2026-10-23T00:00:00Z" }] }
+    });
+    expect(await screen.findByText("重载排查参考")).toBeVisible();
+    expect(screen.getByText("传输失败时检查设备连接。")).toBeVisible();
+    expect(screen.queryByRole("button", { name: /重载排查参考/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "沉淀为知识" })).not.toBeInTheDocument();
+    expect(knowledgeRepository.distillFromReloadRun).not.toHaveBeenCalled();
+  });
+
   it("hides 沉淀为知识 for non-terminal runs and for users without knowledge:edit", async () => {
     const user = userEvent.setup({ delay: null });
     const knowledgeRepository = {
@@ -2167,6 +2186,19 @@ describe("DtsReloadPage", () => {
     await waitFor(() => expect(terminalRepo.getRun).toHaveBeenCalledWith("run-terminal"));
     await screen.findByLabelText("运行摘要");
     expect(screen.queryByRole("button", { name: "沉淀为知识" })).not.toBeInTheDocument();
+  });
+
+  it("hides promotion when parameter management is unpublished while preserving the run result", async () => {
+    const repository = createRepository({ getRun: vi.fn(async () => run({ id: "run-verified", status: "verified" })) });
+    renderPage(repository, {
+      canPromoteToDrafts: true,
+      canOpenParameters: false,
+      onNavigate: vi.fn(),
+      initialRunId: "run-verified"
+    });
+    expect(await screen.findByRole("heading", { name: "本次参数变更 · 1 项" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "晋升为草稿" })).not.toBeInTheDocument();
+    expect(repository.promoteToDrafts).not.toHaveBeenCalled();
   });
 
   it("offers 晋升为草稿 on a verified ordinary run and hands off to the workbench", async () => {

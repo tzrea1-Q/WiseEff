@@ -782,6 +782,7 @@ describe("LogsPage api upload wiring", () => {
       })
     );
     await waitFor(() => expect(repository.listLogs).toHaveBeenCalled());
+    await screen.findByRole("button", { name: "上传新日志" });
     vi.useFakeTimers();
 
     openUploadDialog();

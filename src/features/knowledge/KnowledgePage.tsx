@@ -33,6 +33,7 @@ import { SearchField } from "@/components/common/SearchField";
 import { presentError } from "@/infrastructure/http/presentError";
 import { KnowledgeExtractionBadge, KnowledgeOriginBadge, KnowledgeStatusBadge, KnowledgeTagList, KnowledgeUnsearchableBadge } from "./badges";
 import { KnowledgeEntryDetailDialog } from "./KnowledgeEntryDetailDialog";
+import type { WorkflowId } from "@/domain/workflowDiscovery";
 import {
   KnowledgeEntryEditorDialog,
   type KnowledgeEditorSubmit,
@@ -44,6 +45,7 @@ import { KnowledgeRevisionsDialog } from "./KnowledgeRevisionsDialog";
 import { KnowledgeBatchDialog, knowledgeBatchLabels } from "./KnowledgeBatchDialog";
 
 export type KnowledgePageProps = {
+  visibleWorkflows?: readonly WorkflowId[];
   repository: KnowledgeRepository;
   capability: KnowledgeCapability;
   /** Ask-the-knowledge-base opens Xiaoze — API mode only (mock has no Agent UI). */
@@ -70,6 +72,7 @@ function formatDateTime(value: string) {
 }
 
 export function KnowledgePage({
+  visibleWorkflows,
   repository,
   capability,
   askXiaozeEnabled = false,
@@ -661,6 +664,7 @@ export function KnowledgePage({
         citation={citation ? { ...citation, openPage: handleOpenPage } : undefined}
         onRequestDelete={selectedEntry && capability.canManage ? requestDelete : undefined}
         onOpenDefinition={onOpenDefinition}
+        visibleWorkflows={visibleWorkflows}
         onNavigate={onNavigate}
         onClose={() => { setSelectedId(null); setCitation(null); }}
       />

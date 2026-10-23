@@ -156,7 +156,10 @@ export async function writePlatformAuditEvent(
 export async function listAuditEvents(db: Queryable, query: ListAuditEventsQuery): Promise<ListAuditEventsResult> {
   const limit = Math.min(Math.max(query.limit ?? 50, 1), 100);
   const values: unknown[] = [query.organizationId];
-  const conditions = ["ae.organization_id = $1"];
+  const platformPublicationScope = "(ae.organization_id is null and ae.kind = 'workflow-publication-updated')";
+  const conditions = [query.includePlatformWorkflowPublication
+    ? `(ae.organization_id = $1 or ${platformPublicationScope})`
+    : "ae.organization_id = $1"];
 
   if (query.eventId) {
     values.push(query.eventId);
@@ -289,7 +292,9 @@ export async function listAuditEvents(db: Queryable, query: ListAuditEventsQuery
       ae.created_at,
       to_char(ae.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_timestamp
     from audit_events ae
-    left join users u on u.id = ae.actor_user_id and u.organization_id = ae.organization_id
+    left join users u on u.id = ae.actor_user_id and ${query.includePlatformWorkflowPublication
+      ? `(u.organization_id = ae.organization_id or ${platformPublicationScope})`
+      : "u.organization_id = ae.organization_id"}
     left join projects p on p.id = ae.project_id and p.organization_id = ae.organization_id
     left join public.project_parameter_value_change_requests request
       on request.id = case when ae.target_type = 'project-parameter-value-change-request' then ae.target_id end

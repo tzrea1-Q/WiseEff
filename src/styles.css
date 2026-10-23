@@ -268,6 +268,10 @@
   --shell-sidebar-border: #dfe5f3;
   --shell-nav-text: #566070;
   --shell-topbar-shadow: 0 4px 16px rgba(16, 28, 45, 0.04);
+  --feedback-entry-bg: #e8f7fb;
+  --feedback-entry-bg-hover: #dff3f8;
+  --feedback-entry-text: #003d74;
+  --feedback-entry-text-hover: #002d59;
 
   /* ── Xiaoze assistant tokens ── */
   --xiaoze-brand: var(--app-primary);
@@ -395,6 +399,10 @@
   --shell-sidebar-border: var(--border);
   --shell-nav-text: var(--text-secondary);
   --shell-topbar-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --feedback-entry-bg: color-mix(in srgb, var(--app-secondary) 12%, var(--surface));
+  --feedback-entry-bg-hover: color-mix(in srgb, var(--app-secondary) 18%, var(--surface));
+  --feedback-entry-text: var(--text);
+  --feedback-entry-text-hover: var(--text);
 
   /* Xiaoze assistant */
   --xiaoze-surface-muted: color-mix(in srgb, var(--accent) 12%, var(--bg));
@@ -805,11 +813,11 @@ body {
 }
 
 .nav-group {
-  margin: 0 0 var(--space-2);
+  margin: 0 0 var(--space-1);
 }
 
 .nav-group-label {
-  padding: var(--space-1) var(--space-3);
+  padding: 0 var(--space-3);
 }
 
 .nav-item {
@@ -864,6 +872,19 @@ body {
   flex: 0 0 auto;
   padding: var(--space-4) 0 0;
   border-top: 1px solid var(--shell-sidebar-border);
+}
+
+.nav-item.feedback-entry {
+  margin-top: var(--space-1);
+  color: var(--feedback-entry-text);
+  background: var(--feedback-entry-bg);
+  border: 1px solid color-mix(in srgb, var(--app-secondary) 18%, transparent);
+  box-shadow: var(--shadow-1);
+}
+
+.nav-item.feedback-entry:hover {
+  color: var(--feedback-entry-text-hover);
+  background: var(--feedback-entry-bg-hover);
 }
 
 .main-shell {

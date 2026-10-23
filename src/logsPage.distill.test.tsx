@@ -59,7 +59,10 @@ describe("LogsPage · 沉淀为知识", () => {
     expect(screen.queryByRole("menuitem", { name: /沉淀为知识/ })).not.toBeInTheDocument();
   });
 
-  it("无 knowledge:edit 能力时不渲染沉淀入口", async () => {
+  it.each([
+    { reason: "无 knowledge:edit 能力", canEdit: false, canOpenKnowledge: true },
+    { reason: "知识库未开放", canEdit: true, canOpenKnowledge: false }
+  ])("$reason 时不渲染沉淀入口", async ({ canEdit, canOpenKnowledge }) => {
     const runtime = { knowledgeRepository: createMockKnowledgeRepository() } as unknown as NonNullable<
       Parameters<typeof LogsPage>[0]["runtime"]
     >;
@@ -71,7 +74,8 @@ describe("LogsPage · 沉淀为知识", () => {
           onNavigate={() => undefined}
           search=""
           runtime={runtime}
-          knowledgeCapability={{ userId: "u-xu-yun", canView: true, canEdit: false, canManage: false }}
+          knowledgeCapability={{ userId: "u-xu-yun", canView: true, canEdit, canManage: false }}
+          canOpenKnowledge={canOpenKnowledge}
         />
       </ToastProvider>
     );

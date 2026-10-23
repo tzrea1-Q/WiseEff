@@ -4,7 +4,7 @@
 
 WiseEff is an AI-assisted enterprise efficiency platform for governed engineering workflows. It focuses on parameter management, log analysis, debugging, and the knowledge base, with an Agent layer that can help search, summarize, prepare drafts, and explain evidence while humans retain approval over risky changes.
 
-Discovery surfaces (sidebar groups, homepage wayfinding, and promotional homepage copy) offer only workflows on the visible-workflow allowlist ([ADR-0036](../adr/0036-workflow-discovery-uses-a-visible-workflow-allowlist.md)). The first allowlist is parameter management and debugging. Log analysis and the knowledge base remain product workflows and stay reachable by deep link; they are omitted from discovery until added to the allowlist.
+Platform super administrators configure whole-workflow UI publication globally through Workflow publication ([ADR-0050](../adr/0050-workflow-publication-is-platform-wide-ui-availability.md)). Non-administrators see entry points and enter pages only for published workflows, subject to existing permissions; organization administrators and platform super administrators can preview unpublished workflows. The current four workflows initially remain published, future workflows default to unpublished, and saved changes apply on the next refresh or page entry without expelling an active editor. Publication leaves permitted read-only references, existing APIs and Xiaoze capabilities available; loading failure retains homepage/retry access without admitting ordinary users to an unverified workflow.
 
 ## Users
 

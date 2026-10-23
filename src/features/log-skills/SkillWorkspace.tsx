@@ -53,6 +53,7 @@ export type SectionProps = { skill: AnalysisSkill; spec: SkillSpec; setSpec: (sp
   revisions: SkillRevision[]; onRestore: (revision: SkillRevision) => void;
   repository?: Partial<LogAnalysisRepository>; apiMode: boolean; canEdit: boolean; dirty: boolean;
   knowledgeRepository?: KnowledgeRepository; knowledgeCapability?: KnowledgeCapability;
+  canOpenKnowledge?: boolean;
   fieldErrors?: Record<string, string>;
   onSkillUpdated: (skill: AnalysisSkill) => void; onBusyChange: (busy: boolean) => void;
   onWebhookDirtyChange?: (dirty: boolean) => void;
@@ -200,10 +201,11 @@ export const skillSections: Array<{ id: string; label: string; component?: Compo
   { id: "integration", label: "集成", component: IntegrationSection, inspectorHidden: true }, { id: "versions", label: "版本", component: Versions, inspectorHidden: true }
 ];
 
-export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, knowledgeRepository, knowledgeCapability, onNavigate, onPublished }: {
+export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, knowledgeRepository, knowledgeCapability, canOpenKnowledge = true, onNavigate, onPublished }: {
   skillId: string; search: string; repository?: Partial<LogAnalysisRepository>; apiMode: boolean; canEdit: boolean;
   onNavigate: (path: string) => void; onPublished: (message: string) => void;
   knowledgeRepository?: KnowledgeRepository; knowledgeCapability?: KnowledgeCapability;
+  canOpenKnowledge?: boolean;
 }) {
   const [skill, setSkill] = useState<AnalysisSkill | null>(null);
   const [sample, setSample] = useState<SkillSample | null>(null);
@@ -454,7 +456,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
           if (pending || yamlInvalid || testsInvalid || !formatValid || conflict) throw new Error("请先修正草稿错误再运行用例。");
           if ((dirty || !skill.draft) && !await run(async () => { await save(); })) throw new Error("草稿保存失败，请重试后再运行用例。");
         }}
-        knowledgeRepository={knowledgeRepository} knowledgeCapability={knowledgeCapability}
+        knowledgeRepository={knowledgeRepository} knowledgeCapability={knowledgeCapability} canOpenKnowledge={canOpenKnowledge}
         onSkillUpdated={(updated) => { setSkill(updated); if (updated.currentRevision !== skill.currentRevision || updated.draft !== skill.draft) setSpec(structuredClone((updated.draft ?? updated.currentRevision).spec));
           setRevisions((history) => [...(updated.draft ? [updated.draft] : []), ...history.filter((revision) => revision.status !== "draft")]); }}
         onRestore={(revision) => {

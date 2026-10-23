@@ -27,6 +27,7 @@ export type AuditEvidence = {
 
 export type AuditEventView = {
   id: string;
+  organizationId?: string | null;
   app: string;
   kind: string;
   action: string;
@@ -52,7 +53,7 @@ export type AuditEventView = {
 
 export type AuditEventDto = {
   id: string;
-  organizationId: string;
+  organizationId: string | null;
   projectId: string | null;
   projectName?: string | null;
   projectCode?: string | null;

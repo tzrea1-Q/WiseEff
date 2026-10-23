@@ -33,6 +33,19 @@ afterEach(() => {
 });
 
 describe("LogsPage · Header", () => {
+  it.each([true, false])("参数管理未开放时隐藏关联参数和修改请求入口（已关联：%s）", async (linked) => {
+    const log = { ...initialState.logs[0], status: "Complete" as const, stage: "report" as const,
+      relatedParameterId: linked ? "binding-1" : undefined, relatedParameterProjectId: linked ? "project-1" : undefined };
+    const onNavigate = vi.fn();
+    render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined}
+      onNavigate={onNavigate} canOpenParameters={false} />);
+    expect(screen.queryByRole("button", { name: "查看关联参数" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "更多" }));
+    expect(screen.queryByRole("menuitem", { name: "生成参数修改请求" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "导出报告" })).toBeInTheDocument();
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
   it("将标签页置于详情标题下，未知文件清单时不声称文件数", async () => {
     const log = { ...initialState.logs[1], files: undefined, fileSizeMB: 0 };
     render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined} />);

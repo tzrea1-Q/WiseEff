@@ -16,7 +16,7 @@ export type SpecRelatedKnowledgeItem = {
  */
 export type SpecRelatedKnowledgeSource = {
   load: (specId: string) => Promise<SpecRelatedKnowledgeItem[]>;
-  onOpenEntry: (entryId: string) => void;
+  onOpenEntry?: (entryId: string) => void;
   link?: {
     search: (q: string) => Promise<{ entryId: string; title: string }[]>;
     add: (entryId: string, definitionId: string) => Promise<void>;
@@ -75,20 +75,21 @@ export function SpecRelatedKnowledgeSection({
           <p className="muted small">暂无引用该定义的已发布知识条目。</p>
         ) : (
           <ul className="param-admin-related-knowledge-list">
-            {items.map((item) => (
-              <li key={item.entryId}>
-                <button
+            {items.map((item) => {
+              const content = <>
+                <span className="param-admin-related-knowledge-item__title">{item.title}</span>
+                {item.excerpt ? <span className="param-admin-related-knowledge-item__excerpt">{item.excerpt}</span> : null}
+              </>;
+              return <li key={item.entryId}>
+                {source.onOpenEntry ? <button
                   type="button"
                   className="param-admin-related-knowledge-item"
-                  onClick={() => source.onOpenEntry(item.entryId)}
+                  onClick={() => source.onOpenEntry?.(item.entryId)}
                 >
-                  <span className="param-admin-related-knowledge-item__title">{item.title}</span>
-                  {item.excerpt ? (
-                    <span className="param-admin-related-knowledge-item__excerpt">{item.excerpt}</span>
-                  ) : null}
-                </button>
-              </li>
-            ))}
+                  {content}
+                </button> : <div className="flex w-full flex-col gap-1 rounded-md border bg-card px-3 py-2">{content}</div>}
+              </li>;
+            })}
           </ul>
         )}
         <p className="muted small">仅显示已发布条目；草稿与已归档不出现。</p>

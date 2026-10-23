@@ -22,6 +22,7 @@ export type RenderAppOptions = Omit<RenderOptions, "wrapper"> & {
  */
 export function toAppPortProps(ports?: Partial<AppRuntime>): Partial<{
   authClient: AppRuntime["authClient"];
+  workflowPublicationClient: AppRuntime["workflowPublicationClient"];
   parameterRepository: AppRuntime["parameterRepository"];
   parameterTopologyRepository: AppRuntime["parameterTopologyRepository"];
   parameterCatalogRepository: AppRuntime["parameterCatalogRepository"];
@@ -42,6 +43,7 @@ export function toAppPortProps(ports?: Partial<AppRuntime>): Partial<{
 
   const props: ReturnType<typeof toAppPortProps> = {};
   if (ports.authClient !== undefined) props.authClient = ports.authClient;
+  if (ports.workflowPublicationClient !== undefined) props.workflowPublicationClient = ports.workflowPublicationClient;
   if (ports.parameterRepository !== undefined) props.parameterRepository = ports.parameterRepository;
   if (ports.parameterTopologyRepository !== undefined) {
     props.parameterTopologyRepository = ports.parameterTopologyRepository;

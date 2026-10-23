@@ -27,7 +27,7 @@ import {
   type LocalBridgeProbeResult
 } from "./infrastructure/http/bridgeConnectLauncher";
 import type { DeviceBridgePairingCode, DeviceBridgeRecord } from "./infrastructure/http/deviceBridgeClient";
-import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
+import { debuggingNoDeviceNotification, type DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import {
   bindingUnavailableReason,
   bridgeTargetLabel,
@@ -394,6 +394,7 @@ export function NodeDebuggingPage({
     rows,
     target,
     detecting,
+    noDeviceDetected,
     events,
     selectedIds,
     bridgeTargetCandidates,
@@ -588,6 +589,11 @@ export function NodeDebuggingPage({
           probeHealth={probeBridgeHealth}
           createPairingCode={createBridgePairingCode}
         />
+        {noDeviceDetected ? (
+          <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
+            {debuggingNoDeviceNotification}
+          </p>
+        ) : null}
         {bridgeTargetCandidates.length > 1 ? (
           <section className="bridge-target-picker" aria-label="设备代理目标选择">
             <div className="bridge-target-picker__head">

@@ -187,7 +187,7 @@ describe("shared consistency contracts", () => {
     expect(navigation.gap).toBe("var(--space-3)");
     expect(navigation.padding).toBe("var(--space-2) var(--space-3)");
     expect(navigation["min-height"]).toBe("var(--space-10)");
-    expect(declarationsFor(styles, ".nav-group-label").padding).toBe("var(--space-1) var(--space-3)");
+    expect(declarationsFor(styles, ".nav-group-label").padding).toBe("0 var(--space-3)");
     expect(declarationsFor(styles, ".nav-item.active")["box-shadow"]).toBe("var(--shadow-1)");
   });
 

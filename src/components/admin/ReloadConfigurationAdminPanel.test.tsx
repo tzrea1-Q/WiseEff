@@ -80,11 +80,16 @@ describe("ReloadConfigurationAdminPanel", () => {
     expect(directory).toHaveAccessibleDescription(expect.stringContaining("末尾 / 可省略"));
     for (const name of ["产物位置", "触发重载", "日志采集"]) expect(screen.getByRole("group", { name })).toBeInTheDocument();
     expect(screen.getByLabelText("内核日志命令")).toBe(screen.getByLabelText("组织内核日志命令"));
-    expect(screen.getByText(/修改人：Riley Chen/)).toHaveTextContent("账户 user-1");
+    expect(screen.getByText(/修改人：Riley Chen/)).toHaveAttribute("title", "账户 user-1");
+    const preview = screen.getByRole("region", { name: "最终配置摘要" });
+    expect(screen.getByRole("complementary", { name: "配置预览与记录" })).toContainElement(preview);
+    expect(screen.getByRole("form", { name: "DTS 重载设置" })).not.toContainElement(preview);
     fireEvent.change(directory, { target: { value: "/oem/firmware" } });
+    expect(within(preview).getByText("未保存")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "最终配置摘要" })).getByText("/oem/firmware/power_dts_overlay.dtbo")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(repository.updateOrganisationReloadConfiguration).toHaveBeenCalledWith(expect.objectContaining({ destinationDirectory: "/oem/firmware" }), "2026-08-10T04:00:00.123456Z"));
+    await waitFor(() => expect(within(preview).queryByText("未保存")).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "查看配置变更记录" }));
     expect(onNavigate).toHaveBeenCalledWith("/audit?app=debugging&kind=dts-reload-configuration-update");
   });

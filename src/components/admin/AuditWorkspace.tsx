@@ -34,6 +34,7 @@ function localDateInput(iso?: string) {
 }
 
 function targetName(event: AuditEventView) {
+  if (event.targetType === "workflow-publication") return "工作流发布配置";
   const name = event.targetName ?? event.metadata?.parameterName ?? event.metadata?.nodePath ?? event.metadata?.name;
   return typeof name === "string" && name ? name : event.targetId ?? "未记录对象";
 }
@@ -253,7 +254,7 @@ export function AuditWorkspace({ mockEvents, isApiMode, query, onQueryChange, pr
               <small title={getAuditAppLabel(event.app) + " · " + presentAuditKind(event.kind).label}>{getAuditAppLabel(event.app)} · {presentAuditKind(event.kind).label}</small></div> },
             { key: "target", header: "对象与项目", className: "audit-workspace-target-cell", render: (event) => <div className="audit-workspace-cell">
               <span title={targetName(event)}>{targetName(event)}</span>
-              <small title={event.projectName ?? event.projectId ?? undefined}>{event.projectCode ?? event.projectName ?? (event.projectId ? "项目 " + event.projectId : "组织范围")}</small></div> },
+              <small title={event.projectName ?? event.projectId ?? undefined}>{event.projectCode ?? event.projectName ?? (event.projectId ? "项目 " + event.projectId : event.organizationId === null ? "平台范围" : "组织范围")}</small></div> },
             { key: "actor", header: "操作人", className: "audit-workspace-actor-cell", render: (event) => <span title={event.actor}>{event.actor}</span> },
             { key: "severity", header: "严重度", className: "audit-workspace-severity-cell",
               headerFilter: <ColumnFilter compact label="严重度" groupLabel="严重度筛选" align="right"

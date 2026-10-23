@@ -37,27 +37,31 @@ const SCENE_COUNT_LABELS: Record<number, string> = {
   4: "四"
 };
 
-export function isWorkflowVisible(workflowId: WorkflowId): boolean {
-  return VISIBLE_WORKFLOWS.includes(workflowId);
+export function isWorkflowVisible(workflowId: WorkflowId, visibleWorkflows: readonly WorkflowId[] = VISIBLE_WORKFLOWS): boolean {
+  return visibleWorkflows.includes(workflowId);
 }
 
-export function isDiscoveryGroupVisible(group: NavGroup): boolean {
-  const workflowId = NAV_GROUP_TO_WORKFLOW[group];
-  return workflowId === null || isWorkflowVisible(workflowId);
+export function workflowForGroup(group: NavGroup): WorkflowId | null {
+  return NAV_GROUP_TO_WORKFLOW[group];
 }
 
-export function homepageHeroWorkflowPhrase(): string {
-  return joinChineseList(VISIBLE_WORKFLOWS.map((workflowId) => WORKFLOW_OFFER_LABELS[workflowId]));
+export function isDiscoveryGroupVisible(group: NavGroup, visibleWorkflows: readonly WorkflowId[] = VISIBLE_WORKFLOWS): boolean {
+  const workflowId = workflowForGroup(group);
+  return workflowId === null || isWorkflowVisible(workflowId, visibleWorkflows);
 }
 
-export function homepageFlowTitle(): string {
-  const sceneCount = HOMEPAGE_SCENE_WORKFLOWS.filter(isWorkflowVisible).length;
+export function homepageHeroWorkflowPhrase(visibleWorkflows: readonly WorkflowId[] = VISIBLE_WORKFLOWS): string {
+  return joinChineseList(visibleWorkflows.map((workflowId) => WORKFLOW_OFFER_LABELS[workflowId]));
+}
+
+export function homepageFlowTitle(visibleWorkflows: readonly WorkflowId[] = VISIBLE_WORKFLOWS): string {
+  const sceneCount = HOMEPAGE_SCENE_WORKFLOWS.filter((id) => isWorkflowVisible(id, visibleWorkflows)).length;
   const countLabel = SCENE_COUNT_LABELS[sceneCount] ?? String(sceneCount);
   return `一条可审阅工作流，${countLabel}种场景接入`;
 }
 
-export function homepageFlowIntro(): string {
-  return `把${homepageHeroWorkflowPhrase()}压缩进同一个可核对视图，保留 Agent 辅助与人工确认的边界。`;
+export function homepageFlowIntro(visibleWorkflows: readonly WorkflowId[] = VISIBLE_WORKFLOWS): string {
+  return `把${homepageHeroWorkflowPhrase(visibleWorkflows)}压缩进同一个可核对视图，保留 Agent 辅助与人工确认的边界。`;
 }
 
 function joinChineseList(labels: string[]): string {

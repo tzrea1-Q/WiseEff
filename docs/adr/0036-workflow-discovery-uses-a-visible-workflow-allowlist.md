@@ -1,5 +1,7 @@
 # Workflow discovery uses a visible-workflow allowlist
 
+> Superseded by [ADR-0050](0050-workflow-publication-is-platform-wide-ui-availability.md), accepted on 2026-10-23: platform super administrators now control global UI publication, including direct page access. The text below preserves the original discovery-only decision.
+
 雷泽 has four peer workflows: parameter management, log analysis, debugging, and the knowledge base. Unfinished workflows must not be offered on discovery surfaces, but they are not unauthorized, not retired, and not capability-disabled.
 
 We decided that **discovery surfaces read a closed visible-workflow allowlist in product code**. A workflow appears on those surfaces only when it is on the list. New workflows stay off the list until someone adds them in a PR. The first allowlist is `parameter-management` and `debugging`. Log analysis and the knowledge base remain reachable by deep link.
