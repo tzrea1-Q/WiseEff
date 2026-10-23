@@ -10,6 +10,8 @@
 
 Drafts are visible only to their creator and knowledge managers. Members with view permission can read published and archived entries; search and Xiaoze knowledge retrieval use only published entries. For account and role setup, see [Account and access](account-and-access.md).
 
+Platform Admins can enter a target Organization and use the same Knowledge base and Knowledge admin pages. The target banner identifies where entries, imports, revisions, index work and Agent drafts are stored; the administrator retains their own identity. Business navigation and citation links retain the target, and separate tabs can manage different Organizations. Returning to the Home Organization or using browser history asks before discarding unsaved edits. Shared platform model and Catalog configuration keeps its platform scope.
+
 ## Find a published answer
 
 1. Open Knowledge base (`/knowledge`). Without an active search, use the status and tag filters to browse entries you can read. Use tags to identify projects or topics; the knowledge base has no folder hierarchy.

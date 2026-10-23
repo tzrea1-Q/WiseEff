@@ -29,6 +29,8 @@ Xiaoze reads existing log conclusions; running an analysis still requires the lo
 
 ## Review a parameter proposal before approving
 
+When a Platform Admin enters a target Organization, Xiaoze works in that fixed target while retaining the administrator's real Home identity. Conversations remain private to that account and target; switching Organization opens its own history and stops the previous stream. Knowledge citations and approval results retain their Organization and revision. Resume an approval from its original workspace: switching target does not transfer or approve it. Knowledge retrieval still excludes unpublished drafts, and device operations keep their existing owner and human-approval requirements.
+
 On Parameter changes (`/parameters`), ask Xiaoze to prepare a change for a specific parameter. Tools that change business data pause for explicit human approval, so the proposal has not yet taken effect. Approval must be given through the card; agreeing in the conversation is not enough.
 
 When Confirm parameter change appears:

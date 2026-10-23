@@ -12,7 +12,8 @@ import { registerKnowledgeRoutes } from "./routes";
 import * as service from "./service";
 import type { KnowledgeEntryDto } from "./types";
 
-vi.mock("./service", () => ({
+vi.mock("./service", async (importOriginal) => ({
+  knowledgeServiceInvocation: (await importOriginal<typeof import("./service")>()).knowledgeServiceInvocation,
   addKnowledgeDefinitionReference: vi.fn(),
   addKnowledgeParameterReference: vi.fn(),
   archiveKnowledgeEntry: vi.fn(),

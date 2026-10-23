@@ -44,13 +44,13 @@ function readProjectId(contextProjectId: string | undefined, payload: Record<str
   return typeof payload.projectId === "string" ? payload.projectId : contextProjectId;
 }
 
-function submissionCitation(changeRequestId: string, projectId: string, targetValue: string) {
+function submissionCitation(changeRequestId: string, projectId: string, targetValue: string, organizationId?: string) {
   return [
     {
       type: "parameter" as const,
       id: changeRequestId,
       label: `Change request ${changeRequestId}`,
-      href: `/parameter-review?request=${encodeURIComponent(changeRequestId)}&project=${encodeURIComponent(projectId)}`,
+      href: `/parameter-review?request=${encodeURIComponent(changeRequestId)}&project=${encodeURIComponent(projectId)}${organizationId ? `&organizationId=${encodeURIComponent(organizationId)}` : ""}`,
       snippet: `${targetValue} pending review for ${projectId}.`
     }
   ];
@@ -263,7 +263,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
               targetValue: targetText,
               draftId: draft.id
             },
-            citations: submissionCitation(changeRequestId, projectId, targetText)
+            citations: submissionCitation(changeRequestId, projectId, targetText, context.auth.agentInvocation?.operatingOrganization?.id)
           };
         });
       }

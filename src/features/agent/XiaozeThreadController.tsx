@@ -48,6 +48,11 @@ export function XiaozeThreadController() {
     if (isApiRuntime && !threadsHydrated) {
       return;
     }
+    // History can arrive after a turn starts; that live thread already owns its messages.
+    if (loadedThreadRef.current === null && agent.isRunning && agent.threadId === activeThreadId) {
+      loadedThreadRef.current = activeThreadId;
+      return;
+    }
 
     skipNextPersistRef.current = true;
     clearXiaozeAgentPendingTurn(agent);
