@@ -29,7 +29,7 @@ Update affected English/Chinese companions before each integrated slice is hande
 
 Unchecked means not yet integrated and verified. Initial frontier: #1369, #1385, #1386.
 
-The context foundation, directory, administrator continuity, member/settings workspace and both history slices are integrated. Scoped API/PostgreSQL checks and the history, directory, administrator-handover and member-workspace browser flows have passed; aggregate contracts and the pgvector-canonical schema artifact are current. Candidate-wide checks and independent review still remain, so these checkboxes stay open. Project/parameter, knowledge/Agent and device/integration operating scopes are in progress through the same fixed-target interfaces.
+The context foundation, directory, administrator continuity, member/settings workspace, device/integration management and both history slices are integrated. Scoped API/PostgreSQL checks and their browser workflows have passed; aggregate contracts and the pgvector-canonical schema artifact are current. Candidate-wide checks and independent review still remain, so these checkboxes stay open. Project/parameter, log and knowledge/Agent operating scopes are in progress through the same fixed-target interfaces. Linux visual comparisons at `024eb545b` produced two review candidates for the organization member page and its modal backdrop; no baseline has been changed, and review will be consolidated after the organization navigation is stable.
 
 - [ ] [#1369](https://github.com/tzrea1-Q/WiseEff/issues/1369) 前置兼容：真实身份与操作范围分离
 - [ ] [#1370](https://github.com/tzrea1-Q/WiseEff/issues/1370) 组织目录、创建与初始管理员
