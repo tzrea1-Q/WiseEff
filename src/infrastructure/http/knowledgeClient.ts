@@ -30,9 +30,9 @@ import { resolveWiseEffApiBaseUrl } from "./runtimeMode";
 type ApiClient = ReturnType<typeof createApiClient>;
 type ItemEnvelope<T> = { item: T };
 type ListEnvelope<T> = { items: T[] };
-type HttpKnowledgeRepositoryOptions =
+type HttpKnowledgeRepositoryOptions = { organizationId?: string } & (
   | { apiClient?: undefined; baseUrl?: string; fetchImpl?: typeof fetch }
-  | { apiClient: ApiClient; baseUrl: string; fetchImpl?: typeof fetch };
+  | { apiClient: ApiClient; baseUrl: string; fetchImpl?: typeof fetch });
 
 export type KnowledgeFileDto = {
   id: string;
@@ -222,7 +222,7 @@ function translateConflict(error: unknown): never {
 
 export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOptions = {}): KnowledgeRepository {
   const baseUrl = options.baseUrl ?? resolveWiseEffApiBaseUrl();
-  const apiClient = options.apiClient ?? createDefaultApiClient({ baseUrl, fetchImpl: options.fetchImpl });
+  const apiClient = options.apiClient ?? createDefaultApiClient({ baseUrl, fetchImpl: options.fetchImpl, organizationId: options.organizationId });
 
   return {
     async batch(input) {

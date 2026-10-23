@@ -22,6 +22,16 @@ import {
 import type { XiaozeStoredMessage } from "./xiaozeThreadTypes";
 
 describe("xiaozeThreadStorage", () => {
+  it("keeps active API threads separate for each actor and fixed target within one tab", () => {
+    const storage = new Map<string, string>();
+    const session = { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) };
+    writeApiActiveThreadId("thread-a", session, "actor:home");
+    writeApiActiveThreadId("thread-b", session, "actor:target");
+    writeApiActiveThreadId("thread-c", session, "other-actor:target");
+    expect(readApiActiveThreadId(session, "actor:home")).toBe("thread-a");
+    expect(readApiActiveThreadId(session, "actor:target")).toBe("thread-b");
+    expect(readApiActiveThreadId(session, "other-actor:target")).toBe("thread-c");
+  });
   it("derives title and preview from stored messages", () => {
     const messages: XiaozeStoredMessage[] = [
       { id: "u1", role: "user", content: "battery_temp_target_c 参数的作用是什么？" },

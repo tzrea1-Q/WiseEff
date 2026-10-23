@@ -24,11 +24,13 @@ import { presentError, presentErrorMessage } from "@/infrastructure/http/present
 import { KnowledgeTagList, KnowledgeUnsearchableBadge } from "./badges";
 import { KnowledgeEntryEditorDialog } from "./KnowledgeEntryEditorDialog";
 import { KnowledgeFileUploadDialog } from "./KnowledgeFileUploadDialog";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 
 const collectionTabs = ["drafts", "index", "archived"] as const;
 
 export type KnowledgeAdminPageProps = {
   repository: KnowledgeRepository;
+  organizationId?: string;
   capability: KnowledgeCapability;
   /** Opens review deep links (/knowledge?entryId=… and /logs?logId=…). */
   onNavigate?: (path: string) => void;
@@ -49,7 +51,7 @@ function formatDateTime(value: string | null) {
  * archive-reject), archived-entry management, manage-gated hard delete, and
  * retrieval index health (per-entry status, retry, rebuild-all).
  */
-export function KnowledgeAdminPage({ repository, capability, onNavigate }: KnowledgeAdminPageProps) {
+export function KnowledgeAdminPage({ repository, capability, onNavigate, organizationId }: KnowledgeAdminPageProps) {
   const canManage = capability.canManage;
   const [collection, selectCollection] = useCollectionTab(collectionTabs, "drafts");
   const [rows, setRows] = useState<KnowledgeEntry[]>([]);
@@ -117,7 +119,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
   }, [loadAgentDrafts, loadArchived, loadIndexHealth]);
 
   const archivedCount = useMemo(() => rows.length, [rows]);
-  const knowledgeNextStep = <EmptyContent><Button asChild variant="outline" size="sm"><a href="/knowledge">前往知识库</a></Button></EmptyContent>;
+  const knowledgeNextStep = <EmptyContent><Button asChild variant="outline" size="sm"><a href={withOrganizationScope("/knowledge", organizationId)}>前往知识库</a></Button></EmptyContent>;
 
   const publishAgentDraft = async (entry: KnowledgeEntry) => {
     setAgentActionPendingId(entry.id);

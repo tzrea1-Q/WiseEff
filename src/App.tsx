@@ -69,6 +69,8 @@ import {
 } from "@/domain/users/types";
 import { XiaozePageContext, XiaozePageContextRegistrar } from "@/features/agent/useXiaozePageContext";
 import { XiaozeProvider, XiaozeProactiveInsights } from "@/features/agent/XiaozeProvider";
+import { OrganizationBusinessWorkspace } from "@/features/organization/OrganizationBusinessWorkspace";
+import { isOrganizationBusinessPath, withBusinessOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiveInsights";
 import { FeedbackDialog } from "@/features/product-feedback/FeedbackDialog";
 import { xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
@@ -292,6 +294,7 @@ function AppShell({
   const stateRef = useRef(state);
   const [path, setPath] = useState(() => getPageByPath(window.location.pathname).path);
   const [search, setSearch] = useState(() => window.location.pathname === "/log-dashboard" ? "" : window.location.search);
+  const operatingOrganizationId = new URLSearchParams(search).get("organizationId") ?? undefined;
   const historyIndex = useRef(0);
   const navigationRequest = useRef(0);
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
@@ -350,7 +353,7 @@ function AppShell({
     () =>
       createAppRuntime(
         runtimeMode,
-        { getState: () => stateRef.current, mockParameterRuntime: mockParameterRuntimeRef.current! },
+        { getState: () => stateRef.current, mockParameterRuntime: mockParameterRuntimeRef.current!, organizationId: operatingOrganizationId },
         {
           authClient,
           workflowPublicationClient,
@@ -371,6 +374,8 @@ function AppShell({
       ),
     [
       runtimeMode,
+      operatingOrganizationId,
+      state.currentUserId,
       authClient,
       workflowPublicationClient,
       parameterRepository,
@@ -448,23 +453,31 @@ function AppShell({
       ? apiAuthPermissions.includes("parameter:edit") &&
         (apiAuthPermissions.includes("debugging:dts-reload") || apiAuthPermissions.includes("admin:access"))
       : true;
+  const parameterRepositoryRef = useRef(parameterRepositoryClient);
+  parameterRepositoryRef.current = parameterRepositoryClient;
+  useEffect(() => {
+    if (runtimeMode === "api") dispatch({ type: "HYDRATE_PARAMETER_RUNTIME", projects: [], parameters: [], changeRequests: [], parameterSubmissionRounds: [], parameterDrafts: [] });
+  }, [operatingOrganizationId, state.currentUserId, runtimeMode]);
   const parameterActions = useMemo<ParameterRuntimeActions>(
     () =>
       createParameterRuntimeActions({
         runtimeMode,
         repository: parameterRepositoryClient,
         canonicalRepository: appRuntime.parameterCatalogRepository,
-        dispatch,
+        dispatch: (action) => { if (parameterRepositoryRef.current === parameterRepositoryClient) dispatch(action); },
         getParameterProjectId: (parameterId) => stateRef.current.parameters.find((parameter) => parameter.id === parameterId)?.projectId
       }),
     [appRuntime.parameterCatalogRepository, parameterRepositoryClient, runtimeMode]
   );
+  const logRepositoryRef = useRef(logAnalysisRepositoryClient);
+  logRepositoryRef.current = logAnalysisRepositoryClient;
+  useEffect(() => { if (runtimeMode === "api") dispatch({ type: "HYDRATE_LOG_RUNTIME", logs: [] }); }, [operatingOrganizationId, state.currentUserId, runtimeMode]);
   const logActions = useMemo<LogRuntimeActions>(
     () =>
       createLogRuntimeActions({
         mode: runtimeMode,
         repository: logAnalysisRepositoryClient,
-        dispatch,
+        dispatch: (action) => { if (logRepositoryRef.current === logAnalysisRepositoryClient) dispatch(action); },
         getState: () => stateRef.current
       }),
     [logAnalysisRepositoryClient, runtimeMode]
@@ -581,7 +594,7 @@ function AppShell({
         return;
       }
       try {
-        const adminClient = createParameterAdminClient();
+        const adminClient = appRuntime.parameterAdminClient ?? createParameterAdminClient();
         if (!initializationCreatedProjectIds.current.has(projectId)) {
           await adminClient.createProject({
             id: projectId,
@@ -638,7 +651,7 @@ function AppShell({
         if (expectedSnapshots !== undefined) throw error;
       }
     },
-    [parameterInitializationRepositoryClient]
+    [parameterInitializationRepositoryClient, appRuntime.parameterAdminClient]
   );
 
   const handleInitializationWizardDispatch = useCallback(
@@ -964,12 +977,13 @@ function AppShell({
     (nextPath: string) => {
       setMobileNavOpen(false);
       const projectRoutes = ["/parameters", "/parameter-review", "/parameter-submissions"];
-      const params = new URLSearchParams(window.location.search);
-      const projectId = projectRoutes.includes(window.location.pathname)
+      const params = new URLSearchParams(search);
+      const projectId = projectRoutes.includes(path)
         ? params.get("project") || params.get("projectId") : null;
-      navigate(projectId && projectRoutes.includes(nextPath) ? `${nextPath}?project=${encodeURIComponent(projectId)}` : nextPath);
+      const destination = new URL(projectId && projectRoutes.includes(nextPath) ? `${nextPath}?project=${encodeURIComponent(projectId)}` : nextPath, window.location.origin);
+      navigate(withBusinessOrganizationScope(`${destination.pathname}${destination.search}${destination.hash}`, operatingOrganizationId));
     },
-    [navigate]
+    [navigate, search, path, operatingOrganizationId]
   );
 
   // Close the drawer when the viewport crosses back above the drawer breakpoint.
@@ -1109,7 +1123,7 @@ function AppShell({
     supportsXiaozeProactiveInsights(page.key);
   const proactiveInsightsBanner = showXiaozeProactiveInsights ? (
     <div className="xiaoze-proactive-insights">
-      <XiaozeProactiveInsights enabled />
+      <XiaozeProactiveInsights key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}`} enabled organizationId={operatingOrganizationId} />
     </div>
   ) : null;
 
@@ -1199,7 +1213,8 @@ function AppShell({
           {isPlatformHome ? (
             <div className="main-content home-content" data-runtime-state="ready">
               {proactiveInsightsBanner}
-              <PageRouter
+              <OrganizationBusinessWorkspace homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
+              <PageRouter key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}:${page.key}`}
                 page={page}
                 publication={publication}
                 visibleWorkflows={visibleWorkflows}
@@ -1237,7 +1252,7 @@ function AppShell({
                 sessionPermissions={apiAuthPermissions}
                 sessionRoles={runtimeMode === "api" ? apiAuthRoles : undefined}
                 DebuggingAdminPage={DebuggingAdminPageWithRuntime}
-              />
+              /></OrganizationBusinessWorkspace>
             </div>
           ) : (
             <main
@@ -1252,7 +1267,8 @@ function AppShell({
               {publicationPreviewBanner}
               {proactiveInsightsBanner}
               <div className="page-content" inert={pageRuntimeState === "loading"}>
-                <PageRouter
+                <OrganizationBusinessWorkspace homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
+                <PageRouter key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}:${page.key}`}
                   page={page}
                   publication={publication}
                   visibleWorkflows={visibleWorkflows}
@@ -1290,7 +1306,7 @@ function AppShell({
                   sessionPermissions={apiAuthPermissions}
                   sessionRoles={runtimeMode === "api" ? apiAuthRoles : undefined}
                   DebuggingAdminPage={DebuggingAdminPageWithRuntime}
-                />
+                /></OrganizationBusinessWorkspace>
               </div>
               {showsApplicationFooter ? (
                 <AppFooter config={appFooterConfig} onFeedback={() => setFeedbackOpen(true)} />
@@ -1335,7 +1351,7 @@ function AppShell({
 
   return runtimeMode === "api" ? (
     <XiaozePageContext.Provider value={xiaozePageContext}>
-      <XiaozeProvider enableInspector={enableXiaozeInspector} userId={state.currentUserId}>{appShell}</XiaozeProvider>
+      <XiaozeProvider enableInspector={enableXiaozeInspector} userId={state.currentUserId} organizationId={operatingOrganizationId}>{appShell}</XiaozeProvider>
     </XiaozePageContext.Provider>
   ) : (
     appShell
