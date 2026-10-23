@@ -82,6 +82,7 @@ export type AuditEventListResponse = {
 };
 
 export type ListAuditEventsParams = {
+  organizationId?: string;
   eventId?: string;
   projectId?: string;
   app?: string;

@@ -544,13 +544,13 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     });
 
     expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
-    expect(screen.queryByText(/新账号将加入评估组织/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/新账号将加入体验组织/)).not.toBeInTheDocument();
     expect(screen.queryByText("3–64 个字符，仅限字母、数字、点、下划线和连字符。")).not.toBeInTheDocument();
     expect(screen.getByLabelText("用户名")).not.toHaveAttribute("aria-describedby", "local-auth-username-hint");
 
     fireEvent.click(await screen.findByRole("tab", { name: "注册" }));
 
-    expect(screen.getByText(/新账号将加入评估组织「ChargeLab」/)).toBeInTheDocument();
+    expect(screen.getByText(/新账号将加入体验组织「ChargeLab」/)).toBeInTheDocument();
     expect(screen.getByText("3–64 个字符，仅限字母、数字、点、下划线和连字符。")).toBeInTheDocument();
     expect(screen.getByLabelText("用户名")).toHaveAttribute("aria-describedby", "local-auth-username-hint");
   });
@@ -841,7 +841,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
     // The login heading can render before the config effect runs; assert the hidden tab only after the config loaded.
     await waitFor(() => expect(authClient.getLocalAuthConfig).toHaveBeenCalled());
-    expect(screen.queryByText(/新账号将加入评估组织/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/新账号将加入体验组织/)).not.toBeInTheDocument();
     expect(screen.queryByText("3–64 个字符，仅限字母、数字、点、下划线和连字符。")).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "注册" })).not.toBeInTheDocument();
   });

@@ -3,13 +3,16 @@ import { createWiseEffServer } from "../../app";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import { registerAuthRoutes } from "./routes";
-import { createLocalAuthService } from "./localAuth";
-import type { Database, QueryResult, Queryable } from "../../shared/database/client";
+import { createLocalAuthService as createConfiguredLocalAuthService } from "./localAuth";
+import { createDatabase, type Database, type QueryResult } from "../../shared/database/client";
 
 type QueryCall = {
   text: string;
   values: unknown[];
 };
+
+const createLocalAuthService = (db: Database, options: Parameters<typeof createConfiguredLocalAuthService>[1] = {}) =>
+  createConfiguredLocalAuthService(db, { selfRegisterEnabled: true, ...options });
 
 function createLocalRouteDb() {
   const calls: QueryCall[] = [];
@@ -34,6 +37,7 @@ function createLocalRouteDb() {
 
   async function query<Row>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> {
     calls.push({ text, values });
+    if (text.includes("from public_experience_registration")) return { rows: [{ enabled: null, organization_id: null }] as Row[], rowCount: 1 };
     const normalized = text.replace(/\s+/g, " ").trim();
 
     if (normalized.startsWith("select user_id as id from user_password_credentials")) {
@@ -181,11 +185,7 @@ function createLocalRouteDb() {
     return { rows: [], rowCount: 0 };
   }
 
-  const tx: Queryable = { query };
-  const db: Database = {
-    query,
-    transaction: async (fn) => fn(tx)
-  };
+  const db = createDatabase({ query });
 
   return { calls, db };
 }

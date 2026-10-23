@@ -28,9 +28,11 @@ export async function listKnowledgeHandovers(db: Queryable, auth: KnowledgeAcces
 export async function assignKnowledgeResponsibility(db: Database, auth: KnowledgeAccessContext,
   kind: "entry" | "import", id: string, input: z.infer<typeof knowledgeHandoverBodySchema>, requestId: string) {
   requireKnowledgeManage(auth);
-  const organizationId = knowledgeOrganizationId(auth), table = kind === "entry" ? "knowledge_entries" : "knowledge_import_batches";
+  const organizationId = knowledgeOrganizationId(auth);
   return db.transaction(async tx => {
-    const current = (await tx.query<{ responsible_user_id: string | null }>(`select responsible_user_id from ${table} where id=$1 and organization_id=$2 for update`, [id, organizationId])).rows[0];
+    const current = (await (kind === "entry"
+      ? tx.query<{ responsible_user_id: string | null }>("select responsible_user_id from knowledge_entries where id=$1 and organization_id=$2 for update", [id, organizationId])
+      : tx.query<{ responsible_user_id: string | null }>("select responsible_user_id from knowledge_import_batches where id=$1 and organization_id=$2 for update", [id, organizationId]))).rows[0];
     if (!current) throw new ApiError("NOT_FOUND", "待交接业务不存在。");
     if (current.responsible_user_id !== input.expectedResponsibleUserId) throw new ApiError("CONFLICT", "责任人已变化，请刷新后重试。");
     if (input.responsibleUserId !== null) {
@@ -38,7 +40,11 @@ export async function assignKnowledgeResponsibility(db: Database, auth: Knowledg
       if (!successor.rowCount) throw new ApiError("VALIDATION_FAILED", "接任者必须是当前组织中有效的知识编辑者。");
     }
     if (current.responsible_user_id === input.responsibleUserId) return;
-    await tx.query(`update ${table} set responsible_user_id=$3 where id=$1 and organization_id=$2`, [id, organizationId, input.responsibleUserId]);
+    if (kind === "entry") {
+      await tx.query("update knowledge_entries set responsible_user_id=$3 where id=$1 and organization_id=$2", [id, organizationId, input.responsibleUserId]);
+    } else {
+      await tx.query("update knowledge_import_batches set responsible_user_id=$3 where id=$1 and organization_id=$2", [id, organizationId, input.responsibleUserId]);
+    }
     await writeAuditEventInTx(asAuditTx(tx), knowledgeServiceInvocation(auth), { requestId }, {
       app: "knowledge", kind: "knowledge-handover", action: "assign-responsibility", severity: "Medium", projectId: null,
       targetType: kind === "entry" ? "knowledge-entry" : "knowledge-import-batch", targetId: id,

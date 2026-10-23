@@ -68,6 +68,7 @@ export type ProductFeedbackProgressEvent = {
 };
 
 export type ProductFeedback = {
+  organizationId?: string;
   id: string;
   submitterUserId?: string | null;
   submitter?: SubmitterIdentity;

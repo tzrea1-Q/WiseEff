@@ -26,6 +26,10 @@
   width: 100%;
 }
 
+.platform-organizations__fields input[type="checkbox"] {
+  width: auto;
+}
+
 .platform-organizations__administration {
   display: grid;
   gap: var(--space-3);
