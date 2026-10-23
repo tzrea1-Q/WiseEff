@@ -228,7 +228,7 @@ export function getPageByPath(path: string): PageConfig {
       group: "平台总览",
       icon: Settings2,
       title: "组织管理",
-      subtitle: area === "integrations" ? ORGANIZATION_ADMIN_UI.integrationsSubtitle : area === "bridges" ? ORGANIZATION_ADMIN_UI.bridgesSubtitle : area === "members" ? ORGANIZATION_ADMIN_UI.membersSubtitle : ORGANIZATION_ADMIN_UI.profileSubtitle
+      subtitle: area === "projects" ? ORGANIZATION_ADMIN_UI.projectsSubtitle : area === "integrations" ? ORGANIZATION_ADMIN_UI.integrationsSubtitle : area === "bridges" ? ORGANIZATION_ADMIN_UI.bridgesSubtitle : area === "members" ? ORGANIZATION_ADMIN_UI.membersSubtitle : ORGANIZATION_ADMIN_UI.profileSubtitle
     };
   }
 

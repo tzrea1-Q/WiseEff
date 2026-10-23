@@ -26,6 +26,12 @@ If you only need to stop access, disable the account. Delete user is permanent a
 
 *Seeded member management as an Organization Admin; no role or account is changed.*
 
+## View project participation
+
+Open **Project participation** (`/organization/projects`) and choose a project. The read-only roster shows its explicit participants, editing roles and current account status, including disabled members. Platform administrators can use the target Organization shown on the page; each tab keeps its own target.
+
+The initial compatibility rollout retains existing editing authorization. Organization and platform administrators manage projects directly; review and merge duties remain separately configured. Viewing this roster does not activate an account or grant review, merge or device access.
+
 ## Decide a Committer registration request
 
 In People management (`/organization/members`), switch to Registration requests. Check the applicant's Organization, account identifier, current role and requested hardware/software committer role, then choose one of three outcomes.

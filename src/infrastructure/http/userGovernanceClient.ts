@@ -66,6 +66,10 @@ export type CreateGovernedUserInput = {
 
 export type ProjectWorkflowRoleId = "hardware-committer" | "software-committer" | "software-user";
 
+export type ProjectMemberRoleId = "hardware-user" | "software-user" | "hardware-committer" | "software-committer";
+export type ProjectMember = { userId: string; name: string; username: string | null; title: string; isActive: boolean; roles: ProjectMemberRoleId[] };
+export type ProjectMembers = { projectId: string; members: ProjectMember[] };
+
 export type ProjectWorkflowRoleBindingItem = {
   userId: string;
   name: string;
@@ -129,6 +133,7 @@ export function createUserGovernanceClient(
     async listProjectCandidates() {
       return (await apiClient.get<ItemsEnvelope<{ id: string; name: string }>>(scoped("/api/v1/organization/project-candidates"))).items;
     },
+    getProjectMembers: (projectId: string) => apiClient.get<ProjectMembers>(scoped(`/api/v1/projects/${encodeURIComponent(projectId)}/members`)),
     async listUsers() {
       const response = await apiClient.get<ItemsEnvelope<UserGovernanceDto>>(scoped("/api/v1/users"));
       return response.items.map(userFromDto);

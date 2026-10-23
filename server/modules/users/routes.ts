@@ -11,6 +11,7 @@ import {
   deleteUser,
   getHomeOrganization,
   getProjectRoleBindings,
+  getGovernedProjectMembers,
   listGovernedUsers,
   listGovernedProjectCandidates,
   listRegistrationRoleRequests,
@@ -145,6 +146,12 @@ export function registerUserRoutes(
     const items = await listGovernedUsers(db, await operatingInvocation(db, auth, request));
 
     return { status: 200, body: { items } };
+  });
+
+  router.get("/api/v1/projects/:projectId/members", async (request) => {
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    const { projectId } = parseWithSchema(projectIdParamsSchema, request.params);
+    return { status: 200, body: await getGovernedProjectMembers(db, await operatingInvocation(db, auth, request), projectId) };
   });
 
   router.post("/api/v1/users", async (request) => {

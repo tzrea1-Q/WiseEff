@@ -10,6 +10,7 @@ import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { presentError } from "@/infrastructure/http/presentError";
 import { UserPermissionsPage, type UserPermissionsPageProps } from "@/UserPermissionsPage";
 import { IntegrationCredentials } from "@/features/log-skills/IntegrationCredentials";
+import { OrganizationProjectsPanel, type ProjectMembershipClient } from "@/features/organization/OrganizationProjectsPanel";
 import type { ComponentProps } from "react";
 import "./organization-page.css";
 
@@ -31,6 +32,7 @@ export type OrganizationPageProps = UserPermissionsPageProps & {
   onOrganizationUpdated?: (organization: OrganizationRecord) => void | Promise<void>;
   bridgeActions?: ComponentProps<typeof OrganizationBridgePanel>["actions"];
   credentialRepository?: ComponentProps<typeof IntegrationCredentials>["repository"];
+  projectMembershipClient?: ProjectMembershipClient;
 };
 
 export function OrganizationPage({
@@ -40,6 +42,7 @@ export function OrganizationPage({
   onOrganizationUpdated,
   bridgeActions,
   credentialRepository,
+  projectMembershipClient,
   ...memberProps
 }: OrganizationPageProps) {
   const [organization, setOrganization] = useState<OrganizationRecord | null>(null);
@@ -115,7 +118,7 @@ export function OrganizationPage({
       <OrganizationAdminScopeNav active={area} organizationId={memberProps.directoryScope} onNavigate={memberProps.onNavigate} />
       {area === "bridges" ? <OrganizationBridgePanel enabled={apiMode && canPerform(memberProps.state.activeRoleId, "users.manage")} actions={bridgeActions} /> : area === "integrations" ? (
         <div className="skill-section"><IntegrationCredentials repository={credentialRepository} apiMode={apiMode} canEdit={canPerform(memberProps.state.activeRoleId, "logs.admin-domains")} disabled={false} /></div>
-      ) : area === "members" ? (
+      ) : area === "projects" ? <OrganizationProjectsPanel client={projectMembershipClient} /> : area === "members" ? (
         <UserPermissionsPage {...memberProps} />
       ) : (
         <section className="organization-profile" aria-label="组织档案">
