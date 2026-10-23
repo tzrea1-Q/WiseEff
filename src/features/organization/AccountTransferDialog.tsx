@@ -49,7 +49,10 @@ export function AccountTransferDialog({ user, client, onClose, onTransferred }: 
           {!targets.length ? <p>暂无其他组织，请先在组织目录创建目标组织。</p> : null}
           {preview ? <section className="member-details__section" aria-label="调动影响">
             <h3>{preview.source.name} → {preview.target.name}</h3>
-            <p>账号 {preview.user.username ?? preview.user.id} 及密码保留。账号当前{preview.user.isActive ? "启用" : "停用"}，调动后保持该状态。</p>
+            <p>账号 {preview.user.username ?? preview.user.id}{preview.oidcIdentity ? "及显式身份绑定保留" : "及密码保留"}。账号当前{preview.user.isActive ? "启用" : "停用"}，调动后保持该状态。</p>
+            {preview.oidcIdentity ? <div role="note" aria-label="外部身份同步要求"><p>调动后等待身份系统同步。请将身份提供方的 organization_id 更新为 {preview.target.id}，然后重新登录。</p>
+              <p>Issuer：{preview.oidcIdentity.issuer}；Subject：{preview.oidcIdentity.subject}</p>
+              <p>旧组织声明无法登录；只有验证通过的新组织登录才会标记同步完成。可在目标组织成员资料中刷新检查结果。</p></div> : null}
             <p>清除原组织角色 {preview.roles.filter(role => role.projectId === null && role.roleId !== "platform-admin").length} 项、团队 {preview.teams.length} 个及项目参与 {preview.projectMemberships.length} 项；审核、合入职责一并清除。</p>
             <p>撤销会话 {preview.personalAccess.sessions} 个、个人设备配对 {preview.personalAccess.pairings} 个、待用配对码 {preview.personalAccess.pairingCodes} 个。</p>
             <p>项目草稿与待办：{preview.retainedWork.project}</p><p>知识草稿与导入：{preview.retainedWork.knowledge}；反馈草稿与待办：{preview.retainedWork.feedback}</p>

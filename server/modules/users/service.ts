@@ -337,6 +337,7 @@ export async function createUser(db: Database, caller: GovernanceCaller, input: 
   }
 
   return db.transaction(async (tx) => {
+    await lockAdministratorMutation(tx);
     const existingCredential = username ? await findPasswordCredentialByUsername(tx, username) : null;
     if (existingCredential) {
       throw new ApiError("CONFLICT", "Username is already registered.", { username });

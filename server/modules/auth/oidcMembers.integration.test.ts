@@ -139,6 +139,10 @@ describe.skipIf(!available)("explicit OIDC member provisioning through signed au
         await tx.query("insert into users(id,organization_id,name,email,title) values('legacy-member',$1,'Legacy','legacy@example.test','Engineer'),('legacy-other',$1,'Other','other@example.test','Engineer')",[organizationId]);
         await tx.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values('legacy-role','legacy-member',$1,'hardware-user'),('legacy-other-role','legacy-other',$1,'hardware-user')",[organizationId]);
         expect(await applyMigrations(tx,fileURLToPath(new URL("../../migrations",import.meta.url)),{ through: "0238_oidc_member_identities.sql" })).toEqual(["0238_oidc_member_identities.sql"]);
+        // The replay replaces the identity table, so restore its later additive columns
+        // before exercising today's authentication and member DTOs against it.
+        await tx.query("delete from schema_migrations where name='0273_oidc_account_transfer_sync.sql'");
+        expect(await applyMigrations(tx,fileURLToPath(new URL("../../migrations",import.meta.url)),{ through: "0273_oidc_account_transfer_sync.sql" })).toEqual(["0273_oidc_account_transfer_sync.sql"]);
         const server = serverFor(tx);
         const request = <T,>(path: string,method = "GET",body?: unknown,bearer = token("members-admin")) => requestJson<T>(server,path,{ method,headers: { Authorization: `Bearer ${bearer}` },...(body ? { body: JSON.stringify(body) } : {}) });
         expect((await request<AuthContext>("/api/v1/me","GET",undefined,token("legacy-member"))).body.user.id).toBe("legacy-member");

@@ -42,6 +42,7 @@ export type UserRoleBinding = {
 
 export type UserAccount = {
   oidcIdentity?: { issuer: string; subject: string };
+  oidcTransfer?: { targetOrganizationId: string; pendingSince: string; verifiedAt: string | null; status: "pending" | "verified" };
   legacyOidcEmail?: string;
   id: string;
   name: string;

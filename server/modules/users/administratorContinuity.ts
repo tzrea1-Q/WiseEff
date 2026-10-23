@@ -16,6 +16,7 @@ export const administratorLoginIdentitySql = `(coalesce($3::text,'hmac')='hmac'
   or ($3='local' and exists(select 1 from user_password_credentials credentials where credentials.user_id=users.id))
   or ($3='oidc' and exists(select 1 from user_oidc_identities identity where identity.user_id=users.id
     and identity.organization_id=users.organization_id
+    and (identity.transfer_pending_since is null or identity.transfer_verified_at is not null)
     and ((identity.issuer=$4 and identity.subject is not null) or (identity.issuer is null and identity.legacy_subject)))))`;
 
 export async function lockAdministratorMutation(tx: Queryable) {
@@ -41,11 +42,11 @@ export async function listUsableAdministratorIds(tx: Queryable, organizationId: 
 }
 
 /** Call under lockAdministratorMutation before changing active state, roles or Home organization. */
-export async function assertAdministratorContinuity(tx: Queryable, current: UserGovernanceDto, next: { isActive?: boolean; roles?: RoleBinding[]; organizationId?: string }, context: AdministratorMutationContext = {}, emergency = false) {
+export async function assertAdministratorContinuity(tx: Queryable, current: UserGovernanceDto, next: { isActive?: boolean; roles?: RoleBinding[]; organizationId?: string; loginUsable?: boolean }, context: AdministratorMutationContext = {}, emergency = false) {
   const active = next.isActive ?? current.isActive, roles = next.roles ?? current.roles;
   const moved = next.organizationId !== undefined && next.organizationId !== current.organizationId;
   for (const roleId of ["platform-admin", "admin"] as const) {
-    if (!current.isActive || !hasOrganizationRole(current.roles, roleId) || (active && hasOrganizationRole(roles, roleId) && (!moved || roleId === "platform-admin"))) continue;
+    if (!current.isActive || !hasOrganizationRole(current.roles, roleId) || (active && next.loginUsable !== false && hasOrganizationRole(roles, roleId) && (!moved || roleId === "platform-admin"))) continue;
     const administrators = await listUsableAdministratorIds(tx, roleId === "admin" ? current.organizationId : null, roleId, context);
     if (administrators.includes(current.id) && administrators.length === 1 && !(emergency && roleId === "admin")) {
       throw new ApiError("CONFLICT", roleId === "platform-admin" ? "At least one usable platform super administrator must remain." : "At least one usable organization administrator must remain.",

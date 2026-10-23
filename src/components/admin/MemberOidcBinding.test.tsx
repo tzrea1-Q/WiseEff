@@ -4,8 +4,29 @@ import { afterEach, expect, it, vi } from "vitest";
 import { createPrototypeState } from "@/mockData";
 import { createTestUserGovernanceActions } from "@/test/harness";
 import { MemberDetailsDialog } from "./MemberDetailsDialog";
+import { MemberOidcIdentityPanel } from "./MemberOidcIdentityPanel";
 
 afterEach(cleanup);
+it("shows an honest pending target, retains refresh errors and displays only verified login evidence as success", async () => {
+  const base = createPrototypeState().users[0]!;
+  const user = { ...base, oidcIdentity: { issuer: "https://identity.example", subject: "external-member" },
+    oidcTransfer: { targetOrganizationId: "target-org", pendingSince: "2026-10-23T01:00:00Z", verifiedAt: null, status: "pending" as const } };
+  const verified = { ...user, oidcTransfer: { ...user.oidcTransfer, status: "verified" as const, verifiedAt: "2026-10-23T02:00:00Z" } };
+  const listUsers = vi.fn().mockRejectedValueOnce(new Error("同步状态暂不可用")).mockResolvedValue([verified]);
+  const onUpdated = vi.fn();
+  const props = { issuer: user.oidcIdentity.issuer, actions: { ...createTestUserGovernanceActions(), listUsers }, onUpdated };
+  const view = render(<MemberOidcIdentityPanel user={user} {...props} />);
+  expect(screen.getByRole("status", { name: "外部身份同步结果" })).toHaveTextContent("等待身份系统同步");
+  expect(screen.getByRole("status", { name: "外部身份同步结果" })).toHaveTextContent("target-org");
+  await userEvent.click(screen.getByRole("button", { name: "刷新同步结果" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("同步状态暂不可用");
+  expect(onUpdated).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "刷新同步结果" }));
+  await waitFor(() => expect(onUpdated).toHaveBeenCalledWith(verified));
+  view.rerender(<MemberOidcIdentityPanel user={verified} {...props} />);
+  expect(screen.getByRole("status", { name: "外部身份同步结果" })).toHaveTextContent("已验证目标组织登录");
+  expect(screen.getByRole("status", { name: "外部身份同步结果" }).querySelector("time")).toHaveAttribute("dateTime", "2026-10-23T02:00:00Z");
+});
 it("edits an existing member's explicit identity with its previous binding, retaining failed input for retry", async () => {
   const state = createPrototypeState(), user = { ...state.users.find((member) => member.id === "u-liu-min")!, oidcIdentity: { issuer: "https://identity.example", subject: "previous-subject" } };
   const setOidcIdentity = vi.fn().mockRejectedValueOnce(new Error("绑定发生冲突，请核对 Subject。")).mockResolvedValue({ ...user, oidcIdentity: { issuer: "https://identity.example", subject: "updated-subject" } });

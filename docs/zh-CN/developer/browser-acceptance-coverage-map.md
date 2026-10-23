@@ -8,6 +8,8 @@
 
 `ORG-ACCOUNT-TRANSFER-001`：平台管理员在真实本地密码 API 模式、1440×900 的成员页预览源组织权限、凭据和待交接事项，明确配置目标组织角色，处理调动失败并重试。调动后旧会话和个人配对失效，原密码重新登录目标组织；源组织草稿、审核待办、历史署名及机器凭据保留。专属浏览器文件为 `e2e/acceptance/organization-account-transfer.acceptance.spec.ts`，真实 PostgreSQL 文件为 `server/modules/users/accountTransfer.integration.test.ts`。HMAC/OIDC 模式跳过本地密码交互，不作为本项本地登录验收。
 
+`ORG-OIDC-TRANSFER-001`：在隔离的受控 OIDC API 通道、1440×900 成员页预览所需组织声明，处理真实目标身份冲突，查看同步等待状态并重试失败的状态刷新；只有通过签名、组织声明和显式绑定校验的新登录才会完成同步。浏览器文件为 `e2e/acceptance/organization-oidc-transfer.acceptance.spec.ts`，真实签名认证及 PostgreSQL 文件为 `server/modules/users/oidcAccountTransfer.integration.test.ts`。其他认证通道跳过本条件用例；受控本地身份系统不代表部署身份系统验收。
+
 `LOG-REGISTER-001`：Admin 在 1440x900 的技能工作区编辑寄存器位段与映射，预览粘贴表格的有效行及逐行拒绝原因后导入，往返 YAML，并选择常驻样例面板中的日志行查看位条数值与枚举含义。组件和 PostgreSQL 集成测试已覆盖；协调者执行浏览器走查，专属浏览器自动化尚待补充，不记为已完成的自动化浏览器覆盖。
 
 `PCAT-REGISTRATION-INITIALIZE-001`：组织管理员明确选择业务父分类和目标名称，在同一事务创建对应类型目标并登记主体。组件及真实 PostgreSQL 并发、租户隔离、失败回滚已有专项覆盖；专属浏览器写入与审计回执仍待补，不记为已完成的自动化浏览器覆盖。
