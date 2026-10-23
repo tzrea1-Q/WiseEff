@@ -1429,6 +1429,7 @@ test.describe("Knowledge base browser acceptance", () => {
   test("agent knowledge draft flows through approval into the admin publish queue for publish and reject", async ({ page }, testInfo) => {
     // @acceptance KB-ADMIN-001
     // @operation KB-ADMIN-001
+    await page.setViewportSize({ width: 1440, height: 900 });
     const seeded = await seedCompletedLogAnalysis();
     const publishTitle = `${titlePrefix} Agent沉淀待发布 ${runStamp}`;
     const rejectTitle = `${titlePrefix} Agent沉淀待拒绝 ${runStamp}`;
@@ -1504,9 +1505,12 @@ test.describe("Knowledge base browser acceptance", () => {
 
     const publishRow = queue.locator("tr", { hasText: publishTitle }).first();
     await expect(publishRow).toBeVisible();
-    await expect(publishRow.getByText(new RegExp(`创建人 ${editorUserId}`))).toBeVisible();
+    await expect(publishRow.getByText(`创建人 ${editorName} · 修订 #1`, { exact: true })).toBeVisible();
     await expect(publishRow.getByText(`kb-admin-publish-${runStamp}`)).toBeVisible();
     await expect(publishRow.getByRole("button", { name: "查看日志分析" })).toBeVisible();
+    await testInfo.attach("agent-draft-recorded-creator-1440", {
+      body: await page.screenshot({ fullPage: true, animations: "disabled" }), contentType: "image/png"
+    });
 
     // Publish one draft from the queue.
     await publishRow.getByRole("button", { name: /：更多$/ }).click();
@@ -1522,8 +1526,11 @@ test.describe("Knowledge base browser acceptance", () => {
     await expect(queue.locator("tr", { hasText: rejectTitle })).toHaveCount(0);
 
     const statuses = await withPgClient(async (client) => {
-      const result = await client.query<{ title: string; status: string; source_session_id: string; source_log_id: string | null }>(
-        `select title, status, source_session_id, source_log_id from knowledge_entries where title = any($1::text[]) order by title`,
+      const result = await client.query<{ title: string; status: string; source_session_id: string; source_log_id: string | null; recorded_creator_id: string; recorded_creator_name: string }>(
+        `select title, status, source_session_id, source_log_id,
+           historical_attribution #>> '{actors,created_by_user_id,id}' as recorded_creator_id,
+           historical_attribution #>> '{actors,created_by_user_id,name}' as recorded_creator_name
+         from knowledge_entries where title = any($1::text[]) order by title`,
         [[publishTitle, rejectTitle]]
       );
       return result.rows;
@@ -1531,7 +1538,9 @@ test.describe("Knowledge base browser acceptance", () => {
     expect(statuses.find((row) => row.title === publishTitle)).toMatchObject({
       status: "published",
       source_session_id: `kb-admin-publish-${runStamp}`,
-      source_log_id: seeded.logId
+      source_log_id: seeded.logId,
+      recorded_creator_id: editorUserId,
+      recorded_creator_name: editorName
     });
     expect(statuses.find((row) => row.title === rejectTitle)).toMatchObject({ status: "archived" });
 

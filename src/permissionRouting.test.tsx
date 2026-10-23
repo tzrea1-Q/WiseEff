@@ -75,10 +75,10 @@ describe("permission-aware routing", () => {
     render(<App initialAppState={{ ...initialState, activeRoleId }} />);
 
     const sidebar = within(screen.getByRole("complementary", { name: "主导航侧边栏" }));
-    expect(sidebar.queryByRole("button", { name: "组织目录", exact: true })).not.toBeInTheDocument();
-    fireEvent.click(sidebar.getByRole("button", { name: "组织管理", exact: true }));
+    expect(sidebar.queryByRole("button", { name: "组织目录" })).not.toBeInTheDocument();
+    fireEvent.click(sidebar.getByRole("button", { name: "组织管理" }));
     expect(window.location.pathname).toBe(activeRoleId === "platform-admin" ? "/platform/organizations" : "/organization");
-    expect(sidebar.getByRole("button", { name: "组织管理", exact: true })).toHaveClass("active");
+    expect(sidebar.getByRole("button", { name: "组织管理" })).toHaveClass("active");
   });
 
   it("filters personal workbench entries by role", async () => {
