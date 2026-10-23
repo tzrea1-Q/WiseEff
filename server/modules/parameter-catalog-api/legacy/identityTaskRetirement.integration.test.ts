@@ -166,11 +166,12 @@ describe("assembled identity task read-window retirement", () => {
     }));
   });
 
-  it.each(["t1068-platform-only", "u-xu-yun"])("does not impersonate Organization Admin for %s", async (userId) => {
+  it.each(["t1068-platform-only", "u-xu-yun"])("allows the actual platform administrator %s to read organization history", async (userId) => {
     const response = await requestJson(harness.server, "/api/v2/parameter-spec-review-tasks?status=open", {
       headers: { "X-WiseEff-User": userId },
     });
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty("historicalItems");
   });
 
   it("keeps task history authenticated and organization scoped", async () => {

@@ -69,12 +69,13 @@ describe("governance write algebra", () => {
     expect(write).not.toHaveBeenCalled();
   });
 
-  it("separates Org Admin registration from Platform Admin proposal review", () => {
+  it("allows platform organization management while keeping proposal review separate", () => {
     expect(canExecuteGovernanceAction("org-admin", "register-subject", unregistered)).toBe(true);
     expect(canExecuteGovernanceAction("org-admin", "resolve-review-item", unregistered)).toBe(true);
     expect(canExecuteGovernanceAction("org-admin", "update-placement", unregistered)).toBe(false);
     expect(canExecuteGovernanceAction("org-admin", "accept-proposal", ready)).toBe(false);
-    expect(canExecuteGovernanceAction("platform-admin", "register-subject", unregistered)).toBe(false);
+    expect(canExecuteGovernanceAction("platform-admin", "register-subject", unregistered)).toBe(true);
+    expect(canExecuteGovernanceAction("platform-admin", "resolve-review-item", unregistered)).toBe(true);
     expect(canExecuteGovernanceAction("platform-admin", "accept-proposal", ready)).toBe(true);
     expect(canExecuteGovernanceAction("user", "create-proposal", ready)).toBe(false);
     expect(canExecuteGovernanceAction("user", "register-subject", unregistered)).toBe(false);

@@ -45,6 +45,8 @@ import { createPlatformOrganization, emergencyDisableAdministrator, getAdministr
 import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
 import { listOrganizationTeams, mutateOrganizationTeam, teamMembersSchema, teamNameSchema } from "./teams";
 import { updateProjectMemberBodySchema } from "../contracts/dtoSchemas/projectMembers";
+import { acceptOrganizationInvitation, invitationAcceptSchema, invitationInputSchema, invitationTokenSchema, issueOrganizationInvitation, listOrganizationInvitations, readOrganizationInvitation, revokeOrganizationInvitation } from "./invitations";
+import { authAttemptKey, createAuthAttemptLimiter } from "../auth/authAttemptLimiter";
 
 const userIdParamsSchema = z.object({
   userId: z.string().min(1)
@@ -82,13 +84,45 @@ function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Inv
 
 export function registerUserRoutes(
   router: WiseEffRouter,
-  options: { db?: Database; oidcIssuer?: string; authenticationProvider?: "local" | "oidc" | "hmac"; bridgeConnectionPool?: Pick<BridgeConnectionPool, "disconnect">; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
+  options: { db?: Database; localInvitationsEnabled?: boolean; oidcIssuer?: string; authenticationProvider?: "local" | "oidc" | "hmac"; bridgeConnectionPool?: Pick<BridgeConnectionPool, "disconnect">; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
 ) {
   const mutationContext = (request: RouteRequest) => ({ requestId: request.requestId, authenticationProvider: options.authenticationProvider, oidcIssuer: options.oidcIssuer, bridgeConnectionPool: options.bridgeConnectionPool });
   const operatingInvocation = (db: Database, auth: AuthContext, request: RouteRequest) => {
     const query = parseWithSchema(z.object({ organizationId: z.string().trim().min(1).max(200).optional() }), request.query);
     return query.organizationId === undefined ? createUserInvocation(auth) : resolveOperatingContext(db, createUserInvocation(auth), query.organizationId);
   };
+  const invitationDb = () => {
+    if (!options.localInvitationsEnabled) throw new ApiError("FORBIDDEN", "当前认证方式不支持本地密码邀请，请通过成员管理绑定外部身份。");
+    return requireDb(options.db);
+  };
+  const invitationAttempts = createAuthAttemptLimiter();
+  router.get("/api/v1/organization/invitations", async (request) => {
+    const db = invitationDb(), auth = await options.getCurrentAuthContext(request);
+    return { status: 200, body: { items: await listOrganizationInvitations(db, await operatingInvocation(db, auth, request)) } };
+  });
+  router.post("/api/v1/organization/invitations", async (request) => {
+    const db = invitationDb(), auth = await options.getCurrentAuthContext(request), body = parseWithSchema(invitationInputSchema, request.body);
+    return { status: 201, body: await issueOrganizationInvitation(db, await operatingInvocation(db, auth, request), body, request.requestId) };
+  });
+  router.post("/api/v1/organization/invitations/:invitationId/regenerate", async (request) => {
+    const db = invitationDb(), auth = await options.getCurrentAuthContext(request), body = parseWithSchema(invitationInputSchema, request.body);
+    return { status: 200, body: await issueOrganizationInvitation(db, await operatingInvocation(db, auth, request), body, request.requestId, request.params.invitationId) };
+  });
+  router.post("/api/v1/organization/invitations/:invitationId/revoke", async (request) => {
+    const db = invitationDb(), auth = await options.getCurrentAuthContext(request);
+    parseWithSchema(z.object({}).strict(), request.body);
+    return { status: 200, body: { item: await revokeOrganizationInvitation(db, await operatingInvocation(db, auth, request), request.params.invitationId, request.requestId) } };
+  });
+  router.post("/api/v1/auth/invitations/preview", async (request) => {
+    const db = invitationDb(), body = parseWithSchema(invitationTokenSchema, request.body);
+    return { status: 200, body: { item: await readOrganizationInvitation(db, body.token) } };
+  });
+  router.post("/api/v1/auth/invitations/accept", async (request) => {
+    const db = invitationDb(), body = parseWithSchema(invitationAcceptSchema.extend({ token: invitationTokenSchema.shape.token }), request.body);
+    const decision = invitationAttempts.consume(authAttemptKey("register", request.clientIp ?? "unknown", body.username));
+    if (!decision.allowed) throw new ApiError("RATE_LIMITED", "请求过于频繁，请稍后重试。", { retryAfterMs: decision.retryAfterMs });
+    return { status: 201, body: await acceptOrganizationInvitation(db, body.token, body, request.requestId) };
+  });
   router.get("/api/v1/platform/organizations/:organizationId/administrator-recovery", async (request) => {
     const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
     return { status: 200, body: await getAdministratorRecovery(db, createUserInvocation(auth), request.params.organizationId, mutationContext(request)) };

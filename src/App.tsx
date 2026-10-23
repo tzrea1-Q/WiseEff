@@ -70,6 +70,7 @@ import {
 import { XiaozePageContext, XiaozePageContextRegistrar } from "@/features/agent/useXiaozePageContext";
 import { XiaozeProvider, XiaozeProactiveInsights } from "@/features/agent/XiaozeProvider";
 import { OrganizationBusinessWorkspace } from "@/features/organization/OrganizationBusinessWorkspace";
+import { InvitationAcceptancePage } from "@/features/organization/InvitationAcceptancePage";
 import { isOrganizationBusinessPath, withBusinessOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiveInsights";
 import { FeedbackDialog } from "@/features/product-feedback/FeedbackDialog";
@@ -229,7 +230,7 @@ function App({
   return (
     <TooltipProvider delayDuration={0}>
       <ToastProvider>
-        <AppShell
+        {runtimeMode === "api" && window.location.pathname === "/invite" ? <InvitationAcceptancePage /> : <AppShell
           authClient={authClient}
           workflowPublicationClient={workflowPublicationClient}
           debuggingAdminClient={debuggingAdminClient}
@@ -248,7 +249,7 @@ function App({
           dtsReloadRepository={dtsReloadRepository}
           runtimeMode={runtimeMode}
           userGovernanceActions={userGovernanceActions}
-        />
+        />}
       </ToastProvider>
     </TooltipProvider>
   );
