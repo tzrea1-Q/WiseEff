@@ -1,3 +1,4 @@
+import { organizationId } from "./principal";
 import type { Queryable } from "../../shared/database/client";
 import type { AuthContext } from "../auth/types";
 import { canReadEntry } from "../knowledge/policy";
@@ -343,7 +344,7 @@ export async function listLogDomainKnowledgeLinks(
       and revision.skill_id = $2 and revision.status = 'published'
     order by entry.id asc
     `,
-    [auth.organization.id, domainId]
+    [organizationId(auth), domainId]
   );
 
   return result.rows.map((row) => toLogDomainKnowledgeLinkDto(row, auth))

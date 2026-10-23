@@ -428,7 +428,7 @@ export function PageRouter({
         <LogsPage
           state={state}
           dispatch={dispatch}
-          onNavigate={onNavigate}
+          onNavigate={(path) => onNavigate(withOrganizationScope(path, new URLSearchParams(search).get("organizationId") ?? undefined))}
           search={search}
           logActions={runtimeMode === "api" ? logActions : undefined}
           parameterActions={parameterActions}
@@ -444,12 +444,12 @@ export function PageRouter({
         repository={runtime?.logAnalysisRepository} apiMode={runtimeMode === "api"}
         knowledgeRepository={knowledgeRepository} knowledgeCapability={knowledgeCapability} canOpenKnowledge={canOpenKnowledge}
         canEdit={runtimeMode === "api" && (sessionPermissions ? sessionPermissions.includes("logs:admin-domains") : canPerform(currentRoleId, "logs.admin-domains"))}
-        onNavigate={onNavigate} onPublished={(message) => dispatch({ type: "ADD_NOTIFICATION", message })} />;
+        onNavigate={(path) => onNavigate(withOrganizationScope(path, new URLSearchParams(search).get("organizationId") ?? undefined))} onPublished={(message) => dispatch({ type: "ADD_NOTIFICATION", message })} />;
       return (
         <LogAdminPage
           state={state}
           dispatch={dispatch}
-          onNavigate={onNavigate}
+          onNavigate={(path) => onNavigate(withOrganizationScope(path, new URLSearchParams(search).get("organizationId") ?? undefined))}
           search={search}
           logActions={logActions}
           knowledgeRepository={knowledgeRepository}

@@ -104,7 +104,7 @@ describe("buildLogResultWebhookPayload", () => {
       confidence: 0.82,
       conclusionSummary: "Charging behavior is consistent with thermal foldback protection.",
       occurredAt: "2026-08-13T02:00:00.000Z",
-      productPath: "/logs?id=report-run-1"
+      productPath: "/logs?id=report-run-1&organizationId=org-chargelab"
     });
     expect(Object.keys(payload)).not.toContain("rawLines");
     expect(Object.keys(payload)).not.toContain("evidence");
@@ -125,7 +125,7 @@ describe("buildLogResultWebhookPayload", () => {
   it("links failed runs to the log workbench without a report id", () => {
     const payload = buildLogResultWebhookPayload(resultInput({ status: "failed", conclusion: "max-attempts-exhausted" }));
     expect(payload.event).toBe("log-analysis.failed");
-    expect(payload.productPath).toBe("/logs");
+    expect(payload.productPath).toBe("/logs?organizationId=org-chargelab");
   });
 });
 

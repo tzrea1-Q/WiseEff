@@ -1,3 +1,4 @@
+import { organizationId as logOrganizationId, assertLogInvocation, type LogAccessContext } from "./principal";
 import { logValidationIssues } from "./validationMessages";
 import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
@@ -7,8 +8,7 @@ import { stringify as stringifyYaml } from "yaml";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { withAuditedWrite, type AuditedWriteContext } from "../audit/auditedWrite";
-import type { AuthContext } from "../auth/types";
-import { assertTrustedInvocationMatchesAuth, type TrustedInvocationContext } from "../auth/trustedInvocation";
+import { type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { logAnalysisCaseExpectationsSchema, logAnalysisCaseSchema, logAnalysisCaseRunSchema, logTraceStepSchema, logDryRunReportSchema } from "../contracts/dtoSchemas/logs";
 import { requireLogAdminDomains } from "./policy";
 import { getLogRecord } from "./service";
@@ -43,7 +43,7 @@ type Upload = { fileName: string; objectKey: string; sizeBytes: number };
 export type StoredAnalysisCase = z.infer<typeof logAnalysisCaseSchema> & { uploads: Upload[]; archivePath: string | null; sourceYaml: string | null };
 type Outcome = z.infer<typeof logAnalysisCaseRunSchema>["results"][number]["draft"] & { steps: LogAnalysisTraceStep[] };
 type Result = { caseId: string; name: string; draft: Outcome; published: Outcome | null; delta: number | null };
-function requireAdmin(auth: AuthContext) {
+function requireAdmin(auth: LogAccessContext) {
   requireLogAdminDomains(auth);
   if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "无权访问此组织的日志。");
 }
@@ -118,16 +118,16 @@ function validateNormalizedBytes(files: BundleFile[]) {
     if (total > ANALYSIS_CASE_MAX_BYTES) throw new ApiError("PAYLOAD_TOO_LARGE", "用例解析后的日志不能超过 10 MiB。");
   }
 }
-export async function listAnalysisCases(db: Database, auth: AuthContext, skillId: string) {
+export async function listAnalysisCases(db: Database, auth: LogAccessContext, skillId: string) {
   requireAdmin(auth);
-  const revisions = await listSkillRevisions(db, auth.organization.id, skillId);
+  const revisions = await listSkillRevisions(db, logOrganizationId(auth), skillId);
   if (!revisions.length) throw new ApiError("NOT_FOUND", "未找到分析技能。");
-  await recoverInterruptedDryRuns(db, auth.organization.id);
-  const items = await readAnalysisCases(db, auth.organization.id, skillId);
+  await recoverInterruptedDryRuns(db, logOrganizationId(auth));
+  const items = await readAnalysisCases(db, logOrganizationId(auth), skillId);
   const row = (await db.query<z.infer<typeof logAnalysisCaseRunSchema> & { caseFingerprint: string }>(`select id, skill_revision_id as "skillRevisionId", published_revision_id as "publishedRevisionId", case_fingerprint as "caseFingerprint", status, progress, results, error, created_at as "createdAt"
-    from log_skill_analysis_case_runs where organization_id = $1 and skill_id = $2 order by created_at desc, id desc limit 1`, [auth.organization.id, skillId])).rows[0];
+    from log_skill_analysis_case_runs where organization_id = $1 and skill_id = $2 order by created_at desc, id desc limit 1`, [logOrganizationId(auth), skillId])).rows[0];
   const history = (await db.query<{ id: string; results: Result[] }>(`select id, results from log_skill_analysis_case_runs
-    where organization_id = $1 and skill_id = $2 order by created_at desc, id desc limit 10`, [auth.organization.id, skillId])).rows;
+    where organization_id = $1 and skill_id = $2 order by created_at desc, id desc limit 10`, [logOrganizationId(auth), skillId])).rows;
   const lastResults = new Map<string, { runId: string; result: z.infer<typeof logAnalysisCaseRunSchema>["results"][number] }>();
   for (const run of history) for (const result of run.results) if (!lastResults.has(result.caseId)) {
     lastResults.set(result.caseId, { runId: run.id, result: logAnalysisCaseRunSchema.shape.results.element.parse(result) });
@@ -139,12 +139,12 @@ export async function listAnalysisCases(db: Database, auth: AuthContext, skillId
       && row.publishedRevisionId === (revisions.find((r) => r.status === "published")?.id ?? null)
       && row.caseFingerprint === fingerprint(items) && row.results.length === items.length) };
 }
-export async function getAnalysisCasePrefill(db: Database, auth: AuthContext, logId: string) {
+export async function getAnalysisCasePrefill(db: Database, auth: LogAccessContext, logId: string) {
   requireAdmin(auth);
   const report = await getLogRecord(db, auth, logId);
   if (report.status !== "complete" || !report.logDomainId) throw new ApiError("CONFLICT", "只有使用分析技能生成的已完成报告才能保存为用例。");
   const originalUploads = (await db.query<{ fileName: string; sizeBytes: number }>(`select file_name as "fileName", size_bytes::float8 as "sizeBytes"
-    from log_original_uploads where organization_id = $1 and record_id = $2 order by position`, [auth.organization.id, logId])).rows;
+    from log_original_uploads where organization_id = $1 and record_id = $2 order by position`, [logOrganizationId(auth), logId])).rows;
   const expectRefusal = report.analysisSource === "agent" && !report.degradedReason && report.confidence <= 0.5
     && /insufficient evidence|evidence (?:is |was )?insufficient|not enough evidence|inconclusive|(?:cannot|unable to) (?:determine|diagnose)|证据不足|信息不足|无法(?:判断|确定|诊断)|不足以(?:判断|确定|诊断)/i.test(report.conclusion);
   return { skillId: report.logDomainId, name: report.fileName.slice(0, 200), originalUploads,
@@ -158,10 +158,10 @@ export async function getAnalysisCasePrefill(db: Database, auth: AuthContext, lo
     analysisQuestion: report.analysisQuestion
   }) };
 }
-async function sourceUploads(db: Database, store: ObjectStore, auth: AuthContext, skillId: string, logId: string) {
+async function sourceUploads(db: Database, store: ObjectStore, auth: LogAccessContext, skillId: string, logId: string) {
   const prefill = await getAnalysisCasePrefill(db, auth, logId);
   if (prefill.skillId !== skillId) throw new ApiError("VALIDATION_FAILED", "此报告使用了其他分析技能。");
-  const rows = (await db.query<Upload>(`select file_name as "fileName", object_key as "objectKey", size_bytes::float8 as "sizeBytes" from log_original_uploads where organization_id = $1 and record_id = $2 order by position`, [auth.organization.id, logId])).rows;
+  const rows = (await db.query<Upload>(`select file_name as "fileName", object_key as "objectKey", size_bytes::float8 as "sizeBytes" from log_original_uploads where organization_id = $1 and record_id = $2 order by position`, [logOrganizationId(auth), logId])).rows;
   if (!rows.length) throw new ApiError("CONFLICT", "此历史报告的原始文件不可用，请上传原始日志包以创建用例。");
   if (rows.reduce((sum, row) => sum + row.sizeBytes, 0) > ANALYSIS_CASE_MAX_BYTES) throw new ApiError("PAYLOAD_TOO_LARGE", "用例日志包不能超过 10 MiB。");
   return Promise.all(rows.map(async (row) => ({ fileName: row.fileName, bytes: await boundedGet(store, row.objectKey) })));
@@ -177,16 +177,16 @@ async function readCaseUploads(store: ObjectStore, item: StoredAnalysisCase) {
     fileName: upload.fileName.replace(/^fixtures\//, ""), bytes: await boundedGet(store, upload.objectKey)
   })));
 }
-export async function createAnalysisCase(db: Database, store: ObjectStore, auth: AuthContext, skillId: string, input: {
+export async function createAnalysisCase(db: Database, store: ObjectStore, auth: LogAccessContext, skillId: string, input: {
   name: string; expectations: unknown; files?: Array<{ fileName: string; bytes: Buffer }>; sourceRecordId?: string; archivePath?: string; sourceYaml?: Buffer;
 }, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Create analysis case");
+  assertLogInvocation(auth, invocation, "Create analysis case");
   requireAdmin(auth);
   const name = z.string().trim().min(1).max(200).parse(input.name);
   const expectations = parseExpectations(input.expectations);
   if (expectations.bundleFiles !== undefined) throw new ApiError("VALIDATION_FAILED", "原始文件列表仅可通过导入用例压缩包设置。");
   // Reject invisible skills before reading object storage.
-  if (!(await listSkillRevisions(db, auth.organization.id, skillId)).length) throw new ApiError("NOT_FOUND", "未找到分析技能。");
+  if (!(await listSkillRevisions(db, logOrganizationId(auth), skillId)).length) throw new ApiError("NOT_FOUND", "未找到分析技能。");
   const files = input.sourceRecordId ? await sourceUploads(db, store, auth, skillId, input.sourceRecordId) : input.files;
   if (!files?.length) throw new ApiError("VALIDATION_FAILED", "请上传日志文件或日志包。");
   const intake = intakeLogBundle(files, limits);
@@ -199,15 +199,15 @@ export async function createAnalysisCase(db: Database, store: ObjectStore, auth:
   let rollbackConfirmed = false;
   try {
     return await db.transaction((transaction) => withAuditedWrite(transaction, invocation, context, async (tx) => {
-      await lockSkill(tx, auth.organization.id, skillId);
-      if ((await readAnalysisCases(tx, auth.organization.id, skillId)).length >= ANALYSIS_CASE_MAX) throw new ApiError("CONFLICT", "每个技能最多保存 20 个分析用例。");
+      await lockSkill(tx, logOrganizationId(auth), skillId);
+      if ((await readAnalysisCases(tx, logOrganizationId(auth), skillId)).length >= ANALYSIS_CASE_MAX) throw new ApiError("CONFLICT", "每个技能最多保存 20 个分析用例。");
       for (const file of files) uploads.push({ fileName: posix.normalize(file.fileName.replaceAll("\\", "/")), sizeBytes: file.bytes.length,
-        objectKey: (await store.put({ organizationId: auth.organization.id, fileName: `case-${randomUUID()}.bin`, contentType: "application/octet-stream", bytes: file.bytes })).storageKey });
-      await recordSkillArtifacts(tx, auth.organization.id, skillId, uploads.map(upload => upload.objectKey));
+        objectKey: (await store.put({ organizationId: logOrganizationId(auth), fileName: `case-${randomUUID()}.bin`, contentType: "application/octet-stream", bytes: file.bytes })).storageKey });
+      await recordSkillArtifacts(tx, logOrganizationId(auth), skillId, uploads.map(upload => upload.objectKey));
       await tx.query(`insert into log_skill_analysis_cases (id, organization_id, skill_id, name, expectations, uploads, files, archive_path, source_yaml)
-        values ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8,$9)`, [id, auth.organization.id, skillId, name, JSON.stringify(expectations), JSON.stringify(uploads),
+        values ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8,$9)`, [id, logOrganizationId(auth), skillId, name, JSON.stringify(expectations), JSON.stringify(uploads),
         JSON.stringify(intake.files.map(({ bytes: _bytes, sha256: _sha256, ...file }) => file)), input.archivePath ?? null, input.sourceYaml?.toString("base64") ?? null]);
-      return { result: logAnalysisCaseSchema.parse((await readAnalysisCases(tx, auth.organization.id, skillId)).find((item) => item.id === id)),
+      return { result: logAnalysisCaseSchema.parse((await readAnalysisCases(tx, logOrganizationId(auth), skillId)).find((item) => item.id === id)),
         audit: audit(skillId, "log-analysis-case-create", { caseId: id, sourceRecordId: input.sourceRecordId ?? null }) };
     }), { onConfirmedRollback: () => { rollbackConfirmed = true; } });
   } catch (error) {
@@ -215,40 +215,40 @@ export async function createAnalysisCase(db: Database, store: ObjectStore, auth:
     throw error;
   }
 }
-export async function updateAnalysisCase(db: Database, store: ObjectStore, auth: AuthContext, skillId: string, caseId: string, input: { name: string; expectations: unknown }, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Update analysis case");
+export async function updateAnalysisCase(db: Database, store: ObjectStore, auth: LogAccessContext, skillId: string, caseId: string, input: { name: string; expectations: unknown }, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  assertLogInvocation(auth, invocation, "Update analysis case");
   requireAdmin(auth);
   const name = z.string().trim().min(1).max(200).parse(input.name), expectations = parseExpectations(input.expectations);
   return withAuditedWrite(db, invocation, context, async (tx) => {
-    await lockSkill(tx, auth.organization.id, skillId);
-    const existing = (await readAnalysisCases(tx, auth.organization.id, skillId)).find((item) => item.id === caseId);
+    await lockSkill(tx, logOrganizationId(auth), skillId);
+    const existing = (await readAnalysisCases(tx, logOrganizationId(auth), skillId)).find((item) => item.id === caseId);
     if (!existing) throw new ApiError("NOT_FOUND", "未找到分析用例。");
     if (JSON.stringify(expectations.bundleFiles) !== JSON.stringify(existing.expectations.bundleFiles)) throw new ApiError("VALIDATION_FAILED", "不能修改用例的原始文件列表。");
     const intake = intakeLogBundle(await readCaseUploads(store, existing), limits);
     if (!intake.ok) throw new ApiError("VALIDATION_FAILED", "无法读取已保存的用例日志包。");
     validateAnchors(expectations, intake.files);
     const result = await tx.query(`update log_skill_analysis_cases set name = $4, expectations = $5::jsonb, source_yaml = null, archive_path = $6, updated_at = clock_timestamp()
-      where organization_id = $1 and skill_id = $2 and id = $3 returning id`, [auth.organization.id, skillId, caseId, name, JSON.stringify(expectations), expectations.domain === existing.expectations.domain ? existing.archivePath : null]);
+      where organization_id = $1 and skill_id = $2 and id = $3 returning id`, [logOrganizationId(auth), skillId, caseId, name, JSON.stringify(expectations), expectations.domain === existing.expectations.domain ? existing.archivePath : null]);
     if (!result.rows.length) throw new ApiError("NOT_FOUND", "未找到分析用例。");
-    return { result: logAnalysisCaseSchema.parse((await readAnalysisCases(tx, auth.organization.id, skillId)).find((item) => item.id === caseId)), audit: audit(skillId, "log-analysis-case-update", { caseId }) };
+    return { result: logAnalysisCaseSchema.parse((await readAnalysisCases(tx, logOrganizationId(auth), skillId)).find((item) => item.id === caseId)), audit: audit(skillId, "log-analysis-case-update", { caseId }) };
   });
 }
-export async function deleteAnalysisCase(db: Database, auth: AuthContext, skillId: string, caseId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Delete analysis case");
+export async function deleteAnalysisCase(db: Database, auth: LogAccessContext, skillId: string, caseId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  assertLogInvocation(auth, invocation, "Delete analysis case");
   requireAdmin(auth);
   return withAuditedWrite(db, invocation, context, async (tx) => {
-    await lockSkill(tx, auth.organization.id, skillId);
+    await lockSkill(tx, logOrganizationId(auth), skillId);
     // ponytail: retain original objects for admitted runs; add reference-aware GC if storage retention is needed.
-    const result = await tx.query("delete from log_skill_analysis_cases where organization_id = $1 and skill_id = $2 and id = $3 returning id", [auth.organization.id, skillId, caseId]);
+    const result = await tx.query("delete from log_skill_analysis_cases where organization_id = $1 and skill_id = $2 and id = $3 returning id", [logOrganizationId(auth), skillId, caseId]);
     if (!result.rows.length) throw new ApiError("NOT_FOUND", "未找到分析用例。");
     return { result: { ok: true }, audit: audit(skillId, "log-analysis-case-delete", { caseId }) };
   });
 }
 
-export async function importSkillAnalysisCases(db: Database, store: ObjectStore, auth: AuthContext, skillId: string, bytes: Buffer, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Import analysis cases");
+export async function importSkillAnalysisCases(db: Database, store: ObjectStore, auth: LogAccessContext, skillId: string, bytes: Buffer, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  assertLogInvocation(auth, invocation, "Import analysis cases");
   requireAdmin(auth);
-  if (!(await listSkillRevisions(db, auth.organization.id, skillId)).length) throw new ApiError("NOT_FOUND", "未找到分析技能。");
+  if (!(await listSkillRevisions(db, logOrganizationId(auth), skillId)).length) throw new ApiError("NOT_FOUND", "未找到分析技能。");
   let archived: ArchivedAnalysisCase[];
   try { archived = await importAnalysisCaseArchive(bytes); }
   catch (error) { throw new ApiError("VALIDATION_FAILED", "用例压缩包无效。", { problems: error instanceof AnalysisCaseArchiveError ? error.problems : [`压缩包无效：${error instanceof Error ? error.message : String(error)}`] }); }
@@ -256,8 +256,8 @@ export async function importSkillAnalysisCases(db: Database, store: ObjectStore,
 }
 
 /** Compose validated package cases into the caller's audited transaction. */
-export async function importArchivedSkillAnalysisCases(db: Database, store: ObjectStore, auth: AuthContext, skillId: string, archived: ArchivedAnalysisCase[], invocation: TrustedInvocationContext, context: AuditedWriteContext) {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Import analysis cases");
+export async function importArchivedSkillAnalysisCases(db: Database, store: ObjectStore, auth: LogAccessContext, skillId: string, archived: ArchivedAnalysisCase[], invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  assertLogInvocation(auth, invocation, "Import analysis cases");
   requireAdmin(auth);
   const prepared: Array<Omit<ArchivedAnalysisCase, "files"> & { id: string; fixtureFiles: ArchivedAnalysisCase["files"]; files: StoredAnalysisCase["files"] }> = [];
   const uploadsWritten: Upload[] = [];
@@ -273,8 +273,8 @@ export async function importArchivedSkillAnalysisCases(db: Database, store: Obje
   let rollbackConfirmed = false;
   try {
   return await db.transaction((transaction) => withAuditedWrite(transaction, invocation, context, async (tx) => {
-    await lockSkill(tx, auth.organization.id, skillId);
-    const existing = await readAnalysisCases(tx, auth.organization.id, skillId);
+    await lockSkill(tx, logOrganizationId(auth), skillId);
+    const existing = await readAnalysisCases(tx, logOrganizationId(auth), skillId);
     if (existing.length + prepared.length > ANALYSIS_CASE_MAX) throw new ApiError("CONFLICT", "每个技能最多保存 20 个分析用例。");
     const duplicate = prepared.find((entry) => existing.some((item) => item.archivePath === entry.archivePath));
     if (duplicate) throw new ApiError("CONFLICT", "导入的用例已存在。", { problems: [`${duplicate.archivePath}/case.yaml: 用例目录已存在`] });
@@ -282,14 +282,14 @@ export async function importArchivedSkillAnalysisCases(db: Database, store: Obje
       const uploads: Upload[] = [];
       for (const file of item.fixtureFiles) {
         const upload = { fileName: file.path, sizeBytes: file.bytes.length,
-          objectKey: (await store.put({ organizationId: auth.organization.id, fileName: `case-${randomUUID()}.bin`, contentType: "application/octet-stream", bytes: file.bytes })).storageKey };
+          objectKey: (await store.put({ organizationId: logOrganizationId(auth), fileName: `case-${randomUUID()}.bin`, contentType: "application/octet-stream", bytes: file.bytes })).storageKey };
         uploads.push(upload); uploadsWritten.push(upload);
       }
-      await recordSkillArtifacts(tx, auth.organization.id, skillId, uploads.map(upload => upload.objectKey));
+      await recordSkillArtifacts(tx, logOrganizationId(auth), skillId, uploads.map(upload => upload.objectKey));
       await tx.query(`insert into log_skill_analysis_cases (id, organization_id, skill_id, name, expectations, uploads, files, archive_path, source_yaml)
-        values ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8,$9)`, [item.id, auth.organization.id, skillId, item.annotation.caseName ?? item.annotation.summary.slice(0, 200), JSON.stringify(item.annotation), JSON.stringify(uploads), JSON.stringify(item.files), item.archivePath, item.sourceYaml?.toString("base64") ?? null]);
+        values ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8,$9)`, [item.id, logOrganizationId(auth), skillId, item.annotation.caseName ?? item.annotation.summary.slice(0, 200), JSON.stringify(item.annotation), JSON.stringify(uploads), JSON.stringify(item.files), item.archivePath, item.sourceYaml?.toString("base64") ?? null]);
     }
-    return { result: { items: (await readAnalysisCases(tx, auth.organization.id, skillId)).filter((item) => prepared.some((entry) => entry.id === item.id)).map((item) => logAnalysisCaseSchema.parse(item)) },
+    return { result: { items: (await readAnalysisCases(tx, logOrganizationId(auth), skillId)).filter((item) => prepared.some((entry) => entry.id === item.id)).map((item) => logAnalysisCaseSchema.parse(item)) },
       audit: audit(skillId, "log-analysis-case-import", { caseIds: prepared.map((item) => item.id) }) };
   }), { onConfirmedRollback: () => { rollbackConfirmed = true; } });
   } catch (error) {
@@ -297,10 +297,10 @@ export async function importArchivedSkillAnalysisCases(db: Database, store: Obje
     throw error;
   }
 }
-export async function exportSkillAnalysisCases(db: Database, store: ObjectStore, auth: AuthContext, skillId: string) {
+export async function exportSkillAnalysisCases(db: Database, store: ObjectStore, auth: LogAccessContext, skillId: string) {
   requireAdmin(auth);
-  if (!(await listSkillRevisions(db, auth.organization.id, skillId)).length) throw new ApiError("NOT_FOUND", "未找到分析技能。");
-  const cases = await readAnalysisCases(db, auth.organization.id, skillId);
+  if (!(await listSkillRevisions(db, logOrganizationId(auth), skillId)).length) throw new ApiError("NOT_FOUND", "未找到分析技能。");
+  const cases = await readAnalysisCases(db, logOrganizationId(auth), skillId);
   const archived = await Promise.all(cases.map(async (item): Promise<ArchivedAnalysisCase> => {
     const preservePaths = Boolean(item.sourceYaml || item.expectations.bundleFiles);
     const fixturePath = (name: string) => preservePaths ? name : `fixtures/${name}`;
@@ -314,44 +314,44 @@ export async function exportSkillAnalysisCases(db: Database, store: ObjectStore,
   return exportAnalysisCaseArchive(archived);
 }
 
-export async function getAnalysisCaseRun(db: Database, auth: AuthContext, skillId: string, runId: string) {
+export async function getAnalysisCaseRun(db: Database, auth: LogAccessContext, skillId: string, runId: string) {
   requireAdmin(auth);
-  await recoverInterruptedDryRuns(db, auth.organization.id);
+  await recoverInterruptedDryRuns(db, logOrganizationId(auth));
   const row = (await db.query<z.infer<typeof logAnalysisCaseRunSchema>>(`select id, skill_revision_id as "skillRevisionId", published_revision_id as "publishedRevisionId", status, progress, results, error, created_at as "createdAt"
-    from log_skill_analysis_case_runs where organization_id = $1 and skill_id = $2 and id = $3`, [auth.organization.id, skillId, runId])).rows[0];
+    from log_skill_analysis_case_runs where organization_id = $1 and skill_id = $2 and id = $3`, [logOrganizationId(auth), skillId, runId])).rows[0];
   if (!row) throw new ApiError("NOT_FOUND", "未找到用例运行记录。");
   return { run: logAnalysisCaseRunSchema.parse({ ...row, createdAt: new Date(row.createdAt).toISOString() }) };
 }
-export async function getAnalysisCaseTrace(db: Database, auth: AuthContext, skillId: string, runId: string, caseId: string, revision: "draft" | "published") {
+export async function getAnalysisCaseTrace(db: Database, auth: LogAccessContext, skillId: string, runId: string, caseId: string, revision: "draft" | "published") {
   await getAnalysisCaseRun(db, auth, skillId, runId);
-  const row = (await db.query<{ results: Result[] }>("select results from log_skill_analysis_case_runs where organization_id = $1 and skill_id = $2 and id = $3", [auth.organization.id, skillId, runId])).rows[0];
+  const row = (await db.query<{ results: Result[] }>("select results from log_skill_analysis_case_runs where organization_id = $1 and skill_id = $2 and id = $3", [logOrganizationId(auth), skillId, runId])).rows[0];
   const outcome = row.results.find((result) => result.caseId === caseId)?.[revision];
   if (!outcome) throw new ApiError("NOT_FOUND", "未找到用例分析过程。");
   return { steps: outcome.steps.map((step) => logTraceStepSchema.parse(step)) };
 }
 
-export async function startAnalysisCaseRun(db: Database, store: ObjectStore, analyzer: LogAnalysisAdapter, auth: AuthContext, skillId: string, caseIds: string[] | undefined, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Run analysis cases");
+export async function startAnalysisCaseRun(db: Database, store: ObjectStore, analyzer: LogAnalysisAdapter, auth: LogAccessContext, skillId: string, caseIds: string[] | undefined, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  assertLogInvocation(auth, invocation, "Run analysis cases");
   requireAdmin(auth);
   const owner = await acquireDryRunOwner(db);
   try {
     const admitted = await withAuditedWrite(owner.db, invocation, context, async (tx) => {
       await tx.query("select pg_advisory_xact_lock($1)", [LOG_DRY_RUN_ADMISSION_LOCK]);
-      await lockSkill(tx, auth.organization.id, skillId);
+      await lockSkill(tx, logOrganizationId(auth), skillId);
       await recoverInterruptedDryRuns(tx);
-      await assertDryRunCapacity(tx, auth.organization.id);
-      const revisions = await listSkillRevisions(tx, auth.organization.id, skillId);
+      await assertDryRunCapacity(tx, logOrganizationId(auth));
+      const revisions = await listSkillRevisions(tx, logOrganizationId(auth), skillId);
       const draft = revisions.find((r) => r.status === "draft"), published = revisions.find((r) => r.status === "published");
       if (!draft) throw new ApiError("CONFLICT", "请先保存草稿，再运行分析用例。");
-      const all = await readAnalysisCases(tx, auth.organization.id, skillId);
+      const all = await readAnalysisCases(tx, logOrganizationId(auth), skillId);
       const cases = caseIds ? all.filter((item) => caseIds.includes(item.id)) : all;
       if (!cases.length || caseIds && cases.length !== new Set(caseIds).size) throw new ApiError("VALIDATION_FAILED", "请选择此技能中已有的用例。");
       if (cases.length > ANALYSIS_CASE_MAX) throw new ApiError("VALIDATION_FAILED", "每次最多运行 20 个用例。");
       const id = randomUUID();
       await tx.query(`insert into log_skill_analysis_case_runs (id, organization_id, skill_id, skill_revision_id, published_revision_id, case_fingerprint, status, deadline_at, owner_pid, owner_key)
-        values ($1,$2,$3,$4,$5,$6,'processing',now()+$7*interval '1 millisecond',$8,$9)`, [id, auth.organization.id, skillId, draft.id, published?.id ?? null, fingerprint(all), ANALYSIS_CASE_RUN_TIMEOUT_MS, owner.pid, owner.key]);
+        values ($1,$2,$3,$4,$5,$6,'processing',now()+$7*interval '1 millisecond',$8,$9)`, [id, logOrganizationId(auth), skillId, draft.id, published?.id ?? null, fingerprint(all), ANALYSIS_CASE_RUN_TIMEOUT_MS, owner.pid, owner.key]);
       await tx.query(`delete from log_skill_analysis_case_runs where organization_id = $1 and skill_id = $2 and id in
-        (select id from log_skill_analysis_case_runs where organization_id = $1 and skill_id = $2 order by created_at desc, id desc offset $3)`, [auth.organization.id, skillId, KEEP_RUNS]);
+        (select id from log_skill_analysis_case_runs where organization_id = $1 and skill_id = $2 order by created_at desc, id desc offset $3)`, [logOrganizationId(auth), skillId, KEEP_RUNS]);
       return { result: { id, draft, published, cases }, audit: audit(skillId, "log-analysis-case-run-start", { runId: id, caseIds: cases.map((item) => item.id) }) };
     });
     const initial = await getAnalysisCaseRun(owner.db, auth, skillId, admitted.id);
@@ -360,10 +360,10 @@ export async function startAnalysisCaseRun(db: Database, store: ObjectStore, ana
   } catch (error) { await owner.close(); throw error; }
 }
 
-async function executeCaseRun(db: Database, store: ObjectStore, analyzer: LogAnalysisAdapter, auth: AuthContext, skillId: string,
+async function executeCaseRun(db: Database, store: ObjectStore, analyzer: LogAnalysisAdapter, auth: LogAccessContext, skillId: string,
   admitted: { id: string; draft: { spec: LogSkillSpec }; published?: { spec: LogSkillSpec }; cases: StoredAnalysisCase[] },
   owner: Awaited<ReturnType<typeof acquireDryRunOwner>>, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
-  const organizationId = auth.organization.id;
+  const organizationId = logOrganizationId(auth);
   activeDryRunWork.set(admitted.id, organizationId);
   const controller = new AbortController();
   const abort = () => controller.abort();

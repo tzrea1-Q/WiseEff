@@ -5,8 +5,7 @@ import type { LogSkillSpec } from "./skillSpec";
 
 import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
-import type { AuthContext } from "../auth/types";
-import { organizationId, type LogPrincipal } from "./principal";
+import { organizationId, type LogAccessContext, type LogPrincipal } from "./principal";
 import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { LogAnalysisJobDto } from "../jobs/types";
 import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
@@ -120,7 +119,7 @@ function creatingCredentialId(auth: LogPrincipal) {
 }
 
 function uploadInvocation(auth: LogPrincipal): TrustedInvocationContext {
-  return "kind" in auth ? auth.invocation : createUserInvocation(auth);
+  return "kind" in auth ? auth.invocation : (auth.logInvocation ?? createUserInvocation(auth));
 }
 
 function unsupportedReason() {
@@ -161,7 +160,7 @@ async function resolveLogRelatedParameter(
     throw new ApiError("INTERNAL_ERROR", "解析关联参数绑定需要根 PostgreSQL 连接池。");
   }
   const parameter = await resolveAuthorizedRelatedParameter(pool, {
-    invocation: createUserInvocation(auth),
+    invocation: (auth.logInvocation ?? createUserInvocation(auth)),
     projectId: input.relatedParameterPin.projectId,
     bindingId: input.relatedParameterPin.bindingId,
     definitionId: input.relatedParameterPin.definitionId,
@@ -530,7 +529,7 @@ export async function createLogFromFile(db: Database, auth: LogPrincipal, input:
   return result;
 }
 
-export async function listLogRecords(db: Queryable, auth: AuthContext, query: ListLogRecordsQuery = {}) {
+export async function listLogRecords(db: Queryable, auth: LogAccessContext, query: ListLogRecordsQuery = {}) {
   requireLogView(auth);
   return { items: await listLogs(db, auth, query) };
 }
@@ -564,13 +563,13 @@ export async function getLogLineRange(db: Database, objectStore: ObjectStore, au
   return { file: file.path, startLine: input.startLine, endLine, totalLines: file.lineCount, lines };
 }
 
-export async function listLogRuns(db: Queryable, auth: AuthContext, logId: string): Promise<LogRunDto[]> {
+export async function listLogRuns(db: Queryable, auth: LogAccessContext, logId: string): Promise<LogRunDto[]> {
   requireLogView(auth);
   await getLogRecord(db, auth, logId);
   return listRuns(db, auth, logId);
 }
 
-export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: RerunLogAnalysisInput, context: ServiceContext = {}) {
+export async function rerunLogAnalysis(db: Database, auth: LogAccessContext, input: RerunLogAnalysisInput, context: ServiceContext = {}) {
   requireLogAnalyze(auth);
 
   const existing = await getLogDetail(db, auth, input.logId);
@@ -589,7 +588,7 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
     : undefined;
 
   const result = await db.transaction(async (tx) => {
-    await tx.query(`select id from log_records where organization_id = $1 and id = $2 for update`, [auth.organization.id, input.logId]);
+    await tx.query(`select id from log_records where organization_id = $1 and id = $2 for update`, [organizationId(auth), input.logId]);
     const current = await getLogDetail(tx, auth, input.logId);
     if (!current) {
       throw new ApiError("NOT_FOUND", "分析记录不存在。", { logId: input.logId });
@@ -603,13 +602,13 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
       throw new ApiError("CONFLICT", "此记录没有可用于重新分析的技能版本。");
     }
     const skillRevisionId = input.revisionPolicy === "pinned" ? current.skillRevision?.id ?? null
-      : await currentSkillRevisionId(tx, auth.organization.id, logDomainId ?? current.logDomainId);
+      : await currentSkillRevisionId(tx, organizationId(auth), logDomainId ?? current.logDomainId);
     const job = await createRerunWithJob(tx, {
       skillRevisionId,
       preserveLegacyKnowledgeScope: input.revisionPolicy === "pinned",
       runId: randomUUID(),
       jobId: randomUUID(),
-      organizationId: auth.organization.id,
+      organizationId: organizationId(auth),
       logId: input.logId,
       analysisQuestion: input.analysisQuestion,
       logDomainId,
@@ -621,7 +620,7 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
     }
     await createLogAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      (auth.logInvocation ?? createUserInvocation(auth)),
       {
         kind: "log-rerun",
         action: "rerun",
@@ -641,7 +640,7 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
   });
 
   await enqueueLogAnalysisJob(context.logAnalysisQueue, {
-    organizationId: auth.organization.id,
+    organizationId: organizationId(auth),
     logId: result.log.id,
     runId: result.job.runId,
     jobId: result.job.id
@@ -650,7 +649,7 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
   return result;
 }
 
-export async function archiveLogRecord(db: Database, auth: AuthContext, logId: string, context: ServiceContext = {}) {
+export async function archiveLogRecord(db: Database, auth: LogAccessContext, logId: string, context: ServiceContext = {}) {
   requireLogArchive(auth);
   return db.transaction(async (tx) => {
     const existing = await getLogDetail(tx, auth, logId);
@@ -663,7 +662,7 @@ export async function archiveLogRecord(db: Database, auth: AuthContext, logId: s
     }
     await createLogAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      (auth.logInvocation ?? createUserInvocation(auth)),
       {
         kind: "log-archive",
         action: "archive",
@@ -676,7 +675,7 @@ export async function archiveLogRecord(db: Database, auth: AuthContext, logId: s
   });
 }
 
-export async function unarchiveLogRecord(db: Database, auth: AuthContext, logId: string, context: ServiceContext = {}) {
+export async function unarchiveLogRecord(db: Database, auth: LogAccessContext, logId: string, context: ServiceContext = {}) {
   requireLogArchive(auth);
   return db.transaction(async (tx) => {
     const existing = await getLogDetail(tx, auth, logId);
@@ -689,7 +688,7 @@ export async function unarchiveLogRecord(db: Database, auth: AuthContext, logId:
     }
     await createLogAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      (auth.logInvocation ?? createUserInvocation(auth)),
       {
         kind: "log-unarchive",
         action: "unarchive",
@@ -709,14 +708,14 @@ export type ListLogFeedbackInsightsQuery = {
 /** Feedback quality insights for the `/log-admin` dashboard (org-scoped, read-only). */
 export async function listLogFeedbackInsights(
   db: Queryable,
-  auth: AuthContext,
+  auth: LogAccessContext,
   query: ListLogFeedbackInsightsQuery = {}
 ): Promise<{ items: LogFeedbackInsightDto[] }> {
   requireLogView(auth);
   return { items: await aggregateFeedbackInsights(db, auth, query) };
 }
 
-export async function submitLogFeedback(db: Database, auth: AuthContext, input: SubmitLogFeedbackInput, context: ServiceContext = {}) {
+export async function submitLogFeedback(db: Database, auth: LogAccessContext, input: SubmitLogFeedbackInput, context: ServiceContext = {}) {
   requireLogFeedback(auth);
   return db.transaction(async (tx) => {
     const log = await getLogDetail(tx, auth, input.logId);
@@ -731,7 +730,7 @@ export async function submitLogFeedback(db: Database, auth: AuthContext, input: 
     });
     await createLogAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      (auth.logInvocation ?? createUserInvocation(auth)),
       {
         kind: "log-feedback",
         action: "feedback",

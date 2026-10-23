@@ -21,6 +21,7 @@ import { useTopBarActions } from "@/components/layout";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "@/components/tableFilterUtils";
 import { type PageProps } from "@/app/routes";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SearchField } from "@/components/common/SearchField";
 import { ViewSwitch } from "@/components/ui/view-switch";
@@ -110,7 +111,7 @@ function createEmptyLogRecord(): LogRecord {
   };
 }
 
-export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, knowledgeCapability, sessionPermissions, canOpenKnowledge = true, canOpenParameters = true }: PageProps) {
+export function LogsPage({ state, dispatch, onNavigate, search, logActions, runtime, knowledgeCapability, sessionPermissions, canOpenKnowledge = true, canOpenParameters = true }: PageProps) {
   const knowledgeRepository = runtime?.knowledgeRepository;
   const logRepository = runtime?.logAnalysisRepository;
   const canViewTrace = sessionPermissions ? sessionPermissions.includes("logs:admin-domains") : canPerform(state.activeRoleId, "logs.admin-domains");
@@ -592,6 +593,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
         </aside>}
       >
       {hasActiveLog ? <LogConclusionCard
+          organizationId={new URLSearchParams(search).get("organizationId") ?? undefined}
           log={activeLog}
           canViewSkill={canViewTrace}
           canOpenKnowledge={canOpenKnowledge}
@@ -1025,7 +1027,7 @@ function ConfidenceBar({
   );
 }
 
-function AnalysisProvenanceBadges({ log, canViewSkill, canOpenKnowledge, onNavigate }: { log: LogRecord; canViewSkill: boolean; canOpenKnowledge: boolean; onNavigate: (path: string) => void }) {
+function AnalysisProvenanceBadges({ log, canViewSkill, canOpenKnowledge, onNavigate, organizationId }: { log: LogRecord; canViewSkill: boolean; canOpenKnowledge: boolean; onNavigate: (path: string) => void; organizationId?: string }) {
   const degraded = classifyAnalysisDegradation(log);
   const skillName = log.logDomainName ?? log.skillNameSnapshot;
   const revisionNumber = log.skillRevision?.number ?? log.skillRevisionNumberSnapshot;
@@ -1036,7 +1038,7 @@ function AnalysisProvenanceBadges({ log, canViewSkill, canOpenKnowledge, onNavig
         <span className="analysis-provenance__badge">{log.analysisSource === "rules-fallback" ? "规则回退" : "AI 分析"}</span>
         {degraded && log.analysisSource !== "rules-fallback" ? <span className="analysis-provenance__badge">提前收敛</span> : null}
         {skillName && log.skillSelection?.mode !== "generic" ? <>
-          {canViewSkill && log.logDomainId && log.logDomainName ? <a className="analysis-provenance__badge" href={`/log-admin/skills/${encodeURIComponent(log.logDomainId)}`}
+          {canViewSkill && log.logDomainId && log.logDomainName ? <a className="analysis-provenance__badge" href={withOrganizationScope(`/log-admin/skills/${encodeURIComponent(log.logDomainId)}`, organizationId)}
             onClick={(event) => { event.preventDefault(); onNavigate(`/log-admin/skills/${encodeURIComponent(log.logDomainId!)}`); }}>
             技能：{skillName}{revisionNumber ? ` v${revisionNumber}` : ""}
           </a> : <span className="analysis-provenance__badge">技能：{skillName}{revisionNumber ? ` v${revisionNumber}` : ""}</span>}
@@ -1054,7 +1056,7 @@ function AnalysisProvenanceBadges({ log, canViewSkill, canOpenKnowledge, onNavig
       {log.knowledgeRevisions?.length ? <details className="analysis-provenance__reason">
         <summary>实际检索的知识修订（{log.knowledgeRevisions.length}）</summary>
         <ul>{log.knowledgeRevisions.map(({ entryId, revisionId, pages }) => {
-          const href = knowledgeEntryHref({ entryId, ...(revisionId && pages?.length ? { revisionId, page: pages[0] } : {}) });
+          const href = withOrganizationScope(knowledgeEntryHref({ entryId, ...(revisionId && pages?.length ? { revisionId, page: pages[0] } : {}) }), organizationId);
           return <li key={`${entryId}:${revisionId}`}>
             {revisionId ? <>{canOpenKnowledge ? <a href={href} onClick={(event) => {
               event.preventDefault(); onNavigate(href);
@@ -1062,7 +1064,7 @@ function AnalysisProvenanceBadges({ log, canViewSkill, canOpenKnowledge, onNavig
             {pages?.length ? <span> {formatKnowledgePageLabel(pages).split(/(\d+)/).map((part, index) => {
               if (!canOpenKnowledge || !/^\d+$/.test(part)) return part;
               const page = Number(part);
-              const href = knowledgeEntryHref({ entryId, revisionId, page });
+              const href = withOrganizationScope(knowledgeEntryHref({ entryId, revisionId, page }), organizationId);
               return <a key={index} href={href} aria-label={`打开${formatKnowledgePageLabel(page)}`}
                 onClick={(event) => { event.preventDefault(); onNavigate(href); }}>{part}</a>;
             })}</span> : null}</> : <span>无权查看的条目</span>}
@@ -1077,13 +1079,14 @@ function AnalysisProvenanceBadges({ log, canViewSkill, canOpenKnowledge, onNavig
 }
 
 function LogConclusionCard({
-  log, canViewSkill, canOpenKnowledge, onNavigate, onAskAgent, onPrimary, relatedParameterLocated = false,
+  log, canViewSkill, canOpenKnowledge, onNavigate, onAskAgent, onPrimary, relatedParameterLocated = false, organizationId,
   relatedParameterUnlocated = false, onExport, onCopyLink, onDistil, distilPending = false,
   onSaveCase, casePending = false, onFeedback, feedbackRating, feedbackPending, feedbackError, onRetry, retryPending
 }: {
   log: LogRecord;
   canViewSkill: boolean;
   canOpenKnowledge: boolean;
+  organizationId?: string;
   onNavigate: (path: string) => void;
   onAskAgent: () => void;
   onPrimary?: () => void;
@@ -1113,7 +1116,7 @@ function LogConclusionCard({
       </div>
     </div>
     <LogHeaderMeta log={log} />
-    {complete ? <AnalysisProvenanceBadges log={log} canViewSkill={canViewSkill} canOpenKnowledge={canOpenKnowledge} onNavigate={onNavigate} /> : null}
+    {complete ? <AnalysisProvenanceBadges log={log} canViewSkill={canViewSkill} canOpenKnowledge={canOpenKnowledge} onNavigate={onNavigate} organizationId={organizationId} /> : null}
     {log.analysisQuestion ? <div className="logs-analysis-question"><strong>用户问题</strong><span>{log.analysisQuestion}</span></div> : null}
     {complete ? <>
       <ConfidenceBar value={log.confidence} status={log.status} />

@@ -83,7 +83,7 @@ export async function resolveAuthorizedRelatedParameter(
   const first = await findParameter();
   if (!first) {
     const deleted = (input.invocation.initiator === "user" || input.invocation.initiator === "agent") && await hasDeletedCurrentValue(pool, {
-      organizationId: input.invocation.principal.organization.id, projectId: input.projectId, bindingId: input.bindingId
+      organizationId: input.invocation.operatingOrganization?.id ?? input.invocation.principal.organization.id, projectId: input.projectId, bindingId: input.bindingId
     });
     throw new ApiError(deleted ? "CONFLICT" : "NOT_FOUND", deleted
       ? "关联参数的当前值已删除。"

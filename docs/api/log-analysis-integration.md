@@ -4,6 +4,10 @@
 
 From a first skill to a first signed result webhook, using WiseEff forms and copyable requests.
 
+User requests may bind the existing log, skill, file, job and SSE endpoints to an explicit `organizationId` query parameter. The server authorizes that target: ordinary users remain in their Home organization, while an active platform administrator retains their real identity when managing another organization. Omit the parameter to use Home. Audits record the actor and target separately; uploaded files, queued analyses and result-webhook outbox rows retain their captured organization after later navigation.
+
+Machine integration credentials keep their own organization. Supplying another `organizationId` returns `403`; it never grants the human administrator's cross-organization authority. A frontend log client fixes the target for both HTTP requests and SSE, including cleanup when its view is replaced.
+
 ## 1. Build a skill from a template
 
 You need your WiseEff URL and an organization account with **Manage analysis skills** (`logs:admin-domains`). Ask your administrator for access; no repository checkout or SDK is needed. Authoring uses API mode; mock mode is read-only.
@@ -205,7 +209,7 @@ Before the first push, an administrator configures a skill's webhook in its work
   "confidence": 0.82,
   "conclusionSummary": "<localized analysis conclusion>",
   "occurredAt": "2026-08-13T02:00:00.000Z",
-  "productPath": "/logs?id=report-run-..."
+  "productPath": "/logs?id=report-run-...&organizationId=org-..."
 }
 ```
 

@@ -125,7 +125,8 @@ describe.skipIf(!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)("in
     expect((await request("POST", `${path}${scope}`, { name: "Wrong skill", skillId: homeSkill.body.item.id }, "platform")).status).toBe(404);
     await db.query("update users set is_active=false where id=$1", [platform.user.id]);
     try {
-      const machineUpload = await request<Upload>("POST", `/api/v1/log-files?organizationId=${organizations[0]}`, uploadBody(), created.body.token);
+      expect((await request("POST", `/api/v1/log-files?organizationId=${organizations[0]}`, uploadBody(), created.body.token)).status).toBe(403);
+      const machineUpload = await request<Upload>("POST", "/api/v1/log-files", uploadBody(), created.body.token);
       expect(machineUpload.status).toBe(201); expect(machineUpload.body.log.createdByCredentialId).toBe(created.body.item.id);
       expect((await request("GET", ownPath(machineUpload.body.log.id), undefined, "user-1")).status).toBe(200);
       expect((await request("GET", ownPath(machineUpload.body.log.id))).status).toBe(404);
