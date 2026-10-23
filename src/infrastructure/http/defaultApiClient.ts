@@ -7,12 +7,14 @@ export type DefaultApiClientOptions = {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
   oidcWindow?: BrowserOidcWindow;
+  organizationId?: string;
 };
 
 export function createDefaultApiClient(options: DefaultApiClientOptions = {}) {
   const oidcProvider = createDefaultOidcAuthProvider(options.oidcWindow);
   return createApiClient({
     baseUrl: options.baseUrl ?? resolveWiseEffApiBaseUrl(),
+    organizationId: options.organizationId,
     authorization: wiseEffApiAuthorization,
     getAuthorization: async () => {
       const oidcAuthorization = await oidcProvider?.getAuthorization();
