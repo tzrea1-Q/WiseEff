@@ -12,8 +12,9 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 import { MultiSelectDropdown } from "@/components/MultiSelectDropdown";
 import { SettingsFormPage } from "@/components/layout/SettingsFormPage";
 import { requestSettingsLeave } from "@/application/settingsFormNavigation";
+import { OrganizationProjectBulkGrants } from "./OrganizationProjectBulkGrants";
 
-export type ProjectMembershipClient = Pick<ReturnType<typeof createUserGovernanceClient>, "listProjectCandidates" | "getProjectMembers" | "listUsers" | "updateProjectMember">;
+export type ProjectMembershipClient = Pick<ReturnType<typeof createUserGovernanceClient>, "listProjectCandidates" | "getProjectMembers" | "listUsers" | "updateProjectMember" | "listTeams">;
 
 export function OrganizationProjectsPanel({ client }: { client?: ProjectMembershipClient }) {
   const [projects, setProjects] = useState<Array<{ id: string; name: string }> | null>(null);
@@ -34,18 +35,19 @@ export function OrganizationProjectsPanel({ client }: { client?: ProjectMembersh
   if (error) return <SectionError message={error} onRetry={() => setAttempt((value) => value + 1)} />;
   if (!projects) return <SectionSkeleton label="正在加载组织项目" />;
   if (!projects.length) return <SectionEmpty title="暂无项目" message="创建项目后可在此查看参与名单。" />;
-  return <ProjectRoster key={selectedId} client={client} projectId={selectedId} projectSelector={
+  return <ProjectRoster key={selectedId} client={client} projectId={selectedId} projectName={projects.find((project) => project.id === selectedId)?.name ?? selectedId} projectSelector={
     <SelectControl ariaLabel="选择项目" value={selectedId} options={projects.map((project) => ({ value: project.id, label: project.name }))} onValueChange={setSelectedId} />
   } />;
 }
 
-function ProjectRoster({ client, projectId, projectSelector }: { client: ProjectMembershipClient; projectId: string; projectSelector: ReactNode }) {
+function ProjectRoster({ client, projectId, projectName, projectSelector }: { client: ProjectMembershipClient; projectId: string; projectName: string; projectSelector: ReactNode }) {
   const [members, setMembers] = useState<ProjectMember[] | null>(null), [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [editing, setEditing] = useState(false), [userId, setUserId] = useState("");
   const [roles, setRoles] = useState<ProjectMemberRoleId[]>([]), [expectedRoles, setExpectedRoles] = useState<ProjectMemberRoleId[]>([]);
   const [users, setUsers] = useState<Awaited<ReturnType<ProjectMembershipClient["listUsers"]>>>([]);
   const [pending, setPending] = useState(false), [saveError, setSaveError] = useState("");
+  const [bulk, setBulk] = useState(false);
   useEffect(() => {
     let cancelled = false;
     setMembers(null); setError("");
@@ -65,7 +67,7 @@ function ProjectRoster({ client, projectId, projectSelector }: { client: Project
   }
   const dismiss = async () => { if (!pending && await requestSettingsLeave()) setEditing(false); };
   const roleOptions = (["hardware-user", "software-user", "hardware-committer", "software-committer"] as const).map((value) => ({ value, label: roleLabels[value] }));
-  return <><AdminListPage label="项目参与" headerActions={<Button disabled={members === null || Boolean(error)} onClick={() => void edit()}>添加参与者</Button>} headerContent="项目参与名单" filterBar={projectSelector}
+  return <><AdminListPage label="项目参与" headerActions={<><Button variant="outline" disabled={members === null || Boolean(error)} onClick={() => setBulk(true)}>批量授予项目角色</Button><Button disabled={members === null || Boolean(error)} onClick={() => void edit()}>添加参与者</Button></>} headerContent="项目参与名单" filterBar={projectSelector}
     notice={<p>组织成员可查看项目；参与者按项目编辑角色修改，MDE 编辑角色可修改关键参数。组织和平台管理员可直接管理。审核与合入职责需单独配置。</p>}
     tableState={error ? <SectionError message={error} onRetry={() => setAttempt((value) => value + 1)} /> : members === null ? <SectionSkeleton label="正在加载项目参与名单" /> : undefined}
     table={{ rows: members ?? [], rowKey: (member) => member.userId, ariaLabel: "项目参与名单", columns: [
@@ -84,5 +86,6 @@ function ProjectRoster({ client, projectId, projectSelector }: { client: Project
         <p className="member-details__hint">清空角色并保存即可移除参与资格；保留账号、历史和独立的审核/合入职责。停用账号不会因此启用。</p>
         {expectedRoles.length > 0 && <Button type="button" variant="outline" disabled={pending} onClick={() => setRoles([])}>移除参与资格</Button>}
       </SettingsFormPage></div><div className="user-permissions-modal-actions"><Button variant="outline" disabled={pending} onClick={() => void dismiss()}>关闭</Button></div>
-    </>}</ModalDialog></>;
+    </>}</ModalDialog>
+    {bulk && <OrganizationProjectBulkGrants client={client} projectId={projectId} projectName={projectName} onUpdated={setMembers} onClose={() => setBulk(false)} />}</>;
 }

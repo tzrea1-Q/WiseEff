@@ -12,7 +12,7 @@ function response(body: unknown) { return new Response(JSON.stringify(body), { s
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("organization workspace target ownership", () => {
-  it("shows the target project's explicit participants and inactive status without offering role edits", async () => {
+  it("shows the target project's explicit participants, inactive status and administrator editing controls", async () => {
     vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input) => {
       const url = new URL(String(input), "http://localhost");
       if (url.pathname.endsWith("operating-scope")) return response({ actor, organization: { id: "target", name: "Target organization" } });
@@ -31,7 +31,9 @@ describe("organization workspace target ownership", () => {
     expect(within(table).getByText("Inactive editor")).toBeInTheDocument();
     expect(within(table).getByText("已停用")).toBeInTheDocument();
     expect(within(table).getByText("硬件开发、软件MDE")).toBeInTheDocument();
-    expect(within(table).queryByRole("button", { name: /修改|编辑|保存/ })).not.toBeInTheDocument();
+    expect(within(table).getByRole("button", { name: "修改 Existing editor 的项目编辑角色" })).toBeInTheDocument();
+    expect(within(table).getByRole("button", { name: "修改 Inactive editor 的项目编辑角色" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "批量授予项目角色" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("combobox", { name: "选择项目" }));
     await userEvent.click(await screen.findByRole("option", { name: "Empty project" }));
     expect(await screen.findByText("暂无项目参与者")).toBeInTheDocument();
