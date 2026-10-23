@@ -655,6 +655,10 @@ export async function createAndSubmitBindingDraft(
 
 export async function bindHardwareUserToProject(projectId = defaultProjectId): Promise<void> {
   await withPgClient(async (client) => {
+    await client.query(`insert into project_members(organization_id,project_id,user_id,roles)
+      values ($1,$2,$3,ARRAY['hardware-user'])
+      on conflict(organization_id,project_id,user_id) do update set roles=excluded.roles`,
+    [organizationId, projectId, acceptanceCast.zhaoHeng.userId]);
     await client.query(
       `
       insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)

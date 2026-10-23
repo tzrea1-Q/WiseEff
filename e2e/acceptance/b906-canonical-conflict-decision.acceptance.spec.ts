@@ -75,11 +75,17 @@ for (const [format, choice, decision] of [
         permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
         roles: [{ roleId: "admin", projectId: null }] });
       const author = makeTestAuthContext({ userId: acceptanceCast.liuMin.userId, organizationId,
-        permissions: ["parameter:view", "parameter:edit"], roles: [{ roleId: "software-user", projectId }] });
+        permissions: ["parameter:view", "parameter:edit"], roles: [{ roleId: "software-user", projectId }],
+        projectMemberships: [{ projectId, roles: ["software-user"] }] });
       const otherAuthor = makeTestAuthContext({ userId: acceptanceCast.chenNa.userId, organizationId,
         permissions: ["parameter:view", "parameter:edit", "parameter:review"],
-        roles: [{ roleId: "software-committer", projectId }] });
+        roles: [{ roleId: "software-committer", projectId }],
+        projectMemberships: [{ projectId, roles: ["software-user"] }] });
       try {
+        for (const writer of [author, otherAuthor]) {
+          await db.query(`insert into project_members(organization_id,project_id,user_id,roles)
+            values ($1,$2,$3,ARRAY['software-user'])`, [organizationId, projectId, writer.user.id]);
+        }
         const set = await createConfigSet(db, admin, { projectId, name: `B #906 ${format} ${choice} conflict` });
         let fileId: string;
         let versionId: string;

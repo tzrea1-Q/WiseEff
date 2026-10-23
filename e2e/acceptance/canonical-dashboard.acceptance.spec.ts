@@ -50,6 +50,8 @@ test.describe("canonical dashboard lifecycle on a real API", () => {
         await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
           values ($1,$2,$3,$4,$5)`, [`dashboard-${userId}`, userId, organizationId, projectId, roleId]);
       }
+      await db.query(`insert into project_members(organization_id,project_id,user_id,roles)
+        values ($1,$2,$3,ARRAY['software-user'])`, [organizationId, projectId, acceptanceCast.liuMin.userId]);
       // Explicit local fixture installation. All lifecycle mutations below use the real HTTP owners.
       await installConfigurationSourceFixture(db, makeTestAuthContext({
         userId: acceptanceCast.xuYun.userId, organizationId
@@ -183,10 +185,12 @@ test.describe("canonical dashboard lifecycle on a real API", () => {
       await expect(page.getByRole("region", { name: "参数管理首页" })).toBeVisible();
     };
     for (const endpoint of ["summary", "hotspots"]) {
-      const denied = await request.get(apiRoute(`/api/v1/parameters/dashboard/${endpoint}?projectId=dashboard-private`), {
+      const unassigned = await request.get(apiRoute(`/api/v1/parameters/dashboard/${endpoint}?projectId=dashboard-private`), {
         headers: authHeadersForRole("software-user")
       });
-      expect(denied.status(), await denied.text()).toBe(403);
+      expect(unassigned.status(), await unassigned.text()).toBe(200);
+      if (endpoint === "summary") expect((await unassigned.json()).item.kpis.totalBindings).toBe(0);
+      else expect((await unassigned.json()).items).toEqual([]);
       const foreign = await request.get(apiRoute(`/api/v1/parameters/dashboard/${endpoint}?projectId=dashboard-foreign`), {
         headers: authHeadersForRole("admin")
       });
