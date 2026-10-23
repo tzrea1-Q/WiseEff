@@ -69,7 +69,7 @@ export function ParameterReviewPage({
   runtime,
   runtimeMode
 }: PageProps) {
-  const sourceRepository = useMemo(() => runtimeMode === "api" ? resolveParameterFileRepository("api") : undefined, [runtimeMode]);
+  const sourceRepository = useMemo(() => runtimeMode === "api" ? runtime?.parameterFileRepository ?? resolveParameterFileRepository("api") : undefined, [runtimeMode, runtime?.parameterFileRepository]);
   const reviewProjectId = getContextQuery(search).projectId || state.activeProjectId;
   const parameterRepository = runtime?.parameterRepository;
   const parameterInitializationRepository = runtime?.parameterInitializationRepository;

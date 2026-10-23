@@ -94,7 +94,8 @@ export function CatalogOrganizationSurface({
     return () => { cleanupGeneration.current += 1; };
   }, [catalog, cleanupKey, definitionDeletionAllowed, cleanupEpoch]);
   const reviewActor = sessionRoles === undefined ? actor
-    : sessionRoles?.some((role) => role.roleId === "admin" && role.projectId === null) ? "org-admin" : "user";
+    : sessionRoles?.some((role) => role.roleId === "platform-admin" && role.projectId === null) ? "platform-admin"
+      : sessionRoles?.some((role) => role.roleId === "admin" && role.projectId === null) ? "org-admin" : "user";
   const reviewQueueAllowed = catalogActionsForSession({ actor: reviewActor, permissions: sessionPermissions }).includes("resolve-review-item");
   const platformOnly = !reviewQueueAllowed && (sessionRoles === undefined ? actor === "platform-admin"
     : sessionRoles?.some((role) => role.roleId === "platform-admin"));

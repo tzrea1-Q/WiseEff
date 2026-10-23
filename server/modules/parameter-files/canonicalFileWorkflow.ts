@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterInvocation } from "../parameters/operatingScope";
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 
@@ -248,7 +249,7 @@ async function buildWorkflowProofToken(
   const pins = await Promise.all(input.bindings.map(async (binding) => {
     if (!binding.sourcePinId || !binding.oldValueId) return null;
     const pin = await loadOwnedProjectValueSourcePin(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       bindingId: binding.bindingId,
       projectValueId: binding.oldValueId
@@ -376,7 +377,7 @@ async function loadRequestForWorkflowLink(
   const linked = candidate.impact?.canonicalSourceWorkflow?.requestId;
   if (!linked) return null;
   return getCanonicalValueChangeRequest(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: candidate.projectId,
     requestId: linked
   });
@@ -395,7 +396,7 @@ async function sourceSubmissionPolicy(db: Queryable, auth: AuthContext,
     `select actor_type,actor_user_id,metadata from audit_events where organization_id=$1 and project_id=$2
       and target_type='project-parameter-value-change-request' and target_id=$3
       and kind='parameter-topology-governance' and action='value-change-submitted'
-      and metadata ? 'sourceCandidateId'`, [auth.organization.id, candidate.projectId, request.id])).rows : [];
+      and metadata ? 'sourceCandidateId'`, [parameterOrganizationId(auth), candidate.projectId, request.id])).rows : [];
   const origins = new Set([candidate.id, ...submissions.map((row) => row.metadata.sourceCandidateId)
     .filter((id): id is string => typeof id === "string")]);
   let manual = false;
@@ -404,11 +405,11 @@ async function sourceSubmissionPolicy(db: Queryable, auth: AuthContext,
       `select actor_type,actor_user_id,metadata from audit_events where organization_id=$1 and project_id=$2
         and target_type='project-parameter-file-candidate' and target_id=$3
         and kind='parameter-topology-governance' and action='value-drafted'
-        and metadata->>'manualSyncPreparation'='true'`, [auth.organization.id, candidate.projectId, id])).rows;
+        and metadata->>'manualSyncPreparation'='true'`, [parameterOrganizationId(auth), candidate.projectId, id])).rows;
     const declared = submissions.filter((row) => row.metadata.manualSyncPreparationCandidateId === id);
     if (!markers.length && !declared.length) continue;
     const origin = id === candidate.id ? candidate : await getParameterFileCandidateById(db, {
-      organizationId: auth.organization.id, projectId: candidate.projectId, candidateId: id
+      organizationId: parameterOrganizationId(auth), projectId: candidate.projectId, candidateId: id
     });
     if (!origin || !markers.length || markers.some((row) => row.actor_type !== "user"
       || row.actor_user_id !== origin.createdByUserId || !row.metadata.sourceProofToken)
@@ -449,7 +450,7 @@ async function requireOwnedSourceReceipt(db: Queryable, objectStore: ObjectStore
       and kind='parameter-topology-governance' and action='value-change-submitted'
       and actor_type='user' and actor_user_id=$5
       and metadata->>'sourceCandidateId'=$4 and metadata ? 'sourceSubmissionProof'`,
-  [auth.organization.id, candidate.projectId, request.id, candidate.id, auth.user.id]);
+  [parameterOrganizationId(auth), candidate.projectId, request.id, candidate.id, auth.user.id]);
   const comparableProof = (proof: Record<string, unknown>) => manual ? proof : {
     ...proof, reasonDigest: null, ...(attemptProof.assignedToUserId == null ? { assignedToUserId: null } : {})
   };
@@ -466,7 +467,7 @@ async function requireOwnedSourceReceipt(db: Queryable, objectStore: ObjectStore
     });
   }
   const prepared = request.candidate_id && await getParameterFileCandidateById(db, {
-    organizationId: auth.organization.id, projectId: candidate.projectId, candidateId: request.candidate_id
+    organizationId: parameterOrganizationId(auth), projectId: candidate.projectId, candidateId: request.candidate_id
   });
   if (!prepared || prepared.createdByUserId !== auth.user.id || !prepared.storageKey || !candidate.storageKey
     || candidate.baseVersionId !== attemptProof.expectedCurrentVersionId
@@ -489,8 +490,8 @@ function requestSourceReceipt(request: RequestRecord) {
 async function recordSourceSubmission(db: Database, auth: AuthContext, candidate: ProjectParameterFileCandidateDto,
   request: RequestRecord, attemptProof: Record<string, unknown>, traceId: string, preparationProofToken?: string) {
   const manual = await sourceSubmissionPolicy(db, auth, candidate);
-  await writeTrustedGovernanceAudit(asAuditTx(db), createUserInvocation(auth), {
-    action: "value-change-submitted", organizationId: auth.organization.id, projectId: request.project_id,
+  await writeTrustedGovernanceAudit(asAuditTx(db), parameterInvocation(auth) ?? createUserInvocation(auth), {
+    action: "value-change-submitted", organizationId: parameterOrganizationId(auth), projectId: request.project_id,
     targetType: "project-parameter-value-change-request", targetId: request.id,
     metadata: { sourceCandidateId: candidate.id, sourceCandidateDigest: candidate.checksum, sourceDraftId: request.draft_id,
       sourceSubmissionProof: { ...attemptProof, reasonDigest: digest(Buffer.from(request.reason.trim())) },
@@ -503,9 +504,9 @@ async function recordSourceSubmission(db: Database, auth: AuthContext, candidate
 
 async function lockSourceReviewer(db: Database, auth: AuthContext, projectId: string, reviewerId?: string) {
   if (reviewerId === undefined) return;
-  if (reviewerId === auth.user.id || !await lockUserById(db, { organizationId: auth.organization.id, userId: reviewerId })
+  if (reviewerId === auth.user.id || !await lockUserById(db, { organizationId: parameterOrganizationId(auth), userId: reviewerId })
     || !await hasEligibleWorkflowAssignee(db, {
-      organizationId: auth.organization.id, projectId, userId: reviewerId, roleId: "software-committer"
+      organizationId: parameterOrganizationId(auth), projectId, userId: reviewerId, roleId: "software-committer"
     })) {
     throw new ApiError("VALIDATION_FAILED", "A separate active project software committer is required.");
   }
@@ -517,27 +518,27 @@ async function fileWorkflow(
   input: { projectId: string; fileId: string }
 ): Promise<CanonicalSourceWorkflowDto> {
   const file = await getProjectParameterFileById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     fileId: input.fileId
   });
   if (!file || file.projectId !== input.projectId) {
     throw new ApiError("NOT_FOUND", "Project parameter file was not found.", input);
   }
   const configSetId = await getProjectParameterFileConfigSetId(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     fileId: input.fileId
   });
   if (!configSetId) return { canonical: false, bindingCount: 0 };
 
   const bindings = await loadSourceBindingCohortReadOnly(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     configSetId
   });
   const bindingCount = bindings.filter((binding) => binding.sourcePinId).length;
   const deleted = await discoverDeletedSourceRevisionPins(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     configSetId
   });
@@ -566,7 +567,7 @@ async function inspectCandidate(
   input: { projectId: string; candidateId: string }
 ): Promise<SourceInspection> {
   const candidate = await getParameterFileCandidateById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     candidateId: input.candidateId
   });
@@ -586,7 +587,7 @@ async function inspectCandidate(
     return { workflow, candidate, reason: "file-is-not-canonical" };
   }
   const file = await getProjectParameterFileById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     fileId: candidate.fileId
   });
   if (!file || file.projectId !== input.projectId || file.currentVersionId !== candidate.baseVersionId) {
@@ -620,7 +621,7 @@ async function inspectCandidate(
   }
 
   const bindings = await loadSourceBindingCohortReadOnly(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     configSetId: workflow.configSetId
   });
@@ -628,7 +629,7 @@ async function inspectCandidate(
   for (const binding of bindings) {
     if (!binding.sourcePinId || !binding.oldValueId || binding.configSetId !== workflow.configSetId) continue;
     const pin = await loadOwnedProjectValueSourcePin(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       bindingId: binding.bindingId,
       projectValueId: binding.oldValueId
@@ -641,7 +642,7 @@ async function inspectCandidate(
       return { workflow, candidate, reason: "candidate-format-does-not-match-source-pin" };
     }
     const source = await loadCanonicalSourceSnapshot(db, objectStore, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       bindingId: binding.bindingId,
       projectValueId: binding.oldValueId
@@ -943,7 +944,7 @@ export async function previewCanonicalCandidate(
 ): Promise<CanonicalSourcePreviewDto> {
   const inspection = await db.transaction((tx) => inspectCandidate(tx, objectStore, auth, input));
   const receipt = await getCanonicalCandidateRequestReceipt(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     candidateId: input.candidateId,
     linkedRequestId: inspection.candidate.impact?.canonicalSourceWorkflow?.requestId
@@ -981,7 +982,7 @@ async function prepareCanonicalCandidateBatchLocked(
   input: { projectId: string; candidateId: string; expectedProofToken: string }
 ): Promise<CanonicalSourceBatchPrepareDto> {
   const candidate = await getParameterFileCandidateById(tx, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     candidateId: input.candidateId
   });
@@ -994,13 +995,13 @@ async function prepareCanonicalCandidateBatchLocked(
     throw new ApiError("CONFLICT", "Candidate is not attached to a canonical source.", { reason: "file-is-not-canonical" });
   }
   const cohortBeforeLock = await loadSourceBindingCohortReadOnly(tx, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     configSetId: workflow.configSetId
   });
   const first = cohortBeforeLock.find((entry) => entry.sourcePinId && entry.oldValueId);
   const pin = first && await loadOwnedProjectValueSourcePin(tx, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     bindingId: first.bindingId,
     projectValueId: first.oldValueId
@@ -1008,7 +1009,7 @@ async function prepareCanonicalCandidateBatchLocked(
   if (!pin) throw new ApiError("CONFLICT", "Canonical source cohort has no owned pin.", { reason: "source-pin-missing" });
   await lockCanonicalSourceScope(tx, pin, workflow.configSetId);
   const lockedCandidate = await getParameterFileCandidateByIdForUpdate(tx, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     candidateId: input.candidateId
   });
@@ -1026,13 +1027,13 @@ async function prepareCanonicalCandidateBatchLocked(
   }
   const changes = inspection.changes;
   const source = await loadCanonicalSourceSnapshot(tx, objectStore, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     bindingId: changes[0]!.binding.bindingId,
     projectValueId: changes[0]!.pin.projectValueId
   });
   const cohort = await loadCanonicalSourceCohort(tx, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     configSetId: inspection.workflow.configSetId
   });
@@ -1048,7 +1049,7 @@ async function prepareCanonicalCandidateBatchLocked(
   }));
   const frozen = {
     kind: "canonical-source-batch" as const,
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     candidateId: lockedCandidate.id,
     fileId: lockedCandidate.fileId!,
@@ -1076,7 +1077,7 @@ export async function recheckCanonicalCandidateBatchForReviewInTransaction(
   if (!canReviewParameters(auth) || !canEditParameters(auth, input.projectId)
     || !canReviewParameterStage(auth, input.projectId, "software_review")
     || !await hasCurrentCanonicalReviewRole(tx, {
-      organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId, userId: auth.user.id
     })) {
     throw new ApiError("FORBIDDEN", "Project software review authorization is required.");
   }
@@ -1160,7 +1161,7 @@ async function ensureNoConflictingDraft(
   manual: boolean
 ): Promise<{ draftId?: string; request?: RequestRecord }> {
   const rows = await findExistingDraft(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: change.pin.projectId,
     bindingId: change.binding.bindingId,
     sourcePinId: change.pin.sourcePinId,
@@ -1181,14 +1182,14 @@ async function ensureNoConflictingDraft(
       });
     }
     const request = await getCanonicalValueChangeRequest(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: change.pin.projectId,
       requestId: pending.pending_request_id
     });
     if (!request) throw new ApiError("CONFLICT", "The existing canonical review request is unavailable.");
     if (!pending.candidate_id) throw new ApiError("CONFLICT", "The existing canonical draft has no prepared candidate.");
     const prepared = await getParameterFileCandidateById(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: change.pin.projectId,
       candidateId: pending.candidate_id
     });
@@ -1221,7 +1222,7 @@ async function ensureNoConflictingDraft(
       });
     }
     const prepared = await getParameterFileCandidateById(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: change.pin.projectId,
       candidateId: exact.candidate_id
     });
@@ -1258,12 +1259,12 @@ async function submitInspectedCandidate(
   // keeps a concurrent author from winning a same-Binding draft race.
   await db.query(
     `select id from dts_config_set where id=$1 and organization_id=$2 and project_id=$3 for update`,
-    [change.configSetId, auth.organization.id, change.pin.projectId]
+    [change.configSetId, parameterOrganizationId(auth), change.pin.projectId]
   );
   await db.query(`select id from project_parameter_files where config_set_id=$1 order by id for update`, [change.configSetId]);
   await lockCanonicalSourceCohort(db, change.pin);
   await loadCanonicalSourceCohort(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: change.pin.projectId,
     configSetId: change.configSetId
   });
@@ -1272,7 +1273,7 @@ async function submitInspectedCandidate(
   if (reused.request) {
     await requireOwnedSourceReceipt(db, objectStore, auth, change.candidate, reused.request, submissionProof);
     const linked = await linkParameterFileCandidateToCanonicalWorkflow(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: change.pin.projectId,
       candidateId: change.candidate.id,
       link: {
@@ -1290,11 +1291,11 @@ async function submitInspectedCandidate(
     return { requestId: reused.request.id, status: reused.request.status, replayed: true };
   }
 
-  const invocation = createUserInvocation(auth);
+  const invocation = parameterInvocation(auth) ?? createUserInvocation(auth);
   {
     const draft: CanonicalValueDraftDto = reused.draftId
       ? await (async () => {
-          const existing = await db.query<{ id: string }>(`select id from project_parameter_value_drafts where organization_id=$1 and project_id=$2 and id=$3`, [auth.organization.id, change.pin.projectId, reused.draftId]);
+          const existing = await db.query<{ id: string }>(`select id from project_parameter_value_drafts where organization_id=$1 and project_id=$2 and id=$3`, [parameterOrganizationId(auth), change.pin.projectId, reused.draftId]);
           if (!existing.rows[0]) throw new ApiError("CONFLICT", "The canonical draft disappeared before submit.");
           // A matching unsubmitted draft is safe to submit; its prepared object was
           // compared in the conflict scan and remains immutable once submitted.
@@ -1328,12 +1329,12 @@ async function submitInspectedCandidate(
       refusalSink
     });
     const frozen = await getCanonicalValueChangeRequest(db, {
-      organizationId: auth.organization.id, projectId: change.pin.projectId, requestId: submitted.id
+      organizationId: parameterOrganizationId(auth), projectId: change.pin.projectId, requestId: submitted.id
     });
     if (!frozen) throw new ApiError("CONFLICT", "Submitted source request was not retained.");
     await recordSourceSubmission(db, auth, change.candidate, frozen, submissionProof, requestId);
     const linked = await linkParameterFileCandidateToCanonicalWorkflow(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: change.pin.projectId,
       candidateId: change.candidate.id,
       link: {
@@ -1394,7 +1395,7 @@ export async function submitCanonicalCandidate(
   if (!input.reason.trim()) throw new ApiError("VALIDATION_FAILED", "A source review reason is required.");
   const submit = async (tx: Database, attempt: CanonicalSourceAttempt) => {
     const candidate = await getParameterFileCandidateByIdForUpdate(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       candidateId: input.candidateId
     });
@@ -1405,7 +1406,7 @@ export async function submitCanonicalCandidate(
       return { requestId: linked.id, status: linked.status, replayed: true };
     }
     const preparedRequest = await loadRequestForCandidate(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       candidateId: candidate.id
     });
@@ -1420,7 +1421,7 @@ export async function submitCanonicalCandidate(
     }
     await lockSourceReviewer(tx, auth, input.projectId, input.assignedToUserId);
     const file = candidate.fileId
-      ? await getProjectParameterFileById(tx, { organizationId: auth.organization.id, fileId: candidate.fileId })
+      ? await getProjectParameterFileById(tx, { organizationId: parameterOrganizationId(auth), fileId: candidate.fileId })
       : null;
     if (!file || file.projectId !== input.projectId) throw new ApiError("CONFLICT", "Canonical source candidate has no owned file.");
     if (file.currentVersionId !== input.expectedCurrentVersionId || candidate.baseVersionId !== input.expectedCurrentVersionId) {
@@ -1525,7 +1526,7 @@ export async function recheckCanonicalConflictDecisionForReviewInTransaction(
   if (!canReviewParameters(auth) || !canEditParameters(auth, input.projectId)
     || !canReviewParameterStage(auth, input.projectId, "software_review")
     || !await hasCurrentCanonicalReviewRole(tx, {
-      organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId, userId: auth.user.id
     })) {
     throw new ApiError("FORBIDDEN", "Project software review authorization is required.");
   }
@@ -1559,7 +1560,7 @@ async function prepareCanonicalConflictDecisionLocked(
             action,target_value,user_id,candidate_member_manifest,candidate_binding_manifest
        from project_parameter_value_drafts
       where id=$1 and organization_id=$2 and project_id=$3 and binding_id=$4`,
-    [input.selectedDraftId, auth.organization.id, input.projectId, input.selectedBindingId])).rows[0];
+    [input.selectedDraftId, parameterOrganizationId(auth), input.projectId, input.selectedBindingId])).rows[0];
   if (!selected || selected.source_pin_id !== fileChange.pin.sourcePinId
     || selected.base_current_value_id !== fileChange.pin.projectValueId
     || selected.config_revision_id !== fileChange.pin.configRevisionId
@@ -1589,11 +1590,11 @@ async function prepareCanonicalConflictDecisionLocked(
   }
   const chosen = input.choice === "file" ? fileChange : prepared.change;
   const sourceSnapshot = await loadCanonicalSourceSnapshot(db, objectStore, {
-    organizationId: auth.organization.id, projectId: input.projectId,
+    organizationId: parameterOrganizationId(auth), projectId: input.projectId,
     bindingId: input.selectedBindingId, projectValueId: fileChange.pin.projectValueId
   });
   const cohort = await loadSourceBindingCohortReadOnly(db, {
-    organizationId: auth.organization.id, projectId: input.projectId,
+    organizationId: parameterOrganizationId(auth), projectId: input.projectId,
     configSetId: source.workflow.configSetId
   });
   if (cohort.some((entry) => !entry.sourcePinId || !entry.oldValueId || !entry.locator || !entry.valueDigest)) {
@@ -1613,7 +1614,7 @@ async function prepareCanonicalConflictDecisionLocked(
   }>(`select base_digest,proposed_digest,diff_digest,frozen_member_manifest,frozen_binding_manifest
       from project_parameter_file_candidates
       where id=$1 and organization_id=$2 and project_id=$3`,
-    [selected.candidate_id, auth.organization.id, input.projectId])).rows[0];
+    [selected.candidate_id, parameterOrganizationId(auth), input.projectId])).rows[0];
   if (!draftArtifact || draftArtifact.base_digest !== selected.candidate_base_digest
     || draftArtifact.proposed_digest !== selected.candidate_proposed_digest
     || draftArtifact.diff_digest !== selected.candidate_diff_digest
@@ -1623,7 +1624,7 @@ async function prepareCanonicalConflictDecisionLocked(
   }
   for (const entry of cohort) {
     const sibling = await loadCanonicalSourceSnapshot(db, objectStore, {
-      organizationId: auth.organization.id, projectId: input.projectId,
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId,
       bindingId: entry.bindingId, projectValueId: entry.oldValueId
     });
     if (sibling.manifest.configRevisionId !== fileChange.pin.configRevisionId
@@ -1679,7 +1680,7 @@ export async function submitCanonicalConflictDecision(
   return withCanonicalSourceAttemptTransaction(db, objectStore, async (tx, attempt) => {
     // Match the existing request owner's reviewer-before-source lock order.
     const candidate = await getParameterFileCandidateByIdForUpdate(tx, {
-      organizationId: auth.organization.id, projectId: input.projectId, candidateId: input.candidateId
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId, candidateId: input.candidateId
     });
     if (!candidate) throw new ApiError("NOT_FOUND", "File candidate was not found.");
     if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) {
@@ -1709,7 +1710,7 @@ export async function submitCanonicalConflictDecision(
       throw new ApiError("CONFLICT", "Canonical conflict decision proof is stale.", { reason: "source-proof-stale" });
     }
     const first = await loadOwnedProjectValueSourcePin(tx, {
-      organizationId: auth.organization.id, projectId: input.projectId,
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId,
       bindingId: input.selectedBindingId, projectValueId: decision.selectedBaseValueId
     });
     if (!first) throw new ApiError("CONFLICT", "Selected source pin disappeared.");
@@ -1727,7 +1728,7 @@ export async function submitCanonicalConflictDecision(
       throw new ApiError("CONFLICT", "Selected target changed after source proof.", { reason: "source-proof-stale" });
     }
     const rows = await findExistingDraft(tx, {
-      organizationId: auth.organization.id, projectId: input.projectId, bindingId: input.selectedBindingId,
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId, bindingId: input.selectedBindingId,
       sourcePinId: chosen.pin.sourcePinId, baseValueId: chosen.pin.projectValueId,
       configRevisionId: chosen.pin.configRevisionId, baseDigest: chosen.baseDigest,
       proposedDigest: chosen.proposedDigest, action: chosen.action
@@ -1748,7 +1749,7 @@ export async function submitCanonicalConflictDecision(
       reason: input.reason.trim(), baseRevisionId: decision.selectedRevisionId,
       baseCurrentValueId: decision.selectedBaseValueId
     }, {
-      objectStore: attempt.objectStore, invocation: createUserInvocation(auth),
+      objectStore: attempt.objectStore, invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
       requestId: input.requestId, refusalSink: input.refusalSink
     });
     const prepared = await inspectCandidate(tx, objectStore, auth, {
@@ -1762,11 +1763,11 @@ export async function submitCanonicalConflictDecision(
     const { submitCanonicalValueChange } = await import("../parameter-bindings/drafts/changeService");
     const request = await submitCanonicalValueChange(tx, auth, {
       projectId: input.projectId, draftId: draft.id, assignedToUserId: input.assignedToUserId,
-      invocation: createUserInvocation(auth), requestId: input.requestId,
+      invocation: parameterInvocation(auth) ?? createUserInvocation(auth), requestId: input.requestId,
       refusalSink: input.refusalSink
     });
     const linked = await linkParameterFileCandidateToCanonicalWorkflow(tx, {
-      organizationId: auth.organization.id, projectId: input.projectId, candidateId: input.candidateId,
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId, candidateId: input.candidateId,
       link: {
         kind: "canonical-source", fingerprint: decision.decisionProofDigest,
         bindingId: input.selectedBindingId, sourcePinId: decision.selectedSourcePinId,
@@ -1784,13 +1785,13 @@ export async function submitCanonicalConflictDecision(
     });
     if (!linked) throw new ApiError("CONFLICT", "Conflict decision link was not retained.");
     const frozen = await getCanonicalValueChangeRequest(tx, {
-      organizationId: auth.organization.id, projectId: input.projectId, requestId: request.id
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId, requestId: request.id
     });
     if (!frozen) throw new ApiError("CONFLICT", "Submitted conflict request was not retained.");
     await recordSourceSubmission(tx, auth, candidate, frozen, attemptProof, input.requestId, decision.sourceProofToken);
-    await writeTrustedGovernanceAudit(asAuditTx(tx), createUserInvocation(auth), {
+    await writeTrustedGovernanceAudit(asAuditTx(tx), parameterInvocation(auth) ?? createUserInvocation(auth), {
       action: "value-change-submitted",
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       targetType: "project-parameter-value-change-request",
       targetId: request.id,
@@ -1818,11 +1819,11 @@ export async function recheckCanonicalConflictDecisionForReview(
     where organization_id=$1 and project_id=$2
       and impact->'canonicalSourceWorkflow'->>'requestId'=$3
       and impact->'canonicalSourceWorkflow'->'conflictDecision' is not null
-    for update`, [auth.organization.id, input.projectId, input.requestId]);
+    for update`, [parameterOrganizationId(auth), input.projectId, input.requestId]);
   const receipts = await db.query<{ metadata: Record<string, unknown> }>(`select metadata from audit_events
     where organization_id=$1 and project_id=$2 and target_id=$3
       and action='value-change-submitted' and metadata ? 'decisionProofDigest'`,
-    [auth.organization.id, input.projectId, input.requestId]);
+    [parameterOrganizationId(auth), input.projectId, input.requestId]);
   if (!links.rows.length && !receipts.rows.length) return;
   if (!receipts.rows.length) throw new ApiError("CONFLICT", "Conflict decision audit receipt is missing.", { reason: "conflict-decision-stale" });
   if (receipts.rows.length !== 1) throw new ApiError("CONFLICT", "Conflict decision has multiple audit receipts.");
@@ -1836,7 +1837,7 @@ export async function recheckCanonicalConflictDecisionForReview(
     throw new ApiError("CONFLICT", "Conflict decision receipt disagrees with its uploaded candidate link.", { reason: "conflict-decision-stale" });
   }
   const candidate = await getParameterFileCandidateById(db, {
-    organizationId: auth.organization.id, projectId: input.projectId, candidateId: links.rows[0]!.id
+    organizationId: parameterOrganizationId(auth), projectId: input.projectId, candidateId: links.rows[0]!.id
   });
   const link = candidate?.impact?.canonicalSourceWorkflow;
   const decision = link?.conflictDecision;
@@ -1861,7 +1862,7 @@ export async function recheckCanonicalConflictDecisionForReview(
     throw new ApiError("CONFLICT", "Uploaded conflict source changed after review submission.", { reason: "conflict-decision-stale" });
   }
   const draftCandidate = await getParameterFileCandidateById(db, {
-    organizationId: auth.organization.id, projectId: input.projectId,
+    organizationId: parameterOrganizationId(auth), projectId: input.projectId,
     candidateId: decision.selectedDraftCandidateId
   });
   if (!draftCandidate?.storageKey || draftCandidate.checksum !== decision.selectedDraftCandidateDigest) {
@@ -1895,7 +1896,7 @@ async function historicalRollbackBytes(
   db: Queryable, objectStore: ObjectStore, auth: AuthContext,
   input: { projectId: string; fileId: string; versionId: string }
 ) {
-  const file = await getProjectParameterFileById(db, { organizationId: auth.organization.id, fileId: input.fileId });
+  const file = await getProjectParameterFileById(db, { organizationId: parameterOrganizationId(auth), fileId: input.fileId });
   if (!file || file.projectId !== input.projectId) throw new ApiError("NOT_FOUND", "Project parameter file was not found.");
   const version = await getFileVersionById(db, { versionId: input.versionId });
   if (!version || version.fileId !== file.id) throw new ApiError("NOT_FOUND", "Historical source version was not found.");
@@ -1921,7 +1922,7 @@ export async function prepareCanonicalBatchRollbackCandidate(
   if (!input.requestId.trim()) throw new ApiError("VALIDATION_FAILED", "A preparation request ID is required.");
   return withCanonicalSourceAttemptTransaction(db, objectStore, async (tx, attempt) => {
     await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
-      `${auth.organization.id}:${input.projectId}:batch-rollback:${input.requestId}`
+      `${parameterOrganizationId(auth)}:${input.projectId}:batch-rollback:${input.requestId}`
     ]);
     const { file, bytes, checksum } = await historicalRollbackBytes(tx, objectStore, auth, input);
     const workflow = await fileWorkflow(tx, auth, { projectId: input.projectId, fileId: file.id });
@@ -1933,7 +1934,7 @@ export async function prepareCanonicalBatchRollbackCandidate(
     }
     // ponytail: file-scoped scan is enough here; add an indexed preparation key if volume grows.
     const prior = (await listParameterFileCandidates(tx, {
-      organizationId: auth.organization.id, projectId: input.projectId, fileId: file.id, includeAbandoned: true
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId, fileId: file.id, includeAbandoned: true
     })).find((candidate) => candidate.impact.canonicalBatchRollback?.prepareRequestId === input.requestId);
     if (prior && (prior.impact.canonicalBatchRollback?.historicalVersionId !== input.versionId
       || prior.impact.canonicalBatchRollback.expectedCurrentVersionId !== input.expectedCurrentVersionId
@@ -1945,7 +1946,7 @@ export async function prepareCanonicalBatchRollbackCandidate(
     }
     const candidate = prior ?? await createCandidate(tx, attempt.objectStore, auth, {
       projectId: input.projectId, fileId: file.id, fileName: file.fileName, bytes
-    }, { invocation: createUserInvocation(auth), requestId: input.requestId });
+    }, { invocation: parameterInvocation(auth) ?? createUserInvocation(auth), requestId: input.requestId });
     const inspection = await inspectCandidate(tx, objectStore, auth, {
       projectId: input.projectId, candidateId: candidate.id
     });
@@ -1972,7 +1973,7 @@ export async function prepareCanonicalBatchRollbackCandidate(
     if (!prior) {
       await tx.query(`update project_parameter_file_candidates
         set impact=jsonb_set(coalesce(impact,'{}'::jsonb),'{canonicalBatchRollback}',$4::jsonb,true)
-        where id=$1 and organization_id=$2 and project_id=$3`, [candidate.id, auth.organization.id,
+        where id=$1 and organization_id=$2 and project_id=$3`, [candidate.id, parameterOrganizationId(auth),
         input.projectId, JSON.stringify({ prepareRequestId: input.requestId,
           historicalVersionId: input.versionId, historicalDigest: checksum, historicalSizeBytes: bytes.length,
           expectedCurrentVersionId: input.expectedCurrentVersionId,
@@ -2003,11 +2004,11 @@ export async function submitCanonicalBatchRollback(
   return withCanonicalSourceAttemptTransaction<CanonicalBatchRollbackSubmitDto>(db, objectStore, async (tx) => {
     const { file, bytes, checksum } = await historicalRollbackBytes(tx, objectStore, auth, input);
     // Match C's reviewer-before-source lock order; C's nested submit reuses this row lock.
-    if (!await lockUserById(tx, { organizationId: auth.organization.id, userId: input.assignedToUserId })) {
+    if (!await lockUserById(tx, { organizationId: parameterOrganizationId(auth), userId: input.assignedToUserId })) {
       throw new ApiError("VALIDATION_FAILED", "The assigned reviewer was not found.");
     }
     const candidate = await getParameterFileCandidateById(tx, {
-      organizationId: auth.organization.id, projectId: input.projectId, candidateId: input.candidateId
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId, candidateId: input.candidateId
     });
     const origin = candidate?.impact.canonicalBatchRollback;
     if (!candidate || !origin || candidate.fileId !== file.id || candidate.baseVersionId !== input.expectedCurrentVersionId
@@ -2035,13 +2036,13 @@ export async function submitCanonicalBatchRollback(
         batch_source_proof_token,batch_cohort_proof_token,batch_base_version_id,batch_target_count,applied_audit_ref
        from project_parameter_value_change_requests where organization_id=$1 and project_id=$2
          and candidate_id=$3 and request_kind='batch' and status in ('pending','approved')`,
-      [auth.organization.id, input.projectId, candidate.id])).rows;
+      [parameterOrganizationId(auth), input.projectId, candidate.id])).rows;
     if (prior.length > 1) throw new ApiError("CONFLICT", "Rollback candidate has multiple active review requests.");
     if (prior.length) {
       const request = prior[0]!;
       const receipts = await tx.query<{ metadata: Record<string, unknown> }>(`select metadata from audit_events
         where organization_id=$1 and project_id=$2 and target_id=$3 and action='value-change-submitted'
-          and metadata ? 'canonicalRollbackVersionId'`, [auth.organization.id, input.projectId, request.id]);
+          and metadata ? 'canonicalRollbackVersionId'`, [parameterOrganizationId(auth), input.projectId, request.id]);
       if (request.reason !== reason || request.submitter_user_id !== auth.user.id
         || request.assigned_to_user_id !== input.assignedToUserId
         || request.batch_proof_digest !== input.expectedBatchProofDigest
@@ -2064,12 +2065,12 @@ export async function submitCanonicalBatchRollback(
       if (request.status === "approved") {
         const applied = await tx.query<{ metadata: Record<string, unknown> }>(`select metadata from audit_events
           where id=$1 and organization_id=$2 and project_id=$3 and target_id=$4 and action='value-change-applied'`,
-          [request.applied_audit_ref, auth.organization.id, input.projectId, request.id]);
+          [request.applied_audit_ref, parameterOrganizationId(auth), input.projectId, request.id]);
         const complete = await tx.query<{ total: number; applied: number }>(`select count(*)::int as total,
           count(*) filter (where applied_value_id is not null and applied_history_event_id is not null
             and applied_source_pin_id is not null and applied_file_version_id is not null)::int as applied
           from project_parameter_value_change_targets where request_id=$1 and organization_id=$2 and project_id=$3`,
-          [request.id, auth.organization.id, input.projectId]);
+          [request.id, parameterOrganizationId(auth), input.projectId]);
         if (applied.rows.length !== 1 || applied.rows[0]!.metadata.batchProofDigest !== input.expectedBatchProofDigest
           || complete.rows[0]?.total !== request.batch_target_count
           || complete.rows[0]?.applied !== request.batch_target_count || candidate.status !== "active") {
@@ -2101,7 +2102,7 @@ export async function submitCanonicalBatchRollback(
     if (prior.length) {
       const locked = await tx.query<{ status: string }>(`select status from project_parameter_value_change_requests
         where id=$1 and organization_id=$2 and project_id=$3 for update`,
-        [prior[0]!.id, auth.organization.id, input.projectId]);
+        [prior[0]!.id, parameterOrganizationId(auth), input.projectId]);
       if (locked.rows[0]?.status !== "pending") {
         throw new ApiError("CONFLICT", "Rollback request changed during retry.", { reason: "source-proof-stale" });
       }
@@ -2111,7 +2112,7 @@ export async function submitCanonicalBatchRollback(
     const { submitCanonicalBatchValueChange } = await import("../parameter-bindings/drafts/batchChangeService");
     const request = await submitCanonicalBatchValueChange(tx, objectStore, auth, {
       projectId: input.projectId, candidateId: candidate.id, expectedProofToken: proof.proofToken,
-      reason, assignedToUserId: input.assignedToUserId, invocation: createUserInvocation(auth),
+      reason, assignedToUserId: input.assignedToUserId, invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
       requestId: input.requestId, refusalSink: input.refusalSink, targetDecisions: input.targetDecisions
     });
     if (request.status !== "pending" || request.batchProofDigest !== proof.batchProofDigest
@@ -2121,14 +2122,14 @@ export async function submitCanonicalBatchRollback(
     const submittedReceipts = await tx.query<{ trace_id: string; metadata: Record<string, unknown> }>(
       `select trace_id,metadata from audit_events where organization_id=$1 and project_id=$2
         and target_id=$3 and action='value-change-submitted' and metadata->>'requestKind'='batch'`,
-      [auth.organization.id, input.projectId, request.id]);
+      [parameterOrganizationId(auth), input.projectId, request.id]);
     if (submittedReceipts.rows.length !== 1 || submittedReceipts.rows[0]!.trace_id !== input.requestId) {
       throw new ApiError("CONFLICT", "Another submission already owns this batch request.", {
         reason: "rollback-replay-mismatch"
       });
     }
-    await writeTrustedGovernanceAudit(asAuditTx(tx), createUserInvocation(auth), {
-      action: "value-change-submitted", organizationId: auth.organization.id, projectId: input.projectId,
+    await writeTrustedGovernanceAudit(asAuditTx(tx), parameterInvocation(auth) ?? createUserInvocation(auth), {
+      action: "value-change-submitted", organizationId: parameterOrganizationId(auth), projectId: input.projectId,
       targetType: "project-parameter-value-change-request", targetId: request.id,
       metadata: { requestId: request.id, candidateId: candidate.id, canonicalRollbackVersionId: input.versionId,
         historicalDigest: checksum, historicalSizeBytes: bytes.length, batchProofDigest: proof.batchProofDigest,
@@ -2148,12 +2149,12 @@ export async function recheckCanonicalBatchRollbackForReview(
     batchProofDigest: string; candidateBytes: Buffer }
 ): Promise<void> {
   const candidate = await getParameterFileCandidateById(tx, {
-    organizationId: auth.organization.id, projectId: input.projectId, candidateId: input.candidateId
+    organizationId: parameterOrganizationId(auth), projectId: input.projectId, candidateId: input.candidateId
   });
   const origin = candidate?.impact.canonicalBatchRollback;
   const receipts = await tx.query<{ metadata: Record<string, unknown> }>(`select metadata from audit_events
     where organization_id=$1 and project_id=$2 and target_id=$3 and action='value-change-submitted'
-      and metadata ? 'canonicalRollbackVersionId'`, [auth.organization.id, input.projectId, input.requestId]);
+      and metadata ? 'canonicalRollbackVersionId'`, [parameterOrganizationId(auth), input.projectId, input.requestId]);
   if (!origin && !receipts.rows.length) return;
   if (!origin || receipts.rows.length !== 1) {
     throw new ApiError("CONFLICT", "Batch rollback lost its historical source receipt.");
@@ -2194,7 +2195,7 @@ export async function rollbackCanonicalSource(
   }
   if (!input.reason.trim()) throw new ApiError("VALIDATION_FAILED", "A source rollback reason is required.");
   return withCanonicalSourceAttemptTransaction(db, objectStore, async (tx, attempt) => {
-    const file = await getProjectParameterFileById(tx, { organizationId: auth.organization.id, fileId: input.fileId });
+    const file = await getProjectParameterFileById(tx, { organizationId: parameterOrganizationId(auth), fileId: input.fileId });
     if (!file || file.projectId !== input.projectId) throw new ApiError("NOT_FOUND", "Project parameter file was not found.");
     const target = await getFileVersionById(tx, { versionId: input.versionId });
     if (!target || target.fileId !== file.id) throw new ApiError("NOT_FOUND", "Project parameter file version was not found.");
@@ -2213,7 +2214,7 @@ export async function rollbackCanonicalSource(
     // A retry after approval may observe the newly-created current version and
     // therefore fail the original CAS. Reuse the exact linked candidate first.
     const priorCandidates = (await listParameterFileCandidates(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       fileId: file.id,
       includeAbandoned: true
@@ -2242,7 +2243,7 @@ export async function rollbackCanonicalSource(
     if (file.currentVersionId !== input.expectedCurrentVersionId) throw new ApiError("CONFLICT", "Canonical source file base is stale.", { reason: "stale-base" });
     if (target.id === file.currentVersionId) throw new ApiError("CONFLICT", "The chosen version is already current.");
     const existing = (await listParameterFileCandidates(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       fileId: file.id,
       includeAbandoned: false
@@ -2318,13 +2319,13 @@ export async function prepareCanonicalManualSyncBatchCandidate(
   if (!requestId) throw new ApiError("VALIDATION_FAILED", "A preparation request ID is required.");
   return withCanonicalSourceAttemptTransaction(db, objectStore, async (tx, attempt) => {
     await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
-      `${auth.organization.id}:${input.projectId}:manual-sync:${requestId}`
+      `${parameterOrganizationId(auth)}:${input.projectId}:manual-sync:${requestId}`
     ]);
     await syncCanonicalSource(tx, objectStore, auth, {
       projectId: input.projectId, fileId: input.fileId, versionId: input.expectedCurrentVersionId
     });
     const workflow = await fileWorkflow(tx, auth, { projectId: input.projectId, fileId: input.fileId });
-    const file = await getProjectParameterFileById(tx, { organizationId: auth.organization.id, fileId: input.fileId });
+    const file = await getProjectParameterFileById(tx, { organizationId: parameterOrganizationId(auth), fileId: input.fileId });
     if (!workflow.canonical || !workflow.proofToken || !file || file.projectId !== input.projectId) {
       throw new ApiError("CONFLICT", "Manual sync requires an owned canonical source.", { reason: "file-is-not-canonical" });
     }
@@ -2341,10 +2342,10 @@ export async function prepareCanonicalManualSyncBatchCandidate(
         and audit.action='create' and audit.kind='parameter-file-candidate-create'
         and audit.target_type='project-parameter-file-candidate'
         and candidate.file_id=$4 order by candidate.id`,
-    [auth.organization.id, input.projectId, requestId, input.fileId])).rows;
+    [parameterOrganizationId(auth), input.projectId, requestId, input.fileId])).rows;
     if (prior.length > 1) throw new ApiError("CONFLICT", "Manual sync preparation request is ambiguous.");
     let candidate = prior[0] && await getParameterFileCandidateById(tx, {
-      organizationId: auth.organization.id, projectId: input.projectId, candidateId: prior[0].id
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId, candidateId: prior[0].id
     });
     if (candidate && (candidate.status !== "ready" || candidate.createdByUserId !== auth.user.id
       || candidate.baseVersionId !== input.expectedCurrentVersionId || candidate.sizeBytes !== input.bytes.length
@@ -2362,7 +2363,7 @@ export async function prepareCanonicalManualSyncBatchCandidate(
       };
       candidate = await createCandidate(tx, sourceStore, auth, {
         projectId: input.projectId, fileId: input.fileId, fileName: file.fileName, bytes: input.bytes
-      }, { invocation: createUserInvocation(auth), requestId });
+      }, { invocation: parameterInvocation(auth) ?? createUserInvocation(auth), requestId });
     }
     const preview = await previewCanonicalCandidate(tx, objectStore, auth, {
       projectId: input.projectId, candidateId: candidate.id
@@ -2380,21 +2381,21 @@ export async function prepareCanonicalManualSyncBatchCandidate(
         throw new ApiError("CONFLICT", "Manual single source proof changed.", { reason: "source-proof-stale" });
       }
       const source = await loadCanonicalSourceSnapshot(tx, objectStore, {
-        organizationId: auth.organization.id, projectId: input.projectId,
+        organizationId: parameterOrganizationId(auth), projectId: input.projectId,
         bindingId: change.binding.bindingId, projectValueId: change.pin.projectValueId
       });
       const cohort = await loadCanonicalSourceCohort(tx, {
-        organizationId: auth.organization.id, projectId: input.projectId, configSetId: change.configSetId
+        organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: change.configSetId
       });
       if (source.manifest.configRevisionId !== change.pin.configRevisionId) {
         throw new ApiError("CONFLICT", "Manual single source revision changed.", { reason: "source-proof-stale" });
       }
-      await writeTrustedGovernanceAudit(asAuditTx(tx), createUserInvocation(auth), {
-        action: "value-drafted", organizationId: auth.organization.id, projectId: input.projectId,
+      await writeTrustedGovernanceAudit(asAuditTx(tx), parameterInvocation(auth) ?? createUserInvocation(auth), {
+        action: "value-drafted", organizationId: parameterOrganizationId(auth), projectId: input.projectId,
         targetType: "project-parameter-file-candidate", targetId: candidate.id,
         metadata: { manualSyncPreparation: true, sourceProofToken: locked.proofToken }
       }, requestId);
-      return { kind: "canonical-source-single" as const, organizationId: auth.organization.id,
+      return { kind: "canonical-source-single" as const, organizationId: parameterOrganizationId(auth),
         projectId: input.projectId, candidateId: candidate.id, fileId: input.fileId, format: change.format,
         baseVersionId: input.expectedCurrentVersionId, configSetId: change.configSetId,
         configRevisionId: source.manifest.configRevisionId,
@@ -2427,11 +2428,11 @@ export async function syncCanonicalSource(
   return db.transaction(async (tx) => {
     const workflow = await fileWorkflow(tx, auth, { projectId: input.projectId, fileId: input.fileId });
     if (!workflow.canonical || !workflow.configSetId) return null;
-    const file = await getProjectParameterFileById(tx, { organizationId: auth.organization.id, fileId: input.fileId });
+    const file = await getProjectParameterFileById(tx, { organizationId: parameterOrganizationId(auth), fileId: input.fileId });
     if (!file || file.projectId !== input.projectId) throw new ApiError("NOT_FOUND", "Project parameter file was not found.");
     if (file.currentVersionId !== input.versionId) throw new ApiError("CONFLICT", "Canonical manual sync only accepts the current pinned version.", { reason: "stale-base" });
     const bindings = await loadSourceBindingCohortReadOnly(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       configSetId: workflow.configSetId
     });
@@ -2439,23 +2440,23 @@ export async function syncCanonicalSource(
     if (!first) throw new ApiError("CONFLICT", "Canonical source cohort has no active owned pin to validate.", { reason: "source-pin-missing" });
     if (first?.sourcePinId && first.oldValueId) {
       const pin = await loadOwnedProjectValueSourcePin(tx, {
-        organizationId: auth.organization.id, projectId: input.projectId,
+        organizationId: parameterOrganizationId(auth), projectId: input.projectId,
         bindingId: first.bindingId, projectValueId: first.oldValueId
       });
       if (!pin || !pin.configRevisionId.trim()) throw new ApiError("CONFLICT", "Canonical source has no exact config revision.", { reason: "source-config-revision-required" });
       await lockCanonicalSourceScope(tx, pin, workflow.configSetId);
       const cohort = await loadCanonicalSourceCohort(tx, {
-        organizationId: auth.organization.id, projectId: input.projectId, configSetId: workflow.configSetId
+        organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: workflow.configSetId
       });
       if (JSON.stringify(cohort) !== JSON.stringify(bindings)) throw new ApiError("CONFLICT", "Canonical source cohort changed during validation.", { reason: "source-proof-busy" });
       const source = await loadExactSourceRevisionForProof(tx, objectStore, {
-        organizationId: auth.organization.id, projectId: input.projectId,
+        organizationId: parameterOrganizationId(auth), projectId: input.projectId,
         configSetId: workflow.configSetId, configRevisionId: pin.configRevisionId,
         fileId: pin.fileId, fileVersionId: pin.fileVersionId
       });
       for (const binding of cohort) {
         const currentPin = await loadOwnedProjectValueSourcePin(tx, {
-          organizationId: auth.organization.id, projectId: input.projectId,
+          organizationId: parameterOrganizationId(auth), projectId: input.projectId,
           bindingId: binding.bindingId, projectValueId: binding.oldValueId
         });
         if (!currentPin || currentPin.sourcePinId !== binding.sourcePinId

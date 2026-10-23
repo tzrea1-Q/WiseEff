@@ -87,7 +87,7 @@ const toRegisterCommand = (
   idempotencyKey: derivedRegistrationKey(command),
   context: {
     actorKind: "review-coordinator",
-    principalId: command.context.actorKind === "org-admin" ? command.context.principalId : "",
+    principalId: "principalId" in command.context ? command.context.principalId : "",
   },
 });
 
@@ -101,7 +101,7 @@ const toRestoreCommand = (
   idempotencyKey: derivedRegistrationKey(command),
   context: {
     actorKind: "review-coordinator",
-    principalId: command.context.actorKind === "org-admin" ? command.context.principalId : "",
+    principalId: "principalId" in command.context ? command.context.principalId : "",
   },
   reason: command.reason,
 });
@@ -251,7 +251,7 @@ const executeResolution = async (
     resolutionId,
   });
   const principalId =
-    command.context.actorKind === "org-admin" ? command.context.principalId : "";
+    "principalId" in command.context ? command.context.principalId : "";
 
   await insertSuccessAudit(client, {
     id: auditId,
@@ -260,6 +260,9 @@ const executeResolution = async (
     resolutionId,
     resolutionType: command.resolution,
     fingerprint,
+    principalId,
+    invocation: command.invocation,
+    requestId: command.requestId,
   });
   await insertResolution(client, {
     id: resolutionId,

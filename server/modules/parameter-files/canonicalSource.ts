@@ -1,10 +1,11 @@
+import { parameterOrganizationId, parameterScopeInvocation } from "../parameters/operatingScope";
 import { createHash, randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { ObjectStore } from "../logs/objectStore";
 import { MAX_PARAMETER_SOURCE_BYTES, deleteJsonSourceMember, parseJsonSource, patchJsonSource, proveJsonSourceMemberAbsent } from "./jsonSource";
 import type { AuthContext } from "../auth/types";
-import { assertTrustedInvocationMatchesAuth, assertTrustedMutationInvocation, TrustedInvocationContextError, trustedDomainAttribution, type TrustedInvocationContext } from "../auth/trustedInvocation";
+import { assertTrustedMutationInvocation, TrustedInvocationContextError, trustedDomainAttribution, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { canEditParameters, canMergeParameters } from "../parameter-kernel/policy";
 import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
@@ -101,13 +102,13 @@ export async function requireCanonicalUserInvocation(
   }
   assertTrustedRefusalAuditSink(context.refusalSink);
   const invocation = assertTrustedMutationInvocation(
-    assertTrustedInvocationMatchesAuth(auth, context.invocation, input.operation),
+    parameterScopeInvocation(auth, context.invocation, input.operation),
     input.operation,
   );
   if (invocation.initiator === "user") return invocation;
   await context.refusalSink.write({
     invocation,
-    ...(invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
+    ...(invocation.initiator === "system" ? { organizationId: parameterOrganizationId(auth) } : {}),
     projectId: input.projectId,
     app: "parameter-management",
     kind: "parameter-source-user-required",
@@ -431,7 +432,7 @@ export async function preparePinnedNodeEnablementSourceChange(
       projectId: input.projectId, operation: "node enablement source prepare", targetType: "parameter-change-request", targetId: input.changeRequestId,
     });
     if (!canMergeParameters(auth, input.projectId)) throw new ApiError("FORBIDDEN", "Project merge authorization is required.");
-    const persisted = await getChangeRequestEnablementWriteLock(db, { organizationId: auth.organization.id, requestId: input.changeRequestId });
+    const persisted = await getChangeRequestEnablementWriteLock(db, { organizationId: parameterOrganizationId(auth), requestId: input.changeRequestId });
     if (!persisted) throw new ApiError("CONFLICT", "Enablement request has no immutable source lock.");
     const lock = await resolveEnablementWriteLock(db, auth, { projectId: input.projectId, logicalNodeId: input.logicalNodeId, baseRevisionId: persisted.baseConfigRevisionId });
     if (lock.sourceFileVersionId !== persisted.sourceFileVersionId || lock.expectedChecksum !== persisted.expectedChecksum
@@ -441,10 +442,10 @@ export async function preparePinnedNodeEnablementSourceChange(
     }
     const revision = (await db.query<{ config_set_id: string }>(
       `select config_set_id from dts_config_revisions where id=$1 and organization_id=$2 and project_id=$3`,
-      [lock.baseConfigRevisionId, auth.organization.id, input.projectId],
+      [lock.baseConfigRevisionId, parameterOrganizationId(auth), input.projectId],
     )).rows[0];
     if (!revision) throw new ApiError("CONFLICT", "Enablement source revision is stale.");
-    const scope = { organizationId: auth.organization.id, projectId: input.projectId, configSetId: revision.config_set_id };
+    const scope = { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: revision.config_set_id };
     const sourceIdentity = { ...scope, configRevisionId: lock.baseConfigRevisionId, fileId: lock.overlayFileId, fileVersionId: lock.sourceFileVersionId };
     const pins = await discoverCurrentSourceRevisionPins(db, scope);
     const deleted = await discoverDeletedSourceRevisionPins(db, scope);
@@ -463,7 +464,7 @@ export async function preparePinnedNodeEnablementSourceChange(
         and decision.decision='advance' and decision.from_status='hardware_review' and decision.to_status='software_review' and decision.initiator_type='user')
       and exists (select 1 from parameter_review_decisions decision where decision.request_id=parameter_change_requests.id
         and decision.decision='advance' and decision.from_status='software_review' and decision.to_status='software_merge' and decision.initiator_type='user') for update`,
-    [input.changeRequestId, auth.organization.id, input.projectId, input.logicalNodeId, input.mergedValue, input.action,
+    [input.changeRequestId, parameterOrganizationId(auth), input.projectId, input.logicalNodeId, input.mergedValue, input.action,
       lock.baseConfigRevisionId, lock.sourceFileVersionId, auth.user.id, auth.roles.some((role) => role.roleId === "admin")])).rows;
     if (request.length !== 1) throw new ApiError("CONFLICT", "An assigned, human-reviewed enablement request is required.");
     await assertTrustedSensitiveNodeWriteAllowed(db, auth, { organizationId: scope.organizationId, projectId: input.projectId,
@@ -516,12 +517,12 @@ export async function commitPinnedNodeEnablementSourceChange(
   const { source, member, after, cohort, invocation, attribution } = prepared;
   const bytes = Buffer.from(after);
   const checksum = createHash("sha256").update(bytes).digest("hex");
-  const stored = await objectStore.put({ organizationId: auth.organization.id, fileName: `canonical-source-${randomUUID()}-${member.sourceName}`, contentType: "text/plain", bytes });
+  const stored = await objectStore.put({ organizationId: parameterOrganizationId(auth), fileName: `canonical-source-${randomUUID()}-${member.sourceName}`, contentType: "text/plain", bytes });
   if (stored.checksumSha256 !== checksum || stored.fileSizeBytes !== bytes.length) throw new ApiError("CONFLICT", "Prepared object metadata disagrees with the source.");
   const version = await insertFileVersion(db, { id: randomUUID(), fileId: member.fileId, versionNumber: 0, storageKey: stored.storageKey,
     checksum, sizeBytes: bytes.length, parsedIndex: buildDtsParsedIndex(after), origin: "writeback", attribution });
   const revision = await ingestConfigRevisionInTransaction(db, {
-    organizationId: auth.organization.id, projectId: member.projectId, configSetId: member.configSetId,
+    organizationId: parameterOrganizationId(auth), projectId: member.projectId, configSetId: member.configSetId,
     entryFile: source.revision.entryFile!, includeSearchPaths: source.revision.includeSearchPaths, overlayOrder: source.revision.overlayOrder,
     members: source.members.map((entry) => ({ fileId: entry.fileId, fileVersionId: entry.fileId === member.fileId ? version.id : entry.fileVersionId,
       fileName: entry.sourceName, sourceName: entry.sourceName, format: entry.format, role: entry.role as ConfigRevisionMemberRole,
@@ -536,7 +537,7 @@ export async function commitPinnedNodeEnablementSourceChange(
     const binding = await loadBindingById(client, entry.bindingId, "none");
     const old = await loadProjectValueById(client, entry.oldValueId);
     const pin = await loadOwnedProjectValueSourcePin(db, {
-      organizationId: auth.organization.id, projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId
     });
     if (!binding || !old || !pin || binding.current_value_id !== old.id || old.value_state !== "present"
       || old.definition_revision_id !== binding.effective_revision_id) {
@@ -568,7 +569,7 @@ export async function commitPinnedNodeEnablementSourceChange(
     await db.query(`insert into parameter_catalog.project_value_source_pins
       (id,project_value_id,binding_id,definition_id,organization_id,project_id,source_occurrence_id,config_revision_id,file_id,file_version_id,format,locator,locator_digest,property_occurrence_id)
       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14)`,
-    [pinId,valueId,binding.id,binding.definition_id,auth.organization.id,input.projectId,binding.source_occurrence_id,
+    [pinId,valueId,binding.id,binding.definition_id,parameterOrganizationId(auth),input.projectId,binding.source_occurrence_id,
       revision.id,pin.fileId,fileVersionId,pin.format,JSON.stringify(locator),
       `sha256:${createHash("sha256").update(serializeContract(locator)).digest("hex")}`,pin.format === "dts" ? locator.propertyOccurrenceId : null]);
     const advanced = await casNodeEnablementSourceTip(client, { bindingId: binding.id, expectedTip: old.id,
@@ -663,20 +664,20 @@ export async function preparePinnedSourceChange(
   if (!input.requestId.trim() || Buffer.byteLength(input.target.sourceText) > MAX_PARAMETER_SOURCE_BYTES) {
     throw new ApiError("VALIDATION_FAILED", "A bounded source target and request identity are required.");
   }
-  if (!await isCurrentGovernedSourceValue(db,{ organizationId: auth.organization.id,projectId: input.projectId,
+  if (!await isCurrentGovernedSourceValue(db,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,
     bindingId: input.bindingId,projectValueId: input.expectedValueId })) throw new ApiError("CONFLICT", "Canonical source base is stale or unavailable.");
-  const sourceIdentity = await loadOwnedProjectValueSourcePin(db,{ organizationId: auth.organization.id,projectId: input.projectId,
+  const sourceIdentity = await loadOwnedProjectValueSourcePin(db,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,
     bindingId: input.bindingId,projectValueId: input.expectedValueId });
   if (!sourceIdentity) throw new ApiError("CONFLICT", "Source value has no exact owned pin.");
   if (input.invocation.initiator === "agent") {
     if (!approvedAgent) throw new TrustedInvocationContextError("approved Agent proof is missing");
     const currentPins = await loadCanonicalBindingPins(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       bindingId: input.bindingId
     });
     const pins = approvedAgent.pins;
-    if (!currentPins || currentPins.organizationId !== auth.organization.id
+    if (!currentPins || currentPins.organizationId !== parameterOrganizationId(auth)
       || currentPins.projectId !== input.projectId
       || currentPins.bindingId !== input.bindingId
       || currentPins.currentValueId !== input.expectedValueId
@@ -693,7 +694,7 @@ export async function preparePinnedSourceChange(
   }
   await lockCanonicalSourceCohort(db,sourceIdentity);
   const { manifest, files } = await loadCanonicalSourceSnapshot(db, objectStore, {
-    organizationId: auth.organization.id, projectId: input.projectId, bindingId: input.bindingId, projectValueId: input.expectedValueId,
+    organizationId: parameterOrganizationId(auth), projectId: input.projectId, bindingId: input.bindingId, projectValueId: input.expectedValueId,
   });
   if (manifest.format !== input.target.format) throw new ApiError("VALIDATION_FAILED", "Source target format disagrees with its pin.");
   if (input.invocation.initiator === "agent" && (!approvedAgent || approvedAgent.pins.projectId !== manifest.projectId
@@ -712,7 +713,7 @@ export async function preparePinnedSourceChange(
     !manifest.members.some((member) => canonicalSourceMemberMatchesCurrentFile(member, current)))) {
     throw new ApiError("CONFLICT", "Configuration membership or file versions changed; prepare from the current source.");
   }
-  const bindings = await loadCanonicalSourceCohort(db, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: manifest.configSetId });
+  const bindings = await loadCanonicalSourceCohort(db, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: manifest.configSetId });
   const targetBinding = bindings.find((entry) => entry.bindingId === input.bindingId);
   if (!targetBinding || targetBinding.oldValueId !== input.expectedValueId || targetBinding.sourcePinId !== manifest.sourcePinId
     || (input.invocation.initiator === "agent" && (!approvedAgent
@@ -759,10 +760,10 @@ export async function preparePinnedSourceChange(
   const proposedDigest = createHash("sha256").update(patched).digest("hex");
   const diff = { before: source.content, after: patched.toString(), sourcePinId: manifest.sourcePinId, bindings };
   const diffDigest = createHash("sha256").update(serializeContract(diff)).digest("hex");
-  const stored = await objectStore.put({ organizationId: auth.organization.id, fileName: `canonical-source-${randomUUID()}-${source.name}`, contentType: manifest.format === "json" ? "application/json" : "text/plain", bytes: patched });
+  const stored = await objectStore.put({ organizationId: parameterOrganizationId(auth), fileName: `canonical-source-${randomUUID()}-${source.name}`, contentType: manifest.format === "json" ? "application/json" : "text/plain", bytes: patched });
   if (stored.checksumSha256 !== proposedDigest || stored.fileSizeBytes !== patched.length) throw new ApiError("CONFLICT", "Prepared object metadata disagrees with the source.");
   const candidate = await insertParameterFileCandidate(db, {
-    id: randomUUID(), organizationId: auth.organization.id, projectId: input.projectId,
+    id: randomUUID(), organizationId: parameterOrganizationId(auth), projectId: input.projectId,
     fileId: manifest.fileId, fileName: source.name, format: manifest.format, status: "ready",
     baseVersionId: manifest.fileVersionId, storageKey: stored.storageKey, checksum: proposedDigest,
     sizeBytes: patched.length, parsedIndex, attribution: trustedDomainAttribution(invocation),

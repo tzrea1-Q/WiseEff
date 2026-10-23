@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../parameters/operatingScope";
 /**
  * Binding / node-enablement write locks: resolve exact writeback identity
  * (file version, checksum, occurrence/node CST span, target ref) at a config
@@ -179,7 +180,7 @@ export async function loadBindingContext(
       and ($3::text is null or b.project_id = $3)
     limit 1
     `,
-    [bindingId, auth.organization.id, projectId ?? null, configRevisionId ?? null],
+    [bindingId, parameterOrganizationId(auth), projectId ?? null, configRevisionId ?? null],
   );
   const row = result.rows[0];
   if (!row) {
@@ -579,7 +580,7 @@ export async function resolveBindingWriteLock(
   const baseRevisionId =
     input.baseRevisionId ??
     (await resolveBindingHeadRevisionId(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: bindingHead.project_id,
       bindingId: input.bindingId,
     }));
@@ -591,7 +592,7 @@ export async function resolveBindingWriteLock(
   }
 
   const revision = await getConfigRevisionById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: bindingHead.project_id,
     revisionId: baseRevisionId,
   });
@@ -630,7 +631,7 @@ export async function resolveBindingWriteLock(
     });
   }
   const logicalNode = await loadLogicalNodeSubmissionContext(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: binding.project_id,
     configRevisionId: baseRevisionId,
     logicalNodeId: binding.logical_node_id,
@@ -852,7 +853,7 @@ export async function resolveEnablementWriteLock(
       and ($3::text is null or project_id = $3)
     limit 1
     `,
-    [input.logicalNodeId, auth.organization.id, input.projectId ?? null],
+    [input.logicalNodeId, parameterOrganizationId(auth), input.projectId ?? null],
   );
   const projectId = node.rows[0]?.project_id;
   if (!projectId) {
@@ -875,7 +876,7 @@ export async function resolveEnablementWriteLock(
       order by cr.revision_number desc
       limit 1
       `,
-      [input.logicalNodeId, auth.organization.id, projectId],
+      [input.logicalNodeId, parameterOrganizationId(auth), projectId],
     );
     baseRevisionId = head.rows[0]?.config_revision_id;
   }
@@ -887,7 +888,7 @@ export async function resolveEnablementWriteLock(
   }
 
   const revision = await getConfigRevisionById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId,
     revisionId: baseRevisionId,
   });
@@ -900,7 +901,7 @@ export async function resolveEnablementWriteLock(
   }
 
   const nodeContext = await loadLogicalNodeEnablementContext(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId,
     configRevisionId: baseRevisionId,
     logicalNodeId: input.logicalNodeId,

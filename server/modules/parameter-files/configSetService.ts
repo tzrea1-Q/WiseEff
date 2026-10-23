@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { parameterOrganizationId, parameterInvocation, type ParameterScopeContext } from "../parameters/operatingScope";
 
 import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
@@ -22,7 +23,7 @@ import type { ConfigSetDto, ConfigSetFileDto, ConfigSetMemberFileDto, ConfigSetR
 
 export const DEFAULT_CONFIG_SET_NAME = "default";
 
-export type ConfigSetServiceContext = AuditCorrelationContext;
+export type ConfigSetServiceContext = AuditCorrelationContext & ParameterScopeContext;
 
 function requireParameterFileAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
@@ -70,7 +71,7 @@ export async function createConfigSet(
 
   return db.transaction(async (tx) => {
     const existing = await getConfigSetByProjectAndName(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       name: input.name
     });
@@ -83,7 +84,7 @@ export async function createConfigSet(
 
     const configSet = await insertConfigSet(tx, {
       id: randomUUID(),
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       name: input.name,
       description: input.description,
@@ -92,7 +93,7 @@ export async function createConfigSet(
 
     await writeConfigSetAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      parameterInvocation(auth) ?? createUserInvocation(auth),
       {
         action: "created",
         projectId: configSet.projectId,
@@ -110,9 +111,9 @@ export async function createConfigSet(
   });
 }
 
-export async function listConfigSets(db: Queryable, auth: AuthContext, projectId: string): Promise<ConfigSetDto[]> {
+export async function listConfigSets(db: Queryable, auth: AuthContext, projectId: string, context: ParameterScopeContext = {}): Promise<ConfigSetDto[]> {
   requireParameterFileView(auth);
-  return listConfigSetsByProject(db, { organizationId: auth.organization.id, projectId });
+  return listConfigSetsByProject(db, { organizationId: parameterOrganizationId(auth, context), projectId });
 }
 
 export async function listConfigSetFiles(
@@ -122,7 +123,7 @@ export async function listConfigSetFiles(
 ): Promise<ConfigSetMemberFileDto[]> {
   requireParameterFileView(auth);
   const configSet = await getConfigSetById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     configSetId: input.configSetId
   });
   if (!configSet || configSet.projectId !== input.projectId) {
@@ -143,7 +144,7 @@ export async function ensureDefaultConfigSetInTx(
   requireParameterFileAdmin(auth);
 
   const existing = await getConfigSetByProjectAndName(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth, context),
     projectId,
     name: DEFAULT_CONFIG_SET_NAME
   });
@@ -153,7 +154,7 @@ export async function ensureDefaultConfigSetInTx(
 
   const configSet = await insertConfigSet(db, {
     id: randomUUID(),
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth, context),
     projectId,
     name: DEFAULT_CONFIG_SET_NAME,
     description: "Auto-created default configuration set."
@@ -161,7 +162,7 @@ export async function ensureDefaultConfigSetInTx(
 
   await writeConfigSetAudit(
     db,
-    createUserInvocation(auth),
+    context.invocation ?? parameterInvocation(auth) ?? createUserInvocation(auth),
     {
       action: "created",
       projectId: configSet.projectId,
@@ -195,7 +196,7 @@ export async function addConfigSetFile(
 
   return db.transaction(async (tx) => {
     const configSet = await getConfigSetById(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       configSetId: input.configSetId
     });
     if (!configSet) {
@@ -203,7 +204,7 @@ export async function addConfigSetFile(
     }
 
     const membership = await getFileConfigSetMembership(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       fileId: input.fileId
     });
     if (!membership) {
@@ -234,7 +235,7 @@ export async function addConfigSetFile(
 
     await writeConfigSetAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      parameterInvocation(auth) ?? createUserInvocation(auth),
       {
         action: "member_changed",
         projectId: configSet.projectId,
@@ -258,7 +259,7 @@ export async function removeConfigSetFile(
 
   return db.transaction(async (tx) => {
     const membership = await getFileConfigSetMembership(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       fileId: input.fileId
     });
     if (!membership || membership.configSetId !== input.configSetId) {
@@ -272,7 +273,7 @@ export async function removeConfigSetFile(
 
     await writeConfigSetAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      parameterInvocation(auth) ?? createUserInvocation(auth),
       {
         action: "member_changed",
         projectId: membership.projectId,
@@ -294,7 +295,7 @@ export async function updateConfigSet(
 
   return db.transaction(async (tx) => {
     const existing = await getConfigSetById(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       configSetId: input.configSetId
     });
     if (!existing) {
@@ -313,7 +314,7 @@ export async function updateConfigSet(
 
     if (nextName !== existing.name) {
       const conflict = await getConfigSetByProjectAndName(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: existing.projectId,
         name: nextName
       });
@@ -334,7 +335,7 @@ export async function updateConfigSet(
 
     await writeConfigSetAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      parameterInvocation(auth) ?? createUserInvocation(auth),
       {
         action: "updated",
         projectId: updated.projectId,

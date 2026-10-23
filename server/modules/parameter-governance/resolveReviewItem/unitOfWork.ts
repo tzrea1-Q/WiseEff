@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { assertTrustedInvocationMatchesScope, TrustedInvocationContextError, type UserInvocationContext } from "../../auth/trustedInvocation";
+import { asAuditTx, writeAuditEventInTx } from "../../audit/auditedWrite";
 import pg from "pg";
 
 import {
@@ -354,6 +356,9 @@ export const fingerprintResolvedItem = (input: {
 export const insertSuccessAudit = async (
   client: ReviewResolutionWriterClient,
   input: {
+    readonly principalId: string;
+    readonly invocation?: UserInvocationContext;
+    readonly requestId?: string;
     readonly id: string;
     readonly organizationId: string;
     readonly reviewItemId: string;
@@ -362,6 +367,18 @@ export const insertSuccessAudit = async (
     readonly fingerprint: string;
   },
 ): Promise<void> => {
+  if (input.invocation) {
+    const invocation = assertTrustedInvocationMatchesScope(input.invocation.principal, input.invocation, input.organizationId, "organization discovery resolution");
+    if (invocation.initiator !== "user" || invocation.principal.user.id !== input.principalId || !input.requestId?.trim()) {
+      throw new TrustedInvocationContextError("Discovery resolution requires its real human actor and request correlation");
+    }
+    await writeAuditEventInTx(asAuditTx(client), invocation, { requestId: input.requestId }, {
+      id: input.id, app: "parameter-governance", kind: "parameter-catalog-governance", action: "review-item-resolved", severity: "Medium",
+      projectId: null, targetType: "review-item", targetId: input.reviewItemId,
+      metadata: { resolutionId: input.resolutionId, resolutionType: input.resolutionType, fingerprint: input.fingerprint }
+    });
+    return;
+  }
   await client.query(
     `insert into public.audit_events (
        id, organization_id, actor_type, app, kind, action, severity,
@@ -457,7 +474,7 @@ export const insertDraftProposal = async (
     [
       proposalId,
       command.organizationId,
-      command.context.actorKind === "org-admin" ? command.context.principalId : "unknown",
+      "principalId" in command.context ? command.context.principalId : "unknown",
       command.expectedRelease.id,
       revisionId,
     ],

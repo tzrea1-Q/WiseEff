@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterInvocation } from "../parameters/operatingScope";
 import { randomUUID } from "node:crypto";
 
 import { createUserInvocation } from "../auth/trustedInvocation";
@@ -37,7 +38,7 @@ export async function syncFileVersion(
   context: AuditCorrelationContext = {}
 ): Promise<FileSyncSummary> {
   const file = await getProjectParameterFileById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     fileId: input.fileId
   });
   if (!file) {
@@ -70,7 +71,7 @@ export async function syncFileVersion(
     let resolved: { id: string; currentValue: string; definitionOrSpecId: string } | null = null;
     if (semantic) {
       const binding = await findBindingBySource(db, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: file.projectId,
         sourceFileName: file.fileName,
         sourceNodePath: nodePath,
@@ -85,7 +86,7 @@ export async function syncFileVersion(
       }
     } else {
       const ppv = await findProjectValueBySource(db, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: file.projectId,
         sourceFileName: file.fileName,
         sourceNodePath: nodePath
@@ -118,7 +119,7 @@ export async function syncFileVersion(
     }
 
     const fileDraft = await upsertFileSyncDraft(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: file.projectId,
       projectParameterValueId: resolved.id,
       userId: auth.user.id,
@@ -136,7 +137,7 @@ export async function syncFileVersion(
       });
     }
     const opened = await detectFileUiDraftConflict(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: file.projectId,
       projectParameterValueId: resolved.id,
       parameterDefinitionId: resolved.definitionOrSpecId,
@@ -155,7 +156,7 @@ export async function syncFileVersion(
 
   // requestId fallback survives only until sync contexts become mandatory (ADR-0027).
   for (const conflict of openedConflicts) {
-    await writeAuditEventInTx(db, createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
+    await writeAuditEventInTx(db, parameterInvocation(auth) ?? createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
       app: "parameters",
       kind: "parameter-file-conflict-open",
       action: "open",
@@ -172,7 +173,7 @@ export async function syncFileVersion(
     });
   }
 
-  await writeAuditEventInTx(db, createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
+  await writeAuditEventInTx(db, parameterInvocation(auth) ?? createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
     kind: "parameter-file-sync",
     action: "sync",

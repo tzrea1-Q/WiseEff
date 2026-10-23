@@ -10,6 +10,8 @@ import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { listSpecReviewTasksQuerySchema } from "./schemas";
 import { listSpecReviewTasks } from "./service";
+import { parameterRequestAccess } from "../parameters/operatingScope";
+import { createUserInvocation } from "../auth/trustedInvocation";
 
 function requireDb(db: Database | undefined) {
   if (!db) {
@@ -61,7 +63,7 @@ export function registerParameterSpecRoutes(
 ) {
   router.get("/api/v2/parameter-spec-review-tasks", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const query = parseWithSchema(
       listSpecReviewTasksQuerySchema,

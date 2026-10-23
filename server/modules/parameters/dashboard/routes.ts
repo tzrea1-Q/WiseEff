@@ -1,3 +1,5 @@
+import { parameterRequestAccess } from "../operatingScope";
+import { createUserInvocation } from "../../auth/trustedInvocation";
 import { z } from "zod";
 import type { AuthContext } from "../../auth/types";
 import type { Database } from "../../../shared/database/client";
@@ -27,7 +29,7 @@ export function registerParameterDashboardRoutes(
   options: { db?: Database; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
 ) {
   router.get("/api/v1/parameters/dashboard/summary", async (request) => {
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     if (!canViewParameters(auth)) {
       throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
     }
@@ -42,7 +44,7 @@ export function registerParameterDashboardRoutes(
   });
 
   router.get("/api/v1/parameters/dashboard/hotspots", async (request) => {
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     if (!canViewParameters(auth)) {
       throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
     }

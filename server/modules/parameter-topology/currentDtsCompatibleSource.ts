@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../parameters/operatingScope";
 import { isDeepStrictEqual } from "node:util";
 
 import type { Database } from "../../shared/database/client";
@@ -50,7 +51,7 @@ const boundedId = (value: unknown) => typeof value === "string" && value.length 
 export async function readCurrentDtsCompatibleSource(
   db: Database, objectStore: ObjectStore, auth: AuthContext, input: CurrentDtsCompatibleSourceInput,
 ): Promise<CurrentDtsCompatibleSourceResult> {
-  if (auth.organization.id !== input.organizationId) throw new ApiError("NOT_FOUND", "DTS source observation is not available.");
+  if (parameterOrganizationId(auth) !== input.organizationId) throw new ApiError("NOT_FOUND", "DTS source observation is not available.");
   requireCanViewProject(auth, input.projectId);
   const locator = input.locator;
   if (![input.organizationId,input.projectId,input.observationId,input.catalogReleaseId,

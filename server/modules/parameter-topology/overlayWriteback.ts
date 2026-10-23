@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../parameters/operatingScope";
 /**
  * Locked overlay writeback pipeline: patch or create a property via write
  * identity (checksum + occurrence/node CST span), load file bytes from the
@@ -611,7 +612,7 @@ export async function applyLockedOverlayWriteback(
   await verifyBindingWriteLock(db, input.lock);
 
   const revision = await getConfigRevisionById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     revisionId: input.lock.baseConfigRevisionId,
   });
   if (!revision) {
@@ -685,11 +686,11 @@ export async function applyLockedOverlayWriteback(
 
   const candidateOverlayVersionId = randomUUID();
   const overlayChecksum = checksumOf(candidateOverlayContent);
-  let candidateStorageKey = `${auth.organization.id}/${overlayChecksum}-writeback-${overlayMember.file_name}`;
+  let candidateStorageKey = `${parameterOrganizationId(auth)}/${overlayChecksum}-writeback-${overlayMember.file_name}`;
 
   if (deps.objectStore) {
     const stored = await deps.objectStore.put({
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       fileName: overlayMember.file_name,
       contentType: "text/plain",
       bytes: Buffer.from(candidateOverlayContent, "utf8"),
@@ -784,7 +785,7 @@ export async function applyLockedOverlayWriteback(
   }
 
   const manifest: ConfigRevisionManifest = {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: revision.projectId,
     configSetId: revision.configSetId,
     entryFile: normalizedManifest.manifest.entryFile,
@@ -822,7 +823,7 @@ export async function applyLockedOverlayWriteback(
   }
 
   const semanticCounts = await loadCandidateSemanticGateCounts(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: revision.projectId,
     configRevisionId: ingested.id,
   });
@@ -910,7 +911,7 @@ export async function applyLockedEnablementWriteback(
   await verifyEnablementWriteLock(db, input.lock);
 
   const revision = await getConfigRevisionById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     revisionId: input.lock.baseConfigRevisionId,
   });
   if (!revision) {
@@ -984,11 +985,11 @@ export async function applyLockedEnablementWriteback(
 
   const candidateOverlayVersionId = randomUUID();
   const overlayChecksum = checksumOf(candidateOverlayContent);
-  let candidateStorageKey = `${auth.organization.id}/${overlayChecksum}-writeback-${overlayMember.file_name}`;
+  let candidateStorageKey = `${parameterOrganizationId(auth)}/${overlayChecksum}-writeback-${overlayMember.file_name}`;
 
   if (deps.objectStore) {
     const stored = await deps.objectStore.put({
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       fileName: overlayMember.file_name,
       contentType: "text/plain",
       bytes: Buffer.from(candidateOverlayContent, "utf8"),
@@ -1083,7 +1084,7 @@ export async function applyLockedEnablementWriteback(
   }
 
   const manifest: ConfigRevisionManifest = {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: revision.projectId,
     configSetId: revision.configSetId,
     entryFile: normalizedManifest.manifest.entryFile,
@@ -1121,7 +1122,7 @@ export async function applyLockedEnablementWriteback(
   }
 
   const semanticCounts = await loadCandidateSemanticGateCounts(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: revision.projectId,
     configRevisionId: ingested.id,
   });

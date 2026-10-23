@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterInvocation } from "../parameters/operatingScope";
 import { randomUUID } from "node:crypto";
 
 import { createUserInvocation } from "../auth/trustedInvocation";
@@ -154,12 +155,12 @@ export async function getTopology(
   requireCanView(auth);
   const revision = CURRENT_REVISION_ALIASES.has(input.revisionId)
     ? await getLatestConfigRevision(db, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: input.projectId,
         configSetId: input.configSetId
       })
     : await getConfigRevisionById(db, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: input.projectId,
         configSetId: input.configSetId,
         revisionId: input.revisionId
@@ -218,7 +219,7 @@ export async function listConfigRevisions(
 ) {
   requireCanView(auth);
   const project = await getProjectById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId
   });
   if (!project) {
@@ -227,7 +228,7 @@ export async function listConfigRevisions(
     });
   }
   const configSet = await getConfigSetById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     configSetId: input.configSetId
   });
   if (!configSet || configSet.projectId !== input.projectId) {
@@ -237,7 +238,7 @@ export async function listConfigRevisions(
     });
   }
   const items = await listConfigRevisionRows(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     configSetId: input.configSetId
   });
@@ -251,7 +252,7 @@ export async function listProjectBindings(
 ): Promise<{ items: ProjectBindingDto[] }> {
   requireCanView(auth);
   const project = await getProjectById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId
   });
   if (!project) {
@@ -260,7 +261,7 @@ export async function listProjectBindings(
     });
   }
   const rows = await listProjectBindingRows(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     revisionId: input.revisionId
   });
@@ -297,7 +298,7 @@ export async function listIdentityMappingTasks(
   requireCanView(auth);
   if (input.projectId) {
     const project = await getProjectById(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId
     });
     if (!project) {
@@ -307,7 +308,7 @@ export async function listIdentityMappingTasks(
     }
   }
   const items = await listIdentityMappingTaskRows(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     status: input.status
   });
@@ -371,7 +372,7 @@ export async function getBindingHistory(
 ): Promise<{ items: BindingHistoryItem[] }> {
   requireCanView(auth);
   const project = await getProjectById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId
   });
   if (!project) {
@@ -382,7 +383,7 @@ export async function getBindingHistory(
   requireCanViewProject(auth, input.projectId);
 
   const events = await readCanonicalBindingChangeHistory(canonicalHistoryReader(db), {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     bindingId: input.bindingId,
   });
@@ -393,7 +394,7 @@ export async function getBindingHistory(
   const valueIds = events.flatMap((event) => [event.oldCurrentValueId, event.newCurrentValueId])
     .filter((id): id is string => Boolean(id));
   const values = await listCanonicalBindingHistoryValueRows(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     bindingId: input.bindingId,
     valueIds,
@@ -418,7 +419,7 @@ export async function getBindingHistory(
       where audit.organization_id = $1
         and audit.project_id = $2
         and audit.id = any($3::text[])`,
-    [auth.organization.id, input.projectId, auditRefs]
+    [parameterOrganizationId(auth), input.projectId, auditRefs]
   ) : { rows: [] };
   const actorByAuditRef = new Map(auditActors.rows.map((event) => [event.id, event.actor]));
 
@@ -499,7 +500,7 @@ export async function getBindingCompare(
 ): Promise<{ items: BindingCompareItem[] }> {
   requireCanView(auth);
   const project = await getProjectById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId
   });
   if (!project) {
@@ -510,7 +511,7 @@ export async function getBindingCompare(
   requireCanViewProject(auth, input.projectId);
 
   const rows = await listCanonicalBindingCompareRows(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     bindingId: input.bindingId,
     visibleProjectIds: visibleProjectIds(auth),
@@ -649,10 +650,10 @@ async function persistFailedValidation(
   const runId = randomUUID();
   // Run record, revision status, and audit commit together (ADR-0027); previously
   // each write auto-committed and a mid-sequence failure left partial evidence.
-  const nextStatus = await withAuditedWrite(db, createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, async (tx) => {
+  const nextStatus = await withAuditedWrite(db, parameterInvocation(auth) ?? createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, async (tx) => {
     await insertValidationRun(tx, {
       id: runId,
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       configRevisionId: input.revisionId,
       stage: input.stage,
       status: "failed",
@@ -683,7 +684,7 @@ async function persistFailedValidation(
 
     await writeGovernanceAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      parameterInvocation(auth) ?? createUserInvocation(auth),
       {
         action: "config-revision-validated",
         projectId: input.projectId,
@@ -735,7 +736,7 @@ export async function validateConfigRevision(
   requireCanAdmin(auth);
 
   const revision = await getConfigRevisionById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     revisionId: input.revisionId
   });
@@ -812,12 +813,12 @@ export async function validateConfigRevision(
   }
 
   const singletonConflicts = await countSingletonCardinalityConflicts(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: revision.projectId,
     configRevisionId: revision.id
   });
   const openMappings = await countBlockingIdentityMappingTasksForRevision(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     configRevisionId: revision.id
   });
   if (openMappings > 0 || singletonConflicts > 0 || revision.status === "needs_mapping") {
@@ -849,7 +850,7 @@ export async function validateConfigRevision(
   }
 
   const openReviews = await countOpenSpecReviewTasksForRevision(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: revision.projectId,
     configRevisionId: revision.id,
     excludePropertyKeys: listStructuralPropertyKeys(),
@@ -884,7 +885,7 @@ export async function validateConfigRevision(
 
   // Dismissed reviews never pretend a property matched; release stays fail-closed.
   const dismissedReviews = await countDismissedSpecBlockersForRevision(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: revision.projectId,
     configRevisionId: revision.id
   });
@@ -1170,7 +1171,7 @@ export async function validateConfigRevision(
   // remains `toolchain-unavailable`) while still refusing to mark a revision
   // validated when any recognized driver definition is incomplete.
   const catalogVerification = await verifyEffectiveDriverParameterDefinitions(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     configRevisionId: revision.id,
   });
   const unreviewedDriverTips =
@@ -1239,10 +1240,10 @@ export async function validateConfigRevision(
   const runId = randomUUID();
   // Run record, revision status, and audit commit together (ADR-0027); the toolchain
   // execution above deliberately stays outside the transaction.
-  await withAuditedWrite(db, createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, async (tx) => {
+  await withAuditedWrite(db, parameterInvocation(auth) ?? createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, async (tx) => {
     await insertValidationRun(tx, {
       id: runId,
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       configRevisionId: revision.id,
       stage,
       status: "passed",
@@ -1277,7 +1278,7 @@ export async function validateConfigRevision(
 
     await writeGovernanceAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      parameterInvocation(auth) ?? createUserInvocation(auth),
       {
         action: "config-revision-validated",
         projectId: revision.projectId,
@@ -1327,7 +1328,7 @@ export async function createNodeEnablementDraft(
   requireCanEdit(auth);
 
   const project = await getProjectById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId
   });
   if (!project) {

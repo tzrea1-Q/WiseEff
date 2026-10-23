@@ -1,10 +1,10 @@
+import { parameterOrganizationId, parameterInvocation, parameterScopeInvocation } from "../parameters/operatingScope";
 import { createHash, randomUUID } from "node:crypto";
 
 import { asAuditTx, writeAuditEventInTx, writeTrustedAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import {
-  assertTrustedInvocationMatchesAuth,
   createUserInvocation,
   trustedAccountableUser,
   trustedDomainAttribution,
@@ -76,7 +76,7 @@ function normalizeCandidateCreationContext(
   }
   return {
     ...context,
-    invocation: assertTrustedInvocationMatchesAuth(auth, context.invocation, operation),
+    invocation: parameterScopeInvocation(auth, context.invocation, operation),
     requestId: context.requestId.trim()
   };
 }
@@ -190,7 +190,7 @@ function writeCandidateAudit(
     }
     return writeTrustedAuditEventInTx(tx, {
       invocation,
-      ...(invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
+      ...(invocation.initiator === "system" ? { organizationId: parameterOrganizationId(auth) } : {}),
       app: "parameters",
       kind: input.kind,
       action: input.action,
@@ -209,7 +209,7 @@ function writeCandidateAudit(
     });
   }
   // requestId fallback survives only until candidate contexts become mandatory (ADR-0027).
-  return writeAuditEventInTx(tx, createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
+  return writeAuditEventInTx(tx, parameterInvocation(auth) ?? createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
     kind: input.kind,
     action: input.action,
@@ -393,10 +393,10 @@ async function createCandidateInScope(
     const row = (await tx.query<{ id: string; client_mutation_digest: string }>(
       `select id,client_mutation_digest from public.project_parameter_file_candidates
        where organization_id=$1 and project_id=$2 and created_by_user_id=$3 and client_mutation_id=$4`,
-      [auth.organization.id, input.projectId, auth.user.id, input.clientMutationId])).rows[0];
+      [parameterOrganizationId(auth), input.projectId, auth.user.id, input.clientMutationId])).rows[0];
     if (!row) return null;
     if (row.client_mutation_digest !== mutationDigest) throw new ApiError("CONFLICT", "Candidate mutation key was already used for different source content.");
-    return getParameterFileCandidateById(tx, { organizationId: auth.organization.id, projectId: input.projectId, candidateId: row.id });
+    return getParameterFileCandidateById(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, candidateId: row.id });
   };
   if (sourceRevision) {
     if (!canEditParameters(auth, input.projectId)) throw new ApiError("FORBIDDEN", "Project edit permission is required.");
@@ -443,7 +443,7 @@ async function createCandidateInScope(
 
   if (fileId) {
     const file = await getProjectParameterFileById(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       fileId
     });
     if (!file || file.projectId !== input.projectId) {
@@ -464,7 +464,7 @@ async function createCandidateInScope(
     }
   } else {
     const existing = await getProjectParameterFileByName(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       fileName
     });
@@ -482,7 +482,7 @@ async function createCandidateInScope(
   const candidateId = randomUUID();
   const source = input.bytes.toString("utf8");
   const stored = await objectStore.put({
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     fileName: `candidate-${candidateId}-${fileName}`,
     contentType: contentTypeForFormat(format),
     bytes: input.bytes
@@ -492,7 +492,7 @@ async function createCandidateInScope(
     let sourceRevisionContext: ProjectParameterFileCandidateDto["sourceRevisionContext"];
     if (sourceRevision) {
       await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
-        `source-revision-candidate:${auth.organization.id}:${input.projectId}:${auth.user.id}:${input.clientMutationId}`
+        `source-revision-candidate:${parameterOrganizationId(auth)}:${input.projectId}:${auth.user.id}:${input.clientMutationId}`
       ]);
       const previous = await replay(tx);
       if (previous) return previous;
@@ -501,11 +501,11 @@ async function createCandidateInScope(
          join public.dts_config_set config on config.id=file.config_set_id and config.organization_id=file.organization_id
            and config.project_id=file.project_id
          where file.id=$1 and file.organization_id=$2 and file.project_id=$3 for update of config,file`,
-        [fileId, auth.organization.id, input.projectId])).rows[0];
+        [fileId, parameterOrganizationId(auth), input.projectId])).rows[0];
       const revision = current ? (await tx.query<{ id: string }>(
         `select id from public.dts_config_revisions where config_set_id=$1 and organization_id=$2 and project_id=$3
          and status in ('resolved','validated','compiled','pending_approval') order by revision_number desc limit 1`,
-        [current.config_set_id, auth.organization.id, input.projectId])).rows[0] : undefined;
+        [current.config_set_id, parameterOrganizationId(auth), input.projectId])).rows[0] : undefined;
       if (!current || current.current_version_id !== input.expectedCurrentVersionId || revision?.id !== input.expectedConfigRevisionId) {
         throw new ApiError("CONFLICT", "The file or configuration changed since editing started.", { reason: "source-revision-base-stale" });
       }
@@ -515,7 +515,7 @@ async function createCandidateInScope(
     }
     const uploading = await insertParameterFileCandidate(tx, {
       id: candidateId,
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       fileId,
       fileName: existingFileName,
@@ -573,12 +573,12 @@ async function createCandidateInScope(
     }
 
     const baseSource = baseStorageKey ? (await objectStore.get(baseStorageKey)).toString("utf8") : null;
-    const registered = format === "dts" ? await listRegisteredCompatibles(tx, auth.organization.id) : [];
+    const registered = format === "dts" ? await listRegisteredCompatibles(tx, parameterOrganizationId(auth)) : [];
     const openConflicts =
       fileId != null
         ? (
             await listOpenConflicts(tx, {
-              organizationId: auth.organization.id,
+              organizationId: parameterOrganizationId(auth),
               projectId: input.projectId
             })
           ).filter((conflict) => conflict.fileVersionId === baseVersionId)
@@ -631,7 +631,7 @@ export async function getCandidate(
 ): Promise<ProjectParameterFileCandidateDto> {
   requireCandidateViewer(auth);
   const candidate = await getParameterFileCandidateById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     candidateId: input.candidateId
   });
@@ -650,7 +650,7 @@ export async function listCandidates(
 ): Promise<ProjectParameterFileCandidateDto[]> {
   requireCandidateViewer(auth);
   return listParameterFileCandidates(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     fileId: input.fileId,
     includeAbandoned: input.includeAbandoned
@@ -699,7 +699,7 @@ export async function abandonCandidate(
   );
   requireCandidateAdmin(auth);
   const existing = await getParameterFileCandidateById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     candidateId: input.candidateId
   });
@@ -708,7 +708,7 @@ export async function abandonCandidate(
       candidateId: input.candidateId
     });
   }
-  await assertNoCanonicalWorkflowMutation(db, existing, auth.organization.id, input.projectId);
+  await assertNoCanonicalWorkflowMutation(db, existing, parameterOrganizationId(auth), input.projectId);
   if (!["ready", "blocked", "failed", "stale"].includes(existing.status)) {
     throw new ApiError("VALIDATION_FAILED", "Only ready, blocked, failed, or stale candidates can be abandoned.", {
       candidateId: existing.id,
@@ -718,12 +718,12 @@ export async function abandonCandidate(
 
   return db.transaction(async (tx) => {
     const locked = await getParameterFileCandidateByIdForUpdate(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       candidateId: existing.id
     });
     if (!locked) throw new ApiError("NOT_FOUND", "Candidate file version was not found.", { candidateId: existing.id });
-    await assertNoCanonicalWorkflowMutation(tx, locked, auth.organization.id, input.projectId);
+    await assertNoCanonicalWorkflowMutation(tx, locked, parameterOrganizationId(auth), input.projectId);
     const abandoned = await abandonParameterFileCandidate(tx, {
       candidateId: locked.id,
       abandonedByUserId: auth.user.id
@@ -762,7 +762,7 @@ export async function recomputeCandidateImpact(
   );
   requireCandidateAdmin(auth);
   const existing = await getParameterFileCandidateById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     candidateId: input.candidateId
   });
@@ -772,7 +772,7 @@ export async function recomputeCandidateImpact(
     });
   }
   if (existing.sourceRevisionContext) throw new ApiError("CONFLICT", "Create a new whole-source candidate to revalidate an editor revision.", { reason: "source-revision-workflow-required" });
-  await assertNoCanonicalWorkflowMutation(db, existing, auth.organization.id, input.projectId);
+  await assertNoCanonicalWorkflowMutation(db, existing, parameterOrganizationId(auth), input.projectId);
   if (!["ready", "blocked", "failed", "stale"].includes(existing.status)) {
     throw new ApiError("VALIDATION_FAILED", "Only ready, blocked, failed, or stale candidates can be recomputed.", {
       status: existing.status
@@ -787,7 +787,7 @@ export async function recomputeCandidateImpact(
 
   if (existing.fileId) {
     const file = await getProjectParameterFileById(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       fileId: existing.fileId
     });
     if (file?.currentVersionId) {
@@ -806,12 +806,12 @@ export async function recomputeCandidateImpact(
 
   const candidateSource = (await objectStore.get(existing.storageKey)).toString("utf8");
   const registered =
-    existing.format === "dts" ? await listRegisteredCompatibles(db, auth.organization.id) : [];
+    existing.format === "dts" ? await listRegisteredCompatibles(db, parameterOrganizationId(auth)) : [];
   const openConflicts =
     existing.fileId != null
       ? (
           await listOpenConflicts(db, {
-            organizationId: auth.organization.id,
+            organizationId: parameterOrganizationId(auth),
             projectId: input.projectId
           })
         ).filter((conflict) => conflict.fileVersionId === baseVersionId)
@@ -836,12 +836,12 @@ export async function recomputeCandidateImpact(
 
   return db.transaction(async (tx) => {
     const locked = await getParameterFileCandidateByIdForUpdate(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       candidateId: existing.id
     });
     if (!locked) throw new ApiError("NOT_FOUND", "Candidate file version was not found.", { candidateId: existing.id });
-    await assertNoCanonicalWorkflowMutation(tx, locked, auth.organization.id, input.projectId);
+    await assertNoCanonicalWorkflowMutation(tx, locked, parameterOrganizationId(auth), input.projectId);
     const updated = await updateParameterFileCandidateParseResult(tx, {
       candidateId: existing.id,
       status: computed.status,
@@ -898,7 +898,7 @@ export async function activateCandidate(
   requireCandidateAdmin(auth);
 
   const existing = await getParameterFileCandidateById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     candidateId: input.candidateId
   });
@@ -993,7 +993,7 @@ export async function activateCandidate(
   function runActivationTransaction(): Promise<ActivateCandidateResult> {
     return db.transaction(async (tx) => {
     const locked = await getParameterFileCandidateById(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       candidateId: input.candidateId
     });
@@ -1007,7 +1007,7 @@ export async function activateCandidate(
     let file: ProjectParameterFileDto | null = null;
     if (locked.fileId) {
       file = await getProjectParameterFileById(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         fileId: locked.fileId
       });
       if (!file || file.projectId !== input.projectId) {
@@ -1017,7 +1017,7 @@ export async function activateCandidate(
       }
     } else {
       const raced = await getProjectParameterFileByName(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: input.projectId,
         fileName: locked.fileName
       });
@@ -1027,7 +1027,7 @@ export async function activateCandidate(
     }
 
     await assertLegacySourceMutationAllowed(tx,file ? [file.id] : [],isNewFile ? input.configSetId : undefined);
-    if (file) file = await getProjectParameterFileById(tx,{ organizationId: auth.organization.id,fileId: file.id });
+    if (file) file = await getProjectParameterFileById(tx,{ organizationId: parameterOrganizationId(auth),fileId: file.id });
     const actualCurrentVersionId = file?.currentVersionId ?? null;
     const casMatches =
       (actualCurrentVersionId ?? null) === (expectedCurrentVersionId ?? null) &&
@@ -1042,7 +1042,7 @@ export async function activateCandidate(
 
     if (isNewFile) {
       const configSet = await getConfigSetById(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         configSetId: input.configSetId!
       });
       if (!configSet || configSet.projectId !== input.projectId) {
@@ -1055,7 +1055,7 @@ export async function activateCandidate(
     if (!file) {
       file = await insertProjectParameterFile(tx, {
         id: randomUUID(),
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: input.projectId,
         fileName: locked.fileName,
         format: locked.format

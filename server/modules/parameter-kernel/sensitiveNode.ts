@@ -4,7 +4,6 @@ import { writeRefusalAudit } from "../audit/auditedWrite";
 import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import {
   assertTrustedMutationInvocation,
-  assertTrustedInvocationMatchesAuth,
   TrustedInvocationContextError,
   type TrustedInvocationContext
 } from "../auth/trustedInvocation";
@@ -14,6 +13,7 @@ import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { canEditCriticalParameters } from "./policy";
 import { nodePathFromSourceNodePath } from "./nodePath";
+import { parameterOrganizationId, parameterScopeInvocation } from "../parameters/operatingScope";
 
 export type SensitiveRiskTier = "high" | "critical";
 export type SensitiveMatchType = "path" | "compatible";
@@ -397,7 +397,7 @@ export function assertTrustedSensitiveNodeWriteContext<T extends TrustedSensitiv
     );
   }
   assertTrustedRefusalAuditSink(context.refusalSink);
-  const invocation = assertTrustedInvocationMatchesAuth(auth, context.invocation, operation);
+  const invocation = parameterScopeInvocation(auth, context.invocation, operation);
   assertTrustedMutationInvocation(invocation, operation);
   return { ...context, invocation, requestId: context.requestId.trim() };
 }
@@ -421,7 +421,7 @@ export async function assertTrustedSensitiveNodeWriteAllowed(
   }
 ) {
   const trustedContext = assertTrustedSensitiveNodeWriteContext(auth, input, "parameter sensitive-node write");
-  if (input.organizationId.trim() !== auth.organization.id) {
+  if (input.organizationId.trim() !== parameterOrganizationId(auth)) {
     throw new TrustedInvocationContextError(
       "parameter sensitive-node write organization does not match the authenticated target scope"
     );
@@ -532,7 +532,7 @@ export async function assertSensitiveNodeWriteAllowed(
 
   if (input.actorType === "agent" && matched.riskTier === "critical") {
     if (deps.refusalDb) {
-      const invocation = assertTrustedInvocationMatchesAuth(auth, deps.invocation, "sensitive-node refusal audit");
+      const invocation = parameterScopeInvocation(auth, deps.invocation, "sensitive-node refusal audit");
       if (invocation.initiator !== "agent") {
         throw new TrustedInvocationContextError("sensitive-node Agent refusal requires an Agent invocation");
       }

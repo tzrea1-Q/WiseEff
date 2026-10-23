@@ -205,11 +205,13 @@ function reviewContext(scope: TrustedGovernanceScope): ReviewQueueTrustedContext
 
 function registrationContext(
   scope: TrustedGovernanceScope,
-): Extract<import("../../parameter-governance/registration/command").TrustedInvocationContext, { actorKind: "org-admin" }> | null {
-  if (scope.actorKind !== "org-admin") {
+  requestId: string,
+): Extract<import("../../parameter-governance/registration/command").TrustedInvocationContext, { actorKind: "org-admin" | "platform-admin" }> | null {
+  if (scope.actorKind !== "org-admin" && scope.actorKind !== "platform-admin") {
     return null;
   }
-  return { actorKind: "org-admin", principalId: scope.principalId };
+  return { actorKind: scope.actorKind, principalId: scope.principalId,
+    ...(scope.trustedActor?.initiator === "user" ? { invocation: scope.trustedActor, requestId } : {}) };
 }
 
 function proposalAuthorContext(scope: TrustedGovernanceScope): ProposalTrustedContext | null {
@@ -355,7 +357,7 @@ function authorizeOrganizationWrite(
   scope: TrustedGovernanceScope,
   request: CatalogGovernanceRequest,
 ): CatalogGovernanceResponse | null {
-  if (scope.actorKind !== "org-admin" || !scope.canMutateOrganization) {
+  if ((scope.actorKind !== "org-admin" && scope.actorKind !== "platform-admin") || !scope.canMutateOrganization) {
     return forbidden(request.requestId);
   }
   const organizationId = request.params.organizationId ?? scope.organizationId;
@@ -588,7 +590,7 @@ async function handleCreateRegistration(
   } catch {
     return validationFailed(request.requestId, "subjectId");
   }
-  const context = registrationContext(scope);
+  const context = registrationContext(scope, request.requestId);
   if (!context) return forbidden(request.requestId);
   const organizationId = request.params.organizationId ?? scope.organizationId;
   const subjectKind = await resolveSubjectKind(ports, scope, subjectId);
@@ -650,7 +652,7 @@ async function handleRetireOrRestore(
   } catch {
     return validationFailed(request.requestId, "registrationId");
   }
-  const context = registrationContext(scope);
+  const context = registrationContext(scope, request.requestId);
   if (!context) return forbidden(request.requestId);
   const command: RegistrationCommand = {
     kind,
@@ -693,7 +695,7 @@ async function handleUpdatePlacement(
   }
   const placement = parsePlacement(parsed.data.placement);
   if (!placement) return validationFailed(request.requestId, "placement");
-  const context = registrationContext(scope);
+  const context = registrationContext(scope, request.requestId);
   if (!context) return forbidden(request.requestId);
   const organizationId = request.params.organizationId ?? scope.organizationId;
   const existing = await ports.getRegistration({
@@ -953,16 +955,17 @@ async function handleResolveReviewItem(
   const organizationId = request.params.organizationId ?? scope.organizationId;
   const reason = parseReviewReason(parsed.data.reason) ?? "unknown";
   const resolution = parsed.data.resolution;
-  const writeContext = registrationContext(scope);
+  const writeContext = registrationContext(scope, request.requestId);
   if (!writeContext) return forbidden(request.requestId);
   const base = {
+    ...(writeContext.invocation ? { invocation: writeContext.invocation, requestId: writeContext.requestId } : {}),
     organizationId,
     reviewItemId,
     expectedRelease: pin.pin,
     etag,
     idempotencyKey,
     context: {
-      actorKind: "org-admin" as const,
+      actorKind: writeContext.actorKind,
       principalId: writeContext.principalId,
       organizationId,
     },

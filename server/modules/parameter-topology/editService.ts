@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../parameters/operatingScope";
 /**
  * Typed binding edits → overlay write targets → draft + candidate config revision.
  *
@@ -263,7 +264,7 @@ async function createNodeEnablementDraftInTransaction(
     systemName: attribution.systemName,
   } as const;
   const openDrafts = await listOpenBindingDraftsForUser(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     owner: draftOwner,
   });
@@ -303,7 +304,7 @@ async function createNodeEnablementDraftInTransaction(
   }
 
   const revision = await getConfigRevisionById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     revisionId: effectiveBaseRevisionId,
   });
@@ -343,14 +344,14 @@ async function createNodeEnablementDraftInTransaction(
   }
 
   const nodeContext = await loadLogicalNodeEnablementContext(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     configRevisionId: revision.id,
     logicalNodeId: input.logicalNodeId,
   });
 
   await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     nodePath: nodeContext.nodeLocator,
     sourcePath: { kind: "node-locator", value: nodeContext.nodeLocator },
@@ -442,11 +443,11 @@ async function createNodeEnablementDraftInTransaction(
 
   const candidateOverlayVersionId = randomUUID();
   const overlayChecksum = checksumOf(candidateOverlayContent);
-  let candidateStorageKey = `${auth.organization.id}/${overlayChecksum}-candidate-${overlayMember.file_name}`;
+  let candidateStorageKey = `${parameterOrganizationId(auth)}/${overlayChecksum}-candidate-${overlayMember.file_name}`;
 
   if (deps.objectStore) {
     const stored = await deps.objectStore.put({
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       fileName: overlayMember.file_name,
       contentType: "text/plain",
       bytes: Buffer.from(candidateOverlayContent, "utf8"),
@@ -535,7 +536,7 @@ async function createNodeEnablementDraftInTransaction(
   }
 
   const manifest: ConfigRevisionManifest = {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     configSetId: revision.configSetId,
     entryFile: normalizedManifest.manifest.entryFile,
@@ -595,11 +596,11 @@ async function createNodeEnablementDraftInTransaction(
       and b.project_id = $3
       and b.logical_node_id = $4
     `,
-    [auth.organization.id, revision.id, input.projectId, input.logicalNodeId],
+    [parameterOrganizationId(auth), revision.id, input.projectId, input.logicalNodeId],
   );
 
   const semanticCounts = await loadCandidateSemanticGateCounts(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     configRevisionId: candidateRevisionId,
     excludeUnmatchedIdentities: bindingIdentities.rows.map(
@@ -661,7 +662,7 @@ async function createNodeEnablementDraftInTransaction(
     async (tx) => {
       const persistedDraft = await upsertEnablementDraft(tx, {
         id: randomUUID(),
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: input.projectId,
         logicalNodeId: input.logicalNodeId,
         userId: attribution.userId,
@@ -681,7 +682,7 @@ async function createNodeEnablementDraftInTransaction(
       });
 
       const rebased = await rebaseOpenBindingDraftCandidates(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: input.projectId,
         owner: draftOwner,
         candidateConfigRevisionId: candidateRevisionId,
@@ -690,7 +691,7 @@ async function createNodeEnablementDraftInTransaction(
 
       await writeTrustedGovernanceAudit(asAuditTx(tx), context.invocation, {
         action: "enablement-changed",
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: input.projectId,
         targetType: "dts-logical-node",
         targetId: input.logicalNodeId,
@@ -800,7 +801,7 @@ export async function assertCandidateToolchainRelease(
   const runId = randomUUID();
   await insertValidationRun(db, {
     id: runId,
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     configRevisionId: input.candidateRevisionId,
     stage: "toolchain",
     status: toolchainResult.ok ? "passed" : "failed",

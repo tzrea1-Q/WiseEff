@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterInvocation, parameterScopeInvocation } from "./operatingScope";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 
@@ -20,7 +21,6 @@ import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import {
   assertTrustedInvocationContext,
-  assertTrustedInvocationMatchesAuth,
   assertTrustedMutationInvocation,
   createUserInvocation,
   trustedDomainAttribution,
@@ -289,7 +289,7 @@ export async function resolveStructuredEditToParameter(
   edit: StructuredEditUnit
 ): Promise<ProjectParameterValueMatch> {
   const file = await getProjectParameterFileById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     fileId: edit.fileId
   });
   if (!file || file.projectId !== projectId) {
@@ -306,7 +306,7 @@ export async function resolveStructuredEditToParameter(
   }
 
   const bySource = await findProjectValueBySource(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId,
     sourceFileName,
     sourceNodePath
@@ -327,7 +327,7 @@ export async function resolveStructuredEditToParameter(
   // Fail closed: (name, module) identity fallback is retired. New source bindings may still insert.
   return insertProjectParameterValueWithSource(db, {
     id: randomUUID(),
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId,
     definitionId: randomUUID(),
     name: identity.name,
@@ -383,7 +383,7 @@ export async function submitStructuredEdits(
 
       await upsertDraft(tx, {
         id: randomUUID(),
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: input.projectId,
         parameterId: parameter.id,
         userId: auth.user.id,
@@ -408,7 +408,7 @@ export async function submitStructuredEdits(
     await writeTrustedAuditEventInTx(asAuditTx(tx), {
       invocation: submissionContext.invocation,
       ...(submissionContext.invocation.initiator === "system"
-        ? { organizationId: auth.organization.id }
+        ? { organizationId: parameterOrganizationId(auth) }
         : {}),
       traceId: submissionContext.requestId,
       projectId: input.projectId,
@@ -592,7 +592,7 @@ async function assertWorkflowAssigneesAreEligible(
   for (const check of checks) {
     if (!check.userId) continue;
     const eligible = await hasEligibleWorkflowAssignee(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId,
       userId: check.userId,
       roleId: check.roleId
@@ -615,7 +615,7 @@ async function loadParameterForSubmission(
   parameterId: string
 ) {
   const parameter = await getProjectParameterForUpdate(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId,
     parameterId
   });
@@ -629,7 +629,7 @@ async function loadParameterForSubmission(
 
 async function loadChangeRequestForReview(db: Queryable, auth: AuthContext, requestId: string, lock = true) {
   const request = await getChangeRequestById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     requestId,
     lock
   });
@@ -668,7 +668,7 @@ async function updateRoundStatusIfNeeded(
   if (!submissionRoundId) return undefined;
 
   return updateSubmissionRoundStatusFromRequests(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     submissionRoundId
   });
 }
@@ -814,7 +814,7 @@ async function createParameterReviewAudit(
   // (audited-write migration batches, ADR-0027).
   const invocation = context.invocation;
   await writeAuditEventInTx(tx, invocation, { requestId: context.requestId ?? randomUUID() }, {
-    ...(invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
+    ...(invocation.initiator === "system" ? { organizationId: parameterOrganizationId(auth) } : {}),
     app: "parameter-management",
     kind: input.kind,
     action: input.action,
@@ -845,7 +845,7 @@ export async function saveDraft(db: Queryable, auth: AuthContext, input: SaveDra
 
   return upsertDraft(db, {
     id: randomUUID(),
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     parameterId: input.parameterId,
     userId: auth.user.id,
@@ -864,13 +864,13 @@ export async function deleteDraft(
   requireCanEdit(auth, context?.projectId);
 
   const invocation = context
-    ? assertTrustedInvocationMatchesAuth(auth, context.invocation, "parameter draft delete")
-    : createUserInvocation(auth);
+    ? parameterScopeInvocation(auth, context.invocation, "parameter draft delete")
+    : parameterInvocation(auth) ?? createUserInvocation(auth);
   const attribution = trustedDomainAttribution(invocation);
 
   await db.transaction(async (tx) => {
     const removedProjectId = await deleteDraftRow(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       ...(context?.projectId === undefined ? {} : { projectId: context.projectId }),
       owner: attribution,
       draftId
@@ -891,7 +891,7 @@ export async function deleteDraft(
       invocation,
       {
         action: "value-draft-removed",
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: removedProjectId,
         targetType: "project-parameter-value-draft",
         targetId: draftId,
@@ -908,7 +908,7 @@ export async function deleteDraft(
 export async function listWorkflowAssignees(db: Queryable, auth: AuthContext, projectId: string) {
   requireCanEdit(auth);
   return listEligibleWorkflowAssignees(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId,
   });
 }
@@ -936,7 +936,7 @@ export async function submitParameterChanges(
   } as const;
 
   return db.transaction(async (tx) => {
-    await assertProjectAllowsParameterSubmit(tx, auth.organization.id, input.projectId);
+    await assertProjectAllowsParameterSubmit(tx, parameterOrganizationId(auth), input.projectId);
 
     const useSemanticIdentity = parameterIdentityMode() === "semantic";
     if (useSemanticIdentity && input.items.some((item) => !("draftId" in item))) {
@@ -967,7 +967,7 @@ export async function submitParameterChanges(
         }
 
         const loadedDraft = await getEnablementDraftForSubmission(tx, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           projectId: input.projectId,
           owner: submissionOwner,
           draftId: item.draftId
@@ -1017,7 +1017,7 @@ export async function submitParameterChanges(
         await verifyEnablementWriteLock(tx, loadedDraft.writeLock);
 
         const openRequest = await findOpenEnablementChangeRequest(tx, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           projectId: input.projectId,
           logicalNodeId: item.logicalNodeId
         });
@@ -1029,13 +1029,13 @@ export async function submitParameterChanges(
         }
 
         const nodeContext = await loadLogicalNodeEnablementContext(tx, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           projectId: input.projectId,
           configRevisionId: loadedDraft.writeLock.baseConfigRevisionId,
           logicalNodeId: item.logicalNodeId
         });
         await assertTrustedSensitiveNodeSubmissionAllowed(tx, auth, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           projectId: input.projectId,
           nodePath: nodeContext.nodeLocator,
           compatible: nodeContext.compatible,
@@ -1072,7 +1072,7 @@ export async function submitParameterChanges(
           });
         }
         const loadedDraft = await getBindingDraftForSubmission(tx, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           projectId: input.projectId,
           owner: submissionOwner,
           draftId: item.draftId
@@ -1132,7 +1132,7 @@ export async function submitParameterChanges(
 
       const parameter = await loadParameterForSubmission(tx, auth, input.projectId, parameterId);
       const openRequest = await findOpenChangeRequest(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: input.projectId,
         parameterId
       });
@@ -1154,13 +1154,13 @@ export async function submitParameterChanges(
 
       if (exactDraft?.writeLock && exactDraft.logicalNodeId) {
         const node = await loadLogicalNodeSubmissionContext(tx, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           projectId: input.projectId,
           configRevisionId: exactDraft.writeLock.baseConfigRevisionId,
           logicalNodeId: exactDraft.logicalNodeId
         });
         await assertTrustedSensitiveNodeSubmissionAllowed(tx, auth, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           projectId: input.projectId,
           nodePath: node.nodeLocator,
           compatible: node.compatible,
@@ -1171,7 +1171,7 @@ export async function submitParameterChanges(
         });
       } else if (!exactDraft && parameter.sourceNodePath) {
         await assertTrustedSensitiveNodeSubmissionAllowed(tx, auth, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           projectId: input.projectId,
           nodePath: parameter.sourceNodePath,
           sourceFileName: parameter.sourceFileName,
@@ -1240,7 +1240,7 @@ export async function submitParameterChanges(
 
     for (const draft of promotionDrafts) {
       const promoted = await promoteBindingDraftCandidateForReview(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: input.projectId,
         draftId: draft.draftId,
         candidateConfigRevisionId: draft.candidateConfigRevisionId
@@ -1256,7 +1256,7 @@ export async function submitParameterChanges(
     const status = workflowAssignees ? "hardware_review" : "submitted";
     const round = await createSubmissionRound(tx, {
       id: randomUUID(),
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       submitterUserId: submissionAttribution.userId,
       attribution: submissionAttribution,
@@ -1304,7 +1304,7 @@ export async function submitParameterChanges(
           limit 1
           `,
           [
-            auth.organization.id,
+            parameterOrganizationId(auth),
             input.projectId,
             parameter.id,
             submissionOwner.initiatorType,
@@ -1322,7 +1322,7 @@ export async function submitParameterChanges(
              from project_parameter_bindings
              where id = $1 and organization_id = $2 and project_id = $3
              limit 1`,
-            [projectParameterBindingId, auth.organization.id, input.projectId]
+            [projectParameterBindingId, parameterOrganizationId(auth), input.projectId]
           );
           parameterSpecId = bindingSpec.rows[0]?.parameter_spec_id;
         }
@@ -1330,7 +1330,7 @@ export async function submitParameterChanges(
         writeLock =
           projectParameterBindingId && useSemanticIdentity
             ? await getDraftWriteLock(tx, {
-                organizationId: auth.organization.id,
+                organizationId: parameterOrganizationId(auth),
                 projectId: input.projectId,
                 bindingId: projectParameterBindingId,
                 owner: submissionOwner
@@ -1345,7 +1345,7 @@ export async function submitParameterChanges(
 
       const request = await createChangeRequest(tx, {
         id: randomUUID(),
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         submissionRoundId: round.id,
         projectId: input.projectId,
         parameterId: parameter.id,
@@ -1367,7 +1367,7 @@ export async function submitParameterChanges(
 
       const submissionItem = await createSubmissionItem(tx, {
         id: randomUUID(),
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         submissionRoundId: round.id,
         changeRequestId: request.id,
         parameterId: parameter.id,
@@ -1381,13 +1381,13 @@ export async function submitParameterChanges(
 
       if ("draftId" in item) {
         await deleteDraftRow(tx, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           owner: submissionOwner,
           draftId: item.draftId
         });
       } else {
         await deleteDraftForParameter(tx, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           owner: submissionOwner,
           projectId: input.projectId,
           parameterId: parameter.id
@@ -1400,7 +1400,7 @@ export async function submitParameterChanges(
     for (const { item, exactDraft, currentValue } of enablementEntries) {
       const request = await createEnablementChangeRequest(tx, {
         id: randomUUID(),
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         submissionRoundId: round.id,
         projectId: input.projectId,
         logicalNodeId: item.logicalNodeId,
@@ -1419,7 +1419,7 @@ export async function submitParameterChanges(
 
       const submissionItem = await createEnablementSubmissionItem(tx, {
         id: randomUUID(),
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         submissionRoundId: round.id,
         changeRequestId: request.id,
         logicalNodeId: item.logicalNodeId,
@@ -1431,7 +1431,7 @@ export async function submitParameterChanges(
       });
 
       await deleteDraftRow(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         owner: submissionOwner,
         draftId: item.draftId
       });
@@ -1442,7 +1442,7 @@ export async function submitParameterChanges(
     await writeTrustedAuditEventInTx(asAuditTx(tx), {
       invocation: submissionContext.invocation,
       ...(submissionContext.invocation.initiator === "system"
-        ? { organizationId: auth.organization.id }
+        ? { organizationId: parameterOrganizationId(auth) }
         : {}),
       traceId: submissionContext.requestId,
       app: "parameter-management",
@@ -1471,11 +1471,11 @@ export async function submitParameterChanges(
 
     if (workflowAssignees?.hardwareCommitterId) {
       const project = await getProjectById(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: input.projectId
       });
       await notifyParameterReviewSubmitted(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: input.projectId,
         projectName: project?.name,
         roundId: round.id,
@@ -1498,12 +1498,12 @@ export async function listDrafts(
   requireCanView(auth);
 
   const invocation = context
-    ? assertTrustedInvocationMatchesAuth(auth, context.invocation, "parameter draft list")
-    : createUserInvocation(auth);
+    ? parameterScopeInvocation(auth, context.invocation, "parameter draft list")
+    : parameterInvocation(auth) ?? createUserInvocation(auth);
   const attribution = trustedDomainAttribution(invocation);
 
   return listDraftsForUser(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     owner: attribution,
     projectId: query.projectId
   });
@@ -1512,7 +1512,7 @@ export async function listDrafts(
 export async function listSubmissionRounds(db: Queryable, auth: AuthContext, query: SubmissionRoundListQuery = {}) {
   requireCanView(auth);
 
-  const organizationId = auth.organization.id;
+  const organizationId = parameterOrganizationId(auth);
   const rounds = await listSubmissionRoundRows(db, {
     organizationId,
     auth,
@@ -1612,7 +1612,7 @@ export async function listChangeRequests(db: Queryable, auth: AuthContext, query
   requireCanView(auth);
 
   return listChangeRequestRows(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     auth,
     projectId: query.projectId,
     status: query.status,
@@ -1637,7 +1637,7 @@ export async function withdrawSubmissionRound(
 
   return db.transaction(async (tx) => {
     const owner = await getSubmissionRoundSubmitterUserId(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       roundId
     });
 
@@ -1657,7 +1657,7 @@ export async function withdrawSubmissionRound(
     }
 
     const round = await getSubmissionRoundById(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       roundId
     });
 
@@ -1666,13 +1666,13 @@ export async function withdrawSubmissionRound(
     }
 
     await withdrawOpenChangeRequestsForRound(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       roundId,
       note: "提交人已撤回本轮提交。"
     });
 
     await updateSubmissionRoundStatus(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       roundId,
       status: "withdrawn",
       summary: `${round.summary} 已由提交人撤回。`
@@ -1680,7 +1680,7 @@ export async function withdrawSubmissionRound(
 
     // requestId fallback survives only until this function's context becomes mandatory
     // (audited-write migration batches, ADR-0027).
-    const invocation = createUserInvocation(auth);
+    const invocation = parameterInvocation(auth) ?? createUserInvocation(auth);
     await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId: context.requestId ?? randomUUID() }, {
       app: "parameter-management",
       kind: "parameter-submission-withdraw",
@@ -1695,7 +1695,7 @@ export async function withdrawSubmissionRound(
     });
 
     const updated = await getSubmissionRoundById(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       roundId
     });
 
@@ -1713,7 +1713,7 @@ export async function reviewChange(
   input: ReviewParameterChangeInput,
   context: ParameterReviewContext = {}
 ) {
-  const reviewContext = { ...context, invocation: context.invocation ?? createUserInvocation(auth) };
+  const reviewContext = { ...context, invocation: context.invocation ?? parameterInvocation(auth) ?? createUserInvocation(auth) };
   return db.transaction(async (tx) => {
     const initial = await loadChangeRequestForReview(tx, auth, input.requestId, false);
     const request = initial.editSubjectKind === "node-enablement" && initial.status === "software_merge" && input.decision === "advance"
@@ -1732,7 +1732,7 @@ export async function reviewChange(
       requireCanReviewStage(auth, request.projectId, fromStatus);
       const toStatus = "rejected";
       const updated = await updateChangeRequestStatus(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         requestId: input.requestId,
         status: toStatus,
         note: input.note
@@ -1744,7 +1744,7 @@ export async function reviewChange(
 
       await insertReviewDecision(tx, {
         id: randomUUID(),
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         requestId: input.requestId,
         reviewerUserId: auth.user.id,
         decision: "reject",
@@ -1775,11 +1775,11 @@ export async function reviewChange(
 
       if (request.submitterUserId && request.projectId) {
         const project = await getProjectById(tx, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           projectId: request.projectId
         });
         await notifyParameterReviewRejected(tx, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           projectId: request.projectId,
           projectName: project?.name,
           requestId: input.requestId,
@@ -1806,7 +1806,7 @@ export async function reviewChange(
       }
 
       const updated = await updateChangeRequestStatus(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         requestId: input.requestId,
         status: toStatus,
         note: input.note
@@ -1818,7 +1818,7 @@ export async function reviewChange(
 
       await insertReviewDecision(tx, {
         id: randomUUID(),
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         requestId: input.requestId,
         reviewerUserId: auth.user.id,
         decision: "advance",
@@ -1849,13 +1849,13 @@ export async function reviewChange(
 
       if (request.submitterUserId && request.projectId) {
         const project = await getProjectById(tx, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           projectId: request.projectId
         });
         const assigneeUserIds =
           updated.assignedTo && updated.assignedTo !== request.submitterUserId ? [updated.assignedTo] : [];
         await notifyParameterReviewAdvanced(tx, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           projectId: request.projectId,
           projectName: project?.name,
           requestId: input.requestId,
@@ -1892,7 +1892,7 @@ export async function reviewChange(
     let reviewDecisions: Awaited<ReturnType<typeof listReviewDecisionsInternal>> = [];
     if (request.impact.some((item) => item.kind === "parameter" && item.risk === "High")) {
       reviewDecisions = await listReviewDecisionsInternal(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         requestId: input.requestId
       });
 
@@ -1905,7 +1905,7 @@ export async function reviewChange(
       }
     } else {
       reviewDecisions = await listReviewDecisionsInternal(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         requestId: input.requestId
       });
     }
@@ -1919,8 +1919,8 @@ export async function reviewChange(
       );
     }
 
-    const participants = await buildReviewParticipants(tx, auth.organization.id, request, reviewDecisions);
-    const mergeInvocation = assertTrustedInvocationMatchesAuth(auth, trustedMergeContext.invocation, "parameter review software merge");
+    const participants = await buildReviewParticipants(tx, parameterOrganizationId(auth), request, reviewDecisions);
+    const mergeInvocation = parameterScopeInvocation(auth, trustedMergeContext.invocation, "parameter review software merge");
     participants.push(
       mergeInvocation.initiator === "user"
         ? {
@@ -2004,7 +2004,7 @@ export async function reviewChange(
 
     const merged = await mergeChangeRequest(tx, {
       historyId: randomUUID(),
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       requestId: input.requestId,
       expectedVersion: input.expectedVersion,
       actorUserId: attribution.userId,
@@ -2055,7 +2055,7 @@ export async function reviewChange(
     }
 
     const updated = await updateChangeRequestStatus(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       requestId: input.requestId,
       status: "merged",
       note: mergeLink
@@ -2067,7 +2067,7 @@ export async function reviewChange(
 
     await insertReviewDecision(tx, {
       id: randomUUID(),
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       requestId: input.requestId,
       reviewerUserId: attribution.userId,
       attribution,
@@ -2080,7 +2080,7 @@ export async function reviewChange(
     await writeTrustedAuditEventInTx(asAuditTx(tx), {
       invocation: trustedMergeContext.invocation,
       ...(trustedMergeContext.invocation.initiator === "system"
-        ? { organizationId: auth.organization.id }
+        ? { organizationId: parameterOrganizationId(auth) }
         : {}),
       traceId: trustedMergeContext.requestId,
       app: "parameter-management",
@@ -2119,7 +2119,7 @@ export async function reviewChange(
 
     if (request.projectId) {
       const project = await getProjectById(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: request.projectId
       });
       const mergeRecipientUserIds = [
@@ -2135,7 +2135,7 @@ export async function reviewChange(
           : [])
       ];
       await notifyParameterMergeCompleted(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: request.projectId,
         projectName: project?.name,
         requestId: input.requestId,
@@ -2253,7 +2253,7 @@ export async function listParameterModulesForAuth(db: Database, auth: AuthContex
     throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
   }
 
-  return listParameterModules(db, { organizationId: auth.organization.id });
+  return listParameterModules(db, { organizationId: parameterOrganizationId(auth) });
 }
 
 export async function createParameterModuleForAuth(
@@ -2263,7 +2263,7 @@ export async function createParameterModuleForAuth(
   context: ServiceContext = {}
 ): Promise<ParameterModuleDto> {
   requireParameterAdmin(auth);
-  const organizationId = auth.organization.id;
+  const organizationId = parameterOrganizationId(auth);
   const name = body.name.trim();
   const parentId = body.parentId ?? null;
   const kind = body.kind ?? "business";
@@ -2312,7 +2312,7 @@ export async function createParameterModuleForAuth(
 
     await createParameterModuleAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      parameterInvocation(auth) ?? createUserInvocation(auth),
       {
         kind: "parameter-module-admin-create",
         action: "create",
@@ -2348,7 +2348,7 @@ export async function updateParameterModuleForAuth(
   context: ServiceContext = {}
 ): Promise<ParameterModuleDto> {
   requireParameterAdmin(auth);
-  const organizationId = auth.organization.id;
+  const organizationId = parameterOrganizationId(auth);
   const current = await getParameterModuleById(db, { organizationId, moduleId });
   if (!current) {
     throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
@@ -2404,7 +2404,7 @@ export async function updateParameterModuleForAuth(
 
     await createParameterModuleAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      parameterInvocation(auth) ?? createUserInvocation(auth),
       {
         kind: "parameter-module-admin-update",
         action: "update",
@@ -2440,7 +2440,7 @@ export async function moveParameterModuleForAuth(
   context: ServiceContext = {}
 ): Promise<ParameterModuleDto> {
   requireParameterAdmin(auth);
-  const organizationId = auth.organization.id;
+  const organizationId = parameterOrganizationId(auth);
   const current = await getParameterModuleById(db, { organizationId, moduleId });
   if (!current) {
     throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
@@ -2486,7 +2486,7 @@ export async function moveParameterModuleForAuth(
 
       await createParameterModuleAudit(
         asAuditTx(tx),
-        createUserInvocation(auth),
+        parameterInvocation(auth) ?? createUserInvocation(auth),
         {
           kind: "parameter-module-admin-move",
           action: "move",
@@ -2521,7 +2521,7 @@ export async function deleteParameterModuleForAuth(
   context: ServiceContext = {}
 ): Promise<void> {
   requireParameterAdmin(auth);
-  const organizationId = auth.organization.id;
+  const organizationId = parameterOrganizationId(auth);
   await db.transaction(async (tx) => {
     const current = await getParameterModuleById(tx, { organizationId, moduleId, forUpdate: true });
     if (!current) {
@@ -2534,7 +2534,7 @@ export async function deleteParameterModuleForAuth(
 
     await createParameterModuleAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      parameterInvocation(auth) ?? createUserInvocation(auth),
       {
         kind: "parameter-module-admin-delete",
         action: "delete",

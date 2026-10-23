@@ -59,6 +59,7 @@ import { createParameterFileClient } from "@/infrastructure/http/parameterFileCl
 import { createHttpParameterTopologyRepository } from "@/infrastructure/http/parameterTopologyClient";
 import { createHttpParameterInitializationRepository } from "@/infrastructure/http/parameterInitializationClient";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
+import { createDtsStructuredClient } from "@/infrastructure/http/dtsStructuredClient";
 
 export type WiseEffAuthClient = {
   getCurrentAuthContext(): Promise<AuthContextDto>;
@@ -192,6 +193,6 @@ export function createAppRuntime(
         : api
           ? createUserGovernanceClient()
           : createMockOrganizationActions()),
-    listParameterConfigSets: overrides.listParameterConfigSets
+    listParameterConfigSets: overrides.listParameterConfigSets ?? (api ? createDtsStructuredClient(parameterApiClient).listConfigSets : undefined)
   };
 }

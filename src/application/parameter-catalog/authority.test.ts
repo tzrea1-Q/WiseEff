@@ -31,15 +31,15 @@ describe("catalog actor authority", () => {
     expect(isCatalogActionEnabled("agent", "accept-proposal", ready)).toBe(false);
   });
 
-  it("separates Org Admin registration from Platform Admin proposal review", () => {
+  it("allows platform registration management while keeping proposal review independent", () => {
     expect(isCatalogActionEnabled("org-admin", "register-subject", unregistered)).toBe(true);
     expect(isCatalogActionEnabled("org-admin", "resolve-review-item", unregistered)).toBe(true);
     expect(isCatalogActionEnabled("org-admin", "read", unregistered)).toBe(true);
     expect(isCatalogActionEnabled("org-admin", "update-placement", unregistered)).toBe(false);
     expect(catalogWritesEnabled(unregistered)).toBe(false);
     expect(isCatalogActionEnabled("org-admin", "accept-proposal", ready)).toBe(false);
-    expect(isCatalogActionEnabled("platform-admin", "register-subject", unregistered)).toBe(false);
-    expect(isCatalogActionEnabled("platform-admin", "resolve-review-item", unregistered)).toBe(false);
+    expect(isCatalogActionEnabled("platform-admin", "register-subject", unregistered)).toBe(true);
+    expect(isCatalogActionEnabled("platform-admin", "resolve-review-item", unregistered)).toBe(true);
     expect(isCatalogActionEnabled("platform-admin", "accept-proposal", ready)).toBe(true);
     expect(isCatalogActionEnabled("user", "register-subject", unregistered)).toBe(false);
     expect(isCatalogActionEnabled("user", "resolve-review-item", unregistered)).toBe(false);
@@ -74,7 +74,8 @@ describe("catalog actor authority", () => {
     expect(empty.kind).toBe("empty");
     expect(isCatalogActionEnabled("org-admin", "resolve-review-item", empty)).toBe(true);
     expect(catalogWritesEnabled(empty)).toBe(false);
-    for (const actor of ["platform-admin", "user", "agent"] as const) {
+    expect(isCatalogActionEnabled("platform-admin", "resolve-review-item", empty)).toBe(true);
+    for (const actor of ["user", "agent"] as const) {
       expect(isCatalogActionEnabled(actor, "resolve-review-item", empty, ["catalog:author", "catalog:publish"])).toBe(false);
     }
     for (const action of catalogActionsForActor("org-admin").filter((action) => action !== "read" && action !== "resolve-review-item")) {

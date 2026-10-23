@@ -42,7 +42,7 @@ const ACTOR_ACTIONS: Record<CatalogActorKind, readonly CatalogAuthorizedAction[]
     "submit-proposal",
     "withdraw-proposal"
   ],
-  "platform-admin": ["read", "accept-proposal", "reject-proposal"],
+  "platform-admin": ["read", "register-subject", "retire-registration", "restore-registration", "update-placement", "resolve-review-item", "accept-proposal", "reject-proposal"],
   agent: ["read"]
 };
 

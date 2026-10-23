@@ -28,6 +28,9 @@ export const authorizeReviewQueueRead = (
   if (!context || !("actorKind" in context)) {
     return permissionDenied("anonymous");
   }
+  if (context.actorKind === "platform-admin") {
+    return isUsableToken(context.principalId) ? { ok: true, value: undefined } : permissionDenied(context.actorKind);
+  }
   if (context.actorKind !== "org-admin") {
     return permissionDenied(context.actorKind);
   }

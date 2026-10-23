@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../parameters/operatingScope";
 import { createHash } from "node:crypto";
 
 import type { AuthContext } from "../auth/types";
@@ -192,7 +193,7 @@ export async function evaluateReleaseReadiness(
   const acknowledged = new Set(input.acknowledgedWarningIds ?? []);
 
   const configSet = await getConfigSetById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     configSetId: input.configSetId
   });
   if (!configSet) {
@@ -279,7 +280,7 @@ export async function evaluateReleaseReadiness(
   if (openConflicts === undefined) {
     try {
       openConflicts = await listOpenConflicts(db, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: configSet.projectId
       });
     } catch {
@@ -313,7 +314,7 @@ export async function evaluateReleaseReadiness(
   if (pendingChangeCount === undefined) {
     try {
       pendingChangeCount = await countPendingChangeRequests(db, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: configSet.projectId
       });
     } catch {
@@ -323,7 +324,7 @@ export async function evaluateReleaseReadiness(
   let canonicalPendingRequestIds: string[];
   try {
     canonicalPendingRequestIds = await listPendingCanonicalValueChangeRequestIds(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: configSet.projectId,
       configSetId: input.configSetId
     });
@@ -350,14 +351,14 @@ export async function evaluateReleaseReadiness(
   let configRevisionId: string | undefined;
   try {
     const revision = await getLatestConfigRevision(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: configSet.projectId,
       configSetId: input.configSetId
     });
     if (revision) {
       configRevisionId = revision.id;
       blockingTaskCount = await countBlockingIdentityMappingTasksForRevision(db, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         configRevisionId: revision.id
       });
     }
@@ -599,7 +600,7 @@ export async function assertReleaseGatePendingWorkUnchanged(
   let pendingIds: string[];
   try {
     pendingIds = await listPendingCanonicalValueChangeRequestIds(db, {
-      organizationId: auth.organization.id, projectId: confirmed.projectId, configSetId: confirmed.configSetId
+      organizationId: parameterOrganizationId(auth), projectId: confirmed.projectId, configSetId: confirmed.configSetId
     });
   } catch {
     throw new ApiError("CONFLICT", "Release readiness could not load pending change requests.", {

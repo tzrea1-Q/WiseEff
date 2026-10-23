@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../../parameters/operatingScope";
 import type { Database } from "../../../shared/database/client";
 import { createHash } from "node:crypto";
 import { ApiError } from "../../../shared/http/errors";
@@ -20,7 +21,7 @@ export async function stageCanonicalImportBatch(
   input: { batchId: string; selectedItemIds?: string[] },security: CanonicalSourceSecurityContext,
 ) {
   const initial = (await db.query<{ project_id: string; items: PersistedImportBatchItem[] }>(
-    `select project_id,items from parameter_import_batches where id=$1 and organization_id=$2`, [input.batchId,auth.organization.id])).rows[0];
+    `select project_id,items from parameter_import_batches where id=$1 and organization_id=$2`, [input.batchId,parameterOrganizationId(auth)])).rows[0];
   if (!initial) throw new ApiError("NOT_FOUND", "Parameter import batch was not found.");
   const projectId = initial.project_id;
   const operation = { projectId,operation: "canonical import staging",targetType: "parameter-import-batch",targetId: input.batchId };
@@ -43,14 +44,14 @@ export async function stageCanonicalImportBatch(
       from parameter_catalog.project_parameter_bindings binding
       join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
       where binding.organization_id=$1 and binding.project_id=$2 and binding.id=any($3::text[])
-`, [auth.organization.id,projectId,bindingIds]);
+`, [parameterOrganizationId(auth),projectId,bindingIds]);
     const setIds = roots.rows.map((row) => row.config_set_id);
     await tx.query(`select id from dts_config_set where id=any($1::text[]) order by id for update`, [setIds]);
     await tx.query(`select id from project_parameter_files where config_set_id=any($1::text[]) order by id for update`, [setIds]);
     await tx.query(`select binding.id from parameter_catalog.project_parameter_bindings binding
       join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
       where occurrence.config_set_id=any($1::text[]) order by binding.id for update of binding`, [setIds]);
-    const batch = await getImportBatchForUpdate(tx,{ organizationId: auth.organization.id,batchId: input.batchId });
+    const batch = await getImportBatchForUpdate(tx,{ organizationId: parameterOrganizationId(auth),batchId: input.batchId });
     if (!batch || batch.projectId !== projectId) throw new ApiError("CONFLICT", "Import batch changed during staging.");
     if (batch.status === "staged") {
       if (batch.summary.stagedByUserId !== auth.user.id || JSON.stringify(batch.summary.stagedItemIds) !== JSON.stringify(selectedIds)
@@ -62,7 +63,7 @@ export async function stageCanonicalImportBatch(
           || (item.baseRevisionId && proof.baseRevisionId !== item.baseRevisionId)) {
           throw new ApiError("CONFLICT", "Staged batch proof is incomplete.");
         }
-        const draft = await getCanonicalValueDraftForUpdate(tx,{ organizationId: auth.organization.id,projectId,userId: auth.user.id,draftId: proof.draftId });
+        const draft = await getCanonicalValueDraftForUpdate(tx,{ organizationId: parameterOrganizationId(auth),projectId,userId: auth.user.id,draftId: proof.draftId });
         if (!draft) {
           throw new ApiError("CONFLICT", "Staged canonical draft was consumed, removed or edited; it cannot be replayed as pending work.");
         }
@@ -76,7 +77,7 @@ export async function stageCanonicalImportBatch(
           join parameter_catalog.project_value_source_pins pin on pin.id=$4 and pin.file_id=candidate.file_id and pin.file_version_id=candidate.base_version_id
           where candidate.id=$1 and candidate.organization_id=$2 and candidate.project_id=$3
             and candidate.status='ready' and pin.binding_id=$5 and pin.project_value_id=$6 and candidate.base_digest=$7 and candidate.proposed_digest=$8 and candidate.diff_digest=$9 for share of candidate`,
-        [proof.candidateId,auth.organization.id,projectId,proof.sourcePinId,proof.bindingId,proof.baseCurrentValueId,proof.baseDigest,proof.proposedDigest,proof.diffDigest]);
+        [proof.candidateId,parameterOrganizationId(auth),projectId,proof.sourcePinId,proof.bindingId,proof.baseCurrentValueId,proof.baseDigest,proof.proposedDigest,proof.diffDigest]);
         if (candidate.rows.length !== 1) throw new ApiError("CONFLICT", "Staged source proof no longer agrees with its candidate.");
         const stored = candidate.rows[0]!;
         const same = (left: unknown,right: unknown) => serializeContract(left as ContractJsonValue) === serializeContract(right as ContractJsonValue);
@@ -84,7 +85,7 @@ export async function stageCanonicalImportBatch(
           || !attemptStorage.getBounded || !Number.isSafeInteger(stored.size_bytes) || stored.size_bytes < 0 || stored.size_bytes > MAX_PARAMETER_SOURCE_BYTES) {
           throw new ApiError("CONFLICT", "Staged artifact has invalid frozen source evidence.");
         }
-        const base = await loadCanonicalSourceSnapshot(tx,attemptStorage,{ organizationId: auth.organization.id,projectId,bindingId: proof.bindingId,projectValueId: proof.baseCurrentValueId });
+        const base = await loadCanonicalSourceSnapshot(tx,attemptStorage,{ organizationId: parameterOrganizationId(auth),projectId,bindingId: proof.bindingId,projectValueId: proof.baseCurrentValueId });
         const members = base.manifest.members.map((member) => ({ ...member,configSetId: base.manifest.configSetId,isCandidateFile: member.fileId === base.manifest.fileId }))
           .sort((left,right) => left.fileId < right.fileId ? -1 : left.fileId > right.fileId ? 1 : 0);
         let bytes: Buffer;
@@ -109,11 +110,11 @@ export async function stageCanonicalImportBatch(
     const pending = await tx.query(`select id from project_parameter_value_drafts where organization_id=$1 and project_id=$2 and binding_id=any($3::text[])
       union all select id from project_parameter_value_change_requests where organization_id=$1 and project_id=$2 and binding_id=any($3::text[]) and status='pending'
       union all select id from parameter_drafts where organization_id=$1 and project_id=$2 and project_parameter_binding_id=any($3::text[])`,
-    [auth.organization.id,projectId,bindingIds]);
+    [parameterOrganizationId(auth),projectId,bindingIds]);
     if (pending.rows.length) throw new ApiError("CONFLICT", "Import cannot replace existing pending drafts or reviews.");
     for (const item of batch.items.filter((row) => selectedIds.includes(row.id))) {
       const catalogBinding = await findCatalogBindingRow(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId,
         bindingId: item.projectParameterValueId!
       });
@@ -126,7 +127,7 @@ export async function stageCanonicalImportBatch(
         join parameter_catalog.project_value_source_pins pin on pin.project_value_id=binding.current_value_id and pin.binding_id=binding.id
         where binding.organization_id=$1 and binding.project_id=$2 and binding.id=$3 and binding.definition_id=$4
           and binding.current_value_id=$5 and pin.config_revision_id=$6`,
-      [auth.organization.id,projectId,item.projectParameterValueId,item.definitionId,item.baseCurrentValueId,item.baseRevisionId])).rows[0];
+      [parameterOrganizationId(auth),projectId,item.projectParameterValueId,item.definitionId,item.baseCurrentValueId,item.baseRevisionId])).rows[0];
       if (!pin || (item.configFormat && item.configFormat.toLowerCase() !== pin.format)) throw new ApiError("CONFLICT", "Import source is stale or its format is unsupported.");
       if (pin.format === "dts" && !pin.property_name) throw new ApiError("CONFLICT", "DTS import has no exact property locator.");
       const draft = await createCanonicalValueDraft(tx,auth,{
@@ -141,7 +142,7 @@ export async function stageCanonicalImportBatch(
     }
     const summary = { ...batch.summary,staged: selectedIds.length,stagedByUserId: auth.user.id,stagedItemIds: selectedIds };
     await tx.query(`update parameter_import_batches set status='staged',summary=$3::jsonb,items=$4::jsonb where id=$1 and organization_id=$2 and status='previewed'`,
-      [input.batchId,auth.organization.id,JSON.stringify(summary),JSON.stringify(batch.items)]);
+      [input.batchId,parameterOrganizationId(auth),JSON.stringify(summary),JSON.stringify(batch.items)]);
     await writeTrustedAuditEventInTx(asAuditTx(tx),{ invocation,app: "parameter-management",kind: "batch-import",action: "stage",severity: "High",
       projectId,targetType: "parameter-import-batch",targetId: input.batchId,metadata: { staged: selectedIds.length,selectedItemIds: selectedIds },traceId: security.requestId });
     return { ...batch,status: "staged" as const,summary };

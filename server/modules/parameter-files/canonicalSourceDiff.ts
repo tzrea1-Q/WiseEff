@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../parameters/operatingScope";
 import { createHash } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -18,12 +19,12 @@ export async function readCanonicalSourceDiff(
   input: { projectId: string; requestId: string },
 ) {
   if (!auth.user.isActive || !canViewParameters(auth)) throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
-  const request = await getCanonicalValueChangeRequest(db,{ organizationId: auth.organization.id,...input });
+  const request = await getCanonicalValueChangeRequest(db,{ organizationId: parameterOrganizationId(auth),...input });
   if (!request) throw new ApiError("NOT_FOUND", "Source change request was not found.");
   if (!request.source_pin_id || !request.candidate_id || !request.candidate_binding_manifest
     || !request.candidate_member_manifest) throw new ApiError("CONFLICT", "Submitted source proof is missing.");
   const base = await loadCanonicalSourceSnapshot(db,storage,{
-    organizationId: auth.organization.id,projectId: input.projectId,bindingId: request.binding_id,projectValueId: request.base_current_value_id,
+    organizationId: parameterOrganizationId(auth),projectId: input.projectId,bindingId: request.binding_id,projectValueId: request.base_current_value_id,
   });
   const manifest = base.manifest;
   const members = manifest.members.map((member) => ({ ...member,configSetId: manifest.configSetId,isCandidateFile: member.fileId === manifest.fileId }))
@@ -32,7 +33,7 @@ export async function readCanonicalSourceDiff(
     file_id: string; base_version_id: string; format: string; storage_key: string; checksum: string; size_bytes: number;
     base_digest: string; proposed_digest: string; diff_digest: string; frozen_member_manifest: unknown; frozen_binding_manifest: unknown;
   }>(`select *,size_bytes::float8 as size_bytes from project_parameter_file_candidates
-    where id=$1 and organization_id=$2 and project_id=$3`, [request.candidate_id,auth.organization.id,input.projectId])).rows[0];
+    where id=$1 and organization_id=$2 and project_id=$3`, [request.candidate_id,parameterOrganizationId(auth),input.projectId])).rows[0];
   if (!candidate || request.source_pin_id !== manifest.sourcePinId || request.config_revision_id !== manifest.configRevisionId
     || candidate.file_id !== manifest.fileId || candidate.base_version_id !== manifest.fileVersionId || candidate.format !== manifest.format
     || candidate.base_digest !== request.candidate_base_digest || candidate.proposed_digest !== request.candidate_proposed_digest
@@ -85,7 +86,7 @@ export async function readCanonicalBatchSourceDiff(
     candidate_member_manifest: unknown; candidate_binding_manifest: unknown;
   }>(`select * from public.project_parameter_value_change_requests
      where id=$1 and organization_id=$2 and project_id=$3 and request_kind='batch'`,
-    [input.requestId, auth.organization.id, input.projectId])).rows[0];
+    [input.requestId, parameterOrganizationId(auth), input.projectId])).rows[0];
   if (!request || !Array.isArray(request.candidate_binding_manifest)) {
     throw new ApiError("NOT_FOUND", "Batch source request was not found.");
   }
@@ -95,7 +96,7 @@ export async function readCanonicalBatchSourceDiff(
   const first = bindings[0];
   if (!first) throw new ApiError("CONFLICT", "Batch source cohort is empty.");
   const base = await loadCanonicalSourceSnapshot(db, storage, {
-    organizationId: auth.organization.id, projectId: input.projectId,
+    organizationId: parameterOrganizationId(auth), projectId: input.projectId,
     bindingId: first.bindingId, projectValueId: first.oldValueId
   });
   const manifest = base.manifest;
@@ -113,7 +114,7 @@ export async function readCanonicalBatchSourceDiff(
     diff_digest: string; frozen_member_manifest: unknown; frozen_binding_manifest: unknown;
   }>(`select *,size_bytes::float8 as size_bytes from public.project_parameter_file_candidates
      where id=$1 and organization_id=$2 and project_id=$3`,
-    [request.candidate_id, auth.organization.id, input.projectId])).rows[0];
+    [request.candidate_id, parameterOrganizationId(auth), input.projectId])).rows[0];
   if (!candidate || candidate.file_id !== request.batch_file_id
     || candidate.base_version_id !== request.batch_base_version_id
     || candidate.format !== manifest.format
@@ -149,7 +150,7 @@ export async function readCanonicalBatchSourceDiff(
   }>(`select ordinal,binding_id,source_pin_id,action,target_value,target_text,base_digest,proposed_digest
       from public.project_parameter_value_change_targets
       where request_id=$1 and organization_id=$2 and project_id=$3 order by ordinal`,
-    [request.id, auth.organization.id, input.projectId])).rows;
+    [request.id, parameterOrganizationId(auth), input.projectId])).rows;
   if (targetRows.length !== request.batch_target_count || targetRows.some((target, ordinal) =>
     target.ordinal !== ordinal || target.base_digest !== candidate.base_digest
     || target.proposed_digest !== candidate.proposed_digest
@@ -164,7 +165,7 @@ export async function readCanonicalBatchSourceDiff(
     for (const target of targetRows) {
       const frozen = bindings.find((binding) => binding.bindingId === target.binding_id);
       const source = await loadCanonicalSourceSnapshot(db, storage, {
-        organizationId: auth.organization.id, projectId: input.projectId,
+        organizationId: parameterOrganizationId(auth), projectId: input.projectId,
         bindingId: target.binding_id, projectValueId: frozen!.oldValueId
       });
       const locator = source.manifest.locator;
@@ -200,7 +201,7 @@ export async function readCanonicalBatchSourceDiff(
   } else if (candidate.format === "json") {
     for (const target of targetRows) {
       const pinned = await loadCanonicalSourceSnapshot(db, storage, {
-        organizationId: auth.organization.id, projectId: input.projectId,
+        organizationId: parameterOrganizationId(auth), projectId: input.projectId,
         bindingId: target.binding_id,
         projectValueId: bindings.find((binding) => binding.bindingId === target.binding_id)!.oldValueId
       });
