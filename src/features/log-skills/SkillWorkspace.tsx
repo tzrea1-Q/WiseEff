@@ -34,6 +34,7 @@ import { SourceSnapshots } from "./SourceSnapshots";
 import { matchSkillFile } from "@/domain/logs/fileApplicability";
 import { SkillDryRunDrawer } from "./SkillDryRunDrawer";
 import { KnowledgeSection } from "./KnowledgeSection";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { IntegrationSection } from "./IntegrationSection";
 import { ParseTestsSection } from "./ParseTestsSection";
 import { AnalysisCasesSection, AnalysisCasePublishSummary } from "./AnalysisCasesSection";
@@ -55,6 +56,7 @@ export type SectionProps = { skill: AnalysisSkill; spec: SkillSpec; setSpec: (sp
   repository?: Partial<LogAnalysisRepository>; apiMode: boolean; canEdit: boolean; dirty: boolean;
   knowledgeRepository?: KnowledgeRepository; knowledgeCapability?: KnowledgeCapability;
   canOpenKnowledge?: boolean;
+  organizationId?: string;
   fieldErrors?: Record<string, string>;
   onSkillUpdated: (skill: AnalysisSkill) => void; onBusyChange: (busy: boolean) => void;
   onWebhookDirtyChange?: (dirty: boolean) => void;
@@ -411,7 +413,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
       inspectorLabel="样例日志" inspector={<SkillSamplePane key={skillId} skillId={skillId} repository={repository} apiMode={apiMode} canEdit={canEdit} onSampleChange={updateSample} highlightedLine={highlight.line} highlightRequest={highlight.request}
         selectedLine={selectedLine} onLineSelect={setSelectedLine} extractors={highlightSpec?.extractors}
         highlightPreview={currentHighlights?.preview} highlightError={currentHighlights?.error} />}
-      toolbar={<header className="skill-workspace-header"><Button variant="link" asChild><a href="/log-admin?tab=skills" onClick={(event) => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); back(); } }}>← 分析技能</a></Button>
+      toolbar={<header className="skill-workspace-header"><Button variant="link" asChild><a href={withOrganizationScope("/log-admin?tab=skills", new URLSearchParams(search).get("organizationId") ?? undefined)} onClick={(event) => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); back(); } }}>← 分析技能</a></Button>
         <div className="skill-workspace-identity"><h1 title={skill.name}>{skill.name}</h1><span className="badge" role="status">{workspaceStatus}</span></div>
         {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Disabled buttons cannot receive focus; the wrapper exposes their reason to keyboard users. */}
         {apiMode && canEdit ? <TooltipProvider><Tooltip><TooltipTrigger asChild><span className="skill-dry-run-action" tabIndex={dryRunReason ? 0 : undefined}>
@@ -457,7 +459,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
           if (pending || yamlInvalid || testsInvalid || !formatValid || conflict) throw new Error("请先修正草稿错误再运行用例。");
           if ((dirty || !skill.draft) && !await run(async () => { await save(); })) throw new Error("草稿保存失败，请重试后再运行用例。");
         }}
-        knowledgeRepository={knowledgeRepository} knowledgeCapability={knowledgeCapability} canOpenKnowledge={canOpenKnowledge}
+        knowledgeRepository={knowledgeRepository} knowledgeCapability={knowledgeCapability} canOpenKnowledge={canOpenKnowledge} organizationId={new URLSearchParams(search).get("organizationId") ?? undefined}
         onSkillUpdated={(updated) => { setSkill(updated); if (updated.currentRevision !== skill.currentRevision || updated.draft !== skill.draft) setSpec(structuredClone((updated.draft ?? updated.currentRevision).spec));
           setRevisions((history) => [...(updated.draft ? [updated.draft] : []), ...history.filter((revision) => revision.status !== "draft")]); }}
         onRestore={(revision) => {
