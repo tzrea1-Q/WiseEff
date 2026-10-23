@@ -16,7 +16,7 @@ export const ORGANIZATION_ADMIN_UI = {
   bridgesScope: "设备代理",
   integrationsScope: "集成凭据",
   projectsScope: "项目参与",
-  projectsSubtitle: "查看项目参与名单与编辑角色",
+  projectsSubtitle: "管理项目参与者与编辑角色",
   integrationsSubtitle: "管理组织机器凭据与技能绑定",
   bridgesSubtitle: "盘点组织成员的 Bridge 并撤销失效配对",
   profileSubtitle: "维护本组织档案与显示名称",

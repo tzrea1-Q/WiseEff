@@ -128,6 +128,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   OrganizationDeviceBridgeListResponse: organizationBridgeListResponseSchema,
   OrganizationDeviceBridgeResponse: organizationBridgeResponseSchema,
   RevokeOrganizationDeviceBridgeRequest: revokeOrganizationBridgeBodySchema,
+  MeResponse: operatingContextResponseSchema.shape.actor,
   UpdateCurrentUserProfileRequest: z.object({
     name: z.string().trim().min(1).optional(),
     title: z.string().trim().min(1).optional()
@@ -270,6 +271,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 };
 
 export const dtoSchemaCoveredRouteIds = [
+  "auth.me", "auth.updateProfile",
   "auth.enterOperatingContext",
   "organization.projectCandidates",
   "users.listRegistrationRoleRequests", "users.approveRegistrationRoleRequest", "users.rejectRegistrationRoleRequest", "users.enableBasicRegistrationRoleRequest",

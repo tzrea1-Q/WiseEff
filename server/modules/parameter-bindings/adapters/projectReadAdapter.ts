@@ -47,11 +47,8 @@ export async function readProjectProtectedParameters(
   if (!auth.user.isActive || !auth.permissions.includes("parameter:view")) {
     throw new ApiError("FORBIDDEN", "Missing permission: parameter:view.");
   }
-  // A null-project role grants organization-wide access; tenant isolation is checked below.
-  const hasProjectScope = auth.roles.some(
-    (role) => role.projectId === null || role.projectId === projectId
-  );
-  if (!projectId || !hasProjectScope) {
+  // Project visibility is organization-wide; participation gates writes only.
+  if (!projectId) {
     throw new ApiError("FORBIDDEN", "Project parameter scope is required.");
   }
   const project = await pool.query("select 1 from public.projects where id = $1 and organization_id = $2", [

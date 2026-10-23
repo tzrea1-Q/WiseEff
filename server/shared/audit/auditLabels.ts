@@ -30,6 +30,7 @@ export const AUDIT_KIND_LABELS: Record<string, string> = {
   "organization-create": "创建组织",
   "organization-operating-scope": "组织操作范围",
   "organization-team": "团队维护",
+  "project-membership": "项目参与配置",
   "parameter-definition-reconciliation": "参数定义对齐",
   "parameter-file-rollback": "参数文件回滚",
   "parameter-source-permission-denied": "参数源权限不足",

@@ -300,7 +300,7 @@ describe("UserPermissionsPage", () => {
     const dialog = await openMemberDetails("Liu Min");
     expect(within(dialog).getByRole("checkbox", { name: "软件开发" })).toBeChecked();
     expect(
-      within(dialog).getByText("软件侧可查看并提交参数修改，在变更审阅页完成合入推进，并使用参数调试和日志分析。")
+      within(dialog).getByText("可查看组织项目，使用参数调试和日志分析；参数修改需配置项目参与和编辑角色，合入职责单独配置。")
     ).toBeInTheDocument();
     expect(within(dialog).queryByText("parameter:view")).not.toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
@@ -317,7 +317,7 @@ describe("UserPermissionsPage", () => {
     expect(roleSelect).toBeChecked();
     act(() => roleSelect.focus());
     expect(roleSelect).toHaveFocus();
-    expect(within(dialog).getByText("包含硬件开发权限，并可执行硬件侧参数检视。")).toBeInTheDocument();
+    expect(within(dialog).getByText("包含硬件开发工具权限；参数修改需项目编辑角色，硬件审核职责单独配置。")).toBeInTheDocument();
     await userEvent.keyboard(" ");
     expect(roleSelect).not.toBeChecked();
     await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));

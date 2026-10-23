@@ -1665,6 +1665,8 @@ export async function withdrawSubmissionRound(
       throw new ApiError("NOT_FOUND", "Parameter submission round was not found.", { roundId });
     }
 
+    requireCanEdit(auth, round.projectId);
+
     await withdrawOpenChangeRequestsForRound(tx, {
       organizationId: parameterOrganizationId(auth),
       roundId,

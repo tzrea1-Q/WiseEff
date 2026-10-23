@@ -200,12 +200,14 @@ describe("structured read routes", () => {
     const body = { ...structureBody, navigation: { status: "ready" as const, catalogReleaseId: "crel_1", managedNodePaths: [] } };
     vi.mocked(structuralReadService.getParameterFileVersionStructure).mockResolvedValue(body);
     const response = await requestJson<typeof body>(makeServer({ db, auth: makeViewOnlyAuth() }),
-      "/api/v1/projects/project-1/parameter-files/file-1/versions/ver-1/structure?navigationScope=organization&organizationId=other-org");
+      "/api/v1/projects/project-1/parameter-files/file-1/versions/ver-1/structure?navigationScope=organization");
     expect(response.status).toBe(200);
     expect(response.body).toEqual(body);
     expect(structuralReadService.getParameterFileVersionStructure).toHaveBeenCalledWith(db, "ver-1", {
       organizationId: "org-1", principalId: "user-1",
     });
+    const foreign = await requestJson(makeServer({ db, auth: makeViewOnlyAuth() }), "/api/v1/projects/project-1/parameter-files/file-1/versions/ver-1/structure?organizationId=other-org");
+    expect(foreign.status).toBe(403);
   });
 
   it("rejects invalid scope and mismatched file versions before structure reads", async () => {

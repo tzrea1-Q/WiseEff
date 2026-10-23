@@ -65,5 +65,7 @@ export type AuthContext = {
     name: string;
   };
   roles: RoleBinding[];
+  /** Project editing participation; never review duties or organization roles. */
+  projectMemberships?: Array<{ projectId: string; roles: Array<"hardware-user" | "software-user" | "hardware-committer" | "software-committer"> }>;
   permissions: BackendPermission[];
 };

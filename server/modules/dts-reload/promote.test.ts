@@ -113,7 +113,7 @@ describe("canonical reload promotion", () => {
     for (const principal of [
       { ...fixture.editorAuth, permissions: fixture.editorAuth.permissions.filter((permission) => permission !== "parameter:edit") },
       { ...fixture.editorAuth, permissions: fixture.editorAuth.permissions.filter((permission) => permission !== "debugging:dts-reload") },
-      { ...fixture.editorAuth, roles: [{ projectId: fixture.otherProjectId, roleId: "hardware-committer" as const }] },
+      { ...fixture.editorAuth, projectMemberships: [{ projectId: fixture.otherProjectId, roles: ["hardware-committer" as const] }] },
       fixture.otherAuth
     ]) await expect(promote(runId, { auth: principal })).rejects.toMatchObject({ code: expect.stringMatching(/FORBIDDEN|NOT_FOUND/) });
     await expect(promote(runId, { context: { ...context, invocation: createAgentInvocation(fixture.editorAuth, {

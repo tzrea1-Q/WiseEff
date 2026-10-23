@@ -174,6 +174,11 @@ function validateAuthContext(value: unknown): asserts value is AuthContext {
   ) {
     invalid("principal permissions are malformed");
   }
+  if (value.projectMemberships !== undefined && (!Array.isArray(value.projectMemberships) || !value.projectMemberships.every((member) =>
+    isRecord(member) && typeof member.projectId === "string" && member.projectId.length > 0 && Array.isArray(member.roles) && member.roles.length > 0 &&
+    member.roles.every((role) => typeof role === "string" && ["hardware-user", "software-user", "hardware-committer", "software-committer"].includes(role))))) {
+    invalid("principal project participation is malformed");
+  }
 }
 
 function snapshotAuthContext(principal: AuthContext): AuthContext {
@@ -181,6 +186,8 @@ function snapshotAuthContext(principal: AuthContext): AuthContext {
     user: Object.freeze({ ...principal.user }),
     organization: Object.freeze({ ...principal.organization }),
     roles: Object.freeze(principal.roles.map((role) => Object.freeze({ ...role }))),
+    ...(principal.projectMemberships ? { projectMemberships: Object.freeze(principal.projectMemberships.map((member) =>
+      Object.freeze({ projectId: member.projectId, roles: Object.freeze([...member.roles]) }))) } : {}),
     permissions: Object.freeze([...principal.permissions])
   }) as AuthContext;
 }

@@ -38,16 +38,19 @@ const admin = makeTestAuthContext({
   roles: [{ roleId: "admin", projectId: null }]
 });
 const reviewer = makeTestAuthContext({
+  projectMemberships: [{ projectId: PROJECT, roles: ["software-committer"] }],
   userId: REVIEWER, organizationId: ORG,
   permissions: ["parameter:view", "parameter:edit", "parameter:review"],
   roles: [{ roleId: "software-committer", projectId: PROJECT }]
 });
 const otherReviewer = makeTestAuthContext({
+  projectMemberships: [{ projectId: PROJECT, roles: ["software-committer"] }],
   userId: OTHER_REVIEWER, organizationId: ORG,
   permissions: ["parameter:view", "parameter:edit", "parameter:review"],
   roles: [{ roleId: "software-committer", projectId: PROJECT }]
 });
 const editor = makeTestAuthContext({
+  projectMemberships: [{ projectId: PROJECT, roles: ["software-user"] }],
   userId: EDITOR, organizationId: ORG,
   permissions: ["parameter:view", "parameter:edit"],
   roles: [{ roleId: "software-user", projectId: PROJECT }]
@@ -72,6 +75,8 @@ describe("#906 C frozen multi-target request", () => {
     await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'C batch','C906','initialized')", [PROJECT, ORG]);
     await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('c906-admin',$1,$2,null,'admin'),('c906-reviewer',$3,$2,$4,'software-committer'),('c906-editor',$5,$2,$4,'software-user')", [ADMIN, ORG, REVIEWER, PROJECT, EDITOR]);
     await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('c906-other-reviewer',$1,$2,$3,'software-committer')", [OTHER_REVIEWER, ORG, PROJECT]);
+    await db.query(`insert into project_members(organization_id,project_id,user_id,roles) values
+      ($1,$2,$3,array['software-user']),($1,$2,$4,array['software-committer']),($1,$2,$5,array['software-committer'])`, [ORG, PROJECT, EDITOR, REVIEWER, OTHER_REVIEWER]);
     await installConfigurationSourceFixture(db, admin, { subjectId: "csub_906_c_batch", schemaId: "wiseeff.906.c.batch" });
     const set = await createConfigSet(db, admin, { projectId: PROJECT, name: "C batch" });
     const uploaded = await uploadProjectParameterFile(db, storage, admin, {
@@ -146,7 +151,7 @@ describe("#906 C frozen multi-target request", () => {
       requestId: "c906-submit", refusalSink: createTrustedRefusalAuditSink(db)
     });
     await expect(submit()).rejects.toMatchObject({ code: "CONFLICT" });
-    expect((await db.query(`select count(*)::int as count from public.project_parameter_value_change_requests
+    expect((await db.query<{ count: number }>(`select count(*)::int as count from public.project_parameter_value_change_requests
       where organization_id=$1 and project_id=$2`, [ORG, PROJECT])).rows[0]!.count).toBe(0);
     const proof = await db.transaction((tx) => freezeCanonicalCandidateBatchSnapshotInTransaction(tx, storage, admin, {
       projectId: PROJECT, candidateId: candidate.id, expectedProofToken: preview.proofToken!
@@ -162,17 +167,17 @@ describe("#906 C frozen multi-target request", () => {
       ]
     });
     expect(new Set(frozen.targets.map((target) => target.bindingId))).toEqual(new Set(bindings.map((binding) => binding.id)));
-    expect((await db.query(`select binding_id from public.project_parameter_value_change_requests where id=$1`, [frozen.id])).rows[0]!.binding_id).toBeNull();
-    expect((await db.query(`select count(*)::int as count from public.project_parameter_value_change_targets where request_id=$1`, [frozen.id])).rows[0]!.count).toBe(2);
+    expect((await db.query<{ binding_id: string | null }>(`select binding_id from public.project_parameter_value_change_requests where id=$1`, [frozen.id])).rows[0]!.binding_id).toBeNull();
+    expect((await db.query<{ count: number }>(`select count(*)::int as count from public.project_parameter_value_change_targets where request_id=$1`, [frozen.id])).rows[0]!.count).toBe(2);
     const inboundTargetFks = await db.query<{ conname: string; confdeltype: string; condeferrable: boolean; condeferred: boolean }>(
       `select conname, confdeltype, condeferrable, condeferred from pg_constraint
         where conname in ('binding_history_event_applied_target_fk', 'project_value_source_pin_delete_target_fk')`
     );
     expect(inboundTargetFks.rows).toHaveLength(2);
     expect(inboundTargetFks.rows.every((fk) => fk.confdeltype === "a" && fk.condeferrable && fk.condeferred)).toBe(true);
-    expect((await db.query(`select current_version_id from project_parameter_files where id=$1`, [fileId])).rows[0]!.current_version_id).toBe(versionId);
+    expect((await db.query<{ current_version_id: string | null }>(`select current_version_id from project_parameter_files where id=$1`, [fileId])).rows[0]!.current_version_id).toBe(versionId);
     for (const binding of bindings) {
-      expect((await db.query(`select current_value_id from parameter_catalog.project_parameter_bindings where id=$1`, [binding.id])).rows[0]!.current_value_id).toBe(binding.currentValueId);
+      expect((await db.query<{ current_value_id: string | null }>(`select current_value_id from parameter_catalog.project_parameter_bindings where id=$1`, [binding.id])).rows[0]!.current_value_id).toBe(binding.currentValueId);
     }
     const allDrafts = await listCanonicalValueDraftsForReviewer(db, reviewer, {
       projectId: PROJECT, bindingId: bindings[0]!.id
@@ -190,7 +195,7 @@ describe("#906 C frozen multi-target request", () => {
       invocation: createUserInvocation(reviewer), traceId: "c906-batch-review",
       refusalSink: createTrustedRefusalAuditSink(db)
     })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "canonical-batch-source-commit-unavailable" } });
-    expect((await db.query(`select status from public.project_parameter_value_change_requests where id=$1`, [frozen.id])).rows[0]!.status).toBe("pending");
+    expect((await db.query<{ status: string }>(`select status from public.project_parameter_value_change_requests where id=$1`, [frozen.id])).rows[0]!.status).toBe("pending");
 
     await expect(db.query(`update public.project_parameter_value_change_targets
        set source_pin_id=$2 where request_id=$1 and ordinal=0`, [frozen.id, frozen.targets[1]!.sourcePinId]))
@@ -488,9 +493,9 @@ describe("#906 C frozen multi-target request", () => {
     expect(queue.status).toBe(200);
     catalogBatchValueChangeRequestListResponseSchema.parse(queue.body);
     expect(queue.body.items.map((item) => item.id)).toContain(created.body.item.id);
-    expect((await requestJson(route(admin), `${collection}?mine=true&status=pending`)).body.items)
+    expect((await requestJson<{ items: Array<{ id: string }> }>(route(admin), `${collection}?mine=true&status=pending`)).body.items)
       .toEqual(expect.arrayContaining([expect.objectContaining({ id: created.body.item.id })]));
-    expect((await requestJson(route(otherReviewer), `${collection}?status=pending`)).body.items)
+    expect((await requestJson<{ items: Array<{ id: string }> }>(route(otherReviewer), `${collection}?status=pending`)).body.items)
       .not.toEqual(expect.arrayContaining([expect.objectContaining({ id: created.body.item.id })]));
     expect((await requestJson(route(otherReviewer), `${requestPath}/batch`)).status).toBe(404);
     expect((await requestJson(route(otherReviewer, false), `${requestPath}/source-diff`)).status).toBe(404);
@@ -520,9 +525,9 @@ describe("#906 C frozen multi-target request", () => {
         and action='value-change-reviewed' and metadata->>'decision'='reject'`,
       [ORG, PROJECT, created.body.item.id])).rows[0]!.count).toBe(1);
     expect((await review(reviewer, "reject")).body).toEqual(rejected.body);
-    expect((await requestJson(route(), `${collection}?status=pending`)).body.items)
+    expect((await requestJson<{ items: Array<{ id: string }> }>(route(), `${collection}?status=pending`)).body.items)
       .not.toEqual(expect.arrayContaining([expect.objectContaining({ id: created.body.item.id })]));
-    expect((await requestJson(route(), `${collection}?status=rejected`)).body.items)
+    expect((await requestJson<{ items: Array<{ id: string }> }>(route(), `${collection}?status=rejected`)).body.items)
       .toEqual(expect.arrayContaining([expect.objectContaining({ id: created.body.item.id })]));
     expect((await review(reviewer, "approve")).status).toBe(409);
     expect((await db.query<{ current_version_id: string }>(
@@ -635,7 +640,7 @@ describe("#906 C frozen multi-target request", () => {
       const withdrawn = await requestJson<{ item: { id: string; status: string } }>(route(), path, { method: "POST" });
       expect(withdrawn.status).toBe(200);
       expect(withdrawn.body.item.status).toBe("withdrawn");
-      expect((await requestJson(route(), path, { method: "POST" })).body.item).toEqual(withdrawn.body.item);
+      expect((await requestJson<{ item: { id: string; status: string } }>(route(), path, { method: "POST" })).body.item).toEqual(withdrawn.body.item);
       expect((await db.query<{ count: number }>(`select count(*)::int as count from audit_events
         where organization_id=$1 and project_id=$2 and target_id=$3 and action='value-change-withdrawn'`,
       [ORG, PROJECT, first.body.item.id])).rows[0]!.count).toBe(1);

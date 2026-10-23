@@ -49,7 +49,7 @@ import type {
   UpdateUserProfileInput
 } from "./types";
 import { organizationNameMaxLength } from "./schemas";
-import { listProjectMembers } from "../projects/members";
+import { listProjectMembers, type ProjectMemberRoleId } from "../projects/members";
 import { setOidcIdentity } from "../auth/oidcIdentity";
 import { assertAdministratorContinuity, hasOrganizationRole, lockAdministratorMutation, type AdministratorMutationContext } from "./administratorContinuity";
 
@@ -290,6 +290,28 @@ export async function getGovernedProjectMembers(db: Queryable, caller: Governanc
     throw new ApiError("NOT_FOUND", "Project was not found.", { projectId });
   }
   return { projectId, members: await listProjectMembers(db, organizationId, projectId) };
+}
+
+export async function updateGovernedProjectMember(db: Database, caller: GovernanceCaller, projectId: string, userId: string,
+  input: { roles: ProjectMemberRoleId[]; expectedRoles: ProjectMemberRoleId[] }, requestId: string) {
+  const { auth, organizationId, invocation } = governanceScope(caller);
+  requireOrgAdmin(auth);
+  const roles = [...new Set(input.roles)].sort(), expectedRoles = [...new Set(input.expectedRoles)].sort();
+  return db.transaction(async (tx) => {
+    const project = await tx.query("select id from projects where id=$1 and organization_id=$2 for update", [projectId, organizationId]);
+    if (!project.rowCount) throw new ApiError("NOT_FOUND", "Project was not found.");
+    const person = await tx.query("select id from users where id=$1 and organization_id=$2 for key share", [userId, organizationId]);
+    if (!person.rowCount) throw new ApiError("NOT_FOUND", "Member was not found in this organization.");
+    const previous = (await tx.query<{ roles: ProjectMemberRoleId[] }>(
+      "select roles from project_members where organization_id=$1 and project_id=$2 and user_id=$3", [organizationId, projectId, userId])).rows[0]?.roles ?? [];
+    if (JSON.stringify([...previous].sort()) !== JSON.stringify(expectedRoles)) throw new ApiError("CONFLICT", "项目参与角色已更新，请刷新后重试。");
+    if (roles.length) await tx.query(`insert into project_members(organization_id,project_id,user_id,roles) values($1,$2,$3,$4)
+      on conflict(organization_id,project_id,user_id) do update set roles=excluded.roles`, [organizationId, projectId, userId, roles]);
+    else await tx.query("delete from project_members where organization_id=$1 and project_id=$2 and user_id=$3", [organizationId, projectId, userId]);
+    await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId }, { app: "user-governance", kind: "project-membership", action: roles.length ? "update" : "remove",
+      severity: "High", projectId, targetType: "user", targetId: userId, metadata: { previousRoles: previous, roles } });
+    return { projectId, members: await listProjectMembers(tx, organizationId, projectId) };
+  });
 }
 
 export async function createUser(db: Database, caller: GovernanceCaller, input: CreateUserInput, context: AuditCorrelationContext = {}, configuredOidcIssuer?: string) {

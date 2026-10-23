@@ -114,6 +114,7 @@ export type PageProps = {
   organizationId?: string;
   sessionPermissions?: readonly string[] | null;
   sessionRoles?: readonly AuthContextDto["roles"][number][] | null;
+  projectMemberships?: AuthContextDto["projectMemberships"];
 };
 
 /**
@@ -173,6 +174,7 @@ export function PageRouter({
   organizationId,
   sessionPermissions,
   sessionRoles,
+  projectMemberships,
   onFeedback,
   onNewProject,
   TopBarProjectId,
@@ -195,7 +197,8 @@ export function PageRouter({
   const activeProjectInitializationStatus =
     state.projectInitializationStatuses[effectiveParametersProjectId] ?? "initialized";
   const canEditParameters =
-    canPerform(currentRoleId, "parameter.edit") &&
+    (runtimeMode === "api" ? Boolean(sessionRoles?.some((role) => role.projectId === null && (role.roleId === "admin" || role.roleId === "platform-admin")) ||
+      projectMemberships?.some((member) => member.projectId === effectiveParametersProjectId && member.roles.length > 0)) : canPerform(currentRoleId, "parameter.edit")) &&
     (activeProjectInitializationStatus === "initialized" || activeProjectInitializationStatus === "maintenance");
 
   // Definition detail 相关知识: published entries referencing the open spec.
@@ -293,7 +296,7 @@ export function PageRouter({
     try { workspaceSkillId = decodeURIComponent(workspaceSkillId); } catch { /* The API returns not-found for a malformed id. */ }
   }
   const canManagePublication = currentRoleId === "platform-admin" && (!sessionRoles || sessionRoles.some((role) => role.roleId === "platform-admin" && role.projectId === null));
-  if ((!canAccessPage(currentRoleId, page.key) && !(skillWorkspaceMatch && sessionPermissions?.includes("logs:view"))) ||
+  if ((!canAccessPage(currentRoleId, page.key) && !(runtimeMode === "api" && page.key === "parameter-submissions" && projectMemberships?.length) && !(skillWorkspaceMatch && sessionPermissions?.includes("logs:view"))) ||
     ((page.key === "workflow-publication" || page.key === "platform-organizations") && !canManagePublication)) {
     const requiredRole = getRequiredRoleForPage(page.key);
     return (

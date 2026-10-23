@@ -144,6 +144,7 @@ export const routeManifest = [
     stability: "commercial-readiness"
   },
   { id: "users.getProjectMembers", method: "GET", path: "/api/v1/projects/:projectId/members", module: "users", stability: "commercial-readiness" },
+  { id: "users.updateProjectMember", method: "PUT", path: "/api/v1/projects/:projectId/members/:userId", module: "users", stability: "commercial-readiness" },
   {
     id: "users.replaceProjectWorkflowRoleBindings",
     method: "PUT",

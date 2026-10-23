@@ -76,29 +76,12 @@ function requireCanView(auth: AuthContext) {
   }
 }
 
-export function requireCanViewProject(auth: AuthContext, projectId: string) {
+export function requireCanViewProject(auth: AuthContext, _projectId: string) {
   requireCanView(auth);
-  if (!auth.roles.some((role) =>
-    role.roleId === "admin" ||
-    role.roleId === "platform-admin" ||
-    role.projectId === null ||
-    role.projectId === projectId
-  )) {
-    throw new ApiError("FORBIDDEN", "Project parameter scope is required.");
-  }
 }
 
-function visibleProjectIds(auth: AuthContext): readonly string[] | null {
-  if (auth.roles.some((role) =>
-    role.roleId === "admin" ||
-    role.roleId === "platform-admin" ||
-    role.projectId === null
-  )) return null;
-  return [...new Set(auth.roles.map((role) => role.projectId).filter((id): id is string => Boolean(id)))];
-}
-
-function requireCanEdit(auth: AuthContext) {
-  if (!canEditParameters(auth)) {
+function requireCanEdit(auth: AuthContext, projectId: string) {
+  if (!canEditParameters(auth, projectId)) {
     throw new ApiError("FORBIDDEN", "Parameter edit permission is required.");
   }
 }
@@ -514,7 +497,7 @@ export async function getBindingCompare(
     organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     bindingId: input.bindingId,
-    visibleProjectIds: visibleProjectIds(auth),
+    visibleProjectIds: null,
   });
   if (rows === null) {
     return rejectLegacyTopologyBinding(db, { bindingId: input.bindingId });
@@ -1325,7 +1308,7 @@ export async function createNodeEnablementDraft(
   deps: CreateBindingDraftDeps = {},
   context: TrustedSensitiveNodeWriteContext
 ): Promise<CreateNodeEnablementDraftServiceResult> {
-  requireCanEdit(auth);
+  requireCanEdit(auth, input.projectId);
 
   const project = await getProjectById(db, {
     organizationId: parameterOrganizationId(auth),
