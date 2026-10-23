@@ -1,4 +1,5 @@
 import { knowledgeEntryHref, parseKnowledgeEntryQuery } from "@/domain/knowledge/citations";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { useMemo, type Dispatch, type ReactNode } from "react";
 
 import type {
@@ -471,6 +472,7 @@ export function PageRouter({
       return knowledgeRepository && knowledgeCapability ? (
         <KnowledgePage
           repository={knowledgeRepository}
+          organizationId={new URLSearchParams(search).get("organizationId") ?? undefined}
           capability={knowledgeCapability}
           askXiaozeEnabled={runtimeMode === "api"}
           initialEntryId={citation.entryId}
@@ -482,13 +484,14 @@ export function PageRouter({
             ? (definitionId) => onNavigate(buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, definitionId })
               .replace(CATALOG_PAGE_PATH, canAccessPage(currentRoleId, "parameter-admin") ? CATALOG_PAGE_PATH : CATALOG_READ_PAGE_PATH))
             : undefined}
-          onNavigate={onNavigate}
+          onNavigate={(path) => onNavigate(withOrganizationScope(path, new URLSearchParams(search).get("organizationId") ?? undefined))}
         />
       ) : null;
     }
     case "knowledge-admin":
       return knowledgeRepository && knowledgeCapability ? (
-        <KnowledgeAdminPage repository={knowledgeRepository} capability={knowledgeCapability} onNavigate={onNavigate} />
+        <KnowledgeAdminPage repository={knowledgeRepository} organizationId={new URLSearchParams(search).get("organizationId") ?? undefined} capability={knowledgeCapability}
+          onNavigate={(path) => onNavigate(withOrganizationScope(path, new URLSearchParams(search).get("organizationId") ?? undefined))} />
       ) : null;
     case "debugging":
       return (

@@ -17,7 +17,7 @@ import {
   submitCanonicalValueChange
 } from "../../parameter-bindings/drafts";
 import { parseJsonSource } from "../../parameter-files/jsonSource";
-import { knowledgeEntryHref } from "./knowledgeTools";
+import { knowledgeEntryHref, knowledgeToolAuth } from "./knowledgeTools";
 import {
   APPROVED_PARAMETER_PAYLOAD_KEY,
   requireApprovedParameterInvocation,
@@ -29,6 +29,8 @@ import type {
   AgentToolDefinition
 } from "../toolRegistry";
 import { requireAgentToolMetadata } from "../toolMetadata";
+import { withParameterAccess } from "../../parameters/operatingScope";
+import { agentOrganizationId } from "../scope";
 
 type ToolOptions = {
   db: Database;
@@ -128,7 +130,7 @@ async function prepareParameterApproval(
     );
   }
   const pins = await loadCanonicalBindingPins(options.db, {
-    organizationId: context.auth.organization.id,
+    organizationId: agentOrganizationId(context.auth),
     projectId,
     bindingId
   });
@@ -184,6 +186,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
       prepareApproval: (context, payload) => prepareParameterApproval(options, context, payload),
       run: async (context, payload) => {
         const invocation = requireDurableAgentInvocation(context);
+        const parameterAuth = context.auth.agentInvocation ? withParameterAccess(context.auth, invocation) : context.auth;
         const refusalSink = requireParameterSubmissionRefusalSink(options);
         const projectId = readProjectId(context.projectId, payload);
         const parameterId = typeof payload.parameterId === "string" ? payload.parameterId : undefined;
@@ -209,7 +212,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
         const targetText = targetValue;
         validateTarget(target);
         return db.transaction(async (tx) => {
-          const approved = await requireApprovedParameterInvocation(tx, context.auth, {
+          const approved = await requireApprovedParameterInvocation(tx, parameterAuth, {
             invocation,
             projectId,
             bindingId: parameterId,
@@ -224,7 +227,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
           });
           const draft = await createCanonicalValueDraft(
             tx,
-            context.auth,
+            parameterAuth,
             {
               projectId,
               bindingId: parameterId,
@@ -243,7 +246,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
               refusalSink
             }
           );
-          const submission = await submitCanonicalValueChange(tx, context.auth, {
+          const submission = await submitCanonicalValueChange(tx, parameterAuth, {
             projectId,
             draftId: draft.id,
             invocation,
@@ -291,7 +294,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
         // publisher-accountability rule can attribute it.
         const entry = await createAgentKnowledgeDraft(
           options.db,
-          context.auth,
+          knowledgeToolAuth(context),
           {
             title,
             tags: readDraftTags(payload),
@@ -320,7 +323,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
               type: "knowledge" as const,
               id: entry.id,
               label: entry.title,
-              href: knowledgeEntryHref(entry.id),
+              href: knowledgeEntryHref(entry.id, null, null, context.auth.agentInvocation?.operatingOrganization?.id),
               snippet: contentMarkdown.slice(0, 200)
             }
           ]

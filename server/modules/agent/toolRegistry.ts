@@ -6,7 +6,7 @@ import {
 } from "../audit/trustedRefusalSink";
 import type { KnowledgeEmbeddingClient } from "../knowledge/indexing/embeddingClient";
 import type { ObjectStore } from "../logs/objectStore";
-import type { AuthContext } from "../auth/types";
+import type { AgentAccessContext as AuthContext } from "./scope";
 import type { TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { AgentToolName, AgentToolResult } from "./types";
 import type { AgentToolMetadata } from "./toolMetadata";

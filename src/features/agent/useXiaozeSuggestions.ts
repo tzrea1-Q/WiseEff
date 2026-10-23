@@ -4,11 +4,13 @@ import { requestXiaozeSuggestions } from "@/infrastructure/http/xiaozeSuggestion
 import { supportsXiaozeProactiveInsightPage } from "./xiaozeProactiveInsights";
 import { useXiaozePageContextValue } from "./xiaozePageContext";
 import { dispatchXiaozeOpenHandoff } from "./xiaozeOpenHandoff";
+import { createDefaultApiClient } from "@/infrastructure/http/defaultApiClient";
 
-export function useXiaozeSuggestions(options: { enabled: boolean }) {
+export function useXiaozeSuggestions(options: { enabled: boolean; organizationId?: string }) {
   const pageContext = useXiaozePageContextValue();
   const [insights, setInsights] = useState<Insight[]>([]);
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
+  const client = useMemo(() => createDefaultApiClient({ organizationId: options.organizationId }), [options.organizationId]);
 
   const pageKeySupported = pageContext?.pageKey ? supportsXiaozeProactiveInsightPage(pageContext.pageKey) : false;
 
@@ -24,7 +26,7 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
         pageKey: pageContext.pageKey,
         projectId: pageContext.projectId,
         projectName: pageContext.projectName
-      }, undefined, signal);
+      }, client, signal);
       if (signal.aborted) return;
       setInsights(
         suggestions.map((item) => ({
@@ -52,6 +54,7 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
     }
   }, [
     options.enabled,
+    client,
     pageContext?.path,
     pageContext?.pageKey,
     pageContext?.projectId,

@@ -68,10 +68,13 @@ export function clearXiaozeAgentPendingTurn(agent: XiaozePendingTurnAgent): void
   }
 }
 
-export function createXiaozeHttpAgent(options: { agentUrl?: string; fetchImpl?: typeof fetch } = {}) {
+export function createXiaozeHttpAgent(options: { agentUrl?: string; fetchImpl?: typeof fetch; organizationId?: string } = {}) {
+  const sourceUrl = resolveXiaozeAgentUrl(options.agentUrl);
+  const scopedUrl = new URL(sourceUrl, "http://wiseeff.invalid");
+  if (options.organizationId !== undefined) scopedUrl.searchParams.set("organizationId", options.organizationId);
   return new XiaozeHttpAgent({
     agentId: "default",
-    url: resolveXiaozeAgentUrl(options.agentUrl),
+    url: options.organizationId === undefined ? sourceUrl : /^https?:\/\//u.test(sourceUrl) ? scopedUrl.href : `${scopedUrl.pathname}${scopedUrl.search}`,
     fetch: createAuthenticatedFetch(options.fetchImpl)
   });
 }

@@ -7,6 +7,7 @@ import {
   writeTrustedMilestoneAudit
 } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
+import { assertTrustedInvocationMatchesScope, type UserInvocationContext, type AgentInvocationContext } from "../auth/trustedInvocation";
 import type { DtsValue } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import {
@@ -1519,10 +1520,13 @@ export async function getReloadRun(
 export async function getReloadRunRecord(
   db: Queryable,
   auth: AuthContext,
-  runId: string
+  runId: string,
+  invocation?: UserInvocationContext | AgentInvocationContext
 ): Promise<ReloadRunDto> {
   requireDtsReloadView(auth);
-  const row = await getReloadRunRow(db, { organizationId: auth.organization.id, runId });
+  const organizationId = invocation?.operatingOrganization?.id ?? auth.organization.id;
+  if (invocation) assertTrustedInvocationMatchesScope(auth, invocation, organizationId, "Stored reload evidence");
+  const row = await getReloadRunRow(db, { organizationId, runId });
   if (!row) {
     throw new ApiError("NOT_FOUND", "Reload run was not found.", { runId });
   }

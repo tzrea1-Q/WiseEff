@@ -138,7 +138,7 @@ describe("xiaoze threadRepository", () => {
   });
 
   it("sanitizes lone surrogate citations before persisting jsonb", async () => {
-    const { db, calls } = createRecordingDb();
+    const { db, calls } = createRecordingDb([], 1);
 
     await persistXiaozeTurnMessages(db, {
       organizationId: "org-1",

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { useFrontendTool } from "@copilotkit/react-core/v2";
+import { withBusinessOrganizationScope } from "@/infrastructure/http/organizationScope";
 
 function navigateToPath(path: string) {
   const url = new URL(path, window.location.origin);
@@ -16,7 +17,7 @@ function navigateToPath(path: string) {
  * `prefillParameterValue` tool wrote to a registry no page consumed, so the
  * agent claimed "已预填" while the UI never changed — it has been removed.
  */
-export function useXiaozeFrontendTools() {
+export function useXiaozeFrontendTools(organizationId?: string) {
   useFrontendTool({
     name: "navigateTo",
     description: "Navigate the user to a WiseEff page path without performing any write.",
@@ -24,8 +25,9 @@ export function useXiaozeFrontendTools() {
       path: z.string()
     }),
     handler: async ({ path }) => {
-      navigateToPath(path);
-      return { navigatedTo: path };
+      const destination = withBusinessOrganizationScope(path, organizationId);
+      navigateToPath(destination);
+      return { navigatedTo: destination };
     }
   });
 }
