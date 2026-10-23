@@ -72,6 +72,7 @@ export const routeManifest = [
   },
 
   { id: "organization.get", method: "GET", path: "/api/v1/organization", module: "users", stability: "commercial-readiness" },
+  { id: "organization.projectCandidates", method: "GET", path: "/api/v1/organization/project-candidates", module: "users", stability: "commercial-readiness" },
   {
     id: "organization.update",
     method: "PATCH",

@@ -2,12 +2,35 @@ import { describe, expect, it, vi } from "vitest";
 import { createApiClient } from "./apiClient";
 import { resolveWiseEffApiBaseUrl } from "./runtimeMode";
 import { createDefaultUserGovernanceApiClient, createUserGovernanceClient } from "./userGovernanceClient";
+import { withOrganizationScope } from "./organizationScope";
 
 function createFetchMock(response: unknown, status = 200) {
   return vi.fn<typeof fetch>(async () => new Response(JSON.stringify(response), { status }));
 }
 
 describe("createUserGovernanceClient", () => {
+  it("retains a fixed target when a resource URL supplies another organization", () => {
+    expect(withOrganizationScope("/api/v1/users?status=decided&organizationId=other#section", "target")).toBe("/api/v1/users?status=decided&organizationId=target#section");
+    expect(withOrganizationScope("/api/v1/users?status=decided")).toBe("/api/v1/users?status=decided");
+  });
+  it("binds independent member and project requests to their own organization even when responses arrive late", async () => {
+    let finishFirst!: (value: Response) => void;
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(() => new Promise((resolve) => { finishFirst = resolve; }))
+      .mockImplementation(async () => new Response(JSON.stringify({ items: [], item: { id: "member", roles: [] }, bindings: [] })));
+    const api = createApiClient({ baseUrl: "", fetchImpl: fetchMock });
+    const first = createUserGovernanceClient(api, "target A"), second = createUserGovernanceClient(api, "target-B");
+    const late = first.listUsers();
+    await second.listUsers();
+    await first.updateUserProfile("member", { name: "A member", title: "" });
+    await second.listRegistrationRoleRequests("decided");
+    await first.getProjectWorkflowRoleBindings("project");
+    finishFirst(new Response(JSON.stringify({ items: [] })));
+    await late;
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "/api/v1/users?organizationId=target+A", "/api/v1/users?organizationId=target-B", "/api/v1/users/member?organizationId=target+A",
+      "/api/v1/users/registration-role-requests?status=decided&organizationId=target-B", "/api/v1/projects/project/workflow-role-bindings?organizationId=target+A"
+    ]);
+  });
   it("picks the highest organization role without promoting project bindings", async () => {
     const fetchMock = createFetchMock({ items: [
       { id: "admin", roles: [{ projectId: null, roleId: "admin" }, { projectId: null, roleId: "platform-admin" }] },

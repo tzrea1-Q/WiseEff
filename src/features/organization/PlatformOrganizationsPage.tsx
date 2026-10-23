@@ -92,7 +92,8 @@ export function PlatformOrganizationsPage({ client, authClient, onNavigate }: { 
         <dt>创建时间</dt><dd>{formatAbsolute(selected.createdAt)}</dd><dt>管理员</dt><dd>{selected.administrators.map((admin) => `${admin.name}${!admin.isActive ? "（已停用）" : !admin.canLogin ? "（未配置登录身份）" : ""}`).join("、") || "暂无管理员"}</dd>
       </dl> : null}{selected ? <OrganizationAdministratorControls key={selected.id} organization={selected} authentication={authentication} client={client} onPendingChange={setAdministratorPending}
         onUpdated={(item) => { setSelected(item); setAttempt((value) => value + 1); setNotice("组织管理员已调整。"); }} /> : null}
-      <div className="platform-organizations__actions"><Button disabled={administratorPending} onClick={() => setSelected(null)}>关闭</Button></div></>}
+      <div className="platform-organizations__actions"><Button variant="outline" disabled={administratorPending} onClick={() => setSelected(null)}>关闭</Button>
+        {selected ? <Button disabled={administratorPending} onClick={() => onNavigate(`/organization?organizationId=${encodeURIComponent(selected.id)}`)}>进入组织</Button> : null}</div></>}
     </ModalDialog>
   </>;
 }

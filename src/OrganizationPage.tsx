@@ -22,7 +22,7 @@ export type OrganizationActions = {
   updateOrganization(input: { name: string }): Promise<OrganizationRecord>;
 };
 
-type OrganizationPageProps = UserPermissionsPageProps & {
+export type OrganizationPageProps = UserPermissionsPageProps & {
   area?: OrganizationAdminArea;
   apiMode?: boolean;
   organizationActions?: OrganizationActions;
@@ -106,7 +106,7 @@ export function OrganizationPage({
 
   return (
     <div className="organization-page">
-      <OrganizationAdminScopeNav active={area} onNavigate={memberProps.onNavigate} />
+      <OrganizationAdminScopeNav active={area} organizationId={memberProps.directoryScope} onNavigate={memberProps.onNavigate} />
       {area === "bridges" ? <OrganizationBridgePanel enabled={apiMode && canPerform(memberProps.state.activeRoleId, "users.manage")} /> : area === "members" ? (
         <UserPermissionsPage {...memberProps} />
       ) : (
@@ -145,10 +145,10 @@ export function OrganizationPage({
                   ) : null}
                 </div>
                 <dl className="organization-profile__meta">
-                  <div>
+                  {!memberProps.directoryScope ? <div>
                     <dt className="organization-profile__label">组织编号</dt>
                     <dd><code className="organization-profile__id">{organization.id}</code></dd>
-                  </div>
+                  </div> : null}
                   <div>
                     <dt className="organization-profile__label">创建时间</dt>
                     <dd>

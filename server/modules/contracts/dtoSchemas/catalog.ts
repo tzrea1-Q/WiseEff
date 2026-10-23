@@ -120,6 +120,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   SetUserOidcIdentityRequest: setOidcIdentityBodySchema,
   UserGovernanceResponse: z.object({ item: userGovernanceDtoSchema }),
   UserGovernanceListResponse: z.object({ items: z.array(userGovernanceDtoSchema) }),
+  OrganizationProjectCandidatesResponse: z.object({ items: z.array(z.object({ id: z.string(), name: z.string() }).strict()) }).strict(),
   LocalAuthPublicConfigResponse: z.object({
     provider: z.enum(["local", "oidc", "hmac", "development"]), selfRegisterEnabled: z.boolean(),
     hasLocalAdmin: z.boolean(), evaluationOrganizationName: z.string().nullable(), oidcIssuer: z.string().optional()
@@ -270,6 +271,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 
 export const dtoSchemaCoveredRouteIds = [
   "auth.enterOperatingContext",
+  "organization.projectCandidates",
   "users.listRegistrationRoleRequests", "users.approveRegistrationRoleRequest", "users.rejectRegistrationRoleRequest", "users.enableBasicRegistrationRoleRequest",
   "debugging.admin.previewModuleDeletion",
   "auth.localConfig", "users.list", "users.create", "users.setOidcIdentity",
