@@ -48,7 +48,11 @@ export function DebugModuleDeletionDialog({ module, modules, onPreview, onDelete
       <div className="field"><span id={targetLabelId}>节点迁移目标</span>
         <ModuleTreeSelect mode="single" label="节点迁移目标" labelledBy={targetLabelId} nodes={modules}
           selectableIds={new Set(modules.filter(item => item.id !== module.id).map(item => item.id))}
-          value={targetId} onChange={value => setTargetId(typeof value === "string" ? value : "")} disabled={pending}
+          value={targetId} onChange={value => {
+            const nextTargetId = typeof value === "string" ? value : "";
+            if (nextTargetId === targetId) return;
+            setLoading(true); setPreview(null); setTargetId(nextTargetId);
+          }} disabled={pending}
           placeholder="未分类" includeRootOption rootOptionLabel="未分类" portalMenu />
       </div>
       {preview?.children.length ? <div><p>仍有子模块，请先调整以下子模块：</p><ul>{preview.children.map(child =>
