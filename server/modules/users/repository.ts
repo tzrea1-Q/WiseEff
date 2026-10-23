@@ -332,22 +332,6 @@ export async function replaceRoleBindings(db: Queryable, input: { organizationId
   }
 }
 
-export async function countActiveAdmins(db: Queryable, organizationId: string) {
-  const result = await db.query<{ count: string }>(
-    `
-    select count(distinct users.id)::text as count
-    from users
-    join user_role_bindings on user_role_bindings.user_id = users.id
-    where users.organization_id = $1
-      and users.is_active = true
-      and user_role_bindings.role_id in ('admin', 'platform-admin')
-    `,
-    [organizationId]
-  );
-
-  return Number(result.rows[0]?.count ?? 0);
-}
-
 export async function listActiveAdminUserIds(db: Queryable, organizationId: string) {
   const result = await db.query<{ id: string }>(
     `

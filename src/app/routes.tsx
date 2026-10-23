@@ -108,6 +108,7 @@ export type PageProps = {
   onDashboardOverviewScopeChange?: (scope: OverviewScope) => void;
   onDashboardProjectChange?: (projectId: string | null) => void;
   onAuthContextRefresh?: (context: AuthContextDto) => void;
+  onEndSession?: () => Promise<void>;
   organizationId?: string;
   sessionPermissions?: readonly string[] | null;
   sessionRoles?: readonly AuthContextDto["roles"][number][] | null;
@@ -166,6 +167,7 @@ export function PageRouter({
   onDashboardOverviewScopeChange,
   onDashboardProjectChange,
   onAuthContextRefresh,
+  onEndSession,
   organizationId,
   sessionPermissions,
   sessionRoles,
@@ -461,7 +463,7 @@ export function PageRouter({
     case "workflow-publication":
       return runtime?.workflowPublicationClient ? <WorkflowPublicationPage client={runtime.workflowPublicationClient} onSaved={publication?.retry} /> : null;
     case "platform-organizations":
-      return runtime?.platformOrganizationsClient ? <PlatformOrganizationsPage client={runtime.platformOrganizationsClient} authClient={runtime.authClient} /> : null;
+      return runtime?.platformOrganizationsClient ? <PlatformOrganizationsPage client={runtime.platformOrganizationsClient} authClient={runtime.authClient} onNavigate={onNavigate} /> : null;
     case "knowledge": {
       const citation = parseKnowledgeEntryQuery(new URLSearchParams(search));
       return knowledgeRepository && knowledgeCapability ? (
@@ -571,6 +573,18 @@ export function PageRouter({
           area={parseOrganizationAdminArea(page.path) ?? "profile"}
           apiMode={runtimeMode === "api"}
           userGovernanceActions={userGovernanceActions}
+          onCurrentAccountChanged={async (accessEnded) => {
+            if (runtimeMode !== "api") return;
+            if (accessEnded) { await onEndSession?.(); return; }
+            try {
+              const context = await runtime!.authClient.getCurrentAuthContext();
+              onAuthContextRefresh?.(context);
+              if (!context.permissions.includes("users:manage")) onNavigate("/");
+            } catch {
+              // The mutation already succeeded; replace stale authority with a fresh login.
+              await onEndSession?.();
+            }
+          }}
           organizationActions={organizationActions}
           onOrganizationUpdated={async () => {
             if (runtimeMode !== "api") {

@@ -1232,6 +1232,7 @@ function AppShell({
                   dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
                 }
                 onAuthContextRefresh={hydrateAuthContext}
+                onEndSession={handleLogout}
                 organizationId={organizationId}
                 sessionPermissions={apiAuthPermissions}
                 sessionRoles={runtimeMode === "api" ? apiAuthRoles : undefined}
@@ -1284,6 +1285,7 @@ function AppShell({
                     dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
                   }
                   onAuthContextRefresh={hydrateAuthContext}
+                  onEndSession={handleLogout}
                   organizationId={organizationId}
                   sessionPermissions={apiAuthPermissions}
                   sessionRoles={runtimeMode === "api" ? apiAuthRoles : undefined}
@@ -1437,18 +1439,19 @@ function Sidebar({
             ((item.path !== "/workflow-publication" && item.path !== "/platform/organizations") || canManagePublication))
           .map((item) => {
             const Icon = item.icon;
+            const path = item.path === "/organization" && canManagePublication ? "/platform/organizations" : item.path;
             const button = (
               <Button
                 aria-label={item.label}
                 className={
-                  item.path && getPageByPath(item.path).key === activePageKey
+                  item.path && (getPageByPath(item.path).key === activePageKey || path === activePath)
                     ? "nav-item compact active"
                     : "nav-item compact"
                 }
                 disabled={!item.path}
                 type="button"
                 variant="ghost"
-                onClick={() => item.path && onNavigate(item.path)}
+                onClick={() => path && onNavigate(path)}
               >
                 <Icon size={18} />
                 <span>{item.label}</span>
