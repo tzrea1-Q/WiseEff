@@ -1,4 +1,6 @@
 import type { ZodTypeAny } from "zod";
+import { platformOrganizationDtoSchemaCatalog, platformOrganizationRoutes } from "./platformOrganizations";
+export { createPlatformOrganizationSchema, platformOrganizationSchema } from "./platformOrganizations";
 import { knowledgeCoveredRouteIds, knowledgeDtoSchemaCatalog } from "./knowledge";
 export { parsePreviewRequestSchema, parsePreviewResponseSchema, decodedEventSchema, decodedValueSchema } from "./logs";
 export { parsingSpecSchema, registerCaseKey } from "../../logs/parsing/spec";
@@ -23,6 +25,7 @@ import { workflowPublicationDtoSchemaCatalog, workflowPublicationCoveredRouteIds
 export { workflowPublicationAdminStateSchema, workflowPublicationStateSchema } from "./workflowPublication";
 
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
+  ...platformOrganizationDtoSchemaCatalog,
   ...workflowPublicationDtoSchemaCatalog,
   ...knowledgeDtoSchemaCatalog,
   ...coreDtoSchemaCatalog,
@@ -38,6 +41,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 };
 
 export const dtoSchemaCoveredRouteIds = [
+  ...platformOrganizationRoutes.map((route) => route.id),
   ...workflowPublicationCoveredRouteIds,
   ...knowledgeCoveredRouteIds,
   ...coreDtoSchemaCoveredRouteIds,

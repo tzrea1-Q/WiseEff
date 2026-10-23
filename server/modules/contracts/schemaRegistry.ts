@@ -2,6 +2,7 @@ import type { RouteManifestEntry } from "./routeManifest";
 import { parameterCatalogSchemaRegistry } from "./dtoSchemas/parameterCatalog";
 import { parameterDefinitionDeletionSchemaRegistry } from "./dtoSchemas/parameterDefinitionDeletion";
 import { workflowPublicationSchemaRegistry } from "./dtoSchemas/workflowPublication";
+import { platformOrganizationSchemaRegistry } from "./dtoSchemas/platformOrganizations";
 
 export type ContractParameterRef = {
   name: string;
@@ -52,6 +53,7 @@ function retireLegacySurface(
 }
 
 export const schemaRegistry: Record<string, ContractSchemaRef> = {
+  ...platformOrganizationSchemaRegistry,
   ...workflowPublicationSchemaRegistry,
   ...parameterDefinitionDeletionSchemaRegistry,
   "auth.localConfig": {

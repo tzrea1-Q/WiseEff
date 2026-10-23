@@ -7,6 +7,7 @@ import {
   createAgentInvocation,
   createSystemInvocation,
   createUserInvocation,
+  withOperatingOrganization,
   trustedAccountableUser,
   trustedDomainAttributionFromRow,
   trustedPublicExecutionLabel,
@@ -33,6 +34,22 @@ function auth(): AuthContext {
 }
 
 describe("trusted invocation context", () => {
+  it("derives a frozen operating Organization while retaining caller provenance, authority and Home organization", () => {
+    const principal = { ...auth(), roles: [{ roleId: "platform-admin" as const, projectId: null }], permissions: ["platform:access" as const] };
+    const caller = createUserInvocation(principal), target = { id: "org-2", name: "Target" };
+    const scoped = withOperatingOrganization(caller, target);
+    target.name = "Changed externally";
+    expect(scoped.principal).toBe(caller.principal);
+    expect(scoped.principal.organization.id).toBe("org-1");
+    expect(scoped.operatingOrganization).toEqual({ id: "org-2", name: "Target" });
+    expect(Object.isFrozen(scoped)).toBe(true);
+    expect(Object.isFrozen(scoped.operatingOrganization)).toBe(true);
+    expect(caller.operatingOrganization).toBeUndefined();
+    expect(assertTrustedInvocationContext(scoped)).toBe(scoped);
+    expect(() => withOperatingOrganization(createUserInvocation(auth()), target)).toThrow(TrustedInvocationContextError);
+    expect(() => withOperatingOrganization({ ...caller } as never, target)).toThrow(TrustedInvocationContextError);
+    expect(() => withOperatingOrganization(createAgentInvocation(principal, { sessionId: "session", toolCallId: "call", approval: { required: false } }) as never, target)).toThrow(TrustedInvocationContextError);
+  });
   it("does not let a scoped audit invocation claim to describe a legacy Home-organization write", () => {
     const principal = { ...auth(), roles: [{ roleId: "platform-admin" as const, projectId: null }], permissions: ["platform:access" as const] };
     const invocation = createUserInvocation(principal, { id: "org-2", name: "Target" });

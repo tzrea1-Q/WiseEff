@@ -33,6 +33,8 @@ Catalog definition revisions distinguish omitted optional content (retain) from 
 
 ## Runtime Modes
 
+In API mode, the platform Organization directory (`/platform/organizations`) is available only to organization-wide platform super administrators. It searches Organization names/IDs, shows status and administrators, and creates an Organization with its initial organization administrator in one transaction. Local mode provisions a username/password; OIDC mode binds the configured issuer and an explicit subject, then displays the new Organization ID for the identity provider's organization claim. Creation and viewing basic details leave the real operator's Home organization unchanged. Organization workspace entry is a separate capability.
+
 Default mode is `api`. `npm run dev` and `npm run dev:all` inject API runtime settings; copy `.env.example` to `.env` for the same defaults when using other Vite entrypoints.
 
 ```text

@@ -62,6 +62,7 @@ import type { KnowledgeDefinitionPickerPage } from "@/features/knowledge/Knowled
 import { buildCatalogHref, CATALOG_PAGE_PATH, CATALOG_READ_PAGE_PATH, EMPTY_CATALOG_URL_ANCHOR } from "@/application/parameter-catalog/urlAnchor";
 import { CatalogPage } from "@/features/parameter-catalog/CatalogPage";
 import { WorkflowPublicationPage } from "@/features/workflow-publication/WorkflowPublicationPage";
+import { PlatformOrganizationsPage } from "@/features/organization/PlatformOrganizationsPage";
 import { WorkflowPublicationNotice } from "@/components/layout/WorkflowPublicationNotice";
 import { workflowForGroup, VISIBLE_WORKFLOWS, type WorkflowId } from "@/domain/workflowDiscovery";
 import type { WorkflowPublicationView } from "@/application/workflow-publication/useWorkflowPublication";
@@ -289,7 +290,7 @@ export function PageRouter({
   }
   const canManagePublication = currentRoleId === "platform-admin" && (!sessionRoles || sessionRoles.some((role) => role.roleId === "platform-admin" && role.projectId === null));
   if ((!canAccessPage(currentRoleId, page.key) && !(skillWorkspaceMatch && sessionPermissions?.includes("logs:view"))) ||
-    (page.key === "workflow-publication" && !canManagePublication)) {
+    ((page.key === "workflow-publication" || page.key === "platform-organizations") && !canManagePublication)) {
     const requiredRole = getRequiredRoleForPage(page.key);
     return (
       <section className="permission-denied-page" aria-label="无权访问">
@@ -459,6 +460,8 @@ export function PageRouter({
       return productFeedbackRepository ? <FeedbackCenterPage productFeedbackRepository={productFeedbackRepository} search={search} onSearchChange={onSearchChange} /> : null;
     case "workflow-publication":
       return runtime?.workflowPublicationClient ? <WorkflowPublicationPage client={runtime.workflowPublicationClient} onSaved={publication?.retry} /> : null;
+    case "platform-organizations":
+      return runtime?.platformOrganizationsClient ? <PlatformOrganizationsPage client={runtime.platformOrganizationsClient} authClient={runtime.authClient} /> : null;
     case "knowledge": {
       const citation = parseKnowledgeEntryQuery(new URLSearchParams(search));
       return knowledgeRepository && knowledgeCapability ? (
