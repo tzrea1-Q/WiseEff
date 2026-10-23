@@ -5,6 +5,132 @@
     "version": "m5"
   },
   "paths": {
+    "/api/v1/organization/project-handovers": {
+      "get": {
+        "operationId": "parameters.listProjectHandovers",
+        "summary": "List retained project drafts and review duties with current eligible successors",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectHandoverResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/organization/project-handovers/{kind}/{id}": {
+      "patch": {
+        "operationId": "parameters.assignProjectHandover",
+        "summary": "Explicitly hand over current project work without granting roles or changing historical authors",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectHandoverRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetHandoverSavedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/knowledge/handovers": {
       "get": {
         "operationId": "knowledge.listHandovers",
@@ -1664,6 +1790,17 @@
         "tags": [
           "audit"
         ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1686,6 +1823,12 @@
             }
           },
           "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -26990,6 +27133,162 @@
           }
         }
       },
+      "ProjectHandoverResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "responsibleUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "responsibleUserName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pending": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "parameter-draft",
+                    "value-draft",
+                    "source-draft",
+                    "initialization-draft",
+                    "hardware-review",
+                    "software-review",
+                    "software-merge",
+                    "value-review"
+                  ]
+                },
+                "projectId": {
+                  "type": "string"
+                },
+                "projectName": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "historicalAttribution": {},
+                "submitterUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "requestKind": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "proofDigest": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "candidates": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "responsibleUserId",
+                "responsibleUserName",
+                "pending",
+                "kind",
+                "projectId",
+                "projectName",
+                "updatedAt",
+                "version",
+                "historicalAttribution",
+                "submitterUserId",
+                "requestKind",
+                "proofDigest",
+                "candidates"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProjectHandoverResponse"
+      },
+      "ProjectHandoverRequest": {
+        "type": "object",
+        "properties": {
+          "responsibleUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expectedVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "responsibleUserId",
+          "expectedVersion"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProjectHandoverRequest"
+      },
+      "AssetHandoverSavedResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "AssetHandoverSavedResponse"
+      },
       "KnowledgeHandoverResponse": {
         "type": "object",
         "properties": {
@@ -27094,22 +27393,6 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "KnowledgeHandoverRequest"
-      },
-      "AssetHandoverSavedResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "type": "boolean",
-            "enum": [
-              true
-            ]
-          }
-        },
-        "required": [
-          "ok"
-        ],
-        "additionalProperties": false,
-        "x-wiseeff-schema": "AssetHandoverSavedResponse"
       },
       "FeedbackHandoverResponse": {
         "type": "object",
@@ -27886,6 +28169,57 @@
                     "string",
                     "null"
                   ]
+                },
+                "teams": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "projects": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "projectId": {
+                        "type": "string"
+                      },
+                      "roles": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "hardware-user",
+                            "software-user",
+                            "hardware-committer",
+                            "software-committer"
+                          ]
+                        }
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "projectId",
+                      "roles",
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  }
                 }
               },
               "required": [
@@ -27896,7 +28230,9 @@
                 "status",
                 "expiresAt",
                 "createdAt",
-                "acceptedUserId"
+                "acceptedUserId",
+                "teams",
+                "projects"
               ],
               "additionalProperties": false
             }
@@ -27931,6 +28267,40 @@
           },
           "expiresInDays": {
             "type": "number"
+          },
+          "teamIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "projectId": {
+                  "type": "string"
+                },
+                "roles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "hardware-user",
+                      "software-user",
+                      "hardware-committer",
+                      "software-committer"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "projectId",
+                "roles"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -27991,6 +28361,57 @@
                   "string",
                   "null"
                 ]
+              },
+              "teams": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "projects": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "roles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "hardware-user",
+                          "software-user",
+                          "hardware-committer",
+                          "software-committer"
+                        ]
+                      }
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "projectId",
+                    "roles",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
               }
             },
             "required": [
@@ -28001,7 +28422,9 @@
               "status",
               "expiresAt",
               "createdAt",
-              "acceptedUserId"
+              "acceptedUserId",
+              "teams",
+              "projects"
             ],
             "additionalProperties": false
           },
@@ -28066,6 +28489,57 @@
                   "string",
                   "null"
                 ]
+              },
+              "teams": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "projects": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "roles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "hardware-user",
+                          "software-user",
+                          "hardware-committer",
+                          "software-committer"
+                        ]
+                      }
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "projectId",
+                    "roles",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
               }
             },
             "required": [
@@ -28076,7 +28550,9 @@
               "status",
               "expiresAt",
               "createdAt",
-              "acceptedUserId"
+              "acceptedUserId",
+              "teams",
+              "projects"
             ],
             "additionalProperties": false
           }
@@ -28151,6 +28627,57 @@
                   "null"
                 ]
               },
+              "teams": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "projects": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "roles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "hardware-user",
+                          "software-user",
+                          "hardware-committer",
+                          "software-committer"
+                        ]
+                      }
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "projectId",
+                    "roles",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "organizationName": {
                 "type": "string"
               }
@@ -28164,6 +28691,8 @@
               "expiresAt",
               "createdAt",
               "acceptedUserId",
+              "teams",
+              "projects",
               "organizationName"
             ],
             "additionalProperties": false

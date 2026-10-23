@@ -133,6 +133,9 @@ describe("fresh database fixture policy", () => {
       "server/modules/parameter-topology/migration.test.ts": ["mig14-provenance-matrix:false", "mig14-red-constraints:false", "mig14-upgrade:false"],
       "server/modules/parameter-topology/schemaMigration.test.ts": ["schema_mig:false"],
       "server/modules/parameters/moduleParentRepairMigration.test.ts": ["mig0109:false"],
+      // Replay populated project memberships and the pre-cutover edit policy.
+      "server/modules/projects/members.authorization.integration.test.ts": ["membercutover:false"],
+      "server/modules/projects/members.migration.integration.test.ts": ["projectmembers:false"],
       "server/modules/release-verification/core/migration.integration.test.ts": ["s10per:false"],
       "server/shared/database/migrationCompatibility.integration.test.ts": ["purge_bounds:false", "purge_cutover:false", "purge_existing:false", "purge_retry:false"],
       "server/testing/testDatabase.test.ts": ["cleanup_race:false", "emptycompare:false", "freshcompare:true", "freshguard:true", "role_lease_a:false", "role_lease_b:false"]

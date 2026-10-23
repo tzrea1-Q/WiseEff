@@ -44,7 +44,7 @@ function adminAuthRow(overrides: Partial<AuthRow> = {}): AuthRow {
 }
 
 function sourceReaderDb(input: {
-  session?: typeof activeSession | null;
+  session?: Omit<typeof activeSession, "revoked_at"> & { revoked_at: string | null } | null;
   authRows?: AuthRow[];
 }) {
   const calls: Array<{ text: string; values: unknown[] }> = [];
@@ -60,7 +60,7 @@ function sourceReaderDb(input: {
         const rows = input.authRows ?? [adminAuthRow()];
         return { rows: rows as Row[], rowCount: rows.length };
       }
-      if (normalized.includes("from user_role_bindings join roles")) {
+      if (normalized.includes("from user_role_bindings join roles") || normalized.includes("from project_members")) {
         return { rows: [], rowCount: 0 };
       }
       throw new Error(`Unexpected offline session query: ${normalized}`);

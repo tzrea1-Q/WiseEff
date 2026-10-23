@@ -419,7 +419,7 @@ describe("CanonicalProjectValueReviewPanel", () => {
     mounted.rerender(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository}
       detailOnly externalView="history" initialRequestId={terminal.id} />);
     await waitFor(() => expect(screen.getByRole("article")).toHaveTextContent("已驳回"));
-    expect(repository.getProjectValueChangeSourceDiff).toHaveBeenLastCalledWith("project-1", terminal.id);
+    await waitFor(() => expect(repository.getProjectValueChangeSourceDiff).toHaveBeenLastCalledWith("project-1", terminal.id));
     mounted.rerender(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository}
       detailOnly externalView="pending" initialRequestId={request.id} />);
     await waitFor(() => expect(repository.getProjectValueChangeSourceDiff).toHaveBeenLastCalledWith("project-1", request.id));
