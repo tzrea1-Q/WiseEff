@@ -417,7 +417,7 @@ function AppShell({
   const canEnterPublishedPage = currentWorkflow === null || isPublicationAdministrator ||
     publication.status === "ready" && publication.publication?.workflows[currentWorkflow] === true;
   const canAccessCurrentPage = canAccessPage(currentRoleId, page.key) && canEnterPublishedPage &&
-    (page.key !== "workflow-publication" || canManagePublication);
+    ((page.key !== "workflow-publication" && page.key !== "platform-organizations") || canManagePublication);
   const [dashboardState, dashboardDispatch] = useReducer(dashboardReducer, initialDashboardState);
   const dashboardRuntime = useMemo(
     () => createParameterDashboardRuntime({ repository: dashboardRepository, dispatch: dashboardDispatch }),
@@ -1434,7 +1434,7 @@ function Sidebar({
       <div className="utility-nav">
         {utilityItems
           .filter((item) => (!item.path || canAccessPage(currentRoleId, getPageByPath(item.path).key)) &&
-            (item.path !== "/workflow-publication" || canManagePublication))
+            ((item.path !== "/workflow-publication" && item.path !== "/platform/organizations") || canManagePublication))
           .map((item) => {
             const Icon = item.icon;
             const button = (

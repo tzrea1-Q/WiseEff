@@ -1,0 +1,52 @@
+.platform-organizations__dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  background: var(--surface);
+  border: var(--stroke-hairline) solid var(--border);
+  border-radius: var(--radius-lg);
+  max-height: calc(100dvh - var(--space-12));
+  overflow-y: auto;
+}
+
+.platform-organizations__fields {
+  display: grid;
+  gap: var(--space-4);
+  border: 0;
+  padding: 0;
+}
+
+.platform-organizations__fields label {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.platform-organizations__fields input {
+  width: 100%;
+}
+
+.platform-organizations__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+}
+
+.platform-organizations__details {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.platform-organizations__details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.platform-organizations__id,
+.platform-organizations__details dt,
+.platform-organizations__fields p {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}

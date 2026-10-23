@@ -57,6 +57,7 @@ export type PageKey =
   | "feedback-admin"
   | "feedback"
   | "workflow-publication"
+  | "platform-organizations"
   | "audit";
 
 export type PageConfig = {
@@ -190,6 +191,7 @@ export const navigationItems: PageConfig[] = [
 ];
 
 export const utilityItems: Array<{ label: string; icon: LucideIcon; path?: string }> = [
+  { label: "组织目录", icon: Settings2, path: "/platform/organizations" },
   { label: "工作流发布", icon: Settings2, path: "/workflow-publication" },
   { label: "反馈管理", icon: MessageSquareText, path: "/feedback-admin" },
   { label: "审计中心", icon: ScrollText, path: "/audit" },
@@ -197,6 +199,9 @@ export const utilityItems: Array<{ label: string; icon: LucideIcon; path?: strin
 ];
 
 export function getPageByPath(path: string): PageConfig {
+  if (path === "/platform/organizations") {
+    return { key: "platform-organizations", path, label: "组织目录", group: "平台总览", icon: Settings2, title: "组织目录", subtitle: "建立组织并指定初始管理员" };
+  }
   if (path === "/workflow-publication") {
     return { key: "workflow-publication", path, label: "工作流发布", group: "平台总览", icon: Settings2,
       title: "工作流发布", subtitle: "配置向所有组织用户开放的工作流" };

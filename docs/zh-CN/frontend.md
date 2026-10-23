@@ -37,6 +37,8 @@ M1/M2 发布走同一四条冻结路由与会话权限 `catalog:author` / `catal
 
 ## Runtime 模式
 
+API 模式下，平台组织目录（`/platform/organizations`）仅向组织级平台超级管理员开放。目录支持按组织名称或编号搜索、查看状态与管理员，并在一个事务中创建组织及其初始组织管理员。本地模式建立用户名和密码；OIDC 模式绑定当前部署的身份提供方及明确的 Subject，创建后展示新组织编号，供外部身份系统配置组织声明。创建和查看基础资料不改变真实操作者的所属组织；进入组织工作区是单独的能力。
+
 默认是 **API mode**。`npm run dev` 与 `npm run dev:all` 会注入 API runtime；`.env.example` 与之一致。
 
 ```text

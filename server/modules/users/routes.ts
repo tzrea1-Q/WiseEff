@@ -36,6 +36,8 @@ import {
 import { setOidcIdentity } from "../auth/oidcIdentity";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { getUserById } from "./repository";
+import { createPlatformOrganizationSchema } from "../contracts/dtoSchemas/platformOrganizations";
+import { createPlatformOrganization, listPlatformOrganizations, requirePlatformOrganizationManager } from "./platformOrganizations";
 
 const userIdParamsSchema = z.object({
   userId: z.string().min(1)
@@ -75,6 +77,25 @@ export function registerUserRoutes(
   router: WiseEffRouter,
   options: { db?: Database; oidcIssuer?: string; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
 ) {
+  router.get("/api/v1/platform/organizations", async (request) => {
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    requirePlatformOrganizationManager(auth);
+    const query = parseWithSchema(z.object({ q: z.string().trim().max(200).optional() }).strict(), request.query);
+    return { status: 200, body: { items: await listPlatformOrganizations(db, auth, query.q) } };
+  });
+  router.get("/api/v1/platform/organizations/:organizationId", async (request) => {
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    requirePlatformOrganizationManager(auth);
+    const item = (await listPlatformOrganizations(db, auth, "", request.params.organizationId))[0];
+    if (!item) throw new ApiError("NOT_FOUND", "Organization was not found.");
+    return { status: 200, body: { item } };
+  });
+  router.post("/api/v1/platform/organizations", async (request) => {
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    requirePlatformOrganizationManager(auth);
+    const body = parseWithSchema(createPlatformOrganizationSchema, request.body);
+    return { status: 201, body: { item: await createPlatformOrganization(db, auth, body, options.oidcIssuer, { requestId: request.requestId }) } };
+  });
   router.get("/api/v1/organization", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
