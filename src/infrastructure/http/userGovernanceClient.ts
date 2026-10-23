@@ -25,6 +25,7 @@ type UserGovernanceDto = {
   lastActiveAt: string | null;
   roles: RoleBindingDto[];
   oidcIdentity?: { issuer: string; subject: string };
+  oidcTransfer?: UserAccount["oidcTransfer"];
   legacyOidcEmail?: string;
 };
 
@@ -107,6 +108,7 @@ function userFromDto(dto: UserGovernanceDto): UserAccount {
   return {
     id: dto.id,
     ...(dto.oidcIdentity ? { oidcIdentity: dto.oidcIdentity } : {}),
+    ...(dto.oidcTransfer ? { oidcTransfer: dto.oidcTransfer } : {}),
     ...(dto.legacyOidcEmail ? { legacyOidcEmail: dto.legacyOidcEmail } : {}),
     name: dto.name,
     ...(dto.email ? { email: dto.email } : {}),

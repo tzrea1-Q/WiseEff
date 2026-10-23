@@ -99,7 +99,8 @@ const userGovernanceDtoSchema = z.object({
   id: z.string(), organizationId: z.string(), name: z.string(), email: z.string().nullable(),
   username: z.string().nullable(), title: z.string(), isActive: z.boolean(), createdAt: z.string(),
   lastActiveAt: z.string().nullable(), roles: z.array(roleBindingSchema.extend({ projectId: z.string().nullable() })),
-  oidcIdentity: oidcIdentitySchema.optional(), legacyOidcEmail: z.string().optional()
+  oidcIdentity: oidcIdentitySchema.optional(), legacyOidcEmail: z.string().optional(),
+  oidcTransfer: z.object({ targetOrganizationId: z.string(), pendingSince: z.string(), verifiedAt: z.string().nullable(), status: z.enum(["pending", "verified"]) }).strict().optional()
 });
 const registrationRoleRequestDtoSchema = z.object({
   id: z.string(), organizationId: z.string(), organizationName: z.string(), userId: z.string(), userName: z.string(),

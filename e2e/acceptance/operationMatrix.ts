@@ -26,6 +26,15 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {
+    id: "ORG-OIDC-TRANSFER-001", priority: "P1", area: "platform", coverage: "conditional",
+    route: "/organization/members", roles: ["Platform Admin"],
+    action: "Preview and transfer an explicitly bound OIDC identity, resolve a destination conflict, inspect pending synchronization and refresh the actual signed target-login result.",
+    acceptanceIds: ["ORG-OIDC-TRANSFER-001"],
+    specFiles: ["e2e/acceptance/organization-oidc-transfer.acceptance.spec.ts", "server/modules/users/oidcAccountTransfer.integration.test.ts"],
+    assertions: ["ui", "api", "db", "audit", "screenshot"],
+    deferralReason: "Requires an isolated OIDC API lane with a controlled loopback issuer/JWKS and its ephemeral test signing key; other provider lanes cannot establish this evidence."
+  },
+  {
     id: "ORG-ACCOUNT-TRANSFER-001", priority: "P1", area: "platform", coverage: "conditional",
     route: "/organization/members", roles: ["Platform Admin"],
     action: "Preview source grants and retained work, choose target organization roles, safely retry a failed transfer, and verify new local login with old sessions and pairings revoked while source business and machine credentials remain.",

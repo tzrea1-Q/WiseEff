@@ -8,6 +8,7 @@ export const accountTransferPreviewSchema = z.object({
   user: z.object({ id, name: z.string(), username: z.string().nullable(), isActive: z.boolean() }),
   source: z.object({ id, name: z.string() }), target: z.object({ id, name: z.string() }),
   version: z.string(), supported: z.boolean(), unavailableReason: z.string().nullable(), platformAdministrator: z.boolean(),
+  oidcIdentity: z.object({ issuer: z.string(), subject: z.string() }).nullable(),
   roles: z.array(z.object({ roleId: z.string(), projectId: z.string().nullable() })),
   teams: z.array(z.object({ id, name: z.string() })),
   projectMemberships: z.array(z.object({ projectId: id, name: z.string(), roles: z.array(z.string()) })),
@@ -25,5 +26,5 @@ export const accountTransferRoutes = [
 ] as const;
 export const accountTransferSchemaRegistry = {
   "platform.organizations.previewAccountTransfer": { summary: "Preview account transfer while retaining source organization business work", tags: ["users"], requestBody: "AccountTransferTargetRequest", responseBody: "AccountTransferPreviewResponse" },
-  "platform.organizations.transferAccount": { summary: "Atomically transfer a local account and revoke its former access", tags: ["users"], requestBody: "AccountTransferRequest", responseBody: "AccountTransferResponse", additionalResponses: { "409": "ErrorResponse" } }
+  "platform.organizations.transferAccount": { summary: "Atomically transfer an account, revoke former access and require external synchronization for OIDC", tags: ["users"], requestBody: "AccountTransferRequest", responseBody: "AccountTransferResponse", additionalResponses: { "409": "ErrorResponse" } }
 } satisfies Record<string, ContractSchemaRef>;

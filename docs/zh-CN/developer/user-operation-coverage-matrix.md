@@ -10,6 +10,8 @@
 
 `ORG-ACCOUNT-TRANSFER-001`（P1，`coverage: conditional`）：平台管理员在 `/organization/members` 预览源组织影响，选择目标组织及新组织角色，确认调动。真实本地认证浏览器覆盖失败保留与重试、旧会话/配对失效、原密码登录新组织、源组织草稿及审核待交接、历史保全和机器凭据保留。HMAC/OIDC 通道跳过本地密码交互；后台 PostgreSQL 用例另外验证权限、身份冲突、管理员并发连续性和事务回滚。
 
+`ORG-OIDC-TRANSFER-001`（P1，`coverage: conditional`）：平台管理员在成员页预览 OIDC 调动所需声明，处理目标外部身份冲突，查看等待外部同步，并刷新经过真实目标组织登录验证的结果。覆盖 UI、API、数据库、审计及截图；真实签名认证/数据库另外验证旧声明、同秒令牌、无绑定身份拒绝、并发管理员连续性和审计失败回滚。浏览器要求隔离受控 OIDC issuer/JWKS 与临时测试签名密钥；本地密码和 HMAC 通道的跳过不能充当本项验收，受控本地身份系统不代表部署身份系统验收。
+
 `LOG-REGISTER-001`（P1，`coverage: future`）：Admin 在 `/log-admin/skills/:skillId?section=decoding` 编辑寄存器字段与映射，预览并导入数据手册表格，往返 YAML，并选择样例行检查位条。组件与真实 PostgreSQL 集成覆盖已提供；协调者浏览器走查与专属自动化覆盖分别记录，后者尚待补充。
 
 `PCAT-REGISTRATION-INITIALIZE-001`（P1，`coverage: future`）：组织管理员在 `/parameter-admin/modules` 明确选择业务父分类和目标名称，确认原子创建目标并登记主体。组件测试及原生 PostgreSQL 覆盖租户、发布、重试并发和失败回滚；专属浏览器写入与审计回执仍待补。
