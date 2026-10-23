@@ -1,4 +1,5 @@
 import type { RiskLevel } from "@/domain/prototype/types";
+import type { HistoricalAttribution } from "@/domain/identity/historicalAttribution";
 
 export type { AuditEvent } from "@/domain/prototype/types";
 
@@ -28,6 +29,7 @@ export type AuditEvidence = {
 export type AuditEventView = {
   id: string;
   organizationId?: string | null;
+  historicalAttribution?: HistoricalAttribution;
   app: string;
   kind: string;
   action: string;
@@ -54,6 +56,7 @@ export type AuditEventView = {
 export type AuditEventDto = {
   id: string;
   organizationId: string | null;
+  historicalAttribution?: HistoricalAttribution;
   projectId: string | null;
   projectName?: string | null;
   projectCode?: string | null;

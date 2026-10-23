@@ -1,3 +1,5 @@
+import type { HistoricalAttribution } from "@/domain/identity/historicalAttribution";
+
 export type ParameterFileFormat = "dts" | "json";
 export type ParameterFileVersionOrigin = "upload" | "writeback" | "rollback";
 
@@ -31,6 +33,7 @@ export type ProjectParameterFileVersion = {
   createdAt: string;
   createdByUserId?: string | null;
   createdByDisplayName?: string | null;
+  historicalAttribution?: HistoricalAttribution;
 };
 
 export type UploadParameterFileInput = {
@@ -387,6 +390,7 @@ export type SourceRevisionRequest = {
   submitterName?: string | null;
   assignedToName?: string | null;
   reviewerName?: string | null;
+  organizationName?: string | null;
   reviewerNote: string | null;
   createdAt: string;
   updatedAt: string;

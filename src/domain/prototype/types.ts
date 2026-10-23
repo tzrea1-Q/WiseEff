@@ -175,6 +175,7 @@ export type ParameterReviewDecisionRecord = {
   id: string;
   requestId: string;
   reviewerUserId: string;
+  reviewerName?: string | null;
   decision: "advance" | "reject";
   fromStatus: string;
   toStatus: string;

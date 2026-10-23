@@ -46,6 +46,7 @@ export const sourceRevisionRequestDtoSchema = z.object({
   applicationMode: z.enum(["separate_review", "administrator_direct"]),
   submitterUserId: id.nullable(), assignedToUserId: id.nullable(), reviewerUserId: id.nullable(),
   submitterName: z.string().nullable().optional(), assignedToName: z.string().nullable().optional(), reviewerName: z.string().nullable().optional(),
+  organizationName: z.string().nullable().optional(),
   reviewerNote: z.string().nullable(), createdAt: id, updatedAt: id, proofDigest: digest,
   impact: sourceRevisionImpactSchema, before: z.string().optional(), after: z.string().optional(),
   canAdminister: z.boolean().optional(),

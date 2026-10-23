@@ -1,4 +1,5 @@
 import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
+import type { HistoricalAttribution } from "../../../src/domain/identity/historicalAttribution";
 
 export type ParameterFileFormat = "dts" | "json";
 export type ParameterFileVersionOrigin = "upload" | "writeback" | "rollback";
@@ -34,6 +35,7 @@ export type ProjectParameterFileVersionDto = {
   createdAt: string;
   createdByUserId?: string | null;
   createdByDisplayName?: string | null;
+  historicalAttribution?: HistoricalAttribution;
 };
 
 export type InsertProjectParameterFileInput = {

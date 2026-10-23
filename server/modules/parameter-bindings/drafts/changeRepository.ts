@@ -7,6 +7,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Queryable } from "../../../shared/database/client";
+import { historicalActorSql } from "../../../shared/database/historicalAttribution";
 
 export type CanonicalChangeRequestStatus = "pending" | "approved" | "rejected" | "withdrawn";
 export type CanonicalChangeApplyOutcome = "committed" | "replayed";
@@ -170,11 +171,9 @@ export async function getCanonicalValueChangeRequest(
   const result = await db.query<CanonicalValueChangeRequestRow>(
     `
     select request.*, pin.format as source_format, applied.value_state as applied_value_state,
-      submitter.name as submitter_name, assignee.name as assigned_to_name, reviewer.name as reviewer_name
+      ${historicalActorSql("request", "submitter_user_id")} as submitter_name, assignee.name as assigned_to_name, ${historicalActorSql("request", "reviewer_user_id")} as reviewer_name
       from project_parameter_value_change_requests request
-      left join public.users submitter on submitter.id=request.submitter_user_id and submitter.organization_id=request.organization_id
       left join public.users assignee on assignee.id=request.assigned_to_user_id and assignee.organization_id=request.organization_id
-      left join public.users reviewer on reviewer.id=request.reviewer_user_id and reviewer.organization_id=request.organization_id
       left join parameter_catalog.project_value_source_pins pin on pin.id=request.source_pin_id
       left join parameter_catalog.project_parameter_values applied on applied.id=request.applied_value_id
      where request.organization_id = $1
@@ -261,11 +260,9 @@ export async function listCanonicalValueChangeRequests(
   const result = await db.query<CanonicalValueChangeRequestRow>(
     `
     select request.*, pin.format as source_format, applied.value_state as applied_value_state,
-      submitter.name as submitter_name, assignee.name as assigned_to_name, reviewer.name as reviewer_name
+      ${historicalActorSql("request", "submitter_user_id")} as submitter_name, assignee.name as assigned_to_name, ${historicalActorSql("request", "reviewer_user_id")} as reviewer_name
       from project_parameter_value_change_requests request
-      left join public.users submitter on submitter.id=request.submitter_user_id and submitter.organization_id=request.organization_id
       left join public.users assignee on assignee.id=request.assigned_to_user_id and assignee.organization_id=request.organization_id
-      left join public.users reviewer on reviewer.id=request.reviewer_user_id and reviewer.organization_id=request.organization_id
       left join parameter_catalog.project_value_source_pins pin on pin.id=request.source_pin_id
       left join parameter_catalog.project_parameter_values applied on applied.id=request.applied_value_id
      where request.organization_id = $1

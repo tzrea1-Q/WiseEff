@@ -15,6 +15,7 @@ import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../cata
 import { createLocalObjectStore } from "../logs/objectStore";
 import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
+import { registerParameterTopologyRoutes } from "../parameter-topology/routes";
 import { addConfigSetFile, createConfigSet } from "./configSetService";
 import { registerParameterFileRoutes } from "./routes";
 import { uploadProjectParameterFile } from "./service";
@@ -43,6 +44,7 @@ describe("whole-source HTTP through the real API database role", () => {
     const router = createRouter();
     registerParameterFileRoutes(router, { db: api, objectStore: storage,
       refusalAuditSink: createTrustedRefusalAuditSink(db), getCurrentAuthContext: () => auth });
+    registerParameterTopologyRoutes(router, { db: api, getCurrentAuthContext: () => auth });
     return createHttpServer(router);
   }
   function post<T>(url: string, body: unknown, auth = author) {
@@ -402,5 +404,28 @@ describe("whole-source HTTP through the real API database role", () => {
     versionId = receipt.fileVersionId; revisionId = receipt.configRevisionId;
     expect((await listCatalogBindingRowsForProject(api, author, { projectId: PROJECT }))[0]).toMatchObject({ id: bindingId,
       rawValue: replies[0]!.status === 200 ? "<44>" : "<45>" });
+  });
+
+  it("retains source review, version and binding-history authors after rename and account deletion", async () => {
+    const pending = await stage(`${source}\n/* attribution */\n`, "http-history-attribution");
+    const rejected = await post<{ item: SourceRevisionRequestDto }>(`${path}/${pending.id}/review`, {
+      decision: "reject", proofDigest: pending.proofDigest, note: "Preserve this historical review"
+    }, reviewer);
+    expect(rejected.status, rejected.bodyText).toBe(200);
+    await db.query("update users set name='Replacement name' where id=any($1::text[])", [[AUTHOR, REVIEWER]]);
+    await db.query("update organizations set name='Renamed organization' where id=$1", [ORG]);
+    const read = () => requestJson<{ item: SourceRevisionRequestDto }>(route(outsider), `${path}/${pending.id}`);
+    expect((await read()).body.item).toMatchObject({ submitterName: "Author", reviewerName: "Reviewer", organizationName: "Source HTTP" });
+    await db.query("delete from users where id=any($1::text[])", [[AUTHOR, REVIEWER]]);
+    expect((await read()).body.item).toMatchObject({ submitterUserId: null, reviewerUserId: null,
+      submitterName: "Author", reviewerName: "Reviewer" });
+    const versions = await requestJson<{ items: Array<{ createdByDisplayName: string | null }> }>(route(outsider),
+      `/api/v1/projects/${PROJECT}/parameter-files/${fileId}/versions`);
+    expect(versions.status, versions.bodyText).toBe(200);
+    expect(versions.body.items.map((item) => item.createdByDisplayName)).toContain("Author");
+    const history = await requestJson<{ items: Array<{ actor: string | null }> }>(route(outsider),
+      `/api/v2/projects/${PROJECT}/bindings/${bindingId}/history`);
+    expect(history.status, history.bodyText).toBe(200);
+    expect(history.body.items.map((item) => item.actor)).toContain("Reviewer");
   });
 });

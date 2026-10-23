@@ -167,6 +167,7 @@ export type ParameterReviewDecisionRecord = {
   id: string;
   requestId: string;
   reviewerUserId?: string;
+  reviewerName?: string | null;
   decision: "advance" | "reject";
   fromStatus: string;
   toStatus: string;
@@ -245,8 +246,10 @@ export type ProjectParameterInitializationReview = {
   projectId: string;
   status: "pending" | "approved" | "rejected";
   submittedBy: string | null;
+  submittedByName?: string | null;
   submittedAt: string;
   reviewedBy?: string | null;
+  reviewedByName?: string | null;
   reviewedAt?: string;
   rejectionReason?: string;
 };
