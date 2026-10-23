@@ -5,7 +5,7 @@ import { ApiError } from "../../shared/http/errors";
 import { getExperienceRegistrationSettings, type ExperienceRegistrationDefaults } from "../auth/experienceRegistration";
 import { getAuthContext } from "../auth/repository";
 import { resolveOperatingContext } from "../auth/operatingContext";
-import { createUserInvocation, type UserInvocationContext } from "../auth/trustedInvocation";
+import type { UserInvocationContext } from "../auth/trustedInvocation";
 import { requireUserInitiatedInvocation } from "../auth/trustedInvocationPolicy";
 import type { organizationDeletionPreviewSchema } from "../contracts/dtoSchemas/organizationDeletion";
 import { hasOrganizationRole, listUsableAdministratorIds, lockAdministratorMutation, type AdministratorMutationContext } from "./administratorContinuity";
@@ -18,7 +18,7 @@ export type OrganizationDeletionContext = AdministratorMutationContext & Experie
 async function readPreview(tx: Database, caller: UserInvocationContext, organizationId: string, context: OrganizationDeletionContext): Promise<Preview> {
   const actor = await getAuthContext(tx, caller.principal.user.id);
   requirePlatformOrganizationManager(actor);
-  const scoped = await resolveOperatingContext(tx, createUserInvocation(actor), organizationId);
+  const scoped = await resolveOperatingContext(tx, caller, organizationId);
   const organization = (await tx.query<{ name: string; status: string; version: string }>(
     "select name,status,lifecycle_version::text as version from organizations where id=$1", [organizationId])).rows[0]!;
   const rows = (await tx.query<{ key: string; category: string; item_count: string; state_digest: string }>(
@@ -59,6 +59,7 @@ async function readPreview(tx: Database, caller: UserInvocationContext, organiza
     "本页只预览，不会删除、撤销凭据、停止任务或授予删除权限；实际执行前会重新核对权限、账号、对象数量和组织状态。",
     "需保留的平台账号请先调离；其余本组织账号、身份、业务数据、历史、文件和待办属于清理范围。",
     "平台共享 Catalog 定义、发布记录及其他组织的数据和引用保留；共享文件仅清理本组织引用，不承诺删除共用对象。",
+    "平台级参数定义删除回执和未完成的全局清理任务保留；操作者所属组织只是历史关联，不代表这些数据或文件归本组织所有。",
     "文件数量按数据库中明确登记的物理引用去重，不表示已检查底层文件；内存检查点和在途生产者必须由对应运行时停止并清理。",
     "在线删除不等于备份即时擦除。备份按部署保留周期过期；恢复旧备份后，重新开放访问前必须重新落实更新的删除状态。",
     "清理无法撤回已发送到外部系统的数据或已执行的设备命令。"

@@ -15,7 +15,7 @@ begin
  then raise exception using errcode='42501',message='Current platform super administrator is required'; end if;
  if not exists(select 1 from public.organizations where id=p_org) then raise exception using errcode='P0002',message='Organization was not found'; end if;
  for target in select * from (values
-    ('parameter_catalog.definition_erasures','catalog','r.organization_id=$1'),
+    ('parameter_catalog.definition_erasures','shared-references','r.organization_id=$1'),
     ('parameter_catalog.definition_proposals','catalog','r.organization_id=$1'),
     ('parameter_catalog.definition_replacement_previews','catalog','r.organization_id=$1'),
     ('parameter_catalog.definition_replacement_projects','catalog','r.organization_id=$1'),
@@ -237,7 +237,9 @@ begin
    union all select organization_id,unnest(pending_object_keys) from public.log_skill_deletions
    union all select organization_id,unnest(pending_object_refs) from parameter_catalog.project_erasures
    union all select organization_id,unnest(pending_object_refs) from parameter_catalog.log_erasures
-   union all select organization_id,unnest(pending_object_refs) from parameter_catalog.definition_erasures
+   -- organization_id here is the original operator's Home, not file ownership.
+   -- Global definition erasure and its pending cleanup survive that Organization.
+   union all select null::text,unnest(pending_object_refs) from parameter_catalog.definition_erasures
    union all select case when a.owner_scope_kind='organization' then a.owner_scope_id when a.owner_scope_kind='project' then p.organization_id else null end,a.encrypted_object_ref
      from parameter_catalog.parameter_catalog_archives a left join public.projects p on a.owner_scope_kind='project' and p.id=a.owner_scope_id
  ), objects as (

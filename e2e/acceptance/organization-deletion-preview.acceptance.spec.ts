@@ -26,6 +26,8 @@ test("previews the selected Organization's full erasure impact, retries a failed
     await client.query("insert into projects(id,organization_id,name,code) values($1,$2,'验收项目',$3)", [`${org}-project`, org, `DELETE-${suffix}`]);
     await client.query("insert into knowledge_entries(id,organization_id,title,content_form) values($1,$2,'应计入的知识草稿','markdown')", [entry, org]);
     await client.query("insert into log_file_objects(id,organization_id,storage_key,file_name,content_type,file_size_bytes,checksum_sha256) values($1,$2,$3,'shared.log','text/plain',5,'abc'),($4,$2,$5,'own.log','text/plain',5,'def'),($6,'org-chargelab',$3,'foreign.log','text/plain',5,'abc')", [`${org}-shared`, org, `${org}/shared-object`, `${org}-own`, `${org}/own-object`, `${org}-foreign`]);
+    await client.query("insert into log_file_objects(id,organization_id,storage_key,file_name,content_type,file_size_bytes,checksum_sha256) values($1,'org-chargelab',$2,'global.log','text/plain',5,'global')", [`${org}-global-foreign`, `${org}/platform-global-object`]);
+    await client.query("insert into parameter_catalog.definition_erasures(definition_id,organization_id,erased_by,audit_event_id,pending_object_refs) values($1,$2,$3,$4,$5)", [`global-definition-${suffix}`, org, inactive, `global-audit-${suffix}`, [`${org}/platform-global-object`]]);
     await client.query("insert into jobs(id,organization_id,kind,target_type,target_id,status) values($1,$2,'preview-fixture','preview',$1,'queued')", [`${org}-job`, org]);
     await client.query("insert into user_notifications(id,organization_id,recipient_user_id,category,title,body,metadata) values($1,'org-chargelab',$2,'feedback','来自目标组织的反馈','目标组织业务内容',$3)", [notification, authHeadersForRole("platform-admin")["x-wiseeff-user"], { feedbackOrganizationId: org, feedbackId: randomUUID() }]);
   });
@@ -50,7 +52,8 @@ test("previews the selected Organization's full erasure impact, retries a failed
   const response = await loaded, preview = (await response.json() as { item: { inventory: Array<{ key: string; count: number }>; storage: { exclusiveObjects: number; sharedObjects: number } } }).item;
   expect(preview.inventory).toEqual(expect.arrayContaining([
     expect.objectContaining({ key: "public.users", count: 2 }), expect.objectContaining({ key: "public.projects", count: 1 }),
-    expect.objectContaining({ key: "public.knowledge_entries", count: 1 }), expect.objectContaining({ key: "public.user_notifications", count: 1 })
+    expect.objectContaining({ key: "public.knowledge_entries", count: 1 }), expect.objectContaining({ key: "public.user_notifications", count: 1 }),
+    expect.objectContaining({ key: "parameter_catalog.definition_erasures", category: "shared-references", count: 1 })
   ]));
   expect(preview.storage).toEqual({ exclusiveObjects: 1, sharedObjects: 1 });
   await expect(dialog).toContainText(name); await expect(dialog).toContainText(org);
@@ -59,6 +62,7 @@ test("previews the selected Organization's full erasure impact, retries a failed
   await dialog.getByRole("button", { name: "关闭预览", exact: true }).scrollIntoViewIfNeeded();
   await expect(dialog.getByRole("region", { name: "平台账号影响" })).toContainText("待调离平台账号");
   await expect(dialog.getByRole("region", { name: "删除边界" })).toContainText("在线删除不等于备份即时擦除");
+  await expect(dialog.getByRole("region", { name: "删除边界" })).toContainText("平台级参数定义删除回执和未完成的全局清理任务保留");
   await page.screenshot({ path: testInfo.outputPath("organization-deletion-preview-boundary-1440.png"), animations: "disabled" });
   const ordinary = await page.request.get(apiRoute(path), { headers: authHeadersForUser(member, `${member}@example.test`, "组织管理员", org) }); expect(ordinary.status()).toBe(403);
   await withPgClient(async client => {
@@ -66,6 +70,7 @@ test("previews the selected Organization's full erasure impact, retries a failed
     expect((await client.query("select count(*)::int n from log_file_objects where organization_id=$1", [org])).rows).toEqual([{ n: 2 }]);
     expect((await client.query("select body from user_notifications where id=$1", [notification])).rows).toEqual([{ body: "目标组织业务内容" }]);
     expect((await client.query("select count(*)::int n from audit_events where organization_id=$1", [org])).rows).toEqual([{ n: 0 }]);
+    expect((await client.query("select pending_object_refs from parameter_catalog.definition_erasures where definition_id=$1", [`global-definition-${suffix}`])).rows).toEqual([{ pending_object_refs: [`${org}/platform-global-object`] }]);
   });
   await dialog.getByRole("button", { name: "关闭预览", exact: true }).press("Enter"); await expect(dialog).toHaveCount(0);
   await recordOperationEvidence({ operationId: "ORG-DELETION-PREVIEW-001", title: "Organization erasure impact preview", status: "passed", page, testInfo,

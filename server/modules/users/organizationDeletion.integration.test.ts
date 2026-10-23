@@ -176,4 +176,17 @@ describe("Organization erasure preview through real HTTP and PostgreSQL", () => 
     expect(after.storage).toEqual(before.storage);
     await expect(db.transaction(tx => admitOrganizationDeletion(tx, caller, "preview-target", before.stateDigest))).rejects.toMatchObject({ code: "CONFLICT", details: { code: "organization-deletion-preview-stale" } });
   });
+  it("retains global definition erasure work associated with an operator Home without adopting its foreign files", async () => {
+    await db.query("insert into parameter_catalog.definition_erasures(definition_id,organization_id,erased_by,audit_event_id,pending_object_refs) values('preview-global-erasure','preview-target','preview-member','preview-global-audit',array['foreign-global-key'])");
+    await db.query("insert into log_file_objects(id,organization_id,storage_key,file_name,content_type,file_size_bytes,checksum_sha256) values('preview-global-foreign-file','preview-home','foreign-global-key','keep.log','text/plain',1,'a')");
+    const caller = createUserInvocation(await getAuthContext(db, "preview-platform")), preview = await previewOrganizationDeletion(db, caller, "preview-target");
+    expect(preview.inventory).toContainEqual({ key: "parameter_catalog.definition_erasures", category: "shared-references", count: 1 });
+    expect(preview.storage).toEqual({ exclusiveObjects: 0, sharedObjects: 0 });
+    expect(preview.admissionAvailable).toBe(true);
+    await db.transaction(tx => admitOrganizationDeletion(tx, caller, "preview-target", preview.stateDigest));
+    await db.query("update parameter_catalog.definition_erasures set organization_id=null where definition_id='preview-global-erasure'");
+    expect((await db.query("select parameter_catalog.read_parameter_definition_erasure('preview-global-erasure') as receipt")).rows)
+      .toEqual([{ receipt: expect.objectContaining({ definition_id: "preview-global-erasure", pending_object_refs: ["foreign-global-key"] }) }]);
+    expect((await db.query("select storage_key from log_file_objects where id='preview-global-foreign-file'")).rows).toEqual([{ storage_key: "foreign-global-key" }]);
+  });
 });
