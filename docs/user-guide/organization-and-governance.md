@@ -32,6 +32,8 @@ In **Manage invitations**, select Organization roles, Teams, projects and the ed
 
 Open **Project participation** (`/organization/projects`) and choose a project. Use **Add participant** or **Modify** to select a member and editing roles. Clearing the roles and saving removes participation. Disabled accounts stay marked and are never activated by changing participation. Platform administrators can use the target Organization shown on the page; each tab keeps its own target.
 
+Use **Bulk grant project roles** to select a Team, choose concrete members and preview their existing and proposed roles. Grants add roles while preserving existing ones; disabled or unavailable members are marked and skipped. Each person is saved separately, so a failed operation does not undo other successful grants. Review the per-person results and **Recheck unfinished items** before retrying. Later Team membership changes neither inherit nor withdraw these individual grants.
+
 Organization members can view projects. Editing requires participation and an editing role in that project; committer editing roles can edit critical parameters there. Organization and platform administrators manage directly. Review, merge and device duties remain separate and are not granted by editing roles. Existing editing eligibility is migrated once; organization business roles do not grant implicit access to future projects.
 
 ## Group members into teams
@@ -86,6 +88,8 @@ For debugging modules, open Debugging admin's Node debugging area (`/debugging-a
 ## Continue business work after departure
 
 Open **Business handover** from Organization → Members (`/organization/handovers`) to continue Knowledge drafts, unfinished import batches, feedback drafts and open feedback responsibilities after a member leaves. These remain in their original Organization after disabling, deleting or transferring a member. The default list shows work with no currently eligible responsible person; clear the filter to inspect all unfinished work.
+
+The same page lists project parameter/value and node drafts, unsubmitted source candidates, initialization drafts, and outstanding hardware review, software review and merge duties. Assign work to a currently qualified member, explicitly leave it pending, or claim a draft as the real administrator and continue it. Existing competing drafts are never overwritten. Project participation and review duties remain separate: handover grants neither. Initialization continues in its retained draft; parameter and source editing resume in their existing workbenches. Original authors, Agent provenance and completed review signatures remain unchanged; assignment checks the latest work version and rolls back if its audit cannot commit.
 
 Administrators can continue pending work immediately or assign a successor: an active Organization knowledge editor for knowledge, an active member for feedback drafts, and an active administrator for submitted feedback triage. Leaving work unassigned keeps it pending and available to administrators. Assignment never submits a draft or changes original creators and historical signatures. Analysis-skill drafts remain editable in skill administration. Organization machine credentials remain independent; personal passwords, sessions, private Agent conversations and pairings never transfer.
 

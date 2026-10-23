@@ -804,6 +804,7 @@ export async function applyLockedOverlayWriteback(
           domain: deps.attribution,
         }
       : undefined,
+    { continuityBaseConfigRevisionId: revision.id },
   );
   if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
     throw new ApiError(
@@ -1103,6 +1104,7 @@ export async function applyLockedEnablementWriteback(
           domain: deps.attribution,
         }
       : undefined,
+    { continuityBaseConfigRevisionId: revision.id },
   );
   if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
     throw new ApiError(

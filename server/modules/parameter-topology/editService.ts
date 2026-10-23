@@ -548,7 +548,7 @@ async function createNodeEnablementDraftInTransaction(
   const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth, {
     createdByUserId: attribution.userId ?? undefined,
     domain: attribution,
-  });
+  }, { continuityBaseConfigRevisionId: revision.id });
   const candidateRevisionId = ingested.id;
 
   await carryForwardBindingRevisions(db, {

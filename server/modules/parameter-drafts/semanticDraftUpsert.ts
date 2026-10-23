@@ -57,7 +57,7 @@ export async function upsertSemanticDraft(
       project_id,
       project_parameter_binding_id,
       initiator_type,
-      coalesce(user_id, ''),
+      coalesce(user_id, case when initiator_type='legacy' then id else '' end),
       coalesce(initiator_system_kind, ''),
       coalesce(initiator_system_name, '')
     ) where edit_subject_kind = 'binding' and project_parameter_binding_id is not null

@@ -49,10 +49,16 @@ const BASELINE: Record<string, readonly [number, number]> = {
   "modules/parameters/projectService.ts": [0, 4],
   "modules/parameters/service.ts": [0, 8],
   "modules/parameters/testSubmissionContext.ts": [0, 1],
-  "modules/product-feedback/service.ts": [0, 5],
+  // The five existing human-only service fallbacks now share one compatibility helper;
+  // all HTTP writes pass their route-created context, including the Home path.
+  "modules/product-feedback/service.ts": [0, 0],
+  "modules/product-feedback/scope.ts": [0, 1],
   "modules/release-verification/comparison/offlineModD02SourceReader.ts": [0, 1],
   "modules/release-verification/evidence/api/driver.ts": [0, 1],
   "modules/users/service.ts": [0, 11],
+  // Public local invitation acceptance creates its new principal inside the atomic
+  // account/grants/audit transaction; this bootstrap has no Agent or system entry.
+  "modules/users/invitations.ts": [0, 1],
 };
 const serverRoot = join(fileURLToPath(import.meta.url), "..", "..", "..");
 

@@ -86,7 +86,8 @@ async function runCaptureFixture(fixture: EphemeralTestDatabase, injectFailureAf
 
     const installed = await installParameterModuleComparisonCatalogFixture(ownerPool, 1);
     const complete = validCatalogReleaseBundle();
-    const release = structuredClone(complete.releases[0]!);
+    const clonedRelease = structuredClone(complete.releases[0]!);
+    const release = { ...clonedRelease, documents: [...clonedRelease.documents] };
     const subject = release.documents.find((document) => document.kind === "subject");
     if (!subject || subject.kind !== "subject") throw new Error("Catalog fixture subject is unavailable");
     const secondSubject = structuredClone(subject);
@@ -148,7 +149,7 @@ async function runCaptureFixture(fixture: EphemeralTestDatabase, injectFailureAf
         : version),
       modules: [moduleA, moduleB].map((module) => ({
         id: module.id, organizationId, kind: "driver-group" as const, origin: "curated" as const,
-        name: module.name, attributionSubjectId: module.attributionSubjectId,
+        name: module.name, attributionSubjectId: module.attributionSubjectId ?? null,
       })),
     };
     await seedPopulatedCutover(client, graph);
@@ -236,6 +237,14 @@ async function runCaptureFixture(fixture: EphemeralTestDatabase, injectFailureAf
       [otherOrganizationId],
     );
     expect(foreignRows.rows).toEqual([{ id: foreignModule.id }]); // Column grant is all-row, not database tenant isolation.
+    await expect(readerPool.query("select external_tokens_revoked_at from public.users limit 1"))
+      .resolves.toMatchObject({ rowCount: 1 });
+    await expect(readerPool.query("select organization_id, project_id, user_id, roles from public.project_members limit 1"))
+      .resolves.toBeDefined();
+    await expect(readerPool.query("select created_at from public.project_members"))
+      .rejects.toMatchObject({ code: "42501" });
+    await expect(readerPool.query("update public.project_members set roles = roles"))
+      .rejects.toMatchObject({ code: "42501" });
     await expect(readerPool.query("select password_hash from public.user_password_credentials"))
       .rejects.toMatchObject({ code: "42501" });
     await expect(readerPool.query("select id from public.audit_events"))

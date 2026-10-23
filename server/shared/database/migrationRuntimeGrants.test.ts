@@ -32,7 +32,25 @@ function missingRuntimeGrants(sql: string): string[] {
         && /table_schema\s*=\s*'public'\s+and\s+table_name\s*=\s*'user_password_credentials'/i.test(block[2])
         && /privilege_type\s+in\s*\(\s*'SELECT'\s*,\s*'INSERT'\s*,\s*'UPDATE'\s*,\s*'DELETE'\s*\)\s+and\s+grantee\s*<>\s*'PUBLIC'/i.test(block[2])
         && /for\s+(\w+)\s+in\s+select\s+grantee\s*,\s*privilege_type\s+from\s+information_schema\.role_table_grants[\s\S]*?\bloop\s+if\s+\1\.privilege_type\s*=\s*'SELECT'\s+or\s+pg_has_role\(\s*\1\.grantee\s*,\s*'catalog_publication_coordinator_role'\s*,\s*'MEMBER'\s*\)\s+then\s+execute\s+format\(\s*'grant %s on public\.user_oidc_identities to %I'\s*,\s*\1\.privilege_type\s*,\s*\1\.grantee\s*\)\s*;\s*end\s+if/i.test(block[2]);
-      return runtimeDml || feedbackPrivileges || modulePrivileges || identityPrivileges;
+      // Member administration preserves each existing privilege. Only directory
+      // readers inherit reads; Team/invitation writes also require the coordinator.
+      const memberSource = table === "project_members" ? "user_role_bindings"
+        : ["organization_teams", "organization_team_members", "organization_invitations"].includes(table) ? "users" : null;
+      const memberLoop = memberSource && block[2].match(new RegExp(
+        `\\bfor\\s+(\\w+)\\s+in\\s+select\\s+(?:distinct\\s+)?grantee\\s*,\\s*privilege_type\\s+from\\s+information_schema\\.role_table_grants\\s+where\\s+table_schema\\s*=\\s*'public'\\s+and\\s+(?:information_schema\\.role_table_grants\\.)?table_name\\s*=\\s*'${memberSource}'\\s+and\\s+privilege_type\\s+in\\s*\\(\\s*'SELECT'\\s*,\\s*'INSERT'\\s*,\\s*'UPDATE'\\s*,\\s*'DELETE'\\s*\\)\\s+and\\s+grantee\\s*<>\\s*'PUBLIC'\\s+loop\\s*([\\s\\S]*)\\bend\\s+loop\\s*;`, "i"));
+      const grantor = memberLoop?.[1].toLowerCase();
+      const memberBody = memberLoop?.[2].replace(/\s+/g, "").toLowerCase();
+      const directGrant = `executeformat('grant%sonpublic.${table}to%i',${grantor}.privilege_type,${grantor}.grantee);`;
+      const coordinatorGuard = `if${grantor}.privilege_type='select'orpg_has_role(${grantor}.grantee,'catalog_publication_coordinator_role','member')then`;
+      const memberPrivileges = Boolean(memberLoop) && memberBody === (table === "project_members" ? directGrant
+        : table === "organization_invitations" ? `${coordinatorGuard}${directGrant}endif;`
+          : `${coordinatorGuard}foreachtable_nameinarrayarray['organization_teams','organization_team_members']loopexecuteformat('grant%sonpublic.%ito%i',${grantor}.privilege_type,table_name,${grantor}.grantee);endloop;endif;`);
+      // The durable singleton is pre-created: its runtime only reads and updates.
+      const registrationPrivileges = table === "public_experience_registration"
+        && /has_table_privilege\s*\(\s*oid\s*,\s*'public\.log_domains'\s*,\s*'INSERT'\s*\)/i.test(block[2])
+        && /rolname\s*<>\s*'PUBLIC'/i.test(block[2])
+        && /for\s+(\w+)\s+in[\s\S]*?\bloop\s+execute\s+format\(\s*'grant select, update on public\.public_experience_registration to %I'\s*,\s*\1\s*\)\s*;\s*end\s+loop/i.test(block[2]);
+      return runtimeDml || feedbackPrivileges || modulePrivileges || identityPrivileges || memberPrivileges || registrationPrivileges;
     });
     if (!hasGrant) missing.push(table);
   }
@@ -127,6 +145,37 @@ describe("public table runtime grants (0185 onward)", () => {
   });
 
   const migrationsDir = new URL("../../migrations/", import.meta.url);
+  it("recognizes exact member mirrors without granting unrelated readers or wider writes", () => {
+    for (const [file, tables] of [
+      ["0264_organization_teams.sql", ["organization_teams", "organization_team_members"]],
+      ["0265_organization_invitations.sql", ["organization_invitations"]],
+      ["0266_project_membership_expansion.sql", ["project_members"]]
+    ] as const) {
+      const sql = readFileSync(new URL(file, migrationsDir), "utf8");
+      expect(missingRuntimeGrants(sql)).toEqual([]);
+      for (const invalid of [sql.replace("table_schema='public'", "table_schema='other_schema'").replace("table_schema = 'public'", "table_schema = 'other_schema'"),
+        sql.replace("table_name='users'", "table_name='unrelated'").replace("table_name = 'user_role_bindings'", "table_name = 'unrelated'"),
+        sql.replaceAll(".privilege_type,", ".invalid_privilege,"),
+        sql.replace("grantee<>'PUBLIC'", "true").replace("grantee <> 'PUBLIC'", "true")]) {
+        expect(missingRuntimeGrants(invalid), file).toEqual([...tables]);
+      }
+      if (file !== "0266_project_membership_expansion.sql") {
+        expect(missingRuntimeGrants(sql.replace("'MEMBER'", "'USAGE'"))).toEqual([...tables]);
+        expect(missingRuntimeGrants(sql.replaceAll("catalog_publication_coordinator_role", "catalog_worker_role"))).toEqual([...tables]);
+      }
+    }
+  });
+
+  it("accepts the registration singleton's exact read/update grant without broader privileges", () => {
+    const sql = readFileSync(new URL("0270_public_experience_registration.sql", migrationsDir), "utf8");
+    expect(missingRuntimeGrants(sql)).toEqual([]);
+    for (const invalid of [sql.replace("grant select, update", "grant all"),
+      sql.replace("'public.log_domains'", "'public.unrelated'"), sql.replace("rolname <> 'PUBLIC'", "true"),
+      sql.replace("to %I', role_name", "to %I', another_role")]) {
+      expect(missingRuntimeGrants(invalid)).toEqual(["public_experience_registration"]);
+    }
+  });
+
   for (const file of readdirSync(migrationsDir).filter((name) => /^\d+_.*\.sql$/.test(name) && Number.parseInt(name, 10) >= 185).sort()) {
     it(`${file} includes runtime grants for each new public table`, () => {
       const missing = missingRuntimeGrants(readFileSync(new URL(file, migrationsDir), "utf8"));
