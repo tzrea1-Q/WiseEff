@@ -168,7 +168,7 @@ describe("WiseEff prototype configuration", () => {
   });
 
   it("keeps admin utilities discoverable", () => {
-    expect(utilityItems.map((item) => item.label)).toEqual(["组织目录", "工作流发布", "反馈管理", "审计中心", "组织管理"]);
+    expect(utilityItems.map((item) => item.label)).toEqual(["工作流发布", "反馈管理", "审计中心", "组织管理"]);
     expect(getPageByPath("/platform/organizations")).toMatchObject({ key: "platform-organizations", title: "组织目录" });
   });
 

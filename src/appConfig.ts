@@ -191,7 +191,6 @@ export const navigationItems: PageConfig[] = [
 ];
 
 export const utilityItems: Array<{ label: string; icon: LucideIcon; path?: string }> = [
-  { label: "组织目录", icon: Settings2, path: "/platform/organizations" },
   { label: "工作流发布", icon: Settings2, path: "/workflow-publication" },
   { label: "反馈管理", icon: MessageSquareText, path: "/feedback-admin" },
   { label: "审计中心", icon: ScrollText, path: "/audit" },
