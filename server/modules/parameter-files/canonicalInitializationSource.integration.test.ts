@@ -437,7 +437,7 @@ describe("canonical DTS initialization source", () => {
       for (const storageKey of storageKeys) await expect(storage.get(storageKey)).rejects.toThrow();
       const targetState = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: COMMIT_TARGET });
       expect(targetState).toMatchObject({ bindings: [], values: [], pins: [], files: [], versions: [], revisions: [], members: [] });
-      const counts = (await db.query(`select
+      const counts = (await db.query<{ config_sets: number; files: number; status: string }>(`select
         (select count(*)::int from dts_config_set where project_id=$1) as config_sets,
         (select count(*)::int from project_parameter_files where project_id=$1) as files,
         (select initialization_status from projects where id=$1) as status`,

@@ -170,6 +170,11 @@ async function insertUsersAndRoles(root: RootDatabase): Promise<void> {
       otherPasswordHash,
     ],
   );
+  await pool.query(
+    `insert into project_members (organization_id, project_id, user_id, roles)
+     values ($1,$2,$3,array['software-user'])`,
+    [fixture.organizationId, fixture.projectId, fixture.editorId],
+  );
 }
 
 async function seedCatalogRegistration(
@@ -297,6 +302,7 @@ function fixtureAuthContexts() {
       title: "Software User",
       organizationName: "Issue 905 Canonical",
       roles: [{ projectId: fixture.projectId, roleId: "software-user" }],
+      projectMemberships: [{ projectId: fixture.projectId, roles: ["software-user"] }],
     }),
     reviewerAuth: makeTestAuthContext({
       userId: fixture.reviewerId,

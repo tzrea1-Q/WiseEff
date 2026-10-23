@@ -210,6 +210,7 @@ const qualityFixtureSubmitterAuth: AuthContext = {
   },
   organization: { id: "org-chargelab", name: "ChargeLab" },
   roles: [{ projectId: "aurora", roleId: "software-user" }],
+  projectMemberships: [{ projectId: "aurora", roles: ["software-user"] }],
   permissions: ["parameter:view", "parameter:edit"]
 };
 

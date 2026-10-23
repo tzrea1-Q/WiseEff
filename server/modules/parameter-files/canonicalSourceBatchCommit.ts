@@ -11,7 +11,7 @@ import type { CatalogSnapshot } from "../catalog-kernel/interface";
 import type { ObjectStore } from "../logs/objectStore";
 import { CatalogSubjectId, DefinitionRevisionId, ParameterBindingId, ParameterDefinitionId, ProjectValueId, SubjectRegistrationId, serializeContract, type ContractJsonValue } from "../parameter-catalog-contract";
 import { readSourceRegistrationAgreement } from "../parameter-bindings/binding";
-import { canEditParameters, canReviewParameters, canReviewParameterStage } from "../parameter-kernel/policy";
+import { canReviewParameters, canReviewParameterStage } from "../parameter-kernel/policy";
 import { hasCurrentCanonicalReviewRole } from "../parameters/reviewWorkflowRepository";
 import { asValueClient, dtsValueToPayload, listObservedProperties, rawTextToPayload } from "../parameter-bindings/catalogProjectValueSync";
 import { appendProjectValue, type ProjectValuePayload } from "../parameter-bindings/values";
@@ -78,7 +78,7 @@ export async function commitCanonicalSourceBatchRevision(
       projectId: input.projectId, operation: "canonical batch source apply",
       targetType: "project-parameter-value-change-request", targetId: input.requestId
     });
-    if (!canEditParameters(auth, input.projectId) || !canReviewParameters(auth)
+    if (!canReviewParameters(auth)
       || !canReviewParameterStage(auth, input.projectId, "software_review")
       || !await hasCurrentCanonicalReviewRole(tx, {
         organizationId: parameterOrganizationId(auth), projectId: input.projectId, userId: auth.user.id
