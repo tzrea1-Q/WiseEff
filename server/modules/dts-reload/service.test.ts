@@ -95,7 +95,8 @@ async function startReloadRun(
     const row = await getReloadCandidateRow(db, { organizationId: principal.organization.id, projectId: input.projectId, bindingId: target.bindingId });
     if (!row) return target;
     const { candidate } = rowToCandidate(row);
-    return { ...candidate.protectedReferencePin, ...candidate.writebackSourcePin, ...target };
+    return { ...candidate.protectedReferencePin, ...candidate.writebackSourcePin, ...target,
+      configRevisionId: target.configRevisionId ?? candidate.writebackSourcePin?.configRevisionId ?? undefined };
   }));
   return startReloadRunService(db, objectStore, principal, { ...input, targets }, context);
 }
@@ -857,7 +858,8 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
 
   describe("startReloadRun sensitive-node governance", () => {
     const elevatedAuth = () =>
-      auth({ permissions: ["debugging:dts-reload", "parameter:edit-critical"] });
+      auth({ permissions: ["debugging:dts-reload", "parameter:edit-critical"],
+        projectMemberships: [{ projectId: "project-1", roles: ["hardware-committer"] }] });
 
     it("refuses a high-tier match when the caller has only debugging:dts-reload", async () => {
       await seedCandidate({ bindingId: "binding-1" });

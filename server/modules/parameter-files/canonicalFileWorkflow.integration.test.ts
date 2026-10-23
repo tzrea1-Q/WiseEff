@@ -71,6 +71,7 @@ const dtsReviewer = makeTestAuthContext({
 const otherEditor = makeTestAuthContext({
   userId: OTHER,
   organizationId: ORG,
+  projectMemberships: [{ projectId: JSON_PROJECT, roles: ["software-user"] }],
   permissions: ["parameter:view", "parameter:edit"],
   roles: [{ roleId: "software-user", projectId: JSON_PROJECT }]
 });

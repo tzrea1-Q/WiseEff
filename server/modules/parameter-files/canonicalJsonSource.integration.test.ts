@@ -295,11 +295,11 @@ describe("canonical JSON configuration source", () => {
     const once = await counts();
     expect((await apply()).applied_value_id).toBe(applied.applied_value_id);
     expect(await counts()).toEqual(once);
-    const reviewWithoutEdit = { ...reviewer,permissions: reviewer.permissions.filter((permission) => permission !== "parameter:edit") };
-    await expect(db.transaction((tx) => commitCanonicalSourceRevision(tx,storage,reviewWithoutEdit,snapshot, {
-      projectId: PROJECT,requestId,invocation: createUserInvocation(reviewWithoutEdit),traceId: "t11-json-review-without-edit",refusalSink,
+    const withoutReview = { ...reviewer,permissions: reviewer.permissions.filter((permission) => permission !== "parameter:review") };
+    await expect(db.transaction((tx) => commitCanonicalSourceRevision(tx,storage,withoutReview,snapshot, {
+      projectId: PROJECT,requestId,invocation: createUserInvocation(withoutReview),traceId: "t11-json-review-without-review",refusalSink,
     }))).rejects.toMatchObject({ code: "FORBIDDEN" });
-    expect((await db.query<{ count: number }>(`select count(*)::int as count from audit_events where trace_id='t11-json-review-without-edit' and action='deny'`)).rows[0]?.count).toBe(1);
+    expect((await db.query<{ count: number }>(`select count(*)::int as count from audit_events where trace_id='t11-json-review-without-review' and action='deny'`)).rows[0]?.count).toBe(1);
     const revoked = { ...reviewer, permissions: [] };
     await expect(db.transaction((tx) => commitCanonicalSourceRevision(tx,storage,revoked,snapshot, {
       projectId: PROJECT,requestId,invocation: createUserInvocation(revoked),traceId: "t11-json-replay-denied",refusalSink,
@@ -363,6 +363,8 @@ describe("canonical JSON configuration source", () => {
       const id = `t11-http-json-${index}`;
       await db.query(`insert into users(id,organization_id,name,title,is_active) values ($1,$2,$1,'JSON workflow',true)`, [id,ORG]);
       await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ($1,$1,$2,$3,$4)`, [id,ORG,PROJECT,role]);
+      if (role === "software-user") await db.query(`insert into project_members(organization_id,project_id,user_id,roles)
+        values ($1,$2,$3,array['software-user'])`, [ORG,PROJECT,id]);
       await db.query(`insert into user_password_credentials(user_id,username,password_hash) values ($1,$1,$2)`, [id,await hashLocalAccountPassword(password)]);
       const login = await requestJson<{ token: string }>(server,"/api/v1/auth/login",{ method: "POST",body: JSON.stringify({ username: id,password }) });
       expect(login.status).toBe(200);

@@ -44,6 +44,7 @@ function creatorAuth(): AuthContext {
     name: "Creator",
     title: "Engineer",
     organizationName: "ChargeLab",
+    projectMemberships: [{ projectId: "project-new", roles: ["hardware-user"] }],
     roles: [{ projectId: "project-new", roleId: "hardware-user" }]
   });
 }

@@ -144,7 +144,9 @@ describe("#897 C2 production Driver compatible discovery HTTP", () => {
       emptyReason:"no-observations"});
     const member = await get(path(`?projectId=${EMPTY}`),"member");
     expect(member.body).toMatchObject({status:"ready",ignoredReviewItemCount:null});
-    expect((await get(path(`?projectId=${PROJECT}`),"member")).status).toBe(404);
+    const organizationProject = await get(path(`?projectId=${PROJECT}`),"member");
+    expect(organizationProject.status).toBe(200);
+    expect(organizationProject.body).toMatchObject({status:"ready",ignoredReviewItemCount:null});
     expect((await get(`/api/v2/organizations/${FOREIGN}/driver-compatible-discovery?projectId=${PROJECT}`)).status).toBe(404);
     expect((await get(path(`?observationId=${allPage.items[0]!.observationId}`),"foreign")).status).toBe(404);
     expect((await get(path("?observationId=missing-observation"))).status).toBe(404);

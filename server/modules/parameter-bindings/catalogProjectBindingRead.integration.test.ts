@@ -16,7 +16,7 @@ import { compileCatalogRelease } from "../catalog-kernel/compiler/index";
 import type { CatalogReleaseBundle } from "../catalog-kernel/compiler/types";
 import { jsonCatalogReleaseSource } from "../catalog-kernel/interface";
 import { installPublishedRelease } from "../catalog-kernel/install/installer";
-import { CatalogSubjectId } from "../parameter-catalog-contract/index";
+import { CatalogSubjectId, type CatalogReleasePin } from "../parameter-catalog-contract/index";
 import type { RegisterSubjectCommand } from "../parameter-governance/registration/command";
 import { writeGuardedRegistration } from "../parameter-governance/registration/internalGuardedRegistrationWriter";
 import { makeTestAuthContext } from "../../testing/authContext";
@@ -107,7 +107,7 @@ describe("canonical project binding read chronology", () => {
     permissions: ["parameter:view"]
   });
 
-  const registerCommand = (expectedRelease: { id: string; digest: string }): RegisterSubjectCommand => ({
+  const registerCommand = (expectedRelease: CatalogReleasePin): RegisterSubjectCommand => ({
     kind: "register",
     organizationId: ORG,
     subjectId: SUBJECT_ID,
@@ -320,7 +320,7 @@ describe("canonical project binding read chronology", () => {
     expect(unpublished.body.items).toEqual([]);
     expect((await read(projectReader, MISSING_PROJECT)).status).toBe(404);
     expect((await read(projectReader, FOREIGN_PROJECT)).status).toBe(404);
-    expect((await read(wrongProjectReader, PROJECT)).status).toBe(403);
+    expect((await read(wrongProjectReader, PROJECT)).status).toBe(200);
     expect(await state()).toEqual(beforeUnpublished);
 
     const first = compileOrThrow(firstReleaseBundle());
@@ -429,13 +429,13 @@ describe("canonical project binding read chronology", () => {
     for (const projectId of [MISSING_PROJECT, FOREIGN_PROJECT]) {
       expect((await read(projectReader, projectId)).status).toBe(404);
     }
-    expect((await read(wrongProjectReader, PROJECT)).status).toBe(403);
+    expect((await read(wrongProjectReader, PROJECT)).status).toBe(200);
   });
 
-  it("keeps missing, foreign and wrong-scope errors after publication", async () => {
+  it("keeps missing and foreign projects hidden while organization members can read", async () => {
     expect((await read(projectReader, MISSING_PROJECT)).status).toBe(404);
     expect((await read(projectReader, FOREIGN_PROJECT)).status).toBe(404);
-    expect((await read(wrongProjectReader, PROJECT)).status).toBe(403);
+    expect((await read(wrongProjectReader, PROJECT)).status).toBe(200);
     expect((await read(projectReader, PROJECT)).status).toBe(200);
   });
 });
