@@ -4,13 +4,14 @@ import type { AuthContext } from "../auth/types";
 import { canReadEntry } from "../knowledge/policy";
 import type { KnowledgeEntryDto } from "../knowledge/types";
 import type { LogSkillSpec } from "./skillSpec";
+import { organizationId, type LogAccessContext } from "./principal";
 
 /** Private live entries redact revisions; deleted entries retain the run's recorded provenance. */
-export async function readableKnowledgeEntryIds(db: Queryable, auth: AuthContext, ids: string[]): Promise<Set<string>> {
+export async function readableKnowledgeEntryIds(db: Queryable, auth: LogAccessContext, ids: string[]): Promise<Set<string>> {
   if (!ids.length || !auth.user.isActive || !auth.permissions.includes("knowledge:view")) return new Set();
   const entries = await db.query<{ id: string; status: KnowledgeEntryDto["status"]; created_by_user_id: string | null }>(
     `select id, status, created_by_user_id from knowledge_entries where organization_id = $1 and id = any($2::uuid[])`,
-    [auth.organization.id, [...new Set(ids)]]);
+    [organizationId(auth), [...new Set(ids)]]);
   const byId = new Map(entries.rows.map((entry) => [entry.id, entry]));
   return new Set(ids.filter((id) => {
     const entry = byId.get(id);
