@@ -1,5 +1,6 @@
 import { readSelectControlOptions, selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
+import { acceptanceCast } from "./helpers/cast";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { expect, test, type APIRequestContext, type Dialog, type Locator, type Page, type Request, type Response } from "playwright/test";
@@ -526,6 +527,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const fixturePool = new pg.Pool({ connectionString: disposableRuntime.databaseUrl });
     try {
       await seedSemanticBindingCatalog(fixturePool);
+      await fixturePool.query(`insert into project_members(organization_id,project_id,user_id,roles)
+        values ($1,$2,$3,ARRAY['software-user'])`, [organizationId, projectId, acceptanceCast.liuMin.userId]);
     } finally {
       await fixturePool.end();
     }
@@ -585,8 +588,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       });
       expect([201, 409]).toContain(createNebula.status());
     }
-    // Project views are scoped by project role bindings; the disposable runtime only
-    // binds Aurora, so the software user needs an explicit Nebula binding to switch.
+    // Liu Min edits Nebula as well as Aurora; review duties stay separate from participation.
     await withPgClient(async (client) => {
       await client.query(
         `insert into user_role_bindings(id, user_id, organization_id, project_id, role_id)
@@ -594,6 +596,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
          on conflict (id) do nothing`,
         [organizationId]
       );
+      await client.query(`insert into project_members(organization_id,project_id,user_id,roles)
+        values ($1,'nebula',$2,ARRAY['software-user'])`, [organizationId, acceptanceCast.liuMin.userId]);
     });
     const nebulaTopology = await ensureProjectSemanticTopology(request, "nebula");
     const topology = await ensureAuroraSemanticTopology(request);

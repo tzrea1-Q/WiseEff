@@ -801,6 +801,8 @@ test.describe("DTS structured canonical typed edits", () => {
     await seedAcceptanceRoleMatrix();
     const db = createPostgresDatabase(disposableRuntime.databaseUrl);
     try {
+      await db.query(`insert into project_members(organization_id,project_id,user_id,roles)
+        values ($1,$2,$3,ARRAY['software-user'])`, [organizationId, projectId, acceptanceCast.liuMin.userId]);
       const admin = makeTestAuthContext({
         userId: acceptanceCast.xuYun.userId,
         organizationId,

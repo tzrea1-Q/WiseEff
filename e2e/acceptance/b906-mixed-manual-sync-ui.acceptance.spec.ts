@@ -58,11 +58,17 @@ for (const stalePreview of firstChoice === "draft" ? [false, true] : [false]) {
       roles: [{ roleId: "admin", projectId: null }] });
     const otherAuthor = makeTestAuthContext({ userId: acceptanceCast.liuMin.userId,
       organizationId: "org-chargelab", permissions: ["parameter:view", "parameter:edit"],
-      roles: [{ roleId: "software-user", projectId: "aurora" }] });
+      roles: [{ roleId: "software-user", projectId: "aurora" }],
+      projectMemberships: [{ projectId: "aurora", roles: ["software-user"] }] });
     const secondAuthor = makeTestAuthContext({ userId: acceptanceCast.sunMei.userId,
       organizationId: "org-chargelab", permissions: ["parameter:view", "parameter:edit"],
-      roles: [{ roleId: "software-user", projectId: "aurora" }] });
+      roles: [{ roleId: "software-user", projectId: "aurora" }],
+      projectMemberships: [{ projectId: "aurora", roles: ["software-user"] }] });
     try {
+      for (const author of [otherAuthor, secondAuthor]) {
+        await db.query(`insert into project_members(organization_id,project_id,user_id,roles)
+          values ('org-chargelab','aurora',$1,ARRAY['software-user'])`, [author.user.id]);
+      }
       if (format === "json") await installConfigurationSourceFixture(db, admin, {
         subjectId: "csub_b906_mixed", schemaId: "wiseeff.b906.mixed"
       });
