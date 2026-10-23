@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { historicalActorSql } from "../../shared/database/historicalAttribution";
 import { historicalIdentityLabel, type HistoricalAttribution } from "../../../src/domain/identity/historicalAttribution";
 import { getRootPostgresPool, isRootDatabase, type Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -65,7 +64,13 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
 const selection = `select request.*, candidate.file_id as source_file_id, candidate.file_name as source_file_name,
   candidate.storage_key as after_storage_key,candidate.checksum as after_checksum,
   base.storage_key as before_storage_key,base.checksum as before_checksum,
-  ${historicalActorSql("request", "submitter_user_id")} as submitter_name,assignee.name as assigned_to_name,${historicalActorSql("request", "reviewer_user_id")} as reviewer_name,
+  case when request.historical_attribution->'actors'->'submitter_user_id'->>'source' = 'legacy-current'
+    then (request.historical_attribution->'actors'->'submitter_user_id'->>'name') || '（迁移时名称）'
+    else request.historical_attribution->'actors'->'submitter_user_id'->>'name' end as submitter_name,
+  assignee.name as assigned_to_name,
+  case when request.historical_attribution->'actors'->'reviewer_user_id'->>'source' = 'legacy-current'
+    then (request.historical_attribution->'actors'->'reviewer_user_id'->>'name') || '（迁移时名称）'
+    else request.historical_attribution->'actors'->'reviewer_user_id'->>'name' end as reviewer_name,
   cancellation.actor_user_id as cancellation_user_id,cancellation.metadata->>'administratorName' as cancellation_name,
   cancellation.metadata->>'reason' as cancellation_reason,
   (select count(*)::int from public.dts_logical_node_revisions node
