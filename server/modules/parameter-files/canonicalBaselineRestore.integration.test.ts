@@ -225,8 +225,8 @@ describe("Canonical snapshot restore through the real API role", { timeout: 120_
 
   it("deletes the former composition administrator after later edits while retaining every addition, removal and restore receipt", async () => {
     await db.query("insert into users(id,organization_id,name,title,is_active) values('restore-next-admin',$1,'Next administrator','Admin',true)",[ORG]);
-    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values('restore-next-admin-role','restore-next-admin',$1,'platform-admin')",[ORG]);
-    const next = makeTestAuthContext({ organizationId: ORG,userId: "restore-next-admin",roles: [{ roleId: "platform-admin",projectId: null }] });
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values('restore-next-admin-role','restore-next-admin',$1,'platform-admin'),('restore-next-organization-admin-role','restore-next-admin',$1,'admin')",[ORG]);
+    const next = makeTestAuthContext({ organizationId: ORG,userId: "restore-next-admin",roles: [{ roleId: "platform-admin",projectId: null },{ roleId: "admin",projectId: null }] });
     const receipts = `select id,request_kind,source_revision_context,member_frozen_proof,applied_source_result,applied_audit_ref
       from project_parameter_value_change_requests where organization_id=$1 and project_id=$2 order by id`;
     const before = (await api.query<{ id: string; request_kind: string }>(receipts,[ORG,PROJECT])).rows;
