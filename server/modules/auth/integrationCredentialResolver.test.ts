@@ -16,10 +16,10 @@ const id = "f1016303-7cfa-41ed-9b63-0d953ea769da";
 const secret = "s".repeat(43);
 const token = `Bearer wie_${id}_${secret}`;
 function database(overrides: Record<string, unknown> = {}, organizationStatus = "active") {
-  const query = vi.fn<Queryable["query"]>(async <Row,>(sql: string) => sql.includes("from public.organizations")
-    ? { rows: [{ id: "org-1", name: "Organization", status: organizationStatus }] as Row[], rowCount: 1 }
+  const query = vi.fn().mockImplementation(async (sql: string) => sql.includes("from public.organizations")
+    ? { rows: [{ id: "org-1", name: "Organization", status: organizationStatus }], rowCount: 1 }
     : { rows: [{ id, organization_id: "org-1", name: "CI logs", skill_id: null,
-      status: "active", secret_hash: hashIntegrationSecret(secret), last_used_at: new Date(), ...overrides }] as Row[], rowCount: 1 });
+      status: "active", secret_hash: hashIntegrationSecret(secret), last_used_at: new Date(), ...overrides }], rowCount: 1 });
   return { query } satisfies Queryable;
 }
 afterEach(() => { vi.restoreAllMocks(); vi.clearAllMocks(); vi.useRealTimers(); });
