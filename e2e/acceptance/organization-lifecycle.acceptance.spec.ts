@@ -54,7 +54,7 @@ test("suspends and restores a fixed Organization, preserves readonly member acce
     await expect(page.getByRole("region", { name: "当前操作组织" })).toContainText("已停用 · 仅可查看");
     await expect(page.getByRole("status").filter({ hasText: "可继续办理交接" })).toBeVisible();
     const memberContext = await browser.newContext({ viewport: { width: 1440, height: 900 } }), memberPage = await memberContext.newPage();
-    await signInBrowserAsUser(memberPage, member, `${member}@example.test`, memberName, "/organization", org);
+    await signInBrowserAsUser(memberPage, member, `${member}@example.test`, memberName, "/organization/settings", org);
     await expect(memberPage.getByRole("region", { name: "当前操作组织" })).toContainText("已停用 · 仅可查看");
     await expect(memberPage.getByRole("status").filter({ hasText: "组织已停用" })).toHaveCount(1);
     await expect(memberPage.getByLabel("显示名称", { exact: true })).toHaveValue(name);

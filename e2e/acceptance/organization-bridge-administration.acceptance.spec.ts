@@ -22,6 +22,7 @@ test("inventories a member's live Bridge and revokes it by keyboard while retain
   try {
     await new Promise<void>((resolve, reject) => { socket.once("message", raw => { expect(JSON.parse(raw.toString()).type).toBe("bridge.hello"); resolve(); }); socket.once("error", reject); });
     await signInBrowserAsRole(page, "admin", "/organization"); await prepareInteractionSurface(page);
+    await page.getByRole("button", { name: "资源", exact: true }).click();
     await page.getByRole("button", { name: "设备代理", exact: true }).focus(); await page.keyboard.press("Enter");
     await expect(page).toHaveURL(url => url.pathname === "/organization/bridges" && url.searchParams.get("organizationId") === "org-chargelab");
     const row = page.getByRole("row").filter({ has: page.getByText(machineLabel, { exact: true }) });

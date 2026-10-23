@@ -54,10 +54,11 @@ test.describe("fixed-target member and settings workspace", () => {
     await page.getByRole("dialog", { name: "组织资料", exact: true }).getByRole("button", { name: "进入组织", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`organizationId=${target.id}`));
     await expect(page.getByRole("region", { name: "当前操作组织" })).toContainText(organizationName);
+    await page.getByRole("navigation", { name: "组织管理范围" }).getByRole("button", { name: "设置", exact: true }).click();
     await expect(page.getByLabel("显示名称", { exact: true })).toHaveValue(organizationName);
 
     const homePage = await page.context().newPage();
-    await homePage.goto("/organization"); await prepareInteractionSurface(homePage);
+    await homePage.goto("/organization/settings"); await prepareInteractionSurface(homePage);
     await expect(homePage.getByLabel("显示名称", { exact: true })).toHaveValue(session.auth.organization.name);
     await page.getByLabel("显示名称", { exact: true }).fill(`${organizationName}-已改名`);
     await page.getByRole("button", { name: "返回所属组织", exact: true }).click();

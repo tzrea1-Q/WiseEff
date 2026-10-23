@@ -1,4 +1,5 @@
 import { SelectControl } from "@/components/common/SelectControl";
+import { SectionEmpty } from "@/components/common/SectionState";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import {
@@ -972,7 +973,7 @@ export function ParametersPage({
   return (
     <WorkbenchLayout title="项目参数">
       <div className="parameters-page-layout">
-        {isApiMode ? (
+        {isApiMode && !resolvedProjectId ? <SectionEmpty message="请先选择项目，或由管理员创建项目。" /> : isApiMode ? (
           <ApiProjectTopologyWorkspace
             projectId={resolvedProjectId}
             projectName={activeProject?.name}
