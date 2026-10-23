@@ -124,6 +124,10 @@ describe("member offboarding through real authentication, HTTP and PostgreSQL", 
     const admin = await login("offboard-admin"), member = await login("offboard-member"), paired = await pair(member);
     const team = await request<{ item: { id: string } }>("organization/teams", "POST", { name: "Remaining team" }, admin); expect(team.status).toBe(201);
     expect((await request(`organization/teams/${team.body.item.id}/members`, "PUT", { userIds: ["offboard-member", "offboard-admin"] }, admin)).status).toBe(200);
+    expect((await request("parameters/admin/projects", "POST", { id: "offboard-retained-project", name: "Remaining project", code: "RETAINED" }, admin)).status).toBe(201);
+    await db.query(`insert into project_members(organization_id,project_id,user_id,roles) values
+      ('offboard-home','offboard-retained-project','offboard-member',array['software-user']),
+      ('offboard-home','offboard-retained-project','offboard-admin',array['software-user'])`);
     const machine = await request<{ item: { id: string }; token: string }>("log-integration-credentials", "POST", { name: "Remaining pipeline", skillId: null }, admin);
     await db.query("update log_integration_credentials set created_by='offboard-member' where id=$1", [machine.body.item.id]);
     const socket = connect(paired.bridgeToken); await once(socket, "message"); const disconnected = once(socket, "close");
@@ -135,6 +139,8 @@ describe("member offboarding through real authentication, HTTP and PostgreSQL", 
     expect((await db.query("select status,created_by from log_integration_credentials where id=$1", [machine.body.item.id])).rows).toEqual([{ status: "active", created_by: null }]);
     expect((await db.query("select user_id from organization_team_members where team_id=$1", [team.body.item.id])).rows).toEqual([{ user_id: "offboard-admin" }]);
     expect((await db.query("select name from organization_teams where id=$1", [team.body.item.id])).rows).toEqual([{ name: "Remaining team" }]);
+    expect((await db.query("select user_id from project_members where project_id='offboard-retained-project'")).rows).toEqual([{ user_id: "offboard-admin" }]);
+    expect((await request("parameters/admin/projects/offboard-retained-project", "GET", undefined, admin)).status).toBe(200);
   });
   it("applies the same revocation to explicit platform emergency disabling and does not revive sessions on administrator recovery", async () => {
     await seedCoreGraph(db, { organization: { id: "offboard-platform-home" }, users: [{ id: "offboard-platform" }] });

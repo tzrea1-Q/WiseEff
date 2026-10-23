@@ -2078,6 +2078,60 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/members": {
+      "get": {
+        "operationId": "users.getProjectMembers",
+        "summary": "Read explicit project participation without changing legacy edit or workflow authorization",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectMembersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/workflow-role-bindings/{userId}": {
       "put": {
         "operationId": "users.replaceProjectWorkflowRoleBindings",
@@ -26471,6 +26525,67 @@
       "OrganizationTeamDeletedResponse": {
         "type": "null",
         "x-wiseeff-schema": "OrganizationTeamDeletedResponse"
+      },
+      "ProjectMembersResponse": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "username": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                },
+                "isActive": {
+                  "type": "boolean"
+                },
+                "roles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "hardware-user",
+                      "software-user",
+                      "hardware-committer",
+                      "software-committer"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "userId",
+                "name",
+                "username",
+                "title",
+                "isActive",
+                "roles"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "projectId",
+          "members"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProjectMembersResponse"
       },
       "WorkflowPublicationResponse": {
         "type": "object",
