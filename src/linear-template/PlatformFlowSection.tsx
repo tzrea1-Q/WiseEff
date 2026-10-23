@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   homepageFlowIntro,
   homepageFlowTitle,
   isWorkflowVisible,
+  VISIBLE_WORKFLOWS,
   type WorkflowId
 } from "@/domain/workflowDiscovery";
 
@@ -93,17 +94,23 @@ const allTabs: TabConfig[] = [
   }
 ];
 
-const tabs = allTabs.filter((tab) => isWorkflowVisible(tab.workflowId));
-
 const AUTO_INTERVAL = 6000;
 
-export function PlatformFlowSection() {
-  const [activeIndex, setActiveIndex] = useState(0);
+export function PlatformFlowSection({ visibleWorkflows = VISIBLE_WORKFLOWS }: { visibleWorkflows?: readonly WorkflowId[] }) {
+  const tabs = useMemo(() => allTabs.filter((tab) => isWorkflowVisible(tab.workflowId, visibleWorkflows)), [visibleWorkflows]);
+  const [activeKey, setActiveKey] = useState<PreviewKey>("parameters");
   const [isPaused, setIsPaused] = useState(false);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pauseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const activeTab = tabs[activeIndex];
+  const activeTab = tabs.find((tab) => tab.key === activeKey) ?? tabs[0];
+  const activeIndex = activeTab ? tabs.indexOf(activeTab) : -1;
+
+  useEffect(() => {
+    if (activeTab && activeTab.key !== activeKey) {
+      setActiveKey(activeTab.key);
+    }
+  }, [activeKey, activeTab]);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -113,17 +120,17 @@ export function PlatformFlowSection() {
   }, []);
 
   useEffect(() => {
-    if (isPaused) {
+    if (isPaused || tabs.length < 2) {
       clearTimer();
       return;
     }
     clearTimer();
     timerRef.current = setTimeout(() => {
-      setActiveIndex((i) => (i + 1) % tabs.length);
+      setActiveKey(tabs[(activeIndex + 1) % tabs.length]!.key);
     }, AUTO_INTERVAL);
 
     return clearTimer;
-  }, [isPaused, activeIndex, clearTimer]);
+  }, [isPaused, activeIndex, tabs, clearTimer]);
 
   useEffect(() => {
     return () => {
@@ -135,7 +142,7 @@ export function PlatformFlowSection() {
 
   const selectTab = (nextIndex: number, shouldFocus = false) => {
     const normalizedIndex = (nextIndex + tabs.length) % tabs.length;
-    setActiveIndex(normalizedIndex);
+    setActiveKey(tabs[normalizedIndex]!.key);
     setIsPaused(true);
     if (pauseTimeoutRef.current) {
       clearTimeout(pauseTimeoutRef.current);
@@ -149,12 +156,16 @@ export function PlatformFlowSection() {
     }
   };
 
+  if (!activeTab) {
+    return null;
+  }
+
   return (
     <section className="platform-flow-section" id="platform-flow" aria-labelledby="platform-flow-title">
       <div className="linear-container">
         <div className="platform-flow-head">
-          <h2 id="platform-flow-title">{homepageFlowTitle()}</h2>
-          <p>{homepageFlowIntro()}</p>
+          <h2 id="platform-flow-title">{homepageFlowTitle(visibleWorkflows)}</h2>
+          <p>{homepageFlowIntro(visibleWorkflows)}</p>
         </div>
         <div
           className="platform-flow-tablist"

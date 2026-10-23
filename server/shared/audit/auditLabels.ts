@@ -9,6 +9,7 @@
 const CJK_PATTERN = /[\u4e00-\u9fff]/;
 
 export const AUDIT_KIND_LABELS: Record<string, string> = {
+  "workflow-publication-updated": "工作流发布配置更新",
   "config-set": "配置集合",
   "debug-node-admin-delete": "删除调试节点",
   "definition-replacement": "定义替换",

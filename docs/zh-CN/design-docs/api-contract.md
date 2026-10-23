@@ -230,6 +230,22 @@ ADR-0038 为敏感写定义服务端内部可信调用上下文，#610 已实现
 }
 ```
 
+## 工作流发布
+
+全平台共用一份持久化配置，控制工作流界面是否向普通用户开放（[ADR-0050](adr-0050-workflow-publication-is-platform-wide-ui-availability.md)）。现有业务 API 权限、集成和小泽能力不受影响。
+
+| 方法 | 路径 | 契约 |
+| --- | --- | --- |
+| `GET` | `/api/v1/workflow-publication` | 已启用、已认证用户可读；返回 `200 { item: { workflows, version } }`，不含管理元数据。 |
+| `GET` | `/api/v1/admin/workflow-publication` | 仅已启用且持有组织级 `platform-admin` 绑定（`projectId: null`）的平台超级管理员；返回 `200 { item: { workflows, version, updatedAt, updatedBy } }`。 |
+| `PUT` | `/api/v1/admin/workflow-publication` | 同上；请求 `{ workflows, expectedVersion }`；返回保存后的管理状态 `200 { item }`。 |
+
+`workflows` 必须完整包含已知键 `parameter-management`、`debugging`、`log-analysis`、`knowledge`，值均为布尔值。未知或缺失键、非布尔值、额外请求字段及无效版本返回 `400 VALIDATION_FAILED`。`version` 从 `0` 开始；`updatedAt` 为 ISO 时间戳或 `null`，`updatedBy` 为 `{ id, name }` 或 `null`。组织管理员读取或修改管理状态返回 `403`。所有成功响应使用 `Cache-Control: no-store`。
+
+`GET /api/v1/audit-events` 仅向已启用、持有组织级角色的平台超级管理员额外展示全局 `workflow-publication-updated` 历史，其本组织审计照常可见。其他全局事件类型及其他组织事件仍不可见；请求查询参数不能扩大此范围。
+
+保存时在配置行锁内比较 `expectedVersion`；不一致返回 `409 CONFLICT`，`reason: "stale-workflow-publication"`。实际变更递增版本，并在同一事务写入平台级 `workflow-publication-updated` 审计，记录可信操作者和前后状态。审计失败则配置回滚；无变更保存保留版本且不新增审计。存储或配置缺失返回 `500 INTERNAL_ERROR`，不会回退为全部已发布。迁移仅首次发布现有四个工作流，重跑保留后续修改；未来工作流缺少配置时按未发布读取。
+
 ## 4. Projects
 
 | 方法 | 路径 | 说明 |

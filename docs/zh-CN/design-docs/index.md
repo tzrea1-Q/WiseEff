@@ -34,6 +34,7 @@
 - [docs/zh-CN/design-docs/core-beliefs.md](core-beliefs.md)
 - [docs/zh-CN/design-docs/full-stack-architecture.md](full-stack-architecture.md)
 - [docs/zh-CN/design-docs/domain-model.md](domain-model.md)
+- [工作流发布——全平台界面开放策略](adr-0050-workflow-publication-is-platform-wide-ui-availability.md)
 - [Catalog Kernel 接口与事务边界——锁定目标合同](catalog-kernel-interface-and-transaction-boundary.md)
 - [docs/zh-CN/design-docs/api-contract.md](api-contract.md)
 - [参数目录 API 与 legacy 标识符迁移——锁定决策](parameter-catalog-api-transition.md)

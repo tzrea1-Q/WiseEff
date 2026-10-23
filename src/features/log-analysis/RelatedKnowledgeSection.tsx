@@ -19,7 +19,7 @@ export function RelatedKnowledgeSection({
 }: {
   logId: string;
   repository: Pick<KnowledgeRepository, "relatedToLog">;
-  onNavigate: (path: string) => void;
+  onNavigate?: (path: string) => void;
 }) {
   const [items, setItems] = useState<KnowledgeSearchResult[]>([]);
   const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
@@ -71,14 +71,17 @@ export function RelatedKnowledgeSection({
         <ul className="logs-related-knowledge__list">
           {items.map((item) => (
             <li key={item.entryId}>
-              <button
+              {onNavigate ? <button
                 className="logs-related-knowledge__entry"
                 type="button"
                 onClick={() => onNavigate(knowledgeEntryHref({ entryId: item.entryId }))}
               >
                 <BookOpen size={14} aria-hidden />
                 <span>{item.title}</span>
-              </button>
+              </button> : <span className="inline-flex items-center gap-1 font-semibold">
+                <BookOpen size={14} aria-hidden />
+                <span>{item.title}</span>
+              </span>}
               <p className="logs-related-knowledge__excerpt">{item.excerpt}</p>
             </li>
           ))}

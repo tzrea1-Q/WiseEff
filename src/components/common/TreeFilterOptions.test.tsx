@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { TreeFilterOptions } from "./TreeFilterOptions";
 
 const nodes = [
@@ -11,7 +11,21 @@ const nodes = [
   { id: "thermal", label: "热管理", parentId: null, path: "热管理", sortOrder: 2, count: 1 }
 ] as const;
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("TreeFilterOptions", () => {
+  it.each(["tree", "search"] as const)("still focuses %s on opening when focus has not moved", (focusOnOpen) => {
+    let frame: FrameRequestCallback | undefined;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => { frame = callback; return 1; });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    render(<TreeFilterOptions mode="multi" nodes={nodes} selectedIds={[]} onChange={vi.fn()} searchable focusOnOpen={focusOnOpen} />);
+    const target = focusOnOpen === "search" ? screen.getByRole("searchbox", { name: "搜索模块" }) : screen.getByRole("treeitem", { name: "电源" });
+    expect(target).not.toHaveFocus();
+    expect(frame).toBeDefined();
+    act(() => frame!(0));
+    expect(target).toHaveFocus();
+  });
+
   it("derives a mixed parent state from canonical selected roots", () => {
     render(
       <TreeFilterOptions

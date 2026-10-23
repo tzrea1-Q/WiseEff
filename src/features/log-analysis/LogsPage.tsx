@@ -110,7 +110,7 @@ function createEmptyLogRecord(): LogRecord {
   };
 }
 
-export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, knowledgeCapability, sessionPermissions }: PageProps) {
+export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, knowledgeCapability, sessionPermissions, canOpenKnowledge = true, canOpenParameters = true }: PageProps) {
   const knowledgeRepository = runtime?.knowledgeRepository;
   const logRepository = runtime?.logAnalysisRepository;
   const canViewTrace = sessionPermissions ? sessionPermissions.includes("logs:admin-domains") : canPerform(state.activeRoleId, "logs.admin-domains");
@@ -370,7 +370,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   };
 
   const onPrimary = () => {
-    if (!hasActiveLog) {
+    if (!canOpenParameters || !hasActiveLog) {
       return;
     }
 
@@ -452,9 +452,9 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
 
   // Distil-to-knowledge (design D15): pre-fills a knowledge draft from this
   // analysis record and hands off into the /knowledge draft editor deep link.
-  const canDistil = Boolean(knowledgeRepository && knowledgeCapability?.canEdit);
+  const canDistil = Boolean(canOpenKnowledge && knowledgeRepository && knowledgeCapability?.canEdit);
   const onDistil = useCallback(async () => {
-    if (!knowledgeRepository || !hasActiveLog || distilPending) {
+    if (!canDistil || !knowledgeRepository || !hasActiveLog || distilPending) {
       return;
     }
     setDistilPending(true);
@@ -470,7 +470,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
     } finally {
       setDistilPending(false);
     }
-  }, [activeLog.id, dispatch, distilPending, hasActiveLog, knowledgeRepository, onNavigate]);
+  }, [activeLog.id, canDistil, dispatch, distilPending, hasActiveLog, knowledgeRepository, onNavigate]);
 
   const selectedFeedbackLog = feedbackLogId ? state.logs.find((log) => log.id === feedbackLogId) ?? null : null;
   const submitFeedback = async (log: LogRecord, rating: "helpful" | "not_helpful", note?: string) => {
@@ -594,6 +594,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       {hasActiveLog ? <LogConclusionCard
           log={activeLog}
           canViewSkill={canViewTrace}
+          canOpenKnowledge={canOpenKnowledge}
           onNavigate={onNavigate}
           onAskAgent={onAskAgent}
           onCopyLink={onCopyLink}
@@ -611,7 +612,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
           feedbackPending={feedbackPending}
           feedbackError={selectedFeedbackLog ? null : feedbackError}
           onFeedback={(rating) => { setFeedbackError(null); if (rating === "helpful") void submitFeedback(activeLog, rating); else setFeedbackLogId(activeLog.id); }}
-          onPrimary={onPrimary}
+          onPrimary={canOpenParameters ? onPrimary : undefined}
           relatedParameterLocated={Boolean(activeLog.relatedParameterId && (activeLog.relatedParameterProjectId || !logActions))}
           relatedParameterUnlocated={relatedParameterUnlocated}
           onRetry={activeLog.status === "Failed" ? openUploadDialog : handleRetryLog}
@@ -680,7 +681,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
           </>
         ) : null}
         {hasActiveLog && activeLog.status === "Complete" && knowledgeRepository && knowledgeCapability?.canView ? (
-          <RelatedKnowledgeSection logId={activeLog.id} repository={knowledgeRepository} onNavigate={onNavigate} />
+          <RelatedKnowledgeSection logId={activeLog.id} repository={knowledgeRepository} onNavigate={canOpenKnowledge ? onNavigate : undefined} />
         ) : null}
       </div>}
       </TabPanel>
@@ -1024,7 +1025,7 @@ function ConfidenceBar({
   );
 }
 
-function AnalysisProvenanceBadges({ log, canViewSkill, onNavigate }: { log: LogRecord; canViewSkill: boolean; onNavigate: (path: string) => void }) {
+function AnalysisProvenanceBadges({ log, canViewSkill, canOpenKnowledge, onNavigate }: { log: LogRecord; canViewSkill: boolean; canOpenKnowledge: boolean; onNavigate: (path: string) => void }) {
   const degraded = classifyAnalysisDegradation(log);
   const skillName = log.logDomainName ?? log.skillNameSnapshot;
   const revisionNumber = log.skillRevision?.number ?? log.skillRevisionNumberSnapshot;
@@ -1055,11 +1056,11 @@ function AnalysisProvenanceBadges({ log, canViewSkill, onNavigate }: { log: LogR
         <ul>{log.knowledgeRevisions.map(({ entryId, revisionId, pages }) => {
           const href = knowledgeEntryHref({ entryId, ...(revisionId && pages?.length ? { revisionId, page: pages[0] } : {}) });
           return <li key={`${entryId}:${revisionId}`}>
-            {revisionId ? <><a href={href} onClick={(event) => {
+            {revisionId ? <>{canOpenKnowledge ? <a href={href} onClick={(event) => {
               event.preventDefault(); onNavigate(href);
-            }}>查看知识条目（已固定修订）</a>
+            }}>查看知识条目（已固定修订）</a> : <span>知识条目（已固定修订）</span>}
             {pages?.length ? <span> {formatKnowledgePageLabel(pages).split(/(\d+)/).map((part, index) => {
-              if (!/^\d+$/.test(part)) return part;
+              if (!canOpenKnowledge || !/^\d+$/.test(part)) return part;
               const page = Number(part);
               const href = knowledgeEntryHref({ entryId, revisionId, page });
               return <a key={index} href={href} aria-label={`打开${formatKnowledgePageLabel(page)}`}
@@ -1076,15 +1077,16 @@ function AnalysisProvenanceBadges({ log, canViewSkill, onNavigate }: { log: LogR
 }
 
 function LogConclusionCard({
-  log, canViewSkill, onNavigate, onAskAgent, onPrimary, relatedParameterLocated = false,
+  log, canViewSkill, canOpenKnowledge, onNavigate, onAskAgent, onPrimary, relatedParameterLocated = false,
   relatedParameterUnlocated = false, onExport, onCopyLink, onDistil, distilPending = false,
   onSaveCase, casePending = false, onFeedback, feedbackRating, feedbackPending, feedbackError, onRetry, retryPending
 }: {
   log: LogRecord;
   canViewSkill: boolean;
+  canOpenKnowledge: boolean;
   onNavigate: (path: string) => void;
   onAskAgent: () => void;
-  onPrimary: () => void;
+  onPrimary?: () => void;
   relatedParameterLocated?: boolean;
   relatedParameterUnlocated?: boolean;
   onExport: () => void;
@@ -1111,19 +1113,19 @@ function LogConclusionCard({
       </div>
     </div>
     <LogHeaderMeta log={log} />
-    {complete ? <AnalysisProvenanceBadges log={log} canViewSkill={canViewSkill} onNavigate={onNavigate} /> : null}
+    {complete ? <AnalysisProvenanceBadges log={log} canViewSkill={canViewSkill} canOpenKnowledge={canOpenKnowledge} onNavigate={onNavigate} /> : null}
     {log.analysisQuestion ? <div className="logs-analysis-question"><strong>用户问题</strong><span>{log.analysisQuestion}</span></div> : null}
     {complete ? <>
       <ConfidenceBar value={log.confidence} status={log.status} />
       <div className="logs-conclusion-actions">
-        {relatedParameterLocated ? <Button onClick={onPrimary}>查看关联参数</Button> : null}
+        {relatedParameterLocated && onPrimary ? <Button onClick={onPrimary}>查看关联参数</Button> : null}
         <RowActionMenu label="报告操作" triggerLabel="更多" items={[
           { id: "export", label: "导出报告", onSelect: onExport },
           { id: "copy", label: "复制链接", onSelect: onCopyLink },
           { id: "ask", label: "问小泽", onSelect: onAskAgent },
           ...(onDistil ? [{ id: "distil", label: "沉淀为知识", disabled: distilPending, onSelect: onDistil }] : []),
           ...(onSaveCase ? [{ id: "case", label: "存为分析用例", disabled: casePending, onSelect: onSaveCase }] : []),
-          ...(!relatedParameterLocated && !relatedParameterUnlocated ? [{ id: "parameter", label: "生成参数修改请求", onSelect: onPrimary }] : []),
+          ...(onPrimary && !relatedParameterLocated && !relatedParameterUnlocated ? [{ id: "parameter", label: "生成参数修改请求", onSelect: onPrimary }] : []),
           { id: "retry", label: "重新分析", disabled: retryPending, onSelect: onRetry }
         ]} />
         <div role="group" aria-label="分析反馈" className="logs-conclusion-actions">

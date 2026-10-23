@@ -5,6 +5,8 @@ export type AuditValueState = "present" | "deleted";
 
 export type ListAuditEventsQuery = {
   organizationId: string | null;
+  /** Server-authorized only; never parsed from the client's query parameters. */
+  includePlatformWorkflowPublication?: boolean;
   eventId?: string;
   projectId?: string;
   app?: string;

@@ -740,7 +740,7 @@ styleTest("admin navigation fits without scrolling and the existing compact draw
   await prepareInteractionSurface(page);
   await waitForFontsAndNextPaint(page);
   const sidebar = page.getByRole("complementary", { name: "主导航侧边栏" });
-  await expect(sidebar.getByRole("button", { name: "问题反馈" })).toHaveCount(0);
+  await expect(sidebar.getByRole("button", { name: "问题反馈" })).toBeInViewport({ ratio: 1 });
   await expect(page.locator('footer[aria-label="页脚信息"]').getByRole("button", { name: "问题反馈" })).toHaveCount(1);
   await expect(sidebar).toHaveClass(/sidebar-expanded/);
   const navigation = sidebar.getByRole("navigation", { name: "主导航" });

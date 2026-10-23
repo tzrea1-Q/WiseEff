@@ -61,6 +61,10 @@ import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology
 import type { KnowledgeDefinitionPickerPage } from "@/features/knowledge/KnowledgeEntryEditorDialog";
 import { buildCatalogHref, CATALOG_PAGE_PATH, CATALOG_READ_PAGE_PATH, EMPTY_CATALOG_URL_ANCHOR } from "@/application/parameter-catalog/urlAnchor";
 import { CatalogPage } from "@/features/parameter-catalog/CatalogPage";
+import { WorkflowPublicationPage } from "@/features/workflow-publication/WorkflowPublicationPage";
+import { WorkflowPublicationNotice } from "@/components/layout/WorkflowPublicationNotice";
+import { workflowForGroup, VISIBLE_WORKFLOWS, type WorkflowId } from "@/domain/workflowDiscovery";
+import type { WorkflowPublicationView } from "@/application/workflow-publication/useWorkflowPublication";
 
 
 export type ParameterPageActions = {
@@ -91,6 +95,8 @@ export type PageProps = {
   /** Mode-selected adapters assembled once by the shell (createAppRuntime). */
   runtime?: AppRuntime;
   knowledgeCapability?: KnowledgeCapability;
+  canOpenKnowledge?: boolean;
+  canOpenParameters?: boolean;
   canStartDtsReload?: boolean;
   canPromoteDtsReloadDrafts?: boolean;
   runtimeMode?: WiseEffRuntimeMode;
@@ -125,6 +131,9 @@ function mockDebuggingBridgeSeams() {
 
 export type PageRouterProps = PageProps & {
   page: PageConfig;
+  publication?: WorkflowPublicationView;
+  visibleWorkflows?: readonly WorkflowId[];
+  publicationAdministrator?: boolean;
   onFeedback: () => void;
   onNewProject?: () => void;
   TopBarProjectId?: string;
@@ -133,6 +142,9 @@ export type PageRouterProps = PageProps & {
 
 export function PageRouter({
   page,
+  publication,
+  visibleWorkflows = VISIBLE_WORKFLOWS,
+  publicationAdministrator,
   state,
   dispatch,
   onNavigate,
@@ -170,6 +182,9 @@ export function PageRouter({
   const userGovernanceActions = runtime?.userGovernanceActions;
   const organizationActions = runtime?.organizationActions;
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
+  const isPublicationAdministrator = publicationAdministrator ?? (currentRoleId === "admin" || currentRoleId === "platform-admin");
+  const canOpenKnowledge = visibleWorkflows.includes("knowledge");
+  const canOpenParameters = visibleWorkflows.includes("parameter-management");
   const searchProjectId = new URLSearchParams(search).get("project") ?? "";
   const effectiveParametersProjectId = searchProjectId || state.activeProjectId;
   const activeProjectInitializationStatus =
@@ -195,9 +210,9 @@ export function PageRouter({
           updatedAt: item.updatedAt
         }));
       },
-      onOpenEntry: (entryId: string) => onNavigate(knowledgeEntryHref({ entryId }))
+      ...(canOpenKnowledge ? { onOpenEntry: (entryId: string) => onNavigate(knowledgeEntryHref({ entryId })) } : {})
     };
-  }, [knowledgeRepository, canViewKnowledge, onNavigate]);
+  }, [knowledgeRepository, canViewKnowledge, canOpenKnowledge, onNavigate]);
   const definitionRelatedKnowledge = useMemo<SpecRelatedKnowledgeSource | undefined>(() => {
     if (!knowledgeRepository || !canViewKnowledge) return undefined;
     return {
@@ -205,7 +220,7 @@ export function PageRouter({
         const { items } = await knowledgeRepository.relatedToDefinition(definitionId);
         return items;
       },
-      ...(knowledgeCapability?.canEdit ? { link: {
+      ...(knowledgeCapability?.canEdit && canOpenKnowledge ? { link: {
         search: async (q: string) => {
           const { items } = await knowledgeRepository.list({ governable: true, q });
           return items.map((entry) => ({ entryId: entry.id, title: entry.title }));
@@ -214,9 +229,9 @@ export function PageRouter({
           await knowledgeRepository.addDefinitionReference(entryId, definitionId);
         }
       } } : {}),
-      onOpenEntry: (entryId) => onNavigate(knowledgeEntryHref({ entryId }))
+      ...(canOpenKnowledge ? { onOpenEntry: (entryId: string) => onNavigate(knowledgeEntryHref({ entryId })) } : {})
     };
-  }, [knowledgeRepository, canViewKnowledge, knowledgeCapability?.canEdit, onNavigate]);
+  }, [knowledgeRepository, canViewKnowledge, knowledgeCapability?.canEdit, canOpenKnowledge, onNavigate]);
 
   // Entry-editor definition picker: searching needs parameter:view (the same
   // read API the caller uses elsewhere); absent hides the picker section.
@@ -272,7 +287,9 @@ export function PageRouter({
   if (workspaceSkillId) {
     try { workspaceSkillId = decodeURIComponent(workspaceSkillId); } catch { /* The API returns not-found for a malformed id. */ }
   }
-  if (!canAccessPage(currentRoleId, page.key) && !(skillWorkspaceMatch && sessionPermissions?.includes("logs:view"))) {
+  const canManagePublication = currentRoleId === "platform-admin" && (!sessionRoles || sessionRoles.some((role) => role.roleId === "platform-admin" && role.projectId === null));
+  if ((!canAccessPage(currentRoleId, page.key) && !(skillWorkspaceMatch && sessionPermissions?.includes("logs:view"))) ||
+    (page.key === "workflow-publication" && !canManagePublication)) {
     const requiredRole = getRequiredRoleForPage(page.key);
     return (
       <section className="permission-denied-page" aria-label="无权访问">
@@ -289,6 +306,12 @@ export function PageRouter({
         </button>
       </section>
     );
+  }
+
+  const workflow = workflowForGroup(page.group);
+  if (workflow && !isPublicationAdministrator && publication) {
+    if (publication.status !== "ready") return <WorkflowPublicationNotice status={publication.status} onRetry={publication.retry} onNavigate={onNavigate} />;
+    if (publication.publication?.workflows[workflow] !== true) return <WorkflowPublicationNotice status="unpublished" onRetry={publication.retry} onNavigate={onNavigate} />;
   }
 
   switch (page.key) {
@@ -406,13 +429,15 @@ export function PageRouter({
           parameterActions={parameterActions}
           runtime={runtime}
           knowledgeCapability={knowledgeCapability}
+          canOpenKnowledge={canOpenKnowledge}
+          canOpenParameters={canOpenParameters}
           sessionPermissions={sessionPermissions}
         />
       );
     case "log-admin":
       if (workspaceSkillId) return <SkillWorkspace key={workspaceSkillId} skillId={workspaceSkillId} search={search}
         repository={runtime?.logAnalysisRepository} apiMode={runtimeMode === "api"}
-        knowledgeRepository={knowledgeRepository} knowledgeCapability={knowledgeCapability}
+        knowledgeRepository={knowledgeRepository} knowledgeCapability={knowledgeCapability} canOpenKnowledge={canOpenKnowledge}
         canEdit={runtimeMode === "api" && (sessionPermissions ? sessionPermissions.includes("logs:admin-domains") : canPerform(currentRoleId, "logs.admin-domains"))}
         onNavigate={onNavigate} onPublished={(message) => dispatch({ type: "ADD_NOTIFICATION", message })} />;
       return (
@@ -432,6 +457,8 @@ export function PageRouter({
       return productFeedbackRepository ? <FeedbackAdminPage productFeedbackRepository={productFeedbackRepository} search={search} onSearchChange={onSearchChange} /> : null;
     case "feedback":
       return productFeedbackRepository ? <FeedbackCenterPage productFeedbackRepository={productFeedbackRepository} search={search} onSearchChange={onSearchChange} /> : null;
+    case "workflow-publication":
+      return runtime?.workflowPublicationClient ? <WorkflowPublicationPage client={runtime.workflowPublicationClient} onSaved={publication?.retry} /> : null;
     case "knowledge": {
       const citation = parseKnowledgeEntryQuery(new URLSearchParams(search));
       return knowledgeRepository && knowledgeCapability ? (
@@ -443,7 +470,8 @@ export function PageRouter({
           initialRevisionId={citation.revisionId}
           initialPage={citation.page?.toString()}
           searchParameterDefinitions={searchParameterDefinitions}
-          onOpenDefinition={canViewParameterDefinitions && runtime?.parameterCatalogRepository
+          visibleWorkflows={visibleWorkflows}
+          onOpenDefinition={canOpenParameters && canViewParameterDefinitions && runtime?.parameterCatalogRepository
             ? (definitionId) => onNavigate(buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, definitionId })
               .replace(CATALOG_PAGE_PATH, canAccessPage(currentRoleId, "parameter-admin") ? CATALOG_PAGE_PATH : CATALOG_READ_PAGE_PATH))
             : undefined}
@@ -494,6 +522,8 @@ export function PageRouter({
           repository={dtsReloadRepository ?? resolveDtsReloadRepository(runtimeMode)}
           canStartRun={canStartDtsReload}
           canPromoteToDrafts={canPromoteDtsReloadDrafts}
+          canOpenKnowledge={canOpenKnowledge}
+          canOpenParameters={canOpenParameters}
           knowledgeRepository={knowledgeRepository}
           knowledgeCapability={knowledgeCapability}
           onNavigate={onNavigate}
@@ -557,6 +587,8 @@ export function PageRouter({
     case "audit":
       return <AuditCenterPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} runtimeMode={runtimeMode} />;
     default:
-      return <LinearTemplateHome onNavigate={onNavigate} onFeedback={onFeedback} />;
+      return <LinearTemplateHome onNavigate={onNavigate} onFeedback={onFeedback} visibleWorkflows={visibleWorkflows}
+        discoveryNotice={!isPublicationAdministrator && publication && publication.status !== "ready"
+          ? <WorkflowPublicationNotice status={publication.status} onRetry={publication.retry} /> : undefined} />;
   }
 }

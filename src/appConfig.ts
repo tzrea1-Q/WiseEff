@@ -56,6 +56,7 @@ export type PageKey =
   | "user-permissions"
   | "feedback-admin"
   | "feedback"
+  | "workflow-publication"
   | "audit";
 
 export type PageConfig = {
@@ -189,12 +190,17 @@ export const navigationItems: PageConfig[] = [
 ];
 
 export const utilityItems: Array<{ label: string; icon: LucideIcon; path?: string }> = [
+  { label: "工作流发布", icon: Settings2, path: "/workflow-publication" },
   { label: "反馈管理", icon: MessageSquareText, path: "/feedback-admin" },
   { label: "审计中心", icon: ScrollText, path: "/audit" },
   { label: "组织管理", icon: Settings2, path: "/organization" }
 ];
 
 export function getPageByPath(path: string): PageConfig {
+  if (path === "/workflow-publication") {
+    return { key: "workflow-publication", path, label: "工作流发布", group: "平台总览", icon: Settings2,
+      title: "工作流发布", subtitle: "配置向所有组织用户开放的工作流" };
+  }
   if (path === "/log-dashboard") {
     return navigationItems.find((item) => item.key === "log-admin")!;
   }

@@ -11,6 +11,29 @@ import {
 } from "./nodeDebuggingSession";
 
 describe("automatic protocol selection", () => {
+  it("ignores an empty-device failure when a newer detection finishes during its health probe", async () => {
+    const health = { ok: true as const, paired: true, connected: true, bridgeId: "bridge-1", updatedAt: "2026-10-22T00:00:00Z" };
+    let finishProbe!: (result: LocalBridgeProbeResult) => void;
+    const probePending = new Promise<LocalBridgeProbeResult>((resolve) => { finishProbe = resolve; });
+    const probe = vi.fn().mockResolvedValue({ health, reachability: "ok" })
+      .mockResolvedValueOnce({ health, reachability: "ok" })
+      .mockImplementationOnce(() => probePending);
+    const actions = createActions({ detectAndStartSession: vi.fn()
+      .mockRejectedValueOnce(new Error("No debug target detected."))
+      .mockResolvedValue({ session: sessionSnapshot, target: deviceTarget }) });
+    const session = createNodeDebuggingSession();
+    const oldDetection = session.detect(actions, probe, { autoDetectProtocol: true });
+    await vi.waitFor(() => expect(probe).toHaveBeenCalledTimes(2));
+
+    await session.detect(actions, probe, { autoDetectProtocol: true });
+    finishProbe({ health, reachability: "ok" });
+    await oldDetection;
+
+    expect(session.getSnapshot().connected).toBe(true);
+    expect(session.getSnapshot().noDeviceDetected).toBe(false);
+    expect(session.getSnapshot().events).not.toContainEqual(expect.objectContaining({ status: "检测失败" }));
+  });
+
   it("uses the refreshed catalog before reading without waiting for a UI render", async () => {
     const newParameter = parameter({ id: "adb-only-node", nodePath: "/device/new-node" });
     const actions = createActions({

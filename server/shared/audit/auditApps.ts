@@ -52,6 +52,7 @@ export function matchesAuditAppGroup(app: string, groupId: AuditAppGroupId, mode
 }
 
 export const AUDIT_APP_LABELS: Record<string, string> = {
+    platform: "平台管理",
     "parameter-management": "参数工作流",
     "parameter-admin": "参数后台",
     parameters: "参数工作台",

@@ -6,6 +6,7 @@ import { isStreamingKernelLogCommand, KERNEL_LOG_COMMAND_ALLOWLIST } from "@/dom
 import { isAllowedKernelLogCommand } from "@wiseeff/device-command-core/kernelLogCommand";
 import { DebugAdminSelectControl } from "@/components/admin/DebugAdminSelectControl";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { SettingsFormPage, SettingsFormSection, useDirtyState } from "@/components/layout/SettingsFormPage";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -206,24 +207,15 @@ export function ReloadConfigurationAdminPanel({
 
   return (
     <section className="reload-configuration-panel" aria-label="重载配置">
+      <div className="reload-configuration-layout">
       <SettingsFormPage label="DTS 重载设置" dirty={isDirty && !loading} saving={saving} saveDisabled={fieldsDisabled || conflict} error={errorMessage}
         onSave={() => void saveOrganisation()} onDiscard={() => {
           setOrganisationDraft(savedContract); setFieldErrors({}); setErrorMessage(""); setStatusMessage("");
         }}>
-      <SettingsFormSection title="DTS 重载配置" help="设置本组织设备的产物位置、触发方式和日志采集。保存不会立即操作设备；后续确认部署时使用当时已保存的配置。">
+      <SettingsFormSection title="DTS 重载配置" help="配置设备上的产物位置、触发节点和日志采集方式，作为本组织后续部署的默认值。">
         {loadError ? <div className="reload-configuration-load-error" role="alert"><p>无法读取当前配置：{loadError}</p><button type="button" className="button subtle" onClick={reloadConfiguration}>重新加载配置</button></div> : null}
         {conflict ? <div className="reload-configuration-load-error" role="alert"><p>其他管理员已更新配置。当前修改已保留，请重新加载并核对后再编辑。</p><button type="button" className="button subtle" onClick={reloadConfiguration}>重新加载配置</button></div> : null}
-        <div className="reload-configuration-panel__section-head">
-          <div className="reload-configuration-panel__section-title">
-            <h3>组织默认值</h3>
-            {savedConfiguration ? <Badge variant={savedConfiguration.source === "seeded-default" ? "secondary" : "outline"}>
-              {savedConfiguration.source === "seeded-default" ? "系统默认" : "已保存"}
-            </Badge> : null}
-          </div>
-          {loading ? <p className="reload-configuration-muted">正在加载…</p> : null}
-          {canViewAudit && onNavigate ? <button type="button" className="button subtle" onClick={() => onNavigate("/audit?app=debugging&kind=dts-reload-configuration-update")}>查看配置变更记录</button> : null}
-        </div>
-        {savedConfiguration ? <p className="reload-configuration-metadata">{savedConfiguration.updatedAt ? <>最近更新：<time dateTime={savedConfiguration.updatedAt}>{formatAuditAbsoluteTime(savedConfiguration.updatedAt)}</time> · 修改人：{updatedByName ?? (savedConfiguration.updatedByUserId ? "账户信息暂不可用" : "已删除账户")}{savedConfiguration.updatedByUserId ? <span>（账户 {savedConfiguration.updatedByUserId}）</span> : null}</> : "尚未保存组织配置，当前使用系统默认值。"}</p> : null}
+        {loading ? <p className="reload-configuration-muted" role="status">正在加载配置…</p> : null}
 
         <div className="reload-configuration-form">
           <fieldset className="reload-configuration-group"><legend>产物位置</legend><div className="reload-configuration-group__fields">
@@ -328,16 +320,39 @@ export function ReloadConfigurationAdminPanel({
             ) : null}
           </div>
           </div></fieldset>
-          {savedConfiguration ? <section className="reload-configuration-preview" aria-label="最终配置摘要"><h3>{isDirty ? "保存后的配置预览" : "当前配置摘要"}</h3><dl>
-            <div><dt>Overlay 完整路径</dt><dd><code>{organisationDraft.destinationDirectory.trim().replace(/\/+$/, "")}/{organisationDraft.destinationFilename.trim()}</code></dd></div>
-            <div><dt>触发写入</dt><dd>向 <code>{organisationDraft.triggerNodePath.trim() || "未填写"}</code> 写入 <code>{organisationDraft.triggerPayload.trim() || "未填写"}</code></dd></div>
-            <div><dt>日志命令</dt><dd><code>{organisationDraft.kernelLogCommand || "未选择"}</code></dd></div>
-          </dl><p>适用于本组织的后续设备部署。路径和命令还需与目标设备实际环境一致；预览不会执行设备操作。</p></section> : null}
         </div>
 
         {statusMessage ? <p className="reload-configuration-status" role="status">{statusMessage}</p> : null}
       </SettingsFormSection>
       </SettingsFormPage>
+      {savedConfiguration ? <aside className="reload-configuration-aside" aria-label="配置预览与记录">
+        <section className="reload-configuration-preview" aria-label="最终配置摘要">
+          <div className="reload-configuration-panel__section-head">
+            <h3>{isDirty ? "保存后的配置预览" : "当前配置摘要"}</h3>
+            {isDirty ? <Badge variant="secondary">未保存</Badge> : null}
+          </div>
+          <dl>
+            <div><dt>Overlay 完整路径</dt><dd><code>{organisationDraft.destinationDirectory.trim().replace(/\/+$/, "")}/{organisationDraft.destinationFilename.trim()}</code></dd></div>
+            <div><dt>触发写入</dt><dd><code>{organisationDraft.triggerNodePath.trim() || "未填写"}</code><span>写入值：<code>{organisationDraft.triggerPayload.trim() || "未填写"}</code></span></dd></div>
+            <div><dt>日志命令</dt><dd><code>{organisationDraft.kernelLogCommand || "未选择"}</code></dd></div>
+          </dl>
+          <p>保存仅更新组织默认配置，不会立即操作设备。部署前请核对目标设备的实际路径和命令。</p>
+        </section>
+        <section className="reload-configuration-record" aria-label="配置记录">
+          <div className="reload-configuration-panel__section-head">
+            <h3>组织默认值</h3>
+            <Badge variant={savedConfiguration.source === "seeded-default" ? "secondary" : "outline"}>
+              {savedConfiguration.source === "seeded-default" ? "系统默认" : "已保存"}
+            </Badge>
+          </div>
+          <p className="reload-configuration-metadata">{savedConfiguration.updatedAt ? <>
+            <span>最近更新：<time dateTime={savedConfiguration.updatedAt}>{formatAuditAbsoluteTime(savedConfiguration.updatedAt)}</time></span>
+            <span title={savedConfiguration.updatedByUserId ? `账户 ${savedConfiguration.updatedByUserId}` : undefined}>修改人：{updatedByName ?? (savedConfiguration.updatedByUserId ? "账户信息暂不可用" : "已删除账户")}</span>
+          </> : "尚未保存组织配置，当前使用系统默认值。"}</p>
+          {canViewAudit && onNavigate ? <Button type="button" variant="outline" size="sm" onClick={() => onNavigate("/audit?app=debugging&kind=dts-reload-configuration-update")}>查看配置变更记录</Button> : null}
+        </section>
+      </aside> : null}
+      </div>
       <ConfirmDialog open={reloadConfirmOpen} title="重新加载并放弃当前修改？" description="重新读取服务器上的最新配置，本页尚未保存的输入将被替换。" confirmLabel="放弃并重新加载" cancelLabel="保留当前修改" tone="danger" onCancel={() => setReloadConfirmOpen(false)} onConfirm={() => { setReloadConfirmOpen(false); setLoadAttempt((attempt) => attempt + 1); }} />
     </section>
   );

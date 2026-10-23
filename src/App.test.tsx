@@ -11,11 +11,19 @@ vi.mock("@copilotkit/react-core/v2", () => ({
   useAgentContext: vi.fn()
 }));
 
+// These shell tests keep publication open; workflowPublicationRouting tests its policy.
+vi.mock("@/infrastructure/http/workflowPublicationClient", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/infrastructure/http/workflowPublicationClient")>();
+  const { createMockWorkflowPublicationClient } = await import("@/infrastructure/mock/mockWorkflowPublicationClient");
+  return { ...actual, createWorkflowPublicationClient: createMockWorkflowPublicationClient };
+});
+
 import { existsSync, readFileSync } from "node:fs";
 import * as XLSX from "xlsx";
 import App from "./App";
 import { appReducer } from "@/application/state/appState";
 import { initialState } from "./mockData";
+import { platformRoles } from "@/domain/users/types";
 import {
   declarationFor,
   declarationsFor,
@@ -2197,7 +2205,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     window.history.replaceState(null, "", path);
     renderAppForCurrentPath();
     expect(screen.getByLabelText("页脚信息", { selector: "footer" })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "问题反馈" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "问题反馈" })).toHaveLength(2);
     expect(screen.queryByText("Driven by AI")).not.toBeInTheDocument();
     expect(document.querySelector(".topbar-subtitle")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /打开用户菜单$/ }));
@@ -2466,7 +2474,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(screen.getByRole("navigation", { name: "主导航" })).queryByRole("button", { name: "我的提交" })).not.toBeInTheDocument();
   });
 
-  it("submits a round with multiple parameter changes and shows it in personal history", () => {
+  it("submits a round with multiple parameter changes and shows it in personal history", async () => {
     window.history.replaceState(null, "", "/parameters");
 
     renderApp({ initialAppState: userState });
@@ -2492,7 +2500,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
 
-    expect(screen.getByRole("table", { name: "我的提交" })).toBeInTheDocument();
+    expect(await screen.findByRole("table", { name: "我的提交" })).toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
     // Scope to the page content: the transient global toast legitimately
     // announces the submitted round id, but the history list must not leak it.
@@ -2692,7 +2700,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getByText("暂无审核中的提交")).toBeInTheDocument();
   });
 
-  it("keeps submission round detail copy to a single prompt line and a single-row timeline", () => {
+  it("keeps submission round detail copy to a single prompt line and a single-row timeline", async () => {
     window.history.replaceState(null, "", "/parameters");
 
     renderApp({ initialAppState: userState });
@@ -2712,7 +2720,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
 
-    const detail = screen.getByRole("region", { name: "提交轮次详情" });
+    const detail = await screen.findByRole("region", { name: "提交轮次详情" });
     expect(within(detail).getAllByText(/本轮提交包含\s*\d+\s*项变更/)).toHaveLength(1);
   });
 
@@ -3800,7 +3808,21 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getByLabelText("页脚信息", { selector: "footer" })).toBeInTheDocument();
   });
 
-  it("provides a single footer feedback entry for internal testing feedback", async () => {
+  it.each(platformRoles)("keeps a persistent feedback button for $id when the sidebar is expanded or collapsed", ({ id }) => {
+    window.history.replaceState(null, "", "/parameter-home");
+    renderApp({ initialAppState: { ...initialState, activeRoleId: id } });
+
+    const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
+    const feedbackEntry = within(sidebar).getByRole("button", { name: "问题反馈" });
+    expect(sidebar.querySelector(".nav-scroll")).not.toContainElement(feedbackEntry);
+    fireEvent.click(within(sidebar).getByRole("button", { name: "收起侧边栏" }));
+    expect(within(sidebar).getByRole("button", { name: "问题反馈" })).toBeEnabled();
+    fireEvent.click(feedbackEntry);
+    const dialog = screen.getByRole("dialog", { name: "问题反馈" });
+    expect(within(dialog).getByText("/parameter-home")).toBeInTheDocument();
+  });
+
+  it("provides sidebar and footer entries to the same internal testing feedback dialog", async () => {
     window.history.replaceState(null, "", "/parameter-home");
 
     renderAppForCurrentPath();
@@ -3808,8 +3830,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
     const feedbackEntry = within(screen.getByLabelText("页脚信息", { selector: "footer" })).getByRole("button", { name: "问题反馈" });
     expect(feedbackEntry).toBeInTheDocument();
-    expect(within(sidebar).queryByRole("button", { name: "问题反馈" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "问题反馈" })).toHaveLength(1);
+    expect(within(sidebar).getByRole("button", { name: "问题反馈" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "问题反馈" })).toHaveLength(2);
     expect(within(sidebar).queryByRole("button", { name: "我的反馈" })).not.toBeInTheDocument();
 
     fireEvent.click(feedbackEntry);
@@ -4257,7 +4279,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByRole("button", { name: "重置为代码版本" })).not.toBeInTheDocument();
   });
 
-  it("keeps browser history navigation synced with rendered pages", () => {
+  it("keeps browser history navigation synced with rendered pages", async () => {
     window.history.replaceState(null, "", "/parameters");
 
     renderApp({ initialAppState: userState });
@@ -4266,6 +4288,6 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     window.history.pushState(null, "", "/logs");
     fireEvent.popState(window);
 
-    expect(screen.getByRole("button", { name: "上传新日志" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "上传新日志" })).toBeInTheDocument();
   });
 });

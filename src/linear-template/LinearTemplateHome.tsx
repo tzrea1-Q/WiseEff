@@ -4,7 +4,7 @@ import { WiseEffIcon } from "../components/WiseEffIcon";
 import { PlatformFlowSection } from "./PlatformFlowSection";
 import { SubAppEntryRow } from "./SubAppEntryRow";
 import { handleSpaLinkClick } from "./spaLinkNavigation";
-import { homepageHeroWorkflowPhrase, isWorkflowVisible, type WorkflowId } from "@/domain/workflowDiscovery";
+import { homepageHeroWorkflowPhrase, isWorkflowVisible, VISIBLE_WORKFLOWS, type WorkflowId } from "@/domain/workflowDiscovery";
 import { AppFooter } from "@/components/common/AppFooter";
 import { appFooterConfig } from "@/config/appFooterConfig";
 import "./linear-template.css";
@@ -18,13 +18,7 @@ const allNavItems: Array<{ label: string; href: string; workflowId: WorkflowId }
   { label: "知识库", href: "/knowledge", workflowId: "knowledge" }
 ];
 
-const navItems = allNavItems.filter((item) => isWorkflowVisible(item.workflowId));
-
-const footerColumns = [
-  {
-    title: "平台",
-    links: allNavItems.filter((item) => isWorkflowVisible(item.workflowId))
-  },
+const flowFooterColumns = [
   {
     title: "流程",
     links: [
@@ -35,35 +29,32 @@ const footerColumns = [
   {
     title: "范围",
     links: [{ label: "模拟边界", href: "#platform-flow" }]
-  },
-  {
-    title: "访问",
-    links: [
-      { label: "进入工作台", href: "/parameter-home" },
-      { label: "查看配置", href: "/parameter-admin" }
-    ]
   }
 ];
 
 export function LinearTemplateHome({
   onNavigate,
-  onFeedback
+  onFeedback,
+  discoveryNotice,
+  visibleWorkflows = VISIBLE_WORKFLOWS
 }: {
   onNavigate?: OnNavigate;
   onFeedback: () => void;
+  discoveryNotice?: ReactNode;
+  visibleWorkflows?: readonly WorkflowId[];
 }) {
   return (
     <div className="linear-template-home light-homepage" data-theme="light">
-      <TemplateHeader onNavigate={onNavigate} />
+      <TemplateHeader onNavigate={onNavigate} visibleWorkflows={visibleWorkflows} />
       <main className="linear-page-gradient" aria-label="雷泽首页">
         <section className="linear-hero-wrap">
           <Container>
-            <Hero onNavigate={onNavigate} />
+            <Hero onNavigate={onNavigate} visibleWorkflows={visibleWorkflows} discoveryNotice={discoveryNotice} />
           </Container>
         </section>
-        <PlatformFlowSection />
+        {!discoveryNotice ? <PlatformFlowSection visibleWorkflows={visibleWorkflows} /> : null}
       </main>
-      <TemplateFooter onNavigate={onNavigate} onFeedback={onFeedback} />
+      <TemplateFooter onNavigate={onNavigate} onFeedback={onFeedback} visibleWorkflows={visibleWorkflows} />
     </div>
   );
 }
@@ -72,8 +63,10 @@ function Container({ children, className = "" }: { children: ReactNode; classNam
   return <div className={`linear-container ${className}`.trim()}>{children}</div>;
 }
 
-function TemplateHeader({ onNavigate }: { onNavigate?: OnNavigate }) {
+function TemplateHeader({ onNavigate, visibleWorkflows }: { onNavigate?: OnNavigate; visibleWorkflows: readonly WorkflowId[] }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const navItems = allNavItems.filter((item) => isWorkflowVisible(item.workflowId, visibleWorkflows));
+  const workbenchHref = navItems[0]?.href;
 
   useEffect(() => {
     document.documentElement.classList.toggle("linear-template-menu-open", menuOpen);
@@ -113,19 +106,21 @@ function TemplateHeader({ onNavigate }: { onNavigate?: OnNavigate }) {
             ))}
           </ul>
         </nav>
-        <div className="linear-header-actions">
-          <a className="linear-login" href="#platform-flow">
-            查看演示
-          </a>
-          <a
-            className="linear-button linear-button-small"
-            href="/parameter-home"
-            aria-label="打开雷泽工作台"
-            onClick={(event) => handleSpaLinkClick(event, "/parameter-home", onNavigate)}
-          >
-            打开我的工作台
-          </a>
-        </div>
+        {workbenchHref && (
+          <div className="linear-header-actions">
+            <a className="linear-login" href="#platform-flow">
+              查看演示
+            </a>
+            <a
+              className="linear-button linear-button-small"
+              href={workbenchHref}
+              aria-label="打开雷泽工作台"
+              onClick={(event) => handleSpaLinkClick(event, workbenchHref, onNavigate)}
+            >
+              打开我的工作台
+            </a>
+          </div>
+        )}
         <button
           className="linear-menu-button"
           type="button"
@@ -141,27 +136,45 @@ function TemplateHeader({ onNavigate }: { onNavigate?: OnNavigate }) {
   );
 }
 
-function Hero({ onNavigate }: { onNavigate?: OnNavigate }) {
+function Hero({ onNavigate, visibleWorkflows, discoveryNotice }: { onNavigate?: OnNavigate; visibleWorkflows: readonly WorkflowId[]; discoveryNotice?: ReactNode }) {
   return (
     <div className="linear-hero">
       <h1 className="linear-fade-item delay-1">让业务流程更智能、更高效、更可控</h1>
-      <p className="linear-hero-subtitle linear-fade-item delay-2">
-        雷泽把{homepageHeroWorkflowPhrase()}连接成一条可审阅工作流，
-        <br />
-        让 Agent 辅助检索、分析和流转，关键变更始终保留人工确认、权限和审计。
-      </p>
-      <SubAppEntryRow onNavigate={onNavigate} />
+      {visibleWorkflows.length > 0 && (
+        <p className="linear-hero-subtitle linear-fade-item delay-2">
+          雷泽把{homepageHeroWorkflowPhrase(visibleWorkflows)}连接成一条可审阅工作流，
+          <br />
+          让 Agent 辅助检索、分析和流转，关键变更始终保留人工确认、权限和审计。
+        </p>
+      )}
+      {discoveryNotice ?? <SubAppEntryRow onNavigate={onNavigate} visibleWorkflows={visibleWorkflows} />}
     </div>
   );
 }
 
 function TemplateFooter({
   onNavigate,
-  onFeedback
+  onFeedback,
+  visibleWorkflows
 }: {
   onNavigate?: OnNavigate;
   onFeedback: () => void;
+  visibleWorkflows: readonly WorkflowId[];
 }) {
+  const navItems = allNavItems.filter((item) => isWorkflowVisible(item.workflowId, visibleWorkflows));
+  const workbenchHref = navItems[0]?.href;
+  const footerColumns = [
+    ...(navItems.length > 0 ? [{ title: "平台", links: navItems }] : []),
+    ...(navItems.length > 0 ? flowFooterColumns : []),
+    ...(workbenchHref ? [{
+      title: "访问",
+      links: [
+        { label: "进入工作台", href: workbenchHref },
+        ...(isWorkflowVisible("parameter-management", visibleWorkflows) ? [{ label: "查看配置", href: "/parameter-admin" }] : [])
+      ]
+    }] : [])
+  ];
+
   return (
     <footer className="linear-footer">
       <Container className="linear-footer-inner">

@@ -29,8 +29,8 @@ import { getCanonicalMemberRemovalForAuth, listCanonicalMemberRemovalsForAuth,
 import { assertSingleRequestReview } from "./drafts/changeService";
 import { withCanonicalSourceAttemptTransaction } from "../parameter-files/canonicalSourceAttemptTransaction";
 import { loadPublishedCatalog } from "./catalogProjectValueSync";
-import { listConfigSets } from "../parameter-files/configSetService";
-import { getLatestConfigRevision } from "../parameter-topology/repository";
+import { getProjectParameterFileConfigSetId } from "../parameter-files/repository";
+import { getLatestConfigRevision, listConfigRevisionMembers } from "../parameter-topology/repository";
 import { requireCanViewProject } from "../parameter-topology/service";
 import {
   createBindingDraftParamsSchema,
@@ -247,23 +247,28 @@ function decodeContentBase64(contentBase64: string) {
   }
 }
 
-async function syncLatestPublishedValues(
+async function syncUploadedFilePublishedValues(
   db: Database,
   auth: AuthContext,
   projectId: string,
+  fileId: string,
+  fileVersionId: string,
   context: { requestId: string }
 ) {
   const pool = getRootPostgresPool(db);
   if (!pool) return;
-  const sets = await listConfigSets(db, auth, projectId);
-  const configSet = sets.find((item) => item.name === "default") ?? sets[0];
-  if (!configSet) return;
+  const configSetId = await getProjectParameterFileConfigSetId(db, {
+    organizationId: auth.organization.id, projectId, fileId
+  });
+  if (!configSetId) return;
   const revision = await getLatestConfigRevision(db, {
     organizationId: auth.organization.id,
     projectId,
-    configSetId: configSet.id
+    configSetId
   });
   if (!revision || revision.status !== "resolved") return;
+  const members = await listConfigRevisionMembers(db, revision.id);
+  if (!members.some(member => member.fileId === fileId && member.fileVersionId === fileVersionId)) return;
   const snapshot = await loadPublishedCatalog(pool);
   if (!snapshot) return;
   await withAuditedWrite(db, createUserInvocation(auth), { requestId: context.requestId }, async (tx) => {
@@ -272,7 +277,7 @@ async function syncLatestPublishedValues(
       {
         organizationId: auth.organization.id,
         projectId,
-        configSetId: configSet.id,
+        configSetId,
         configRevisionId: revision.id
       }
     );
@@ -291,7 +296,7 @@ async function syncLatestPublishedValues(
         targetId: revision.id,
         metadata: {
           writeTargetRole: "canonical-project-value",
-          sourceRef: `config-set:${configSet.id}`,
+          sourceRef: `config-set:${configSetId}`,
           configRevisionId: revision.id,
           written
         }
@@ -709,7 +714,7 @@ export function registerCatalogProjectValueConsumerRoutes(
       { requestId: request.requestId },
       db
     );
-    await syncLatestPublishedValues(db, auth, params.projectId, { requestId: request.requestId });
+    await syncUploadedFilePublishedValues(db, auth, params.projectId, result.file.id, result.version.id, { requestId: request.requestId });
     return {
       status: 201,
       body: {

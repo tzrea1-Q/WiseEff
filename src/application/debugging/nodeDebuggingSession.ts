@@ -19,7 +19,7 @@ import { remoteShellDiagnostic } from "@wiseeff/device-command-core/remoteNodeWr
 
 import { normalizeBridgeProtocol } from "@/application/bridge/bridgeTargetSession";
 import type { DebuggingRuntimeActions } from "@/application/debugging/debuggingRuntime";
-import { formatDebuggingRuntimeError } from "@/application/debugging/debuggingRuntime";
+import { debuggingNoDeviceNotification, formatDebuggingRuntimeError } from "@/application/debugging/debuggingRuntime";
 import type {
   CanonicalDebugPin,
   DebugReadbackOutcome,
@@ -102,6 +102,7 @@ export type NodeDebuggingSessionSnapshot = {
   rows: RuntimeRow[];
   target: string | undefined;
   detecting: boolean;
+  noDeviceDetected: boolean;
   events: NodeDebuggingOperationEvent[];
   selectedIds: readonly string[];
   activeSessionId: string | undefined;
@@ -437,6 +438,7 @@ export function createNodeDebuggingSession(
   let rows: RuntimeRow[] = rebuildRows(debugParameters, protocol, []);
   let target: string | undefined;
   let detecting = false;
+  let noDeviceDetected = false;
   let events: NodeDebuggingOperationEvent[] = [];
   let selectedIds = new Set<string>();
   let activeSessionId: string | undefined;
@@ -476,6 +478,7 @@ export function createNodeDebuggingSession(
       rows,
       target,
       detecting,
+      noDeviceDetected,
       events,
       selectedIds: [...selectedIds],
       activeSessionId,
@@ -981,6 +984,7 @@ export function createNodeDebuggingSession(
       writeProtocol(nextProtocol);
       protocol = nextProtocol;
       detecting = false;
+      noDeviceDetected = false;
       target = undefined;
       activeTargetId = undefined;
       activeSessionId = undefined;
@@ -1006,6 +1010,7 @@ export function createNodeDebuggingSession(
       const isCurrentDetectRequest = () => detectRequestSeq === requestSeq;
 
       detecting = true;
+      noDeviceDetected = false;
       if (options?.autoDetectProtocol) {
         rowOperationGeneration += 1;
         activeSessionId = undefined;
@@ -1039,6 +1044,7 @@ export function createNodeDebuggingSession(
         bridgeTargetCandidates = [];
         const diagnosticError = error instanceof Error ? (error as DiagnosticError) : undefined;
         const healthSnapshot = (await probeBridgeHealth().catch(() => null))?.health ?? null;
+        if (!isCurrentDetectRequest()) return;
         const detectFailureMessage = formatDetectFailureMessage({
           error,
           health: healthSnapshot,
@@ -1046,6 +1052,7 @@ export function createNodeDebuggingSession(
           formatError: formatDebuggingRuntimeError
         });
         const detectFailureStderr = diagnosticError?.stderr || detectFailureMessage;
+        noDeviceDetected = Boolean(healthSnapshot?.connected) && detectFailureMessage === debuggingNoDeviceNotification;
         appendEvent({
           parameterName: "设备",
           parameterKey: "debugging.detect",
@@ -1074,6 +1081,7 @@ export function createNodeDebuggingSession(
       const isCurrent = () => detectRequestSeq === requestSeq;
       selectingBridgeTargetId = selectedTarget.id;
       detecting = true;
+      noDeviceDetected = false;
       emit();
       try {
         const result = (await actions.detectAndStartSession({

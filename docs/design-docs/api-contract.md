@@ -34,6 +34,22 @@ Rules:
 
 `POST /api/v1/agent/xiaoze/suggest` validates `{ context?: { projectId?, projectName?, pageKey?, path? } }` and returns `{ suggestions: [{ id, tone, headline, meta?, citations }] }`; malformed input is `400 VALIDATION_FAILED`, while a drifting successful response fails closed in the frontend. Xiaoze's five WiseEff CUSTOM frame families have concrete Zod payload/envelope schemas tested against the existing `xiaozeTurnStream` reducer output. This does not wrap or replace `@ag-ui/client`, and the generic AG-UI SSE run response remains outside JSON-response OpenAPI modeling.
 
+## Workflow publication
+
+One durable configuration controls UI workflow availability across all organizations ([ADR-0050](../adr/0050-workflow-publication-is-platform-wide-ui-availability.md)). It does not change business API permissions, integrations, or Xiaoze capabilities.
+
+| Method | Path | Contract |
+| --- | --- | --- |
+| `GET` | `/api/v1/workflow-publication` | Active authenticated users; `200 { item: { workflows, version } }`, without management metadata. |
+| `GET` | `/api/v1/admin/workflow-publication` | Active platform super administrator with an organization-wide `platform-admin` binding (`projectId: null`); `200 { item: { workflows, version, updatedAt, updatedBy } }`. |
+| `PUT` | `/api/v1/admin/workflow-publication` | Same administrator requirement; body `{ workflows, expectedVersion }`; returns the saved management state in `200 { item }`. |
+
+`workflows` is the complete known boolean map keyed by `parameter-management`, `debugging`, `log-analysis`, and `knowledge`. Unknown/missing keys, non-booleans, extra body fields, and invalid versions return `400 VALIDATION_FAILED`. `version` starts at `0`; `updatedAt` is an ISO timestamp or `null`, and `updatedBy` is `{ id, name }` or `null`. Organization administrators cannot read or write management state (`403`). All successful responses use `Cache-Control: no-store`.
+
+`GET /api/v1/audit-events` includes global `workflow-publication-updated` history only for active, organization-wide platform super administrators, alongside their own organization's events. Other global event kinds and other organizations' events remain excluded; query parameters cannot widen this scope.
+
+Saving compares `expectedVersion` under the configuration row lock; a mismatch returns `409 CONFLICT` with `reason: "stale-workflow-publication"`. An actual change increments the version and commits a platform-scoped `workflow-publication-updated` audit event, containing the trusted actor and before/after state, in the same transaction. Audit failure rolls back the configuration; unchanged saves retain the version without adding an event. Missing storage/configuration fails with `500 INTERNAL_ERROR`, never a published-default fallback. Migration setup publishes the existing four workflows once and preserves later edits; an absent future workflow is read as unpublished.
+
 ## Log and Debugging Scope
 
 M2 log upload/list and M3 debugging runtime/catalog APIs are scoped by authenticated `organization_id`. A new log association requires `relatedParameterPin: { kind: "canonical-pin", projectId, bindingId, definitionId?, definitionRevisionId? }`; the server authorizes that exact project Binding and freezes its canonical Value, DefinitionRevision, and source pin for each analysis run. Rerun resolves the current Binding again; prior run snapshots and reports remain historical. `relatedParameterId` alone is not accepted for new uploads, and legacy stored links without a verified project scope cannot be treated as current. Unassociated log uploads and debugging APIs do not accept a top-level `projectId` field.

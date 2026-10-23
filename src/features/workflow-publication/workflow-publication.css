@@ -1,0 +1,40 @@
+.workflow-publication-page {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-4);
+}
+
+.workflow-publication-page__summary,
+.workflow-publication-page__workflow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.workflow-publication-page__summary { color: var(--text-muted); font-size: var(--text-sm); }
+.workflow-publication-page__workflow { padding: var(--space-4) 0; border-top: var(--stroke-hairline) solid var(--border); }
+.workflow-publication-page__workflow:last-child { padding-bottom: 0; }
+.workflow-publication-page__description { display: grid; gap: var(--space-1); }
+.workflow-publication-page__description h3 { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-size: var(--text-base); line-height: var(--leading-base); }
+.workflow-publication-page__description p,
+.workflow-publication-page__description > span { margin: 0; color: var(--text-muted); font-size: var(--text-sm); line-height: var(--leading-sm); }
+.workflow-publication-page__aside { display: grid; gap: var(--space-4); min-width: 0; }
+.workflow-publication-page__card { display: grid; gap: var(--space-3); padding: var(--space-5); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.workflow-publication-page__card h2 { margin: 0; font-size: var(--text-lg); line-height: var(--leading-lg); }
+.workflow-publication-page__card p { margin: 0; color: var(--text-muted); font-size: var(--text-sm); line-height: var(--leading-base); }
+.workflow-publication-page__card dl { display: grid; gap: var(--space-3); margin: 0; font-size: var(--text-sm); }
+.workflow-publication-page__card dt { color: var(--text-muted); }
+.workflow-publication-page__card dd { margin: var(--space-1) 0 0; overflow-wrap: anywhere; }
+.workflow-publication-page__status { margin: 0; color: var(--text); font-size: var(--text-sm); }
+
+@media (max-width: 1100px) {
+  .workflow-publication-page { grid-template-columns: minmax(0, 1fr); }
+  .workflow-publication-page__aside { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 960px) {
+  .workflow-publication-page__aside { grid-template-columns: minmax(0, 1fr); }
+}

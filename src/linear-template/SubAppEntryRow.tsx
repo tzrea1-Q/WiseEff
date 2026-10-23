@@ -1,12 +1,13 @@
 import { BookOpen, FileText, SlidersHorizontal, TerminalSquare } from "lucide-react";
-import { isWorkflowVisible, type WorkflowId } from "@/domain/workflowDiscovery";
+import { isWorkflowVisible, VISIBLE_WORKFLOWS, type WorkflowId } from "@/domain/workflowDiscovery";
 import { SubAppCard, type SubAppCardProps } from "./SubAppCard";
 
 type SubAppEntryRowProps = {
   onNavigate?: (path: string) => void;
+  visibleWorkflows?: readonly WorkflowId[];
 };
 
-export function SubAppEntryRow({ onNavigate }: SubAppEntryRowProps) {
+export function SubAppEntryRow({ onNavigate, visibleWorkflows = VISIBLE_WORKFLOWS }: SubAppEntryRowProps) {
   const cards: Array<SubAppCardProps & { workflowId: WorkflowId }> = [
     {
       workflowId: "parameter-management",
@@ -54,9 +55,15 @@ export function SubAppEntryRow({ onNavigate }: SubAppEntryRowProps) {
     }
   ];
 
+  const visibleCards = cards.filter((card) => isWorkflowVisible(card.workflowId, visibleWorkflows));
+
+  if (visibleCards.length === 0) {
+    return <p className="linear-hero-subtitle" role="status">暂无向您开放的工作流，请联系管理员。</p>;
+  }
+
   return (
     <div className="sub-app-entry-row" role="list" aria-label="子应用入口">
-      {cards.filter((card) => isWorkflowVisible(card.workflowId)).map((card, index) => (
+      {visibleCards.map((card, index) => (
         <div role="listitem" key={card.title} className={`linear-fade-item delay-${index + 3}`}>
           <SubAppCard {...card} onNavigate={onNavigate} />
         </div>

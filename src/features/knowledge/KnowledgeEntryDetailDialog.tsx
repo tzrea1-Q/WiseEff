@@ -12,8 +12,10 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyDescription } from "@/components/ui/empty";
 import { KnowledgeExtractionBadge, KnowledgeOriginBadge, KnowledgeStatusBadge, KnowledgeTagList } from "./badges";
 import { KnowledgeParameterReferenceChips } from "./KnowledgeParameterReferenceChips";
+import { VISIBLE_WORKFLOWS, type WorkflowId } from "@/domain/workflowDiscovery";
 
 export type KnowledgeEntryDetailDialogProps = {
+  visibleWorkflows?: readonly WorkflowId[];
   open: boolean;
   entry: KnowledgeEntry | null;
   citation?: { page: number | null; historical: boolean; openPage: () => Promise<void> };
@@ -51,6 +53,7 @@ function formatSize(bytes: number) {
 }
 
 export function KnowledgeEntryDetailDialog({
+  visibleWorkflows = VISIBLE_WORKFLOWS,
   open,
   entry,
   citation,
@@ -124,9 +127,9 @@ export function KnowledgeEntryDetailDialog({
                   />
                 </div>
               ) : null}
-              {entry.sourceLogDeleted || onNavigate && (entry.sourceLogId || entry.sourceReloadRunId) ? (
+              {entry.sourceLogDeleted || entry.sourceLogId || entry.sourceReloadRunId ? (
                 <div className="mt-2 flex flex-wrap items-center gap-2" aria-label="蒸馏来源">
-                  {entry.sourceLogDeleted ? <span className="text-xs text-muted-foreground">来源已删除</span> : entry.sourceLogId && onNavigate ? (
+                  {entry.sourceLogDeleted ? <span className="text-xs text-muted-foreground">来源已删除</span> : entry.sourceLogId ? onNavigate && visibleWorkflows.includes("log-analysis") ? (
                     <Button
                       variant="link"
                       size="sm"
@@ -136,8 +139,8 @@ export function KnowledgeEntryDetailDialog({
                       <ExternalLink data-icon="inline-start" />
                       查看日志分析
                     </Button>
-                  ) : null}
-                  {entry.sourceReloadRunId && onNavigate ? (
+                  ) : <span className="text-xs text-muted-foreground">来源：日志分析</span> : null}
+                  {entry.sourceReloadRunId ? onNavigate && visibleWorkflows.includes("debugging") ? (
                     <Button
                       variant="link"
                       size="sm"
@@ -147,7 +150,7 @@ export function KnowledgeEntryDetailDialog({
                       <ExternalLink data-icon="inline-start" />
                       查看重载运行
                     </Button>
-                  ) : null}
+                  ) : <span className="text-xs text-muted-foreground">来源：重载运行</span> : null}
                 </div>
               ) : null}
             </div>
