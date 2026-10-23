@@ -61,7 +61,7 @@ export async function listProjectHandovers(db: Database, auth: AuthContext) {
   const items: ProjectHandoverItem[] = await Promise.all(work.map(async item => {
     const eligible = await Promise.all(contexts.map(candidate => qualifies(db, candidate, item, organizationId)));
     const candidates = contexts.filter((candidate, index) => eligible[index] && (candidate.organization.id === organizationId || candidate.user.id === auth.user.id)).map(candidate => ({ id: candidate.user.id, name: candidate.user.name }));
-    const responsible = contexts.find((candidate, index) => candidate.user.id === item.responsibleUserId && eligible[index]);
+    const responsible = contexts.find((candidate, index) => candidate.user.id === item.responsibleUserId && candidate.organization.id === organizationId && eligible[index]);
     return { ...item, version: version(item), candidates, pending: !responsible };
   }));
   return { items };

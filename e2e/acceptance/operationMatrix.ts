@@ -18,6 +18,15 @@ export type AcceptanceOperation = {
 
 export const acceptanceOperations: AcceptanceOperation[] = [
   {
+    id: "ORG-ACCOUNT-TRANSFER-001", priority: "P1", area: "platform", coverage: "conditional",
+    route: "/organization/members", roles: ["Platform Admin"],
+    action: "Preview source grants and retained work, choose target organization roles, safely retry a failed transfer, and verify new local login with old sessions and pairings revoked while source business and machine credentials remain.",
+    acceptanceIds: ["ORG-ACCOUNT-TRANSFER-001"],
+    specFiles: ["e2e/acceptance/organization-account-transfer.acceptance.spec.ts", "server/modules/users/accountTransfer.integration.test.ts"],
+    assertions: ["ui", "api", "db", "audit", "screenshot"],
+    deferralReason: "Browser workflow requires an isolated real local-auth API lane; HMAC and OIDC lanes skip this local-password interaction."
+  },
+  {
     id: "PCAT-REGISTRATION-INITIALIZE-001", priority: "P1", area: "parameters", coverage: "future",
     route: "/parameter-admin/modules", roles: ["Org Admin"],
     action: "Choose an explicit business parent and destination name, confirm atomic typed-module initialization and subject registration; retain tenant, release, idempotency and rollback guards.",

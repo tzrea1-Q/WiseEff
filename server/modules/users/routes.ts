@@ -49,6 +49,8 @@ import { acceptOrganizationInvitation, invitationAcceptSchema, invitationInputSc
 import { authAttemptKey, createAuthAttemptLimiter } from "../auth/authAttemptLimiter";
 import { listProjectHandovers, assignProjectHandover, projectHandoverBodySchema, projectHandoverParamsSchema } from "../parameters/handover";
 import { parameterInvocation, parameterRequestAccess, withParameterAccess } from "../parameters/operatingScope";
+import { previewAccountTransfer, transferAccount } from "./accountTransfer";
+import { accountTransferRequestSchema, accountTransferTargetSchema } from "../contracts/dtoSchemas/accountTransfer";
 
 const userIdParamsSchema = z.object({
   userId: z.string().min(1)
@@ -98,6 +100,16 @@ export function registerUserRoutes(
     return requireDb(options.db);
   };
   const invitationAttempts = createAuthAttemptLimiter();
+  router.post("/api/v1/platform/organizations/:organizationId/members/:userId/transfer-preview", async request => {
+    const db = requireDb(options.db), caller = createUserInvocation(await options.getCurrentAuthContext(request));
+    const input = parseWithSchema(accountTransferTargetSchema, request.body);
+    return { status: 200, body: { item: await previewAccountTransfer(db, caller, request.params.organizationId, request.params.userId, input.targetOrganizationId, mutationContext(request)) } };
+  });
+  router.post("/api/v1/platform/organizations/:organizationId/members/:userId/transfer", async request => {
+    const db = requireDb(options.db), caller = createUserInvocation(await options.getCurrentAuthContext(request));
+    const input = parseWithSchema(accountTransferRequestSchema, request.body);
+    return { status: 200, body: { item: await transferAccount(db, caller, request.params.organizationId, request.params.userId, input, mutationContext(request)) } };
+  });
   router.get("/api/v1/organization/project-handovers", async request => {
     const db = requireDb(options.db), auth = await parameterRequestAccess(db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     return { status: 200, body: await listProjectHandovers(db, auth) };
