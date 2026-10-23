@@ -44,8 +44,30 @@ test.describe("platform Organization provisioning with actual local login", () =
   });
 
   test("searches, creates a usable Organization, preserves conflicts for keyboard correction and contains dialog focus", async ({ page }, testInfo) => {
-    const platform = await signInLocally(page, operatorUsername, LOCAL_DEMO_SHARED_PASSWORD, "/platform/organizations");
+    const platform = await signInLocally(page, operatorUsername, LOCAL_DEMO_SHARED_PASSWORD, "/parameter-home");
     expect(platform.auth.roles).toContainEqual({ projectId: null, roleId: "platform-admin" });
+    const sidebar = page.getByRole("complementary", { name: "主导航侧边栏" });
+    const organizationEntry = sidebar.getByRole("button", { name: "组织管理", exact: true });
+    await expect(sidebar.getByRole("button", { name: "组织目录", exact: true })).toHaveCount(0);
+    await organizationEntry.focus(); await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/platform\/organizations$/);
+    await expect(organizationEntry).toHaveClass(/active/);
+    await page.getByRole("button", { name: "所属组织", exact: true }).click();
+    await expect(page).toHaveURL(/\/organization$/);
+    await expect(page.getByLabel("显示名称", { exact: true })).toHaveValue(platform.auth.organization.name);
+    await expect(organizationEntry).toHaveClass(/active/);
+    await organizationEntry.click();
+    await expect(page).toHaveURL(/\/platform\/organizations$/);
+    await prepareInteractionSurface(page);
+    await expect(page.getByRole("table", { name: "平台组织目录" })).toBeVisible();
+    await expect(sidebar.getByRole("button", { name: "工作流发布", exact: true })).toBeVisible();
+    await expect(sidebar.getByRole("button", { name: "知识后台", exact: true })).toBeInViewport({ ratio: 1 });
+    await page.screenshot({ path: testInfo.outputPath("organization-navigation-1440.png"), animations: "disabled" });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(organizationEntry).toBeInViewport({ ratio: 1 });
+    await expect(page.getByRole("button", { name: "所属组织", exact: true })).toBeInViewport({ ratio: 1 });
+    await page.screenshot({ path: testInfo.outputPath("organization-navigation-1280.png"), animations: "disabled" });
+    await page.setViewportSize({ width: 1440, height: 900 });
     const search = page.getByRole("searchbox", { name: "搜索组织", exact: true });
     const searchingName = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v1/platform/organizations" && new URL(response.url()).searchParams.get("q") === "chargelab");
     await search.fill("chargelab");
@@ -133,6 +155,10 @@ test.describe("platform Organization provisioning with actual local login", () =
     await expect(page.getByLabel("显示名称", { exact: true })).toHaveValue(firstName);
     await expect(page.getByText(firstOrganization.id, { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "组织目录", exact: true })).toHaveCount(0);
+    await page.goto("/parameter-home"); await prepareInteractionSurface(page);
+    await organizationEntry.focus(); await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/organization$/);
+    await expect(page.getByLabel("显示名称", { exact: true })).toHaveValue(firstName);
     await page.reload(); await prepareInteractionSurface(page);
     await expect(page.getByLabel("显示名称", { exact: true })).toHaveValue(firstName);
     await page.screenshot({ path: testInfo.outputPath("organization-initial-admin-login-1440.png"), animations: "disabled" });
