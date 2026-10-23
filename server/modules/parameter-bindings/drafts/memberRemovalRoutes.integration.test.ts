@@ -322,8 +322,9 @@ describe("#906 C reviewed JSON member removal HTTP entry", () => {
   }, 120_000);
 
   it("retains reviewed removal receipts when both submitter and reviewer accounts are deleted", async () => {
-    await db.query("insert into users(id,organization_id,name,title) values('member-history-admin',$1,'History administrator','Admin')", [organizationId]);
-    const manager = makeTestAuthContext({ userId: "member-history-admin", organizationId, roles: [{ roleId: "platform-admin", projectId: null }] });
+    await db.query("insert into users(id,organization_id,name,title,is_active) values('member-history-admin',$1,'History administrator','Admin',true)", [organizationId]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('member-history-admin-org','member-history-admin',$1,null,'admin'),('member-history-admin-platform','member-history-admin',$1,null,'platform-admin')", [organizationId]);
+    const manager = makeTestAuthContext({ userId: "member-history-admin", organizationId, roles: [{ roleId: "admin", projectId: null }, { roleId: "platform-admin", projectId: null }] });
     const sql = "select id,status,member_frozen_proof,applied_source_result,applied_audit_ref from project_parameter_value_change_requests where organization_id=$1 order by id";
     const before = (await db.query(sql, [organizationId])).rows;
     await deleteUser(db, manager, adminId);
