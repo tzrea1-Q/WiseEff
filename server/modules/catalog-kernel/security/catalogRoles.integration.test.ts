@@ -745,12 +745,18 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       where child.rolname = any($1::text[]) or parent.rolname = any($1::text[])
     `, [maintenanceRoles])).rows).toEqual([]);
 
-    // Compare the actual column ACL with the complete, checksum-pinned 0180 grant list.
+    // Preserve the checksum-pinned 0180 list and the exact forward auth reads.
     const migration = await fs.readFile(path.join(migrationsDir, "0180_mod_d02_offline_capture.sql"), "utf8");
     expect(createHash("sha256").update(migration).digest("hex"))
       .toBe("3c7f39c3d5866b0a61be8ccd3b1a5f5c2d44514e9d77857634b303b7237caffb");
-    const expectedColumns = [...migration.matchAll(/grant select \(([^)]+)\)\s+on ([a-z_]+\.[a-z_]+)\s+to wiseeff_mod_d02_source_reader;/g)]
-      .flatMap(([, columns, relation]) => columns.split(",").map((column) => `${relation}.${column.trim()}`)).sort();
+    const expectedColumns = [
+      ...[...migration.matchAll(/grant select \(([^)]+)\)\s+on ([a-z_]+\.[a-z_]+)\s+to wiseeff_mod_d02_source_reader;/g)]
+        .flatMap(([, columns, relation]) => columns.split(",").map((column) => `${relation}.${column.trim()}`)),
+      "public.organizations.status",
+      "public.project_members.organization_id", "public.project_members.project_id",
+      "public.project_members.roles", "public.project_members.user_id",
+      "public.users.external_tokens_revoked_at",
+    ].sort();
     expect(expectedColumns.length).toBeGreaterThan(0);
     const actualColumns = await client.query<{ identity: string }>(`
       select table_schema || '.' || table_name || '.' || column_name as identity

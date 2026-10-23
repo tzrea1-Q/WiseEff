@@ -25,7 +25,7 @@ describe("retained historical identity owner / PostgreSQL capability", () => {
         values ('historical-other-org', 'identity-org-b', 'Vendor,Device-200')`);
       const snapshot = async () => (await db.query(`select
         (select jsonb_agg(to_jsonb(h) order by id) from public.parameter_module_dismissed_compatibles h) as identities,
-        (select jsonb_agg(to_jsonb(o) order by id) from public.organizations o) as organizations,
+        (select jsonb_agg(to_jsonb(o) - array['status','lifecycle_version','suspended_at'] order by id) from public.organizations o) as organizations,
         (select count(*)::int from public.audit_events) as audits`)).rows;
       const before = await snapshot();
       await db.query(`grant select on public.parameter_module_dismissed_compatibles to ${capability}`);
@@ -72,6 +72,8 @@ describe("retained historical identity owner / PostgreSQL capability", () => {
       }
       expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
       expect(await snapshot()).toEqual(before);
+      expect((await db.query(`select distinct status,lifecycle_version::int,suspended_at from public.organizations`)).rows)
+        .toEqual([{ status: "active", lifecycle_version: 0, suspended_at: null }]);
       const owner = (await db.query<{ owner: string; prosecdef: boolean; provolatile: string; proconfig: string[]; public_execute: boolean }>(`
         select pg_catalog.pg_get_userbyid(p.proowner) as owner, p.prosecdef, p.provolatile, p.proconfig,
           exists(select 1 from pg_catalog.aclexplode(p.proacl) acl where acl.grantee=0 and acl.privilege_type='EXECUTE') as public_execute
