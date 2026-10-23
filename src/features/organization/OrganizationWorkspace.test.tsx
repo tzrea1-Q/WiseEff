@@ -35,6 +35,7 @@ describe("organization workspace target ownership", () => {
     expect(within(inactive).getByText("软件开发")).toBeInTheDocument();
     expect(within(inactive).getByText("已停用")).toBeInTheDocument();
     expect(within(inactive).getByRole("button", { name: "修改 Inactive editor 的项目编辑角色" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "批量授予项目角色" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("combobox", { name: "选择项目" }));
     await userEvent.click(await screen.findByRole("option", { name: "Empty project" }));
     expect(await screen.findByText("暂无项目参与者")).toBeInTheDocument();
