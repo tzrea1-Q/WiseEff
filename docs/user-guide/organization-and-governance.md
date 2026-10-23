@@ -28,6 +28,8 @@ If you only need to stop access, disable the account. Delete user is permanent a
 
 ## Manage project participation
 
+In **Manage invitations**, select Organization roles, Teams, projects and the editing roles for each project before generating the one-time link. The invitation list and recipient preview show the complete offer. Acceptance applies all current grants together. If a Team or project was deleted or moved, or the sender lost authority, acceptance creates no account: an administrator must correct the preset and regenerate the link. Regeneration invalidates the old link. Teams do not confer project access, and project editing roles do not grant independent review or merge duties.
+
 Open **Project participation** (`/organization/projects`) and choose a project. Use **Add participant** or **Modify** to select a member and editing roles. Clearing the roles and saving removes participation. Disabled accounts stay marked and are never activated by changing participation. Platform administrators can use the target Organization shown on the page; each tab keeps its own target.
 
 Organization members can view projects. Editing requires participation and an editing role in that project; committer editing roles can edit critical parameters there. Organization and platform administrators manage directly. Review, merge and device duties remain separate and are not granted by editing roles. Existing editing eligibility is migrated once; organization business roles do not grant implicit access to future projects.

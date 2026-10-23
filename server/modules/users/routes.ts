@@ -73,7 +73,7 @@ function requireDb(db: Database | undefined) {
   return db;
 }
 
-function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Invalid user governance route input.") {
+function parseWithSchema<Schema extends z.ZodTypeAny>(schema: Schema, value: unknown, message = "Invalid user governance route input."): z.output<Schema> {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
     throw new ApiError("VALIDATION_FAILED", message, { issues: parsed.error.issues });
