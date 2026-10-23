@@ -2341,7 +2341,7 @@ for (const routeId of [
   "catalog.getPlacement", "catalog.updatePlacement", "catalog.listDriverCompatibleDiscovery",
   "catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem",
   ...Object.keys(schemaRegistry).filter((routeId) => schemaRegistry[routeId].successStatus !== 410 && (
-    routeId.startsWith("organization.teams.") || routeId.startsWith("knowledge.") || routeId.startsWith("xiaoze.") || routeId.startsWith("logs.") ||
+    routeId.startsWith("organization.teams.") || routeId.startsWith("knowledge.") || routeId.startsWith("xiaoze.") || routeId.startsWith("logs.") || routeId.startsWith("productFeedback.") ||
     routeId.startsWith("parameters.") || routeId.startsWith("parameters-dashboard-") ||
     routeId.startsWith("parameterFiles.") || routeId.startsWith("parameterTopology.")
   ))
