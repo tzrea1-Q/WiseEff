@@ -301,6 +301,52 @@
         }
       }
     },
+    "/api/v1/organization/operating-scope": {
+      "post": {
+        "operationId": "auth.enterOperatingContext",
+        "summary": "Resolve and audit a request-local operating Organization without changing account membership",
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnterOperatingContextRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatingContextResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/me/profile": {
       "patch": {
         "operationId": "auth.updateProfile",
@@ -22411,6 +22457,174 @@
       "MeResponse": {
         "type": "object",
         "x-wiseeff-schema": "MeResponse"
+      },
+      "EnterOperatingContextRequest": {
+        "type": "object",
+        "properties": {
+          "organizationId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "x-wiseeff-schema": "EnterOperatingContextRequest"
+      },
+      "OperatingContextResponse": {
+        "type": "object",
+        "properties": {
+          "actor": {
+            "type": "object",
+            "properties": {
+              "user": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "organizationId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "emailVerified": {
+                    "type": "boolean"
+                  },
+                  "username": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "organizationId",
+                  "name",
+                  "title",
+                  "isActive"
+                ],
+                "additionalProperties": false
+              },
+              "organization": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "projectId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "roleId": {
+                      "type": "string",
+                      "enum": [
+                        "guest",
+                        "hardware-user",
+                        "software-user",
+                        "hardware-committer",
+                        "software-committer",
+                        "admin",
+                        "platform-admin"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "projectId",
+                    "roleId"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "permissions": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "parameter:view",
+                    "parameter:edit",
+                    "parameter:edit-critical",
+                    "debugging:use",
+                    "debugging:view",
+                    "debugging:read",
+                    "debugging:write",
+                    "debugging:rollback",
+                    "debugging:dts-reload",
+                    "debugging:admin",
+                    "logs:view",
+                    "logs:upload",
+                    "logs:analyze",
+                    "logs:archive",
+                    "logs:feedback",
+                    "logs:admin-domains",
+                    "knowledge:view",
+                    "knowledge:edit",
+                    "knowledge:manage",
+                    "parameter:review",
+                    "admin:access",
+                    "users:manage",
+                    "platform:access",
+                    "platform:schema-promote",
+                    "catalog:author",
+                    "catalog:publish",
+                    "catalog:review-high-risk"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "user",
+              "organization",
+              "roles",
+              "permissions"
+            ],
+            "additionalProperties": false
+          },
+          "organization": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "actor",
+          "organization"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "OperatingContextResponse"
       },
       "UpdateCurrentUserProfileRequest": {
         "type": "object",

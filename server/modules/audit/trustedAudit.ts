@@ -39,10 +39,16 @@ export function projectTrustedInvocationForAudit(
 
   if (trusted.initiator === "user") {
     return {
-      organizationId: trusted.principal.organization.id,
+      organizationId: trusted.operatingOrganization?.id ?? trusted.principal.organization.id,
       actorUserId: trusted.principal.user.id,
       actorType: "user",
-      metadata: { initiator: "user" }
+      metadata: {
+        initiator: "user",
+        ...(trusted.operatingOrganization ? {
+          actorHomeOrganizationId: trusted.principal.organization.id,
+          operatingOrganizationId: trusted.operatingOrganization.id
+        } : {})
+      }
     };
   }
 

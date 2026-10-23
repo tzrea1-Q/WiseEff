@@ -7,6 +7,8 @@ import type { createLocalAuthService, LocalAuthPublicConfig, LocalAuthSessionRes
 import type { Database } from "../../shared/database/client";
 import { updateCurrentUserProfile } from "./profile";
 import { createUserInvocation } from "./trustedInvocation";
+import { enterOperatingContext } from "./operatingContext";
+import { enterOperatingContextBodySchema } from "../contracts/dtoSchemas/organizationScope";
 
 const platformRoleIdSchema = z.enum([
   "guest",
@@ -183,6 +185,13 @@ export function registerAuthRoutes(
       status: 200,
       body: await options.getCurrentAuthContext(request)
     };
+  });
+
+  router.post("/api/v1/organization/operating-scope", async (request) => {
+    const actor = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(enterOperatingContextBodySchema, request.body, "Invalid operating Organization input.");
+    if (!options.db) throw new ApiError("NOT_FOUND", "Organization storage is not enabled.");
+    return { status: 200, body: await enterOperatingContext(options.db, actor, body.organizationId, { requestId: request.requestId }) };
   });
 
   router.patch("/api/v1/me/profile", async (request) => {
