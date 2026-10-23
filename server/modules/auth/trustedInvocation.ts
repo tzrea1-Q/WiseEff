@@ -235,6 +235,14 @@ export function createUserInvocation(principal: AuthContext, operatingOrganizati
   });
 }
 
+/** Derive an authorized resource scope from the caller's existing, trusted User provenance. */
+export function withOperatingOrganization(invocation: UserInvocationContext, organization: AuthContext["organization"]): UserInvocationContext {
+  const trusted = assertTrustedInvocationContext(invocation);
+  if (trusted.initiator !== "user") invalid("an operating Organization requires a trusted user invocation");
+  validateOperatingOrganization(trusted.principal, organization);
+  return brand({ ...trusted, operatingOrganization: Object.freeze({ ...organization }) });
+}
+
 export function createAgentInvocation(principal: AuthContext, input: AgentInvocationInput): AgentInvocationContext {
   validateAuthContext(principal);
   const validated = validateAgentInvocationInput(input);

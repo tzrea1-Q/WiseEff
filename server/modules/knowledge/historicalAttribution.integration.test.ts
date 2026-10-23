@@ -39,7 +39,7 @@ describe.skipIf(!available)("historical knowledge attribution over HTTP and Post
   it("keeps creator and revision signatures in the original organization after rename, transfer and account deletion", async () => {
     const created = await request<{ item: KnowledgeEntryDto & { historicalAttribution: HistoricalAttribution } }>("entries", "POST",
       { title: "Retained engineering knowledge", contentForm: "markdown", tags: [], contentMarkdown: "historicalneedle" });
-    expect(created.status, created.body).toBe(201);
+    expect(created.status, created.bodyText).toBe(201);
     const id = created.body.item.id;
     const creator = { id: auth.user.id, name: "Original author", source: "recorded" };
     const organization = { id: auth.organization.id, name: "Original organization", source: "recorded" };
@@ -59,7 +59,7 @@ describe.skipIf(!available)("historical knowledge attribution over HTTP and Post
     expect(retained.historicalAttribution).toEqual({ organization, actors: { created_by_user_id: creator } });
     const revisions = await request<{ items: Array<KnowledgeRevisionDto & { historicalAttribution: HistoricalAttribution }> }>(
       `entries/${id}/revisions`, "GET", undefined, manager);
-    expect(revisions.status, revisions.body).toBe(200);
+    expect(revisions.status, revisions.bodyText).toBe(200);
     expect(revisions.body.items[0]).toMatchObject({ authorUserId: null,
       historicalAttribution: { organization, actors: { author_user_id: creator } } });
     expect((await request<{ items: { entryId: string }[] }>("search?q=historicalneedle", "GET", undefined, manager)).body.items)

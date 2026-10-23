@@ -191,7 +191,7 @@ export function registerAuthRoutes(
     const actor = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(enterOperatingContextBodySchema, request.body, "Invalid operating Organization input.");
     if (!options.db) throw new ApiError("NOT_FOUND", "Organization storage is not enabled.");
-    return { status: 200, body: await enterOperatingContext(options.db, actor, body.organizationId, { requestId: request.requestId }) };
+    return { status: 200, body: await enterOperatingContext(options.db, createUserInvocation(actor), body.organizationId, { requestId: request.requestId }) };
   });
 
   router.patch("/api/v1/me/profile", async (request) => {
