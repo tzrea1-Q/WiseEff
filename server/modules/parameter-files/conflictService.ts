@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterInvocation } from "../parameters/operatingScope";
 import { randomUUID } from "node:crypto";
 
 import { createUserInvocation } from "../auth/trustedInvocation";
@@ -147,7 +148,7 @@ export async function resolveParameterFileConflict(
 
   return db.transaction(async (tx) => {
     const [conflict] = await listOpenConflicts(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       conflictId: input.conflictId
     });
@@ -164,7 +165,7 @@ export async function resolveParameterFileConflict(
 
     // Resolve before deleting drafts: ui/file draft FKs cascade-delete the conflict row.
     const resolved = await resolveConflict(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       conflictId: input.conflictId,
       status: input.resolution === "file" ? "resolved_file" : "resolved_ui",
       resolvedByUserId: auth.user.id
@@ -182,11 +183,11 @@ export async function resolveParameterFileConflict(
       where organization_id = $1
         and id = $2
       `,
-      [auth.organization.id, draftIdToDelete]
+      [parameterOrganizationId(auth), draftIdToDelete]
     );
 
     // requestId fallback survives only until conflict contexts become mandatory (ADR-0027).
-    await writeAuditEventInTx(asAuditTx(tx), createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
+    await writeAuditEventInTx(asAuditTx(tx), parameterInvocation(auth) ?? createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
       app: "parameters",
       kind: "parameter-file-conflict-resolve",
       action: "resolve",
@@ -221,7 +222,7 @@ export async function previewBulkConflictResolution(
   }
 
   const openConflicts = await listOpenConflicts(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId
   });
   const protectedFiles = await db.query<{ id: string }>(`
@@ -230,7 +231,7 @@ export async function previewBulkConflictResolution(
        and file.id=any($3::text[])
        and exists (select 1 from parameter_catalog.project_parameter_source_occurrences occurrence
                     where occurrence.file_id=file.id or occurrence.config_set_id=file.config_set_id)`,
-    [auth.organization.id, input.projectId, openConflicts.flatMap((conflict) => conflict.fileId ? [conflict.fileId] : [])]);
+    [parameterOrganizationId(auth), input.projectId, openConflicts.flatMap((conflict) => conflict.fileId ? [conflict.fileId] : [])]);
   const canonicalFileIds = new Set(protectedFiles.rows.map((row) => row.id));
 
   if (input.conflictIds === undefined) {
@@ -255,7 +256,7 @@ export async function previewBulkConflictResolution(
   const lookedUp =
     missingIds.length > 0
       ? await listFileSyncConflictsByIds(db, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           conflictIds: missingIds
         })
       : [];

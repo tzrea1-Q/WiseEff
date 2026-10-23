@@ -14,6 +14,9 @@ import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
 import { ProjectDeletionPreviewDialog } from "@/components/admin/ProjectDeletionPreviewDialog";
 import { ProjectConfigurationWorkbench } from "@/components/project-configuration-workbench/ProjectConfigurationWorkbench";
 import { ProjectReviewRolesPanel } from "./ProjectReviewRolesPanel";
+import type { ApiClient } from "@/infrastructure/http/apiClient";
+import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
+import { createAuditClient } from "@/infrastructure/http/auditClient";
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
@@ -66,6 +69,7 @@ export type ProjectsOperationsPanelProps = {
   dispatch: Dispatch<AppAction>;
   parameterActions?: ParameterPageActions;
   runtimeMode?: WiseEffRuntimeMode;
+  apiClient?: ApiClient;
   onNewProject?: () => void;
   parameterFileRepository?: ParameterFileRepository;
   parameterCatalogRepository?: ParameterCatalogRepository;
@@ -86,6 +90,7 @@ export function ProjectsOperationsPanel({
   dispatch,
   parameterActions,
   runtimeMode = "mock",
+  apiClient,
   onNewProject,
   parameterFileRepository,
   parameterCatalogRepository,
@@ -97,9 +102,10 @@ export function ProjectsOperationsPanel({
   const legacyView = isLegacyProjectOperationView(routeView) ? routeView : null;
   const isApiMode = runtimeMode === "api";
   const canAdmin = canPerform(migrateLegacyRoleId(state.activeRoleId), "admin.access");
-  const adminClient = useMemo(() => createParameterAdminClient(), []);
-  const batchRollbackClient = useMemo(() => isApiMode ? createCanonicalBatchRollbackClient() : undefined, [isApiMode]);
-  const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
+  const adminClient = useMemo(() => createParameterAdminClient(apiClient), [apiClient]);
+  const governanceClient = useMemo(() => createUserGovernanceClient(apiClient), [apiClient]);
+  const batchRollbackClient = useMemo(() => isApiMode ? createCanonicalBatchRollbackClient(apiClient) : undefined, [isApiMode, apiClient]);
+  const refreshRecentAudits = useRefreshParameterAdminRecentAudits(apiClient);
 
   const fileRepository = useMemo(
     () =>
@@ -131,7 +137,7 @@ export function ProjectsOperationsPanel({
     }),
     [application]
   );
-  const auditQuery = useMemo(() => resolveAuditQuery(runtimeMode), [runtimeMode]);
+  const auditQuery = useMemo(() => resolveAuditQuery({ mode: runtimeMode, createHttp: () => createAuditClient(apiClient) }), [runtimeMode, apiClient]);
 
   const [apiRows, setApiRows] = useState<ParameterAdminProjectRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -155,6 +161,7 @@ export function ProjectsOperationsPanel({
 
   const mockRows = useMemo(() => buildParameterAdminProjectsFromState(state), [state]);
   const rows = isApiMode ? apiRows : mockRows;
+  const projectIds = JSON.stringify(state.configDraft.projects.map((project) => project.id));
   const editingProject = rows.find((row) => row.id === editingProjectId) ?? null;
   const selectedProject = projectId ? rows.find((row) => row.id === projectId) ?? null : null;
 
@@ -181,7 +188,7 @@ export function ProjectsOperationsPanel({
 
   useEffect(() => {
     void loadProjects();
-  }, [loadProjects]);
+  }, [loadProjects, projectIds]);
 
   useEffect(() => {
     if (!projectId || !legacyView) {
@@ -372,6 +379,7 @@ export function ProjectsOperationsPanel({
 
       {reviewRolesOpen && !projectMissing && selectedProject && projectId ? (
         <ProjectReviewRolesPanel
+          userGovernanceClient={governanceClient}
           projectId={projectId}
           projectName={selectedProject.name}
           onBack={() => onNavigate(listReturnPath)}
@@ -381,6 +389,7 @@ export function ProjectsOperationsPanel({
 
       {configurationOpen && !projectMissing && selectedProject && projectId ? (
         <ProjectConfigurationWorkbench
+          apiClient={apiClient}
           project={{
             id: selectedProject.id,
             name: selectedProject.name,

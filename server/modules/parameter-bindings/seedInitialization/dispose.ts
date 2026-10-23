@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterInvocation } from "../../parameters/operatingScope";
 /**
  * T2.3b residue disposal for one captured project parameter plane.
  * Does not run from materializeSeedSources. Ordinary DELETE of immutable
@@ -504,7 +505,7 @@ export async function planProjectParameterPlaneDisposal(
 ): Promise<PlaneDisposalPlan> {
   requireEditorAndOperator(auth, operator);
   requireTargetProject(input.projectId);
-  const organizationId = auth.organization.id;
+  const organizationId = parameterOrganizationId(auth);
   const document = await loadDocument(root, objectStore, auth, {
     organizationId,
     projectId: input.projectId,
@@ -582,9 +583,9 @@ export async function disposeProjectParameterPlaneResidue(
 ): Promise<{ readonly phase: "residue-deleted"; readonly archive: ProjectParameterPlaneArchive | null }> {
   requireEditorAndOperator(auth, operator);
   requireTargetProject(input.projectId);
-  const organizationId = auth.organization.id;
+  const organizationId = parameterOrganizationId(auth);
   const plan = await planProjectParameterPlaneDisposal(root, objectStore, auth, operator, input);
-  return withAuditedWrite(root, createUserInvocation(auth), { requestId: operator.approvalRef }, async (tx) => {
+  return withAuditedWrite(root, parameterInvocation(auth) ?? createUserInvocation(auth), { requestId: operator.approvalRef }, async (tx) => {
     await tx.query("select pg_advisory_xact_lock(hashtext('plane-disposal'), hashtext($1))", [
       `${organizationId}:${input.projectId}`,
     ]);

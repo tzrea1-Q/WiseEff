@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../../parameters/operatingScope";
 /** #906 C owner: freeze one source candidate into one ordered request. */
 import { createHash, randomUUID } from "node:crypto";
 import { historicalActorSql } from "../../../shared/database/historicalAttribution";
@@ -185,7 +186,7 @@ export async function captureCanonicalBatchDraftImpactInTransaction(
        join parameter_catalog.project_value_source_pins pin
          on pin.project_value_id=value.id and pin.binding_id=binding.id
       where binding.organization_id=$1 and binding.project_id=$2
-        and binding.id=any($3::text[])`, [auth.organization.id, projectId, bindingIds]);
+        and binding.id=any($3::text[])`, [parameterOrganizationId(auth), projectId, bindingIds]);
   const bases = new Map(baseRows.rows.map((row) => [row.binding_id, row]));
   if (bases.size !== bindingIds.length) throw new ApiError("CONFLICT", "Batch cohort base is incomplete.");
   const drafts = await tx.query<{ snapshot: Record<string, unknown> }>(`
@@ -193,7 +194,7 @@ export async function captureCanonicalBatchDraftImpactInTransaction(
       from public.project_parameter_value_drafts draft
      where draft.organization_id=$1 and draft.project_id=$2
        and draft.binding_id=any($3::text[])
-     order by draft.binding_id,draft.id for update`, [auth.organization.id, projectId, bindingIds]);
+     order by draft.binding_id,draft.id for update`, [parameterOrganizationId(auth), projectId, bindingIds]);
   const decisionsByBinding = new Map(targetDecisions.map((decision) => [decision.bindingId, decision]));
   const draftImpact = proof.cohort.map((entry, ordinal) => {
     const base = bases.get(entry.bindingId);
@@ -243,7 +244,7 @@ async function refusePendingSingleDraftReviews(
        and request.request_kind='single' and request.status='pending'
        and request.binding_id=any($3::text[])
      order by request.binding_id,request.id limit 1`,
-  [auth.organization.id, projectId, impact.map((entry) => entry.bindingId)]);
+  [parameterOrganizationId(auth), projectId, impact.map((entry) => entry.bindingId)]);
   const bindingId = pending.rows[0]?.binding_id;
   if (bindingId) {
     throw new ApiError("CONFLICT", "A Binding in this batch has a pending single review.", {
@@ -419,7 +420,7 @@ export async function submitCanonicalBatchValueChange(
     projectId: input.projectId, operation: "canonical batch submit",
     targetType: "project-parameter-file-candidate", targetId: input.candidateId
   });
-  if (!await getProjectById(db, { organizationId: auth.organization.id, projectId: input.projectId })) {
+  if (!await getProjectById(db, { organizationId: parameterOrganizationId(auth), projectId: input.projectId })) {
     throw new ApiError("NOT_FOUND", "Project was not found for this organization.");
   }
   if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) {
@@ -444,24 +445,24 @@ export async function submitCanonicalBatchValueChange(
   return withCanonicalSourceAttemptTransaction(db, objectStore, async (tx, attempt) => {
     // The single-target submitter takes the reviewer row before source locks.
     // Keep that order to avoid a reviewer/source lock cycle.
-    const locked = await lockUserById(tx, { organizationId: auth.organization.id, userId: input.assignedToUserId });
+    const locked = await lockUserById(tx, { organizationId: parameterOrganizationId(auth), userId: input.assignedToUserId });
     if (!locked || !await hasEligibleWorkflowAssignee(tx, {
-      organizationId: auth.organization.id, projectId: input.projectId,
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId,
       userId: input.assignedToUserId, roleId: "software-committer"
     })) throw new ApiError("VALIDATION_FAILED", "The selected software reviewer is no longer eligible.");
 
     // One upload candidate can have only one pending review. Serialize retries
     // before D may create a second composed object for that same upload.
     await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
-      `${auth.organization.id}:${input.projectId}:batch-upload:${input.candidateId}`
+      `${parameterOrganizationId(auth)}:${input.projectId}:batch-upload:${input.candidateId}`
     ]);
     const priorRows = await tx.query<{ id: string }>(`select id from public.project_parameter_value_change_requests
       where organization_id=$1 and project_id=$2 and status='pending'
         and (candidate_id=$3 or batch_upload_candidate_id=$3) for update`,
-    [auth.organization.id, input.projectId, input.candidateId]);
+    [parameterOrganizationId(auth), input.projectId, input.candidateId]);
     const wantsDraft = input.targetDecisions?.some((decision) => decision.choice === "draft") ?? false;
     if (wantsDraft && priorRows.rows.length) {
-      const prior = await loadBatchRequest(tx, auth.organization.id, input.projectId, priorRows.rows[0]!.id);
+      const prior = await loadBatchRequest(tx, parameterOrganizationId(auth), input.projectId, priorRows.rows[0]!.id);
       if (prior?.compositionProof && prior.uploadCandidateId === input.candidateId
         && prior.submitterUserId === auth.user.id && prior.assignedToUserId === input.assignedToUserId
         && prior.reason === reason && prior.compositionProof.uploadObject.proofToken === input.expectedProofToken
@@ -486,7 +487,7 @@ export async function submitCanonicalBatchValueChange(
       expectedProofToken: input.expectedProofToken
     });
     let proof = uploadProof;
-    if (proof.organizationId !== auth.organization.id || proof.projectId !== input.projectId
+    if (proof.organizationId !== parameterOrganizationId(auth) || proof.projectId !== input.projectId
       || proof.candidateId !== input.candidateId || (proof.format !== "json" && proof.format !== "dts")
       || proof.targets.length < 2 || !/^[0-9a-f]{64}$/.test(proof.batchProofDigest)) {
       throw new ApiError("CONFLICT", "Canonical batch source proof is incomplete.");
@@ -505,7 +506,7 @@ export async function submitCanonicalBatchValueChange(
               frozen_member_manifest, frozen_binding_manifest, impact
          from public.project_parameter_file_candidates
         where id=$1 and organization_id=$2 and project_id=$3 for update`,
-      [input.candidateId, auth.organization.id, input.projectId])).rows[0];
+      [input.candidateId, parameterOrganizationId(auth), input.projectId])).rows[0];
     if (!candidate || candidate.base_digest !== proof.baseDigest
       || candidate.proposed_digest !== proof.proposedDigest
       || candidate.diff_digest !== proof.batchProofDigest
@@ -599,7 +600,7 @@ export async function submitCanonicalBatchValueChange(
       const facts = prepared.compositionProof;
       const composed = prepared.candidate;
       if (facts.kind !== "canonical-batch-draft-composition"
-        || facts.organizationId !== auth.organization.id || facts.projectId !== input.projectId
+        || facts.organizationId !== parameterOrganizationId(auth) || facts.projectId !== input.projectId
         || facts.format !== uploadProof.format || facts.fileId !== uploadProof.fileId
         || facts.baseVersionId !== uploadProof.baseVersionId
         || facts.configSetId !== uploadProof.configSetId
@@ -661,7 +662,7 @@ export async function submitCanonicalBatchValueChange(
         frozen_member_manifest, frozen_binding_manifest, impact
         from public.project_parameter_file_candidates
         where id=$1 and organization_id=$2 and project_id=$3 for update`,
-      [proof.candidateId, auth.organization.id, input.projectId])).rows[0];
+      [proof.candidateId, parameterOrganizationId(auth), input.projectId])).rows[0];
       if (!finalCandidate || finalCandidate.storage_key !== facts.composedObject.storageKey
         || finalCandidate.checksum.replace(/^sha256:/, "") !== facts.composedObject.sha256
         || finalCandidate.size_bytes !== facts.composedObject.sizeBytes
@@ -678,9 +679,9 @@ export async function submitCanonicalBatchValueChange(
     }
     const pending = await tx.query<{ id: string }>(`select id from public.project_parameter_value_change_requests
       where candidate_id=$1 and organization_id=$2 and project_id=$3 and status='pending' for update`,
-      [input.candidateId, auth.organization.id, input.projectId]);
+      [input.candidateId, parameterOrganizationId(auth), input.projectId]);
     if (pending.rows.length) {
-      const prior = await loadBatchRequest(tx, auth.organization.id, input.projectId, pending.rows[0]!.id);
+      const prior = await loadBatchRequest(tx, parameterOrganizationId(auth), input.projectId, pending.rows[0]!.id);
       if (prior && prior.submitterUserId === auth.user.id && prior.assignedToUserId === input.assignedToUserId
         && prior.reason === reason && prior.batchProofDigest === proof.batchProofDigest
         && prior.sourceProofToken === proof.proofToken && prior.targets.length === proof.targets.length
@@ -702,7 +703,7 @@ export async function submitCanonicalBatchValueChange(
            on pin.project_value_id=value.id and pin.binding_id=binding.id
         where binding.organization_id=$1 and binding.project_id=$2
           and binding.id=any($3::text[])`,
-      [auth.organization.id, input.projectId, targetIds]);
+      [parameterOrganizationId(auth), input.projectId, targetIds]);
     const byBinding = new Map(bases.rows.map((row) => [row.binding_id, row]));
     if (byBinding.size !== proof.targets.length) throw new ApiError("CONFLICT", "Batch target base changed.");
 
@@ -718,7 +719,7 @@ export async function submitCanonicalBatchValueChange(
       batch_upload_candidate_id, batch_composition_proof, batch_decision_proof_digest
     ) values ($1,$2,$3,'batch',$4,'pending',$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,
               $13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb,$22,$23,$24::jsonb,$25)`, [
-      requestId, auth.organization.id, input.projectId, reason, auth.user.id,
+      requestId, parameterOrganizationId(auth), input.projectId, reason, auth.user.id,
       input.assignedToUserId, proof.candidateId, frozenCandidate.base_digest,
       frozenCandidate.proposed_digest, frozenCandidate.diff_digest,
       JSON.stringify(frozenCandidate.frozen_member_manifest), JSON.stringify(frozenCandidate.frozen_binding_manifest),
@@ -763,7 +764,7 @@ export async function submitCanonicalBatchValueChange(
         base_current_value_id, config_revision_id, source_ref, source_pin_id,
         action, target_value, target_text, base_digest, proposed_digest
       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18,$19)`, [
-        `pvct_${randomUUID()}`, requestId, auth.organization.id, input.projectId,
+        `pvct_${randomUUID()}`, requestId, parameterOrganizationId(auth), input.projectId,
         ordinal, compositionProof?.targetDecisions[ordinal]?.draft?.id ?? null,
         target.bindingId, base.definition_id,
         base.effective_revision_id, base.catalog_release_id, base.current_value_id,
@@ -772,10 +773,10 @@ export async function submitCanonicalBatchValueChange(
         target.baseDigest, target.proposedDigest
       ]);
     }
-    const frozen = await loadBatchRequest(tx, auth.organization.id, input.projectId, requestId);
+    const frozen = await loadBatchRequest(tx, parameterOrganizationId(auth), input.projectId, requestId);
     if (!frozen) throw new ApiError("INTERNAL_ERROR", "Frozen batch request disappeared.");
     await writeTrustedGovernanceAudit(asAuditTx(tx), input.invocation, {
-      action: "value-change-submitted", organizationId: auth.organization.id,
+      action: "value-change-submitted", organizationId: parameterOrganizationId(auth),
       projectId: input.projectId, targetType: "project-parameter-value-change-request", targetId: requestId,
       metadata: { requestId, requestKind: "batch", candidateId: proof.candidateId,
         batchProofDigest: proof.batchProofDigest, draftImpactDigest: impactDigest,
@@ -796,7 +797,7 @@ export async function getCanonicalBatchValueChangeForReviewer(
     projectId: input.projectId, operation: "canonical batch approve",
     targetType: "project-parameter-value-change-request", targetId: input.requestId
   });
-  if (!await getProjectById(db, { organizationId: auth.organization.id, projectId: input.projectId })) {
+  if (!await getProjectById(db, { organizationId: parameterOrganizationId(auth), projectId: input.projectId })) {
     throw new ApiError("NOT_FOUND", "Project was not found for this organization.");
   }
   const denyReview = async () => {
@@ -807,7 +808,7 @@ export async function getCanonicalBatchValueChangeForReviewer(
     });
     throw new ApiError("FORBIDDEN", "The software review role is required.");
   };
-  const frozen = await loadBatchRequest(db, auth.organization.id, input.projectId, input.requestId);
+  const frozen = await loadBatchRequest(db, parameterOrganizationId(auth), input.projectId, input.requestId);
   if (!frozen || frozen.assignedToUserId !== auth.user.id || frozen.submitterUserId === auth.user.id) {
     if (frozen && security) await recordCanonicalPermissionRefusal(security, {
       projectId: input.projectId, operation: "canonical batch approve",
@@ -822,7 +823,7 @@ export async function getCanonicalBatchValueChangeForReviewer(
   }
   return db.transaction(async (tx) => {
     if (!await hasCurrentCanonicalReviewRole(tx, {
-      organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId, userId: auth.user.id
     })) await denyReview();
     return frozen;
   });
@@ -834,8 +835,8 @@ export async function getCanonicalBatchValueChangeForAuth(
 ): Promise<CanonicalBatchChangeRequestDto | null> {
   if (auth.user.isActive && canViewParameters(auth) && canAdminParameters(auth)
     && canEditParameters(auth, input.projectId)
-    && await getProjectById(db, { organizationId: auth.organization.id, projectId: input.projectId })) {
-    const frozen = await loadBatchRequest(db, auth.organization.id, input.projectId, input.requestId);
+    && await getProjectById(db, { organizationId: parameterOrganizationId(auth), projectId: input.projectId })) {
+    const frozen = await loadBatchRequest(db, parameterOrganizationId(auth), input.projectId, input.requestId);
     if (frozen?.submitterUserId === auth.user.id) return frozen;
   }
   return getCanonicalBatchValueChangeForReviewer(db, auth, input);
@@ -845,7 +846,7 @@ export async function listCanonicalBatchValueChangesForAuth(
   db: Database, auth: AuthContext,
   input: { projectId: string; status?: CanonicalBatchChangeRequestDto["status"]; mine?: boolean }
 ): Promise<CanonicalBatchChangeRequestDto[]> {
-  if (!await getProjectById(db, { organizationId: auth.organization.id, projectId: input.projectId })) {
+  if (!await getProjectById(db, { organizationId: parameterOrganizationId(auth), projectId: input.projectId })) {
     throw new ApiError("NOT_FOUND", "Project was not found for this organization.");
   }
   if (!auth.user.isActive || !canViewParameters(auth)
@@ -855,14 +856,14 @@ export async function listCanonicalBatchValueChangesForAuth(
   if (!input.mine && (!canEditParameters(auth, input.projectId) || !canReviewParameters(auth)
     || !canReviewParameterStage(auth, input.projectId, "software_review")
     || !await hasCurrentCanonicalReviewRole(db, {
-      organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId, userId: auth.user.id
     }))) throw new ApiError("FORBIDDEN", "The software review role is required.");
   const rows = await db.query<{ id: string }>(`select id from public.project_parameter_value_change_requests
     where organization_id=$1 and project_id=$2 and request_kind='batch'
       and ($3::text is null or status=$3)
       and ${input.mine ? "submitter_user_id" : "assigned_to_user_id"}=$4
-    order by updated_at desc,id`, [auth.organization.id, input.projectId, input.status ?? null, auth.user.id]);
-  return Promise.all(rows.rows.map(async ({ id }) => (await loadBatchRequest(db, auth.organization.id, input.projectId, id))!));
+    order by updated_at desc,id`, [parameterOrganizationId(auth), input.projectId, input.status ?? null, auth.user.id]);
+  return Promise.all(rows.rows.map(async ({ id }) => (await loadBatchRequest(db, parameterOrganizationId(auth), input.projectId, id))!));
 }
 
 export async function rejectCanonicalBatchValueChange(
@@ -893,25 +894,25 @@ export async function rejectCanonicalBatchValueChange(
     }
     const locked = (await tx.query<BatchRow>(`select * from public.project_parameter_value_change_requests
       where id=$1 and organization_id=$2 and project_id=$3 and request_kind='batch' for update`,
-    [input.requestId, auth.organization.id, input.projectId])).rows[0];
+    [input.requestId, parameterOrganizationId(auth), input.projectId])).rows[0];
     if (!locked || locked.assigned_to_user_id !== auth.user.id
       || locked.submitter_user_id === auth.user.id || locked.batch_proof_digest !== input.batchProofDigest) {
       throw new ApiError("CONFLICT", "Canonical batch assignment or proof changed.");
     }
     if (locked.status === "rejected" && locked.reviewer_user_id === auth.user.id) {
-      return (await loadBatchRequest(tx, auth.organization.id, input.projectId, input.requestId))!;
+      return (await loadBatchRequest(tx, parameterOrganizationId(auth), input.projectId, input.requestId))!;
     }
     if (locked.status !== "pending") throw new ApiError("CONFLICT", "Canonical batch request is already closed.");
     await tx.query(`update public.project_parameter_value_change_requests
       set status='rejected',reviewer_user_id=$2,reviewer_note=$3,updated_at=now()
       where id=$1 and status='pending'`, [locked.id, auth.user.id, input.note ?? null]);
     await writeTrustedGovernanceAudit(asAuditTx(tx), input.invocation, {
-      action: "value-change-reviewed", organizationId: auth.organization.id,
+      action: "value-change-reviewed", organizationId: parameterOrganizationId(auth),
       projectId: input.projectId, targetType: "project-parameter-value-change-request", targetId: locked.id,
       metadata: { requestId: locked.id, requestKind: "batch", decision: "reject",
         batchProofDigest: locked.batch_proof_digest }
     }, input.traceId);
-    return (await loadBatchRequest(tx, auth.organization.id, input.projectId, input.requestId))!;
+    return (await loadBatchRequest(tx, parameterOrganizationId(auth), input.projectId, input.requestId))!;
   });
 }
 
@@ -927,13 +928,13 @@ export async function withdrawCanonicalBatchValueChange(
     projectId: input.projectId, operation: "canonical batch withdraw",
     targetType: "project-parameter-value-change-request", targetId: input.requestId
   });
-  if (!await getProjectById(db, { organizationId: auth.organization.id, projectId: input.projectId })) {
+  if (!await getProjectById(db, { organizationId: parameterOrganizationId(auth), projectId: input.projectId })) {
     throw new ApiError("NOT_FOUND", "Project was not found for this organization.");
   }
   return db.transaction(async (tx) => {
     const locked = (await tx.query<BatchRow>(`select * from public.project_parameter_value_change_requests
       where id=$1 and organization_id=$2 and project_id=$3 and request_kind='batch' for update`,
-    [input.requestId, auth.organization.id, input.projectId])).rows[0];
+    [input.requestId, parameterOrganizationId(auth), input.projectId])).rows[0];
     if (!locked) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
     if (locked.submitter_user_id !== auth.user.id) {
       await recordCanonicalPermissionRefusal(security, {
@@ -944,19 +945,19 @@ export async function withdrawCanonicalBatchValueChange(
       throw new ApiError("FORBIDDEN", "Only the batch submitter can withdraw this request.");
     }
     if (locked.status === "withdrawn") {
-      return (await loadBatchRequest(tx, auth.organization.id, input.projectId, input.requestId))!;
+      return (await loadBatchRequest(tx, parameterOrganizationId(auth), input.projectId, input.requestId))!;
     }
     if (locked.status !== "pending") throw new ApiError("CONFLICT", "Canonical batch request is already closed.");
     await tx.query(`update public.project_parameter_value_change_requests
       set status='withdrawn',reviewer_user_id=$2,updated_at=now()
       where id=$1 and status='pending'`, [locked.id, auth.user.id]);
     await writeTrustedGovernanceAudit(asAuditTx(tx), input.invocation, {
-      action: "value-change-withdrawn", organizationId: auth.organization.id,
+      action: "value-change-withdrawn", organizationId: parameterOrganizationId(auth),
       projectId: input.projectId, targetType: "project-parameter-value-change-request", targetId: locked.id,
       metadata: { requestId: locked.id, requestKind: "batch",
         batchProofDigest: locked.batch_proof_digest }
     }, input.traceId);
-    return (await loadBatchRequest(tx, auth.organization.id, input.projectId, input.requestId))!;
+    return (await loadBatchRequest(tx, parameterOrganizationId(auth), input.projectId, input.requestId))!;
   });
 }
 
@@ -984,7 +985,7 @@ export async function approveCanonicalBatchValueChange(
   if (!visible) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
   // Serialize only retries of this request before the source lock and status read.
   await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
-    `${auth.organization.id}:${input.projectId}:batch-review:${input.requestId}`
+    `${parameterOrganizationId(auth)}:${input.projectId}:batch-review:${input.requestId}`
   ]);
   const frozen = await getCanonicalBatchValueChangeForReviewer(tx, auth, input);
   if (!frozen) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
@@ -1077,7 +1078,7 @@ export async function approveCanonicalBatchValueChange(
     invocation: input.invocation, traceId: input.traceId,
     refusalSink: input.refusalSink, note: input.note ?? null
   });
-  const result = await loadBatchRequest(tx, auth.organization.id, input.projectId, input.requestId);
+  const result = await loadBatchRequest(tx, parameterOrganizationId(auth), input.projectId, input.requestId);
   if (applied.batchProofDigest !== input.batchProofDigest || !result
     || result.status !== "approved" || result.batchProofDigest !== input.batchProofDigest
     || result.targets.length < 2 || result.targets.some((target, ordinal) =>

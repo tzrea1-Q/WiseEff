@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../operatingScope";
 import type { AuthContext } from "../../auth/types";
 import type { Database } from "../../../shared/database/client";
 import { ApiError } from "../../../shared/http/errors";
@@ -109,7 +110,7 @@ function resolveAuthorizedProjectIds(input: ServiceInput): readonly string[] | n
 async function assertProjectScope(db: Database, input: ServiceInput) {
   if (!input.projectId) return;
   const project = await getProjectById(db, {
-    organizationId: input.auth.organization.id,
+    organizationId: parameterOrganizationId(input.auth),
     projectId: input.projectId
   });
   if (!project) {
@@ -140,13 +141,13 @@ async function resolveReviewableProjectIds(
          and ($3::text[] is null or id = any($3::text[]))
        order by id asc
     `,
-    [input.auth.organization.id, input.projectId ?? null, authorizedProjectIds]
+    [parameterOrganizationId(input.auth), input.projectId ?? null, authorizedProjectIds]
   );
   const reviewable: string[] = [];
   for (const project of projects.rows) {
     if (!canReviewParameterStage(input.auth, project.id, "software_review")) continue;
     if (await hasCurrentCanonicalReviewRole(db, {
-      organizationId: input.auth.organization.id,
+      organizationId: parameterOrganizationId(input.auth),
       projectId: project.id,
       userId: input.auth.user.id
     })) {
@@ -228,7 +229,7 @@ function mapBehavioralGroupToHotspot(
 
 export async function getDashboardSummary(db: Database, input: ServiceInput): Promise<DashboardSummary> {
   await assertProjectScope(db, input);
-  const organizationId = input.auth.organization.id;
+  const organizationId = parameterOrganizationId(input.auth);
   const { windowStart, windowEnd, granularity } = resolveWindowBounds(input.window);
   const projectId = input.projectId ?? null;
   const authorizedProjectIds = resolveAuthorizedProjectIds(input);
@@ -288,7 +289,7 @@ export async function getDashboardSummary(db: Database, input: ServiceInput): Pr
 
 export async function getDashboardHotspots(db: Database, input: HotspotServiceInput): Promise<DashboardHotspot[]> {
   await assertProjectScope(db, input);
-  const organizationId = input.auth.organization.id;
+  const organizationId = parameterOrganizationId(input.auth);
   const { windowStart, windowEnd, days } = resolveWindowBounds(input.window);
   const previousEnd = windowStart;
   const previousStart = new Date(windowStart);

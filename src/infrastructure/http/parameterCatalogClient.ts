@@ -141,7 +141,7 @@ type CatalogRequestInit = {
 };
 
 type CatalogClientOptions = {
-  /** Only project resource routes use this target; shared Catalog commands remain global. */
+  /** Project resources and read-side organization projections use the target; shared commands remain global. */
   organizationId?: string;
   baseUrl?: string;
   fetchImpl?: typeof fetch;
@@ -254,7 +254,10 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
       }
     }
 
-    const resourcePath = path.startsWith("/api/v2/projects/") ? withOrganizationScope(path, options.organizationId) : path;
+    const pathname = path.split("?")[0]!;
+    const organizationProjection = method === "GET" && /^\/api\/v2\/catalog\/(subjects|definitions)(\/|$)/.test(pathname)
+      && !pathname.endsWith("/deletion-preview");
+    const resourcePath = path.startsWith("/api/v2/projects/") || organizationProjection ? withOrganizationScope(path, options.organizationId) : path;
     const response = await fetchImpl(`${baseUrl}${resourcePath}`, {
       method,
       headers,

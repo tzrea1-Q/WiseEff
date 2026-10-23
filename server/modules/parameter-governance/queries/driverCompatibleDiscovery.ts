@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../../parameters/operatingScope";
 import type { Database } from "../../../shared/database/client";
 import { getRootPostgresPool } from "../../../shared/database/client";
 import { ApiError } from "../../../shared/http/errors";
@@ -76,7 +77,7 @@ export async function listDriverCompatibleDiscovery(input: {
   readonly cursor?: string; readonly limit?: number;
 }): Promise<DriverCompatibleDiscoveryPage> {
   const { db, objectStore, auth } = input;
-  const canReadReviewQueue = auth.roles.some((role) => role.roleId === "admin" && role.projectId === null);
+  const canReadReviewQueue = auth.roles.some((role) => (role.roleId === "admin" || role.roleId === "platform-admin") && role.projectId === null);
   const limit = input.limit ?? MAX_PAGE;
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_PAGE
     || (input.projectId !== undefined && !token(input.projectId))
@@ -97,7 +98,7 @@ export async function listDriverCompatibleDiscovery(input: {
   const runtime = createPinCapturingCatalogRuntime(pool, createCatalogKernel(pool));
   const loaded = await runtime.loadCurrentCatalog(pin);
   if (!loaded.ok) return { status: "unavailable", reason: "catalog-unavailable" };
-  const snapshot = await loadOrganizationCatalogSnapshot(db, auth.organization.id, loaded.value);
+  const snapshot = await loadOrganizationCatalogSnapshot(db, parameterOrganizationId(auth), loaded.value);
 
   const allProjects = auth.roles.some((role) => role.roleId === "admin" || role.roleId === "platform-admin" || role.projectId === null);
   const projectIds = allProjects ? null : [...new Set(auth.roles.map((role) => role.projectId).filter((id): id is string => !!id))];
@@ -122,7 +123,7 @@ export async function listDriverCompatibleDiscovery(input: {
        and ($3::text[] is null or observation.project_id=any($3::text[]))
        and ($4::text is null or observation.id=$4) and ($5::text is null or observation.id>$5)
      order by observation.id limit $6`,
-    [auth.organization.id,input.projectId ?? null,projectIds,input.observationId ?? null,input.cursor ?? null,limit + 1],
+    [parameterOrganizationId(auth),input.projectId ?? null,projectIds,input.observationId ?? null,input.cursor ?? null,limit + 1],
   )).rows;
   if (input.observationId && rows.length === 0) throw new ApiError("NOT_FOUND", "DTS observation is not available.");
   const selected = rows.slice(0,limit);
@@ -133,7 +134,7 @@ export async function listDriverCompatibleDiscovery(input: {
        source_graph_ref as "sourceGraphRef",evidence
      from parameter_catalog.parameter_review_evidence
      where organization_id=$1 and observation_id=any($2::text[])
-     order by id limit $3`, [auth.organization.id,ids,MAX_REVIEW_EVIDENCE + 1],
+     order by id limit $3`, [parameterOrganizationId(auth),ids,MAX_REVIEW_EVIDENCE + 1],
   )).rows : [];
   if (evidenceRows.length > MAX_REVIEW_EVIDENCE) return { status: "unavailable", reason: "review-evidence-limit" };
   const reviewRecords: ReviewEvidenceRecord[] = [];
@@ -151,7 +152,7 @@ export async function listDriverCompatibleDiscovery(input: {
     `select id,evidence_fingerprint as "evidenceFingerprint",matcher_revision as "matcherRevision",status
        from parameter_catalog.parameter_review_items
       where organization_id=$1 and catalog_release_id=$2 and evidence_fingerprint=any($3::text[])`,
-    [auth.organization.id,pin.id,fingerprints],
+    [parameterOrganizationId(auth),pin.id,fingerprints],
   )).rows : [];
   const openByGroup = new Map(persisted.filter((row) => row.status === "open")
     .map((row) => [`${row.matcherRevision}\0${row.evidenceFingerprint}`,row.id]));
@@ -184,7 +185,7 @@ export async function listDriverCompatibleDiscovery(input: {
       continue;
     }
     const sourceInput: CurrentDtsCompatibleSourceInput = {
-      organizationId: auth.organization.id, projectId: row.projectId, observationId: row.id,
+      organizationId: parameterOrganizationId(auth), projectId: row.projectId, observationId: row.id,
       catalogReleaseId: row.catalogReleaseId, matcherRevision: row.matcherRevision,
       configSetId: row.configSetId, fileId: row.fileId, configRevisionId: row.configRevisionId,
       logicalNodeId: row.logicalNodeId, locator: row.locator as DtsObservationLocator,
@@ -235,7 +236,7 @@ export async function listDriverCompatibleDiscovery(input: {
     const registrations = (await db.query<{ id: string; subjectId: string }>(
       `select id,subject_id as "subjectId" from parameter_catalog.organization_subject_registrations
         where organization_id=$1 and subject_id=any($2::text[]) and status='active'`,
-      [auth.organization.id,subjectIds],
+      [parameterOrganizationId(auth),subjectIds],
     )).rows;
     const bySubject = new Map(registrations.map((row) => [row.subjectId,row.id]));
     completedItems = items.map((item) => ({ ...item,compatibles: item.compatibles.map((entry) => ({
@@ -247,7 +248,7 @@ export async function listDriverCompatibleDiscovery(input: {
   const ignored = canReadReviewQueue ? (await db.query<{ count: string }>(
     `select count(distinct id)::text as count from parameter_catalog.parameter_review_items
       where organization_id=$1 and catalog_release_id=$2 and status='out-of-scope'`,
-    [auth.organization.id,pin.id],
+    [parameterOrganizationId(auth),pin.id],
   )).rows[0]?.count ?? "0" : null;
   const finalPin = await captureCurrentCatalogPin(pool);
   if (!finalPin || finalPin.id !== pin.id || finalPin.digest !== pin.digest) {

@@ -280,7 +280,7 @@ export function RegistrationDialog({
             <h2 id={titleId}>{title}</h2>
             <div className="confirm-dialog__scroll">
               <div id={descriptionId} className="governance-confirm-dialog__body">
-                {actor === "org-admin" ? (
+                {actor === "org-admin" || actor === "platform-admin" ? (
                   <fieldset className="registration-dialog-fields" disabled={inputDisabled}>
                     {moduleOptions.length === 0 && !initializing ? (
                       <fieldset>
@@ -381,7 +381,7 @@ export function RegistrationDialog({
                 ) : (
                   <p>{governanceCopy.agentReadOnly}</p>
                 )}
-                {actor === "org-admin" && !allowed && !refreshing ? <p role="status">当前目录状态暂不允许修改，请刷新证据后重试。</p> : null}
+                {(actor === "org-admin" || actor === "platform-admin") && !allowed && !refreshing ? <p role="status">当前目录状态暂不允许修改，请刷新证据后重试。</p> : null}
                 {writeFailure ? (
                   <p
                     className="governance-confirm-dialog__error"

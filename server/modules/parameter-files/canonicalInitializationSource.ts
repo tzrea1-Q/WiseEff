@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../parameters/operatingScope";
 import { createHash, randomUUID } from "node:crypto";
 
 import type { Queryable } from "../../shared/database/client";
@@ -160,7 +161,7 @@ async function loadSources(
       throw new ApiError("VALIDATION_FAILED", "Initialization snapshot is missing its canonical source value id.", { snapshotId: item.id });
     }
     const bindingInput = {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: item.sourceProjectId,
       bindingId: item.sourceProjectParameterBindingId,
       projectValueId: item.sourceProjectValueId,
@@ -249,7 +250,7 @@ async function cloneSourceGroup(
   const targetConfigSetId = randomUUID();
   await insertConfigSet(db, {
     id: targetConfigSetId,
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: targetProjectId,
     name: `initialization-${targetConfigSetId.slice(0, 8)}`,
     description: `Canonical initialization copy of ${group.sourceConfigSetId}`,
@@ -264,7 +265,7 @@ async function cloneSourceGroup(
     const bytes = Buffer.from(file.content, "utf8");
     const fileName = targetFileName(targetConfigSetId, member.sourceName);
     const stored = await objectStore.put({
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       fileName,
       contentType: member.format === "json" ? "application/json" : "text/plain",
       bytes,
@@ -273,7 +274,7 @@ async function cloneSourceGroup(
     const fileId = randomUUID();
     await insertProjectParameterFile(db, {
       id: fileId,
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: targetProjectId,
       fileName,
       format: member.format,
@@ -321,7 +322,7 @@ async function cloneSourceGroup(
       throw new ApiError("CONFLICT", "DTS initialization source has no immutable entry file.");
     }
     const manifest: ConfigRevisionManifest = {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: targetProjectId,
       configSetId: targetConfigSetId,
       entryFile: group.manifest.entryFile,
@@ -391,7 +392,7 @@ async function materializeDts(
   const propertyOccurrenceIds: string[] = [];
   for (const source of selected) propertyOccurrenceIds.push(await targetDtsPropertyOccurrence(db, source, target));
   const count = await syncPublishedCatalogProjectValuesInTransaction(asValueClient(db), context.catalogSnapshot, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: targetProjectId,
     configSetId: target.targetConfigSetId,
     configRevisionId: target.targetRevisionId,
@@ -480,7 +481,7 @@ export async function cloneCanonicalInitializationSource(
   }
   const target = await db.query<{ id: string }>(
     `select id from projects where id=$1 and organization_id=$2 limit 1`,
-    [input.targetProjectId, auth.organization.id],
+    [input.targetProjectId, parameterOrganizationId(auth)],
   );
   if (target.rows.length !== 1) {
     throw new ApiError("NOT_FOUND", "Initialization target project was not found.", {

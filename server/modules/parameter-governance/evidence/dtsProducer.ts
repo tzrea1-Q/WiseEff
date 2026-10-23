@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../../parameters/operatingScope";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { Database } from "../../../shared/database/client";
@@ -34,10 +35,10 @@ export async function produceDtsReviewEvidenceInTransaction(
   tx: Database, root: Database, objectStore: ObjectStore, auth: AuthContext, configRevisionId: string,
 ): Promise<void> {
   if (!canAdminParameters(auth)) throw new Error("DTS evidence producer requires parameter administration");
-  await lockOrganizationModuleRecognition(tx, auth.organization.id);
+  await lockOrganizationModuleRecognition(tx, parameterOrganizationId(auth));
   const revision = (await tx.query<{ projectId: string; configSetId: string }>(
     `select project_id as "projectId",config_set_id as "configSetId" from dts_config_revisions
-     where id=$1 and organization_id=$2`,[configRevisionId,auth.organization.id],
+     where id=$1 and organization_id=$2`,[configRevisionId,parameterOrganizationId(auth)],
   )).rows;
   if (revision.length !== 1 || !auth.roles.some((role) => role.roleId === "admin"
     || role.roleId === "platform-admin" || role.projectId === revision[0]!.projectId)) {
@@ -49,7 +50,7 @@ export async function produceDtsReviewEvidenceInTransaction(
   if (!pin) throw new Error("Current Catalog release is unavailable for DTS evidence production");
   const loaded = await createPinCapturingCatalogRuntime(pool, createCatalogKernel(pool)).loadCurrentCatalog(pin);
   if (!loaded.ok) throw new Error(`Current Catalog snapshot unavailable: ${loaded.error.kind}`);
-  const snapshot = await loadOrganizationCatalogSnapshot(tx, auth.organization.id, loaded.value);
+  const snapshot = await loadOrganizationCatalogSnapshot(tx, parameterOrganizationId(auth), loaded.value);
 
   const continuityByCandidate = new Map<string, Array<{
     previous: LogicalNodeSnapshot; continuity: ContinuityAmbiguous;
@@ -99,7 +100,7 @@ export async function produceDtsReviewEvidenceInTransaction(
            and later.logical_node_revision_id=effect.logical_node_revision_id
            and later.property_name=effect.property_name and later.source_order>effect.source_order)
      order by logical.logical_node_id,(property.property_name='compatible') desc,property.id limit 201`,
-    [configRevisionId,auth.organization.id,[...continuityByCandidate.keys()]],
+    [configRevisionId,parameterOrganizationId(auth),[...continuityByCandidate.keys()]],
   )).rows;
   const anchoredCandidates = new Set(properties.map((property) => property.logicalNodeId));
   const propertylessCandidates = [...continuityByCandidate.keys()].filter((candidate) => !anchoredCandidates.has(candidate));
@@ -113,7 +114,7 @@ export async function produceDtsReviewEvidenceInTransaction(
     )).rows[0];
     if (!member) throw new ApiError("CONFLICT", "DTS continuity revision has no source members.", { reason: "source-proof-invalid" });
     const source = await loadExactSourceRevisionForProof(tx,objectStore,{
-      organizationId:auth.organization.id,...revision[0]!,configRevisionId,...member,
+      organizationId:parameterOrganizationId(auth),...revision[0]!,configRevisionId,...member,
     });
     const nodes = (await tx.query<{ logicalNodeId: string; logicalNodeRevisionId: string; nodeLocator: string }>(
       `select logical_node_id as "logicalNodeId",id as "logicalNodeRevisionId",node_locator as "nodeLocator"
@@ -128,11 +129,11 @@ export async function produceDtsReviewEvidenceInTransaction(
         throw new ApiError("CONFLICT", "DTS continuity candidate is absent from its exact revision.", { reason: "source-proof-invalid" });
       }
       const evidence = await ingestSourceBoundEvidenceInTransaction(tx,{
-        organizationId:auth.organization.id,sourceIdentity:`dts-continuity:${configRevisionId}:${logicalNodeId}`,
+        organizationId:parameterOrganizationId(auth),sourceIdentity:`dts-continuity:${configRevisionId}:${logicalNodeId}`,
         catalogReleaseId:pin.id,matcherRevision:subjectMatcherRevision,matcherOutput:{status:"ambiguous"},
         evidence:{kind:"logical-continuity-decision-needed",priorNodeEquivalent:false,
           relations:JSON.parse(JSON.stringify(relations)),
-          sourceRevision:{organizationId:auth.organization.id,...revision[0]!,configRevisionId,...matches[0]!},
+          sourceRevision:{organizationId:parameterOrganizationId(auth),...revision[0]!,configRevisionId,...matches[0]!},
           sourceMembers:source.members.map((entry) => ({fileId:entry.fileId,fileVersionId:entry.fileVersionId,
             sourceName:entry.sourceName,sourceDigest:`sha256:${entry.checksum.replace(/^sha256:/, "")}`}))},
       },{kind:"revision-review",projectId:revision[0]!.projectId,configRevisionId,logicalNodeId,objectStore});
@@ -168,14 +169,14 @@ export async function produceDtsReviewEvidenceInTransaction(
     const occurrence = (await tx.query<{ id: string }>(
       `select parameter_catalog.ensure_dts_observation_source_occurrence(
          $1,$2,$3,$4,$5,$6,$7,$8) as id`,
-      [randomUUID(),auth.organization.id,property.projectId,property.configSetId,property.fileId,
+      [randomUUID(),parameterOrganizationId(auth),property.projectId,property.configSetId,property.fileId,
         property.logicalNodeId,configRevisionId,property.fileVersionId],
     )).rows[0];
     await tx.query("reset role");
     if (!occurrence) throw new Error("DTS compatible source occurrence is unavailable");
     const sourceIdentity = `dts-${compatibleProperty ? "compatible" : "continuity"}-property:${configRevisionId}:${property.propertyOccurrenceId}`;
     const observed = await ingestSourceBoundEvidenceInTransaction(tx,{
-      organizationId:auth.organization.id,sourceIdentity,catalogReleaseId:pin.id,
+      organizationId:parameterOrganizationId(auth),sourceIdentity,catalogReleaseId:pin.id,
       matcherRevision:subjectMatcherRevision,matcherOutput:{status:observationStatus},
       provenance:{projectId:property.projectId,logicalNodeId:property.logicalNodeId,
         configRevisionId,sourceOccurrenceId:occurrence.id,sourceLocator:locator},
@@ -196,10 +197,10 @@ export async function produceDtsReviewEvidenceInTransaction(
          on occurrence.id=observation.source_occurrence_id and occurrence.organization_id=observation.organization_id
          and occurrence.project_id=observation.project_id and occurrence.logical_node_id=observation.logical_node_id
        where observation.id=$1 and observation.organization_id=$2 and observation.project_id=$3`,
-      [observed.id,auth.organization.id,property.projectId],
+      [observed.id,parameterOrganizationId(auth),property.projectId],
     )).rows;
     if (bound.length !== 1) throw new Error("DTS observation provenance is unavailable");
-    const input: CurrentDtsCompatibleSourceInput = {organizationId:auth.organization.id,
+    const input: CurrentDtsCompatibleSourceInput = {organizationId:parameterOrganizationId(auth),
       observationId:observed.id,...bound[0]!};
     let proof: ExactDtsSourceProof;
     if (compatibleProperty) {
@@ -211,7 +212,7 @@ export async function produceDtsReviewEvidenceInTransaction(
       proof = source.observationProof;
     } else {
       proof = await proveExactDtsProperty(tx,objectStore,{
-        organizationId:auth.organization.id,projectId:property.projectId,configSetId:property.configSetId,
+        organizationId:parameterOrganizationId(auth),projectId:property.projectId,configSetId:property.configSetId,
         fileId:property.fileId,configRevisionId,fileVersionId:property.fileVersionId,
         logicalNodeId:property.logicalNodeId,nodeOccurrenceId:property.nodeOccurrenceId,
         propertyOccurrenceId:property.propertyOccurrenceId,propertyName:property.propertyName,
@@ -220,7 +221,7 @@ export async function produceDtsReviewEvidenceInTransaction(
     const relations = continuityByCandidate.get(property.logicalNodeId);
     if (relations && !continuityProduced.has(property.logicalNodeId)) {
       await ingestSourceBoundEvidenceInTransaction(tx,{
-        organizationId:auth.organization.id,
+        organizationId:parameterOrganizationId(auth),
         sourceIdentity:`dts-continuity:${configRevisionId}:${property.logicalNodeId}`,
         catalogReleaseId:pin.id,matcherRevision:subjectMatcherRevision,
         matcherOutput:{status:"ambiguous"},
@@ -235,7 +236,7 @@ export async function produceDtsReviewEvidenceInTransaction(
       const status = completeMatch.status === "ambiguous" || matched.status === "ambiguous" ? "ambiguous"
         : matched.status === "retired" ? "retired-registration-observed" : "unknown";
       await ingestSourceBoundEvidenceInTransaction(tx,{
-        organizationId:auth.organization.id,
+        organizationId:parameterOrganizationId(auth),
         sourceIdentity:`dts-compatible:${observed.id}:${compatible}`,
         catalogReleaseId:pin.id,matcherRevision:subjectMatcherRevision,
         matcherOutput:{status},evidence:{compatible},
@@ -248,7 +249,7 @@ export async function produceDtsReviewEvidenceInTransaction(
     throw new Error("Catalog release changed during DTS evidence production");
   }
   if (observationIds.length || reviewEvidenceIds.length) {
-    const materialized = await materializeReviewItemsInTransaction(tx,auth.organization.id,pin,observationIds,reviewEvidenceIds);
+    const materialized = await materializeReviewItemsInTransaction(tx,parameterOrganizationId(auth),pin,observationIds,reviewEvidenceIds);
     if (!materialized.ok) throw new Error(`Review evidence grouping failed: ${materialized.error.kind}`);
   }
 }

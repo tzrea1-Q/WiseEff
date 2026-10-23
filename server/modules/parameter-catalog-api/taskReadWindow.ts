@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../parameters/operatingScope";
 import { createReviewQueueReader, type ReviewQueueTrustedContext } from "../parameter-governance/review";
 import { mapReviewItem } from "./governance/dto";
 import { captureCurrentCatalogPin, createPinCapturingCatalogRuntime } from "../catalog-publication/runtime";
@@ -47,7 +48,7 @@ export async function readSpecTaskWindow<Task extends { id: string; status: stri
       client: pool,
       identity: {
         kind: "source-tuple", sourceSystem: "wiseeff-v1", sourceKind: "parameter-spec-review-task",
-        ownerScopeKind: "organization", ownerScopeId: auth.organization.id, sourceId: task.id,
+        ownerScopeKind: "organization", ownerScopeId: parameterOrganizationId(auth), sourceId: task.id,
       },
     });
     if (!mapped.ok) {
@@ -66,16 +67,16 @@ export async function readSpecTaskWindow<Task extends { id: string; status: stri
     : auth.roles.some((role) => role.roleId === "admin") ? "org-admin" : "org-member";
   const context: ReviewQueueTrustedContext = actorKind === "platform-admin"
     ? { actorKind, principalId: auth.user.id }
-    : { actorKind, organizationId: auth.organization.id, principalId: auth.user.id };
+    : { actorKind, organizationId: parameterOrganizationId(auth), principalId: auth.user.id };
   const queue = await createReviewQueueReader(pool).list({
-    organizationId: auth.organization.id, capturedRelease: pin,
+    organizationId: parameterOrganizationId(auth), capturedRelease: pin,
     context,
   });
   if (!queue.ok) throw new ApiError(queue.error.kind === "permission-denied" ? "FORBIDDEN" : "CONFLICT",
     "Canonical Review Queue access was refused.", { reason: queue.error.kind });
   const catalog = await createPinCapturingCatalogRuntime(pool, createCatalogKernel(pool)).loadCurrentCatalog(pin);
   if (!catalog.ok) throw new ApiError("CONFLICT", "The canonical Catalog release changed; refresh the review.");
-  const details = await readReviewItemDetailsFromPool(pool, { organizationId: auth.organization.id, pin,
+  const details = await readReviewItemDetailsFromPool(pool, { organizationId: parameterOrganizationId(auth), pin,
     items: queue.value.items }, catalog.value);
   const adaptedIds = new Set<string>();
   for (const [taskId, target] of exactTargets) {

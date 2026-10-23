@@ -7,7 +7,9 @@
 - Guests (`guest`) can browse parameters and published definitions with `parameter:view`.
 - Hardware users, software users, and hardware/software committers can prepare changes with `parameter:edit` and access to the target project. A project must finish initialization before normal changes can be submitted.
 - A software committer bound to the project, or an Organization Admin (`admin`), reviews current parameter-value requests. Submitters cannot approve their own requests. Hardware committers handle hardware review in the separate staged workflow described below.
-- Organization Admins with `admin:access` can manage initialization, imports, project files, config sets, and baselines. Platform Admins (`platform-admin`) can open admin pages; their permission to review or merge a project's changes still depends on the role bindings checked by the server.
+- Organization Admins with `admin:access` can manage initialization, imports, project files, config sets, and baselines in their Organization. Platform Admins (`platform-admin`) can enter a target Organization from the organization directory and manage its projects, parameters and subject registrations. Permission to review or merge a project's changes still depends on the separate role bindings checked by the server; selecting an Organization does not grant self-approval.
+
+When operating in another Organization, check the **Current operating Organization** banner before changing anything. Project lists, initialization, configuration sources, exports, activity and project deletion receipts use that fixed Organization. A separate tab can keep your Home workspace open; entering a target does not change your account membership. Permanent project deletion and object-cleanup retries retain the target after the project has disappeared. Shared Catalog definitions remain platform resources and are not deleted with a project.
 
 The UI is Chinese-first. The English page names below translate its labels; use the routes to find each page. For role requests, see [Account and access](account-and-access.md).
 

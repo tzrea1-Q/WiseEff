@@ -139,8 +139,17 @@ export const S2_SCH_0255_FINGERPRINT =
 /** 0256 lets a log's uploader erase their own failed log and retry its pending
  * storage cleanup: a shared erasure-actor guard used by the lock and receipt readers,
  * plus an owner-scoped pending-cleanup listing. */
-export const S2_SCH_LIVE_FINGERPRINT =
+export const S2_SCH_0256_FINGERPRINT =
   "348caf501d780aec9efd1bf7f740c7e946025444f711d28be3de40aaadd916e0";
+
+/** 0262 changes only three Catalog function definitions: the project erasure
+ * actor guard, its preview caller, and source-request administration. Active
+ * persisted platform administrators retain their Home identity while operating
+ * on an explicit target; all earlier inventory categories and pins are intact. */
+export const S2_SCH_0262_FINGERPRINT =
+  "e39d15ffb9fce4500e652d9d192a8eea0ab722a9d90c20cbbc1bc1916e8a2934";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0262_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../../parameters/operatingScope";
 /**
  * Issue #849 scope item 4: offline archive of a project's legacy parameter plane.
  *
@@ -238,7 +239,7 @@ export async function captureProjectParameterPlane(
   // ponytail: bounded archival briefly fences plane writers for a consistent copy;
   // use a versioned snapshot protocol if captures outgrow the existing size caps.
   await session.query("select parameter_catalog.lock_parameter_plane_archive()");
-  const organizationId = auth.organization.id;
+  const organizationId = parameterOrganizationId(auth);
   const readBounded = objectStore.getBounded?.bind(objectStore);
   if (!readBounded) {
     throw new ApiError("CONFLICT", "The object store does not support bounded archive reads.", {

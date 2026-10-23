@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../parameters/operatingScope";
 import { randomUUID } from "node:crypto";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -82,17 +83,17 @@ function rootDiagnosticMessage(code: string, message: string, fileName?: string)
 
 async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, input: MemberAdditionInput,
   snapshot: CatalogSnapshot | null, snapshots: ReadonlyMap<string, CatalogSnapshot>, toolchain?: DtsToolchainRunner) {
-  await lockOrganizationModuleRecognition(tx, auth.organization.id);
-  if (snapshot) snapshot = await loadOrganizationCatalogSnapshot(tx, auth.organization.id, snapshot);
+  await lockOrganizationModuleRecognition(tx, parameterOrganizationId(auth));
+  if (snapshot) snapshot = await loadOrganizationCatalogSnapshot(tx, parameterOrganizationId(auth), snapshot);
   const set = (await tx.query("select id from public.dts_config_set where id=$1 and organization_id=$2 and project_id=$3 for update nowait",
-    [input.configSetId, auth.organization.id, input.projectId])).rows[0];
+    [input.configSetId, parameterOrganizationId(auth), input.projectId])).rows[0];
   if (!set) throw new ApiError("NOT_FOUND", "目标配置不存在或不属于当前项目。");
   await tx.query("select id from public.project_parameter_files where organization_id=$1 and project_id=$2 and (config_set_id=$3 or id=$4) order by id for update nowait",
-    [auth.organization.id, input.projectId, input.configSetId, input.fileId ?? null]);
+    [parameterOrganizationId(auth), input.projectId, input.configSetId, input.fileId ?? null]);
   const revision = (await tx.query<{ id: string; entry_file: string | null; include_search_paths: string[]; overlay_order: string[] }>(
     `select id,entry_file,include_search_paths,overlay_order from public.dts_config_revisions
      where organization_id=$1 and project_id=$2 and config_set_id=$3 and status='resolved' order by revision_number desc limit 1 for update nowait`,
-    [auth.organization.id, input.projectId, input.configSetId])).rows[0];
+    [parameterOrganizationId(auth), input.projectId, input.configSetId])).rows[0];
   if (!revision) conflict("配置尚无可构建的当前来源版本，请先完成配置初始化。");
   const members = (await tx.query<Member & { storageKey: string; currentVersionId: string; currentRole: string; currentOrder: number }>(
     `select member.file_id as "fileId",member.file_version_id as "fileVersionId",member.source_name as "sourceName",file.format,
@@ -102,12 +103,12 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
        and file.organization_id=$2 and file.project_id=$3 and file.config_set_id=$4
      join public.project_parameter_file_versions version on version.id=member.file_version_id and version.file_id=file.id
      where member.config_revision_id=$1 order by member.sort_order,member.file_id`,
-    [revision.id, auth.organization.id, input.projectId, input.configSetId])).rows;
+    [revision.id, parameterOrganizationId(auth), input.projectId, input.configSetId])).rows;
   const count = (await tx.query<{ count: number }>("select count(*)::int as count from public.project_parameter_files where organization_id=$1 and project_id=$2 and config_set_id=$3",
-    [auth.organization.id, input.projectId, input.configSetId])).rows[0]?.count;
+    [parameterOrganizationId(auth), input.projectId, input.configSetId])).rows[0]?.count;
   if (!members.length || members.length !== count || members.some((row) => row.currentVersionId !== row.fileVersionId
     || (row.role === "include" ? "misc" : row.role) !== row.currentRole || row.sortOrder !== row.currentOrder)) conflict("当前配置成员已变化，请重新核对配置来源。");
-  const candidate = input.candidateId ? await getParameterFileCandidateByIdForUpdate(tx, { organizationId: auth.organization.id,
+  const candidate = input.candidateId ? await getParameterFileCandidateByIdForUpdate(tx, { organizationId: parameterOrganizationId(auth),
     projectId: input.projectId, candidateId: input.candidateId }) : null;
   if (candidate?.status === "failed") throw new ApiError("VALIDATION_FAILED", "候选解析失败，请按诊断修正文件后重新上传；候选及当前配置会保留。", { diagnostics: candidate.diagnostics });
   if (input.candidateId && (!candidate || candidate.status !== "ready" || candidate.fileId || candidate.sourceRevisionContext
@@ -117,7 +118,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     `select file.id,file.file_name as "fileName",file.format,file.config_set_id as "configSetId",version.id as "fileVersionId",
       version.storage_key as "storageKey",version.checksum,version.size_bytes::float8 as "sizeBytes"
      from public.project_parameter_files file join public.project_parameter_file_versions version on version.id=file.current_version_id and version.file_id=file.id
-     where file.id=$1 and file.organization_id=$2 and file.project_id=$3`, [input.fileId, auth.organization.id, input.projectId])).rows[0] : null;
+     where file.id=$1 and file.organization_id=$2 and file.project_id=$3`, [input.fileId, parameterOrganizationId(auth), input.projectId])).rows[0] : null;
   if (input.fileId && !existing) throw new ApiError("NOT_FOUND", "待加入的项目文件或当前版本不存在。");
   if (input.setAsRoot) {
     if (input.candidateId || input.json || input.role !== "base" || existing?.format !== "dts"
@@ -170,7 +171,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   let continuity: ReviewedSourceContinuity | null = null;
   let resolved: ReturnType<typeof resolveDtsConfigSet> | null = null;
   const diagnostics: MemberAdditionPreview["diagnostics"] = [];
-  const restorationScope = { organizationId: auth.organization.id, projectId: input.projectId, configSetId: input.configSetId };
+  const restorationScope = { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId };
   let anchors: Awaited<ReturnType<typeof matchingDeletedSourceAnchors>> = [];
   if (target.format === "json" && !input.json) diagnostics.push({ severity: "warning", code: "json-unregistered",
     message: "JSON 文件已校验；未登记为参数，将产生 0 个新 Binding。" });
@@ -191,20 +192,20 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
         `${row.file}${row.line ? `，第 ${row.line} 行` : ""}`) : row.message })));
     if (!validated.ok || validated.mode !== "release") throw new ApiError("VALIDATION_FAILED", "DTS 工具链未通过，当前组成未改变。", { diagnostics });
     anchors = await matchingDeletedSourceAnchors(tx, restorationScope, resolved.effective.nodesByLocator, afterMembers);
-    continuity = await prepareReviewedSourceContinuity(tx, { organizationId: auth.organization.id, projectId: input.projectId,
+    continuity = await prepareReviewedSourceContinuity(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId,
       configSetId: input.configSetId, baseConfigRevisionId: revision.id, effectiveNodes: resolved.effective.nodesByLocator,
       sourceDigest: sourceRevisionDigest(afterMembers), restorationNodes: sourceRestorationNodes(anchors) });
   }
   const cohort: Cohort[] = [], targets: SourceRevisionTarget[] = [], newProperties: NewProperty[] = [], originTransfers: Proof["originTransfers"] = [];
-  for (const entry of await loadSourceBindingCohortReadOnly(tx, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: input.configSetId })) {
-    const pin = await loadOwnedProjectValueSourcePin(tx, { organizationId: auth.organization.id, projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
+  for (const entry of await loadSourceBindingCohortReadOnly(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId })) {
+    const pin = await loadOwnedProjectValueSourcePin(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
     if (!pin || pin.configRevisionId !== revision.id || pin.valueState !== "present" || !members.some((row) => row.fileId === pin.fileId && row.fileVersionId === pin.fileVersionId)) conflict("参数来源已变化，请重新预览。");
-    const old = await readOwnedProjectValueIdentity(tx, { organizationId: auth.organization.id, projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
-    const current = await readOwnedCurrentBinding(tx, { organizationId: auth.organization.id, projectId: input.projectId, bindingId: entry.bindingId });
+    const old = await readOwnedProjectValueIdentity(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
+    const current = await readOwnedCurrentBinding(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, bindingId: entry.bindingId });
     const pinned = snapshots.get(entry.catalogReleaseId);
     const definition = pinned?.getDefinitionRevision({ definitionId: ParameterDefinitionId(entry.definitionId), revisionId: DefinitionRevisionId(entry.effectiveRevisionId) });
     if (!old || current.status !== "current" || !definition || definition.status !== "found"
-      || (await readSourceRegistrationAgreement(tx, { organizationId: auth.organization.id, subjectId: current.binding.subjectId }))?.id !== current.binding.registrationId) conflict("参数定义或登记已变化，请重新预览。");
+      || (await readSourceRegistrationAgreement(tx, { organizationId: parameterOrganizationId(auth), subjectId: current.binding.subjectId }))?.id !== current.binding.registrationId) conflict("参数定义或登记已变化，请重新预览。");
     const propertyName = typeof pin.locator.propertyName === "string" ? pin.locator.propertyName : "";
     cohort.push({ ...entry, fileId: pin.fileId, fileVersionId: pin.fileVersionId, format: pin.format,
       logicalNodeId: pin.logicalNodeId, propertyName, locator: pin.locator, rootPointer: pin.rootPointer });
@@ -232,7 +233,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   if (snapshot && resolved && continuity) for (const node of resolved.effective.nodesByLocator.values()) {
     if (node.deleted) continue;
     const subject = resolveObservedSubject(snapshot, { compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null), nodeName: node.name });
-    const registration = subject && await readSourceRegistrationAgreement(tx, { organizationId: auth.organization.id, subjectId: subject.subjectId });
+    const registration = subject && await readSourceRegistrationAgreement(tx, { organizationId: parameterOrganizationId(auth), subjectId: subject.subjectId });
     if (!subject || !registration) continue;
     const logical = continuity.nodes.find((row) => row.nodeLocator === node.nodeLocator)!;
     for (const [name, property] of node.properties) {
@@ -255,7 +256,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     if (!snapshot) conflict("JSON 参数登记需要已发布的配置规范。");
     const subject = snapshot.resolveSubject({ driverCompatibles: [], nodeTypeFallback: { kind: "absent" }, configurationSchemaIds: [NormalizedConfigurationSchemaId(input.json.configurationSchemaId)] });
     if (subject.status !== "matched" || subject.subject.kind !== "configuration-schema"
-      || !await readSourceRegistrationAgreement(tx, { organizationId: auth.organization.id, subjectId: subject.subject.id })) conflict("请选择当前组织已登记的配置规范。");
+      || !await readSourceRegistrationAgreement(tx, { organizationId: parameterOrganizationId(auth), subjectId: subject.subject.id })) conflict("请选择当前组织已登记的配置规范。");
     if (!input.json.mappings.length || new Set(input.json.mappings.map((row) => row.definitionId)).size !== input.json.mappings.length) throw new ApiError("VALIDATION_FAILED", "JSON 字段需明确、唯一的参数定义映射。");
     readJsonSourceValue(contents.get(target.fileId)!, input.json.rootPointer);
     for (const mapping of input.json.mappings) {
@@ -264,7 +265,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       assertCanonicalValueConstraints(definition.definition.selectedRevision, { kind: "json", value: readJsonSourceValue(contents.get(target.fileId)!, mapping.pointer, input.json.rootPointer) as ContractJsonValue });
     }
   }
-  const facts = { kind: "member_addition" as const, organizationId: auth.organization.id, projectId: input.projectId, configSetId: input.configSetId,
+  const facts = { kind: "member_addition" as const, organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId,
     ...(input.setAsRoot ? { setAsRoot: true } : {}),
     candidateId: candidate?.id ?? null, fileId: target.fileId, baseConfigRevisionId: revision.id,
     baseDigest: sourceRevisionDigest(members.map(({ storageKey: _storage, currentVersionId: _version, currentRole: _role, currentOrder: _order, ...row }) => row)),
@@ -286,7 +287,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
 export async function previewCanonicalMemberAddition(db: Database, storage: ObjectStore, auth: AuthContext, input: MemberAdditionInput,
   security: CanonicalSourceSecurityContext, options: { toolchain?: DtsToolchainRunner } = {}): Promise<MemberAdditionPreview> {
   await requireCanonicalUserInvocation(auth, security, { projectId: input.projectId, operation: "configuration member addition preview", targetType: "dts-config-set", targetId: input.configSetId });
-  const snapshot = await loadSnapshot(db), snapshots = await loadSourceRevisionCatalogSnapshots(db, input.projectId, auth.organization.id, snapshot);
+  const snapshot = await loadSnapshot(db), snapshots = await loadSourceRevisionCatalogSnapshots(db, input.projectId, parameterOrganizationId(auth), snapshot);
   try { return await db.transaction(async (tx) => {
     auth = await requireCurrentSourceAdministrator(tx, auth, input.projectId);
     return (await inspect(tx, storage, auth, input, snapshot, snapshots, options.toolchain)).preview;
@@ -297,28 +298,28 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
   input: MemberAdditionInput & { proofToken: string; reason: string; clientMutationId: string }, security: CanonicalSourceSecurityContext,
   options: { toolchain?: DtsToolchainRunner } = {}) {
   await requireCanonicalUserInvocation(auth, security, { projectId: input.projectId, operation: "configuration member addition apply", targetType: "dts-config-set", targetId: input.configSetId });
-  const snapshot = await loadSnapshot(db), snapshots = await loadSourceRevisionCatalogSnapshots(db, input.projectId, auth.organization.id, snapshot);
+  const snapshot = await loadSnapshot(db), snapshots = await loadSourceRevisionCatalogSnapshots(db, input.projectId, parameterOrganizationId(auth), snapshot);
   try { return await db.transaction(async (tx) => {
     auth = await requireCurrentSourceAdministrator(tx, auth, input.projectId);
-    await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`member-addition:${auth.organization.id}:${input.projectId}:${auth.user.id}:${input.clientMutationId}`]);
+    await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`member-addition:${parameterOrganizationId(auth)}:${input.projectId}:${auth.user.id}:${input.clientMutationId}`]);
     const mutationDigest = sourceRevisionDigest(input);
     const replay = (await tx.query<{ request_kind: string; source_revision_mutation_digest: string; applied_source_result: { requestId: string; fileId: string; fileVersionId: string; configRevisionId: string } }>(
       `select request_kind,source_revision_mutation_digest,applied_source_result from public.project_parameter_value_change_requests
        where organization_id=$1 and project_id=$2 and submitter_user_id=$3 and source_revision_mutation_id=$4`,
-      [auth.organization.id, input.projectId, auth.user.id, input.clientMutationId])).rows[0];
+      [parameterOrganizationId(auth), input.projectId, auth.user.id, input.clientMutationId])).rows[0];
     if (replay) { if (replay.request_kind !== "member_addition" || replay.source_revision_mutation_digest !== mutationDigest || !replay.applied_source_result) conflict("此操作编号已用于不同的来源操作。"); return replay.applied_source_result; }
-    const current = await lockSourceCatalogGovernance(tx, auth.organization.id);
+    const current = await lockSourceCatalogGovernance(tx, parameterOrganizationId(auth));
     if (snapshot ? current?.id !== snapshot.release.id || current.digest !== snapshot.release.digest : current) conflict("参数目录已变化，请重新预览。");
     const inspected = await inspect(tx, storage, auth, input, snapshot, snapshots, options.toolchain);
     const { proof, contents, candidate, target } = inspected;
     if (proof.proofDigest !== input.proofToken) conflict("预览已过期，未改变当前配置；请重新预览。");
     for (const node of proof.continuity?.nodes ?? []) await assertTrustedSensitiveNodeWriteAllowed(tx, auth, {
-      organizationId: auth.organization.id, projectId: input.projectId, nodePath: node.nodeLocator,
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId, nodePath: node.nodeLocator,
       sourcePath: { kind: "node-locator", value: node.nodeLocator }, compatible: node.compatible ?? null,
       compatibleIsAuthoritative: true, invocation: security.invocation, requestId: security.requestId, refusalSink: security.refusalSink });
-    await lockSourceConfigurationBindings(tx, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: input.configSetId });
+    await lockSourceConfigurationBindings(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId });
     if (candidate) {
-      await insertProjectParameterFile(tx, { id: target.fileId, organizationId: auth.organization.id, projectId: input.projectId,
+      await insertProjectParameterFile(tx, { id: target.fileId, organizationId: parameterOrganizationId(auth), projectId: input.projectId,
         fileName: target.sourceName, format: target.format, enabled: true });
       await tx.query("update public.project_parameter_file_candidates set file_id=$2 where id=$1 and status='ready' and file_id is null", [candidate.id, target.fileId]);
     }
@@ -337,13 +338,13 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
       for (const member of proof.members) {
         const updated = await tx.query(`update public.project_parameter_files set config_set_role=$4,config_set_sort_order=$5,updated_at=now()
           where id=$1 and organization_id=$2 and project_id=$3 and config_set_id=$6 and current_version_id=$7`,
-        [member.fileId, auth.organization.id, input.projectId, member.role === "include" ? "misc" : member.role, member.sortOrder, input.configSetId, member.fileVersionId]);
+        [member.fileId, parameterOrganizationId(auth), input.projectId, member.role === "include" ? "misc" : member.role, member.sortOrder, input.configSetId, member.fileVersionId]);
         if (updated.rowCount !== 1) conflict("配置成员已变化，根文件切换已回滚。");
       }
     } else {
       const attached = await tx.query(`update public.project_parameter_files set config_set_id=$2,config_set_role=$3,config_set_sort_order=$4,updated_at=now()
       where id=$1 and organization_id=$5 and project_id=$6 and config_set_id is null and current_version_id=$7`,
-    [target.fileId, input.configSetId, input.role, input.sortOrder, auth.organization.id, input.projectId, fileVersionId]);
+    [target.fileId, input.configSetId, input.role, input.sortOrder, parameterOrganizationId(auth), input.projectId, fileVersionId]);
     if (attached.rowCount !== 1) conflict("文件归属或版本已变化，所有变更已回滚。");
     }
     const members: ConfigRevisionManifestMember[] = proof.members.map((member) => ({ ...member, fileName: member.sourceName,
@@ -351,14 +352,14 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
       role: member.role as ConfigRevisionMemberRole, content: contents.get(member.fileId)! }));
     let revisionId: string;
     if (proof.entryFile && proof.continuity) {
-      const revision = await ingestConfigRevisionInTransaction(tx, { organizationId: auth.organization.id, projectId: input.projectId,
+      const revision = await ingestConfigRevisionInTransaction(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId,
         configSetId: input.configSetId, entryFile: proof.entryFile, includeSearchPaths: proof.includeSearchPaths,
         overlayOrder: proof.overlayOrder, members }, auth, { createdByUserId: auth.user.id, domain: attribution }, { reviewedSource: proof.continuity });
       if (revision.status !== "resolved") conflict("文件组成无法构建，所有变更已回滚。");
       revisionId = revision.id;
     } else {
       revisionId = randomUUID();
-      await insertConfigRevision(tx, { id: revisionId, organizationId: auth.organization.id, projectId: input.projectId,
+      await insertConfigRevision(tx, { id: revisionId, organizationId: parameterOrganizationId(auth), projectId: input.projectId,
         configSetId: input.configSetId, revisionNumber: await nextConfigRevisionNumber(tx, input.configSetId), status: "resolved", attribution });
       await insertConfigRevisionMembers(tx, revisionId, members);
     }
@@ -369,7 +370,7 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
         const property = observed.find((row) => row.fileId === restoration.fileId && row.logicalNodeId === restoration.logicalNodeId && row.propertyKey === restoration.propertyName);
         const pinned = snapshots.get(restoration.catalogReleaseId);
         if (!property || !pinned) conflict("恢复参数缺少实际来源或固定定义，所有变更已回滚。");
-        const restored = await applySourceRestoration(tx, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: input.configSetId }, restoration,
+        const restored = await applySourceRestoration(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId }, restoration,
           { requestId, configRevisionId: revisionId, auditRef }, pinned, property);
         results.push({ ...restored, kind: "changed" });
         await tx.query(`update public.project_parameter_value_change_targets set applied_value_id=$3,applied_history_event_id=$4,
@@ -377,8 +378,8 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
         [requestId,entry.bindingId,restored.newValueId,restored.historyEventId,restored.sourcePinId,restored.fileVersionId]);
         continue;
       }
-      const currentBinding = await readOwnedCurrentBinding(tx, { organizationId: auth.organization.id, projectId: input.projectId, bindingId: entry.bindingId, lock: true });
-      const old = await readOwnedProjectValueIdentity(tx, { organizationId: auth.organization.id, projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
+      const currentBinding = await readOwnedCurrentBinding(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, bindingId: entry.bindingId, lock: true });
+      const old = await readOwnedProjectValueIdentity(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
       const pinned = snapshots.get(entry.catalogReleaseId);
       if (!old || currentBinding.status !== "current" || currentBinding.binding.currentValueId !== entry.oldValueId || !pinned) conflict("参数当前值已变化，所有变更已回滚。");
       const change = proof.targets.find((row) => row.bindingId === entry.bindingId), deleted = change?.action === "delete";
@@ -406,7 +407,7 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
         (id,project_value_id,binding_id,definition_id,organization_id,project_id,source_occurrence_id,config_revision_id,file_id,file_version_id,
          format,property_occurrence_id,locator,locator_digest,value_state,base_source_pin_id,delete_request_id,delete_proof)
         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,$17,$18::jsonb)`,
-        [sourcePinId, appended.value.currentTip, entry.bindingId, entry.definitionId, auth.organization.id, input.projectId,
+        [sourcePinId, appended.value.currentTip, entry.bindingId, entry.definitionId, parameterOrganizationId(auth), input.projectId,
           entry.sourceOccurrenceId, revisionId, afterFileId, afterFileVersionId, entry.format, property?.propertyOccurrenceId ?? null,
           JSON.stringify(locator), `sha256:${sourceRevisionDigest(locator)}`, deleted ? "deleted" : "present", deleted ? entry.sourcePinId : null,
           deleted ? requestId : null, deletionProof ? JSON.stringify(deletionProof) : null]);
@@ -418,7 +419,7 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
       [requestId, entry.bindingId, appended.value.currentTip, historyEventId, sourcePinId, afterFileVersionId]);
     }
     if (snapshot && proof.newProperties.length) await syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), snapshot, {
-      organizationId: auth.organization.id, projectId: input.projectId, configSetId: input.configSetId, configRevisionId: revisionId,
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId, configRevisionId: revisionId,
       propertyOccurrenceIds: proof.newProperties.map((planned) => {
         const actual = observed.find((row) => row.fileId === planned.fileId && row.logicalNodeId === planned.logicalNodeId && row.propertyKey === planned.propertyName);
         if (!actual || !sameSourceRevision(rawTextToPayload(actual.propertyKey, actual.rawText), planned.payload)) conflict("新增参数与预览不一致。");

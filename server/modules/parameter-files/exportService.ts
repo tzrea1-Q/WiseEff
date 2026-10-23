@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterInvocation } from "../parameters/operatingScope";
 import { randomUUID } from "node:crypto";
 
 import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
@@ -147,7 +148,7 @@ export async function exportFile(
   requireParameterFileAdmin(auth);
 
   const file = await getProjectParameterFileById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     fileId
   });
   if (!file) {
@@ -170,7 +171,7 @@ export async function exportFile(
 
   await writeExportAudit(
     db,
-    createUserInvocation(auth),
+    parameterInvocation(auth) ?? createUserInvocation(auth),
     {
       action: "file",
       projectId: file.projectId,
@@ -203,7 +204,7 @@ export async function exportConfigSet(
   requireParameterFileAdmin(auth);
 
   const configSet = await getConfigSetById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     configSetId
   });
   if (!configSet) {
@@ -259,7 +260,7 @@ export async function exportConfigSet(
 
   await writeExportAudit(
     db,
-    createUserInvocation(auth),
+    parameterInvocation(auth) ?? createUserInvocation(auth),
     {
       action: "config-set",
       projectId: configSet.projectId,

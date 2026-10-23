@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterInvocation } from "../parameters/operatingScope";
 import { randomUUID } from "node:crypto";
 
 import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
@@ -138,9 +139,9 @@ export async function createBaseline(
 
   return db.transaction(async (tx) => {
     await tx.query(`select id from dts_config_set where organization_id=$1 and id=$2 for update`,
-      [auth.organization.id, input.configSetId]);
+      [parameterOrganizationId(auth), input.configSetId]);
     const configSet = await getConfigSetById(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       configSetId: input.configSetId
     });
     await assertReleaseGatePendingWorkUnchanged(tx, auth, confirmed);
@@ -171,7 +172,7 @@ export async function createBaseline(
 
     const baseline = await insertReleaseBaseline(tx, {
       id: randomUUID(),
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       configSetId: input.configSetId,
       name: input.name,
       notes: input.notes,
@@ -191,7 +192,7 @@ export async function createBaseline(
 
     await writeBaselineAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      parameterInvocation(auth) ?? createUserInvocation(auth),
       {
         action: "created",
         projectId: configSet.projectId,
@@ -216,7 +217,7 @@ export async function getBaseline(
 ): Promise<{ baseline: ReleaseBaselineDto; members: ReleaseBaselineMemberDto[] }> {
   requireParameterFileAdmin(auth);
 
-  const baseline = await getReleaseBaselineById(db, { organizationId: auth.organization.id, baselineId });
+  const baseline = await getReleaseBaselineById(db, { organizationId: parameterOrganizationId(auth), baselineId });
   if (!baseline) {
     throw new ApiError("NOT_FOUND", "Baseline not found.", { baselineId });
   }
@@ -240,7 +241,7 @@ async function loadStructuralDiff(
   auth: AuthContext,
   input: { fileId: string; baselineVersionId: string; currentVersionId: string }
 ): Promise<StructuralChange[] | undefined> {
-  const file = await getProjectParameterFileById(db, { organizationId: auth.organization.id, fileId: input.fileId });
+  const file = await getProjectParameterFileById(db, { organizationId: parameterOrganizationId(auth), fileId: input.fileId });
   if (!file || file.format !== "dts") {
     return undefined;
   }
@@ -276,7 +277,7 @@ export async function compareBaseline(
   requireParameterFileAdmin(auth);
 
   const against = options.against ?? "working";
-  const baseline = await getReleaseBaselineById(db, { organizationId: auth.organization.id, baselineId });
+  const baseline = await getReleaseBaselineById(db, { organizationId: parameterOrganizationId(auth), baselineId });
   if (!baseline) {
     throw new ApiError("NOT_FOUND", "Baseline not found.", { baselineId });
   }
@@ -417,7 +418,7 @@ export async function previewRestoreBaseline(
 ): Promise<RestorePreviewResult> {
   requireParameterFileAdmin(auth);
 
-  const baseline = await getReleaseBaselineById(db, { organizationId: auth.organization.id, baselineId });
+  const baseline = await getReleaseBaselineById(db, { organizationId: parameterOrganizationId(auth), baselineId });
   if (!baseline) {
     throw new ApiError("NOT_FOUND", "Baseline not found.", { baselineId });
   }
@@ -434,12 +435,12 @@ export async function previewRestoreBaseline(
         or occurrence.config_set_id=$3
     ) or (file.organization_id=$1 and file.id=any($2::text[]) and exists(select 1 from dts_release_baseline
       where id=$4 and organization_id=$1 and source_snapshot is not null))`,
-    [auth.organization.id, members.map((member) => member.fileId), baseline.configSetId,baselineId]);
+    [parameterOrganizationId(auth), members.map((member) => member.fileId), baseline.configSetId,baselineId]);
   const canonicalFileIds = new Set(canonicalFiles.rows.map((file) => file.id));
   const previewMembers: RestorePreviewMember[] = [];
   for (const member of members) {
     const file = await getProjectParameterFileById(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       fileId: member.fileId
     });
     if (!file) {
@@ -529,13 +530,13 @@ export async function rollbackToBaseline(
   requireParameterFileAdmin(auth);
 
   return db.transaction(async (tx) => {
-    const baseline = await getReleaseBaselineById(tx, { organizationId: auth.organization.id, baselineId });
+    const baseline = await getReleaseBaselineById(tx, { organizationId: parameterOrganizationId(auth), baselineId });
     if (!baseline) {
       throw new ApiError("NOT_FOUND", "Baseline not found.", { baselineId });
     }
 
     const configSet = await getConfigSetById(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       configSetId: baseline.configSetId
     });
 
@@ -546,7 +547,7 @@ export async function rollbackToBaseline(
     let restored = 0;
     for (const member of members) {
       const file = await getProjectParameterFileById(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         fileId: member.fileId
       });
       if (!file) {
@@ -594,7 +595,7 @@ export async function rollbackToBaseline(
 
     await writeBaselineRolledBackAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      parameterInvocation(auth) ?? createUserInvocation(auth),
       {
         projectId: configSet?.projectId ?? null,
         baselineId,
@@ -658,13 +659,13 @@ export async function releaseBaseline(
 ): Promise<ReleaseBaselineResult> {
   requireParameterFileAdmin(auth);
 
-  const baseline = await getReleaseBaselineById(db, { organizationId: auth.organization.id, baselineId });
+  const baseline = await getReleaseBaselineById(db, { organizationId: parameterOrganizationId(auth), baselineId });
   if (!baseline) {
     throw new ApiError("NOT_FOUND", "Baseline not found.", { baselineId });
   }
 
   const configSet = await getConfigSetById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     configSetId: baseline.configSetId
   });
   if (!configSet) {
@@ -692,9 +693,9 @@ export async function releaseBaseline(
 
   return db.transaction(async (tx) => {
     await tx.query(`select id from dts_config_set where organization_id=$1 and id=$2 for update`,
-      [auth.organization.id, baseline.configSetId]);
+      [parameterOrganizationId(auth), baseline.configSetId]);
     const configSet = await getConfigSetById(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       configSetId: baseline.configSetId
     });
     await assertReleaseGatePendingWorkUnchanged(tx, auth, confirmed);
@@ -708,7 +709,7 @@ export async function releaseBaseline(
 
     await writeBaselineReleasedAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      parameterInvocation(auth) ?? createUserInvocation(auth),
       {
         projectId: configSet?.projectId ?? null,
         baselineId,

@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterInvocation } from "../parameters/operatingScope";
 import { randomUUID } from "node:crypto";
 
 import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
@@ -141,7 +142,7 @@ export async function runValidationGate(
   context: AuditCorrelationContext = {}
 ): Promise<ValidationGateResult> {
   const configSet = await getConfigSetById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     configSetId: input.configSetId
   });
   if (!configSet) {
@@ -159,7 +160,7 @@ export async function runValidationGate(
   }
 
   const snapshot = await loadConfigSetSnapshot(db, deps.objectStore, input.configSetId);
-  const invocation = createUserInvocation(auth);
+  const invocation = parameterInvocation(auth) ?? createUserInvocation(auth);
   for (const member of snapshot.members.filter((row) => row.format === "json")) parseJsonSource(member.content);
   if (snapshot.members.length > 0 && snapshot.skipped.length === 0 && snapshot.members.every((row) => row.format === "json")) {
     const result: ValidationGateResult = { ok: true, mode, requiresConfirmation: false, diagnostics: [], compiler: "unavailable" };

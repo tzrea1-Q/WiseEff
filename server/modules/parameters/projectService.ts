@@ -1,6 +1,7 @@
 import { withAuditedWrite, writeTrustedAuditEventInTx, type AuditedWriteContext } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
+import { parameterOrganizationId, type ParameterScopeContext, parameterInvocation } from "./operatingScope";
 import { ensureDefaultConfigSetInTx } from "../parameter-files/configSetService";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -29,7 +30,7 @@ export type DeleteProjectForAuthInput = {
 };
 
 /** Project mutations are audited writes: correlation is mandatory (ADR-0027). */
-export type ProjectServiceContext = AuditedWriteContext;
+export type ProjectServiceContext = AuditedWriteContext & ParameterScopeContext;
 
 function requireCanAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
@@ -50,9 +51,9 @@ export async function createProjectForAuth(
 ): Promise<ProjectAdminSummaryDto> {
   requireCanAdmin(auth);
 
-  return withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
+  return withAuditedWrite(db, context.invocation ?? parameterInvocation(auth) ?? createUserInvocation(auth), context, async (tx) => {
     const item = await createProject(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth, context),
       id: input.id,
       name: input.name,
       code: input.code,
@@ -89,9 +90,9 @@ export async function updateProjectForAuth(
 ): Promise<ProjectAdminSummaryDto | null> {
   requireCanAdmin(auth);
 
-  return withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
+  return withAuditedWrite(db, parameterInvocation(auth) ?? createUserInvocation(auth), context, async (tx) => {
     const item = await updateProject(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       name: input.name,
       code: input.code,
@@ -130,15 +131,15 @@ export async function deleteProjectForAuth(
 ): Promise<Awaited<ReturnType<typeof deleteProject>>> {
   requireCanAdmin(auth);
 
-  const result = await withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
+  const result = await withAuditedWrite(db, parameterInvocation(auth) ?? createUserInvocation(auth), context, async (tx) => {
     const result = await deleteProject(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId
     });
 
     if (result.reason === "canonical-project-retained") {
       await writeTrustedAuditEventInTx(tx, {
-        invocation: createUserInvocation(auth),
+        invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
         projectId: input.projectId,
         app: "parameter-admin",
         kind: "project-delete-refused",

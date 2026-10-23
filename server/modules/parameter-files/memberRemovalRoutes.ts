@@ -1,3 +1,4 @@
+import { parameterInvocation, parameterRequestAccess } from "../parameters/operatingScope";
 import { z } from "zod";
 import type { Database } from "../../shared/database/client";
 import type { WiseEffRouter, RouteRequest } from "../../shared/http/router";
@@ -18,13 +19,13 @@ export function registerMemberRemovalRoutes(router: WiseEffRouter, options: { db
     if (!options.db || !options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source database and storage are required.");
     const params = memberRemovalParamsSchema.safeParse(request.params);
     if (!params.success) throw new ApiError("VALIDATION_FAILED", "Invalid configuration member.");
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     if (operation === "removal-preview") return { status: 200, body: { item: await previewAdministratorMemberRemoval(options.db, options.objectStore, auth, params.data) } };
     const body = memberRemovalApplySchema.safeParse(request.body);
     if (!body.success) throw new ApiError("VALIDATION_FAILED", "请填写移除原因并重新预览。", { issues: body.error.issues });
     if (!options.refusalAuditSink) throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required.");
     const item = await applyAdministratorMemberRemoval(options.db, options.objectStore, auth, { ...params.data, ...body.data },
-      { invocation: createUserInvocation(auth), requestId: request.requestId, refusalSink: options.refusalAuditSink });
+      { invocation: parameterInvocation(auth) ?? createUserInvocation(auth), requestId: request.requestId, refusalSink: options.refusalAuditSink });
     return { status: 200, body: { item } };
   };
   router.post("/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId/removal-preview", handler("removal-preview"));

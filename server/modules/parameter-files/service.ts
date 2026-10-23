@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterInvocation } from "../parameters/operatingScope";
 import { randomUUID } from "node:crypto";
 import { basename, extname } from "node:path";
 
@@ -240,7 +241,7 @@ export async function maybeIngestSemanticConfigRevision(
   producerRoot?: Database,
 ): Promise<void> {
   const membership = await getFileConfigSetMembership(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     fileId: input.fileId,
   });
   if (!membership?.configSetId) {
@@ -248,7 +249,7 @@ export async function maybeIngestSemanticConfigRevision(
   }
 
   const configSet = await getConfigSetById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     configSetId: membership.configSetId,
   });
   if (!configSet) {
@@ -269,7 +270,7 @@ export async function maybeIngestSemanticConfigRevision(
   const members: ConfigRevisionManifestMember[] = [];
   for (const member of memberFiles) {
     const file = await getProjectParameterFileById(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       fileId: member.fileId,
     });
     if (!file || (file.format !== "dts" && file.format !== "json")) {
@@ -277,7 +278,7 @@ export async function maybeIngestSemanticConfigRevision(
     }
 
     const fileMembership = await getFileConfigSetMembership(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       fileId: member.fileId,
     });
     const role = fileMembership?.configSetRole ?? "misc";
@@ -323,7 +324,7 @@ export async function maybeIngestSemanticConfigRevision(
     .map((member) => member.fileName);
 
   const manifest: ConfigRevisionManifest = {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: configSet.projectId,
     configSetId: configSet.id,
     entryFile: baseMembers[0].fileName,
@@ -370,13 +371,13 @@ export async function uploadProjectParameterFile(
 
   const runUpload = async (tx: Database, uploadStore: ObjectStore) => {
     const existing = await getProjectParameterFileByName(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: normalized.projectId,
       fileName: normalized.fileName,
     });
     if (existing) await assertLegacySourceMutationAllowed(tx,existing.id);
     const stored = await uploadStore.put({
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       fileName: `parameter-upload-${randomUUID()}-${normalized.fileName}`,
       contentType: contentTypeForFormat(format),
       bytes: normalized.bytes,
@@ -386,7 +387,7 @@ export async function uploadProjectParameterFile(
       existing ??
       (await insertProjectParameterFile(tx, {
         id: randomUUID(),
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: normalized.projectId,
         fileName: normalized.fileName,
         format,
@@ -423,7 +424,7 @@ export async function uploadProjectParameterFile(
     }
     await createParameterFileUploadAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      parameterInvocation(auth) ?? createUserInvocation(auth),
       {
         projectId: normalized.projectId,
         file: {
@@ -440,7 +441,7 @@ export async function uploadProjectParameterFile(
     if (format === "dts") {
       const registered = await listRegisteredCompatibles(
         tx,
-        auth.organization.id,
+        parameterOrganizationId(auth),
       );
       driverSummary = buildIngestDriverSummary({
         observedCompatibles: extractCompatiblesFromDtsSource(source),
@@ -477,7 +478,7 @@ export async function listProjectParameterFilesForAuth(
 ) {
   requireParameterFileAdmin(auth);
   return listProjectParameterFiles(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId,
   });
 }
@@ -533,7 +534,7 @@ export async function rollbackProjectParameterFileVersion(
 
   return db.transaction(async (tx) => {
     const file = await getProjectParameterFileById(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       fileId: input.fileId,
     });
     if (!file || file.projectId !== input.projectId) {
@@ -603,7 +604,7 @@ export async function rollbackProjectParameterFileVersion(
 
     await writeParameterFileRollbackAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      parameterInvocation(auth) ?? createUserInvocation(auth),
       {
         projectId: input.projectId,
         file: updatedFile,

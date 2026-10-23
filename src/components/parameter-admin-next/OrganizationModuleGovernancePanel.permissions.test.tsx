@@ -9,8 +9,8 @@ import { ParameterAdminProvider } from "./ParameterAdminProvider";
 
 describe("module taxonomy and subject authority", () => {
   it.each([
-    { actor: "platform-admin", permissions: ["admin:access"], taxonomy: true, subjects: false },
-    { actor: "platform-admin", permissions: [], taxonomy: false, subjects: false },
+    { actor: "platform-admin", permissions: ["admin:access"], taxonomy: true, subjects: true },
+    { actor: "platform-admin", permissions: [], taxonomy: false, subjects: true },
     { actor: "org-admin", permissions: ["admin:access"], taxonomy: true, subjects: true },
     { actor: "org-admin", permissions: [], taxonomy: false, subjects: true },
     { actor: "user", permissions: null, taxonomy: false, subjects: false },

@@ -96,7 +96,7 @@ describe("S5-RSL public command contract", () => {
     expect(second).toBe(first);
   });
 
-  it("refuses Agent, Platform Admin, and cross-organization callers", () => {
+  it("allows trusted Platform Admin management and refuses Agent or foreign organization admins", () => {
     expect(
       validateResolveReviewItemCommand(
         registerCommand({ context: { actorKind: "agent", principalId: "agent-1" } }),
@@ -111,10 +111,7 @@ describe("S5-RSL public command contract", () => {
           context: { actorKind: "platform-admin", principalId: "platform-1" },
         }),
       ),
-    ).toEqual({
-      ok: false,
-      error: { kind: "permission-denied", actorKind: "platform-admin" },
-    });
+    ).toMatchObject({ ok: true });
     expect(
       validateResolveReviewItemCommand(
         registerCommand({

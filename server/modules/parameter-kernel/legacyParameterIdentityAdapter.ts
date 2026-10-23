@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../parameters/operatingScope";
 /**
  * Explicit transitional adapter for pre-cutover flat parameter identity.
  *
@@ -53,7 +54,7 @@ export async function ensurePreCutoverLinkedParameterValue(
     order by ppv.updated_at desc
     limit 1
     `,
-    [auth.organization.id, input.projectId, input.propertyKey]
+    [parameterOrganizationId(auth), input.projectId, input.propertyKey]
   );
   if (existing.rows[0]) return { id: existing.rows[0].id };
 
@@ -66,7 +67,7 @@ export async function ensurePreCutoverLinkedParameterValue(
       module, default_range, unit, risk
     ) values ($1, $2, $3, '', '', 'dts', 'pre-cutover-link', '', '', 'Low')
     `,
-    [definitionId, auth.organization.id, input.propertyKey]
+    [definitionId, parameterOrganizationId(auth), input.propertyKey]
   );
   await db.query(
     `
@@ -78,7 +79,7 @@ export async function ensurePreCutoverLinkedParameterValue(
     `,
     [
       ppvId,
-      auth.organization.id,
+      parameterOrganizationId(auth),
       input.projectId,
       definitionId,
       input.currentRaw,
@@ -122,7 +123,7 @@ export async function loadPreCutoverWritebackSource(
       and parameter_definition_id = $3
     limit 1
     `,
-    [auth.organization.id, input.projectId, input.parameterDefinitionId]
+    [parameterOrganizationId(auth), input.projectId, input.parameterDefinitionId]
   );
   const row = result.rows[0];
   if (!row) return null;

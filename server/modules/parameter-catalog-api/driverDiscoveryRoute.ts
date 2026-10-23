@@ -6,6 +6,10 @@ import type { ObjectStore } from "../logs/objectStore";
 import { parameterCatalogCanonicalRoutes } from "../contracts/dtoSchemas/parameterCatalog";
 import { catalogGovernanceOk, catalogNotReady, notFound, releaseDrift, unauthenticated, validationFailed } from "./governance/errors";
 import { catalogReleaseHeader } from "./governance/query";
+import { canOperateInOrganization } from "../auth/policy";
+import { resolveOperatingContext } from "../auth/operatingContext";
+import type { UserInvocationContext } from "../auth/trustedInvocation";
+import { withParameterAccess } from "../parameters/operatingScope";
 
 const path = parameterCatalogCanonicalRoutes.find((route) =>
   route.id === "catalog.listDriverCompatibleDiscovery")!.path;
@@ -15,11 +19,18 @@ export function registerCatalogDriverCompatibleDiscoveryRoute(router: WiseEffRou
   db?: Database;
   objectStore?: ObjectStore;
   resolveAuth: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
+  resolveInvocation?: (request: RouteRequest) => Promise<UserInvocationContext>;
 }): void {
   router.get(path, async (request) => {
-    const auth = await options.resolveAuth(request);
+    const invocation = await options.resolveInvocation?.(request);
+    let auth = invocation?.principal ?? await options.resolveAuth(request);
     if (!auth.user.isActive) return unauthenticated(request.requestId);
-    if (request.params.organizationId !== auth.organization.id) return notFound(request.requestId);
+    if (!canOperateInOrganization(auth, request.params.organizationId!)) return notFound(request.requestId);
+    if (request.params.organizationId !== auth.organization.id) {
+      if (!options.db) return catalogNotReady(request.requestId);
+      if (!invocation) return notFound(request.requestId);
+      auth = withParameterAccess(auth, await resolveOperatingContext(options.db, invocation, request.params.organizationId));
+    }
     const allowed = new Set(["projectId", "observationId", "cursor", "limit"]);
     if (Object.entries(request.query).some(([key, value]) => !allowed.has(key) || Array.isArray(value))) {
       return validationFailed(request.requestId, "query");

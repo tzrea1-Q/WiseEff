@@ -36,6 +36,8 @@ import { ParameterAdminProvider } from "@/components/parameter-admin-next/Parame
 import { ProjectsOperationsPanel } from "@/components/parameter-admin-next/ProjectsOperationsPanel";
 import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
 import type { AuthContextDto } from "@/infrastructure/http/authClient";
+import { createHttpParameterModuleRegistryRepository } from "@/infrastructure/http/parameterModuleRegistryClient";
+import { createDtsStructuredClient } from "@/infrastructure/http/dtsStructuredClient";
 
 function buildParameterAuditCenterPath(projectId: string) {
   const params = new URLSearchParams({ app: "parameter" });
@@ -114,16 +116,16 @@ export function ParameterAdminNextPage({
   );
   const moduleRegistry = useMemo(
     () =>
-      parameterModuleRegistryRepository ?? resolveParameterModuleRegistryRepository(runtimeMode),
-    [parameterModuleRegistryRepository, runtimeMode]
+      parameterModuleRegistryRepository ?? (runtime?.parameterApiClient ? createHttpParameterModuleRegistryRepository(runtime.parameterApiClient) : resolveParameterModuleRegistryRepository(runtimeMode)),
+    [parameterModuleRegistryRepository, runtime?.parameterApiClient, runtimeMode]
   );
   const fileRepository = useMemo(
-    () => parameterFileRepository,
-    [parameterFileRepository]
+    () => parameterFileRepository ?? runtime?.parameterFileRepository,
+    [parameterFileRepository, runtime?.parameterFileRepository]
   );
   const dtsRepository = useMemo(
-    () => dtsStructuredRepository,
-    [dtsStructuredRepository]
+    () => dtsStructuredRepository ?? (runtime?.parameterApiClient ? createDtsStructuredClient(runtime.parameterApiClient) : undefined),
+    [dtsStructuredRepository, runtime?.parameterApiClient]
   );
   const importActions = useMemo(() => {
     if (!parameterActions) {
@@ -153,7 +155,7 @@ export function ParameterAdminNextPage({
         url.pathname = buildParameterAdminSpecsPath("identity-mapping");
       }
       const current = new URLSearchParams(search);
-      for (const queryKey of ["project", "projectId", "review"]) {
+      for (const queryKey of ["project", "projectId", "review", "organizationId"]) {
         const value = current.get(queryKey);
         if (value !== null) url.searchParams.set(queryKey, value);
       }
@@ -240,10 +242,11 @@ export function ParameterAdminNextPage({
               dispatch={dispatch}
               parameterActions={parameterActions}
               runtimeMode={runtimeMode}
+              apiClient={runtime?.parameterApiClient}
               parameterCatalogRepository={runtime?.parameterCatalogRepository}
               onNewProject={onNewProject}
-              parameterFileRepository={parameterFileRepository}
-              dtsStructuredRepository={dtsStructuredRepository}
+              parameterFileRepository={fileRepository}
+              dtsStructuredRepository={dtsRepository}
               configurationWorkbenchEnabled={configurationWorkbenchEnabled}
             />
           ) : (
@@ -256,6 +259,7 @@ export function ParameterAdminNextPage({
         ) : organizationView ? (
           <>
             {organizationView === "specs" ? <OrganizationBulkImportPanel
+              apiClient={runtime?.parameterApiClient}
               projects={projects}
               parameters={parameters}
               activeProjectId={activeProjectId || projects[0]?.id || ""}
@@ -282,6 +286,7 @@ export function ParameterAdminNextPage({
             ) : null}
             {organizationView === "modules" ? (
               <OrganizationModuleGovernancePanel
+                apiClient={runtime?.parameterApiClient}
                 projects={projects}
                 pathname={pathname}
                 search={search}
@@ -291,7 +296,8 @@ export function ParameterAdminNextPage({
                 organizationId={catalogOrganizationId}
                 actor={catalogActorForSession({
                   roleId: runtimeMode === "api"
-                    ? sessionRoles?.some((role) => role.roleId === "admin" && role.projectId === null) ? "admin" : ""
+                    ? sessionRoles?.some((role) => role.roleId === "platform-admin" && role.projectId === null) ? "platform-admin"
+                      : sessionRoles?.some((role) => role.roleId === "admin" && role.projectId === null) ? "admin" : ""
                     : migrateLegacyRoleId(state?.activeRoleId ?? "")
                 })}
                 sessionPermissions={sessionPermissions}

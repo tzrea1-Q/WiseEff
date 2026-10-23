@@ -5,6 +5,8 @@ import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { createAuditEvent, listAuditEvents } from "./repository";
+import { resolveOperatingContext } from "../auth/operatingContext";
+import { createUserInvocation } from "../auth/trustedInvocation";
 
 const auditBodySchema = z.object({
   app: z.string().min(1),
@@ -127,10 +129,14 @@ export function registerAuditRoutes(
     if (!auth.permissions.includes("admin:access")) {
       throw new ApiError("FORBIDDEN", "Admin access required.");
     }
+    const target = z.string().trim().min(1).max(200).optional().safeParse(request.query.organizationId);
+    if (!target.success) throw new ApiError("VALIDATION_FAILED", "Invalid operating Organization.");
+    const organizationId = target.data === undefined ? auth.organization.id
+      : (await resolveOperatingContext(options.db, createUserInvocation(auth), target.data)).operatingOrganization!.id;
 
     const query = parseAuditListQuery(request.query);
     const result = await listAuditEvents(options.db, {
-      organizationId: auth.organization.id,
+      organizationId,
       ...query,
       ...(auth.user.isActive && auth.roles.some((role) => role.roleId === "platform-admin" && role.projectId === null)
         ? { includePlatformWorkflowPublication: true }

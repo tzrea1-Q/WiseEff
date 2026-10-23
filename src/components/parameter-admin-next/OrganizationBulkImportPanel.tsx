@@ -7,8 +7,10 @@ import type { ParameterRecord, Project } from "@/domain/prototype/types";
 import { ParameterImportWizard } from "@/components/ParameterImportWizard/ParameterImportWizard";
 import { TopBarActionsContext, useTopBarActions } from "@/components/layout";
 import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdminRecentAudits";
+import type { ApiClient } from "@/infrastructure/http/apiClient";
 
 export type OrganizationBulkImportPanelProps = {
+  apiClient?: ApiClient;
   projects: Project[];
   parameters: ParameterRecord[];
   activeProjectId: string;
@@ -22,6 +24,7 @@ export type OrganizationBulkImportPanelProps = {
  * Organization-scoped bulk import entry shown as a TopBar action on every org sub-route.
  */
 export function OrganizationBulkImportPanel({
+  apiClient,
   projects,
   parameters,
   activeProjectId,
@@ -30,7 +33,7 @@ export function OrganizationBulkImportPanel({
   parameterActions,
   runtimeMode = "mock"
 }: OrganizationBulkImportPanelProps) {
-  const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
+  const refreshRecentAudits = useRefreshParameterAdminRecentAudits(apiClient);
   const topBarContext = useContext(TopBarActionsContext);
   const [open, setOpen] = useState(false);
 
@@ -71,6 +74,7 @@ export function OrganizationBulkImportPanel({
       ) : null}
 
       <ParameterImportWizard
+        apiClient={apiClient}
         open={open}
         onClose={() => setOpen(false)}
         projects={projects}

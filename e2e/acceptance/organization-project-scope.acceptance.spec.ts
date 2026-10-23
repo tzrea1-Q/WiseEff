@@ -1,0 +1,124 @@
+import "./helpers/loadAcceptanceEnvironment";
+import { randomUUID } from "node:crypto";
+import { expect, test } from "playwright/test";
+import { hashLocalAccountPassword } from "../../server/modules/auth/localAccountCredentials";
+import { LOCAL_DEMO_SHARED_PASSWORD } from "../../server/modules/auth/seedLocalDemoCredentials";
+import { resolveApiAuthorization, resolveApiAuthProvider } from "../../playwright.shared";
+import { withPgClient } from "./helpers/database";
+import { prepareInteractionSurface } from "./helpers/interactionSurface";
+import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { apiRoute } from "./helpers/runtime";
+
+test.use({ viewport: { width: 1440, height: 900 } });
+useBrowserDiagnostics(test);
+const home = "project-operating-home", actor = "project-operating-platform", username = "project.operating.platform";
+
+test.describe("fixed-target project and configuration administration", () => {
+  test.skip(resolveApiAuthProvider(resolveApiAuthorization()) !== "local", "Requires the real local-auth API lane.");
+  test.beforeAll(async () => {
+    const passwordHash = await hashLocalAccountPassword(LOCAL_DEMO_SHARED_PASSWORD);
+    await withPgClient(async (client) => {
+      await client.query("insert into organizations(id,name) values($1,'项目管理员所属组织') on conflict(id) do nothing", [home]);
+      await client.query("insert into users(id,organization_id,name,title,is_active) values($1,$2,'项目平台管理员','平台管理员',true) on conflict(id) do update set is_active=true", [actor, home]);
+      await client.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values('project-operating-platform-role',$1,$2,'platform-admin') on conflict(id) do nothing", [actor, home]);
+      await client.query(`insert into user_password_credentials(user_id,username,password_hash) values($1,$2,$3)
+        on conflict(user_id) do update set username=excluded.username,password_hash=excluded.password_hash`, [actor, username, passwordHash]);
+    });
+  });
+
+  test("creates and edits a target project, opens its real source and reloads the deletion receipt while Home remains independent", async ({ page }, testInfo) => {
+    const login = await page.request.post(apiRoute("/api/v1/auth/login"), { data: { username, password: LOCAL_DEMO_SHARED_PASSWORD } });
+    expect(login.status()).toBe(200);
+    const session = await login.json() as { token: string }, headers = { Authorization: `Bearer ${session.token}` };
+    await page.addInitScript((token) => window.localStorage.setItem("wiseeff.localAuthToken", token), session.token);
+    const suffix = randomUUID().slice(0, 8), organizationName = `项目目标组织-${suffix}`;
+    let name = `目标项目-${suffix}`;
+    const createdOrganization = await page.request.post(apiRoute("/api/v1/platform/organizations"), { headers, data: { name: organizationName,
+      initialAdministrator: { name: `目标管理员-${suffix}`, username: `project.admin.${suffix}`, password: LOCAL_DEMO_SHARED_PASSWORD } } });
+    expect(createdOrganization.status()).toBe(201);
+    const target = (await createdOrganization.json() as { item: { id: string } }).item.id;
+    const scope = (path: string) => `${path}${path.includes("?") ? "&" : "?"}organizationId=${target}`;
+    await page.goto(scope("/parameter-admin/modules")); await prepareInteractionSurface(page);
+    await expect(page.getByText("此页仅可查看；登记主体和调整归属需要组织管理员权限。", { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "新建模块", exact: true }).click();
+    const moduleForm = page.getByRole("dialog", { name: "新增根模块", exact: true });
+    await moduleForm.getByLabel("模块名称", { exact: true }).fill(`目标模块-${suffix}`);
+    const creatingModule = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v1/parameter-modules" && response.request().method() === "POST");
+    const moduleAudit = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v1/audit-events" && new URL(response.url()).searchParams.get("organizationId") === target);
+    await moduleForm.getByRole("button", { name: "创建", exact: true }).click();
+    const createdModule = await creatingModule;
+    expect(createdModule.status(), await createdModule.text()).toBe(201);
+    expect(new URL(createdModule.url()).searchParams.get("organizationId")).toBe(target);
+    expect((await moduleAudit).status()).toBe(200);
+    await expect(moduleForm).toBeHidden();
+    await expect(page.getByRole("tree", { name: "模块归属树", exact: true })).toContainText(`目标模块-${suffix}`);
+    await page.goto(scope("/parameter-admin/projects")); await prepareInteractionSurface(page);
+    await expect(page.getByRole("region", { name: "当前操作组织", exact: true })).toContainText(organizationName);
+    const homePage = await page.context().newPage();
+    await homePage.goto("/parameter-admin/projects"); await prepareInteractionSurface(homePage);
+    await expect(homePage.getByRole("row").filter({ hasText: name })).toHaveCount(0);
+    await page.getByLabel("项目清单操作", { exact: true }).getByRole("button", { name: "新建项目", exact: true }).click();
+    const form = page.getByRole("dialog", { name: "新项目参数初始化", exact: true });
+    await form.getByLabel("项目名称", { exact: true }).fill(name);
+    await form.getByLabel("项目代号", { exact: true }).fill(`SC${suffix}`);
+    await form.getByRole("button", { name: "下一步", exact: true }).click();
+    await form.getByRole("button", { name: "下一步", exact: true }).click();
+    await form.getByRole("button", { name: "下一步", exact: true }).click();
+    const creating = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v1/parameters/admin/projects" && response.request().method() === "POST");
+    const submitting = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/initialization/submit") && response.request().method() === "POST");
+    await form.getByRole("button", { name: "提交初始化审阅", exact: true }).click();
+    const created = await creating;
+    expect(created.status(), await created.text()).toBe(201);
+    expect(new URL(created.url()).searchParams.get("organizationId")).toBe(target);
+    const projectId = (await created.json() as { item: { id: string } }).item.id;
+    const submitted = await submitting;
+    expect(submitted.status(), await submitted.text()).toBe(201);
+    const reviewId = (await submitted.json() as { item: { id: string } }).item.id;
+    const targetLogin = await page.request.post(apiRoute("/api/v1/auth/login"), { data: { username: `project.admin.${suffix}`, password: LOCAL_DEMO_SHARED_PASSWORD } });
+    expect(targetLogin.status()).toBe(200);
+    const targetToken = (await targetLogin.json() as { token: string }).token;
+    const approved = await page.request.post(apiRoute(`/api/v1/parameters/admin/initialization-reviews/${reviewId}/approve`), { headers: { Authorization: `Bearer ${targetToken}` }, data: {} });
+    expect(approved.status(), await approved.text()).toBe(200);
+    await expect(page.getByRole("row").filter({ hasText: name })).toBeVisible();
+    await expect(homePage.getByRole("row").filter({ hasText: name })).toHaveCount(0);
+    await page.getByRole("row").filter({ hasText: name }).getByRole("button", { name: `${name}操作：更多`, exact: true }).click();
+    await page.getByRole("menuitem", { name: `编辑 ${name}`, exact: true }).click();
+    const editing = page.getByRole("dialog", { name: "编辑项目详情", exact: true });
+    name = `${name}-已改名`;
+    await editing.getByLabel("项目名称", { exact: true }).fill(name);
+    const saving = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/parameters/admin/projects/${projectId}` && response.request().method() === "PATCH");
+    await editing.getByRole("button", { name: "保存修改", exact: true }).click();
+    expect((await saving).status()).toBe(200);
+    await expect(page.getByRole("row").filter({ hasText: name })).toBeVisible();
+    const uploaded = await page.request.post(apiRoute(scope(`/api/v1/projects/${projectId}/parameter-files`)), { headers,
+      data: { fileName: "target-settings.json", contentBase64: Buffer.from('{"targetLimit":1373}').toString("base64") } });
+    expect(uploaded.status(), await uploaded.text()).toBe(201);
+    const file = (await uploaded.json() as { item: { id: string } }).item;
+    const configurations = await page.request.get(apiRoute(scope(`/api/v1/projects/${projectId}/config-sets`)), { headers });
+    const configSet = (await configurations.json() as { items: Array<{ id: string }> }).items[0]!;
+    const added = await page.request.post(apiRoute(scope(`/api/v1/projects/${projectId}/config-sets/${configSet.id}/files`)), { headers,
+      data: { fileId: file.id, role: "base", sortOrder: 0 } });
+    expect(added.status()).toBe(201);
+    await page.goto(scope(`/parameter-admin/projects/${projectId}/configuration?configSet=${configSet.id}&file=${file.id}`));
+    await prepareInteractionSurface(page);
+    await expect(page.getByRole("region", { name: "当前操作组织", exact: true })).toContainText(organizationName);
+    await expect(page.getByText("target-settings.json", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(/1373/).first()).toBeVisible();
+    const screenshot = testInfo.outputPath("target-project-configuration-1440.png");
+    await page.screenshot({ path: screenshot, fullPage: true });
+    await testInfo.attach("target-project-configuration-1440", { path: screenshot, contentType: "image/png" });
+    await page.goto(scope(`/parameter-admin/projects?q=${encodeURIComponent(name)}`)); await prepareInteractionSurface(page);
+    await page.getByRole("row").filter({ hasText: name }).getByRole("button", { name: `${name}操作：更多`, exact: true }).click();
+    await page.getByRole("menuitem", { name: `彻底删除… ${name}`, exact: true }).click();
+    const deletion = page.getByRole("dialog", { name: /项目删除影响预览/ });
+    await expect(deletion.getByRole("button", { name: "彻底删除", exact: true })).toBeEnabled();
+    await deletion.getByRole("button", { name: "彻底删除", exact: true }).click();
+    await expect(deletion.getByRole("status")).toContainText("项目彻底删除已完成");
+    await page.keyboard.press("Escape"); await page.reload();
+    await page.getByRole("button", { name: `查看清理状态 ${projectId}`, exact: true }).click();
+    await expect(page.getByRole("dialog").getByRole("status").filter({ hasText: "项目彻底删除已完成" })).toBeVisible();
+    const me = await page.request.get(apiRoute("/api/v1/me"), { headers });
+    expect((await me.json() as { user: { organizationId: string } }).user.organizationId).toBe(home);
+    await homePage.close();
+  });
+});

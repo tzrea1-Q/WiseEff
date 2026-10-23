@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterInvocation } from "../parameters/operatingScope";
 /**
  * Consumer of Catalog Kernel + Binding/ProjectValue owners.
  * DTS ingest/workbench/import write project values under published definitions.
@@ -944,7 +945,7 @@ async function readBoundedCatalogParameters(
     throw new ApiError("FORBIDDEN", "Project parameter scope is required.");
   }
   const project = await pool.query("select 1 from public.projects where id = $1 and organization_id = $2", [
-    input.projectId, auth.organization.id,
+    input.projectId, parameterOrganizationId(auth),
   ]);
   if (project.rowCount !== 1) throw new ApiError("NOT_FOUND", "Project was not found.");
   if (input.moduleIds?.length === 0) return [];
@@ -970,7 +971,7 @@ async function readBoundedCatalogParameters(
          and ($6::text is null or module.name = $6)
          and ($7::text is null or b.id = $7)
        order by b.id limit $4`,
-      [auth.organization.id, input.projectId, afterId, input.limit - items.length, input.moduleIds ?? null, input.module ?? null, input.bindingId ?? null],
+      [parameterOrganizationId(auth), input.projectId, afterId, input.limit - items.length, input.moduleIds ?? null, input.module ?? null, input.bindingId ?? null],
     );
     if (candidates.rows.length === 0) break;
     for (const row of candidates.rows) {
@@ -1011,7 +1012,7 @@ export async function listCatalogBindingRowsForProject(
   const pool = getRootPostgresPool(db);
   if (!pool) return [];
   const protectedRows = input.limit === undefined
-    ? await readProjectProtectedParameters(pool, { invocation: createUserInvocation(auth), projectId: input.projectId })
+    ? await readProjectProtectedParameters(pool, { invocation: parameterInvocation(auth) ?? createUserInvocation(auth), projectId: input.projectId })
     : await readBoundedCatalogParameters(pool, auth, { ...input, limit: input.limit });
   const currentRevisions = input.revisionId
     ? await db.query<{ config_revision_id: string }>(
@@ -1031,7 +1032,7 @@ export async function listCatalogBindingRowsForProject(
            select 1 from parameter_catalog.project_value_source_pins materialized
            where materialized.config_revision_id = candidate.id
          )`,
-      [input.revisionId, auth.organization.id, input.projectId]
+      [input.revisionId, parameterOrganizationId(auth), input.projectId]
     )
     : null;
   const revisionIds = new Set([input.revisionId, ...(currentRevisions?.rows.map((row) => row.config_revision_id) ?? [])]);
@@ -1110,7 +1111,7 @@ export async function listCatalogBindingRowsForProject(
       `,
       [rows.map((row) => row.pin.bindingId), rows.map((row) => row.pin.currentValueId),
         rows.map((row) => row.pin.definitionRevisionId), rows.map((row) => row.pin.catalogRelease.id),
-        auth.organization.id, input.projectId],
+        parameterOrganizationId(auth), input.projectId],
     );
   const locators = new Map(locator.rows.map((row) => [row.binding_id, row]));
   const items: CatalogBindingView[] = [];
@@ -1497,14 +1498,14 @@ export async function exportCanonicalBindingSource(
 ): Promise<CanonicalBindingExport | null> {
   if (!auth.user.isActive || !canViewParameters(auth)) throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
   let binding = input.projectValueId ? null : await findCatalogBindingRow(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     bindingId: input.bindingId,
   });
   if (!binding && input.projectValueId) {
     const historical = await db.query<CatalogBindingRow>(`select id,organization_id,catalog_release_id,project_id,logical_node_id,registration_id,subject_id,definition_id,effective_revision_id,current_value_id
       from parameter_catalog.project_parameter_bindings where organization_id=$1 and project_id=$2 and id=$3`,
-      [auth.organization.id,input.projectId,input.bindingId]);
+      [parameterOrganizationId(auth),input.projectId,input.bindingId]);
     binding = historical.rows[0] ?? null;
   }
   if (!binding) return null;
@@ -1524,7 +1525,7 @@ export async function exportCanonicalBindingSource(
   if (!value) throw new ApiError("NOT_FOUND", "Selected project value was not found for this Binding.");
   if (value.release_ids.length !== 1) throw new ApiError("CONFLICT", "Selected value has no unambiguous historical Catalog release.");
   const snapshot = await loadCanonicalSourceSnapshot(db, objectStore, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     bindingId: binding.id,
     projectValueId: valueId,

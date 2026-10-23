@@ -50,7 +50,7 @@ export function ParameterSubmissionsPage({
   runtimeMode
 }: PageProps) {
   const isApiMode = runtimeMode === "api";
-  const sourceRepository = useMemo(() => isApiMode ? resolveParameterFileRepository("api") : undefined, [isApiMode]);
+  const sourceRepository = useMemo(() => isApiMode ? runtime?.parameterFileRepository ?? resolveParameterFileRepository("api") : undefined, [isApiMode, runtime?.parameterFileRepository]);
   const canonicalRepository = runtime?.parameterCatalogRepository;
   const contextProjectId = getContextQuery(search).projectId;
   const canonicalProjectId = contextProjectId || state.activeProjectId;

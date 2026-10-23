@@ -1,3 +1,4 @@
+import { parameterInvocation, parameterRequestAccess } from "../parameters/operatingScope";
 import { z } from "zod";
 import { isRootDatabase, type Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -19,7 +20,7 @@ export function registerCanonicalMemberAdditionRoutes(router: WiseEffRouter, opt
     if (!options.db || !options.objectStore || !sink) throw new ApiError("INTERNAL_ERROR", "Configuration source storage and refusal auditing are required.");
     const params = z.object({ projectId: z.string().min(1), configSetId: z.string().min(1) }).safeParse(request.params);
     if (!params.success) throw new ApiError("VALIDATION_FAILED", "Invalid configuration target.");
-    const auth = await options.getCurrentAuthContext(request), security = { invocation: createUserInvocation(auth), requestId: request.requestId, refusalSink: sink };
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request), security = { invocation: parameterInvocation(auth) ?? createUserInvocation(auth), requestId: request.requestId, refusalSink: sink };
     if (operation === "preview") {
       const body = memberAdditionBodySchema.safeParse(request.body);
       if (!body.success) throw new ApiError("VALIDATION_FAILED", "文件、用途、顺序或 JSON 映射不完整。", { issues: body.error.issues });
