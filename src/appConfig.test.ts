@@ -132,12 +132,12 @@ describe("WiseEff prototype configuration", () => {
 
     expect(page.key).toBe("user-permissions");
     expect(page.path).toBe("/organization");
-    expect(page.subtitle).toContain("档案");
+    expect(page.subtitle).toContain("统计");
     expect(members.key).toBe("user-permissions");
     expect(members.path).toBe("/organization/members");
     expect(members.subtitle).toContain("成员");
     expect(legacy.path).toBe("/organization/members");
-    expect(getXiaozeContextSummary("/organization")).toContain("档案");
+    expect(getXiaozeContextSummary("/organization")).toContain("统计");
     expect(getXiaozeContextSummary("/organization/members")).toContain("成员");
     expect(navigationItems.map((item) => item.path)).not.toContain("/organization");
     expect(navigationItems.map((item) => item.path)).not.toContain("/user-permissions");

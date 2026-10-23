@@ -28,7 +28,7 @@ function renderOrganizationPage(
       dispatch={vi.fn()}
       onNavigate={extras.onNavigate ?? vi.fn()}
       search=""
-      area={extras.area}
+      area={extras.area ?? "profile"}
       organizationActions={organizationActions}
       onOrganizationUpdated={extras.onOrganizationUpdated}
     />
@@ -39,8 +39,8 @@ describe("OrganizationPage", () => {
   it("offers the organization Bridge inventory beside member governance", async () => {
     const onNavigate = vi.fn();
     renderOrganizationPage(createOrganizationActions(), { onNavigate });
-    await userEvent.click(screen.getByRole("button", { name: "设备代理" }));
-    expect(onNavigate).toHaveBeenCalledWith("/organization/bridges");
+    await userEvent.click(screen.getByRole("button", { name: "资源" }));
+    expect(onNavigate).toHaveBeenCalledWith("/organization/resources");
   });
   it("discards a changed name without a server write and hides clean save actions", async () => {
     const organizationActions = createOrganizationActions();
@@ -57,7 +57,7 @@ describe("OrganizationPage", () => {
     renderOrganizationPage(createOrganizationActions());
 
     const scopeNav = screen.getByRole("navigation", { name: "组织管理范围" });
-    expect(within(scopeNav).getByRole("button", { name: "组织信息" })).toHaveAttribute("aria-current", "page");
+    expect(within(scopeNav).getByRole("button", { name: "设置" })).toHaveAttribute("aria-current", "page");
     expect(await screen.findByRole("region", { name: "组织档案" })).toBeInTheDocument();
     expect(screen.getByLabelText("显示名称")).toHaveValue("ChargeLab");
     expect(screen.getByText("org-chargelab")).toBeInTheDocument();
@@ -87,7 +87,7 @@ describe("OrganizationPage", () => {
     const onNavigate = vi.fn();
     renderOrganizationPage(createOrganizationActions(), { area, onNavigate });
     const navigation = screen.getByRole("navigation", { name: "组织管理范围" });
-    const profile = within(navigation).getByRole("button", { name: "组织信息" });
+    const profile = within(navigation).getByRole("button", { name: "概览" });
     const members = within(navigation).getByRole("button", { name: "成员与权限" });
     profile.focus();
     await userEvent.keyboard("{ArrowRight}");
@@ -145,6 +145,7 @@ describe("OrganizationPage", () => {
         dispatch={vi.fn()}
         onNavigate={vi.fn()}
         search=""
+        area="profile"
         organizationActions={organizationActions}
         onOrganizationUpdated={() => Promise.reject(new Error("Failed to fetch"))}
       />

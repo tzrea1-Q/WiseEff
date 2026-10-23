@@ -13,7 +13,7 @@ import {
  */
 export function createApiInitialState(): PrototypeState {
   return {
-    activeProjectId: "aurora",
+    activeProjectId: "",
     activeRoleId: "guest",
     configDraft: clonePowerManagementConfig(createEmptyPowerManagementConfig()),
     parameters: [],

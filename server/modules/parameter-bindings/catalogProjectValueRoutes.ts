@@ -103,14 +103,10 @@ function flattenQuery(query: Record<string, string | string[]>) {
 async function visibleValueChangeRequests(
   db: Database,
   auth: AuthContext,
-  input: { projectId: string; status?: "pending" | "approved" | "rejected" | "withdrawn"; mine?: boolean },
-  concealProject = false
+  input: { projectId: string; status?: "pending" | "approved" | "rejected" | "withdrawn"; mine?: boolean }
 ) {
   if (!auth.user.isActive || !canViewParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter view access is required for this project.");
-  }
-  if (!auth.roles.some((role) => role.projectId === null || role.projectId === input.projectId)) {
-    throw new ApiError(concealProject ? "NOT_FOUND" : "FORBIDDEN", "Project parameter requests are not available.");
   }
   const items = await listCanonicalValueChangesForAuth(db, auth, input);
   const canReadReviewQueue = !input.mine && canReviewParameters(auth)
@@ -152,7 +148,7 @@ async function visibleConflictDecision(
        and action='value-change-submitted' and metadata ? 'decisionProofDigest'`,
     [parameterOrganizationId(auth), input.projectId, input.requestId]);
   if (!links.rows.length && !receipts.rows.length) return null;
-  const requests = await visibleValueChangeRequests(db, auth, { projectId: input.projectId }, true);
+  const requests = await visibleValueChangeRequests(db, auth, { projectId: input.projectId });
   const visible = requests.find((item) => item.id === input.requestId);
   const mayRead = visible && (visible.submitterUserId === auth.user.id
     || (visible.assignedToUserId === auth.user.id && canReviewParameters(auth)
@@ -1048,7 +1044,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     const item = await db.transaction(async (tx) => {
       await visibleConflictDecision(tx, auth, params);
       // Keep the current-review-role lock through the frozen single-source object read.
-      const visible = await visibleValueChangeRequests(tx, auth, { projectId: params.projectId }, true);
+      const visible = await visibleValueChangeRequests(tx, auth, { projectId: params.projectId });
       if (!visible.some((request) => request.id === params.requestId)) {
         throw new ApiError("NOT_FOUND", "Source change request was not found.");
       }
@@ -1065,7 +1061,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     const item = await db.transaction(async (tx) => {
       const decision = await visibleConflictDecision(tx, auth, params);
       if (!decision) {
-        const requests = await visibleValueChangeRequests(tx, auth, { projectId: params.projectId }, true);
+        const requests = await visibleValueChangeRequests(tx, auth, { projectId: params.projectId });
         if (!requests.some((item) => item.id === params.requestId)) {
           throw new ApiError("NOT_FOUND", "Source conflict decision was not found.");
         }

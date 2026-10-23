@@ -28,7 +28,7 @@ const pageRequiredRoles: Record<PageKey, PlatformRoleId> = {
   "node-debugging": "hardware-user",
   "dts-reload": "hardware-committer",
   "debugging-admin": "admin",
-  "user-permissions": "admin",
+  "user-permissions": "guest",
   "feedback-admin": "admin",
   "workflow-publication": "platform-admin",
   "platform-organizations": "platform-admin",
