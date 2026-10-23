@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApiClient } from "./apiClient";
 import { resolveWiseEffApiBaseUrl } from "./runtimeMode";
-import { createDefaultUserGovernanceApiClient, createUserGovernanceClient } from "./userGovernanceClient";
+import { createDefaultUserGovernanceApiClient, createOrganizationWorkspaceClient, createUserGovernanceClient } from "./userGovernanceClient";
 import { withOrganizationScope } from "./organizationScope";
 
 function createFetchMock(response: unknown, status = 200) {
@@ -9,6 +9,16 @@ function createFetchMock(response: unknown, status = 200) {
 }
 
 describe("createUserGovernanceClient", () => {
+  it("opens Home with the current authenticated identity without a write, while explicit targets use the audited entry", async () => {
+    const actor = { user: { id: "actual-user", organizationId: "home" }, organization: { id: "home", name: "Home" } };
+    const fetchMock = vi.fn<typeof fetch>(async (path) => new Response(JSON.stringify(String(path).endsWith("/me") ? actor : { actor, organization: { id: "target", name: "Target" } })));
+    const client = createOrganizationWorkspaceClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+    await expect(client.enterOperatingContext()).resolves.toEqual({ actor, organization: actor.organization });
+    await expect(client.enterOperatingContext("target")).resolves.toEqual({ actor, organization: { id: "target", name: "Target" } });
+    expect(fetchMock.mock.calls.map(([path, init]) => [path, init?.method])).toEqual([
+      ["/api/v1/me", "GET"], ["/api/v1/organization/operating-scope", "POST"]
+    ]);
+  });
   it("retains a fixed target when a resource URL supplies another organization", () => {
     expect(withOrganizationScope("/api/v1/users?status=decided&organizationId=other#section", "target")).toBe("/api/v1/users?status=decided&organizationId=target#section");
     expect(withOrganizationScope("/api/v1/users?status=decided")).toBe("/api/v1/users?status=decided");

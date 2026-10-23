@@ -232,7 +232,11 @@ export function createUserGovernanceClient(
 
 export function createOrganizationWorkspaceClient(api = createDefaultUserGovernanceApiClient()) {
   return {
-    enterOperatingContext: (organizationId?: string) => createUserGovernanceClient(api, organizationId).enterOperatingContext(),
+    async enterOperatingContext(organizationId?: string) {
+      if (organizationId !== undefined) return createUserGovernanceClient(api, organizationId).enterOperatingContext();
+      const actor = await api.get<AuthContextDto>("/api/v1/me");
+      return { actor, organization: actor.organization };
+    },
     forOrganization: (organizationId: string) => createUserGovernanceClient(api, organizationId)
   };
 }
