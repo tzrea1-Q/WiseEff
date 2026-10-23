@@ -2,6 +2,11 @@ import { z } from "zod";
 import { oidcProvisionUserFieldsSchema } from "./oidcMembers";
 import { itemEnvelopeSchema, itemsEnvelopeSchema } from "./envelopes";
 
+export const updateExperienceRegistrationSchema = z.object({ enabled: z.boolean(), organizationId: z.string().trim().min(1).nullable() }).strict();
+export const experienceRegistrationSchema = updateExperienceRegistrationSchema.extend({
+  organizationName: z.string().nullable(), source: z.enum(["platform", "environment", "default"]), available: z.boolean()
+}).strict();
+
 export const createPlatformOrganizationSchema = z.object({
   name: z.string().trim().min(1).max(80),
   initialAdministrator: z.union([
@@ -23,6 +28,8 @@ export const administratorRecoverySchema = z.object({
   usableAdministratorIds: z.array(z.string())
 }).strict();
 export const platformOrganizationDtoSchemaCatalog = {
+  UpdateExperienceRegistrationRequest: updateExperienceRegistrationSchema,
+  ExperienceRegistrationResponse: itemEnvelopeSchema(experienceRegistrationSchema),
   CreatePlatformOrganizationRequest: createPlatformOrganizationSchema,
   RecoverOrganizationAdministratorRequest: recoverOrganizationAdministratorSchema,
   EmergencyDisableAdministratorRequest: emergencyDisableAdministratorSchema,
@@ -31,6 +38,8 @@ export const platformOrganizationDtoSchemaCatalog = {
   PlatformOrganizationListResponse: itemsEnvelopeSchema(platformOrganizationSchema)
 };
 export const platformOrganizationRoutes = [
+  { id: "experienceRegistration.get", method: "GET", path: "/api/v1/platform/experience-registration", module: "auth", stability: "commercial-readiness" },
+  { id: "experienceRegistration.update", method: "PATCH", path: "/api/v1/platform/experience-registration", module: "auth", stability: "commercial-readiness" },
   { id: "platformOrganizations.administratorRecovery", method: "GET", path: "/api/v1/platform/organizations/:organizationId/administrator-recovery", module: "users", stability: "commercial-readiness" },
   { id: "platformOrganizations.recoverAdministrator", method: "POST", path: "/api/v1/platform/organizations/:organizationId/administrator-recovery", module: "users", stability: "commercial-readiness" },
   { id: "platformOrganizations.emergencyDisableAdministrator", method: "POST", path: "/api/v1/platform/organizations/:organizationId/administrators/:userId/emergency-disable", module: "users", stability: "commercial-readiness" },
@@ -39,6 +48,8 @@ export const platformOrganizationRoutes = [
   { id: "platformOrganizations.get", method: "GET", path: "/api/v1/platform/organizations/:organizationId", module: "users", stability: "commercial-readiness" }
 ] as const;
 export const platformOrganizationSchemaRegistry = {
+  "experienceRegistration.get": { summary: "Read the effective public experience registration switch and target", tags: ["users" as const], responseBody: "ExperienceRegistrationResponse", additionalResponses: { "401": "ErrorResponse", "403": "ErrorResponse" } },
+  "experienceRegistration.update": { summary: "Configure public admission into one explicit experience Organization", tags: ["users" as const], requestBody: "UpdateExperienceRegistrationRequest", responseBody: "ExperienceRegistrationResponse", additionalResponses: { "400": "ErrorResponse", "401": "ErrorResponse", "403": "ErrorResponse" } },
   "platformOrganizations.administratorRecovery": { summary: "List members and effective administrators for Organization recovery", tags: ["users" as const], responseBody: "AdministratorRecoveryResponse", additionalResponses: { "401": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" } },
   "platformOrganizations.recoverAdministrator": { summary: "Restore Organization administration with an existing or newly provisioned member", tags: ["users" as const], requestBody: "RecoverOrganizationAdministratorRequest", responseBody: "PlatformOrganizationResponse", additionalResponses: { "400": "ErrorResponse", "401": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" } },
   "platformOrganizations.emergencyDisableAdministrator": { summary: "Explicitly disable an Organization administrator while retaining the platform management entry", tags: ["users" as const], requestBody: "EmergencyDisableAdministratorRequest", responseBody: "PlatformOrganizationResponse", additionalResponses: { "400": "ErrorResponse", "401": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" } },

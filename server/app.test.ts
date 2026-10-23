@@ -284,6 +284,7 @@ function createDevelopmentLocalAuthDb() {
   const projects = [{ id: "aurora", name: "Aurora", code: "AUR", organizationId: "org-chargelab" }];
   const db: Database = {
     query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
+      if (text.includes("from public_experience_registration")) return { rows: [{ enabled: null, organization_id: null }] as Row[], rowCount: 1 };
       const normalized = text.replace(/\s+/g, " ").trim();
 
       if (normalized.startsWith("select user_id as id from user_password_credentials")) {
@@ -797,7 +798,8 @@ describe("WiseEff API", () => {
           env: loadServerEnv({
             NODE_ENV: "development",
             AUTH_MODE: "production",
-            AUTH_PROVIDER: "local"
+            AUTH_PROVIDER: "local",
+            AUTH_LOCAL_SELF_REGISTER: "true"
           })
         });
 
@@ -849,7 +851,8 @@ describe("WiseEff API", () => {
         env: loadServerEnv({
           NODE_ENV: "test",
           AUTH_MODE: "production",
-          AUTH_PROVIDER: "local"
+          AUTH_PROVIDER: "local",
+          AUTH_LOCAL_SELF_REGISTER: "true"
         })
       }),
       "/api/v1/auth/register",

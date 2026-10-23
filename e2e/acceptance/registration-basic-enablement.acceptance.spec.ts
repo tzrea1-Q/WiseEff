@@ -15,6 +15,9 @@ test.use({ viewport: { width: 1440, height: 900 } });
 useBrowserDiagnostics(test, { expectedApiFailures: [{ method: "POST", path: "/api/v1/users/registration-role-requests", status: 503 }] });
 const password = "registration-browser-password";
 const local = process.env.AUTH_PROVIDER === "local" && !process.env.VITE_WISEEFF_API_AUTHORIZATION && !process.env.M5_SMOKE_AUTHORIZATION && !process.env.WISEEFF_SMOKE_AUTHORIZATION;
+test.beforeAll(async () => {
+  if (local) await withPgClient((client) => client.query("update public_experience_registration set enabled=true,organization_id='org-chargelab' where singleton=true"));
+});
 type Applicant = { username: string; name: string; token?: string };
 async function signIn(page: Page, token: string, path: string) {
   await page.goto("/favicon.svg"); await page.evaluate(value => localStorage.setItem("wiseeff.localAuthToken", value), token);
