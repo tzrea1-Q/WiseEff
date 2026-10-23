@@ -553,9 +553,10 @@ function AppShell({
     }
   }, [apiAuthPermissions, parameterInitializationRepositoryClient, runtimeMode]);
 
+  const hydratedParameterScope = useRef<number | null>(null);
   const hydrateActiveProjectInitialization = useCallback(
     async (projectId: string) => {
-      if (runtimeMode !== "api" || !projectId) {
+      if (runtimeMode !== "api" || !projectId || hydratedParameterScope.current !== scopeRef.current.generation) {
         return;
       }
       try {
@@ -754,7 +755,10 @@ function AppShell({
           next.delete(domain);
           return next;
         });
-        if (domain === "parameters") setApiRuntimeSynced(true);
+        if (domain === "parameters") {
+          hydratedParameterScope.current = failed ? null : scopeRef.current.generation;
+          setApiRuntimeSynced(true);
+        }
       };
       await Promise.all([
         settleDomain("parameters", parameterActions.refresh({ notifyOnFailure: false })),
