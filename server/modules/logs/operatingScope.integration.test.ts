@@ -140,9 +140,9 @@ describe.skipIf(!available)("log operating organization over real HTTP and Postg
     }
     expect(state?.status).toBe("complete");
     expect((await request(`${base}/dry-runs/${trial.body.run.id}`)).status).toBe(404);
-    for (const table of ["log_source_snapshots", "log_skill_analysis_cases", "log_skill_dry_runs"]) {
-      expect((await db.query<{ organization_id: string }>(`select distinct organization_id from ${table} where skill_id=$1`, [skill.body.item.id])).rows).toEqual([{ organization_id: target }]);
-    }
+    expect((await db.query("select distinct organization_id from log_source_snapshots where skill_id=$1", [skill.body.item.id])).rows).toEqual([{ organization_id: target }]);
+    expect((await db.query("select distinct organization_id from log_skill_analysis_cases where skill_id=$1", [skill.body.item.id])).rows).toEqual([{ organization_id: target }]);
+    expect((await db.query("select distinct organization_id from log_skill_dry_runs where skill_id=$1", [skill.body.item.id])).rows).toEqual([{ organization_id: target }]);
   });
 
   it("reads jobs and SSE in the fixed target and completes persisted work and callbacks after another Home request", async () => {
