@@ -281,6 +281,7 @@ export async function assertPinnedCanonicalSensitiveNodeWriteAllowed(
   auth: AuthContext,
   manifest: CanonicalSourceManifest,
   context: CanonicalSourceSecurityContext,
+  authorization?: "review",
 ) {
   if (manifest.format !== "dts") return;
   const row = await loadPinnedDtsProperty(db, manifest);
@@ -292,6 +293,7 @@ export async function assertPinnedCanonicalSensitiveNodeWriteAllowed(
       sourcePath: { kind: "node-locator", value: row.node_locator },
       compatible: canonicalizeLogicalNodeCompatible(row.compatible),
       compatibleIsAuthoritative: true,
+      authorization,
       invocation: context.invocation,
       requestId: context.requestId,
       refusalSink: context.refusalSink

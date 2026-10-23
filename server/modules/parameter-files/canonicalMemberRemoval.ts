@@ -503,6 +503,7 @@ export async function applyReviewedCanonicalMemberRemoval(
         "select node_locator,compatible from public.dts_logical_node_revisions where config_revision_id=$1", [frozen.configRevisionId])).rows;
       for (const node of [...nodes, ...configuration.continuity!.nodes.map((row) => ({ node_locator: row.nodeLocator, compatible: row.compatible ?? null }))]) {
         await assertTrustedSensitiveNodeWriteAllowed(tx, auth, { organizationId: parameterOrganizationId(auth), projectId: frozen.projectId,
+          ...(direct ? {} : { authorization: "review" as const }),
           nodePath: node.node_locator, sourcePath: { kind: "node-locator", value: node.node_locator }, compatible: canonicalizeLogicalNodeCompatible(node.compatible),
           compatibleIsAuthoritative: true, invocation, requestId: context.traceId, refusalSink: context.refusalSink });
       }

@@ -631,6 +631,22 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
             refusalSink: trustedRefusalSink
           })
         ).resolves.toBeUndefined();
+        const reviewer = auth({ roles: [{ projectId: "project-1", roleId: "software-committer" }],
+          projectMemberships: [], permissions: ["parameter:view", "parameter:review", "parameter:edit-critical"] });
+        const review = { organizationId: "org-1", projectId: "project-1", nodePath: "safety/cutover/status",
+          authorization: "review" as const, invocation: createUserInvocation(reviewer),
+          requestId: "request-trusted-review-user", refusalSink: trustedRefusalSink };
+        await expect(assertTrustedSensitiveNodeWriteAllowed(db, reviewer, review)).resolves.toBeUndefined();
+        await expect(assertTrustedSensitiveNodeWriteAllowed(db, reviewer, { ...review, authorization: undefined }))
+          .rejects.toMatchObject({ code: "FORBIDDEN" });
+        for (const role of [
+          { projectId: "project-1", roleId: "software-user" as const },
+          { projectId: "other-project", roleId: "software-committer" as const }
+        ]) {
+          const unqualified = { ...reviewer, roles: [role] };
+          await expect(assertTrustedSensitiveNodeWriteAllowed(db, unqualified,
+            { ...review, invocation: createUserInvocation(unqualified) })).rejects.toMatchObject({ code: "FORBIDDEN" });
+        }
       } catch (error) {
         primaryError = error;
       }
