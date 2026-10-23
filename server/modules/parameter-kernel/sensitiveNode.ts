@@ -11,7 +11,7 @@ import type { Database } from "../../shared/database/client";
 import type { AuthContext, BackendPermission } from "../auth/types";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { canEditCriticalParameters } from "./policy";
+import { canEditCriticalParameters, canReviewParameters, canReviewParameterStage } from "./policy";
 import { nodePathFromSourceNodePath } from "./nodePath";
 import { parameterOrganizationId, parameterScopeInvocation } from "../parameters/operatingScope";
 
@@ -415,6 +415,7 @@ export async function assertTrustedSensitiveNodeWriteAllowed(
     sourcePath?: SensitiveNodeSourcePath;
     compatible?: string | null;
     compatibleIsAuthoritative?: boolean;
+    authorization?: "review";
     invocation: TrustedInvocationContext;
     requestId: string;
     refusalSink: TrustedRefusalAuditSink;
@@ -463,7 +464,10 @@ export async function assertTrustedSensitiveNodeWriteAllowed(
     });
   }
 
-  if (!hasRequiredCapability(auth, matched.requiredCapability, input.projectId)) {
+  const reviewAllowed = input.authorization === "review" && invocation.initiator === "user"
+    && canReviewParameters(auth) && canReviewParameterStage(auth, input.projectId, "software_review")
+    && auth.permissions.includes(matched.requiredCapability);
+  if (input.authorization === "review" ? !reviewAllowed : !hasRequiredCapability(auth, matched.requiredCapability, input.projectId)) {
     throw new ApiError("FORBIDDEN", `Missing permission: ${matched.requiredCapability}.`, {
       riskTier: matched.riskTier,
       nodePath,
