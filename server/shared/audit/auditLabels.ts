@@ -29,6 +29,7 @@ export const AUDIT_KIND_LABELS: Record<string, string> = {
   "organization-update": "更新组织",
   "organization-create": "创建组织",
   "organization-operating-scope": "组织操作范围",
+  "organization-team": "团队维护",
   "parameter-definition-reconciliation": "参数定义对齐",
   "parameter-file-rollback": "参数文件回滚",
   "parameter-source-permission-denied": "参数源权限不足",
@@ -184,6 +185,8 @@ export const AUDIT_KIND_LABELS: Record<string, string> = {
 };
 
 export const AUDIT_ACTION_LABELS: Record<string, string> = {
+  rename: "重命名",
+  "replace-members": "调整团队成员",
   appended: "新增记录",
   "approval-executed": "批准操作已执行",
   "approval-execution-failed": "批准操作执行失败",
