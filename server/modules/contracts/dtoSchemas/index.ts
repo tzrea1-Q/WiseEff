@@ -1,4 +1,6 @@
 import type { ZodTypeAny } from "zod";
+import { accountTransferDtoSchemaCatalog, accountTransferRoutes } from "./accountTransfer";
+export * from "./accountTransfer";
 import { assetHandoverDtoSchemaCatalog, assetHandoverRoutes } from "./organizationAssetHandover";
 import { organizationInvitationDtoSchemaCatalog, organizationInvitationRoutes } from "./organizationInvitations";
 import { projectMembersCoveredRouteIds, projectMembersDtoSchemaCatalog } from "./projectMembers";
@@ -29,6 +31,7 @@ import { workflowPublicationDtoSchemaCatalog, workflowPublicationCoveredRouteIds
 export { workflowPublicationAdminStateSchema, workflowPublicationStateSchema } from "./workflowPublication";
 
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
+  ...accountTransferDtoSchemaCatalog,
   ...assetHandoverDtoSchemaCatalog,
   ...organizationInvitationDtoSchemaCatalog,
   ...projectMembersDtoSchemaCatalog,
@@ -49,6 +52,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 };
 
 export const dtoSchemaCoveredRouteIds = [
+  ...accountTransferRoutes.map(route => route.id),
   ...assetHandoverRoutes.map(route => route.id),
   ...organizationInvitationRoutes.map((route) => route.id),
   ...projectMembersCoveredRouteIds,

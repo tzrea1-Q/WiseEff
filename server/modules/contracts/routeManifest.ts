@@ -1,4 +1,5 @@
 import type { HttpMethod } from "../../shared/http/router";
+import { accountTransferRoutes } from "./dtoSchemas/accountTransfer";
 import { parameterCatalogCanonicalRoutes } from "./dtoSchemas/parameterCatalog";
 import { parameterDefinitionDeletionRoutes } from "./dtoSchemas/parameterDefinitionDeletion";
 import { workflowPublicationRoutes } from "./dtoSchemas/workflowPublication";
@@ -37,6 +38,7 @@ export type RouteManifestEntry = {
 };
 
 export const routeManifest = [
+  ...accountTransferRoutes,
   ...assetHandoverRoutes,
   ...organizationInvitationRoutes,
   ...platformOrganizationRoutes,
