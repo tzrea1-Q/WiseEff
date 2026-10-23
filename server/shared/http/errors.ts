@@ -70,6 +70,9 @@ export function pinnedSourceGraphConflict() {
 }
 
 export function normalizeApiError(error: unknown): unknown {
+  if (error instanceof pg.DatabaseError && error.code === "55000" && error.message === "Organization is suspended") {
+    return new ApiError("FORBIDDEN", "组织已停用，当前仅可查看。请联系平台管理员恢复组织。", { reason: "organization-suspended", organizationId: error.detail });
+  }
   if (error instanceof pg.DatabaseError && error.code === "55000" && error.message === "Pinned source graph is immutable") {
     return pinnedSourceGraphConflict();
   }

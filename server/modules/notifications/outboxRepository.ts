@@ -79,6 +79,7 @@ export async function claimNextNotificationOutboxEntry(
       select id
       from notification_outbox
       where status in ('pending', 'retry')
+        and exists(select 1 from public.organizations o where o.id=notification_outbox.organization_id and o.status='active' for share)
         and (next_attempt_at is null or next_attempt_at <= now())
       order by created_at asc, id asc
       for update skip locked
@@ -114,6 +115,7 @@ export async function claimNotificationOutboxEntryById(
       from notification_outbox
       where id = $1
         and status in ('pending', 'retry')
+        and exists(select 1 from public.organizations o where o.id=notification_outbox.organization_id and o.status='active' for share)
         and (next_attempt_at is null or next_attempt_at <= now())
       for update skip locked
       limit 1

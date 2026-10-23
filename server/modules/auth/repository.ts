@@ -8,6 +8,7 @@ type AuthRow = {
   user_id: string;
   organization_id: string;
   organization_name: string;
+  organization_status: "active" | "suspended";
   name: string;
   email: string | null;
   username: string | null;
@@ -23,6 +24,7 @@ const authContextSelect = `
       users.id as user_id,
       users.organization_id,
       organizations.name as organization_name,
+      organizations.status as organization_status,
       users.name,
       users.email,
       user_password_credentials.username,
@@ -76,7 +78,8 @@ function authContextFromRows(rows: AuthRow[], externalToken?: { issuedAt?: numbe
     },
     organization: {
       id: first.organization_id,
-      name: first.organization_name
+      name: first.organization_name,
+      ...(first.organization_status === "suspended" ? { status: "suspended" as const } : {})
     },
     roles,
     permissions: uniquePermissions([

@@ -26,6 +26,10 @@ export function createPlatformOrganizationsClient(api = createDefaultApiClient()
       const response = await api.get<{ item: unknown }>(`/api/v1/platform/organizations/${encodeURIComponent(organizationId)}`);
       return parseContractDto(platformOrganizationSchema, response.item, "PlatformOrganization");
     },
+    async changeLifecycle(organization: Pick<PlatformOrganization, "id" | "status">, status: PlatformOrganization["status"]) {
+      const response = await api.patch<{ item: unknown }>(`/api/v1/platform/organizations/${encodeURIComponent(organization.id)}/lifecycle`, { status, expectedStatus: organization.status });
+      return parseContractDto(platformOrganizationSchema, response.item, "PlatformOrganization");
+    },
     async create(input: CreatePlatformOrganizationInput) {
       const response = await api.post<{ item: unknown }>("/api/v1/platform/organizations", input);
       return parseContractDto(platformOrganizationSchema, response.item, "PlatformOrganization");

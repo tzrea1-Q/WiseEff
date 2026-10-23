@@ -13,6 +13,7 @@ import { createPlatformOrganizationSchema, type platformOrganizationSchema, type
 import { getUserById, insertPasswordCredential, insertUser, listUsers, lockUserById, updateOrganizationRoles, updateUserActive } from "./repository";
 import { administratorLoginIdentitySql, assertAdministratorContinuity, hasOrganizationRole, listUsableAdministratorIds, lockAdministratorMutation, type AdministratorMutationContext } from "./administratorContinuity";
 import { revokePersonalAccess } from "./personalAccess";
+import { allowOrganizationMaintenance } from "../auth/organizationLifecycle";
 
 type Organization = z.infer<typeof platformOrganizationSchema>;
 export function requirePlatformOrganizationManager(auth: AuthContext) {
@@ -25,7 +26,7 @@ export function requirePlatformOrganizationManager(auth: AuthContext) {
 export async function listPlatformOrganizations(db: Queryable, actor: AuthContext, query = "", organizationId?: string, context: AdministratorMutationContext = {}): Promise<Organization[]> {
   requirePlatformOrganizationManager(actor);
   const result = await db.query<Organization>(`
-    select organizations.id, organizations.name, organizations.created_at::text as "createdAt", 'active' as status,
+    select organizations.id, organizations.name, organizations.created_at::text as "createdAt", organizations.status,
       coalesce((select jsonb_agg(jsonb_build_object('id',users.id,'name',users.name,'isActive',users.is_active,'canLogin',users.is_active and ${administratorLoginIdentitySql}) order by users.name,users.id)
         from users where users.organization_id=organizations.id and exists
           (select 1 from user_role_bindings roles where roles.user_id=users.id and roles.organization_id=organizations.id
@@ -85,6 +86,7 @@ export async function getAdministratorRecovery(db: Queryable, actor: UserInvocat
 export async function emergencyDisableAdministrator(db: Database, actor: UserInvocationContext, organizationId: string, userId: string, reason: string, context: AdministratorMutationContext & { requestId: string }) {
   requirePlatformOrganizationManager(actor.principal);
   const result = await db.transaction(async (tx) => {
+    await allowOrganizationMaintenance(tx, actor, organizationId);
     const invocation = await resolveOperatingContext(tx, actor, organizationId);
     await lockAdministratorMutation(tx);
     await lockUserById(tx, { organizationId, userId });
@@ -105,6 +107,7 @@ export async function emergencyDisableAdministrator(db: Database, actor: UserInv
 export async function recoverOrganizationAdministrator(db: Database, actor: UserInvocationContext, organizationId: string, input: z.infer<typeof recoverOrganizationAdministratorSchema>, configuredOidcIssuer: string | undefined, context: AdministratorMutationContext & { requestId: string }) {
   requirePlatformOrganizationManager(actor.principal);
   return db.transaction(async (tx) => {
+    await allowOrganizationMaintenance(tx, actor, organizationId);
     const invocation = await resolveOperatingContext(tx, actor, organizationId);
     await lockAdministratorMutation(tx);
     const userId = "userId" in input ? input.userId : await provisionOrganizationAdministrator(tx, invocation, input.administrator, configuredOidcIssuer, context);

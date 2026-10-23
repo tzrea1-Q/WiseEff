@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { BACKEND_PERMISSIONS, BACKEND_ROLE_IDS } from "../../auth/types";
 
-const organizationSchema = z.object({ id: z.string().min(1), name: z.string().min(1) }).strict();
+const organizationSchema = z.object({ id: z.string().min(1), name: z.string().min(1), status: z.enum(["active", "suspended"]).optional() }).strict();
 
 export const enterOperatingContextBodySchema = z.object({
   organizationId: z.string().trim().min(1).max(200).optional()

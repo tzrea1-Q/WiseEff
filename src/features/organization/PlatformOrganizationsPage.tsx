@@ -3,6 +3,7 @@ import { AdminListPage } from "@/components/layout/AdminListPage";
 import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { SearchField } from "@/components/common/SearchField";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +24,7 @@ export function PlatformOrganizationsPage({ client, authClient, onNavigate }: { 
   const [selected, setSelected] = useState<PlatformOrganization | null>(null), [notice, setNotice] = useState("");
   const [administratorPending, setAdministratorPending] = useState(false);
   const [registrationSettingsOpen, setRegistrationSettingsOpen] = useState(false);
+  const [lifecycleOpen, setLifecycleOpen] = useState(false), [lifecycleError, setLifecycleError] = useState("");
   const [name, setName] = useState(""), [administratorName, setAdministratorName] = useState(""), [username, setUsername] = useState(""), [password, setPassword] = useState(""), [subject, setSubject] = useState("");
 
   useEffect(() => {
@@ -63,7 +65,7 @@ export function PlatformOrganizationsPage({ client, authClient, onNavigate }: { 
       tableState={loading ? <SectionSkeleton label="正在加载组织目录" /> : error ? <SectionError message={error} onRetry={() => setAttempt((value) => value + 1)} /> : undefined}
       table={{ rows: items, rowKey: (row) => row.id, ariaLabel: "平台组织目录", columns: [
         { key: "name", header: "组织", render: (row) => <div><strong>{row.name}</strong><div className="platform-organizations__id">{row.id}</div></div> },
-        { key: "status", header: "状态", render: () => <Badge variant="secondary">正常</Badge> },
+        { key: "status", header: "状态", render: row => <Badge variant="secondary">{row.status === "suspended" ? "已停用" : "正常"}</Badge> },
         { key: "administrators", header: "管理员", render: (row) => row.administrators.map((admin) => `${admin.name}${!admin.isActive ? "（已停用）" : !admin.canLogin ? "（未配置登录身份）" : ""}`).join("、") || "暂无管理员" },
         { key: "createdAt", header: "创建时间", render: (row) => formatAbsolute(row.createdAt) }
       ] }} rowActions={(row) => ({ label: `${row.name}操作`, items: [], primaryAction: { id: "view", label: "查看", onSelect: () => { setSelected(row); setNotice(""); } } })}
@@ -91,12 +93,23 @@ export function PlatformOrganizationsPage({ client, authClient, onNavigate }: { 
     </ModalDialog>
     <ModalDialog open={Boolean(selected)} onDismiss={administratorPending ? undefined : () => setSelected(null)} className="platform-organizations__dialog modal-card--sm">
       {({ titleId }) => <><h3 id={titleId}>组织资料</h3>{selected ? <dl className="platform-organizations__details">
-        <dt>名称</dt><dd>{selected.name}</dd><dt>组织编号</dt><dd>{selected.id}</dd><dt>状态</dt><dd>正常</dd>
+        <dt>名称</dt><dd>{selected.name}</dd><dt>组织编号</dt><dd>{selected.id}</dd><dt>状态</dt><dd>{selected.status === "suspended" ? "已停用" : "正常"}</dd>
         <dt>创建时间</dt><dd>{formatAbsolute(selected.createdAt)}</dd><dt>管理员</dt><dd>{selected.administrators.map((admin) => `${admin.name}${!admin.isActive ? "（已停用）" : !admin.canLogin ? "（未配置登录身份）" : ""}`).join("、") || "暂无管理员"}</dd>
       </dl> : null}{selected ? <OrganizationAdministratorControls key={selected.id} organization={selected} authentication={authentication} client={client} onPendingChange={setAdministratorPending}
         onUpdated={(item) => { setSelected(item); setAttempt((value) => value + 1); setNotice("组织管理员已调整。"); }} /> : null}
       <div className="platform-organizations__actions"><Button variant="outline" disabled={administratorPending} onClick={() => setSelected(null)}>关闭</Button>
+        {selected ? <Button variant="outline" disabled={administratorPending} onClick={() => { setLifecycleError(""); setLifecycleOpen(true); }}>{selected.status === "suspended" ? "恢复组织" : "停用组织"}</Button> : null}
         {selected ? <Button disabled={administratorPending} onClick={() => onNavigate(`/organization?organizationId=${encodeURIComponent(selected.id)}`)}>进入组织</Button> : null}</div></>}
     </ModalDialog>
+    <ConfirmDialog open={lifecycleOpen} title={selected?.status === "suspended" ? "恢复组织" : "停用组织"}
+      description={selected?.status === "suspended" ? "恢复组织业务后，已单独停用的成员和已撤销的凭据仍保持原状态。" : "成员将仅可查看数据，新业务、排队任务、回调和设备操作暂停。已启动的分析与索引允许保存结果，已发出的设备操作显示实际结果。"}
+      confirmLabel={selected?.status === "suspended" ? "确认恢复组织" : "确认停用组织"} pending={administratorPending} error={lifecycleError}
+      onCancel={() => setLifecycleOpen(false)} onConfirm={() => {
+        if (!selected || administratorPending) return;
+        setAdministratorPending(true); setLifecycleError("");
+        void client.changeLifecycle(selected, selected.status === "suspended" ? "active" : "suspended").then(item => {
+          setSelected(item); setLifecycleOpen(false); setAttempt(value => value + 1); setNotice(item.status === "suspended" ? "组织已停用。" : "组织已恢复。");
+        }).catch((failure: unknown) => setLifecycleError(presentError(failure, "组织状态调整失败，请重试。"))).finally(() => setAdministratorPending(false));
+      }} />
   </>;
 }

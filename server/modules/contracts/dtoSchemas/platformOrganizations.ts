@@ -15,7 +15,7 @@ export const createPlatformOrganizationSchema = z.object({
   ])
 }).strict();
 export const platformOrganizationSchema = z.object({
-  id: z.string(), name: z.string(), createdAt: z.string(), status: z.literal("active"),
+  id: z.string(), name: z.string(), createdAt: z.string(), status: z.enum(["active", "suspended"]),
   administrators: z.array(z.object({ id: z.string(), name: z.string(), isActive: z.boolean(), canLogin: z.boolean() }).strict())
 }).strict();
 export const recoverOrganizationAdministratorSchema = z.union([
@@ -23,6 +23,7 @@ export const recoverOrganizationAdministratorSchema = z.union([
   z.object({ administrator: createPlatformOrganizationSchema.shape.initialAdministrator }).strict()
 ]);
 export const emergencyDisableAdministratorSchema = z.object({ reason: z.string().trim().min(1).max(1000) }).strict();
+export const changeOrganizationLifecycleSchema = z.object({ status: z.enum(["active", "suspended"]), expectedStatus: z.enum(["active", "suspended"]) }).strict();
 export const administratorRecoverySchema = z.object({
   members: z.array(z.object({ id: z.string(), name: z.string(), isActive: z.boolean() }).strict()),
   usableAdministratorIds: z.array(z.string())
@@ -33,11 +34,13 @@ export const platformOrganizationDtoSchemaCatalog = {
   CreatePlatformOrganizationRequest: createPlatformOrganizationSchema,
   RecoverOrganizationAdministratorRequest: recoverOrganizationAdministratorSchema,
   EmergencyDisableAdministratorRequest: emergencyDisableAdministratorSchema,
+  ChangeOrganizationLifecycleRequest: changeOrganizationLifecycleSchema,
   AdministratorRecoveryResponse: administratorRecoverySchema,
   PlatformOrganizationResponse: itemEnvelopeSchema(platformOrganizationSchema),
   PlatformOrganizationListResponse: itemsEnvelopeSchema(platformOrganizationSchema)
 };
 export const platformOrganizationRoutes = [
+  { id: "platformOrganizations.lifecycle", method: "PATCH", path: "/api/v1/platform/organizations/:organizationId/lifecycle", module: "users", stability: "commercial-readiness" },
   { id: "experienceRegistration.get", method: "GET", path: "/api/v1/platform/experience-registration", module: "auth", stability: "commercial-readiness" },
   { id: "experienceRegistration.update", method: "PATCH", path: "/api/v1/platform/experience-registration", module: "auth", stability: "commercial-readiness" },
   { id: "platformOrganizations.administratorRecovery", method: "GET", path: "/api/v1/platform/organizations/:organizationId/administrator-recovery", module: "users", stability: "commercial-readiness" },
@@ -48,6 +51,7 @@ export const platformOrganizationRoutes = [
   { id: "platformOrganizations.get", method: "GET", path: "/api/v1/platform/organizations/:organizationId", module: "users", stability: "commercial-readiness" }
 ] as const;
 export const platformOrganizationSchemaRegistry = {
+  "platformOrganizations.lifecycle": { summary: "Suspend or restore Organization business without reactivating personal access", tags: ["users" as const], requestBody: "ChangeOrganizationLifecycleRequest", responseBody: "PlatformOrganizationResponse", additionalResponses: { "400": "ErrorResponse", "401": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" } },
   "experienceRegistration.get": { summary: "Read the effective public experience registration switch and target", tags: ["users" as const], responseBody: "ExperienceRegistrationResponse", additionalResponses: { "401": "ErrorResponse", "403": "ErrorResponse" } },
   "experienceRegistration.update": { summary: "Configure public admission into one explicit experience Organization", tags: ["users" as const], requestBody: "UpdateExperienceRegistrationRequest", responseBody: "ExperienceRegistrationResponse", additionalResponses: { "400": "ErrorResponse", "401": "ErrorResponse", "403": "ErrorResponse" } },
   "platformOrganizations.administratorRecovery": { summary: "List members and effective administrators for Organization recovery", tags: ["users" as const], responseBody: "AdministratorRecoveryResponse", additionalResponses: { "401": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" } },

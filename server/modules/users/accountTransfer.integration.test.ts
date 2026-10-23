@@ -59,6 +59,32 @@ describe("local account transfer through real authentication, HTTP and PostgreSQ
     await db.query("insert into auth_sessions(id,user_id,organization_id,token_hash,expires_at) values('stale-source','transfer-member','transfer-source',$1,now()+interval '1 day')", [hashLocalSessionToken("stale-source-token")]);
     expect((await api("me", "GET", undefined, "stale-source-token")).status).toBe(401);
   });
+  it("allows explicit platform handover from a suspended source, but refuses a suspended destination before changing access", async () => {
+    const platform = await login(), member = await login("member");
+    const pairing = await api<{ code: string }>("device-bridges/pairing-codes", "POST", {}, member.token);
+    expect(pairing.status, pairing.bodyText).toBe(201);
+    await db.query("insert into projects(id,organization_id,name,code) values('paused-project','transfer-source','Paused project','PAUSED')");
+    await db.query("insert into parameter_definitions(id,organization_id,name,description,explanation,config_format,module,default_range,unit,risk) values('paused-definition','transfer-source','Paused parameter','','','dts','Module','','','Low')");
+    await db.query("insert into project_parameter_values(id,organization_id,project_id,parameter_definition_id,current_value,recommended_value) values('paused-value','transfer-source','paused-project','paused-definition','0','1')");
+    await db.query("insert into parameter_drafts(id,organization_id,project_id,project_parameter_value_id,user_id,target_value,reason) values('paused-draft','transfer-source','paused-project','paused-value','transfer-member','1','Retain paused work')");
+    for (const org of ["source", "target"]) {
+      const stop = await api(`platform/organizations/transfer-${org}/lifecycle`, "PATCH", { status: "suspended", expectedStatus: "active" }, platform.token);
+      expect(stop.status, stop.bodyText).toBe(200);
+    }
+    const rejected = await api(`${path()}-preview`, "POST", { targetOrganizationId: "transfer-target" }, platform.token);
+    expect(rejected.status).toBe(403);
+    expect((await api("me", "GET", undefined, member.token)).status).toBe(200);
+    expect((await api("platform/organizations/transfer-target/lifecycle", "PATCH", { status: "active", expectedStatus: "suspended" }, platform.token)).status).toBe(200);
+    const impact = await preview(platform.token);
+    expect(impact.personalAccess.pairingCodes).toBe(1);
+    const moved = await api(path(), "POST", { targetOrganizationId: "transfer-target", targetRoles: ["guest"], expectedVersion: impact.version }, platform.token);
+    expect(moved.status, moved.bodyText).toBe(200);
+    expect((await api("me", "GET", undefined, member.token)).status).toBe(401);
+    expect((await login("member")).auth.organization.id).toBe("transfer-target");
+    expect((await db.query("select user_id from parameter_drafts where id='paused-draft'")).rows).toEqual([{ user_id: null }]);
+    expect((await db.query("select count(*)::int as n from device_bridge_pairing_codes where user_id='transfer-member'")).rows).toEqual([{ n: 0 }]);
+    expect((await db.query("select status from organizations where id='transfer-source'")).rows).toEqual([{ status: "suspended" }]);
+  });
   it("retains source drafts and immutable history as pending handover even when the moved owner remains a platform administrator", async () => {
     const platform = await login(), member = await login("member");
     const entry = await api<{ item: { id: string; historicalAttribution: unknown } }>("knowledge/entries", "POST", { title: "Original source draft", contentForm: "markdown", tags: [], contentMarkdown: "Unfinished source work" }, member.token);

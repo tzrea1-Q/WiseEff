@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { decodeLogFilesCooperatively, gzipDecodedEvents, indexDecodedEvents, logDecodeLimits } from "./parsing/workerDecoding";
 import type { DecodeCounts } from "./parsing/spec";
 import { claimJobById, claimNextJob, failJob, getJobSnapshot, markJobDeadLettered, markJobRetryScheduled, updateJobProgress } from "../jobs/repository";
+import { admittedLogCompletionDatabase } from "./admittedCompletion";
 import type { ClaimedLogAnalysisJobDto } from "../jobs/types";
 import type { Database } from "../../shared/database/client";
 import { decideRetry } from "../jobs/retryPolicy";
@@ -194,9 +195,10 @@ async function processClaimedLogAnalysisJob(
     now,
     metrics,
     webhooks,
-    lease
+    lease,
+    notificationDb = db
   }: Required<Pick<ProcessLogWorkerOptions, "analyzer" | "workerId" | "maxAttempts" | "retryBaseDelayMs" | "preprocessingMs" | "now">> &
-    Pick<ProcessLogWorkerOptions, "db" | "objectStore" | "metrics" | "webhooks"> & { lease: LogJobLease },
+    Pick<ProcessLogWorkerOptions, "db" | "objectStore" | "metrics" | "webhooks"> & { lease: LogJobLease; notificationDb?: Database },
   job: ClaimedLogAnalysisJobDto
 ): Promise<ProcessLogWorkerResult> {
   const leaseOwner = job.leaseOwner ?? workerId;
@@ -649,7 +651,7 @@ async function processClaimedLogAnalysisJob(
     lease.stop();
 
     if (snapshot.submittedByUserId) {
-      await notifyLogAnalysisCompleted(db, {
+      await notifyLogAnalysisCompleted(notificationDb, {
         organizationId: snapshot.organizationId,
         logId: snapshot.logId,
         runId: snapshot.runId,
@@ -778,9 +780,11 @@ export async function processNextLogAnalysisJob({
 }: ProcessLogWorkerOptions): Promise<"processed" | "idle"> {
   const job = await claimNextJob(db, { kind: "log-analysis", leaseOwner: workerId, leaseTtlMs });
   if (!job) return "idle";
+  const notificationDb = db;
+  db = admittedLogCompletionDatabase(db, job);
   const process = async () => {
     const lease = keepLogJobLease(db, objectStore, { jobId: job.id, leaseOwner: job.leaseOwner ?? workerId, leaseMs: leaseTtlMs, maxJobMs });
-    try { return await processClaimedLogAnalysisJob({ db, objectStore: lease.objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, preprocessingMs, now, metrics, webhooks, lease }, job); }
+    try { return await processClaimedLogAnalysisJob({ db, notificationDb, objectStore: lease.objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, preprocessingMs, now, metrics, webhooks, lease }, job); }
     finally { lease.stop(); }
   };
   const result = await traceLogAnalysisJob(tracing, "polling", process);
@@ -805,9 +809,11 @@ export async function processLogAnalysisJobById({
 }: ProcessLogWorkerByIdOptions): Promise<ProcessLogWorkerResult> {
   const job = await claimJobById(db, { kind: "log-analysis", jobId, leaseOwner: workerId, leaseTtlMs });
   if (!job) return { status: "idle" };
+  const notificationDb = db;
+  db = admittedLogCompletionDatabase(db, job);
   const process = async () => {
     const lease = keepLogJobLease(db, objectStore, { jobId: job.id, leaseOwner: job.leaseOwner ?? workerId, leaseMs: leaseTtlMs, maxJobMs });
-    try { return await processClaimedLogAnalysisJob({ db, objectStore: lease.objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, preprocessingMs, now, metrics, webhooks, lease }, job); }
+    try { return await processClaimedLogAnalysisJob({ db, notificationDb, objectStore: lease.objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, preprocessingMs, now, metrics, webhooks, lease }, job); }
     finally { lease.stop(); }
   };
   return traceLogAnalysisJob(tracing, "queue", process);

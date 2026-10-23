@@ -18,6 +18,14 @@ export type AcceptanceOperation = {
 
 export const acceptanceOperations: AcceptanceOperation[] = [
   {
+    id: "ORG-LIFECYCLE-001", priority: "P1", area: "platform", coverage: "automated",
+    route: "/platform/organizations → /organization", roles: ["Platform Admin", "Org Admin"],
+    action: "Suspend and restore the selected organization with keyboard confirmation and safe retry, retain member read access with one clear readonly notice, reject business writes, and keep individually disabled members disabled.",
+    acceptanceIds: ["ORG-LIFECYCLE-001"],
+    specFiles: ["e2e/acceptance/organization-lifecycle.acceptance.spec.ts", "server/modules/users/organizationLifecycle.integration.test.ts"],
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
+  },
+  {
     id: "ORG-OIDC-TRANSFER-001", priority: "P1", area: "platform", coverage: "conditional",
     route: "/organization/members", roles: ["Platform Admin"],
     action: "Preview and transfer an explicitly bound OIDC identity, resolve a destination conflict, inspect pending synchronization and refresh the actual signed target-login result.",

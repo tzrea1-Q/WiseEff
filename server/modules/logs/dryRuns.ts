@@ -1,5 +1,6 @@
 import { organizationId as logOrganizationId, type LogAccessContext } from "./principal";
 import { randomUUID } from "node:crypto";
+import { admittedLogTestDatabase } from "./admittedCompletion";
 import { Readable } from "node:stream";
 import { compileSkillFiles } from "../../../src/domain/logs/fileApplicability";
 import type { Database } from "../../shared/database/client";
@@ -124,6 +125,7 @@ export async function startSkillDryRun(db: Database, store: ObjectStore, analyze
 async function executeDryRun(db: Database, store: ObjectStore, analyzer: LogAnalysisAdapter, organizationId: string, skillId: string,
   admitted: { id: string; spec: LogSkillSpec; sample: { object_key: string; file_name: string; size_bytes: string; line_count: number; name: string; description: string | null } }, timeoutMs: number,
   owner: Awaited<ReturnType<typeof acquireDryRunOwner>>) {
+  db = admittedLogTestDatabase(db, { kind: "dry-run", organizationId, id: admitted.id, ownerKey: owner.key });
   activeWork.set(admitted.id, organizationId);
   const controller = new AbortController();
   const onOwnerLost = () => controller.abort();

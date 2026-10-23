@@ -63,6 +63,7 @@ import { loadLogBundleLimits } from "./config/env";
 import { getSourceSnapshotLimits } from "./modules/logs/sourceArchive";
 import { analysisCaseArchiveLimits } from "./modules/logs/analysisCaseArchive";
 import { ApiError } from "./shared/http/errors";
+import { requireActiveOrganization } from "./modules/auth/organizationLifecycle";
 import type { JsonWebKey } from "node:crypto";
 
 type LocalAuthService = ReturnType<typeof createLocalAuthService>;
@@ -136,7 +137,21 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   const router = createRouter();
   const handle = router.handle;
   router.handle = async (request) => {
-    requireIntegrationRouteAccess(request.method, router.matchRoutePattern(request.method, request.path), request.headers.authorization);
+    const pattern = router.matchRoutePattern(request.method, request.path);
+    requireIntegrationRouteAccess(request.method, pattern, request.headers.authorization);
+    if (options.db && pattern && request.method !== "GET" && !isIntegrationAuthorization(request.headers.authorization)
+      && !pattern.startsWith("/api/v1/auth/") && !pattern.startsWith("/api/v1/me/") && pattern !== "/api/v1/me"
+      && !pattern.startsWith("/api/v1/notifications/") && !pattern.startsWith("/api/v1/platform/")
+      && pattern !== "/api/v1/device-bridges/pair"
+      && pattern !== "/api/v1/organization/operating-scope" && !pattern.includes("/handovers/") && !pattern.includes("/project-handovers/")) {
+      const actor = await authResolver(request);
+      const requested = request.query.organizationId;
+      if (requested !== undefined && (typeof requested !== "string" || !requested.trim())) throw new ApiError("VALIDATION_FAILED", "Invalid operating Organization.");
+      const organizationId = typeof requested === "string" ? requested : actor.organization.id;
+      if (organizationId !== actor.organization.id && !actor.roles.some(role => role.projectId === null && role.roleId === "platform-admin")) throw new ApiError("FORBIDDEN", "Cannot operate in this Organization.");
+      if (organizationId !== actor.organization.id) await requireActiveOrganization(options.db, organizationId);
+      else if (actor.organization.status === "suspended") throw new ApiError("FORBIDDEN", "组织已停用，当前仅可查看。请联系平台管理员恢复组织。", { reason: "organization-suspended", organizationId });
+    }
     return handle(request);
   };
   const metrics = options.metrics ?? createMetricsRegistry({ serviceName: "wiseeff-api" });

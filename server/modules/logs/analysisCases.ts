@@ -1,6 +1,7 @@
 import { organizationId as logOrganizationId, assertLogInvocation, type LogAccessContext } from "./principal";
 import { logValidationIssues } from "./validationMessages";
 import { createHash, randomUUID } from "node:crypto";
+import { admittedLogTestDatabase } from "./admittedCompletion";
 import { Readable } from "node:stream";
 import { posix } from "node:path";
 import { z } from "zod";
@@ -365,6 +366,7 @@ async function executeCaseRun(db: Database, store: ObjectStore, analyzer: LogAna
   owner: Awaited<ReturnType<typeof acquireDryRunOwner>>, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
   const organizationId = logOrganizationId(auth);
   activeDryRunWork.set(admitted.id, organizationId);
+  db = admittedLogTestDatabase(db, { kind: "analysis-cases", organizationId, id: admitted.id, ownerKey: owner.key });
   const controller = new AbortController();
   const abort = () => controller.abort();
   owner.signal.addEventListener("abort", abort, { once: true });

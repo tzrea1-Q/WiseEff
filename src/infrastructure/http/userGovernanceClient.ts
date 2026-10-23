@@ -152,7 +152,7 @@ export function createUserGovernanceClient(
     async deleteTeam(id: string) {
       await apiClient.delete<null>(scoped(`/api/v1/organization/teams/${encodeURIComponent(id)}`));
     },
-    enterOperatingContext: () => apiClient.post<{ actor: AuthContextDto; organization: { id: string; name: string } }>("/api/v1/organization/operating-scope", { organizationId }),
+    enterOperatingContext: () => apiClient.post<{ actor: AuthContextDto; organization: AuthContextDto["organization"] }>("/api/v1/organization/operating-scope", { organizationId }),
     async listProjectCandidates() {
       return (await apiClient.get<ItemsEnvelope<{ id: string; name: string }>>(scoped("/api/v1/organization/project-candidates"))).items;
     },

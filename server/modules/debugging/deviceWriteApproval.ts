@@ -52,6 +52,9 @@ async function loadApprovedDeviceToolCall(
   if (!approval) {
     throw new ApiError("VALIDATION_FAILED", invalidMessage, { approvalId, reason: "not-found" });
   }
+  const lifecycle = await db.query(`select id from public.organizations where id=$1 and status='active'
+    and (suspended_at is null or suspended_at<$2::timestamptz)`, [organizationId, approval.createdAt]);
+  if (!lifecycle.rowCount) throw new ApiError("VALIDATION_FAILED", "组织停用后，原设备审批已失效，请重新申请并确认操作。", { approvalId, reason: "organization-lifecycle-changed" });
   if (approval.status !== "approved") {
     throw new ApiError("VALIDATION_FAILED", invalidMessage, { approvalId, reason: "not-approved" });
   }

@@ -48,17 +48,18 @@ function ResolvedOrganizationWorkspace({ requestedId, workspaceClient, ...props 
   if (!scope || !client) return <SectionSkeleton label="正在进入组织" />;
   return <div>
     <section className="organization-operating-scope" aria-label="当前操作组织">
-      <div><span className="organization-operating-scope__label">当前操作组织</span><strong>{scope.organization.name}</strong><Badge variant="secondary">正常</Badge>
+      <div><span className="organization-operating-scope__label">当前操作组织</span><strong>{scope.organization.name}</strong><Badge variant="secondary">{scope.organization.status === "suspended" ? "已停用 · 仅可查看" : "正常"}</Badge>
         <code>{scope.organization.id}</code>{foreign ? <span>所属组织：{scope.actor.organization.name}</span> : null}</div>
       {platform ? <div className="organization-operating-scope__actions"><Button variant="outline" onClick={() => props.onNavigate("/platform/organizations")}>组织目录</Button>
         {foreign ? <Button variant="outline" onClick={() => props.onNavigate("/organization")}>返回所属组织</Button> : null}</div> : null}
     </section>
+    {scope.organization.status === "suspended" ? <p role="status">组织已停用，业务数据仅可查看。{platform ? "可继续办理交接，或返回组织目录恢复组织。" : "请联系平台管理员恢复组织。"}</p> : null}
     {props.area === "members" && projectError ? <SectionError message={projectError} onRetry={() => setAttempt((value) => value + 1)} />
         : props.area === "members" && !projects ? <SectionSkeleton label="正在加载组织成员工作区" />
-          : <OrganizationPage key={`${scope.organization.id}:${props.area ?? "profile"}`} {...props} apiMode directoryScope={scope.organization.id}
+          : <OrganizationPage key={`${scope.organization.id}:${props.area ?? "profile"}`} {...props} apiMode readOnly={scope.organization.status === "suspended"} directoryScope={scope.organization.id}
             userGovernanceActions={client} teamActions={client} accountTransferClient={accountTransferClient} invitationActions={client} organizationActions={client} reviewRolesClient={client} projectCandidates={projects ?? []} bridgeActions={bridgeActions} credentialRepository={credentialRepository} projectMembershipClient={client}
             onOrganizationUpdated={async (organization) => {
-              setScope((current) => current ? { ...current, organization: { id: organization.id, name: organization.name } } : current);
+              setScope((current) => current ? { ...current, organization: { ...current.organization, id: organization.id, name: organization.name } } : current);
               if (organization.id === scope.actor.organization.id) await props.onOrganizationUpdated?.(organization);
             }} />}
   </div>;

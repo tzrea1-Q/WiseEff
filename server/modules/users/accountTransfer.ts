@@ -5,6 +5,7 @@ import { ApiError } from "../../shared/http/errors";
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import { resolveOperatingContext } from "../auth/operatingContext";
 import { getAuthContext } from "../auth/repository";
+import { allowOrganizationMaintenance, requireActiveOrganization } from "../auth/organizationLifecycle";
 import { createUserInvocation, type UserInvocationContext } from "../auth/trustedInvocation";
 import { requireUserInitiatedInvocation } from "../auth/trustedInvocationPolicy";
 import { accountTransferRequestSchema } from "../contracts/dtoSchemas/accountTransfer";
@@ -54,7 +55,10 @@ async function transferSnapshot(db: Queryable, sourceId: string, userId: string,
 
 export async function previewAccountTransfer(db: Database, caller: UserInvocationContext, sourceId: string, userId: string, targetId: string, context: AdministratorMutationContext = {}) {
   requireUserInitiatedInvocation(caller); requirePlatformOrganizationManager(caller.principal);
-  return db.transaction(async tx => (await transferSnapshot(tx, sourceId, userId, targetId, context)).item);
+  return db.transaction(async tx => {
+    await requireActiveOrganization(tx, targetId);
+    return (await transferSnapshot(tx, sourceId, userId, targetId, context)).item;
+  });
 }
 
 export async function transferAccount(db: Database, caller: UserInvocationContext, sourceId: string, userId: string,
@@ -62,6 +66,10 @@ export async function transferAccount(db: Database, caller: UserInvocationContex
   requireUserInitiatedInvocation(caller); requirePlatformOrganizationManager(caller.principal);
   const result = await db.transaction(async tx => {
     await lockAdministratorMutation(tx);
+    for (const organizationId of [...new Set([sourceId, input.targetOrganizationId])].sort()) {
+      if (organizationId === input.targetOrganizationId) await requireActiveOrganization(tx, organizationId, true);
+      else await allowOrganizationMaintenance(tx, caller, organizationId);
+    }
     for (const organizationId of [sourceId, input.targetOrganizationId].sort()) await tx.query("select pg_advisory_xact_lock(hashtextextended('oidc-identity:'||$1,0))", [organizationId]);
     // Member, role, handover and pairing mutations share these row locks.
     await tx.query("select id from users where id=any($1::text[]) order by id for update", [[caller.principal.user.id, userId].sort()]);

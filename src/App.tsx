@@ -313,6 +313,7 @@ function AppShell({
   const [apiAuthPermissions, setApiAuthPermissions] = useState<string[]>([]);
   const [apiAuthRoles, setApiAuthRoles] = useState<AuthContextDto["roles"] | null>(null);
   const [apiProjectMemberships, setApiProjectMemberships] = useState<AuthContextDto["projectMemberships"]>([]);
+  const [homeOrganizationSuspended, setHomeOrganizationSuspended] = useState(false);
   const [organizationId, setOrganizationId] = useState(
     () => (runtimeMode === "api" ? "" : CATALOG_ORGANIZATION_ID)
   );
@@ -324,6 +325,7 @@ function AppShell({
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const effectiveSidebarCollapsed = !isMobileNavViewport && (sidebarCollapsed || isTabletRailViewport);
   const page = getPageByPath(path);
+  const showHomeOrganizationSuspended = homeOrganizationSuspended && page.key !== "user-permissions" && page.key !== "platform-organizations";
   const pageKeyRef = useRef(page.key);
   const xiaozeContextSummary = useMemo(() => getXiaozeContextSummary(path), [path]);
   const topBarActionsContextValue = useMemo(
@@ -552,9 +554,10 @@ function AppShell({
     }
   }, [apiAuthPermissions, parameterInitializationRepositoryClient, runtimeMode]);
 
+  const hydratedParameterScope = useRef<number | null>(null);
   const hydrateActiveProjectInitialization = useCallback(
     async (projectId: string) => {
-      if (runtimeMode !== "api" || !projectId) {
+      if (runtimeMode !== "api" || !projectId || hydratedParameterScope.current !== scopeRef.current.generation) {
         return;
       }
       try {
@@ -677,6 +680,7 @@ function AppShell({
     setApiAuthPermissions(context.permissions);
     setApiAuthRoles(context.roles);
     setApiProjectMemberships(context.projectMemberships ?? []);
+    setHomeOrganizationSuspended(context.organization.status === "suspended");
     setOrganizationId(context.organization.id);
     dispatch({
       type: "HYDRATE_AUTH_CONTEXT",
@@ -752,7 +756,10 @@ function AppShell({
           next.delete(domain);
           return next;
         });
-        if (domain === "parameters") setApiRuntimeSynced(true);
+        if (domain === "parameters") {
+          hydratedParameterScope.current = failed ? null : scopeRef.current.generation;
+          setApiRuntimeSynced(true);
+        }
       };
       await Promise.all([
         settleDomain("parameters", parameterActions.refresh({ notifyOnFailure: false })),
@@ -1230,7 +1237,7 @@ function AppShell({
           {isPlatformHome ? (
             <div className="main-content home-content" data-runtime-state="ready">
               {proactiveInsightsBanner}
-              <OrganizationBusinessWorkspace homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
+              <OrganizationBusinessWorkspace homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
               <PageRouter key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}:${page.key}`}
                 page={page}
                 publication={publication}
@@ -1285,7 +1292,7 @@ function AppShell({
               {publicationPreviewBanner}
               {proactiveInsightsBanner}
               <div className="page-content" inert={pageRuntimeState === "loading"}>
-                <OrganizationBusinessWorkspace homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
+                <OrganizationBusinessWorkspace homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
                 <PageRouter key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}:${page.key}`}
                   page={page}
                   publication={publication}
