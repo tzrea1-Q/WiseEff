@@ -122,6 +122,8 @@ describe("member offboarding through real authentication, HTTP and PostgreSQL", 
   });
   it("revokes live access through account deletion while its organization machine credential keeps authenticating", async () => {
     const admin = await login("offboard-admin"), member = await login("offboard-member"), paired = await pair(member);
+    const team = await request<{ item: { id: string } }>("organization/teams", "POST", { name: "Remaining team" }, admin); expect(team.status).toBe(201);
+    expect((await request(`organization/teams/${team.body.item.id}/members`, "PUT", { userIds: ["offboard-member", "offboard-admin"] }, admin)).status).toBe(200);
     const machine = await request<{ item: { id: string }; token: string }>("log-integration-credentials", "POST", { name: "Remaining pipeline", skillId: null }, admin);
     await db.query("update log_integration_credentials set created_by='offboard-member' where id=$1", [machine.body.item.id]);
     const socket = connect(paired.bridgeToken); await once(socket, "message"); const disconnected = once(socket, "close");
@@ -131,6 +133,8 @@ describe("member offboarding through real authentication, HTTP and PostgreSQL", 
     const pipeline = await request("log-files", "POST", { fileName: "device.log", contentType: "text/plain", contentBase64: Buffer.from("INFO retained machine\n").toString("base64") }, machine.body.token);
     expect(pipeline.status).toBe(201);
     expect((await db.query("select status,created_by from log_integration_credentials where id=$1", [machine.body.item.id])).rows).toEqual([{ status: "active", created_by: null }]);
+    expect((await db.query("select user_id from organization_team_members where team_id=$1", [team.body.item.id])).rows).toEqual([{ user_id: "offboard-admin" }]);
+    expect((await db.query("select name from organization_teams where id=$1", [team.body.item.id])).rows).toEqual([{ name: "Remaining team" }]);
   });
   it("applies the same revocation to explicit platform emergency disabling and does not revive sessions on administrator recovery", async () => {
     await seedCoreGraph(db, { organization: { id: "offboard-platform-home" }, users: [{ id: "offboard-platform" }] });
