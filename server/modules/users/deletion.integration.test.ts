@@ -22,7 +22,6 @@ const accountOwnedReferences = new Set([
   "local_registration_role_requests.user_id",
   "organization_team_members.user_id,organization_id",
   "project_members.user_id,organization_id",
-  "parameter_drafts.user_id",
   "user_notifications.recipient_user_id",
   "user_password_credentials.user_id",
   "user_oidc_identities.user_id,organization_id",
@@ -421,7 +420,7 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
     expect(JSON.stringify(deletionAudit.rows)).not.toContain("target@example.com");
   });
 
-  it("cascades transient Agent drafts without installing retained-principal state", async () => {
+  it("retains unfinished Agent drafts for explicit handover without installing retained-principal state", async () => {
     await insertDeletionFixture(db);
     await db.query(
       `update parameter_drafts
@@ -443,8 +442,8 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
       deleteUser(db, adminAuth, "u-target", { requestId: "draft-cascade-delete" })
     ).resolves.toBeUndefined();
 
-    const afterDeletion = await db.query("select id from parameter_drafts where id = 'draft-target'");
-    expect(afterDeletion.rows).toEqual([]);
+    const afterDeletion = await db.query("select id,user_id,historical_attribution from parameter_drafts where id = 'draft-target'");
+    expect(afterDeletion.rows).toEqual([expect.objectContaining({ id: "draft-target", user_id: null, historical_attribution: expect.objectContaining({ actors: { user_id: expect.objectContaining({ id: "u-target", name: "Target User" }) } }) })]);
 
     const markerColumns = await db.query(
       `select column_name

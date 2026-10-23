@@ -47,6 +47,8 @@ import { listOrganizationTeams, mutateOrganizationTeam, teamMembersSchema, teamN
 import { updateProjectMemberBodySchema } from "../contracts/dtoSchemas/projectMembers";
 import { acceptOrganizationInvitation, invitationAcceptSchema, invitationInputSchema, invitationTokenSchema, issueOrganizationInvitation, listOrganizationInvitations, readOrganizationInvitation, revokeOrganizationInvitation } from "./invitations";
 import { authAttemptKey, createAuthAttemptLimiter } from "../auth/authAttemptLimiter";
+import { listProjectHandovers, assignProjectHandover, projectHandoverBodySchema, projectHandoverParamsSchema } from "../parameters/handover";
+import { parameterInvocation, parameterRequestAccess, withParameterAccess } from "../parameters/operatingScope";
 
 const userIdParamsSchema = z.object({
   userId: z.string().min(1)
@@ -96,6 +98,17 @@ export function registerUserRoutes(
     return requireDb(options.db);
   };
   const invitationAttempts = createAuthAttemptLimiter();
+  router.get("/api/v1/organization/project-handovers", async request => {
+    const db = requireDb(options.db), auth = await parameterRequestAccess(db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
+    return { status: 200, body: await listProjectHandovers(db, auth) };
+  });
+  router.patch("/api/v1/organization/project-handovers/:kind/:id", async request => {
+    const db = requireDb(options.db), invocation = createUserInvocation(await options.getCurrentAuthContext(request));
+    const access = await parameterRequestAccess(db, invocation, request), auth = withParameterAccess(access, parameterInvocation(access) ?? invocation);
+    const params = parseWithSchema(projectHandoverParamsSchema, request.params), body = parseWithSchema(projectHandoverBodySchema, request.body);
+    await assignProjectHandover(db, auth, params.kind, params.id, body, request.requestId);
+    return { status: 200, body: { ok: true } };
+  });
   router.get("/api/v1/organization/invitations", async (request) => {
     const db = invitationDb(), auth = await options.getCurrentAuthContext(request);
     return { status: 200, body: { items: await listOrganizationInvitations(db, await operatingInvocation(db, auth, request)) } };
