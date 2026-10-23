@@ -26,6 +26,17 @@
   width: 100%;
 }
 
+.platform-organizations__administration {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: var(--stroke-hairline) solid var(--border);
+}
+
+.platform-organizations__administration .platform-organizations__actions {
+  flex-wrap: wrap;
+}
+
 .platform-organizations__actions {
   display: flex;
   justify-content: flex-end;

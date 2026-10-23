@@ -47,6 +47,7 @@ export type UserPermissionsPageProps = {
   userDirectoryStatus?: UserDirectoryStatus;
   userDirectoryError?: string;
   onUserDirectoryRetry?: () => void;
+  onCurrentAccountChanged?: (accessEnded: boolean) => Promise<void>;
 };
 
 export type UserGovernanceActions = {
@@ -209,7 +210,8 @@ export function UserPermissionsPage({
   userGovernanceActions,
   userDirectoryStatus: userDirectoryStatusOverride,
   userDirectoryError: userDirectoryErrorOverride,
-  onUserDirectoryRetry
+  onUserDirectoryRetry,
+  onCurrentAccountChanged
 }: UserPermissionsPageProps) {
   // Governed rows hydrate when the page mounts (the governance client only
   // exists in api mode, so its presence doubles as the mode guard); the page
@@ -451,8 +453,14 @@ export function UserPermissionsPage({
     setGovernancePending(true);
     setGovernanceError(null);
     try {
+      const self = pendingGovernance.user.id === state.currentUserId;
       if (pendingGovernance.kind === "active") {
         await userGovernanceActions?.setUserActive(pendingGovernance.user.id, pendingGovernance.nextActive);
+        if (self && !pendingGovernance.nextActive && onCurrentAccountChanged) {
+          setPendingGovernance(null);
+          await onCurrentAccountChanged(true);
+          return;
+        }
         dispatch({
           type: "TOGGLE_USER_ACTIVE",
           userId: pendingGovernance.user.id,
@@ -460,12 +468,17 @@ export function UserPermissionsPage({
         });
       } else {
         await userGovernanceActions?.deleteUser(pendingGovernance.user.id);
+        if (self && onCurrentAccountChanged) {
+          setPendingGovernance(null);
+          await onCurrentAccountChanged(true);
+          return;
+        }
         dispatch({ type: "DELETE_USER", userId: pendingGovernance.user.id });
         dispatch({ type: "ADD_NOTIFICATION", message: `已注销用户 ${pendingGovernance.user.name}` });
       }
       setPendingGovernance(null);
     } catch (error) {
-      // Server refusals (e.g. self-lock protection) must be visible, not swallowed.
+      // Server refusals (including last-administrator protection) remain visible.
       setGovernanceError(presentError(error, "用户治理操作失败，请稍后重试。"));
     } finally {
       setGovernancePending(false);
@@ -697,15 +710,14 @@ export function UserPermissionsPage({
                 } }}
               rowActions={(user) => {
                 const locked = isPlatformAdminLocked(state, user);
-                const disabledReason = user.id === state.currentUserId ? "不能注销当前登录账号。"
-                  : locked ? "只有平台超级管理员可以注销平台超级管理员。" : undefined;
+                const disabledReason = locked ? "只有平台超级管理员可以注销平台超级管理员。" : undefined;
                 return {
                   label: `${user.name} 操作`,
                   primaryAction: { id: "details", label: "查看", ariaLabel: `查看 ${user.name} 的成员资料`, onSelect: () => setMemberId(user.id) },
                   items: [
                     ...(authentication.provider !== "oidc" && userGovernanceActions?.resetUserPassword ? [{ id: "password", label: "重置密码", ariaLabel: `重置 ${user.name} 的密码`, onSelect: () => openResetPassword(user) }] : []),
-                    { id: "active", label: user.isActive ? "停用" : "启用", disabled: user.id === state.currentUserId || locked,
-                      description: user.id === state.currentUserId ? "不能停用当前登录账号。" : locked ? "只有平台超级管理员可以停用平台超级管理员。" : undefined,
+                    { id: "active", label: user.isActive ? "停用" : "启用", disabled: locked,
+                      description: locked ? "只有平台超级管理员可以停用平台超级管理员。" : undefined,
                       onSelect: () => { setGovernanceError(null); setPendingGovernance({ kind: "active", user, nextActive: !user.isActive }); } },
                     { id: "delete", label: "注销", ariaLabel: `注销 ${user.name}`, destructive: true as const,
                       disabled: Boolean(disabledReason), description: disabledReason, descriptionId: disabledReason ? `delete-user-reason-${user.id}` : undefined,
@@ -713,9 +725,9 @@ export function UserPermissionsPage({
                   ]
                 };
               }} />
-            {filteredUsers.filter((user) => user.id === state.currentUserId || isPlatformAdminLocked(state, user)).map((user) =>
+            {filteredUsers.filter((user) => isPlatformAdminLocked(state, user)).map((user) =>
               <span key={user.id} id={`delete-user-reason-${user.id}`} className="sr-only">
-                {user.id === state.currentUserId ? "不能注销当前登录账号。" : "只有平台超级管理员可以注销平台超级管理员。"}
+                只有平台超级管理员可以注销平台超级管理员。
               </span>)}
           </TabPanel>
         </>
@@ -814,6 +826,7 @@ export function UserPermissionsPage({
             dispatch({ type: "ADD_NOTIFICATION", message: `已更新 ${selectedMember.name} 的组织角色` });
             return updated;
           }}
+          onSaved={async (updated) => { if (updated.id === state.currentUserId) await onCurrentAccountChanged?.(false); }}
           onReload={async () => {
             const updated = userGovernanceActions ? (await userGovernanceActions.listUsers()).find((user) => user.id === selectedMember.id) : selectedMember;
             if (!updated) throw new Error("该成员已不存在，请关闭成员资料并刷新名录。");
@@ -843,21 +856,21 @@ export function UserPermissionsPage({
         description={
           pendingGovernance ? (
             pendingGovernance.kind === "delete" ? (
-              <p>
+              <><p>
                 将永久删除 <strong>{pendingGovernance.user.name}</strong>（
                 {userAccountIdentifier(pendingGovernance.user)}）。账号的角色、凭据、会话和临时数据将一并清除；业务与审计历史记录会保留，
                 历史记录中的用户关联会解除。此操作不可恢复。
-              </p>
+              </p>{pendingGovernance.user.id === state.currentUserId ? <p>操作成功后将退出当前账号。服务端会检查是否保留有效管理员。</p> : null}</>
             ) : pendingGovernance.nextActive ? (
               <p>
                 将启用 <strong>{pendingGovernance.user.name}</strong>（
                 {userAccountIdentifier(pendingGovernance.user)}），该账号将恢复登录与操作权限。
               </p>
             ) : (
-              <p>
+              <><p>
                 将停用 <strong>{pendingGovernance.user.name}</strong>（
                 {userAccountIdentifier(pendingGovernance.user)}），停用后该账号无法登录平台。
-              </p>
+              </p>{pendingGovernance.user.id === state.currentUserId ? <p>操作成功后将退出当前账号。服务端会检查是否保留有效管理员。</p> : null}</>
             )
           ) : null
         }

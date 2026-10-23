@@ -131,4 +131,19 @@ describe("platform Organization directory through real HTTP and PostgreSQL", () 
       expect((await h.request<AuthContext>("/api/v1/me")).body.user.organizationId).toBe(home.id);
     } finally { await h.close(); }
   });
+
+  it("recovers a memberless Organization with an explicit OIDC administrator and retains the provider Organization claim boundary", async () => {
+    const h = await fixture({ oidc: true });
+    try {
+      await h.db.query("insert into organizations(id,name) values('oidc-recovery-empty','OIDC recovery')");
+      const response = await h.request<{ item: Organization }>("/api/v1/platform/organizations/oidc-recovery-empty/administrator-recovery", "POST", {
+        administrator: { authentication: "oidc", issuer, subject: "external-replacement-admin", name: "OIDC replacement" }
+      });
+      expect(response.status).toBe(200);
+      const me = await h.request<AuthContext>("/api/v1/me", "GET", undefined, oidcToken("external-replacement-admin", "oidc-recovery-empty"));
+      expect(me.status).toBe(200);
+      expect(me.body.roles).toEqual([{ projectId: null, roleId: "admin" }]);
+      expect((await h.request("/api/v1/me", "GET", undefined, oidcToken("external-replacement-admin", home.id))).status).toBe(401);
+    } finally { await h.close(); }
+  });
 });

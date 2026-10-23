@@ -80,6 +80,8 @@ export const AUDIT_KIND_LABELS: Record<string, string> = {
   "user-update": "更新用户",
   "user-toggle": "用户状态",
   "user-activation": "用户启停",
+  "organization-administrator-emergency-disable": "紧急停用组织管理员",
+  "organization-administrator-recovery": "恢复组织管理员",
   "user-password-reset": "重置用户密码",
   "registration-role-request": "注册角色申请",
   "auth-event": "认证事件",

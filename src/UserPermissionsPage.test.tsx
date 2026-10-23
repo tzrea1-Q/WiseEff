@@ -25,7 +25,7 @@ function renderPage(search = "") {
   return { ...utils, state, dispatch, onNavigate };
 }
 
-function renderPageWithActions(userGovernanceActions: UserGovernanceActions) {
+function renderPageWithActions(userGovernanceActions: UserGovernanceActions, onCurrentAccountChanged?: (accessEnded: boolean) => Promise<void>) {
   const state = { ...createPrototypeState(), activeRoleId: "admin" };
   const dispatch = vi.fn();
   const onNavigate = vi.fn();
@@ -37,6 +37,7 @@ function renderPageWithActions(userGovernanceActions: UserGovernanceActions) {
       onNavigate={onNavigate}
       search=""
       userGovernanceActions={userGovernanceActions}
+      onCurrentAccountChanged={onCurrentAccountChanged}
       // The page owns the hydrate lifecycle now; these cases assert on the
       // ready directory, so pin the override instead of awaiting the stub.
       userDirectoryStatus="ready"
@@ -86,7 +87,7 @@ async function openActivationAction(row: HTMLElement, name: "停用" | "启用")
 }
 
 describe("UserPermissionsPage", () => {
-  it("enables own role editing while protecting the final administrator role", async () => {
+  it("enables own role editing while the server protects the last effective administrator", async () => {
     const base = createPrototypeState();
     const current = base.users.find((user) => user.id === base.currentUserId)!;
     const state = { ...base, activeRoleId: "admin", users: base.users.map((user) => user.id === current.id
@@ -94,7 +95,7 @@ describe("UserPermissionsPage", () => {
     render(<UserPermissionsPage state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
     const dialog = await openMemberDetails(current.name);
     const roles = within(dialog).getByRole("group", { name: "组织角色选择" });
-    expect(within(roles).getByRole("checkbox", { name: "管理员" })).toBeDisabled();
+    expect(within(roles).getByRole("checkbox", { name: "管理员" })).toBeEnabled();
     const software = within(roles).getByRole("checkbox", { name: "软件开发" });
     expect(software).toBeEnabled();
     await userEvent.click(software);
@@ -803,15 +804,25 @@ describe("UserPermissionsPage", () => {
     expect(dispatch).not.toHaveBeenCalledWith({ type: "DELETE_USER", userId: "u-liu-min" });
   });
 
-  it("disables permanent deletion for the current signed-in user", async () => {
+  it("allows confirming self deletion with an explicit session-ending warning", async () => {
     renderPage();
     const currentUserRow = screen.getByText("Xu Yun").closest("tr")!;
 
     await userEvent.click(within(currentUserRow).getByRole("button", { name: /：更多$/ }));
     const deleteItem = screen.getByRole("menuitem", { name: "注销 Xu Yun" });
-    expect(deleteItem).toHaveAttribute("aria-disabled", "true");
-    expect(deleteItem).toHaveAccessibleDescription("不能注销当前登录账号。");
-    expect(within(deleteItem).getByText("不能注销当前登录账号。")).toBeVisible();
+    expect(deleteItem).not.toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(deleteItem);
+    expect(screen.getByRole("dialog", { name: "确认注销用户" })).toHaveTextContent("操作成功后将退出当前账号");
+  });
+
+  it("ends the current session only after the server accepts self deactivation", async () => {
+    const onCurrentAccountChanged = vi.fn(async () => undefined);
+    const actions = { listUsers: vi.fn(async () => []), createUser: vi.fn(async () => undefined), updateOrganizationRoles: vi.fn(async () => undefined), setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined) };
+    renderPageWithActions(actions, onCurrentAccountChanged);
+    await openActivationAction(screen.getByText("Xu Yun").closest("tr")!, "停用");
+    await userEvent.click(within(screen.getByRole("dialog", { name: "确认停用用户" })).getByRole("button", { name: "确认停用" }));
+    await waitFor(() => expect(onCurrentAccountChanged).toHaveBeenCalledWith(true));
+    expect(actions.setUserActive).toHaveBeenCalledWith("u-xu-yun", false);
   });
 
   it("resets a member password through the governance action", async () => {

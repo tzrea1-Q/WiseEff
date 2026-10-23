@@ -1232,6 +1232,7 @@ function AppShell({
                   dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
                 }
                 onAuthContextRefresh={hydrateAuthContext}
+                onEndSession={handleLogout}
                 organizationId={organizationId}
                 sessionPermissions={apiAuthPermissions}
                 sessionRoles={runtimeMode === "api" ? apiAuthRoles : undefined}
@@ -1284,6 +1285,7 @@ function AppShell({
                     dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
                   }
                   onAuthContextRefresh={hydrateAuthContext}
+                  onEndSession={handleLogout}
                   organizationId={organizationId}
                   sessionPermissions={apiAuthPermissions}
                   sessionRoles={runtimeMode === "api" ? apiAuthRoles : undefined}
