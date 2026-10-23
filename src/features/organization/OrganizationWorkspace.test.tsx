@@ -12,6 +12,31 @@ function response(body: unknown) { return new Response(JSON.stringify(body), { s
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("organization workspace target ownership", () => {
+  it("shows the target project's explicit participants and inactive status without offering role edits", async () => {
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname.endsWith("operating-scope")) return response({ actor, organization: { id: "target", name: "Target organization" } });
+      expect(url.searchParams.get("organizationId")).toBe("target");
+      if (url.pathname.endsWith("project-candidates")) return response({ items: [{ id: "project-one", name: "Target project" }, { id: "project-empty", name: "Empty project" }] });
+      if (url.pathname === "/api/v1/projects/project-one/members") return response({ projectId: "project-one", members: [
+        { userId: "editor", name: "Existing editor", username: "editor", title: "Engineer", isActive: true, roles: ["hardware-user", "software-committer"] },
+        { userId: "inactive", name: "Inactive editor", username: null, title: "Engineer", isActive: false, roles: ["software-user"] }
+      ] });
+      if (url.pathname === "/api/v1/projects/project-empty/members") return response({ projectId: "project-empty", members: [] });
+      throw new Error(`Unexpected request ${url.pathname}`);
+    }));
+    render(<OrganizationWorkspace state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="?organizationId=target" area="projects" workspaceClient={createOrganizationWorkspaceClient()} />);
+    const table = await screen.findByRole("table", { name: "项目参与名单" });
+    expect(within(table).getByText("Existing editor")).toBeInTheDocument();
+    expect(within(table).getByText("Inactive editor")).toBeInTheDocument();
+    expect(within(table).getByText("已停用")).toBeInTheDocument();
+    expect(within(table).getByText("硬件开发、软件MDE")).toBeInTheDocument();
+    expect(within(table).queryByRole("button", { name: /修改|编辑|保存/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("combobox", { name: "选择项目" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Empty project" }));
+    expect(await screen.findByText("暂无项目参与者")).toBeInTheDocument();
+    expect(screen.queryByText("Existing editor")).not.toBeInTheDocument();
+  });
   it("binds device governance and resource navigation to the visible target and ignores a prior target's late inventory", async () => {
     let completeOld!: (value: Response) => void;
     const bridge = (id: string) => ({ id, ownerUserId: `${id}-owner`, ownerName: `${id} owner`, machineLabel: `${id} PC`, platform: "linux", arch: "amd64", clientVersion: "1.0", createdAt: "2026-01-01T00:00:00Z", lastSeenAt: null, revokedAt: null, online: false });

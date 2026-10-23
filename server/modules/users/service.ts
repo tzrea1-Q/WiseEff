@@ -48,6 +48,7 @@ import type {
   UpdateUserProfileInput
 } from "./types";
 import { organizationNameMaxLength } from "./schemas";
+import { listProjectMembers } from "../projects/members";
 import { setOidcIdentity } from "../auth/oidcIdentity";
 import { assertAdministratorContinuity, hasOrganizationRole, lockAdministratorMutation, type AdministratorMutationContext } from "./administratorContinuity";
 
@@ -279,6 +280,15 @@ export async function listGovernedProjectCandidates(db: Queryable, caller: Gover
   const { auth, organizationId } = governanceScope(caller);
   requireOrgAdmin(auth);
   return (await db.query<{ id: string; name: string }>("select id, name from projects where organization_id=$1 order by name,id", [organizationId])).rows;
+}
+
+export async function getGovernedProjectMembers(db: Queryable, caller: GovernanceCaller, projectId: string) {
+  const { auth, organizationId } = governanceScope(caller);
+  requireOrgAdmin(auth);
+  if (!await checkProjectBelongsToOrg(db, { organizationId, projectId })) {
+    throw new ApiError("NOT_FOUND", "Project was not found.", { projectId });
+  }
+  return { projectId, members: await listProjectMembers(db, organizationId, projectId) };
 }
 
 export async function createUser(db: Database, caller: GovernanceCaller, input: CreateUserInput, context: AuditCorrelationContext = {}, configuredOidcIssuer?: string) {
