@@ -667,9 +667,10 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await expect(page.getByRole("region", { name: "组织档案" })).toBeVisible();
     const nameInput = page.getByLabel("显示名称");
     await expect(nameInput).toHaveValue("ChargeLab");
-    await expect(page.locator(".organization-profile__id")).toHaveText("org-chargelab");
+    const organizationId = page.getByRole("region", { name: "当前操作组织", exact: true }).locator("code");
+    await expect(organizationId).toHaveText("org-chargelab");
 
-    await page.route("**/api/v1/organization", async (route) => {
+    await page.route(/\/api\/v1\/organization(?:\?.*)?$/, async (route) => {
       if (route.request().method() === "PATCH") {
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
@@ -686,7 +687,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     const renameResponse = await renameResponsePromise;
     expect(renameResponse.ok()).toBe(true);
     await expect(nameInput).toHaveValue(renamed);
-    await expect(page.locator(".organization-profile__id")).toHaveText("org-chargelab");
+    await expect(organizationId).toHaveText("org-chargelab");
 
     const orgApi = await expectSuccessfulApiGet<{ organization: { id: string; name: string; createdAt: string } }>(
       page,
