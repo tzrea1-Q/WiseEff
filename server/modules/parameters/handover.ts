@@ -78,7 +78,6 @@ async function qualifies(db: Database, candidate: AuthContext, item: Work, organ
   if (item.kind === "software-merge") return canMergeParameters(candidate, item.projectId);
   const stage = item.kind === "hardware-review" ? "hardware_review" : "software_review";
   if (!canReviewParameters(candidate) || !canReviewParameterStage(candidate, item.projectId, stage)) return false;
-  if (item.kind === "value-review" && item.requestKind !== "single" && !canEditParameters(candidate, item.projectId)) return false;
   if (item.requestKind === "source_revision") return isSourceRevisionReviewer(db, candidate, item.projectId);
   return true;
 }

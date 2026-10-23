@@ -114,12 +114,13 @@ describe("#1075 canonical v1 compatibility list", () => {
     const queries = vi.spyOn(pg.Client.prototype, "query");
     try {
       const result = await operation();
-      const reads = queries.mock.calls.map(([query, values]) => ({
-        text: typeof query === "string" ? query : query.text,
+      const calls: readonly (readonly unknown[])[] = queries.mock.calls;
+      const reads = calls.map(([query, values]) => ({
+        text: typeof query === "string" ? query : query && typeof query === "object" && "text" in query ? String(query.text) : "",
         values: Array.isArray(values) ? values : []
       }));
-      const legacyReads = queries.mock.calls.flatMap(([query]) => {
-        const text = typeof query === "string" ? query : query.text;
+      const legacyReads = calls.flatMap(([query]) => {
+        const text = typeof query === "string" ? query : query && typeof query === "object" && "text" in query ? String(query.text) : "";
         return [...text.matchAll(/\b(?:from|join)\s+(?:public\.)?(parameter_specs|parameter_spec_versions|dts_property_specs|project_parameter_bindings|project_parameter_binding_revisions|parameter_definitions|project_parameter_values)\b/gi)]
           .map((match) => match[1]);
       });
@@ -161,7 +162,8 @@ describe("#1075 canonical v1 compatibility list", () => {
       { headers: { "X-WiseEff-User": readerId } }
     ));
     expect(result.status, result.bodyText).toBe(200);
-    expect.soft(result.body.items).toEqual([expect.objectContaining({ id: bindingId, definitionId })]);
+    expect.soft(result.body.items).toEqual([expect.objectContaining({ id: bindingId, definitionId }),
+      expect.objectContaining({ id: otherBindingId, definitionId })]);
     expect.soft(legacyReads).toEqual([]);
   });
 
@@ -199,14 +201,14 @@ describe("#1075 canonical v1 compatibility list", () => {
     expect(historyReads).toEqual([]);
   });
 
-  it("#1081 refuses cross-project detail and history before reading values", async () => {
+  it("#1081 permits organization-visible project detail and history through canonical reads", async () => {
     const server = createWiseEffServer({ db, objectStore: storage });
     for (const suffix of ["", "/history"]) {
-      const { result, reads } = await observeReads(() => requestJson(
+      const { result, legacyReads } = await observeReads(() => requestJson(
         server, `/api/v1/parameters/${otherBindingId}${suffix}`, { headers: { "X-WiseEff-User": readerId } }
       ));
-      expect.soft(result.status, result.bodyText).toBe(403);
-      expect.soft(reads.filter(({ text }) => /(?:from|join) parameter_catalog\.(?:project_parameter_values|binding_history_events)/.test(text))).toEqual([]);
+      expect.soft(result.status, result.bodyText).toBe(200);
+      expect.soft(legacyReads).toEqual([]);
     }
   });
 
@@ -246,8 +248,10 @@ describe("#1075 canonical v1 compatibility list", () => {
         expect.soft(refused.bodyText).not.toContain("legacy-value-never-returned");
       }
       const { result: denied, reads: deniedReads } = await observeReads(() => requestJson(server, `/api/v1/parameters/${deniedId}${suffix}`, { headers }));
-      expect.soft(denied.status, denied.bodyText).toBe(403);
-      expect.soft(deniedReads.filter(({ text }) => /(?:from|join) parameter_catalog\.(?:project_parameter_values|binding_history_events)/.test(text))).toEqual([]);
+      const otherCanonical = await requestJson(server, `/api/v1/parameters/${otherBindingId}${suffix}`, { headers });
+      expect.soft(denied.status, denied.bodyText).toBe(200);
+      expect.soft(denied.body).toEqual(otherCanonical.body);
+      expect.soft(deniedReads.some(({ text }) => /(?:from|join) parameter_catalog\.(?:project_parameter_values|binding_history_events)/.test(text))).toBe(true);
       const foreign = await requestJson(server, `/api/v1/parameters/${mappedId}${suffix}`, { headers: { "X-WiseEff-User": foreignReaderId } });
       expect.soft(foreign.status, foreign.bodyText).toBe(410);
       expect.soft(foreign.bodyText).not.toContain(bindingId);
@@ -309,9 +313,9 @@ describe("#1075 canonical v1 compatibility list", () => {
   });
 
   it.each([
-    [otherProjectId, 403],
+    [otherProjectId, 200],
     [foreignProjectId, 404]
-  ])("refuses the unauthorized project %s with %s", async (requestedProjectId, status) => {
+  ])("reads organization projects and conceals foreign project %s with %s", async (requestedProjectId, status) => {
     const { result, legacyReads } = await observeReads(() => requestJson(
       createWiseEffServer({ db, objectStore: storage }), `/api/v1/parameters?projectId=${requestedProjectId}`,
       { headers: { "X-WiseEff-User": readerId } }

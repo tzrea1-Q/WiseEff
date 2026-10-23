@@ -39,6 +39,7 @@ describe("catalog project-value draft DELETE fallback", () => {
     email: "draft-delete@example.com",
     organizationName: "Draft Delete Org",
     roles: [{ projectId: PROJECT, roleId: "software-user" }],
+    projectMemberships: [{ projectId: PROJECT, roles: ["software-user"] }],
     permissions: ["parameter:view", "parameter:edit"]
   });
 

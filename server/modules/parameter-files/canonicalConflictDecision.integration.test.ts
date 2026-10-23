@@ -47,6 +47,7 @@ const admin = makeTestAuthContext({ userId: ADMIN, organizationId: ORG,
   permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
   roles: [{ roleId: "admin", projectId: null }] });
 const author = makeTestAuthContext({ userId: AUTHOR, organizationId: ORG,
+  projectMemberships: [{ projectId: PROJECT, roles: ["software-user"] }],
   permissions: ["parameter:view", "parameter:edit"],
   roles: [{ roleId: "software-user", projectId: PROJECT }] });
 const reviewer = makeTestAuthContext({ userId: REVIEWER, organizationId: ORG,

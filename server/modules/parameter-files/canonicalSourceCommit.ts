@@ -9,7 +9,7 @@ import { trustedDomainAttribution, type TrustedInvocationContext } from "../auth
 import type { CatalogSnapshot } from "../catalog-kernel/interface";
 import { getCanonicalValueChangeRequest, getCanonicalValueChangeRequestForUpdate, type CanonicalValueChangeRequestRow } from "../parameter-bindings/drafts/changeRepository";
 import { readSourceRegistrationAgreement } from "../parameter-bindings/binding";
-import { canEditParameters, canReviewParameters, canReviewParameterStage } from "../parameter-kernel/policy";
+import { canReviewParameters, canReviewParameterStage } from "../parameter-kernel/policy";
 import { assertPinnedCanonicalSensitiveNodeWriteAllowed, canonicalSourceMemberMatchesCurrentFile, lockCanonicalSourceCohort, loadCanonicalSourceCohort, loadCanonicalSourceSnapshot, requireCanonicalUserInvocation, recordCanonicalPermissionRefusal, validatePinnedDtsSourceChange, validatePinnedDtsSourceDeletion, type CanonicalSourceBindingPin, type CanonicalSourceManifest, type CanonicalSourceCurrentMember, type CanonicalSourceSecurityContext } from "./canonicalSource";
 import type { TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { MAX_PARAMETER_SOURCE_BYTES, deleteJsonSourceMember, parseJsonSource, proveJsonSourceMemberAbsent, readJsonSourceValue } from "./jsonSource";
@@ -184,10 +184,10 @@ export async function commitCanonicalSourceRevision(
   const invocation = await requireCanonicalUserInvocation(auth, security, {
     projectId: input.projectId, operation: "canonical source apply", targetType: "project-parameter-value-change-request", targetId: input.requestId
   });
-  if (!canEditParameters(auth,input.projectId) || !canReviewParameters(auth) || !canReviewParameterStage(auth,input.projectId,"software_review")) {
+  if (!canReviewParameters(auth) || !canReviewParameterStage(auth,input.projectId,"software_review")) {
     await recordCanonicalPermissionRefusal(security, {
       projectId: input.projectId, operation: "canonical source apply", targetType: "project-parameter-value-change-request", targetId: input.requestId,
-      details: { permission: !canEditParameters(auth,input.projectId) ? "parameter:edit" : "parameter:review" }
+      details: { permission: "parameter:review" }
     });
     throw new ApiError("FORBIDDEN", "Project software review authorization is required.");
   }

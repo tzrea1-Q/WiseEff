@@ -17,6 +17,7 @@ import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { asValueClient, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "./catalogProjectValueSync";
 import type { ChangeRequestDto, ParameterSubmissionRoundDto } from "../parameters/types";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
+import { getAuthContext } from "../auth/repository";
 
 const organizationId = "org-1076";
 const projectId = "project-1076";
@@ -52,6 +53,8 @@ describe.each([
     await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values
       ('role-admin-1076',$1,$2,null,'admin'), ('role-author-1076',$3,$2,$4,'software-user')`,
     [adminId, organizationId, authorId, projectId]);
+    await db.query(`insert into project_members(organization_id,project_id,user_id,roles)
+      values ($1,$2,$3,array['software-user'])`, [organizationId, projectId, authorId]);
     for (const [userId, roleId] of [[reviewerId, "hardware-committer"], [softwareId, "software-committer"], [otherReviewerId, "hardware-committer"]]) {
       await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
         values ($1,$2,$3,$4,$5)`, [`role-${userId}`, userId, organizationId, projectId, roleId]);
@@ -376,6 +379,13 @@ describe.each([
     const binding = (await db.query<{ id: string }>(`select binding.id from parameter_catalog.current_project_parameter_bindings binding
       join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
       where binding.project_id=$1 and occurrence.config_set_id=$2`, [projectId, configSetId])).rows[0]!;
+    expect((await getAuthContext(db, softwareId)).projectMemberships).toEqual([]);
+    const reviewOnlyDraft = await requestJson(server,
+      `/api/v2/projects/${projectId}/parameter-bindings/${binding.id}/drafts`, {
+        method: "POST", headers: { "X-WiseEff-User": softwareId },
+        body: JSON.stringify({ baseRevisionId: applied.id, targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "1100", value: "1100" }]] }, reason: "Review duty does not grant editing" })
+      });
+    expect(reviewOnlyDraft.status).toBe(403);
     const draft = await requestJson<{ item: { draftId: string } }>(server,
       `/api/v2/projects/${projectId}/parameter-bindings/${binding.id}/drafts`, {
         method: "POST", headers: { "X-WiseEff-User": authorId },

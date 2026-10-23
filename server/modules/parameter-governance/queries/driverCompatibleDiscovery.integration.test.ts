@@ -136,8 +136,8 @@ describe("#897 C1 authenticated current DTS discovery", () => {
     expect(next.status === "ready" && next.nextCursor).toBeNull();
     await expect(listDriverCompatibleDiscovery({ ...query,observationId:hidden.observationId }))
       .rejects.toMatchObject({ code:"NOT_FOUND" });
-    await expect(listDriverCompatibleDiscovery({ ...query,projectId:OTHER_PROJECT }))
-      .rejects.toMatchObject({ code:"NOT_FOUND" });
+    expect(await listDriverCompatibleDiscovery({ ...query,projectId:OTHER_PROJECT }))
+      .toMatchObject({ status:"ready",items:[],emptyReason:"no-observations" });
     const foreignPage = await listDriverCompatibleDiscovery({ db,objectStore:storage,auth:foreign });
     expect(foreignPage).toMatchObject({ status:"ready",items:[],ignoredReviewItemCount:0,
       emptyReason:"no-observations" });

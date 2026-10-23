@@ -106,13 +106,13 @@ describe("whole-source request HTTP boundaries (mocked database)", () => {
     expect(f.storage.getBounded).not.toHaveBeenCalled();
   });
 
-  it("does not read another tenant's or inaccessible project's ledger", async () => {
+  it("does not read a missing or foreign project's ledger even when the reader belongs to the organization", async () => {
     const otherTenant = fixture("author");
     vi.mocked(getProjectById).mockResolvedValue(null);
     await expect(otherTenant.request()).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(otherTenant.db.query).not.toHaveBeenCalled();
     const otherProject = fixture("author", { admin: false, projectScope: "other-project" });
-    await expect(otherProject.request()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(otherProject.request()).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(otherProject.db.query).not.toHaveBeenCalled();
   });
 

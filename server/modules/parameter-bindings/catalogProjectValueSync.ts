@@ -940,8 +940,7 @@ async function readBoundedCatalogParameters(
   auth: AuthContext,
   input: CatalogBindingListInput & { limit: number },
 ): Promise<ProjectProtectedParameter[]> {
-  if (!auth.user.isActive || !canViewParameters(auth) ||
-      !auth.roles.some((role) => role.projectId === null || role.projectId === input.projectId)) {
+  if (!auth.user.isActive || !canViewParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Project parameter scope is required.");
   }
   const project = await pool.query("select 1 from public.projects where id = $1 and organization_id = $2", [

@@ -76,7 +76,7 @@ function createAuthBoundaryDb() {
               title: "No View",
               is_active: true,
               project_id: null,
-              role_id: "no-parameter-view"
+              role_id: null
             }
           ] as Row[],
           rowCount: 1
@@ -615,10 +615,10 @@ describe("WiseEff API", () => {
     expect(remoteResponse.headers.get("access-control-allow-origin")).toBeNull();
   });
 
-  it("uses request auth context for integrated parameter routes", async () => {
+  it("uses the authenticated organization for a roleless member's project reads", async () => {
     const { calls, db } = createAuthBoundaryDb();
 
-    const response = await requestJson<{ error: { code: string; message: string } }>(
+    const response = await requestJson<{ items: Array<{ id: string }> }>(
       createWiseEffServer({ db }),
       "/api/v1/projects",
       {
@@ -626,17 +626,14 @@ describe("WiseEff API", () => {
       }
     );
 
-    expect(response.status).toBe(403);
-    expect(response.body.error).toMatchObject({
-      code: "FORBIDDEN",
-      message: "Parameter view permission is required."
-    });
-    expect(calls).toHaveLength(2);
+    expect(response.status).toBe(200);
+    expect(response.body.items).toContainEqual(expect.objectContaining({ id: "aurora" }));
     expect(calls[0].text).toContain("from users");
     expect(calls[0].values).toEqual(["user-no-parameter-view"]);
     expect(calls[1].text).toContain("from user_role_bindings");
     expect(calls[1].text).toContain("roles.id like 'catalog-capability-%'");
     expect(calls[1].values).toEqual(["user-no-parameter-view"]);
+    expect(calls.find((call) => call.text.includes("from projects"))?.values).toContain("org-1");
   });
 
   it("uses production bearer auth for /me without development fallback", async () => {
@@ -1036,11 +1033,12 @@ describe("WiseEff API", () => {
       expect(calls.some((call) => call.values.includes("org-forged"))).toBe(false);
     });
 
-    it("does not report a successful Catalog list for an authenticated caller without parameter view (CATFIX-AUTH-05)", async () => {
+    it("rejects an inactive member before Catalog reads (CATFIX-AUTH-05)", async () => {
       const { db } = createProductionIdentityDb({
         dbUserId: "u-noview",
         email: "noview@example.com",
-        roleId: "no-parameter-view" as never
+        roleId: "guest",
+        isActive: false
       });
       const response = await requestJson<{ error?: { code: string }; items?: unknown[] }>(
         productionCatalogServer({
