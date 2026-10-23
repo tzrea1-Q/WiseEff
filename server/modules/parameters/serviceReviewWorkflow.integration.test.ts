@@ -15,7 +15,7 @@ import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testi
 import type { AuthContext } from "../auth/types";
 import { createAgentInvocation, createSystemInvocation } from "../auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
-import { createPostgresDatabase } from "../../shared/database/client";
+import { createPostgresDatabase, type Database } from "../../shared/database/client";
 import type { ObjectStore } from "../logs/objectStore";
 import { resolveParameterIdentityMode, setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { insertFileSyncConflict } from "./fileSyncConflictRepository";
@@ -304,7 +304,7 @@ async function submitOne(
 }
 
 /** Drive a medium-risk request submitted → software_review → software_merge through real reviews. */
-async function advanceMediumToSoftwareMerge(db: InMemoryTestDatabase, requestId: string) {
+async function advanceMediumToSoftwareMerge(db: Database, requestId: string) {
   const toSoftwareReview = await reviewChange(db, hardwareAuth(), {
     requestId,
     decision: "advance",
@@ -726,7 +726,7 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
       );
     });
 
-    it("redacts an unresolved cross-organization reviewer id from public workflow projections", async () => {
+    it("keeps the recorded reviewer while redacting a later corrupt foreign identity from workflow projections", async () => {
       await db!.query(
         `insert into organizations (id, name) values ($1, 'SRW Foreign Org') on conflict (id) do nothing`,
         [FOREIGN_ORG],
@@ -762,7 +762,8 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
       const rounds = await listSubmissionRounds(db!, editorAuth(), { projectId: PROJECT });
       const serialized = JSON.stringify(rounds);
       expect(serialized).not.toContain(FOREIGN_USER);
-      expect(serialized).toContain("未知用户");
+      expect(serialized).not.toContain("Foreign Reviewer");
+      expect(rounds[0]?.workflowTrail?.find((stage) => stage.key === "hardware_review")).toMatchObject({ executorName: "SRW Hardware" });
     });
 
     it("software committer advances software review to software merge", async () => {

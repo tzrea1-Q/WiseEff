@@ -1539,6 +1539,53 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
     expect(auditMutate.code).toBe("42501");
   });
 
+  it("captures history through private triggers without granting identity reads or a definer lookup oracle", async () => {
+    const routines = await client.query<{ name: string; owner: string; definer: boolean; settings: string[]; writer_execute: boolean }>(`
+      select p.proname as name, pg_get_userbyid(p.proowner) as owner, p.prosecdef as definer, p.proconfig as settings,
+        has_function_privilege($1,p.oid,'EXECUTE') as writer_execute
+      from pg_proc p where p.oid = any(array[
+        'public.capture_parameter_history_attribution()'::regprocedure,
+        'public.capture_knowledge_log_agent_attribution()'::regprocedure]) order by p.proname`, [PARAMETER_GOVERNANCE_WRITER_ROLE]);
+    expect(routines.rows).toEqual([
+      { name: "capture_knowledge_log_agent_attribution", owner: CATALOG_MIGRATION_OWNER, definer: true,
+        settings: ["search_path=pg_catalog, public, pg_temp"], writer_execute: false },
+      { name: "capture_parameter_history_attribution", owner: CATALOG_MIGRATION_OWNER, definer: true,
+        settings: ["search_path=pg_catalog, public, pg_temp"], writer_execute: false }
+    ]);
+    expect((await client.query("select prosecdef from pg_proc where oid='public.knowledge_log_agent_identity_snapshot(text,text,text,text)'::regprocedure")).rows)
+      .toEqual([{ prosecdef: false }]);
+
+    await client.query("insert into public.organizations(id,name) values('org-history-privileges','History role organization')");
+    await client.query("insert into public.users(id,organization_id,name,title,is_active) values('user-history-privileges','org-history-privileges','Recorded role actor','Engineer',true)");
+    try {
+      await withLocalRole(client, PARAMETER_GOVERNANCE_WRITER_ROLE, async () => {
+        await client.query("create temporary table organizations(id text,name text) on commit drop");
+        await client.query("insert into pg_temp.organizations values('org-history-privileges','Forged temporary organization')");
+        await client.query("create temporary table users(id text,organization_id text,name text) on commit drop");
+        await client.query("insert into pg_temp.users values('user-history-privileges','org-history-privileges','Forged temporary actor')");
+        expect((await client.query(`insert into public.audit_events(id,organization_id,actor_user_id,actor_type,app,kind,action,severity,trace_id)
+          values('aud-history-privileges','org-history-privileges','user-history-privileges','user','wiseeff','parameter-governance','append','Low','history-privileges')`)).rowCount).toBe(1);
+        // Observe through the privileged fixture connection after the actual
+        // insert ran as the append-only writer; the writer gains no SELECT.
+        await client.query("reset role");
+        expect((await client.query("select historical_attribution from public.audit_events where id='aud-history-privileges'")).rows)
+          .toMatchObject([{ historical_attribution: { organization: { name: "History role organization" },
+            actors: { actor_user_id: { name: "Recorded role actor", source: "recorded" } } } }]);
+        expect((await client.query("select public.knowledge_log_agent_identity_snapshot('user-history-privileges','user','recorded','org-history-privileges')->>'name' as name")).rows)
+          .toEqual([{ name: "Recorded role actor" }]);
+      });
+      for (const sql of [
+        "select name from public.organizations", "select name from public.users", "select role_id from public.user_role_bindings",
+        "select name from public.log_integration_credentials", "select public.capture_parameter_history_attribution()",
+        "select public.capture_knowledge_log_agent_attribution()",
+        "select public.knowledge_log_agent_identity_snapshot('user-history-privileges','user','recorded','org-history-privileges')"
+      ]) expect((await captureRoleStatementError(client, PARAMETER_GOVERNANCE_WRITER_ROLE, sql)).code).toBe("42501");
+    } finally {
+      await client.query("delete from public.users where id='user-history-privileges'");
+      await client.query("delete from public.organizations where id='org-history-privileges'");
+    }
+  });
+
   it("Catalog writer login memberships follow the documented inheritance boundary", async () => {
     // Match runP01: documented NOINHERIT composition roots are valid; schema-owner
     // membership or inherited writer membership is the privilege bypass.
