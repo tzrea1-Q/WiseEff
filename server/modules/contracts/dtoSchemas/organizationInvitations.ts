@@ -1,12 +1,21 @@
 import { z } from "zod";
 import { itemEnvelopeSchema, itemsEnvelopeSchema } from "./envelopes";
+import { projectMemberRoleSchema } from "./projectMembers";
 
 const roleSchema = z.enum(["guest", "hardware-user", "software-user", "hardware-committer", "software-committer", "admin", "platform-admin"]);
-export const invitationInputSchema = z.object({ label: z.string().trim().min(1).max(120), roles: z.array(roleSchema).min(1).max(7).transform((roles) => [...new Set(roles)].sort()), expiresInDays: z.number().int().min(1).max(30) }).strict();
+const targetId = z.string().trim().min(1).max(200);
+const projectPresetSchema = z.object({ projectId: targetId, roles: z.array(projectMemberRoleSchema).min(1).max(4).transform((roles) => [...new Set(roles)].sort()) }).strict();
+export const invitationInputSchema = z.object({ label: z.string().trim().min(1).max(120), roles: z.array(roleSchema).min(1).max(7).transform((roles) => [...new Set(roles)].sort()), expiresInDays: z.number().int().min(1).max(30),
+  teamIds: z.array(targetId).max(500).transform((ids) => [...new Set(ids)].sort()).default([]),
+  projects: z.array(projectPresetSchema).max(500).refine((items) => new Set(items.map((item) => item.projectId)).size === items.length, "项目不能重复。" ).default([])
+}).strict();
 export const invitationTokenSchema = z.object({ token: z.string().min(32).max(200) }).strict();
 export const invitationAcceptSchema = z.object({ name: z.string().trim().min(1).max(120), username: z.string().trim().toLowerCase().min(3).max(64), password: z.string().min(8).max(1024), title: z.string().trim().max(120).optional() }).strict();
 export const acceptInvitationRequestSchema = invitationAcceptSchema.extend({ token: invitationTokenSchema.shape.token });
-const invitationSchema = z.object({ id: z.string(), organizationId: z.string(), label: z.string(), roles: z.array(roleSchema), status: z.enum(["pending", "expired", "revoked", "accepted"]), expiresAt: z.string(), createdAt: z.string(), acceptedUserId: z.string().nullable() }).strict();
+const invitationSchema = z.object({ id: z.string(), organizationId: z.string(), label: z.string(), roles: z.array(roleSchema), status: z.enum(["pending", "expired", "revoked", "accepted"]), expiresAt: z.string(), createdAt: z.string(), acceptedUserId: z.string().nullable(),
+  teams: z.array(z.object({ id: z.string(), name: z.string() }).strict()),
+  projects: z.array(projectPresetSchema.extend({ name: z.string() }))
+}).strict();
 export const organizationInvitationDtoSchemaCatalog = {
   OrganizationInvitationRequest: invitationInputSchema,
   OrganizationInvitationTokenRequest: invitationTokenSchema,
