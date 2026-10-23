@@ -13,7 +13,7 @@ import { captureConfigurationSourceState, installConfigurationSourceFixture } fr
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { createLocalObjectStore } from "../logs/objectStore";
-import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
+import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog, readCanonicalBindingChangeHistory, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
 import { registerCatalogProjectValueConsumerRoutes } from "../parameter-bindings/catalogProjectValueRoutes";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { addConfigSetFile, createConfigSet } from "./configSetService";
@@ -23,7 +23,7 @@ import type { MemberAdditionPreview } from "./canonicalMemberAddition";
 import type { SourceRevisionPreview } from "./sourceRevisionService";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
-import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
+import { loadOwnedProjectValueSourcePin, readOwnedProjectValueIdentity } from "../parameter-bindings/values";
 
 const ORG = "org-member-add", PROJECT = "project-member-add", ADMIN = "user-member-add";
 const admin = makeTestAuthContext({ organizationId: ORG, userId: ADMIN, roles: [{ roleId: "admin", projectId: null }] });
@@ -96,13 +96,17 @@ describe("Canonical member addition through the real API role", () => {
     expect((await post(`${path()}/apply`, applyBody)).body).toEqual(applied.body);
     const workflow = await requestJson<{ item: { canonical: boolean } }>(server(), `/api/v1/projects/${PROJECT}/parameter-files/${applied.body.item.fileId}/source-workflow`);
     expect(workflow.status, workflow.bodyText).toBe(200); expect(workflow.body.item.canonical).toBe(true);
-    const canonicalState = async () => (await db.query<{ state: unknown }>(`select jsonb_build_object(
-      'bindings', (select jsonb_agg(to_jsonb(b) order by b.id) from parameter_catalog.project_parameter_bindings b),
-      'values', (select jsonb_agg(to_jsonb(v) order by v.id) from parameter_catalog.project_parameter_values v),
-      'pins', (select jsonb_agg(to_jsonb(p) order by p.id) from parameter_catalog.project_value_source_pins p),
-      'history', (select jsonb_agg(to_jsonb(h) order by h.id) from parameter_catalog.binding_history_events h),
-      'occurrences', (select jsonb_agg(to_jsonb(o) order by o.id) from parameter_catalog.project_parameter_source_occurrences o)
-    ) as state`)).rows[0].state;
+    const canonicalState = async () => Promise.all((await listCatalogBindingRowsForProject(api, admin, { projectId: PROJECT })).map(async binding => {
+      const owner = { organizationId: ORG, projectId: PROJECT, bindingId: binding.id };
+      const history = await readCanonicalBindingChangeHistory(getRootPostgresPool(api)!, { ...owner, limit: 200 });
+      expect(history).not.toBeNull();
+      const valueIds = [...new Set([binding.currentValueId, ...history!.flatMap(event =>
+        [event.oldCurrentValueId, event.newCurrentValueId].filter((id): id is string => id !== null))])];
+      return { binding, history, values: await Promise.all(valueIds.map(async projectValueId => ({
+        identity: await readOwnedProjectValueIdentity(api, { ...owner, projectValueId }),
+        pin: await loadOwnedProjectValueSourcePin(api, { ...owner, projectValueId })
+      }))) };
+    }));
     const beforeUpload = await canonicalState();
     const unrelated = await post(`/api/v1/projects/${PROJECT}/parameter-files`, {
       fileName: "unrelated-upload.dts", contentBase64: Buffer.from(source).toString("base64") });
@@ -210,13 +214,13 @@ describe("Canonical member addition through the real API role", () => {
     expect(uploaded.status, uploaded.bodyText).toBe(201);
     const bindings = await listCatalogBindingRowsForProject(api, admin, { projectId: PROJECT });
     expect(bindings.filter(binding => before.some(old => old.id === binding.id))).toEqual(before);
-    expect((await db.query(`select pin.file_id, pin.file_version_id, occurrence.config_set_id
-      from parameter_catalog.project_parameter_bindings binding
-      join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
-      join parameter_catalog.project_value_source_pins pin on pin.project_value_id=binding.current_value_id
-      where occurrence.config_set_id=$1`, [target.body.item.id])).rows).toEqual([{
-      file_id: first.body.item.id, file_version_id: uploaded.body.version.id, config_set_id: target.body.item.id
-    }]);
+    const createdBindings = bindings.filter(binding => !before.some(old => old.id === binding.id));
+    expect(createdBindings).toHaveLength(1);
+    expect(await loadOwnedProjectValueSourcePin(api, { organizationId: ORG, projectId: PROJECT,
+      bindingId: createdBindings[0]!.id, projectValueId: createdBindings[0]!.currentValueId })).toMatchObject({
+      fileId: first.body.item.id, fileVersionId: uploaded.body.version.id, configSetId: target.body.item.id,
+      sourceOccurrenceId: createdBindings[0]!.sourceOccurrenceId
+    });
   });
 });
 
