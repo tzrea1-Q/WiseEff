@@ -415,10 +415,10 @@ describe("whole-source HTTP through the real API database role", () => {
     await db.query("insert into users(id,organization_id,name,title,is_active) values($1,$2,'Platform administrator','Platform',true)", [PLATFORM, HOME]);
     await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values('source-platform-grant',$1,$2,'platform-admin')", [PLATFORM, HOME]);
     const actual = createWiseEffServer({ db: api, objectStore: storage, env: { AUTH_PROVIDER: "hmac" }, auth: { mode: "production", verifier: createTokenVerifier({ issuer: "source-operating", secret }) } });
-    const scoped = <T,>(url: string, body?: unknown, userId = PLATFORM, organizationId = HOME) => {
+    const scoped = <T,>(url: string, body?: unknown, userId = PLATFORM, organizationId = HOME, method = body === undefined ? "GET" : "POST") => {
       const payload = Buffer.from(JSON.stringify({ iss: "source-operating", sub: userId, org: organizationId, exp: 9_999_999_999 })).toString("base64url");
       return requestJson<T>(actual, `${url}${url.includes("?") ? "&" : "?"}organizationId=${ORG}`, {
-        method: body === undefined ? "GET" : "POST", headers: { Authorization: `Bearer ${payload}.${createHmac("sha256", secret).update(payload).digest("base64url")}` },
+        method, headers: { Authorization: `Bearer ${payload}.${createHmac("sha256", secret).update(payload).digest("base64url")}` },
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
       });
     };
@@ -440,6 +440,20 @@ describe("whole-source HTTP through the real API database role", () => {
       return { id: submitted.body.item.requestId, digest: preview.body.item.proofToken };
     }
     const pending = await targetPending("cross-organization-approval");
+    const handoverPath = `/api/v1/organization/project-handovers/value-review/${pending.id}`;
+    const readHandover = async () => {
+      const response = await scoped<{ items: Array<{ id: string; version: string; responsibleUserId: string | null; pending: boolean }> }>("/api/v1/organization/project-handovers");
+      expect(response.status, response.bodyText).toBe(200);
+      return response.body.items.find(item => item.id === pending.id)!;
+    };
+    const originalHandover = await readHandover();
+    expect((await scoped(handoverPath, { responsibleUserId: null, expectedVersion: originalHandover.version }, PLATFORM, HOME, "PATCH")).status).toBe(200);
+    const unassigned = await readHandover();
+    expect(unassigned).toMatchObject({ responsibleUserId: null, pending: true });
+    const handedOver = await scoped(handoverPath, { responsibleUserId: REVIEWER, expectedVersion: unassigned.version }, PLATFORM, HOME, "PATCH");
+    expect(handedOver.status, handedOver.bodyText).toBe(200);
+    const frozenAfterHandover = await scoped<{ item: SourceRevisionRequestDto }>(`${path}/${pending.id}`);
+    expect(frozenAfterHandover.body.item).toMatchObject({ status: "pending", proofDigest: pending.digest, reviewerUserId: null, submitterUserId: PLATFORM, assignedToUserId: REVIEWER });
     const reassigned = await scoped(`${path}/${pending.id}/reassign`, { proofDigest: pending.digest, expectedAssignedToUserId: REVIEWER, assignedToUserId: outsider.user.id });
     expect(reassigned.status, reassigned.bodyText).toBe(200);
     expect((await scoped(`${path}/${pending.id}/reassign`, { proofDigest: pending.digest, expectedAssignedToUserId: outsider.user.id, assignedToUserId: REVIEWER })).status).toBe(200);

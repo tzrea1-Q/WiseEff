@@ -115,7 +115,7 @@ describe("project business handover (real HTTP/PostgreSQL)", () => {
     expect((await api("users/handover-editor", "DELETE")).status).toBe(204);
     const list = (await api<{ items: Item[] }>("organization/project-handovers")).body.items;
     expect(list.find(item => item.id === "agent-draft")).toMatchObject({ pending: true, historicalAttribution: { actors: { user_id: { id: "handover-editor" } } } });
-    expect((await db.query("select historical_attribution from parameter_drafts where id='agent-draft'")).rows[0].historical_attribution).toMatchObject({ execution: { initiatorType: "agent", approvalId: "original-approval" } });
+    expect((await db.query<{ historical_attribution: unknown }>("select historical_attribution from parameter_drafts where id='agent-draft'")).rows[0].historical_attribution).toMatchObject({ execution: { initiatorType: "agent", approvalId: "original-approval" } });
     const initialization = list.find(item => item.kind === "initialization-draft")!;
     expect(initialization).toMatchObject({ pending: true, responsibleUserId: null });
     expect((await api(`organization/project-handovers/initialization-draft/${initialization.id}`, "PATCH", { responsibleUserId: "handover-admin", expectedVersion: initialization.version })).status).toBe(200);
@@ -141,7 +141,7 @@ describe("project business handover (real HTTP/PostgreSQL)", () => {
     const review = await api("parameter-change-requests/handover-request/review", "POST", { decision: "reject", note: "Actual successor reviewed" }, "admin");
     expect(review.status, review.bodyText).toBe(200);
     expect((await db.query("select reviewer_user_id,historical_attribution from parameter_review_decisions where request_id='handover-request'")).rows).toEqual([expect.objectContaining({ reviewer_user_id: "handover-admin", historical_attribution: expect.objectContaining({ actors: { reviewer_user_id: expect.objectContaining({ id: "handover-admin" }) } }) })]);
-    expect((await db.query("select historical_attribution from parameter_change_requests where id='handover-request'")).rows[0].historical_attribution).toMatchObject({ actors: { submitter_user_id: { id: "handover-author" } } });
+    expect((await db.query<{ historical_attribution: unknown }>("select historical_attribution from parameter_change_requests where id='handover-request'")).rows[0].historical_attribution).toMatchObject({ actors: { submitter_user_id: { id: "handover-author" } } });
   });
   it("checks current qualification, tenant scope, competing draft ownership and optimistic concurrency without losing pending work", async () => {
     await legacyDraft();
