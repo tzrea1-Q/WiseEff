@@ -16019,6 +16019,17 @@
         "tags": [
           "knowledge"
         ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -16044,6 +16055,9 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -16116,6 +16130,15 @@
                 "false"
               ]
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -16135,6 +16158,9 @@
           "403": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -16147,6 +16173,17 @@
         "summary": "Open an organization-scoped, importer-owned batch with fixed tags (knowledge:edit)",
         "tags": [
           "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -16175,6 +16212,9 @@
           "403": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -16187,6 +16227,17 @@
         "summary": "Tag, publish or archive up to 200 entries through individually authorized audited writes; return every outcome",
         "tags": [
           "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -16215,6 +16266,9 @@
           "403": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -16233,6 +16287,15 @@
             "name": "batchId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -16292,6 +16355,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -16348,6 +16420,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -16388,6 +16469,15 @@
             "name": "batchId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -16436,6 +16526,17 @@
         "tags": [
           "knowledge"
         ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -16478,6 +16579,17 @@
         "summary": "Distil a terminal DTS reload run (verified, unverifiable, contradicted, or failed) into a pre-filled knowledge draft (knowledge:edit plus the reload read gate on the source run); the outcome is stated honestly and the draft stays out of retrieval until published",
         "tags": [
           "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -16522,6 +16634,17 @@
         "tags": [
           "knowledge"
         ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -16539,6 +16662,9 @@
           "403": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -16551,6 +16677,17 @@
         "summary": "Related published knowledge for a completed log-analysis record (knowledge:view plus logs:view and organization scope on the record) — the similarity query derives from the stored conclusion/impact text, runs through hybrid retrieval with a relevance cutoff so unrelated entries are dropped, and the response reports the retrieval mode that actually ran",
         "tags": [
           "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -16584,6 +16721,17 @@
         "summary": "Published knowledge entries structurally referencing one parameter definition (knowledge:view, organization-scoped; published-only — drafts and archived entries never appear; specs outside the caller's scope are 404)",
         "tags": [
           "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -16631,6 +16779,15 @@
             "name": "limit",
             "in": "query",
             "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -16682,6 +16839,15 @@
             "name": "definitionId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -16737,6 +16903,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -16777,6 +16952,15 @@
             "name": "entryId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -16828,6 +17012,15 @@
             "name": "definitionId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -16885,6 +17078,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -16933,6 +17135,15 @@
             "name": "specId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -16988,6 +17199,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -17023,6 +17243,17 @@
         "tags": [
           "knowledge"
         ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -17040,6 +17271,9 @@
           "403": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -17052,6 +17286,17 @@
         "summary": "Re-enqueue every published entry for index rebuild (knowledge:manage only)",
         "tags": [
           "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -17068,6 +17313,9 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -17083,6 +17331,17 @@
         "tags": [
           "knowledge"
         ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -17098,6 +17357,9 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -17118,6 +17380,15 @@
             "name": "entryId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -17164,6 +17435,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -17202,6 +17482,15 @@
             "name": "entryId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -17259,6 +17548,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -17302,6 +17600,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -17319,6 +17626,9 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -17339,6 +17649,15 @@
             "name": "entryId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -17385,6 +17704,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -17425,6 +17753,15 @@
             "name": "entryId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -17471,6 +17808,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -17511,6 +17857,15 @@
             "name": "entryId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -17562,6 +17917,15 @@
             "name": "revisionId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -17627,6 +17991,15 @@
             "in": "query",
             "required": false,
             "description": "Revision UUID belonging to this entry; requires current access to its revisions.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -19417,6 +19790,17 @@
         "tags": [
           "agent"
         ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -19441,6 +19825,12 @@
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -19453,6 +19843,17 @@
         "summary": "Run Xiaoze proactive suggest pass",
         "tags": [
           "agent"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -19478,6 +19879,12 @@
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -19490,6 +19897,17 @@
         "summary": "List Xiaoze chat threads",
         "tags": [
           "agent"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -19505,6 +19923,12 @@
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -19515,6 +19939,17 @@
         "summary": "Create Xiaoze chat thread id",
         "tags": [
           "agent"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -19540,6 +19975,12 @@
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -19561,6 +20002,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -19575,6 +20025,12 @@
             }
           },
           "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -19593,6 +20049,15 @@
             "name": "threadId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -19622,6 +20087,12 @@
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -19641,6 +20112,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -19655,6 +20135,12 @@
             }
           },
           "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {

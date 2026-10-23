@@ -2325,7 +2325,8 @@ for (const routeId of [
   "users.replaceRoles", "users.replaceOrganizationRoles", "users.resetPassword", "users.getProjectWorkflowRoleBindings", "users.replaceProjectWorkflowRoleBindings",
   "users.listRegistrationRoleRequests", "users.approveRegistrationRoleRequest", "users.enableBasicRegistrationRoleRequest", "users.rejectRegistrationRoleRequest",
   "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.revokeOrganizationBridge",
-  "logs.listIntegrationCredentials", "logs.issueIntegrationCredential", "logs.rotateIntegrationCredential", "logs.revokeIntegrationCredential"
+  "logs.listIntegrationCredentials", "logs.issueIntegrationCredential", "logs.rotateIntegrationCredential", "logs.revokeIntegrationCredential",
+  ...Object.keys(schemaRegistry).filter((routeId) => routeId.startsWith("knowledge.") || routeId.startsWith("xiaoze."))
 ]) {
   schemaRegistry[routeId].requestParameters = [...(schemaRegistry[routeId].requestParameters ?? []), {
     name: "organizationId", in: "query", description: "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.", schema: { type: "string" }
