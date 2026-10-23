@@ -54,6 +54,7 @@ test.describe("platform Organization provisioning with actual local login", () =
     await expect(organizationEntry).toHaveClass(/active/);
     await page.getByRole("button", { name: "所属组织", exact: true }).click();
     await expect(page).toHaveURL(/\/organization$/);
+    await page.getByRole("navigation", { name: "组织管理范围" }).getByRole("button", { name: "设置", exact: true }).click();
     await expect(page.getByLabel("显示名称", { exact: true })).toHaveValue(platform.auth.organization.name);
     await expect(organizationEntry).toHaveClass(/active/);
     await organizationEntry.click();
@@ -148,7 +149,7 @@ test.describe("platform Organization provisioning with actual local login", () =
 
     await page.getByRole("button", { name: /打开用户菜单$/ }).click();
     await page.getByRole("button", { name: "退出登录", exact: true }).click();
-    const initialAdministrator = await signInLocally(page, username, LOCAL_DEMO_SHARED_PASSWORD, "/organization");
+    const initialAdministrator = await signInLocally(page, username, LOCAL_DEMO_SHARED_PASSWORD, "/organization/settings");
     expect(initialAdministrator.auth.organization).toEqual({ id: firstOrganization.id, name: firstName });
     expect(initialAdministrator.auth.user.name).toBe(administrator);
     expect(initialAdministrator.auth.roles).toEqual([{ projectId: null, roleId: "admin" }]);
@@ -158,6 +159,7 @@ test.describe("platform Organization provisioning with actual local login", () =
     await page.goto("/parameter-home"); await prepareInteractionSurface(page);
     await organizationEntry.focus(); await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/organization$/);
+    await page.getByRole("navigation", { name: "组织管理范围" }).getByRole("button", { name: "设置", exact: true }).click();
     await expect(page.getByLabel("显示名称", { exact: true })).toHaveValue(firstName);
     await page.reload(); await prepareInteractionSurface(page);
     await expect(page.getByLabel("显示名称", { exact: true })).toHaveValue(firstName);

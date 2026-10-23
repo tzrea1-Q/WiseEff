@@ -580,7 +580,7 @@ export function PageRouter({
           dispatch={dispatch}
           onNavigate={onNavigate}
           search={search}
-          area={parseOrganizationAdminArea(page.path) ?? "profile"}
+          area={parseOrganizationAdminArea(page.path) ?? "overview"}
           apiMode={runtimeMode === "api"}
           userGovernanceActions={userGovernanceActions}
           onCurrentAccountChanged={async (accessEnded) => {

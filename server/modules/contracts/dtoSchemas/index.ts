@@ -6,6 +6,7 @@ import { organizationInvitationDtoSchemaCatalog, organizationInvitationRoutes } 
 import { projectMembersCoveredRouteIds, projectMembersDtoSchemaCatalog } from "./projectMembers";
 import { platformOrganizationDtoSchemaCatalog, platformOrganizationRoutes } from "./platformOrganizations";
 import { organizationTeamDtoSchemaCatalog, organizationTeamRoutes } from "./organizationTeams";
+import { organizationWorkspaceDtoSchemaCatalog, organizationWorkspaceRoutes } from "./organizationWorkspace";
 export { administratorRecoverySchema, createPlatformOrganizationSchema, platformOrganizationSchema, recoverOrganizationAdministratorSchema, experienceRegistrationSchema, updateExperienceRegistrationSchema } from "./platformOrganizations";
 import { knowledgeCoveredRouteIds, knowledgeDtoSchemaCatalog } from "./knowledge";
 export { parsePreviewRequestSchema, parsePreviewResponseSchema, decodedEventSchema, decodedValueSchema } from "./logs";
@@ -37,6 +38,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ...projectMembersDtoSchemaCatalog,
   ...platformOrganizationDtoSchemaCatalog,
   ...organizationTeamDtoSchemaCatalog,
+  ...organizationWorkspaceDtoSchemaCatalog,
   ...workflowPublicationDtoSchemaCatalog,
   ...knowledgeDtoSchemaCatalog,
   ...coreDtoSchemaCatalog,
@@ -58,6 +60,7 @@ export const dtoSchemaCoveredRouteIds = [
   ...projectMembersCoveredRouteIds,
   ...platformOrganizationRoutes.map((route) => route.id),
   ...organizationTeamRoutes.map((route) => route.id),
+  ...organizationWorkspaceRoutes.map(route => route.id),
   ...workflowPublicationCoveredRouteIds,
   ...knowledgeCoveredRouteIds,
   ...coreDtoSchemaCoveredRouteIds,

@@ -56,6 +56,11 @@ export type OrganizationRecordDto = {
   name: string;
   createdAt: string;
 };
+export type OrganizationWorkspaceSummary = {
+  organization: { id: string; name: string; status: "active" | "suspended" };
+  counts: { members: number; teams: number; projects: number };
+  administration: { pendingInvitations: number | null; pendingHandovers: number; pendingIdentitySync: number } | null;
+};
 export type OrganizationTeamDto = { id: string; organizationId: string; name: string; memberIds: string[] };
 export type OrganizationTeamsClient = Pick<ReturnType<typeof createUserGovernanceClient>, "listTeams" | "createTeam" | "renameTeam" | "replaceTeamMembers" | "deleteTeam" | "listUsers">;
 
@@ -134,6 +139,7 @@ export function createUserGovernanceClient(
 ) {
   const scoped = (path: string) => withOrganizationScope(path, organizationId);
   return {
+    async getWorkspaceSummary() { return (await apiClient.get<ItemEnvelope<OrganizationWorkspaceSummary>>(scoped("/api/v1/organization/workspace-summary"))).item; },
     async listInvitations() { return (await apiClient.get<ItemsEnvelope<OrganizationInvitationDto>>(scoped("/api/v1/organization/invitations"))).items; },
     async issueInvitation(input: InvitationInput, id?: string) { return apiClient.post<{ item: OrganizationInvitationDto; token: string }>(scoped(id ? `/api/v1/organization/invitations/${encodeURIComponent(id)}/regenerate` : "/api/v1/organization/invitations"), input); },
     async revokeInvitation(id: string) { return (await apiClient.post<ItemEnvelope<OrganizationInvitationDto>>(scoped(`/api/v1/organization/invitations/${encodeURIComponent(id)}/revoke`), {})).item; },

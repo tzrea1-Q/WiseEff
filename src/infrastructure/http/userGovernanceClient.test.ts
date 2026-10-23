@@ -9,6 +9,13 @@ function createFetchMock(response: unknown, status = 200) {
 }
 
 describe("createUserGovernanceClient", () => {
+  it("loads real workspace summary through the fixed organization client without hydrating management lists", async () => {
+    const item = { organization: { id: "target", name: "Target", status: "active" }, counts: { members: 2, teams: 1, projects: 3 }, administration: null };
+    const fetchMock = createFetchMock({ item });
+    const client = createUserGovernanceClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }), "target");
+    await expect(client.getWorkspaceSummary()).resolves.toEqual(item);
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith("/api/v1/organization/workspace-summary?organizationId=target", expect.objectContaining({ method: "GET" }));
+  });
   it("opens Home with the current authenticated identity without a write, while explicit targets use the audited entry", async () => {
     const actor = { user: { id: "actual-user", organizationId: "home" }, organization: { id: "home", name: "Home" } };
     const fetchMock = vi.fn<typeof fetch>(async (path) => new Response(JSON.stringify(String(path).endsWith("/me") ? actor : { actor, organization: { id: "target", name: "Target" } })));
