@@ -1,7 +1,7 @@
 import { loadLogFiles, fileInventory } from "./filesRepository";
 import { historicalIdentityLabel } from "../../../src/domain/identity/historicalAttribution";
 import type { AuthContext } from "../auth/types";
-import type { IntegrationPrincipal } from "../auth/integrationPrincipal";
+import { organizationId as logOrganizationId, type LogPrincipal } from "./principal";
 import { enqueueTerminalLogWebhook } from "./webhookOutbox";
 import { completeJob, createLogAnalysisJob, updateJobProgress } from "../jobs/repository";
 import type { LogAnalysisJobDto } from "../jobs/types";
@@ -763,9 +763,9 @@ export async function listLogs(
   return Promise.all(result.rows.map(async (row) => ({ ...toLogDto(row, [], readableKnowledgeIds), canDelete: canDeleteLog(auth, row), files: fileInventory(await loadLogFiles(db, auth.organization.id, row.id)) })));
 }
 
-export async function getLogDetail(db: Queryable, auth: AuthContext | IntegrationPrincipal, logId: string) {
+export async function getLogDetail(db: Queryable, auth: LogPrincipal, logId: string) {
   const integration = "kind" in auth;
-  const organizationId = integration ? auth.organizationId : auth.organization.id;
+  const organizationId = logOrganizationId(auth);
   const { organizationWide, projectIds } = integration ? { organizationWide: false, projectIds: [] } : relatedParameterVisibilityValues(auth);
   const result = await db.query<LogRecordRow>(
     `
