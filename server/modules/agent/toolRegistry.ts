@@ -6,8 +6,8 @@ import {
 } from "../audit/trustedRefusalSink";
 import type { KnowledgeEmbeddingClient } from "../knowledge/indexing/embeddingClient";
 import type { ObjectStore } from "../logs/objectStore";
-import type { AgentAccessContext as AuthContext } from "./scope";
-import type { TrustedInvocationContext } from "../auth/trustedInvocation";
+import { agentOrganizationId, type AgentAccessContext as AuthContext } from "./scope";
+import { assertTrustedInvocationMatchesScope, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { AgentToolName, AgentToolResult } from "./types";
 import type { AgentToolMetadata } from "./toolMetadata";
 import { requireAgentPermission, requireAgentProjectAccess } from "./policy";
@@ -90,6 +90,9 @@ function requireScopedProjectOrGlobalAdmin(context: AgentToolExecutionContext, p
 }
 
 function authorizeTool(tool: AgentToolDefinition, context: AgentToolExecutionContext, payload: Record<string, unknown>) {
+  if (context.auth.agentInvocation && context.invocation) {
+    assertTrustedInvocationMatchesScope(context.auth, context.invocation, agentOrganizationId(context.auth), "Agent tool resource scope");
+  }
   requireAgentPermission(context.auth, tool.permission);
   if (tool.scope === "organization") {
     return;

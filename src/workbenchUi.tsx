@@ -2,22 +2,13 @@ import { Check, Info } from "lucide-react";
 import type { ReactNode } from "react";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 
+export { getContextQuery } from "./workbenchContextQuery";
+
 export const riskLabels: Record<"High" | "Medium" | "Low", string> = {
   High: "高",
   Medium: "中",
   Low: "低"
 };
-
-export function getContextQuery(search: string) {
-  const params = new URLSearchParams(search);
-  return {
-    projectId: params.get("project") ?? params.get("projectId") ?? "",
-    module: params.get("module") ?? "",
-    parameterId: params.get("parameter") ?? "",
-    bindingId: params.get("bindingId") ?? params.get("binding") ?? "",
-    logId: params.get("logId") ?? ""
-  };
-}
 
 export function escapeExcelCell(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

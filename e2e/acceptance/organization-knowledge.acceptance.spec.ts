@@ -54,6 +54,10 @@ test.describe("fixed-target knowledge and Agent workspace", () => {
     expect(new URL(response.url()).searchParams.get("organizationId")).toBe(target);
     expect((await response.json() as { item: { organizationId: string } }).item.organizationId).toBe(target);
     await expect(editor).toHaveCount(0);
+    const createdDetail = page.getByRole("dialog", { name: `页面创建知识-${suffix} 草稿 手动编写`, exact: true });
+    await expect(createdDetail).toBeVisible();
+    await createdDetail.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(createdDetail).toHaveCount(0);
 
     const hint = page.getByRole("button", { name: "不再提示", exact: true });
     if (await hint.isVisible().catch(() => false)) await hint.click();
@@ -79,7 +83,7 @@ test.describe("fixed-target knowledge and Agent workspace", () => {
     const homeIds = (await homeThreads.json() as { items: Array<{ id: string }> }).items.map((thread) => thread.id);
     expect(threads.some((thread) => homeIds.includes(thread.id))).toBe(false);
     await page.screenshot({ path: testInfo.outputPath("knowledge-target-agent-1440.png"), animations: "disabled" });
-    await page.getByRole("button", { name: "关闭小泽", exact: true }).click();
+    await popup.getByRole("button", { name: "关闭小泽", exact: true }).click();
     await page.getByRole("button", { name: "知识后台", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`knowledge-admin\\?organizationId=${target}`));
     const draft = page.getByRole("table", { name: "小泽知识草稿", exact: true }).getByRole("row").filter({ hasText: `目标助手知识-${suffix}` });
@@ -93,5 +97,24 @@ test.describe("fixed-target knowledge and Agent workspace", () => {
     await expect(draft).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath("knowledge-target-publish-1440.png"), animations: "disabled" });
     await home.close();
+  });
+
+  test("reads target project parameters through the actual Agent API while retaining the Home actor", async ({ request }) => {
+    const suffix = randomUUID().slice(0, 8), target = `agent-project-target-${suffix}`, projectId = `agent-project-${suffix}`;
+    await withPgClient(async (client) => {
+      await client.query("insert into organizations(id,name) values($1,'Agent project target')", [target]);
+      await client.query("insert into projects(id,organization_id,name,code,status) values($1,$2,'Agent target project',$3,'initialized')", [projectId, target, `A${suffix}`]);
+    });
+    const body = { threadId: randomUUID(), runId: randomUUID(), messages: [{ id: randomUUID(), role: "user", content: `project ${projectId} overview` }],
+      context: [{ description: "wiseeff.page", value: { pageKey: "parameters", path: `/parameters?project=${projectId}`, projectId } }] };
+    const response = await request.post(apiRoute(`/api/v1/agent/xiaoze?organizationId=${target}`), { headers: authHeadersForRole("admin"), data: body });
+    expect(response.status()).toBe(200);
+    const stream = await response.text();
+    expect(stream).not.toContain("RUN_ERROR");
+    expect(stream).toContain(`Project ${projectId}: 0 parameters, 0 open change requests.`);
+    const identity = await request.get(apiRoute("/api/v1/me"), { headers: authHeadersForRole("admin") });
+    expect((await identity.json() as { organization: { id: string } }).organization.id).toBe("org-chargelab");
+    const forbidden = await request.post(apiRoute(`/api/v1/agent/xiaoze?organizationId=${target}`), { headers: authHeadersForRole("software-user"), data: { ...body, threadId: randomUUID() } });
+    expect(forbidden.status()).toBe(403);
   });
 });

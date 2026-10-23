@@ -5,6 +5,8 @@ import { XiaozeThreadController } from "./XiaozeThreadController";
 import { resetXiaozeThreadStoreForTests, XiaozeThreadProvider, useXiaozeThreads } from "./XiaozeThreadContext";
 
 const agent = {
+  isRunning: false,
+  threadId: "thread-active",
   messages: [] as unknown[],
   setMessages: vi.fn((next: unknown[]) => {
     agent.messages = next;
@@ -57,6 +59,8 @@ async function renderController(extra: ReactNode) {
 
 describe("XiaozeThreadController", () => {
   beforeEach(() => {
+    agent.isRunning = false;
+    agent.threadId = "thread-active";
     agent.messages = [];
     agent.pendingInterrupts = [];
     agent.setMessages.mockClear();
@@ -82,6 +86,14 @@ describe("XiaozeThreadController", () => {
         }
       ]
     });
+  });
+
+  it("keeps a live current-thread response when history first becomes available", () => {
+    agent.isRunning = true;
+    agent.messages = [{ id: "live-answer", role: "assistant", content: "Current target answer" }];
+    render(<XiaozeThreadProvider><XiaozeThreadController /></XiaozeThreadProvider>);
+    expect(agent.abortRun).not.toHaveBeenCalled();
+    expect(agent.setMessages).not.toHaveBeenCalled();
   });
 
   it("clears CopilotKit pending interrupts when starting a new thread", async () => {

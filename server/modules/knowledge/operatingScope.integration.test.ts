@@ -56,6 +56,7 @@ describe.skipIf(!available)("knowledge operating organization over real HTTP and
     } finally { await db.rollback(); }
   });
   it("governs and indexes the selected organization while retaining the actual Home actor and published-only retrieval", async () => {
+    vi.stubEnv("XIAOZE_DETERMINISTIC", "true");
     const { db, request } = await fixture();
     try {
       const create = (title: string, scope = "") => request<{ item: KnowledgeEntryDto }>(`/api/v1/knowledge/entries${scope}`, "POST",
@@ -79,6 +80,14 @@ describe.skipIf(!available)("knowledge operating organization over real HTTP and
       const search = await request<{ items: Array<{ entryId: string; revisionId: string }> }>(scoped("search") + "&q=scopeknowledgeunique");
       expect(search.status, search.bodyText).toBe(200);
       expect(search.body.items).toEqual([expect.objectContaining({ entryId: id, revisionId: published.body.item.headRevisionId })]);
+      const threadId = randomUUID();
+      const answer = await request("/api/v1/agent/xiaoze?organizationId=kb-target", "POST", { threadId, runId: randomUUID(),
+        messages: [{ id: randomUUID(), role: "user", content: "知识库检索:scopeknowledgeunique" }], tools: [], context: [], forwardedProps: {} });
+      expect(answer.bodyText).toContain("Target revised");
+      expect(answer.bodyText).toContain("organizationId=kb-target");
+      const retrieval = await db.query<{ result: { data: { results: Array<{ entryId: string; revisionId: string }> } } }>(
+        "select result from agent_tool_calls where session_id=$1 and name='knowledge.search'", [threadId]);
+      expect(retrieval.rows[0].result.data.results).toEqual([expect.objectContaining({ entryId: id, revisionId: published.body.item.headRevisionId })]);
       expect((await request<{ items: unknown[] }>("/api/v1/knowledge/search?q=scopeknowledgeunique")).body.items).toEqual([]);
       const chunks = await db.query("select organization_id,revision_id from knowledge_chunks where entry_id=$1", [id]);
       expect(chunks.rows.length).toBeGreaterThan(0);
@@ -94,7 +103,7 @@ describe.skipIf(!available)("knowledge operating organization over real HTTP and
       expect((await request<{ items: unknown[] }>(scoped("search") + "&q=scopeknowledgeunique")).body.items).toEqual([]);
       expect((await request(scoped(`entries/${id}`), "DELETE")).status).toBe(200);
       expect((await request(scoped(`entries/${id}`))).status).toBe(404);
-    } finally { await db.rollback(); }
+    } finally { await db.rollback(); vi.unstubAllEnvs(); }
   });
 
   it("imports and batch publishes documents only within the fixed target, including asynchronous index work", async () => {
