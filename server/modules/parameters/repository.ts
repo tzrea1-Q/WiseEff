@@ -1,5 +1,4 @@
 import type { Queryable } from "../../shared/database/client";
-import { historicalActorSql } from "../../shared/database/historicalAttribution";
 import type {
   ParameterHistoryEntryDto,
   ParameterRecordDto
@@ -332,7 +331,9 @@ export async function listParameterHistory(db: Queryable, query: { organizationI
         phe.version,
         phe.value,
         phe.changed_at,
-        ${historicalActorSql("phe", "changed_by_user_id")} as changed_by,
+        case when phe.historical_attribution->'actors'->'changed_by_user_id'->>'source' = 'legacy-current'
+          then (phe.historical_attribution->'actors'->'changed_by_user_id'->>'name') || '（迁移时名称）'
+          else phe.historical_attribution->'actors'->'changed_by_user_id'->>'name' end as changed_by,
         phe.request_id,
         phe.initiator_type,
         phe.initiator_principal_deleted,
@@ -357,7 +358,9 @@ export async function listParameterHistory(db: Queryable, query: { organizationI
       phe.version,
       phe.value,
         phe.changed_at,
-        ${historicalActorSql("phe", "changed_by_user_id")} as changed_by,
+        case when phe.historical_attribution->'actors'->'changed_by_user_id'->>'source' = 'legacy-current'
+          then (phe.historical_attribution->'actors'->'changed_by_user_id'->>'name') || '（迁移时名称）'
+          else phe.historical_attribution->'actors'->'changed_by_user_id'->>'name' end as changed_by,
         phe.request_id,
         phe.initiator_type,
         phe.initiator_principal_deleted,
