@@ -53,6 +53,6 @@ export function buildLogResultWebhookPayload(input: LogAnalysisResultWebhookInpu
     confidence: input.confidence,
     conclusionSummary: truncateSummary(input.conclusion),
     occurredAt: input.occurredAt,
-    productPath: input.status === "complete" ? `/logs?id=${encodeURIComponent(`report-${input.runId}`)}` : "/logs"
+    productPath: `${input.status === "complete" ? `/logs?id=${encodeURIComponent(`report-${input.runId}`)}&` : "/logs?"}organizationId=${encodeURIComponent(input.organizationId)}`
   };
 }

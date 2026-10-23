@@ -407,8 +407,9 @@ export function createHttpLogAnalysisRepository(
       };
 
       if (typeof EventSource !== "undefined") {
-        eventSource = new EventSource(apiUrl(baseUrl, `${routeJobPath(jobId)}/events`));
+        eventSource = new EventSource(apiUrl(baseUrl, withOrganizationScope(`${routeJobPath(jobId)}/events`, options.organizationId)));
         eventSource.addEventListener("job", (event) => {
+          if (stopped) return;
           const snapshot = jobSnapshotFromDto(
             parseContractDto(logJobDtoSchema, JSON.parse(event.data), "LogJobDto")
           );

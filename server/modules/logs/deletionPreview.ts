@@ -1,7 +1,7 @@
+import { organizationId as logOrganizationId, type LogAccessContext } from "./principal";
 import { createHash } from "node:crypto";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import type { AuthContext } from "../auth/types";
 import type { LogDeletionPreview } from "../../../src/domain/logs/deletionPreview";
 import { requireLogDeletion } from "./policy";
 
@@ -52,11 +52,11 @@ const objectReferences = `
   union all select 'reload-source', id, null, overlay_source_storage_key, to_jsonb(r) from dts_reload_runs r where overlay_source_storage_key is not null
   union all select 'reload-artifact', id, null, overlay_artifact_storage_key, to_jsonb(r) from dts_reload_runs r where overlay_artifact_storage_key is not null`;
 
-export async function previewLogDeletion(db: Database, auth: AuthContext, logId: string): Promise<LogDeletionPreview> {
+export async function previewLogDeletion(db: Database, auth: LogAccessContext, logId: string): Promise<LogDeletionPreview> {
   return db.transaction(async (tx) => {
     await tx.query("set transaction isolation level repeatable read read only");
     await requireLogDeletion(tx, auth, logId);
-    return readLogDeletionPreview(tx, auth.organization.id, logId, auth.user.id);
+    return readLogDeletionPreview(tx, logOrganizationId(auth), logId, auth.user.id);
   });
 }
 

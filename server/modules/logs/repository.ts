@@ -727,7 +727,7 @@ export async function listLogs(
     : null;
   const { organizationWide, projectIds } = relatedParameterVisibilityValues(auth);
   const values: unknown[] = [
-    auth.organization.id,
+    logOrganizationId(auth),
     query.status || null,
     interval,
     Boolean(query.includeArchived),
@@ -760,7 +760,7 @@ export async function listLogs(
   );
 
   const readableKnowledgeIds = await readableKnowledgeEntryIds(db, auth, result.rows.flatMap((row) => (row.knowledge_revisions ?? []).map((revision) => revision.entryId)));
-  return Promise.all(result.rows.map(async (row) => ({ ...toLogDto(row, [], readableKnowledgeIds), canDelete: canDeleteLog(auth, row), files: fileInventory(await loadLogFiles(db, auth.organization.id, row.id)) })));
+  return Promise.all(result.rows.map(async (row) => ({ ...toLogDto(row, [], readableKnowledgeIds), canDelete: canDeleteLog(auth, row), files: fileInventory(await loadLogFiles(db, logOrganizationId(auth), row.id)) })));
 }
 
 export async function getLogDetail(db: Queryable, auth: LogPrincipal, logId: string) {
@@ -826,7 +826,7 @@ export async function listRuns(db: Queryable, auth: AuthContext, logId: string) 
       and lar.log_record_id = $2
     order by lar.created_at desc, lar.id desc
     `,
-    [auth.organization.id, logId]
+    [logOrganizationId(auth), logId]
   );
 
   const readableKnowledgeIds = await readableKnowledgeEntryIds(db, auth, result.rows.flatMap((row) => (row.knowledge_revisions ?? []).map((revision) => revision.entryId)));
@@ -1298,7 +1298,7 @@ async function setArchiveState(db: Queryable, auth: AuthContext, logId: string, 
     where organization_id = $1
       and id = $2
     `,
-    [auth.organization.id, logId, archiveState]
+    [logOrganizationId(auth), logId, archiveState]
   );
 
   return getLogDetail(db, auth, logId);
@@ -1327,7 +1327,7 @@ export async function appendFeedback(
       (select current_run_id from log_records where organization_id = $2 and id = $3)
     )
     `,
-    [input.id, auth.organization.id, input.logId, auth.user.id, input.rating, input.note ?? null]
+    [input.id, logOrganizationId(auth), input.logId, auth.user.id, input.rating, input.note ?? null]
   );
 }
 
@@ -1370,7 +1370,7 @@ export async function aggregateFeedbackInsights(
     ? query.timeWindow === "today" ? "1 day" : query.timeWindow === "7d" ? "7 days" : "30 days"
     : null;
   const { organizationWide, projectIds } = relatedParameterVisibilityValues(auth);
-  const values: unknown[] = [auth.organization.id, interval, organizationWide, projectIds];
+  const values: unknown[] = [logOrganizationId(auth), interval, organizationWide, projectIds];
 
   const result = await db.query<FeedbackInsightRow>(
     `
