@@ -4,7 +4,8 @@ import type { KnowledgeEmbeddingClient } from "../../knowledge/indexing/embeddin
 import { getPublishedKnowledgeDocument, searchKnowledge } from "../../knowledge/service";
 import { formatKnowledgePageLabel } from "../../knowledge/citations";
 import type { AgentCitation } from "../types";
-import type { AgentToolDefinition } from "../toolRegistry";
+import type { AgentToolDefinition, AgentToolExecutionContext } from "../toolRegistry";
+import { withKnowledgeInvocation } from "../../knowledge/scope";
 import { requireAgentToolMetadata } from "../toolMetadata";
 
 type KnowledgeToolOptions = {
@@ -15,8 +16,15 @@ type KnowledgeToolOptions = {
 
 const MAX_DOCUMENT_CHARS = 20_000;
 
-export function knowledgeEntryHref(entryId: string, revisionId?: string | null, page?: number | null) {
-  return `/knowledge?entryId=${encodeURIComponent(entryId)}${revisionId && page ? `&revisionId=${encodeURIComponent(revisionId)}&page=${page}` : ""}`;
+export function knowledgeEntryHref(entryId: string, revisionId?: string | null, page?: number | null, organizationId?: string) {
+  return `/knowledge?entryId=${encodeURIComponent(entryId)}${revisionId && page ? `&revisionId=${encodeURIComponent(revisionId)}&page=${page}` : ""}${organizationId ? `&organizationId=${encodeURIComponent(organizationId)}` : ""}`;
+}
+
+export function knowledgeToolAuth(context: AgentToolExecutionContext) {
+  if (!context.auth.agentInvocation) return context.auth;
+  const invocation = context.invocation ?? context.auth.agentInvocation;
+  if (invocation.initiator !== "user" && invocation.initiator !== "agent") throw new ApiError("FORBIDDEN", "Knowledge scope requires the accountable User or Agent.");
+  return withKnowledgeInvocation(context.auth, invocation);
 }
 
 /**
@@ -38,7 +46,7 @@ export function createKnowledgeTools(options: KnowledgeToolOptions): AgentToolDe
         }
         const limitRaw = typeof payload.limit === "number" ? payload.limit : 5;
         const limit = Math.min(Math.max(Math.trunc(limitRaw), 1), 10);
-        const result = await searchKnowledge(options.db, context.auth, { q: query, limit }, {
+        const result = await searchKnowledge(options.db, knowledgeToolAuth(context), { q: query, limit }, {
           embeddingClient: options.knowledgeEmbeddingClient
         });
 
@@ -48,7 +56,7 @@ export function createKnowledgeTools(options: KnowledgeToolOptions): AgentToolDe
           label: item.pageStart != null
             ? `${item.title}（${formatKnowledgePageLabel(item.pageStart, item.pageEnd ?? item.pageStart)}）`
             : item.title,
-          href: knowledgeEntryHref(item.entryId, item.revisionId, item.pageStart),
+          href: knowledgeEntryHref(item.entryId, item.revisionId, item.pageStart, context.auth.agentInvocation?.operatingOrganization?.id),
           snippet: item.excerpt || undefined
         }));
 
@@ -82,7 +90,7 @@ export function createKnowledgeTools(options: KnowledgeToolOptions): AgentToolDe
             toolName: "knowledge.getDocument"
           });
         }
-        const { entry, contentText } = await getPublishedKnowledgeDocument(options.db, context.auth, entryId);
+        const { entry, contentText } = await getPublishedKnowledgeDocument(options.db, knowledgeToolAuth(context), entryId);
         const truncated = contentText.length > MAX_DOCUMENT_CHARS;
         const content = truncated ? contentText.slice(0, MAX_DOCUMENT_CHARS) : contentText;
 
@@ -124,7 +132,7 @@ export function createKnowledgeTools(options: KnowledgeToolOptions): AgentToolDe
               type: "knowledge" as const,
               id: entry.id,
               label: entry.title,
-              href: knowledgeEntryHref(entry.id),
+              href: knowledgeEntryHref(entry.id, null, null, context.auth.agentInvocation?.operatingOrganization?.id),
               snippet: content.slice(0, 200) || undefined
             }
           ]
