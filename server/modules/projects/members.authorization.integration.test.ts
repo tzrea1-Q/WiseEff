@@ -66,6 +66,12 @@ describe("explicit project authorization cutover (real HTTP/PostgreSQL)", () => 
         }));
         const binding = source.bindings[0]!, pin = (await db.query<{ config_revision_id: string }>(
           "select config_revision_id from parameter_catalog.project_value_source_pins where binding_id=$1 and project_value_id=$2", [binding.id, binding.currentValueId])).rows[0]!;
+        for (const path of ["/api/v1/parameters", "/api/v1/parameters?projectId=edit-one"]) {
+          const visible = await api("edit-roleless", path);
+          expect(visible.status).toBe(200);
+          expect(visible.body.items).toEqual([expect.objectContaining({ id: binding.id, projectId: "edit-one" })]);
+        }
+        expect((await api("edit-roleless", "/api/v1/parameters?projectId=edit-foreign")).status).toBe(404);
         const draftPath = `/api/v2/projects/edit-one/parameter-bindings/${binding.id}/drafts`;
         expect((await api("edit-reader", "/api/v2/projects/edit-one/parameter-bindings")).status).toBe(200);
         const draftBody = { baseRevisionId: pin.config_revision_id, sourceTarget: { format: "json", sourceText: "48" }, reason: "Explicit participant contribution" };
