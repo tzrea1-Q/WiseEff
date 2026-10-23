@@ -64,7 +64,8 @@ for (const format of ["json", "dts"] as const) {
         roles: [{ roleId: "admin", projectId: null }] });
       const author = makeTestAuthContext({ userId: acceptanceCast.liuMin.userId,
         organizationId: "org-chargelab", permissions: ["parameter:view", "parameter:edit"],
-        roles: [{ roleId: "software-user", projectId: "aurora" }] });
+        roles: [{ roleId: "software-user", projectId: "aurora" }],
+        projectMemberships: [{ projectId: "aurora", roles: ["software-user"] }] });
       const reviewer = makeTestAuthContext({ userId: acceptanceCast.sunMei.userId,
         organizationId: "org-chargelab", permissions: ["parameter:view", "parameter:edit", "parameter:review"],
         roles: [{ roleId: "software-committer", projectId: "aurora" }] });
@@ -76,6 +77,8 @@ for (const format of ["json", "dts"] as const) {
         }
       });
       try {
+        await db.query(`insert into project_members(organization_id,project_id,user_id,roles)
+          values ('org-chargelab','aurora',$1,ARRAY['software-user'])`, [author.user.id]);
         if (format === "json") await installConfigurationSourceFixture(db, admin, {
           subjectId: "csub_a939_conflicts", schemaId: "wiseeff.a939.conflicts"
         });
