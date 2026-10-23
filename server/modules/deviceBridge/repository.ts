@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { ApiError } from "../../shared/http/errors";
 
 import type { Queryable } from "../../shared/database/client";
 import type {
@@ -64,15 +65,18 @@ export async function createPairingCode(
     expiresAt: Date;
   }
 ) {
-  await db.query(
+  const inserted = await db.query(
     `
     insert into device_bridge_pairing_codes (
       id, organization_id, user_id, code_hash, expires_at
     )
-    values ($1, $2, $3, $4, $5)
+    select $1, organization_id, id, $4, $5 from (
+      select id, organization_id from users where id=$3 and organization_id=$2 and is_active for share
+    ) owner
     `,
     [input.id, input.organizationId, input.userId, input.codeHash, input.expiresAt.toISOString()]
   );
+  if (inserted.rowCount === 0) throw new ApiError("FORBIDDEN", "An active member is required for device pairing.");
 }
 
 export async function consumePairingCode(
@@ -81,12 +85,20 @@ export async function consumePairingCode(
 ): Promise<ConsumedPairingCode | null> {
   const result = await db.query<{ organization_id: string; user_id: string }>(
     `
-    update device_bridge_pairing_codes
+    with owner as materialized (
+      select users.id, users.organization_id from users
+      join device_bridge_pairing_codes codes on codes.user_id=users.id and codes.organization_id=users.organization_id
+      where codes.code_hash=$1 and users.is_active
+      for share of users
+    )
+    update device_bridge_pairing_codes codes
     set consumed_at = $2
-    where code_hash = $1
+    from owner
+    where codes.user_id=owner.id and codes.organization_id=owner.organization_id
+      and code_hash = $1
       and consumed_at is null
       and expires_at > $2
-    returning organization_id, user_id
+    returning codes.organization_id, codes.user_id
     `,
     [input.codeHash, input.consumedAt.toISOString()]
   );
@@ -186,6 +198,7 @@ export async function validateBridgeToken(
       and tokens.revoked_at is null
       and tokens.expires_at > $2
       and bridges.revoked_at is null
+      and exists(select 1 from users where users.id=bridges.user_id and users.organization_id=bridges.organization_id and users.is_active)
     returning tokens.bridge_id, tokens.scopes
     `,
     [input.tokenHash, input.now.toISOString()]

@@ -45,6 +45,7 @@ const MESSAGE_LABELS: Array<{ match: RegExp; label: string | ((match: RegExpMatc
   { match: /^Username can only contain letters, numbers, dots, underscores, or hyphens\.?$/i, label: "用户名须为 3–64 个字符，仅限字母、数字、点、下划线和连字符。" },
   { match: /^Password must be at least 8 characters\.?$/i, label: "密码至少需要 8 个字符。" },
   { match: /^Session is not active\.?$/i, label: "登录状态已失效，请重新登录。" },
+  { match: /^Access was revoked; sign in again with a newly issued token\.?$/i, label: "个人访问已撤销，请重新登录获取新凭据。使用 OIDC 时需由身份系统签发新的令牌。" },
   { match: /^Token has expired\.?$/i, label: "登录状态已过期，请重新登录。" },
   { match: /^Release readiness could not load open conflicts\.?$/i, label: "发布就绪检查暂时不可用：冲突清单加载失败。" },
   { match: /^Release readiness could not load config set members\.?$/i, label: "发布就绪检查暂时不可用：配置集成员加载失败。" },

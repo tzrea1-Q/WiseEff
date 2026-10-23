@@ -40,6 +40,7 @@ import { resolveOperatingContext } from "../auth/operatingContext";
 import { getUserById } from "./repository";
 import { createPlatformOrganizationSchema, emergencyDisableAdministratorSchema, recoverOrganizationAdministratorSchema } from "../contracts/dtoSchemas/platformOrganizations";
 import { createPlatformOrganization, emergencyDisableAdministrator, getAdministratorRecovery, listPlatformOrganizations, recoverOrganizationAdministrator, requirePlatformOrganizationManager } from "./platformOrganizations";
+import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
 
 const userIdParamsSchema = z.object({
   userId: z.string().min(1)
@@ -77,9 +78,9 @@ function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Inv
 
 export function registerUserRoutes(
   router: WiseEffRouter,
-  options: { db?: Database; oidcIssuer?: string; authenticationProvider?: "local" | "oidc" | "hmac"; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
+  options: { db?: Database; oidcIssuer?: string; authenticationProvider?: "local" | "oidc" | "hmac"; bridgeConnectionPool?: Pick<BridgeConnectionPool, "disconnect">; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
 ) {
-  const mutationContext = (request: RouteRequest) => ({ requestId: request.requestId, authenticationProvider: options.authenticationProvider, oidcIssuer: options.oidcIssuer });
+  const mutationContext = (request: RouteRequest) => ({ requestId: request.requestId, authenticationProvider: options.authenticationProvider, oidcIssuer: options.oidcIssuer, bridgeConnectionPool: options.bridgeConnectionPool });
   const operatingInvocation = (db: Database, auth: AuthContext, request: RouteRequest) => {
     const query = parseWithSchema(z.object({ organizationId: z.string().trim().min(1).max(200).optional() }), request.query);
     return query.organizationId === undefined ? createUserInvocation(auth) : resolveOperatingContext(db, createUserInvocation(auth), query.organizationId);

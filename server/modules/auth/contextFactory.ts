@@ -58,6 +58,7 @@ function createUserAuthContextResolver(options: AuthContextResolverOptions): Aut
           issuer: verifiedContext.externalIdentity?.issuer,
           organizationId: verifiedContext.user.organizationId,
           subject: verifiedContext.user.id,
+          issuedAt: verifiedContext.tokenIssuedAt,
           email: verifiedContext.user.emailVerified ? verifiedContext.user.email : undefined
         });
       } catch (error) {

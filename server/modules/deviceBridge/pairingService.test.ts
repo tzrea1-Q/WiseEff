@@ -2,6 +2,10 @@ import { buildTrustedAuditEventInput, type TrustedAuditEventInput } from "../aud
 import { describe, expect, it, vi } from "vitest";
 
 import { createPairingService } from "./pairingService";
+import { createDeviceBridgeRepository } from "./repository";
+import { createEphemeralTestDatabase } from "../../testing/testDatabase";
+import { createPostgresDatabase } from "../../shared/database/client";
+import { seedCoreGraph } from "../../testing/fixtures";
 
 describe("pairingService", () => {
   it("issues a 6-digit code and rejects reuse", async () => {
@@ -102,46 +106,45 @@ describe("pairingService", () => {
   });
 
   it("writes a High-severity audit event on pair without leaking the token", async () => {
-    const repo = {
-      consumePairingCode: vi.fn().mockResolvedValue({ userId: "u-1", organizationId: "org-1" }),
-      listActiveBridgesForMachine: vi.fn().mockResolvedValue([]),
-      createBridge: vi.fn().mockResolvedValue(undefined),
-      createBridgeToken: vi.fn().mockResolvedValue(undefined)
-    };
-    const events: unknown[] = [];
-    const service = createPairingService({
-      repo: repo as never,
-      now: () => new Date("2026-06-23T00:00:00.000Z"),
-      randomCode: () => "123456",
-      issueToken: () => "wb_test_token",
-      createBridgeId: () => "br-1",
-      db: {} as never,
-      writeAuditEvent: (async (_db: unknown, input: TrustedAuditEventInput) => {
-        events.push(buildTrustedAuditEventInput(input));
-      })
-    });
+    const ephemeral = await createEphemeralTestDatabase("pair-audit"), db = createPostgresDatabase(ephemeral.url);
+    try {
+      await seedCoreGraph(db, { organization: { id: "org-1" }, users: [{ id: "u-1" }] });
+      const events: unknown[] = [];
+      const service = createPairingService({
+        repo: createDeviceBridgeRepository(db),
+        now: () => new Date("2026-06-23T00:00:00.000Z"),
+        randomCode: () => "123456",
+        issueToken: () => "wb_test_token",
+        createBridgeId: () => "br-1",
+        db,
+        writeAuditEvent: (async (_db: unknown, input: TrustedAuditEventInput) => {
+          events.push(buildTrustedAuditEventInput(input));
+        })
+      });
 
-    await service.pairWithCode({ code: "123456", machineLabel: "WIN-PC", platform: "windows", arch: "amd64" });
+      await service.issuePairingCode({ organizationId: "org-1", userId: "u-1" });
+      await service.pairWithCode({ code: "123456", machineLabel: "WIN-PC", platform: "windows", arch: "amd64" });
 
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({
-      app: "device-bridge",
-      kind: "device-bridge-pair",
-      action: "create",
-      severity: "High",
-      targetType: "device-bridge",
-      targetId: "br-1",
-      actorUserId: null,
-      actorType: "system",
-      organizationId: "org-1",
-      metadata: {
-        initiator: "system",
-        systemKind: "service",
-        systemName: "device-bridge-pairing",
-        pairingUserId: "u-1"
-      }
-    });
-    expect(JSON.stringify(events[0])).not.toContain("wb_test_token");
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        app: "device-bridge",
+        kind: "device-bridge-pair",
+        action: "create",
+        severity: "High",
+        targetType: "device-bridge",
+        targetId: "br-1",
+        actorUserId: null,
+        actorType: "system",
+        organizationId: "org-1",
+        metadata: {
+          initiator: "system",
+          systemKind: "service",
+          systemName: "device-bridge-pairing",
+          pairingUserId: "u-1"
+        }
+      });
+      expect(JSON.stringify(events[0])).not.toContain("wb_test_token");
+    } finally { await db.close(); await ephemeral.drop(); }
   });
 
   it("creates a new bridge for another user on the same machine instead of reusing the first user's bridge", async () => {

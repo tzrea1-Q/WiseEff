@@ -34,6 +34,7 @@ import {
 } from "./repository";
 import { notifyRegistrationRoleDecided, notifyUserDeactivated, notifyUserRoleChanged } from "../notifications/producers";
 import { revokeLocalUserSessions } from "../auth/localAuth";
+import { revokePersonalAccess } from "./personalAccess";
 import type {
   CreateUserInput,
   RegistrationRoleRequestListStatus,
@@ -417,7 +418,7 @@ export async function deactivateUser(
   const { auth, organizationId, invocation } = governanceScope(caller);
   requireUserManager(auth);
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     await lockAdministratorMutation(tx);
     await lockUserById(tx, { organizationId, userId });
     const current = await getUserById(tx, { organizationId, userId });
@@ -428,6 +429,7 @@ export async function deactivateUser(
     if (!user) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
+    const revokedBridgeIds = input.isActive ? [] : await revokePersonalAccess(tx, organizationId, userId);
     await auditUserMutation(asAuditTx(tx), invocation, {
       kind: "user-activation",
       action: input.isActive ? "activate" : "deactivate",
@@ -445,8 +447,10 @@ export async function deactivateUser(
       });
     }
 
-    return user;
+    return { user, revokedBridgeIds };
   });
+  for (const bridgeId of result.revokedBridgeIds) context.bridgeConnectionPool?.disconnect(bridgeId);
+  return result.user;
 }
 
 export async function deleteUser(
@@ -457,7 +461,7 @@ export async function deleteUser(
 ) {
   const { auth, organizationId, invocation } = governanceScope(caller);
   requireUserManager(auth);
-  await db.transaction(async (tx) => {
+  const revokedBridgeIds = await db.transaction(async (tx) => {
     await lockAdministratorMutation(tx);
     const lockedUserId = await lockUserById(tx, { organizationId, userId });
     if (!lockedUserId) {
@@ -474,6 +478,7 @@ export async function deleteUser(
       });
     }
     await assertAdministratorContinuity(tx, user, { isActive: false }, context);
+    const bridges = await revokePersonalAccess(tx, organizationId, userId);
 
     await auditUserMutation(asAuditTx(tx), invocation, {
       kind: "user-delete",
@@ -496,7 +501,9 @@ export async function deleteUser(
       }
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
+    return bridges;
   });
+  for (const bridgeId of revokedBridgeIds) context.bridgeConnectionPool?.disconnect(bridgeId);
 }
 
 export async function replaceUserRoles(
