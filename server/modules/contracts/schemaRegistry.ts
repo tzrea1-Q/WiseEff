@@ -3,6 +3,7 @@ import { parameterCatalogSchemaRegistry } from "./dtoSchemas/parameterCatalog";
 import { parameterDefinitionDeletionSchemaRegistry } from "./dtoSchemas/parameterDefinitionDeletion";
 import { workflowPublicationSchemaRegistry } from "./dtoSchemas/workflowPublication";
 import { platformOrganizationSchemaRegistry } from "./dtoSchemas/platformOrganizations";
+import { organizationTeamSchemaRegistry } from "./dtoSchemas/organizationTeams";
 
 export type ContractParameterRef = {
   name: string;
@@ -54,6 +55,7 @@ function retireLegacySurface(
 
 export const schemaRegistry: Record<string, ContractSchemaRef> = {
   ...platformOrganizationSchemaRegistry,
+  ...organizationTeamSchemaRegistry,
   ...workflowPublicationSchemaRegistry,
   ...parameterDefinitionDeletionSchemaRegistry,
   "auth.localConfig": {
@@ -2333,7 +2335,7 @@ for (const routeId of [
   "catalog.getPlacement", "catalog.updatePlacement", "catalog.listDriverCompatibleDiscovery",
   "catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem",
   ...Object.keys(schemaRegistry).filter((routeId) => schemaRegistry[routeId].successStatus !== 410 && (
-    routeId.startsWith("knowledge.") || routeId.startsWith("xiaoze.") || routeId.startsWith("logs.") ||
+    routeId.startsWith("organization.teams.") || routeId.startsWith("knowledge.") || routeId.startsWith("xiaoze.") || routeId.startsWith("logs.") ||
     routeId.startsWith("parameters.") || routeId.startsWith("parameters-dashboard-") ||
     routeId.startsWith("parameterFiles.") || routeId.startsWith("parameterTopology.")
   ))

@@ -3,6 +3,7 @@ import { parameterCatalogCanonicalRoutes } from "./dtoSchemas/parameterCatalog";
 import { parameterDefinitionDeletionRoutes } from "./dtoSchemas/parameterDefinitionDeletion";
 import { workflowPublicationRoutes } from "./dtoSchemas/workflowPublication";
 import { platformOrganizationRoutes } from "./dtoSchemas/platformOrganizations";
+import { organizationTeamRoutes } from "./dtoSchemas/organizationTeams";
 
 export type RouteModule =
   | "workflow-publication"
@@ -35,6 +36,7 @@ export type RouteManifestEntry = {
 
 export const routeManifest = [
   ...platformOrganizationRoutes,
+  ...organizationTeamRoutes,
   ...workflowPublicationRoutes,
   { id: "auth.localConfig", method: "GET", path: "/api/v1/auth/local-config", module: "auth", stability: "commercial-readiness" },
   { id: "auth.register", method: "POST", path: "/api/v1/auth/register", module: "auth", stability: "commercial-readiness" },
