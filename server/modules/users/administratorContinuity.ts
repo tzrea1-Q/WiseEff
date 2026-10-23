@@ -3,10 +3,12 @@ import { ApiError } from "../../shared/http/errors";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { RoleBinding } from "../auth/types";
 import type { UserGovernanceDto } from "./types";
+import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
 
 export type AdministratorMutationContext = AuditCorrelationContext & {
   authenticationProvider?: "local" | "oidc" | "hmac";
   oidcIssuer?: string;
+  bridgeConnectionPool?: Pick<BridgeConnectionPool, "disconnect">;
 };
 
 // Shared by continuity checks and directory status; $3 is provider, $4 the configured issuer.

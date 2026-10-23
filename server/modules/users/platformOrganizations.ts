@@ -12,7 +12,7 @@ import { normalizeOidcIssuer, setOidcIdentity } from "../auth/oidcIdentity";
 import { createPlatformOrganizationSchema, type platformOrganizationSchema, type recoverOrganizationAdministratorSchema } from "../contracts/dtoSchemas/platformOrganizations";
 import { getUserById, insertPasswordCredential, insertUser, listUsers, lockUserById, updateOrganizationRoles, updateUserActive } from "./repository";
 import { administratorLoginIdentitySql, assertAdministratorContinuity, hasOrganizationRole, listUsableAdministratorIds, lockAdministratorMutation, type AdministratorMutationContext } from "./administratorContinuity";
-import { revokeLocalUserSessions } from "../auth/localAuth";
+import { revokePersonalAccess } from "./personalAccess";
 
 type Organization = z.infer<typeof platformOrganizationSchema>;
 export function requirePlatformOrganizationManager(auth: AuthContext) {
@@ -83,7 +83,7 @@ export async function getAdministratorRecovery(db: Queryable, actor: UserInvocat
 
 export async function emergencyDisableAdministrator(db: Database, actor: UserInvocationContext, organizationId: string, userId: string, reason: string, context: AdministratorMutationContext & { requestId: string }) {
   requirePlatformOrganizationManager(actor.principal);
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const invocation = await resolveOperatingContext(tx, actor, organizationId);
     await lockAdministratorMutation(tx);
     await lockUserById(tx, { organizationId, userId });
@@ -92,11 +92,13 @@ export async function emergencyDisableAdministrator(db: Database, actor: UserInv
     if (!user.isActive || !hasOrganizationRole(user.roles, "admin")) throw new ApiError("CONFLICT", "Emergency disabling requires an active organization administrator.");
     await assertAdministratorContinuity(tx, user, { isActive: false }, context, true);
     await updateUserActive(tx, { organizationId, userId, isActive: false });
-    await revokeLocalUserSessions(tx, { userId, revokedAt: new Date().toISOString() });
+    const revokedBridgeIds = await revokePersonalAccess(tx, organizationId, userId);
     await writeAuditEventInTx(asAuditTx(tx), invocation, context, { app: "user-governance", kind: "organization-administrator-emergency-disable", action: "deactivate", severity: "High",
       projectId: null, targetType: "user", targetId: userId, metadata: { reason } });
-    return (await listPlatformOrganizations(tx, actor.principal, "", organizationId, context))[0];
+    return { item: (await listPlatformOrganizations(tx, actor.principal, "", organizationId, context))[0], revokedBridgeIds };
   });
+  for (const bridgeId of result.revokedBridgeIds) context.bridgeConnectionPool?.disconnect(bridgeId);
+  return result.item;
 }
 
 export async function recoverOrganizationAdministrator(db: Database, actor: UserInvocationContext, organizationId: string, input: z.infer<typeof recoverOrganizationAdministratorSchema>, configuredOidcIssuer: string | undefined, context: AdministratorMutationContext & { requestId: string }) {

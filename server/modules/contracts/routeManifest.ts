@@ -4,6 +4,7 @@ import { parameterDefinitionDeletionRoutes } from "./dtoSchemas/parameterDefinit
 import { workflowPublicationRoutes } from "./dtoSchemas/workflowPublication";
 import { platformOrganizationRoutes } from "./dtoSchemas/platformOrganizations";
 import { organizationInvitationRoutes } from "./dtoSchemas/organizationInvitations";
+import { organizationTeamRoutes } from "./dtoSchemas/organizationTeams";
 
 export type RouteModule =
   | "workflow-publication"
@@ -37,6 +38,7 @@ export type RouteManifestEntry = {
 export const routeManifest = [
   ...organizationInvitationRoutes,
   ...platformOrganizationRoutes,
+  ...organizationTeamRoutes,
   ...workflowPublicationRoutes,
   { id: "auth.localConfig", method: "GET", path: "/api/v1/auth/local-config", module: "auth", stability: "commercial-readiness" },
   { id: "auth.register", method: "POST", path: "/api/v1/auth/register", module: "auth", stability: "commercial-readiness" },
@@ -143,6 +145,7 @@ export const routeManifest = [
     module: "users",
     stability: "commercial-readiness"
   },
+  { id: "users.getProjectMembers", method: "GET", path: "/api/v1/projects/:projectId/members", module: "users", stability: "commercial-readiness" },
   {
     id: "users.replaceProjectWorkflowRoleBindings",
     method: "PUT",

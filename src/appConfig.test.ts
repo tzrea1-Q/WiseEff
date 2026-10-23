@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { getPageByPath, getXiaozeContextSummary, navigationItems, utilityItems } from "./appConfig";
 
 describe("WiseEff prototype configuration", () => {
+  it("describes the project participation route with project-specific guidance", () => {
+    expect(getPageByPath("/organization/projects")).toMatchObject({ path: "/organization/projects", subtitle: "查看项目参与名单与编辑角色" });
+  });
   it("keeps the skill workspace deep link under the log-admin page gate", () => {
     expect(getPageByPath("/log-admin/skills/skill-charging")).toMatchObject({ key: "log-admin", path: "/log-admin/skills/skill-charging", title: "分析技能工作区" });
     expect(getPageByPath("/log-admin/skills/skill-charging/extra").path).toBe("/");

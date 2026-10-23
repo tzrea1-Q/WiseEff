@@ -32,6 +32,8 @@ Rules:
 - Audit: audit event listing and detail. Listing supports server-side filters (`projectId`, `app`/`apps`, `kind`, `severity`, `actorUserId`, `targetType`, `targetId`, `traceId`, cursor paging) plus `q` (case-insensitive search over action, kind, target id, and actor name) and `from`/`to` timestamps.
 - Operations: liveness, readiness, metrics, pilot/release readiness.
 
+`GET /api/v1/projects/:projectId/members?organizationId=...` requires an active Organization or platform administrator with `users:manage`. It returns `{ projectId, members: [{ userId, name, username, title, isActive, roles }] }` for the authorized operating Organization; absent or out-of-scope projects return `404`, unauthorized callers `403`. The read-only participation records in `project_members` are separate from workflow duties in `user_role_bindings`. Migration `0266` expands the four existing business edit roles over matching existing projects, includes disabled accounts without activating them, and preserves existing role bindings and authorization. There is no participation mutation endpoint in this compatibility slice.
+
 `POST /api/v1/agent/xiaoze/suggest` validates `{ context?: { projectId?, projectName?, pageKey?, path? } }` and returns `{ suggestions: [{ id, tone, headline, meta?, citations }] }`; malformed input is `400 VALIDATION_FAILED`, while a drifting successful response fails closed in the frontend. Xiaoze's five WiseEff CUSTOM frame families have concrete Zod payload/envelope schemas tested against the existing `xiaozeTurnStream` reducer output. This does not wrap or replace `@ag-ui/client`, and the generic AG-UI SSE run response remains outside JSON-response OpenAPI modeling.
 
 ## Workflow publication

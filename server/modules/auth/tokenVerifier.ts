@@ -3,7 +3,7 @@ import { ApiError } from "../../shared/http/errors";
 import type { AuthContext, BackendPermission, BackendRoleId, RoleBinding } from "./types";
 
 export type TokenVerifier = {
-  verify(authorization: string | string[] | undefined): Promise<AuthContext & { externalIdentity?: { provider: "oidc"; issuer: string } }>;
+  verify(authorization: string | string[] | undefined): Promise<AuthContext & { tokenIssuedAt?: number; externalIdentity?: { provider: "oidc"; issuer: string } }>;
 };
 
 export type TokenVerifierOptions = {
@@ -87,6 +87,8 @@ function validateLifetime(claims: Record<string, unknown>, now: Date) {
   if (nbf !== undefined && nbf > nowSeconds) {
     throw new ApiError("UNAUTHENTICATED", "Token is not valid yet.");
   }
+  const issuedAt = parseNumericDateClaim(claims, "iat");
+  if (issuedAt !== undefined && issuedAt > nowSeconds) throw new ApiError("UNAUTHENTICATED", "Token is not valid yet.");
 }
 
 function parseRoles(value: unknown): RoleBinding[] {
@@ -158,6 +160,7 @@ export function createTokenVerifier(options: TokenVerifierOptions): TokenVerifie
       validateLifetime(claims, options.now?.() ?? new Date());
 
       return {
+        tokenIssuedAt: parseNumericDateClaim(claims, "iat"),
         user: {
           id: subject,
           organizationId,

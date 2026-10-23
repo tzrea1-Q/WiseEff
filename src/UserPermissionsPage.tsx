@@ -498,6 +498,7 @@ export function UserPermissionsPage({
           userId: pendingGovernance.user.id,
           isActive: pendingGovernance.nextActive
         });
+        dispatch({ type: "ADD_NOTIFICATION", message: pendingGovernance.nextActive ? `已启用用户 ${pendingGovernance.user.name}，请重新登录；原会话和设备配对不会恢复` : `已停用用户 ${pendingGovernance.user.name}，个人会话和设备配对已撤销，业务交接可随后完成` });
       } else {
         await userGovernanceActions?.deleteUser(pendingGovernance.user.id);
         if (self && onCurrentAccountChanged) {
@@ -900,18 +901,18 @@ export function UserPermissionsPage({
             pendingGovernance.kind === "delete" ? (
               <><p>
                 将永久删除 <strong>{pendingGovernance.user.name}</strong>（
-                {userAccountIdentifier(pendingGovernance.user)}）。账号的角色、凭据、会话和临时数据将一并清除；业务与审计历史记录会保留，
-                历史记录中的用户关联会解除。此操作不可恢复。
+                {userAccountIdentifier(pendingGovernance.user)}）。账号的角色、凭据、会话和临时数据将一并清除，个人设备配对将撤销；业务与审计历史记录会保留，
+                既有历史署名不会改成接任者。此操作不可恢复。
               </p>{pendingGovernance.user.id === state.currentUserId ? <p>操作成功后将退出当前账号。服务端会检查是否保留有效管理员。</p> : null}</>
             ) : pendingGovernance.nextActive ? (
               <p>
                 将启用 <strong>{pendingGovernance.user.name}</strong>（
-                {userAccountIdentifier(pendingGovernance.user)}），该账号将恢复登录与操作权限。
+                {userAccountIdentifier(pendingGovernance.user)}），该账号可重新登录。原有会话和设备配对不会恢复，需要重新登录和配对。
               </p>
             ) : (
               <><p>
                 将停用 <strong>{pendingGovernance.user.name}</strong>（
-                {userAccountIdentifier(pendingGovernance.user)}），停用后该账号无法登录平台。
+                {userAccountIdentifier(pendingGovernance.user)}）。将立即撤销个人会话、访问凭据和设备配对；账号与业务资料保留，交接可随后完成。组织集成凭据不受影响。
               </p>{pendingGovernance.user.id === state.currentUserId ? <p>操作成功后将退出当前账号。服务端会检查是否保留有效管理员。</p> : null}</>
             )
           ) : null

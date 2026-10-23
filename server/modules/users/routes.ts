@@ -11,6 +11,7 @@ import {
   deleteUser,
   getHomeOrganization,
   getProjectRoleBindings,
+  getGovernedProjectMembers,
   listGovernedUsers,
   listGovernedProjectCandidates,
   listRegistrationRoleRequests,
@@ -40,6 +41,7 @@ import { resolveOperatingContext } from "../auth/operatingContext";
 import { getUserById } from "./repository";
 import { createPlatformOrganizationSchema, emergencyDisableAdministratorSchema, recoverOrganizationAdministratorSchema } from "../contracts/dtoSchemas/platformOrganizations";
 import { createPlatformOrganization, emergencyDisableAdministrator, getAdministratorRecovery, listPlatformOrganizations, recoverOrganizationAdministrator, requirePlatformOrganizationManager } from "./platformOrganizations";
+import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
 import { listOrganizationTeams, mutateOrganizationTeam, teamMembersSchema, teamNameSchema } from "./teams";
 import { acceptOrganizationInvitation, invitationAcceptSchema, invitationInputSchema, invitationTokenSchema, issueOrganizationInvitation, listOrganizationInvitations, readOrganizationInvitation, revokeOrganizationInvitation } from "./invitations";
 import { authAttemptKey, createAuthAttemptLimiter } from "../auth/authAttemptLimiter";
@@ -80,9 +82,9 @@ function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Inv
 
 export function registerUserRoutes(
   router: WiseEffRouter,
-  options: { db?: Database; localInvitationsEnabled?: boolean; oidcIssuer?: string; authenticationProvider?: "local" | "oidc" | "hmac"; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
+  options: { db?: Database; localInvitationsEnabled?: boolean; oidcIssuer?: string; authenticationProvider?: "local" | "oidc" | "hmac"; bridgeConnectionPool?: Pick<BridgeConnectionPool, "disconnect">; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
 ) {
-  const mutationContext = (request: RouteRequest) => ({ requestId: request.requestId, authenticationProvider: options.authenticationProvider, oidcIssuer: options.oidcIssuer });
+  const mutationContext = (request: RouteRequest) => ({ requestId: request.requestId, authenticationProvider: options.authenticationProvider, oidcIssuer: options.oidcIssuer, bridgeConnectionPool: options.bridgeConnectionPool });
   const operatingInvocation = (db: Database, auth: AuthContext, request: RouteRequest) => {
     const query = parseWithSchema(z.object({ organizationId: z.string().trim().min(1).max(200).optional() }), request.query);
     return query.organizationId === undefined ? createUserInvocation(auth) : resolveOperatingContext(db, createUserInvocation(auth), query.organizationId);
@@ -202,6 +204,12 @@ export function registerUserRoutes(
     const items = await listGovernedUsers(db, await operatingInvocation(db, auth, request));
 
     return { status: 200, body: { items } };
+  });
+
+  router.get("/api/v1/projects/:projectId/members", async (request) => {
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    const { projectId } = parseWithSchema(projectIdParamsSchema, request.params);
+    return { status: 200, body: await getGovernedProjectMembers(db, await operatingInvocation(db, auth, request), projectId) };
   });
 
   router.post("/api/v1/users", async (request) => {
