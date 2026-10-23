@@ -9,6 +9,8 @@ import { updateCurrentUserProfile } from "./profile";
 import { createUserInvocation } from "./trustedInvocation";
 import { enterOperatingContext } from "./operatingContext";
 import { enterOperatingContextBodySchema } from "../contracts/dtoSchemas/organizationScope";
+import { updateExperienceRegistrationSchema } from "../contracts/dtoSchemas/platformOrganizations";
+import { requirePlatformOrganizationManager } from "../users/platformOrganizations";
 
 const platformRoleIdSchema = z.enum([
   "guest",
@@ -130,6 +132,19 @@ export function registerAuthRoutes(
         evaluationOrganizationName: null
       } satisfies AuthPublicConfig
     };
+  });
+
+  router.get("/api/v1/platform/experience-registration", async (request) => {
+    requirePlatformOrganizationManager(await options.getCurrentAuthContext(request));
+    return { status: 200, body: { item: options.localAuthService ? await options.localAuthService.getRegistrationSettings()
+      : { enabled: false, organizationId: null, organizationName: null, source: "default", available: false } } };
+  });
+  router.patch("/api/v1/platform/experience-registration", async (request) => {
+    const actor = await options.getCurrentAuthContext(request);
+    requirePlatformOrganizationManager(actor);
+    if (!options.localAuthService) throw new ApiError("FORBIDDEN", "当前认证方式不支持本地密码公开注册。");
+    const input = parseWithSchema(updateExperienceRegistrationSchema, request.body, "Invalid experience registration settings.");
+    return { status: 200, body: { item: await options.localAuthService.updateRegistrationSettings(createUserInvocation(actor), input, request.requestId) } };
   });
 
   router.post("/api/v1/auth/register", async (request) => {

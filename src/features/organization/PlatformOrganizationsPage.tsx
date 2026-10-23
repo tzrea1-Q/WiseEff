@@ -13,6 +13,7 @@ import type { PlatformOrganization, PlatformOrganizationsClient } from "@/infras
 import { presentError } from "@/infrastructure/http/presentError";
 import "./platform-organizations.css";
 import { OrganizationAdministratorControls } from "./OrganizationAdministratorControls";
+import { ExperienceRegistrationSettings } from "./ExperienceRegistrationSettings";
 
 export function PlatformOrganizationsPage({ client, authClient, onNavigate }: { client: PlatformOrganizationsClient; authClient: WiseEffAuthClient; onNavigate: (path: string) => void }) {
   const [items, setItems] = useState<PlatformOrganization[]>([]), [query, setQuery] = useState("");
@@ -21,6 +22,7 @@ export function PlatformOrganizationsPage({ client, authClient, onNavigate }: { 
   const [creating, setCreating] = useState(false), [saving, setSaving] = useState(false), [saveError, setSaveError] = useState("");
   const [selected, setSelected] = useState<PlatformOrganization | null>(null), [notice, setNotice] = useState("");
   const [administratorPending, setAdministratorPending] = useState(false);
+  const [registrationSettingsOpen, setRegistrationSettingsOpen] = useState(false);
   const [name, setName] = useState(""), [administratorName, setAdministratorName] = useState(""), [username, setUsername] = useState(""), [password, setPassword] = useState(""), [subject, setSubject] = useState("");
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export function PlatformOrganizationsPage({ client, authClient, onNavigate }: { 
 
   return <>
     <AdminListPage label="组织目录" headerContent={<span>共 {items.length} 个组织</span>}
-      headerActions={<><Button variant="ghost" onClick={() => onNavigate("/organization")}>所属组织</Button><Button disabled={loading || Boolean(error) || !authentication} onClick={() => {
+      headerActions={<><Button variant="ghost" onClick={() => onNavigate("/organization")}>所属组织</Button><Button variant="outline" disabled={!authentication} onClick={() => setRegistrationSettingsOpen(true)}>体验注册设置</Button><Button disabled={loading || Boolean(error) || !authentication} onClick={() => {
         setName(""); setAdministratorName(""); setUsername(""); setPassword(""); setSubject(""); setSaveError(""); setCreating(true);
       }}>创建组织</Button></>}
       filterBar={<SearchField value={query} onValueChange={setQuery} ariaLabel="搜索组织" placeholder="搜索组织名称或编号" loading={loading} maxLength={200} />}
@@ -66,6 +68,7 @@ export function PlatformOrganizationsPage({ client, authClient, onNavigate }: { 
         { key: "createdAt", header: "创建时间", render: (row) => formatAbsolute(row.createdAt) }
       ] }} rowActions={(row) => ({ label: `${row.name}操作`, items: [], primaryAction: { id: "view", label: "查看", onSelect: () => { setSelected(row); setNotice(""); } } })}
       emptyState={{ title: query ? "未找到匹配的组织" : "暂无组织", message: query ? "调整名称或编号后重试。" : "创建组织并指定初始管理员。" }} />
+    {registrationSettingsOpen ? <ExperienceRegistrationSettings client={client} local={authentication?.provider === "local"} onClose={() => setRegistrationSettingsOpen(false)} /> : null}
     <ModalDialog open={creating} onDismiss={saving ? undefined : () => { setCreating(false); setPassword(""); }} className="platform-organizations__dialog modal-card--sm">
       {({ titleId }) => <form className="modal-form-contents" onSubmit={(event) => void submit(event)} aria-busy={saving}>
         <h3 id={titleId}>创建组织</h3>

@@ -4,11 +4,11 @@
 
 ## Who can do this
 
-New users can register only when the deployment enables local self-registration. Guests, hardware users, and software users can sign in immediately after registering; hardware/software committer requests need Admin approval. Once signed in to a local account, you can change your own password. Organization Admins (`admin`) and Platform Admins (`platform-admin`) with `users:manage` can approve requests and reset members' local passwords in their home Organization. Neither Admin role is available through self-registration.
+Public local registration defaults closed. Platform super administrators can open Experience registration settings in the Organization directory, select one experience Organization and enable its entry. Formal Organizations use invitation links or administrator-created accounts. Closing the entry preserves existing members and pending requests. Guests, hardware users, and software users can sign in immediately after registering; hardware/software committer requests need Admin approval. Once signed in to a local account, you can change your own password. Organization Admins (`admin`) and Platform Admins (`platform-admin`) with `users:manage` can approve requests and reset members' local passwords in the Organization they manage. Neither Admin role is available through self-registration.
 
 ## Register a local account
 
-1. Open a protected workflow such as `/parameter-home`, or enter it from the app homepage at `/`. In API mode, visitors who have not signed in see Sign in; select Register. If that tab is absent, ask your administrator for an account.
+1. Open a protected workflow such as `/parameter-home`, or enter it from the app homepage at `/`. In API mode, visitors who have not signed in see Sign in; select Register and check the displayed experience Organization. If that tab is absent, ask your administrator for an invitation link or account.
 2. Enter your name, username, role, password, and password confirmation. Usernames are 3–64 characters using letters, numbers, dots, underscores, or hyphens; passwords must contain at least eight characters. Follow the form's validation messages.
 3. Choose guest (`guest`), hardware user (`hardware-user`), software user (`software-user`), hardware committer (`hardware-committer`), or software committer (`software-committer`). The role selector uses English role names; the hints explain immediate access or required approval.
 4. Submit. Registering as a guest, hardware user, or software user signs you in; a Committer request shows the pending-approval result.

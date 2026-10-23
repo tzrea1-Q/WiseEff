@@ -18,8 +18,9 @@ const rawEnvSchema = z.object({
   AUTH_OIDC_JWKS_URI: z.string().optional(),
   AUTH_LOCAL_SELF_REGISTER: z
     .enum(["true", "false"])
-    .default("true")
-    .transform((value) => value === "true"),
+    .optional()
+    .transform((value) => value === undefined ? undefined : value === "true"),
+  AUTH_LOCAL_REGISTRATION_ORGANIZATION_ID: z.string().trim().min(1).optional(),
   AUTH_LOCAL_AUTH_MAX_ATTEMPTS: z.coerce.number().int().positive().default(10),
   AUTH_LOCAL_AUTH_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   DATABASE_URL: z.string().optional(),

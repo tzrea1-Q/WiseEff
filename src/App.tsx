@@ -1779,7 +1779,7 @@ function ApiAuthPage({
         if (!cancelled) {
           setLocalConfig({
             provider: "local",
-            selfRegisterEnabled: Boolean(authClient.register),
+            selfRegisterEnabled: false,
             hasLocalAdmin: true,
             evaluationOrganizationName: null
           });
@@ -1876,12 +1876,14 @@ function ApiAuthPage({
           </div>
         ) : null}
 
+        {!canSelfRegister && localConfig ? <p className="auth-help">加入组织请联系管理员获取邀请链接或创建账号。</p> : null}
+
         {mode === "register" ? (
           <p className="auth-help">
             {`${
               localConfig?.evaluationOrganizationName
-                ? `新账号将加入评估组织「${localConfig.evaluationOrganizationName}」。`
-                : "新账号将加入评估组织。"
+                ? `新账号将加入体验组织「${localConfig.evaluationOrganizationName}」。`
+                : "新账号将加入指定体验组织。"
             } 用户名须为 3–64 个字符，仅限字母、数字、点、下划线和连字符。`}
           </p>
         ) : null}
