@@ -15,6 +15,7 @@ type Props = {
   state: PrototypeState;
   actions?: UserGovernanceActions;
   roleEditor: ReactNode;
+  teamMembership?: ReactNode;
   roleLabel: (roleId: User["roleId"]) => string;
   onUpdated: (user: User) => void;
   onClose: () => void;
@@ -23,7 +24,7 @@ type Props = {
   reviewRolesClient?: ProjectReviewRolesPanelProps["userGovernanceClient"];
 };
 
-export function MemberDetailsDialog({ user, state, actions, roleEditor, roleLabel, onUpdated, onClose, oidcIssuer, projects = state.configDraft.projects, reviewRolesClient }: Props) {
+export function MemberDetailsDialog({ user, state, actions, roleEditor, teamMembership, roleLabel, onUpdated, onClose, oidcIssuer, projects = state.configDraft.projects, reviewRolesClient }: Props) {
   const [name, setName] = useState(user.name);
   const [title, setTitle] = useState(user.title);
   const [pending, setPending] = useState(false);
@@ -80,6 +81,7 @@ export function MemberDetailsDialog({ user, state, actions, roleEditor, roleLabe
               </div>
             </SettingsFormPage>
             {oidcIssuer ? <MemberOidcIdentityPanel user={user} issuer={oidcIssuer} actions={actions} onUpdated={onUpdated} disabledReason={identityDisabledReason} /> : null}
+            {teamMembership}
             <section className="member-details__section" aria-label="组织角色与权限"><h3>组织角色</h3>{roleEditor}</section>
             <section className="member-details__section" aria-label="项目职责"><h3>项目职责</h3>
               <p className="member-details__hint">项目职责独立于组织角色，调整一个项目不会修改其他项目的授权。</p>

@@ -54,6 +54,8 @@ export type OrganizationRecordDto = {
   name: string;
   createdAt: string;
 };
+export type OrganizationTeamDto = { id: string; organizationId: string; name: string; memberIds: string[] };
+export type OrganizationTeamsClient = Pick<ReturnType<typeof createUserGovernanceClient>, "listTeams" | "createTeam" | "renameTeam" | "replaceTeamMembers" | "deleteTeam" | "listUsers">;
 
 export type CreateGovernedUserInput = {
   name: string;
@@ -125,6 +127,21 @@ export function createUserGovernanceClient(
 ) {
   const scoped = (path: string) => withOrganizationScope(path, organizationId);
   return {
+    async listTeams() {
+      return (await apiClient.get<ItemsEnvelope<OrganizationTeamDto>>(scoped("/api/v1/organization/teams"))).items;
+    },
+    async createTeam(name: string) {
+      return (await apiClient.post<ItemEnvelope<OrganizationTeamDto>>(scoped("/api/v1/organization/teams"), { name })).item;
+    },
+    async renameTeam(id: string, name: string) {
+      return (await apiClient.patch<ItemEnvelope<OrganizationTeamDto>>(scoped(`/api/v1/organization/teams/${encodeURIComponent(id)}`), { name })).item;
+    },
+    async replaceTeamMembers(id: string, userIds: string[]) {
+      return (await apiClient.put<ItemEnvelope<OrganizationTeamDto>>(scoped(`/api/v1/organization/teams/${encodeURIComponent(id)}/members`), { userIds })).item;
+    },
+    async deleteTeam(id: string) {
+      await apiClient.delete<null>(scoped(`/api/v1/organization/teams/${encodeURIComponent(id)}`));
+    },
     enterOperatingContext: () => apiClient.post<{ actor: AuthContextDto; organization: { id: string; name: string } }>("/api/v1/organization/operating-scope", { organizationId }),
     async listProjectCandidates() {
       return (await apiClient.get<ItemsEnvelope<{ id: string; name: string }>>(scoped("/api/v1/organization/project-candidates"))).items;

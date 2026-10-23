@@ -41,6 +41,7 @@ import { getUserById } from "./repository";
 import { createPlatformOrganizationSchema, emergencyDisableAdministratorSchema, recoverOrganizationAdministratorSchema } from "../contracts/dtoSchemas/platformOrganizations";
 import { createPlatformOrganization, emergencyDisableAdministrator, getAdministratorRecovery, listPlatformOrganizations, recoverOrganizationAdministrator, requirePlatformOrganizationManager } from "./platformOrganizations";
 import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
+import { listOrganizationTeams, mutateOrganizationTeam, teamMembersSchema, teamNameSchema } from "./teams";
 
 const userIdParamsSchema = z.object({
   userId: z.string().min(1)
@@ -129,6 +130,28 @@ export function registerUserRoutes(
   router.get("/api/v1/organization/project-candidates", async (request) => {
     const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
     return { status: 200, body: { items: await listGovernedProjectCandidates(db, await operatingInvocation(db, auth, request)) } };
+  });
+
+  router.get("/api/v1/organization/teams", async (request) => {
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    return { status: 200, body: { items: await listOrganizationTeams(db, await operatingInvocation(db, auth, request)) } };
+  });
+  router.post("/api/v1/organization/teams", async (request) => {
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request), body = parseWithSchema(teamNameSchema, request.body);
+    return { status: 201, body: { item: await mutateOrganizationTeam(db, await operatingInvocation(db, auth, request), request.requestId, { action: "create", ...body }) } };
+  });
+  router.patch("/api/v1/organization/teams/:teamId", async (request) => {
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request), body = parseWithSchema(teamNameSchema, request.body);
+    return { status: 200, body: { item: await mutateOrganizationTeam(db, await operatingInvocation(db, auth, request), request.requestId, { action: "rename", id: request.params.teamId, ...body }) } };
+  });
+  router.put("/api/v1/organization/teams/:teamId/members", async (request) => {
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request), body = parseWithSchema(teamMembersSchema, request.body);
+    return { status: 200, body: { item: await mutateOrganizationTeam(db, await operatingInvocation(db, auth, request), request.requestId, { action: "replace-members", id: request.params.teamId, ...body }) } };
+  });
+  router.delete("/api/v1/organization/teams/:teamId", async (request) => {
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    await mutateOrganizationTeam(db, await operatingInvocation(db, auth, request), request.requestId, { action: "delete", id: request.params.teamId });
+    return { status: 204, body: null };
   });
 
   router.patch("/api/v1/organization", async (request) => {
