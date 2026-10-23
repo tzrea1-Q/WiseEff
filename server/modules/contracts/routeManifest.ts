@@ -3,6 +3,7 @@ import { parameterCatalogCanonicalRoutes } from "./dtoSchemas/parameterCatalog";
 import { parameterDefinitionDeletionRoutes } from "./dtoSchemas/parameterDefinitionDeletion";
 import { workflowPublicationRoutes } from "./dtoSchemas/workflowPublication";
 import { platformOrganizationRoutes } from "./dtoSchemas/platformOrganizations";
+import { organizationInvitationRoutes } from "./dtoSchemas/organizationInvitations";
 import { organizationTeamRoutes } from "./dtoSchemas/organizationTeams";
 
 export type RouteModule =
@@ -35,6 +36,7 @@ export type RouteManifestEntry = {
 };
 
 export const routeManifest = [
+  ...organizationInvitationRoutes,
   ...platformOrganizationRoutes,
   ...organizationTeamRoutes,
   ...workflowPublicationRoutes,

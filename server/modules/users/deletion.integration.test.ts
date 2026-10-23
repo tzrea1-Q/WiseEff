@@ -21,6 +21,7 @@ const accountOwnedReferences = new Set([
   "debug_device_leases.lease_owner_user_id",
   "local_registration_role_requests.user_id",
   "organization_team_members.user_id,organization_id",
+  "project_members.user_id,organization_id",
   "parameter_drafts.user_id",
   "user_notifications.recipient_user_id",
   "user_password_credentials.user_id",
