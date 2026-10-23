@@ -1,4 +1,5 @@
 import type { RouteManifestEntry } from "./routeManifest";
+import { accountTransferSchemaRegistry } from "./dtoSchemas/accountTransfer";
 import { parameterCatalogSchemaRegistry } from "./dtoSchemas/parameterCatalog";
 import { parameterDefinitionDeletionSchemaRegistry } from "./dtoSchemas/parameterDefinitionDeletion";
 import { workflowPublicationSchemaRegistry } from "./dtoSchemas/workflowPublication";
@@ -57,6 +58,7 @@ function retireLegacySurface(
 }
 
 export const schemaRegistry: Record<string, ContractSchemaRef> = {
+  ...accountTransferSchemaRegistry,
   ...assetHandoverSchemaRegistry,
   ...platformOrganizationSchemaRegistry,
   ...organizationTeamSchemaRegistry,

@@ -492,6 +492,11 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
       }
 
       return db.transaction(async (tx) => {
+        await tx.query("select id from users where id=$1 for no key update", [user.id]);
+        const current = await findUserForLogin(tx, username);
+        if (!current || current.id !== user.id || !current.is_active || current.organization_id !== user.organization_id || current.password_hash !== user.password_hash) {
+          throw new ApiError("UNAUTHENTICATED", "Account access changed during login; sign in again.");
+        }
         await tx.query("update users set last_active_at = $3 where organization_id = $1 and id = $2", [
           user.organization_id,
           user.id,
@@ -526,7 +531,9 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
         throw new ApiError("UNAUTHENTICATED", "Session is not active.");
       }
       await db.query("update auth_sessions set last_used_at = $2 where id = $1", [session.id, now().toISOString()]);
-      return getAuthContext(db, session.user_id);
+      const auth = await getAuthContext(db, session.user_id);
+      if (auth.organization.id !== session.organization_id) throw new ApiError("UNAUTHENTICATED", "Session belongs to a former organization; sign in again.");
+      return auth;
     },
 
     async logout(authorization: string | string[] | undefined, auth: AuthContext, context: { requestId: string }) {

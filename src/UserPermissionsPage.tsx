@@ -16,6 +16,8 @@ import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MemberDetailsDialog } from "@/components/admin/MemberDetailsDialog";
+import { AccountTransferDialog } from "@/features/organization/AccountTransferDialog";
+import type { AccountTransferClient } from "@/infrastructure/http/accountTransferClient";
 import { MemberOrganizationRolesPanel } from "@/components/admin/MemberOrganizationRolesPanel";
 import { SettingsLeaveGuard } from "@/components/layout/SettingsFormPage";
 import { ColumnFilter } from "@/components/ColumnFilter";
@@ -45,6 +47,7 @@ export type UserPermissionsPageProps = {
   search: string;
   userGovernanceActions?: UserGovernanceActions;
   teamActions?: OrganizationTeamsClient;
+  accountTransferClient?: AccountTransferClient;
   /** Directory state belongs to this explicit organization, never to the shell identity. */
   directoryScope?: string;
   projectCandidates?: Array<{ id: string; name: string }>;
@@ -215,6 +218,7 @@ export function UserPermissionsPage({
   search,
   userGovernanceActions,
   teamActions,
+  accountTransferClient,
   directoryScope,
   projectCandidates,
   reviewRolesClient,
@@ -224,6 +228,8 @@ export function UserPermissionsPage({
   onCurrentAccountChanged
 }: UserPermissionsPageProps) {
   const [scopedUsers, setScopedUsers] = useState<User[]>([]);
+  const [transferringUser, setTransferringUser] = useState<User | null>(null);
+  const [transferMessage, setTransferMessage] = useState("");
   const users = directoryScope ? scopedUsers : state.users;
   const projects = projectCandidates ?? state.configDraft.projects;
   // Governed rows hydrate when the page mounts (the governance client only
@@ -757,6 +763,7 @@ export function UserPermissionsPage({
                   label: `${user.name} 操作`,
                   primaryAction: { id: "details", label: "查看", ariaLabel: `查看 ${user.name} 的成员资料`, onSelect: () => setMemberId(user.id) },
                   items: [
+                    ...(accountTransferClient ? [{ id: "transfer", label: "调动组织", ariaLabel: `调动 ${user.name} 到其他组织`, onSelect: () => { setTransferMessage(""); setTransferringUser(user); } }] : []),
                     ...(authentication.provider !== "oidc" && userGovernanceActions?.resetUserPassword ? [{ id: "password", label: "重置密码", ariaLabel: `重置 ${user.name} 的密码`, onSelect: () => openResetPassword(user) }] : []),
                     { id: "active", label: user.isActive ? "停用" : "启用", disabled: locked,
                       description: locked ? "只有平台超级管理员可以停用平台超级管理员。" : undefined,
@@ -852,6 +859,12 @@ export function UserPermissionsPage({
           aria-labelledby={`user-permissions-workspace-${inactiveWorkspace}`} />
       ) : null}
 
+      {transferMessage ? <p role="status">{transferMessage}</p> : null}
+      {transferringUser && accountTransferClient ? <AccountTransferDialog user={transferringUser} client={accountTransferClient} onClose={() => setTransferringUser(null)} onTransferred={async () => {
+        const self = transferringUser.id === state.currentUserId;
+        setTransferMessage(`${transferringUser.name} 已调动，源组织业务可在业务交接中继续处理。`); setTransferringUser(null); setDirectoryReloadToken(value => value + 1);
+        if (self) await onCurrentAccountChanged?.(true);
+      }} /> : null}
       {selectedMember ? <MemberDetailsDialog key={selectedMember.id} user={selectedMember} state={state} actions={userGovernanceActions} projects={projects} reviewRolesClient={reviewRolesClient}
         teamMembership={teamActions ? <section className="member-details__section" aria-label="团队归属"><h3>团队</h3><p>{teamError || (teams ? teamNames(selectedMember.id) : "正在加载团队归属")}</p></section> : undefined}
         oidcIssuer={authentication.provider === "oidc" ? authentication.oidcIssuer : undefined}
