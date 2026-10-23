@@ -255,6 +255,21 @@ less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
 
 `recover-candidate` 比 `resume` 更窄：只接受 migration 后、结果为 `recovery-required`、失败阶段属于候选收尾门禁、且 migration 前恢复点已验证的 run。它要求与 run id 绑定的 token，重新隔离 proxy 和 queue/worker，校验备份 manifest 与本地候选镜像，切换到记录的目标 checkout，再严格按 worker、queue、proxy、公网探测、最终身份校验的顺序恢复。它不会恢复 PostgreSQL、对象存储或 Redis 数据，不会修改 `.env` 或 named volume。任一门禁失败都会返回 `70`、重新进入 `recovery-required` 并保持流量隔离。
 
+### 升级成功后的发布冻结
+
+升级完成与发布可用是两项独立事实。控制器只解除自己拥有的冻结。来自此前失败升级或操作员的冻结会保留，即使新 run 已经 `completed`。
+
+完成输出和 `status --json` 增加 `publicationFreezeCompletion`：`cleared`、`retained`、`not-frozen`、`unknown` 或 `not-managed`。该字段是完成时的记录，不是实时状态探测。`retained` 和 `unknown` 会保留非空 `nextAction` 并打印警告。run 状态中的 `publicationFreezeOwned` 记录本次升级是否拥有冻结；旧 journal 的字段可能为空。
+
+执行 `./scripts/collect-catalog-publication-status.sh` 并检查相关升级 journal。拥有冻结的操作员确认维护已经完成后，通过专用 manager 身份解冻，并记录真实操作员 ID：
+
+```bash
+./scripts/compose --env-file .env run --rm --no-deps publication-manager \
+  npx tsx scripts/catalog-publication-ops.ts freeze clear --actor <operator-id>
+```
+
+不要自动清除所有继承的冻结。LOGIN 与策略边界参见 [Catalog 发布操作手册](catalog-publication.zh-CN.md)。
+
 ### 宿主机锁状态与恢复
 
 系统有 `flock` 时，普通 `.operation.lock` 文件会有意保留在磁盘上；文件存在不代表仍被占用。用下面的命令查看内核/fallback 锁状态和持锁者记录：
