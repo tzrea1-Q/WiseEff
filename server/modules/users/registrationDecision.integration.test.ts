@@ -181,6 +181,7 @@ it("does not overwrite a manual role change committed after the request was firs
 it("lets a later manual deactivation win after a decision and leaves the original decision snapshot intact", async () => {
   const h = await register("later-deactivation");
   const client = new pg.Client({ connectionString: database.url }); await client.connect();
+  const decisionPid = (await client.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0].pid;
   let release!: () => void, observed!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; }), locked = new Promise<void>(resolve => { observed = resolve; });
   let gated = false;
@@ -196,7 +197,7 @@ it("lets a later manual deactivation win after a decision and leaves the origina
     await locked;
     deactivation = request(`/api/v1/users/${h.item.userId}/activation`, "PATCH", { isActive: false });
     // Observe the real lock wait rather than guessing at request scheduling.
-    await expect.poll(async () => (await db.query<{ waiting: boolean }>("select exists(select 1 from pg_stat_activity where datname=current_database() and wait_event_type='Lock' and query ilike '%update users%') as waiting")).rows[0].waiting).toBe(true);
+    await expect.poll(async () => (await db.query<{ waiting: boolean }>("select exists(select 1 from pg_stat_activity where datname=current_database() and wait_event_type='Lock' and $1=any(pg_blocking_pids(pid))) as waiting", [decisionPid])).rows[0].waiting).toBe(true);
     release(); const decided = await decision; expect(decided.status).toBe(200); expect((await deactivation).status).toBe(200);
     expect((await member(h.item.userId)).isActive).toBe(false); expect((await login(h.username)).status).toBe(403);
     expect(await history(h.item.id)).toEqual(decided.body.item); expect(decided.body.item).toMatchObject({ decisionCanLogin: true, decisionRoleIds: ["software-user"] });
