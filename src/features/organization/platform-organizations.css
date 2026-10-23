@@ -59,6 +59,19 @@
   overflow-wrap: anywhere;
 }
 
+.organization-deletion__count {
+  display: contents;
+}
+
+.organization-deletion__count dt {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.platform-organizations__actions {
+  flex-wrap: wrap;
+}
+
 .platform-organizations__id,
 .platform-organizations__details dt,
 .platform-organizations__fields p {

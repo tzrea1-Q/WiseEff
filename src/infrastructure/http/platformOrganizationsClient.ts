@@ -1,15 +1,21 @@
 import type { z } from "zod";
+import { organizationDeletionPreviewSchema } from "@wiseeff/dto-schemas";
 import { administratorRecoverySchema, createPlatformOrganizationSchema, platformOrganizationSchema, recoverOrganizationAdministratorSchema, experienceRegistrationSchema, updateExperienceRegistrationSchema } from "@wiseeff/dto-schemas";
 import { createDefaultApiClient } from "./defaultApiClient";
 import { parseContractDto } from "./parseContractDto";
 
 export type PlatformOrganization = z.infer<typeof platformOrganizationSchema>;
+export type OrganizationDeletionPreview = z.infer<typeof organizationDeletionPreviewSchema>;
 export type CreatePlatformOrganizationInput = z.infer<typeof createPlatformOrganizationSchema>;
 export type AdministratorRecovery = z.infer<typeof administratorRecoverySchema>;
 export type RecoverOrganizationAdministratorInput = z.infer<typeof recoverOrganizationAdministratorSchema>;
 export type PlatformOrganizationsClient = ReturnType<typeof createPlatformOrganizationsClient>;
 export function createPlatformOrganizationsClient(api = createDefaultApiClient()) {
   return {
+    async previewDeletion(organizationId: string) {
+      const response = await api.get<{ item: unknown }>(`/api/v1/platform/organizations/${encodeURIComponent(organizationId)}/deletion-preview`);
+      return parseContractDto(organizationDeletionPreviewSchema, response.item, "OrganizationDeletionPreview");
+    },
     async getExperienceRegistration() {
       const response = await api.get<{ item: unknown }>("/api/v1/platform/experience-registration");
       return parseContractDto(experienceRegistrationSchema, response.item, "ExperienceRegistration");
