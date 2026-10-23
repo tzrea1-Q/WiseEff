@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterScopeInvocation } from "../../parameters/operatingScope";
 /**
  * Canonical value change request workflow (Issue #849 C4).
  *
@@ -17,7 +18,6 @@ import type { AuthContext } from "../../auth/types";
 import { asAuditTx } from "../../audit/auditedWrite";
 import { assertTrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
 import {
-  assertTrustedInvocationMatchesAuth,
   assertTrustedMutationInvocation,
   TrustedInvocationContextError,
   type TrustedInvocationContext
@@ -174,7 +174,7 @@ export function toCanonicalValueChangeRequestDto(
 }
 
 async function requireOwnedProject(db: Database, auth: AuthContext, projectId: string) {
-  const project = await getProjectById(db, { organizationId: auth.organization.id, projectId });
+  const project = await getProjectById(db, { organizationId: parameterOrganizationId(auth), projectId });
   if (!project) {
     throw new ApiError("NOT_FOUND", "Project was not found for this organization.", { projectId });
   }
@@ -199,7 +199,7 @@ export async function assertSingleRequestReview(
          as has_conflict_decision
        from public.project_parameter_value_change_requests request
       where request.id=$1 and request.organization_id=$2 and request.project_id=$3`,
-    [requestId, auth.organization.id, projectId]
+    [requestId, parameterOrganizationId(auth), projectId]
   )).rows[0];
   if (request && request.request_kind !== "single" && request.request_kind !== "batch") {
     throw new ApiError("CONFLICT", "This source request requires its dedicated review workflow.", { reason: "source-request-kind-mismatch" });
@@ -289,7 +289,7 @@ export async function submitCanonicalValueChange(
     requestId: input.requestId,
     refusalSink: input.refusalSink
   };
-  const trustedInvocation = assertTrustedInvocationMatchesAuth(auth, input.invocation, "canonical value submit");
+  const trustedInvocation = parameterScopeInvocation(auth, input.invocation, "canonical value submit");
   if (trustedInvocation.initiator === "agent") {
     if (!input.requestId.trim()) {
       throw new TrustedInvocationContextError("canonical value submit requires a non-empty requestId");
@@ -322,14 +322,14 @@ export async function submitCanonicalValueChange(
         and pin.organization_id=draft.organization_id and pin.project_id=draft.project_id and pin.binding_id=draft.binding_id
       join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=pin.source_occurrence_id
       where draft.organization_id=$1 and draft.project_id=$2 and draft.user_id=$3 and draft.id=$4`,
-    [auth.organization.id,input.projectId,auth.user.id,input.draftId]);
+    [parameterOrganizationId(auth),input.projectId,auth.user.id,input.draftId]);
     if (source.rows.length !== 1) throw new ApiError("NOT_FOUND", "Prepared source draft was not found.");
     const configSetId = source.rows[0]!.config_set_id;
     if (input.assignedToUserId !== undefined && input.assignedToUserId !== null) {
       // Lock the selected reviewer before checking eligibility so a concurrent
       // role revoke cannot commit between the check and request insertion.
       const lockedUserId = await lockUserById(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         userId: input.assignedToUserId
       });
       if (!lockedUserId) {
@@ -339,7 +339,7 @@ export async function submitCanonicalValueChange(
         });
       }
       const eligible = await hasEligibleWorkflowAssignee(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: input.projectId,
         userId: input.assignedToUserId,
         roleId: "software-committer"
@@ -352,7 +352,7 @@ export async function submitCanonicalValueChange(
       }
     } else {
       const eligible = await listEligibleWorkflowAssignees(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: input.projectId
       });
       if (eligible.softwareCommitters.length === 0) {
@@ -365,11 +365,11 @@ export async function submitCanonicalValueChange(
     // Match prepare/apply ordering before locking the draft. Otherwise a
     // request FK can wait for the editor's Binding while holding its draft.
     await tx.query(`select id from dts_config_set where id=$1 and organization_id=$2 and project_id=$3 for update`,
-      [configSetId,auth.organization.id,input.projectId]);
+      [configSetId,parameterOrganizationId(auth),input.projectId]);
     await tx.query(`select id from project_parameter_files where config_set_id=$1 order by id for update`, [configSetId]);
-    await loadCanonicalSourceCohort(tx,{ organizationId: auth.organization.id,projectId: input.projectId,configSetId });
+    await loadCanonicalSourceCohort(tx,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,configSetId });
     const draft = await getCanonicalValueDraftForUpdate(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       userId: auth.user.id,
       draftId: input.draftId
@@ -404,7 +404,7 @@ export async function submitCanonicalValueChange(
       requireApprovedPinsMatchDraft(approved.pins, draft);
     }
     const open = await getOpenCanonicalValueChangeRequestForDraft(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       draftId: input.draftId
     });
@@ -415,7 +415,7 @@ export async function submitCanonicalValueChange(
       });
     }
     const pins = await loadCanonicalBindingPins(tx, {
-      organizationId: auth.organization.id, projectId: input.projectId, bindingId: draft.binding_id
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId, bindingId: draft.binding_id
     });
     const staleReason = !pins || pins.currentValueId !== draft.base_current_value_id
       ? "stale-base-value"
@@ -432,7 +432,7 @@ export async function submitCanonicalValueChange(
       });
     }
     if (!await isCurrentGovernedSourceValue(tx, {
-      organizationId: auth.organization.id, projectId: input.projectId,
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId,
       bindingId: draft.binding_id, projectValueId: draft.base_current_value_id
     })) {
       throw new ApiError("CONFLICT", "Draft source is no longer current.", {
@@ -440,7 +440,7 @@ export async function submitCanonicalValueChange(
       });
     }
     const inserted = await insertCanonicalValueChangeRequest(tx, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     draftId: draft.id,
     bindingId: draft.binding_id,
@@ -469,7 +469,7 @@ export async function submitCanonicalValueChange(
         trustedInvocation,
         {
           action: "value-change-submitted",
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           projectId: input.projectId,
           targetType: "project-parameter-value-change-request",
           targetId: inserted.id,
@@ -500,7 +500,7 @@ export async function listCanonicalValueChangesForAuth(
   }
   await requireOwnedProject(db, auth, input.projectId);
   const rows = await listCanonicalValueChangeRequests(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     status: input.status
   });
@@ -545,7 +545,7 @@ export async function reviewCanonicalValueChange(
       );
     }
     if (!await hasCurrentCanonicalReviewRole(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       userId: auth.user.id
     })) {
@@ -569,7 +569,7 @@ export async function reviewCanonicalValueChange(
       // Keep the source-commit lock order: source cohort/files are locked before
       // the request row. The owner rechecks the request under its request lock.
       const visibleRequest = await getCanonicalValueChangeRequest(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: input.projectId,
         requestId: input.requestId
       });
@@ -603,7 +603,7 @@ export async function reviewCanonicalValueChange(
       });
       if (applied.draft_id && applied.submitter_user_id) {
         const deleted = await deleteCanonicalValueDraft(tx, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           projectId: input.projectId,
           userId: applied.submitter_user_id,
           draftId: applied.draft_id,
@@ -620,7 +620,7 @@ export async function reviewCanonicalValueChange(
     await requireCurrentReviewRole(tx);
     await assertSingleRequestReview(tx, auth, input.projectId, input.requestId, true);
     const request = await getCanonicalValueChangeRequestForUpdate(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       requestId: input.requestId
     });
@@ -655,7 +655,7 @@ export async function reviewCanonicalValueChange(
     }
     if (input.decision === "reject") {
       const rejected = await markCanonicalValueChangeRequestReviewed(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: input.projectId,
         requestId: input.requestId,
         status: "rejected",
@@ -692,7 +692,7 @@ export async function withdrawCanonicalValueChange(
   await assertSingleRequestReview(db, auth, input.projectId, input.requestId);
 
   const request = await getCanonicalValueChangeRequest(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     requestId: input.requestId
   });
@@ -721,7 +721,7 @@ export async function withdrawCanonicalValueChange(
   }
 
   const withdrawn = await markCanonicalValueChangeRequestReviewed(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     requestId: input.requestId,
     status: "withdrawn",

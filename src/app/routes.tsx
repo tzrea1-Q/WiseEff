@@ -339,6 +339,7 @@ export function PageRouter({
           parameterActions={parameterActions}
           topologyRepository={parameterTopologyRepository}
           canonicalRepository={runtime?.parameterCatalogRepository}
+          parameterFileRepository={runtime?.parameterFileRepository}
           listConfigSets={listParameterConfigSets}
           effectiveProjectId={effectiveParametersProjectId}
           canEdit={canEditParameters}
@@ -417,7 +418,7 @@ export function PageRouter({
           relatedKnowledge={specRelatedKnowledge}
           definitionRelatedKnowledge={definitionRelatedKnowledge}
           runtime={runtime}
-          catalogOrganizationId={organizationId}
+          catalogOrganizationId={runtime?.operatingOrganizationId ?? organizationId}
           sessionPermissions={sessionPermissions}
           sessionRoles={sessionRoles}
         />

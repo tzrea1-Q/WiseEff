@@ -7,6 +7,8 @@ import { getAuthContext } from "../../auth/repository";
 import { resolveOperatingContext } from "../../auth/operatingContext";
 import { createUserInvocation, createAgentInvocationFromUser } from "../../auth/trustedInvocation";
 import { readProjectProtectedParameters } from "./projectReadAdapter";
+import { listCanonicalValueChangesForAuth } from "../drafts/changeService";
+import { withParameterAccess } from "../../parameters/operatingScope";
 
 it("reads the authorized target with the real User or Agent actor and rechecks revoked authority", async () => {
   const database = await createEphemeralTestDatabase("scopedreadadapter"), db = createPostgresDatabase(database.url);
@@ -20,6 +22,7 @@ it("reads the authorized target with the real User or Agent actor and rechecks r
     const agent = createAgentInvocationFromUser(user, { sessionId: "read-agent-session", toolCallId: "read-agent-call", approval: { required: false } });
     for (const invocation of [user, agent]) {
       await expect(readProjectProtectedParameters(pool, { invocation, projectId: "read-target-project" })).resolves.toEqual([]);
+      await expect(listCanonicalValueChangesForAuth(db, withParameterAccess(actor, invocation), { projectId: "read-target-project" })).resolves.toEqual([]);
       expect(invocation.principal.organization.id).toBe("read-home");
     }
     await expect(readProjectProtectedParameters(pool, { invocation: createUserInvocation(actor), projectId: "read-target-project" })).rejects.toMatchObject({ code: "NOT_FOUND" });

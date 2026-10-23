@@ -121,6 +121,7 @@ describe("createAppRuntime", () => {
   it("selects mock catalog ports with the same operation names as api ports", async () => {
     const runtime = createAppRuntime("mock", deps());
     const document = await runtime.parameterCatalogRepository.getCatalog();
+    if (!document.item) throw new Error("Mock Catalog must be published.");
     expect(document.item.catalogReleaseId).toBeTruthy();
     expect(typeof runtime.parameterCatalogGovernanceRepository.listReviewItems).toBe("function");
   });
@@ -131,7 +132,9 @@ describe("createAppRuntime", () => {
     if (!admin) throw new Error("test requires the independent admin fixture");
     state.currentUserId = admin.id;
     const runtime = createAppRuntime("mock", { getState: () => state, mockParameterRuntime: createMockRuntimeState(state) });
-    const release = (await runtime.parameterCatalogRepository.getCatalog()).item.catalogReleaseId;
+    const catalog = await runtime.parameterCatalogRepository.getCatalog();
+    if (!catalog.item) throw new Error("Mock Catalog must be published.");
+    const release = catalog.item.catalogReleaseId;
     const body = { base: { catalogReleaseId: release }, requestedChange: { kind: "new-definition" }, reason: "runtime session" };
     const write = { catalogReleaseId: release, idempotencyKey: "runtime-proposal" };
     const created = await runtime.parameterCatalogGovernanceRepository.createProposal(body, write);
