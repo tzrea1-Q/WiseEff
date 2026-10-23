@@ -12,6 +12,8 @@ import { assertAdministratorContinuity, hasOrganizationRole, lockAdministratorMu
 import { requirePlatformOrganizationManager } from "./platformOrganizations";
 import { getUserById, updateOrganizationRoles } from "./repository";
 import { revokePersonalAccess } from "./personalAccess";
+import { releaseTransferredProjectResponsibilities } from "../parameters/handover";
+import { withParameterAccess } from "../parameters/operatingScope";
 
 async function transferSnapshot(db: Queryable, sourceId: string, userId: string, targetId: string, context: AdministratorMutationContext) {
   const user = await getUserById(db, { organizationId: sourceId, userId });
@@ -68,6 +70,7 @@ export async function transferAccount(db: Database, caller: UserInvocationContex
     await assertAdministratorContinuity(tx, user, { organizationId: input.targetOrganizationId, roles: [...roles.map(roleId => ({ projectId: null, roleId })), ...(platform ? [{ projectId: null, roleId: "platform-admin" as const }] : [])] }, context);
     const invocation = await resolveOperatingContext(tx, createUserInvocation(actor), sourceId);
     const revokedBridgeIds = await revokePersonalAccess(tx, sourceId, userId);
+    await releaseTransferredProjectResponsibilities(tx, withParameterAccess(actor, invocation), userId, context.requestId);
     await tx.query("delete from organization_team_members where user_id=$1", [userId]);
     await tx.query("delete from project_members where user_id=$1", [userId]);
     await tx.query("delete from user_role_bindings where user_id=$1", [userId]);

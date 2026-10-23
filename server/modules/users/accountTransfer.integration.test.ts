@@ -78,8 +78,19 @@ describe("local account transfer through real authentication, HTTP and PostgreSQ
     const fresh = await login("member");
     expect(fresh.auth.roles).toHaveLength(2);
     expect(fresh.auth.roles).toEqual(expect.arrayContaining([{ projectId: null, roleId: "guest" }, { projectId: null, roleId: "platform-admin" }]));
-    const projectWork = await api<{ items: Array<{ id: string; pending: boolean; historicalAttribution: unknown }> }>("organization/project-handovers?organizationId=transfer-source", "GET", undefined, platform.token);
-    expect(projectWork.body.items).toContainEqual(expect.objectContaining({ id: "source-draft", pending: true, historicalAttribution: historical }));
+    const projectWork = await api<{ items: Array<{ id: string; pending: boolean; historicalAttribution: unknown; version: string; responsibleUserId: string | null }> }>("organization/project-handovers?organizationId=transfer-source", "GET", undefined, platform.token);
+    expect(projectWork.body.items).toContainEqual(expect.objectContaining({ id: "source-draft", responsibleUserId: null, pending: true, historicalAttribution: historical }));
+    const pending = projectWork.body.items.find(item => item.id === "source-draft")!;
+    const claim = await api("organization/project-handovers/parameter-draft/source-draft?organizationId=transfer-source", "PATCH", { responsibleUserId: "transfer-member", expectedVersion: pending.version }, fresh.token);
+    expect(claim.status, claim.bodyText).toBe(200);
+    const claimed = await api<{ items: Array<{ id: string; pending: boolean; version: string }> }>("organization/project-handovers?organizationId=transfer-source", "GET", undefined, platform.token);
+    expect(claimed.body.items).toContainEqual(expect.objectContaining({ id: "source-draft", pending: false }));
+    const continued = await api<{ item: { id: string } }>("parameter-drafts?organizationId=transfer-source", "POST", { projectId: "source-project", parameterId: "source-value", targetValue: "3", reason: "Explicit cross-organization takeover continued" }, fresh.token);
+    expect(continued.status, continued.bodyText).toBe(201); expect(continued.body.item.id).toBe("source-draft");
+    const latest = (await api<{ items: Array<{ id: string; version: string }> }>("organization/project-handovers?organizationId=transfer-source", "GET", undefined, platform.token)).body.items.find(item => item.id === "source-draft")!;
+    expect((await api("organization/project-handovers/parameter-draft/source-draft?organizationId=transfer-source", "PATCH", { responsibleUserId: "transfer-platform", expectedVersion: latest.version }, platform.token)).status).toBe(200);
+    const foreignClaim = await api<{ items: Array<{ id: string; pending: boolean; historicalAttribution: unknown }> }>("organization/project-handovers?organizationId=transfer-source", "GET", undefined, platform.token);
+    expect(foreignClaim.body.items).toContainEqual(expect.objectContaining({ id: "source-draft", pending: false, historicalAttribution: historical }));
     const knowledge = await api<{ items: Array<{ id: string; pending: boolean }> }>("knowledge/handovers?organizationId=transfer-source", "GET", undefined, platform.token);
     expect(knowledge.body.items).toContainEqual(expect.objectContaining({ id: entry.body.item.id, pending: true }));
     const feedbackWork = await api<{ items: Array<{ id: string; pending: boolean }> }>("product-feedback/handovers?organizationId=transfer-source", "GET", undefined, platform.token);
@@ -100,6 +111,10 @@ describe("local account transfer through real authentication, HTTP and PostgreSQ
   });
   it("rolls back access revocation, identity and grants together when audit storage fails, while organization credentials remain valid", async () => {
     const platform = await login(), member = await login("member");
+    await db.query("insert into projects(id,organization_id,name,code) values('rollback-project','transfer-source','Rollback source project','ROLLBACK')");
+    await db.query("insert into parameter_definitions(id,organization_id,name,description,explanation,config_format,module,default_range,unit,risk) values('rollback-definition','transfer-source','Retained rollback parameter','','','dts','Module','','','Low')");
+    await db.query("insert into project_parameter_values(id,organization_id,project_id,parameter_definition_id,current_value,recommended_value) values('rollback-value','transfer-source','rollback-project','rollback-definition','0','1')");
+    await db.query("insert into parameter_drafts(id,organization_id,project_id,project_parameter_value_id,user_id,target_value,reason) values('rollback-draft','transfer-source','rollback-project','rollback-value','transfer-member','1','Retained on failed transfer')");
     const machine = await api<{ token: string }>("log-integration-credentials?organizationId=transfer-source", "POST", { name: "Source pipeline", skillId: null }, platform.token);
     expect(machine.status).toBe(201);
     const code = await api<{ code: string }>("device-bridges/pairing-codes", "POST", {}, member.token);
@@ -109,6 +124,8 @@ describe("local account transfer through real authentication, HTTP and PostgreSQ
     await db.query("create trigger reject_transfer_audit before insert on audit_events for each row execute function reject_transfer_audit()");
     expect((await api(path(), "POST", { targetOrganizationId: "transfer-target", targetRoles: ["guest"], expectedVersion: impact.version }, platform.token)).status).toBe(500);
     expect((await api<{ organization: { id: string } }>("me", "GET", undefined, member.token)).body.organization.id).toBe("transfer-source");
+    const retained = await api<{ items: Array<{ id: string; responsibleUserId: string | null }> }>("organization/project-handovers?organizationId=transfer-source", "GET", undefined, platform.token);
+    expect(retained.body.items).toContainEqual(expect.objectContaining({ id: "rollback-draft", responsibleUserId: "transfer-member" }));
     await db.query("drop trigger reject_transfer_audit on audit_events");
     const retry = await preview(platform.token);
     expect(retry.personalAccess).toEqual({ sessions: 1, pairings: 0, pairingCodes: 1 });
@@ -147,5 +164,22 @@ describe("local account transfer through real authentication, HTTP and PostgreSQ
     expect(external.supported).toBe(false);
     expect((await api(path(), "POST", { targetOrganizationId: "transfer-target", targetRoles: ["guest"], expectedVersion: external.version }, platform.token)).status).toBe(409);
     expect((await login("member")).auth.organization.id).toBe("transfer-source");
+  });
+  it("releases all stages of one request without stale-version conflicts, preserving the submitter and recorded history", async () => {
+    const platform = await login();
+    await db.query("insert into projects(id,organization_id,name,code) values('staged-project','transfer-source','Staged source project','STAGED')");
+    await db.query("insert into parameter_definitions(id,organization_id,name,description,explanation,config_format,module,default_range,unit,risk) values('staged-definition','transfer-source','Staged parameter','','','dts','Module','','','Low')");
+    await db.query("insert into project_parameter_values(id,organization_id,project_id,parameter_definition_id,current_value,recommended_value) values('staged-value','transfer-source','staged-project','staged-definition','0','1')");
+    await db.query(`insert into parameter_change_requests(id,organization_id,project_id,project_parameter_value_id,parameter_definition_id,base_version,current_value,target_value,status,submitter_user_id,assigned_to_user_id,workflow_hardware_committer_user_id,workflow_software_committer_user_id,workflow_software_user_id)
+      values('staged-request','transfer-source','staged-project','staged-value','staged-definition',1,'0','2','hardware_review','transfer-admin','transfer-member','transfer-member','transfer-member','transfer-member')`);
+    const before = await api<{ items: Array<{ id: string; kind: string; historicalAttribution: unknown }> }>("organization/project-handovers?organizationId=transfer-source", "GET", undefined, platform.token);
+    expect(before.body.items).toHaveLength(3);
+    const impact = await preview(platform.token);
+    const moved = await api(path(), "POST", { targetOrganizationId: "transfer-target", targetRoles: ["guest"], expectedVersion: impact.version }, platform.token);
+    expect(moved.status, moved.bodyText).toBe(200);
+    const after = await api<{ items: Array<{ id: string; kind: string; responsibleUserId: string | null; pending: boolean; submitterUserId: string | null; historicalAttribution: unknown }> }>("organization/project-handovers?organizationId=transfer-source", "GET", undefined, platform.token);
+    expect(after.body.items).toHaveLength(3);
+    expect(after.body.items.map(item => item.kind).sort()).toEqual(["hardware-review", "software-merge", "software-review"]);
+    for (const item of after.body.items) expect(item).toMatchObject({ responsibleUserId: null, pending: true, submitterUserId: "transfer-admin", historicalAttribution: before.body.items.find(previous => previous.kind === item.kind)?.historicalAttribution });
   });
 });

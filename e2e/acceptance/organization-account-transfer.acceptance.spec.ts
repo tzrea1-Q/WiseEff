@@ -16,10 +16,25 @@ import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 useBrowserDiagnostics(test, { expectedApiFailures: [{ method: "POST", path: "/api/v1/platform/organizations/", status: 503 }] });
+let retainedFixture: { organizationId: string; suffix: string } | undefined;
+test.afterEach(async () => {
+  if (!retainedFixture) return;
+  const { organizationId, suffix } = retainedFixture;
+  await withPgClient(async db => {
+    // These are this test's retained pre-cutover records. Remove only these
+    // fixtures so a later owned API boot still enforces its clean-state gate.
+    await db.query("delete from parameter_drafts where organization_id=$1 and id=$2", [organizationId, `draft-${suffix}`]);
+    await db.query("delete from parameter_change_requests where organization_id=$1 and id=$2", [organizationId, `review-${suffix}`]);
+    await db.query("delete from project_parameter_values where organization_id=$1 and id=$2", [organizationId, `value-${suffix}`]);
+    await db.query("delete from parameter_definitions where organization_id=$1 and id=$2", [organizationId, `definition-${suffix}`]);
+  });
+  retainedFixture = undefined;
+});
 test("previews a local account transfer, retries safely and retains source work after target login", async ({ page }, testInfo) => {
   test.skip(resolveApiAuthProvider(resolveApiAuthorization()) !== "local", "Requires the real local-auth API lane.");
   const suffix = randomUUID().slice(0, 8), home = `transfer-home-${suffix}`, source = `transfer-source-${suffix}`, target = `transfer-target-${suffix}`;
   const platform = `transfer-platform-${suffix}`, member = `transfer-member-${suffix}`, admin = `transfer-admin-${suffix}`, project = `transfer-project-${suffix}`;
+  retainedFixture = { organizationId: source, suffix };
   const memberName = `调动工程师-${suffix}`, hash = await hashLocalAccountPassword(LOCAL_DEMO_SHARED_PASSWORD);
   await withPgClient(async db => {
     await db.query("insert into organizations(id,name) values($1,'调动平台所属组织'),($2,'调动源组织'),($3,'调动目标组织')", [home, source, target]);

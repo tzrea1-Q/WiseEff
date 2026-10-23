@@ -25,7 +25,7 @@ function requireAdministrator(auth: AuthContext) {
   }
 }
 function version(work: Work) { return createHash("sha256").update(JSON.stringify([work.kind,work.id,work.projectId,work.responsibleUserId,work.updatedAt,work.proofDigest])).digest("hex"); }
-async function readWork(db: Queryable, organizationId: string): Promise<Work[]> {
+async function readWork(db: Queryable, organizationId: string, id?: string): Promise<Work[]> {
   return (await db.query<Work>(`select a.*,p.name as "projectName",responsible.name as "responsibleUserName" from (
     select id,'parameter-draft' as kind,project_id as "projectId",coalesce(nullif(reason,''),'参数草稿') as title,user_id as "responsibleUserId",updated_at::text as "updatedAt",historical_attribution-'execution' as "historicalAttribution",null::text as "submitterUserId",null::text as "requestKind",null::text as "proofDigest" from parameter_drafts d where organization_id=$1
       and not exists(select 1 from parameter_change_requests r where r.organization_id=d.organization_id and r.project_id=d.project_id and r.status in ('submitted','hardware_review','software_review','software_merge') and r.candidate_config_revision_id=d.candidate_config_revision_id and r.candidate_config_revision_id is not null)
@@ -50,7 +50,8 @@ async function readWork(db: Queryable, organizationId: string): Promise<Work[]> 
     union all
     select r.id,'value-review',r.project_id,coalesce(nullif(r.reason,''),'配置变更审核'),r.assigned_to_user_id,r.updated_at::text,r.historical_attribution,r.submitter_user_id,r.request_kind,r.source_revision_proof_digest
       from project_parameter_value_change_requests r where r.organization_id=$1 and r.status='pending'
-  ) a join projects p on p.id=a."projectId" and p.organization_id=$1 left join users responsible on responsible.id=a."responsibleUserId" order by a."updatedAt" desc,a.id`, [organizationId])).rows;
+  ) a join projects p on p.id=a."projectId" and p.organization_id=$1 left join users responsible on responsible.id=a."responsibleUserId"
+    where ($2::text is null or a.id=$2) order by a."updatedAt" desc,a.id`, [organizationId, id ?? null])).rows;
 }
 export async function listProjectHandovers(db: Database, auth: AuthContext) {
   requireAdministrator(auth); const organizationId = parameterOrganizationId(auth);
@@ -61,7 +62,7 @@ export async function listProjectHandovers(db: Database, auth: AuthContext) {
   const items: ProjectHandoverItem[] = await Promise.all(work.map(async item => {
     const eligible = await Promise.all(contexts.map(candidate => qualifies(db, candidate, item, organizationId)));
     const candidates = contexts.filter((candidate, index) => eligible[index] && (candidate.organization.id === organizationId || candidate.user.id === auth.user.id)).map(candidate => ({ id: candidate.user.id, name: candidate.user.name }));
-    const responsible = contexts.find((candidate, index) => candidate.user.id === item.responsibleUserId && candidate.organization.id === organizationId && eligible[index]);
+    const responsible = contexts.find((candidate, index) => candidate.user.id === item.responsibleUserId && eligible[index]);
     return { ...item, version: version(item), candidates, pending: !responsible };
   }));
   return { items };
@@ -118,7 +119,7 @@ export async function assignProjectHandover(db: Database, auth: AuthContext, kin
       requireAdministrator(scoped);
       const locked = await lockWork(tx, kind, id, organizationId);
       if (!locked.rowCount) throw new ApiError("NOT_FOUND", "待交接项目业务不存在。");
-      const item = (await readWork(tx, organizationId)).find(work => work.kind === kind && work.id === id);
+      const item = (await readWork(tx, organizationId, id)).find(work => work.kind === kind && work.id === id);
       if (!item) throw new ApiError("CONFLICT", "该业务已经提交或结束，请刷新清单。");
       if (version(item) !== body.expectedVersion) throw new ApiError("CONFLICT", "草稿或责任人已变化，请刷新后重试。");
       if (body.responsibleUserId) {
@@ -141,5 +142,18 @@ export async function assignProjectHandover(db: Database, auth: AuthContext, kin
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "23505") throw new ApiError("CONFLICT", "接任者已有同一参数的草稿；请先处理该草稿，再交接，避免覆盖。 ");
     throw error;
+  }
+}
+
+/** Inside the account transfer transaction, leave former duties explicitly pending. */
+export async function releaseTransferredProjectResponsibilities(db: Database, auth: AuthContext, userId: string, requestId: string) {
+  requireAdministrator(auth);
+  const organizationId = parameterOrganizationId(auth);
+  const former = (await readWork(db, organizationId)).filter(item => item.responsibleUserId === userId);
+  for (const previous of former) {
+    // A staged request has several duties sharing its updated_at; refresh the
+    // exact item after each release instead of reusing a stale queue version.
+    const item = (await readWork(db, organizationId, previous.id)).find(work => work.kind === previous.kind && work.responsibleUserId === userId);
+    if (item) await assignProjectHandover(db, auth, item.kind, item.id, { responsibleUserId: null, expectedVersion: version(item) }, requestId);
   }
 }
