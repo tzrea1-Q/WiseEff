@@ -20,13 +20,14 @@ import type { KnowledgeEntry } from "@/domain/knowledge/types";
 import type { ProductFeedback } from "@/domain/productFeedback/types";
 import type { UpdateKnowledgeInput } from "@/application/ports/KnowledgeRepository";
 import { requestSettingsLeave } from "@/application/settingsFormNavigation";
+import { OrganizationProjectHandoverPanel } from "./OrganizationProjectHandoverPanel";
 
 type Item = { id: string; kind: "entry" | "import" | "feedback-draft" | "feedback-work"; title: string; responsibleUserId: string | null; responsibleUserName: string | null; pending: boolean };
 type Candidate = { id: string; name: string; canTriage?: boolean };
 type List = { items: Item[]; candidates: Candidate[] };
 const labels = { entry: "知识草稿", import: "未完成导入", "feedback-draft": "反馈草稿", "feedback-work": "反馈处理" };
 
-export function OrganizationAssetHandoverPanel({ organizationId, enabled }: { organizationId?: string; enabled: boolean }) {
+export function OrganizationAssetHandoverPanel({ organizationId, enabled, currentUserId, onNavigate }: { organizationId?: string; enabled: boolean; currentUserId: string; onNavigate: (path: string) => void }) {
   const client = useMemo(() => createDefaultApiClient({ organizationId }), [organizationId]);
   const knowledge = useMemo(() => createHttpKnowledgeRepository({ organizationId }), [organizationId]);
   const feedback = useMemo(() => createHttpProductFeedbackRepository({ apiClient: client, baseUrl: resolveWiseEffApiBaseUrl() }), [client]);
@@ -84,6 +85,7 @@ export function OrganizationAssetHandoverPanel({ organizationId, enabled }: { or
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-base font-semibold">业务交接</h2><p className="text-sm text-muted-foreground">草稿与历史留在原组织。未指定接任者时，管理员仍可继续处理。</p></div><Button variant="outline" onClick={reload}>刷新交接清单</Button></div>
     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={pendingOnly} onChange={event => setPendingOnly(event.target.checked)} />仅显示待交接</label>
     {error ? <SectionError message={error} onRetry={reload} /> : null}
+    <OrganizationProjectHandoverPanel organizationId={organizationId} currentUserId={currentUserId} pendingOnly={pendingOnly} onNavigate={onNavigate} refreshSignal={attempt} />
     {table("knowledge", "知识业务交接")}{table("feedback", "反馈业务交接")}
     <p className="text-xs text-muted-foreground">组织机器凭据独立保留。个人密码、会话、Agent 私人对话和设备配对不参与交接；分析技能草稿由组织管理员在技能管理中直接维护。</p>
     <SettingsLeaveGuard dirty={Boolean(assignment && successor !== (assignment.pending ? "" : assignment.responsibleUserId ?? ""))} saving={saving} />
