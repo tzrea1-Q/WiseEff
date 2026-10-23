@@ -807,7 +807,8 @@ describe("UserPermissionsPage", () => {
     const dialog = screen.getByRole("dialog", { name: "确认注销用户" });
     expect(dialog).toHaveTextContent("永久删除");
     expect(dialog).toHaveTextContent("业务与审计历史记录会保留");
-    expect(dialog).toHaveTextContent("历史记录中的用户关联会解除");
+    expect(dialog).toHaveTextContent("个人设备配对将撤销");
+    expect(dialog).toHaveTextContent("既有历史署名不会改成接任者");
     expect(dialog).toHaveTextContent("此操作不可恢复");
     await userEvent.click(within(dialog).getByRole("button", { name: "确认注销" }));
 

@@ -196,6 +196,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerUserRoutes(router, {
     db: options.db,
+    bridgeConnectionPool: options.deviceBridge?.connectionPool,
     authenticationProvider: options.auth?.mode === "production" ? options.env?.AUTH_PROVIDER : undefined,
     oidcIssuer: options.env?.AUTH_PROVIDER === "oidc" ? options.env.AUTH_OIDC_ISSUER : undefined,
     getCurrentAuthContext: authResolver
@@ -569,6 +570,7 @@ function resolveDeviceBridgeRuntime(options: {
     loadToolReleaseManifest,
     pairingService: createPairingService({
       repo,
+      db: options.db,
       ...(pairingTtlMs !== undefined ? { pairingTtlMs } : {}),
       ...(tokenTtlDays !== undefined ? { tokenTtlDays } : {})
     }),
