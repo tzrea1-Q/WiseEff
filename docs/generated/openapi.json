@@ -5,6 +5,52 @@
     "version": "m5"
   },
   "paths": {
+    "/api/v1/platform/organizations/{organizationId}/deletion-preview": {
+      "get": {
+        "operationId": "platformOrganizations.deletionPreview",
+        "summary": "Read Organization erasure impact without granting or executing deletion",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationDeletionPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/platform/organizations/{organizationId}/members/{userId}/transfer-preview": {
       "post": {
         "operationId": "platform.organizations.previewAccountTransfer",
@@ -1505,6 +1551,50 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/OrganizationTeamResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/organization/workspace-summary": {
+      "get": {
+        "operationId": "organization.workspaceSummary",
+        "summary": "Read operating organization counts and authorized administrative pending work",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationWorkspaceSummaryResponse"
                 }
               }
             }
@@ -27305,6 +27395,189 @@
           }
         }
       },
+      "OrganizationDeletionPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "organizationId": {
+                "type": "string"
+              },
+              "organizationName": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "generatedAt": {
+                "type": "string"
+              },
+              "stateDigest": {
+                "type": "string"
+              },
+              "inventory": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "category",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "platformAccounts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "canLogin": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "isActive",
+                    "canLogin"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "survivingPlatformAdministrators": {
+                "type": "number"
+              },
+              "experienceRegistration": {
+                "type": "object",
+                "properties": {
+                  "isTarget": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "isTarget",
+                  "enabled"
+                ],
+                "additionalProperties": false
+              },
+              "producers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "label",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "storage": {
+                "type": "object",
+                "properties": {
+                  "exclusiveObjects": {
+                    "type": "number"
+                  },
+                  "sharedObjects": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "exclusiveObjects",
+                  "sharedObjects"
+                ],
+                "additionalProperties": false
+              },
+              "blockers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "admissionAvailable": {
+                "type": "boolean"
+              },
+              "notes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "organizationId",
+              "organizationName",
+              "status",
+              "generatedAt",
+              "stateDigest",
+              "inventory",
+              "platformAccounts",
+              "survivingPlatformAdministrators",
+              "experienceRegistration",
+              "producers",
+              "storage",
+              "blockers",
+              "admissionAvailable",
+              "notes"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "OrganizationDeletionPreviewResponse"
+      },
       "AccountTransferTargetRequest": {
         "type": "object",
         "properties": {
@@ -28525,6 +28798,97 @@
       "OrganizationTeamDeletedResponse": {
         "type": "null",
         "x-wiseeff-schema": "OrganizationTeamDeletedResponse"
+      },
+      "OrganizationWorkspaceSummaryResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "organization": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "suspended"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "status"
+                ],
+                "additionalProperties": false
+              },
+              "counts": {
+                "type": "object",
+                "properties": {
+                  "members": {
+                    "type": "number"
+                  },
+                  "teams": {
+                    "type": "number"
+                  },
+                  "projects": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "members",
+                  "teams",
+                  "projects"
+                ],
+                "additionalProperties": false
+              },
+              "administration": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "pendingInvitations": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "pendingHandovers": {
+                    "type": "number"
+                  },
+                  "pendingIdentitySync": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "pendingInvitations",
+                  "pendingHandovers",
+                  "pendingIdentitySync"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "organization",
+              "counts",
+              "administration"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "OrganizationWorkspaceSummaryResponse"
       },
       "ProjectMembersResponse": {
         "type": "object",

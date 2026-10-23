@@ -161,7 +161,13 @@ export const S2_SCH_0263_FINGERPRINT =
 export const S2_SCH_0275_FINGERPRINT =
   "644a0cf9b4632d99d0b4627bca35c4809fb374dd7cca445306cb280bf89f6db8";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0275_FINGERPRINT;
+/** 0276 adds the bounded, counts-only organization erasure preview capability.
+ * Measured on fresh PostgreSQL through 0278; the latter's public integrity and
+ * webhook column-read repairs leave the private Catalog inventory unchanged. */
+export const S2_SCH_0276_FINGERPRINT =
+  "b992cc5ded4403aabcafa92048bb08cea6795e55afa0888cf239821f46f0a4d9";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0276_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
