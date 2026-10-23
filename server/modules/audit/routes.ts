@@ -7,6 +7,7 @@ import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { createAuditEvent, listAuditEvents } from "./repository";
 import { resolveOperatingContext } from "../auth/operatingContext";
 import { createUserInvocation } from "../auth/trustedInvocation";
+import { buildTrustedAuditEventInput } from "./trustedAudit";
 
 const auditBodySchema = z.object({
   app: z.string().min(1),
@@ -78,6 +79,13 @@ function parseAuditListQuery(query: Record<string, string | string[]>) {
   };
 }
 
+async function auditInvocation(db: Queryable, auth: AuthContext, request: RouteRequest) {
+  const target = z.string().trim().min(1).max(200).optional().safeParse(request.query.organizationId);
+  if (!target.success) throw new ApiError("VALIDATION_FAILED", "Invalid operating Organization.");
+  const invocation = createUserInvocation(auth);
+  return target.data === undefined ? invocation : resolveOperatingContext(db, invocation, target.data);
+}
+
 export function registerAuditRoutes(
   router: WiseEffRouter,
   options: { db?: Queryable; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
@@ -98,15 +106,18 @@ export function registerAuditRoutes(
     }
     const body = parsedBody.data;
     const id = randomUUID();
+    const invocation = await auditInvocation(options.db, auth, request);
+    const organizationId = invocation.operatingOrganization?.id ?? auth.organization.id;
+    if (body.projectId && !(await options.db.query("select id from projects where id=$1 and organization_id=$2", [body.projectId, organizationId])).rowCount) {
+      throw new ApiError("NOT_FOUND", "Project was not found in the operating Organization.");
+    }
 
     // Stays on the direct path (ratchet allowlist): for this endpoint the audit
     // event IS the domain write — there is nothing else to be atomic with.
-    await createAuditEvent(options.db, {
+    await createAuditEvent(options.db, buildTrustedAuditEventInput({
       id,
-      organizationId: auth.organization.id,
+      invocation,
       projectId: body.projectId ?? null,
-      actorUserId: auth.user.id,
-      actorType: "user",
       app: body.app,
       kind: body.kind,
       action: body.action,
@@ -115,7 +126,7 @@ export function registerAuditRoutes(
       targetId: body.targetId ?? null,
       metadata: body.metadata,
       traceId: request.requestId
-    });
+    }));
 
     return { status: 201, body: { id } };
   });
@@ -129,10 +140,8 @@ export function registerAuditRoutes(
     if (!auth.permissions.includes("admin:access")) {
       throw new ApiError("FORBIDDEN", "Admin access required.");
     }
-    const target = z.string().trim().min(1).max(200).optional().safeParse(request.query.organizationId);
-    if (!target.success) throw new ApiError("VALIDATION_FAILED", "Invalid operating Organization.");
-    const organizationId = target.data === undefined ? auth.organization.id
-      : (await resolveOperatingContext(options.db, createUserInvocation(auth), target.data)).operatingOrganization!.id;
+    const invocation = await auditInvocation(options.db, auth, request);
+    const organizationId = invocation.operatingOrganization?.id ?? auth.organization.id;
 
     const query = parseAuditListQuery(request.query);
     const result = await listAuditEvents(options.db, {

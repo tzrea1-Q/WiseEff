@@ -188,7 +188,7 @@ describe("ReviewQueue", () => {
       organizationId={CATALOG_ORGANIZATION_ID} catalogReleaseId={CATALOG_RELEASE_ID} onCountChange={onCountChange} />);
     expect(await screen.findByText("vendor,charger")).toBeVisible();
     expect(screen.getByText("电源预览项目")).toBeVisible();
-    expect(screen.getByRole("link", { name: "处理记录" })).toHaveAttribute("href", "/audit?kind=parameter-catalog-governance");
+    expect(screen.getByRole("link", { name: "处理记录" })).toHaveAttribute("href", `/audit?kind=parameter-catalog-governance&organizationId=${CATALOG_ORGANIZATION_ID}`);
     expect(onCountChange).toHaveBeenLastCalledWith(1);
     await userEvent.type(screen.getByRole("searchbox", { name: "搜索待审核事项" }), "not-a-source");
     expect(await screen.findByText("没有匹配的审核项。")).toBeVisible();

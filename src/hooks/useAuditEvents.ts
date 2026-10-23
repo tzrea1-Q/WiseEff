@@ -10,6 +10,7 @@ import type { AuditEvent } from "@/domain/prototype/types";
 export const AUDIT_EXPORT_MAX_ROWS = 2000;
 export type AuditTimeWindow = "all" | "today" | "7d" | "30d" | "custom";
 export type AuditQueryState = {
+  organizationId?: string;
   appGroup: AuditAppGroupId;
   severity: AuditSeverity | "all" | AuditSeverity[];
   search: string;
@@ -66,6 +67,7 @@ function buildApiParams(query: AuditQueryState, limit: number): ListAuditEventsP
   const group = getAuditAppGroup(query.appGroup);
   return {
     limit,
+    ...(query.organizationId ? { organizationId: query.organizationId } : {}),
     projectId: query.projectId,
     traceId: query.traceId,
     kind: query.kind,
@@ -88,10 +90,10 @@ export function useAuditEvents({ isApiMode, mockEvents, query, limit = 20, enabl
   const [updatedAt, setUpdatedAt] = useState<string>();
   const generation = useRef(0);
   const morePending = useRef(false);
-  const { appGroup, projectId, severity, timeWindow, traceId, search, from, to, kind, targetId } = query;
+  const { appGroup, projectId, severity, timeWindow, traceId, search, from, to, kind, targetId, organizationId } = query;
   const params = useMemo(() => buildApiParams(
-    { appGroup, projectId, severity, timeWindow, traceId, search, from, to, kind, targetId }, limit
-  ), [appGroup, projectId, severity, timeWindow, traceId, search, from, to, kind, targetId, limit]);
+    { appGroup, projectId, severity, timeWindow, traceId, search, from, to, kind, targetId, organizationId }, limit
+  ), [appGroup, projectId, severity, timeWindow, traceId, search, from, to, kind, targetId, organizationId, limit]);
   const activeParams = useRef(params);
 
   const reload = useCallback(async () => {
@@ -172,13 +174,13 @@ export function useAuditEvents({ isApiMode, mockEvents, query, limit = 20, enabl
   return { events, loading, loadingMore, error, updatedAt, hasMore: Boolean(nextCursor), loadMore, reload, fetchAllForExport };
 }
 
-export function useAuditTraceEvents(traceId: string | undefined, isApiMode: boolean, mockEvents: AuditEvent[]) {
-  const query = useMemo<AuditQueryState>(() => ({ appGroup: "all", severity: "all", search: "", timeWindow: "all", traceId }), [traceId]);
+export function useAuditTraceEvents(traceId: string | undefined, isApiMode: boolean, mockEvents: AuditEvent[], organizationId?: string) {
+  const query = useMemo<AuditQueryState>(() => ({ appGroup: "all", severity: "all", search: "", timeWindow: "all", traceId, organizationId }), [traceId, organizationId]);
   const result = useAuditEvents({ isApiMode, mockEvents, query, enabled: Boolean(traceId) });
   return { ...result, relatedEvents: result.events };
 }
 
-export function useAuditEvent(eventId: string | null, cachedEvent: AuditEventView | undefined, isApiMode: boolean, mockEvents: AuditEvent[]) {
+export function useAuditEvent(eventId: string | null, cachedEvent: AuditEventView | undefined, isApiMode: boolean, mockEvents: AuditEvent[], organizationId?: string) {
   const [remoteEvent, setRemoteEvent] = useState<AuditEventView>();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -187,9 +189,10 @@ export function useAuditEvent(eventId: string | null, cachedEvent: AuditEventVie
     let cancelled = false;
     setError("");
     setLoading(false);
+    setRemoteEvent(undefined);
     if (!eventId || cachedEvent?.id === eventId || !isApiMode) return;
     setLoading(true);
-    createAuditClient().listAuditEvents({ eventId, limit: 1 }).then((response) => {
+    createAuditClient().listAuditEvents({ eventId, limit: 1, ...(organizationId ? { organizationId } : {}) }).then((response) => {
       if (cancelled) return;
       setRemoteEvent(response.items[0] ? mapApiAuditEventToView(response.items[0]) : undefined);
       if (!response.items.length) setError("未找到该审计事件，可能已超出当前组织的可访问范围。");
@@ -197,7 +200,7 @@ export function useAuditEvent(eventId: string | null, cachedEvent: AuditEventVie
       if (!cancelled) setError(presentError(cause, "加载事件详情失败，请重试。"));
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [eventId, cachedEvent, isApiMode, attempt]);
+  }, [eventId, cachedEvent, isApiMode, attempt, organizationId]);
   const mockEvent = !isApiMode ? mockEvents.find((event) => event.id === eventId) : undefined;
   const event = cachedEvent?.id === eventId ? cachedEvent : remoteEvent?.id === eventId ? remoteEvent : mockEvent ? mapMockAuditEventToView(mockEvent) : undefined;
   return { event, error, loading, retry: () => setAttempt((value) => value + 1) };

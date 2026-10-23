@@ -5,6 +5,250 @@
     "version": "m5"
   },
   "paths": {
+    "/api/v1/knowledge/handovers": {
+      "get": {
+        "operationId": "knowledge.listHandovers",
+        "summary": "List organization knowledge drafts, incomplete imports and eligible successors",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeHandoverResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/handovers/{kind}/{id}": {
+      "patch": {
+        "operationId": "knowledge.assignResponsibility",
+        "summary": "Assign current responsibility without changing authorship or publishing",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeHandoverRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetHandoverSavedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/product-feedback/handovers": {
+      "get": {
+        "operationId": "productFeedback.listHandovers",
+        "summary": "List unfinished feedback drafts and open triage responsibilities",
+        "tags": [
+          "product-feedback"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackHandoverResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/product-feedback/handovers/{id}": {
+      "patch": {
+        "operationId": "productFeedback.assignResponsibility",
+        "summary": "Assign feedback draft custody or qualified triage responsibility without submitting",
+        "tags": [
+          "product-feedback"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackHandoverRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetHandoverSavedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/organization/invitations": {
       "get": {
         "operationId": "users.invitations.list",
@@ -328,6 +572,80 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "429": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/experience-registration": {
+      "get": {
+        "operationId": "experienceRegistration.get",
+        "summary": "Read the effective public experience registration switch and target",
+        "tags": [
+          "users"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperienceRegistrationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "experienceRegistration.update",
+        "summary": "Configure public admission into one explicit experience Organization",
+        "tags": [
+          "users"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateExperienceRegistrationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperienceRegistrationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -2412,7 +2730,7 @@
     "/api/v1/projects/{projectId}/members": {
       "get": {
         "operationId": "users.getProjectMembers",
-        "summary": "Read explicit project participation without changing legacy edit or workflow authorization",
+        "summary": "Read explicit project editing participation, separately from review duties",
         "tags": [
           "users"
         ],
@@ -2455,6 +2773,81 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/members/{userId}": {
+      "put": {
+        "operationId": "users.updateProjectMember",
+        "summary": "Assign or remove project editing participation without granting review duties",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProjectMemberBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectMembersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -17965,6 +18358,17 @@
         "tags": [
           "product-feedback"
         ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -17987,6 +18391,12 @@
             }
           },
           "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -18078,6 +18488,15 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -18097,6 +18516,9 @@
           "403": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -18109,6 +18531,17 @@
         "summary": "Retry this user's pending feedback attachment upload cleanup in the current organization",
         "tags": [
           "product-feedback"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -18137,6 +18570,9 @@
           "403": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -18163,6 +18599,15 @@
             "name": "attachmentId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -18204,6 +18649,17 @@
         "tags": [
           "product-feedback"
         ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -18231,6 +18687,9 @@
           "403": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -18249,6 +18708,15 @@
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -18303,6 +18771,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -18343,6 +18820,15 @@
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -18433,6 +18919,15 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -18450,6 +18945,9 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -18470,6 +18968,15 @@
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -18513,6 +19020,15 @@
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -18577,6 +19093,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -18613,6 +19138,17 @@
         "tags": [
           "product-feedback"
         ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -18630,6 +19166,9 @@
           "403": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -18642,6 +19181,17 @@
         "summary": "List active administrators eligible for assignment in the authenticated organization",
         "tags": [
           "product-feedback"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -18658,6 +19208,9 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -18678,6 +19231,15 @@
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -18719,6 +19281,15 @@
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -18772,6 +19343,15 @@
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -20853,6 +21433,15 @@
             "name": "attachmentId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -26401,6 +26990,298 @@
           }
         }
       },
+      "KnowledgeHandoverResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "responsibleUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "responsibleUserName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pending": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "entry",
+                    "import"
+                  ]
+                },
+                "createdByUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "responsibleUserId",
+                "responsibleUserName",
+                "pending",
+                "kind",
+                "createdByUserId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items",
+          "candidates"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "KnowledgeHandoverResponse"
+      },
+      "KnowledgeHandoverRequest": {
+        "type": "object",
+        "properties": {
+          "responsibleUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expectedResponsibleUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "responsibleUserId",
+          "expectedResponsibleUserId"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "KnowledgeHandoverRequest"
+      },
+      "AssetHandoverSavedResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "AssetHandoverSavedResponse"
+      },
+      "FeedbackHandoverResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "responsibleUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "responsibleUserName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pending": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "feedback-draft",
+                    "feedback-work"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "responsibleUserId",
+                "responsibleUserName",
+                "pending",
+                "kind"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "canTriage": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "canTriage"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items",
+          "candidates"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "FeedbackHandoverResponse"
+      },
+      "FeedbackHandoverRequest": {
+        "type": "object",
+        "properties": {
+          "responsibleUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expectedResponsibleUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "responsibleUserId",
+          "expectedResponsibleUserId"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "FeedbackHandoverRequest"
+      },
+      "ExperienceRegistrationResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "organizationId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "organizationName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "platform",
+                  "environment",
+                  "default"
+                ]
+              },
+              "available": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "enabled",
+              "organizationId",
+              "organizationName",
+              "source",
+              "available"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ExperienceRegistrationResponse"
+      },
+      "UpdateExperienceRegistrationRequest": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "organizationId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "enabled",
+          "organizationId"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "UpdateExperienceRegistrationRequest"
+      },
       "AdministratorRecoveryResponse": {
         "type": "object",
         "properties": {
@@ -26917,6 +27798,41 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "ProjectMembersResponse"
+      },
+      "UpdateProjectMemberBody": {
+        "type": "object",
+        "properties": {
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "hardware-user",
+                "software-user",
+                "hardware-committer",
+                "software-committer"
+              ]
+            }
+          },
+          "expectedRoles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "hardware-user",
+                "software-user",
+                "hardware-committer",
+                "software-committer"
+              ]
+            }
+          }
+        },
+        "required": [
+          "roles",
+          "expectedRoles"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "UpdateProjectMemberBody"
       },
       "OrganizationInvitationListResponse": {
         "type": "object",
@@ -27711,6 +28627,162 @@
       },
       "MeResponse": {
         "type": "object",
+        "properties": {
+          "user": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "isActive": {
+                "type": "boolean"
+              },
+              "email": {
+                "type": "string"
+              },
+              "emailVerified": {
+                "type": "boolean"
+              },
+              "username": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "organizationId",
+              "name",
+              "title",
+              "isActive"
+            ],
+            "additionalProperties": false
+          },
+          "organization": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "projectId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "roleId": {
+                  "type": "string",
+                  "enum": [
+                    "guest",
+                    "hardware-user",
+                    "software-user",
+                    "hardware-committer",
+                    "software-committer",
+                    "admin",
+                    "platform-admin"
+                  ]
+                }
+              },
+              "required": [
+                "projectId",
+                "roleId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "projectMemberships": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "projectId": {
+                  "type": "string"
+                },
+                "roles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "hardware-user",
+                      "software-user",
+                      "hardware-committer",
+                      "software-committer"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "projectId",
+                "roles"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "parameter:view",
+                "parameter:edit",
+                "parameter:edit-critical",
+                "debugging:use",
+                "debugging:view",
+                "debugging:read",
+                "debugging:write",
+                "debugging:rollback",
+                "debugging:dts-reload",
+                "debugging:admin",
+                "logs:view",
+                "logs:upload",
+                "logs:analyze",
+                "logs:archive",
+                "logs:feedback",
+                "logs:admin-domains",
+                "knowledge:view",
+                "knowledge:edit",
+                "knowledge:manage",
+                "parameter:review",
+                "admin:access",
+                "users:manage",
+                "platform:access",
+                "platform:schema-promote",
+                "catalog:author",
+                "catalog:publish",
+                "catalog:review-high-risk"
+              ]
+            }
+          }
+        },
+        "required": [
+          "user",
+          "organization",
+          "roles",
+          "permissions"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "MeResponse"
       },
       "EnterOperatingContextRequest": {
@@ -27809,6 +28881,34 @@
                   "required": [
                     "projectId",
                     "roleId"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "projectMemberships": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "roles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "hardware-user",
+                          "software-user",
+                          "hardware-committer",
+                          "software-committer"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "projectId",
+                    "roles"
                   ],
                   "additionalProperties": false
                 }
@@ -62486,6 +63586,81 @@
           "item": {
             "type": "object",
             "properties": {
+              "historicalAttribution": {
+                "type": "object",
+                "properties": {
+                  "organization": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "recorded",
+                          "legacy-current",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "source"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "actors": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "recorded",
+                            "legacy-current",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "organization",
+                  "actors"
+                ],
+                "additionalProperties": false
+              },
               "id": {
                 "type": "string"
               },
@@ -62630,6 +63805,81 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "historicalAttribution": {
+                      "type": "object",
+                      "properties": {
+                        "organization": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "name": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "recorded",
+                                "legacy-current",
+                                "unknown"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "source"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "actors": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "name": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "source": {
+                                "type": "string",
+                                "enum": [
+                                  "recorded",
+                                  "legacy-current",
+                                  "unknown"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "source"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "organization",
+                        "actors"
+                      ],
+                      "additionalProperties": false
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -62902,6 +64152,81 @@
           "item": {
             "type": "object",
             "properties": {
+              "historicalAttribution": {
+                "type": "object",
+                "properties": {
+                  "organization": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "recorded",
+                          "legacy-current",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "source"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "actors": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "recorded",
+                            "legacy-current",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "organization",
+                  "actors"
+                ],
+                "additionalProperties": false
+              },
               "id": {
                 "type": "string"
               },
@@ -63046,6 +64371,81 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "historicalAttribution": {
+                      "type": "object",
+                      "properties": {
+                        "organization": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "name": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "recorded",
+                                "legacy-current",
+                                "unknown"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "source"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "actors": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "name": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "source": {
+                                "type": "string",
+                                "enum": [
+                                  "recorded",
+                                  "legacy-current",
+                                  "unknown"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "source"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "organization",
+                        "actors"
+                      ],
+                      "additionalProperties": false
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -63269,6 +64669,81 @@
             "items": {
               "type": "object",
               "properties": {
+                "historicalAttribution": {
+                  "type": "object",
+                  "properties": {
+                    "organization": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "recorded",
+                            "legacy-current",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "actors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "name": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "recorded",
+                              "legacy-current",
+                              "unknown"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "source"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "organization",
+                    "actors"
+                  ],
+                  "additionalProperties": false
+                },
                 "id": {
                   "type": "string"
                 },
@@ -63413,6 +64888,81 @@
                   "items": {
                     "type": "object",
                     "properties": {
+                      "historicalAttribution": {
+                        "type": "object",
+                        "properties": {
+                          "organization": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "name": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "source": {
+                                "type": "string",
+                                "enum": [
+                                  "recorded",
+                                  "legacy-current",
+                                  "unknown"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "source"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "actors": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "name": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "source": {
+                                  "type": "string",
+                                  "enum": [
+                                    "recorded",
+                                    "legacy-current",
+                                    "unknown"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name",
+                                "source"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "organization",
+                          "actors"
+                        ],
+                        "additionalProperties": false
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -63566,6 +65116,81 @@
               {
                 "type": "object",
                 "properties": {
+                  "historicalAttribution": {
+                    "type": "object",
+                    "properties": {
+                      "organization": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "name": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "recorded",
+                              "legacy-current",
+                              "unknown"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "source"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "actors": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "name": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "recorded",
+                                "legacy-current",
+                                "unknown"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "source"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "organization",
+                      "actors"
+                    ],
+                    "additionalProperties": false
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -63710,6 +65335,81 @@
                     "items": {
                       "type": "object",
                       "properties": {
+                        "historicalAttribution": {
+                          "type": "object",
+                          "properties": {
+                            "organization": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "name": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "source": {
+                                  "type": "string",
+                                  "enum": [
+                                    "recorded",
+                                    "legacy-current",
+                                    "unknown"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name",
+                                "source"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "actors": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "name": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "source": {
+                                    "type": "string",
+                                    "enum": [
+                                      "recorded",
+                                      "legacy-current",
+                                      "unknown"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "name",
+                                  "source"
+                                ],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": [
+                            "organization",
+                            "actors"
+                          ],
+                          "additionalProperties": false
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -63919,6 +65619,81 @@
               {
                 "type": "object",
                 "properties": {
+                  "historicalAttribution": {
+                    "type": "object",
+                    "properties": {
+                      "organization": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "name": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "recorded",
+                              "legacy-current",
+                              "unknown"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "source"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "actors": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "name": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "recorded",
+                                "legacy-current",
+                                "unknown"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "source"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "organization",
+                      "actors"
+                    ],
+                    "additionalProperties": false
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -64063,6 +65838,81 @@
                     "items": {
                       "type": "object",
                       "properties": {
+                        "historicalAttribution": {
+                          "type": "object",
+                          "properties": {
+                            "organization": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "name": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "source": {
+                                  "type": "string",
+                                  "enum": [
+                                    "recorded",
+                                    "legacy-current",
+                                    "unknown"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name",
+                                "source"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "actors": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "name": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "source": {
+                                    "type": "string",
+                                    "enum": [
+                                      "recorded",
+                                      "legacy-current",
+                                      "unknown"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "name",
+                                  "source"
+                                ],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": [
+                            "organization",
+                            "actors"
+                          ],
+                          "additionalProperties": false
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -64236,6 +66086,81 @@
             "items": {
               "type": "object",
               "properties": {
+                "historicalAttribution": {
+                  "type": "object",
+                  "properties": {
+                    "organization": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "recorded",
+                            "legacy-current",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "actors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "name": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "recorded",
+                              "legacy-current",
+                              "unknown"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "source"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "organization",
+                    "actors"
+                  ],
+                  "additionalProperties": false
+                },
                 "id": {
                   "type": "string"
                 },
@@ -64380,6 +66305,81 @@
                   "items": {
                     "type": "object",
                     "properties": {
+                      "historicalAttribution": {
+                        "type": "object",
+                        "properties": {
+                          "organization": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "name": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "source": {
+                                "type": "string",
+                                "enum": [
+                                  "recorded",
+                                  "legacy-current",
+                                  "unknown"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "source"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "actors": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "name": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "source": {
+                                  "type": "string",
+                                  "enum": [
+                                    "recorded",
+                                    "legacy-current",
+                                    "unknown"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name",
+                                "source"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "organization",
+                          "actors"
+                        ],
+                        "additionalProperties": false
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -64774,6 +66774,12 @@
           "item": {
             "type": "object",
             "properties": {
+              "responsibleUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "historicalAttribution": {
                 "type": "object",
                 "properties": {
@@ -65135,6 +67141,12 @@
                     "null"
                   ],
                   "properties": {
+                    "responsibleUserId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "historicalAttribution": {
                       "type": "object",
                       "properties": {
@@ -65791,6 +67803,12 @@
             "items": {
               "type": "object",
               "properties": {
+                "responsibleUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "historicalAttribution": {
                   "type": "object",
                   "properties": {
@@ -66282,6 +68300,12 @@
               "null"
             ],
             "properties": {
+              "responsibleUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "historicalAttribution": {
                 "type": "object",
                 "properties": {

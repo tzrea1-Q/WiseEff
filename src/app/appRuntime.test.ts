@@ -11,6 +11,22 @@ function deps(): AppRuntimeDeps {
 }
 
 describe("createAppRuntime", () => {
+  it("binds feedback to the URL target while identity requests retain the real account", async () => {
+    vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "http://127.0.0.1:18781");
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ items: [] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const target = createAppRuntime("api", { ...deps(), organizationId: "target-feedback" });
+      const home = createAppRuntime("api", deps());
+      await target.productFeedbackRepository.list();
+      await home.productFeedbackRepository.list();
+      await target.authClient.getCurrentAuthContext();
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+        "http://127.0.0.1:18781/api/v1/product-feedback?organizationId=target-feedback",
+        "http://127.0.0.1:18781/api/v1/product-feedback", "http://127.0.0.1:18781/api/v1/me"
+      ]);
+    } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
+  });
   it("keeps parameter runtimes fixed to their own target and shared Catalog requests global", async () => {
     vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "http://127.0.0.1:18781");
     const fetchMock = vi.fn().mockImplementation(async (url: string) => new Response(JSON.stringify(
