@@ -135,6 +135,8 @@ test.describe("canonical value workflow on real sources", () => {
         await client.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
           values ($1,$2,$3,$4,$5)`, [`local-${userId}`, userId, organizationId, projectId, roleId]);
       }
+      await client.query(`insert into project_members(organization_id,project_id,user_id,roles)
+        values ($1,$2,$3,ARRAY['software-user'])`, [organizationId, projectId, acceptanceCast.liuMin.userId]);
       await client.query(`insert into attribution_subjects(id,organization_id,subject_kind,display_name,source_key)
         values ('attr-local-acme',$1,'driver-registration','Acme power','compatible:acme,power')`, [organizationId]);
       await client.query(`insert into driver_registrations(attribution_subject_id,driver_nature,instance_cardinality)
@@ -338,7 +340,8 @@ test.describe("canonical value workflow on real sources", () => {
     const outsideScope = await request.get(apiRoute("/api/v2/projects/aurora/parameter-value-change-requests?mine=true"), {
       headers: authHeadersForUser("tracking-scoped-user", "tracking-scoped@example.test", "Tracking scoped")
     });
-    expect(outsideScope.status()).toBe(403);
+    expect(outsideScope.status(), await outsideScope.text()).toBe(200);
+    expect((await outsideScope.json()).items).toEqual([]);
     review = await openReview("software-committer", approvedId);
     await review.getByText("查看完整源文件", { exact: true }).click();
     await expect(review.getByLabel("固定源变更后")).toContainText("1200");
@@ -508,6 +511,8 @@ test.describe("canonical JSON deletion on a real source", () => {
         await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
           values ($1,$2,$3,$4,$5)`, [`json-local-${userId}`, userId, organizationId, jsonProjectId, roleId]);
       }
+      await db.query(`insert into project_members(organization_id,project_id,user_id,roles)
+        values ($1,$2,$3,ARRAY['software-user'])`, [organizationId, jsonProjectId, acceptanceCast.liuMin.userId]);
       // Explicit Catalog fixture setup; source registration and all product mutations use HTTP/UI.
       await installConfigurationSourceFixture(db, makeTestAuthContext({
         userId: acceptanceCast.xuYun.userId, organizationId,

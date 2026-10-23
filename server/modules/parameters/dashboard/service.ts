@@ -102,11 +102,6 @@ function resolvePerspectiveRoleId(input: ServiceInput) {
   }, "guest");
 }
 
-function resolveAuthorizedProjectIds(input: ServiceInput): readonly string[] | null {
-  if (input.auth.roles.some((role) => role.projectId === null)) return null;
-  return [...new Set(input.auth.roles.map((role) => role.projectId).filter((id): id is string => Boolean(id)))];
-}
-
 async function assertProjectScope(db: Database, input: ServiceInput) {
   if (!input.projectId) return;
   const project = await getProjectById(db, {
@@ -115,12 +110,6 @@ async function assertProjectScope(db: Database, input: ServiceInput) {
   });
   if (!project) {
     throw new ApiError("NOT_FOUND", "Project was not found for this organization.", {
-      projectId: input.projectId
-    });
-  }
-  const allowed = input.auth.roles.some((role) => role.projectId === null || role.projectId === input.projectId);
-  if (!allowed) {
-    throw new ApiError("FORBIDDEN", "Parameter dashboard project scope is not allowed.", {
       projectId: input.projectId
     });
   }
@@ -232,7 +221,7 @@ export async function getDashboardSummary(db: Database, input: ServiceInput): Pr
   const organizationId = parameterOrganizationId(input.auth);
   const { windowStart, windowEnd, granularity } = resolveWindowBounds(input.window);
   const projectId = input.projectId ?? null;
-  const authorizedProjectIds = resolveAuthorizedProjectIds(input);
+  const authorizedProjectIds = null;
   const reviewableProjectIds = await resolveReviewableProjectIds(db, input, authorizedProjectIds);
   const workbenchSignalsPromise = aggregateWorkbenchSignals(db, {
     organizationId,
@@ -295,7 +284,7 @@ export async function getDashboardHotspots(db: Database, input: HotspotServiceIn
   const previousStart = new Date(windowStart);
   previousStart.setUTCDate(previousStart.getUTCDate() - days);
   const projectId = input.projectId ?? null;
-  const authorizedProjectIds = resolveAuthorizedProjectIds(input);
+  const authorizedProjectIds = null;
 
   const [currentGroups, previousGroups] = await Promise.all([
     aggregateHotspotGroups(db, {
