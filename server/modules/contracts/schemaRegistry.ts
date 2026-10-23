@@ -132,13 +132,19 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   },
 
   "organization.get": {
-    summary: "Get the caller's home organization",
+    summary: "Get the operating Organization (Home by default)",
     tags: ["users"],
     responseBody: "OrganizationResponse",
     additionalResponses: { "401": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "organization.projectCandidates": {
+    summary: "List project names in the operating Organization for member review-duty management",
+    tags: ["users"], responseBody: "OrganizationProjectCandidatesResponse",
+    requestParameters: [{ name: "organizationId", in: "query", schema: { type: "string" } }],
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "organization.update": {
-    summary: "Rename the caller's home organization",
+    summary: "Rename the operating Organization (Home by default)",
     tags: ["users"],
     requestBody: "UpdateOrganizationRequest",
     responseBody: "OrganizationResponse",
@@ -2313,3 +2319,14 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
 
   ...(parameterCatalogSchemaRegistry as unknown as Record<string, ContractSchemaRef>)
 };
+
+for (const routeId of [
+  "organization.get", "organization.update", "users.list", "users.create", "users.setOidcIdentity", "users.update", "users.delete", "users.activation",
+  "users.replaceRoles", "users.replaceOrganizationRoles", "users.resetPassword", "users.getProjectWorkflowRoleBindings", "users.replaceProjectWorkflowRoleBindings",
+  "users.listRegistrationRoleRequests", "users.approveRegistrationRoleRequest", "users.enableBasicRegistrationRoleRequest", "users.rejectRegistrationRoleRequest"
+]) {
+  schemaRegistry[routeId].requestParameters = [...(schemaRegistry[routeId].requestParameters ?? []), {
+    name: "organizationId", in: "query", description: "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.", schema: { type: "string" }
+  }];
+  schemaRegistry[routeId].additionalResponses = { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", ...schemaRegistry[routeId].additionalResponses };
+}

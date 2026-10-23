@@ -2,6 +2,8 @@ import { pickPrimaryPlatformRoleId, type PlatformRoleId, type UserAccount } from
 import { createApiClient } from "./apiClient";
 import { createDefaultApiClient, type DefaultApiClientOptions } from "./defaultApiClient";
 import type { LocalAuthPublicConfigDto } from "./authClient";
+import type { AuthContextDto } from "./authClient";
+import { withOrganizationScope } from "./organizationScope";
 
 type ApiClient = ReturnType<typeof createApiClient>;
 
@@ -118,15 +120,21 @@ function roleBody(roleId: PlatformRoleId, projectId: string | null = null) {
 }
 
 export function createUserGovernanceClient(
-  apiClient: ApiClient = createDefaultUserGovernanceApiClient()
+  apiClient: ApiClient = createDefaultUserGovernanceApiClient(),
+  organizationId?: string
 ) {
+  const scoped = (path: string) => withOrganizationScope(path, organizationId);
   return {
+    enterOperatingContext: () => apiClient.post<{ actor: AuthContextDto; organization: { id: string; name: string } }>("/api/v1/organization/operating-scope", { organizationId }),
+    async listProjectCandidates() {
+      return (await apiClient.get<ItemsEnvelope<{ id: string; name: string }>>(scoped("/api/v1/organization/project-candidates"))).items;
+    },
     async listUsers() {
-      const response = await apiClient.get<ItemsEnvelope<UserGovernanceDto>>("/api/v1/users");
+      const response = await apiClient.get<ItemsEnvelope<UserGovernanceDto>>(scoped("/api/v1/users"));
       return response.items.map(userFromDto);
     },
     async createUser(input: CreateGovernedUserInput) {
-      const response = await apiClient.post<ItemEnvelope<UserGovernanceDto>>("/api/v1/users", {
+      const response = await apiClient.post<ItemEnvelope<UserGovernanceDto>>(scoped("/api/v1/users"), {
         ...("authentication" in input ? { authentication: input.authentication, issuer: input.issuer, subject: input.subject, ...(input.email ? { email: input.email } : {}),name: input.name,title: input.title }
           : { name: input.name,username: input.username,title: input.title,password: input.password }),
         roles: [{ projectId: "projectId" in input ? input.projectId ?? null : null, roleId: input.roleId }]
@@ -135,19 +143,19 @@ export function createUserGovernanceClient(
     },
     getAuthenticationConfig: () => apiClient.get<LocalAuthPublicConfigDto>("/api/v1/auth/local-config"),
     async setOidcIdentity(userId: string, input: { issuer: string; subject: string; email?: string; expectedIdentity: { issuer: string; subject: string } | null }) {
-      const response = await apiClient.put<ItemEnvelope<UserGovernanceDto>>(`/api/v1/users/${encodeURIComponent(userId)}/oidc-identity`,input);
+      const response = await apiClient.put<ItemEnvelope<UserGovernanceDto>>(scoped(`/api/v1/users/${encodeURIComponent(userId)}/oidc-identity`),input);
       return userFromDto(response.item);
     },
     async assignUserRole(userId: string, roleId: PlatformRoleId, projectId: string | null = null) {
       const response = await apiClient.put<ItemEnvelope<UserGovernanceDto>>(
-        `/api/v1/users/${encodeURIComponent(userId)}/roles`,
+        scoped(`/api/v1/users/${encodeURIComponent(userId)}/roles`),
         roleBody(roleId, projectId)
       );
       return userFromDto(response.item);
     },
     async updateOrganizationRoles(userId: string, input: UpdateOrganizationRolesInput) {
       const response = await apiClient.put<ItemEnvelope<UserGovernanceDto>>(
-        `/api/v1/users/${encodeURIComponent(userId)}/organization-roles`,
+        scoped(`/api/v1/users/${encodeURIComponent(userId)}/organization-roles`),
         input
       );
       return userFromDto(response.item);
@@ -156,7 +164,7 @@ export function createUserGovernanceClient(
       const response = await apiClient.get<Omit<ProjectWorkflowRoleBindingsDto, "bindings"> & {
         bindings: Array<Omit<ProjectWorkflowRoleBindingItem, "name" | "email" | "title"> & { userName: string }>;
       }>(
-        `/api/v1/projects/${encodeURIComponent(projectId)}/workflow-role-bindings`
+        scoped(`/api/v1/projects/${encodeURIComponent(projectId)}/workflow-role-bindings`)
       );
       return { ...response, bindings: response.bindings.map((binding) => ({ ...binding, name: binding.userName, email: null, title: "" })) };
     },
@@ -166,58 +174,66 @@ export function createUserGovernanceClient(
       input: UpdateProjectWorkflowRoleBindingsInput
     ) {
       return apiClient.put<{ item: { projectId: string; userId: string; roles: ProjectWorkflowRoleId[] } }>(
-        `/api/v1/projects/${encodeURIComponent(projectId)}/workflow-role-bindings/${encodeURIComponent(userId)}`,
+        scoped(`/api/v1/projects/${encodeURIComponent(projectId)}/workflow-role-bindings/${encodeURIComponent(userId)}`),
         input
       );
     },
     async setUserActive(userId: string, isActive: boolean) {
-      const response = await apiClient.patch<ItemEnvelope<UserGovernanceDto>>(`/api/v1/users/${encodeURIComponent(userId)}/activation`, {
+      const response = await apiClient.patch<ItemEnvelope<UserGovernanceDto>>(scoped(`/api/v1/users/${encodeURIComponent(userId)}/activation`), {
         isActive
       });
       return userFromDto(response.item);
     },
     async updateUserProfile(userId: string, input: { name: string; title: string }) {
-      const response = await apiClient.patch<ItemEnvelope<UserGovernanceDto>>(`/api/v1/users/${encodeURIComponent(userId)}`, input);
+      const response = await apiClient.patch<ItemEnvelope<UserGovernanceDto>>(scoped(`/api/v1/users/${encodeURIComponent(userId)}`), input);
       return userFromDto(response.item);
     },
     async deleteUser(userId: string) {
-      await apiClient.delete<null>(`/api/v1/users/${encodeURIComponent(userId)}`);
+      await apiClient.delete<null>(scoped(`/api/v1/users/${encodeURIComponent(userId)}`));
     },
     async resetUserPassword(userId: string, password: string) {
       const response = await apiClient.post<ItemEnvelope<UserGovernanceDto>>(
-        `/api/v1/users/${encodeURIComponent(userId)}/password`,
+        scoped(`/api/v1/users/${encodeURIComponent(userId)}/password`),
         { password }
       );
       return userFromDto(response.item);
     },
     async listRegistrationRoleRequests(status: "pending" | "decided" = "pending") {
-      const response = await apiClient.get<ItemsEnvelope<RegistrationRoleRequestDto>>(`/api/v1/users/registration-role-requests${status === "decided" ? "?status=decided" : ""}`);
+      const response = await apiClient.get<ItemsEnvelope<RegistrationRoleRequestDto>>(scoped(`/api/v1/users/registration-role-requests${status === "decided" ? "?status=decided" : ""}`));
       return response.items;
     },
     async approveRegistrationRoleRequest(requestId: string) {
       const response = await apiClient.post<ItemEnvelope<RegistrationRoleRequestDto>>(
-        `/api/v1/users/registration-role-requests/${encodeURIComponent(requestId)}/approve`,
+        scoped(`/api/v1/users/registration-role-requests/${encodeURIComponent(requestId)}/approve`),
         {}
       );
       return response.item;
     },
     async rejectRegistrationRoleRequest(requestId: string) {
       const response = await apiClient.post<ItemEnvelope<RegistrationRoleRequestDto>>(
-        `/api/v1/users/registration-role-requests/${encodeURIComponent(requestId)}/reject`,
+        scoped(`/api/v1/users/registration-role-requests/${encodeURIComponent(requestId)}/reject`),
         {}
       );
       return response.item;
     },
     async enableBasicRegistrationRoleRequest(requestId: string) {
-      return (await apiClient.post<ItemEnvelope<RegistrationRoleRequestDto>>(`/api/v1/users/registration-role-requests/${encodeURIComponent(requestId)}/enable-basic`, {})).item;
+      return (await apiClient.post<ItemEnvelope<RegistrationRoleRequestDto>>(scoped(`/api/v1/users/registration-role-requests/${encodeURIComponent(requestId)}/enable-basic`), {})).item;
     },
     async getOrganization() {
-      const response = await apiClient.get<{ organization: OrganizationRecordDto }>("/api/v1/organization");
+      const response = await apiClient.get<{ organization: OrganizationRecordDto }>(scoped("/api/v1/organization"));
       return response.organization;
     },
     async updateOrganization(input: { name: string }) {
-      const response = await apiClient.patch<{ organization: OrganizationRecordDto }>("/api/v1/organization", input);
+      const response = await apiClient.patch<{ organization: OrganizationRecordDto }>(scoped("/api/v1/organization"), input);
       return response.organization;
     }
   };
 }
+
+export function createOrganizationWorkspaceClient(api = createDefaultUserGovernanceApiClient()) {
+  return {
+    enterOperatingContext: (organizationId?: string) => createUserGovernanceClient(api, organizationId).enterOperatingContext(),
+    forOrganization: (organizationId: string) => createUserGovernanceClient(api, organizationId)
+  };
+}
+export type OrganizationWorkspaceClient = ReturnType<typeof createOrganizationWorkspaceClient>;

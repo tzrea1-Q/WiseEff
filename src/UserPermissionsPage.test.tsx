@@ -8,6 +8,7 @@ import { createPrototypeState } from "./mockData";
 import { declarationsFor, readStylesheet } from "./test/cssAssertions";
 import type { PlatformRoleId } from "./domain/users/types";
 import { WiseEffApiError } from "./infrastructure/http/apiClient";
+import { requestSettingsLeave } from "./application/settingsFormNavigation";
 
 afterEach(() => {
   cleanup();
@@ -87,6 +88,43 @@ async function openActivationAction(row: HTMLElement, name: "停用" | "启用")
 }
 
 describe("UserPermissionsPage", () => {
+  it("waits for the app's approved route before restoring another target's history filters", async () => {
+    window.history.replaceState(null, "", "/organization/members?organizationId=target-A&q=kept");
+    const actions: UserGovernanceActions = { listUsers: vi.fn(async () => []), createUser: vi.fn(), updateOrganizationRoles: vi.fn(), setUserActive: vi.fn(), deleteUser: vi.fn() };
+    render(<UserPermissionsPage state={{ ...createPrototypeState(), activeRoleId: "admin" }} dispatch={vi.fn()} onNavigate={vi.fn()} search="?organizationId=target-A&q=kept" directoryScope="target-A" userGovernanceActions={actions} />);
+    await waitFor(() => expect(actions.listUsers).toHaveBeenCalled());
+    act(() => {
+      window.history.pushState(null, "", "/organization/members?organizationId=target-B&q=foreign");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(screen.getByRole("searchbox", { name: "搜索用户" })).toHaveValue("kept");
+  });
+  it("guards an unfinished account draft before switching organization without storing its password", async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
+    await userEvent.type(screen.getByLabelText("姓名"), "Unfinished member");
+    await userEvent.type(screen.getByLabelText("初始密码"), "private-draft-password");
+    let decision!: boolean | Promise<boolean>;
+    act(() => { decision = requestSettingsLeave(); });
+    const confirm = screen.getByRole("dialog", { name: "放弃未保存的更改？" });
+    await userEvent.click(within(confirm).getByRole("button", { name: "继续编辑" }));
+    expect(await decision).toBe(false);
+    expect(screen.getByLabelText("初始密码")).toHaveValue("private-draft-password");
+    await userEvent.click(within(screen.getByRole("dialog", { name: "添加用户" })).getByRole("button", { name: "取消" }));
+    await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
+    expect(screen.getByLabelText("初始密码")).toHaveValue("");
+  });
+  it("keeps a target directory separate from the authenticated home actor", async () => {
+    const state = { ...createPrototypeState(), activeRoleId: "platform-admin" as const };
+    const member = { ...state.users[0], id: "target-member", name: "Target-only member", roleId: "software-user" as const, roles: [{ projectId: null, roleId: "software-user" as const }] };
+    const dispatch = vi.fn();
+    const actions: UserGovernanceActions = { listUsers: vi.fn(async () => [member]), createUser: vi.fn(), updateOrganizationRoles: vi.fn(), setUserActive: vi.fn(), deleteUser: vi.fn() };
+    render(<UserPermissionsPage state={state} dispatch={dispatch} onNavigate={vi.fn()} search="" userGovernanceActions={actions} directoryScope="target-organization" />);
+    const table = await screen.findByRole("table", { name: "平台用户" });
+    expect(await within(table).findByText("Target-only member")).toBeInTheDocument();
+    expect(within(table).queryByText(state.users.find((user) => user.id === state.currentUserId)!.name)).not.toBeInTheDocument();
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_USERS" }));
+  });
   it("enables own role editing while the server protects the last effective administrator", async () => {
     const base = createPrototypeState();
     const current = base.users.find((user) => user.id === base.currentUserId)!;

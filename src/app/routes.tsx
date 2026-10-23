@@ -53,6 +53,7 @@ import { DtsReloadPage } from "@/features/dts-reload/DtsReloadPage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
 import type { AuthContextDto } from "@/infrastructure/http/authClient";
 import { OrganizationPage } from "@/OrganizationPage";
+import { OrganizationWorkspace } from "@/features/organization/OrganizationWorkspace";
 import { RetiredNotice } from "@/components/layout/RetiredNotice";
 import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/domain/prototype/types";
@@ -463,7 +464,7 @@ export function PageRouter({
     case "workflow-publication":
       return runtime?.workflowPublicationClient ? <WorkflowPublicationPage client={runtime.workflowPublicationClient} onSaved={publication?.retry} /> : null;
     case "platform-organizations":
-      return runtime?.platformOrganizationsClient ? <PlatformOrganizationsPage client={runtime.platformOrganizationsClient} authClient={runtime.authClient} /> : null;
+      return runtime?.platformOrganizationsClient ? <PlatformOrganizationsPage client={runtime.platformOrganizationsClient} authClient={runtime.authClient} onNavigate={onNavigate} /> : null;
     case "knowledge": {
       const citation = parseKnowledgeEntryQuery(new URLSearchParams(search));
       return knowledgeRepository && knowledgeCapability ? (
@@ -563,9 +564,11 @@ export function PageRouter({
         />
       );
     }
-    case "user-permissions":
+    case "user-permissions": {
+      const OrganizationComponent = runtimeMode === "api" ? OrganizationWorkspace : OrganizationPage;
       return (
-        <OrganizationPage
+        <OrganizationComponent
+          workspaceClient={runtime?.organizationWorkspaceClient}
           state={state}
           dispatch={dispatch}
           onNavigate={onNavigate}
@@ -601,6 +604,7 @@ export function PageRouter({
           }}
         />
       );
+    }
     case "audit":
       return <AuditCenterPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} runtimeMode={runtimeMode} />;
     default:

@@ -12,6 +12,7 @@ import {
   getHomeOrganization,
   getProjectRoleBindings,
   listGovernedUsers,
+  listGovernedProjectCandidates,
   listRegistrationRoleRequests,
   rejectRegistrationRoleRequest,
   replaceOrganizationRoles,
@@ -35,6 +36,7 @@ import {
 } from "./schemas";
 import { setOidcIdentity } from "../auth/oidcIdentity";
 import { createUserInvocation } from "../auth/trustedInvocation";
+import { resolveOperatingContext } from "../auth/operatingContext";
 import { getUserById } from "./repository";
 import { createPlatformOrganizationSchema, emergencyDisableAdministratorSchema, recoverOrganizationAdministratorSchema } from "../contracts/dtoSchemas/platformOrganizations";
 import { createPlatformOrganization, emergencyDisableAdministrator, getAdministratorRecovery, listPlatformOrganizations, recoverOrganizationAdministrator, requirePlatformOrganizationManager } from "./platformOrganizations";
@@ -78,6 +80,10 @@ export function registerUserRoutes(
   options: { db?: Database; oidcIssuer?: string; authenticationProvider?: "local" | "oidc" | "hmac"; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
 ) {
   const mutationContext = (request: RouteRequest) => ({ requestId: request.requestId, authenticationProvider: options.authenticationProvider, oidcIssuer: options.oidcIssuer });
+  const operatingInvocation = (db: Database, auth: AuthContext, request: RouteRequest) => {
+    const query = parseWithSchema(z.object({ organizationId: z.string().trim().min(1).max(200).optional() }), request.query);
+    return query.organizationId === undefined ? createUserInvocation(auth) : resolveOperatingContext(db, createUserInvocation(auth), query.organizationId);
+  };
   router.get("/api/v1/platform/organizations/:organizationId/administrator-recovery", async (request) => {
     const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
     return { status: 200, body: await getAdministratorRecovery(db, createUserInvocation(auth), request.params.organizationId, mutationContext(request)) };
@@ -114,16 +120,21 @@ export function registerUserRoutes(
   router.get("/api/v1/organization", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
-    const organization = await getHomeOrganization(db, auth);
+    const organization = await getHomeOrganization(db, await operatingInvocation(db, auth, request));
 
     return { status: 200, body: { organization } };
+  });
+
+  router.get("/api/v1/organization/project-candidates", async (request) => {
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    return { status: 200, body: { items: await listGovernedProjectCandidates(db, await operatingInvocation(db, auth, request)) } };
   });
 
   router.patch("/api/v1/organization", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(updateOrganizationBodySchema, request.body);
-    const organization = await updateHomeOrganization(db, auth, body, { requestId: request.requestId });
+    const organization = await updateHomeOrganization(db, await operatingInvocation(db, auth, request), body, { requestId: request.requestId });
 
     return { status: 200, body: { organization } };
   });
@@ -131,7 +142,7 @@ export function registerUserRoutes(
   router.get("/api/v1/users", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
-    const items = await listGovernedUsers(db, auth);
+    const items = await listGovernedUsers(db, await operatingInvocation(db, auth, request));
 
     return { status: 200, body: { items } };
   });
@@ -141,7 +152,7 @@ export function registerUserRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(createUserBodySchema, request.body);
     if (options.oidcIssuer && !("authentication" in body)) throw new ApiError("VALIDATION_FAILED", "OIDC provisioning requires an explicit subject instead of a local password.");
-    const item = await createUser(db, auth, body, { requestId: request.requestId }, options.oidcIssuer);
+    const item = await createUser(db, await operatingInvocation(db, auth, request), body, { requestId: request.requestId }, options.oidcIssuer);
 
     return { status: 201, body: { item } };
   });
@@ -150,8 +161,9 @@ export function registerUserRoutes(
     const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
     const { userId } = parseWithSchema(userIdParamsSchema, request.params);
     const body = parseWithSchema(setOidcIdentityBodySchema, request.body);
-    await setOidcIdentity(db, createUserInvocation(auth), userId, body, options.oidcIssuer, { requestId: request.requestId });
-    const item = await getUserById(db, { organizationId: auth.organization.id,userId });
+    const invocation = await operatingInvocation(db, auth, request);
+    await setOidcIdentity(db, invocation, userId, body, options.oidcIssuer, { requestId: request.requestId });
+    const item = await getUserById(db, { organizationId: invocation.operatingOrganization?.id ?? auth.organization.id,userId });
     return { status: 200,body: { item: item! } };
   });
 
@@ -159,7 +171,7 @@ export function registerUserRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const query = parseWithSchema(listRegistrationRoleRequestsQuerySchema, request.query);
-    const items = await listRegistrationRoleRequests(db, auth, query.status);
+    const items = await listRegistrationRoleRequests(db, await operatingInvocation(db, auth, request), query.status);
 
     return { status: 200, body: { items } };
   });
@@ -168,7 +180,7 @@ export function registerUserRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(registrationRoleRequestParamsSchema, request.params);
-    const item = await approveRegistrationRoleRequest(db, auth, params.requestId, { requestId: request.requestId });
+    const item = await approveRegistrationRoleRequest(db, await operatingInvocation(db, auth, request), params.requestId, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
   });
@@ -177,7 +189,7 @@ export function registerUserRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(registrationRoleRequestParamsSchema, request.params);
-    const item = await enableBasicRegistrationRoleRequest(db, auth, params.requestId, { requestId: request.requestId });
+    const item = await enableBasicRegistrationRoleRequest(db, await operatingInvocation(db, auth, request), params.requestId, { requestId: request.requestId });
     return { status: 200, body: { item } };
   });
 
@@ -185,7 +197,7 @@ export function registerUserRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(registrationRoleRequestParamsSchema, request.params);
-    const item = await rejectRegistrationRoleRequest(db, auth, params.requestId, { requestId: request.requestId });
+    const item = await rejectRegistrationRoleRequest(db, await operatingInvocation(db, auth, request), params.requestId, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
   });
@@ -195,7 +207,7 @@ export function registerUserRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(userIdParamsSchema, request.params);
     const body = parseWithSchema(updateUserBodySchema, request.body);
-    const item = await updateUserProfile(db, auth, params.userId, body, { requestId: request.requestId });
+    const item = await updateUserProfile(db, await operatingInvocation(db, auth, request), params.userId, body, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
   });
@@ -205,7 +217,7 @@ export function registerUserRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(userIdParamsSchema, request.params);
     const body = parseWithSchema(updateUserActiveBodySchema, request.body);
-    const item = await deactivateUser(db, auth, params.userId, body, mutationContext(request));
+    const item = await deactivateUser(db, await operatingInvocation(db, auth, request), params.userId, body, mutationContext(request));
 
     return { status: 200, body: { item } };
   });
@@ -214,7 +226,7 @@ export function registerUserRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(userIdParamsSchema, request.params);
-    await deleteUser(db, auth, params.userId, mutationContext(request));
+    await deleteUser(db, await operatingInvocation(db, auth, request), params.userId, mutationContext(request));
 
     return { status: 204, body: null };
   });
@@ -224,7 +236,7 @@ export function registerUserRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(userIdParamsSchema, request.params);
     const body = parseWithSchema(resetUserPasswordBodySchema, request.body);
-    const item = await resetUserPassword(db, auth, params.userId, body, { requestId: request.requestId });
+    const item = await resetUserPassword(db, await operatingInvocation(db, auth, request), params.userId, body, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
   });
@@ -234,7 +246,7 @@ export function registerUserRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(userIdParamsSchema, request.params);
     const body = parseWithSchema(replaceUserRolesBodySchema, request.body);
-    const item = await replaceUserRoles(db, auth, params.userId, body, mutationContext(request));
+    const item = await replaceUserRoles(db, await operatingInvocation(db, auth, request), params.userId, body, mutationContext(request));
 
     return { status: 200, body: { item } };
   });
@@ -244,7 +256,7 @@ export function registerUserRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(userIdParamsSchema, request.params);
     const body = parseWithSchema(updateOrganizationRolesBodySchema, request.body);
-    const item = await replaceOrganizationRoles(db, auth, params.userId, body, mutationContext(request));
+    const item = await replaceOrganizationRoles(db, await operatingInvocation(db, auth, request), params.userId, body, mutationContext(request));
 
     return { status: 200, body: { item } };
   });
@@ -253,7 +265,7 @@ export function registerUserRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(projectIdParamsSchema, request.params);
-    const item = await getProjectRoleBindings(db, auth, params.projectId);
+    const item = await getProjectRoleBindings(db, await operatingInvocation(db, auth, request), params.projectId);
 
     return { status: 200, body: item };
   });
@@ -263,7 +275,7 @@ export function registerUserRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(projectUserParamsSchema, request.params);
     const body = parseWithSchema(updateProjectWorkflowRolesBodySchema, request.body);
-    const item = await replaceProjectWorkflowRoles(db, auth, params.projectId, params.userId, body, {
+    const item = await replaceProjectWorkflowRoles(db, await operatingInvocation(db, auth, request), params.projectId, params.userId, body, {
       requestId: request.requestId
     });
 

@@ -19,7 +19,7 @@ type SettingsFormPageProps = {
   children: ReactNode;
 };
 
-export function SettingsFormPage({ label, dirty, saving = false, saveDisabled = false, error, onSave, onDiscard, children }: SettingsFormPageProps) {
+export function SettingsLeaveGuard({ dirty, saving = false }: { dirty: boolean; saving?: boolean }) {
   const [leaveOpen, setLeaveOpen] = useState(false);
   const leaveDecision = useRef<{ promise: Promise<boolean>; resolve: (allowed: boolean) => void } | null>(null);
   const finishLeave = (allowed: boolean) => {
@@ -51,6 +51,13 @@ export function SettingsFormPage({ label, dirty, saving = false, saveDisabled = 
       leaveDecision.current = null;
     };
   }, [dirty, saving]);
+  return <ConfirmDialog open={leaveOpen && dirty && !saving} title="放弃未保存的更改？"
+    description="离开将放弃本页未保存的更改。已保存的设置不会受到影响。"
+    confirmLabel="放弃并离开" cancelLabel="继续编辑" tone="danger"
+    onConfirm={() => finishLeave(true)} onCancel={() => finishLeave(false)} />;
+}
+
+export function SettingsFormPage({ label, dirty, saving = false, saveDisabled = false, error, onSave, onDiscard, children }: SettingsFormPageProps) {
   return <><form className="settings-form-page" aria-label={label} aria-busy={saving} data-settings-dirty={dirty} noValidate
     onSubmit={(event) => { event.preventDefault(); if (dirty && !saving && !saveDisabled) onSave(); }}>
     {error ? <div className="settings-form-page__error" role="alert" aria-label="保存错误摘要"><strong>保存失败</strong><p>{error}</p></div> : null}
@@ -60,10 +67,7 @@ export function SettingsFormPage({ label, dirty, saving = false, saveDisabled = 
       <Button type="button" variant="outline" disabled={saving} onClick={onDiscard}>放弃</Button>
       <Button type="submit" disabled={saving || saveDisabled}>{saving ? "保存中…" : "保存"}</Button>
     </div> : null}
-  </form><ConfirmDialog open={leaveOpen && dirty && !saving} title="放弃未保存的更改？"
-    description="离开将放弃本页未保存的更改。已保存的设置不会受到影响。"
-    confirmLabel="放弃并离开" cancelLabel="继续编辑" tone="danger"
-    onConfirm={() => finishLeave(true)} onCancel={() => finishLeave(false)} /></>;
+  </form><SettingsLeaveGuard dirty={dirty} saving={saving} /></>;
 }
 
 export function SettingsFormSection({ title, help, children }: { title: string; help: string; children: ReactNode }) {

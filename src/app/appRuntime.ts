@@ -39,7 +39,7 @@ import { createHttpParameterRepository } from "@/infrastructure/http/parameterCl
 import { createHttpParameterDashboardRepository } from "@/infrastructure/http/parameterDashboardClient";
 import { createParameterCatalogClient } from "@/infrastructure/http/parameterCatalogClient";
 import { createHttpProductFeedbackRepository } from "@/infrastructure/http/productFeedbackClient";
-import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
+import { createOrganizationWorkspaceClient, createUserGovernanceClient, type OrganizationWorkspaceClient } from "@/infrastructure/http/userGovernanceClient";
 import { createWorkflowPublicationClient, type WorkflowPublicationClient } from "@/infrastructure/http/workflowPublicationClient";
 import { createPlatformOrganizationsClient, type PlatformOrganizationsClient } from "@/infrastructure/http/platformOrganizationsClient";
 import { createMockWorkflowPublicationClient } from "@/infrastructure/mock/mockWorkflowPublicationClient";
@@ -85,6 +85,7 @@ export type AppRuntime = {
   debuggingGateway: DebuggingGateway;
   debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
   userGovernanceActions?: UserGovernanceActions;
+  organizationWorkspaceClient?: OrganizationWorkspaceClient;
   organizationActions?: OrganizationActions;
   listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
 };
@@ -162,6 +163,7 @@ export function createAppRuntime(
       resolveDebuggingGateway({ mode, getDebugParameters: () => deps.getState().debugParameters }),
     debuggingAdminClient: overrides.debuggingAdminClient ?? (api ? createDebuggingAdminClient() : undefined),
     userGovernanceActions: overrides.userGovernanceActions ?? (api ? createUserGovernanceClient() : undefined),
+    organizationWorkspaceClient: overrides.organizationWorkspaceClient ?? (api && !overrides.userGovernanceActions ? createOrganizationWorkspaceClient() : undefined),
     organizationActions:
       overrides.organizationActions ??
       (overrides.userGovernanceActions?.getOrganization && overrides.userGovernanceActions.updateOrganization

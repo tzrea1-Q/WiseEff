@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MemberDetailsDialog } from "@/components/admin/MemberDetailsDialog";
 import { MemberOrganizationRolesPanel } from "@/components/admin/MemberOrganizationRolesPanel";
+import { SettingsLeaveGuard } from "@/components/layout/SettingsFormPage";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import {
@@ -43,6 +44,10 @@ export type UserPermissionsPageProps = {
   onNavigate: (path: string) => void;
   search: string;
   userGovernanceActions?: UserGovernanceActions;
+  /** Directory state belongs to this explicit organization, never to the shell identity. */
+  directoryScope?: string;
+  projectCandidates?: Array<{ id: string; name: string }>;
+  reviewRolesClient?: import("@/components/parameter-admin-next/ProjectReviewRolesPanel").ProjectReviewRolesPanelProps["userGovernanceClient"];
   /** API-mode user-directory hydration lifecycle; mock mode stays "ready". */
   userDirectoryStatus?: UserDirectoryStatus;
   userDirectoryError?: string;
@@ -208,11 +213,17 @@ export function UserPermissionsPage({
   dispatch,
   search,
   userGovernanceActions,
+  directoryScope,
+  projectCandidates,
+  reviewRolesClient,
   userDirectoryStatus: userDirectoryStatusOverride,
   userDirectoryError: userDirectoryErrorOverride,
   onUserDirectoryRetry,
   onCurrentAccountChanged
 }: UserPermissionsPageProps) {
+  const [scopedUsers, setScopedUsers] = useState<User[]>([]);
+  const users = directoryScope ? scopedUsers : state.users;
+  const projects = projectCandidates ?? state.configDraft.projects;
   // Governed rows hydrate when the page mounts (the governance client only
   // exists in api mode, so its presence doubles as the mode guard); the page
   // owns the loading/error lifecycle, with the props kept as test overrides.
@@ -237,7 +248,8 @@ export function UserPermissionsPage({
       .then(([users, config]) => {
         if (!cancelled) {
           if (config) setAuthentication(config);
-          dispatch({ type: "HYDRATE_USERS", users });
+          if (directoryScope) setScopedUsers(users);
+          else dispatch({ type: "HYDRATE_USERS", users });
           setSelfDirectoryStatus("ready");
           setSelfDirectoryError("");
         }
@@ -253,7 +265,7 @@ export function UserPermissionsPage({
     return () => {
       cancelled = true;
     };
-  }, [directoryReloadToken, dispatch, state.activeRoleId, userGovernanceActions]);
+  }, [directoryReloadToken, dispatch, state.activeRoleId, userGovernanceActions, directoryScope]);
   const userDirectoryStatus = userDirectoryStatusOverride ?? selfDirectoryStatus;
   const userDirectoryError = userDirectoryErrorOverride ?? selfDirectoryError;
   const handleUserDirectoryRetry =
@@ -284,7 +296,7 @@ export function UserPermissionsPage({
   const [requestReloadToken, setRequestReloadToken] = useState(0);
   const [pendingRequestDecision, setPendingRequestDecision] = useState<{ request: RegistrationRoleRequest; decision: "approve" | "reject" | "enable-basic" } | null>(null);
   const [memberId, setMemberId] = useState<string | null>(null);
-  const selectedMember = state.users.find((user) => user.id === memberId);
+  const selectedMember = users.find((user) => user.id === memberId);
   const inactiveWorkspace = workspace === "accounts" ? "approvals" : "accounts";
   const [pendingGovernance, setPendingGovernance] = useState<PendingGovernanceAction | null>(null);
   const [governancePending, setGovernancePending] = useState(false);
@@ -307,10 +319,12 @@ export function UserPermissionsPage({
       setPage(readPage(value)); setSort(readSort(value));
     };
     restore(search);
+    // Scoped views follow the shell only after its unsaved-work guard approves Back/Forward.
+    if (directoryScope) return;
     const onPopState = () => restore(window.location.search);
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [search]);
+  }, [search, directoryScope]);
 
   useEffect(() => {
     if (!window.location.pathname.startsWith("/organization/members")) return;
@@ -327,14 +341,15 @@ export function UserPermissionsPage({
   }, [query, columnFilters, workspace, approvalView, page, sort]);
 
   function applyUpdatedUser(user: User) {
-    dispatch({ type: "HYDRATE_USERS", users: state.users.map((current) => current.id === user.id ? user : current) });
+    if (directoryScope) setScopedUsers((current) => current.map((item) => item.id === user.id ? user : item));
+    else dispatch({ type: "HYDRATE_USERS", users: state.users.map((current) => current.id === user.id ? user : current) });
   }
 
   function clearFilters() { setQuery(""); setColumnFilters({}); setPage(1); }
 
   const filteredUsers = useMemo(
     () => {
-      const searched = filterItems(state.users, query, userAccountSearchProfile);
+      const searched = filterItems(users, query, userAccountSearchProfile);
       return searched.filter((user) => {
         const matchesColumnFilters = (["user", "title", "role", "status", "lastActive"] as UserColumnFilterKey[]).every((key) => {
           const selectedValues = columnFilters[key] ?? [];
@@ -345,7 +360,7 @@ export function UserPermissionsPage({
         return matchesColumnFilters;
       });
     },
-    [columnFilters, query, state.users]
+    [columnFilters, query, users]
   );
 
   function toggleColumnFilter(key: UserColumnFilterKey, value: string) {
@@ -364,7 +379,7 @@ export function UserPermissionsPage({
     return {
       label,
       groupLabel: `${label}筛选`,
-      values: key === "role" ? [...new Set(state.users.flatMap(organizationRoleLabels))].sort((a, b) => a.localeCompare(b, "zh-CN")) : uniqueFilterValues(state.users, (user) => userColumnFilterValue(user, key)),
+      values: key === "role" ? [...new Set(users.flatMap(organizationRoleLabels))].sort((a, b) => a.localeCompare(b, "zh-CN")) : uniqueFilterValues(users, (user) => userColumnFilterValue(user, key)),
       selectedValues: columnFilters[key] ?? [],
       getValue: (user) => userColumnFilterValue(user, key),
       onToggle: (value) => toggleColumnFilter(key, value),
@@ -420,13 +435,17 @@ export function UserPermissionsPage({
           throw new Error("注册角色申请审批尚未启用。");
         }
         result = await userGovernanceActions.approveRegistrationRoleRequest(request.id);
-        dispatch({ type: "ASSIGN_USER_ROLE", userId: request.userId, roleId: request.requestedRoleId });
-        dispatch({ type: "TOGGLE_USER_ACTIVE", userId: request.userId, isActive: true });
+        if (!directoryScope) {
+          dispatch({ type: "ASSIGN_USER_ROLE", userId: request.userId, roleId: request.requestedRoleId });
+          dispatch({ type: "TOGGLE_USER_ACTIVE", userId: request.userId, isActive: true });
+        }
       } else if (decision === "enable-basic") {
         if (!userGovernanceActions?.enableBasicRegistrationRoleRequest) throw new Error("普通成员启用尚未启用。");
         result = await userGovernanceActions.enableBasicRegistrationRoleRequest(request.id);
-        dispatch({ type: "ASSIGN_USER_ROLE", userId: request.userId, roleId: request.currentRoleId });
-        dispatch({ type: "TOGGLE_USER_ACTIVE", userId: request.userId, isActive: true });
+        if (!directoryScope) {
+          dispatch({ type: "ASSIGN_USER_ROLE", userId: request.userId, roleId: request.currentRoleId });
+          dispatch({ type: "TOGGLE_USER_ACTIVE", userId: request.userId, isActive: true });
+        }
       } else {
         if (!userGovernanceActions?.rejectRegistrationRoleRequest) {
           throw new Error("注册角色申请拒绝尚未启用。");
@@ -461,7 +480,8 @@ export function UserPermissionsPage({
           await onCurrentAccountChanged(true);
           return;
         }
-        dispatch({
+        if (directoryScope) setScopedUsers((users) => users.map((user) => user.id === pendingGovernance.user.id ? { ...user, isActive: pendingGovernance.nextActive } : user));
+        else dispatch({
           type: "TOGGLE_USER_ACTIVE",
           userId: pendingGovernance.user.id,
           isActive: pendingGovernance.nextActive
@@ -473,7 +493,8 @@ export function UserPermissionsPage({
           await onCurrentAccountChanged(true);
           return;
         }
-        dispatch({ type: "DELETE_USER", userId: pendingGovernance.user.id });
+        if (directoryScope) setScopedUsers((users) => users.filter((user) => user.id !== pendingGovernance.user.id));
+        else dispatch({ type: "DELETE_USER", userId: pendingGovernance.user.id });
         dispatch({ type: "ADD_NOTIFICATION", message: `已注销用户 ${pendingGovernance.user.name}` });
       }
       setPendingGovernance(null);
@@ -515,7 +536,8 @@ export function UserPermissionsPage({
         password,
         roleId: initialRoleId
       });
-      if (oidc && createdUser) dispatch({ type: "HYDRATE_USERS", users: [...state.users.filter((user) => user.id !== createdUser.id), createdUser] });
+      if (directoryScope && createdUser) setScopedUsers((users) => [...users.filter((user) => user.id !== createdUser.id), createdUser]);
+      else if (oidc && createdUser) dispatch({ type: "HYDRATE_USERS", users: [...state.users.filter((user) => user.id !== createdUser.id), createdUser] });
       else dispatch({
         type: "ADD_USER",
         id: createdUser?.id,
@@ -554,6 +576,11 @@ export function UserPermissionsPage({
     setResetPassword("");
     setResetConfirmPassword("");
     setResetPasswordError("");
+  }
+
+  function dismissResetPassword() {
+    if (resetPasswordPending) return;
+    setResetPasswordUser(null); setResetPassword(""); setResetConfirmPassword(""); setResetPasswordError("");
   }
 
   async function handleResetPasswordSubmit(event: FormEvent<HTMLFormElement>) {
@@ -608,7 +635,7 @@ export function UserPermissionsPage({
       header: "组织角色",
       sortAccessor: (user) => roleLabelOf(organizationRoleOf(user)),
       headerFilter: <ColumnFilter compact label="组织角色" groupLabel="组织角色筛选"
-        values={[...new Set(state.users.flatMap(organizationRoleLabels))].sort((a, b) => a.localeCompare(b, "zh-CN"))}
+        values={[...new Set(users.flatMap(organizationRoleLabels))].sort((a, b) => a.localeCompare(b, "zh-CN"))}
         selectedValues={columnFilters.role ?? []} onToggle={(value) => toggleColumnFilter("role", value)} onClear={() => clearColumnFilter("role")} />,
       render: (user) => {
         const roles = organizationRoleIds(user);
@@ -623,7 +650,7 @@ export function UserPermissionsPage({
           (r) => r.projectId !== null && !r.roleId.startsWith("catalog-capability-")
         );
         return (
-          <span title={projectBindings.map((binding) => `${state.configDraft.projects.find((project) => project.id === binding.projectId)?.name ?? binding.projectId}：${roleLabelOf(binding.roleId)}`).join("；")}>
+          <span title={projectBindings.map((binding) => `${projects.find((project) => project.id === binding.projectId)?.name ?? binding.projectId}：${roleLabelOf(binding.roleId)}`).join("；")}>
             {projectBindings.length ? `${new Set(projectBindings.map((binding) => binding.projectId)).size} 个项目` : "未分配"}
           </span>
         );
@@ -696,16 +723,16 @@ export function UserPermissionsPage({
                     <span className="user-permissions-filter-label">搜索</span>
                     <SearchField value={query} onValueChange={(value) => { setQuery(value); setPage(1); }} placeholder="搜索姓名、账号或职务" ariaLabel="搜索用户" />
                   </label>
-                  <span className="member-list-meta" role="status">{filteredUsers.length === state.users.length ? `共 ${state.users.length} 位成员` : `找到 ${filteredUsers.length} / ${state.users.length} 位成员`}</span>
+                  <span className="member-list-meta" role="status">{filteredUsers.length === users.length ? `共 ${users.length} 位成员` : `找到 ${filteredUsers.length} / ${users.length} 位成员`}</span>
                   {filteredUsers.length > 0 && (query || Object.values(columnFilters).some((values) => values.length)) ? <Button type="button" size="sm" variant="ghost" onClick={clearFilters}>清除筛选条件</Button> : null}
                 </div>}
               tableState={userDirectoryStatus === "loading" ? <SectionSkeleton label="正在加载用户名录" />
                 : userDirectoryStatus === "error" ? <SectionError message={userDirectoryError || "无法加载用户名录，请稍后重试。"} onRetry={handleUserDirectoryRetry} /> : undefined}
               table={{ ariaLabel: "平台用户", rows: filteredUsers, rowKey: (user) => user.id, columns: accountColumns,
                 page, onPageChange: setPage, sort, onSort: (key) => { setSort({ key, direction: sort.key === key && sort.direction === "asc" ? "desc" : "asc" }); setPage(1); } }}
-              emptyState={{ message: state.users.length === 0 ? "还没有任何用户，点击右上角「添加用户」创建第一个账号。" : "没有符合筛选条件的用户，请调整搜索或筛选条件。",
-                actionLabel: state.users.length === 0 ? "添加用户" : "清除筛选条件", onAction: () => {
-                  if (state.users.length === 0) setAddUserOpen(true);
+              emptyState={{ message: users.length === 0 ? "还没有任何用户，点击右上角「添加用户」创建第一个账号。" : "没有符合筛选条件的用户，请调整搜索或筛选条件。",
+                actionLabel: users.length === 0 ? "添加用户" : "清除筛选条件", onAction: () => {
+                  if (users.length === 0) setAddUserOpen(true);
                   else clearFilters();
                 } }}
               rowActions={(user) => {
@@ -810,7 +837,7 @@ export function UserPermissionsPage({
           aria-labelledby={`user-permissions-workspace-${inactiveWorkspace}`} />
       ) : null}
 
-      {selectedMember ? <MemberDetailsDialog key={selectedMember.id} user={selectedMember} state={state} actions={userGovernanceActions}
+      {selectedMember ? <MemberDetailsDialog key={selectedMember.id} user={selectedMember} state={state} actions={userGovernanceActions} projects={projects} reviewRolesClient={reviewRolesClient}
         oidcIssuer={authentication.provider === "oidc" ? authentication.oidcIssuer : undefined}
         onUpdated={applyUpdatedUser} onClose={() => { setMemberId(null); setDirectoryReloadToken((value) => value + 1); }} roleLabel={roleLabelOf}
         roleEditor={<MemberOrganizationRolesPanel user={selectedMember}
@@ -1015,7 +1042,7 @@ export function UserPermissionsPage({
       {resetPasswordUser && userGovernanceActions?.resetUserPassword ? (
         <ModalDialog
           open
-          onDismiss={resetPasswordPending ? undefined : () => setResetPasswordUser(null)}
+          onDismiss={resetPasswordPending ? undefined : dismissResetPassword}
           className="user-permissions-modal-card modal-card--sm"
           backdropClassName="user-permissions-modal"
         >
@@ -1064,7 +1091,7 @@ export function UserPermissionsPage({
                   className="button user-permissions-modal-action user-permissions-modal-action--secondary"
                   type="button"
                   disabled={resetPasswordPending}
-                  onClick={() => setResetPasswordUser(null)}
+                  onClick={dismissResetPassword}
                 >
                   取消
                 </button>
@@ -1080,6 +1107,8 @@ export function UserPermissionsPage({
           )}
         </ModalDialog>
       ) : null}
+      <SettingsLeaveGuard dirty={Boolean((addUserOpen && (name || username || title || password || confirmPassword || oidcSubject || oidcEmail || initialRoleId !== "hardware-user")) ||
+        (resetPasswordUser && (resetPassword || resetConfirmPassword)))} saving={addUserPending || resetPasswordPending} />
     </section>
   );
 }

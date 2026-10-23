@@ -187,8 +187,8 @@ describe("user governance routes", () => {
     expect(response.body.error.message).toBe("User management permission is required.");
   });
 
-  it("prevents the active Admin from deactivating itself through the route", async () => {
-    const { db } = makeDb();
+  it("prevents the final effective organization Admin from deactivating itself through the route", async () => {
+    const { db } = makeDb(() => [userRow({ id: "u-admin", roles: [{ projectId: null, roleId: "admin" }] })]);
 
     const response = await requestJson<{ error: { code: string; message: string } }>(
       createWiseEffServer({
@@ -204,7 +204,7 @@ describe("user governance routes", () => {
     );
 
     expect(response.status).toBe(409);
-    expect(response.body.error.message).toBe("Active Admin cannot disable itself.");
+    expect(response.body.error.message).toBe("At least one usable organization administrator must remain.");
   });
 
   it("lets Admin permanently delete a non-self user through the route", async () => {
@@ -245,8 +245,8 @@ describe("user governance routes", () => {
     expect(calls.some((call) => call.text.includes("delete from users"))).toBe(false);
   });
 
-  it("prevents the active Admin from deleting itself through the route", async () => {
-    const { calls, db } = makeDb();
+  it("prevents the final effective organization Admin from deleting itself through the route", async () => {
+    const { calls, db } = makeDb(() => [userRow({ id: "u-admin", roles: [{ projectId: null, roleId: "admin" }] })]);
 
     const response = await requestJson<{ error: { code: string; message: string } }>(
       createWiseEffServer({
@@ -258,7 +258,7 @@ describe("user governance routes", () => {
     );
 
     expect(response.status).toBe(409);
-    expect(response.body.error.message).toBe("Active Admin cannot delete itself.");
+    expect(response.body.error.message).toBe("At least one usable organization administrator must remain.");
     expect(calls.some((call) => call.text.includes("delete from users"))).toBe(false);
   });
 
