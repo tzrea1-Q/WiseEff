@@ -149,7 +149,13 @@ export const S2_SCH_0256_FINGERPRINT =
 export const S2_SCH_0262_FINGERPRINT =
   "e39d15ffb9fce4500e652d9d192a8eea0ab722a9d90c20cbbc1bc1916e8a2934";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0262_FINGERPRINT;
+/** Combined 0262/0263 stage: the two log erasure actor/receipt functions now
+ * accept a persisted active platform administrator operating on another
+ * organization. Measured on fresh PostgreSQL; earlier pins remain intact. */
+export const S2_SCH_0263_FINGERPRINT =
+  "d4bb5881fc24a088b7ccc923366e887da97145f222ee038e3ce1131fa49de737";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0263_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
