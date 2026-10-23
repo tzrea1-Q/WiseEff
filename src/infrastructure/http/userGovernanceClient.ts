@@ -155,6 +155,8 @@ export function createUserGovernanceClient(
       return (await apiClient.get<ItemsEnvelope<{ id: string; name: string }>>(scoped("/api/v1/organization/project-candidates"))).items;
     },
     getProjectMembers: (projectId: string) => apiClient.get<ProjectMembers>(scoped(`/api/v1/projects/${encodeURIComponent(projectId)}/members`)),
+    updateProjectMember: (projectId: string, userId: string, input: { roles: ProjectMemberRoleId[]; expectedRoles: ProjectMemberRoleId[] }) =>
+      apiClient.put<ProjectMembers>(scoped(`/api/v1/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`), input),
     async listUsers() {
       const response = await apiClient.get<ItemsEnvelope<UserGovernanceDto>>(scoped("/api/v1/users"));
       return response.items.map(userFromDto);

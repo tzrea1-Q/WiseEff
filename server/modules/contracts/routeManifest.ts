@@ -5,6 +5,7 @@ import { workflowPublicationRoutes } from "./dtoSchemas/workflowPublication";
 import { platformOrganizationRoutes } from "./dtoSchemas/platformOrganizations";
 import { organizationInvitationRoutes } from "./dtoSchemas/organizationInvitations";
 import { organizationTeamRoutes } from "./dtoSchemas/organizationTeams";
+import { assetHandoverRoutes } from "./dtoSchemas/organizationAssetHandover";
 
 export type RouteModule =
   | "workflow-publication"
@@ -36,6 +37,7 @@ export type RouteManifestEntry = {
 };
 
 export const routeManifest = [
+  ...assetHandoverRoutes,
   ...organizationInvitationRoutes,
   ...platformOrganizationRoutes,
   ...organizationTeamRoutes,
@@ -146,6 +148,7 @@ export const routeManifest = [
     stability: "commercial-readiness"
   },
   { id: "users.getProjectMembers", method: "GET", path: "/api/v1/projects/:projectId/members", module: "users", stability: "commercial-readiness" },
+  { id: "users.updateProjectMember", method: "PUT", path: "/api/v1/projects/:projectId/members/:userId", module: "users", stability: "commercial-readiness" },
   {
     id: "users.replaceProjectWorkflowRoleBindings",
     method: "PUT",

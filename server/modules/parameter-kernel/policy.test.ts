@@ -28,6 +28,18 @@ function auth(overrides: Partial<AuthContext> = {}): AuthContext {
 }
 
 describe("parameter policy", () => {
+  it("requires explicit project editing participation rather than organization or review duties", () => {
+    const editor = auth({ roles: [{ projectId: null, roleId: "software-committer" }], permissions: ["parameter:edit", "parameter:edit-critical"] });
+    expect(canEditParameters(editor, "aurora")).toBe(false);
+    const participant = { ...editor, projectMemberships: [{ projectId: "aurora", roles: ["hardware-user" as const] }] };
+    expect(canEditParameters(participant, "aurora")).toBe(true);
+    expect(canEditParameters(participant, "zephyr")).toBe(false);
+    expect(canEditCriticalParameters(participant, "aurora")).toBe(false);
+    expect(canEditCriticalParameters({ ...participant, projectMemberships: [{ projectId: "aurora", roles: ["software-committer" as const] }] }, "aurora")).toBe(true);
+    expect(canEditCriticalParameters({ ...participant, projectMemberships: [{ projectId: "aurora", roles: ["software-committer" as const] }] }, "zephyr")).toBe(false);
+    expect(canReviewParameterStage(participant, "aurora", "software_review")).toBe(false);
+    expect(canMergeParameters(participant, "aurora")).toBe(false);
+  });
   it("allows view with parameter view permission", () => {
     expect(canViewParameters(auth({ permissions: ["parameter:view"] }))).toBe(true);
     expect(canViewParameters(auth({ permissions: [] }))).toBe(false);
@@ -43,6 +55,7 @@ describe("parameter policy", () => {
   it("scopes edit to the target project when a projectId is supplied", () => {
     const editor = auth({
       roles: [{ projectId: "aurora", roleId: "hardware-user" }],
+      projectMemberships: [{ projectId: "aurora", roles: ["hardware-user"] }],
       permissions: ["parameter:edit"]
     });
     // Same flat permission, but the role binding is only for `aurora`.

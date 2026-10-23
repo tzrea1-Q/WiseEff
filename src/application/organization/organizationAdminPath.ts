@@ -1,4 +1,4 @@
-export type OrganizationAdminArea = "profile" | "members" | "invitations" | "teams" | "bridges" | "integrations" | "projects";
+export type OrganizationAdminArea = "profile" | "members" | "invitations" | "teams" | "bridges" | "integrations" | "projects" | "handovers";
 
 export const ORGANIZATION_ADMIN_PATH = "/organization";
 export const ORGANIZATION_ADMIN_MEMBERS_PATH = "/organization/members";
@@ -16,7 +16,7 @@ export const ORGANIZATION_ADMIN_UI = {
   bridgesScope: "设备代理",
   integrationsScope: "集成凭据",
   projectsScope: "项目参与",
-  projectsSubtitle: "查看项目参与名单与编辑角色",
+  projectsSubtitle: "管理项目参与者与编辑角色",
   integrationsSubtitle: "管理组织机器凭据与技能绑定",
   bridgesSubtitle: "盘点组织成员的 Bridge 并撤销失效配对",
   profileSubtitle: "维护本组织档案与显示名称",
@@ -36,6 +36,7 @@ export function isOrganizationAdminPath(path: string) {
 }
 
 export function parseOrganizationAdminArea(path: string): OrganizationAdminArea | null {
+  if (path === "/organization/handovers" || path.startsWith("/organization/handovers/")) return "handovers";
   if (path === "/organization/invitations") return "invitations";
   if (path === ORGANIZATION_ADMIN_PROJECTS_PATH || path.startsWith(`${ORGANIZATION_ADMIN_PROJECTS_PATH}/`)) return "projects";
   if (path === "/organization/teams" || path.startsWith("/organization/teams/")) return "teams";
@@ -56,6 +57,7 @@ export function parseOrganizationAdminArea(path: string): OrganizationAdminArea 
 }
 
 export function buildOrganizationAdminPath(area: OrganizationAdminArea) {
+  if (area === "handovers") return "/organization/handovers";
   if (area === "invitations") return "/organization/invitations";
   if (area === "projects") return ORGANIZATION_ADMIN_PROJECTS_PATH;
   if (area === "teams") return "/organization/teams";

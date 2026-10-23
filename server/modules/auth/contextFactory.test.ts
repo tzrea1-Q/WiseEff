@@ -6,7 +6,7 @@ import type { Database, QueryResult } from "../../shared/database/client";
 function createDbAuthContext(overrides: Partial<typeof developmentAuthContext.user> = {}) {
   const user = { ...developmentAuthContext.user, ...overrides };
   const db: Database = {
-    query: async <Row,>(): Promise<QueryResult<Row>> => ({
+    query: async <Row,>(text: string): Promise<QueryResult<Row>> => text.includes("from project_members") ? { rows: [], rowCount: 0 } : ({
       rows: [
         {
           user_id: user.id,
@@ -90,7 +90,7 @@ describe("auth context factory", () => {
       query: async <Row,>(text: string, values?: unknown[]): Promise<QueryResult<Row>> => {
         calls.push({ text, values });
         const rows =
-          calls.length === 1 || text.includes("from user_role_bindings")
+          calls.length === 1 || text.includes("from user_role_bindings") || text.includes("from project_members")
             ? []
             : [
                 {
@@ -132,7 +132,8 @@ describe("auth context factory", () => {
     expect(calls.map((call) => call.values)).toEqual([
       [developmentAuthContext.user.organizationId, "oidc-subject"],
       [developmentAuthContext.user.organizationId, "mapped@example.com"],
-      ["u-by-email"]
+      ["u-by-email"],
+      ["u-by-email", developmentAuthContext.user.organizationId]
     ]);
     expect(calls[2].text).toContain("from user_role_bindings");
     expect(calls[2].text).toContain("roles.id like 'catalog-capability-%'");

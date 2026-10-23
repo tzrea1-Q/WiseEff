@@ -187,7 +187,7 @@ describe("assertSensitiveNodeWriteAllowed", () => {
     await expect(
       assertSensitiveNodeWriteAllowed(
         fakeDb([rule()]),
-        auth({ permissions: ["parameter:view", "parameter:edit", "parameter:edit-critical"] }),
+        auth({ permissions: ["parameter:view", "parameter:edit", "parameter:edit-critical"], projectMemberships: [{ projectId: "project-1", roles: ["software-committer"] }] }),
         {
           organizationId: "org-1",
           projectId: "project-1",
@@ -601,7 +601,7 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
       try {
         const trustedRefusalSink = createTrustedRefusalAuditSink(trustedRefusalRoot);
         const principal = auth({
-          permissions: ["parameter:view", "parameter:edit", "parameter:edit-critical"]
+          permissions: ["parameter:view", "parameter:edit", "parameter:edit-critical"], projectMemberships: [{ projectId: "project-1", roles: ["software-committer"] }]
         });
         const db = {
           query: vi.fn(async () => ({

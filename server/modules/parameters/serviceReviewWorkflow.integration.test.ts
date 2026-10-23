@@ -110,26 +110,27 @@ function editorAuth(overrides: Partial<AuthContext> = {}): AuthContext {
       [{ projectId: PROJECT, roleId: "software-user" }],
       ["parameter:view", "parameter:edit"]
     ),
+    projectMemberships: [{ projectId: PROJECT, roles: ["software-user"] }],
     ...overrides
   };
 }
 
 function hardwareAuth(): AuthContext {
-  return authFor(
+  return { ...authFor(
     HW,
     "SRW Hardware",
     [{ projectId: PROJECT, roleId: "hardware-committer" }],
     ["parameter:view", "parameter:edit", "parameter:review"]
-  );
+  ), projectMemberships: [{ projectId: PROJECT, roles: ["hardware-committer"] }] };
 }
 
 function softwareCommitterAuth(): AuthContext {
-  return authFor(
+  return { ...authFor(
     SWC,
     "SRW Software Committer",
     [{ projectId: PROJECT, roleId: "software-committer" }],
     ["parameter:view", "parameter:edit", "parameter:review"]
-  );
+  ), projectMemberships: [{ projectId: PROJECT, roles: ["software-committer"] }] };
 }
 
 async function seedUser(db: Queryable, id: string, name: string) {

@@ -312,6 +312,7 @@ function AppShell({
   const [authProbeAttempt, setAuthProbeAttempt] = useState(0);
   const [apiAuthPermissions, setApiAuthPermissions] = useState<string[]>([]);
   const [apiAuthRoles, setApiAuthRoles] = useState<AuthContextDto["roles"] | null>(null);
+  const [apiProjectMemberships, setApiProjectMemberships] = useState<AuthContextDto["projectMemberships"]>([]);
   const [organizationId, setOrganizationId] = useState(
     () => (runtimeMode === "api" ? "" : CATALOG_ORGANIZATION_ID)
   );
@@ -428,7 +429,7 @@ function AppShell({
   const currentWorkflow = workflowForGroup(page.group);
   const canEnterPublishedPage = currentWorkflow === null || isPublicationAdministrator ||
     publication.status === "ready" && publication.publication?.workflows[currentWorkflow] === true;
-  const canAccessCurrentPage = canAccessPage(currentRoleId, page.key) && canEnterPublishedPage &&
+  const canAccessCurrentPage = (canAccessPage(currentRoleId, page.key) || runtimeMode === "api" && page.key === "parameter-submissions" && Boolean(apiProjectMemberships?.length)) && canEnterPublishedPage &&
     ((page.key !== "workflow-publication" && page.key !== "platform-organizations") || canManagePublication);
   const [dashboardState, dashboardDispatch] = useReducer(dashboardReducer, initialDashboardState);
   const dashboardRepositoryRef = useRef(dashboardRepository);
@@ -675,6 +676,7 @@ function AppShell({
     const primaryRole = pickPrimaryPlatformRoleId(context.roles.map((role) => role.roleId));
     setApiAuthPermissions(context.permissions);
     setApiAuthRoles(context.roles);
+    setApiProjectMemberships(context.projectMemberships ?? []);
     setOrganizationId(context.organization.id);
     dispatch({
       type: "HYDRATE_AUTH_CONTEXT",
@@ -1062,6 +1064,7 @@ function AppShell({
     clearLocalAuthToken();
     clearSessionDraftsForLogout();
     setApiAuthRoles(null);
+    setApiProjectMemberships([]);
     setApiAuthStatus("unauthenticated");
     setApiAuthError("");
     dispatch({ type: "ADD_NOTIFICATION", message: "已退出登录" });
@@ -1213,6 +1216,7 @@ function AppShell({
             pageActions={topBarActions}
             pageLeadingActions={topBarLeadingActions}
             onNewProject={() => setProjectInitOpen(true)}
+            canCreateProject={runtimeMode === "api" ? apiAuthPermissions.includes("admin:access") : undefined}
             onLogout={handleLogout}
             onUpdateCurrentUserProfile={handleUpdateCurrentUserProfile}
             onChangeCurrentUserPassword={handleChangeCurrentUserPassword}
@@ -1264,6 +1268,7 @@ function AppShell({
                 organizationId={organizationId}
                 sessionPermissions={apiAuthPermissions}
                 sessionRoles={runtimeMode === "api" ? apiAuthRoles : undefined}
+                projectMemberships={runtimeMode === "api" ? apiProjectMemberships : undefined}
                 DebuggingAdminPage={DebuggingAdminPageWithRuntime}
               /></OrganizationBusinessWorkspace>
             </div>
@@ -1318,6 +1323,7 @@ function AppShell({
                   organizationId={organizationId}
                   sessionPermissions={apiAuthPermissions}
                   sessionRoles={runtimeMode === "api" ? apiAuthRoles : undefined}
+                  projectMemberships={runtimeMode === "api" ? apiProjectMemberships : undefined}
                   DebuggingAdminPage={DebuggingAdminPageWithRuntime}
                 /></OrganizationBusinessWorkspace>
               </div>
@@ -1517,6 +1523,7 @@ function TopBar({
   pageActions,
   pageLeadingActions,
   onNewProject,
+  canCreateProject: canCreateProjectOverride,
   onLogout,
   onUpdateCurrentUserProfile,
   onChangeCurrentUserPassword,
@@ -1533,6 +1540,7 @@ function TopBar({
   pageActions?: ReactNode;
   pageLeadingActions?: ReactNode;
   onNewProject: () => void;
+  canCreateProject?: boolean;
   onLogout?: () => Promise<void> | void;
   onUpdateCurrentUserProfile?: (input: UpdateCurrentUserProfileInput) => Promise<void>;
   onChangeCurrentUserPassword?: (input: ChangeCurrentUserPasswordInput) => Promise<void>;
@@ -1548,7 +1556,7 @@ function TopBar({
     unsavedCount: number;
   } | null>(null);
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
-  const canCreateProject = canPerform(currentRoleId, "parameter.edit");
+  const canCreateProject = canCreateProjectOverride ?? canPerform(currentRoleId, "parameter.edit");
   const showProjectInitAction = page.key === "parameters" && canCreateProject;
   const showProjectSelector = pageUsesProjectScope(page.key) && page.key !== "parameter-home";
   const workspaceOwnsHeader = /^\/log-admin\/skills\/[^/]+\/?$/.test(page.path);
@@ -1713,8 +1721,8 @@ function TopBar({
 
 const selfRegistrationRoleHints: Record<string, string> = {
   guest: "访客只能查看参数页面。",
-  "hardware-user": "硬件开发可提交参数修改，注册后即可登录。",
-  "software-user": "软件开发可提交参数修改，注册后即可登录。",
+  "hardware-user": "注册后可登录；参数修改需由管理员配置项目参与和编辑角色。",
+  "software-user": "注册后可登录；参数修改需由管理员配置项目参与和编辑角色。",
   "hardware-committer": "硬件MDE 注册后需管理员批准才能登录。",
   "software-committer": "软件MDE 注册后需管理员批准才能登录。"
 };

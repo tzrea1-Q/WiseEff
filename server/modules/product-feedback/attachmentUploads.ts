@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import type { AuthContext } from "../auth/types";
+import { feedbackOrganizationId, type ProductFeedbackAccessContext as AuthContext } from "./scope";
 import { referencedLogObjects } from "../logs/deletionPreview";
 import { sanitizeFileName, sanitizePathSegment, type ObjectStore } from "../logs/objectStore";
 import { requireProductFeedbackSubmit } from "./policy";
@@ -12,7 +12,7 @@ type Upload = { fileName: string; contentType: ProductFeedbackAttachmentContentT
 export async function pendingFeedbackAttachmentCleanup(db: Queryable, auth: AuthContext) {
   requireProductFeedbackSubmit(auth);
   const result = await db.query<{ count: number }>(`select coalesce(sum(cardinality(object_keys)),0)::int count from product_feedback_attachment_uploads u
-    where organization_id=$1 and uploaded_by_user_id=$2 and not exists(select 1 from product_feedback_attachment_deletions d where d.cleanup_upload_id=u.id)`, [auth.organization.id, auth.user.id]);
+    where organization_id=$1 and uploaded_by_user_id=$2 and not exists(select 1 from product_feedback_attachment_deletions d where d.cleanup_upload_id=u.id)`, [feedbackOrganizationId(auth), auth.user.id]);
   return result.rows[0]?.count ?? 0;
 }
 
@@ -20,7 +20,7 @@ export async function queueFeedbackAttachmentCleanup(db: Queryable, auth: AuthCo
   if (!keys.length) return;
   await db.query(`insert into product_feedback_attachment_uploads(id,organization_id,uploaded_by_user_id,object_keys,in_flight) values($1,$2,$3,$4,$5)
     on conflict(id) do update set object_keys=excluded.object_keys,in_flight=excluded.in_flight where product_feedback_attachment_uploads.organization_id=excluded.organization_id and product_feedback_attachment_uploads.uploaded_by_user_id=excluded.uploaded_by_user_id`,
-  [id, auth.organization.id, auth.user.id, [...new Set(keys)], inFlight]);
+  [id, feedbackOrganizationId(auth), auth.user.id, [...new Set(keys)], inFlight]);
 }
 
 export async function cleanupFeedbackAttachmentUploads(db: Database, store: ObjectStore, auth: AuthContext, receiptId?: string) {
@@ -39,7 +39,7 @@ export async function cleanupFeedbackAttachmentUploads(db: Database, store: Obje
       where organization_id=$1 and uploaded_by_user_id=$2 and ($3::uuid is null or id=$3)
         and (not in_flight or created_at<now()-interval '5 minutes')
         and ($3::uuid is not null or not exists(select 1 from product_feedback_attachment_deletions d where d.cleanup_upload_id=u.id))
-      order by created_at,id for update skip locked`, [auth.organization.id, auth.user.id, receiptId ?? null])).rows;
+      order by created_at,id for update skip locked`, [feedbackOrganizationId(auth), auth.user.id, receiptId ?? null])).rows;
     if (!rows.length) return;
     const referenced = await referencedLogObjects(tx, rows.flatMap((row) => row.object_keys));
     for (const row of rows) {
@@ -66,7 +66,7 @@ export async function withFeedbackAttachmentWrites<T>(db: Database, store: Objec
   const planned = uploads.map((input) => {
     const id = randomUUID(), fileName = sanitizeFileName(input.fileName);
     const objectName = `feedback-${id}.${input.contentType === "image/jpeg" ? "jpg" : input.contentType.slice(6)}`;
-    const key = `${sanitizePathSegment(auth.organization.id, "organization id")}/${createHash("sha256").update(input.bytes).digest("hex")}-${objectName}`;
+    const key = `${sanitizePathSegment(feedbackOrganizationId(auth), "organization id")}/${createHash("sha256").update(input.bytes).digest("hex")}-${objectName}`;
     return { ...input, id, fileName, objectName, key };
   });
   const keys = new Set(planned.map((item) => item.key));
@@ -75,14 +75,14 @@ export async function withFeedbackAttachmentWrites<T>(db: Database, store: Objec
   try {
     const result = await db.transaction(async (tx) => {
       if (planned.length) {
-        const locked = await tx.query("select id from product_feedback_attachment_uploads where id=$1 and organization_id=$2 and uploaded_by_user_id=$3 for update", [attemptId, auth.organization.id, auth.user.id]);
+        const locked = await tx.query("select id from product_feedback_attachment_uploads where id=$1 and organization_id=$2 and uploaded_by_user_id=$3 for update", [attemptId, feedbackOrganizationId(auth), auth.user.id]);
         if (!locked.rows.length) throw new ApiError("CONFLICT", "附件上传已取消，请重试本次提交。");
       }
       const result = await write(tx, async () => {
         const stored: InsertProductFeedbackAttachmentInput[] = [];
         for (const [index, item] of planned.entries()) {
           try {
-            const value = await store.put({ organizationId: auth.organization.id, fileName: item.objectName, contentType: item.contentType, bytes: item.bytes });
+            const value = await store.put({ organizationId: feedbackOrganizationId(auth), fileName: item.objectName, contentType: item.contentType, bytes: item.bytes });
             keys.add(value.storageKey);
             stored.push({ id: item.id, storageKey: value.storageKey, fileName: item.fileName, contentType: item.contentType,
               sizeBytes: item.bytes.length, checksum: value.checksumSha256, sortOrder: index });

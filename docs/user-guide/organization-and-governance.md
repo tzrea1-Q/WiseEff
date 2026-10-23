@@ -26,11 +26,11 @@ If you only need to stop access, disable the account. Delete user is permanent a
 
 *Seeded member management as an Organization Admin; no role or account is changed.*
 
-## View project participation
+## Manage project participation
 
-Open **Project participation** (`/organization/projects`) and choose a project. The read-only roster shows its explicit participants, editing roles and current account status, including disabled members. Platform administrators can use the target Organization shown on the page; each tab keeps its own target.
+Open **Project participation** (`/organization/projects`) and choose a project. Use **Add participant** or **Modify** to select a member and editing roles. Clearing the roles and saving removes participation. Disabled accounts stay marked and are never activated by changing participation. Platform administrators can use the target Organization shown on the page; each tab keeps its own target.
 
-The initial compatibility rollout retains existing editing authorization. Organization and platform administrators manage projects directly; review and merge duties remain separately configured. Viewing this roster does not activate an account or grant review, merge or device access.
+Organization members can view projects. Editing requires participation and an editing role in that project; committer editing roles can edit critical parameters there. Organization and platform administrators manage directly. Review, merge and device duties remain separate and are not granted by editing roles. Existing editing eligibility is migrated once; organization business roles do not grant implicit access to future projects.
 
 ## Group members into teams
 
@@ -80,6 +80,12 @@ Organization management and Organization-scoped parameter governance have differ
 For parameter modules, open Module management (`/parameter-admin/modules`), expand the tree and check the parent before adding a root or child module. Use the available edit, rename and move controls to adjust the hierarchy. Inspect registered Catalog subjects through their placement controls; changing a classification does not create a new definition. Ordinary modules can be deleted only when they have no children, parameter references or Catalog placements. Read driver-group dissolution warnings separately; do not treat this as deleting an empty category.
 
 For debugging modules, open Debugging admin's Node debugging area (`/debugging-admin/nodes`) and Module management. Add roots or children, rename, or move modules to an allowed parent. Delete only modules without children or node references. The parameter and debugging trees are maintained separately: changing one does not reorganize the other.
+
+## Continue business work after departure
+
+Open **Business handover** from Organization → Members (`/organization/handovers`) to continue Knowledge drafts, unfinished import batches, feedback drafts and open feedback responsibilities after a member leaves. These remain in their original Organization after disabling, deleting or transferring a member. The default list shows work with no currently eligible responsible person; clear the filter to inspect all unfinished work.
+
+Administrators can continue pending work immediately or assign a successor: an active Organization knowledge editor for knowledge, an active member for feedback drafts, and an active administrator for submitted feedback triage. Leaving work unassigned keeps it pending and available to administrators. Assignment never submits a draft or changes original creators and historical signatures. Analysis-skill drafts remain editable in skill administration. Organization machine credentials remain independent; personal passwords, sessions, private Agent conversations and pairings never transfer.
 
 ## Send product feedback with screenshots
 

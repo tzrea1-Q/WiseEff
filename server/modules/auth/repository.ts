@@ -15,7 +15,7 @@ type AuthRow = {
   is_active: boolean;
   external_tokens_revoked_at: Date | string | null;
   project_id: string | null;
-  role_id: BackendRoleId;
+  role_id: BackendRoleId | null;
 };
 
 const authContextSelect = `
@@ -33,7 +33,7 @@ const authContextSelect = `
       user_role_bindings.role_id
     from users
     join organizations on organizations.id = users.organization_id
-    join user_role_bindings on user_role_bindings.user_id = users.id
+    left join user_role_bindings on user_role_bindings.user_id = users.id
     left join user_password_credentials on user_password_credentials.user_id = users.id
 `;
 
@@ -61,8 +61,7 @@ function authContextFromRows(rows: AuthRow[], externalToken?: { issuedAt?: numbe
     "platform-admin"
   ]);
   const roles = rows
-    .filter((row) => knownRoleIds.has(row.role_id))
-    .map((row) => ({ projectId: row.project_id, roleId: row.role_id }))
+    .flatMap((row) => row.role_id && knownRoleIds.has(row.role_id) ? [{ projectId: row.project_id, roleId: row.role_id }] : [])
     .sort((left, right) => compareRoles(right.roleId, left.roleId));
 
   return {
@@ -81,6 +80,7 @@ function authContextFromRows(rows: AuthRow[], externalToken?: { issuedAt?: numbe
     },
     roles,
     permissions: uniquePermissions([
+      "parameter:view",
       ...permissionsForRoles(roles.map((role) => role.roleId)),
       ...catalogTestCapabilitiesForUser(first.user_id)
     ])
@@ -124,12 +124,15 @@ async function withCatalogCapabilityGrants(
   context: AuthContext
 ): Promise<AuthContext> {
   const grants = await loadCatalogCapabilityGrants(db, userId);
-  if (grants.length === 0) {
-    return context;
-  }
+  const projectMemberships = (await db.query<NonNullable<AuthContext["projectMemberships"]>[number]>(
+    'select project_id as "projectId", roles from project_members where user_id=$1 and organization_id=$2 order by project_id',
+    [userId, context.organization.id])).rows;
+  const editGrants: BackendPermission[] = projectMemberships.length ? ["parameter:edit"] : [];
+  if (projectMemberships.some((member) => member.roles.some((role) => role === "hardware-committer" || role === "software-committer"))) editGrants.push("parameter:edit-critical");
   return {
     ...context,
-    permissions: uniquePermissions([...context.permissions, ...grants])
+    projectMemberships,
+    permissions: uniquePermissions([...context.permissions, ...grants, ...editGrants])
   };
 }
 

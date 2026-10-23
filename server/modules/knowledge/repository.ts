@@ -18,6 +18,7 @@ import type {
 } from "./types";
 
 type KnowledgeEntryRow = {
+  responsible_user_id: string | null;
   historical_attribution?: KnowledgeEntryDto["historicalAttribution"];
   origin: KnowledgeEntryDto["origin"];
   id: string;
@@ -162,6 +163,7 @@ function toEntryDto(
     sourceLogDeleted: row.source_log_deleted ?? false,
     sourceReloadRunId: row.source_reload_run_id,
     createdByUserId: row.created_by_user_id,
+    responsibleUserId: row.responsible_user_id,
     headRevisionId: row.head_revision_id,
     headRevisionNumber: Number(row.head_revision_number),
     createdAt: dateTimeToIso(row.created_at),
@@ -446,7 +448,7 @@ export async function listEntries(
     where.push("status <> 'archived'");
     if (!hasKnowledgeManage(auth)) {
       values.push(auth.user.id);
-      where.push(`created_by_user_id = $${values.length}`);
+      where.push(`responsible_user_id = $${values.length}`);
     }
   }
 
@@ -464,7 +466,7 @@ export async function listEntries(
       where.push(`status <> 'draft'`);
     } else {
       values.push(query.visibleDraftOwnerUserId);
-      where.push(`(status <> 'draft' or created_by_user_id = $${values.length})`);
+      where.push(`(status <> 'draft' or responsible_user_id = $${values.length})`);
     }
   }
   if (query.contentForm) {

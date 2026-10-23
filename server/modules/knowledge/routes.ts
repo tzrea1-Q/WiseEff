@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { listKnowledgeHandovers, assignKnowledgeResponsibility, knowledgeHandoverParamsSchema, knowledgeHandoverBodySchema } from "./handover";
 
 import type { AuthContext } from "../auth/types";
 import { resolveOperatingContext } from "../auth/operatingContext";
@@ -127,6 +128,13 @@ export function registerKnowledgeRoutes(
     return organizationId === undefined ? auth : withKnowledgeInvocation(auth,
       await resolveOperatingContext(requireDb(options.db), createUserInvocation(auth), organizationId));
   };
+
+  router.get("/api/v1/knowledge/handovers", async request => ({ status: 200, body: await listKnowledgeHandovers(requireDb(options.db), await scopedAuth(request)) }));
+  router.patch("/api/v1/knowledge/handovers/:kind/:id", async request => {
+    const auth = await scopedAuth(request), params = parseWithSchema(knowledgeHandoverParamsSchema, request.params);
+    await assignKnowledgeResponsibility(requireDb(options.db), auth, params.kind, params.id, parseWithSchema(knowledgeHandoverBodySchema, request.body), request.requestId);
+    return { status: 200, body: { ok: true } };
+  });
 
   router.post("/api/v1/knowledge/entries/batch", async (request) => {
     const auth = await scopedAuth(request);

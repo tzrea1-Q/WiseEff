@@ -395,7 +395,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate, organiz
         {collection === "drafts" ? (
           <AdminListPage label="小泽草稿" headerContent={<></>}
             headerActions={<Button size="sm" onClick={() => void loadAgentDrafts()} disabled={agentDraftsLoading} aria-busy={agentDraftsLoading || undefined}><RefreshCw data-icon="inline-start" />刷新</Button>}
-            filterBar={<p className="text-sm text-muted-foreground">知识编辑者可发布本人会话的草稿，知识管理员可发布任意草稿。拒绝后归档。</p>}
+            filterBar={<p className="text-sm text-muted-foreground">知识编辑者可发布自己负责的草稿，知识管理员可发布任意草稿。拒绝后归档。</p>}
             notice={agentDraftError ? <p role="alert" className="text-destructive">{agentDraftError}</p> : null}
             table={{ "aria-label": "小泽知识草稿", rows: agentDrafts, rowKey: (entry) => entry.id, columns: agentDraftColumns, pageSize: 10, emptyState: <Empty className="section-empty"><EmptyHeader><EmptyMedia variant="icon"><BookOpen /></EmptyMedia><EmptyDescription>{agentDraftsLoading ? "正在加载小泽草稿…" : "暂无待审阅的小泽知识草稿。"}</EmptyDescription></EmptyHeader>{knowledgeNextStep}</Empty> }}
             rowActions={(entry) => ({

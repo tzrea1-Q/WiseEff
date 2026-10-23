@@ -136,6 +136,9 @@ async function insertUsersAndRoles(root: RootDatabase): Promise<void> {
       fixture.projectId,
     ],
   );
+  await pool.query(`insert into project_members(organization_id,project_id,user_id,roles) values
+    ($1,$2,$3,array['hardware-committer']),($1,$2,$4,array['software-committer'])`,
+  [fixture.organizationId, fixture.projectId, fixture.editorId, fixture.reviewerId]);
   await pool.query(
     `insert into user_password_credentials (user_id, username, password_hash)
      values
@@ -248,6 +251,7 @@ export async function seedCanonicalParameterFixture(
     );
 
   const seedAuth = makeTestAuthContext({
+    projectMemberships: [{ projectId: fixture.projectId, roles: ["hardware-committer"] }],
     userId: fixture.editorId,
     organizationId: fixture.organizationId,
     name: "Issue 898 Editor",
@@ -394,6 +398,7 @@ export async function seedCanonicalParameterFixture(
   const configRevisionId = revision.id;
 
   const editorAuth = makeTestAuthContext({
+    projectMemberships: [{ projectId: fixture.projectId, roles: ["hardware-committer"] }],
     userId: fixture.editorId,
     organizationId: fixture.organizationId,
     name: "Issue 898 Editor",
@@ -402,6 +407,7 @@ export async function seedCanonicalParameterFixture(
     roles: [{ projectId: fixture.projectId, roleId: "hardware-committer" }],
   });
   const reviewerAuth = makeTestAuthContext({
+    projectMemberships: [{ projectId: fixture.projectId, roles: ["software-committer"] }],
     userId: fixture.reviewerId,
     organizationId: fixture.organizationId,
     name: "Issue 898 Reviewer",

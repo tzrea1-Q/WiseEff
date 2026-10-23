@@ -4,6 +4,7 @@ import { createWiseEffServer } from "../../app";
 import { requestJson } from "../../test/testClient";
 import { getAuthContext } from "../auth/repository";
 import { canEditParameters, canMergeParameters, canReviewParameterStage } from "../parameter-kernel/policy";
+import { makeTestAuthContext } from "../../testing/authContext";
 
 describe("existing project participation expansion (real PostgreSQL)", () => {
   it("preserves effective editing and independent duties while exposing the migrated roster", async () => {
@@ -31,15 +32,20 @@ describe("existing project participation expansion (real PostgreSQL)", () => {
         ('members-other-role','members-other','members-b',null,'software-user')`);
       const bindingsBefore = await db.query("select * from user_role_bindings order by id");
       const usersBefore = await db.query("select id,organization_id,is_active from users order by id");
-      async function qualifications() {
+      async function qualifications(legacy = false) {
         return Promise.all(["members-admin", "members-global", "members-scoped", "members-guest"].map(async (userId) => {
-          const auth = await getAuthContext(db, userId);
+          // Frozen pre-membership qualification, read before upgrading. The current
+          // auth reader also needs newer credential columns and is not a historical reader.
+          const roles = legacy ? (await db.query<{ projectId: string | null; roleId: "admin" | "guest" | "hardware-user" | "software-user" | "hardware-committer" | "software-committer" }>(
+            'select project_id as "projectId",role_id as "roleId" from user_role_bindings where user_id=$1', [userId])).rows : [];
+          const auth = legacy ? makeTestAuthContext({ userId, organizationId: "members-a", roles }) : await getAuthContext(db, userId);
           return { userId, permissions: auth.permissions, projects: ["members-one", "members-two"].map((id) => ({ id,
-            edit: canEditParameters(auth, id), hardwareReview: canReviewParameterStage(auth, id, "hardware_review"),
+            edit: legacy ? auth.permissions.includes("parameter:edit") && roles.some((role) => role.roleId === "admin" ||
+              role.roleId !== "guest" && (role.projectId === null || role.projectId === id)) : canEditParameters(auth, id), hardwareReview: canReviewParameterStage(auth, id, "hardware_review"),
             softwareReview: canReviewParameterStage(auth, id, "software_review"), merge: canMergeParameters(auth, id) })) };
         }));
       }
-      const before = await qualifications();
+      const before = await qualifications(true);
       expect(before.map(({ userId, projects }) => ({ userId, projects }))).toEqual([
         { userId: "members-admin", projects: [
           { id: "members-one", edit: true, hardwareReview: true, softwareReview: true, merge: true },
@@ -69,7 +75,7 @@ describe("existing project participation expansion (real PostgreSQL)", () => {
         { userId: "members-inactive", isActive: false, roles: ["software-user"] },
         { userId: "members-scoped", isActive: true, roles: ["software-user"] }
       ] });
-      expect(await qualifications()).toEqual(before);
+      expect((await qualifications()).map((item) => ({ ...item, permissions: [...item.permissions].sort() }))).toEqual(before.map((item) => ({ ...item, permissions: [...item.permissions].sort() })));
       expect((await db.query("select * from user_role_bindings order by id")).rows).toEqual(bindingsBefore.rows);
       expect((await db.query("select id,organization_id,is_active from users order by id")).rows).toEqual(usersBefore.rows);
       const second = await requestJson<{ members: Array<{ userId: string; roles: string[] }> }>(

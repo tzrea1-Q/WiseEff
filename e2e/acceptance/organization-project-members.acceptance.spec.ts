@@ -9,7 +9,8 @@ import { installBrowserDiagnostics, useBrowserDiagnostics } from "./helpers/brow
 import { apiRoute } from "./helpers/runtime";
 
 test.use({ viewport: { width: 1440, height: 900 } });
-useBrowserDiagnostics(test, { expectedApiFailures: [{ method: "GET", path: "/api/v1/projects/roster-ui-one/members", status: 503 }] });
+useBrowserDiagnostics(test, { expectedApiFailures: [{ method: "GET", path: "/api/v1/projects/roster-ui-one/members", status: 503 },
+  { method: "PUT", path: "/api/v1/projects/roster-ui-empty/members/roster-ui-editor", status: 503 }] });
 
 test.describe("explicit project participation roster", () => {
   test.skip(resolveApiAuthProvider(resolveApiAuthorization()) !== "local", "Requires the real local-auth API lane.");
@@ -51,7 +52,7 @@ test.describe("explicit project participation roster", () => {
     await expect(table).toContainText("停用项目编辑者");
     await expect(table).toContainText("硬件开发、软件MDE");
     await expect(table.getByRole("row").filter({ hasText: "停用项目编辑者" })).toContainText("已停用");
-    await expect(table.getByRole("button", { name: /编辑|修改|删除|保存/ })).toHaveCount(0);
+    await expect(table.getByRole("button", { name: "修改 存量项目编辑者 的项目编辑角色", exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("project-members-1440.png"), animations: "disabled" });
 
     const home = await page.context().newPage();
@@ -110,5 +111,48 @@ test.describe("explicit project participation roster", () => {
     });
     homeDiagnostics.assertNoBrowserDiagnosticsFailures();
     await home.close();
+  });
+
+  test("manages persisted editing roles without changing account or review duties", async ({ page }, testInfo) => {
+    const login = await page.request.post(apiRoute("/api/v1/auth/login"), { data: { username: "roster.ui.platform", password: LOCAL_DEMO_SHARED_PASSWORD } });
+    expect(login.status()).toBe(200);
+    const { token } = await login.json() as { token: string };
+    await page.addInitScript((value) => localStorage.setItem("wiseeff.localAuthToken", value), token);
+    await page.goto("/organization/projects?organizationId=roster-ui-target"); await prepareInteractionSurface(page);
+    const selector = page.getByRole("combobox", { name: "选择项目" });
+    await selector.click(); await page.getByRole("option", { name: "B 无参与项目", exact: true }).click();
+    await page.getByRole("button", { name: "添加参与者", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "配置项目参与者", exact: true });
+    const person = dialog.getByRole("combobox", { name: "选择参与成员", exact: true });
+    await person.focus(); await person.press("Enter");
+    await page.getByRole("option", { name: "存量项目编辑者", exact: true }).click();
+    await dialog.getByRole("button", { name: "项目编辑角色", exact: true }).click();
+    await dialog.getByRole("checkbox", { name: "软件MDE", exact: true }).check();
+    await dialog.getByRole("button", { name: "项目编辑角色 (1)", exact: true }).click();
+    await page.screenshot({ path: testInfo.outputPath("project-members-edit-1440.png"), animations: "disabled" });
+    const membershipUrl = (url: URL) => url.pathname === "/api/v1/projects/roster-ui-empty/members/roster-ui-editor";
+    await page.route(membershipUrl, (route) => route.fulfill({ status: 503, contentType: "application/json",
+      body: JSON.stringify({ error: { code: "INTERNAL_ERROR", message: "Membership temporarily unavailable." } }) }));
+    await dialog.getByRole("button", { name: "保存", exact: true }).click();
+    await expect(dialog.getByRole("alert", { name: "保存错误摘要", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "项目编辑角色 (1)", exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("project-members-save-error-1440.png"), animations: "disabled" });
+    await page.unroute(membershipUrl);
+    const saved = page.waitForResponse((response) => response.request().method() === "PUT" && new URL(response.url()).pathname === "/api/v1/projects/roster-ui-empty/members/roster-ui-editor");
+    await dialog.getByRole("button", { name: "保存", exact: true }).click(); expect((await saved).status()).toBe(200);
+    await expect(dialog).toBeHidden();
+    const table = page.getByRole("table", { name: "项目参与名单", exact: true });
+    await expect(table).toContainText("软件MDE");
+    await page.reload(); await prepareInteractionSurface(page);
+    await page.getByRole("combobox", { name: "选择项目" }).click(); await page.getByRole("option", { name: "B 无参与项目", exact: true }).click();
+    await page.getByRole("button", { name: "修改 存量项目编辑者 的项目编辑角色", exact: true }).click();
+    await dialog.getByRole("button", { name: "移除参与资格", exact: true }).click();
+    await dialog.getByRole("button", { name: "保存", exact: true }).click();
+    await expect(dialog).toBeHidden(); await expect(page.getByText("暂无项目参与者", { exact: true })).toBeVisible();
+    await withPgClient(async (db) => {
+      expect((await db.query("select roles from project_members where project_id='roster-ui-empty'")).rows).toEqual([]);
+      expect((await db.query("select project_id from user_role_bindings where user_id='roster-ui-editor'")).rows).toEqual([]);
+      expect((await db.query("select is_active from users where id='roster-ui-inactive'")).rows).toEqual([{ is_active: false }]);
+    });
   });
 });

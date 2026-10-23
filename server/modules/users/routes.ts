@@ -12,6 +12,7 @@ import {
   getHomeOrganization,
   getProjectRoleBindings,
   getGovernedProjectMembers,
+  updateGovernedProjectMember,
   listGovernedUsers,
   listGovernedProjectCandidates,
   listRegistrationRoleRequests,
@@ -43,6 +44,7 @@ import { createPlatformOrganizationSchema, emergencyDisableAdministratorSchema, 
 import { createPlatformOrganization, emergencyDisableAdministrator, getAdministratorRecovery, listPlatformOrganizations, recoverOrganizationAdministrator, requirePlatformOrganizationManager } from "./platformOrganizations";
 import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
 import { listOrganizationTeams, mutateOrganizationTeam, teamMembersSchema, teamNameSchema } from "./teams";
+import { updateProjectMemberBodySchema } from "../contracts/dtoSchemas/projectMembers";
 import { acceptOrganizationInvitation, invitationAcceptSchema, invitationInputSchema, invitationTokenSchema, issueOrganizationInvitation, listOrganizationInvitations, readOrganizationInvitation, revokeOrganizationInvitation } from "./invitations";
 import { authAttemptKey, createAuthAttemptLimiter } from "../auth/authAttemptLimiter";
 
@@ -210,6 +212,13 @@ export function registerUserRoutes(
     const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
     const { projectId } = parseWithSchema(projectIdParamsSchema, request.params);
     return { status: 200, body: await getGovernedProjectMembers(db, await operatingInvocation(db, auth, request), projectId) };
+  });
+
+  router.put("/api/v1/projects/:projectId/members/:userId", async (request) => {
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    const { projectId, userId } = parseWithSchema(projectUserParamsSchema, request.params);
+    const body = parseWithSchema(updateProjectMemberBodySchema, request.body);
+    return { status: 200, body: await updateGovernedProjectMember(db, await operatingInvocation(db, auth, request), projectId, userId, body, request.requestId) };
   });
 
   router.post("/api/v1/users", async (request) => {

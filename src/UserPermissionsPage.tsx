@@ -105,10 +105,10 @@ export const roleLabels: Record<PlatformRoleId, string> = {
 
 export const roleCapabilityDescriptions: Record<PlatformRoleId, string> = {
   guest: "仅可查看参数页面。",
-  "hardware-user": "硬件侧可查看并提交参数修改，使用参数调试和日志分析。",
-  "software-user": "软件侧可查看并提交参数修改，在变更审阅页完成合入推进，并使用参数调试和日志分析。",
-  "hardware-committer": "包含硬件开发权限，并可执行硬件侧参数检视。",
-  "software-committer": "包含软件开发权限，并可执行软件侧参数检视。",
+  "hardware-user": "可查看组织项目，使用参数调试和日志分析；参数修改需配置项目参与和编辑角色。",
+  "software-user": "可查看组织项目，使用参数调试和日志分析；参数修改需配置项目参与和编辑角色，合入职责单独配置。",
+  "hardware-committer": "包含硬件开发工具权限；参数修改需项目编辑角色，硬件审核职责单独配置。",
+  "software-committer": "包含软件开发工具权限；参数修改需项目编辑角色，软件审核职责单独配置。",
   admin: "包含全部提交人权限，并可访问各应用后台和组织管理。",
   "platform-admin": "平台运营角色，在本组织内拥有管理员能力，并可管理平台超级管理员授权。"
 };

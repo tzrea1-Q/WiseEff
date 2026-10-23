@@ -178,7 +178,8 @@ describe("config set and baseline routes", () => {
     expect(configSetService.listConfigSets).toHaveBeenCalledWith(
       db,
       expect.objectContaining({ organization: expect.objectContaining({ id: "org-1" }) }),
-      "project-1"
+      "project-1",
+      { invocation: undefined }
     );
   });
 
@@ -346,6 +347,7 @@ describe("config set and baseline routes", () => {
     const objectStore = makeObjectStore();
     const comparison = {
       baselineId: "bl-1",
+      against: "working" as const,
       members: [{ fileId: "file-1", status: "unchanged" as const }]
     };
     vi.mocked(baselineService.compareBaseline).mockResolvedValue(comparison);

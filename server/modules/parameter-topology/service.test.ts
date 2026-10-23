@@ -168,7 +168,7 @@ describe("parameter topology service org scope", () => {
     expect(listBindingRevisionRows).not.toHaveBeenCalled();
   });
 
-  it("rejects a caller whose role is scoped to another project", async () => {
+  it("allows organization-visible lookup when editing duties belong to another project", async () => {
     vi.mocked(getProjectById).mockResolvedValue({ id: "project-1", name: "Project", code: "P1" });
     const auth = makeAuth();
     auth.roles = [{ projectId: "project-2", roleId: "hardware-user" }];
@@ -176,8 +176,10 @@ describe("parameter topology service org scope", () => {
     await expect(getBindingHistory(makeDb(), auth, {
       projectId: "project-1",
       bindingId: "canonical-binding-1"
-    })).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
-    expect(readCanonicalBindingChangeHistory).not.toHaveBeenCalled();
+    })).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    expect(readCanonicalBindingChangeHistory).toHaveBeenCalledWith(expect.anything(), {
+      organizationId: "org-1", projectId: "project-1", bindingId: "canonical-binding-1"
+    });
   });
 
   it("keeps project-bound admin roles organization-wide for canonical compare", async () => {
@@ -384,7 +386,7 @@ describe("parameter topology service org scope", () => {
       organizationId: "org-1",
       projectId: "project-1",
       bindingId: "binding-1",
-      visibleProjectIds: ["project-1"]
+      visibleProjectIds: null
     }));
   });
 

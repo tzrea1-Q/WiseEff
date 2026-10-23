@@ -18,8 +18,8 @@ const labels = { created: "已创建草稿", duplicate_skipped: "重复，已跳
   extraction_failed: "提取失败，草稿已保留", rejected: "导入失败" };
 const isZip = (file: File) => /\.zip$/i.test(file.name);
 
-export function KnowledgeImportDialog({ open, repository, onClose, onComplete, organizationId }: {
-  open: boolean; repository: KnowledgeRepository; onClose: () => void; onComplete: () => void; organizationId?: string;
+export function KnowledgeImportDialog({ open, repository, onClose, onComplete, organizationId, resumeBatchId }: {
+  open: boolean; repository: KnowledgeRepository; onClose: () => void; onComplete: () => void; organizationId?: string; resumeBatchId?: string;
 }) {
   const requestClose = () => { const decision = requestSettingsLeave(); if (decision instanceof Promise) void decision.then((allowed) => { if (allowed) onClose(); }); else if (decision) onClose(); };
   const [files, setFiles] = useState<File[]>([]);
@@ -33,6 +33,16 @@ export function KnowledgeImportDialog({ open, repository, onClose, onComplete, o
   const [error, setError] = useState("");
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    if (!open || !resumeBatchId) return;
+    let cancelled = false;
+    setBatchId(resumeBatchId);
+    void repository.getImport(resumeBatchId).then(report => {
+      if (cancelled) return;
+      setRows(report.outcomes.map(outcome => ({ name: outcome.relativePath, outcome }))); setFinished(true); setSummaryPending(!report.completed);
+    }).catch((failure: unknown) => { if (!cancelled) setError(presentError(failure, "导入报告加载失败，请重新打开。")); });
+    return () => { cancelled = true; };
+  }, [open, repository, resumeBatchId]);
 
   const complete = async (id: string) => {
     setError("");
@@ -141,7 +151,7 @@ export function KnowledgeImportDialog({ open, repository, onClose, onComplete, o
         {!batchId ? <Button size="sm" disabled={pending || !files.length} aria-busy={pending || undefined} onClick={() => void submit()}>
           {pending ? "正在开始…" : "开始导入"}
         </Button> : null}
-        {summaryPending ? <Button size="sm" onClick={() => void complete(batchId!)}>重试汇总</Button> : null}
+        {summaryPending ? <Button size="sm" onClick={() => void complete(batchId!)}>{resumeBatchId ? "完成批次汇总" : "重试汇总"}</Button> : null}
         {finished && !summaryPending ? <Button size="sm" onClick={() => {
           setBatchId(null); setFiles([]); setRows([]); setTags(""); setFinished(false); setError("");
         }}>继续导入</Button> : null}
