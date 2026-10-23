@@ -187,6 +187,10 @@ test.describe("project review role readiness on a canonical Catalog fixture", ()
     });
     expect(created.status(), await created.text()).toBe(201);
     await markProjectInitialized(projectId);
+    const participation = await request.put(apiRoute(`/api/v1/projects/${projectId}/members/${acceptanceCast.liuMin.userId}`), {
+      headers: adminHeaders(), data: { roles: ["software-user"], expectedRoles: [] }
+    });
+    expect(participation.status(), await participation.text()).toBe(200);
 
     // Canonical Bindings exist only for registered Catalog subjects: stage the source twice
     // (initial member, then a new file version) as the canonical value workflow does.
