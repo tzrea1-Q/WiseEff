@@ -291,7 +291,12 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
       });
       try {
         for (const query of ["history", "compare"]) expectedApiFailures.push({ method: "GET", path: `/api/v2/projects/${projectId}/bindings/${bindingId}/${query}`, status: 403 });
+        const definitionPath = `/api/v2/catalog/definitions/${definitionId}/revisions/${effectiveRevisionId}`;
+        expectedApiFailures.push({ method: "GET", path: definitionPath, status: 403 });
+        const deniedDefinition = page.waitForResponse(response => response.request().method() === "GET"
+          && new URL(response.url()).pathname === definitionPath);
         await view.click();
+        expect((await deniedDefinition).status()).toBe(403);
         const detail = page.getByRole("dialog", { name: /参数详情/ });
         for (const name of ["变更历史", "跨项目对比"]) {
           await detail.getByRole("tab", { name, exact: true }).click();
