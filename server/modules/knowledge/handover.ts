@@ -1,13 +1,12 @@
-import { z } from "zod";
+import type { z } from "zod";
+import { knowledgeHandoverBodySchema } from "./schemas";
+export { knowledgeHandoverBodySchema, knowledgeHandoverParamsSchema } from "./schemas";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import { requireKnowledgeManage } from "./policy";
 import { knowledgeOrganizationId, type KnowledgeAccessContext } from "./scope";
 import { knowledgeServiceInvocation } from "./service";
-
-export const knowledgeHandoverParamsSchema = z.object({ kind: z.enum(["entry", "import"]), id: z.string().uuid() });
-export const knowledgeHandoverBodySchema = z.object({ responsibleUserId: z.string().min(1).max(200).nullable(), expectedResponsibleUserId: z.string().min(1).max(200).nullable() }).strict();
 
 const eligible = `exists(select 1 from user_role_bindings b join roles r on r.id=b.role_id
   where b.user_id=u.id and b.organization_id=u.organization_id and b.project_id is null and 'knowledge:edit'=any(r.permissions))`;

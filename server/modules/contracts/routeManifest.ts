@@ -5,6 +5,7 @@ import { workflowPublicationRoutes } from "./dtoSchemas/workflowPublication";
 import { platformOrganizationRoutes } from "./dtoSchemas/platformOrganizations";
 import { organizationInvitationRoutes } from "./dtoSchemas/organizationInvitations";
 import { organizationTeamRoutes } from "./dtoSchemas/organizationTeams";
+import { assetHandoverRoutes } from "./dtoSchemas/organizationAssetHandover";
 
 export type RouteModule =
   | "workflow-publication"
@@ -36,6 +37,7 @@ export type RouteManifestEntry = {
 };
 
 export const routeManifest = [
+  ...assetHandoverRoutes,
   ...organizationInvitationRoutes,
   ...platformOrganizationRoutes,
   ...organizationTeamRoutes,

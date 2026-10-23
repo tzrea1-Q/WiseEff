@@ -37,7 +37,7 @@ describe("KnowledgeAdminPage", () => {
     await screen.findByRole("table", { name: "小泽知识草稿" });
     expect(screen.getByRole("tabpanel")).toHaveAccessibleName("小泽草稿");
     expect(screen.getAllByText("小泽草稿")).toHaveLength(1);
-    expect(screen.getByText(/知识编辑者可发布本人会话的草稿/)).toBeInTheDocument();
+    expect(screen.getByText(/知识编辑者可发布自己负责的草稿/)).toBeInTheDocument();
     expect(screen.queryByText(/knowledge:(edit|manage)/)).not.toBeInTheDocument();
   });
 

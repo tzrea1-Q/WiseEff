@@ -23,7 +23,7 @@ export async function deleteProductFeedbackAttachment(db: Database, store: Objec
     // The original feedback submitter proves ownership of legacy screenshots;
     // preserve their unknown uploader/message fields rather than inventing them.
     if (!administrator && attachment.uploaded_by_user_id && attachment.uploaded_by_user_id !== auth.user.id) throw new ApiError("FORBIDDEN", "只能删除自己提交的附件。");
-    if (!administrator && !attachment.uploaded_by_user_id && feedback.submitter_user_id !== auth.user.id) throw new ApiError("FORBIDDEN", "历史上传者不明确的附件须由原提交者或管理员处理。");
+    if (!administrator && !attachment.uploaded_by_user_id && feedback.submitter_user_id !== auth.user.id) throw new ApiError("NOT_FOUND", "反馈附件不存在。");
     if (deleted) {
       // Only this authorized target receipt may be adopted for an administrator retry.
       await tx.query("update product_feedback_attachment_uploads set uploaded_by_user_id=$3 where organization_id=$1 and id=$2", [feedbackOrganizationId(auth), deleted.cleanup_upload_id, auth.user.id]);

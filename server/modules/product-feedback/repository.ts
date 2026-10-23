@@ -123,7 +123,7 @@ function toAttachmentDto(row: ProductFeedbackAttachmentRow): ProductFeedbackAtta
 
 function toSubmitterDto(row: ProductFeedbackRow): SubmitterIdentityDto {
   const original = row.historical_attribution?.actors.submitter_user_id;
-  if (original?.name) return { id: original.id, name: original.name, username: row.submitter_username ?? null };
+  if (original?.name) return { id: row.submitter_user_id, name: original.name, username: row.submitter_username ?? null };
   if (!row.submitter_user_id || !row.submitter_name) {
     return {
       id: row.submitter_user_id ?? null,

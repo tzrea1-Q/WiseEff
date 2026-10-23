@@ -373,14 +373,14 @@ describe.skipIf(!databaseAvailable)("product feedback repository", () => {
     });
   });
 
-  it("handles deleted users by returning '已注销用户' fallback", async () => {
+  it("retains the recorded submitter name after the live account link is removed", async () => {
     await insertFeedback(db, auth(), feedbackInput(FEEDBACK_1));
     await db.query("update product_feedback set submitter_user_id = null where id = $1", [FEEDBACK_1]);
 
     const item = await getFeedbackById(db, auth(), FEEDBACK_1);
     expect(item?.submitter).toEqual({
       id: null,
-      name: "已注销用户",
+      name: "Riley Chen",
       username: null
     });
   });

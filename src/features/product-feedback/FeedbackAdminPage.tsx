@@ -43,7 +43,7 @@ function readLocation(search = window.location.search) {
 
 function submitterLabel(feedback: ProductFeedback) {
   if (feedback.submitter) {
-    if (feedback.submitter.id === null) return "已注销用户";
+    if (feedback.submitter.id === null) return feedback.submitter.name === "已注销用户" ? "已注销用户" : `${feedback.submitter.name}（已注销）`;
     return feedback.submitter.username ? `${feedback.submitter.name} (@${feedback.submitter.username})` : feedback.submitter.name;
   }
   return feedback.submitterUserId === null ? "已注销用户" : feedback.submitterUserId ?? "内测用户";

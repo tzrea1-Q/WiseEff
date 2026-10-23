@@ -4,6 +4,7 @@ import { MAX_FEEDBACK_ATTACHMENT_COUNT } from "../../../src/domain/productFeedba
 import { feedbackPriorities, feedbackResolutionCodes, feedbackStatuses, feedbackTypes } from "./types";
 
 const nonEmptyString = z.string().min(1);
+export const feedbackHandoverBodySchema = z.object({ responsibleUserId: z.string().min(1).max(200).nullable(), expectedResponsibleUserId: z.string().min(1).max(200).nullable() }).strict();
 const base64String = nonEmptyString.refine(
   (value) => {
     try {

@@ -1,11 +1,12 @@
-import { z } from "zod";
+import type { z } from "zod";
+import { feedbackHandoverBodySchema } from "./schemas";
+export { feedbackHandoverBodySchema } from "./schemas";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import { requireProductFeedbackAdmin } from "./policy";
 import { feedbackInvocation, feedbackOrganizationId, type ProductFeedbackAccessContext } from "./scope";
 
-export const feedbackHandoverBodySchema = z.object({ responsibleUserId: z.string().min(1).max(200).nullable(), expectedResponsibleUserId: z.string().min(1).max(200).nullable() }).strict();
 const administrator = `exists(select 1 from user_role_bindings b join roles r on r.id=b.role_id where b.user_id=u.id and b.organization_id=u.organization_id and b.project_id is null and 'admin:access'=any(r.permissions))`;
 export async function listFeedbackHandovers(db: Queryable, auth: ProductFeedbackAccessContext) {
   requireProductFeedbackAdmin(auth);

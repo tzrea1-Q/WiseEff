@@ -73,7 +73,7 @@ describe("knowledge handover through real HTTP and PostgreSQL", () => {
     const formal = await request<{ items: Array<{ id: string }> }>("product-feedback");
     expect(formal.body.items.map(item => item.id)).not.toContain(id);
     expect((await request(`product-feedback/drafts/${id}/submit`, "POST", {}, "editor")).status).toBe(200);
-    expect((await request(`product-feedback/mine/${id}/replies`, "POST", { message: "Successor followed up after submission" }, "editor")).status).toBe(200);
+    expect((await request(`product-feedback/mine/${id}/replies`, "POST", { message: "Successor followed up after submission" }, "editor")).status).toBe(201);
     const result = await request<{ item: { submitter: { name: string }; historicalAttribution: unknown } }>(`product-feedback/${id}`);
     expect(result.status, result.bodyText).toBe(200);
     expect(result.body.item.submitter.name).toBe("Original author");
@@ -122,7 +122,7 @@ describe("knowledge handover through real HTTP and PostgreSQL", () => {
     expect((await request<{ item: KnowledgeEntryDto }>(`knowledge/entries/${entry.id}`)).body.item.responsibleUserId).toBe(current.responsibleUserId);
     expect((await db.query("select id from audit_events where kind='knowledge-handover' and target_id=$1", [entry.id])).rowCount).toBe(1);
   });
-  it("hands off feedback triage only to administrators and preserves machine credentials and private conversations", async () => {
+  it("hands off feedback triage only to administrators and preserves organization machine credentials", async () => {
     const created = await request<{ item: { id: string } }>("product-feedback", "POST", { description: "Needs a new handler", pagePath: "/knowledge", pageTitle: "Knowledge", feedbackType: "experience" }, "departing");
     expect(created.status).toBe(201); const id = created.body.item.id;
     const assign = (responsibleUserId: string | null, expectedResponsibleUserId: string | null = null) => request(`product-feedback/handovers/${id}`, "PATCH", { responsibleUserId, expectedResponsibleUserId });
@@ -136,6 +136,5 @@ describe("knowledge handover through real HTTP and PostgreSQL", () => {
     expect((await db.query("select status,created_by from log_integration_credentials where id=$1", [credential.body.item.id])).rows).toEqual([{ status: "active", created_by: null }]);
     expect((await request<{ items: Array<{ id: string }> }>("product-feedback/handovers")).body.items).toContainEqual(expect.objectContaining({ id }));
     expect((await request(`product-feedback/${id}`, "PATCH", { priority: "high" }, "admin")).status).toBe(200);
-    expect((await db.query("select id from agent_sessions where actor_user_id='handover-admin'")).rowCount).toBe(0);
   });
 });

@@ -19,6 +19,7 @@ const referenceSchema = z.discriminatedUnion("kind", [
 ]);
 
 export const knowledgeEntryDtoSchema = z.object({
+  responsibleUserId: z.string().nullable().optional(),
   historicalAttribution: historicalAttributionSchema.optional(),
   id: z.string().uuid(), organizationId: z.string(), title: z.string(),
   contentForm: z.enum(knowledgeContentForms), status: z.enum(knowledgeStatuses), origin: z.enum(knowledgeOrigins),
