@@ -11,6 +11,20 @@ function deps(): AppRuntimeDeps {
 }
 
 describe("createAppRuntime", () => {
+  it("binds each log runtime to the explicit URL organization", async () => {
+    vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "http://127.0.0.1:18781");
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ items: [] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const target = createAppRuntime("api", { ...deps(), organizationId: "target-logs" });
+      const home = createAppRuntime("api", deps());
+      await target.logAnalysisRepository!.listLogs();
+      await home.logAnalysisRepository!.listLogs();
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+        "http://127.0.0.1:18781/api/v1/logs?organizationId=target-logs", "http://127.0.0.1:18781/api/v1/logs"
+      ]);
+    } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
+  });
   it("R2 Catalog API client honors the configured backend origin", async () => {
     vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "http://127.0.0.1:18781");
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(readyCatalogDocument), { status: 200, headers: { "content-type": "application/json" } }));

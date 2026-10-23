@@ -91,6 +91,7 @@ export type AppRuntime = {
 };
 
 export type AppRuntimeDeps = {
+  organizationId?: string;
   /** Live prototype-state accessor for mock adapters that read app state. */
   getState: () => PrototypeState;
   /** Mutable state handle the mock parameter repository writes through. */
@@ -141,7 +142,7 @@ export function createAppRuntime(
     parameterDashboardRepository:
       overrides.parameterDashboardRepository ??
       (api ? createHttpParameterDashboardRepository() : createMockParameterDashboardRepository(deps.getState)),
-    logAnalysisRepository: overrides.logAnalysisRepository ?? (api ? createHttpLogAnalysisRepository() : undefined),
+    logAnalysisRepository: overrides.logAnalysisRepository ?? (api ? createHttpLogAnalysisRepository({ organizationId: deps.organizationId }) : undefined),
     productFeedbackRepository:
       overrides.productFeedbackRepository ??
       (api ? createHttpProductFeedbackRepository() : createMockProductFeedbackRepository()),
