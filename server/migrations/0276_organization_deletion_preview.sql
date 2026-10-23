@@ -199,7 +199,9 @@ begin
  ) as inventory(relation_name,domain,ownership) loop
    known:=array_append(known,target.relation_name);
    key:=target.relation_name;category:=target.domain;
-   execute format($query$select count(*),encode(sha256(convert_to(coalesce(string_agg(digest,'' order by digest),''),'UTF8')),'hex') from (select encode(sha256(convert_to(to_jsonb(r)::text,'UTF8')),'hex') digest from %s r where %s) s$query$,target.relation_name,target.ownership)
+   -- Heartbeats and progress do not change erasure ownership or authorization.
+   -- Keep every business/identity field and physical key in the impact version.
+   execute format($query$select count(*),encode(sha256(convert_to(coalesce(string_agg(digest,'' order by digest),''),'UTF8')),'hex') from (select encode(sha256(convert_to((to_jsonb(r)-array['last_seen_at','last_used_at','last_active_at','updated_at','progress','current_stage','lease_owner','lease_expires_at','lease_until','heartbeat_at','last_heartbeat_at'])::text,'UTF8')),'hex') digest from %s r where %s) s$query$,target.relation_name,target.ownership)
      into item_count,state_digest using p_org;
    return next;
  end loop;
@@ -242,7 +244,7 @@ begin
    select distinct own.object_key,exists(select 1 from refs other where other.object_key=own.object_key and other.org is distinct from p_org) shared
      from refs own where own.org=p_org and own.object_key is not null
  ) select case when shared then 'storage.shared' else 'storage.exclusive' end,'storage',count(*),
-   encode(sha256(convert_to(string_agg(object_key,'' order by object_key),'UTF8')),'hex') from objects group by shared;
+   encode(sha256(convert_to(string_agg(encode(sha256(convert_to(object_key,'UTF8')),'hex'),'' order by object_key),'UTF8')),'hex') from objects group by shared;
  -- Runtime-owned LangGraph tables are optional and are not migration tables.
  foreach relation in array array['public.checkpoints','public.checkpoint_blobs','public.checkpoint_writes'] loop
    key:=relation;category:='agent';item_count:=0;state_digest:='absent';

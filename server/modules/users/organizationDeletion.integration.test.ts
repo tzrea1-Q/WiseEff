@@ -140,4 +140,40 @@ describe("Organization erasure preview through real HTTP and PostgreSQL", () => 
     release(); await mutation; await denied;
     expect((await db.query("select count(*)::int n from users where organization_id='preview-target'")).rows).toEqual([{ n: 2 }]);
   });
+  it("keeps live heartbeats and progress usable while owned records, identity and shared files still invalidate impact", async () => {
+    await db.query("insert into device_bridges(id,user_id,organization_id,machine_label,platform,arch,client_version) values('preview-live-bridge','preview-member','preview-target','Live device','linux','amd64','1')");
+    await db.query("insert into jobs(id,organization_id,kind,target_type,target_id,status) values('preview-live-job','preview-target','preview','preview','preview','processing')");
+    await db.query("insert into log_file_objects(id,organization_id,storage_key,file_name,content_type,file_size_bytes,checksum_sha256) values('preview-live-object','preview-target','live-key','live.log','text/plain',5,'abc')");
+    const caller = createUserInvocation(await getAuthContext(db, "preview-platform"));
+    const initial = await previewOrganizationDeletion(db, caller, "preview-target");
+    await db.query("update device_bridges set last_seen_at=clock_timestamp() where id='preview-live-bridge'");
+    await db.query("update users set last_active_at=clock_timestamp() where id='preview-member'");
+    await db.query("update jobs set progress=50,current_stage='working',updated_at=clock_timestamp(),lease_owner='same-worker',lease_expires_at=clock_timestamp()+interval '1 minute' where id='preview-live-job'");
+    expect((await previewOrganizationDeletion(db, caller, "preview-target")).stateDigest).toBe(initial.stateDigest);
+    await db.transaction(tx => admitOrganizationDeletion(tx, caller, "preview-target", initial.stateDigest));
+    const stale = (digest: string) => expect(db.transaction(tx => admitOrganizationDeletion(tx, caller, "preview-target", digest))).rejects.toMatchObject({ code: "CONFLICT", details: { code: "organization-deletion-preview-stale" } });
+    await db.query("insert into organization_teams(id,organization_id,name) values('preview-impact-record','preview-target','Impact')");
+    await stale(initial.stateDigest);
+    const added = await previewOrganizationDeletion(db, caller, "preview-target");
+    await db.query("delete from organization_teams where id='preview-impact-record'");
+    await stale(added.stateDigest);
+    const identity = await previewOrganizationDeletion(db, caller, "preview-target");
+    await db.query("update users set is_active=false where id='preview-member'");
+    await stale(identity.stateDigest);
+    const file = await previewOrganizationDeletion(db, caller, "preview-target");
+    await db.query("insert into log_file_objects(id,organization_id,storage_key,file_name,content_type,file_size_bytes,checksum_sha256) values('preview-live-foreign-object','preview-home','live-key','keep.log','text/plain',5,'abc')");
+    await stale(file.stateDigest);
+    expect((await previewOrganizationDeletion(db, caller, "preview-target")).storage).toEqual({ exclusiveObjects: 0, sharedObjects: 1 });
+  });
+  it("detects shared-file ownership changes even when both file counts stay unchanged", async () => {
+    await db.query(`insert into log_file_objects(id,organization_id,storage_key,file_name,content_type,file_size_bytes,checksum_sha256) values
+      ('preview-a','preview-target','a','a','text/plain',1,'a'),('preview-bc','preview-target','bc','bc','text/plain',1,'a'),
+      ('preview-ab','preview-target','ab','ab','text/plain',1,'a'),('preview-c','preview-target','c','c','text/plain',1,'a'),
+      ('preview-foreign-a','preview-home','a','a','text/plain',1,'a'),('preview-foreign-bc','preview-home','bc','bc','text/plain',1,'a')`);
+    const caller = createUserInvocation(await getAuthContext(db, "preview-platform")), before = await previewOrganizationDeletion(db, caller, "preview-target");
+    await db.query("update log_file_objects set storage_key=case id when 'preview-foreign-a' then 'ab' else 'c' end where organization_id='preview-home'");
+    const after = await previewOrganizationDeletion(db, caller, "preview-target");
+    expect(after.storage).toEqual(before.storage);
+    await expect(db.transaction(tx => admitOrganizationDeletion(tx, caller, "preview-target", before.stateDigest))).rejects.toMatchObject({ code: "CONFLICT", details: { code: "organization-deletion-preview-stale" } });
+  });
 });
