@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { AgentToolStatus } from "./types";
 import {
   createInMemoryTestDatabase,
   isTestDatabaseAvailable,
@@ -49,7 +50,7 @@ describe.skipIf(!databaseAvailable)("agent repository (behavior)", () => {
       organizationId: ORG_A,
       actorUserId: USER_A,
       pageKey: "parameters",
-      context: { projectId: "aurora", route: "/parameters" },
+      context: { projectId: "aurora", path: "/parameters", pageKey: "parameters" },
       title: "Charging tuning"
     });
   });
@@ -69,7 +70,7 @@ describe.skipIf(!databaseAvailable)("agent repository (behavior)", () => {
       title: "Charging tuning"
     });
     // Context is normalized into the AgentContext projection, not passed through.
-    expect(session?.context).toEqual({ path: "", pageKey: "", projectId: "aurora", roleId: undefined });
+    expect(session?.context).toEqual({ path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: undefined });
 
     expect(await getAgentSession(db, ORG_B, SESSION)).toBeNull();
   });
@@ -144,7 +145,7 @@ describe.skipIf(!databaseAvailable)("agent repository (behavior)", () => {
     expect(await listAgentMessages(db, ORG_A, "other-session")).toEqual([]);
   });
 
-  async function seedToolCall(id = "tool-1", status = "running") {
+  async function seedToolCall(id = "tool-1", status: AgentToolStatus = "running") {
     await createAgentToolCall(db, {
       id,
       sessionId: SESSION,
@@ -176,12 +177,12 @@ describe.skipIf(!databaseAvailable)("agent repository (behavior)", () => {
     expect(
       await updateAgentToolCall(db, ORG_A, "tool-1", {
         status: "succeeded",
-        result: { changeRequestId: "cr-1" }
+        result: { summary: "Submitted for review", data: { changeRequestId: "cr-1" }, citations: [] }
       })
     ).toBe(true);
     const updated = await getAgentToolCall(db, ORG_A, "tool-1");
     expect(updated?.status).toBe("succeeded");
-    expect(updated?.result).toEqual({ changeRequestId: "cr-1" });
+    expect(updated?.result).toEqual({ summary: "Submitted for review", data: { changeRequestId: "cr-1" }, citations: [] });
     // Fields not passed stay untouched (coalesce semantics).
     expect(updated?.payload).toEqual({ parameterId: "param-1", targetValue: "3200" });
   });
