@@ -11,7 +11,7 @@ export * from "../modules/catalog-publication/runtime/provisionRuntimeLogins";
 
 /** Lab role membership writes share the postgres lease with migration observations. */
 export const provisionPublicationRuntimeLogins: typeof provision = (url, input) =>
-  input?.mode === "lab"
+  input?.mode === "lab" && !hasTestClusterRoleCatalogLock()
     ? withTestClusterRoleCatalogLock(() => provision(url, input))
     : provision(url, input);
 
@@ -76,9 +76,11 @@ export async function revokeForeignTestRuntimeGrants(url: string, roles: readonl
   }
 }
 
-export const dropLabRuntimeLogins: typeof dropLab = (url, token) =>
-  withTestClusterRoleCatalogLock(async () => {
+export const dropLabRuntimeLogins: typeof dropLab = (url, token) => {
+  const drop = async () => {
     const names = publicationRuntimeLoginNames({ mode: "lab", runToken: token });
     await revokeForeignTestRuntimeGrants(url, Object.values(names), publicationRuntimeOwnershipComment("lab", token.toLowerCase().replace(/[^a-z0-9]/g, "")));
     return dropLab(url, token);
-  });
+  };
+  return hasTestClusterRoleCatalogLock() ? drop() : withTestClusterRoleCatalogLock(drop);
+};

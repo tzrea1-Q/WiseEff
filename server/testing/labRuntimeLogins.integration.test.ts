@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createPostgresDatabase } from "../shared/database/client";
 import { quoteIdent } from "../modules/catalog-kernel/security/catalogRoleManifest";
 import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins, revokeForeignTestRuntimeGrants } from "./labRuntimeLogins";
-import { dropLabRuntimeLogins as dropViaBarrel } from "../modules/catalog-publication/runtime";
+import { dropLabRuntimeLogins as dropViaBarrel, provisionPublicationRuntimeLogins as provisionViaBarrel } from "../modules/catalog-publication/runtime";
 import { applyTestMigrations, migrationsDir, withAdminClient } from "./tempDatabase";
 import { createEphemeralTestDatabase, isGeneratedTestDatabaseName, isTestDatabaseAvailable, TEMPLATE_BUILD_LOCK, withTestClusterRoleCatalogLock } from "./testDatabase";
 
@@ -19,6 +19,28 @@ it("routes transitive runtime exports through cleanup and excludes application d
 });
 
 describe.skipIf(!available)("lab runtime role isolation", () => {
+  it("borrows the active outer lease for default provision and cleanup without releasing it", async () => {
+    const source = await createEphemeralTestDatabase("borrowrole");
+    const token = `borrowrole${randomBytes(5).toString("hex")}`;
+    try {
+      await withTestClusterRoleCatalogLock(async () => {
+        await provisionViaBarrel(source.url, { mode: "lab", runToken: token });
+        await withAdminClient(async (observer) => {
+          expect((await observer.query("select pg_try_advisory_lock($1) as acquired", [4_201_659])).rows).toEqual([{ acquired: false }]);
+        });
+        expect((await dropViaBarrel(source.url, token)).failed).toEqual([]);
+        await expect(withTestClusterRoleCatalogLock(async () => undefined)).rejects.toThrow("Nested test cluster role catalog lease");
+        await withAdminClient(async (observer) => {
+          expect((await observer.query("select pg_try_advisory_lock($1) as acquired", [4_201_659])).rows).toEqual([{ acquired: false }]);
+        });
+      });
+      await expect(withTestClusterRoleCatalogLock(async () => "released")).resolves.toBe("released");
+    } finally {
+      try { expect((await dropLabRuntimeLogins(source.url, token)).failed).toEqual([]); }
+      finally { await source.drop(); }
+    }
+  });
+
   it("prevents a concurrent template clone from copying a grant after the cleanup snapshot", async () => {
     const source = await createEphemeralTestDatabase("cloneacl");
     const token = `cloneacl${randomBytes(5).toString("hex")}`;
