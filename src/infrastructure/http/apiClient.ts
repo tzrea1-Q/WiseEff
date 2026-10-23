@@ -1,3 +1,5 @@
+import { withOrganizationScope } from "./organizationScope";
+
 export class WiseEffApiError extends Error {
   constructor(
     public readonly code: string,
@@ -16,6 +18,7 @@ type ApiClientOptions = {
   getAuthorization?: () => string | undefined | Promise<string | undefined>;
   onAuthorizationFailure?: (error: unknown) => void;
   fetchImpl?: typeof fetch;
+  organizationId?: string;
 };
 
 async function parseJson(response: Response) {
@@ -23,7 +26,9 @@ async function parseJson(response: Response) {
   return text ? JSON.parse(text) : null;
 }
 
-export function createApiClient({ baseUrl, authorization, getAuthorization, onAuthorizationFailure, fetchImpl = fetch }: ApiClientOptions) {
+export function createApiClient({ baseUrl, authorization, getAuthorization, onAuthorizationFailure, fetchImpl = fetch, organizationId }: ApiClientOptions) {
+  // Object-store and external URLs are not Organization API resources.
+  const requestUrl = (path: string) => `${baseUrl}${path.startsWith("/api/") ? withOrganizationScope(path, organizationId) : path}`;
   async function resolveAuthorization() {
     if (!getAuthorization) {
       return authorization;
@@ -43,7 +48,7 @@ export function createApiClient({ baseUrl, authorization, getAuthorization, onAu
   }
 
   async function request<T>(path: string, init: RequestInit): Promise<T> {
-    const response = await fetchImpl(`${baseUrl}${path}`, {
+    const response = await fetchImpl(requestUrl(path), {
       ...init,
       headers: await headers((init.headers ?? {}) as Record<string, string>)
     });
@@ -58,7 +63,7 @@ export function createApiClient({ baseUrl, authorization, getAuthorization, onAu
   }
 
   async function raw(path: string, init: RequestInit): Promise<Response> {
-    const response = await fetchImpl(`${baseUrl}${path}`, {
+    const response = await fetchImpl(requestUrl(path), {
       ...init,
       headers: await headers((init.headers ?? {}) as Record<string, string>)
     });
