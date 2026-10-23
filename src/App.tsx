@@ -1358,6 +1358,7 @@ function AppShell({
           />
         ) : null}
       <FeedbackDialog
+        key={scopeKey}
         open={feedbackOpen}
         pagePath={path}
         pageTitle={page.title}

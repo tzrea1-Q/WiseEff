@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { buildAuditSearch, parseAuditSearch } from "./useAuditSearch";
 
 describe("useAuditSearch helpers", () => {
+  it("keeps the explicit organization in copied links and filter changes", () => {
+    const parsed = parseAuditSearch("?organizationId=target-org&kind=scope-review&eventId=event-b");
+    expect(buildAuditSearch({ ...parsed, search: "changed" })).toBe("?q=changed&organizationId=target-org&eventId=event-b&kind=scope-review");
+  });
   it("round-trips multiple severities, deduplicates them, and keeps legacy single selections", () => {
     const query = parseAuditSearch("?severity=Medium,High,High,invalid");
     expect(query.severity).toEqual(["High", "Medium"]);
@@ -24,6 +28,7 @@ describe("useAuditSearch helpers", () => {
     expect(
       buildAuditSearch({
         appGroup: "logs",
+        timeWindow: "all",
         severity: "Medium",
         search: "archive",
         projectId: "aurora"

@@ -163,7 +163,7 @@ export function createAppRuntime(
     logAnalysisRepository: overrides.logAnalysisRepository ?? (api ? createHttpLogAnalysisRepository({ organizationId: deps.organizationId }) : undefined),
     productFeedbackRepository:
       overrides.productFeedbackRepository ??
-      (api ? createHttpProductFeedbackRepository() : createMockProductFeedbackRepository()),
+      (api ? createHttpProductFeedbackRepository({ organizationId: deps.organizationId }) : createMockProductFeedbackRepository()),
     knowledgeRepository:
       overrides.knowledgeRepository ??
       (api

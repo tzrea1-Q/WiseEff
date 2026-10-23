@@ -123,7 +123,8 @@ function parseMyCursor(cursor: string | undefined) {
 async function getAuth(getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext, request: RouteRequest, db?: Database) {
   const auth = await getCurrentAuthContext(request);
   const { organizationId } = parseWithSchema(z.object({ organizationId: z.string().trim().min(1).max(200).optional() }), flattenQuery(request.query));
-  return organizationId === undefined ? auth : withProductFeedbackInvocation(auth, await resolveOperatingContext(requireDb(db), createUserInvocation(auth), organizationId));
+  const invocation = createUserInvocation(auth);
+  return withProductFeedbackInvocation(auth, organizationId === undefined ? invocation : await resolveOperatingContext(requireDb(db), invocation, organizationId));
 }
 
 export function registerProductFeedbackRoutes(

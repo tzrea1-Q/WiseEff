@@ -12,6 +12,7 @@ import type {
 } from "@/infrastructure/http/parameterCatalogDtos";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog, type ModalDialogRenderProps } from "@/components/common/ModalDialog";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import type { SettingsLeaveRequest } from "@/application/settingsFormNavigation";
 
 import {
@@ -391,7 +392,7 @@ export function ReviewResolutionDialog({
             <p>来源：{sourceTitle}{sources.length > 1 ? `（共 ${sources.length} 个来源）` : ""}</p><p>{impact}</p>
             {receipt.registration ? <p>主体：{affectedTarget}；目标模块：{targetModule?.displayName ?? receipt.registration.placement.displayName}。</p> : null}
             <p className="parameter-text-content">处理原因：{reason.trim()}</p><p>此次处理不更改项目参数值或源文件。可返回审核列表查看处理记录。</p>
-            <div><Button asChild variant="outline" size="sm"><a href={`/audit?kind=parameter-catalog-governance&targetId=${encodeURIComponent(item.id)}`} target="_blank" rel="noreferrer">查看处理记录</a></Button></div>
+            <div><Button asChild variant="outline" size="sm"><a href={withOrganizationScope(`/audit?kind=parameter-catalog-governance&targetId=${encodeURIComponent(item.id)}`, organizationId)} target="_blank" rel="noreferrer">查看处理记录</a></Button></div>
             {receipt.proposalId ? <>
               <p>{definitionSubjectId ? "本次处理没有修改当前定义。请在定义目录选择目标定义，通过编辑和发布流程继续。" : "尚无唯一匹配主体。请前往参数定义管理准备主体与定义，再按编写和发布流程继续。"}</p>
               {onContinueDefinition ? <Button type="button" onClick={() => onContinueDefinition({ proposalId: receipt.proposalId!, propertyKey: item.observation?.propertyKey, subjectId: definitionSubjectId })}>{definitionSubjectId ? "前往定义目录继续编辑" : "前往参数定义管理"}</Button> : <Button asChild variant="outline"><a href="/parameter-admin/specs">{definitionSubjectId ? "前往定义目录继续编辑" : "前往参数定义管理"}</a></Button>}

@@ -622,17 +622,18 @@ export async function appendProductFeedbackProgress(
     });
 
     if (publicMessage && existing.submitter_user_id) {
-      await notifyUsers(tx, {
-        organizationId: feedbackOrganizationId(auth),
+      const recipient = (await tx.query<{ organization_id: string }>("select organization_id from users where id=$1", [existing.submitter_user_id])).rows[0];
+      if (recipient) await notifyUsers(tx, {
+        organizationId: recipient.organization_id,
         recipientUserIds: [existing.submitter_user_id],
         category: "product-feedback.progress",
         title: nextStatus === "resolved" ? "问题反馈已解决" : "问题反馈有新进展",
         body: publicMessage,
         severity: nextStatus === "resolved" ? "success" : "info",
-        actionUrl: `/feedback?id=${encodeURIComponent(feedbackId)}`,
+        actionUrl: `/feedback?id=${encodeURIComponent(feedbackId)}${recipient.organization_id !== feedbackOrganizationId(auth) ? `&organizationId=${encodeURIComponent(feedbackOrganizationId(auth))}` : ""}`,
         sourceKind: "product-feedback-progress",
         sourceId: progressId,
-        metadata: { feedbackId, status: nextStatus }
+        metadata: { feedbackId, status: nextStatus, feedbackOrganizationId: feedbackOrganizationId(auth) }
       });
     }
 
