@@ -9,7 +9,8 @@ import { installBrowserDiagnostics, useBrowserDiagnostics } from "./helpers/brow
 import { apiRoute } from "./helpers/runtime";
 
 test.use({ viewport: { width: 1440, height: 900 } });
-useBrowserDiagnostics(test, { expectedApiFailures: [{ method: "GET", path: "/api/v1/projects/roster-ui-one/members", status: 503 }] });
+useBrowserDiagnostics(test, { expectedApiFailures: [{ method: "GET", path: "/api/v1/projects/roster-ui-one/members", status: 503 },
+  { method: "PUT", path: "/api/v1/projects/roster-ui-empty/members/roster-ui-editor", status: 503 }] });
 
 test.describe("explicit project participation roster", () => {
   test.skip(resolveApiAuthProvider(resolveApiAuthorization()) !== "local", "Requires the real local-auth API lane.");
@@ -129,6 +130,14 @@ test.describe("explicit project participation roster", () => {
     await dialog.getByRole("checkbox", { name: "软件MDE", exact: true }).check();
     await dialog.getByRole("button", { name: "项目编辑角色 (1)", exact: true }).click();
     await page.screenshot({ path: testInfo.outputPath("project-members-edit-1440.png"), animations: "disabled" });
+    const membershipUrl = (url: URL) => url.pathname === "/api/v1/projects/roster-ui-empty/members/roster-ui-editor";
+    await page.route(membershipUrl, (route) => route.fulfill({ status: 503, contentType: "application/json",
+      body: JSON.stringify({ error: { code: "INTERNAL_ERROR", message: "Membership temporarily unavailable." } }) }));
+    await dialog.getByRole("button", { name: "保存", exact: true }).click();
+    await expect(dialog.getByRole("alert", { name: "保存错误摘要", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "项目编辑角色 (1)", exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("project-members-save-error-1440.png"), animations: "disabled" });
+    await page.unroute(membershipUrl);
     const saved = page.waitForResponse((response) => response.request().method() === "PUT" && new URL(response.url()).pathname === "/api/v1/projects/roster-ui-empty/members/roster-ui-editor");
     await dialog.getByRole("button", { name: "保存", exact: true }).click(); expect((await saved).status()).toBe(200);
     await expect(dialog).toBeHidden();
