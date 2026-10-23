@@ -84,7 +84,7 @@ type ItemEnvelope<T> = { item: T };
 type OkEnvelope = { ok: true };
 type LogUploadResponse = { fileObject: unknown; log: LogRecordDto; job: LogJobDto | null };
 type LogRerunResponse = { log: LogRecordDto; job: LogJobDto };
-type HttpLogAnalysisRepositoryOptions = { apiClient?: undefined; baseUrl?: string } | { apiClient: ApiClient; baseUrl: string };
+type HttpLogAnalysisRepositoryOptions = ({ apiClient?: undefined; baseUrl?: string } | { apiClient: ApiClient; baseUrl: string }) & { organizationId?: string };
 
 const terminalJobStatuses = new Set(["complete", "failed"]);
 
@@ -209,7 +209,7 @@ export function createHttpLogAnalysisRepository(
   options: HttpLogAnalysisRepositoryOptions = {}
 ): LogAnalysisRepository {
   const baseUrl = options.baseUrl ?? resolveWiseEffApiBaseUrl();
-  const apiClient = options.apiClient ?? createDefaultApiClient({ baseUrl });
+  const apiClient = options.apiClient ?? createDefaultApiClient({ baseUrl, organizationId: options.organizationId });
 
   async function uploadFiles(input: LogUploadInput): Promise<LogUploadResponse> {
     if (!input.files) return apiClient.post<LogUploadResponse>("/api/v1/log-files", uploadBody(input, await fileToBase64(input.file)));
