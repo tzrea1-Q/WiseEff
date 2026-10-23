@@ -22,6 +22,8 @@ Setup and upgrade write `.env.publication-manager` as an **unconfigured stub** w
 
 ## Refresh existing LOGIN privileges after schema upgrades
 
+Migration `0257_definition_erasure_writer_runtime_grants.sql` automatically grants the exact definition-erasure routines to existing NOINHERIT LOGINs that are members of `parameter_governance_writer_role` and can already `SET ROLE` to it. It also handles API LOGINs with neither the old erasure reader nor the cleanup-list grant; `0253` alone could skip those accounts. Membership with `SET FALSE` is insufficient. Worker, manager and unrelated LOGINs receive no new capability. The migration does not change passwords, role inheritance, table DML or publication freeze. General readiness does not prove that `/api/v2/catalog/definition-erasures` is readable; verify that endpoint after upgrade.
+
 Setup preflight and doctor parse `DATABASE_URL`: the bootstrap `wiseeff` user must have the exact expanded `POSTGRES_PASSWORD`, while the recognized API runtime LOGIN `wiseeff_api` uses its own non-empty credential. Both paths reject unexpanded `${...}` interpolation, malformed URLs, unrecognized users, and a wrong bootstrap password even if `POSTGRES_PASSWORD` appears elsewhere in the URL. URL-encoded credentials are decoded before comparison; `user` and `password` query overrides are rejected. Keep the API on `wiseeff_api`; do not revert to the bootstrap superuser to satisfy doctor. These configuration checks do not prove live authentication or database privileges; use the runtime status and current-Catalog gate for those checks.
 
 An existing runtime LOGIN can predate a new application table. Migrations create

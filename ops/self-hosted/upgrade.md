@@ -258,6 +258,21 @@ For an eligible isolated completion failure, copy the exact command from `next_a
 
 `recover-candidate` is intentionally narrower than `resume`. It accepts only a post-migration `recovery-required` run whose recorded failure phase is a candidate completion gate and whose pre-migration recovery point was verified. It requires the run-bound token, re-isolates proxy and queue/worker traffic, verifies the backup manifest and local candidate image, selects the recorded target checkout, then restores worker, queue, proxy, public probes, and final identity checks in that order. It never restores PostgreSQL, object-store, or Redis data and never changes `.env` or named volumes. Any failed gate returns `70`, re-enters `recovery-required`, and keeps traffic isolated.
 
+### Publication freeze after a successful upgrade
+
+Upgrade completion and publication availability are separate facts. The controller only clears a freeze it owns. A freeze inherited from an earlier failed upgrade or an operator is preserved, even when the new run is `completed`.
+
+Completion output and `status --json` include `publicationFreezeCompletion`: `cleared`, `retained`, `not-frozen`, `unknown`, or `not-managed`. This is a completion-time observation, not a live status probe. `retained` and `unknown` also retain a non-empty `nextAction` and print a warning. `publicationFreezeOwned` in run status records whether that run owned the freeze. Old journals may have empty fields.
+
+Run `./scripts/collect-catalog-publication-status.sh` and inspect the relevant upgrade journals. Once the owning operator has verified that maintenance is complete, use the dedicated manager identity to clear the freeze, recording the real operator ID:
+
+```bash
+./scripts/compose --env-file .env run --rm --no-deps publication-manager \
+  npx tsx scripts/catalog-publication-ops.ts freeze clear --actor <operator-id>
+```
+
+Do not automatically clear every inherited freeze. See [Catalog publication operations](catalog-publication.md) for LOGIN and policy boundaries.
+
 ### Host lock status and recovery
 
 The regular `.operation.lock` file intentionally remains on disk when `flock` is available; file presence does not mean the host is locked. Inspect the kernel/fallback state and recorded owner with:
