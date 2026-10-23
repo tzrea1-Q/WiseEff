@@ -14,7 +14,7 @@ import { presentError } from "@/infrastructure/http/presentError";
 import "./platform-organizations.css";
 import { OrganizationAdministratorControls } from "./OrganizationAdministratorControls";
 
-export function PlatformOrganizationsPage({ client, authClient }: { client: PlatformOrganizationsClient; authClient: WiseEffAuthClient }) {
+export function PlatformOrganizationsPage({ client, authClient, onNavigate }: { client: PlatformOrganizationsClient; authClient: WiseEffAuthClient; onNavigate: (path: string) => void }) {
   const [items, setItems] = useState<PlatformOrganization[]>([]), [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true), [error, setError] = useState(""), [attempt, setAttempt] = useState(0);
   const [authentication, setAuthentication] = useState<LocalAuthPublicConfigDto | null>(null);
@@ -53,9 +53,9 @@ export function PlatformOrganizationsPage({ client, authClient }: { client: Plat
 
   return <>
     <AdminListPage label="组织目录" headerContent={<span>共 {items.length} 个组织</span>}
-      headerActions={<Button disabled={loading || Boolean(error) || !authentication} onClick={() => {
+      headerActions={<><Button variant="ghost" onClick={() => onNavigate("/organization")}>所属组织</Button><Button disabled={loading || Boolean(error) || !authentication} onClick={() => {
         setName(""); setAdministratorName(""); setUsername(""); setPassword(""); setSubject(""); setSaveError(""); setCreating(true);
-      }}>创建组织</Button>}
+      }}>创建组织</Button></>}
       filterBar={<SearchField value={query} onValueChange={setQuery} ariaLabel="搜索组织" placeholder="搜索组织名称或编号" loading={loading} maxLength={200} />}
       notice={notice ? <p role="status">{notice}</p> : undefined}
       tableState={loading ? <SectionSkeleton label="正在加载组织目录" /> : error ? <SectionError message={error} onRetry={() => setAttempt((value) => value + 1)} /> : undefined}

@@ -463,7 +463,7 @@ export function PageRouter({
     case "workflow-publication":
       return runtime?.workflowPublicationClient ? <WorkflowPublicationPage client={runtime.workflowPublicationClient} onSaved={publication?.retry} /> : null;
     case "platform-organizations":
-      return runtime?.platformOrganizationsClient ? <PlatformOrganizationsPage client={runtime.platformOrganizationsClient} authClient={runtime.authClient} /> : null;
+      return runtime?.platformOrganizationsClient ? <PlatformOrganizationsPage client={runtime.platformOrganizationsClient} authClient={runtime.authClient} onNavigate={onNavigate} /> : null;
     case "knowledge": {
       const citation = parseKnowledgeEntryQuery(new URLSearchParams(search));
       return knowledgeRepository && knowledgeCapability ? (
