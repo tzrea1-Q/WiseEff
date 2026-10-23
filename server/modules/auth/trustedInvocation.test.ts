@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { AuthContext } from "./types";
 import {
   assertTrustedInvocationContext,
+  assertTrustedInvocationMatchesAuth,
   createAgentInvocation,
   createSystemInvocation,
   createUserInvocation,
@@ -10,7 +11,9 @@ import {
   trustedDomainAttributionFromRow,
   trustedPublicExecutionLabel,
   assertTrustedMutationInvocation,
-  TrustedInvocationContextError
+  TrustedInvocationContextError,
+  type AgentInvocationInput,
+  type SystemInvocationInput
 } from "./trustedInvocation";
 
 function auth(): AuthContext {
@@ -30,6 +33,12 @@ function auth(): AuthContext {
 }
 
 describe("trusted invocation context", () => {
+  it("does not let a scoped audit invocation claim to describe a legacy Home-organization write", () => {
+    const principal = { ...auth(), roles: [{ roleId: "platform-admin" as const, projectId: null }], permissions: ["platform:access" as const] };
+    const invocation = createUserInvocation(principal, { id: "org-2", name: "Target" });
+    expect(() => assertTrustedInvocationMatchesAuth(principal, invocation, "Legacy home write")).toThrow(TrustedInvocationContextError);
+  });
+
   it("constructs a frozen user invocation with the authenticated principal", () => {
     const principal = auth();
     const context = createUserInvocation(principal);
@@ -165,11 +174,11 @@ describe("trusted invocation context", () => {
         sessionId: "session-1",
         toolCallId: "tool-call-1",
         approval: { required: true }
-      })
+      } as unknown as AgentInvocationInput)
     ).toThrow(TrustedInvocationContextError);
 
     expect(() => createSystemInvocation({ kind: "service", name: "  " })).toThrow(TrustedInvocationContextError);
-    expect(() => createSystemInvocation({ kind: "unknown", name: "worker" })).toThrow(TrustedInvocationContextError);
+    expect(() => createSystemInvocation({ kind: "unknown", name: "worker" } as unknown as SystemInvocationInput)).toThrow(TrustedInvocationContextError);
     expect(() => createUserInvocation({ ...auth(), roles: [{ projectId: null, roleId: "not-a-role" }] } as never)).toThrow(
       TrustedInvocationContextError
     );

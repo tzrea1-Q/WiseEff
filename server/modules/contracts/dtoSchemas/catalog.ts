@@ -11,6 +11,7 @@ import { formatPreviewRequestSchema, formatPreviewResponseSchema } from "../../l
 import { organizationBridgeListResponseSchema, organizationBridgeResponseSchema, revokeOrganizationBridgeBodySchema } from "../../deviceBridge/schemas";
 import { createUserBodySchema, roleBindingSchema } from "../../users/schemas";
 import { oidcIdentitySchema, setOidcIdentityBodySchema } from "./oidcMembers";
+import { enterOperatingContextBodySchema, operatingContextResponseSchema } from "./organizationScope";
 
 import {
   xiaozeAgUiRunRequestSchema,
@@ -109,6 +110,8 @@ const registrationRoleRequestDtoSchema = z.object({
   decisionCanLogin: z.boolean().nullable(), decisionRoleIds: z.array(roleBindingSchema.shape.roleId).nullable(), accountChanged: z.boolean()
 });
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
+  EnterOperatingContextRequest: enterOperatingContextBodySchema,
+  OperatingContextResponse: operatingContextResponseSchema,
   RegistrationRoleRequestResponse: z.object({ item: registrationRoleRequestDtoSchema }),
   RegistrationRoleRequestListResponse: z.object({ items: z.array(registrationRoleRequestDtoSchema) }),
   DeleteDebugModuleRequest: debugModuleDeletionBodySchema,
@@ -266,6 +269,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 };
 
 export const dtoSchemaCoveredRouteIds = [
+  "auth.enterOperatingContext",
   "users.listRegistrationRoleRequests", "users.approveRegistrationRoleRequest", "users.rejectRegistrationRoleRequest", "users.enableBasicRegistrationRoleRequest",
   "debugging.admin.previewModuleDeletion",
   "auth.localConfig", "users.list", "users.create", "users.setOidcIdentity",
