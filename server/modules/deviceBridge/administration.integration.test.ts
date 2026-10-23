@@ -25,6 +25,8 @@ beforeAll(async () => {
     await seedCoreGraph(db, { organization: { id: org }, users: [{ id: `${org}-admin`, name: "Organization admin" }, { id: `${org}-member`, name: "Bridge member" }] });
     for (const role of ["admin", "member"]) await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values($1,$2,$3,$4)", [`${org}-${role}`, `${org}-${role}`, org, role === "admin" ? "admin" : "software-user"]);
   }
+  await db.query("insert into users(id,organization_id,name,title) values('bridge-scope-platform','bridge-admin','Platform operator','Admin')");
+  await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values('bridge-scope-platform-role','bridge-scope-platform','bridge-admin','platform-admin')");
   server = createWiseEffServer({ db, debugGateway: createSimulatorDebugDeviceGateway({ targets: [] }), deviceBridge: { connectionPool: pool, rpcClient: createBridgeRpcClient({ pool }), artifactRoot: "/tmp/wiseeff-1320-controlled-artifacts" } });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const address = server.address(); if (!address || typeof address === "string") throw new Error("No HTTP port"); origin = `http://127.0.0.1:${address.port}`;
@@ -48,6 +50,41 @@ function connect(token: string) {
 }
 const closed = (socket: WebSocket) => new Promise<number>((resolve, reject) => { socket.once("close", resolve); socket.once("error", reject); });
 const hello = (socket: WebSocket) => new Promise<void>((resolve, reject) => { socket.once("message", raw => { expect(JSON.parse(raw.toString())).toMatchObject({ type: "bridge.hello" }); resolve(); }); socket.once("error", reject); });
+
+it("governs an explicit target's live pairing under the real platform identity while personal pairing and execution stay with the owner", async () => {
+  const platform = "bridge-scope-platform", scope = "?organizationId=bridge-other";
+  const paired = await pair("TARGET-OWNER-PC", "bridge-other-member"), socket = connect(paired.bridgeToken); await hello(socket);
+  socket.on("message", raw => {
+    const message = JSON.parse(raw.toString()) as { type: string; id: string; method: string };
+    if (message.type === "rpc.request" && message.method === "debug.detectTargets") socket.send(JSON.stringify({ type: "rpc.response", id: message.id, ok: true, result: { targets: [{ targetRef: "scope-target", label: "Target device", online: true }] } }));
+  });
+  const listed = await request<{ items: Bridge[] }>(`/api/v1/device-bridges/organization${scope}`, "GET", undefined, platform);
+  expect(listed.status).toBe(200);
+  expect(listed.body.items).toContainEqual(expect.objectContaining({ id: paired.bridgeId, ownerUserId: "bridge-other-member", online: true }));
+  expect(JSON.stringify(listed.body)).not.toMatch(/capabilities|tokenHash|token_hash|bridgeToken|pairingCode/);
+  const path = `/api/v1/device-bridges/organization/${paired.bridgeId}`;
+  expect((await request<{ item: Bridge }>(`${path}${scope}`, "GET", undefined, platform)).body.item.id).toBe(paired.bridgeId);
+  expect((await request(path, "GET", undefined, platform)).status).toBe(404);
+  for (const [route, method, body] of [[`/api/v1/device-bridges/organization${scope}`, "GET"], [`${path}${scope}`, "GET"], [`${path}/revoke${scope}`, "POST", { reason: "Forbidden" }]] as const) {
+    expect((await request(route, method, body)).status).toBe(403);
+    expect((await request(route, method, body, "bridge-admin-member")).status).toBe(403);
+  }
+  const personal = await request<{ code: string }>(`/api/v1/device-bridges/pairing-codes${scope}`, "POST", {}, platform);
+  const homePair = await request<{ bridgeId: string }>("/api/v1/device-bridges/pair", "POST", { code: personal.body.code, machineLabel: "PLATFORM-HOME-PC", platform: "linux", arch: "amd64" }, platform);
+  expect(homePair.status).toBe(201);
+  expect((await request<{ items: Bridge[] }>(`/api/v1/device-bridges/mine${scope}`, "GET", undefined, platform)).body.items.map(item => item.id)).toEqual([homePair.body.bridgeId]);
+  const detected = await request<{ items: Array<{ id: string; deviceId: string }> }>("/api/v1/debugging/targets/detect", "POST", { protocol: "hdc", bridgeId: paired.bridgeId }, "bridge-other-member");
+  expect(detected.status).toBe(200);
+  const target = detected.body.items.find(item => item.id.includes(paired.bridgeId))!;
+  expect((await request(`/api/v1/debugging/sessions${scope}`, "POST", { deviceId: target.deviceId, targetId: target.id, bridgeId: paired.bridgeId, protocol: "hdc" }, platform)).status).toBe(404);
+  expect((await request(`/api/v1/device-bridges/${paired.bridgeId}/revoke${scope}`, "POST", {}, platform)).status).toBe(404);
+  const disconnected = closed(socket);
+  const revoked = await request<{ item: Bridge }>(`${path}/revoke${scope}`, "POST", { reason: "Target organization governance" }, platform);
+  expect(revoked.status).toBe(200); expect(revoked.body.item.revokedAt).toEqual(expect.any(String));
+  expect(await disconnected).toBe(4401); expect(await closed(connect(paired.bridgeToken))).toBe(4401);
+  expect((await db.query("select actor_user_id,organization_id,metadata from audit_events where kind='device-bridge-admin-revoke' and target_id=$1", [paired.bridgeId])).rows)
+    .toEqual([{ actor_user_id: platform, organization_id: "bridge-other", metadata: expect.objectContaining({ actorHomeOrganizationId: "bridge-admin", operatingOrganizationId: "bridge-other", ownerUserId: "bridge-other-member" }) }]);
+});
 
 it("lets an organization administrator inventory and revoke a member's actual connection without transferring ownership", async () => {
   const paired = await pair("MEMBER-PC"); const socket = connect(paired.bridgeToken); await hello(socket);
@@ -73,7 +110,7 @@ it("keeps member management private, rejects foreign organization details and pe
   for (const [path, method, body] of [["/api/v1/device-bridges/organization", "GET"], [base, "GET"], [`${base}/revoke`, "POST", { reason: "no authority" }]] as const) {
     expect((await request(path, method, body, "bridge-admin-member")).status).toBe(403);
   }
-  expect((await request("/api/v1/device-bridges/organization?organizationId=bridge-other")).status).toBe(400);
+  expect((await request("/api/v1/device-bridges/organization?organizationId=bridge-other")).status).toBe(403);
   expect((await request(`/api/v1/device-bridges/organization/${other.bridgeId}`)).status).toBe(404);
   expect((await request(`/api/v1/device-bridges/organization/${other.bridgeId}/revoke`, "POST", { reason: "wrong organization" })).status).toBe(404);
   expect((await request(`/api/v1/device-bridges/${own.bridgeId}/revoke`, "POST", {})).status).toBe(404);

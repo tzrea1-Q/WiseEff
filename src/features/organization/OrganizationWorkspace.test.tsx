@@ -12,6 +12,31 @@ function response(body: unknown) { return new Response(JSON.stringify(body), { s
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("organization workspace target ownership", () => {
+  it("binds device governance and resource navigation to the visible target and ignores a prior target's late inventory", async () => {
+    let completeOld!: (value: Response) => void;
+    const bridge = (id: string) => ({ id, ownerUserId: `${id}-owner`, ownerName: `${id} owner`, machineLabel: `${id} PC`, platform: "linux", arch: "amd64", clientVersion: "1.0", createdAt: "2026-01-01T00:00:00Z", lastSeenAt: null, revokedAt: null, online: false });
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname.endsWith("operating-scope")) { const id = JSON.parse(String(init?.body)).organizationId; return response({ actor, organization: { id, name: `${id} organization` } }); }
+      if (url.pathname === "/api/v1/device-bridges/organization") {
+        if (url.searchParams.get("organizationId") === "old") return new Promise(resolve => { completeOld = resolve; });
+        return response({ items: [bridge("current")] });
+      }
+      throw new Error(`Unexpected request ${url.pathname}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const onNavigate = vi.fn(), props = { state, dispatch: vi.fn(), onNavigate, area: "bridges" as const, workspaceClient: createOrganizationWorkspaceClient() };
+    const view = render(<OrganizationWorkspace {...props} search="?organizationId=old" />);
+    await vi.waitFor(() => expect(completeOld).toBeDefined());
+    view.rerender(<OrganizationWorkspace {...props} search="?organizationId=current" />);
+    expect(await screen.findByText("current PC")).toBeInTheDocument();
+    await act(async () => completeOld(response({ items: [bridge("old")] })));
+    expect(screen.queryByText("old PC")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "集成凭据" }));
+    expect(onNavigate).toHaveBeenLastCalledWith("/organization/integrations?organizationId=current");
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("device-bridges/organization")).every(([input]) => new URL(String(input), "http://localhost").searchParams.has("organizationId"))).toBe(true);
+  });
+
   it("fails closed when a legacy home-only connection receives an explicit target", () => {
     render(<OrganizationWorkspace state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="?organizationId=foreign" />);
     expect(screen.getByText("当前组织管理连接不支持切换组织。")).toBeInTheDocument();

@@ -3,6 +3,7 @@ import { DEVICE_BRIDGE_RELEASES_PATH } from "@wiseeff/device-command-core/bridge
 import { createApiClient } from "./apiClient";
 import { createDefaultApiClient } from "./defaultApiClient";
 import { resolveLocalBridgeHealthUrl } from "./localBridgeHttpUrl";
+import { withOrganizationScope } from "./organizationScope";
 
 type ApiClient = ReturnType<typeof createApiClient>;
 
@@ -33,12 +34,12 @@ export type OrganizationDeviceBridge = Omit<DeviceBridgeRecord, "capabilities"> 
   online: boolean;
 };
 
-export async function listOrganizationBridges(apiClient: ApiClient = createDefaultApiClient()) {
-  return (await apiClient.get<ItemsEnvelope<OrganizationDeviceBridge>>("/api/v1/device-bridges/organization")).items;
+export async function listOrganizationBridges(apiClient: ApiClient = createDefaultApiClient(), organizationId?: string) {
+  return (await apiClient.get<ItemsEnvelope<OrganizationDeviceBridge>>(withOrganizationScope("/api/v1/device-bridges/organization", organizationId))).items;
 }
 
-export async function revokeOrganizationBridge(bridgeId: string, reason: string, apiClient: ApiClient = createDefaultApiClient()) {
-  return (await apiClient.post<{ item: OrganizationDeviceBridge }>(`/api/v1/device-bridges/organization/${encodeURIComponent(bridgeId)}/revoke`, { reason })).item;
+export async function revokeOrganizationBridge(bridgeId: string, reason: string, apiClient: ApiClient = createDefaultApiClient(), organizationId?: string) {
+  return (await apiClient.post<{ item: OrganizationDeviceBridge }>(withOrganizationScope(`/api/v1/device-bridges/organization/${encodeURIComponent(bridgeId)}/revoke`, organizationId), { reason })).item;
 }
 
 export type DeviceBridgeReleaseItem = {
