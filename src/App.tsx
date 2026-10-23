@@ -18,7 +18,7 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
 import { TopBarNotifications } from "./components/notifications/TopBarNotifications";
 import { createStateBackedNotificationsClient } from "@/infrastructure/mock/mockNotificationsGateway";
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { WiseEffIcon } from "./components/WiseEffIcon";
 import { ProjectParameterInitializationWizard } from "./ProjectParameterInitializationWizard";
@@ -82,6 +82,7 @@ import { INITIAL_MOCK_WORKFLOW_PUBLICATION } from "@/infrastructure/mock/mockWor
 import { createApiInitialState } from "@/application/state/apiInitialState";
 import { reducer, type AppAction, type ApiRuntimeDataDomain } from "@/application/state/appState";
 import { createAppRuntime, type AppRuntime, type WiseEffAuthClient } from "@/app/appRuntime";
+import { createAuthClient } from "@/infrastructure/http/authClient";
 import { CATALOG_ORGANIZATION_ID } from "@/application/parameter-catalog/fixtures";
 import { appFooterConfig } from "@/config/appFooterConfig";
 import { isProjectConfigurationWorkbenchPath } from "@/application/project-configuration/workbenchPath";
@@ -295,6 +296,10 @@ function AppShell({
   const [path, setPath] = useState(() => getPageByPath(window.location.pathname).path);
   const [search, setSearch] = useState(() => window.location.pathname === "/log-dashboard" ? "" : window.location.search);
   const operatingOrganizationId = new URLSearchParams(search).get("organizationId") ?? undefined;
+  const scopeKey = `${state.currentUserId}:${operatingOrganizationId ?? "home"}`;
+  const scopeRef = useRef({ key: scopeKey, generation: 0 });
+  if (scopeRef.current.key !== scopeKey) scopeRef.current = { key: scopeKey, generation: scopeRef.current.generation + 1 };
+  const scopeGeneration = scopeRef.current.generation;
   const historyIndex = useRef(0);
   const navigationRequest = useRef(0);
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
@@ -349,13 +354,14 @@ function AppShell({
   } else {
     mockParameterRuntimeRef.current.current = state;
   }
+  const homeAuthClient = useMemo(() => authClient ?? createAuthClient(), [authClient]);
   const appRuntime = useMemo(
     () =>
       createAppRuntime(
         runtimeMode,
         { getState: () => stateRef.current, mockParameterRuntime: mockParameterRuntimeRef.current!, organizationId: operatingOrganizationId },
         {
-          authClient,
+          authClient: homeAuthClient,
           workflowPublicationClient,
           parameterRepository,
           parameterTopologyRepository,
@@ -376,7 +382,7 @@ function AppShell({
       runtimeMode,
       operatingOrganizationId,
       state.currentUserId,
-      authClient,
+      homeAuthClient,
       workflowPublicationClient,
       parameterRepository,
       parameterTopologyRepository,
@@ -424,9 +430,12 @@ function AppShell({
   const canAccessCurrentPage = canAccessPage(currentRoleId, page.key) && canEnterPublishedPage &&
     ((page.key !== "workflow-publication" && page.key !== "platform-organizations") || canManagePublication);
   const [dashboardState, dashboardDispatch] = useReducer(dashboardReducer, initialDashboardState);
+  const dashboardRepositoryRef = useRef(dashboardRepository);
+  dashboardRepositoryRef.current = dashboardRepository;
   const dashboardRuntime = useMemo(
-    () => createParameterDashboardRuntime({ repository: dashboardRepository, dispatch: dashboardDispatch }),
-    [dashboardRepository]
+    () => createParameterDashboardRuntime({ repository: dashboardRepository,
+      dispatch: (action) => { if (scopeRef.current.generation === scopeGeneration && dashboardRepositoryRef.current === dashboardRepository) dashboardDispatch(action); } }),
+    [dashboardRepository, scopeGeneration]
   );
   const knowledgeCapability = useMemo<KnowledgeCapability>(
     () => ({
@@ -455,32 +464,28 @@ function AppShell({
       : true;
   const parameterRepositoryRef = useRef(parameterRepositoryClient);
   parameterRepositoryRef.current = parameterRepositoryClient;
-  useEffect(() => {
-    if (runtimeMode === "api") dispatch({ type: "HYDRATE_PARAMETER_RUNTIME", projects: [], parameters: [], changeRequests: [], parameterSubmissionRounds: [], parameterDrafts: [] });
-  }, [operatingOrganizationId, state.currentUserId, runtimeMode]);
   const parameterActions = useMemo<ParameterRuntimeActions>(
     () =>
       createParameterRuntimeActions({
         runtimeMode,
         repository: parameterRepositoryClient,
         canonicalRepository: appRuntime.parameterCatalogRepository,
-        dispatch: (action) => { if (parameterRepositoryRef.current === parameterRepositoryClient) dispatch(action); },
+        dispatch: (action) => { if (scopeRef.current.generation === scopeGeneration && parameterRepositoryRef.current === parameterRepositoryClient) dispatch(action); },
         getParameterProjectId: (parameterId) => stateRef.current.parameters.find((parameter) => parameter.id === parameterId)?.projectId
       }),
-    [appRuntime.parameterCatalogRepository, parameterRepositoryClient, runtimeMode]
+    [appRuntime.parameterCatalogRepository, parameterRepositoryClient, runtimeMode, scopeGeneration]
   );
   const logRepositoryRef = useRef(logAnalysisRepositoryClient);
   logRepositoryRef.current = logAnalysisRepositoryClient;
-  useEffect(() => { if (runtimeMode === "api") dispatch({ type: "HYDRATE_LOG_RUNTIME", logs: [] }); }, [operatingOrganizationId, state.currentUserId, runtimeMode]);
   const logActions = useMemo<LogRuntimeActions>(
     () =>
       createLogRuntimeActions({
         mode: runtimeMode,
         repository: logAnalysisRepositoryClient,
-        dispatch: (action) => { if (logRepositoryRef.current === logAnalysisRepositoryClient) dispatch(action); },
+        dispatch: (action) => { if (scopeRef.current.generation === scopeGeneration && logRepositoryRef.current === logAnalysisRepositoryClient) dispatch(action); },
         getState: () => stateRef.current
       }),
-    [logAnalysisRepositoryClient, runtimeMode]
+    [logAnalysisRepositoryClient, runtimeMode, scopeGeneration]
   );
   const debuggingActions = useMemo<DebuggingRuntimeActions>(
     () =>
@@ -697,6 +702,19 @@ function AppShell({
   );
   const domainDataHydratedRef = useRef(false);
   const apiRuntimeGeneration = useRef(0);
+  const hydratedScope = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (runtimeMode !== "api" || apiAuthStatus !== "authenticated") return;
+    const previous = hydratedScope.current;
+    hydratedScope.current = scopeGeneration;
+    if (previous === null || previous === scopeGeneration) return;
+    domainDataHydratedRef.current = false;
+    apiRuntimeGeneration.current += 1;
+    dashboardDispatch({ type: "DASHBOARD_SUMMARY_LOADING" });
+    dashboardDispatch({ type: "DASHBOARD_HOTSPOTS_LOADING" });
+    dispatch({ type: "HYDRATE_PARAMETER_RUNTIME", projects: [], parameters: [], changeRequests: [], parameterSubmissionRounds: [], parameterDrafts: [] });
+    dispatch({ type: "HYDRATE_LOG_RUNTIME", logs: [] });
+  }, [runtimeMode, apiAuthStatus, scopeGeneration]);
 
   const refreshApiRuntimeData = useCallback(
     async (cancelledRef?: { current: boolean }, roleId = stateRef.current.activeRoleId) => {
@@ -816,17 +834,14 @@ function AppShell({
     setApiAuthStatus("checking");
     client
       .getCurrentAuthContext()
-      .then(async (context) => {
+      .then((context) => {
         if (cancelledRef.current) return;
-        const primaryRoleId = pickPrimaryPlatformRoleId(context.roles.map((role) => role.roleId));
+        domainDataHydratedRef.current = false;
         hydrateAuthContext(context);
         setApiAuthStatus("authenticated");
         setApiAuthError("");
         if (pageKeyRef.current === "home") {
           setApiRuntimeSynced(true);
-        } else {
-          domainDataHydratedRef.current = true;
-          await refreshApiRuntimeData(cancelledRef, primaryRoleId);
         }
       })
       .catch((error) => {
@@ -846,7 +861,7 @@ function AppShell({
     return () => {
       cancelledRef.current = true;
     };
-  }, [appRuntime.authClient, authProbeAttempt, hydrateAuthContext, refreshApiRuntimeData, runtimeMode]);
+  }, [appRuntime.authClient, authProbeAttempt, hydrateAuthContext, runtimeMode]);
 
   useEffect(() => {
     historyIndex.current = window.history.state?.wiseeffNavigationIndex ?? 0;
@@ -1022,19 +1037,16 @@ function AppShell({
 
   const handleAuthSession = useCallback(
     async (session: AuthSessionDto) => {
-      const primaryRoleId = pickPrimaryPlatformRoleId(session.auth.roles.map((role) => role.roleId));
+      domainDataHydratedRef.current = false;
       hydrateAuthContext(session.auth);
       setApiAuthStatus("authenticated");
       setApiAuthError("");
       if (pageKeyRef.current === "home") {
         setApiRuntimeSynced(true);
-      } else {
-        domainDataHydratedRef.current = true;
-        await refreshApiRuntimeData(undefined, primaryRoleId);
       }
       dispatch({ type: "ADD_NOTIFICATION", message: "已登录雷泽账号" });
     },
-    [hydrateAuthContext, refreshApiRuntimeData]
+    [hydrateAuthContext]
   );
 
   const handleLogout = useCallback(async () => {
