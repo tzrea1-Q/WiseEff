@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import {
   CopilotChatConfigurationProvider,
   CopilotChatMessageView,
@@ -9,7 +9,7 @@ import {
 import "@copilotkit/react-core/v2/styles.css";
 import { AgentInsightBar } from "@/components/AgentInsightBar";
 import { xiaozePromptDebugEnabled } from "@/infrastructure/http/runtimeMode";
-import { createXiaozeHttpAgent } from "./xiaozeHttpAgent";
+import { clearXiaozeAgentPendingTurn, createXiaozeHttpAgent } from "./xiaozeHttpAgent";
 import { XiaozeApprovalCard } from "./XiaozeApprovalCard";
 import { useXiaozeFrontendTools } from "./xiaozeFrontendTools";
 import { useXiaozeSuggestions } from "./useXiaozeSuggestions";
@@ -54,14 +54,15 @@ const XIAOZE_POPUP_HEADER = {
 export type XiaozeProviderProps = {
   children: ReactNode;
   userId?: string;
+  organizationId?: string;
   agentUrl?: string;
   enabled?: boolean;
   /** CopilotKit AG-UI inspector; off by default and gated to admin in AppShell. */
   enableInspector?: boolean;
 };
 
-function XiaozeRuntimeTools() {
-  useXiaozeFrontendTools();
+function XiaozeRuntimeTools({ organizationId }: { organizationId?: string }) {
+  useXiaozeFrontendTools(organizationId);
   return <XiaozeApprovalCard />;
 }
 
@@ -85,8 +86,8 @@ function XiaozeCopilotPopupHost({ userId }: { userId?: string }) {
   );
 }
 
-export function XiaozeProactiveInsights({ enabled }: { enabled: boolean }) {
-  const { insights, dismissedIds, dismiss } = useXiaozeSuggestions({ enabled });
+export function XiaozeProactiveInsights({ enabled, organizationId }: { enabled: boolean; organizationId?: string }) {
+  const { insights, dismissedIds, dismiss } = useXiaozeSuggestions({ enabled, organizationId });
   return (
     <AgentInsightBar
       eyebrow="小泽建议"
@@ -98,26 +99,28 @@ export function XiaozeProactiveInsights({ enabled }: { enabled: boolean }) {
   );
 }
 
-type EnabledXiaozeProviderProps = Pick<XiaozeProviderProps, "children" | "agentUrl" | "enableInspector" | "userId">;
+type EnabledXiaozeProviderProps = Pick<XiaozeProviderProps, "children" | "agentUrl" | "enableInspector" | "userId" | "organizationId">;
 
 function EnabledXiaozeProvider({
   children,
   userId,
+  organizationId,
   agentUrl,
   enableInspector = false
 }: EnabledXiaozeProviderProps) {
-  const xiaozeAgent = useMemo(() => createXiaozeHttpAgent({ agentUrl }), [agentUrl]);
+  const xiaozeAgent = useMemo(() => createXiaozeHttpAgent({ agentUrl, organizationId }), [agentUrl, organizationId]);
+  useEffect(() => () => clearXiaozeAgentPendingTurn(xiaozeAgent), [xiaozeAgent]);
 
   return (
     <XiaozePromptDebugProvider>
       <CopilotKit enableInspector={enableInspector} selfManagedAgents={{ default: xiaozeAgent }}>
-        <XiaozeThreadProvider>
+        <XiaozeThreadProvider scopeKey={`${userId ?? "anonymous"}:${organizationId ?? "home"}`} organizationId={organizationId}>
           <XiaozeRunTimingProvider>
             <XiaozeRunStepsProvider>
               <XiaozeTurnReplyProvider>
                 <XiaozeTurnStateProvider>
                   {children}
-                  <XiaozeRuntimeTools />
+                  <XiaozeRuntimeTools organizationId={organizationId} />
                   <XiaozeThreadController />
                   <XiaozePromptDebugRequestRegistrar />
                   <XiaozePromptDebugCapture enabled={xiaozePromptDebugEnabled} />
@@ -136,13 +139,13 @@ function EnabledXiaozeProvider({
   );
 }
 
-export function XiaozeProvider({ enabled = true, children, agentUrl, enableInspector = false, userId }: XiaozeProviderProps) {
+export function XiaozeProvider({ enabled = true, children, agentUrl, enableInspector = false, userId, organizationId }: XiaozeProviderProps) {
   if (!enabled) {
     return children;
   }
 
   return (
-    <EnabledXiaozeProvider agentUrl={agentUrl} enableInspector={enableInspector} userId={userId}>
+    <EnabledXiaozeProvider key={`${userId ?? "anonymous"}:${organizationId ?? "home"}`} agentUrl={agentUrl} enableInspector={enableInspector} userId={userId} organizationId={organizationId}>
       {children}
     </EnabledXiaozeProvider>
   );

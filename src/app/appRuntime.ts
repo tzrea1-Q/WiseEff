@@ -166,7 +166,7 @@ export function createAppRuntime(
     knowledgeRepository:
       overrides.knowledgeRepository ??
       (api
-        ? createHttpKnowledgeRepository()
+        ? createHttpKnowledgeRepository({ organizationId: deps.organizationId })
         : createMockKnowledgeRepository({
             // Mock distillation reads the prototype log records (same port shape as API mode).
             getLogRecord: (logId) => deps.getState().logs.find((log) => log.id === logId),
