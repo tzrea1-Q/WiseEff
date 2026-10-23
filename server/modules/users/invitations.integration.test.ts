@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWiseEffServer } from "../../app";
 import { requestJson } from "../../test/testClient";
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
@@ -54,6 +54,7 @@ describe("one-time organization invitations through HTTP and PostgreSQL", () => 
     expect(login.body.auth.roles).toEqual([{ projectId: null, roleId: "software-committer" }]);
     expect(login.body.auth.user.isActive).toBe(true);
     expect((await manage<{ items: Invitation[] }>()).body.items).toEqual([expect.objectContaining({ status: "accepted", acceptedUserId: joined.body.userId })]);
+    expect(JSON.stringify((await manage()).body)).not.toContain(created.body.token);
     expect((await accept(created.body.token)).status).toBe(409);
     const audit = await db.query("select actor_user_id, organization_id from audit_events where kind='organization-invitation' and action='create'");
     expect(audit.rows).toEqual([{ actor_user_id: "invite-platform", organization_id: target.id }]);
@@ -97,6 +98,22 @@ describe("one-time organization invitations through HTTP and PostgreSQL", () => 
     const existing = await accept(same.token, { ...account, username: "invite-admin" });
     expect(existing.status).toBe(409); expect(JSON.stringify(existing.body)).toContain("成员设置");
     expect((await db.query("select organization_id,role_id from user_role_bindings where user_id='invite-admin'")).rows).toEqual([{ organization_id: home.id, role_id: "admin" }]);
+  });
+
+  it("does not accept a link that expires while the consumer waits for a concurrent administrator change", async () => {
+    const invitation = (await manage<Created>("", "POST", { label: "Blocked expiry", roles: ["software-user"], expiresInDays: 7 })).body;
+    await db.query("update organization_invitations set expires_at=clock_timestamp()+interval '1 second' where id=$1", [invitation.item.id]);
+    let locked!: () => void, release!: () => void;
+    const acquired = new Promise<void>((resolve) => { locked = resolve; }), released = new Promise<void>((resolve) => { release = resolve; });
+    const blocker = db.transaction(async (tx) => { await tx.query("select id from users where id='invite-platform' for update"); locked(); await released; });
+    await acquired;
+    const accepting = accept(invitation.token);
+    try {
+      await vi.waitFor(async () => { expect((await db.query("select pid from pg_stat_activity where datname=current_database() and wait_event_type='Lock'")).rowCount).toBeGreaterThan(0); });
+      await db.query("select pg_sleep(greatest(0,extract(epoch from expires_at-clock_timestamp())+0.05)) from organization_invitations where id=$1", [invitation.item.id]);
+    } finally { release(); await blocker; }
+    expect((await accepting).status).toBe(409);
+    expect((await db.query("select id from users where organization_id=$1", [target.id])).rowCount).toBe(0);
   });
 
   it("limits grants to current administrator authority and rejects foreign administration and non-local provider acceptance", async () => {

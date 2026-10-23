@@ -67,6 +67,10 @@ test("manages one-time invitations and joins with an immediately usable local ac
   dialog = page.getByRole("dialog", { name: "邀请链接已生成", exact: true });
   const link = await dialog.getByLabel("一次性邀请链接", { exact: true }).inputValue();
   expect(link === oldLink).toBe(false);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await dialog.getByRole("button", { name: "复制链接", exact: true }).click();
+  await expect(dialog.getByText("邀请链接已复制。", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText()) === link).toBe(true);
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();
   await page.screenshot({ path: testInfo.outputPath("organization-invitations-1440.png"), animations: "disabled" });
   expect((await page.request.post(apiRoute("/api/v1/auth/invitations/preview"), { data: { token: new URL(oldLink).hash.slice(1) } })).status()).toBe(404);
@@ -97,7 +101,7 @@ test("manages one-time invitations and joins with an immediately usable local ac
     await prepareInteractionSurface(recipient);
     diagnostics.assertNoBrowserDiagnosticsFailures();
   } finally { await recipientContext.close(); }
-  await page.reload(); await prepareInteractionSurface(page);
+  await page.getByRole("group", { name: "成员邀请操作", exact: true }).getByRole("button", { name: "刷新", exact: true }).click();
   await expect(table.getByRole("row").filter({ hasText: label })).toContainText("已接受");
   await page.getByRole("group", { name: "成员邀请操作", exact: true }).getByRole("button", { name: "创建邀请", exact: true }).click();
   dialog = page.getByRole("dialog", { name: "创建邀请", exact: true });

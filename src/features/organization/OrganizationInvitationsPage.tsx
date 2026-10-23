@@ -50,7 +50,7 @@ export function OrganizationInvitationsPage({ client, canGrantPlatformAdmin, onB
   if (status === "external") return <SectionEmpty message="当前使用外部身份认证，请在成员管理中直接绑定身份。密码邀请仅适用于本地账号。" actionLabel="返回成员管理" onAction={onBack} />;
   const title = editing?.item ? "修改并重新生成邀请" : "创建邀请";
   return <section className="user-permissions-page" aria-label="邀请管理">
-    <AdminListPage label="成员邀请" headerContent="邀请" headerActions={<><Button variant="outline" onClick={onBack}>返回成员管理</Button><Button onClick={() => start()}>创建邀请</Button></>} filterBar={null}
+    <AdminListPage label="成员邀请" headerContent="邀请" headerActions={<><Button variant="outline" onClick={onBack}>返回成员管理</Button><Button variant="outline" onClick={() => setAttempt((value) => value + 1)}>刷新</Button><Button onClick={() => start()}>创建邀请</Button></>} filterBar={null}
       notice={<p className="member-details__hint">复制一次性链接交给受邀人；接受后角色直接生效，无需再次审批。直接创建账号仍可在成员管理中使用。</p>}
       tableState={status === "loading" ? <SectionSkeleton label="正在加载邀请" /> : status === "error" ? <SectionError message={loadError} onRetry={() => setAttempt((value) => value + 1)} /> : undefined}
       table={{ ariaLabel: "成员邀请", rows: invitations, rowKey: (item) => item.id, columns: [
