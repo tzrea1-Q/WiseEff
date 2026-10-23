@@ -2,7 +2,7 @@ import { Readable } from "node:stream";
 import { randomUUID } from "node:crypto";
 import { setImmediate } from "node:timers/promises";
 import type { Database } from "../../shared/database/client";
-import { putLogArtifact } from "./artifactObjects";
+import { putLogArtifact, type LogArtifactWriter } from "./artifactObjects";
 import type { StoredLogFile } from "./filesRepository";
 import type { ObjectStore } from "./objectStore";
 import { parseLogLines, type ParsedLogEntry } from "./parser";
@@ -59,12 +59,13 @@ export async function buildLogLineIndex(store: ObjectStore, key: string): Promis
   return bytes;
 }
 
-export async function ensureStoredLogIndex(db: Database, store: ObjectStore, organizationId: string, recordId: string, file: StoredLogFile) {
+export async function ensureStoredLogIndex(db: Database, store: ObjectStore, organizationId: string, recordId: string, file: StoredLogFile, writeArtifact?: LogArtifactWriter) {
   if (!file.objectKey) return file;
   const { bytes, rebuilt } = await loadIndex(store, file);
   file.lineCount = bytes.readUInt32LE(4);
   if (!rebuilt) return file;
-  const indexed = await putLogArtifact(db, store, recordId, { organizationId, fileName: `line-offsets-${randomUUID()}.bin`, contentType: "application/octet-stream", bytes });
+  const indexed = await (writeArtifact ?? ((...args) => putLogArtifact(db, ...args)))(store, recordId,
+    { organizationId, fileName: `line-offsets-${randomUUID()}.bin`, contentType: "application/octet-stream", bytes });
   await db.query(`update log_files set line_index_key=$1, line_count=$2
     where organization_id=$3 and record_id=$4 and path=$5 and object_key=$6`,
   [indexed.storageKey, bytes.readUInt32LE(4), organizationId, recordId, file.path, file.objectKey]);

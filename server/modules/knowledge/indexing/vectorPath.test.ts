@@ -21,6 +21,9 @@ function createScriptedDb(options: {
 
   const query = async <Row>(text: string, values: unknown[] = []): Promise<{ rows: Row[]; rowCount: number | null }> => {
     recorded.push({ text, values });
+    if (text.includes("from public.organizations")) {
+      return { rows: values[0] === options.entrySnapshotRow?.organization_id ? [{ status: "active" }] as Row[] : [], rowCount: null };
+    }
     if (text.includes("from knowledge_entries e")) {
       return { rows: (options.entrySnapshotRow ? [options.entrySnapshotRow] : []) as Row[], rowCount: null };
     }

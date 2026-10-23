@@ -49,7 +49,7 @@ function createLocalRouteDb() {
     }
     if (normalized.includes("from organizations") && normalized.includes("where id = $1")) {
       const match = organizations.get(values[0] as string);
-      return { rows: (match ? [match] : []) as Row[], rowCount: match ? 1 : 0 };
+      return { rows: (match ? [{ ...match, status: "active" }] : []) as Row[], rowCount: match ? 1 : 0 };
     }
     if (normalized.includes("from organizations") && normalized.includes("id <> all($1::text[])")) {
       const retired = new Set(values[0] as string[]);

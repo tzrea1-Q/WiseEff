@@ -293,7 +293,7 @@ describe("parameter routes", () => {
     expect(repository.listParameters).not.toHaveBeenCalled();
   });
 
-  it("GET /api/v1/parameters reads only actual projects inside the reader's project grants", async () => {
+  it("GET /api/v1/parameters reads all actual projects inside the reader's organization", async () => {
     const db = makeDb();
     vi.mocked(projectRepository.listProjects).mockResolvedValue([
       { id: "aurora", name: "Aurora", code: "AUR" },
@@ -303,9 +303,12 @@ describe("parameter routes", () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ items: [] });
     expect(projectRepository.listProjects).toHaveBeenCalledWith(db, { organizationId: "org-1" });
-    expect(canonicalBindings.listCatalogBindingRowsForProject).toHaveBeenCalledTimes(1);
+    expect(canonicalBindings.listCatalogBindingRowsForProject).toHaveBeenCalledTimes(2);
     expect(canonicalBindings.listCatalogBindingRowsForProject).toHaveBeenCalledWith(db, makeAuth(), {
       projectId: "aurora", limit: 100, moduleIds: undefined, module: undefined, q: undefined
+    });
+    expect(canonicalBindings.listCatalogBindingRowsForProject).toHaveBeenCalledWith(db, makeAuth(), {
+      projectId: "nebula", limit: 100, moduleIds: undefined, module: undefined, q: undefined
     });
     expect(repository.listParameters).not.toHaveBeenCalled();
   });
