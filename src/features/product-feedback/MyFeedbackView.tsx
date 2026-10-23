@@ -15,6 +15,7 @@ import { FeedbackProgressTimeline } from "./FeedbackProgressTimeline";
 import { FeedbackStatusBadge, getFeedbackDisplayStatus, type FeedbackDisplayStatus } from "./FeedbackStatusBadge";
 import { acceptFeedbackFiles, FeedbackAttachments, feedbackImageAccept, feedbackImageHint, feedbackAttachmentQuota } from "./FeedbackAttachments";
 import "./feedback-user.css";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 
 const statusOptions = [
   { value: "all", label: "全部状态" }, { value: "draft", label: "草稿" }, { value: "open", label: "待处理" },
@@ -280,7 +281,7 @@ export function MyFeedbackView({ productFeedbackRepository, onEditDraft, onFeedb
         <div className="feedback-mine-detail-toolbar">
           <Button type="button" variant="ghost" size="sm" disabled={operationPending} aria-label="返回反馈列表" onClick={() => selectFeedback(null)}><ArrowLeft size={16} />返回列表</Button>
           <div className="feedback-mine-detail-tools">
-            {selectedFeedback && <a className="feedback-download" aria-label="反馈详情链接" aria-disabled={operationPending || undefined} href={`/feedback?id=${encodeURIComponent(selectedFeedback.id)}`}><ExternalLink size={14} />链接</a>}
+            {selectedFeedback && <a className="feedback-download" aria-label="反馈详情链接" aria-disabled={operationPending || undefined} href={withOrganizationScope(`/feedback?id=${encodeURIComponent(selectedFeedback.id)}`, selectedFeedback.organizationId)}><ExternalLink size={14} />链接</a>}
             <Button type="button" variant="ghost" size="icon-sm" aria-label="刷新详情" disabled={detailLoading || operationPending}
             onClick={() => void loadDetail(detailId)}><RefreshCw size={14} /></Button>
             {isDraft && selectedFeedback && <><Button type="button" variant="outline" size="sm" disabled={Boolean(editingDraftId)} onClick={() => void editDraft(selectedFeedback)}><Edit3 size={14} />继续编辑</Button>

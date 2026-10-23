@@ -13,6 +13,6 @@ export function withBusinessOrganizationScope(path: string, organizationId?: str
 
 export function isOrganizationBusinessPath(path: string) {
   const pathname = new URL(path, "http://wiseeff.local").pathname;
-  const roots = ["/knowledge", "/knowledge-admin", "/logs", "/log-admin", "/parameter-home", "/parameters", "/parameter-review", "/parameter-submissions", "/parameter-admin", "/projects"];
+  const roots = ["/knowledge", "/knowledge-admin", "/logs", "/log-admin", "/parameter-home", "/parameters", "/parameter-review", "/parameter-submissions", "/parameter-admin", "/projects", "/audit", "/feedback", "/feedback-admin"];
   return roots.some((root) => pathname === root || pathname.startsWith(`${root}/`));
 }

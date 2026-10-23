@@ -2333,7 +2333,7 @@ for (const routeId of [
   "users.replaceRoles", "users.replaceOrganizationRoles", "users.resetPassword", "users.getProjectWorkflowRoleBindings", "users.replaceProjectWorkflowRoleBindings",
   "users.listRegistrationRoleRequests", "users.approveRegistrationRoleRequest", "users.enableBasicRegistrationRoleRequest", "users.rejectRegistrationRoleRequest",
   "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.revokeOrganizationBridge",
-  "audit.listEvents", "jobs.get", "jobs.events", "parameterSpecs.listReviewTasks",
+  "audit.createEvent", "audit.listEvents", "jobs.get", "jobs.events", "parameterSpecs.listReviewTasks",
   "parameterModules.getRegistry", "parameterModules.discoveryHints", "parameterModules.listDriverRegistry",
   "catalog.listSubjects", "catalog.getSubject", "catalog.listSubjectDefinitions", "catalog.listDefinitions",
   "catalog.getDefinition", "catalog.listDefinitionRevisions", "catalog.getDefinitionRevision", "catalog.listDefinitionTimeline",
