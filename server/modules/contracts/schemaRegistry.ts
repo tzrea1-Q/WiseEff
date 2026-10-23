@@ -2325,8 +2325,18 @@ for (const routeId of [
   "users.replaceRoles", "users.replaceOrganizationRoles", "users.resetPassword", "users.getProjectWorkflowRoleBindings", "users.replaceProjectWorkflowRoleBindings",
   "users.listRegistrationRoleRequests", "users.approveRegistrationRoleRequest", "users.enableBasicRegistrationRoleRequest", "users.rejectRegistrationRoleRequest",
   "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.revokeOrganizationBridge",
-  "logs.listIntegrationCredentials", "logs.issueIntegrationCredential", "logs.rotateIntegrationCredential", "logs.revokeIntegrationCredential",
-  ...Object.keys(schemaRegistry).filter((routeId) => routeId.startsWith("knowledge.") || routeId.startsWith("xiaoze."))
+  "audit.listEvents", "jobs.get", "jobs.events", "parameterSpecs.listReviewTasks",
+  "parameterModules.getRegistry", "parameterModules.discoveryHints", "parameterModules.listDriverRegistry",
+  "catalog.listSubjects", "catalog.getSubject", "catalog.listSubjectDefinitions", "catalog.listDefinitions",
+  "catalog.getDefinition", "catalog.listDefinitionRevisions", "catalog.getDefinitionRevision", "catalog.listDefinitionTimeline",
+  "catalog.listRegistrations", "catalog.createRegistration", "catalog.getRegistration", "catalog.retireRegistration", "catalog.restoreRegistration",
+  "catalog.getPlacement", "catalog.updatePlacement", "catalog.listDriverCompatibleDiscovery",
+  "catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem",
+  ...Object.keys(schemaRegistry).filter((routeId) => schemaRegistry[routeId].successStatus !== 410 && (
+    routeId.startsWith("knowledge.") || routeId.startsWith("xiaoze.") || routeId.startsWith("logs.") ||
+    routeId.startsWith("parameters.") || routeId.startsWith("parameters-dashboard-") ||
+    routeId.startsWith("parameterFiles.") || routeId.startsWith("parameterTopology.")
+  ))
 ]) {
   schemaRegistry[routeId].requestParameters = [...(schemaRegistry[routeId].requestParameters ?? []), {
     name: "organizationId", in: "query", description: "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.", schema: { type: "string" }
