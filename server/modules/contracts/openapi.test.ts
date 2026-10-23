@@ -38,7 +38,7 @@ function toOpenApiMethod(method: string): OpenApiMethod {
 
 describe("M5 OpenAPI contract", () => {
   it("documents fixed organization scope without scoping shared Catalog deletion or retired commands", () => {
-    for (const routeId of ["parameters.admin.createProject", "parameterFiles.listFiles", "parameterTopology.listBindings",
+    for (const routeId of ["organization.teams.list", "organization.teams.delete", "parameters.admin.createProject", "parameterFiles.listFiles", "parameterTopology.listBindings",
       "parameterSpecs.listReviewTasks", "logs.upload", "jobs.events", "catalog.getDefinition", "catalog.updatePlacement"]) {
       expect(schemaRegistry[routeId].requestParameters?.filter((parameter) => parameter.in === "query" && parameter.name === "organizationId")).toHaveLength(1);
     }
