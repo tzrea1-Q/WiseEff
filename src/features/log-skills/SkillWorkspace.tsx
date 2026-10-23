@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { historicalIdentityLabel } from "@/domain/identity/historicalAttribution";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -145,7 +146,7 @@ function Overview({ skill, spec, setSpec, disabled, stats, fieldErrors, sample, 
   ];
   return <section className="skill-section" aria-label="概览">
     <h2>概览</h2>
-    {skill.currentRevision.status !== "draft" ? <p>v{skill.currentRevision.number} · {skill.currentRevision.publishedByDisplayName ?? (skill.currentRevision.publishedByUserId ? "已删除用户" : "系统")} 发布于 {time(skill.currentRevision.publishedAt)}</p> : null}
+    {skill.currentRevision.status !== "draft" ? <p>v{skill.currentRevision.number} · {historicalIdentityLabel(skill.currentRevision.historicalAttribution?.actors.published_by_user_id)} 发布于 {time(skill.currentRevision.publishedAt)}</p> : null}
     <dl className="skill-facts"><dt>近 7 天分析</dt><dd>{stats?.analyses7d ?? "暂无数据"}</dd>
       <dt>有帮助率</dt><dd>{stats?.helpfulRate7d == null ? "暂无反馈" : formatPercent(stats.helpfulRate7d)}</dd>
     </dl>
@@ -184,7 +185,7 @@ function Versions({ skill, revisions, disabled, onRestore, repository, apiMode, 
       { key: "number", header: "版本", render: (r) => <Button variant="link" size="sm" onClick={() => { setLeftId(r.id); setRightId(null); }}>v{r.number}</Button> },
       { key: "status", header: "状态", render: (r) => <span className="badge">{status[r.status]}</span> },
       { key: "publishedAt", header: "发布时间", render: (r) => time(r.publishedAt) },
-      { key: "publisher", header: "发布者", render: (r) => r.status === "draft" ? "尚未发布" : r.publishedByDisplayName ?? (r.publishedByUserId ? "已删除用户" : "系统") },
+      { key: "publisher", header: "发布者", render: (r) => r.status === "draft" ? "尚未发布" : historicalIdentityLabel(r.historicalAttribution?.actors.published_by_user_id) },
       { key: "restore", header: "操作", render: (r) => r.status === "superseded" ? <Button variant="outline" size="sm" disabled={disabled} onClick={() => onRestore(r)}>回滚到此版本</Button> : null }
     ]} />
     {revisions.length >= 2 ? <><div className="skill-compare-selectors">{(["left", "right"] as const).map((side) => <label key={side}>{side === "left" ? "变更前版本" : "变更后版本"}

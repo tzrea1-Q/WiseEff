@@ -1,4 +1,5 @@
 import { loadLogFiles, fileInventory } from "./filesRepository";
+import { historicalIdentityLabel } from "../../../src/domain/identity/historicalAttribution";
 import type { AuthContext } from "../auth/types";
 import type { IntegrationPrincipal } from "../auth/integrationPrincipal";
 import { enqueueTerminalLogWebhook } from "./webhookOutbox";
@@ -47,6 +48,7 @@ type RevisionRow = {
 };
 
 type LogRecordRow = RevisionRow & {
+  historical_attribution?: LogRecordDto["historicalAttribution"];
   skill_selection?: LogRecordDto["skillSelection"] | null;
   signal_summary?: import("./genericSignals").LogSignalSummary | null;
   id: string;
@@ -66,10 +68,8 @@ type LogRecordRow = RevisionRow & {
   raw_lines: string[] | null;
   captured_at: string | Date;
   updated_at: string | Date;
-  submitted_by: string | null;
   submitted_by_user_id?: string | null;
   created_by_credential_id?: string | null;
-  created_by_credential_name?: string | null;
   related_parameter_id: string | null;
   related_parameter_project_id?: string | null;
   failure_reason: string | null;
@@ -297,6 +297,8 @@ function defaultImpact(status: LogRecordStatus) {
 
 function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"], readableKnowledgeIds = new Set<string>()): LogRecordDto {
   const status = row.status;
+  const credential = row.historical_attribution?.actors.created_by_credential_id;
+  const credentialName = credential?.id ? historicalIdentityLabel(credential) : undefined;
 
   return {
     ...sourceProvenance(row),
@@ -320,9 +322,10 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"], 
     rawLines: row.raw_lines ?? [],
     capturedAt: dateTimeToIso(row.captured_at),
     updatedAt: dateTimeToIso(row.updated_at),
-    submittedBy: row.submitted_by ?? "已注销用户",
+    historicalAttribution: row.historical_attribution,
+    submittedBy: credentialName ? `集成凭据 ${credentialName}` : historicalIdentityLabel(row.historical_attribution?.actors.submitted_by_user_id),
     createdByCredentialId: row.created_by_credential_id ?? undefined,
-    createdByCredentialName: row.created_by_credential_name ?? undefined,
+    createdByCredentialName: credentialName,
     relatedParameterId: row.related_parameter_id ?? undefined,
     relatedParameterProjectId: row.related_parameter_project_id ?? undefined,
     failureReason: row.failure_reason ?? undefined,
@@ -448,10 +451,9 @@ const logSelect = `
     report.signal_summary,
     lr.captured_at,
     lr.updated_at,
-    users.name as submitted_by,
+    lr.historical_attribution,
     lr.submitted_by_user_id,
     lr.created_by_credential_id,
-    credential.name as created_by_credential_name,
     lr.related_parameter_id,
     lr.related_parameter_project_id,
     lr.failure_reason,
@@ -470,8 +472,6 @@ const logSelect = `
   left join log_skill_revisions sr on sr.id = lar.skill_revision_id and sr.organization_id = lr.organization_id
   left join log_source_snapshots source on source.id = lar.source_snapshot_id and source.organization_id = lr.organization_id
   left join log_analysis_reports report on report.run_id = lr.current_run_id
-  left join users on users.id = lr.submitted_by_user_id
-  left join log_integration_credentials credential on credential.id = lr.created_by_credential_id and credential.organization_id = lr.organization_id
   left join log_domains ld on ld.id = lr.log_domain_id
 `;
 
@@ -618,9 +618,8 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
         null::text as degraded_reason,
         captured_at,
         updated_at,
-        (select name from users where id = log_records.submitted_by_user_id) as submitted_by,
+        historical_attribution,
         created_by_credential_id,
-        (select name from log_integration_credentials where id = log_records.created_by_credential_id and organization_id = log_records.organization_id) as created_by_credential_name,
         related_parameter_id,
         related_parameter_project_id,
         failure_reason,
@@ -684,9 +683,8 @@ export async function markUnsupportedLog(
       null::text as degraded_reason,
       captured_at,
       updated_at,
-      (select name from users where id = log_records.submitted_by_user_id) as submitted_by,
+      historical_attribution,
       created_by_credential_id,
-      (select name from log_integration_credentials where id = log_records.created_by_credential_id and organization_id = log_records.organization_id) as created_by_credential_name,
       related_parameter_id,
       related_parameter_project_id,
       failure_reason,

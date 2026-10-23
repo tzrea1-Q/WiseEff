@@ -221,7 +221,7 @@ describe("KnowledgeAdminPage", () => {
 
     const queue = await screen.findByRole("table", { name: "小泽知识草稿" });
     const ownRow = within(queue).getByText("小泽沉淀:充电异常断电根因排查").closest("tr")! as HTMLElement;
-    expect(within(ownRow).getByText(/创建人 u-xu-yun/)).toBeInTheDocument();
+    expect(within(ownRow).getByText(/创建人 历史署名未记录/)).toBeInTheDocument();
     expect(within(ownRow).getByText("mock-xiaoze-session-1")).toBeInTheDocument();
     expect(within(queue).getByText("小泽沉淀:无线充异物检测误报处置")).toBeInTheDocument();
 
@@ -244,7 +244,10 @@ describe("KnowledgeAdminPage", () => {
         ...result,
         items: result.items.map((entry) =>
           entry.id === "mock-kb-agent-1"
-            ? { ...entry, createdByUserId: null }
+            ? { ...entry, createdByUserId: null, historicalAttribution: {
+              organization: { id: "original-org", name: "原组织", source: "recorded" as const },
+              actors: { created_by_user_id: { id: "original-author", name: "注销前创建人", source: "recorded" as const } }
+            } }
             : entry
         )
       };
@@ -254,7 +257,7 @@ describe("KnowledgeAdminPage", () => {
 
     const queue = await screen.findByRole("table", { name: "小泽知识草稿" });
     const row = within(queue).getByText("小泽沉淀:充电异常断电根因排查").closest("tr")! as HTMLElement;
-    expect(within(row).getByText(/创建人 已注销用户/)).toBeInTheDocument();
+    expect(within(row).getByText(/创建人 注销前创建人/)).toBeInTheDocument();
   });
 
   it("publishes an agent draft from the queue", async () => {

@@ -52,6 +52,7 @@ export type KnowledgeFileDto = {
 export type KnowledgeParameterReferenceDto = KnowledgeParameterReference;
 
 export type KnowledgeEntryDto = {
+  historicalAttribution?: KnowledgeEntry["historicalAttribution"];
   pendingSuggestionCount?: number;
   origin: KnowledgeOrigin;
   id: string;
@@ -78,6 +79,7 @@ export type KnowledgeEntryDto = {
 };
 
 export type KnowledgeRevisionDto = {
+  historicalAttribution?: KnowledgeRevision["historicalAttribution"];
   id: string;
   entryId: string;
   organizationId: string;
@@ -105,6 +107,7 @@ function entryPath(entryId: string) {
 
 function entryFromDto(dto: KnowledgeEntryDto): KnowledgeEntry {
   return {
+    historicalAttribution: dto.historicalAttribution,
     id: dto.id,
     title: dto.title,
     contentForm: dto.contentForm,
@@ -141,6 +144,7 @@ function entryFromDto(dto: KnowledgeEntryDto): KnowledgeEntry {
 
 function revisionFromDto(dto: KnowledgeRevisionDto): KnowledgeRevision {
   return {
+    historicalAttribution: dto.historicalAttribution,
     id: dto.id,
     entryId: dto.entryId,
     revisionNumber: dto.revisionNumber,

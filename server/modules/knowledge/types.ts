@@ -1,3 +1,5 @@
+import type { HistoricalAttribution } from "../../../src/domain/identity/historicalAttribution";
+
 export const knowledgeContentForms = ["markdown", "file"] as const;
 export const knowledgeStatuses = ["draft", "published", "archived"] as const;
 export const knowledgeSourceTypes = ["human", "agent"] as const;
@@ -26,6 +28,7 @@ export type KnowledgeFileDto = {
 };
 
 type KnowledgeParameterReferenceFields = {
+  historicalAttribution?: HistoricalAttribution;
   specId: string;
   definitionId: string;
   propertyKey: string | null;
@@ -62,6 +65,7 @@ export type KnowledgeParameterReferenceDto =
   | KnowledgeLegacySpecReferenceDto;
 
 export type KnowledgeEntryDto = {
+  historicalAttribution?: HistoricalAttribution;
   pendingSuggestionCount?: number;
   origin: KnowledgeOrigin;
   id: string;
@@ -93,6 +97,7 @@ export type KnowledgeEntryDto = {
 };
 
 export type KnowledgeRevisionDto = {
+  historicalAttribution?: HistoricalAttribution;
   id: string;
   entryId: string;
   organizationId: string;
