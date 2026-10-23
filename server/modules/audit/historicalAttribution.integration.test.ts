@@ -50,13 +50,12 @@ describe("historical attribution through the audit API", () => {
         users: [{ id: "operating-admin", name: "Organization administrator" }] });
       await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('platform-history-role','platform-actor','platform-home','platform-admin')");
       const actor = makeTestAuthContext({ roleId: "platform-admin", organizationId: "platform-home", userId: "platform-actor" });
-      const target = { ...actor, organization: { id: "operating-org", name: "Managed organization" } };
       const reader = makeTestAuthContext({ roleId: "admin", organizationId: "operating-org", userId: "operating-admin" });
       const router = createRouter();
-      let current = target;
+      let current = actor;
       registerAuditRoutes(router, { db, getCurrentAuthContext: () => current });
       const server = createHttpServer(router);
-      const created = await requestJson<{ id: string }>(server, "/api/v1/audit-events", { method: "POST",
+      const created = await requestJson<{ id: string }>(server, "/api/v1/audit-events?organizationId=operating-org", { method: "POST",
         body: JSON.stringify({ app: "parameters", kind: "parameter-review", action: "approve", severity: "Low" }) });
       expect(created.status).toBe(201);
       await db.query("update users set name='Renamed platform administrator' where id='platform-actor'");

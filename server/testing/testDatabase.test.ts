@@ -123,6 +123,7 @@ describe("fresh database fixture policy", () => {
       // Replay pre-0260 authors and published revisions to prove truthful backfill.
       "server/modules/knowledge/historicalAttribution.migration.integration.test.ts": ["history1386upgrade:false"],
       "server/modules/logs/sourceIndexWorker.integration.test.ts": ["stmtupgrade:false"],
+      "server/modules/logs/webhookMigration.acl.integration.test.ts": ["whacl:false"],
       "server/modules/parameter-bindings/binding/propertyDeleteMigration.integration.test.ts": ["deleteupgrade:false"],
       "server/modules/parameter-bindings/binding/sourceOccurrenceMigration.integration.test.ts": ["src_occ_0151:false"],
       "server/modules/parameter-catalog-migration/sourceOccurrenceGuard.integration.test.ts": ["srcintegrityupgrade:false"],
@@ -137,6 +138,7 @@ describe("fresh database fixture policy", () => {
       "server/modules/projects/members.authorization.integration.test.ts": ["membercutover:false"],
       "server/modules/projects/members.migration.integration.test.ts": ["projectmembers:false"],
       "server/modules/release-verification/core/migration.integration.test.ts": ["s10per:false"],
+      "server/modules/users/organizationLifecycle.integration.test.ts": ["lifecycleupgrade:false"],
       "server/shared/database/migrationCompatibility.integration.test.ts": ["purge_bounds:false", "purge_cutover:false", "purge_existing:false", "purge_retry:false"],
       "server/testing/testDatabase.test.ts": ["cleanup_race:false", "emptycompare:false", "freshcompare:true", "freshguard:true", "role_lease_a:false", "role_lease_b:false"]
     });
