@@ -371,7 +371,9 @@ export function TreeFilterOptions({
 
   useEffect(() => {
     if (!focusOnOpen) return;
+    const focusedOnOpen = document.activeElement;
     const frame = window.requestAnimationFrame(() => {
+      if (document.activeElement !== focusedOnOpen) return;
       if (focusOnOpen === "search") {
         searchInputRef.current?.focus();
         return;

@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ModuleTreeSelect } from "./ModuleTreeSelect";
 import { ModalDialog } from "./ModalDialog";
 
@@ -10,7 +10,36 @@ const nodes = [
   { id: "pm-c", name: "充电", parentId: null, path: "pm-c", depth: 1 }
 ] as const;
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("ModuleTreeSelect", () => {
+  it.each(["充电", "未分类"])("preserves keyboard focus on %s before the portaled tree's initial animation frame", async (target) => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.set(++nextFrame, callback);
+      return nextFrame;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => { frames.delete(id); });
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const onDismiss = vi.fn();
+    render(<ModalDialog open className="confirm-dialog" onDismiss={onDismiss}>
+      {({ titleId }) => <><h2 id={titleId}>模块编辑</h2><ModuleTreeSelect mode="single" label="模块" nodes={nodes.map((node, index) => ({ ...node, sortOrder: index }))} value=""
+        onChange={onChange} portalMenu includeRootOption rootOptionLabel="未分类" /></>}
+    </ModalDialog>);
+    const trigger = screen.getByRole("button", { name: "模块" });
+    await user.click(trigger);
+    const option = within(screen.getByRole("tree")).getByRole("button", { name: target });
+    act(() => option.focus());
+    expect(frames.size).toBeGreaterThan(0);
+    act(() => { for (const callback of frames.values()) callback(0); frames.clear(); });
+    await user.keyboard("{Enter}");
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(target === "充电" ? "pm-c" : "");
+    expect(trigger).toHaveFocus();
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
   it("keeps a portaled modal selection usable and returns focus without dismissing its owner", async () => {
     const user = userEvent.setup();
     const onDismiss = vi.fn();
