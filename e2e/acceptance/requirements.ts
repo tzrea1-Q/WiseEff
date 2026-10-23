@@ -450,6 +450,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "LOG-REGISTER-001",
+    workflow: "D",
+    title: "Admin edits register bits and mappings, imports previewed datasheet rows, round-trips YAML, and inspects decoded sample-line values; dedicated browser automation remains pending as recorded in the coverage map.",
+    required: false
+  },
+  {
     id: "LOG-SKILL-KNOWLEDGE-001",
     workflow: "D",
     title: "Skill knowledge links publish with revisions; Markdown uploads follow knowledge permissions and draft publication; report provenance shows actual retrieved knowledge revisions.",
