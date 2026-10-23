@@ -97,8 +97,6 @@ export function CatalogOrganizationSurface({
     : sessionRoles?.some((role) => role.roleId === "platform-admin" && role.projectId === null) ? "platform-admin"
       : sessionRoles?.some((role) => role.roleId === "admin" && role.projectId === null) ? "org-admin" : "user";
   const reviewQueueAllowed = catalogActionsForSession({ actor: reviewActor, permissions: sessionPermissions }).includes("resolve-review-item");
-  const platformOnly = !reviewQueueAllowed && (sessionRoles === undefined ? actor === "platform-admin"
-    : sessionRoles?.some((role) => role.roleId === "platform-admin"));
   const anchor = parseCatalogUrlAnchor(search);
   const reviewQueueRequested = new URLSearchParams(search).get("review") === "open";
   const [domainState, setDomainState] = useState<CatalogDomainState | null>(null);
@@ -269,7 +267,7 @@ export function CatalogOrganizationSurface({
         refreshEpoch={surfaceEpoch}
         reviewCountOverride={reviewCount}
         taskContent={taskContent}
-        notice={publicationSurfaceLoad === "error" || surfaceStatus || platformOnly || pendingCleanup.length > 0 || cleanupError ? <>
+        notice={publicationSurfaceLoad === "error" || surfaceStatus || pendingCleanup.length > 0 || cleanupError ? <>
           {definitionDeletionAllowed && (pendingCleanup.length > 0 || cleanupError) ? (
             <section className="parameter-catalog__banner" data-tone="warning" aria-label="待完成存储清理">
               <p>待完成存储清理（{pendingCleanup.length}）</p>
@@ -309,11 +307,6 @@ export function CatalogOrganizationSurface({
                 </details>
               ) : <p>{publicationSurfaceCopy.nextStep}：{surfaceStatus.next}</p>}
             </section>
-          ) : null}
-          {platformOnly ? (
-            <p className="parameter-catalog__muted">
-              组织审核队列需要 Organization 权限；Platform 权限不能代替组织审核权限。
-            </p>
           ) : null}
         </> : undefined}
         repository={catalog}
