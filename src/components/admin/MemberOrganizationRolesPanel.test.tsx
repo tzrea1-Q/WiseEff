@@ -8,21 +8,17 @@ const account: UserAccount = { id: "self", name: "管理员", title: "", roleId:
 const options = (["admin", "platform-admin", "software-user"] as PlatformRoleId[]).map((id) => ({ id, label: id, description: id }));
 
 describe("own organization roles", () => {
-  it("allows self editing, keeps the final admin role and submits the expected role set", async () => {
+  it("allows self succession and leaves the effective administrator check to the server", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn(async (roles: PlatformRoleId[]) => ({ ...account, roles: roles.map((roleId) => ({ projectId: null, roleId })) }));
     render(<MemberOrganizationRolesPanel user={account} isSelf options={options} onSave={onSave} onReload={async () => account} />);
     const admin = screen.getByRole("checkbox", { name: "admin" });
-    expect(admin).toBeDisabled();
-    expect(admin).toHaveAccessibleDescription("需保留至少一个管理员角色，避免当前账号失去管理权限。");
-    await user.click(screen.getByRole("checkbox", { name: "software-user" }));
-    await user.click(screen.getByRole("checkbox", { name: "platform-admin" }));
     expect(admin).toBeEnabled();
+    await user.click(screen.getByRole("checkbox", { name: "software-user" }));
     await user.click(admin);
-    expect(screen.getByRole("checkbox", { name: "platform-admin" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "保存" }));
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认调整" }));
-    expect(onSave).toHaveBeenCalledWith(["platform-admin", "software-user"], ["admin"]);
+    expect(onSave).toHaveBeenCalledWith(["software-user"], ["admin"]);
     expect(await screen.findByRole("status")).toHaveTextContent("组织角色已保存");
   });
 

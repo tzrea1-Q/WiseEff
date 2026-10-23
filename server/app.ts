@@ -196,6 +196,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerUserRoutes(router, {
     db: options.db,
+    authenticationProvider: options.auth?.mode === "production" ? options.env?.AUTH_PROVIDER : undefined,
     oidcIssuer: options.env?.AUTH_PROVIDER === "oidc" ? options.env.AUTH_OIDC_ISSUER : undefined,
     getCurrentAuthContext: authResolver
   });

@@ -1,6 +1,6 @@
 import type { ZodTypeAny } from "zod";
 import { platformOrganizationDtoSchemaCatalog, platformOrganizationRoutes } from "./platformOrganizations";
-export { createPlatformOrganizationSchema, platformOrganizationSchema } from "./platformOrganizations";
+export { administratorRecoverySchema, createPlatformOrganizationSchema, platformOrganizationSchema, recoverOrganizationAdministratorSchema } from "./platformOrganizations";
 import { knowledgeCoveredRouteIds, knowledgeDtoSchemaCatalog } from "./knowledge";
 export { parsePreviewRequestSchema, parsePreviewResponseSchema, decodedEventSchema, decodedValueSchema } from "./logs";
 export { parsingSpecSchema, registerCaseKey } from "../../logs/parsing/spec";

@@ -36,8 +36,8 @@ import {
 import { setOidcIdentity } from "../auth/oidcIdentity";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { getUserById } from "./repository";
-import { createPlatformOrganizationSchema } from "../contracts/dtoSchemas/platformOrganizations";
-import { createPlatformOrganization, listPlatformOrganizations, requirePlatformOrganizationManager } from "./platformOrganizations";
+import { createPlatformOrganizationSchema, emergencyDisableAdministratorSchema, recoverOrganizationAdministratorSchema } from "../contracts/dtoSchemas/platformOrganizations";
+import { createPlatformOrganization, emergencyDisableAdministrator, getAdministratorRecovery, listPlatformOrganizations, recoverOrganizationAdministrator, requirePlatformOrganizationManager } from "./platformOrganizations";
 
 const userIdParamsSchema = z.object({
   userId: z.string().min(1)
@@ -75,18 +75,33 @@ function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Inv
 
 export function registerUserRoutes(
   router: WiseEffRouter,
-  options: { db?: Database; oidcIssuer?: string; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
+  options: { db?: Database; oidcIssuer?: string; authenticationProvider?: "local" | "oidc" | "hmac"; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
 ) {
+  const mutationContext = (request: RouteRequest) => ({ requestId: request.requestId, authenticationProvider: options.authenticationProvider, oidcIssuer: options.oidcIssuer });
+  router.get("/api/v1/platform/organizations/:organizationId/administrator-recovery", async (request) => {
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    return { status: 200, body: await getAdministratorRecovery(db, createUserInvocation(auth), request.params.organizationId, mutationContext(request)) };
+  });
+  router.post("/api/v1/platform/organizations/:organizationId/administrator-recovery", async (request) => {
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(recoverOrganizationAdministratorSchema, request.body);
+    return { status: 200, body: { item: await recoverOrganizationAdministrator(db, createUserInvocation(auth), request.params.organizationId, body, options.oidcIssuer, mutationContext(request)) } };
+  });
+  router.post("/api/v1/platform/organizations/:organizationId/administrators/:userId/emergency-disable", async (request) => {
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(emergencyDisableAdministratorSchema, request.body);
+    return { status: 200, body: { item: await emergencyDisableAdministrator(db, createUserInvocation(auth), request.params.organizationId, request.params.userId, body.reason, mutationContext(request)) } };
+  });
   router.get("/api/v1/platform/organizations", async (request) => {
     const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
     requirePlatformOrganizationManager(auth);
     const query = parseWithSchema(z.object({ q: z.string().trim().max(200).optional() }).strict(), request.query);
-    return { status: 200, body: { items: await listPlatformOrganizations(db, auth, query.q) } };
+    return { status: 200, body: { items: await listPlatformOrganizations(db, auth, query.q, undefined, mutationContext(request)) } };
   });
   router.get("/api/v1/platform/organizations/:organizationId", async (request) => {
     const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
     requirePlatformOrganizationManager(auth);
-    const item = (await listPlatformOrganizations(db, auth, "", request.params.organizationId))[0];
+    const item = (await listPlatformOrganizations(db, auth, "", request.params.organizationId, mutationContext(request)))[0];
     if (!item) throw new ApiError("NOT_FOUND", "Organization was not found.");
     return { status: 200, body: { item } };
   });
@@ -94,7 +109,7 @@ export function registerUserRoutes(
     const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
     requirePlatformOrganizationManager(auth);
     const body = parseWithSchema(createPlatformOrganizationSchema, request.body);
-    return { status: 201, body: { item: await createPlatformOrganization(db, createUserInvocation(auth), body, options.oidcIssuer, { requestId: request.requestId }) } };
+    return { status: 201, body: { item: await createPlatformOrganization(db, createUserInvocation(auth), body, options.oidcIssuer, mutationContext(request)) } };
   });
   router.get("/api/v1/organization", async (request) => {
     const db = requireDb(options.db);
@@ -190,7 +205,7 @@ export function registerUserRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(userIdParamsSchema, request.params);
     const body = parseWithSchema(updateUserActiveBodySchema, request.body);
-    const item = await deactivateUser(db, auth, params.userId, body, { requestId: request.requestId });
+    const item = await deactivateUser(db, auth, params.userId, body, mutationContext(request));
 
     return { status: 200, body: { item } };
   });
@@ -199,7 +214,7 @@ export function registerUserRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(userIdParamsSchema, request.params);
-    await deleteUser(db, auth, params.userId, { requestId: request.requestId });
+    await deleteUser(db, auth, params.userId, mutationContext(request));
 
     return { status: 204, body: null };
   });
@@ -219,7 +234,7 @@ export function registerUserRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(userIdParamsSchema, request.params);
     const body = parseWithSchema(replaceUserRolesBodySchema, request.body);
-    const item = await replaceUserRoles(db, auth, params.userId, body, { requestId: request.requestId });
+    const item = await replaceUserRoles(db, auth, params.userId, body, mutationContext(request));
 
     return { status: 200, body: { item } };
   });
@@ -229,7 +244,7 @@ export function registerUserRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(userIdParamsSchema, request.params);
     const body = parseWithSchema(updateOrganizationRolesBodySchema, request.body);
-    const item = await replaceOrganizationRoles(db, auth, params.userId, body, { requestId: request.requestId });
+    const item = await replaceOrganizationRoles(db, auth, params.userId, body, mutationContext(request));
 
     return { status: 200, body: { item } };
   });

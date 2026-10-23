@@ -93,7 +93,7 @@ describe("organization role set API (real PostgreSQL)", () => {
     await db.query("update users set is_active = false where id = $1", [platformAdmin.user.id]);
     const denied = await update([], ["admin"], admin.user.id);
     expect(denied.status).toBe(409);
-    expect(denied.body.error.message).toBe("Active Admin cannot remove its last Admin capability.");
+    expect(denied.body.error.message).toBe("At least one usable organization administrator must remain.");
     expect((await readMember(admin.user.id)).roles).toEqual([{ projectId: null, roleId: "admin" }]);
   });
 });
