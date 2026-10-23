@@ -639,7 +639,7 @@ export function UserPermissionsPage({
         <div className="member-identity">
           <strong>{user.name}{user.id === state.currentUserId ? <Badge variant="secondary">我</Badge> : null}</strong>
           <span>{userAccountIdentifier(user)}</span>
-          <span className="member-list-meta">{user.oidcIdentity ? "OIDC · 已绑定" : authentication.provider === "oidc" ? "OIDC · 未显式绑定" : user.username ? "本地账号" : "外部身份"}</span>
+          <span className="member-list-meta">{user.oidcTransfer?.status === "pending" ? "OIDC · 等待身份系统同步" : user.oidcIdentity ? "OIDC · 已绑定" : authentication.provider === "oidc" ? "OIDC · 未显式绑定" : user.username ? "本地账号" : "外部身份"}</span>
         </div>
       )
     },

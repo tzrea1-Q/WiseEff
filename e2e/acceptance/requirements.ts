@@ -9,6 +9,10 @@ export type AcceptanceRequirement = {
 
 export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
+    id: "ORG-OIDC-TRANSFER-001", workflow: "H", required: false,
+    title: "OIDC transfers retain strict organization claims and explicit binding, show pending external synchronization, and report success only after a verified target login."
+  },
+  {
     id: "ORG-ACCOUNT-TRANSFER-001", workflow: "H", required: false,
     title: "A platform administrator previews and transfers a local account with explicit target roles, revoked old sessions and pairings, retained source work and machine credentials, and a successful target login."
   },

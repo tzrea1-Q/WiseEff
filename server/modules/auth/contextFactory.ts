@@ -2,9 +2,10 @@ import type { RouteRequest } from "../../shared/http/router";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "./types";
 import type { TokenVerifier } from "./tokenVerifier";
-import type { Queryable } from "../../shared/database/client";
+import type { Database } from "../../shared/database/client";
 import { getAuthContextForExternalIdentity } from "./repository";
 import { isIntegrationAuthorization } from "./integrationCredentialResolver";
+import { completeOidcTransferAuthentication } from "./oidcIdentity";
 
 export type AuthMode = "development" | "production";
 
@@ -14,7 +15,7 @@ export type AuthContextResolverOptions = {
   mode: AuthMode;
   verifier?: TokenVerifier;
   localAuthResolver?: (authorization: string | string[] | undefined) => Promise<AuthContext>;
-  db?: Queryable;
+  db?: Database;
   developmentAuthContext?: AuthContext;
   getDevelopmentAuthContext?: (request: Pick<RouteRequest, "headers">) => Promise<AuthContext> | AuthContext;
 };
@@ -54,13 +55,16 @@ function createUserAuthContextResolver(options: AuthContextResolverOptions): Aut
         if (!options.db) {
           throw new ApiError("INTERNAL_ERROR", "Database-backed auth context is required when AUTH_MODE=production.");
         }
-        return await getAuthContextForExternalIdentity(options.db, {
+        const input = {
           issuer: verifiedContext.externalIdentity?.issuer,
           organizationId: verifiedContext.user.organizationId,
           subject: verifiedContext.user.id,
           issuedAt: verifiedContext.tokenIssuedAt,
           email: verifiedContext.user.emailVerified ? verifiedContext.user.email : undefined
-        });
+        };
+        const auth = await getAuthContextForExternalIdentity(options.db, input);
+        return verifiedContext.externalIdentity?.provider === "oidc"
+          ? await completeOidcTransferAuthentication(options.db, auth, { ...input, issuer: verifiedContext.externalIdentity.issuer }) : auth;
       } catch (error) {
         if (error instanceof ApiError) {
           throw error;

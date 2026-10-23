@@ -42,6 +42,7 @@ export async function createPlatformOrganization(db: Database, caller: UserInvoc
   const actor = caller.principal;
   requirePlatformOrganizationManager(actor);
   return db.transaction(async (tx) => {
+    await lockAdministratorMutation(tx);
     const organizationId = `org-${randomUUID()}`;
     await tx.query("insert into organizations(id,name) values($1,$2)", [organizationId, input.name]);
     const invocation = await resolveOperatingContext(tx, caller, organizationId);
