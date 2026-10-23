@@ -255,7 +255,7 @@ describe.skipIf(!databaseAvailable)("review workflow repository", () => {
 
     const rounds = await listSubmissionRounds(db, { organizationId: ORG, projectId: PROJECT });
     expect(rounds).toEqual([
-      expect.objectContaining({ id: "round-deleted-submitter", submitter: "已注销用户" })
+      expect.objectContaining({ id: "round-deleted-submitter", submitter: "Riley Chen" })
     ]);
     const request = await getChangeRequestById(db, {
       organizationId: ORG,
@@ -263,7 +263,7 @@ describe.skipIf(!databaseAvailable)("review workflow repository", () => {
     });
     expect(request).toMatchObject({
       id: "request-deleted-submitter",
-      submitter: "已注销用户",
+      submitter: "Riley Chen",
       submitterUserId: undefined
     });
   });
@@ -474,7 +474,8 @@ describe.skipIf(!databaseAvailable)("review workflow repository", () => {
     ).resolves.toBeNull();
 
     // Withdrawing the open request removes it from the open lookup.
-    await updateChangeRequestStatus(db, { organizationId: ORG, requestId: "request-open", status: "withdrawn" });
+    // This retained legacy state is not an input to the current mutation API.
+    await db.query("update parameter_change_requests set status='withdrawn' where organization_id=$1 and id='request-open'", [ORG]);
     await expect(
       findOpenChangeRequest(db, { organizationId: ORG, projectId: PROJECT, parameterId: "param-1" })
     ).resolves.toBeNull();
@@ -561,6 +562,7 @@ describe.skipIf(!databaseAvailable)("review workflow repository", () => {
     expect(retainedDecisions.find((decision) => decision.id === "decision-1")).toMatchObject({
       id: "decision-1",
       reviewerUserId: undefined,
+      reviewerName: "Hardware Committer",
       note: "Hardware reviewed."
     });
   });

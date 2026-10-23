@@ -328,7 +328,7 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
     ]);
   });
 
-  it("deletes account-owned rows, nulls retained history, and writes a non-PII audit", async () => {
+  it("deletes account-owned rows while retaining historical names and writes a non-PII deletion audit", async () => {
     await insertDeletionFixture(db);
 
     await expect(deleteUser(db, adminAuth, "u-target", { requestId: "delete-request" })).resolves.toBeUndefined();
@@ -385,9 +385,9 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
         organizationId: "org-chargelab",
         parameterId: "value-delete"
       })
-    ).resolves.toMatchObject([{ changedBy: null }]);
+    ).resolves.toMatchObject([{ changedBy: "Target User" }]);
     await expect(listFileVersions(db, { fileId: "file-target" })).resolves.toMatchObject([
-      { createdByUserId: null, createdByDisplayName: null }
+      { createdByUserId: null, createdByDisplayName: "Target User" }
     ]);
 
     const deletionAudit = await db.query<{

@@ -1,4 +1,5 @@
 import type { Queryable } from "../../shared/database/client";
+import { historicalIdentityLabel, type HistoricalAttribution } from "../../../src/domain/identity/historicalAttribution";
 import { serializePostgresJsonb } from "../../shared/database/jsonb";
 import {
   listCanonicalInitializationBindingCandidates,
@@ -43,6 +44,7 @@ type ReviewRow = {
   draft_id: string;
   status: "pending" | "approved" | "rejected";
   submitted_by_user_id: string | null;
+  historical_attribution?: HistoricalAttribution;
   submitted_at: string | Date;
   reviewed_by_user_id: string | null;
   reviewed_at: string | Date | null;
@@ -101,6 +103,8 @@ function toReviewDto(row: ReviewRow): InitializationReviewDto {
     projectId: row.project_id,
     status: row.status,
     submittedByUserId: row.submitted_by_user_id,
+    ...(row.historical_attribution ? { submittedByName: historicalIdentityLabel(row.historical_attribution.actors.submitted_by_user_id),
+      reviewedByName: row.reviewed_at ? historicalIdentityLabel(row.historical_attribution.actors.reviewed_by_user_id) : null } : {}),
     submittedAt: dateTimeToIso(row.submitted_at),
     reviewedByUserId: row.reviewed_by_user_id,
     reviewedAt: row.reviewed_at ? dateTimeToIso(row.reviewed_at) : undefined,

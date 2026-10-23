@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { historicalActorSql } from "../../shared/database/historicalAttribution";
+import { historicalIdentityLabel, type HistoricalAttribution } from "../../../src/domain/identity/historicalAttribution";
 import { getRootPostgresPool, isRootDatabase, type Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -23,6 +25,7 @@ export type SourceRevisionRequestDto = {
   id: string; projectId: string; candidateId: string; fileId: string; fileName: string; configSetId: string;
   status: Status; reason: string; submitterUserId: string | null; assignedToUserId: string | null; reviewerUserId: string | null;
   submitterName?: string | null; assignedToName?: string | null; reviewerName?: string | null;
+  organizationName?: string | null;
   reviewerNote: string | null; createdAt: string; updatedAt: string; proofDigest: string;
   impact: { parameterChanges: number; nodeAdditions: number; nodeRemovals: number; restoredParameters?: number };
   before?: string; after?: string;
@@ -38,6 +41,7 @@ type Row = {
   source_revision_context: SourceRevisionProof; status: Status; reason: string;
   submitter_user_id: string | null; assigned_to_user_id: string | null; reviewer_user_id: string | null;
   submitter_name: string | null; assigned_to_name: string | null; reviewer_name: string | null;
+  historical_attribution?: HistoricalAttribution;
   reviewer_note: string | null; created_at: Date | string; updated_at: Date | string;
   applied_source_result: SourceRevisionRequestDto["appliedSourceResult"];
   source_revision_application_mode: SourceRevisionRequestDto["applicationMode"];
@@ -61,7 +65,7 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
 const selection = `select request.*, candidate.file_id as source_file_id, candidate.file_name as source_file_name,
   candidate.storage_key as after_storage_key,candidate.checksum as after_checksum,
   base.storage_key as before_storage_key,base.checksum as before_checksum,
-  submitter.name as submitter_name,assignee.name as assigned_to_name,reviewer.name as reviewer_name,
+  ${historicalActorSql("request", "submitter_user_id")} as submitter_name,assignee.name as assigned_to_name,${historicalActorSql("request", "reviewer_user_id")} as reviewer_name,
   cancellation.actor_user_id as cancellation_user_id,cancellation.metadata->>'administratorName' as cancellation_name,
   cancellation.metadata->>'reason' as cancellation_reason,
   (select count(*)::int from public.dts_logical_node_revisions node
@@ -79,9 +83,7 @@ const selection = `select request.*, candidate.file_id as source_file_id, candid
     and file.organization_id=request.organization_id and file.project_id=request.project_id
   left join public.project_parameter_file_versions base on base.id=request.source_revision_context->>'baseVersionId'
     and base.file_id=candidate.file_id
-  left join public.users submitter on submitter.id=request.submitter_user_id and submitter.organization_id=request.organization_id
   left join public.users assignee on assignee.id=request.assigned_to_user_id and assignee.organization_id=request.organization_id
-  left join public.users reviewer on reviewer.id=request.reviewer_user_id and reviewer.organization_id=request.organization_id
   left join lateral (select audit.actor_user_id,audit.metadata from public.audit_events audit
     where audit.organization_id=request.organization_id and audit.project_id=request.project_id and audit.target_id=request.id
       and audit.target_type='project-parameter-value-change-request' and audit.action='source-request-cancelled'
@@ -120,6 +122,8 @@ function dto(row: Row, auth: AuthContext): SourceRevisionRequestDto {
     fileName: row.source_file_name, configSetId: row.source_revision_config_set_id, status: row.status, reason: row.reason,
     submitterUserId: row.submitter_user_id, assignedToUserId: row.assigned_to_user_id, reviewerUserId: row.reviewer_user_id,
     submitterName: row.submitter_name, assignedToName: row.assigned_to_name, reviewerName: row.reviewer_name,
+    ...(row.historical_attribution ? { organizationName: row.historical_attribution.organization.name
+      ? historicalIdentityLabel(row.historical_attribution.organization) : null } : {}),
     reviewerNote: row.reviewer_note, createdAt: iso(row.created_at), updatedAt: iso(row.updated_at), proofDigest: proof.proofDigest,
     impact: { parameterChanges: proof.targets.length + proof.newProperties.length,
       restoredParameters: proof.restorations?.length ?? 0,

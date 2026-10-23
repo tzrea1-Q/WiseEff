@@ -92,7 +92,7 @@ export function ParameterSubmissionsPage({
     handledBy: (() => {
       const decision = state.parameterReviewDecisions.filter((item) => round.items.some((entry) => entry.requestId === item.requestId))
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
-      return decision?.reviewerUserId ? state.users.find((user) => user.id === decision.reviewerUserId)?.name || "处理人姓名未记录" : undefined;
+      return decision?.reviewerName ?? (decision?.reviewerUserId ? state.users.find((user) => user.id === decision.reviewerUserId)?.name || "处理人姓名未记录" : undefined);
     })(),
     handledAt: state.parameterReviewDecisions.filter((decision) => round.items.some((item) => item.requestId === decision.requestId))
       .map((decision) => decision.createdAt).sort().at(-1),

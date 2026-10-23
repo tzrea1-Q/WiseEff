@@ -4,6 +4,7 @@ import { presentAuditEvent } from "@/domain/audit/presentAuditEvent";
 import type { AuditEventView, AuditValueState } from "@/domain/audit/types";
 import { getAuditSeverityLabel, type AuditSeverity } from "@/domain/audit/types";
 import { cn } from "@/lib/utils";
+import { historicalIdentityLabel } from "@/domain/identity/historicalAttribution";
 import "./audit-detail.css";
 
 const severityBadge: Record<AuditSeverity, string> = {
@@ -52,6 +53,7 @@ export function AuditEventDetailPanel({ event, className }: AuditEventDetailPane
       <dl className="audit-event-context">
         <div><dt>{event.targetName ? "当前对象名称" : "操作对象"}</dt><dd>{presentation.targetLabel}</dd></div>
         <div><dt>{event.projectName || event.projectCode ? "当前所属项目" : "所属范围"}</dt><dd>{presentation.projectLabel}</dd></div>
+        {event.historicalAttribution && event.organizationId !== null ? <div><dt>发生组织</dt><dd>{historicalIdentityLabel(event.historicalAttribution.organization)}</dd></div> : null}
         <div><dt>操作人</dt><dd>{presentation.actor.name}{presentation.actor.name !== presentation.actor.typeLabel ? <span>{presentation.actor.typeLabel}</span> : null}</dd></div>
         <div><dt>发生时间</dt><dd><time dateTime={event.createdAt}>{presentation.timestamp.absolute}</time><span>{presentation.timestamp.relative}</span></dd></div>
       </dl>

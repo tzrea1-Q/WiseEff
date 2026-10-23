@@ -51,8 +51,10 @@ type ParameterReviewRow =
 
 function resolveRetainedUserName(
   users: ReadonlyArray<{ id: string; name: string }>,
-  userId: string | null | undefined
+  userId: string | null | undefined,
+  historicalName?: string | null
 ) {
+  if (historicalName !== undefined) return historicalName ?? "历史署名未记录";
   if (userId === undefined) return "未指派";
   if (userId === null) return "已注销用户";
   return users.find((user) => user.id === userId)?.name ?? "成员姓名暂不可用";
@@ -232,7 +234,7 @@ export function ParameterReviewPage({
   );
   const getReviewRowField = useCallback((row: ParameterReviewRow, field: "id" | "projectId" | "project" | "module" | "submitter" | "change" | "status") => {
     if (row.kind === "initialization") {
-      const submitter = resolveRetainedUserName(state.users, row.review.submittedBy);
+      const submitter = resolveRetainedUserName(state.users, row.review.submittedBy, row.review.submittedByName);
       const modules = [...new Set(row.draft.parameterSnapshots.map((snapshot) => snapshot.module))];
       const primaryModule = modules[0] ?? "参数初始化";
       const moduleText = modules.length > 1 ? `${primaryModule} 等 ${modules.length} 个模块` : primaryModule;
@@ -326,7 +328,7 @@ export function ParameterReviewPage({
     selectedReviewParameter?.explanation?.trim() ||
     "";
   const selectedInitializationSubmitter = selectedInitialization
-    ? resolveRetainedUserName(state.users, selectedInitialization.review.submittedBy)
+    ? resolveRetainedUserName(state.users, selectedInitialization.review.submittedBy, selectedInitialization.review.submittedByName)
     : "";
   const selectedInitializationPrimarySource = selectedInitialization
     ? state.configDraft.projects.find((project) => project.id === selectedInitialization.draft.primarySourceProjectId)
@@ -563,12 +565,12 @@ export function ParameterReviewPage({
     handledAt: view === "history" ? row.kind === "change" ? row.request.updatedAt : row.review.reviewedAt : undefined,
     assignedToId: row.kind === "change" ? row.request.assignedTo : undefined,
     handledBy: view === "history" ? row.kind === "initialization"
-      ? row.review.reviewedBy === undefined ? undefined : resolveRetainedUserName(state.users, row.review.reviewedBy)
+      ? resolveRetainedUserName(state.users, row.review.reviewedBy, row.review.reviewedByName)
       : (() => {
         const decision = state.parameterReviewDecisions.filter((item) => item.requestId === row.request.id).sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
-        return decision?.reviewerUserId === undefined ? undefined : resolveRetainedUserName(state.users, decision.reviewerUserId);
+        return decision ? resolveRetainedUserName(state.users, decision.reviewerUserId, decision.reviewerName) : undefined;
       })() : undefined,
-    assignedTo: row.kind === "change" ? resolveRetainedUserName(state.users, row.request.assignedTo) : view === "pending" ? "参数管理员" : row.review.reviewedBy === undefined ? "未记录处理人" : resolveRetainedUserName(state.users, row.review.reviewedBy)
+    assignedTo: row.kind === "change" ? resolveRetainedUserName(state.users, row.request.assignedTo) : view === "pending" ? "参数管理员" : resolveRetainedUserName(state.users, row.review.reviewedBy, row.review.reviewedByName)
   }));
   const mergeUrl =
     selected?.status === "已合入" && selected.reviewerNote && isValidMergeLink(selected.reviewerNote)
@@ -582,7 +584,7 @@ export function ParameterReviewPage({
             .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
             .map((decision) => ({ time: formatRelativeOrAbsolute(decision.createdAt), titleHint: formatAbsolute(decision.createdAt),
               title: decision.decision === "reject" ? "打回修改" : "通过检视",
-              body: `${resolveRetainedUserName(state.users, decision.reviewerUserId)}：${decision.fromStatus} → ${decision.toStatus}` }))
+              body: `${resolveRetainedUserName(state.users, decision.reviewerUserId, decision.reviewerName)}：${decision.fromStatus} → ${decision.toStatus}` }))
         ];
         if (reviewMode === "history") {
           return [...recordedItems, { time: selected.updatedAt ? formatRelativeOrAbsolute(selected.updatedAt) : "处理结果",
@@ -709,7 +711,7 @@ export function ParameterReviewPage({
                     time: selectedInitialization.review.status === "pending" ? "当前" : selectedInitialization.review.reviewedAt ? formatRelativeOrAbsolute(selectedInitialization.review.reviewedAt) : "处理时间未记录",
                     titleHint: selectedInitialization.review.reviewedAt ? formatAbsolute(selectedInitialization.review.reviewedAt) : undefined,
                     title: getParameterInitializationReviewStatusLabel(selectedInitialization.review.status),
-                    body: selectedInitialization.review.status === "pending" ? "等待初始化审核。" : `${selectedInitialization.review.reviewedBy === undefined ? "未记录处理人" : resolveRetainedUserName(state.users, selectedInitialization.review.reviewedBy)}。${selectedInitialization.review.status === "approved" ? "初始化参数已建立。" : "本次初始化未通过。"}`,
+                    body: selectedInitialization.review.status === "pending" ? "等待初始化审核。" : `${resolveRetainedUserName(state.users, selectedInitialization.review.reviewedBy, selectedInitialization.review.reviewedByName)}。${selectedInitialization.review.status === "approved" ? "初始化参数已建立。" : "本次初始化未通过。"}`,
                     isCurrent: selectedInitialization.review.status === "pending",
                     marker: selectedInitialization.review.status === "pending" ? "当前流程" : undefined
                   },

@@ -1,4 +1,5 @@
 import type { AuditSeverity } from "./types";
+import type { HistoricalAttribution } from "../../../src/domain/identity/historicalAttribution";
 
 export type AuditReadSeverity = AuditSeverity | "info";
 export type AuditValueState = "present" | "deleted";
@@ -44,6 +45,7 @@ export type AuditEventListItemDto = {
   actorUserId: string | null;
   actorType: "user" | "agent" | "system" | "integration";
   actorName: string | null;
+  historicalAttribution?: HistoricalAttribution;
   app: string;
   kind: string;
   action: string;

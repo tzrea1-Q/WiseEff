@@ -723,6 +723,7 @@ function reviewDecisionExecutionLabel(
   if (decision.initiatorType === "agent") {
     return "WiseEff Agent";
   }
+  if (decision.reviewerName !== undefined) return decision.reviewerName ?? "历史署名未记录";
   if (decision.reviewerUserId) {
     // A name lookup is deliberately organization-scoped.  If a malformed or
     // cross-organization reviewer reference cannot be resolved, never expose
