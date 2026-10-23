@@ -81,6 +81,12 @@ For parameter modules, open Module management (`/parameter-admin/modules`), expa
 
 For debugging modules, open Debugging admin's Node debugging area (`/debugging-admin/nodes`) and Module management. Add roots or children, rename, or move modules to an allowed parent. Delete only modules without children or node references. The parameter and debugging trees are maintained separately: changing one does not reorganize the other.
 
+## Continue business work after departure
+
+Open **Business handover** from Organization → Members (`/organization/handovers`) to continue Knowledge drafts, unfinished import batches, feedback drafts and open feedback responsibilities after a member leaves. These remain in their original Organization after disabling, deleting or transferring a member. The default list shows work with no currently eligible responsible person; clear the filter to inspect all unfinished work.
+
+Administrators can continue pending work immediately or assign a successor: an active Organization knowledge editor for knowledge, an active member for feedback drafts, and an active administrator for submitted feedback triage. Leaving work unassigned keeps it pending and available to administrators. Assignment never submits a draft or changes original creators and historical signatures. Analysis-skill drafts remain editable in skill administration. Organization machine credentials remain independent; personal passwords, sessions, private Agent conversations and pairings never transfer.
+
 ## Send product feedback with screenshots
 
 Problem feedback opens a dialog on the current route. Open it from Problem feedback in the navigation or, where available, the page footer. Start from the affected page so the feedback records the correct page title and path; revisit the conversation in My feedback (`/feedback`).

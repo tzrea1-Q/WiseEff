@@ -5,6 +5,7 @@ import { workflowPublicationSchemaRegistry } from "./dtoSchemas/workflowPublicat
 import { platformOrganizationSchemaRegistry } from "./dtoSchemas/platformOrganizations";
 import { organizationTeamSchemaRegistry } from "./dtoSchemas/organizationTeams";
 import { projectMembersSchemaRegistry } from "./dtoSchemas/projectMembers";
+import { assetHandoverSchemaRegistry } from "./dtoSchemas/organizationAssetHandover";
 import { organizationInvitationSchemaRegistry } from "./dtoSchemas/organizationInvitations";
 
 export type ContractParameterRef = {
@@ -56,6 +57,7 @@ function retireLegacySurface(
 }
 
 export const schemaRegistry: Record<string, ContractSchemaRef> = {
+  ...assetHandoverSchemaRegistry,
   ...platformOrganizationSchemaRegistry,
   ...organizationTeamSchemaRegistry,
   ...projectMembersSchemaRegistry,

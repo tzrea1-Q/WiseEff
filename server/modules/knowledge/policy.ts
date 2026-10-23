@@ -28,20 +28,24 @@ export function hasKnowledgeManage(auth: AuthContext) {
   return auth.user.isActive && auth.permissions.includes("knowledge:manage");
 }
 
-export function canGovernKnowledgeEntry(auth: AuthContext, entry: Pick<KnowledgeEntryDto, "createdByUserId">): boolean {
-  return hasKnowledgeManage(auth) || (auth.user.isActive && entry.createdByUserId === auth.user.id && auth.permissions.includes("knowledge:edit"));
+type EntryResponsibility = Pick<KnowledgeEntryDto, "createdByUserId" | "responsibleUserId">;
+export function knowledgeResponsibleUserId(entry: EntryResponsibility) {
+  return entry.responsibleUserId === undefined ? entry.createdByUserId : entry.responsibleUserId;
+}
+export function canGovernKnowledgeEntry(auth: AuthContext, entry: EntryResponsibility): boolean {
+  return hasKnowledgeManage(auth) || (auth.user.isActive && knowledgeResponsibleUserId(entry) === auth.user.id && auth.permissions.includes("knowledge:edit"));
 }
 
 /**
  * Publisher accountability (D18): knowledge:edit governs OWN entries only;
  * cross-person governance requires knowledge:manage.
  */
-export function requireKnowledgeGovern(auth: AuthContext, entry: Pick<KnowledgeEntryDto, "createdByUserId">) {
+export function requireKnowledgeGovern(auth: AuthContext, entry: EntryResponsibility) {
   if (canGovernKnowledgeEntry(auth, entry)) {
     return;
   }
   requireKnowledgeEdit(auth);
-  if (entry.createdByUserId !== auth.user.id) {
+  if (knowledgeResponsibleUserId(entry) !== auth.user.id) {
     throw new ApiError("FORBIDDEN", "Only the entry owner or a knowledge manager can govern this entry.", {
       permission: "knowledge:manage"
     });
@@ -49,12 +53,12 @@ export function requireKnowledgeGovern(auth: AuthContext, entry: Pick<KnowledgeE
 }
 
 /** Draft entries are visible to their owner and to knowledge managers only. */
-export function canReadEntry(auth: AuthContext, entry: Pick<KnowledgeEntryDto, "status" | "createdByUserId">) {
+export function canReadEntry(auth: AuthContext, entry: EntryResponsibility & Pick<KnowledgeEntryDto, "status">) {
   if (!auth.user.isActive || !auth.permissions.includes("knowledge:view")) {
     return false;
   }
   if (entry.status === "draft") {
-    return entry.createdByUserId === auth.user.id || hasKnowledgeManage(auth);
+    return knowledgeResponsibleUserId(entry) === auth.user.id || hasKnowledgeManage(auth);
   }
   return true;
 }

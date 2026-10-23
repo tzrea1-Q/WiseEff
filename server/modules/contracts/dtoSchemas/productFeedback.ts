@@ -10,6 +10,7 @@ import {
 } from "../../product-feedback/schemas";
 import { feedbackPriorities, feedbackResolutionCodes, feedbackStatuses, feedbackTypes, progressEventKinds } from "../../product-feedback/types";
 import { itemEnvelopeSchema } from "./envelopes";
+import { historicalAttributionSchema } from "./historicalAttribution";
 
 const attachment = z.object({
   deletedAt: z.string().nullable().optional(), cleanupPending: z.boolean().optional(), canDelete: z.boolean().optional(),
@@ -19,12 +20,14 @@ const attachment = z.object({
   sizeBytes: z.number(), checksum: z.string(), sortOrder: z.number(), createdAt: z.string()
 });
 export const productFeedbackPublicProgressSchema = z.object({
+  historicalAttribution: historicalAttributionSchema.optional(),
   id: z.string(), feedbackId: z.string(), kind: z.enum(progressEventKinds),
   fromStatus: z.enum(feedbackStatuses).nullable(), toStatus: z.enum(feedbackStatuses).nullable(),
   resolutionCode: z.enum(feedbackResolutionCodes).nullable(), publicMessage: z.string().nullable(),
   author: z.enum(["submitter", "team"]).optional(), createdAt: z.string()
 }).strict();
 export const productFeedbackUserDtoSchema = z.object({
+  historicalAttribution: historicalAttributionSchema.optional(),
   id: z.string(), organizationId: z.string(), pagePath: z.string(), pageTitle: z.string(),
   feedbackType: z.enum(feedbackTypes), description: z.string(), status: z.enum(feedbackStatuses),
   resolutionCode: z.enum(feedbackResolutionCodes).nullable(), submittedAt: z.string().nullable(),
