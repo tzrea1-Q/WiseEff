@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { OrganizationWorkspaceClient } from "@/infrastructure/http/userGovernanceClient";
 import { presentError } from "@/infrastructure/http/presentError";
-import { OrganizationAdminScopeNav } from "@/components/admin/OrganizationAdminScopeNav";
+import { listOrganizationBridges, revokeOrganizationBridge } from "@/infrastructure/http/deviceBridgeClient";
+import { createIntegrationCredentialClient } from "@/infrastructure/http/logClient";
 
 /** A URL target owns its clients and view state. No session-wide organization switch. */
 export function OrganizationWorkspace({ workspaceClient, ...props }: OrganizationPageProps & { workspaceClient?: OrganizationWorkspaceClient }) {
@@ -20,6 +21,8 @@ function ResolvedOrganizationWorkspace({ requestedId, workspaceClient, ...props 
   const [projects, setProjects] = useState<Array<{ id: string; name: string }> | null>(null), [projectError, setProjectError] = useState("");
   const operatingId = scope?.organization.id;
   const client = useMemo(() => operatingId ? workspaceClient.forOrganization(operatingId) : null, [operatingId, workspaceClient]);
+  const bridgeActions = useMemo(() => ({ list: () => listOrganizationBridges(undefined, operatingId), revoke: (id: string, reason: string) => revokeOrganizationBridge(id, reason, undefined, operatingId) }), [operatingId]);
+  const credentialRepository = useMemo(() => createIntegrationCredentialClient(undefined, operatingId), [operatingId]);
   const foreign = Boolean(scope && scope.organization.id !== scope.actor.organization.id);
   const platform = scope?.actor.roles.some((role) => role.projectId === null && role.roleId === "platform-admin");
 
@@ -48,12 +51,10 @@ function ResolvedOrganizationWorkspace({ requestedId, workspaceClient, ...props 
       {platform ? <div className="organization-operating-scope__actions"><Button variant="outline" onClick={() => props.onNavigate("/platform/organizations")}>组织目录</Button>
         {foreign ? <Button variant="outline" onClick={() => props.onNavigate("/organization")}>返回所属组织</Button> : null}</div> : null}
     </section>
-    {foreign && props.area === "bridges" ? <><OrganizationAdminScopeNav active="bridges" organizationId={scope.organization.id} onNavigate={props.onNavigate} />
-      <p role="status">请先返回所属组织管理设备代理。</p></>
-      : props.area === "members" && projectError ? <SectionError message={projectError} onRetry={() => setAttempt((value) => value + 1)} />
+    {props.area === "members" && projectError ? <SectionError message={projectError} onRetry={() => setAttempt((value) => value + 1)} />
         : props.area === "members" && !projects ? <SectionSkeleton label="正在加载组织成员工作区" />
           : <OrganizationPage key={`${scope.organization.id}:${props.area ?? "profile"}`} {...props} apiMode directoryScope={scope.organization.id}
-            userGovernanceActions={client} organizationActions={client} reviewRolesClient={client} projectCandidates={projects ?? []}
+            userGovernanceActions={client} organizationActions={client} reviewRolesClient={client} projectCandidates={projects ?? []} bridgeActions={bridgeActions} credentialRepository={credentialRepository}
             onOrganizationUpdated={async (organization) => {
               setScope((current) => current ? { ...current, organization: { id: organization.id, name: organization.name } } : current);
               if (organization.id === scope.actor.organization.id) await props.onOrganizationUpdated?.(organization);

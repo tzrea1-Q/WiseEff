@@ -1,4 +1,4 @@
-import { Building2, Monitor, Users } from "lucide-react";
+import { Building2, KeyRound, Monitor, Users } from "lucide-react";
 
 import {
   ORGANIZATION_ADMIN_UI,
@@ -27,7 +27,8 @@ export function OrganizationAdminScopeNav({ active, onNavigate, organizationId }
       items={[
         { value: "profile", label: <><Building2 size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.profileScope}</> },
         { value: "members", label: <><Users size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.membersScope}</> },
-        { value: "bridges", label: <><Monitor size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.bridgesScope}</> }
+        { value: "bridges", label: <><Monitor size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.bridgesScope}</> },
+        { value: "integrations", label: <><KeyRound size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.integrationsScope}</> }
       ]}
     />
   );

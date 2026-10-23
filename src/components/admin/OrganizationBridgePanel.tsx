@@ -37,7 +37,7 @@ export function OrganizationBridgePanel({ enabled, actions = defaultActions }: {
   }
   if (!enabled) return <SectionEmpty title="设备代理治理需要管理员权限与 API 模式" message="请在已连接后台的组织管理页面操作。" />;
   return <section className="grid gap-4" aria-label="组织设备代理">
-    <div><h2>设备代理</h2><p>仅管理本组织成员的配对。撤销会断开连接并使原凭据失效；不会授予设备执行权限。</p></div>
+    <div><h2>设备代理</h2><p className="text-sm text-muted-foreground">管理当前组织成员的配对。撤销将断开连接并使原凭据失效；查看与撤销不授予设备执行权限。</p></div>
     <div><Button variant="outline" disabled={pending} onClick={() => void load()}>刷新目录</Button></div>
     {error ? <SectionError message={error} onRetry={() => void load()} /> : !items ? <SectionSkeleton label="正在加载设备代理" /> :
       <DataTable rows={items} rowKey={item => item.id} ariaLabel="组织设备代理" emptyState={<SectionEmpty title="本组织尚无设备代理" message="成员在调试工作台完成配对后显示在此。" />} columns={[

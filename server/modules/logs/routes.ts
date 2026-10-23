@@ -12,6 +12,7 @@ import type { IntegrationPrincipal } from "../auth/integrationPrincipal";
 import { isIntegrationAuthorization } from "../auth/integrationCredentialResolver";
 import { issueLogIntegrationCredentialBodySchema, issueIntegrationCredential, listIntegrationCredentials, revokeIntegrationCredential, rotateIntegrationCredential } from "./integrationCredentials";
 import { createUserInvocation } from "../auth/trustedInvocation";
+import { resolveOperatingContext } from "../auth/operatingContext";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -106,6 +107,11 @@ function requireLocalOrganization(auth: AuthContext) {
   if (auth.user.organizationId !== auth.organization.id) {
     throw new ApiError("FORBIDDEN", "无权访问此组织的日志。", { organizationId: auth.organization.id });
   }
+}
+
+async function credentialInvocation(db: Database, auth: AuthContext, request: RouteRequest) {
+  const { organizationId } = parseWithSchema(z.object({ organizationId: z.string().trim().min(1).max(200).optional() }).strict(), request.query);
+  return organizationId === undefined ? createUserInvocation(auth) : resolveOperatingContext(db, createUserInvocation(auth), organizationId);
 }
 
 function parseWithSchema<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, value: unknown, message = "提交的日志信息无效，请检查后重试。") {
@@ -219,20 +225,24 @@ export function registerLogRoutes(
   };
   router.get("/api/v1/log-integration-credentials", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
-    return { status: 200, body: await listIntegrationCredentials(requireDb(options.db), auth) };
+    const invocation = await credentialInvocation(requireDb(options.db), auth, request);
+    return { status: 200, body: await listIntegrationCredentials(requireDb(options.db), auth, invocation, invocation.operatingOrganization?.id ?? auth.organization.id) };
   });
   router.post("/api/v1/log-integration-credentials", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const body = parseWithSchema(issueLogIntegrationCredentialBodySchema, request.body);
-    return { status: 201, headers: { "Cache-Control": "no-store" }, body: await issueIntegrationCredential(requireDb(options.db), auth, body, createUserInvocation(auth), { requestId: request.requestId }) };
+    const invocation = await credentialInvocation(requireDb(options.db), auth, request);
+    return { status: 201, headers: { "Cache-Control": "no-store" }, body: await issueIntegrationCredential(requireDb(options.db), auth, body, invocation, { requestId: request.requestId }, invocation.operatingOrganization?.id ?? auth.organization.id) };
   });
   router.post("/api/v1/log-integration-credentials/:credentialId/rotate", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
-    return { status: 200, headers: { "Cache-Control": "no-store" }, body: await rotateIntegrationCredential(requireDb(options.db), auth, request.params.credentialId, createUserInvocation(auth), { requestId: request.requestId }) };
+    const invocation = await credentialInvocation(requireDb(options.db), auth, request);
+    return { status: 200, headers: { "Cache-Control": "no-store" }, body: await rotateIntegrationCredential(requireDb(options.db), auth, request.params.credentialId, invocation, { requestId: request.requestId }, invocation.operatingOrganization?.id ?? auth.organization.id) };
   });
   router.post("/api/v1/log-integration-credentials/:credentialId/revoke", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
-    return { status: 200, body: await revokeIntegrationCredential(requireDb(options.db), auth, request.params.credentialId, createUserInvocation(auth), { requestId: request.requestId }) };
+    const invocation = await credentialInvocation(requireDb(options.db), auth, request);
+    return { status: 200, body: await revokeIntegrationCredential(requireDb(options.db), auth, request.params.credentialId, invocation, { requestId: request.requestId }, invocation.operatingOrganization?.id ?? auth.organization.id) };
   });
   router.get("/api/v1/log-skills/:skillId/source-versions", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);

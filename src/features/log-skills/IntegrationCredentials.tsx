@@ -4,21 +4,25 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { RowActionMenu } from "@/components/common/RowActionMenu";
 import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
+import { SelectControl } from "@/components/common/SelectControl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
 import type { SectionProps } from "./SkillWorkspace";
 import type { IntegrationCredential, IntegrationCredentialSecret } from "./types";
+import "./skill-workspace.css";
 
-export function IntegrationCredentials({ skill, repository, apiMode, canEdit, disabled, onBusyChange }: Pick<SectionProps, "skill" | "repository" | "apiMode" | "canEdit" | "disabled" | "onBusyChange">) {
+const ignoreBusyChange = (_busy: boolean) => {};
+export function IntegrationCredentials({ skill, repository, apiMode, canEdit, disabled, onBusyChange = ignoreBusyChange }: Pick<SectionProps, "repository" | "apiMode" | "canEdit" | "disabled"> & Partial<Pick<SectionProps, "skill" | "onBusyChange">>) {
   const [items, setItems] = useState<IntegrationCredential[]>([]);
   const [loading, setLoading] = useState(apiMode && canEdit);
   const [loadError, setLoadError] = useState(false);
   const [reload, setReload] = useState(0);
   const [issuing, setIssuing] = useState(false);
   const [name, setName] = useState("");
-  const [bound, setBound] = useState(true);
+  const [bound, setBound] = useState(Boolean(skill));
+  const [skillFilter, setSkillFilter] = useState("all");
   const [action, setAction] = useState<{ kind: "rotate" | "revoke"; item: IntegrationCredential } | null>(null);
   const [reveal, setReveal] = useState<IntegrationCredentialSecret | null>(null);
   const [pending, setPending] = useState(false);
@@ -48,7 +52,7 @@ export function IntegrationCredentials({ skill, repository, apiMode, canEdit, di
         setItems((previous) => previous.map((old) => old.id === item.id ? item : old));
       } else {
         const result = action ? await repository!.rotateIntegrationCredential!(action.item.id)
-          : await repository!.issueIntegrationCredential!({ name: name.trim(), skillId: bound ? skill.id : null });
+          : await repository!.issueIntegrationCredential!({ name: name.trim(), skillId: bound && skill ? skill.id : null });
         setItems((previous) => [result.item, ...previous.filter((old) => old.id !== result.item.id)]);
         setCopyStatus(""); setReveal(result);
       }
@@ -59,25 +63,29 @@ export function IntegrationCredentials({ skill, repository, apiMode, canEdit, di
   const supported = !!repository?.listIntegrationCredentials && !!repository.issueIntegrationCredential && !!repository.rotateIntegrationCredential && !!repository.revokeIntegrationCredential;
   return <section aria-label="集成凭据">
     <div className="skill-credential-toolbar"><h3>集成凭据</h3>
-      {apiMode && canEdit && supported ? <Button disabled={disabled || loading || loadError} onClick={() => { setName(""); setBound(true); setError(""); setIssuing(true); }}>签发凭据</Button> : null}
+      {!skill && apiMode && canEdit && supported ? <SelectControl ariaLabel="筛选绑定技能" value={skillFilter} onValueChange={setSkillFilter} disabled={pending || loading} options={[
+        { value: "all", label: "全部技能" }, { value: "unbound", label: "未绑定技能" },
+        ...Array.from(new Map(items.filter(item => item.skillId).map(item => [item.skillId!, { value: item.skillId!, label: item.skillName ?? item.skillId! }])).values())
+      ]} /> : null}
+      {apiMode && canEdit && supported ? <Button disabled={disabled || loading || loadError} onClick={() => { setName(""); setBound(Boolean(skill)); setError(""); setIssuing(true); }}>签发凭据</Button> : null}
     </div>
-    <p>凭据仅能上传日志及读取自身创建的记录、报告和文件。默认绑定当前技能；归档技能会撤销绑定的凭据。</p>
+    <p>凭据仅能上传日志及读取自身创建的记录、报告和文件。{skill ? "默认绑定当前技能；归档技能会撤销绑定的凭据。" : "此处签发未绑定技能的组织凭据；绑定凭据可在相应技能的集成页签发。"}</p>
     {!apiMode || !canEdit ? <p>{apiMode ? "管理集成凭据需要技能管理权限。" : "请在 API 模式下管理集成凭据。"}</p>
       : !supported ? <p>当前无法管理集成凭据。</p> : <>
         {loading ? <SectionSkeleton label="正在加载集成凭据" /> : loadError ? <SectionError message="无法加载集成凭据" onRetry={() => setReload((value) => value + 1)} />
-          : <DataTable fluid ariaLabel="集成凭据列表" rows={items.filter((item) => !item.skillId || item.skillId === skill.id)
+          : <DataTable fluid ariaLabel="集成凭据列表" rows={items.filter((item) => skill ? !item.skillId || item.skillId === skill.id : skillFilter === "all" || (skillFilter === "unbound" ? !item.skillId : item.skillId === skillFilter))
             .sort((a, b) => Number(b.status === "active") - Number(a.status === "active") || Date.parse(b.createdAt) - Date.parse(a.createdAt))}
             rowKey={(item) => item.id} tableClassName="table-fixed" emptyMessage="尚无集成凭据。" columns={[
             { key: "name", header: "名称", className: "px-2", render: (item) => <><span className="block truncate" title={item.name}>{item.name}</span>
-              <span className="block break-words text-xs text-muted-foreground">{item.skillId ? `绑定：${item.skillName ?? skill.name}` : "未绑定"} · <time className="whitespace-nowrap" title={formatAbsolute(item.createdAt).slice(0, 16).replaceAll("-", "/")}>创建于 {formatAbsolute(item.createdAt).slice(0, 16).replaceAll("-", "/")}</time></span></> },
+              <span className="block break-words text-xs text-muted-foreground">{item.skillId ? `绑定：${item.skillName ?? skill?.name ?? item.skillId}` : "未绑定"} · <time className="whitespace-nowrap" title={formatAbsolute(item.createdAt).slice(0, 16).replaceAll("-", "/")}>创建于 {formatAbsolute(item.createdAt).slice(0, 16).replaceAll("-", "/")}</time></span></> },
             { key: "status", header: "状态", widthClass: "w-20", className: "px-2", render: (item) => <Badge variant="outline" className={item.status === "active" ? "text-[var(--success)] bg-[var(--success-soft)]" : "text-muted-foreground bg-muted"}>{item.status === "active" ? "有效" : "已撤销"}</Badge> },
-            { key: "used", header: "最近使用", widthClass: "w-24", className: "px-2 break-words", render: (item) => item.lastUsedAt ? <time title={formatAbsolute(item.lastUsedAt).slice(0, 16).replaceAll("-", "/")}>{formatAbsolute(item.lastUsedAt).slice(0, 16).replaceAll("-", "/")}</time> : "尚未使用" },
+            { key: "used", header: "最近使用", widthClass: "w-36", className: "px-2 whitespace-nowrap", render: (item) => item.lastUsedAt ? <time title={formatAbsolute(item.lastUsedAt).slice(0, 16).replaceAll("-", "/")}>{formatAbsolute(item.lastUsedAt).slice(0, 16).replaceAll("-", "/")}</time> : "尚未使用" },
             { key: "actions", header: "操作", widthClass: "w-24", className: "px-2", render: (item) => item.status === "active" ? <RowActionMenu label={`凭据 ${item.name}`} items={(["rotate", "revoke"] as const).map((kind) => ({ id: kind, label: kind === "rotate" ? "轮换" : "撤销", destructive: true, disabled, onRequestConfirmation: () => { setError(""); setAction({ kind, item }); } }))} /> : <span className="text-muted-foreground">—</span> }
           ]} />}
       </>}
     <ModalDialog open={issuing} initialFocusRef={nameRef} onDismiss={pending ? undefined : () => setIssuing(false)} className="skill-publish-dialog">
       {({ titleId }) => <><h2 id={titleId}>签发集成凭据</h2><label>凭据名称<Input ref={nameRef} value={name} maxLength={120} disabled={pending} onChange={(event) => setName(event.target.value)} /></label>
-        <label className="skill-credential-checkbox"><input type="checkbox" checked={bound} disabled={pending} onChange={(event) => setBound(event.target.checked)} />绑定到当前技能</label>
+        {skill ? <label className="skill-credential-checkbox"><input type="checkbox" checked={bound} disabled={pending} onChange={(event) => setBound(event.target.checked)} />绑定到当前技能</label> : null}
         {!bound ? <p>未绑定凭据可向本组织的其他技能上传日志。</p> : null}
         {error ? <p role="alert" className="skill-field-error">{error}</p> : null}
         <div className="dialog-actions"><Button variant="outline" disabled={pending} onClick={() => setIssuing(false)}>取消</Button><Button disabled={pending || !name.trim()} onClick={() => void save()}>签发</Button></div></>}

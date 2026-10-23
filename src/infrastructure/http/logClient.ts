@@ -77,6 +77,7 @@ import {
 } from "./logDtos";
 import { createDefaultApiClient } from "./defaultApiClient";
 import { resolveWiseEffApiBaseUrl } from "./runtimeMode";
+import { withOrganizationScope } from "./organizationScope";
 
 type ApiClient = ReturnType<typeof createApiClient>;
 type ItemEnvelope<T> = { item: T };
@@ -183,6 +184,25 @@ function feedbackBody(input: LogFeedbackInput) {
 
 function isTerminalStatus(status: string | undefined) {
   return status !== undefined && terminalJobStatuses.has(status);
+}
+
+/** The organization overview and skill-filtered view share the same credential API. */
+export function createIntegrationCredentialClient(apiClient: ApiClient = createDefaultApiClient(), organizationId?: string) {
+  const path = (suffix = "") => withOrganizationScope(`/api/v1/log-integration-credentials${suffix}`, organizationId);
+  return {
+    async listIntegrationCredentials() {
+      return parseContractDto(logIntegrationCredentialListResponseSchema, await apiClient.get(path()), "LogIntegrationCredentialListResponse").items;
+    },
+    async issueIntegrationCredential(input: { name: string; skillId?: string | null }) {
+      return parseContractDto(logIntegrationCredentialSecretResponseSchema, await apiClient.post(path(), input), "LogIntegrationCredentialSecretResponse");
+    },
+    async rotateIntegrationCredential(id: string) {
+      return parseContractDto(logIntegrationCredentialSecretResponseSchema, await apiClient.post(path(`/${encodeURIComponent(id)}/rotate`), {}), "LogIntegrationCredentialSecretResponse");
+    },
+    async revokeIntegrationCredential(id: string) {
+      return parseContractDto(logIntegrationCredentialResponseSchema, await apiClient.post(path(`/${encodeURIComponent(id)}/revoke`), {}), "LogIntegrationCredentialResponse").item;
+    }
+  };
 }
 
 export function createHttpLogAnalysisRepository(
@@ -451,18 +471,7 @@ export function createHttpLogAnalysisRepository(
         await apiClient.get(buildLogDomainsPath(query).replace("log-domains", "log-skills")), "LogSkillListResponse");
       return logDomainListFromDto(response);
     },
-    async listIntegrationCredentials() {
-      return parseContractDto(logIntegrationCredentialListResponseSchema, await apiClient.get("/api/v1/log-integration-credentials"), "LogIntegrationCredentialListResponse").items;
-    },
-    async issueIntegrationCredential(input) {
-      return parseContractDto(logIntegrationCredentialSecretResponseSchema, await apiClient.post("/api/v1/log-integration-credentials", input), "LogIntegrationCredentialSecretResponse");
-    },
-    async rotateIntegrationCredential(id) {
-      return parseContractDto(logIntegrationCredentialSecretResponseSchema, await apiClient.post(`/api/v1/log-integration-credentials/${encodeURIComponent(id)}/rotate`, {}), "LogIntegrationCredentialSecretResponse");
-    },
-    async revokeIntegrationCredential(id) {
-      return parseContractDto(logIntegrationCredentialResponseSchema, await apiClient.post(`/api/v1/log-integration-credentials/${encodeURIComponent(id)}/revoke`, {}), "LogIntegrationCredentialResponse").item;
-    },
+    ...createIntegrationCredentialClient(apiClient),
     async listSkillTemplates() {
       return parseContractDto(logSkillTemplateListResponseSchema, await apiClient.get("/api/v1/log-skill-templates"), "LogSkillTemplateListResponse").items;
     },

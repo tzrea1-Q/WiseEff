@@ -23,5 +23,7 @@ describe("organizationAdminPath", () => {
     expect(buildOrganizationAdminPath("members")).toBe(ORGANIZATION_ADMIN_MEMBERS_PATH);
     expect(parseOrganizationAdminArea(ORGANIZATION_ADMIN_BRIDGES_PATH)).toBe("bridges");
     expect(buildOrganizationAdminPath("bridges")).toBe(ORGANIZATION_ADMIN_BRIDGES_PATH);
+    expect(parseOrganizationAdminArea("/organization/integrations")).toBe("integrations");
+    expect(buildOrganizationAdminPath("integrations")).toBe("/organization/integrations");
   });
 });

@@ -4,6 +4,7 @@ import { DEVICE_BRIDGE_RELEASES_PATH } from "@wiseeff/device-command-core/bridge
 
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
+import { resolveOperatingContext } from "../auth/operatingContext";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -47,6 +48,12 @@ function requireBridgeAdministrator(auth: AuthContext) {
     !auth.roles.some(role => role.projectId === null && (role.roleId === "admin" || role.roleId === "platform-admin"))) {
     throw new ApiError("FORBIDDEN", "需要本组织管理员权限。");
   }
+}
+
+async function organizationInvocation(db: Database, auth: AuthContext, query: unknown) {
+  requireBridgeAdministrator(auth);
+  const { organizationId } = parseWithSchema(z.object({ organizationId: z.string().trim().min(1).max(200).optional() }).strict(), query);
+  return organizationId === undefined ? createUserInvocation(auth) : resolveOperatingContext(db, createUserInvocation(auth), organizationId);
 }
 
 function toBridgeItem(record: DeviceBridgeRecord) {
@@ -202,27 +209,28 @@ export function registerDeviceBridgeRoutes(
   });
 
   router.get("/api/v1/device-bridges/organization", async (request) => {
-    const auth = await options.getCurrentAuthContext(request); requireBridgeAdministrator(auth);
-    parseWithSchema(z.object({}).strict(), request.query);
-    return { status: 200, body: { items: (await listBridgesForOrganization(requireDb(options.db), auth.organization.id)).map(toOrganizationItem) } };
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    const invocation = await organizationInvocation(db, auth, request.query);
+    return { status: 200, body: { items: (await listBridgesForOrganization(db, invocation.operatingOrganization?.id ?? auth.organization.id)).map(toOrganizationItem) } };
   });
   router.get("/api/v1/device-bridges/organization/:bridgeId", async (request) => {
-    const auth = await options.getCurrentAuthContext(request); requireBridgeAdministrator(auth);
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    const invocation = await organizationInvocation(db, auth, request.query);
     const { bridgeId } = parseWithSchema(bridgeIdParamsSchema, request.params);
-    const record = await getBridgeForOrganization(requireDb(options.db), auth.organization.id, bridgeId);
+    const record = await getBridgeForOrganization(db, invocation.operatingOrganization?.id ?? auth.organization.id, bridgeId);
     if (!record) throw new ApiError("NOT_FOUND", "设备代理不存在。");
     return { status: 200, body: { item: toOrganizationItem(record) } };
   });
   router.post("/api/v1/device-bridges/organization/:bridgeId/revoke", async (request) => {
-    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request); requireBridgeAdministrator(auth);
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    const invocation = await organizationInvocation(db, auth, request.query), organizationId = invocation.operatingOrganization?.id ?? auth.organization.id;
     const { bridgeId } = parseWithSchema(bridgeIdParamsSchema, request.params);
     const { reason } = parseWithSchema(revokeOrganizationBridgeBodySchema, request.body);
-    const invocation = createUserInvocation(auth);
     const record = await db.transaction(async tx => {
-      const current = await getBridgeForOrganization(tx, auth.organization.id, bridgeId, true);
+      const current = await getBridgeForOrganization(tx, organizationId, bridgeId, true);
       if (!current) throw new ApiError("NOT_FOUND", "设备代理不存在。");
       if (current.revokedAt) return current;
-      const revoked = await createDeviceBridgeRepository(tx).revokeBridge({ bridgeId, userId: current.userId, organizationId: auth.organization.id, revokedAt: now() });
+      const revoked = await createDeviceBridgeRepository(tx).revokeBridge({ bridgeId, userId: current.userId, organizationId, revokedAt: now() });
       if (!revoked) throw new ApiError("CONFLICT", "设备代理状态已变化，请刷新后重试。");
       await writeAudit(tx, { id: randomUUID(), invocation, projectId: null, app: "device-bridge", kind: "device-bridge-admin-revoke", action: "revoke", severity: "High",
         targetType: "device-bridge", targetId: bridgeId, metadata: { ownerUserId: current.userId, reason }, traceId: request.requestId ?? randomUUID() });

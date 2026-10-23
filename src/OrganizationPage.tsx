@@ -9,6 +9,8 @@ import { SettingsFormPage, SettingsFormSection, useDirtyState } from "@/componen
 import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { presentError } from "@/infrastructure/http/presentError";
 import { UserPermissionsPage, type UserPermissionsPageProps } from "@/UserPermissionsPage";
+import { IntegrationCredentials } from "@/features/log-skills/IntegrationCredentials";
+import type { ComponentProps } from "react";
 import "./organization-page.css";
 
 export type OrganizationRecord = {
@@ -27,6 +29,8 @@ export type OrganizationPageProps = UserPermissionsPageProps & {
   apiMode?: boolean;
   organizationActions?: OrganizationActions;
   onOrganizationUpdated?: (organization: OrganizationRecord) => void | Promise<void>;
+  bridgeActions?: ComponentProps<typeof OrganizationBridgePanel>["actions"];
+  credentialRepository?: ComponentProps<typeof IntegrationCredentials>["repository"];
 };
 
 export function OrganizationPage({
@@ -34,6 +38,8 @@ export function OrganizationPage({
   apiMode = false,
   organizationActions,
   onOrganizationUpdated,
+  bridgeActions,
+  credentialRepository,
   ...memberProps
 }: OrganizationPageProps) {
   const [organization, setOrganization] = useState<OrganizationRecord | null>(null);
@@ -107,7 +113,9 @@ export function OrganizationPage({
   return (
     <div className="organization-page">
       <OrganizationAdminScopeNav active={area} organizationId={memberProps.directoryScope} onNavigate={memberProps.onNavigate} />
-      {area === "bridges" ? <OrganizationBridgePanel enabled={apiMode && canPerform(memberProps.state.activeRoleId, "users.manage")} /> : area === "members" ? (
+      {area === "bridges" ? <OrganizationBridgePanel enabled={apiMode && canPerform(memberProps.state.activeRoleId, "users.manage")} actions={bridgeActions} /> : area === "integrations" ? (
+        <div className="skill-section"><IntegrationCredentials repository={credentialRepository} apiMode={apiMode} canEdit={canPerform(memberProps.state.activeRoleId, "logs.admin-domains")} disabled={false} /></div>
+      ) : area === "members" ? (
         <UserPermissionsPage {...memberProps} />
       ) : (
         <section className="organization-profile" aria-label="组织档案">
