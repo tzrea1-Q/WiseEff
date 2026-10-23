@@ -4,8 +4,11 @@ import type { AuthContext } from "./types";
 import {
   assertTrustedInvocationContext,
   assertTrustedInvocationMatchesAuth,
+  assertTrustedInvocationMatchesScope,
   createAgentInvocation,
+  createAgentInvocationFromUser,
   createSystemInvocation,
+  createIntegrationInvocation,
   createUserInvocation,
   withOperatingOrganization,
   trustedAccountableUser,
@@ -54,6 +57,57 @@ describe("trusted invocation context", () => {
     const principal = { ...auth(), roles: [{ roleId: "platform-admin" as const, projectId: null }], permissions: ["platform:access" as const] };
     const invocation = createUserInvocation(principal, { id: "org-2", name: "Target" });
     expect(() => assertTrustedInvocationMatchesAuth(principal, invocation, "Legacy home write")).toThrow(TrustedInvocationContextError);
+  });
+
+  it("matches an explicitly authorized resource organization without changing the real Home actor", () => {
+    const principal: AuthContext = { ...auth(), roles: [{ roleId: "platform-admin", projectId: null }], permissions: ["platform:access"] };
+    const invocation = withOperatingOrganization(createUserInvocation(principal), { id: "org-2", name: "Target" });
+    expect(assertTrustedInvocationMatchesScope(principal, invocation, "org-2", "Scoped knowledge write")).toBe(invocation);
+    expect(invocation.principal.user.organizationId).toBe("org-1");
+    expect(() => assertTrustedInvocationMatchesAuth(principal, invocation, "Legacy home write")).toThrow(TrustedInvocationContextError);
+    for (const organizationId of ["org-1", "org-3"]) {
+      expect(() => assertTrustedInvocationMatchesScope(principal, invocation, organizationId, "Wrong resource")).toThrow(TrustedInvocationContextError);
+    }
+    for (const current of [auth(), { ...principal, user: { ...principal.user, id: "another-user" } },
+      { ...principal, user: { ...principal.user, isActive: false } },
+      { ...principal, organization: { id: "org-2", name: "Target" }, user: { ...principal.user, organizationId: "org-2" } }]) {
+      expect(() => assertTrustedInvocationMatchesScope(current, invocation, "org-2", "Changed actor")).toThrow(TrustedInvocationContextError);
+    }
+    const home = createUserInvocation(auth());
+    expect(assertTrustedInvocationMatchesScope(auth(), home, "org-1", "Home resource")).toBe(home);
+    expect(() => assertTrustedInvocationMatchesScope(auth(), home, "org-2", "Foreign ordinary user")).toThrow(TrustedInvocationContextError);
+    for (const untrusted of [{ ...invocation }, createSystemInvocation({ kind: "job", name: "indexer" }),
+      createIntegrationInvocation("credential", "org-2")]) {
+      expect(() => assertTrustedInvocationMatchesScope(principal, untrusted, "org-2", "No human scope")).toThrow(TrustedInvocationContextError);
+    }
+  });
+
+  it("derives a frozen Agent target only from trusted User provenance and retains strict Home defaults", () => {
+    const principal: AuthContext = { ...auth(), roles: [{ roleId: "platform-admin", projectId: null }], permissions: ["platform:access"] };
+    const caller = withOperatingOrganization(createUserInvocation(principal), { id: "org-2", name: "Target" });
+    const input: AgentInvocationInput = { sessionId: "scope-session", toolCallId: "scope-tool", approval: { required: true, approvalId: "scope-approval" } };
+    const agent = createAgentInvocationFromUser(caller, input);
+    expect(agent).toMatchObject({ initiator: "agent", principal: { user: { id: "user-1", organizationId: "org-1" }, organization: { id: "org-1" } },
+      operatingOrganization: { id: "org-2", name: "Target" }, sessionId: "scope-session", toolCallId: "scope-tool", approvalId: "scope-approval" });
+    expect(Object.isFrozen(agent)).toBe(true);
+    expect(Object.isFrozen(agent.principal.user)).toBe(true);
+    expect(Object.isFrozen(agent.operatingOrganization)).toBe(true);
+    expect(assertTrustedInvocationContext(agent)).toBe(agent);
+    expect(assertTrustedInvocationMatchesScope(principal, agent, "org-2", "Agent resource")).toBe(agent);
+    expect(() => assertTrustedInvocationMatchesAuth(principal, agent, "Legacy home write")).toThrow(TrustedInvocationContextError);
+    expect(() => assertTrustedInvocationMatchesScope(principal, agent, "org-1", "Wrong Agent resource")).toThrow(TrustedInvocationContextError);
+    expect(() => assertTrustedInvocationMatchesScope(auth(), agent, "org-2", "Revoked platform authority")).toThrow(TrustedInvocationContextError);
+    const home = createAgentInvocationFromUser(createUserInvocation(auth()), input);
+    expect(home.operatingOrganization).toBeUndefined();
+    expect(assertTrustedInvocationMatchesAuth(auth(), home, "Legacy home write")).toBe(home);
+    const forgedInput = { ...input, operatingOrganization: { id: "org-3", name: "Client target" } };
+    expect(createAgentInvocationFromUser(caller, forgedInput).operatingOrganization?.id).toBe("org-2");
+    expect(createAgentInvocationFromUser(createUserInvocation(auth()), forgedInput).operatingOrganization).toBeUndefined();
+    const read = createAgentInvocationFromUser(caller, { ...input, approval: { required: false } });
+    expect(() => assertTrustedMutationInvocation(read, "Scoped write without approval")).toThrow(TrustedInvocationContextError);
+    for (const source of [{ ...caller }, auth(), agent, createSystemInvocation({ kind: "service", name: "system" }), createIntegrationInvocation("machine", "org-2")]) {
+      expect(() => createAgentInvocationFromUser(source as never, input)).toThrow(TrustedInvocationContextError);
+    }
   });
 
   it("constructs a frozen user invocation with the authenticated principal", () => {

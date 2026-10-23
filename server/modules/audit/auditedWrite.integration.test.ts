@@ -3,7 +3,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../../shared/database/client";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { createEphemeralTestDatabase, isTestDatabaseAvailable, type EphemeralTestDatabase } from "../../testing/testDatabase";
-import { createAgentInvocation, createSystemInvocation, createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
+import { assertTrustedInvocationMatchesScope, createAgentInvocation, createAgentInvocationFromUser, createSystemInvocation, createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
+import { resolveOperatingContext } from "../auth/operatingContext";
+import { seedBaselineAuthCatalog } from "../auth/baselineCatalog";
 import type { AuthContext } from "../auth/types";
 import { withAuditedWrite, type AuditSpec } from "./auditedWrite";
 
@@ -68,5 +70,32 @@ describe.skipIf(!databaseAvailable)("audited write trusted provenance (PostgreSQ
       } },
       { actor_type: "user", actor_user_id: "audit-user", metadata: { initiator: "user" } }
     ]);
+  });
+
+  it("commits a target-organization write and Agent audit under the actual Home actor", async () => {
+    const target = { id: "audit-target", name: "Target organization" };
+    await seedCoreGraph(db, { organization: target });
+    await seedBaselineAuthCatalog(db);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values('audit-platform','audit-user','audit-org','platform-admin')");
+    const platform: AuthContext = { ...principal, roles: [{ roleId: "platform-admin", projectId: null }], permissions: ["platform:access"] };
+    const user = await resolveOperatingContext(db, createUserInvocation(platform), target.id);
+    const agent = createAgentInvocationFromUser(user, {
+      sessionId: "scoped-session", toolCallId: "scoped-tool", approval: { required: true, approvalId: "scoped-approval" }
+    });
+    const invocation = assertTrustedInvocationMatchesScope(platform, agent, target.id, "Target organization write");
+    await withAuditedWrite(db, invocation, { requestId: "scoped-agent-audit" }, async (tx) => {
+      await tx.query("update organizations set name=$2 where id=$1", [target.id, "Updated target"]);
+      return { result: undefined, audit: { ...spec, targetType: "organization", targetId: target.id } };
+    });
+    const event = (await db.query<Record<string, unknown>>(
+      "select organization_id,actor_user_id,actor_type,metadata,historical_attribution from audit_events where trace_id=$1", ["scoped-agent-audit"]
+    )).rows[0];
+    expect(event).toMatchObject({ organization_id: "audit-target", actor_user_id: "audit-user", actor_type: "agent",
+      metadata: { initiator: "agent", sessionId: "scoped-session", toolCallId: "scoped-tool", approvalId: "scoped-approval",
+        actorHomeOrganizationId: "audit-org", operatingOrganizationId: "audit-target" },
+      historical_attribution: { organization: { id: "audit-target", name: "Updated target" },
+        actors: { actor_user_id: { id: "audit-user", source: "recorded" } } } });
+    expect((await db.query("select organization_id from users where id=$1", ["audit-user"])).rows).toEqual([{ organization_id: "audit-org" }]);
+    expect((await db.query("select name from organizations where id=$1", [target.id])).rows).toEqual([{ name: "Updated target" }]);
   });
 });
