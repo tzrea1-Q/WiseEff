@@ -69,7 +69,7 @@ async function load(db: Database, auth: AuthContext, projectId: string, requestI
 }
 async function currentReviewer(db: Database, auth: AuthContext, projectId: string,
   context: Context, requestId: string) {
-  if (canEditParameters(auth, projectId) && canReviewParameters(auth)
+  if (canReviewParameters(auth)
     && canReviewParameterStage(auth, projectId, "software_review")
     && await hasCurrentCanonicalReviewRole(db, {
       organizationId: parameterOrganizationId(auth), projectId, userId: auth.user.id

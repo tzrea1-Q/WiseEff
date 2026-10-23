@@ -256,8 +256,7 @@ export function registerParameterRoutes(
     const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const scope = { invocation: parameterInvocation(auth) };
-    const items = (await listProjects(db, { organizationId: parameterOrganizationId(auth, scope) }))
-      .filter((project) => auth.roles.some((role) => role.projectId === null || role.projectId === project.id));
+    const items = await listProjects(db, { organizationId: parameterOrganizationId(auth, scope) });
 
     return { status: 200, body: { items } };
   });
@@ -497,11 +496,7 @@ export function registerParameterRoutes(
     if (resolved.projectId && !project) {
       throw new ApiError("NOT_FOUND", "Project was not found for this organization.", { projectId: resolved.projectId });
     }
-    const projects = project ? [project] : (await listProjects(db, { organizationId: parameterOrganizationId(auth) }))
-      .filter((candidate) => auth.roles.some((role) => role.projectId === null || role.projectId === candidate.id));
-    if (project && !auth.roles.some((role) => role.projectId === null || role.projectId === project.id)) {
-      throw new ApiError("FORBIDDEN", "Project parameter scope is required.");
-    }
+    const projects = project ? [project] : await listProjects(db, { organizationId: parameterOrganizationId(auth) });
     if (resolved.risk !== undefined) return { status: 200, body: { items: [] } };
     const modules = await listParameterModulesForAuth(db, auth);
     const modulesById = new Map(modules.map((module) => [module.id, module]));

@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createWiseEffServer } from "../../app";
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../shared/database/client";
@@ -17,6 +18,7 @@ import { createRouter } from "../../shared/http/router";
 import { registerParameterCatalogApi } from "./productionWire";
 import { createUsageQueries } from "../parameter-bindings/usage";
 import { createUsageProjectionFromQueries } from "./read/ports";
+import { catalogDefinitionListResponseSchema, catalogDefinitionResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
 
 const definitionId = ParameterDefinitionId("pdef_acme_power_iin_max");
 const revisionId = DefinitionRevisionId("drev_acme_power_iin_max_1");
@@ -52,9 +54,9 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     if (!pool) throw new Error("real PostgreSQL pool required");
     pool.on("connect", (client) => {
       const query = client.query;
-      client.query = function (...args: Parameters<typeof query>) {
+      client.query = function (this: PoolClient, ...args: unknown[]) {
         const input = args[0];
-        const sql = typeof input === "string" ? input : input && "text" in input ? String(input.text) : "";
+        const sql = typeof input === "string" ? input : input && typeof input === "object" && "text" in input ? String(input.text) : "";
         if (measuring && /parameter_catalog\.(organization_subject_registrations|subject_placements|parameter_review_evidence|parameter_review_items|current_project_parameter_bindings|project_parameter_bindings|project_parameter_values)\b/.test(sql)) {
           businessSql.push(sql);
           if (/from parameter_catalog\.current_project_parameter_bindings binding/.test(sql)) {
@@ -128,9 +130,10 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     usageParameters = [];
     measuring = true;
     const listed = await fetch(`${baseUrl}/api/v2/catalog/definitions?registration=active&limit=25`, { headers });
-    const body = await listed.json();
+    const body = catalogDefinitionListResponseSchema.parse(await listed.json());
     measuring = false;
     const item = body.items?.find((entry: { id: string }) => entry.id === definitionId);
+    if (!item) throw new Error("Expected the installed definition in the Catalog response");
     records.push({ actor: actor.id, actualDatabaseRoleBindings: actualRoleBindings.get(actor.id), organizationId: actor.organizationId, expected: { projectCount: actor.projects, currentValueCount: actor.current }, actual: item?.usageSummary, status: listed.status, businessQueryCount: businessSql.length, usageParameters });
     expect(listed.status).toBe(200);
     expect(item?.usageSummary).toMatchObject({ policyCount: null, projectCount: actor.projects, currentValueCount: actor.current });
@@ -138,10 +141,10 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     expect(usageParameters).toHaveLength(1);
     const detail = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}`, { headers });
     expect(detail.status).toBe(200);
-    expect((await detail.json()).item).toEqual(item);
+    expect(catalogDefinitionResponseSchema.parse(await detail.json()).item).toEqual(item);
     const named = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}`, { headers: { ...headers, "X-WiseEff-Catalog-Release": releaseId } });
     expect(named.status).toBe(200);
-    expect((await named.json()).item.usageSummary).toEqual(item.usageSummary);
+    expect(catalogDefinitionResponseSchema.parse(await named.json()).item.usageSummary).toEqual(item.usageSummary);
     // One installed release: named=current, not historical-release evidence.
     expect(getRootPostgresPool(root)?.waitingCount).toBe(0);
   });
@@ -149,12 +152,13 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
   it("R2-SCOPE-02 request fields cannot widen the actual database project binding", async () => {
     const response = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}`, { headers: { authorization: "Bearer scope-only-a", "X-Role": "admin", "X-Project-Id": "scope-project-b", "X-Project-Scope": "all", "X-Actor-Kind": "platform-admin" } });
     expect(response.status).toBe(200);
-    expect((await response.json()).item.usageSummary).toMatchObject({ policyCount: null, projectCount: 1, currentValueCount: 1 });
+    expect(catalogDefinitionResponseSchema.parse(await response.json()).item.usageSummary).toMatchObject({ policyCount: null, projectCount: 1, currentValueCount: 1 });
   });
 
-  it("R2-SCOPE-03 identity-provider admin claims without a database grant do not permit a read", async () => {
+  it("R2-SCOPE-03 a roleless organization member can read without gaining claimed admin usage scope", async () => {
     const response = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}`, { headers: { authorization: "Bearer scope-no-role" } });
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(200);
+    expect(catalogDefinitionResponseSchema.parse(await response.json()).item.usageSummary).toMatchObject({ policyCount: null, projectCount: 0, currentValueCount: 0 });
   });
 
   it("R2-SCOPE-04 an explicit empty project selection returns true zero through the real usage port", async () => {
@@ -178,7 +182,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     try {
       const response = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}`, { headers: { authorization: "Bearer scope-only-a" } });
       expect(response.status).toBe(200);
-      expect((await response.json()).item.usageSummary).toMatchObject({ policyCount: null, projectCount: 1, currentValueCount: 2 });
+      expect(catalogDefinitionResponseSchema.parse(await response.json()).item.usageSummary).toMatchObject({ policyCount: null, projectCount: 1, currentValueCount: 2 });
     } finally {
       await pool.query("update public.user_role_bindings set project_id='scope-project-a' where id='scope-role-only-a-0'");
     }

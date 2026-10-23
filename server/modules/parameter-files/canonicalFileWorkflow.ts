@@ -1074,7 +1074,7 @@ export async function recheckCanonicalCandidateBatchForReviewInTransaction(
   auth: AuthContext,
   input: { projectId: string; candidateId: string; expectedProofToken: string }
 ): Promise<CanonicalSourceBatchPrepareDto> {
-  if (!canReviewParameters(auth) || !canEditParameters(auth, input.projectId)
+  if (!canReviewParameters(auth)
     || !canReviewParameterStage(auth, input.projectId, "software_review")
     || !await hasCurrentCanonicalReviewRole(tx, {
       organizationId: parameterOrganizationId(auth), projectId: input.projectId, userId: auth.user.id
@@ -1523,7 +1523,7 @@ export async function recheckCanonicalConflictDecisionForReviewInTransaction(
   auth: AuthContext,
   input: { projectId: string; candidateId: string; selectedBindingId: string; selectedDraftId: string; choice: CanonicalConflictChoice }
 ): Promise<CanonicalConflictDecisionDto> {
-  if (!canReviewParameters(auth) || !canEditParameters(auth, input.projectId)
+  if (!canReviewParameters(auth)
     || !canReviewParameterStage(auth, input.projectId, "software_review")
     || !await hasCurrentCanonicalReviewRole(tx, {
       organizationId: parameterOrganizationId(auth), projectId: input.projectId, userId: auth.user.id

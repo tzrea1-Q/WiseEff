@@ -40,6 +40,9 @@ const reviewer = makeTestAuthContext({ userId: reviewerId, organizationId,
 const reviewerWithoutEdit = makeTestAuthContext({ userId: reviewerId, organizationId,
   permissions: ["parameter:view", "parameter:review"],
   roles: [{ roleId: "software-committer", projectId }] });
+const reviewerWithoutReview = makeTestAuthContext({ userId: reviewerId, organizationId,
+  permissions: ["parameter:view", "parameter:edit"],
+  roles: [{ roleId: "software-committer", projectId }] });
 const otherReviewer = makeTestAuthContext({ userId: otherReviewerId, organizationId,
   permissions: ["parameter:view", "parameter:edit", "parameter:review"],
   roles: [{ roleId: "software-committer", projectId }] });
@@ -197,7 +200,8 @@ describe("#906 C reviewed JSON member removal HTTP entry", () => {
     expect((await reviewWithoutProof(pendingId, foreign)).status).toBe(404);
     expect((await reviewWithoutProof(pendingId, admin)).status).toBe(404);
     expect((await reviewWithoutProof(pendingId, otherReviewer)).status).toBe(404);
-    expect((await reviewWithoutProof(pendingId, reviewerWithoutEdit)).status).toBe(403);
+    expect((await reviewWithoutProof(pendingId, reviewerWithoutReview)).status).toBe(403);
+    expect((await reviewWithoutProof(pendingId, reviewerWithoutEdit)).status).toBe(400);
     const missingProof = await reviewWithoutProof(pendingId);
     expect(missingProof.status).toBe(400);
     expect(missingProof.body).toMatchObject({ error: { details: {
@@ -239,7 +243,8 @@ describe("#906 C reviewed JSON member removal HTTP entry", () => {
     expect((await requestJson(route(wrongProject, null),
       `/api/v2/projects/${projectId}/parameter-value-change-requests/${pendingId}/member-removal`)).status).toBe(404);
     expect((await review(pendingId, pendingDigest, "approve", wrongProject, null)).status).toBe(404);
-    expect((await review(pendingId, pendingDigest, "reject", reviewerWithoutEdit, null)).status).toBe(403);
+    expect((await review(pendingId, pendingDigest, "reject", reviewerWithoutReview, null)).status).toBe(403);
+    expect((await review(pendingId, pendingDigest, "approve", reviewerWithoutEdit, null)).status).toBe(500);
     expect((await db.query<{ count: number }>(`select count(*)::int as count from audit_events
       where kind='parameter-source-permission-denied' and target_id=$1`,
     [pendingId])).rows[0]!.count).toBeGreaterThan(0);

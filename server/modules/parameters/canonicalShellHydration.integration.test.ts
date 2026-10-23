@@ -19,6 +19,9 @@ import { createParameterRuntimeActions } from "@/application/parameters/paramete
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import { createParameterCatalogClient } from "@/infrastructure/http/parameterCatalogClient";
 import { createApiClient } from "@/infrastructure/http/apiClient";
+import { projectListResponseSchema } from "../contracts/dtoSchemas/parameters";
+import { catalogProjectBindingDtoSchema } from "../contracts/dtoSchemas/parameterCatalog";
+import { errorEnvelopeSchema, itemsEnvelopeSchema } from "../contracts/dtoSchemas/envelopes";
 
 const organizationId = "org-shell-1075";
 const projectId = "project-shell-1075";
@@ -77,7 +80,7 @@ describe("#1075 canonical shell source on the assembled API server", () => {
     expect(await countLegacyProjectBindings(db, { organizationId, projectIds: [projectId] })).toBe(0);
     const options = {
       baseUrl,
-      fetchImpl: async (input: RequestInfo | URL, init?: RequestInit) => {
+      fetchImpl: async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
         const url = new URL(String(input));
         if (url.pathname === "/api/v1/parameters") return new Response('{"error":{"code":"INTERNAL_ERROR","message":"Historical reader unavailable"}}', { status: 500 });
         return fetch(input, { ...init, headers: { ...init?.headers, "X-WiseEff-User": userId } });
@@ -101,7 +104,7 @@ describe("#1075 canonical shell source on the assembled API server", () => {
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PARAMETER_RUNTIME" }));
   });
 
-  it("hydrates only projects in the reader's scope without requesting inaccessible Bindings", async () => {
+  it("hydrates organization-visible projects while keeping foreign Bindings inaccessible", async () => {
     const readerId = "user-shell-scoped-1070ci";
     const hiddenProjectId = "project-shell-hidden-1070ci";
     await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Scoped reader','Software user',true)", [readerId, organizationId]);
@@ -111,11 +114,11 @@ describe("#1075 canonical shell source on the assembled API server", () => {
     await createProject(db, { organizationId: "org-shell-other-1070ci", id: "project-shell-other-1070ci", name: "Other tenant project", code: "OTHER1070CI" });
     const adminProjects = await fetch(`${baseUrl}/api/v1/projects`, { headers: { "X-WiseEff-User": userId } });
     expect(adminProjects.status).toBe(200);
-    expect((await adminProjects.json()).items.map((project: { id: string }) => project.id).sort()).toEqual([projectId, hiddenProjectId].sort());
+    expect(projectListResponseSchema.parse(await adminProjects.json()).items.map(project => project.id).sort()).toEqual([projectId, hiddenProjectId].sort());
     const unexpectedResponses: number[] = [];
     const options = {
       baseUrl,
-      fetchImpl: async (input: RequestInfo | URL, init?: RequestInit) => {
+      fetchImpl: async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
         const response = await fetch(input, { ...init, headers: { ...init?.headers, "X-WiseEff-User": readerId } });
         if (!response.ok) unexpectedResponses.push(response.status);
         return response;
@@ -123,17 +126,21 @@ describe("#1075 canonical shell source on the assembled API server", () => {
     };
     const projects = await options.fetchImpl(`${baseUrl}/api/v1/projects`);
     expect(projects.status).toBe(200);
-    expect((await projects.json()).items).toEqual([{ id: projectId, name: "Canonical-only shell project", code: "SHELL1075" }]);
+    expect(projectListResponseSchema.parse(await projects.json()).items).toEqual([{ id: projectId, name: "Canonical-only shell project", code: "SHELL1075" },
+      { id: hiddenProjectId, name: "Hidden shell project", code: "HIDDEN1070CI" }]);
     const dispatch = vi.fn();
     const runtime = createParameterRuntimeActions({
       runtimeMode: "api", dispatch,
       repository: createHttpParameterRepository(createApiClient(options)),
       canonicalRepository: createParameterCatalogClient(options)
     });
-    expect(await runtime.refresh()).toMatchObject({ projects: [{ id: projectId }], parameters: [{ id: bindingId }], parameterDrafts: [] });
+    expect(await runtime.refresh()).toMatchObject({ projects: [{ id: projectId }, { id: hiddenProjectId }], parameters: [{ id: bindingId }], parameterDrafts: [] });
     expect(unexpectedResponses).toEqual([]);
-    const hidden = await options.fetchImpl(`${baseUrl}/api/v2/projects/${hiddenProjectId}/parameter-bindings`);
-    expect(hidden.status).toBe(403);
-    expect((await hidden.json()).error.code).toBe("FORBIDDEN");
+    const organizationRead = await options.fetchImpl(`${baseUrl}/api/v2/projects/${hiddenProjectId}/parameter-bindings`);
+    expect(organizationRead.status).toBe(200);
+    expect(itemsEnvelopeSchema(catalogProjectBindingDtoSchema).parse(await organizationRead.json()).items).toEqual([]);
+    const foreign = await options.fetchImpl(`${baseUrl}/api/v2/projects/project-shell-other-1070ci/parameter-bindings`);
+    expect(foreign.status).toBe(404);
+    expect(errorEnvelopeSchema.parse(await foreign.json()).error.code).toBe("NOT_FOUND");
   });
 });

@@ -459,7 +459,7 @@ export async function applyReviewedCanonicalMemberRemoval(
     if (!review.requestId.trim() || (direct ? review.submitterUserId !== auth.user.id : review.reviewerUserId !== auth.user.id
       || review.submitterUserId === auth.user.id)
       || frozen.organizationId !== parameterOrganizationId(auth)
-      || !canEditParameters(auth, frozen.projectId) || (!direct && (!canReviewParameters(auth)
+      || (direct ? !canEditParameters(auth, frozen.projectId) : (!canReviewParameters(auth)
       || !canReviewParameterStage(auth, frozen.projectId, "software_review")
       || !await hasCurrentCanonicalReviewRole(tx, {
         organizationId: parameterOrganizationId(auth), projectId: frozen.projectId, userId: auth.user.id

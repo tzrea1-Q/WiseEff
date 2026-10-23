@@ -8,7 +8,7 @@ import {
   refreshAuthoritativeSource,
   validCatalogReleaseBundle,
 } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
-import type { CatalogReleaseBundle, CatalogReleaseDefinitionDocument } from "../../catalog-kernel/compiler/types";
+import type { CatalogReleaseBundle } from "../../catalog-kernel/compiler/types";
 import {
   createCatalogKernel,
   jsonCatalogReleaseSource,
@@ -67,18 +67,17 @@ const firstReleaseBundle = (): CatalogReleaseBundle => {
 };
 
 const successorWithNewRevisionBundle = (): CatalogReleaseBundle => {
-  const bundle = structuredClone(validCatalogReleaseBundle());
-  const release = bundle.releases.find((candidate) => candidate.manifest.release.id === bundle.targetReleaseId);
-  if (!release) throw new Error("successor release missing");
-  const definition = release.documents.find(
-    (document): document is CatalogReleaseDefinitionDocument => document.kind === "definition",
-  );
+  const bundle = validCatalogReleaseBundle();
+  const original = bundle.releases.find((candidate) => candidate.manifest.release.id === bundle.targetReleaseId);
+  if (!original) throw new Error("successor release missing");
+  const release: Parameters<typeof refreshAuthoritativeSource>[0] = JSON.parse(JSON.stringify(original));
+  const definition = release.documents.find(document => document.kind === "definition");
   if (!definition) throw new Error("successor Definition missing");
   definition.content.revision.id = REVISION_2;
   definition.content.revision.number = 2;
   definition.content.revision.documentation = "Issue #899 successor revision.";
   refreshAuthoritativeSource(release);
-  return bundle;
+  return { ...bundle, releases: bundle.releases.map(candidate => candidate === original ? release : candidate) };
 };
 
 const compileOrThrow = (bundle: CatalogReleaseBundle) => {
@@ -345,9 +344,9 @@ describe("Issue #899 canonical topology queries", () => {
     });
   });
 
-  it("returns each canonical source instance and applies project scope before compare", async () => {
+  it("returns each organization-visible canonical source instance before compare", async () => {
     const scoped = await getBindingCompare(apiDb, projectAReader, { projectId: PROJECT_A, bindingId: bindingA.id });
-    expect(scoped.items.map((item) => item.bindingId)).toEqual([bindingASibling.id]);
+    expect(scoped.items.map((item) => item.bindingId).sort()).toEqual([bindingASibling.id, bindingB.id].sort());
     expect(scoped.items[0]).toMatchObject({
       projectId: PROJECT_A,
       definitionId: DEFINITION_ID,
@@ -365,11 +364,11 @@ describe("Issue #899 canonical topology queries", () => {
     });
   });
 
-  it("rejects project and tenant scope through the service on the production-like reader connection", async () => {
-    await expect(getBindingCompare(apiDb, projectAReader, { projectId: PROJECT_B, bindingId: bindingB.id }))
-      .rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(getBindingHistory(apiDb, projectBReader, { projectId: PROJECT_A, bindingId: bindingA.id }))
-      .rejects.toMatchObject({ code: "FORBIDDEN" });
+  it("permits organization project reads and rejects foreign scope on the production-like reader connection", async () => {
+    const comparison = await getBindingCompare(apiDb, projectAReader, { projectId: PROJECT_B, bindingId: bindingB.id });
+    expect(comparison.items.map(item => item.bindingId).sort()).toEqual([bindingA.id, bindingASibling.id].sort());
+    expect(await getBindingHistory(apiDb, projectBReader, { projectId: PROJECT_A, bindingId: bindingA.id }))
+      .toMatchObject({ items: expect.any(Array) });
     await expect(getBindingCompare(apiDb, foreignReader, { projectId: FOREIGN_PROJECT, bindingId: bindingA.id }))
       .rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(getBindingHistory(apiDb, foreignReader, { projectId: FOREIGN_PROJECT, bindingId: bindingA.id }))

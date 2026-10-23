@@ -66,6 +66,7 @@ function makeDb(rowsForQuery: (text: string, values: unknown[]) => unknown[] = (
     if (text.includes("users.id as user_id")) {
       return { rows: [authRow(auth)] as Row[], rowCount: 1 };
     }
+    if (text.includes("from project_members")) return { rows: [], rowCount: 0 };
     return { rows: rowsForQuery(text, values) as Row[], rowCount: 1 };
   };
   const tx: Database = { query, transaction: async (fn) => fn(tx) };

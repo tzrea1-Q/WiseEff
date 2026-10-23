@@ -49,9 +49,11 @@ const reviewer = makeTestAuthContext({ userId: REVIEWER, organizationId: ORG,
   permissions: ["parameter:view", "parameter:edit", "parameter:review"],
   roles: [{ roleId: "software-committer", projectId: PROJECT }] });
 const authorA = makeTestAuthContext({ userId: AUTHOR_A, organizationId: ORG,
+  projectMemberships: [{ projectId: PROJECT, roles: ["software-user"] }],
   permissions: ["parameter:view", "parameter:edit"],
   roles: [{ roleId: "software-user", projectId: PROJECT }] });
 const authorB = makeTestAuthContext({ userId: AUTHOR_B, organizationId: ORG,
+  projectMemberships: [{ projectId: PROJECT, roles: ["software-user"] }],
   permissions: ["parameter:view", "parameter:edit"],
   roles: [{ roleId: "software-user", projectId: PROJECT }] });
 const cleanups: Array<() => Promise<void>> = [];
