@@ -16,6 +16,7 @@ import type {
  */
 
 type ReferenceRow = {
+  historical_attribution?: KnowledgeParameterReferenceDto["historicalAttribution"];
   entry_id: string;
   parameter_spec_id: string;
   created_by_user_id: string | null;
@@ -64,6 +65,7 @@ const REFERENCE_SPEC_JOINS = `
 
 function toReferenceDto(row: ReferenceRow): KnowledgeLegacySpecReferenceDto {
   return {
+    historicalAttribution: row.historical_attribution,
     kind: "legacy-spec",
     specId: row.parameter_spec_id,
     propertyKey: row.property_key ?? row.parameter_spec_id,
@@ -76,6 +78,7 @@ function toReferenceDto(row: ReferenceRow): KnowledgeLegacySpecReferenceDto {
 }
 
 type DefinitionReferenceRow = {
+  historical_attribution?: KnowledgeParameterReferenceDto["historicalAttribution"];
   entry_id: string;
   definition_id: string;
   created_by_user_id: string | null;
@@ -88,6 +91,7 @@ type CatalogDefinitionReader = (
 
 function unavailableDefinitionReference(row: DefinitionReferenceRow): KnowledgeDefinitionReferenceDto {
   return {
+    historicalAttribution: row.historical_attribution,
     kind: "definition",
     definitionId: row.definition_id,
     availability: "unavailable",
@@ -113,6 +117,7 @@ async function mapDefinitionReferenceRows(
       return {
         entryId: row.entry_id,
         reference: {
+          historicalAttribution: row.historical_attribution,
           kind: "definition",
           definitionId: row.definition_id,
           availability: "current",
@@ -146,6 +151,7 @@ export async function loadParameterReferencesByEntryIds(
     `
     select
       r.entry_id,
+      r.historical_attribution,
       r.parameter_spec_id,
       r.created_by_user_id,
       r.created_at,
@@ -161,7 +167,7 @@ export async function loadParameterReferencesByEntryIds(
     ),
     db.query<DefinitionReferenceRow>(
       `
-      select entry_id, definition_id, created_by_user_id, created_at
+      select entry_id, definition_id, created_by_user_id, created_at, historical_attribution
       from knowledge_definition_references
       where organization_id = $1
         and entry_id = any($2::uuid[])

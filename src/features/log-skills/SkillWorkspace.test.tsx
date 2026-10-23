@@ -814,7 +814,7 @@ describe("skill workspace", () => {
     expect(within(overview).queryByText("当前版本")).not.toBeInTheDocument();
     expect(within(overview).queryByText("草稿状态")).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "已配置内容" })).not.toBeInTheDocument();
-    expect(within(overview).getByText(/^v2 · 系统 发布于 \d{4}\/\d{2}\/\d{2} \d{2}:\d{2}$/)).toBeVisible();
+    expect(within(overview).getByText(/^v2 · 历史署名未记录 发布于 \d{4}\/\d{2}\/\d{2} \d{2}:\d{2}$/)).toBeVisible();
     expect(within(overview).getByText("有帮助率")).toBeVisible();
     expect(within(overview).getByText("最小 4096，上限 8000")).toBeVisible();
     await userEvent.hover(screen.getByRole("button", { name: "令牌预算说明" }));

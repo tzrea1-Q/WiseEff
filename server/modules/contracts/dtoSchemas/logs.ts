@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { historicalAttributionSchema } from "./historicalAttribution";
 import { logDeletionPreviewSchema, logDeletionStatusSchema } from "../../../../src/domain/logs/deletionPreview";
 import { MAX_FILE_ROLE_LENGTH } from "../../../../src/domain/logs/fileApplicability";
 import { LOG_SKILL_RECOMMENDATION_LIMITS } from "../../logs/skillRecommendation";
@@ -83,6 +84,7 @@ export const logEvidenceDtoSchema = z.object({
 });
 
 export const logRecordDtoSchema = z.object({
+  historicalAttribution: historicalAttributionSchema.optional(),
   skillSelection: logSkillSelectionSchema.optional(),
   createdByCredentialId: z.string().optional(),
   createdByCredentialName: z.string().optional(),
@@ -184,6 +186,7 @@ export const logDomainDtoSchema = z.object({
 });
 
 export const logSkillRevisionDtoSchema = z.object({
+  historicalAttribution: historicalAttributionSchema.optional(),
   parseTestRun: parseTestRunSchema.optional(),
   id: z.string(), skillId: z.string(), number: z.number().int().positive(),
   status: z.enum(["draft", "published", "superseded"]), spec: logSkillSpecSchema,

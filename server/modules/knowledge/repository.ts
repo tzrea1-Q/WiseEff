@@ -18,6 +18,7 @@ import type {
 } from "./types";
 
 type KnowledgeEntryRow = {
+  historical_attribution?: KnowledgeEntryDto["historicalAttribution"];
   origin: KnowledgeEntryDto["origin"];
   id: string;
   organization_id: string;
@@ -40,6 +41,7 @@ type KnowledgeEntryRow = {
 };
 
 type KnowledgeRevisionRow = {
+  historical_attribution?: KnowledgeRevisionDto["historicalAttribution"];
   id: string;
   entry_id: string;
   organization_id: string;
@@ -122,6 +124,7 @@ function toFileDto(row: KnowledgeFileRow): KnowledgeFileDto {
 
 function toRevisionDto(row: KnowledgeRevisionRow): KnowledgeRevisionDto {
   return {
+    historicalAttribution: row.historical_attribution,
     id: row.id,
     entryId: row.entry_id,
     organizationId: row.organization_id,
@@ -145,6 +148,7 @@ function toEntryDto(
   }
 ): KnowledgeEntryDto {
   return {
+    historicalAttribution: row.historical_attribution,
     id: row.id,
     organizationId: row.organization_id,
     title: row.title,

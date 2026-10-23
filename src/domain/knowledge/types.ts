@@ -1,3 +1,5 @@
+import type { HistoricalAttribution } from "../identity/historicalAttribution";
+
 export const knowledgeContentForms = ["markdown", "file"] as const;
 export const knowledgeOrigins = ["authored", "uploaded", "distilled", "agent-drafted", "imported"] as const;
 export type KnowledgeOrigin = (typeof knowledgeOrigins)[number];
@@ -74,6 +76,7 @@ export type KnowledgeFileMeta = {
 export type ParameterSpecReferenceLifecycle = "draft" | "active" | "deprecated";
 
 type KnowledgeReferenceFields = {
+  historicalAttribution?: HistoricalAttribution;
   propertyKey: string | null;
   displayName: string | null;
   /** Attribution-subject display name (the module humans know the definition by). */
@@ -102,6 +105,7 @@ export type KnowledgeParameterReference = KnowledgeReferenceFields & (
 );
 
 export type KnowledgeEntry = {
+  historicalAttribution?: HistoricalAttribution;
   pendingSuggestionCount?: number;
   origin: KnowledgeOrigin;
   id: string;
@@ -130,6 +134,7 @@ export type KnowledgeEntry = {
 };
 
 export type KnowledgeRevision = {
+  historicalAttribution?: HistoricalAttribution;
   id: string;
   entryId: string;
   revisionNumber: number;

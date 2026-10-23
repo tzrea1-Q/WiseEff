@@ -13,6 +13,7 @@ import type {
 } from "./types";
 
 type AgentSessionRow = {
+  historical_attribution?: AgentSessionRecord["historicalAttribution"];
   id: string;
   organization_id: string;
   project_id: string | null;
@@ -55,6 +56,7 @@ type AgentToolCallRow = {
 };
 
 type AgentApprovalRow = {
+  historical_attribution?: AgentApprovalDto["historicalAttribution"];
   id: string;
   session_id?: string;
   organization_id?: string;
@@ -86,6 +88,7 @@ export type AgentApprovalRecord = AgentApprovalDto & {
 };
 
 export type AgentSessionRecord = {
+  historicalAttribution?: import("../../../src/domain/identity/historicalAttribution").HistoricalAttribution;
   id: string;
   organizationId: string;
   projectId?: string;
@@ -187,6 +190,7 @@ function toAgentContext(value: unknown): AgentContext {
 
 function toAgentSessionRecord(row: AgentSessionRow): AgentSessionRecord {
   return {
+    historicalAttribution: row.historical_attribution,
     id: row.id,
     organizationId: row.organization_id,
     projectId: row.project_id ?? undefined,
@@ -242,6 +246,7 @@ function toAgentToolCallRecord(row: AgentToolCallRow): AgentToolCallRecord {
 
 function toAgentApprovalDto(row: AgentApprovalRow): AgentApprovalDto {
   return {
+    historicalAttribution: row.historical_attribution,
     id: row.id,
     toolCallId: row.tool_call_id,
     title: row.title,
@@ -292,7 +297,7 @@ export async function getAgentSession(
 ): Promise<AgentSessionRecord | null> {
   const result = await db.query<AgentSessionRow>(
     `
-    select id, organization_id, project_id, actor_user_id, page_key, role_id, context, status, title, created_at, updated_at
+    select id, organization_id, project_id, actor_user_id, page_key, role_id, context, status, title, created_at, updated_at, historical_attribution
     from agent_sessions
     where organization_id = $1
       and id = $2
@@ -527,7 +532,7 @@ export async function listAgentApprovals(
 ): Promise<AgentApprovalDto[]> {
   const result = await db.query<AgentApprovalRow>(
     `
-    select id, tool_call_id, title, message, status, requested_at, decided_at, decided_by_user_id, decision_reason
+    select id, tool_call_id, title, message, status, requested_at, decided_at, decided_by_user_id, decision_reason, historical_attribution
     from agent_approvals
     where organization_id = $1
       and session_id = $2
@@ -548,7 +553,7 @@ export async function getAgentApproval(
     `
     select
       id, session_id, tool_call_id, organization_id, project_id, title, message, status,
-      requested_at, requested_by_user_id, decided_at, decided_by_user_id, decision_reason
+      requested_at, requested_by_user_id, decided_at, decided_by_user_id, decision_reason, historical_attribution
     from agent_approvals
     where organization_id = $1
       and id = $2

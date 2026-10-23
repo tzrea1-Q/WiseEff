@@ -2,8 +2,10 @@ import { z } from "zod";
 import { batchKnowledgeEntriesBodySchema, createKnowledgeEntryBodySchema, updateKnowledgeEntryBodySchema, openKnowledgeImportSchema, importKnowledgeDocumentSchema, importKnowledgeArchiveSchema } from "../../knowledge/schemas";
 import { knowledgeContentForms, knowledgeOrigins, knowledgeSourceTypes, knowledgeStatuses, knowledgeExtractionStatuses } from "../../knowledge/types";
 import { itemEnvelopeSchema, itemsEnvelopeSchema } from "./envelopes";
+import { historicalAttributionSchema } from "./historicalAttribution";
 
 const referenceFields = {
+  historicalAttribution: historicalAttributionSchema.optional(),
   propertyKey: z.string().nullable(), displayName: z.string().nullable(), driverModule: z.string().nullable(),
   createdByUserId: z.string().nullable(), createdAt: z.string()
 };
@@ -17,6 +19,7 @@ const referenceSchema = z.discriminatedUnion("kind", [
 ]);
 
 export const knowledgeEntryDtoSchema = z.object({
+  historicalAttribution: historicalAttributionSchema.optional(),
   id: z.string().uuid(), organizationId: z.string(), title: z.string(),
   contentForm: z.enum(knowledgeContentForms), status: z.enum(knowledgeStatuses), origin: z.enum(knowledgeOrigins),
   tags: z.array(z.string()), sourceType: z.enum(knowledgeSourceTypes),

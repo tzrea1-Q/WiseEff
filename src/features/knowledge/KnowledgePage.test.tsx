@@ -671,7 +671,10 @@ describe("KnowledgePage", () => {
     const listRevisions = repository.listRevisions.bind(repository);
     vi.spyOn(repository, "listRevisions").mockImplementation(async (entryId) =>
       (await listRevisions(entryId)).map((revision, index) =>
-        index === 0 ? { ...revision, authorUserId: null } : revision
+        index === 0 ? { ...revision, authorUserId: null, historicalAttribution: {
+          organization: { id: "original-org", name: "原组织", source: "recorded" as const },
+          actors: { author_user_id: { id: "original-author", name: "注销前作者", source: "recorded" as const } }
+        } } : revision
       )
     );
     render(
@@ -689,7 +692,7 @@ describe("KnowledgePage", () => {
     const detail = await screen.findByRole("dialog", { name: /快充温控调参经验/ });
     await user.click(within(detail).getByRole("button", { name: "修订历史" }));
 
-    expect(await within(screen.getByRole("dialog", { name: /修订历史/ })).findByText(/已注销用户/)).toBeInTheDocument();
+    expect(await within(screen.getByRole("dialog", { name: /修订历史/ })).findByText(/注销前作者/)).toBeInTheDocument();
   });
 
   it("uploads a file entry and shows its extraction status", async () => {
