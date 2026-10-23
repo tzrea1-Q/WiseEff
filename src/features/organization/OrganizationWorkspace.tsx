@@ -44,7 +44,7 @@ function ResolvedOrganizationWorkspace({ requestedId, workspaceClient, ...props 
 
   if (error) return <SectionError message={error} onRetry={() => setAttempt((value) => value + 1)} />;
   if (!scope || !client) return <SectionSkeleton label="正在进入组织" />;
-  return <>
+  return <div>
     <section className="organization-operating-scope" aria-label="当前操作组织">
       <div><span className="organization-operating-scope__label">当前操作组织</span><strong>{scope.organization.name}</strong><Badge variant="secondary">正常</Badge>
         <code>{scope.organization.id}</code>{foreign ? <span>所属组织：{scope.actor.organization.name}</span> : null}</div>
@@ -59,5 +59,5 @@ function ResolvedOrganizationWorkspace({ requestedId, workspaceClient, ...props 
               setScope((current) => current ? { ...current, organization: { id: organization.id, name: organization.name } } : current);
               if (organization.id === scope.actor.organization.id) await props.onOrganizationUpdated?.(organization);
             }} />}
-  </>;
+  </div>;
 }

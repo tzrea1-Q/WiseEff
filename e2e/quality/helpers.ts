@@ -177,7 +177,7 @@ const ORGANIZATION_VISUAL_CREATED_AT = "2026-08-19T03:53:01.000Z";
  * the read response used by this page is normalized; the database is untouched.
  */
 export async function stabilizeOrganizationVisualClock(page: Page) {
-  await page.route("**/api/v1/organization", async (route) => {
+  await page.route(/\/api\/v1\/organization(?:\?.*)?$/, async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
       return;
