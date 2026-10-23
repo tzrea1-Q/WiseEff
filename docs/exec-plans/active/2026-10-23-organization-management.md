@@ -29,6 +29,8 @@ Update affected English/Chinese companions before each integrated slice is hande
 
 Unchecked means not yet integrated and verified. Initial frontier: #1369, #1385, #1386.
 
+The context foundation and both history slices are integrated. Scoped API/PostgreSQL checks and the history UI walkthrough have passed; aggregate contracts and the pgvector-canonical schema artifact are current. Candidate-wide checks, the provenance correction and independent review remain, so these checkboxes stay open. The directory slice is in progress; administrator succession follows it.
+
 - [ ] [#1369](https://github.com/tzrea1-Q/WiseEff/issues/1369) 前置兼容：真实身份与操作范围分离
 - [ ] [#1370](https://github.com/tzrea1-Q/WiseEff/issues/1370) 组织目录、创建与初始管理员
 - [ ] [#1371](https://github.com/tzrea1-Q/WiseEff/issues/1371) 管理员交接、最后管理员保护与恢复
