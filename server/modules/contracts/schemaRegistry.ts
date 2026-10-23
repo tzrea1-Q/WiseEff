@@ -5,6 +5,7 @@ import { workflowPublicationSchemaRegistry } from "./dtoSchemas/workflowPublicat
 import { platformOrganizationSchemaRegistry } from "./dtoSchemas/platformOrganizations";
 import { organizationTeamSchemaRegistry } from "./dtoSchemas/organizationTeams";
 import { projectMembersSchemaRegistry } from "./dtoSchemas/projectMembers";
+import { organizationInvitationSchemaRegistry } from "./dtoSchemas/organizationInvitations";
 
 export type ContractParameterRef = {
   name: string;
@@ -58,6 +59,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   ...platformOrganizationSchemaRegistry,
   ...organizationTeamSchemaRegistry,
   ...projectMembersSchemaRegistry,
+  ...organizationInvitationSchemaRegistry,
   ...workflowPublicationSchemaRegistry,
   ...parameterDefinitionDeletionSchemaRegistry,
   "auth.localConfig": {
