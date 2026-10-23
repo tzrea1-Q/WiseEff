@@ -27,6 +27,7 @@ export const AUDIT_KIND_LABELS: Record<string, string> = {
   "log-domain-webhook-config": "日志通知配置",
   "log-domain-webhook-test": "日志通知测试",
   "organization-update": "更新组织",
+  "organization-create": "创建组织",
   "organization-operating-scope": "组织操作范围",
   "parameter-definition-reconciliation": "参数定义对齐",
   "parameter-file-rollback": "参数文件回滚",

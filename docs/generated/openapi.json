@@ -36283,6 +36283,81 @@
           "log": {
             "type": "object",
             "properties": {
+              "historicalAttribution": {
+                "type": "object",
+                "properties": {
+                  "organization": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "recorded",
+                          "legacy-current",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "source"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "actors": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "recorded",
+                            "legacy-current",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "organization",
+                  "actors"
+                ],
+                "additionalProperties": false
+              },
               "skillSelection": {
                 "type": "object",
                 "properties": {
@@ -37206,6 +37281,81 @@
           "item": {
             "type": "object",
             "properties": {
+              "historicalAttribution": {
+                "type": "object",
+                "properties": {
+                  "organization": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "recorded",
+                          "legacy-current",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "source"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "actors": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "recorded",
+                            "legacy-current",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "organization",
+                  "actors"
+                ],
+                "additionalProperties": false
+              },
               "skillSelection": {
                 "type": "object",
                 "properties": {
@@ -37991,6 +38141,81 @@
             "items": {
               "type": "object",
               "properties": {
+                "historicalAttribution": {
+                  "type": "object",
+                  "properties": {
+                    "organization": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "recorded",
+                            "legacy-current",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "actors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "name": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "recorded",
+                              "legacy-current",
+                              "unknown"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "source"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "organization",
+                    "actors"
+                  ],
+                  "additionalProperties": false
+                },
                 "skillSelection": {
                   "type": "object",
                   "properties": {
@@ -44009,6 +44234,81 @@
           "log": {
             "type": "object",
             "properties": {
+              "historicalAttribution": {
+                "type": "object",
+                "properties": {
+                  "organization": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "recorded",
+                          "legacy-current",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "source"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "actors": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "recorded",
+                            "legacy-current",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "organization",
+                  "actors"
+                ],
+                "additionalProperties": false
+              },
               "skillSelection": {
                 "type": "object",
                 "properties": {
@@ -45716,6 +46016,81 @@
               "currentRevision": {
                 "type": "object",
                 "properties": {
+                  "historicalAttribution": {
+                    "type": "object",
+                    "properties": {
+                      "organization": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "name": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "recorded",
+                              "legacy-current",
+                              "unknown"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "source"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "actors": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "name": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "recorded",
+                                "legacy-current",
+                                "unknown"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "source"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "organization",
+                      "actors"
+                    ],
+                    "additionalProperties": false
+                  },
                   "parseTestRun": {
                     "type": "object",
                     "properties": {
@@ -47162,6 +47537,81 @@
                   "null"
                 ],
                 "properties": {
+                  "historicalAttribution": {
+                    "type": "object",
+                    "properties": {
+                      "organization": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "name": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "recorded",
+                              "legacy-current",
+                              "unknown"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "source"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "actors": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "name": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "recorded",
+                                "legacy-current",
+                                "unknown"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "source"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "organization",
+                      "actors"
+                    ],
+                    "additionalProperties": false
+                  },
                   "parseTestRun": {
                     "type": "object",
                     "properties": {
@@ -53608,6 +54058,81 @@
           "item": {
             "type": "object",
             "properties": {
+              "historicalAttribution": {
+                "type": "object",
+                "properties": {
+                  "organization": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "recorded",
+                          "legacy-current",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "source"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "actors": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "recorded",
+                            "legacy-current",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "organization",
+                  "actors"
+                ],
+                "additionalProperties": false
+              },
               "parseTestRun": {
                 "type": "object",
                 "properties": {
@@ -55076,6 +55601,81 @@
             "items": {
               "type": "object",
               "properties": {
+                "historicalAttribution": {
+                  "type": "object",
+                  "properties": {
+                    "organization": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "recorded",
+                            "legacy-current",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "actors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "name": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "recorded",
+                              "legacy-current",
+                              "unknown"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "source"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "organization",
+                    "actors"
+                  ],
+                  "additionalProperties": false
+                },
                 "parseTestRun": {
                   "type": "object",
                   "properties": {
@@ -59222,6 +59822,81 @@
           "item": {
             "type": "object",
             "properties": {
+              "historicalAttribution": {
+                "type": "object",
+                "properties": {
+                  "organization": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "recorded",
+                          "legacy-current",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "source"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "actors": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "recorded",
+                            "legacy-current",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "organization",
+                  "actors"
+                ],
+                "additionalProperties": false
+              },
               "id": {
                 "type": "string"
               },
@@ -59508,6 +60183,81 @@
                     "null"
                   ],
                   "properties": {
+                    "historicalAttribution": {
+                      "type": "object",
+                      "properties": {
+                        "organization": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "name": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "recorded",
+                                "legacy-current",
+                                "unknown"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "source"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "actors": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "name": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "source": {
+                                "type": "string",
+                                "enum": [
+                                  "recorded",
+                                  "legacy-current",
+                                  "unknown"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "source"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "organization",
+                        "actors"
+                      ],
+                      "additionalProperties": false
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -60089,6 +60839,81 @@
             "items": {
               "type": "object",
               "properties": {
+                "historicalAttribution": {
+                  "type": "object",
+                  "properties": {
+                    "organization": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "recorded",
+                            "legacy-current",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "actors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "name": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "recorded",
+                              "legacy-current",
+                              "unknown"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "source"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "organization",
+                    "actors"
+                  ],
+                  "additionalProperties": false
+                },
                 "id": {
                   "type": "string"
                 },
@@ -60505,6 +61330,81 @@
               "null"
             ],
             "properties": {
+              "historicalAttribution": {
+                "type": "object",
+                "properties": {
+                  "organization": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "recorded",
+                          "legacy-current",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "source"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "actors": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "recorded",
+                            "legacy-current",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "organization",
+                  "actors"
+                ],
+                "additionalProperties": false
+              },
               "id": {
                 "type": "string"
               },
@@ -63161,6 +64061,81 @@
             "items": {
               "type": "object",
               "properties": {
+                "historicalAttribution": {
+                  "type": "object",
+                  "properties": {
+                    "organization": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "recorded",
+                            "legacy-current",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "actors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "name": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "recorded",
+                              "legacy-current",
+                              "unknown"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "source"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "organization",
+                    "actors"
+                  ],
+                  "additionalProperties": false
+                },
                 "id": {
                   "type": "string"
                 },
@@ -63239,6 +64214,81 @@
           "thread": {
             "type": "object",
             "properties": {
+              "historicalAttribution": {
+                "type": "object",
+                "properties": {
+                  "organization": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "recorded",
+                          "legacy-current",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "source"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "actors": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "recorded",
+                            "legacy-current",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "organization",
+                  "actors"
+                ],
+                "additionalProperties": false
+              },
               "id": {
                 "type": "string"
               },
@@ -63340,6 +64390,81 @@
           "thread": {
             "type": "object",
             "properties": {
+              "historicalAttribution": {
+                "type": "object",
+                "properties": {
+                  "organization": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "recorded",
+                          "legacy-current",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "source"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "actors": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "recorded",
+                            "legacy-current",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "organization",
+                  "actors"
+                ],
+                "additionalProperties": false
+              },
               "id": {
                 "type": "string"
               },
@@ -63499,6 +64624,81 @@
           "thread": {
             "type": "object",
             "properties": {
+              "historicalAttribution": {
+                "type": "object",
+                "properties": {
+                  "organization": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "recorded",
+                          "legacy-current",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "source"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "actors": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "recorded",
+                            "legacy-current",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "organization",
+                  "actors"
+                ],
+                "additionalProperties": false
+              },
               "id": {
                 "type": "string"
               },
@@ -63706,6 +64906,12 @@
                   ]
                 },
                 "reviewerName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "organizationName": {
                   "type": [
                     "string",
                     "null"
@@ -63929,6 +65135,12 @@
                 ]
               },
               "reviewerName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "organizationName": {
                 "type": [
                   "string",
                   "null"
@@ -64177,6 +65389,12 @@
                 ]
               },
               "reviewerName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "organizationName": {
                 "type": [
                   "string",
                   "null"

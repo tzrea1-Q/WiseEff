@@ -94,7 +94,7 @@ export function registerUserRoutes(
     const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
     requirePlatformOrganizationManager(auth);
     const body = parseWithSchema(createPlatformOrganizationSchema, request.body);
-    return { status: 201, body: { item: await createPlatformOrganization(db, auth, body, options.oidcIssuer, { requestId: request.requestId }) } };
+    return { status: 201, body: { item: await createPlatformOrganization(db, createUserInvocation(auth), body, options.oidcIssuer, { requestId: request.requestId }) } };
   });
   router.get("/api/v1/organization", async (request) => {
     const db = requireDb(options.db);

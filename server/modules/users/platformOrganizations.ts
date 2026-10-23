@@ -4,7 +4,8 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import { resolveOperatingContext } from "../auth/operatingContext";
-import { createUserInvocation } from "../auth/trustedInvocation";
+import type { UserInvocationContext } from "../auth/trustedInvocation";
+import { requireUserInitiatedInvocation } from "../auth/trustedInvocationPolicy";
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import { hashLocalAccountPassword, validateLocalAccountPassword, validateLocalAccountUsername } from "../auth/localAccountCredentials";
 import { normalizeOidcIssuer, setOidcIdentity } from "../auth/oidcIdentity";
@@ -34,7 +35,9 @@ export async function listPlatformOrganizations(db: Queryable, actor: AuthContex
   return result.rows;
 }
 
-export async function createPlatformOrganization(db: Database, actor: AuthContext, input: z.infer<typeof createPlatformOrganizationSchema>, configuredOidcIssuer: string | undefined, context: { requestId: string }) {
+export async function createPlatformOrganization(db: Database, caller: UserInvocationContext, input: z.infer<typeof createPlatformOrganizationSchema>, configuredOidcIssuer: string | undefined, context: { requestId: string }) {
+  requireUserInitiatedInvocation(caller);
+  const actor = caller.principal;
   requirePlatformOrganizationManager(actor);
   const administrator = input.initialAdministrator, oidc = "authentication" in administrator;
   if (Boolean(configuredOidcIssuer) !== oidc) throw new ApiError("VALIDATION_FAILED", configuredOidcIssuer
@@ -46,8 +49,7 @@ export async function createPlatformOrganization(db: Database, actor: AuthContex
   return db.transaction(async (tx) => {
     const organizationId = `org-${randomUUID()}`, userId = `u-${randomUUID()}`;
     await tx.query("insert into organizations(id,name) values($1,$2)", [organizationId, input.name]);
-    const scope = await resolveOperatingContext(tx, actor, organizationId);
-    const invocation = createUserInvocation(scope.actor, scope.organization);
+    const invocation = await resolveOperatingContext(tx, caller, organizationId);
     await insertUser(tx, { id: userId, organizationId, name: administrator.name, title: administrator.title?.trim() || "组织管理员",
       ...(oidc && administrator.email ? { email: administrator.email.trim().toLowerCase() } : {}) });
     await updateOrganizationRoles(tx, { organizationId, userId, roles: ["admin"] });
