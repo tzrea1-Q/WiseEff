@@ -6,7 +6,7 @@ import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import { resolveOperatingContext } from "../auth/operatingContext";
 import { getAuthContext } from "../auth/repository";
 import { allowOrganizationMaintenance, requireActiveOrganization } from "../auth/organizationLifecycle";
-import { createUserInvocation, type UserInvocationContext } from "../auth/trustedInvocation";
+import type { UserInvocationContext } from "../auth/trustedInvocation";
 import { requireUserInitiatedInvocation } from "../auth/trustedInvocationPolicy";
 import { accountTransferRequestSchema } from "../contracts/dtoSchemas/accountTransfer";
 import { assertAdministratorContinuity, hasOrganizationRole, lockAdministratorMutation, type AdministratorMutationContext } from "./administratorContinuity";
@@ -83,7 +83,7 @@ export async function transferAccount(db: Database, caller: UserInvocationContex
     }
     const roles = [...new Set(input.targetRoles)], platform = item.platformAdministrator;
     await assertAdministratorContinuity(tx, user, { organizationId: input.targetOrganizationId, ...(item.oidcIdentity ? { loginUsable: false } : {}), roles: [...roles.map(roleId => ({ projectId: null, roleId })), ...(platform ? [{ projectId: null, roleId: "platform-admin" as const }] : [])] }, context);
-    const invocation = await resolveOperatingContext(tx, createUserInvocation(actor), sourceId);
+    const invocation = await resolveOperatingContext(tx, caller, sourceId);
     const revokedBridgeIds = await revokePersonalAccess(tx, sourceId, userId);
     await releaseTransferredProjectResponsibilities(tx, withParameterAccess(actor, invocation), userId, context.requestId);
     await tx.query("delete from organization_team_members where user_id=$1", [userId]);
