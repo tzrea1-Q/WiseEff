@@ -7,6 +7,8 @@ import type { KnowledgeEntry, KnowledgeParameterReference, KnowledgeReferenceSug
 import { definitionReferenceLifecycleLabels } from "@/domain/knowledge/types";
 import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { SettingsLeaveGuard } from "@/components/layout/SettingsFormPage";
+import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 import { SearchField } from "@/components/common/SearchField";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyDescription } from "@/components/ui/empty";
@@ -83,6 +85,7 @@ export function KnowledgeEntryEditorDialog({
   onReferenceUpdate,
   onClose
 }: KnowledgeEntryEditorDialogProps) {
+  const requestClose = () => { const decision = requestSettingsLeave(); if (decision instanceof Promise) void decision.then((allowed) => { if (allowed) onClose(); }); else if (decision) onClose(); };
   const [title, setTitle] = useState("");
   const [tagsText, setTagsText] = useState("");
   const [content, setContent] = useState("");
@@ -260,9 +263,10 @@ export function KnowledgeEntryEditorDialog({
   };
 
   return (
+    <><SettingsLeaveGuard dirty={open && (title !== (entry?.title ?? "") || tagsText !== (entry?.tags.join(", ") ?? "") || content !== (entry?.contentMarkdown ?? ""))} saving={pending || suggestionPending} />
     <ModalDialog
       open={open}
-      onDismiss={pending || suggestionPending ? undefined : onClose}
+      onDismiss={pending || suggestionPending ? undefined : requestClose}
       className="knowledge-editor-dialog flex max-h-[min(920px,calc(100dvh-48px))] w-[min(1080px,calc(100vw-48px))] flex-col gap-4 overflow-hidden rounded-xl bg-card p-5 shadow-xl"
       backdropClassName="knowledge-modal-backdrop"
       describedBy
@@ -465,7 +469,7 @@ export function KnowledgeEntryEditorDialog({
           ) : null}
 
           <div className="flex items-center justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={onClose} disabled={pending || suggestionPending}>
+            <Button variant="outline" size="sm" onClick={requestClose} disabled={pending || suggestionPending}>
               {entry?.contentForm === "file" ? "关闭" : "取消"}
             </Button>
             {entry?.contentForm !== "file" ? <Button size="sm" onClick={() => void submit()} disabled={pending || suggestionPending} aria-busy={pending || undefined}>
@@ -474,6 +478,6 @@ export function KnowledgeEntryEditorDialog({
           </div>
         </>
       )}
-    </ModalDialog>
+    </ModalDialog></>
   );
 }

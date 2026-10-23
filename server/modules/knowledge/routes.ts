@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import type { AuthContext } from "../auth/types";
+import { resolveOperatingContext } from "../auth/operatingContext";
+import { withKnowledgeInvocation, type KnowledgeAccessContext } from "./scope";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -17,6 +19,7 @@ import {
   archiveKnowledgeEntry,
   batchKnowledgeEntries,
   createKnowledgeEntry,
+  knowledgeServiceInvocation,
   distillKnowledgeFromLog,
   distillKnowledgeFromReloadRun,
   findRelatedKnowledgeForLog,
@@ -118,21 +121,27 @@ export function registerKnowledgeRoutes(
 ) {
   const extractor = options.textExtractor ?? createDefaultKnowledgeTextExtractor();
   const embeddingClient = options.knowledgeEmbeddingClient;
+  const scopedAuth = async (request: RouteRequest): Promise<KnowledgeAccessContext> => {
+    const auth = await options.getCurrentAuthContext(request);
+    const { organizationId } = parseWithSchema(z.object({ organizationId: z.string().trim().min(1).max(200).optional() }), flattenQuery(request.query));
+    return organizationId === undefined ? auth : withKnowledgeInvocation(auth,
+      await resolveOperatingContext(requireDb(options.db), createUserInvocation(auth), organizationId));
+  };
 
   router.post("/api/v1/knowledge/entries/batch", async (request) => {
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const body = parseWithSchema(batchKnowledgeEntriesBodySchema, request.body);
     return { status: 200, body: await batchKnowledgeEntries(requireDb(options.db), requireObjectStore(options.objectStore),
-      extractor, auth, createUserInvocation(auth), body, { requestId: request.requestId }) };
+      extractor, auth, knowledgeServiceInvocation(auth), body, { requestId: request.requestId }) };
   });
 
   router.post("/api/v1/knowledge/imports", async (request) => {
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const body = parseWithSchema(openKnowledgeImportSchema, request.body);
     return { status: 201, body: { item: await openKnowledgeImport(requireDb(options.db), auth, body.tags) } };
   });
   router.post("/api/v1/knowledge/imports/:batchId/documents", async (request) => {
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const { batchId } = parseWithSchema(importBatchParamsSchema, request.params);
     const body = parseWithSchema(importKnowledgeDocumentSchema, request.body);
     const item = await importKnowledgeDocument(requireDb(options.db), requireObjectStore(options.objectStore), extractor,
@@ -140,7 +149,7 @@ export function registerKnowledgeRoutes(
     return { status: 200, body: { item } };
   });
   router.post("/api/v1/knowledge/imports/:batchId/archive", async (request) => {
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const { batchId } = parseWithSchema(importBatchParamsSchema, request.params);
     const body = parseWithSchema(importKnowledgeArchiveSchema, request.body);
     const item = await importKnowledgeArchive(requireDb(options.db), requireObjectStore(options.objectStore), extractor,
@@ -148,21 +157,21 @@ export function registerKnowledgeRoutes(
     return { status: 200, body: { item } };
   });
   router.get("/api/v1/knowledge/imports/:batchId", async (request) => {
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const { batchId } = parseWithSchema(importBatchParamsSchema, request.params);
     return { status: 200, body: { item: await readKnowledgeImport(requireDb(options.db), auth, batchId) } };
   });
   router.post("/api/v1/knowledge/imports/:batchId/complete", async (request) => {
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const { batchId } = parseWithSchema(importBatchParamsSchema, request.params);
     parseWithSchema(z.object({}).strict(), request.body ?? {});
-    return { status: 200, body: { item: await completeKnowledgeImport(requireDb(options.db), auth, createUserInvocation(auth), batchId, { requestId: request.requestId }) } };
+    return { status: 200, body: { item: await completeKnowledgeImport(requireDb(options.db), auth, knowledgeServiceInvocation(auth), batchId, { requestId: request.requestId }) } };
   });
 
   router.post("/api/v1/knowledge/entries", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const body = parseWithSchema(createKnowledgeEntryBodySchema, request.body);
     const item = await createKnowledgeEntry(db, objectStore, extractor, auth, body, { requestId: request.requestId });
 
@@ -171,7 +180,7 @@ export function registerKnowledgeRoutes(
 
   router.get("/api/v1/knowledge/entries", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const query = parseWithSchema(listKnowledgeEntriesQuerySchema, flattenQuery(request.query));
     const items = await listKnowledgeEntries(db, auth, query, request.requestId);
 
@@ -180,7 +189,7 @@ export function registerKnowledgeRoutes(
 
   router.post("/api/v1/knowledge/distill-from-log", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const body = parseWithSchema(distillKnowledgeFromLogBodySchema, request.body);
     const item = await distillKnowledgeFromLog(db, auth, body, { requestId: request.requestId });
 
@@ -189,7 +198,7 @@ export function registerKnowledgeRoutes(
 
   router.post("/api/v1/knowledge/distill-from-reload-run", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const body = parseWithSchema(distillKnowledgeFromReloadRunBodySchema, request.body);
     const item = await distillKnowledgeFromReloadRun(db, auth, body, { requestId: request.requestId });
 
@@ -198,7 +207,7 @@ export function registerKnowledgeRoutes(
 
   router.get("/api/v1/knowledge/search", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const query = parseWithSchema(searchKnowledgeQuerySchema, flattenQuery(request.query));
     const result = await searchKnowledge(db, auth, query, { embeddingClient });
 
@@ -207,7 +216,7 @@ export function registerKnowledgeRoutes(
 
   router.get("/api/v1/knowledge/related-to-log", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const query = parseWithSchema(relatedKnowledgeForLogQuerySchema, flattenQuery(request.query));
     const result = await findRelatedKnowledgeForLog(db, auth, query, { embeddingClient });
 
@@ -216,7 +225,7 @@ export function registerKnowledgeRoutes(
 
   router.get("/api/v1/knowledge/related-to-spec", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const query = parseWithSchema(relatedKnowledgeForSpecQuerySchema, flattenQuery(request.query));
     const result = await findRelatedKnowledgeForSpec(db, auth, query);
 
@@ -225,7 +234,7 @@ export function registerKnowledgeRoutes(
 
   router.get("/api/v1/knowledge/related-to-definition", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const query = parseWithSchema(relatedKnowledgeForDefinitionQuerySchema, flattenQuery(request.query));
     const result = await findRelatedKnowledgeForDefinition(db, auth, query);
 
@@ -234,7 +243,7 @@ export function registerKnowledgeRoutes(
 
   router.get("/api/v1/knowledge/index/status", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const health = await getKnowledgeIndexHealth(db, auth, { embeddingClient });
 
     return { status: 200, body: health };
@@ -242,22 +251,22 @@ export function registerKnowledgeRoutes(
 
   router.post("/api/v1/knowledge/reference-suggestions/rescan", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const result = await rescanKnowledgeReferenceSuggestions(db, auth, createUserInvocation(auth), { requestId: request.requestId });
+    const auth = await scopedAuth(request);
+    const result = await rescanKnowledgeReferenceSuggestions(db, auth, knowledgeServiceInvocation(auth), { requestId: request.requestId });
     return { status: 200, body: result };
   });
 
   router.post("/api/v1/knowledge/index/rebuild", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const result = await rebuildKnowledgeIndex(db, auth, createUserInvocation(auth), { requestId: request.requestId });
+    const auth = await scopedAuth(request);
+    const result = await rebuildKnowledgeIndex(db, auth, knowledgeServiceInvocation(auth), { requestId: request.requestId });
 
     return { status: 200, body: result };
   });
 
   router.post("/api/v1/knowledge/entries/:entryId/index/retry", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const params = parseWithSchema(paramsWithEntryIdSchema, request.params);
     await retryKnowledgeEntryIndex(db, auth, params.entryId, { requestId: request.requestId });
 
@@ -266,14 +275,14 @@ export function registerKnowledgeRoutes(
 
   router.get("/api/v1/knowledge/entries/:entryId/binding", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const params = parseWithSchema(paramsWithEntryIdSchema, request.params);
     return { status: 200, body: await getKnowledgeBinding(db, auth, params.entryId) };
   });
 
   router.get("/api/v1/knowledge/entries/:entryId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const params = parseWithSchema(paramsWithEntryIdSchema, request.params);
     const item = await getKnowledgeEntry(db, auth, params.entryId);
 
@@ -283,7 +292,7 @@ export function registerKnowledgeRoutes(
   router.patch("/api/v1/knowledge/entries/:entryId", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const params = parseWithSchema(paramsWithEntryIdSchema, request.params);
     const body = parseWithSchema(updateKnowledgeEntryBodySchema, request.body);
     const item = await updateKnowledgeEntry(db, objectStore, extractor, auth, params.entryId, body, {
@@ -295,7 +304,7 @@ export function registerKnowledgeRoutes(
 
   router.post("/api/v1/knowledge/entries/:entryId/publish", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const params = parseWithSchema(paramsWithEntryIdSchema, request.params);
     const item = await publishKnowledgeEntry(db, auth, params.entryId, { requestId: request.requestId });
 
@@ -304,7 +313,7 @@ export function registerKnowledgeRoutes(
 
   router.post("/api/v1/knowledge/entries/:entryId/archive", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const params = parseWithSchema(paramsWithEntryIdSchema, request.params);
     const item = await archiveKnowledgeEntry(db, auth, params.entryId, { requestId: request.requestId });
 
@@ -313,7 +322,7 @@ export function registerKnowledgeRoutes(
 
   router.post("/api/v1/knowledge/entries/:entryId/restore", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const params = parseWithSchema(paramsWithEntryIdSchema, request.params);
     const item = await restoreKnowledgeEntry(db, auth, params.entryId, { requestId: request.requestId });
 
@@ -322,7 +331,7 @@ export function registerKnowledgeRoutes(
 
   router.post("/api/v1/knowledge/entries/:entryId/reject", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const params = parseWithSchema(paramsWithEntryIdSchema, request.params);
     const item = await rejectAgentKnowledgeDraft(db, auth, params.entryId, { requestId: request.requestId });
 
@@ -331,7 +340,7 @@ export function registerKnowledgeRoutes(
 
   router.delete("/api/v1/knowledge/entries/:entryId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const params = parseWithSchema(paramsWithEntryIdSchema, request.params);
     await hardDeleteKnowledgeEntry(db, auth, params.entryId, { requestId: request.requestId });
 
@@ -340,7 +349,7 @@ export function registerKnowledgeRoutes(
 
   router.put("/api/v1/knowledge/entries/:entryId/parameter-references/:specId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const params = parseWithSchema(paramsWithSpecIdSchema, request.params);
     const item = await addKnowledgeParameterReference(
       db,
@@ -354,12 +363,12 @@ export function registerKnowledgeRoutes(
 
   router.put("/api/v1/knowledge/entries/:entryId/definition-references/:definitionId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const params = parseWithSchema(paramsWithDefinitionIdSchema, request.params);
     const item = await addKnowledgeDefinitionReference(
       db,
       auth,
-      createUserInvocation(auth),
+      knowledgeServiceInvocation(auth),
       { entryId: params.entryId, definitionId: params.definitionId },
       { requestId: request.requestId }
     );
@@ -368,29 +377,29 @@ export function registerKnowledgeRoutes(
   });
 
   router.get("/api/v1/knowledge/entries/:entryId/reference-suggestions", async (request) => {
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const { entryId } = parseWithSchema(paramsWithEntryIdSchema, request.params);
     return { status: 200, body: { items: await listKnowledgeReferenceSuggestions(requireDb(options.db), auth, entryId, request.requestId) } };
   });
 
   router.post("/api/v1/knowledge/entries/:entryId/reference-suggestions/:definitionId/accept", async (request) => {
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const params = parseWithSchema(paramsWithDefinitionIdSchema, request.params);
-    const item = await addKnowledgeDefinitionReference(requireDb(options.db), auth, createUserInvocation(auth),
+    const item = await addKnowledgeDefinitionReference(requireDb(options.db), auth, knowledgeServiceInvocation(auth),
       { ...params, fromSuggestion: true }, { requestId: request.requestId });
     return { status: 200, body: { item } };
   });
 
   router.post("/api/v1/knowledge/entries/:entryId/reference-suggestions/:definitionId/dismiss", async (request) => {
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const params = parseWithSchema(paramsWithDefinitionIdSchema, request.params);
-    await dismissKnowledgeReferenceSuggestion(requireDb(options.db), auth, createUserInvocation(auth), params, { requestId: request.requestId });
+    await dismissKnowledgeReferenceSuggestion(requireDb(options.db), auth, knowledgeServiceInvocation(auth), params, { requestId: request.requestId });
     return { status: 200, body: { ok: true } };
   });
 
   router.delete("/api/v1/knowledge/entries/:entryId/parameter-references/:specId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const params = parseWithSchema(paramsWithSpecIdSchema, request.params);
     const item = await removeKnowledgeParameterReference(
       db,
@@ -404,7 +413,7 @@ export function registerKnowledgeRoutes(
 
   router.delete("/api/v1/knowledge/entries/:entryId/definition-references/:definitionId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const params = parseWithSchema(paramsWithDefinitionIdSchema, request.params);
     const item = await removeKnowledgeDefinitionReference(
       db,
@@ -418,7 +427,7 @@ export function registerKnowledgeRoutes(
 
   router.get("/api/v1/knowledge/entries/:entryId/revisions", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const params = parseWithSchema(paramsWithEntryIdSchema, request.params);
     const items = await listKnowledgeRevisions(db, auth, params.entryId);
 
@@ -427,7 +436,7 @@ export function registerKnowledgeRoutes(
 
   router.post("/api/v1/knowledge/entries/:entryId/revisions/:revisionId/restore", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const params = parseWithSchema(paramsWithRevisionIdSchema, request.params);
     const body = parseWithSchema(restoreKnowledgeRevisionBodySchema, request.body);
     const item = await restoreKnowledgeRevision(db, auth, params.entryId, params.revisionId, body, {
@@ -440,7 +449,7 @@ export function registerKnowledgeRoutes(
   router.get("/api/v1/knowledge/entries/:entryId/file/content", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await scopedAuth(request);
     const params = parseWithSchema(paramsWithEntryIdSchema, request.params);
     const query = parseWithSchema(knowledgeFileContentQuerySchema, flattenQuery(request.query));
     const result = await getKnowledgeFileContent(db, objectStore, auth, params.entryId, query.revisionId);

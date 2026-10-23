@@ -1,7 +1,6 @@
 import type { Queryable } from "../../shared/database/client";
 import type { AuthContext } from "../auth/types";
 import {
-  assertTrustedInvocationMatchesAuth,
   TrustedInvocationContextError,
   type AgentInvocationContext,
   type TrustedInvocationContext
@@ -17,6 +16,7 @@ import {
 import { parseDtsValue } from "../dts/valueAst";
 import { parseJsonSource } from "../parameter-files/jsonSource";
 import { serializeContract, type ContractJsonValue } from "../parameter-catalog-contract";
+import { parameterOrganizationId, parameterScopeInvocation } from "../parameters/operatingScope";
 
 /** Durable payload key used to retain the server-resolved approval pins. */
 export const APPROVED_PARAMETER_PAYLOAD_KEY = "approvedParameter" as const;
@@ -186,7 +186,7 @@ export async function requireApprovedParameterInvocation(
   auth: AuthContext,
   input: ApprovedParameterInput
 ): Promise<ApprovedParameterInvocation> {
-  const trusted = assertTrustedInvocationMatchesAuth(auth, input.invocation, "canonical parameter action");
+  const trusted = parameterScopeInvocation(auth, input.invocation, "canonical parameter action");
   if (trusted.initiator !== "agent" || !trusted.approvalRequired || !trusted.approvalId) {
     return fail("must be a server-owned approved Agent invocation");
   }
@@ -194,18 +194,18 @@ export async function requireApprovedParameterInvocation(
   const approvalId = invocation.approvalId;
   if (!approvalId) return fail("must carry an approval id");
 
-  const session = await getAgentSession(db, auth.organization.id, invocation.sessionId);
-  if (!session || session.organizationId !== auth.organization.id || session.actorUserId !== auth.user.id) {
+  const session = await getAgentSession(db, parameterOrganizationId(auth), invocation.sessionId);
+  if (!session || session.organizationId !== parameterOrganizationId(auth) || session.actorUserId !== auth.user.id) {
     return fail("session actor or organization does not match auth");
   }
   if (session.projectId !== undefined && session.projectId !== input.projectId) {
     return fail("session project does not match the approved project");
   }
 
-  const toolCall = await getAgentToolCall(db, auth.organization.id, invocation.toolCallId);
+  const toolCall = await getAgentToolCall(db, parameterOrganizationId(auth), invocation.toolCallId);
   if (
     !toolCall ||
-    toolCall.organizationId !== auth.organization.id ||
+    toolCall.organizationId !== parameterOrganizationId(auth) ||
     toolCall.sessionId !== session.id ||
     (toolCall.projectId !== undefined && toolCall.projectId !== input.projectId) ||
     toolCall.name !== "action.submitParameterChange" ||
@@ -215,10 +215,10 @@ export async function requireApprovedParameterInvocation(
     return fail("tool call is not the pending approved parameter action");
   }
 
-  const approval = await getAgentApproval(db, auth.organization.id, approvalId);
+  const approval = await getAgentApproval(db, parameterOrganizationId(auth), approvalId);
   if (
     !approval ||
-    approval.organizationId !== auth.organization.id ||
+    approval.organizationId !== parameterOrganizationId(auth) ||
     (approval.projectId !== undefined && approval.projectId !== input.projectId) ||
     approval.status !== "approved" ||
     approval.sessionId !== session.id ||

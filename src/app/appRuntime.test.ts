@@ -11,6 +11,24 @@ function deps(): AppRuntimeDeps {
 }
 
 describe("createAppRuntime", () => {
+  it("keeps parameter runtimes fixed to their own target and shared Catalog requests global", async () => {
+    vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "http://127.0.0.1:18781");
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => new Response(JSON.stringify(
+      url.endsWith("/catalog") ? readyCatalogDocument : { items: [] }
+    ), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const target = createAppRuntime("api", { ...deps(), organizationId: "target-parameters" });
+      const home = createAppRuntime("api", deps());
+      await target.parameterRepository.listProjects();
+      await home.parameterRepository.listProjects();
+      await target.parameterCatalogRepository.getCatalog();
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+        "http://127.0.0.1:18781/api/v1/projects?organizationId=target-parameters",
+        "http://127.0.0.1:18781/api/v1/projects", "http://127.0.0.1:18781/api/v2/catalog"
+      ]);
+    } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
+  });
   it("binds each log runtime to the explicit URL organization", async () => {
     vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "http://127.0.0.1:18781");
     const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ items: [] }), { status: 200 }));

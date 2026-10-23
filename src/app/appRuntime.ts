@@ -52,6 +52,13 @@ import { createMockParameterRepository } from "@/infrastructure/mock/mockParamet
 import { createMockProductFeedbackRepository } from "@/infrastructure/mock/mockProductFeedbackRepository";
 import type { MockRuntimeState } from "@/infrastructure/mock/mockState";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
+import { createDefaultApiClient } from "@/infrastructure/http/defaultApiClient";
+import type { ApiClient } from "@/infrastructure/http/apiClient";
+import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
+import { createParameterFileClient } from "@/infrastructure/http/parameterFileClient";
+import { createHttpParameterTopologyRepository } from "@/infrastructure/http/parameterTopologyClient";
+import { createHttpParameterInitializationRepository } from "@/infrastructure/http/parameterInitializationClient";
+import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 
 export type WiseEffAuthClient = {
   getCurrentAuthContext(): Promise<AuthContextDto>;
@@ -69,6 +76,10 @@ export type WiseEffAuthClient = {
  * prop per port (ADR-0023 companion seam; plan 2026-08-12-app-shell-decomposition Wave 3).
  */
 export type AppRuntime = {
+  parameterApiClient?: ApiClient;
+  parameterAdminClient?: ReturnType<typeof createParameterAdminClient>;
+  parameterFileRepository?: ParameterFileRepository;
+  operatingOrganizationId?: string;
   authClient: WiseEffAuthClient;
   workflowPublicationClient?: WorkflowPublicationClient;
   platformOrganizationsClient?: PlatformOrganizationsClient;
@@ -104,6 +115,7 @@ export function createAppRuntime(
   overrides: Partial<AppRuntime> = {}
 ): AppRuntime {
   const api = mode === "api";
+  const parameterApiClient = api ? createDefaultApiClient({ organizationId: deps.organizationId }) : undefined;
   // Resolved before the knowledge repository: mock distillation reads reload
   // runs from THIS instance so both ports describe the same device story.
   const dtsReloadRepository = overrides.dtsReloadRepository ?? resolveDtsReloadRepository(mode);
@@ -117,6 +129,7 @@ export function createAppRuntime(
         ? createApiCatalogPorts(
             createParameterCatalogClient({
               baseUrl: resolveWiseEffApiBaseUrl(),
+              organizationId: deps.organizationId,
               getAuthorization: async () => {
                 const localToken = readLocalAuthToken();
                 return localToken ? `Bearer ${localToken}` : wiseEffApiAuthorization;
@@ -129,19 +142,23 @@ export function createAppRuntime(
             return { personId: user?.id ?? "", organizationId: CATALOG_ORGANIZATION_ID, actorKind: catalogActorForRole(user?.roleId ?? ""), isActive: user?.isActive ?? false };
           } });
   return {
+    parameterApiClient: overrides.parameterApiClient ?? parameterApiClient,
+    parameterAdminClient: overrides.parameterAdminClient ?? (api ? createParameterAdminClient(parameterApiClient) : undefined),
+    parameterFileRepository: overrides.parameterFileRepository ?? (api ? createParameterFileClient(parameterApiClient) : undefined),
+    operatingOrganizationId: deps.organizationId,
     authClient: overrides.authClient ?? createAuthClient(),
     workflowPublicationClient: overrides.workflowPublicationClient ?? (api ? createWorkflowPublicationClient() : createMockWorkflowPublicationClient()),
     platformOrganizationsClient: overrides.platformOrganizationsClient ?? (api ? createPlatformOrganizationsClient() : undefined),
     parameterRepository:
       overrides.parameterRepository ??
-      (api ? createHttpParameterRepository() : createMockParameterRepository(deps.mockParameterRuntime)),
-    parameterTopologyRepository: overrides.parameterTopologyRepository ?? resolveParameterTopologyRepository(mode),
+      (api ? createHttpParameterRepository(parameterApiClient) : createMockParameterRepository(deps.mockParameterRuntime)),
+    parameterTopologyRepository: overrides.parameterTopologyRepository ?? (api ? createHttpParameterTopologyRepository(parameterApiClient) : resolveParameterTopologyRepository(mode)),
     parameterCatalogRepository: overrides.parameterCatalogRepository ?? catalogPorts.catalog,
     parameterCatalogGovernanceRepository:
       overrides.parameterCatalogGovernanceRepository ?? catalogPorts.governance,
     parameterDashboardRepository:
       overrides.parameterDashboardRepository ??
-      (api ? createHttpParameterDashboardRepository() : createMockParameterDashboardRepository(deps.getState)),
+      (api ? createHttpParameterDashboardRepository(parameterApiClient) : createMockParameterDashboardRepository(deps.getState)),
     logAnalysisRepository: overrides.logAnalysisRepository ?? (api ? createHttpLogAnalysisRepository({ organizationId: deps.organizationId }) : undefined),
     productFeedbackRepository:
       overrides.productFeedbackRepository ??
@@ -149,7 +166,7 @@ export function createAppRuntime(
     knowledgeRepository:
       overrides.knowledgeRepository ??
       (api
-        ? createHttpKnowledgeRepository()
+        ? createHttpKnowledgeRepository({ organizationId: deps.organizationId })
         : createMockKnowledgeRepository({
             // Mock distillation reads the prototype log records (same port shape as API mode).
             getLogRecord: (logId) => deps.getState().logs.find((log) => log.id === logId),
@@ -158,7 +175,7 @@ export function createAppRuntime(
           })),
     dtsReloadRepository,
     parameterInitializationRepository:
-      overrides.parameterInitializationRepository ?? resolveParameterInitializationRepository(mode),
+      overrides.parameterInitializationRepository ?? (api ? createHttpParameterInitializationRepository(parameterApiClient) : resolveParameterInitializationRepository(mode)),
     debuggingGateway:
       overrides.debuggingGateway ??
       resolveDebuggingGateway({ mode, getDebugParameters: () => deps.getState().debugParameters }),

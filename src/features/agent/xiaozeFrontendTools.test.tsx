@@ -35,4 +35,14 @@ describe("useXiaozeFrontendTools", () => {
     expect(registeredTools.prefillParameterValue).toBeUndefined();
     expect(Object.keys(registeredTools)).toEqual(["navigateTo"]);
   });
+
+  it("keeps business navigation in the confirmed target and leaves platform configuration global", async () => {
+    const pushState = vi.spyOn(window.history, "pushState").mockImplementation(() => undefined);
+    vi.spyOn(window, "dispatchEvent").mockImplementation(() => true);
+    renderHook(() => useXiaozeFrontendTools("target-b"));
+    await registeredTools.navigateTo?.({ path: "/knowledge?entryId=entry-b&organizationId=untrusted" });
+    expect(pushState).toHaveBeenLastCalledWith(null, "", "/knowledge?entryId=entry-b&organizationId=target-b");
+    await registeredTools.navigateTo?.({ path: "/settings/llm" });
+    expect(pushState).toHaveBeenLastCalledWith(null, "", "/settings/llm");
+  });
 });

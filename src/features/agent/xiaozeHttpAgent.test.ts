@@ -96,4 +96,15 @@ describe("xiaozeHttpAgent", () => {
     await agent.runAgent();
     expect(fetchImpl).toHaveBeenCalled();
   });
+
+  it("binds chat and approval resume transport to its fixed organization without changing the actor token", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(
+      `data: ${JSON.stringify({ type: "RUN_STARTED", threadId: "target-thread", runId: "run-1" })}\n\n` +
+      `data: ${JSON.stringify({ type: "RUN_FINISHED", threadId: "target-thread", runId: "run-1" })}\n\n`,
+      { headers: { "Content-Type": "text/event-stream" } }));
+    const agent = createXiaozeHttpAgent({ agentUrl: "https://wiseeff.test/api/v1/agent/xiaoze?organizationId=untrusted", organizationId: "target-b", fetchImpl });
+    await agent.runAgent();
+    expect(String(fetchImpl.mock.calls[0][0])).toBe("https://wiseeff.test/api/v1/agent/xiaoze?organizationId=target-b");
+    expect(new Headers(fetchImpl.mock.calls[0][1]?.headers).get("Authorization")).toBe("Bearer we_local_test_token");
+  });
 });

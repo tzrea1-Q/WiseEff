@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { AuthContext } from "../../auth/types";
+import { agentOrganizationId, withAgentInvocation, type AgentAccessContext as AuthContext } from "../scope";
+import { resolveOperatingContext } from "../../auth/operatingContext";
 import { createUserInvocation } from "../../auth/trustedInvocation";
 import { ApiError } from "../../../shared/http/errors";
 import type { RouteRequest, RouteResponse, WiseEffRouter } from "../../../shared/http/router";
@@ -9,7 +10,6 @@ import type { ObjectStore } from "../../logs/objectStore";
 import type { TrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
 import type { ServerEnv } from "../../../config/env";
 import { resolveXiaozeLlmConfig } from "../../../config/xiaozeLlmConfig";
-import { getAgentSession } from "../repository";
 import { createAgentToolRegistry } from "../toolRegistry";
 import type { AgentToolExecutionContext } from "../toolRegistry";
 import type { AgentToolName, AgentCitation } from "../types";
@@ -322,7 +322,7 @@ export function createXiaozeAgUiHandler(options: {
       }
       await options.persistTurn({
         auth: verifiedAuth,
-        invocation: createUserInvocation(verifiedAuth),
+        invocation: verifiedAuth.agentInvocation ?? createUserInvocation(verifiedAuth),
         requestId: request.requestId,
         threadId,
         runId,
@@ -560,9 +560,16 @@ export function registerXiaozeRoutes(
     return;
   }
 
+  const scopedAuth = async (request: RouteRequest): Promise<AuthContext> => {
+    const auth = await options.getCurrentAuthContext(request), id = request.query.organizationId;
+    if (id === undefined) return auth;
+    if (typeof id !== "string" || !id.trim() || id.length > 200) throw new ApiError("VALIDATION_FAILED", "Invalid Agent organization scope.");
+    return withAgentInvocation(auth, await resolveOperatingContext(options.db!, createUserInvocation(auth), id));
+  };
+
   registerXiaozeThreadRoutes(router, {
     db: options.db,
-    getCurrentAuthContext: options.getCurrentAuthContext
+    getCurrentAuthContext: scopedAuth
   });
 
   const envDefaults = options.env
@@ -603,7 +610,7 @@ export function registerXiaozeRoutes(
   const handler = createXiaozeAgUiHandler({
     resolveAuth: async (request) => {
       try {
-        return await options.getCurrentAuthContext(request as RouteRequest);
+        return await scopedAuth(request as RouteRequest);
       } catch (error) {
         if (error instanceof ApiError && error.code === "UNAUTHENTICATED") {
           return undefined;
@@ -616,8 +623,9 @@ export function registerXiaozeRoutes(
     persistTurn,
     resolveModelLabel: options.env ? () => envDefaults.XIAOZE_LLM_CONFIG.config.model : undefined,
     assertThreadAccess: async ({ auth, threadId }) => {
-      const session = await getAgentSession(options.db!, auth.organization.id, threadId);
-      if (session && session.actorUserId !== auth.user.id) {
+      const session = (await options.db!.query<{ actor_user_id: string; organization_id: string }>(
+        "select actor_user_id,organization_id from agent_sessions where id=$1", [threadId])).rows[0];
+      if (session && (session.actor_user_id !== auth.user.id || session.organization_id !== agentOrganizationId(auth))) {
         throw new ApiError("FORBIDDEN", "This Xiaoze thread belongs to another user.", { threadId });
       }
     }
@@ -639,7 +647,7 @@ export function registerXiaozeRoutes(
 
     let auth: AuthContext;
     try {
-      auth = await options.getCurrentAuthContext(request);
+      auth = await scopedAuth(request);
     } catch (error) {
       if (error instanceof ApiError && error.code === "UNAUTHENTICATED") {
         throw new ApiError("UNAUTHENTICATED", "Authentication is required for Xiaoze suggestions.");

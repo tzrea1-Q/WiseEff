@@ -5,6 +5,8 @@ import { KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT, KNOWLEDGE_TITLE_CHARACTER_LIMIT, KN
 import type { KnowledgeEntry } from "@/domain/knowledge/types";
 import { presentError } from "@/infrastructure/http/presentError";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { SettingsLeaveGuard } from "@/components/layout/SettingsFormPage";
+import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 import { Button } from "@/components/ui/button";
 import { parseTagsInput } from "./KnowledgeEntryEditorDialog";
 
@@ -27,6 +29,7 @@ const ACCEPTED = ".pdf,.docx,.doc,.txt,.md";
 
 /** The server chooses the new entry's content form; existing file entries keep their form. */
 export function KnowledgeFileUploadDialog({ open, entry, onSubmit, onClose }: KnowledgeFileUploadDialogProps) {
+  const requestClose = () => { const decision = requestSettingsLeave(); if (decision instanceof Promise) void decision.then((allowed) => { if (allowed) onClose(); }); else if (decision) onClose(); };
   const [title, setTitle] = useState("");
   const [tagsText, setTagsText] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -83,9 +86,10 @@ export function KnowledgeFileUploadDialog({ open, entry, onSubmit, onClose }: Kn
   };
 
   return (
+    <><SettingsLeaveGuard dirty={open && (file !== null || title !== (entry?.title ?? "") || tagsText !== (entry?.tags.join(", ") ?? ""))} saving={pending} />
     <ModalDialog
       open={open}
-      onDismiss={pending ? undefined : onClose}
+      onDismiss={pending ? undefined : requestClose}
       className="knowledge-upload-dialog flex w-[min(560px,calc(100vw-48px))] flex-col gap-4 rounded-xl bg-card p-5 shadow-xl"
       backdropClassName="knowledge-modal-backdrop"
       describedBy
@@ -144,7 +148,7 @@ export function KnowledgeFileUploadDialog({ open, entry, onSubmit, onClose }: Kn
           ) : null}
 
           <div className="flex items-center justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={onClose} disabled={pending}>
+            <Button variant="outline" size="sm" onClick={requestClose} disabled={pending}>
               取消
             </Button>
             <Button size="sm" onClick={() => void submit()} disabled={pending} aria-busy={pending || undefined}>
@@ -153,6 +157,6 @@ export function KnowledgeFileUploadDialog({ open, entry, onSubmit, onClose }: Kn
           </div>
         </>
       )}
-    </ModalDialog>
+    </ModalDialog></>
   );
 }

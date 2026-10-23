@@ -1,7 +1,7 @@
 import { ApiError } from "../../../shared/http/errors";
 import type { RouteRequest, RouteResponse, WiseEffRouter } from "../../../shared/http/router";
 import type { Database } from "../../../shared/database/client";
-import type { AuthContext } from "../../auth/types";
+import { agentOrganizationId, type AgentAccessContext as AuthContext } from "../scope";
 import { createUserInvocation } from "../../auth/trustedInvocation";
 import { randomUUID } from "node:crypto";
 import { withAuditedWrite } from "../../audit/auditedWrite";
@@ -50,7 +50,7 @@ export function registerXiaozeThreadRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const query = parseXiaozeThreadListQuery(request.query);
     const result = await listXiaozeThreads(db, {
-      organizationId: auth.organization.id,
+      organizationId: agentOrganizationId(auth),
       actorUserId: auth.user.id,
       limit: query.limit,
       cursor: query.cursor
@@ -88,7 +88,7 @@ export function registerXiaozeThreadRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseParams(xiaozeThreadIdParamsSchema, request.params);
-    const thread = await getXiaozeThread(db, auth.organization.id, auth.user.id, params.threadId);
+    const thread = await getXiaozeThread(db, agentOrganizationId(auth), auth.user.id, params.threadId);
     if (!thread) {
       throw threadNotFound(params.threadId);
     }
@@ -102,8 +102,8 @@ export function registerXiaozeThreadRoutes(
     const body = parseParams(patchXiaozeThreadBodySchema, request.body);
     // Rename and its audit commit together (ADR-0027); previously the update
     // auto-committed and the audit could be lost after it.
-    await withAuditedWrite(db, createUserInvocation(auth), { requestId: request.requestId }, async (tx) => {
-      const updated = await updateXiaozeThreadTitle(tx, auth.organization.id, auth.user.id, params.threadId, body.title);
+    await withAuditedWrite(db, auth.agentInvocation ?? createUserInvocation(auth), { requestId: request.requestId }, async (tx) => {
+      const updated = await updateXiaozeThreadTitle(tx, agentOrganizationId(auth), auth.user.id, params.threadId, body.title);
       if (!updated) {
         throw threadNotFound(params.threadId);
       }
@@ -122,7 +122,7 @@ export function registerXiaozeThreadRoutes(
       };
     });
 
-    const thread = await getXiaozeThread(db, auth.organization.id, auth.user.id, params.threadId);
+    const thread = await getXiaozeThread(db, agentOrganizationId(auth), auth.user.id, params.threadId);
     if (!thread) {
       throw threadNotFound(params.threadId);
     }
@@ -134,8 +134,8 @@ export function registerXiaozeThreadRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseParams(xiaozeThreadIdParamsSchema, request.params);
     // Archive and its audit commit together (ADR-0027).
-    await withAuditedWrite(db, createUserInvocation(auth), { requestId: request.requestId }, async (tx) => {
-      const archived = await archiveXiaozeThread(tx, auth.organization.id, auth.user.id, params.threadId);
+    await withAuditedWrite(db, auth.agentInvocation ?? createUserInvocation(auth), { requestId: request.requestId }, async (tx) => {
+      const archived = await archiveXiaozeThread(tx, agentOrganizationId(auth), auth.user.id, params.threadId);
       if (!archived) {
         throw threadNotFound(params.threadId);
       }

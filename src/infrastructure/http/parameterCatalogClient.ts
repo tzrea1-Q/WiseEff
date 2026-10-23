@@ -98,6 +98,7 @@ import type {
 } from "./parameterCatalogDtos";
 import { WiseEffApiError } from "./apiClient";
 import { parseContractDto } from "./parseContractDto";
+import { withOrganizationScope } from "./organizationScope";
 import type {
   CatalogAcceptProposalRequest,
   CatalogCreateBindingDraftRequest,
@@ -140,6 +141,8 @@ type CatalogRequestInit = {
 };
 
 type CatalogClientOptions = {
+  /** Only project resource routes use this target; shared Catalog commands remain global. */
+  organizationId?: string;
   baseUrl?: string;
   fetchImpl?: typeof fetch;
   authorization?: string;
@@ -251,7 +254,8 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
       }
     }
 
-    const response = await fetchImpl(`${baseUrl}${path}`, {
+    const resourcePath = path.startsWith("/api/v2/projects/") ? withOrganizationScope(path, options.organizationId) : path;
+    const response = await fetchImpl(`${baseUrl}${resourcePath}`, {
       method,
       headers,
       body: init.body !== undefined ? JSON.stringify(init.body) : undefined

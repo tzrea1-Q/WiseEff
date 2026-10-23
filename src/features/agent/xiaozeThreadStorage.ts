@@ -128,18 +128,18 @@ export function mergeApiThreadList(items: XiaozeApiThreadListItem[], activeThrea
   };
 }
 
-export function readApiActiveThreadId(storage: Pick<Storage, "getItem"> = sessionStorage): string | null {
+export function readApiActiveThreadId(storage: Pick<Storage, "getItem"> = sessionStorage, key = XIAOZE_ACTIVE_THREAD_SESSION_KEY): string | null {
   try {
-    const value = storage.getItem(XIAOZE_ACTIVE_THREAD_SESSION_KEY)?.trim();
+    const value = storage.getItem(key)?.trim();
     return value || null;
   } catch {
     return null;
   }
 }
 
-export function writeApiActiveThreadId(threadId: string, storage: Pick<Storage, "setItem"> = sessionStorage) {
+export function writeApiActiveThreadId(threadId: string, storage: Pick<Storage, "setItem"> = sessionStorage, key = XIAOZE_ACTIVE_THREAD_SESSION_KEY) {
   try {
-    storage.setItem(XIAOZE_ACTIVE_THREAD_SESSION_KEY, threadId);
+    storage.setItem(key, threadId);
   } catch {
     // Ignore storage failures; in-memory state still works for the current tab.
   }

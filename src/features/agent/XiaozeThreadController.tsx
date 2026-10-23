@@ -34,7 +34,7 @@ export function XiaozeThreadController() {
     agentId: "default",
     updates: [UseAgentUpdate.OnMessagesChanged]
   });
-  const { activeThreadId, persistActiveThread, threads, threadsHydrated } = useXiaozeThreads();
+  const { activeThreadId, persistActiveThread, threads, threadsHydrated, apiClient } = useXiaozeThreads();
   const persistActiveThreadRef = useRef(persistActiveThread);
   const loadedThreadRef = useRef<string | null>(null);
   const skipNextPersistRef = useRef(false);
@@ -62,7 +62,7 @@ export function XiaozeThreadController() {
 
       let cancelled = false;
 
-      getXiaozeThread(activeThreadId)
+      getXiaozeThread(activeThreadId, apiClient)
         .then((thread) => {
           if (cancelled) {
             return;
@@ -89,7 +89,7 @@ export function XiaozeThreadController() {
     agent.setMessages(savedMessages as Message[]);
     loadedThreadRef.current = activeThreadId;
     clearXiaozePromptDebugStore();
-  }, [activeThreadId, agent, threads, threadsHydrated]);
+  }, [activeThreadId, agent, threads, threadsHydrated, apiClient]);
 
   useEffect(() => {
     if (loadedThreadRef.current !== activeThreadId) {
