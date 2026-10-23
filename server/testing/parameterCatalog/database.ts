@@ -155,7 +155,13 @@ export const S2_SCH_0262_FINGERPRINT =
 export const S2_SCH_0263_FINGERPRINT =
   "d4bb5881fc24a088b7ccc923366e887da97145f222ee038e3ce1131fa49de737";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0263_FINGERPRINT;
+/** 0275 adds organization lifecycle triggers to organization-owned Catalog
+ * records. Measured on fresh PostgreSQL with the complete migration chain;
+ * shared Catalog objects and every historical schema pin remain unchanged. */
+export const S2_SCH_0275_FINGERPRINT =
+  "644a0cf9b4632d99d0b4627bca35c4809fb374dd7cca445306cb280bf89f6db8";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0275_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

@@ -19,7 +19,7 @@ vi.mock("playwright/test", () => ({
   }),
 }));
 vi.mock("../e2e/acceptance/helpers/browserDiagnostics", () => ({ useBrowserDiagnostics: vi.fn() }));
-vi.mock("pg", () => ({ default: { Pool: class { async end() {} } } }));
+vi.mock("pg", () => ({ default: { Pool: class { async query() {} async end() {} } } }));
 vi.mock("../server/testing/parameterCatalog/semanticBinding", () => ({
   seedSemanticBindingCatalog: vi.fn(),
   SEMANTIC_BINDING_FIXTURE_RELEASE_ID: "fixture-release",
