@@ -297,7 +297,7 @@ export function createAgentOrchestrator(options: {
     const approvals = await listAgentApprovals(db, context.auth.organization.id, sessionId);
 
     return {
-      session: { id: session.id, context: session.context, messages },
+      session: { id: session.id, context: session.context, messages, historicalAttribution: session.historicalAttribution },
       messages,
       toolCalls,
       approvals

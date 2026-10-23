@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { historicalAttributionSchema } from "./historicalAttribution";
 import { EventType } from "@ag-ui/core";
 import {
   XIAOZE_INTERRUPT_EVENT,
@@ -29,6 +30,7 @@ export const xiaozeThreadContextSchema = z.object({
 });
 
 export const xiaozeThreadListItemDtoSchema = z.object({
+  historicalAttribution: historicalAttributionSchema.optional(),
   id: z.string(),
   title: z.string(),
   preview: z.string(),
@@ -48,6 +50,7 @@ export const xiaozeThreadMessageDtoSchema = z.object({
 });
 
 export const xiaozeThreadDetailDtoSchema = z.object({
+  historicalAttribution: historicalAttributionSchema.optional(),
   id: z.string(),
   title: z.string(),
   preview: z.string(),

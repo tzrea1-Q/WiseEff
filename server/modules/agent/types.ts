@@ -53,6 +53,7 @@ export type AgentToolCallDto = {
 };
 
 export type AgentApprovalDto = {
+  historicalAttribution?: import("../../../src/domain/identity/historicalAttribution").HistoricalAttribution;
   id: string;
   toolCallId: string;
   title: string;
@@ -65,6 +66,7 @@ export type AgentApprovalDto = {
 };
 
 export type AgentSessionDto = {
+  historicalAttribution?: import("../../../src/domain/identity/historicalAttribution").HistoricalAttribution;
   id: string;
   context: AgentContext;
   messages: AgentMessageDto[];
