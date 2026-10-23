@@ -6,6 +6,7 @@ import { parameterDefinitionDeletionSchemaRegistry } from "./dtoSchemas/paramete
 import { workflowPublicationSchemaRegistry } from "./dtoSchemas/workflowPublication";
 import { platformOrganizationSchemaRegistry } from "./dtoSchemas/platformOrganizations";
 import { organizationTeamSchemaRegistry } from "./dtoSchemas/organizationTeams";
+import { organizationWorkspaceSchemaRegistry } from "./dtoSchemas/organizationWorkspace";
 import { projectMembersSchemaRegistry } from "./dtoSchemas/projectMembers";
 import { assetHandoverSchemaRegistry } from "./dtoSchemas/organizationAssetHandover";
 import { organizationInvitationSchemaRegistry } from "./dtoSchemas/organizationInvitations";
@@ -64,6 +65,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   ...assetHandoverSchemaRegistry,
   ...platformOrganizationSchemaRegistry,
   ...organizationTeamSchemaRegistry,
+  ...organizationWorkspaceSchemaRegistry,
   ...projectMembersSchemaRegistry,
   ...organizationInvitationSchemaRegistry,
   ...workflowPublicationSchemaRegistry,
@@ -2333,7 +2335,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
 };
 
 for (const routeId of [
-  "organization.get", "organization.update", "users.list", "users.create", "users.setOidcIdentity", "users.update", "users.delete", "users.activation",
+  "organization.get", "organization.workspaceSummary", "organization.update", "users.list", "users.create", "users.setOidcIdentity", "users.update", "users.delete", "users.activation",
   "users.replaceRoles", "users.replaceOrganizationRoles", "users.resetPassword", "users.getProjectWorkflowRoleBindings", "users.replaceProjectWorkflowRoleBindings",
   "users.listRegistrationRoleRequests", "users.approveRegistrationRoleRequest", "users.enableBasicRegistrationRoleRequest", "users.rejectRegistrationRoleRequest",
   "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.revokeOrganizationBridge",

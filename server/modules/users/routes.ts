@@ -54,6 +54,7 @@ import { listProjectHandovers, assignProjectHandover, projectHandoverBodySchema,
 import { parameterInvocation, parameterRequestAccess, withParameterAccess } from "../parameters/operatingScope";
 import { previewAccountTransfer, transferAccount } from "./accountTransfer";
 import { accountTransferRequestSchema, accountTransferTargetSchema } from "../contracts/dtoSchemas/accountTransfer";
+import { getOrganizationWorkspaceSummary } from "./workspaceSummary";
 
 const userIdParamsSchema = z.object({
   userId: z.string().min(1)
@@ -201,6 +202,11 @@ export function registerUserRoutes(
     const organization = await getHomeOrganization(db, await operatingInvocation(db, auth, request));
 
     return { status: 200, body: { organization } };
+  });
+
+  router.get("/api/v1/organization/workspace-summary", async request => {
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    return { status: 200, body: { item: await getOrganizationWorkspaceSummary(db, await operatingInvocation(db, auth, request), Boolean(options.localInvitationsEnabled)) } };
   });
 
   router.get("/api/v1/organization/project-candidates", async (request) => {

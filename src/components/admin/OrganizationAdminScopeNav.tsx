@@ -1,4 +1,4 @@
-import { Building2, FolderKanban, KeyRound, Monitor, Users, UsersRound } from "lucide-react";
+import { Building2, FolderKanban, Library, Settings2, Users, UsersRound } from "lucide-react";
 
 import {
   ORGANIZATION_ADMIN_UI,
@@ -22,15 +22,15 @@ export function OrganizationAdminScopeNav({ active, onNavigate, organizationId }
     <ViewSwitch
       variant="section"
       ariaLabel={ORGANIZATION_ADMIN_UI.scopeNavAria}
-      value={active === "invitations" ? "members" : active}
+      value={active === "invitations" || active === "handovers" ? "members" : active === "bridges" || active === "integrations" ? "resources" : active}
       onValueChange={(value) => onNavigate(`${buildOrganizationAdminPath(value as OrganizationAdminArea)}${organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : ""}`)}
       items={[
-        { value: "profile", label: <><Building2 size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.profileScope}</> },
+        { value: "overview", label: <><Building2 size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.overviewScope}</> },
         { value: "members", label: <><Users size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.membersScope}</> },
         { value: "teams", label: <><UsersRound size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.teamsScope}</> },
         { value: "projects", label: <><FolderKanban size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.projectsScope}</> },
-        { value: "bridges", label: <><Monitor size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.bridgesScope}</> },
-        { value: "integrations", label: <><KeyRound size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.integrationsScope}</> }
+        { value: "resources", label: <><Library size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.resourcesScope}</> },
+        { value: "profile", label: <><Settings2 size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.profileScope}</> }
       ]}
     />
   );

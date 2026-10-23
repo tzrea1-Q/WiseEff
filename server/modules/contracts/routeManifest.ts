@@ -7,6 +7,7 @@ import { workflowPublicationRoutes } from "./dtoSchemas/workflowPublication";
 import { platformOrganizationRoutes } from "./dtoSchemas/platformOrganizations";
 import { organizationInvitationRoutes } from "./dtoSchemas/organizationInvitations";
 import { organizationTeamRoutes } from "./dtoSchemas/organizationTeams";
+import { organizationWorkspaceRoutes } from "./dtoSchemas/organizationWorkspace";
 import { assetHandoverRoutes } from "./dtoSchemas/organizationAssetHandover";
 
 export type RouteModule =
@@ -45,6 +46,7 @@ export const routeManifest = [
   ...organizationInvitationRoutes,
   ...platformOrganizationRoutes,
   ...organizationTeamRoutes,
+  ...organizationWorkspaceRoutes,
   ...workflowPublicationRoutes,
   { id: "auth.localConfig", method: "GET", path: "/api/v1/auth/local-config", module: "auth", stability: "commercial-readiness" },
   { id: "auth.register", method: "POST", path: "/api/v1/auth/register", module: "auth", stability: "commercial-readiness" },

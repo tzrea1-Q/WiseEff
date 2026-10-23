@@ -26,6 +26,7 @@ function ResolvedOrganizationWorkspace({ requestedId, workspaceClient, ...props 
   const credentialRepository = useMemo(() => createIntegrationCredentialClient(undefined, operatingId), [operatingId]);
   const foreign = Boolean(scope && scope.organization.id !== scope.actor.organization.id);
   const platform = scope?.actor.roles.some((role) => role.projectId === null && role.roleId === "platform-admin");
+  const administrator = Boolean(scope?.actor.permissions.includes("users:manage") && scope.actor.roles.some(role => role.projectId === null && ["admin", "platform-admin"].includes(role.roleId)));
   const accountTransferClient = useMemo(() => platform && operatingId ? createAccountTransferClient(operatingId) : undefined, [platform, operatingId]);
 
   useEffect(() => {
@@ -36,13 +37,13 @@ function ResolvedOrganizationWorkspace({ requestedId, workspaceClient, ...props 
     return () => { cancelled = true; };
   }, [workspaceClient, requestedId, attempt]);
   useEffect(() => {
-    if (props.area !== "members" || !client) return;
+    if (props.area !== "members" || !client || !administrator) return;
     let cancelled = false;
     setProjects(null); setProjectError("");
     void client.listProjectCandidates().then((next) => { if (!cancelled) setProjects(next); })
       .catch((failure: unknown) => { if (!cancelled) setProjectError(presentError(failure, "无法加载该组织的项目，请重试。")); });
     return () => { cancelled = true; };
-  }, [client, props.area, attempt]);
+  }, [client, props.area, attempt, administrator]);
 
   if (error) return <SectionError message={error} onRetry={() => setAttempt((value) => value + 1)} />;
   if (!scope || !client) return <SectionSkeleton label="正在进入组织" />;
@@ -54,9 +55,9 @@ function ResolvedOrganizationWorkspace({ requestedId, workspaceClient, ...props 
         {foreign ? <Button variant="outline" onClick={() => props.onNavigate("/organization")}>返回所属组织</Button> : null}</div> : null}
     </section>
     {scope.organization.status === "suspended" ? <p role="status">组织已停用，业务数据仅可查看。{platform ? "可继续办理交接，或返回组织目录恢复组织。" : "请联系平台管理员恢复组织。"}</p> : null}
-    {props.area === "members" && projectError ? <SectionError message={projectError} onRetry={() => setAttempt((value) => value + 1)} />
-        : props.area === "members" && !projects ? <SectionSkeleton label="正在加载组织成员工作区" />
-          : <OrganizationPage key={`${scope.organization.id}:${props.area ?? "profile"}`} {...props} apiMode readOnly={scope.organization.status === "suspended"} directoryScope={scope.organization.id}
+    {administrator && props.area === "members" && projectError ? <SectionError message={projectError} onRetry={() => setAttempt((value) => value + 1)} />
+        : administrator && props.area === "members" && !projects ? <SectionSkeleton label="正在加载组织成员工作区" />
+          : <OrganizationPage key={`${scope.organization.id}:${props.area ?? "overview"}`} {...props} apiMode readOnly={scope.organization.status === "suspended" || !administrator} directoryScope={scope.organization.id}
             userGovernanceActions={client} teamActions={client} accountTransferClient={accountTransferClient} invitationActions={client} organizationActions={client} reviewRolesClient={client} projectCandidates={projects ?? []} bridgeActions={bridgeActions} credentialRepository={credentialRepository} projectMembershipClient={client}
             onOrganizationUpdated={async (organization) => {
               setScope((current) => current ? { ...current, organization: { ...current.organization, id: organization.id, name: organization.name } } : current);
