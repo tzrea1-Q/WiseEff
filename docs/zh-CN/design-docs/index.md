@@ -50,6 +50,7 @@
 - [项目配置工作台——锁定设计](2026-08-06-project-configuration-workbench-design.md)
 - [知识库——锁定设计](2026-08-12-knowledge-base-design.md)
 - [组织管理——锁定设计](2026-08-19-organization-administration-design.md)
+- [组织管理整体设计——已接受](2026-10-23-organization-management-design.md)：平台操作范围、邀请、团队与项目参与、交接、调动、停用和彻底删除；完整方案已在 Q21 确认，功能另行交付。
 - [参数治理延期问题——2026-08-18 锁定（英文）](../../design-docs/2026-07-30-parameter-governance-deferred-questions.md)
 - [表格列多选筛选 UX](ux-table-column-filter.md)
 - [UI 设计系统](ui-design-system.md)
