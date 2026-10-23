@@ -297,6 +297,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "change-password": "修改密码",
   "reset-password": "重置密码",
   "bootstrap-admin": "初始化管理员",
+  appoint: "指定管理员",
   "replace-roles": "调整角色",
   "update-profile": "更新资料",
   "resolve-operating-scope": "确认组织操作范围",
