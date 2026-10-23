@@ -90,6 +90,7 @@ function auth(): AuthContext {
     },
     organization: { id: "org-1", name: "ChargeLab" },
     roles: [{ projectId: "project-1", roleId: "hardware-committer" }],
+    projectMemberships: [{ projectId: "project-1", roles: ["hardware-committer"] }],
     permissions: ["debugging:admin", "debugging:dts-reload", "debugging:view", "parameter:edit"]
   };
 }

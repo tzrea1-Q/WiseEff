@@ -219,6 +219,7 @@ describe("canonical pending value drafts", () => {
     name: "Draft editor",
     email: "drafts@example.com",
     organizationName: "Draft org",
+    projectMemberships: [{ projectId: PROJECT, roles: ["software-user"] }],
     roles: [{ projectId: PROJECT, roleId: "software-user" }]
   });
 
@@ -577,6 +578,7 @@ describe("canonical pending value drafts", () => {
     const otherProjectEditor = makeTestAuthContext({
       userId: USER,
       organizationId: ORG,
+      projectMemberships: [{ projectId: "project-other", roles: ["software-user"] }],
       roles: [{ projectId: "project-other", roleId: "software-user" }]
     });
     await expect(
@@ -702,6 +704,7 @@ describe("canonical pending value drafts", () => {
       name: "Race editor",
       email: "race-editor-849@example.com",
       organizationName: "Draft org",
+      projectMemberships: [{ projectId: PROJECT, roles: ["software-user"] }],
       roles: [{ projectId: PROJECT, roleId: "software-user" }]
     });
     await pool.query(
@@ -1112,6 +1115,7 @@ describe("canonical pending value drafts", () => {
     // Another editor's fully reviewed source change wins; no unpinned SQL value
     // insertion can stand in for a legitimate concurrent source commit.
     const otherEditor = makeTestAuthContext({ userId: "user-849-other-editor", organizationId: ORG,
+      projectMemberships: [{ projectId: PROJECT, roles: ["software-user"] }],
       roles: [{ projectId: PROJECT, roleId: "software-user" }] });
     await pool.query(`insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Other editor','Engineer',true)`, [otherEditor.user.id,ORG]);
     const otherDraft = await createPreparedDraft(root, otherEditor, {
@@ -1254,6 +1258,7 @@ describe("canonical pending value drafts", () => {
     const otherAuthor = makeTestAuthContext({
       userId: otherAuthorId,
       organizationId: ORG,
+      projectMemberships: [{ projectId: PROJECT, roles: ["software-user"] }],
       roles: [{ projectId: PROJECT, roleId: "software-user" }]
     });
     await pool.query(

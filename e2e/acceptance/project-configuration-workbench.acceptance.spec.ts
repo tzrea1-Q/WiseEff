@@ -2078,6 +2078,8 @@ test.describe("project configuration workbench read-only browser acceptance", ()
            values ($1, $2, 'Canonical release readiness', $1, 'initialized')`,
           [scopedProjectId, organizationId]
         );
+        await client.query(`insert into project_members(organization_id,project_id,user_id,roles)
+          values ($1,$2,$3,ARRAY['software-user'])`, [organizationId,scopedProjectId,acceptanceCast.liuMin.userId]);
         for (const [userId, roleId] of [
           [acceptanceCast.liuMin.userId, "software-user"],
           [acceptanceCast.sunMei.userId, "software-committer"]

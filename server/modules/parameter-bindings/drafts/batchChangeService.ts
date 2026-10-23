@@ -817,8 +817,7 @@ export async function getCanonicalBatchValueChangeForReviewer(
     });
     return null;
   }
-  if (!canReviewParameters(auth) || !canReviewParameterStage(auth, input.projectId, "software_review")
-    || (security && !canEditParameters(auth, input.projectId))) {
+  if (!canReviewParameters(auth) || !canReviewParameterStage(auth, input.projectId, "software_review")) {
     await denyReview();
   }
   return db.transaction(async (tx) => {
@@ -853,7 +852,7 @@ export async function listCanonicalBatchValueChangesForAuth(
     || !auth.roles.some((role) => role.projectId === null || role.projectId === input.projectId)) {
     throw new ApiError("FORBIDDEN", "Project parameter view permission is required.");
   }
-  if (!input.mine && (!canEditParameters(auth, input.projectId) || !canReviewParameters(auth)
+  if (!input.mine && (!canReviewParameters(auth)
     || !canReviewParameterStage(auth, input.projectId, "software_review")
     || !await hasCurrentCanonicalReviewRole(db, {
       organizationId: parameterOrganizationId(auth), projectId: input.projectId, userId: auth.user.id

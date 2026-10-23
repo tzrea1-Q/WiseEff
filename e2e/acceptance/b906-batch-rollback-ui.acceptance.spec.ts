@@ -153,7 +153,11 @@ test(`#906 B ${format} historical two-Binding rollback ${outcomeKind}${withDraft
         for (const [index, value] of [88, 99].entries()) {
           const author = makeTestAuthContext({ userId: index ? acceptanceCast.sunMei.userId : acceptanceCast.liuMin.userId,
             organizationId: "org-chargelab", permissions: ["parameter:view", "parameter:edit"],
-            roles: [{ roleId: "software-user", projectId: "aurora" }] });
+            roles: [{ roleId: "software-user", projectId: "aurora" }],
+            projectMemberships: [{ projectId: "aurora", roles: ["software-user"] }] });
+          await db.query(`insert into project_members(organization_id,project_id,user_id,roles)
+            values ('org-chargelab','aurora',$1,ARRAY['software-user'])
+            on conflict(organization_id,project_id,user_id) do nothing`, [author.user.id]);
           const draft = await createCanonicalValueDraft(db, author, {
             projectId: "aurora", bindingId: competingBindingId,
             ...(format === "json" ? { sourceTarget: { format: "json" as const, sourceText: String(value) } }

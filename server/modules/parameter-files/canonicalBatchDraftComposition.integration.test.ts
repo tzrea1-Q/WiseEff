@@ -55,6 +55,7 @@ const reviewer = makeTestAuthContext({ userId: REVIEWER, organizationId: ORG,
   permissions: ["parameter:view", "parameter:edit", "parameter:review"],
   roles: [{ roleId: "software-committer", projectId: PROJECT }] });
 const author = makeTestAuthContext({ userId: AUTHOR, organizationId: ORG,
+  projectMemberships: [{ projectId: PROJECT, roles: ["software-user"] }],
   permissions: ["parameter:view", "parameter:edit"],
   roles: [{ roleId: "software-user", projectId: PROJECT }] });
 const foreignAdmin = makeTestAuthContext({ userId: "foreign-guard-admin", organizationId: "foreign-guard-org",

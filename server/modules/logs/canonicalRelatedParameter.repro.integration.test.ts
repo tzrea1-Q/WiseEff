@@ -576,26 +576,30 @@ describe("project-scoped canonical related-parameter analysis", () => {
       "urb-905-editor",
       fixture.otherProjectId
     ]);
+    await db.query("update project_members set project_id=$3 where organization_id=$1 and user_id=$2", [
+      fixture.organizationId, fixture.editorAuth.user.id, fixture.otherProjectId
+    ]);
     const unrelatedProjectViewerAuth = await getAuthContext(db, fixture.editorAuth.user.id);
     expect(unrelatedProjectViewerAuth.permissions).toContain("logs:view");
     expect(unrelatedProjectViewerAuth.permissions).toContain("logs:feedback");
     expect(unrelatedProjectViewerAuth.permissions).toContain("parameter:view");
     expect(unrelatedProjectViewerAuth.roles).not.toContainEqual({ projectId: fixture.projectId, roleId: "software-user" });
-    await expect(
-      readProjectProtectedParameters(pool, {
+    expect(await readProjectProtectedParameters(pool, {
         invocation: createUserInvocation(unrelatedProjectViewerAuth),
         projectId: fixture.projectId
-      })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      })).toContainEqual(expect.objectContaining({ pin: expect.objectContaining({ bindingId: fixture.bindingId }) }));
+    await expect(readProjectProtectedParameters(pool, {
+      invocation: createUserInvocation(fixture.otherAuth), projectId: fixture.projectId
+    })).rejects.toMatchObject({ code: "NOT_FOUND" });
 
     requestAuth = unrelatedProjectViewerAuth;
-    const putsBeforeUnauthorizedUpload = objectStorePutCalls;
-    const unauthorizedUpload = await requestJson(createHttpServer(router), "/api/v1/log-files", {
+    const putsBeforeOrganizationUpload = objectStorePutCalls;
+    const organizationUpload = await requestJson<{ log: { id: string } }>(createHttpServer(router), "/api/v1/log-files", {
       method: "POST",
       body: JSON.stringify({
         fileName: "cross-project.log",
         contentType: "text/plain",
-        contentBase64: Buffer.from("INFO must not persist\n").toString("base64"),
+        contentBase64: Buffer.from("INFO same-organization parameter reference\n").toString("base64"),
         relatedParameterPin: {
           kind: "canonical-pin",
           projectId: fixture.projectId,
@@ -603,8 +607,8 @@ describe("project-scoped canonical related-parameter analysis", () => {
         }
       })
     });
-    expect(unauthorizedUpload.status).toBe(403);
-    expect(objectStorePutCalls).toBe(putsBeforeUnauthorizedUpload);
+    expect(organizationUpload.status).toBe(201);
+    expect(objectStorePutCalls).toBe(putsBeforeOrganizationUpload + 1);
 
     const listResponse = await requestJson<{ items: unknown[] }>(createHttpServer(router), "/api/v1/logs");
     expect(listResponse.status).toBe(200);
@@ -631,9 +635,12 @@ describe("project-scoped canonical related-parameter analysis", () => {
       "urb-905-editor",
       fixture.projectId
     ]);
+    await db.query("update project_members set project_id=$3 where organization_id=$1 and user_id=$2", [
+      fixture.organizationId, fixture.editorAuth.user.id, fixture.projectId
+    ]);
     requestAuth = await getAuthContext(db, fixture.editorAuth.user.id);
-    const restoredList = await requestJson<{ items: unknown[] }>(createHttpServer(router), "/api/v1/logs");
-    expect(restoredList.body.items).toHaveLength(1);
+    const restoredList = await requestJson<{ items: Array<{ id: string }> }>(createHttpServer(router), "/api/v1/logs");
+    expect(restoredList.body.items.map((item) => item.id).sort()).toEqual([uploadBody.log.id, organizationUpload.body.log.id].sort());
     requestAuth = unrelatedProjectViewerAuth;
 
     const rerunResponse = await requestJson<{ error: { code: string; message: string } }>(

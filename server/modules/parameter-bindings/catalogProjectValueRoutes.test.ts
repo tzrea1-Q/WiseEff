@@ -165,6 +165,7 @@ const draftBody = {
 const projectEditor = (projectId: string) =>
   makeAuth({
     roles: [{ projectId, roleId: "software-user" }],
+    projectMemberships: [{ projectId, roles: ["software-user"] }],
     permissions: ["parameter:view", "parameter:edit"]
   });
 

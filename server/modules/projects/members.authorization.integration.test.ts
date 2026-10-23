@@ -30,6 +30,8 @@ describe("explicit project authorization cutover (real HTTP/PostgreSQL)", () => 
           await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id,project_id) values($1,$2,$3,$4,$5)", [`${id}-role`, id, org, role, id === "edit-reviewer" ? "edit-one" : null]);
         }
         await db.query("insert into projects(id,organization_id,name,code,status) values('edit-one','edit-target','One','ONE','initialized'),('edit-two','edit-target','Two','TWO','initialized')");
+        await db.query("insert into projects(id,organization_id,name,code,status) values('edit-foreign','edit-home','Foreign','FOREIGN','initialized')");
+        await db.query("insert into users(id,organization_id,name,title,is_active) values('edit-roleless','edit-target','Roleless','Reader',true)");
         async function api(userId: string, path: string, method = "GET", body?: unknown) {
           const auth = await getAuthContext(db, userId);
           return requestJson<Record<string, unknown>>(createWiseEffServer({ db, objectStore, auth: { mode: "production", verifier: { verify: async () => auth } } }), path,
@@ -40,6 +42,15 @@ describe("explicit project authorization cutover (real HTTP/PostgreSQL)", () => 
         expect((await api("edit-platform", "/api/v1/projects/edit-one/members/edit-platform?organizationId=edit-target", "PUT", { roles: ["software-user"], expectedRoles: [] })).status).toBe(404);
         const before = await getAuthContext(db, "edit-person");
         expect(canEditParameters(before, "edit-one")).toBe(false);
+        const roleless = await getAuthContext(db, "edit-roleless");
+        expect(roleless.roles).toEqual([]);
+        expect(roleless.projectMemberships).toEqual([]);
+        const organizationProjects = await api("edit-roleless", "/api/v1/projects");
+        expect(organizationProjects.status).toBe(200);
+        expect(organizationProjects.body.items).toEqual([
+          { id: "edit-one", name: "One", code: "ONE" }, { id: "edit-two", name: "Two", code: "TWO" }
+        ]);
+        expect((await api("edit-roleless", "/api/v2/projects/edit-foreign/parameter-bindings")).status).toBe(404);
         expect((await api("edit-reader", "/api/v1/projects")).status).toBe(200);
         const admin = await getAuthContext(db, "edit-admin");
         await installConfigurationSourceFixture(db, admin, { subjectId: "csub_member_edit", schemaId: "wiseeff.member.edit" });
@@ -55,6 +66,12 @@ describe("explicit project authorization cutover (real HTTP/PostgreSQL)", () => 
         }));
         const binding = source.bindings[0]!, pin = (await db.query<{ config_revision_id: string }>(
           "select config_revision_id from parameter_catalog.project_value_source_pins where binding_id=$1 and project_value_id=$2", [binding.id, binding.currentValueId])).rows[0]!;
+        for (const path of ["/api/v1/parameters", "/api/v1/parameters?projectId=edit-one"]) {
+          const visible = await api("edit-roleless", path);
+          expect(visible.status).toBe(200);
+          expect(visible.body.items).toEqual([expect.objectContaining({ id: binding.id, projectId: "edit-one" })]);
+        }
+        expect((await api("edit-roleless", "/api/v1/parameters?projectId=edit-foreign")).status).toBe(404);
         const draftPath = `/api/v2/projects/edit-one/parameter-bindings/${binding.id}/drafts`;
         expect((await api("edit-reader", "/api/v2/projects/edit-one/parameter-bindings")).status).toBe(200);
         const draftBody = { baseRevisionId: pin.config_revision_id, sourceTarget: { format: "json", sourceText: "48" }, reason: "Explicit participant contribution" };

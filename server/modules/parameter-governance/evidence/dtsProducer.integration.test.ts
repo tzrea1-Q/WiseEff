@@ -154,8 +154,8 @@ describe("#897 production DTS observation and Review Item association", () => {
     expect(known.compatibles[0]?.candidate).toMatchObject({kind:"recognized",subjectId:"csub_acme_power"});
     const limitedAuth = await getAuthContextForExternalIdentity(api,{organizationId:ORG,subject:LIMITED_USER});
     expect(limitedAuth.roles).toEqual([{roleId:"software-user",projectId:OTHER_PROJECT}]);
-    await expect(listDriverCompatibleDiscovery({db:api,objectStore:storage,auth:limitedAuth,
-      projectId:PROJECT})).rejects.toMatchObject({code:"NOT_FOUND"});
+    expect(await listDriverCompatibleDiscovery({db:api,objectStore:storage,auth:limitedAuth,
+      projectId:PROJECT})).toMatchObject({status:"ready",items:[],emptyReason:"no-observations"});
     const limitedUpload = await requestJson(app(storage),`/api/v1/projects/${PROJECT}/parameter-files`,
       {method:"POST",headers:{authorization:"Bearer limited"},
         body:JSON.stringify({fileName:"denied.dts",contentBase64:Buffer.from(source).toString("base64")})});
@@ -196,7 +196,8 @@ describe("#897 production DTS observation and Review Item association", () => {
     }
     if (!queue.ok || unknown?.candidate.kind !== "review-required") throw new Error("Current Review Item is absent");
     const context = {actorKind:"org-admin" as const,principalId:auth.user.id,organizationId:ORG};
-    const firstItem = queue.value.items.find((item) => item.id === unknown.candidate.reviewItemIds?.[0])!;
+    const firstReviewItemId = unknown.candidate.reviewItemIds?.[0];
+    const firstItem = queue.value.items.find((item) => item.id === firstReviewItemId)!;
     expect(firstItem).toBeTruthy();
     const reviewCount = evidence.length;
     await db.transaction(async (tx) => {
@@ -278,7 +279,7 @@ describe("#897 production DTS observation and Review Item association", () => {
     const afterDb = await databaseState(nextProject);
     const afterObjects = await objects();
     expect(afterDb).toEqual(beforeDb);
-    expect((await db.query(`select current_version_id from project_parameter_files where id=$1`,
+    expect((await db.query<{ current_version_id: string }>(`select current_version_id from project_parameter_files where id=$1`,
       [initial.file.id])).rows[0]?.current_version_id).toBe(initial.version.id);
     expect(beforeObjects.some((item) => item.sha256 === newHash)).toBe(false);
     expect(afterObjects).toEqual(beforeObjects);
@@ -460,7 +461,7 @@ describe("#897 production DTS observation and Review Item association", () => {
     const logicalNodeId = (payload.sourceRevision as { logicalNodeId: string }).logicalNodeId;
     const pin = (await captureCurrentCatalogPin(getRootPostgresPool(api)!))!;
     const command: IngestEvidenceCommand = { organizationId, sourceIdentity: `dts-continuity:${revision.id}:${logicalNodeId}`,
-      catalogReleaseId: pin.id, matcherRevision: subjectMatcherRevision, matcherOutput: { status: "ambiguous" }, evidence: payload };
+      catalogReleaseId: pin.id, matcherRevision: subjectMatcherRevision, matcherOutput: { status: "ambiguous" }, evidence: JSON.parse(JSON.stringify(payload)) };
     const input = { kind: "revision-review" as const, projectId, configRevisionId: revision.id, logicalNodeId, objectStore: storage };
     const attempts: IngestEvidenceCommand[] = [
       { ...command, sourceIdentity: "untrusted-revision-evidence" },

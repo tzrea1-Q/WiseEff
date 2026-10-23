@@ -6,8 +6,8 @@ import { makeTestAuthContext } from "../../testing/authContext";
 import { registerCatalogProjectValueConsumerRoutes } from "./catalogProjectValueRoutes";
 
 describe("canonical binding read project scope", () => {
-  it.each(["change-history", "export"])("rejects another project before reading %s", async (operation) => {
-    const query = vi.fn();
+  it.each(["change-history", "export"])("rejects a foreign organization's project before reading %s", async (operation) => {
+    const query = vi.fn().mockResolvedValue({ rows: [], rowCount: 0 });
     const get = vi.fn();
     const router = createRouter();
     registerCatalogProjectValueConsumerRoutes(router, {
@@ -19,8 +19,10 @@ describe("canonical binding read project scope", () => {
       })
     });
     const response = await requestJson(createHttpServer(router), `/api/v2/projects/project-b/parameter-bindings/binding-b/${operation}`);
-    expect(response.status).toBe(403);
-    expect(query).not.toHaveBeenCalled();
+    expect(response.status).toBe(404);
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query.mock.calls[0]?.[0]).toContain("from projects");
+    expect(query.mock.calls[0]?.[1]).toEqual(["org-test", "project-b"]);
     expect(get).not.toHaveBeenCalled();
   });
 });

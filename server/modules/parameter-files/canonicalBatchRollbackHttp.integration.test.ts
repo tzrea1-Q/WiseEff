@@ -52,6 +52,7 @@ const reviewer = makeTestAuthContext({ userId: REVIEWER, organizationId: ORG,
   permissions: ["parameter:view", "parameter:edit", "parameter:review"],
   roles: [{ roleId: "software-committer", projectId: PROJECT }] });
 const otherReviewer = makeTestAuthContext({ userId: OTHER_REVIEWER, organizationId: ORG,
+  projectMemberships: [{ projectId: PROJECT, roles: ["software-committer"] }],
   permissions: ["parameter:view", "parameter:edit", "parameter:review"],
   roles: [{ roleId: "software-committer", projectId: PROJECT }] });
 const foreign = makeTestAuthContext({ userId: "foreign-admin", organizationId: "foreign-org",
@@ -169,7 +170,8 @@ async function fixture(format: Format, withOtherDraft = true, thirdSibling = fal
     requestId: `906-${format}-other-author-draft`, refusalSink: createTrustedRefusalAuditSink(db) });
   return { db, storage, directory, fileId: uploaded.file.id, fileName, baseVersionId: uploaded.version.id,
     activeVersionId, workflowProofToken: workflow.proofToken, before, after, candidateId: candidate.id,
-    conflictProofs: new Map<string, Awaited<ReturnType<typeof fileDecisions>>>() };
+    conflictProofs: new Map<string, Array<{ bindingId: string; choice: "file";
+      expectedConflictProofs: Array<{ draftId: string; decisionProofDigest: string }> }>>() };
 }
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
@@ -284,7 +286,7 @@ describe("#1080 canonical DTS source commit structural continuity", () => {
     const f = await fixture("dts", false, true);
     const previousMode = parameterIdentityMode();
     try {
-      expect((await f.db.query("select count(*)::int as count from parameter_identity_cutovers")).rows[0]!.count).toBe(0);
+      expect((await f.db.query<{ count: number }>("select count(*)::int as count from parameter_identity_cutovers")).rows[0]!.count).toBe(0);
       const bindings = await api<{ items: Array<{ id: string; sourceNodePath: string }> }>(f,
         `/api/v2/projects/${PROJECT}/parameter-bindings`);
       expect(bindings.status, JSON.stringify(bindings.body)).toBe(200);
@@ -402,7 +404,7 @@ describe("#906 canonical manual sync HTTP preparation", () => {
   const path = (f: Fixture) => `/api/v1/projects/${PROJECT}/parameter-files/${f.fileId}/source-manual-sync/prepare`;
   const body = (f: Fixture, bytes: Buffer) => ({ contentBase64: bytes.toString("base64"),
     expectedCurrentVersionId: f.activeVersionId, expectedWorkflowProofToken: f.workflowProofToken });
-  const prepareManual = (f: Fixture, key: string, bytes = Buffer.from(f.before), auth = admin,
+  const prepareManual = (f: Fixture, key: string, bytes: Buffer = Buffer.from(f.before), auth = admin,
     override: Record<string, unknown> = {}, storage = f.storage) => requestJson<{
       item: Prepared; error?: { code: string; details?: { reason: string } }
     }>(route(f, auth, storage), path(f), { method: "POST", headers: { "X-Request-Id": key },
@@ -1324,5 +1326,3 @@ describe("#906 canonical historical batch rollback HTTP", () => {
     expect(approved.body.item.status).toBe("approved");
   }, 120_000);
 });
-
-type Fixture = Awaited<ReturnType<typeof fixture>>;

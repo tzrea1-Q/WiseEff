@@ -40,9 +40,11 @@ const reviewer = makeTestAuthContext({ userId: REVIEWER, organizationId: ORG,
   permissions: ["parameter:view", "parameter:edit", "parameter:review"],
   roles: [{ roleId: "software-committer", projectId: PROJECT }] });
 const author = makeTestAuthContext({ userId: AUTHOR, organizationId: ORG,
+  projectMemberships: [{ projectId: PROJECT, roles: ["software-user"] }],
   permissions: ["parameter:view", "parameter:edit"],
   roles: [{ roleId: "software-user", projectId: PROJECT }] });
 const secondAuthor = makeTestAuthContext({ userId: SECOND_AUTHOR, organizationId: ORG,
+  projectMemberships: [{ projectId: PROJECT, roles: ["software-user"] }],
   permissions: ["parameter:view", "parameter:edit"],
   roles: [{ roleId: "software-user", projectId: PROJECT }] });
 
@@ -454,7 +456,9 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
     });
     const preview = await previewCanonicalCandidate(db, storage, admin, { projectId: PROJECT, candidateId: item.id });
     expect(preview.bindings).toHaveLength(2);
-    return { item, preview };
+    const proofToken = preview.proofToken;
+    if (!proofToken) throw new Error("Expected a prepared candidate proof token");
+    return { item, preview: { ...preview, proofToken } };
   }
 
   it.each(["single-before-batch", "single-after-batch"])(

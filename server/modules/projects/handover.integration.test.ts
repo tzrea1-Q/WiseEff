@@ -61,18 +61,23 @@ describe("project business handover (real HTTP/PostgreSQL)", () => {
     const assigned = (await api<{ items: Item[] }>("organization/project-handovers")).body.items.find(item => item.id === draft.id)!;
     expect(assigned).toMatchObject({ responsibleUserId: "handover-editor", pending: false, historicalAttribution: draft.historicalAttribution });
   });
-  async function canonicalDraft() {
+  async function canonicalDraft(batch = false) {
     const admin = await getAuthContext(db, "handover-admin");
     await installConfigurationSourceFixture(db, admin, { subjectId: "csub_handover", schemaId: "wiseeff.handover" });
     const set = await createConfigSet(db, admin, { projectId: "handover-project", name: "Source" });
-    const upload = await uploadProjectParameterFile(db, objectStore, admin, { projectId: "handover-project", fileName: "settings.json", bytes: Buffer.from('{"limit":36.5}') });
+    const upload = await uploadProjectParameterFile(db, objectStore, admin, { projectId: "handover-project", fileName: "settings.json", bytes: Buffer.from(batch ? '{"first":{"limit":36.5},"second":{"limit":37.5}}' : '{"limit":36.5}') });
     await addConfigSetFile(db, admin, { configSetId: set.id, fileId: upload.file.id, role: "base", sortOrder: 0 });
     const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
     if (!snapshot) throw new Error("Canonical fixture unavailable");
     const source = await db.transaction(tx => registerCanonicalJsonSource(tx, objectStore, admin, snapshot, {
       projectId: "handover-project", configSetId: set.id, fileId: upload.file.id, fileVersionId: upload.version.id,
-      configurationSchemaId: "wiseeff.handover", rootPointer: "", mappings: [{ definitionId: "pdef_acme_power_iin_max", pointer: "/limit" }],
+      configurationSchemaId: "wiseeff.handover", rootPointer: batch ? "/first" : "", mappings: [{ definitionId: "pdef_acme_power_iin_max", pointer: batch ? "/first/limit" : "/limit" }],
       invocation: createUserInvocation(admin), requestId: "handover-source", refusalSink: createTrustedRefusalAuditSink(db)
+    }));
+    if (batch) await db.transaction(tx => registerCanonicalJsonSource(tx, objectStore, admin, snapshot, {
+      projectId: "handover-project", configSetId: set.id, fileId: upload.file.id, fileVersionId: upload.version.id,
+      configurationSchemaId: "wiseeff.handover", rootPointer: "/second", mappings: [{ definitionId: "pdef_acme_power_iin_max", pointer: "/second/limit" }],
+      invocation: createUserInvocation(admin), requestId: "handover-second-source", refusalSink: createTrustedRefusalAuditSink(db)
     }));
     const binding = source.bindings[0]!;
     const pin = await loadCanonicalBindingPins(db, { organizationId: "handover-org", projectId: "handover-project", bindingId: binding.id });
@@ -102,6 +107,39 @@ describe("project business handover (real HTTP/PostgreSQL)", () => {
     const reassigned = await api(`organization/project-handovers/value-review/${review.id}`, "PATCH", { responsibleUserId: "handover-admin", expectedVersion: review.version });
     expect(reassigned.status, reassigned.bodyText).toBe(200);
     const approved = await api(`/api/v2/projects/handover-project/parameter-value-change-requests/${review.id}/review`, "POST", { decision: "approve" }, "admin");
+    expect(approved.status, approved.bodyText).toBe(200);
+  });
+  it("hands a frozen batch review to a review-only successor who can approve without editing access", async () => {
+    const source = await canonicalDraft(true);
+    expect((await api(`/api/v2/projects/handover-project/parameter-value-drafts/${source.id}`, "DELETE", undefined, "author")).status).toBe(200);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values('handover-successor','handover-org','Successor','Reviewer',true)");
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values('handover-successor-role','handover-successor','handover-org','handover-project','software-committer')");
+    expect((await getAuthContext(db, "handover-successor")).projectMemberships).toEqual([]);
+    const created = await api<{ item: { id: string } }>("projects/handover-project/parameter-file-candidates", "POST", {
+      fileId: source.fileId, fileName: "settings.json", contentBase64: Buffer.from('{"first":{"limit":52},"second":{"limit":53}}').toString("base64")
+    }, "admin");
+    expect(created.status, created.bodyText).toBe(201);
+    const preview = await api<{ item: { proofToken: string } }>(`projects/handover-project/parameter-file-candidates/${created.body.item.id}/source-preview`, "GET", undefined, "admin");
+    expect(preview.status, preview.bodyText).toBe(200);
+    const submitted = await api<{ item: { id: string; batchProofDigest: string; draftImpactDigest: string } }>(
+      "/api/v2/projects/handover-project/parameter-value-change-requests/batches", "POST", {
+        candidateId: created.body.item.id, expectedProofToken: preview.body.item.proofToken,
+        reason: "Retained batch review", assignedToUserId: "handover-reviewer"
+      }, "admin");
+    expect(submitted.status, submitted.bodyText).toBe(201);
+    await api("users/handover-reviewer/activation", "PATCH", { isActive: false });
+    const item = (await api<{ items: Item[] }>("organization/project-handovers")).body.items.find(item => item.id === submitted.body.item.id)!;
+    expect(item).toMatchObject({ kind: "value-review", pending: true });
+    expect(item.candidates.map(candidate => candidate.id)).toContain("handover-successor");
+    expect((await api(`organization/project-handovers/value-review/${item.id}`, "PATCH", {
+      responsibleUserId: "handover-successor", expectedVersion: item.version
+    })).status).toBe(200);
+    expect((await api(source.path, "POST", { baseRevisionId: source.pin.configRevisionId,
+      sourceTarget: { format: "json", sourceText: "60" }, reason: "Review duty does not grant editing" }, "successor")).status).toBe(403);
+    const approved = await api(`/api/v2/projects/handover-project/parameter-value-change-requests/${item.id}/review`, "POST", {
+      decision: "approve", batchProofDigest: submitted.body.item.batchProofDigest,
+      draftImpactDigest: submitted.body.item.draftImpactDigest
+    }, "successor");
     expect(approved.status, approved.bodyText).toBe(200);
   });
   it("keeps Agent-origin pending work and initializes a project after its original creator is deleted", async () => {
