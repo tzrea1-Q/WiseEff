@@ -97,8 +97,8 @@ export type NodeEnablementDraftResult = {
   target: EnablementEditTarget;
 };
 
-function requireCanEdit(auth: AuthContext) {
-  if (!canEditParameters(auth)) {
+function requireCanEdit(auth: AuthContext, projectId: string) {
+  if (!canEditParameters(auth, projectId)) {
     throw new ApiError("FORBIDDEN", "Parameter edit permission required.");
   }
 }
@@ -254,7 +254,7 @@ async function createNodeEnablementDraftInTransaction(
   deps: CreateBindingDraftDeps = {},
   context: TrustedSensitiveNodeWriteContext,
 ): Promise<NodeEnablementDraftResult> {
-  requireCanEdit(auth);
+  requireCanEdit(auth, input.projectId);
 
   const attribution = trustedDomainAttribution(context.invocation);
   const draftOwner = {

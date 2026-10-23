@@ -15,6 +15,7 @@ export const operatingContextResponseSchema = z.object({
     }).strict(),
     organization: organizationSchema,
     roles: z.array(z.object({ projectId: z.string().nullable(), roleId: z.enum(BACKEND_ROLE_IDS) }).strict()),
+    projectMemberships: z.array(z.object({ projectId: z.string(), roles: z.array(z.enum(["hardware-user", "software-user", "hardware-committer", "software-committer"])) }).strict()).optional(),
     permissions: z.array(z.enum(BACKEND_PERMISSIONS))
   }).strict(),
   organization: organizationSchema

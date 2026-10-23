@@ -270,6 +270,13 @@ export async function seedM1Parameters(
           ]
         );
       }
+      // Demo editing is explicit too; this seed is not a runtime role-to-project grant.
+      await tx.query(`insert into project_members(organization_id,project_id,user_id,roles)
+        select $1,$2,person.id,array_agg(distinct binding.role_id order by binding.role_id)
+        from users person join user_role_bindings binding on binding.user_id=person.id and binding.organization_id=person.organization_id
+        where person.organization_id=$1 and (binding.project_id is null or binding.project_id=$2)
+          and binding.role_id in ('hardware-user','software-user','hardware-committer','software-committer')
+        group by person.id on conflict(organization_id,project_id,user_id) do nothing`, [organizationId, project.id]);
     }
 
     const seedModules = resolveSeedModules(config);

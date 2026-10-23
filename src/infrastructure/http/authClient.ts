@@ -19,6 +19,7 @@ export type AuthContextDto = {
     roleId: string;
   }>;
   permissions: string[];
+  projectMemberships?: Array<{ projectId: string; roles: Array<"hardware-user" | "software-user" | "hardware-committer" | "software-committer"> }>;
 };
 
 export type AuthSessionDto = {

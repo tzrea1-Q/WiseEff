@@ -93,8 +93,8 @@ const requireApproval = (operator: PlaneDisposalOperator): void => {
   }
 };
 
-const requireEditorAndOperator = (auth: AuthContext, operator: PlaneDisposalOperator): void => {
-  if (!canEditParameters(auth)) {
+const requireEditorAndOperator = (auth: AuthContext, operator: PlaneDisposalOperator, projectId: string): void => {
+  if (!canEditParameters(auth, projectId)) {
     throw new ApiError("FORBIDDEN", "Plane disposal requires parameter edit permission.");
   }
   requireApproval(operator);
@@ -503,7 +503,7 @@ export async function planProjectParameterPlaneDisposal(
     readonly archiveDigest: string;
   },
 ): Promise<PlaneDisposalPlan> {
-  requireEditorAndOperator(auth, operator);
+  requireEditorAndOperator(auth, operator, input.projectId);
   requireTargetProject(input.projectId);
   const organizationId = parameterOrganizationId(auth);
   const document = await loadDocument(root, objectStore, auth, {
@@ -581,7 +581,7 @@ export async function disposeProjectParameterPlaneResidue(
     readonly archiveDigest: string;
   },
 ): Promise<{ readonly phase: "residue-deleted"; readonly archive: ProjectParameterPlaneArchive | null }> {
-  requireEditorAndOperator(auth, operator);
+  requireEditorAndOperator(auth, operator, input.projectId);
   requireTargetProject(input.projectId);
   const organizationId = parameterOrganizationId(auth);
   const plan = await planProjectParameterPlaneDisposal(root, objectStore, auth, operator, input);

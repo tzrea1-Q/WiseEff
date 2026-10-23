@@ -24,6 +24,7 @@ export type TestAuthContextOverrides = {
    * plain strings so suites probing unknown-permission edges can keep their literals.
    */
   permissions?: readonly (BackendPermission | (string & {}))[];
+  projectMemberships?: AuthContext["projectMemberships"];
 };
 
 /**
@@ -53,6 +54,7 @@ export function makeTestAuthContext(overrides: TestAuthContextOverrides = {}): A
       name: overrides.organizationName ?? "Test Org"
     },
     roles,
+    projectMemberships: overrides.projectMemberships ?? [],
     permissions: [...permissions]
   };
 }

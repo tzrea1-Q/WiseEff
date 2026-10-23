@@ -42,12 +42,15 @@ const admin = makeTestAuthContext({ userId: ADMIN, organizationId: ORG,
   permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
   roles: [{ roleId: "admin", projectId: null }] });
 const reviewer = makeTestAuthContext({ userId: REVIEWER, organizationId: ORG,
+  projectMemberships: [{ projectId: PROJECT, roles: ["software-committer"] }],
   permissions: ["parameter:view", "parameter:edit", "parameter:review"],
   roles: [{ roleId: "software-committer", projectId: PROJECT }] });
 const other = makeTestAuthContext({ userId: OTHER, organizationId: ORG,
+  projectMemberships: [{ projectId: PROJECT, roles: ["software-committer"] }],
   permissions: ["parameter:view", "parameter:edit", "parameter:review"],
   roles: [{ roleId: "software-committer", projectId: PROJECT }] });
 const author = makeTestAuthContext({ userId: AUTHOR, organizationId: ORG,
+  projectMemberships: [{ projectId: PROJECT, roles: ["software-user"] }],
   permissions: ["parameter:view", "parameter:edit"],
   roles: [{ roleId: "software-user", projectId: PROJECT }] });
 const foreign = makeTestAuthContext({ userId: "foreign-reviewer", organizationId: "foreign-org",
@@ -78,6 +81,8 @@ describe("#906 C mixed DTS batch over production HTTP", () => {
     await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'C mixed DTS','C906M','initialized')", [PROJECT, ORG]);
     await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('c906-mix-admin',$1,$2,null,'admin'),('c906-mix-reviewer',$3,$2,$4,'software-committer'),('c906-mix-other',$5,$2,$4,'software-committer'),('c906-mix-author',$6,$2,$4,'software-user')",
       [ADMIN, ORG, REVIEWER, PROJECT, OTHER, AUTHOR]);
+    await db.query(`insert into project_members(organization_id,project_id,user_id,roles) values
+      ($1,$2,$3,array['software-user']),($1,$2,$4,array['software-committer']),($1,$2,$5,array['software-committer'])`, [ORG, PROJECT, AUTHOR, REVIEWER, OTHER]);
     await installDriverSourceFixture(db, admin, { subjectId: "csub_acme_power", compatible: "acme,power",
       businessName: "C mixed DTS", driverName: "Acme power", idempotencyKey: "c906-mixed-dts-driver", reason: "C mixed DTS" });
     const set = await createConfigSet(db, admin, { projectId: PROJECT, name: "C mixed DTS" });
