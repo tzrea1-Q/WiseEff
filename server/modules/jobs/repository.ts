@@ -105,6 +105,7 @@ export async function claimNextJob(
       select id
       from jobs
       where kind = $1
+        and exists(select 1 from public.organizations o where o.id=jobs.organization_id and o.status='active')
         and (
           status = 'queued'
           or (
@@ -146,6 +147,7 @@ export async function claimJobById(
       select id
       from jobs
       where kind = $1
+        and exists(select 1 from public.organizations o where o.id=jobs.organization_id and o.status='active')
         and id = $4
         and (
           status = 'queued'

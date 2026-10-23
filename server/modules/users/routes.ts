@@ -41,6 +41,8 @@ import { createUserInvocation } from "../auth/trustedInvocation";
 import { resolveOperatingContext } from "../auth/operatingContext";
 import { getUserById } from "./repository";
 import { createPlatformOrganizationSchema, emergencyDisableAdministratorSchema, recoverOrganizationAdministratorSchema } from "../contracts/dtoSchemas/platformOrganizations";
+import { changeOrganizationLifecycleSchema } from "../contracts/dtoSchemas/platformOrganizations";
+import { changeOrganizationLifecycle } from "../auth/organizationLifecycle";
 import { createPlatformOrganization, emergencyDisableAdministrator, getAdministratorRecovery, listPlatformOrganizations, recoverOrganizationAdministrator, requirePlatformOrganizationManager } from "./platformOrganizations";
 import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
 import { listOrganizationTeams, mutateOrganizationTeam, teamMembersSchema, teamNameSchema } from "./teams";
@@ -155,6 +157,11 @@ export function registerUserRoutes(
     requirePlatformOrganizationManager(auth);
     const query = parseWithSchema(z.object({ q: z.string().trim().max(200).optional() }).strict(), request.query);
     return { status: 200, body: { items: await listPlatformOrganizations(db, auth, query.q, undefined, mutationContext(request)) } };
+  });
+  router.patch("/api/v1/platform/organizations/:organizationId/lifecycle", async request => {
+    const db = requireDb(options.db), actor = await options.getCurrentAuthContext(request);
+    return { status: 200, body: { item: await changeOrganizationLifecycle(db, createUserInvocation(actor), request.params.organizationId,
+      parseWithSchema(changeOrganizationLifecycleSchema, request.body), request.requestId) } };
   });
   router.get("/api/v1/platform/organizations/:organizationId", async (request) => {
     const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);

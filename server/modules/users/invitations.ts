@@ -8,6 +8,7 @@ import { getAuthContext } from "../auth/repository";
 import { assertTrustedInvocationContext, createUserInvocation, type UserInvocationContext } from "../auth/trustedInvocation";
 import { hashLocalAccountPassword, hashLocalSessionToken, validateLocalAccountPassword, validateLocalAccountUsername } from "../auth/localAccountCredentials";
 import type { AuthContext, BackendRoleId } from "../auth/types";
+import { requireActiveOrganization } from "../auth/organizationLifecycle";
 import { insertPasswordCredential, insertUser, updateOrganizationRoles } from "./repository";
 import { invitationAcceptSchema, invitationInputSchema } from "../contracts/dtoSchemas/organizationInvitations";
 export { invitationAcceptSchema, invitationInputSchema, invitationTokenSchema } from "../contracts/dtoSchemas/organizationInvitations";
@@ -60,6 +61,7 @@ export async function listOrganizationInvitations(db: Queryable, invocation: Use
 export async function issueOrganizationInvitation(db: Database, invocation: UserInvocationContext, input: InvitationInput, requestId: string, id?: string) {
   const organizationId = scope(invocation, input.roles), token = randomBytes(32).toString("base64url"), invitationId = id ?? randomUUID();
   return db.transaction(async (tx) => {
+    await requireActiveOrganization(tx, organizationId, true);
     if (id) {
       const current = (await tx.query<OrganizationInvitation>(`select ${projection} from public.organization_invitations where id=$1 and organization_id=$2 for update`, [id, organizationId])).rows[0];
       if (!current) throw new ApiError("NOT_FOUND", "邀请不存在。");
@@ -100,6 +102,7 @@ export async function acceptOrganizationInvitation(db: Database, token: string, 
       const invitation = (await tx.query<InvitationRow>(`select ${projection},created_by_user_id as "createdByUserId" from public.organization_invitations where token_hash=$1 for update`, [hashLocalSessionToken(token)])).rows[0];
       if (!invitation) throw new ApiError("NOT_FOUND", "邀请链接无效或已被重新生成，请联系管理员。");
       if (invitation.status !== "pending") throw new ApiError("CONFLICT", "邀请已接受、撤销或过期，请联系管理员。");
+      await requireActiveOrganization(tx, invitation.organizationId, true);
       const presetInput = invitationInputSchema.safeParse({ label: invitation.label, roles: invitation.roles, expiresInDays: 1,
         teamIds: invitation.teams.map((team) => team.id), projects: invitation.projects.map(({ projectId, roles }) => ({ projectId, roles })) });
       if (!presetInput.success) throw new ApiError("CONFLICT", "邀请预设的角色或目标已不可用，请管理员修正并重新生成邀请。");

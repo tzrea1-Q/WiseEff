@@ -22,7 +22,8 @@ export async function processNextSourceIndexJob(options: SourceIndexWorkerOption
     update log_source_snapshots set status = 'indexing', index_attempt_id = $1, updated_at = now()
     where id = (
       select id from log_source_snapshots
-      where status = 'queued' or (status = 'indexing' and updated_at < now() - interval '5 minutes')
+      where (status = 'queued' or (status = 'indexing' and updated_at < now() - interval '5 minutes'))
+        and exists(select 1 from public.organizations o where o.id=log_source_snapshots.organization_id and o.status='active')
       order by created_at limit 1 for update skip locked
     ) returning id, organization_id, storage_key, file_name, index_attempt_id, statement_patterns
   `, [randomUUID()]);
@@ -33,6 +34,7 @@ export async function processNextSourceIndexJob(options: SourceIndexWorkerOption
     const current = await tx.query(`select id from log_source_snapshots where id = $1 and organization_id = $2
       and status = 'indexing' and index_attempt_id = $3 for update`, [snapshot.id, snapshot.organization_id, snapshot.index_attempt_id]);
     if (!current.rows.length) throw new SourceIndexCancelled();
+    await tx.query("select set_config('wiseeff.lifecycle_completion',$1,true)", [JSON.stringify({ kind: "source-index", organizationId: snapshot.organization_id, snapshotId: snapshot.id })]);
     await fn(tx);
   });
   try {
@@ -68,10 +70,9 @@ export async function processNextSourceIndexJob(options: SourceIndexWorkerOption
           maxStatements: Math.min(statementLimits.maxPerFile, statementLimits.maxPerSnapshot - statementCount) }, {
           budget: statementBudget,
           onCheckpoint: async () => {
-            const current = await db.query(`update log_source_snapshots set updated_at=now()
-              where id=$1 and organization_id=$2 and status='indexing' and index_attempt_id=$3 returning id`,
-            [snapshot.id, snapshot.organization_id, snapshot.index_attempt_id]);
-            if (!current.rows.length) throw new SourceIndexCancelled();
+            await withClaim(async tx => { await tx.query(`update log_source_snapshots set updated_at=now()
+              where id=$1 and organization_id=$2 and status='indexing' and index_attempt_id=$3`,
+            [snapshot.id, snapshot.organization_id, snapshot.index_attempt_id]); });
           }
         });
         statementsTruncated ||= extracted.truncated;
@@ -116,6 +117,7 @@ export async function processNextSourceIndexJob(options: SourceIndexWorkerOption
   } catch (error) {
     if (!(error instanceof SourceIndexCancelled)) {
       await db.transaction(async (tx) => {
+        await tx.query("select set_config('wiseeff.lifecycle_completion',$1,true)", [JSON.stringify({ kind: "source-index", organizationId: snapshot.organization_id, snapshotId: snapshot.id })]);
         // The attempt token prevents a stale worker from reviving an archived or reclaimed snapshot.
         const failed = await tx.query(`update log_source_snapshots set status='failed', file_count=0, error=$4, updated_at=now()
           where id=$1 and organization_id=$2 and status='indexing' and index_attempt_id=$3 returning id`,

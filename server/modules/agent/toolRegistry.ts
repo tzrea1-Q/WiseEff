@@ -1,4 +1,5 @@
 import { ApiError } from "../../shared/http/errors";
+import { requireActiveOrganization } from "../auth/organizationLifecycle";
 import { isRootDatabase, type Database } from "../../shared/database/client";
 import {
   createTrustedRefusalAuditSink,
@@ -162,6 +163,7 @@ export function createAgentToolRegistry(options: {
       if (!matchesAuthorization(authorization, name, context, payload)) {
         authorizeTool(tool, context, payload);
       }
+      if (tool.kind !== "read") await requireActiveOrganization(options.db, agentOrganizationId(context.auth));
       return tool.run(context, payload);
     },
     forDatabase(database: Database, objectStore?: ObjectStore) {

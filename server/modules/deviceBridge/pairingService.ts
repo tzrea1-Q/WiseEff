@@ -7,6 +7,7 @@ import { createDeviceBridgeRepository, type DeviceBridgeRepository } from "./rep
 import { normalizeMachineLabel, pickBridgeToReuse } from "./machineIdentity";
 import type { DeviceBridgePlatform } from "./types";
 import type { Database } from "../../shared/database/client";
+import { requireActiveOrganization } from "../auth/organizationLifecycle";
 import { writeTrustedMilestoneAudit } from "../audit/auditedWrite";
 import {
   bridgeTokenExpiresAt,
@@ -107,6 +108,7 @@ export function createPairingService(options: PairingServiceOptions) {
             "Pairing code is invalid, expired, or already consumed."
           );
         }
+        if (db) await requireActiveOrganization(db, pairing.organizationId, true);
 
         const machineLabel = normalizeMachineLabel(input.machineLabel);
         const existingBridges = await repo.listActiveBridgesForMachine({

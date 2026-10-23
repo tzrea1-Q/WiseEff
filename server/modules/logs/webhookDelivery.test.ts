@@ -29,7 +29,7 @@ vi.mock("./webhookOutbox", () => ({ claimLogWebhook: vi.fn(), enqueueLogWebhook:
 const mockedGetConfig = vi.mocked(getLogDomainWebhookConfig);
 const mockedInsertDelivery = vi.mocked(insertLogWebhookDelivery);
 
-const query = vi.fn().mockResolvedValue({ rows: [{ id: "delivery-1" }], rowCount: 1 });
+const query = vi.fn().mockResolvedValue({ rows: [{ id: "delivery-1", name: "Webhook organization", status: "active" }], rowCount: 1 });
 const db = { query, transaction: async (fn: (tx: Database) => unknown) => fn(db) } as unknown as Database;
 const defaultEnv: LogWebhookEnv = { timeoutMs: 5000, maxAttempts: 3, retryBaseDelayMs: 100, allowInsecureLocal: false };
 const secret = "webhook-secret-with-enough-entropy";

@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import { createHash } from "node:crypto";
 import type { Database, Queryable } from "../../shared/database/client";
+import { allowOrganizationMaintenance } from "../auth/organizationLifecycle";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import { getAuthContext } from "../auth/repository";
@@ -110,6 +111,7 @@ export async function assignProjectHandover(db: Database, auth: AuthContext, kin
   requireUserInitiatedInvocation(invocation);
   try {
     return await db.transaction(async tx => {
+      await allowOrganizationMaintenance(tx, invocation, organizationId);
       // Role edits, activation and transfers take the same user locks. Read
       // authority after obtaining them so a committed revocation wins.
       await tx.query("select id from users where id=any($1::text[]) order by id for no key update", [[auth.user.id, ...(body.responsibleUserId ? [body.responsibleUserId] : [])].sort()]);

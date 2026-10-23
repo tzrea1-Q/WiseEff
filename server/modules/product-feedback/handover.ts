@@ -6,6 +6,7 @@ import { ApiError } from "../../shared/http/errors";
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import { requireProductFeedbackAdmin } from "./policy";
 import { feedbackInvocation, feedbackOrganizationId, type ProductFeedbackAccessContext } from "./scope";
+import { allowOrganizationMaintenance } from "../auth/organizationLifecycle";
 
 const administrator = `exists(select 1 from user_role_bindings b join roles r on r.id=b.role_id where b.user_id=u.id and b.organization_id=u.organization_id and b.project_id is null and 'admin:access'=any(r.permissions))`;
 export async function listFeedbackHandovers(db: Queryable, auth: ProductFeedbackAccessContext) {
@@ -24,6 +25,7 @@ export async function assignFeedbackResponsibility(db: Database, auth: ProductFe
   requireProductFeedbackAdmin(auth);
   const organizationId = feedbackOrganizationId(auth);
   return db.transaction(async tx => {
+    await allowOrganizationMaintenance(tx, feedbackInvocation(auth), organizationId);
     const current = (await tx.query<{ responsible_user_id: string | null; submitted_at: Date | null; status: string }>("select case when submitted_at is null then draft_owner_user_id else assignee_user_id end as responsible_user_id,submitted_at,status from product_feedback where id=$1 and organization_id=$2 for update", [id, organizationId])).rows[0];
     if (!current) throw new ApiError("NOT_FOUND", "待交接反馈不存在。");
     if (current.submitted_at && !["open", "in_progress"].includes(current.status)) throw new ApiError("CONFLICT", "反馈已结束，无需交接。");

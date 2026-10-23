@@ -600,6 +600,7 @@ export async function reclaimStaleDeployingReloadRunRows(
       select id
       from dts_reload_runs
       where status = 'deploying'
+        and exists(select 1 from public.organizations o where o.id=dts_reload_runs.organization_id and o.status='active')
         and coalesce(deploy_claimed_at, created_at) < $1::timestamptz
       order by coalesce(deploy_claimed_at, created_at) asc
       limit $3

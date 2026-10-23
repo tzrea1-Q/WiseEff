@@ -7,6 +7,7 @@ import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import { requireKnowledgeManage } from "./policy";
 import { knowledgeOrganizationId, type KnowledgeAccessContext } from "./scope";
 import { knowledgeServiceInvocation } from "./service";
+import { allowOrganizationMaintenance } from "../auth/organizationLifecycle";
 
 const eligible = `exists(select 1 from user_role_bindings b join roles r on r.id=b.role_id
   where b.user_id=u.id and b.organization_id=u.organization_id and b.project_id is null and 'knowledge:edit'=any(r.permissions))`;
@@ -30,6 +31,7 @@ export async function assignKnowledgeResponsibility(db: Database, auth: Knowledg
   requireKnowledgeManage(auth);
   const organizationId = knowledgeOrganizationId(auth);
   return db.transaction(async tx => {
+    await allowOrganizationMaintenance(tx, knowledgeServiceInvocation(auth), organizationId);
     const current = (await (kind === "entry"
       ? tx.query<{ responsible_user_id: string | null }>("select responsible_user_id from knowledge_entries where id=$1 and organization_id=$2 for update", [id, organizationId])
       : tx.query<{ responsible_user_id: string | null }>("select responsible_user_id from knowledge_import_batches where id=$1 and organization_id=$2 for update", [id, organizationId]))).rows[0];

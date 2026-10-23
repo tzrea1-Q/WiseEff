@@ -15,6 +15,8 @@ import {
   type Queryable
 } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { requireActiveOrganization } from "../auth/organizationLifecycle";
+import { reloadCompletionDatabase, requireCurrentReloadLifecycle } from "./lifecycle";
 import { buildReloadBaseSource } from "./baseSource";
 import { classifyReloadCandidate, normalizeReloadCandidates } from "./candidates";
 import {
@@ -1708,6 +1710,7 @@ export async function deployReloadRun(
 
   const run = await getReloadRun(db, objectStore, auth, input.runId);
   requireDtsReloadProjectMutation(auth, run.projectId);
+  await requireCurrentReloadLifecycle(db, auth.organization.id, run.id);
   if (!run.artifact?.sha256) {
     throw new ApiError("CONFLICT", "Reload run has no compiled overlay artifact to deploy.", {
       code: "reload-artifact-missing",
@@ -1801,6 +1804,12 @@ export async function deployReloadRun(
 
   let result: ReloadRunDto;
   try {
+    const admissionDb = db, rpc = deps.bridgeRpcClient;
+    db = reloadCompletionDatabase(db, { runId: run.id, organizationId: auth.organization.id, deviceId: canonicalDeviceId });
+    deps = { ...deps, bridgeRpcClient: { ...rpc, call: (...args) => admissionDb.transaction(async tx => {
+      await requireActiveOrganization(tx, auth.organization.id, true);
+      return rpc.call(...args);
+    }) } };
     result = await db.transaction(async (tx) => {
       await lockReloadCanonicalSourceCohorts(tx, auth, run);
       await assertReloadRunCanonicalPinsCurrent(tx, auth, run);
@@ -1836,6 +1845,7 @@ export async function deployReloadRun(
           // gives a cheap refusal before deploy milestones; this second check closes the race in
           // which a value/source pin changes between that read and the deploy claim.
           const claimed = await db.transaction(async (tx) => {
+            await requireCurrentReloadLifecycle(tx, auth.organization.id, run.id);
             const next = await claimReloadRunForDeploy(tx, payload);
             if (!next) return null;
             await assertReloadRunCanonicalPinsCurrent(tx, auth, run);

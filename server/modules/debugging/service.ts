@@ -10,6 +10,7 @@ import { createUserInvocation, type TrustedInvocationContext } from "../auth/tru
 import type { TrustedAuditEventInput } from "../audit/trustedAudit";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { requireActiveOrganization } from "../auth/organizationLifecycle";
 import { lockDebugCatalogWriter } from "./debugNodeModuleRepository";
 import { inspectDebugModuleDeletion } from "./debugModuleDeletion";
 import type { DebugModuleDeletionInput } from "./schemas";
@@ -1002,6 +1003,7 @@ export function createDebuggingService(options: ServiceOptions) {
     async detectTargets(auth: AuthContext, input: DetectTargetsInput, context: ServiceContext = {}): Promise<DebugTargetRecord[]> {
       requireDebugRead(auth);
       const organizationId = organizationIdFor(auth);
+      await requireActiveOrganization(db, organizationId);
 
       if (input.deviceId) {
         const device = await getDebugDevice(db, { organizationId, deviceId: input.deviceId });
@@ -1979,6 +1981,7 @@ export function createDebuggingService(options: ServiceOptions) {
       const protocol = input.protocol ?? defaultDebugConnectionProtocol;
 
       return db.transaction(async (tx) => {
+        await requireActiveOrganization(tx, organizationId, true);
         const bridgeExecutionRequested = isBridgeBackedTargetId(input.targetId);
         const device = bridgeExecutionRequested ? null : await getDebugDevice(tx, { organizationId, deviceId: input.deviceId });
         if (!bridgeExecutionRequested && !device) {
@@ -2098,6 +2101,7 @@ export function createDebuggingService(options: ServiceOptions) {
       const organizationId = organizationIdFor(auth);
 
       return db.transaction(async (tx) => {
+        await requireActiveOrganization(tx, organizationId, true);
         const session = requireOwnedActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: input.sessionId }), auth);
         const protocol = session.protocol ?? defaultDebugConnectionProtocol;
         let catalogParameter: DebugParameterRecord | null = null;
@@ -2260,6 +2264,7 @@ export function createDebuggingService(options: ServiceOptions) {
       const isReload = Boolean(input.parameterDefinitionId?.trim());
 
       return db.transaction(async (tx) => {
+        await requireActiveOrganization(tx, organizationId, true);
         const session = requireOwnedActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: input.sessionId }), auth);
         const protocol = session.protocol ?? defaultDebugConnectionProtocol;
         let parameter: DebugParameterRecord;
@@ -2567,6 +2572,7 @@ export function createDebuggingService(options: ServiceOptions) {
       const organizationId = organizationIdFor(auth);
 
       return db.transaction(async (tx) => {
+        await requireActiveOrganization(tx, organizationId, true);
         const snapshot = await getDebugSnapshot(tx, { organizationId, snapshotId: input.snapshotId });
         if (!snapshot) {
           throw new ApiError("NOT_FOUND", "Snapshot was not found.");

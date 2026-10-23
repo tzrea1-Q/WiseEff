@@ -34,6 +34,7 @@ export type OrganizationActions = {
 export type OrganizationPageProps = UserPermissionsPageProps & {
   area?: OrganizationAdminArea;
   apiMode?: boolean;
+  readOnly?: boolean;
   organizationActions?: OrganizationActions;
   onOrganizationUpdated?: (organization: OrganizationRecord) => void | Promise<void>;
   bridgeActions?: ComponentProps<typeof OrganizationBridgePanel>["actions"];
@@ -45,6 +46,7 @@ export type OrganizationPageProps = UserPermissionsPageProps & {
 export function OrganizationPage({
   area = "profile",
   apiMode = false,
+  readOnly = false,
   organizationActions,
   onOrganizationUpdated,
   bridgeActions,
@@ -89,7 +91,7 @@ export function OrganizationPage({
   }, [area, loadOrganization]);
 
   async function submitRename() {
-    if (!organizationActions || !organization || saving) {
+    if (!organizationActions || !organization || saving || readOnly) {
       return;
     }
     const name = displayName.trim();
@@ -125,7 +127,7 @@ export function OrganizationPage({
     <div className="organization-page">
       <OrganizationAdminScopeNav active={area === "handovers" ? "members" : area} organizationId={memberProps.directoryScope} onNavigate={memberProps.onNavigate} />
       {area === "handovers" ? <OrganizationAssetHandoverPanel organizationId={memberProps.directoryScope} enabled={apiMode} currentUserId={memberProps.state.currentUserId} onNavigate={memberProps.onNavigate} /> : area === "invitations" ? <OrganizationInvitationsPage client={invitationActions} canGrantPlatformAdmin={memberProps.state.activeRoleId === "platform-admin"} onBack={() => memberProps.onNavigate(withOrganizationScope("/organization/members", memberProps.directoryScope))} /> : area === "teams" ? <OrganizationTeamsPage client={memberProps.teamActions} /> : area === "bridges" ? <OrganizationBridgePanel enabled={apiMode && canPerform(memberProps.state.activeRoleId, "users.manage")} actions={bridgeActions} /> : area === "integrations" ? (
-        <div className="skill-section"><IntegrationCredentials repository={credentialRepository} apiMode={apiMode} canEdit={canPerform(memberProps.state.activeRoleId, "logs.admin-domains")} disabled={false} /></div>
+        <div className="skill-section"><IntegrationCredentials repository={credentialRepository} apiMode={apiMode} canEdit={!readOnly && canPerform(memberProps.state.activeRoleId, "logs.admin-domains")} disabled={false} /></div>
       ) : area === "projects" ? <OrganizationProjectsPanel client={projectMembershipClient} /> : area === "members" ? (
         <><div className="organization-operating-scope__actions">{invitationActions ? <Button variant="outline" onClick={() => memberProps.onNavigate(withOrganizationScope("/organization/invitations", memberProps.directoryScope))}>管理邀请</Button> : null}<Button variant="outline" onClick={() => memberProps.onNavigate(withOrganizationScope("/organization/handovers", memberProps.directoryScope))}>业务交接</Button></div><UserPermissionsPage {...memberProps} /></>
       ) : (
@@ -146,7 +148,7 @@ export function OrganizationPage({
                     className="organization-profile__control"
                     value={displayName}
                     maxLength={80}
-                    disabled={saving}
+                    disabled={saving || readOnly}
                     aria-invalid={fieldError ? true : undefined}
                     aria-describedby={fieldError ? "organization-display-name-error" : undefined}
                     onChange={(event) => {

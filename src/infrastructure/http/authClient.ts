@@ -13,6 +13,7 @@ export type AuthContextDto = {
   organization: {
     id: string;
     name: string;
+    status?: "active" | "suspended";
   };
   roles: Array<{
     projectId: string | null;

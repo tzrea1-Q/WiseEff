@@ -13,8 +13,8 @@ export type ExperienceRegistrationSettings = { enabled: boolean; organizationId:
 // The shared admission boundary is also used inside registration's transaction.
 export async function requireExperienceRegistrationOrganization(db: Queryable, organizationId: string | null, lock = false) {
   if (!organizationId) throw new ApiError("FORBIDDEN", "公开体验注册未配置有效的目标组织，请联系平台管理员。");
-  const row = (await db.query<{ id: string; name: string }>(`select id, name from organizations where id = $1${lock ? " for share" : ""}`, [organizationId])).rows[0];
-  if (!row || isRetiredDepartmentOrganizationId(row.id) || isRetiredDepartmentOrganizationName(row.name)) {
+  const row = (await db.query<{ id: string; name: string; status: string }>(`select id, name, status from organizations where id = $1${lock ? " for share" : ""}`, [organizationId])).rows[0];
+  if (!row || row.status !== "active" || isRetiredDepartmentOrganizationId(row.id) || isRetiredDepartmentOrganizationName(row.name)) {
     throw new ApiError("FORBIDDEN", "体验目标组织当前不能接纳注册，请联系平台管理员。");
   }
   return row;

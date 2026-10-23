@@ -69,6 +69,7 @@ export async function claimLogWebhook(db: Queryable, leaseTtlMs: number, id?: st
      where id = (
        select id from log_webhook_outbox
        where (($3::text is null) or id = $3)
+         and exists(select 1 from public.organizations o where o.id=log_webhook_outbox.organization_id and o.status='active')
          and ((status in ('pending', 'retry') and next_attempt_at <= now())
            or (status = 'processing' and lease_expires_at <= now()))
        order by next_attempt_at, id for update skip locked limit 1

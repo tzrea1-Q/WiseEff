@@ -313,6 +313,7 @@ function AppShell({
   const [apiAuthPermissions, setApiAuthPermissions] = useState<string[]>([]);
   const [apiAuthRoles, setApiAuthRoles] = useState<AuthContextDto["roles"] | null>(null);
   const [apiProjectMemberships, setApiProjectMemberships] = useState<AuthContextDto["projectMemberships"]>([]);
+  const [homeOrganizationSuspended, setHomeOrganizationSuspended] = useState(false);
   const [organizationId, setOrganizationId] = useState(
     () => (runtimeMode === "api" ? "" : CATALOG_ORGANIZATION_ID)
   );
@@ -677,6 +678,7 @@ function AppShell({
     setApiAuthPermissions(context.permissions);
     setApiAuthRoles(context.roles);
     setApiProjectMemberships(context.projectMemberships ?? []);
+    setHomeOrganizationSuspended(context.organization.status === "suspended");
     setOrganizationId(context.organization.id);
     dispatch({
       type: "HYDRATE_AUTH_CONTEXT",
@@ -1230,7 +1232,7 @@ function AppShell({
           {isPlatformHome ? (
             <div className="main-content home-content" data-runtime-state="ready">
               {proactiveInsightsBanner}
-              <OrganizationBusinessWorkspace homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
+              <OrganizationBusinessWorkspace homeSuspended={homeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
               <PageRouter key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}:${page.key}`}
                 page={page}
                 publication={publication}
@@ -1285,7 +1287,7 @@ function AppShell({
               {publicationPreviewBanner}
               {proactiveInsightsBanner}
               <div className="page-content" inert={pageRuntimeState === "loading"}>
-                <OrganizationBusinessWorkspace homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
+                <OrganizationBusinessWorkspace homeSuspended={homeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
                 <PageRouter key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}:${page.key}`}
                   page={page}
                   publication={publication}

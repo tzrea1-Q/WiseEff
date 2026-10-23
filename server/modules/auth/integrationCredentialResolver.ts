@@ -4,6 +4,7 @@ import { ApiError } from "../../shared/http/errors";
 import type { HttpMethod } from "../../shared/http/router";
 import type { IntegrationPrincipal } from "./integrationPrincipal";
 import { createIntegrationInvocation } from "./trustedInvocation";
+import { requireActiveOrganization } from "./organizationLifecycle";
 
 export function isIntegrationAuthorization(authorization: string | string[] | undefined): boolean {
   const values = Array.isArray(authorization) ? authorization : [authorization];
@@ -44,6 +45,7 @@ export async function resolveIntegrationCredential(db: Queryable, authorization:
   // Unknown credentials take the same fixed-length digest comparison path.
   const secretMatches = matchesIntegrationSecret(match[3], row?.secret_hash ?? "0".repeat(64));
   if (!row || !secretMatches || row.status !== "active") throw new ApiError("UNAUTHENTICATED", "Invalid integration credential.");
+  await requireActiveOrganization(db, row.organization_id);
   if (!row.last_used_at || Date.now() - new Date(row.last_used_at).getTime() >= 60_000) {
     await db.query(`update log_integration_credentials set last_used_at=clock_timestamp()
       where id=$1 and organization_id=$2 and status='active'
