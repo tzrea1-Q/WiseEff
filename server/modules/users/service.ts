@@ -8,7 +8,6 @@ import type { AuthContext, BackendRoleId, RoleBinding } from "../auth/types";
 import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import {
   checkProjectBelongsToOrg,
-  countActiveAdmins,
   deleteUserById,
   decideRegistrationRoleRequest,
   getPendingRegistrationRoleRequestByIdForAdmin,
@@ -50,6 +49,7 @@ import type {
 } from "./types";
 import { organizationNameMaxLength } from "./schemas";
 import { setOidcIdentity } from "../auth/oidcIdentity";
+import { assertAdministratorContinuity, hasOrganizationRole, lockAdministratorMutation, type AdministratorMutationContext } from "./administratorContinuity";
 
 const roleIds = new Set<BackendRoleId>([
   "guest",
@@ -130,16 +130,12 @@ async function hashPassword(password: string) {
   return `${passwordHashPrefix}$${salt}$${derived.toString("base64url")}`;
 }
 
-function hasAdminRole(roles: RoleBinding[]) {
-  return roles.some((role) => role.roleId === "admin" || role.roleId === "platform-admin");
-}
-
 function callerHasPlatformAdmin(auth: AuthContext) {
-  return auth.roles.some((role) => role.roleId === "platform-admin");
+  return hasOrganizationRole(auth.roles, "platform-admin");
 }
 
 function rolesIncludePlatformAdmin(roles: RoleBinding[]) {
-  return roles.some((role) => role.roleId === "platform-admin");
+  return hasOrganizationRole(roles, "platform-admin");
 }
 
 function assertPlatformAdminGrantAllowed(auth: AuthContext, currentRoles: RoleBinding[], nextRoles: RoleBinding[]) {
@@ -155,30 +151,6 @@ function assertPlatformAdminGrantAllowed(auth: AuthContext, currentRoles: RoleBi
       "Only a platform super admin may grant or revoke the platform-admin role.",
       { roleId: "platform-admin" }
     );
-  }
-}
-
-async function assertNoSelfLockout(
-  tx: Queryable,
-  auth: AuthContext,
-  userId: string,
-  next: { isActive?: boolean; roles?: RoleBinding[] }
-) {
-  if (userId !== auth.user.id) return;
-
-  if (next.isActive === false) {
-    throw new ApiError("CONFLICT", "Active Admin cannot disable itself.", { userId });
-  }
-
-  if (next.roles && !hasAdminRole(next.roles)) {
-    throw new ApiError("CONFLICT", "Active Admin cannot remove its last Admin capability.", { userId });
-  }
-
-  if (next.roles && hasAdminRole(auth.roles) && !hasAdminRole(next.roles)) {
-    const activeAdmins = await countActiveAdmins(tx, auth.organization.id);
-    if (activeAdmins <= 1) {
-      throw new ApiError("CONFLICT", "Active Admin cannot remove its last Admin capability.", { userId });
-    }
   }
 }
 
@@ -422,12 +394,17 @@ export async function deactivateUser(
   auth: AuthContext,
   userId: string,
   input: UpdateUserActiveInput,
-  context: AuditCorrelationContext = {}
+  context: AdministratorMutationContext = {}
 ) {
   requireUserManager(auth);
 
   return db.transaction(async (tx) => {
-    await assertNoSelfLockout(tx, auth, userId, { isActive: input.isActive });
+    await lockAdministratorMutation(tx);
+    await lockUserById(tx, { organizationId: auth.organization.id, userId });
+    const current = await getUserById(tx, { organizationId: auth.organization.id, userId });
+    if (!current) throw new ApiError("NOT_FOUND", "User was not found.", { userId });
+    if (rolesIncludePlatformAdmin(current.roles) && !callerHasPlatformAdmin(auth)) throw new ApiError("FORBIDDEN", "Only a platform super admin may change platform-admin activation.");
+    await assertAdministratorContinuity(tx, current, input, context);
     const user = await updateUserActive(tx, { organizationId: auth.organization.id, userId, isActive: input.isActive });
     if (!user) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
@@ -457,14 +434,11 @@ export async function deleteUser(
   db: Database,
   auth: AuthContext,
   userId: string,
-  context: AuditCorrelationContext = {}
+  context: AdministratorMutationContext = {}
 ) {
   requireUserManager(auth);
-  if (userId === auth.user.id) {
-    throw new ApiError("CONFLICT", "Active Admin cannot delete itself.", { userId });
-  }
-
   await db.transaction(async (tx) => {
+    await lockAdministratorMutation(tx);
     const lockedUserId = await lockUserById(tx, { organizationId: auth.organization.id, userId });
     if (!lockedUserId) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
@@ -479,6 +453,7 @@ export async function deleteUser(
         roleId: "platform-admin"
       });
     }
+    await assertAdministratorContinuity(tx, user, { isActive: false }, context);
 
     await auditUserMutation(asAuditTx(tx), createUserInvocation(auth), {
       kind: "user-delete",
@@ -509,7 +484,7 @@ export async function replaceUserRoles(
   auth: AuthContext,
   userId: string,
   input: ReplaceUserRolesInput,
-  context: AuditCorrelationContext = {}
+  context: AdministratorMutationContext = {}
 ) {
   requireUserManager(auth);
   if (input.roles.some((r) => r.projectId !== null && r.projectId !== undefined)) {
@@ -522,16 +497,17 @@ export async function replaceUserRoles(
   const roles = normalizeRoles(input.roles);
 
   return db.transaction(async (tx) => {
+    await lockAdministratorMutation(tx);
     const lockedUserId = await lockUserById(tx, { organizationId: auth.organization.id, userId });
     if (!lockedUserId) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
-    await assertNoSelfLockout(tx, auth, userId, { roles });
     const user = await getUserById(tx, { organizationId: auth.organization.id, userId });
     if (!user) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
     assertPlatformAdminGrantAllowed(auth, user.roles, roles);
+    await assertAdministratorContinuity(tx, user, { roles }, context);
     const desiredOrgRoles = roles.map((r) => r.roleId);
     await updateOrganizationRoles(tx, {
       organizationId: auth.organization.id,
@@ -768,11 +744,12 @@ export async function replaceOrganizationRoles(
   auth: AuthContext,
   userId: string,
   input: UpdateOrganizationRolesInput,
-  context: AuditCorrelationContext = {}
+  context: AdministratorMutationContext = {}
 ) {
   requireOrgAdmin(auth);
 
   return db.transaction(async (tx) => {
+    await lockAdministratorMutation(tx);
     const lockedUserId = await lockUserById(tx, { organizationId: auth.organization.id, userId });
     if (!lockedUserId) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
@@ -785,9 +762,6 @@ export async function replaceOrganizationRoles(
     const sortedDesired = [...new Set(input.roles)].sort();
     const sortedExpected = [...new Set(input.expectedRoles)].sort();
 
-    await assertNoSelfLockout(tx, auth, userId, {
-      roles: sortedDesired.map((roleId) => ({ projectId: null, roleId }))
-    });
     assertPlatformAdminGrantAllowed(
       auth,
       targetUser.roles.filter((r) => r.projectId === null),
@@ -811,6 +785,7 @@ export async function replaceOrganizationRoles(
         expectedRoles: sortedExpected
       });
     }
+    await assertAdministratorContinuity(tx, targetUser, { roles: sortedDesired.map((roleId) => ({ projectId: null, roleId })) }, context);
 
     await updateOrganizationRoles(tx, {
       organizationId: auth.organization.id,

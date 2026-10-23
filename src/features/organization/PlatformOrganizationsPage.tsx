@@ -12,6 +12,7 @@ import type { LocalAuthPublicConfigDto } from "@/infrastructure/http/authClient"
 import type { PlatformOrganization, PlatformOrganizationsClient } from "@/infrastructure/http/platformOrganizationsClient";
 import { presentError } from "@/infrastructure/http/presentError";
 import "./platform-organizations.css";
+import { OrganizationAdministratorControls } from "./OrganizationAdministratorControls";
 
 export function PlatformOrganizationsPage({ client, authClient }: { client: PlatformOrganizationsClient; authClient: WiseEffAuthClient }) {
   const [items, setItems] = useState<PlatformOrganization[]>([]), [query, setQuery] = useState("");
@@ -19,6 +20,7 @@ export function PlatformOrganizationsPage({ client, authClient }: { client: Plat
   const [authentication, setAuthentication] = useState<LocalAuthPublicConfigDto | null>(null);
   const [creating, setCreating] = useState(false), [saving, setSaving] = useState(false), [saveError, setSaveError] = useState("");
   const [selected, setSelected] = useState<PlatformOrganization | null>(null), [notice, setNotice] = useState("");
+  const [administratorPending, setAdministratorPending] = useState(false);
   const [name, setName] = useState(""), [administratorName, setAdministratorName] = useState(""), [username, setUsername] = useState(""), [password, setPassword] = useState(""), [subject, setSubject] = useState("");
 
   useEffect(() => {
@@ -60,7 +62,7 @@ export function PlatformOrganizationsPage({ client, authClient }: { client: Plat
       table={{ rows: items, rowKey: (row) => row.id, ariaLabel: "平台组织目录", columns: [
         { key: "name", header: "组织", render: (row) => <div><strong>{row.name}</strong><div className="platform-organizations__id">{row.id}</div></div> },
         { key: "status", header: "状态", render: () => <Badge variant="secondary">正常</Badge> },
-        { key: "administrators", header: "管理员", render: (row) => row.administrators.map((admin) => `${admin.name}${admin.isActive ? "" : "（已停用）"}`).join("、") || "暂无管理员" },
+        { key: "administrators", header: "管理员", render: (row) => row.administrators.map((admin) => `${admin.name}${!admin.isActive ? "（已停用）" : !admin.canLogin ? "（未配置登录身份）" : ""}`).join("、") || "暂无管理员" },
         { key: "createdAt", header: "创建时间", render: (row) => formatAbsolute(row.createdAt) }
       ] }} rowActions={(row) => ({ label: `${row.name}操作`, items: [], primaryAction: { id: "view", label: "查看", onSelect: () => { setSelected(row); setNotice(""); } } })}
       emptyState={{ title: query ? "未找到匹配的组织" : "暂无组织", message: query ? "调整名称或编号后重试。" : "创建组织并指定初始管理员。" }} />
@@ -84,11 +86,13 @@ export function PlatformOrganizationsPage({ client, authClient }: { client: Plat
         <div className="platform-organizations__actions"><Button type="button" variant="ghost" disabled={saving} onClick={() => { setCreating(false); setPassword(""); }}>取消</Button><Button type="submit" disabled={saving}>{saving ? "正在创建…" : "创建组织及管理员"}</Button></div>
       </form>}
     </ModalDialog>
-    <ModalDialog open={Boolean(selected)} onDismiss={() => setSelected(null)} className="platform-organizations__dialog modal-card--sm">
+    <ModalDialog open={Boolean(selected)} onDismiss={administratorPending ? undefined : () => setSelected(null)} className="platform-organizations__dialog modal-card--sm">
       {({ titleId }) => <><h3 id={titleId}>组织资料</h3>{selected ? <dl className="platform-organizations__details">
         <dt>名称</dt><dd>{selected.name}</dd><dt>组织编号</dt><dd>{selected.id}</dd><dt>状态</dt><dd>正常</dd>
-        <dt>创建时间</dt><dd>{formatAbsolute(selected.createdAt)}</dd><dt>管理员</dt><dd>{selected.administrators.map((admin) => `${admin.name}${admin.isActive ? "" : "（已停用）"}`).join("、") || "暂无管理员"}</dd>
-      </dl> : null}<div className="platform-organizations__actions"><Button onClick={() => setSelected(null)}>关闭</Button></div></>}
+        <dt>创建时间</dt><dd>{formatAbsolute(selected.createdAt)}</dd><dt>管理员</dt><dd>{selected.administrators.map((admin) => `${admin.name}${!admin.isActive ? "（已停用）" : !admin.canLogin ? "（未配置登录身份）" : ""}`).join("、") || "暂无管理员"}</dd>
+      </dl> : null}{selected ? <OrganizationAdministratorControls key={selected.id} organization={selected} authentication={authentication} client={client} onPendingChange={setAdministratorPending}
+        onUpdated={(item) => { setSelected(item); setAttempt((value) => value + 1); setNotice("组织管理员已调整。"); }} /> : null}
+      <div className="platform-organizations__actions"><Button disabled={administratorPending} onClick={() => setSelected(null)}>关闭</Button></div></>}
     </ModalDialog>
   </>;
 }
