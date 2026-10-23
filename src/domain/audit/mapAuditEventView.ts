@@ -1,11 +1,15 @@
 import type { AuditEvent } from "@/domain/prototype/types";
 import { formatAuditRelativeTime } from "./formatAuditTime";
 import type { AuditActorType, AuditEventDto, AuditEventView } from "./types";
+import { historicalIdentityLabel } from "@/domain/identity/historicalAttribution";
 
 function actorLabelFromDto(dto: AuditEventDto) {
   if (dto.actorType === "integration") return `集成凭据 ${typeof dto.metadata.credentialId === "string" ? dto.metadata.credentialId : ""}`.trim();
   if (dto.actorType === "system") {
     return "系统";
+  }
+  if (dto.historicalAttribution?.actors.actor_user_id?.name) {
+    return historicalIdentityLabel(dto.historicalAttribution.actors.actor_user_id);
   }
   if (dto.actorName?.trim()) {
     return dto.actorName.trim();
@@ -38,6 +42,7 @@ export function mapApiAuditEventToView(dto: AuditEventDto): AuditEventView {
   return {
     id: dto.id,
     organizationId: dto.organizationId,
+    historicalAttribution: dto.historicalAttribution,
     app: dto.app,
     kind: dto.kind,
     action: dto.action,

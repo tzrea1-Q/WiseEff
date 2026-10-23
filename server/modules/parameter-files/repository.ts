@@ -1,4 +1,5 @@
 import type { Queryable } from "../../shared/database/client";
+import { historicalIdentityLabel, type HistoricalAttribution } from "../../../src/domain/identity/historicalAttribution";
 import { ApiError } from "../../shared/http/errors";
 import type {
   InsertFileVersionInput,
@@ -41,6 +42,7 @@ type ProjectParameterFileVersionRow = TrustedInvocationDomainAttributionRow & {
   created_by_user_id: string | null;
   created_at: string | Date;
   created_by_display_name?: string | null;
+  historical_attribution?: HistoricalAttribution;
 };
 
 function dateTimeToIso(value: string | Date) {
@@ -66,7 +68,10 @@ function toVersionDto(row: ProjectParameterFileVersionRow): ProjectParameterFile
   const attribution = trustedDomainAttributionFromRow(row, row.created_by_user_id);
   const executionDisplayName = trustedPublicExecutionLabelFromAttribution(
     attribution,
-    row.created_by_display_name ?? ""
+    row.historical_attribution
+      ? row.historical_attribution.actors.created_by_user_id?.name
+        ? historicalIdentityLabel(row.historical_attribution.actors.created_by_user_id) : ""
+      : row.created_by_display_name ?? ""
   ) || null;
   return {
     id: row.id,
@@ -80,6 +85,7 @@ function toVersionDto(row: ProjectParameterFileVersionRow): ProjectParameterFile
     createdAt: dateTimeToIso(row.created_at),
     createdByUserId: row.created_by_user_id,
     createdByDisplayName: executionDisplayName,
+    ...(row.historical_attribution ? { historicalAttribution: row.historical_attribution } : {}),
   };
 }
 
@@ -291,9 +297,8 @@ export async function listFileVersions(
 ): Promise<ProjectParameterFileVersionDto[]> {
   const result = await db.query<ProjectParameterFileVersionRow>(
     `
-    select v.*, u.name as created_by_display_name
+    select v.*
     from project_parameter_file_versions v
-    left join users u on u.id = v.created_by_user_id
     where v.file_id = $1
     order by v.version_number desc, v.id desc
     `,

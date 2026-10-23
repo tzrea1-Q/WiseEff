@@ -1,5 +1,6 @@
 /** #906 C owner: freeze one source candidate into one ordered request. */
 import { createHash, randomUUID } from "node:crypto";
+import { historicalActorSql } from "../../../shared/database/historicalAttribution";
 
 import { asAuditTx } from "../../audit/auditedWrite";
 import { writeTrustedGovernanceAudit } from "../../parameter-topology/governanceAudit";
@@ -271,11 +272,9 @@ type BatchRow = {
 
 async function loadBatchRequest(db: Database, organizationId: string, projectId: string, requestId: string): Promise<CanonicalBatchChangeRequestDto | null> {
   const request = (await db.query<BatchRow>(`
-    select request.*, submitter.name as submitter_name, assignee.name as assigned_to_name, reviewer.name as reviewer_name
+    select request.*, ${historicalActorSql("request", "submitter_user_id")} as submitter_name, assignee.name as assigned_to_name, ${historicalActorSql("request", "reviewer_user_id")} as reviewer_name
       from public.project_parameter_value_change_requests request
-      left join public.users submitter on submitter.id=request.submitter_user_id and submitter.organization_id=request.organization_id
       left join public.users assignee on assignee.id=request.assigned_to_user_id and assignee.organization_id=request.organization_id
-      left join public.users reviewer on reviewer.id=request.reviewer_user_id and reviewer.organization_id=request.organization_id
      where request.id=$1 and request.organization_id=$2 and request.project_id=$3 and request.request_kind='batch'`,
     [requestId, organizationId, projectId])).rows[0];
   if (!request) return null;

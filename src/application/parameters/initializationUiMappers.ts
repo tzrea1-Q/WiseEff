@@ -81,8 +81,10 @@ export function toLegacyInitializationReview(review: InitializationReviewDto): P
     projectId: review.projectId,
     status: review.status,
     submittedBy: review.submittedByUserId,
+    submittedByName: review.submittedByName,
     submittedAt: review.submittedAt,
     reviewedBy: review.reviewedByUserId,
+    reviewedByName: review.reviewedByName,
     reviewedAt: review.reviewedAt,
     rejectionReason: review.rejectionReason
   };

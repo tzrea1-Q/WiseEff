@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { historicalActorSql } from "../../shared/database/historicalAttribution";
 
 import { createUserInvocation } from "../auth/trustedInvocation";
 import type { AuditCorrelationContext } from "../audit/types";
@@ -410,9 +411,8 @@ export async function getBindingHistory(
 
   const auditRefs = [...new Set(events.map((event) => event.successAuditRef).filter(Boolean))];
   const auditActors = auditRefs.length ? await db.query<{ id: string; actor: string | null }>(
-    `select audit.id, actor.name as actor
+    `select audit.id, ${historicalActorSql("audit", "actor_user_id")} as actor
        from audit_events audit
-       left join users actor on actor.id = audit.actor_user_id and actor.organization_id = audit.organization_id
       where audit.organization_id = $1
         and audit.project_id = $2
         and audit.id = any($3::text[])`,
