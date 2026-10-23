@@ -98,6 +98,10 @@ test.describe("explicit project participation roster", () => {
     await expect(page.getByText("暂无项目参与者", { exact: true })).toBeVisible();
     await expect(page.getByText("存量项目编辑者", { exact: true })).toHaveCount(0);
     await expect(selector).toContainText("B 无参与项目");
+    await page.getByRole("navigation", { name: "组织管理范围" }).getByRole("button", { name: "团队", exact: true }).click();
+    await expect(page.getByRole("region", { name: "团队管理", exact: true })).toBeVisible();
+    await page.getByRole("navigation", { name: "组织管理范围" }).getByRole("button", { name: "项目参与", exact: true }).click();
+    await expect(table).toContainText("存量项目编辑者");
     const identity = await page.request.get(apiRoute("/api/v1/me"), { headers });
     expect((await identity.json() as { organization: { id: string } }).organization.id).toBe("roster-ui-home");
     await withPgClient(async (db) => {
