@@ -4,7 +4,7 @@ import { organizationInvitationDtoSchemaCatalog, organizationInvitationRoutes } 
 import { projectMembersCoveredRouteIds, projectMembersDtoSchemaCatalog } from "./projectMembers";
 import { platformOrganizationDtoSchemaCatalog, platformOrganizationRoutes } from "./platformOrganizations";
 import { organizationTeamDtoSchemaCatalog, organizationTeamRoutes } from "./organizationTeams";
-export { administratorRecoverySchema, createPlatformOrganizationSchema, platformOrganizationSchema, recoverOrganizationAdministratorSchema } from "./platformOrganizations";
+export { administratorRecoverySchema, createPlatformOrganizationSchema, platformOrganizationSchema, recoverOrganizationAdministratorSchema, experienceRegistrationSchema, updateExperienceRegistrationSchema } from "./platformOrganizations";
 import { knowledgeCoveredRouteIds, knowledgeDtoSchemaCatalog } from "./knowledge";
 export { parsePreviewRequestSchema, parsePreviewResponseSchema, decodedEventSchema, decodedValueSchema } from "./logs";
 export { parsingSpecSchema, registerCaseKey } from "../../logs/parsing/spec";

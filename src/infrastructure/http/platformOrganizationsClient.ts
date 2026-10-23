@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { administratorRecoverySchema, createPlatformOrganizationSchema, platformOrganizationSchema, recoverOrganizationAdministratorSchema } from "@wiseeff/dto-schemas";
+import { administratorRecoverySchema, createPlatformOrganizationSchema, platformOrganizationSchema, recoverOrganizationAdministratorSchema, experienceRegistrationSchema, updateExperienceRegistrationSchema } from "@wiseeff/dto-schemas";
 import { createDefaultApiClient } from "./defaultApiClient";
 import { parseContractDto } from "./parseContractDto";
 
@@ -10,6 +10,14 @@ export type RecoverOrganizationAdministratorInput = z.infer<typeof recoverOrgani
 export type PlatformOrganizationsClient = ReturnType<typeof createPlatformOrganizationsClient>;
 export function createPlatformOrganizationsClient(api = createDefaultApiClient()) {
   return {
+    async getExperienceRegistration() {
+      const response = await api.get<{ item: unknown }>("/api/v1/platform/experience-registration");
+      return parseContractDto(experienceRegistrationSchema, response.item, "ExperienceRegistration");
+    },
+    async updateExperienceRegistration(input: z.infer<typeof updateExperienceRegistrationSchema>) {
+      const response = await api.patch<{ item: unknown }>("/api/v1/platform/experience-registration", input);
+      return parseContractDto(experienceRegistrationSchema, response.item, "ExperienceRegistration");
+    },
     async list(query = "") {
       const response = await api.get<{ items: unknown }>(`/api/v1/platform/organizations${query ? `?q=${encodeURIComponent(query)}` : ""}`);
       return parseContractDto(platformOrganizationSchema.array(), response.items, "PlatformOrganizationList");

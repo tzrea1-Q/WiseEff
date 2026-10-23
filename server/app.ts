@@ -84,7 +84,8 @@ function createEnvLocalAuthService(db: Database, env?: PilotReadinessEnv & Parti
   }
 
   return createLocalAuthService(db, {
-    selfRegisterEnabled: env.AUTH_LOCAL_SELF_REGISTER ?? true,
+    selfRegisterEnabled: env.AUTH_LOCAL_SELF_REGISTER,
+    registrationOrganizationId: env.AUTH_LOCAL_REGISTRATION_ORGANIZATION_ID,
     attemptLimiter: createAuthAttemptLimiter({
       maxAttempts: env.AUTH_LOCAL_AUTH_MAX_ATTEMPTS,
       windowMs: env.AUTH_LOCAL_AUTH_WINDOW_MS
@@ -140,7 +141,8 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   };
   const metrics = options.metrics ?? createMetricsRegistry({ serviceName: "wiseeff-api" });
   const tracing = options.tracing ?? defaultTracingBoundary;
-  const localAuthService = options.localAuthService ?? (options.db ? createEnvLocalAuthService(options.db, options.env) : undefined);
+  const localAuthService = options.env?.AUTH_PROVIDER && options.env.AUTH_PROVIDER !== "local" ? undefined
+    : options.localAuthService ?? (options.db ? createEnvLocalAuthService(options.db, options.env) : undefined);
   const authResolver = createAuthContextResolver({
     mode: options.auth?.mode ?? "development",
     verifier: options.auth?.verifier,

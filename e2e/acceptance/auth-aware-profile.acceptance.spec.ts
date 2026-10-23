@@ -33,6 +33,7 @@ useBrowserDiagnostics(test, { expectedApiFailures: [
 test.use({ viewport: { width: 1440, height: 900 } });
 test.beforeAll(async () => {
   await seedAcceptanceRoleMatrix();
+  if (!oidc && !hmac) await withPgClient((client) => client.query("update public_experience_registration set enabled=true,organization_id='org-chargelab' where singleton=true"));
   if (!oidc) return;
   await withPgClient((client) => client.query("update public.user_oidc_identities set issuer=$1,subject='u-zhao-heng' where user_id='u-zhao-heng'", [process.env.AUTH_OIDC_ISSUER]));
   const endpoint = new URL(process.env.AUTH_OIDC_JWKS_URI!);
