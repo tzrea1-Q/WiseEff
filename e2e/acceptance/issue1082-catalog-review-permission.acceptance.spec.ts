@@ -12,29 +12,38 @@ test.beforeAll(async () => {
   await seedAcceptanceRoleMatrix();
 });
 
-test("Platform-only identity redirect explains Organization permission without loading Review Queue", async ({ page }, testInfo) => {
+test("Platform-only identity redirect opens the organization Review Queue with its real platform role", async ({ page }, testInfo) => {
   const queueRequests: string[] = [];
   const pageErrors: string[] = [];
   page.on("request", (request) => {
     if (request.url().includes("/parameter-review-items")) queueRequests.push(request.url());
   });
   page.on("pageerror", (error) => pageErrors.push(error.message));
+  const loaded = page.waitForResponse(response => response.url().includes("/parameter-review-items")
+    && response.request().method() === "GET" && response.status() === 200);
   await signInBrowserAsRole(page, "platform-admin", "/parameter-admin/specs/identity-mapping");
   await expect(page.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-state", "ready");
   await expect(page).toHaveURL((url) => url.pathname === "/parameter-admin/specs"
     && url.searchParams.get("review") === "open" && Boolean(url.searchParams.get("catalogReleaseId")?.trim()));
-  await expect(page.getByText("组织审核队列需要 Organization 权限；Platform 权限不能代替组织审核权限。"))
-    .toBeVisible();
-  await expect(page.getByRole("button", { name: /待审核事项/ })).toHaveCount(0);
-  await expect(page.getByRole("dialog", { name: "待审核事项" })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "待审核事项" }).getByRole("region", { name: "待审核事项" })).toBeVisible();
+  await loaded;
   await expect(page.getByText(/审核队列加载失败/)).toHaveCount(0);
-  expect(queueRequests).toEqual([]);
+  expect(queueRequests.length).toBeGreaterThan(0);
   expect(pageErrors).toEqual([]);
-  const refused = await page.request.get(apiRoute("/api/v2/organizations/org-chargelab/parameter-review-items"), {
+  const identity = await page.request.get(apiRoute("/api/v1/me"), { headers: authHeadersForRole("platform-admin") });
+  expect(identity.status()).toBe(200);
+  const { roles } = await identity.json() as { roles: Array<{ roleId: string; projectId: string | null }> };
+  expect(roles).toContainEqual({ roleId: "platform-admin", projectId: null });
+  expect(roles).not.toContainEqual({ roleId: "admin", projectId: null });
+  const allowed = await page.request.get(apiRoute("/api/v2/organizations/org-chargelab/parameter-review-items"), {
     headers: authHeadersForRole("platform-admin")
   });
+  expect(allowed.status()).toBe(200);
+  const refused = await page.request.get(apiRoute("/api/v2/organizations/org-chargelab/parameter-review-items"), {
+    headers: authHeadersForRole("software-user")
+  });
   expect(refused.status()).toBe(403);
-  await page.screenshot({ path: testInfo.outputPath("platform-only-explanation.png"), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("platform-only-review-queue.png"), fullPage: true });
 });
 
 test("Organization admin keeps the Review Queue after the identity redirect", async ({ page }, testInfo) => {
