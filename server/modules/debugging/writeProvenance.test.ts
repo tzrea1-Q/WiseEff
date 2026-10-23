@@ -45,7 +45,9 @@ const auth: AuthContext = {
 describe("debugging write audit provenance", () => {
   it.each([false, true])("keeps approved Agent provenance=%s through writeNode", async (approved) => {
     const db: Database = {
-      query: vi.fn(),
+      query: async <Row,>(sql: string) => sql.includes("from public.organizations")
+        ? { rows: [{ ...auth.organization, status: "active" }] as Row[], rowCount: 1 }
+        : { rows: [], rowCount: 0 },
       transaction: async (fn) => fn(db)
     };
     const events: CreateAuditEventInput[] = [];

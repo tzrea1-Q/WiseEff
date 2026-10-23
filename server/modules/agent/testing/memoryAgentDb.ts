@@ -49,6 +49,11 @@ export function createMemoryAgentDb(options: MemoryAgentDbOptions = {}) {
       query: async <Row,>(text: string, values: unknown[] = []) => {
         const sql = text.replace(/\s+/g, " ").trim();
 
+        if (sql.includes("from public.organizations")) {
+          const exists = targetTables.sessions.some(row => row.organization_id === values[0]);
+          return { rows: (exists ? [{ id: values[0], name: "Memory organization", status: "active" }] : []) as Row[], rowCount: exists ? 1 : 0 };
+        }
+
         if (sql.includes("insert into agent_sessions")) {
           if (targetTables.sessions.some((row) => row.id === values[0])) {
             return { rows: [] as Row[], rowCount: 0 };
