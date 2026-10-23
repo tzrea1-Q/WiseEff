@@ -54,7 +54,7 @@ function ResolvedOrganizationWorkspace({ requestedId, workspaceClient, ...props 
     {props.area === "members" && projectError ? <SectionError message={projectError} onRetry={() => setAttempt((value) => value + 1)} />
         : props.area === "members" && !projects ? <SectionSkeleton label="正在加载组织成员工作区" />
           : <OrganizationPage key={`${scope.organization.id}:${props.area ?? "profile"}`} {...props} apiMode directoryScope={scope.organization.id}
-            userGovernanceActions={client} teamActions={client} organizationActions={client} reviewRolesClient={client} projectCandidates={projects ?? []} bridgeActions={bridgeActions} credentialRepository={credentialRepository}
+            userGovernanceActions={client} teamActions={client} invitationActions={client} organizationActions={client} reviewRolesClient={client} projectCandidates={projects ?? []} bridgeActions={bridgeActions} credentialRepository={credentialRepository}
             onOrganizationUpdated={async (organization) => {
               setScope((current) => current ? { ...current, organization: { id: organization.id, name: organization.name } } : current);
               if (organization.id === scope.actor.organization.id) await props.onOrganizationUpdated?.(organization);

@@ -22,7 +22,7 @@ export function OrganizationAdminScopeNav({ active, onNavigate, organizationId }
     <ViewSwitch
       variant="section"
       ariaLabel={ORGANIZATION_ADMIN_UI.scopeNavAria}
-      value={active}
+      value={active === "invitations" ? "members" : active}
       onValueChange={(value) => onNavigate(`${buildOrganizationAdminPath(value as OrganizationAdminArea)}${organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : ""}`)}
       items={[
         { value: "profile", label: <><Building2 size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.profileScope}</> },

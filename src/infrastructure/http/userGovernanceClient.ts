@@ -4,6 +4,7 @@ import { createDefaultApiClient, type DefaultApiClientOptions } from "./defaultA
 import type { LocalAuthPublicConfigDto } from "./authClient";
 import type { AuthContextDto } from "./authClient";
 import { withOrganizationScope } from "./organizationScope";
+import type { InvitationInput, OrganizationInvitationDto } from "./organizationInvitationsClient";
 
 type ApiClient = ReturnType<typeof createApiClient>;
 
@@ -127,6 +128,9 @@ export function createUserGovernanceClient(
 ) {
   const scoped = (path: string) => withOrganizationScope(path, organizationId);
   return {
+    async listInvitations() { return (await apiClient.get<ItemsEnvelope<OrganizationInvitationDto>>(scoped("/api/v1/organization/invitations"))).items; },
+    async issueInvitation(input: InvitationInput, id?: string) { return apiClient.post<{ item: OrganizationInvitationDto; token: string }>(scoped(id ? `/api/v1/organization/invitations/${encodeURIComponent(id)}/regenerate` : "/api/v1/organization/invitations"), input); },
+    async revokeInvitation(id: string) { return (await apiClient.post<ItemEnvelope<OrganizationInvitationDto>>(scoped(`/api/v1/organization/invitations/${encodeURIComponent(id)}/revoke`), {})).item; },
     async listTeams() {
       return (await apiClient.get<ItemsEnvelope<OrganizationTeamDto>>(scoped("/api/v1/organization/teams"))).items;
     },

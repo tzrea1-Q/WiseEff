@@ -11,6 +11,9 @@ import { presentError } from "@/infrastructure/http/presentError";
 import { UserPermissionsPage, type UserPermissionsPageProps } from "@/UserPermissionsPage";
 import { IntegrationCredentials } from "@/features/log-skills/IntegrationCredentials";
 import { OrganizationTeamsPage } from "@/features/organization/OrganizationTeamsPage";
+import { OrganizationInvitationsPage } from "@/features/organization/OrganizationInvitationsPage";
+import type { OrganizationInvitationsClient } from "@/infrastructure/http/organizationInvitationsClient";
+import { Button } from "@/components/ui/button";
 import type { ComponentProps } from "react";
 import "./organization-page.css";
 
@@ -32,6 +35,7 @@ export type OrganizationPageProps = UserPermissionsPageProps & {
   onOrganizationUpdated?: (organization: OrganizationRecord) => void | Promise<void>;
   bridgeActions?: ComponentProps<typeof OrganizationBridgePanel>["actions"];
   credentialRepository?: ComponentProps<typeof IntegrationCredentials>["repository"];
+  invitationActions?: OrganizationInvitationsClient;
 };
 
 export function OrganizationPage({
@@ -41,6 +45,7 @@ export function OrganizationPage({
   onOrganizationUpdated,
   bridgeActions,
   credentialRepository,
+  invitationActions,
   ...memberProps
 }: OrganizationPageProps) {
   const [organization, setOrganization] = useState<OrganizationRecord | null>(null);
@@ -114,10 +119,10 @@ export function OrganizationPage({
   return (
     <div className="organization-page">
       <OrganizationAdminScopeNav active={area} organizationId={memberProps.directoryScope} onNavigate={memberProps.onNavigate} />
-      {area === "teams" ? <OrganizationTeamsPage client={memberProps.teamActions} /> : area === "bridges" ? <OrganizationBridgePanel enabled={apiMode && canPerform(memberProps.state.activeRoleId, "users.manage")} actions={bridgeActions} /> : area === "integrations" ? (
+      {area === "invitations" ? <OrganizationInvitationsPage client={invitationActions} canGrantPlatformAdmin={memberProps.state.activeRoleId === "platform-admin"} onBack={() => memberProps.onNavigate(`/organization/members${memberProps.directoryScope ? `?organizationId=${encodeURIComponent(memberProps.directoryScope)}` : ""}`)} /> : area === "teams" ? <OrganizationTeamsPage client={memberProps.teamActions} /> : area === "bridges" ? <OrganizationBridgePanel enabled={apiMode && canPerform(memberProps.state.activeRoleId, "users.manage")} actions={bridgeActions} /> : area === "integrations" ? (
         <div className="skill-section"><IntegrationCredentials repository={credentialRepository} apiMode={apiMode} canEdit={canPerform(memberProps.state.activeRoleId, "logs.admin-domains")} disabled={false} /></div>
       ) : area === "members" ? (
-        <UserPermissionsPage {...memberProps} />
+        <>{invitationActions ? <div className="organization-operating-scope__actions"><Button variant="outline" onClick={() => memberProps.onNavigate(`/organization/invitations${memberProps.directoryScope ? `?organizationId=${encodeURIComponent(memberProps.directoryScope)}` : ""}`)}>管理邀请</Button></div> : null}<UserPermissionsPage {...memberProps} /></>
       ) : (
         <section className="organization-profile" aria-label="组织档案">
           {status === "loading" ? <SectionSkeleton label="正在加载组织档案" /> : null}

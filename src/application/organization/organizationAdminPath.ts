@@ -1,4 +1,4 @@
-export type OrganizationAdminArea = "profile" | "members" | "teams" | "bridges" | "integrations";
+export type OrganizationAdminArea = "profile" | "members" | "invitations" | "teams" | "bridges" | "integrations";
 
 export const ORGANIZATION_ADMIN_PATH = "/organization";
 export const ORGANIZATION_ADMIN_MEMBERS_PATH = "/organization/members";
@@ -33,6 +33,7 @@ export function isOrganizationAdminPath(path: string) {
 }
 
 export function parseOrganizationAdminArea(path: string): OrganizationAdminArea | null {
+  if (path === "/organization/invitations") return "invitations";
   if (path === "/organization/teams" || path.startsWith("/organization/teams/")) return "teams";
   if (path === ORGANIZATION_ADMIN_INTEGRATIONS_PATH || path.startsWith(`${ORGANIZATION_ADMIN_INTEGRATIONS_PATH}/`)) return "integrations";
   if (path === ORGANIZATION_ADMIN_BRIDGES_PATH || path.startsWith(`${ORGANIZATION_ADMIN_BRIDGES_PATH}/`)) return "bridges";
@@ -51,6 +52,7 @@ export function parseOrganizationAdminArea(path: string): OrganizationAdminArea 
 }
 
 export function buildOrganizationAdminPath(area: OrganizationAdminArea) {
+  if (area === "invitations") return "/organization/invitations";
   if (area === "teams") return "/organization/teams";
   if (area === "integrations") return ORGANIZATION_ADMIN_INTEGRATIONS_PATH;
   if (area === "bridges") return ORGANIZATION_ADMIN_BRIDGES_PATH;
