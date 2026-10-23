@@ -38,7 +38,7 @@ function createMemoryLocalAuthDb(extraOrganizations: Array<{ id: string; name: s
 
     if (normalized.includes("from organizations") && normalized.includes("where id = $1")) {
       const organization = organizations.get(values[0] as string);
-      return { rows: (organization ? [organization] : []) as Row[], rowCount: organization ? 1 : 0 };
+      return { rows: (organization ? [{ ...organization, status: "active" }] : []) as Row[], rowCount: organization ? 1 : 0 };
     }
 
     if (normalized.includes("from organizations") && normalized.includes("id <> all($1::text[])")) {
