@@ -43,6 +43,23 @@ describe("one-time organization invitations through HTTP and PostgreSQL", () => 
     return requestJson<{ userId: string; organizationId: string }>(server(), "/api/v1/auth/invitations/accept", { method: "POST", body: JSON.stringify({ token, ...input }) });
   }
 
+  it("previews and atomically applies explicit teams and project editing roles without granting review duties", async () => {
+    await seedCoreGraph(db, { organization: target, projects: [{ id: "invited-project", name: "Invited project" }, { id: "unselected-project" }] });
+    await db.query("insert into organization_teams(id,organization_id,name) values('invited-team',$1,'Invited team')", [target.id]);
+    const created = await manage<Created>("", "POST", { label: "Project engineer", roles: ["software-user"], expiresInDays: 7,
+      teamIds: ["invited-team"], projects: [{ projectId: "invited-project", roles: ["software-committer"] }] });
+    expect(created.status).toBe(201);
+    const preview = await requestJson<{ item: unknown }>(server(), "/api/v1/auth/invitations/preview", { method: "POST", body: JSON.stringify({ token: created.body.token }) });
+    expect(preview.body.item).toMatchObject({ teams: [{ id: "invited-team", name: "Invited team" }], projects: [{ projectId: "invited-project", name: "Invited project", roles: ["software-committer"] }] });
+    const joined = await accept(created.body.token); expect(joined.status).toBe(201);
+    const login = await requestJson<{ auth: AuthContext }>(server(), "/api/v1/auth/login", { method: "POST", body: JSON.stringify({ username: account.username, password: account.password }) });
+    expect(login.body.auth.projectMemberships).toEqual([{ projectId: "invited-project", roles: ["software-committer"] }]);
+    expect(login.body.auth.roles).toEqual([{ projectId: null, roleId: "software-user" }]);
+    const teams = await requestJson<{ items: Array<{ id: string; memberIds: string[] }> }>(server(), `/api/v1/organization/teams?organizationId=${target.id}`, { headers: { Authorization: `Bearer ${platformToken}` } });
+    expect(teams.body.items).toEqual([expect.objectContaining({ id: "invited-team", memberIds: [joined.body.userId] })]);
+    expect((await manage<{ items: unknown[] }>()).body.items).toEqual([expect.objectContaining({ projects: [{ projectId: "invited-project", name: "Invited project", roles: ["software-committer"] }] })]);
+  });
+
   it("lets an invited account join with its exact roles and immediately use existing local login without approval", async () => {
     const created = await manage<Created>("", "POST", { label: "Engineering", roles: ["software-committer"], expiresInDays: 7 });
     expect(created.status).toBe(201);
@@ -76,18 +93,121 @@ describe("one-time organization invitations through HTTP and PostgreSQL", () => 
     expect((await manage(`/${created.item.id}/regenerate`, "POST", { label: "Cannot revive", roles: ["admin"], expiresInDays: 7 })).status).toBe(409);
   });
 
+  it("rejects mixed organization targets and invalid project roles before issuing any offer", async () => {
+    await seedCoreGraph(db, { organization: home, projects: [{ id: "foreign-project" }] });
+    await db.query("insert into organization_teams(id,organization_id,name) values('foreign-team',$1,'Foreign team')", [home.id]);
+    const input = { label: "Invalid offer", roles: ["software-user"], expiresInDays: 7 };
+    expect((await manage("", "POST", { ...input, teamIds: ["foreign-team"] })).status).toBe(409);
+    expect((await manage("", "POST", { ...input, projects: [{ projectId: "foreign-project", roles: ["software-user"] }] })).status).toBe(409);
+    for (const roles of [["admin"], ["platform-admin"], ["reviewer"], []]) {
+      expect((await manage("", "POST", { ...input, projects: [{ projectId: "foreign-project", roles }] })).status).toBe(400);
+    }
+    expect((await manage<{ items: Invitation[] }>()).body.items).toEqual([]);
+  });
+
+  it("retains invalid presets and requires a corrected replacement instead of partially creating an account", async () => {
+    await seedCoreGraph(db, { organization: target, projects: [{ id: "removed-project", name: "Removed project" }, { id: "remaining-project", name: "Remaining project" }] });
+    await db.query("insert into organization_teams(id,organization_id,name) values('remaining-team',$1,'Remaining team')", [target.id]);
+    const input = { label: "Needs correction", roles: ["software-user"], expiresInDays: 7, teamIds: ["remaining-team"],
+      projects: [{ projectId: "removed-project", roles: ["software-committer"] }, { projectId: "remaining-project", roles: ["software-user"] }] };
+    const created = (await manage<Created>("", "POST", input)).body;
+    await db.query("delete from projects where id='removed-project'");
+    const failed = await accept(created.token);
+    expect(failed.status).toBe(409); expect(JSON.stringify(failed.body)).toContain("修正并重新生成");
+    expect((await db.query("select id from users where organization_id=$1", [target.id])).rowCount).toBe(0);
+    const current = (await manage<{ items: unknown[] }>()).body.items;
+    expect(current).toEqual([expect.objectContaining({ status: "pending", projects: expect.arrayContaining([expect.objectContaining({ projectId: "removed-project", name: "Removed project" })]) })]);
+    const replacement = await manage<Created>(`/${created.item.id}/regenerate`, "POST", { ...input, projects: [{ projectId: "remaining-project", roles: ["software-user"] }] });
+    expect(replacement.status).toBe(200);
+    expect((await accept(created.token)).status).toBe(404);
+    expect((await accept(replacement.body.token)).status).toBe(201);
+  });
+
+  it("rechecks moved projects and deleted teams at acceptance", async () => {
+    await seedCoreGraph(db, { organization: target, projects: [{ id: "moving-project" }] });
+    await db.query("insert into organization_teams(id,organization_id,name) values('deleted-team',$1,'Deleted team')", [target.id]);
+    const input = { label: "Changed target", roles: ["software-user"], expiresInDays: 7 };
+    const moved = (await manage<Created>("", "POST", { ...input, projects: [{ projectId: "moving-project", roles: ["software-user"] }] })).body;
+    await db.query("update projects set organization_id=$1 where id='moving-project'", [home.id]);
+    expect((await accept(moved.token)).status).toBe(409);
+    const deleted = (await manage<Created>("", "POST", { ...input, teamIds: ["deleted-team"] })).body;
+    await db.query("delete from organization_teams where id='deleted-team'");
+    expect((await accept(deleted.token)).status).toBe(409);
+    expect((await db.query("select id from users where organization_id=$1", [target.id])).rowCount).toBe(0);
+  });
+
+  it("asks for correction when a saved project role is no longer supported", async () => {
+    await seedCoreGraph(db, { organization: target, projects: [{ id: "obsolete-role-project" }] });
+    const created = (await manage<Created>("", "POST", { label: "Old role", roles: ["software-user"], expiresInDays: 7,
+      projects: [{ projectId: "obsolete-role-project", roles: ["software-user"] }] })).body;
+    await db.query("update organization_invitations set project_presets=$2 where id=$1", [created.item.id, JSON.stringify([{ projectId: "obsolete-role-project", name: "Project", roles: ["obsolete-editor"] }])]);
+    const result = await accept(created.token);
+    expect(result.status).toBe(409); expect(JSON.stringify(result.body)).toContain("修正并重新生成");
+    expect((await db.query("select id from users where organization_id=$1", [target.id])).rowCount).toBe(0);
+  });
+
+  it("waits for concurrent target deletion and authority revocation before admitting anyone", async () => {
+    await seedCoreGraph(db, { organization: target, projects: [{ id: "racing-project" }] });
+    const input = { label: "Concurrent change", roles: ["software-user"], expiresInDays: 7, projects: [{ projectId: "racing-project", roles: ["software-committer"] }] };
+    for (const change of ["project", "authority"] as const) {
+      const invitation = (await manage<Created>("", "POST", input)).body;
+      let locked!: () => void, release!: () => void;
+      const acquired = new Promise<void>((resolve) => { locked = resolve; }), released = new Promise<void>((resolve) => { release = resolve; });
+      const blocker = db.transaction(async (tx) => {
+        await tx.query(change === "project" ? "select id from projects where id='racing-project' for update" : "select id from users where id='invite-platform' for update");
+        locked(); await released;
+        if (change === "project") await tx.query("delete from projects where id='racing-project'");
+        else await tx.query("update user_role_bindings set role_id='software-user' where user_id='invite-platform'");
+      });
+      await acquired;
+      const accepting = accept(invitation.token);
+      try { await vi.waitFor(async () => { expect((await db.query("select pid from pg_stat_activity where datname=current_database() and wait_event_type='Lock'")).rowCount).toBeGreaterThan(0); }); }
+      finally { release(); await blocker; }
+      expect((await accepting).status).toBe(409);
+      expect((await db.query("select id from users where organization_id=$1", [target.id])).rowCount).toBe(0);
+      if (change === "project") await seedCoreGraph(db, { organization: target, projects: [{ id: "racing-project" }] });
+    }
+  });
+
   it("serializes concurrent acceptance and rolls accounts and grants back when auditing fails", async () => {
-    const created = (await manage<Created>("", "POST", { label: "Concurrency", roles: ["software-user"], expiresInDays: 7 })).body;
+    await seedCoreGraph(db, { organization: target, projects: [{ id: "atomic-project" }] });
+    await db.query("insert into organization_teams(id,organization_id,name) values('atomic-team',$1,'Atomic team')", [target.id]);
+    const grants = { teamIds: ["atomic-team"], projects: [{ projectId: "atomic-project", roles: ["software-committer"] }] };
+    const created = (await manage<Created>("", "POST", { label: "Concurrency", roles: ["software-user"], expiresInDays: 7, ...grants })).body;
     const results = await Promise.all([accept(created.token), accept(created.token, { ...account, username: "other-invited" })]);
     expect(results.map((result) => result.status).sort()).toEqual([201, 409]);
     expect((await db.query("select id from users where organization_id=$1", [target.id])).rowCount).toBe(1);
-    const failing = (await manage<Created>("", "POST", { label: "Rollback", roles: ["admin"], expiresInDays: 7 })).body;
+    const failing = (await manage<Created>("", "POST", { label: "Rollback", roles: ["admin"], expiresInDays: 7, ...grants })).body;
     await db.query(`create function public.reject_test_invitation_audit() returns trigger language plpgsql as $$ begin
       if new.kind='organization-invitation' and new.action='accept' then raise exception 'Test audit failure'; end if; return new; end; $$;
       create trigger reject_test_invitation_audit before insert on audit_events for each row execute function public.reject_test_invitation_audit()`);
     expect((await accept(failing.token, { ...account, username: "rollback-invited" })).status).toBe(500);
     expect((await db.query("select * from user_password_credentials where username='rollback-invited'")).rowCount).toBe(0);
+    expect((await db.query("select user_id from project_members where project_id='atomic-project'")).rowCount).toBe(1);
+    expect((await db.query("select user_id from organization_team_members where team_id='atomic-team'")).rowCount).toBe(1);
     expect((await manage<{ items: Invitation[] }>()).body.items.find((item) => item.id === failing.item.id)?.status).toBe("pending");
+  });
+
+  it("keeps a winning acceptance final when revocation or replacement waits behind it", async () => {
+    await seedCoreGraph(db, { organization: target, projects: [{ id: "final-project" }] });
+    const input = { label: "Final offer", roles: ["software-user"], expiresInDays: 7, projects: [{ projectId: "final-project", roles: ["software-user"] }] };
+    for (const action of ["revoke", "regenerate"]) {
+      const invitation = (await manage<Created>("", "POST", input)).body;
+      let locked!: () => void, release!: () => void;
+      const acquired = new Promise<void>((resolve) => { locked = resolve; }), released = new Promise<void>((resolve) => { release = resolve; });
+      const blocker = db.transaction(async (tx) => { await tx.query("select id from projects where id='final-project' for update"); locked(); await released; });
+      await acquired;
+      const accepting = accept(invitation.token, { ...account, username: `final-${action}` });
+      let mutation: ReturnType<typeof manage> | undefined;
+      try {
+        await vi.waitFor(async () => { expect((await db.query("select pid from pg_stat_activity where datname=current_database() and wait_event_type='Lock'")).rowCount).toBeGreaterThan(0); });
+        mutation = manage(`/${invitation.item.id}/${action}`, "POST", action === "revoke" ? {} : input);
+        await vi.waitFor(async () => { expect((await db.query("select pid from pg_stat_activity where datname=current_database() and wait_event_type='Lock'")).rowCount).toBeGreaterThan(1); });
+      } finally { release(); await blocker; }
+      expect((await accepting).status).toBe(201);
+      expect((await mutation!).status).toBe(409);
+      expect((await manage<{ items: Invitation[] }>()).body.items.find((item) => item.id === invitation.item.id)?.status).toBe("accepted");
+    }
   });
 
   it("keeps existing accounts in their organization and does not silently change roles", async () => {

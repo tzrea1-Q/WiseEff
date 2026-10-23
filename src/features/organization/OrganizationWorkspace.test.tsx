@@ -12,7 +12,7 @@ function response(body: unknown) { return new Response(JSON.stringify(body), { s
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("organization workspace target ownership", () => {
-  it("shows the target project's explicit participants and inactive status without offering role edits", async () => {
+  it("shows editable target participants with their exact roles and inactive status", async () => {
     vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input) => {
       const url = new URL(String(input), "http://localhost");
       if (url.pathname.endsWith("operating-scope")) return response({ actor, organization: { id: "target", name: "Target organization" } });
@@ -27,11 +27,14 @@ describe("organization workspace target ownership", () => {
     }));
     render(<OrganizationWorkspace state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="?organizationId=target" area="projects" workspaceClient={createOrganizationWorkspaceClient()} />);
     const table = await screen.findByRole("table", { name: "项目参与名单" });
-    expect(within(table).getByText("Existing editor")).toBeInTheDocument();
-    expect(within(table).getByText("Inactive editor")).toBeInTheDocument();
-    expect(within(table).getByText("已停用")).toBeInTheDocument();
-    expect(within(table).getByText("硬件开发、软件MDE")).toBeInTheDocument();
-    expect(within(table).queryByRole("button", { name: /修改|编辑|保存/ })).not.toBeInTheDocument();
+    const editor = within(table).getByRole("row", { name: /Existing editor/ });
+    expect(within(editor).getByText("硬件开发、软件MDE")).toBeInTheDocument();
+    expect(within(editor).getByText("已启用")).toBeInTheDocument();
+    expect(within(editor).getByRole("button", { name: "修改 Existing editor 的项目编辑角色" })).toBeEnabled();
+    const inactive = within(table).getByRole("row", { name: /Inactive editor/ });
+    expect(within(inactive).getByText("软件开发")).toBeInTheDocument();
+    expect(within(inactive).getByText("已停用")).toBeInTheDocument();
+    expect(within(inactive).getByRole("button", { name: "修改 Inactive editor 的项目编辑角色" })).toBeEnabled();
     await userEvent.click(screen.getByRole("combobox", { name: "选择项目" }));
     await userEvent.click(await screen.findByRole("option", { name: "Empty project" }));
     expect(await screen.findByText("暂无项目参与者")).toBeInTheDocument();
