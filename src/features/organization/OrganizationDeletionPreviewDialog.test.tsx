@@ -12,7 +12,7 @@ it("keeps a failed read retryable, shows the fixed target and offers no destruct
   const client = { previewDeletion: vi.fn().mockRejectedValueOnce(new Error("预览服务暂不可用")).mockResolvedValue(preview) }, navigate = vi.fn();
   render(<OrganizationDeletionPreviewDialog organizationId="target" client={client} onClose={vi.fn()} onNavigate={navigate} />);
   expect(await screen.findByRole("alert")).toHaveTextContent("预览服务暂不可用");
-  await userEvent.click(screen.getByRole("button", { name: "重试", exact: true }));
+  await userEvent.click(screen.getByRole("button", { name: "重试" }));
   expect(await screen.findByText("目标组织")).toBeVisible();
   expect(screen.getByRole("status")).toHaveTextContent("请先关闭体验注册");
   expect(screen.getByText(/待调离管理员/)).toHaveTextContent("已停用");
