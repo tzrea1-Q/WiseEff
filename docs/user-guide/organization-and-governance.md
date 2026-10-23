@@ -85,6 +85,12 @@ For parameter modules, open Module management (`/parameter-admin/modules`), expa
 
 For debugging modules, open Debugging admin's Node debugging area (`/debugging-admin/nodes`) and Module management. Add roots or children, rename, or move modules to an allowed parent. Delete only modules without children or node references. The parameter and debugging trees are maintained separately: changing one does not reorganize the other.
 
+## Suspend and restore an Organization
+
+Platform administrators can open an Organization's details in **Organization directory** and confirm **Suspend organization** or **Restore organization**. Suspension preserves member read access and business history. New changes, invitations and public registrations, machine integration calls, queued task claims, outgoing callbacks and device operations pause. Personal profiles, password/session management and sign-out remain available. The Organization workspace shows its suspended state; platform administrators can still restore administration and assign handovers.
+
+Analysis and indexing already in progress can save their results. Device operations already dispatched retain their actual outcome; suspension does not claim to undo them. Restoring an Organization rechecks queued work against current data and configuration. It keeps individually disabled members and revoked credentials disabled, and previous device approvals or reload deployment intents must be requested again.
+
 ## Continue business work after departure
 
 Open **Business handover** from Organization → Members (`/organization/handovers`) to continue Knowledge drafts, unfinished import batches, feedback drafts and open feedback responsibilities after a member leaves. These remain in their original Organization after disabling, deleting or transferring a member. The default list shows work with no currently eligible responsible person; clear the filter to inspect all unfinished work.
