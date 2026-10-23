@@ -1,3 +1,4 @@
+import { agentOrganizationId } from "../scope";
 import {
   Annotation,
   Command,
@@ -532,7 +533,7 @@ export function createPlanningAgent(options: {
       // organization and user: otherwise replaying someone else's threadId would
       // resume their conversation state across user or tenant boundaries.
       const checkpointThreadId = input.requestContext
-        ? `${input.requestContext.auth.organization.id}:${input.requestContext.auth.user.id}:${input.threadId}`
+        ? `${agentOrganizationId(input.requestContext.auth)}:${input.requestContext.auth.user.id}:${input.threadId}`
         : input.threadId;
       return checkpointer.withNamespaceLease(checkpointThreadId, async () => {
       const config = { configurable: { thread_id: checkpointThreadId, [XIAOZE_RUN_SCOPE_KEY]: runScope } };
