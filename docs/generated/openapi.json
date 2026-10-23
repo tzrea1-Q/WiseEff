@@ -5,6 +5,119 @@
     "version": "m5"
   },
   "paths": {
+    "/api/v1/platform/organizations/{organizationId}/members/{userId}/transfer-preview": {
+      "post": {
+        "operationId": "platform.organizations.previewAccountTransfer",
+        "summary": "Preview account transfer while retaining source organization business work",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountTransferTargetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountTransferPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/organizations/{organizationId}/members/{userId}/transfer": {
+      "post": {
+        "operationId": "platform.organizations.transferAccount",
+        "summary": "Atomically transfer a local account and revoke its former access",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountTransferRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountTransferResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/organization/project-handovers": {
       "get": {
         "operationId": "parameters.listProjectHandovers",
@@ -27132,6 +27245,292 @@
             }
           }
         }
+      },
+      "AccountTransferTargetRequest": {
+        "type": "object",
+        "properties": {
+          "targetOrganizationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetOrganizationId"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "AccountTransferTargetRequest"
+      },
+      "AccountTransferPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "user": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "username": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "username",
+                  "isActive"
+                ],
+                "additionalProperties": false
+              },
+              "source": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              "target": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              "version": {
+                "type": "string"
+              },
+              "supported": {
+                "type": "boolean"
+              },
+              "unavailableReason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "platformAdministrator": {
+                "type": "boolean"
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "roleId": {
+                      "type": "string"
+                    },
+                    "projectId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "roleId",
+                    "projectId"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "teams": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "projectMemberships": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "roles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "projectId",
+                    "name",
+                    "roles"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "personalAccess": {
+                "type": "object",
+                "properties": {
+                  "sessions": {
+                    "type": "number"
+                  },
+                  "pairings": {
+                    "type": "number"
+                  },
+                  "pairingCodes": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "sessions",
+                  "pairings",
+                  "pairingCodes"
+                ],
+                "additionalProperties": false
+              },
+              "retainedWork": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "number"
+                  },
+                  "knowledge": {
+                    "type": "number"
+                  },
+                  "feedback": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "project",
+                  "knowledge",
+                  "feedback"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "user",
+              "source",
+              "target",
+              "version",
+              "supported",
+              "unavailableReason",
+              "platformAdministrator",
+              "roles",
+              "teams",
+              "projectMemberships",
+              "personalAccess",
+              "retainedWork"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "AccountTransferPreviewResponse"
+      },
+      "AccountTransferRequest": {
+        "type": "object",
+        "properties": {
+          "targetOrganizationId": {
+            "type": "string"
+          },
+          "expectedVersion": {
+            "type": "string"
+          },
+          "targetRoles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "guest",
+                "hardware-user",
+                "software-user",
+                "hardware-committer",
+                "software-committer",
+                "admin"
+              ]
+            }
+          }
+        },
+        "required": [
+          "targetOrganizationId",
+          "expectedVersion",
+          "targetRoles"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "AccountTransferRequest"
+      },
+      "AccountTransferResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "userId": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "isActive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "userId",
+              "organizationId",
+              "isActive"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "AccountTransferResponse"
       },
       "ProjectHandoverResponse": {
         "type": "object",
