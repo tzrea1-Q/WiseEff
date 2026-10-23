@@ -26,6 +26,8 @@ async function parseJson(response: Response) {
   return text ? JSON.parse(text) : null;
 }
 
+export type ApiClient = ReturnType<typeof createApiClient>;
+
 export function createApiClient({ baseUrl, authorization, getAuthorization, onAuthorizationFailure, fetchImpl = fetch, organizationId }: ApiClientOptions) {
   // Object-store and external URLs are not Organization API resources.
   const requestUrl = (path: string) => `${baseUrl}${path.startsWith("/api/") ? withOrganizationScope(path, organizationId) : path}`;
