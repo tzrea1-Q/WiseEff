@@ -191,10 +191,10 @@ describe.skipIf(!databaseAvailable)("log repository", () => {
 
     await expect(getLogDetail(db, auth(), logId)).resolves.toMatchObject({
       id: logId,
-      submittedBy: "已注销用户"
+      submittedBy: "Riley Chen"
     });
     await expect(listLogs(db, auth(), {})).resolves.toEqual([
-      expect.objectContaining({ id: logId, submittedBy: "已注销用户" })
+      expect.objectContaining({ id: logId, submittedBy: "Riley Chen" })
     ]);
   });
 

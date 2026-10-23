@@ -8,6 +8,7 @@ export const XIAOZE_THREAD_DEFAULT_LIMIT = 30;
 export const XIAOZE_THREAD_MAX_LIMIT = 50;
 
 export type XiaozeThreadListItem = {
+  historicalAttribution?: import("../../../../src/domain/identity/historicalAttribution").HistoricalAttribution;
   id: string;
   title: string;
   preview: string;
@@ -17,6 +18,7 @@ export type XiaozeThreadListItem = {
 };
 
 export type XiaozeThreadDetail = {
+  historicalAttribution?: import("../../../../src/domain/identity/historicalAttribution").HistoricalAttribution;
   id: string;
   title: string;
   preview: string;
@@ -70,6 +72,7 @@ type AgentSessionRow = {
 };
 
 type XiaozeThreadListRow = {
+  historical_attribution?: XiaozeThreadListItem["historicalAttribution"];
   id: string;
   title: string;
   context: unknown;
@@ -140,6 +143,7 @@ function decodeCursor(cursor: string) {
 
 function mapListRow(row: XiaozeThreadListRow): XiaozeThreadListItem {
   return {
+    historicalAttribution: row.historical_attribution,
     id: row.id,
     title: row.title,
     preview: readXiaozePreview(row.context),
@@ -186,6 +190,7 @@ export async function listXiaozeThreads(db: Queryable, input: ListXiaozeThreadsI
       s.id,
       s.title,
       s.context,
+      s.historical_attribution,
       s.created_at,
       s.updated_at,
       (
@@ -235,6 +240,7 @@ export async function getXiaozeThread(
 
   return {
     id: session.id,
+    historicalAttribution: session.historicalAttribution,
     title: session.title,
     preview: readXiaozePreview(session.context),
     createdAt: session.createdAt,

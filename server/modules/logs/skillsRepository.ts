@@ -3,8 +3,10 @@ import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { LogSkillSpec } from "./skillSpec";
 import type { ParseTestRun } from "./parseTestSpec";
+import type { HistoricalAttribution } from "../../../src/domain/identity/historicalAttribution";
 
 export type LogSkillRevisionDto = {
+  historicalAttribution?: HistoricalAttribution;
   parseTestRun?: ParseTestRun;
   id: string;
   skillId: string;
@@ -22,7 +24,8 @@ export type LogSkillRevisionDto = {
 const selectRevision = `select id, skill_id as "skillId", revision_number as number, status, spec,
   content_hash as "contentHash", created_by_user_id as "createdByUserId", created_at as "createdAt",
   published_at as "publishedAt", published_by_user_id as "publishedByUserId",
-  (select u.name from users u where u.id = published_by_user_id and u.organization_id = log_skill_revisions.organization_id) as "publishedByDisplayName"
+  historical_attribution as "historicalAttribution",
+  historical_attribution #>> '{actors,published_by_user_id,name}' as "publishedByDisplayName"
   from log_skill_revisions`;
 
 export async function listSkillRevisions(db: Queryable, organizationId: string, skillId: string): Promise<LogSkillRevisionDto[]> {

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { historicalIdentityLabel } from "@/domain/identity/historicalAttribution";
 import { Archive, ArchiveRestore, Download, ExternalLink, History, Pencil, Send, Trash2, Upload } from "lucide-react";
 
 import { formatKnowledgePageLabel } from "@/domain/knowledge/citations";
@@ -112,7 +113,7 @@ export function KnowledgeEntryDetailDialog({
               </h2>
               <p id={descriptionId} className="mt-1 text-xs text-muted-foreground">
                 修订 #{entry.headRevisionNumber} ·{" "}
-                {entry.createdByUserId ?? "已注销用户"} 创建 · 更新于 {formatDateTime(entry.updatedAt)}
+                {historicalIdentityLabel(entry.historicalAttribution?.actors.created_by_user_id)} 创建 · 更新于 {formatDateTime(entry.updatedAt)}
                 {entry.status === "published" ? ` · 发布于 ${formatDateTime(entry.publishedAt)}` : ""}
                 {entry.status === "archived" ? ` · 归档于 ${formatDateTime(entry.archivedAt)}` : ""}
               </p>

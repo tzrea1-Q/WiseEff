@@ -1,4 +1,5 @@
 import { knowledgeEntryHref } from "@/domain/knowledge/citations";
+import { historicalIdentityLabel } from "@/domain/identity/historicalAttribution";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DatabaseZap, ExternalLink, RefreshCw, BookOpen } from "lucide-react";
 
@@ -144,7 +145,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
       render: (entry) => (
         <div className="min-w-0">
           <p className="truncate font-medium text-foreground">{entry.title}</p>
-          <p className="text-xs text-muted-foreground">创建人 {entry.createdByUserId ?? "已注销用户"} · 修订 #{entry.headRevisionNumber}</p>
+          <p className="text-xs text-muted-foreground">创建人 {historicalIdentityLabel(entry.historicalAttribution?.actors.created_by_user_id)} · 修订 #{entry.headRevisionNumber}</p>
         </div>
       ),
       sortAccessor: (entry) => entry.title
@@ -347,7 +348,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
       render: (entry) => (
         <div className="min-w-0">
           <p className="truncate font-medium text-foreground">{entry.title}</p>
-          <p className="text-xs text-muted-foreground">修订 #{entry.headRevisionNumber} · {entry.createdByUserId ?? "已注销用户"}</p>
+          <p className="text-xs text-muted-foreground">修订 #{entry.headRevisionNumber} · {historicalIdentityLabel(entry.historicalAttribution?.actors.created_by_user_id)}</p>
         </div>
       ),
       sortAccessor: (entry) => entry.title

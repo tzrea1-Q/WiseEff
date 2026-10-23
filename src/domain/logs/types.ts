@@ -1,3 +1,5 @@
+import type { HistoricalAttribution } from "../identity/historicalAttribution";
+
 export type LogStageId = "parse" | "pattern" | "rootcause" | "report";
 
 export type LogStatus = "Processing" | "Complete" | "Failed";
@@ -140,6 +142,7 @@ export type LogSignalSummary = {
 };
 
 export type LogRecord = {
+  historicalAttribution?: HistoricalAttribution;
   canDelete?: boolean;
   skillSelection?: LogSkillSelection;
   createdByCredentialId?: string | null;
