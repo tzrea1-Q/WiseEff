@@ -7,6 +7,7 @@ import type { OrganizationWorkspaceClient } from "@/infrastructure/http/userGove
 import { presentError } from "@/infrastructure/http/presentError";
 import { listOrganizationBridges, revokeOrganizationBridge } from "@/infrastructure/http/deviceBridgeClient";
 import { createIntegrationCredentialClient } from "@/infrastructure/http/logClient";
+import { createAccountTransferClient } from "@/infrastructure/http/accountTransferClient";
 
 /** A URL target owns its clients and view state. No session-wide organization switch. */
 export function OrganizationWorkspace({ workspaceClient, ...props }: OrganizationPageProps & { workspaceClient?: OrganizationWorkspaceClient }) {
@@ -25,6 +26,7 @@ function ResolvedOrganizationWorkspace({ requestedId, workspaceClient, ...props 
   const credentialRepository = useMemo(() => createIntegrationCredentialClient(undefined, operatingId), [operatingId]);
   const foreign = Boolean(scope && scope.organization.id !== scope.actor.organization.id);
   const platform = scope?.actor.roles.some((role) => role.projectId === null && role.roleId === "platform-admin");
+  const accountTransferClient = useMemo(() => platform && operatingId ? createAccountTransferClient(operatingId) : undefined, [platform, operatingId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,7 +57,7 @@ function ResolvedOrganizationWorkspace({ requestedId, workspaceClient, ...props 
     {props.area === "members" && projectError ? <SectionError message={projectError} onRetry={() => setAttempt((value) => value + 1)} />
         : props.area === "members" && !projects ? <SectionSkeleton label="正在加载组织成员工作区" />
           : <OrganizationPage key={`${scope.organization.id}:${props.area ?? "profile"}`} {...props} apiMode readOnly={scope.organization.status === "suspended"} directoryScope={scope.organization.id}
-            userGovernanceActions={client} teamActions={client} invitationActions={client} organizationActions={client} reviewRolesClient={client} projectCandidates={projects ?? []} bridgeActions={bridgeActions} credentialRepository={credentialRepository} projectMembershipClient={client}
+            userGovernanceActions={client} teamActions={client} accountTransferClient={accountTransferClient} invitationActions={client} organizationActions={client} reviewRolesClient={client} projectCandidates={projects ?? []} bridgeActions={bridgeActions} credentialRepository={credentialRepository} projectMembershipClient={client}
             onOrganizationUpdated={async (organization) => {
               setScope((current) => current ? { ...current, organization: { ...current.organization, id: organization.id, name: organization.name } } : current);
               if (organization.id === scope.actor.organization.id) await props.onOrganizationUpdated?.(organization);
