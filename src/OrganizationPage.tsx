@@ -11,6 +11,7 @@ import { presentError } from "@/infrastructure/http/presentError";
 import { UserPermissionsPage, type UserPermissionsPageProps } from "@/UserPermissionsPage";
 import { IntegrationCredentials } from "@/features/log-skills/IntegrationCredentials";
 import { OrganizationProjectsPanel, type ProjectMembershipClient } from "@/features/organization/OrganizationProjectsPanel";
+import { OrganizationTeamsPage } from "@/features/organization/OrganizationTeamsPage";
 import type { ComponentProps } from "react";
 import "./organization-page.css";
 
@@ -116,7 +117,7 @@ export function OrganizationPage({
   return (
     <div className="organization-page">
       <OrganizationAdminScopeNav active={area} organizationId={memberProps.directoryScope} onNavigate={memberProps.onNavigate} />
-      {area === "bridges" ? <OrganizationBridgePanel enabled={apiMode && canPerform(memberProps.state.activeRoleId, "users.manage")} actions={bridgeActions} /> : area === "integrations" ? (
+      {area === "teams" ? <OrganizationTeamsPage client={memberProps.teamActions} /> : area === "bridges" ? <OrganizationBridgePanel enabled={apiMode && canPerform(memberProps.state.activeRoleId, "users.manage")} actions={bridgeActions} /> : area === "integrations" ? (
         <div className="skill-section"><IntegrationCredentials repository={credentialRepository} apiMode={apiMode} canEdit={canPerform(memberProps.state.activeRoleId, "logs.admin-domains")} disabled={false} /></div>
       ) : area === "projects" ? <OrganizationProjectsPanel client={projectMembershipClient} /> : area === "members" ? (
         <UserPermissionsPage {...memberProps} />

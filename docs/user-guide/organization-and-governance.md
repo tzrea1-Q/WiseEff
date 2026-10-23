@@ -32,6 +32,12 @@ Open **Project participation** (`/organization/projects`) and choose a project. 
 
 The initial compatibility rollout retains existing editing authorization. Organization and platform administrators manage projects directly; review and merge duties remain separately configured. Viewing this roster does not activate an account or grant review, merge or device access.
 
+## Group members into teams
+
+Open **Teams** (`/organization/teams`) in the current Organization workspace. Administrators can create, rename and delete flat teams. Choose **Manage members** to select several members, select all, or clear the selection, then save. A member may belong to several teams; disabled members remain identifiable in the selector. The team list shows its members, and the member directory and member details show team membership.
+
+Teams only group people. Membership changes grant no project permissions. Deleting a team removes its grouping relationships while retaining member accounts, projects and individually configured roles. Platform administrators can use the same page after explicitly entering the target Organization; the operation remains attributed to their real account.
+
 ## Decide a Committer registration request
 
 In People management (`/organization/members`), switch to Registration requests. Check the applicant's Organization, account identifier, current role and requested hardware/software committer role, then choose one of three outcomes.

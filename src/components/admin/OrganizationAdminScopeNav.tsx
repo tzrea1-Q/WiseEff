@@ -1,4 +1,4 @@
-import { Building2, FolderKanban, KeyRound, Monitor, Users } from "lucide-react";
+import { Building2, FolderKanban, KeyRound, Monitor, Users, UsersRound } from "lucide-react";
 
 import {
   ORGANIZATION_ADMIN_UI,
@@ -27,6 +27,7 @@ export function OrganizationAdminScopeNav({ active, onNavigate, organizationId }
       items={[
         { value: "profile", label: <><Building2 size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.profileScope}</> },
         { value: "members", label: <><Users size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.membersScope}</> },
+        { value: "teams", label: <><UsersRound size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.teamsScope}</> },
         { value: "projects", label: <><FolderKanban size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.projectsScope}</> },
         { value: "bridges", label: <><Monitor size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.bridgesScope}</> },
         { value: "integrations", label: <><KeyRound size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.integrationsScope}</> }
