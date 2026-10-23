@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import * as defaultApiClient from "@/infrastructure/http/defaultApiClient";
 import { requestXiaozeSuggestions } from "@/infrastructure/http/xiaozeSuggestionsClient";
 import { useXiaozeSuggestions } from "./useXiaozeSuggestions";
 import { XiaozePageContext } from "./xiaozePageContext";
@@ -9,8 +10,8 @@ vi.mock("@/infrastructure/http/xiaozeSuggestionsClient", () => ({
   requestXiaozeSuggestions: vi.fn()
 }));
 
-function SuggestionsProbe({ enabled }: { enabled: boolean }) {
-  const { insights, dismiss } = useXiaozeSuggestions({ enabled });
+function SuggestionsProbe({ enabled, organizationId }: { enabled: boolean; organizationId?: string }) {
+  const { insights, dismiss } = useXiaozeSuggestions({ enabled, organizationId });
   return (
     <div>
       <span data-testid="count">{insights.length}</span>
@@ -33,6 +34,7 @@ describe("useXiaozeSuggestions", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(defaultApiClient, "createDefaultApiClient");
     vi.mocked(requestXiaozeSuggestions).mockResolvedValue([
       {
         id: "s1",
@@ -59,7 +61,17 @@ describe("useXiaozeSuggestions", () => {
       pageKey: "parameters",
       projectId: "p1",
       projectName: "Demo 项目"
-    }, undefined, expect.any(AbortSignal));
+    }, vi.mocked(defaultApiClient.createDefaultApiClient).mock.results[0]?.value, expect.any(AbortSignal));
+    expect(defaultApiClient.createDefaultApiClient).toHaveBeenCalledWith({ organizationId: undefined });
+  });
+
+  it("binds suggestions to the explicit organization client", async () => {
+    render(<XiaozePageContext.Provider value={{ path: "/parameters", pageKey: "parameters", projectId: "p1" }}>
+      <SuggestionsProbe enabled organizationId="target-organization" />
+    </XiaozePageContext.Provider>);
+    await waitFor(() => expect(screen.getByText("有 3 条参数变更待审阅")).toBeInTheDocument());
+    expect(defaultApiClient.createDefaultApiClient).toHaveBeenCalledWith({ organizationId: "target-organization" });
+    expect(vi.mocked(requestXiaozeSuggestions).mock.calls[0]?.[1]).toBe(vi.mocked(defaultApiClient.createDefaultApiClient).mock.results[0]?.value);
   });
 
   it("fetches nothing when disabled", async () => {
@@ -120,8 +132,9 @@ describe("useXiaozeSuggestions", () => {
   });
 
   it("aborts on unmount and ignores a late fetch rejection", async () => {
-    const pending = Promise.withResolvers<Awaited<ReturnType<typeof requestXiaozeSuggestions>>>();
-    vi.mocked(requestXiaozeSuggestions).mockReturnValueOnce(pending.promise);
+    let reject!: (reason: unknown) => void;
+    const pending = new Promise<Awaited<ReturnType<typeof requestXiaozeSuggestions>>>((_resolve, rejectPending) => { reject = rejectPending; });
+    vi.mocked(requestXiaozeSuggestions).mockReturnValueOnce(pending);
     const report = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     const { unmount } = render(
@@ -135,14 +148,15 @@ describe("useXiaozeSuggestions", () => {
 
     unmount();
     expect(signal.aborted).toBe(true);
-    await act(async () => pending.reject(new TypeError("Failed to fetch")));
+    await act(async () => reject(new TypeError("Failed to fetch")));
 
     expect(report).not.toHaveBeenCalled();
   });
 
   it("aborts on pagehide so a fetch broken by page unload is not logged", async () => {
-    const pending = Promise.withResolvers<Awaited<ReturnType<typeof requestXiaozeSuggestions>>>();
-    vi.mocked(requestXiaozeSuggestions).mockReturnValueOnce(pending.promise);
+    let reject!: (reason: unknown) => void;
+    const pending = new Promise<Awaited<ReturnType<typeof requestXiaozeSuggestions>>>((_resolve, rejectPending) => { reject = rejectPending; });
+    vi.mocked(requestXiaozeSuggestions).mockReturnValueOnce(pending);
     const report = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     render(
@@ -155,7 +169,7 @@ describe("useXiaozeSuggestions", () => {
 
     window.dispatchEvent(new Event("pagehide"));
     expect(signal.aborted).toBe(true);
-    await act(async () => pending.reject(new TypeError("Failed to fetch")));
+    await act(async () => reject(new TypeError("Failed to fetch")));
 
     expect(report).not.toHaveBeenCalled();
   });

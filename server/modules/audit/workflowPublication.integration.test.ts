@@ -46,7 +46,8 @@ describe.skipIf(!databaseAvailable)("workflow publication audit visibility", () 
         { ...administrator, roles: [{ roleId: "platform-admin" as const, projectId: "project" }] },
         { ...administrator, user: { ...administrator.user, isActive: false }, roles: [{ roleId: "platform-admin" as const, projectId: null }] }
       ]) {
-        const result = await fetchHistory(auth, "?includePlatformWorkflowPublication=true&organizationId=audit-other");
+        expect((await fetchHistory(auth, "?includePlatformWorkflowPublication=true&organizationId=audit-other")).status).toBe(403);
+        const result = await fetchHistory(auth, "?includePlatformWorkflowPublication=true");
         expect(result.status).toBe(200);
         expect(result.body.items.map((item) => item.id)).toEqual(["own-event"]);
         expect((await fetchHistory(auth, "?kind=workflow-publication-updated&includePlatformWorkflowPublication=true")).body.items).toEqual([]);

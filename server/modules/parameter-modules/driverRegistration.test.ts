@@ -153,7 +153,7 @@ describe.skipIf(!databaseAvailable)("canonical registration guards through the a
     },
   );
 
-  it.each(["viewer", "platform"] as const)("rejects %s-only registration authority", async (actor) => {
+  it.each(["viewer"] as const)("rejects %s-only registration authority", async (actor) => {
     await assertNoRegistrationOrPlacement();
     const response = await register(actor, driverModuleId);
     expect(response.status, response.bodyText).toBe(403);
@@ -171,5 +171,13 @@ describe.skipIf(!databaseAvailable)("canonical registration guards through the a
       error: { code: "FORBIDDEN", details: { reason: "forbidden", retryable: false } },
     });
     await assertNoRegistrationOrPlacement();
+  });
+
+  it("registers as the real platform administrator and records that actor", async () => {
+    const response = await register("platform", driverModuleId);
+    expect(response.status, response.bodyText).toBe(201);
+    expect(response.body).toMatchObject({ item: { organizationId, subjectId: "csub_acme_power", status: "active" } });
+    expect((await root.query("select actor_user_id,organization_id from audit_events where kind='parameter-catalog-registration' and action='registration-register'")).rows)
+      .toEqual([{ actor_user_id: "user-b4-platform", organization_id: organizationId }]);
   });
 });
