@@ -11,7 +11,9 @@ import {
   trustedDomainAttributionFromRow,
   trustedPublicExecutionLabel,
   assertTrustedMutationInvocation,
-  TrustedInvocationContextError
+  TrustedInvocationContextError,
+  type AgentInvocationInput,
+  type SystemInvocationInput
 } from "./trustedInvocation";
 
 function auth(): AuthContext {
@@ -172,11 +174,11 @@ describe("trusted invocation context", () => {
         sessionId: "session-1",
         toolCallId: "tool-call-1",
         approval: { required: true }
-      })
+      } as unknown as AgentInvocationInput)
     ).toThrow(TrustedInvocationContextError);
 
     expect(() => createSystemInvocation({ kind: "service", name: "  " })).toThrow(TrustedInvocationContextError);
-    expect(() => createSystemInvocation({ kind: "unknown", name: "worker" })).toThrow(TrustedInvocationContextError);
+    expect(() => createSystemInvocation({ kind: "unknown", name: "worker" } as unknown as SystemInvocationInput)).toThrow(TrustedInvocationContextError);
     expect(() => createUserInvocation({ ...auth(), roles: [{ projectId: null, roleId: "not-a-role" }] } as never)).toThrow(
       TrustedInvocationContextError
     );
