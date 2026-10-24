@@ -219,6 +219,10 @@ describe("P01/P02 SQLSTATE privilege gates", () => {
     "purge_project(text,text,text,text)", "finish_project_erasure_object(text,text,text,text)", "list_project_erasures(text,text)",
     "lock_log_erasure(text,text,text)", "read_log_erasure(text,text,text)",
     "purge_log(text,text,text,text)", "finish_log_erasure_object(text,text,text,text)", "list_log_erasures(text,text)",
+    "reserve_parameter_object_write(text,text)", "lock_parameter_object_write(text)",
+    "organization_parameter_archives(text,text,text)", "purge_organization_parameter_assets(text,text,text)",
+    "organization_parameter_pending_objects(text,text,text)", "finish_organization_parameter_object(text,text,text,text,text,boolean)",
+    "lock_definition_erasure_object(text,text,text)", "list_platform_definition_erasures()",
   ])("rejects owner, security, search path and execute drift for %s", async (routine) => {
     const identity = `parameter_catalog.${routine}`;
     for (const drift of [
@@ -239,6 +243,25 @@ describe("P01/P02 SQLSTATE privilege gates", () => {
       }
     }
   }, 120_000);
+
+  it("rejects an unapproved organization erasure overload", async () => {
+    expect((await runP02(db)).status).toBe("passed");
+    expect((await runV13(db.query.bind(db))).status).toBe("passed");
+    await db.query("savepoint organization_erasure_overload");
+    try {
+      await db.query(`create function parameter_catalog.purge_organization_parameter_assets(boolean) returns void
+        language sql security definer set search_path=pg_catalog, public, parameter_catalog, catalog_publication
+        as $$ delete from public.parameter_specs where false $$;
+        alter function parameter_catalog.purge_organization_parameter_assets(boolean) owner to catalog_migration_owner;
+        revoke all on function parameter_catalog.purge_organization_parameter_assets(boolean) from public;
+        grant execute on function parameter_catalog.purge_organization_parameter_assets(boolean) to parameter_governance_writer_role`);
+      expect((await runP02(db)).status).toBe("failed");
+      expect((await runV13(db.query.bind(db))).status).toBe("failed");
+    } finally {
+      await db.query("rollback to savepoint organization_erasure_overload");
+      await db.query("release savepoint organization_erasure_overload");
+    }
+  });
 
   it.each(["project_erasures", "log_erasures"])("rejects private %s table or column grants", async (relation) => {
     for (const privilege of ["select", "select(organization_id)"]) {

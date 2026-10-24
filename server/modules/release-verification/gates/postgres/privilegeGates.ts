@@ -14,8 +14,8 @@ import { countedResult } from "./evidence";
 import { IMMUTABLE_CATALOG_RELATIONS, catalogRelation, quoteIdent } from "./relations";
 import type { GateQuery } from "./session";
 
-// Definition, project and log erasure are explicit administrator maintenance actions.
-// Its bodies remain pinned by the canonical schema fingerprint; these gates
+// Definition, project, log and organization erasure are explicit administrator maintenance actions.
+// Their bodies remain pinned by the canonical schema fingerprint; these gates
 // separately verify the exact callable signatures and least-privilege boundary.
 export async function readDefinitionErasureCapabilities(query: GateQuery) {
   const routines = [
@@ -36,6 +36,14 @@ export async function readDefinitionErasureCapabilities(query: GateQuery) {
     ["parameter_catalog.list_log_erasures(text,text)", "search_path=pg_catalog, parameter_catalog, public"],
     ["parameter_catalog.purge_log(text,text,text,text)", "search_path=pg_catalog, parameter_catalog, public"],
     ["parameter_catalog.finish_log_erasure_object(text,text,text,text)", "search_path=pg_catalog, parameter_catalog, public"],
+    ["parameter_catalog.reserve_parameter_object_write(text,text)", "search_path=pg_catalog, public"],
+    ["parameter_catalog.lock_parameter_object_write(text)", "search_path=pg_catalog, public"],
+    ["parameter_catalog.organization_parameter_archives(text,text,text)", "search_path=pg_catalog, public, parameter_catalog"],
+    ["parameter_catalog.purge_organization_parameter_assets(text,text,text)", "search_path=pg_catalog, public, parameter_catalog, catalog_publication"],
+    ["parameter_catalog.organization_parameter_pending_objects(text,text,text)", "search_path=pg_catalog, parameter_catalog, public"],
+    ["parameter_catalog.finish_organization_parameter_object(text,text,text,text,text,boolean)", "search_path=pg_catalog, parameter_catalog, public"],
+    ["parameter_catalog.lock_definition_erasure_object(text,text,text)", "search_path=pg_catalog, parameter_catalog, public"],
+    ["parameter_catalog.list_platform_definition_erasures()", "search_path=pg_catalog, parameter_catalog"],
   ] as const;
   const roles = ["public", CATALOG_SYNCHRONIZER_ROLE, CATALOG_PUBLICATION_COORDINATOR_ROLE, CATALOG_BASELINE_READER_ROLE,
     "catalog_verification_writer_role", "catalog_verifier_role", "wiseeff_mod_d02_capture", "wiseeff_mod_d02_source_reader", "catalog_mod_d02_capture_owner"];
