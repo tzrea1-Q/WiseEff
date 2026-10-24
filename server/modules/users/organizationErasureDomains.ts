@@ -8,7 +8,7 @@ import type { OrganizationDeletionContext } from "./organizationDeletion";
 export type OrganizationErasureContext = OrganizationDeletionContext & {
   objectStore?: ObjectStore;
   catalogArchiveStore?: ArchiveObjectStore;
-  catalogArchiveKey?: string;
+  catalogArchiveKey?: Buffer;
 };
 
 /** Four accepted erasure domains, never a dynamic table/SQL cleanup registry.
