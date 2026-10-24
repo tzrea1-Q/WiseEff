@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 import {
   createDtsReloadRunSession,
@@ -12,18 +12,22 @@ export type UseDtsReloadRunSessionResult = DtsReloadRunSessionSnapshot & {
 };
 
 /**
- * React adapter over {@link createDtsReloadRunSession}. Options are read once on mount
- * (initializer semantics). Tests should prefer the session command interface directly.
+ * React adapter over {@link createDtsReloadRunSession}. The first initial project may
+ * arrive after API hydration; other options retain mount-time initializer semantics.
  */
 export function useDtsReloadRunSession(
   options: DtsReloadRunSessionOptions = {}
 ): UseDtsReloadRunSessionResult {
   const session = useMemo(
     () => createDtsReloadRunSession(options),
-    // Options are mount-time initial values by contract; a stable session is required.
+    // A stable session preserves user edits while API hydration settles.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
+
+  useEffect(() => {
+    session.initializeProject(options.initialProjectId ?? "");
+  }, [options.initialProjectId, session]);
 
   const snapshot = useSyncExternalStore(
     session.subscribe,

@@ -108,7 +108,7 @@ test.describe("M5.11 visual quality gate", () => {
         await stabilizeOrganizationVisualClock(page);
       }
       if (route.path === "/parameter-review" && allowVisualReviewFixture) {
-        await signInBrowserAsRole(page, "software-committer", route.path);
+        await signInBrowserAsRole(page, "software-committer", `${route.path}?project=aurora`);
       } else {
         await test.step("quality:navigation", () => page.goto(route.path));
       }

@@ -17,7 +17,7 @@ export const routeOwnership: Readonly<Record<string, readonly string[]>> = {
   "src/NodeDebuggingPage.tsx": ["/node-debugging"],
   "src/DebuggingPage.tsx": ["/debugging"],
   "src/DebuggingAdminPage.tsx": ["/debugging-admin", "/debugging-admin/nodes"],
-  "src/OrganizationPage.tsx": ["/organization", "/organization/members", "/user-permissions"],
+  "src/OrganizationPage.tsx": ["/organization", "/organization/settings", "/organization/members", "/user-permissions"],
   "src/UserPermissionsPage.tsx": ["/organization", "/organization/members", "/user-permissions"],
   "src/AuditCenterPage.tsx": ["/audit"],
   "src/features/product-feedback/FeedbackAdminPage.tsx": ["/feedback-admin"],

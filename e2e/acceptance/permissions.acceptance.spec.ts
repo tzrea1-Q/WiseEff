@@ -663,7 +663,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
   test("lets Admin rename the home organization while denying non-Admin writes", async ({ page }, testInfo) => {
     // @acceptance ORG-ADMIN-RENAME-001
     // @operation ORG-ADMIN-RENAME-001
-    await page.goto("/organization");
+    await page.goto("/organization/settings");
 
     await expect(page.getByRole("region", { name: "组织档案" })).toBeVisible();
     const nameInput = page.getByLabel("显示名称");

@@ -21,6 +21,7 @@ export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("sec
   "/log-admin?tab=quality": ["tabs"],
   "/parameter-admin/projects/aurora/configuration?tab=conflicts": ["tabs"],
   "/organization": ["section"],
+  "/organization/settings": ["section"],
   "/organization/members": ["section", "tabs"],
   "/parameter-home": ["toggle"],
   "/logs": ["tabs"],
@@ -59,7 +60,7 @@ const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xia
   adminLists: [...adminListPaths, ...collectionListPaths],
   overviewPages: ["/parameter-home", "/log-admin"],
   retiredNotices: ["/parameter-comparison", "/debugging"],
-  settingsForms: ["/organization", "/debugging-admin", "/parameter-admin/projects/aurora/review-roles"]
+  settingsForms: ["/organization/settings", "/debugging-admin", "/parameter-admin/projects/aurora/review-roles"]
 };
 const otherPhaseTwoPaths = [
   "/knowledge-admin",
