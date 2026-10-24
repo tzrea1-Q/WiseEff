@@ -173,7 +173,10 @@ export const S2_SCH_0276_FINGERPRINT =
 export const S2_SCH_0279_FINGERPRINT =
   "b56e61372b4a7a0a823dbb87136669f13ac7f9cabee28ec9ad51e9dade032663";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0279_FINGERPRINT;
+export const S2_SCH_0285_FINGERPRINT =
+  "9543f9d3582e6ed8f58b219d54afba057e3efb062b18e47f92ec5fd08c9cff60";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0285_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
