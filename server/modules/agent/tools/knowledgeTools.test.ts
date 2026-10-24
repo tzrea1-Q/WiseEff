@@ -1,11 +1,11 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../../auth/types";
-import type { ObjectStore } from "../../logs/objectStore";
-import type { InMemoryTestDatabase } from "../../../testing/testDatabase";
-import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../../testing/testDatabase";
+import { createPostgresDatabase, type RootDatabase } from "../../../shared/database/client";
+import { createMemoryObjectStore } from "../../../testing/objectStore";
+import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../../testing/testDatabase";
 import { createDefaultKnowledgeTextExtractor } from "../../knowledge/extraction";
 import { processNextKnowledgeIndexJob } from "../../knowledge/indexing/worker";
 import { createKnowledgeEntry, publishKnowledgeEntry } from "../../knowledge/service";
@@ -26,29 +26,6 @@ function makeAuth(userId: string, permissions: BackendPermission[], organization
     // A plain project-scoped member: knowledge tools must not demand global admin.
     roles: [{ projectId: "aurora", roleId: "hardware-user" }],
     permissions
-  };
-}
-
-function createFakeObjectStore(): ObjectStore {
-  const objects = new Map<string, Buffer>();
-  return {
-    async put(input) {
-      const checksum = createHash("sha256").update(input.bytes).digest("hex");
-      const storageKey = `${input.organizationId}/${checksum}-${input.fileName}`;
-      objects.set(storageKey, input.bytes);
-      return {
-        storageKey,
-        fileName: input.fileName,
-        contentType: input.contentType,
-        fileSizeBytes: input.bytes.byteLength,
-        checksumSha256: checksum
-      };
-    },
-    async get(storageKey) {
-      const bytes = objects.get(storageKey);
-      if (!bytes) throw new Error(`Missing object: ${storageKey}`);
-      return bytes;
-    }
   };
 }
 
@@ -74,14 +51,16 @@ describe("knowledge tool registration", () => {
 });
 
 describe.skipIf(!databaseAvailable)("knowledge tools against the knowledge service", () => {
-  let db: InMemoryTestDatabase;
+  let db: RootDatabase;
+  let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>>;
   let publishedEntryId: string;
   let draftEntryId: string;
   const editor = makeAuth(EDITOR, ["knowledge:view", "knowledge:edit"]);
   const extractor = createDefaultKnowledgeTextExtractor();
 
   beforeEach(async () => {
-    db = await createInMemoryTestDatabase();
+    database = await createEphemeralTestDatabase("knowledgetools");
+    db = createPostgresDatabase(database.url);
     for (const orgId of [ORG_ID, OTHER_ORG_ID]) {
       await db.query(`insert into organizations (id, name) values ($1, $1) on conflict (id) do nothing`, [orgId]);
     }
@@ -97,7 +76,7 @@ describe.skipIf(!databaseAvailable)("knowledge tools against the knowledge servi
       );
     }
 
-    const objectStore = createFakeObjectStore();
+    const objectStore = createMemoryObjectStore();
     const published = await createKnowledgeEntry(db, objectStore, extractor, editor, {
       contentForm: "markdown",
       title: "快充温控调参经验",
@@ -120,7 +99,8 @@ describe.skipIf(!databaseAvailable)("knowledge tools against the knowledge servi
   });
 
   afterEach(async () => {
-    await db.rollback();
+    await db?.close();
+    await database?.drop();
   });
 
   function registryFor() {
@@ -128,7 +108,7 @@ describe.skipIf(!databaseAvailable)("knowledge tools against the knowledge servi
   }
 
   it("cites the retrieved PDF chunk's page range and revision without extending the citation protocol", async () => {
-    const pdf = await createKnowledgeEntry(db, createFakeObjectStore(), extractor, editor, {
+    const pdf = await createKnowledgeEntry(db, createMemoryObjectStore(), extractor, editor, {
       contentForm: "file", title: "PDF guidance", tags: [], file: {
         fileName: "multipage.pdf", contentType: "application/pdf",
         contentBase64: readFileSync(new URL("../../knowledge/testing/fixtures/multipage.pdf", import.meta.url)).toString("base64")
