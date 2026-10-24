@@ -15,7 +15,7 @@ export const provisionPublicationRuntimeLogins: typeof provision = (url, input) 
     ? withTestClusterRoleCatalogLock(() => provision(url, input))
     : provision(url, input);
 
-/** Remove only migration 0257's foreign-fixture grants; unexpected dependencies still fail DROP ROLE. */
+/** Remove only exact upgrade RPC grants copied into foreign fixtures; unexpected dependencies still fail DROP ROLE. */
 export async function revokeForeignTestRuntimeGrants(url: string, roles: readonly string[], ownershipComment: string): Promise<void> {
   if (!hasTestClusterRoleCatalogLock()) throw new Error("Lab runtime cleanup requires the cluster role catalog lease");
   if (!ownershipComment.startsWith("wiseeff-publication-runtime:lab:")) throw new Error("Lab runtime ownership is required");
@@ -57,7 +57,8 @@ export async function revokeForeignTestRuntimeGrants(url: string, roles: readonl
                  to_regprocedure('parameter_catalog.list_definition_erasures(text)'),
                  to_regprocedure('parameter_catalog.finish_parameter_definition_erasure_object(text,text)'),
                  to_regprocedure('parameter_catalog.lock_parameter_plane_archive()'),
-                 to_regprocedure('parameter_catalog.definition_erasure_object_is_referenced(text,text)')
+                 to_regprocedure('parameter_catalog.definition_erasure_object_is_referenced(text,text)'),
+                 to_regprocedure('parameter_catalog.register_agent_checkpoint_namespace(text,text,text,text,text,text,boolean)')
                ]::oid[])`, [role, ownershipComment]
           );
           for (const { routine } of grants.rows) {
