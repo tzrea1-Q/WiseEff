@@ -33,6 +33,7 @@ import type { LogAnalysisTraceStep } from "./traceTypes";
 import { compileLogPattern } from "./adminPattern";
 import { importAnalysisCaseArchive, exportAnalysisCaseArchive, AnalysisCaseArchiveError, type ArchivedAnalysisCase } from "./analysisCaseArchive";
 import { recordSkillArtifacts } from "./skillArtifacts";
+import { hasLogObjectCustody, withLogObjectCustody } from "./objectWrites";
 
 export const ANALYSIS_CASE_MAX = 20;
 export const ANALYSIS_CASE_MAX_BYTES = 10 * 1024 * 1024;
@@ -180,7 +181,8 @@ async function readCaseUploads(store: ObjectStore, item: StoredAnalysisCase) {
 }
 export async function createAnalysisCase(db: Database, store: ObjectStore, auth: LogAccessContext, skillId: string, input: {
   name: string; expectations: unknown; files?: Array<{ fileName: string; bytes: Buffer }>; sourceRecordId?: string; archivePath?: string; sourceYaml?: Buffer;
-}, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+}, invocation: TrustedInvocationContext, context: AuditedWriteContext): Promise<z.infer<typeof logAnalysisCaseSchema>> {
+  if (!hasLogObjectCustody(store)) return withLogObjectCustody(db, store, scoped => createAnalysisCase(db, scoped, auth, skillId, input, invocation, context));
   assertLogInvocation(auth, invocation, "Create analysis case");
   requireAdmin(auth);
   const name = z.string().trim().min(1).max(200).parse(input.name);
@@ -257,7 +259,8 @@ export async function importSkillAnalysisCases(db: Database, store: ObjectStore,
 }
 
 /** Compose validated package cases into the caller's audited transaction. */
-export async function importArchivedSkillAnalysisCases(db: Database, store: ObjectStore, auth: LogAccessContext, skillId: string, archived: ArchivedAnalysisCase[], invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+export async function importArchivedSkillAnalysisCases(db: Database, store: ObjectStore, auth: LogAccessContext, skillId: string, archived: ArchivedAnalysisCase[], invocation: TrustedInvocationContext, context: AuditedWriteContext): Promise<{ items: z.infer<typeof logAnalysisCaseSchema>[] }> {
+  if (!hasLogObjectCustody(store)) return withLogObjectCustody(db, store, scoped => importArchivedSkillAnalysisCases(db, scoped, auth, skillId, archived, invocation, context));
   assertLogInvocation(auth, invocation, "Import analysis cases");
   requireAdmin(auth);
   const prepared: Array<Omit<ArchivedAnalysisCase, "files"> & { id: string; fixtureFiles: ArchivedAnalysisCase["files"]; files: StoredAnalysisCase["files"] }> = [];
@@ -283,7 +286,7 @@ export async function importArchivedSkillAnalysisCases(db: Database, store: Obje
       const uploads: Upload[] = [];
       for (const file of item.fixtureFiles) {
         const upload = { fileName: file.path, sizeBytes: file.bytes.length,
-          objectKey: (await store.put({ organizationId: logOrganizationId(auth), fileName: `case-${randomUUID()}.bin`, contentType: "application/octet-stream", bytes: file.bytes })).storageKey };
+          objectKey: (await store.put({ organizationId: logOrganizationId(auth), fileName: file.objectFileName ?? `case-${randomUUID()}.bin`, contentType: "application/octet-stream", bytes: file.bytes })).storageKey };
         uploads.push(upload); uploadsWritten.push(upload);
       }
       await recordSkillArtifacts(tx, logOrganizationId(auth), skillId, uploads.map(upload => upload.objectKey));

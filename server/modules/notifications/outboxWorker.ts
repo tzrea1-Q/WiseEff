@@ -46,7 +46,13 @@ async function deliverOutboxRecord(db: Queryable, record: NotificationOutboxReco
     if (!source || (sourceOrganizationId && source.organization_id !== sourceOrganizationId)) return false;
     sourceOrganizationId = source.organization_id;
   }
-  // A foreign recipient Home does not own the feedback content. Hold both
+  if (payload.sourceKind === "log-analysis-run") {
+    const source = (await db.query<{ organization_id: string; log_record_id: string }>(
+      "select organization_id,log_record_id from log_analysis_runs where id=$1", [payload.sourceId ?? ""])).rows[0];
+    if (!source || (payload.metadata?.logId && payload.metadata.logId !== source.log_record_id)) return false;
+    sourceOrganizationId = source.organization_id;
+  }
+  // A foreign recipient Home does not own the source content. Hold both
   // organizations through projection; a deleting/missing source cannot reappear.
   for (const id of [...new Set([payload.organizationId, sourceOrganizationId].filter((id): id is string => Boolean(id)))].sort()) {
     if (!(await db.query("select id from organizations where id=$1 and status<>'deleting' for share", [id])).rowCount) return false;

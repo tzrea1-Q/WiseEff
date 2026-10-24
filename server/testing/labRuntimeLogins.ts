@@ -59,6 +59,10 @@ export async function revokeForeignTestRuntimeGrants(url: string, roles: readonl
                  to_regprocedure('parameter_catalog.lock_parameter_plane_archive()'),
                  to_regprocedure('parameter_catalog.definition_erasure_object_is_referenced(text,text)'),
                  to_regprocedure('parameter_catalog.register_agent_checkpoint_namespace(text,text,text,text,text,text,boolean)'),
+                 to_regprocedure('parameter_catalog.erase_organization_logs(text,text,text)'),
+                 to_regprocedure('parameter_catalog.organization_log_erasure_objects_pending(text,text,text)'),
+                 to_regprocedure('parameter_catalog.organization_log_erasure_object_referenced(text,text,text,text)'),
+                 to_regprocedure('parameter_catalog.finish_organization_log_erasure_object(text,text,text,text)'),
                  to_regprocedure('parameter_catalog.preview_organization_deletion(text,text)')
                ]::oid[])`, [role, ownershipComment]
           );

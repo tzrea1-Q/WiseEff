@@ -14,7 +14,7 @@ export type AnalysisCaseAnnotation = z.infer<typeof logAnalysisCaseExpectationsS
 export type ArchivedAnalysisCase = {
   archivePath: string;
   annotation: AnalysisCaseAnnotation;
-  files: Array<{ path: string; bytes: Buffer }>;
+  files: Array<{ path: string; bytes: Buffer; objectFileName?: string }>;
   sourceYaml?: Buffer;
 };
 export const analysisCaseArchiveLimits = {
