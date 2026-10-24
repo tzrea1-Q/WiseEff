@@ -6,6 +6,8 @@ import type { KnowledgeIndexEntrySnapshot } from "./indexing/service";
 export async function detectKnowledgeReferenceSuggestions(db: Database, snapshot: KnowledgeIndexEntrySnapshot, requestId: string) {
   if (snapshot.entryStatus === "archived" || !snapshot.headRevisionId) return;
   if (snapshot.contentForm === "file" && snapshot.extractionStatus !== "succeeded") return;
+  const organization = (await db.query<{ status: string }>("select status from public.organizations where id=$1", [snapshot.organizationId])).rows[0];
+  if (organization?.status !== "active") return;
   const definitions = await listCatalogDefinitionsForKnowledgeOrganization(db, snapshot.organizationId, requestId);
   const text = snapshot.contentForm === "markdown" ? snapshot.contentMarkdown ?? "" : snapshot.extractedText ?? "";
   await db.transaction(async (tx) => {
