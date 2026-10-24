@@ -13,6 +13,7 @@ import { listUsers } from "./repository";
 import { requirePlatformOrganizationManager } from "./platformOrganizations";
 import type { XiaozeCheckpointer } from "../agent/xiaoze/checkpointer";
 import { inspectOrganizationCheckpoints } from "../agent/xiaoze/checkpointOwnership";
+import { organizationErasureDomains } from "./organizationErasureDomains";
 
 type Preview = z.infer<typeof organizationDeletionPreviewSchema>;
 export type OrganizationDeletionContext = AdministratorMutationContext & ExperienceRegistrationDefaults & { agentCheckpointer?: XiaozeCheckpointer };
@@ -56,11 +57,16 @@ async function readPreview(tx: Database, caller: UserInvocationContext, organiza
   if (actor.user.organizationId === organizationId) blockers.push({ code: "actor-home-organization", message: "当前操作账号属于此组织，请先将账号调往其他组织，再发起删除。" });
   if (experienceRegistration.isTarget && experienceRegistration.enabled) blockers.push({ code: "experience-registration", message: "此组织正在接纳公开体验注册，请先关闭入口或调整目标组织。" });
   if (inventory.some(row => row.category === "unclassified" && row.count)) blockers.push({ code: "unclassified-ownership", message: "发现尚未完成归属核实的数据或检查点，当前不能确认完整清理。" });
-  if (inventory.some(row => row.category === "legacy-archives" && row.count)) blockers.push({ code: "protected-legacy-archives", message: "存在离线迁移归档或保护证据，需先核实共享引用与领域清理支持。" });
+  const supported = new Set(["accounts", "teams-invitations", "audit", "platform-catalog", ...organizationErasureDomains.flatMap(adapter => adapter.inventoryCategories)]);
+  if (!supported.has("shared-provenance") && inventory.some(row => row.key === "parameter_catalog.definition_erasure_audit_provenance" && row.count)) {
+    blockers.push({ code: "retained-global-erasure-provenance", message: "组织审计仍被全局参数删除证明引用，需先核实其平台保留边界。" });
+  }
+  if (!supported.has("legacy-archives") && inventory.some(row => row.category === "legacy-archives" && row.count)) blockers.push({ code: "protected-legacy-archives", message: "存在离线迁移归档或保护证据，需先核实共享引用与领域清理支持。" });
+  const executionAvailable = blockers.length === 0 && !inventory.some(row => row.count && !supported.has(row.category));
   const snapshot = { organizationId, organizationName: organization.name, status: organization.status, inventory, platformAccounts, survivingPlatformAdministrators, experienceRegistration, producers, storage, blockers };
   return { ...snapshot, generatedAt: new Date().toISOString(), stateDigest: createHash("sha256").update(JSON.stringify([
     "organization-erasure-preview-v1", scoped.principal.user.id, organization, rows, snapshot
-  ])).digest("hex"), admissionAvailable: blockers.length === 0, notes: [
+  ])).digest("hex"), admissionAvailable: blockers.length === 0, executionAvailable, notes: [
     "本页只预览，不会删除、撤销凭据、停止任务或授予删除权限；实际执行前会重新核对权限、账号、对象数量和组织状态。",
     "需保留的平台账号请先调离；其余本组织账号、身份、业务数据、历史、文件和待办属于清理范围。",
     "平台共享 Catalog 定义、发布记录及其他组织的数据和引用保留；共享文件仅清理本组织引用，不承诺删除共用对象。",
