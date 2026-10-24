@@ -80455,6 +80455,30 @@
           },
           "destinationModuleId": {
             "type": "string"
+          },
+          "replacement": {
+            "type": "object",
+            "properties": {
+              "registrationId": {
+                "type": "string"
+              },
+              "placementEtag": {
+                "type": "string"
+              },
+              "registrationEtag": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "registrationId",
+              "placementEtag",
+              "registrationEtag",
+              "reason"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -82926,6 +82950,7 @@
                       "definition-retired",
                       "registration-required",
                       "placement-conflict",
+                      "placement-occupied",
                       "invalid-placement-parent",
                       "observation-ambiguous",
                       "proposal-stale",
@@ -83164,6 +83189,7 @@
                         "definition-retired",
                         "registration-required",
                         "placement-conflict",
+                        "placement-occupied",
                         "invalid-placement-parent",
                         "observation-ambiguous",
                         "proposal-stale",

@@ -47,6 +47,11 @@ export type RegistrationFailure =
       readonly placementId: string;
     }
   | {
+      readonly kind: "placement-occupied";
+      readonly registrationId: string;
+      readonly placementId: string;
+    }
+  | {
       readonly kind: "revision-conflict";
       readonly idempotencyKey: string;
       readonly storedFingerprint: string;
@@ -134,10 +139,13 @@ export const mapWriterDatabaseError = (
   if (!(error instanceof pg.DatabaseError)) return null;
   if (error.code === "23505") {
     return {
-      kind: "placement-conflict",
+      kind: error.constraint === "subject_placements_organization_id_module_id_key" ? "placement-occupied" : "placement-conflict",
       registrationId: subjectId,
       placementId: error.constraint ?? "unique-violation",
     };
+  }
+  if (error.code === "40P01" || error.code === "55P03") {
+    return { kind: "placement-conflict", registrationId: subjectId, placementId: "concurrent-placement-write" };
   }
   if (error.code === "23514" && error.constraint === "subject_placement_kind_ck") {
     return {

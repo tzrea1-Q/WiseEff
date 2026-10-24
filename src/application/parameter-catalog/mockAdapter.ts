@@ -803,6 +803,9 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       assertOrganizationScope(organizationId);
       assertRelease(store, write.catalogReleaseId);
       const parsed = catalogUpdatePlacementRequestSchema.parse(body);
+      // This adapter holds only one registration; it cannot validate another
+      // owner's replacement proof. Never silently ignore a two-sided command.
+      if (parsed.replacement) throw catalogApiFailure("placement-conflict");
       if (!store.registration || store.registration.id !== registrationId) {
         throw catalogApiFailure("registration-required", { subjectId: CATALOG_SUBJECT_ID });
       }

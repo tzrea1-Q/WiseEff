@@ -7,6 +7,7 @@ import {
   type CatalogSubjectKind,
   type ContractJsonValue,
   type PlacementIntent,
+  type SubjectPlacementId,
   type SubjectRegistrationId,
 } from "../../parameter-catalog-contract/index";
 
@@ -82,6 +83,14 @@ export type MovePlacementCommand = {
   readonly destinationModuleId: string;
   /** Version captured from the current Placement ETag, when supplied by HTTP. */
   readonly expectedPlacementVersion?: string;
+  /** Explicitly reviewed occupant that will retain its identity with an unset module. */
+  readonly replacement?: {
+    readonly registrationId: SubjectRegistrationId;
+    readonly placementId: SubjectPlacementId;
+    readonly expectedPlacementVersion: string;
+    readonly expectedRegistrationVersion: string;
+    readonly reason: string;
+  };
   readonly idempotencyKey: string;
   readonly context: TrustedInvocationContext;
 };
@@ -92,8 +101,9 @@ export type RegistrationCommand =
   | RestoreRegistrationCommand
   | MovePlacementCommand;
 
-const controlFree = (value: string): boolean =>
-  value.length > 0 && value.trim() === value && !/[\u0000-\u001F\u007F-\u009F]/u.test(value);
+const controlFree = (value: unknown): value is string =>
+  typeof value === "string" && value.length > 0 && value.trim() === value && !/[\u0000-\u001F\u007F-\u009F]/u.test(value);
+const versionToken = (value: unknown): value is string => typeof value === "string" && /^\d+$/.test(value);
 
 const invalid = (reason: string): Result<never, RegistrationFailure> => ({
   ok: false,
@@ -165,6 +175,17 @@ export const validateRegistrationCommand = (
     if (command.context.actorKind !== "org-admin" && command.context.actorKind !== "platform-admin") {
       return permissionDenied(command.context.actorKind, command.kind);
     }
+    if (command.replacement) {
+      const replacement = command.replacement;
+      if (!versionToken(command.expectedPlacementVersion) ||
+          !controlFree(replacement.registrationId) || !controlFree(replacement.placementId) ||
+          replacement.registrationId === command.registrationId ||
+          !versionToken(replacement.expectedPlacementVersion) ||
+          !controlFree(replacement.expectedRegistrationVersion) || !/^(active|retired):\d+$/.test(replacement.expectedRegistrationVersion) ||
+          !controlFree(replacement.reason) || replacement.reason.length > 1000) {
+        return invalid("replacement");
+      }
+    }
     return { ok: true, value: command };
   }
   if (!controlFree(command.reason)) {
@@ -219,6 +240,7 @@ const commandFingerprintModel = (command: RegistrationCommand): ContractJsonValu
         ...(command.expectedPlacementVersion !== undefined
           ? { expectedPlacementVersion: command.expectedPlacementVersion }
           : {}),
+        ...(command.replacement ? { replacement: { ...command.replacement } } : {}),
         context: actor,
       };
     case "retire":

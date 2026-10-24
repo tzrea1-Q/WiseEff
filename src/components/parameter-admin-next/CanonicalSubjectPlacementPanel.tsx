@@ -314,6 +314,8 @@ export function CanonicalSubjectPlacementPanel({
 
   const moduleOptionsByType = useMemo(() => {
     const result = new Map<SubjectRow["type"], RegistrationModuleOption[]>();
+    const occupants = new Map(registrations.filter((item) => item.placement.moduleId)
+      .map((item) => [item.placement.moduleId!, item]));
     for (const type of Object.keys(SUBJECT_KIND_MODULE_KIND) as SubjectRow["type"][]) {
       const expectedKind = SUBJECT_KIND_MODULE_KIND[type];
       result.set(
@@ -322,20 +324,28 @@ export function CanonicalSubjectPlacementPanel({
           .filter((module) => module.kind === expectedKind)
           .map((module) => {
             const impact = moduleImpactById.get(module.id);
+            const registration = occupants.get(module.id);
+            const owner = registration ? subjects.find((item) => item.id === registration.subjectId) : undefined;
             return {
               id: module.id,
               displayName: moduleLabels.get(module.id) ?? module.name,
               kind: module.kind,
               impactSummary: impact
                 ? `当前 ${impact.subjects} 个主体、${impact.definitions} 个有效定义`
-                : "当前无主体"
+                : registration ? (registration.status === "retired" ? "保留已停用主体的归属" : "已有主体登记，定义统计暂不可用") : "当前无主体",
+              ...(registration ? { occupant: {
+                registrationId: registration.id, subjectId: registration.subjectId,
+                displayName: owner?.canonicalName ?? registration.subjectId,
+                status: registration.status,
+                activeDefinitionCount: owner?.definitionCounts.active ?? null
+              } } : {})
             };
           })
           .sort((left, right) => left.displayName.localeCompare(right.displayName, "zh-Hans"))
       );
     }
     return result;
-  }, [moduleImpactById, modules, moduleLabels]);
+  }, [moduleImpactById, modules, moduleLabels, registrations, subjects]);
 
   const activeSubjectCount = useMemo(
     () => filteredSubjects.filter((subject) => subject.membership.status === "active" &&
@@ -761,6 +771,7 @@ export function CanonicalSubjectPlacementPanel({
           repository={governance}
           organizationId={organizationId}
           subjectId={placementDialog.subject.id}
+          subjectName={placementDialog.subject.canonicalName}
           catalogReleaseId={catalogReleaseId}
           registrationId={placementDialog.registrationId}
           ifMatch={placementDialog.ifMatch}

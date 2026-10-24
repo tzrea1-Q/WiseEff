@@ -182,6 +182,7 @@ export function conflict(
   reason: Extract<
     CatalogApiFailureReason,
     | "placement-conflict"
+    | "placement-occupied"
     | "invalid-placement-parent"
     | "subject-retired"
     | "registration-required"

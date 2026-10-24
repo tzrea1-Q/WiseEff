@@ -15,9 +15,11 @@ import {
   fingerprintRegistrationCommand,
   registrationCommandFamily,
   validateRegistrationCommand,
+  type MovePlacementCommand,
   type RegisterSubjectCommand,
 } from "./command";
-import { mapGuardDatabaseError } from "./failures";
+import { mapGuardDatabaseError, mapWriterDatabaseError } from "./failures";
+import { readPlacementReplacementResult } from "./result";
 import { ASSERT_CATALOG_SUBJECT_ACTIVE_SQL } from "./guardAdapter";
 import { THREAT_MATRIX } from "./threatMatrix";
 
@@ -87,6 +89,54 @@ const databaseError = (code: string, detail: string): pg.DatabaseError => {
 };
 
 describe("S4-REG public command contract", () => {
+  it("requires both reviewed occupants, exact versions, a reason and a human-admin actor for replacement", () => {
+    const command: MovePlacementCommand = {
+      kind: "move-placement", organizationId: "org-s4-reg", registrationId: "sreg-source" as never,
+      destinationModuleId: "module-target", expectedPlacementVersion: "1727000000000000",
+      expectedRelease: pin, idempotencyKey: "replace-key", context: { actorKind: "org-admin", principalId: "human" },
+      replacement: { registrationId: "sreg-target" as never, placementId: "spla-target" as never,
+        expectedPlacementVersion: "1727000000000001", expectedRegistrationVersion: "active:1727000000000002", reason: "Correct the mapping" },
+    };
+    expect(validateRegistrationCommand(command)).toMatchObject({ ok: true });
+    expect(validateRegistrationCommand({ ...command, expectedPlacementVersion: undefined })).toMatchObject({ ok: false });
+    for (const patch of [
+      { registrationId: command.registrationId }, { placementId: "" as never }, { expectedPlacementVersion: "bad" },
+      { expectedRegistrationVersion: "1727000000000002" }, { reason: " " }, { reason: "x".repeat(1001) },
+    ]) {
+      expect(validateRegistrationCommand({ ...command, replacement: { ...command.replacement!, ...patch } })).toMatchObject({ ok: false });
+    }
+    for (const actorKind of ["trusted-system", "review-coordinator"] as const) {
+      expect(validateRegistrationCommand({ ...command, context: { actorKind, principalId: "non-human" } }))
+        .toMatchObject({ ok: false, error: { kind: "permission-denied" } });
+    }
+    expect(validateRegistrationCommand({ ...command, context: { actorKind: "platform-admin", principalId: "human" } })).toMatchObject({ ok: true });
+    const fingerprint = fingerprintRegistrationCommand(command);
+    for (const patch of [
+      { registrationId: "other-registration" as never }, { placementId: "other-placement" as never },
+      { expectedPlacementVersion: "1727000000000003" }, { expectedRegistrationVersion: "retired:1727000000000002" },
+      { reason: "Different reason" },
+    ]) {
+      expect(fingerprintRegistrationCommand({ ...command, replacement: { ...command.replacement!, ...patch } })).not.toBe(fingerprint);
+    }
+  });
+
+  it("distinguishes module occupancy from stale versions and unrelated unique constraints", () => {
+    const occupied = databaseError("23505", "duplicate target");
+    occupied.constraint = "subject_placements_organization_id_module_id_key";
+    expect(mapWriterDatabaseError(occupied, pin, "source")).toMatchObject({ kind: "placement-occupied" });
+    const unrelated = databaseError("23505", "other unique");
+    unrelated.constraint = "unrelated_unique_key";
+    expect(mapWriterDatabaseError(unrelated, pin, "source")).toMatchObject({ kind: "placement-conflict" });
+    expect(mapWriterDatabaseError(databaseError("40P01", "deadlock"), pin, "source")).toMatchObject({ kind: "placement-conflict" });
+    expect(mapWriterDatabaseError(databaseError("55P03", "lock unavailable"), pin, "source")).toMatchObject({ kind: "placement-conflict" });
+  });
+
+  it("rejects damaged stored replacement snapshots instead of replaying a successful-looking response", () => {
+    for (const value of ["null", "[]", "{}", '{"outcome":"committed","replacement":{}}', '{"replacement":{},"release":{}}']) {
+      expect(() => readPlacementReplacementResult(value)).toThrow();
+    }
+  });
+
   it("restricts destination initialization to explicit organization admins and fingerprints its exact parent/name", () => {
     const command = registerCommand({ newDestination: { parentModuleId: "business", name: "Driver" } });
     expect(validateRegistrationCommand(command).ok).toBe(true);

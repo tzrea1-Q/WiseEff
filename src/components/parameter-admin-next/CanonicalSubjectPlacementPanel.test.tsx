@@ -253,6 +253,30 @@ function createPorts() {
 }
 
 describe("CanonicalSubjectPlacementPanel", () => {
+  it.each(["active", "retired"] as const)("keeps %s occupants visible to replacement preview even when their subject is absent from the current list", async (status) => {
+    const ports = createPorts();
+    const registrations = await ports.listRegistrations(CATALOG_ORGANIZATION_ID);
+    const source = await ports.getRegistration(CATALOG_ORGANIZATION_ID, "registration-driver");
+    const sourcePlacement = await ports.getPlacement(CATALOG_ORGANIZATION_ID, "registration-driver");
+    const placement = { id: "placement-retired-owner", moduleId: "issue897-driver-b", displayName: "Driver B", parentPlacementId: null };
+    const occupant = { ...source.item, id: "registration-retired-owner", subjectId: "subject-outside-list",
+      status, placement, impact: { bindingCount: 8, projectCount: 3 } };
+    ports.listRegistrations.mockResolvedValue({ ...registrations, items: [...registrations.items, occupant], totalCount: 2 });
+    ports.getRegistration.mockImplementation(async (_org, id) => id === occupant.id
+      ? { item: occupant, etag: `"registration-retired-owner:${status}:200"` } : source);
+    ports.getPlacement.mockImplementation(async (_org, id) => id === occupant.id
+      ? { item: placement, etag: '"placement-retired-owner:300"' } : sourcePlacement);
+    render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "调整归属：vendor,driver" }));
+    await selectControlOption(screen.getByLabelText("目标模块"), "issue897-driver-b");
+    const preview = await screen.findByRole("region", { name: "替换归属影响" });
+    await waitFor(() => expect(preview).toHaveTextContent("8 个参数绑定、3 个项目"));
+    expect(preview).toHaveTextContent("subject-outside-list");
+    expect(preview).toHaveTextContent(`subject-outside-list（${status === "retired" ? "已停用" : "有效"}）`);
+    expect(preview).toHaveTextContent("有效定义数量暂不可用");
+    expect(ports.updatePlacement).not.toHaveBeenCalled();
+  });
+
   it("hides retired registrations by default and exposes a labelled recovery in the retired filter", async () => {
     const ports = createPorts();
     const registrations = await ports.listRegistrations(CATALOG_ORGANIZATION_ID);

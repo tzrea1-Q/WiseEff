@@ -21,7 +21,7 @@ import type { CatalogActorKind } from "@/application/parameter-catalog/authority
 import type { CatalogDomainState } from "@/application/parameter-catalog/states";
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 
-import { RegistrationDialog } from "./RegistrationDialog";
+import { RegistrationDialog, type RegistrationModuleOption, type RegistrationSubjectImpact } from "./RegistrationDialog";
 import { createGovernanceIdempotencyKey } from "./governanceState";
 import { CatalogOrganizationSurface } from "./CatalogOrganizationSurface";
 import { requestSettingsLeave } from "@/application/settingsFormNavigation";
@@ -39,7 +39,8 @@ function renderDialog(options: {
   repository?: ParameterCatalogGovernanceRepository;
   catalogReleaseId?: string;
   ifMatch?: string;
-  moduleOptions?: { id: string; displayName: string; kind?: string }[];
+  moduleOptions?: RegistrationModuleOption[];
+  subjectImpact?: RegistrationSubjectImpact;
   newDestinationParents?: { id: string; displayName: string }[];
   initialDestinationModuleId?: string;
   createIdempotencyKey?: () => string;
@@ -66,6 +67,7 @@ function renderDialog(options: {
       ifMatch={options.ifMatch}
       placementOptions={[{ id: CATALOG_PLACEMENT_ID, displayName: "根放置" }]}
       moduleOptions={options.moduleOptions}
+      subjectImpact={options.subjectImpact}
       newDestinationParents={options.newDestinationParents}
       initialDestinationModuleId={options.initialDestinationModuleId}
       createIdempotencyKey={options.createIdempotencyKey ?? (() => "key-reg")}
@@ -88,6 +90,163 @@ async function confirmWrite(confirmName: string) {
 
 describe("RegistrationDialog", () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  function replacementFixture(status: "active" | "retired" = "active") {
+    const repository = createMockParameterCatalogGovernanceRepository();
+    const placement = { id: "target-placement", moduleId: "target", displayName: "目标模块", parentPlacementId: null };
+    const target = { ...catalogRegistration, id: "target-reg", subjectId: "target-subject", status,
+      organizationId: CATALOG_ORGANIZATION_ID, catalogReleaseId: CATALOG_RELEASE_ID,
+      placement, impact: { bindingCount: 7, projectCount: 3 } };
+    const getRegistration = vi.spyOn(repository, "getRegistration").mockResolvedValue({ item: target, etag: `"target-reg:${status}:200"` } as never);
+    const getPlacement = vi.spyOn(repository, "getPlacement").mockResolvedValue({ item: placement, etag: '"target-placement:300"' } as never);
+    const modules: RegistrationModuleOption[] = [
+      { id: "source", displayName: "原模块" },
+      { id: "target", displayName: "目标模块", occupant: { registrationId: target.id, subjectId: target.subjectId,
+        displayName: "vendor,original", status, activeDefinitionCount: 4 } },
+      { id: "empty", displayName: "空模块" }
+    ];
+    return { repository, getRegistration, getPlacement, target, placement, options: {
+      repository, domainState: ready, intent: "update-placement" as const, ifMatch: "etag-reg", moduleOptions: modules,
+      initialDestinationModuleId: "source", subjectImpact: { activeDefinitionCount: 2, bindingCount: 5, projectCount: 2 }
+    } };
+  }
+
+  async function acknowledgeReplacement() {
+    const user = userEvent.setup();
+    const consent = await screen.findByRole("checkbox", { name: "替换目标模块原有归属，并将原主体置为未分配模块" });
+    await waitFor(() => expect(consent).toBeEnabled());
+    await user.click(consent);
+    await user.type(screen.getByLabelText("替换原因"), "修正对应关系");
+    return user;
+  }
+
+  it("requires a dual-subject preview, replacement choice, reason and a second confirmation before one write", async () => {
+    const fixture = replacementFixture();
+    const { updatePlacement } = renderDialog(fixture.options);
+    updatePlacement.mockResolvedValue({ item: fixture.placement });
+    const user = userEvent.setup();
+    await selectControlOption(screen.getByLabelText("目标模块"), "target");
+    const impact = await screen.findByRole("region", { name: "替换归属影响" });
+    await waitFor(() => expect(impact).toHaveTextContent("7 个参数绑定、3 个项目"));
+    expect(impact).toHaveTextContent("将置为“未分配模块”");
+    expect(impact).toHaveTextContent("双方的登记、参数值与历史均保留");
+    expect(screen.getByRole("button", { name: "继续确认" })).toBeDisabled();
+    expect(updatePlacement).not.toHaveBeenCalled();
+    await acknowledgeReplacement();
+    await user.click(screen.getByRole("button", { name: "继续确认" }));
+    let confirmation = screen.getByRole("dialog", { name: "确认替换归属" });
+    expect(confirmation).toHaveTextContent("5 个参数绑定，涉及 2 个项目");
+    expect(confirmation).toHaveTextContent("7 个参数绑定，涉及 3 个项目");
+    expect(within(confirmation).getByRole("button", { name: "确认替换归属" })).toBeDisabled();
+    await user.click(within(confirmation).getByRole("button", { name: "取消" }));
+    expect(updatePlacement).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "继续确认" }));
+    confirmation = screen.getByRole("dialog", { name: "确认替换归属" });
+    await user.click(within(confirmation).getByRole("checkbox"));
+    const confirm = within(confirmation).getByRole("button", { name: "确认替换归属" });
+    act(() => { confirm.click(); confirm.click(); });
+    await waitFor(() => expect(updatePlacement).toHaveBeenCalledExactlyOnceWith(
+      CATALOG_ORGANIZATION_ID, CATALOG_REGISTRATION_ID,
+      { placement: { mode: "use-default" }, destinationModuleId: "target", replacement: {
+        registrationId: "target-reg", placementEtag: '"target-placement:300"', registrationEtag: '"target-reg:active:200"', reason: "修正对应关系"
+      } },
+      { catalogReleaseId: CATALOG_RELEASE_ID, ifMatch: "etag-reg", idempotencyKey: "key-reg" }
+    ));
+  });
+
+  it.each(["placement-etag", "registration-etag", "impact", "scope"] as const)("blocks replacement when %s evidence is unavailable or mismatched", async (missing) => {
+    const fixture = replacementFixture();
+    if (missing === "placement-etag") fixture.getPlacement.mockResolvedValue({ item: fixture.placement });
+    if (missing === "registration-etag") fixture.getRegistration.mockResolvedValue({ item: fixture.target });
+    if (missing === "impact") fixture.getRegistration.mockResolvedValue({ item: { ...fixture.target, impact: undefined }, etag: '"target-reg:active:200"' } as never);
+    if (missing === "scope") fixture.getRegistration.mockResolvedValue({ item: { ...fixture.target, organizationId: "another-org" }, etag: '"target-reg:active:200"' } as never);
+    const { updatePlacement } = renderDialog(fixture.options);
+    await selectControlOption(screen.getByLabelText("目标模块"), "target");
+    expect(await screen.findByRole("alert")).toBeVisible();
+    expect(screen.getByRole("button", { name: "继续确认" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "替换目标模块原有归属，并将原主体置为未分配模块" })).toBeDisabled();
+    expect(updatePlacement).not.toHaveBeenCalled();
+  });
+
+  it("ignores late target evidence after the operator selects an empty module", async () => {
+    const fixture = replacementFixture();
+    let release!: (value: Awaited<ReturnType<typeof fixture.getRegistration>>) => void;
+    fixture.getRegistration.mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+    const { updatePlacement } = renderDialog(fixture.options);
+    updatePlacement.mockResolvedValue({ item: fixture.placement });
+    await selectControlOption(screen.getByLabelText("目标模块"), "target");
+    expect(await screen.findByText("正在读取目标主体的归属与影响…")).toBeVisible();
+    await selectControlOption(screen.getByLabelText("目标模块"), "empty");
+    await act(async () => { release({ item: fixture.target, etag: '"target-reg:active:200"' } as never); });
+    expect(screen.queryByRole("region", { name: "替换归属影响" })).not.toBeInTheDocument();
+    await confirmWrite("确认调整放置");
+    expect(updatePlacement.mock.calls[0]?.[2]).toEqual({ placement: { mode: "use-default" }, destinationModuleId: "empty" });
+  });
+
+  it("retains selection and reason after a stale replacement, reloads both target tokens and requires acknowledgement again", async () => {
+    const fixture = replacementFixture("retired");
+    const onRefreshEvidence = vi.fn(async () => undefined);
+    const { updatePlacement } = renderDialog({ ...fixture.options, onRefreshEvidence });
+    updatePlacement.mockRejectedValueOnce(catalogApiFailure("placement-conflict")).mockResolvedValue({ item: fixture.placement });
+    const user = userEvent.setup();
+    await selectControlOption(screen.getByLabelText("目标模块"), "target");
+    await waitFor(() => expect(screen.getByRole("region", { name: "替换归属影响" })).toHaveTextContent("已停用"));
+    await acknowledgeReplacement();
+    await confirmWrite("确认替换归属");
+    expect(await screen.findByRole("alert")).toHaveTextContent("输入已保留");
+    expect(screen.getByLabelText("目标模块")).toHaveAttribute("data-value", "target");
+    expect(screen.getByLabelText("替换原因")).toHaveValue("修正对应关系");
+    expect(screen.getByRole("button", { name: "继续确认" })).toBeDisabled();
+    fixture.getRegistration.mockResolvedValue({ item: fixture.target, etag: '"target-reg:retired:201"' } as never);
+    fixture.getPlacement.mockResolvedValue({ item: fixture.placement, etag: '"target-placement:301"' } as never);
+    await user.click(screen.getByRole("button", { name: "刷新证据" }));
+    await waitFor(() => expect(fixture.getPlacement).toHaveBeenCalledTimes(2));
+    expect(onRefreshEvidence).toHaveBeenCalledOnce();
+    const consent = screen.getByRole("checkbox", { name: "替换目标模块原有归属，并将原主体置为未分配模块" });
+    await waitFor(() => expect(consent).toBeEnabled());
+    expect(consent).not.toBeChecked();
+    expect(screen.getByLabelText("替换原因")).toHaveValue("修正对应关系");
+    expect(updatePlacement).toHaveBeenCalledOnce();
+    await user.click(consent);
+    await confirmWrite("确认替换归属");
+    expect(updatePlacement.mock.calls[1]?.[2]).toMatchObject({ replacement: {
+      registrationEtag: '"target-reg:retired:201"', placementEtag: '"target-placement:301"'
+    } });
+  });
+
+  it("does not offer occupied modules as a hidden replacement during new registration", async () => {
+    const fixture = replacementFixture();
+    const { createRegistration } = renderDialog({ moduleOptions: fixture.options.moduleOptions, initialDestinationModuleId: "target" });
+    expect(screen.getByRole("button", { name: "继续确认" })).toBeDisabled();
+    expect(screen.queryByRole("region", { name: "替换归属影响" })).not.toBeInTheDocument();
+    expect(fixture.getPlacement).not.toHaveBeenCalled();
+    expect(createRegistration).not.toHaveBeenCalled();
+  });
+
+  it("invalidates an open replacement confirmation when source evidence changes and keeps the draft for reconfirmation", async () => {
+    const fixture = replacementFixture();
+    const view = renderDialog(fixture.options);
+    const user = userEvent.setup();
+    await selectControlOption(screen.getByLabelText("目标模块"), "target");
+    await acknowledgeReplacement();
+    await user.click(screen.getByRole("button", { name: "继续确认" }));
+    expect(screen.getByRole("dialog", { name: "确认替换归属" })).toBeVisible();
+    view.rerender(<RegistrationDialog open {...fixture.options} actor="org-admin"
+      organizationId={CATALOG_ORGANIZATION_ID} subjectId={CATALOG_SUBJECT_ID}
+      catalogReleaseId={CATALOG_RELEASE_ID} registrationId={CATALOG_REGISTRATION_ID}
+      ifMatch="changed-source-etag" onOpenChange={vi.fn()} createIdempotencyKey={() => "new-key"} />);
+    expect(screen.queryByRole("dialog", { name: "确认替换归属" })).not.toBeInTheDocument();
+    const consent = screen.getByRole("checkbox", { name: "替换目标模块原有归属，并将原主体置为未分配模块" });
+    await waitFor(() => expect(consent).toBeEnabled());
+    expect(consent).not.toBeChecked();
+    expect(screen.getByLabelText("替换原因")).toHaveValue("修正对应关系");
+    expect(screen.getByLabelText("目标模块")).toHaveAttribute("data-value", "target");
+    expect(view.updatePlacement).not.toHaveBeenCalled();
+    await user.click(consent);
+    expect(screen.queryByRole("dialog", { name: "确认替换归属" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "继续确认" }));
+    expect(within(screen.getByRole("dialog", { name: "确认替换归属" })).getByRole("checkbox")).not.toBeChecked();
+  });
 
   it("confirms the selected placement once on HTTP without randomUUID and retains write preconditions", async () => {
     vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
