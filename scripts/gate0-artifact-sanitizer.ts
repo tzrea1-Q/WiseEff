@@ -687,6 +687,10 @@ function hasZipEnvelopeSignature(value: Buffer) {
     if (value.readUInt32LE(offset) !== 0x06054b50) continue;
     const centralSize = value.readUInt32LE(offset + 12);
     const centralOffset = value.readUInt32LE(offset + 16);
+    // ZIP64 sentinels in a complete EOCD record corroborate the container even
+    // when an empty archive has no local/central file headers.
+    if (centralSize === 0xffffffff || centralOffset === 0xffffffff
+      || value.readUInt16LE(offset + 8) === 0xffff || value.readUInt16LE(offset + 10) === 0xffff) return true;
     // This is only evidence of an archive, not acceptance: empty, prefixed,
     // suffixed and malformed archives must reach the unchanged strict inspector.
     if (centralOffset + centralSize <= offset && (centralSize === 0 || centralSize >= 46)) return true;

@@ -134,6 +134,26 @@ describe("Gate0 artifact sanitizer", () => {
     },
   );
 
+  it.each([
+    ["sanitize", false, sanitizeGate0ArtifactTree], ["scan", false, scanGate0ArtifactTree],
+    ["sanitize", true, sanitizeGate0ArtifactTree], ["scan", true, scanGate0ArtifactTree],
+  ] as const)("rejects a valid empty ZIP64 inside a complete PNG during %s (nested=%s)", async (_operation, nested, run) => {
+    const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-png-zip64-"));
+    const archive = emptyZip64();
+    expect(archive.length).toBe(98);
+    expect(Object.keys((await JSZip.loadAsync(archive)).files)).toEqual([]);
+    const png = incidentalEocdPng();
+    const mixed = Buffer.concat([png.subarray(0, 33), pngChunk("ziPc", archive), png.subarray(33)]);
+    expect(mixed.length).toBe(183);
+    const zip = new JSZip(); zip.file("resources/image.png", mixed);
+    const original = nested ? await zip.generateAsync({ type: "nodebuffer" }) : mixed;
+    const artifact = path.join(root, nested ? "trace.zip" : "image.png");
+    writeFileSync(artifact, original);
+
+    await expect(run(root, undefined, [])).rejects.toThrow(/Gate0 artifact ZIP.*refusing upload/u);
+    expect(readFileSync(artifact)).toEqual(original);
+  });
+
   it("still scans incidental-marker PNGs for registered secrets", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-png-secret-"));
     const secret = "registered-private-png-diagnostic-value";
@@ -598,6 +618,19 @@ function replaceAllAscii(value: Buffer, from: string, to: string) {
 function incidentalEocdPng() {
   // Complete 1x1 RGBA PNG, valid chunk CRCs, one uncompressed IDAT pixel containing PK\x05\x06.
   return Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAEElEQVR4AQEFAPr/AFBLBQYCNgCnG0628QAAAABJRU5ErkJggg==", "base64");
+}
+
+function emptyZip64() {
+  const archive = Buffer.alloc(98);
+  archive.writeUInt32LE(0x06064b50, 0);
+  archive.writeBigUInt64LE(44n, 4);
+  archive.writeUInt16LE(45, 12); archive.writeUInt16LE(45, 14);
+  archive.writeUInt32LE(0x07064b50, 56);
+  archive.writeUInt32LE(1, 72);
+  archive.writeUInt32LE(0x06054b50, 76);
+  archive.writeUInt16LE(0xffff, 84); archive.writeUInt16LE(0xffff, 86);
+  archive.writeUInt32LE(0xffffffff, 88); archive.writeUInt32LE(0xffffffff, 92);
+  return archive;
 }
 
 function pngChunk(type: string, data: Buffer) {
