@@ -9,7 +9,10 @@ import { withPgClient } from "./helpers/database";
 import { apiRoute } from "./helpers/runtime";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withTestClusterRoleCatalogLock } from "../../server/testing/testDatabase";
+import { recordOperationEvidence } from "./helpers/operationEvidence";
 
+// @acceptance ORG-RUNTIME-ERASURE-001
+// @operation ORG-RUNTIME-ERASURE-001
 test.use({ viewport: { width: 1440, height: 900 } });
 useBrowserDiagnostics(test);
 
@@ -63,5 +66,10 @@ test("erases runtime feedback bytes and foreign-Home projections with visible du
     expect((await client.query("select id from notification_outbox where payload->'metadata'->>'feedbackOrganizationId'=$1", [org])).rowCount).toBe(0);
     expect((await client.query("select id from user_notifications where metadata->>'feedbackOrganizationId'=$1", [org])).rowCount).toBe(0);
     expect((await client.query("select id from users where id=$1", [acceptanceUserIdForRole("platform-admin")])).rowCount).toBe(1);
+  });
+  await recordOperationEvidence({ operationId: "ORG-RUNTIME-ERASURE-001", title: "Organization runtime cleanup with durable retry", status: "passed", page, testInfo,
+    artifacts: ["runtime-erasure-confirm-1440.png", "runtime-erasure-failed-1440.png", "runtime-erasure-complete-1440.png"].map(fileName => testInfo.outputPath(fileName)),
+    api: [{ method: "POST", path: `/api/v1/platform/organizations/${org}/deletions`, status: 202, responseSummary: "Persisted domain failure was retried; actual feedback bytes and foreign-Home notifications were removed." }],
+    db: [{ table: "organizations", predicate: "confirmed Organization", observed: "Organization removed, foreign-Home projections absent and actual platform operator retained", rowCount: 0 }]
   });
 });

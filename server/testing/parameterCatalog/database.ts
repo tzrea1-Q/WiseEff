@@ -176,7 +176,12 @@ export const S2_SCH_0279_FINGERPRINT =
 export const S2_SCH_0285_FINGERPRINT =
   "9543f9d3582e6ed8f58b219d54afba057e3efb062b18e47f92ec5fd08c9cff60";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0285_FINGERPRINT;
+/** Fresh PostgreSQL through 0287 includes all four Organization erasure
+ * adapters. Historical migration fingerprints remain immutable. */
+export const S2_SCH_0287_FINGERPRINT =
+  "bf1aabdb7b422ba0943a139971bb8c532084144ed34a063dfe0144dabc53e497";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0287_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

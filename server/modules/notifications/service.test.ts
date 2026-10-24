@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Database } from "../../shared/database/client";
 import { configureNotificationDelivery, resetNotificationDeliveryConfigForTests } from "./delivery";
 import { notifyUsers } from "./service";
+import type { NotificationQueue } from "./notificationQueue";
 
 describe("notification service outbox delivery", () => {
   afterEach(() => {
@@ -39,7 +40,7 @@ describe("notification service outbox delivery", () => {
   });
 
   it("enqueues async delivery without writing inbox rows immediately", async () => {
-    const enqueue = vi.fn(async () => ({ id: "job-1" }));
+    const enqueue = vi.fn<NotificationQueue["enqueue"]>(async input => ({ ...input, id: "job-1", attempt: 0 }));
     configureNotificationDelivery({
       mode: "async",
       queue: { enqueue }

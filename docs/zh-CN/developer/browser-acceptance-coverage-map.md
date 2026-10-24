@@ -6,6 +6,10 @@
 
 ## 使用方式
 
+`ORG-PARAMETER-ERASURE-001`、`ORG-KNOWLEDGE-ERASURE-001`、`ORG-LOG-ERASURE-001`、`ORG-RUNTIME-ERASURE-001`：在 1440×900 的真实 API 模式组织目录中，分别确认项目参数文件、知识附件/索引、日志/排队分析、反馈文件/跨组织通知清理。每个专属浏览器文件覆盖真实故障和持久进度重试；真实 PostgreSQL 与实际存储专项另外覆盖共享引用、响应丢失、晚到生产者、检查点存储、设备连接和真实 HTTP 回调，不用单个浏览器操作代替这些后台证明。对应文件为 `e2e/acceptance/organization-{parameter,knowledge,log,runtime}-erasure.acceptance.spec.ts`。
+
+`ORG-EMPTY-ERASURE-001`：通过影响预览和组织编号确认删除仅含管理数据的组织，立即撤销访问，在成员与组织消失后仍可读取独立进度并重试。未知归属仍阻止准入；最小回执不保留业务内容。`ORG-DELETION-PREVIEW-001`：只读查看与刷新明确组织的数量盘点、共享资源和备份边界，不把预览当作删除授权；普通管理员被拒绝。专属文件分别为 `e2e/acceptance/organization-empty-erasure.acceptance.spec.ts` 和 `e2e/acceptance/organization-deletion-preview.acceptance.spec.ts`。
+
 `ORG-LIFECYCLE-001`：平台管理员在 1440×900 的真实 API 模式组织目录中确认停用与恢复，支持键盘操作和服务失败后重试；成员仍可查看资料，显示一条准确的只读提示，后台拒绝业务写入，恢复不启用单独停用的成员。专属浏览器文件为 `e2e/acceptance/organization-lifecycle.acceptance.spec.ts`；真实 PostgreSQL 文件为 `server/modules/users/organizationLifecycle.integration.test.ts`，另覆盖 SQL LOGIN、并发、任务收尾、机器访问、通知领取、Webhook、设备及已有数据升级。
 
 `ORG-ACCOUNT-TRANSFER-001`：平台管理员在真实本地密码 API 模式、1440×900 的成员页预览源组织权限、凭据和待交接事项，明确配置目标组织角色，处理调动失败并重试。调动后旧会话和个人配对失效，原密码重新登录目标组织；源组织草稿、审核待办、历史署名及机器凭据保留。专属浏览器文件为 `e2e/acceptance/organization-account-transfer.acceptance.spec.ts`，真实 PostgreSQL 文件为 `server/modules/users/accountTransfer.integration.test.ts`。HMAC/OIDC 模式跳过本地密码交互，不作为本项本地登录验收。
