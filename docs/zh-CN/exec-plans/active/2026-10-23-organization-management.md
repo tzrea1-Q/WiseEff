@@ -33,7 +33,9 @@
 
 CI 40055219999（f2290ab33）已结束并有失败。原生 pg_restore 参数和紧凑审阅页加载等待缺陷已修复，真实 PostgreSQL 6/6、API 模式浏览器 6/6 通过。有效 PNG/EOCD 与内嵌 ZIP64 回归 39/39 通过；原 CI 被拒绝上传的工件身份仍未知，需要新的完整运行验证。Standards 和 Spec 两路独立审查发现反馈租户隔离、日志失败通知、密码重置与调动并发、停用组织阻塞工件回收、ZIP64 容器识别共五项问题，均由同一实施者修复，原审查者对修复增量复核后无遗留发现；前四项相关检查 153/153、独立 sanitizer 检查 39/39 通过（批次与其他证据可能重叠，不相加）。
 
-CI 40059381846（1c9f65afc）的静态/构建、前端、scripts/bridge、backend2、smoke、无障碍及两路一致性均通过。视觉任务 40 通过、仅四张待批准基线失败，紧凑页浅色/深色均通过，L2 shard1 的 browser 阶段也已通过。backend1 为 3650 通过、一个既有管理器计时测试失败：真实 PostgreSQL 工作合法超过了该用例的 200ms 激活截止时间。受控实际 installer/回执验证复现了该顺序，成功用例现控制 JavaScript 计时器，保留真实 PostgreSQL、全部断言及原超时/错误负例；相关检查 16/16、零跳过，独立增量审查无发现，生产计时逻辑未改。其余 L2 结果及修复候选完整 CI 尚未完成。四张 Linux 基线替换等待明确人工批准，尚未修改视觉基线。整栈 MinIO/Redis、部署的外部身份系统和目标主机恢复未执行。
+CI 40059381846（1c9f65afc）的静态/构建、前端、scripts/bridge、backend2、smoke、无障碍及两路一致性均通过。视觉任务 40 通过、仅当时待批准的四张基线失败，紧凑页浅色/深色均通过，L2 shard1 的 browser 阶段也已通过。backend1 为 3650 通过、一个既有管理器计时测试失败：真实 PostgreSQL 工作合法超过了该用例的 200ms 激活截止时间。受控实际 installer/回执验证复现了该顺序，成功用例现控制 JavaScript 计时器，保留真实 PostgreSQL、全部断言及原超时/错误负例；相关检查 16/16、零跳过，独立增量审查无发现，生产计时逻辑未改。
+
+CI 40061324926（033baad93）的功能检查全部通过，包括后端 7412 项及四个 browser 阶段，仅四张视觉基线比较和对应汇总任务失败。用户已于 2026-10-24 明确批准 organization-members、state-dialog-modal-open、state-table-row-hover、state-table-sort-header-focus 四张替换，已在原失败 head 上应用 CI46 原始二进制补丁，仅提交这四个 PNG。交付候选同时合入 main 068254f9d，保留其侧边栏/保存交互及本轮组织、项目范围和权限行为，受影响浏览器断言改为实际链接与紧凑菜单。用户已授权合并，但仍须等待该组合候选的正常 Linux CI 通过。整栈 MinIO/Redis、部署的外部身份系统和目标主机恢复未执行。
 
 - [x] [#1369](https://github.com/tzrea1-Q/WiseEff/issues/1369) 前置兼容：真实身份与操作范围分离
 - [x] [#1370](https://github.com/tzrea1-Q/WiseEff/issues/1370) 组织目录、创建与初始管理员
