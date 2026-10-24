@@ -2,6 +2,7 @@ import type { BaseCheckpointSaver, CheckpointTuple } from "@langchain/langgraph-
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { createRequire } from "node:module";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash } from "node:crypto";
 import pg from "pg";
 import { ApiError } from "../../../shared/http/errors";
 
@@ -166,6 +167,13 @@ export type PostgresCheckpointerHandle = {
   withNamespaceLease: NamespaceLease;
 };
 
+export type CheckpointStoreSnapshot = {
+  id: string; kind: "postgres" | "memory";
+  entries: Array<{ threadId: string; relation: string; count: number; digest: string }>;
+};
+const checkpointInspectors = new WeakMap<BaseCheckpointSaver, (threadId?: string) => Promise<CheckpointStoreSnapshot>>();
+export const postgresCheckpointInspector = (saver: BaseCheckpointSaver) => checkpointInspectors.get(saver);
+
 export type NamespaceLease = <T>(threadId: string, work: () => Promise<T>) => Promise<T>;
 const leaseOwners = new WeakMap<BaseCheckpointSaver, NamespaceLease>();
 export function isPostgresNamespaceLeaseOwner(saver: BaseCheckpointSaver, lease: NamespaceLease | undefined): boolean {
@@ -182,6 +190,28 @@ export function createPostgresCheckpointerSaver(options: {
   const poolOptions = { connectionString: options.connectionString, connectionTimeoutMillis: 2000 };
   const pool = options.initialization === "runtime" ? new pg.Pool(poolOptions) : undefined;
   const saver = pool ? new PostgresSaver(pool) : PostgresSaver.fromConnString(options.connectionString);
+  checkpointInspectors.set(saver, async threadId => {
+    const run = context.getStore();
+    const release = run ? await reserve(run) : undefined;
+    const client = run?.client ?? await (pool ?? (runPool ??= new pg.Pool(poolOptions))).connect();
+    try {
+      if (run) active(run);
+      await client.query("begin isolation level repeatable read read only");
+      const identity = (await client.query<{ identity: string }>("select jsonb_build_array(inet_server_addr()::text,inet_server_port(),current_database())::text identity")).rows[0].identity;
+      const entries: CheckpointStoreSnapshot["entries"] = [];
+      for (const relation of ["checkpoints", "checkpoint_blobs", "checkpoint_writes"]) {
+        const rows = await client.query<{ thread_id: string; count: string; digest: string }>(`select thread_id,count(*)::text count,
+          encode(sha256(convert_to(string_agg(encode(sha256(convert_to(to_jsonb(r)::text,'UTF8')),'hex'),'' order by to_jsonb(r)::text),'UTF8')),'hex') digest
+          from public.${relation} r where ($1::text is null or thread_id=$1) group by thread_id order by thread_id`, [threadId ?? null]);
+        entries.push(...rows.rows.map(row => ({ threadId: row.thread_id, relation: `public.${relation}`, count: Number(row.count), digest: row.digest })));
+      }
+      await client.query("commit");
+      if (run) active(run);
+      return { id: createHash("sha256").update(identity).digest("hex"), kind: "postgres", entries };
+    } catch (error) {
+      await client.query("rollback"); throw error;
+    } finally { release?.(); if (!run) client.release(); }
+  });
   let hasSetup = false;
   let setupPromise: Promise<void> | undefined;
   let runPool = pool;
@@ -331,7 +361,7 @@ export function createPostgresCheckpointerSaver(options: {
         if (run.termination) await run.termination;
         if (run.phase !== "dead" && locked) {
           const unlock = await client.query<{ unlocked: boolean }>("SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS unlocked", [key]);
-          if (unlock.rows[0]?.unlocked !== true) throw refused();
+          if (unlock.rows[0]?.unlocked !== true) lost(refused());
         }
       } catch (error) { lost(error); }
       finally {

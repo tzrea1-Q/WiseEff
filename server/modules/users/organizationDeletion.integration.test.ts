@@ -5,7 +5,7 @@ import { createEphemeralTestDatabase } from "../../testing/testDatabase";
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../shared/database/client";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { seedBaselineAuthCatalog } from "../auth/baselineCatalog";
-import { admitOrganizationDeletion, previewOrganizationDeletion } from "./organizationDeletion";
+import { admitOrganizationDeletion as admitDeletion, previewOrganizationDeletion as readDeletion } from "./organizationDeletion";
 import { getAuthContext } from "../auth/repository";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../../testing/labRuntimeLogins";
@@ -13,11 +13,18 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { installPublishedReleaseA, SUBJECT_ID } from "../catalog-kernel/runtime/catalogChain.fixture";
 import { writeGuardedRegistration } from "../parameter-governance/registration/internalGuardedRegistrationWriter";
 import { CatalogSubjectId } from "../parameter-catalog-contract";
-import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+import { createXiaozeCheckpointer, type XiaozeCheckpointer } from "../agent/xiaoze/checkpointer";
+import { createPostgresCheckpointerSaver } from "../agent/xiaoze/durableCheckpointer";
 
 describe("Organization erasure preview through real HTTP and PostgreSQL", () => {
   let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>>, db: RootDatabase;
+  let agentCheckpointer: XiaozeCheckpointer;
+  const previewOrganizationDeletion = (...[connection, caller, id, context]: Parameters<typeof readDeletion>) =>
+    readDeletion(connection, caller, id, { ...context, agentCheckpointer });
+  const admitOrganizationDeletion = (...[connection, caller, id, version, context]: Parameters<typeof admitDeletion>) =>
+    admitDeletion(connection, caller, id, version, { ...context, agentCheckpointer });
   beforeEach(async () => {
+    agentCheckpointer = createXiaozeCheckpointer();
     database = await createEphemeralTestDatabase("erasurepreview"); db = createPostgresDatabase(database.url);
     await seedCoreGraph(db, { organization: { id: "preview-home", name: "Platform home" }, users: [{ id: "preview-platform" }] });
     await seedCoreGraph(db, { organization: { id: "preview-target", name: "Deletion target" }, users: [{ id: "preview-member" }, { id: "preview-inactive" }] });
@@ -29,7 +36,7 @@ describe("Organization erasure preview through real HTTP and PostgreSQL", () => 
   afterEach(async () => { await db?.close(); await database?.drop(); });
   const path = "/api/v1/platform/organizations/preview-target/deletion-preview";
   function request<T>(route = path, user = "preview-platform") {
-    return requestJson<T>(createWiseEffServer({ db }), route, { headers: { "x-wiseeff-user": user } });
+    return requestJson<T>(createWiseEffServer({ db, agentCheckpointer }), route, { headers: { "x-wiseeff-user": user } });
   }
   it("returns a coherent readonly inventory including inactive accounts and preserves foreign data", async () => {
     const before = (await db.query("select (select count(*) from audit_events)::int audits,(select count(*) from users)::int users,(select count(*) from projects)::int projects")).rows;
@@ -80,11 +87,12 @@ describe("Organization erasure preview through real HTTP and PostgreSQL", () => 
     const notification = randomUUID();
     await db.query("insert into user_notifications(id,organization_id,recipient_user_id,category,title,body,metadata) values($1,'preview-home','preview-platform','feedback','Target feedback','Target content',$2)", [notification, { feedbackOrganizationId: "preview-target", feedbackId: randomUUID() }]);
     await db.query("insert into agent_sessions(id,organization_id,actor_user_id,page_key,context,status,title) values('preview-thread','preview-target','preview-platform','organization','{}','active','Target thread'),('preview-foreign-thread','preview-home','preview-platform','organization','{}','active','Keep thread')");
-    const saver = PostgresSaver.fromConnString(database.url);
+    const handle = createPostgresCheckpointerSaver({ connectionString: database.url });
+    const saver = handle.saver;
+    agentCheckpointer = createXiaozeCheckpointer({ mode: "postgres", saver, withNamespaceLease: handle.withNamespaceLease, ensureReady: handle.ensureSetup });
     try {
       await saver.setup();
-      await db.query("grant select on public.checkpoints,public.checkpoint_blobs,public.checkpoint_writes to catalog_migration_owner");
-      for (const threadId of ["preview-thread", "preview-foreign-thread"]) await saver.put({ configurable: { thread_id: threadId, checkpoint_ns: "" } }, { v: 1, id: threadId, ts: new Date().toISOString(), channel_values: {}, channel_versions: {}, versions_seen: {} }, { source: "input", step: 0, parents: {} }, {});
+      for (const threadId of ["preview-target:preview-platform:preview-thread", "preview-home:preview-platform:preview-foreign-thread"]) await handle.withNamespaceLease(threadId, () => saver.put({ configurable: { thread_id: threadId, checkpoint_ns: "" } }, { v: 1, id: threadId, ts: new Date().toISOString(), channel_values: {}, channel_versions: {}, versions_seen: {} }, { source: "input", step: 0, parents: {} }, {}));
       const result = await request<{ item: { inventory: Array<{ key: string; count: number }>; storage: { exclusiveObjects: number; sharedObjects: number } } }>();
       expect(result.status, result.bodyText).toBe(200);
       expect(result.body.item.inventory).toEqual(expect.arrayContaining([expect.objectContaining({ key: "public.user_notifications", count: 1 }), expect.objectContaining({ key: "public.checkpoints", count: 1 })]));
@@ -177,7 +185,7 @@ describe("Organization erasure preview through real HTTP and PostgreSQL", () => 
     await expect(db.transaction(tx => admitOrganizationDeletion(tx, caller, "preview-target", before.stateDigest))).rejects.toMatchObject({ code: "CONFLICT", details: { code: "organization-deletion-preview-stale" } });
   });
   it("retains global definition erasure work associated with an operator Home without adopting its foreign files", async () => {
-    await db.query("insert into parameter_catalog.definition_erasures(definition_id,organization_id,erased_by,audit_event_id,pending_object_refs) values('preview-global-erasure','preview-target','preview-member','preview-global-audit',array['foreign-global-key'])");
+    await db.query("insert into parameter_catalog.definition_erasures(definition_id,organization_id,erased_by,audit_event_id,pending_object_refs) values('preview-global-erasure','preview-target','preview-member','preview-global-audit',array['plane::foreign-global-key'])");
     await db.query("insert into log_file_objects(id,organization_id,storage_key,file_name,content_type,file_size_bytes,checksum_sha256) values('preview-global-foreign-file','preview-home','foreign-global-key','keep.log','text/plain',1,'a')");
     const caller = createUserInvocation(await getAuthContext(db, "preview-platform")), preview = await previewOrganizationDeletion(db, caller, "preview-target");
     expect(preview.inventory).toContainEqual({ key: "parameter_catalog.definition_erasures", category: "shared-references", count: 1 });
@@ -186,7 +194,29 @@ describe("Organization erasure preview through real HTTP and PostgreSQL", () => 
     await db.transaction(tx => admitOrganizationDeletion(tx, caller, "preview-target", preview.stateDigest));
     await db.query("update parameter_catalog.definition_erasures set organization_id=null where definition_id='preview-global-erasure'");
     expect((await db.query("select parameter_catalog.read_parameter_definition_erasure('preview-global-erasure') as receipt")).rows)
-      .toEqual([{ receipt: expect.objectContaining({ definition_id: "preview-global-erasure", pending_object_refs: ["foreign-global-key"] }) }]);
+      .toEqual([{ receipt: expect.objectContaining({ definition_id: "preview-global-erasure", pending_object_refs: ["plane::foreign-global-key"] }) }]);
     expect((await db.query("select storage_key from log_file_objects where id='preview-global-foreign-file'")).rows).toEqual([{ storage_key: "foreign-global-key" }]);
+  });
+  it("compares real pending plane keys and private encrypted refs by store without adopting global custody", async () => {
+    const { pinA } = await installPublishedReleaseA(getRootPostgresPool(db)!);
+    await db.query("insert into parameter_specs(id,organization_id,source_kind,specification_key) values('typed-preview-spec','preview-target','manual','manual/typed-preview')");
+    await db.query("insert into parameter_catalog.legacy_identities(id,source_system,source_kind,owner_scope_kind,owner_scope_id,source_id) values('typed-preview-identity','test','parameter-spec','organization','preview-target','typed-preview-spec')");
+    await db.query("insert into parameter_catalog.parameter_catalog_cutover_runs(id,source_snapshot_fingerprint,target_artifact_sha,target_catalog_release_digest,migration_contract_version,plan_digest,current_phase,state) values('typed-preview-cutover','test',$1,$2,'v1','test','P0','planned')", ["a".repeat(40), pinA.digest]);
+    await db.query(`insert into parameter_catalog.parameter_catalog_archives(id,legacy_identity_id,owner_scope_kind,owner_scope_id,r_class,reason,source_checksum,graph_checksum,encrypted_object_ref,protected_references,cutover_run_id,catalog_release_id,success_audit_ref,retain_until)
+      values('typed-preview-archive','typed-preview-identity','organization','preview-target','R0','Typed preview','checksum','checksum','cipher-key','[]','typed-preview-cutover',$1,'test',now()+interval '1 day')`, [pinA.id]);
+    await db.query("insert into log_file_objects(id,organization_id,storage_key,file_name,content_type,file_size_bytes,checksum_sha256) values('typed-plane-shared','preview-target','plane-key','shared.log','text/plain',1,'a'),('typed-plane-exclusive','preview-target','cipher-key','same-string.log','text/plain',1,'a')");
+    await db.query("insert into parameter_catalog.definition_erasures(definition_id,organization_id,erased_by,audit_event_id,pending_object_refs) values('typed-global-receipt','preview-home','preview-platform','typed-global-audit',array['plane::plane-key','catalog::cipher-key'])");
+    const preview = await previewOrganizationDeletion(db, createUserInvocation(await getAuthContext(db, "preview-platform")), "preview-target");
+    expect(preview.storage).toEqual({ exclusiveObjects: 1, sharedObjects: 2 });
+    expect((await db.query("select pending_object_refs from parameter_catalog.definition_erasures where definition_id='typed-global-receipt'")).rows)
+      .toEqual([{ pending_object_refs: ["plane::plane-key", "catalog::cipher-key"] }]);
+  });
+  it.each(["preview-target", null])("reports retained global erasure provenance when its ledger Home differs from the audited organization (audit owner: %s)", async owner => {
+    await db.query("insert into audit_events(id,organization_id,actor_user_id,actor_type,app,kind,action,severity,target_type,target_id,metadata,trace_id) values('foreign-global-proof',$1,'preview-platform','user','admin','definition-erasure','delete','info','parameter-definition','global-definition',$2,'foreign-global-trace')", [owner, { operatingOrganizationId: "preview-target" }]);
+    await db.query("insert into parameter_catalog.definition_erasures(definition_id,organization_id,erased_by,audit_event_id) values('foreign-global-definition','preview-home','preview-platform','foreign-global-proof')");
+    const preview = await previewOrganizationDeletion(db, createUserInvocation(await getAuthContext(db, "preview-platform")), "preview-target");
+    expect(preview.inventory).toContainEqual({ key: "parameter_catalog.definition_erasure_audit_provenance", category: "shared-references", count: 1 });
+    expect((await db.query("select organization_id,audit_event_id from parameter_catalog.definition_erasures where definition_id='foreign-global-definition'")).rows)
+      .toEqual([{ organization_id: "preview-home", audit_event_id: "foreign-global-proof" }]);
   });
 });

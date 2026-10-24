@@ -56,6 +56,12 @@ Create **no** parallel `xiaoze_threads` table in v1.
 
 Rationale: approval bridge, tool calls, run traces, and audit already key off `agent_sessions.id`. A second table would duplicate scope checks and complicate joins.
 
+### Checkpoint ownership for organization erasure
+
+The graph can save checkpoints before `agent_sessions` exists. Before its first write, the Agent factory records the operating organization, original actor, logical thread, actual store identity and exact stored namespace in `agent_checkpoint_namespaces`, under the existing namespace lease and organization lifecycle lock. This ownership record survives account deletion. The stored namespace remains `organization:actor:thread`; a different tuple that produces the same string is rejected before reading or writing checkpoints.
+
+Deletion previews inspect the configured saver, including a separately configured PostgreSQL store or the current memory saver. Legacy keys require an exact persisted session and its frozen original actor; the codec is never parsed by prefix. Orphaned or ambiguous keys, inaccessible stores, and registered stores no longer available to the process remain unclassified and block empty-organization deletion. These records establish ownership and admission only; stopping and deleting the Agent runtime remains a separate erasure step.
+
 ### Session `context` JSON (Xiaoze-specific)
 
 ```json

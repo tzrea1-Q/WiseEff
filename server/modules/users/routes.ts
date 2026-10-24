@@ -43,6 +43,7 @@ import { getUserById } from "./repository";
 import { createPlatformOrganizationSchema, emergencyDisableAdministratorSchema, recoverOrganizationAdministratorSchema } from "../contracts/dtoSchemas/platformOrganizations";
 import { changeOrganizationLifecycleSchema } from "../contracts/dtoSchemas/platformOrganizations";
 import { previewOrganizationDeletion } from "./organizationDeletion";
+import type { XiaozeCheckpointer } from "../agent/xiaoze/checkpointer";
 import { changeOrganizationLifecycle } from "../auth/organizationLifecycle";
 import { createPlatformOrganization, emergencyDisableAdministrator, getAdministratorRecovery, listPlatformOrganizations, recoverOrganizationAdministrator, requirePlatformOrganizationManager } from "./platformOrganizations";
 import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
@@ -92,7 +93,7 @@ function parseWithSchema<Schema extends z.ZodTypeAny>(schema: Schema, value: unk
 
 export function registerUserRoutes(
   router: WiseEffRouter,
-  options: { db?: Database; localInvitationsEnabled?: boolean; selfRegisterEnabled?: boolean; registrationOrganizationId?: string; oidcIssuer?: string; authenticationProvider?: "local" | "oidc" | "hmac"; bridgeConnectionPool?: Pick<BridgeConnectionPool, "disconnect">; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
+  options: { db?: Database; agentCheckpointer?: XiaozeCheckpointer; localInvitationsEnabled?: boolean; selfRegisterEnabled?: boolean; registrationOrganizationId?: string; oidcIssuer?: string; authenticationProvider?: "local" | "oidc" | "hmac"; bridgeConnectionPool?: Pick<BridgeConnectionPool, "disconnect">; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
 ) {
   const mutationContext = (request: RouteRequest) => ({ requestId: request.requestId, authenticationProvider: options.authenticationProvider, oidcIssuer: options.oidcIssuer, bridgeConnectionPool: options.bridgeConnectionPool });
   const operatingInvocation = (db: Database, auth: AuthContext, request: RouteRequest) => {
@@ -175,7 +176,7 @@ export function registerUserRoutes(
   router.get("/api/v1/platform/organizations/:organizationId/deletion-preview", async request => {
     const db = requireDb(options.db), actor = createUserInvocation(await options.getCurrentAuthContext(request));
     return { status: 200, body: { item: await previewOrganizationDeletion(db, actor, request.params.organizationId, {
-      ...mutationContext(request), selfRegisterEnabled: options.selfRegisterEnabled, registrationOrganizationId: options.registrationOrganizationId
+      ...mutationContext(request), selfRegisterEnabled: options.selfRegisterEnabled, registrationOrganizationId: options.registrationOrganizationId, agentCheckpointer: options.agentCheckpointer
     }) } };
   });
   router.patch("/api/v1/platform/organizations/:organizationId/lifecycle", async request => {

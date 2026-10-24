@@ -338,19 +338,21 @@ function AppShell({
   const showsApplicationFooter = !isProjectConfigurationWorkbenchPath(path)
     && page.key !== "parameter-review" && page.key !== "parameter-submissions";
   const usesProjectScope = pageUsesProjectScope(page.key);
+  const pageProjectId = (page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions"
+    ? new URLSearchParams(search).get("project") || new URLSearchParams(search).get("projectId") : null) || state.activeProjectId;
   const xiaozePageContext = useMemo(
     () => ({
       path,
       pageKey: page.key,
       ...(usesProjectScope
         ? {
-            projectId: state.activeProjectId,
-            projectName: state.configDraft.projects.find((project) => project.id === state.activeProjectId)?.name
+            projectId: pageProjectId,
+            projectName: state.configDraft.projects.find((project) => project.id === pageProjectId)?.name
           }
         : {}),
       roleId: currentRoleId
     }),
-    [path, page.key, usesProjectScope, state.activeProjectId, state.configDraft.projects, currentRoleId]
+    [path, page.key, usesProjectScope, pageProjectId, state.configDraft.projects, currentRoleId]
   );
   const mockParameterRuntimeRef = useRef<MockRuntimeState | null>(null);
   if (mockParameterRuntimeRef.current === null) {
@@ -1348,7 +1350,7 @@ function AppShell({
         <XiaozePageContextRegistrar
           path={path}
           pageKey={page.key}
-          projectId={usesProjectScope ? state.activeProjectId : undefined}
+          projectId={usesProjectScope ? pageProjectId : undefined}
           roleId={currentRoleId}
           visibleRecords={xiaozeContextSummary ? [{ summary: xiaozeContextSummary }] : undefined}
         />

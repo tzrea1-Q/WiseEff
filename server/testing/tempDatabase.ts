@@ -17,6 +17,7 @@ const ROLE_DDL_MIGRATIONS = [
   "0180_mod_d02_offline_capture.sql",
   "0182_legacy_dismissed_identity_reader.sql",
   "0257_definition_erasure_writer_runtime_grants.sql",
+  "0279_agent_checkpoint_ownership_and_typed_preview.sql",
 ];
 
 /** Test-only wrapper: hold the cluster lease before the runner's target-DB locks. */

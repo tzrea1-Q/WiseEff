@@ -167,7 +167,13 @@ export const S2_SCH_0275_FINGERPRINT =
 export const S2_SCH_0276_FINGERPRINT =
   "b992cc5ded4403aabcafa92048bb08cea6795e55afa0888cf239821f46f0a4d9";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0276_FINGERPRINT;
+/** 0279 records exact Agent checkpoint ownership and replaces the erasure
+ * preview's runtime and store-qualified reference seams. Measured on fresh
+ * PostgreSQL; every earlier migration pin remains unchanged. */
+export const S2_SCH_0279_FINGERPRINT =
+  "b56e61372b4a7a0a823dbb87136669f13ac7f9cabee28ec9ad51e9dade032663";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0279_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

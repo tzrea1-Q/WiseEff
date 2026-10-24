@@ -196,6 +196,7 @@ export function createPlanningAgent(options: {
   listTools: () => PerceptionToolDescriptor[];
   checkpointer?: XiaozeCheckpointer;
   approvalResolver?: PlanningApprovalResolver;
+  admitNamespace?: (input: PlanningAgentRunInput, checkpointThreadId: string) => Promise<void>;
 }) {
   const checkpointer = options.checkpointer ?? createXiaozeCheckpointer();
 
@@ -536,6 +537,7 @@ export function createPlanningAgent(options: {
         ? `${agentOrganizationId(input.requestContext.auth)}:${input.requestContext.auth.user.id}:${input.threadId}`
         : input.threadId;
       return checkpointer.withNamespaceLease(checkpointThreadId, async () => {
+      await options.admitNamespace?.(input, checkpointThreadId);
       const config = { configurable: { thread_id: checkpointThreadId, [XIAOZE_RUN_SCOPE_KEY]: runScope } };
       const tools = options.listTools();
       const buildPromptDebug = (llmMessages: unknown[]) =>
