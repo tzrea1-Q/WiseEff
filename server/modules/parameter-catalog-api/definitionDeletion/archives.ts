@@ -5,7 +5,8 @@ import type { ObjectStore } from "../../logs/objectStore";
 import { archiveGraphChecksum, buildArchiveAad, checksumContract, decryptArchiveObject,
   type ArchiveObjectStore, type ArchiveProtectedReference } from "../../catalog-cutover/archive";
 import { serializeContract, type ContractJsonValue } from "../../parameter-catalog-contract";
-import type { Queryable } from "../../../shared/database/client";
+import type { Database, Queryable } from "../../../shared/database/client";
+import { parameterObjectWriteCustody } from "../../parameter-files/objectWriteCustody";
 import {
   ARCHIVED_PARAMETER_PLANE_RELATIONS, ARCHIVE_DOCUMENT_BYTES_CAP, archiveDigestOf,
   type ArchivedPlaneDocument,
@@ -126,7 +127,7 @@ export function eraseDefinitionFromPlaneArchive(document: ArchivedPlaneDocument,
   return { ...document, relations, counts };
 }
 
-function ownedCatalogGraph(graph: Record<string, unknown>, archive: DefinitionDeletionInventory["catalogArchives"][number], ids: ReadonlySet<string>): boolean {
+export function catalogArchiveGraphIsOwned(graph: Record<string, unknown>, archive: Pick<DefinitionDeletionInventory["catalogArchives"][number], "legacy_identity_id" | "protected_references">, ids: ReadonlySet<string>): boolean {
   const source = graph.sourcePayload;
   const relations = graph.relationGraph;
   if (!record(source) || !record(relations) || !Array.isArray(relations.edges)) return false;
@@ -147,7 +148,7 @@ function mentionsIdentity(value: unknown, ids: ReadonlySet<string>): boolean {
 }
 
 export async function prepareDefinitionArchiveErasure(inventory: DefinitionDeletionInventory, stores: DefinitionArchiveStores,
-  options: { dryRun?: boolean; db?: Queryable } = {}): Promise<DefinitionArchiveErasure> {
+  options: { dryRun?: boolean; db?: Queryable; rootDb?: Database } = {}): Promise<DefinitionArchiveErasure> {
   const plan: DefinitionArchiveErasure = { planeUpdates: [], catalogDeletes: [], pendingObjectRefs: [],
     affectedArchiveRecords: 0, affectedOrganizationIds: [], affectedProjectIds: [] };
   const uploads: { archive: DefinitionDeletionInventory["planeArchives"][number]; next: ArchivedPlaneDocument; bytes: Buffer }[] = [];
@@ -198,7 +199,7 @@ export async function prepareDefinitionArchiveErasure(inventory: DefinitionDelet
       } catch {
         throw new ApiError("CONFLICT", "迁移归档校验失败，尚未删除任何数据。", { reason: "definition-catalog-archive-integrity-failed" });
       }
-      if (owned.has(archive.id) ? !ownedCatalogGraph(graph as Record<string, unknown>, archive, ids) :
+      if (owned.has(archive.id) ? !catalogArchiveGraphIsOwned(graph as Record<string, unknown>, archive, ids) :
         mentionsIdentity(graph, ids) || mentionsIdentity(archive.protected_references, ids)) {
         throw new ApiError("CONFLICT", "迁移归档混有其他参数或原始文件，需要先迁移归档格式后再删除。", { reason: "definition-catalog-archive-mixed-graph" });
       }
@@ -212,7 +213,8 @@ export async function prepareDefinitionArchiveErasure(inventory: DefinitionDelet
   try {
     for (const { archive, next, bytes } of uploads) {
       const contentDigest = digest(bytes);
-      const stored = await stores.objectStore!.put({ organizationId: archive.organization_id,
+      const objectStore = options.rootDb ? parameterObjectWriteCustody(options.rootDb, stores.objectStore!) : stores.objectStore!;
+      const stored = await objectStore.put({ organizationId: archive.organization_id,
         fileName: `parameter-plane-${archive.id}-${contentDigest.slice(7, 19)}.json`, contentType: "application/json", bytes });
       plan.planeUpdates.push({ id: archive.id, oldObjectRef: archive.object_ref, newObjectRef: stored.storageKey,
         contentDigest, archiveDigest: archiveDigestOf({ scope: archive.scope, counts: next.counts, contentDigest }), counts: next.counts });

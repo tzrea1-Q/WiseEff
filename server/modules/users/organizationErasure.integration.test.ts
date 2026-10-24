@@ -101,32 +101,28 @@ describe("Durable empty Organization erasure through HTTP and PostgreSQL", () =>
     expect(retried.status, retried.bodyText).toBe(200); expect(retried.body.item.status).toBe("deleted");
     expect((await request<{ item: unknown }>(`${receiptPath}/retry`, "POST")).body).toEqual(retried.body);
   });
-  it("rejects nonempty and unknown ownership before intent, account revocation or destruction", async () => {
+  it("rejects unknown ownership before intent, account revocation or destruction", async () => {
     await db.query("insert into projects(id,organization_id,name,code) values('nonempty','erasure-target','Keep project','KEEP')");
+    await db.query("create table unknown_erasure_owner(id text,organization_id text)");
     expect((await start()).status).toBe(409);
     expect((await db.query("select count(*)::int n from organization_erasures")).rows).toEqual([{ n: 0 }]);
     expect((await db.query("select is_active from users where id='erasure-member'")).rows).toEqual([{ is_active: true }]);
-    await db.query("delete from projects where id='nonempty'");
-    await db.query("create table unknown_erasure_owner(id text,organization_id text)");
-    expect((await start()).status).toBe(409);
     expect((await db.query("select status from organizations where id='erasure-target'")).rows).toEqual([{ status: "active" }]);
   });
-  it("rejects actual pre-session checkpoint ownership before intent, including before the first saver write", async () => {
+  it.each([false, true])("cleans registered pre-session checkpoint ownership (saver written: %s)", async written => {
     const threadId = "erasure-target:erasure-member:pre-session";
     await agentCheckpointer.withNamespaceLease(threadId, async () => {
       await registerAgentCheckpointNamespace(db, agentCheckpointer, await getAuthContext(db, "erasure-member"), "pre-session", threadId);
     });
     expect((await db.query("select count(*)::int n from agent_sessions where organization_id='erasure-target'")).rows).toEqual([{ n: 0 }]);
-    expect((await start()).status).toBe(409);
-    await agentCheckpointer.withNamespaceLease(threadId, () => agentCheckpointer.saver.put(
+    if (written) await agentCheckpointer.withNamespaceLease(threadId, () => agentCheckpointer.saver.put(
       { configurable: { thread_id: threadId, checkpoint_ns: "" } },
       { v: 1, id: "checkpoint-before-session", ts: new Date().toISOString(), channel_values: {}, channel_versions: {}, versions_seen: {} },
       { source: "input", step: 0, parents: {} }, {}));
-    expect((await start()).status).toBe(409);
-    expect((await db.query("select count(*)::int n from organization_erasures")).rows).toEqual([{ n: 0 }]);
-    expect((await db.query("select is_active from users where id='erasure-member'")).rows).toEqual([{ is_active: true }]);
-    expect((await db.query("select count(*)::int n from agent_checkpoint_namespaces where organization_id='erasure-target'")).rows).toEqual([{ n: 1 }]);
-    expect((await agentCheckpointer.inspectStore()).entries).toContainEqual(expect.objectContaining({ threadId, count: 1 }));
+    const result = await start(); expect(result.status, result.bodyText).toBe(202); expect(result.body.item.status).toBe("deleted");
+    expect((await db.query("select is_active from users where id='erasure-member'")).rows).toEqual([]);
+    expect((await db.query("select count(*)::int n from agent_checkpoint_namespaces where organization_id='erasure-target'")).rows).toEqual([{ n: 0 }]);
+    expect((await agentCheckpointer.inspectStore(threadId)).entries).toEqual([]);
   });
   it("refuses unsupported global erasure provenance before intent even when its operator Home is foreign", async () => {
     await db.query("insert into audit_events(id,organization_id,actor_user_id,actor_type,app,kind,action,severity,target_type,target_id,trace_id,metadata) values('global-erasure-proof',null,'erasure-platform','user','parameter-admin','parameter-definition','delete','High','organization','erasure-target','global-trace','{\"operatingOrganizationId\":\"erasure-target\",\"proof\":\"Retain global fact\"}')");

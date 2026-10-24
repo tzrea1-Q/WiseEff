@@ -45,7 +45,15 @@ const CANONICAL_SOURCE_READ_FUNCTIONS = [
   "parameter_catalog.purge_parameter_definition(text, jsonb, text, text)",
   "parameter_catalog.read_parameter_definition_erasure(text)",
   "parameter_catalog.list_definition_erasures(text)",
+  "parameter_catalog.list_platform_definition_erasures()",
+  "parameter_catalog.reserve_parameter_object_write(text,text)",
+  "parameter_catalog.lock_parameter_object_write(text)",
+  "parameter_catalog.purge_organization_parameter_assets(text,text,text)",
+  "parameter_catalog.organization_parameter_pending_objects(text,text,text)",
+  "parameter_catalog.finish_organization_parameter_object(text,text,text,text,text,boolean)",
   "parameter_catalog.finish_parameter_definition_erasure_object(text, text)",
+  "parameter_catalog.lock_definition_erasure_object(text, text, text)",
+  "parameter_catalog.organization_parameter_archives(text, text, text)",
   "parameter_catalog.lock_parameter_plane_archive()",
   "parameter_catalog.definition_erasure_object_is_referenced(text, text)",
   "parameter_catalog.lock_log_erasure(text, text, text)",
@@ -453,6 +461,10 @@ export async function provisionPublicationRuntimeLogins(
       const checkpointOwnership = await admin.query<{ exists: boolean }>("select to_regclass('public.agent_checkpoint_namespaces') is not null as exists");
       if (checkpointOwnership.rows[0]?.exists) {
         await admin.query(`revoke insert, update, delete on public.agent_checkpoint_namespaces from ${quoteIdent(names.api)}, ${quoteIdent(names.worker)}`);
+      }
+      const parameterObjectWrites = await admin.query<{ exists: boolean }>("select to_regclass('public.parameter_object_writes') is not null as exists");
+      if (parameterObjectWrites.rows[0]?.exists) {
+        await admin.query(`revoke insert, update, delete on public.parameter_object_writes from ${quoteIdent(names.api)}, ${quoteIdent(names.worker)}`);
       }
       const oidcIdentities = await admin.query<{ exists: boolean }>("select to_regclass('public.user_oidc_identities') is not null as exists");
       if (oidcIdentities.rows[0]?.exists) {
