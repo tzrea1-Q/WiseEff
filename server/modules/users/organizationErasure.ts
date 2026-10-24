@@ -15,7 +15,7 @@ import { revokePersonalAccess } from "./personalAccess";
 
 type Erasure = z.infer<typeof organizationErasureSchema>;
 const projection = `id,target_organization_id as "targetOrganizationId",actor_user_id as "actorUserId",status,stage,counts,attempts,
-  error_code as "errorCode",created_at::text as "createdAt",updated_at::text as "updatedAt",completed_at::text as "completedAt"`;
+  domain_progress as domains,error_code as "errorCode",created_at::text as "createdAt",updated_at::text as "updatedAt",completed_at::text as "completedAt"`;
 const managementCategories = new Set(["accounts", "teams-invitations", "audit", "platform-catalog"]);
 
 async function authorize(db: Database, caller: UserInvocationContext) {
@@ -53,7 +53,8 @@ export async function startOrganizationErasure(db: Database, caller: UserInvocat
     }
     const counts = preview.inventory.filter(item => !["shared-references", "platform-catalog"].includes(item.category))
       .reduce<Record<string, number>>((sum, item) => { sum[item.category] = (sum[item.category] ?? 0) + item.count; return sum; }, {});
-    await tx.query("insert into organization_erasures(id,target_organization_id,actor_user_id,status,stage,counts) values($1,$2,$3,'queued','domains',$4)", [id, organizationId, caller.principal.user.id, counts]);
+    const domains = Object.fromEntries(organizationErasureDomains.map(adapter => [adapter.domain, { status: "pending", attempts: 0, errorCode: null }]));
+    await tx.query("insert into organization_erasures(id,target_organization_id,actor_user_id,status,stage,counts,domain_progress) values($1,$2,$3,'queued','domains',$4,$5)", [id, organizationId, caller.principal.user.id, counts, domains]);
     await allowOrganizationMaintenance(tx, caller, organizationId);
     // Admission retains global administrator -> experience -> Organization locks.
     // Disable/revoke before deleting fence; no target platform login can then be
@@ -86,19 +87,29 @@ export async function retryOrganizationErasure(db: Database, caller: UserInvocat
   if (!claimed) return readOrganizationErasure(db, caller, id);
   try {
     if (claimed.stage === "domains") {
-      for (const adapter of organizationErasureDomains) await adapter.erase(db,
-        { id, targetOrganizationId: claimed.targetOrganizationId, actorUserId: caller.principal.user.id, leaseOwner },
-        { ...context, renewLease: () => db.transaction(async tx => {
-          await ownLease(tx, id, leaseOwner);
-          await tx.query("update organization_erasures set lease_expires_at=clock_timestamp()+interval '1 minute' where id=$1 and lease_owner=$2", [id, leaseOwner]);
-        }) });
+      for (const adapter of organizationErasureDomains) {
+        if (claimed.domains[adapter.domain]?.status === "complete") continue;
+        await domainProgress(db, id, leaseOwner, adapter.domain, "running");
+        try {
+          await adapter.erase(db,
+            { id, targetOrganizationId: claimed.targetOrganizationId, actorUserId: caller.principal.user.id, leaseOwner },
+            { ...context, renewLease: () => db.transaction(async tx => {
+              await ownLease(tx, id, leaseOwner);
+              await tx.query("update organization_erasures set lease_expires_at=clock_timestamp()+interval '1 minute' where id=$1 and lease_owner=$2", [id, leaseOwner]);
+            }) });
+          await domainProgress(db, id, leaseOwner, adapter.domain, "complete");
+        } catch (error) {
+          await domainProgress(db, id, leaseOwner, adapter.domain, "failed");
+          throw error;
+        }
+      }
       await advance(db, id, leaseOwner, "management");
     }
     if (claimed.stage !== "finalize") {
       // Recheck actual domain/runtime ownership after adapters, rather than
       // trusting their success return or the intent's now-stale initial digest.
       const remaining = await previewOrganizationDeletion(db, caller, claimed.targetOrganizationId, context);
-      if (remaining.inventory.some(item => item.count && !managementCategories.has(item.category)) || remaining.storage.exclusiveObjects || remaining.storage.sharedObjects) {
+      if (remaining.inventory.some(item => item.count && !managementCategories.has(item.category) && item.key !== "parameter_catalog.project_erasures") || remaining.storage.exclusiveObjects || remaining.storage.sharedObjects) {
         throw new ApiError("CONFLICT", "业务资产或未核实归属尚未清理完成。");
       }
       await db.transaction(async tx => {
@@ -137,6 +148,14 @@ async function ownLease(tx: Database, id: string, leaseOwner: string) {
   const result = await tx.query(`with locked as materialized (select id,status,lease_owner,lease_expires_at from organization_erasures where id=$1 for update)
     select id from locked where status='running' and lease_owner=$2 and lease_expires_at>clock_timestamp()`, [id, leaseOwner]);
   if (!result.rowCount) throw new ApiError("CONFLICT", "组织清理的执行租约已失效，请重试。");
+}
+async function domainProgress(db: Database, id: string, leaseOwner: string, domain: keyof Erasure["domains"], status: "running" | "failed" | "complete") {
+  await db.transaction(async tx => {
+    await ownLease(tx, id, leaseOwner);
+    await tx.query(`update organization_erasures set domain_progress=jsonb_set(domain_progress,array[$3],jsonb_build_object(
+      'status',$4::text,'attempts',coalesce((domain_progress->$3->>'attempts')::int,0)+case when $4='running' then 1 else 0 end,
+      'errorCode',case when $4='failed' then 'domain-cleanup-failed' else null end)),updated_at=clock_timestamp() where id=$1 and lease_owner=$2`, [id, leaseOwner, domain, status]);
+  });
 }
 async function advance(db: Database, id: string, leaseOwner: string, stage: "management") {
   await db.transaction(async tx => {
