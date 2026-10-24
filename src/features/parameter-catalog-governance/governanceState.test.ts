@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CATALOG_RELEASE_ID,
@@ -13,6 +13,7 @@ import { catalogConflictReasons } from "@/application/parameter-catalog/states";
 import {
   REVIEW_RESOLUTION_COMMAND,
   canExecuteGovernanceAction,
+  createGovernanceIdempotencyKey,
   createGovernanceSubmitGate,
   executeGovernanceWrite,
   fingerprintGovernanceDraft,
@@ -33,6 +34,39 @@ const unregistered = deriveCatalogDomainState({
 const loading = deriveCatalogDomainState({
   inFlight: true,
   previousReleaseId: CATALOG_RELEASE_ID
+});
+
+describe("governance idempotency keys", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("uses the native UUID generator when available", () => {
+    const randomUUID = vi.fn(() => "a3a493b2-3e23-4f50-8205-55e386cd8fd8");
+    const getRandomValues = vi.fn();
+    vi.stubGlobal("crypto", { randomUUID, getRandomValues });
+
+    expect(createGovernanceIdempotencyKey()).toBe("a3a493b2-3e23-4f50-8205-55e386cd8fd8");
+    expect(randomUUID).toHaveBeenCalledOnce();
+    expect(getRandomValues).not.toHaveBeenCalled();
+  });
+
+  it("generates distinct UUID v4 keys using secure random bytes without randomUUID on HTTP", () => {
+    const getRandomValues = vi.fn(crypto.getRandomValues.bind(crypto));
+    vi.stubGlobal("crypto", { getRandomValues });
+
+    const keys = Array.from({ length: 32 }, () => createGovernanceIdempotencyKey());
+    expect(new Set(keys).size).toBe(keys.length);
+    for (const key of keys) {
+      expect(key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    }
+    expect(getRandomValues).toHaveBeenCalledTimes(keys.length);
+  });
+
+  it("refuses to fabricate a key when secure randomness is unavailable", () => {
+    vi.stubGlobal("crypto", undefined);
+    expect(() => createGovernanceIdempotencyKey()).toThrow(/安全请求标识/);
+    vi.stubGlobal("crypto", {});
+    expect(() => createGovernanceIdempotencyKey()).toThrow(/安全请求标识/);
+  });
 });
 
 describe("governance write algebra", () => {

@@ -212,20 +212,22 @@ export function RegistrationDialog({
     if (!allowed || !placementReady || !destinationReady || busy || writeFailure?.kind === "conflict") {
       return;
     }
-    const prepared = gateRef.current.begin({
-      actor,
-      action: intent,
-      state: domainState,
-      catalogReleaseId,
-      ifMatch,
-      draftFingerprint: fingerprintGovernanceDraft({ intent, choice, reason, destinationModuleId, newParentId, newModuleName }),
-      createIdempotencyKey
-    });
-    if (prepared.status !== "ready") {
-      return;
-    }
-    setPending(true);
+    let ownsSubmission = false;
     try {
+      const prepared = gateRef.current.begin({
+        actor,
+        action: intent,
+        state: domainState,
+        catalogReleaseId,
+        ifMatch,
+        draftFingerprint: fingerprintGovernanceDraft({ intent, choice, reason, destinationModuleId, newParentId, newModuleName }),
+        createIdempotencyKey
+      });
+      if (prepared.status !== "ready") {
+        return;
+      }
+      ownsSubmission = true;
+      setPending(true);
       const placement = placementIntentFromChoice(choice);
       const destination = initializing ? { newDestination: { parentModuleId: newParentId, name: newModuleName.trim() } } : destinationModuleId.trim()
         ? { destinationModuleId: destinationModuleId.trim() }
@@ -262,7 +264,7 @@ export function RegistrationDialog({
       setWriteFailure(catalogStateFromFailure(error));
       setConfirmOpen(false);
     } finally {
-      setPending(false);
+      if (ownsSubmission) setPending(false);
     }
   };
 
