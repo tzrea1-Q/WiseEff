@@ -7,10 +7,12 @@ import { resolveIntegrationCredential } from "../auth/integrationCredentialResol
 import { ApiError } from "../../shared/http/errors";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { createMemoryObjectStore } from "../../testing/objectStore";
+import { createPostgresDatabase, type RootDatabase } from "../../shared/database/client";
+import { withLogObjectCustody } from "./objectWrites";
 import {
-  createInMemoryTestDatabase,
+  createEphemeralTestDatabase,
   isTestDatabaseAvailable,
-  type InMemoryTestDatabase
+  type EphemeralTestDatabase
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
 import type { LogAnalysisQueue } from "./logAnalysisQueue";
@@ -103,10 +105,12 @@ const sampleEvidence = [
 ];
 
 describe.skipIf(!databaseAvailable)("log service", () => {
-  let db: InMemoryTestDatabase;
+  let db: RootDatabase;
+  let ephemeral: EphemeralTestDatabase;
 
   beforeEach(async () => {
-    db = await createInMemoryTestDatabase();
+    ephemeral = await createEphemeralTestDatabase("logservice");
+    db = createPostgresDatabase(ephemeral.url);
     await seedCoreGraph(db, {
       organization: { id: "org-1", name: "ChargeLab" },
       users: [
@@ -117,7 +121,7 @@ describe.skipIf(!databaseAvailable)("log service", () => {
   });
 
   afterEach(async () => {
-    await db?.rollback();
+    try { await db?.close(); } finally { await ephemeral?.drop(); }
   });
 
   async function uploadSampleLog(auth = makeAuth(), fileName = "pack-controller.log") {
@@ -168,9 +172,12 @@ describe.skipIf(!databaseAvailable)("log service", () => {
   });
 
   it("bound integration credentials reject conflicting selectors before storing files and default to their binding", async () => {
-    const skill = await insertLogDomain(db, { id: "bound-skill", organizationId: "org-1", name: "Bound skill" });
-    await insertSkillRevision(db, { organizationId: "org-1", skillId: skill.id,
-      userId: "user-1", spec: { schemaVersion: "skill/v1" }, published: true });
+    const skill = await db.transaction(async tx => {
+      const created = await insertLogDomain(tx, { id: "bound-skill", organizationId: "org-1", name: "Bound skill" });
+      await insertSkillRevision(tx, { organizationId: "org-1", skillId: created.id,
+        userId: "user-1", spec: { schemaVersion: "skill/v1" }, published: true });
+      return created;
+    });
     const principal = await integration(skill.id);
     const store = createMemoryObjectStore();
     const input = { fileName: "machine.log", contentType: "text/plain", bytes: Buffer.from("machine log") };
@@ -280,12 +287,14 @@ describe.skipIf(!databaseAvailable)("log service", () => {
   });
 
   async function seedLogDomain(input: { id: string; name: string; status?: "active" | "archived" }) {
-    await db.query(
-      "insert into log_domains (id, organization_id, name, status) values ($1, $2, $3, $4)",
-      [input.id, "org-1", input.name, input.status ?? "active"]
-    );
-    await db.query(`insert into log_skill_revisions (id, organization_id, skill_id, revision_number, status, spec, content_hash)
-      values ($1, 'org-1', $2, 1, 'published', '{"schemaVersion":"skill/v1"}', 'fixture')`, [`revision:${input.id}`, input.id]);
+    await db.transaction(async tx => {
+      await tx.query(
+        "insert into log_domains (id, organization_id, name, status) values ($1, $2, $3, $4)",
+        [input.id, "org-1", input.name, input.status ?? "active"]
+      );
+      await tx.query(`insert into log_skill_revisions (id, organization_id, skill_id, revision_number, status, spec, content_hash)
+        values ($1, 'org-1', $2, 1, 'published', '{"schemaVersion":"skill/v1"}', 'fixture')`, [`revision:${input.id}`, input.id]);
+    });
   }
 
   it("keeps an earlier record's shared object when an identical upload's transaction fails", async () => {
@@ -296,9 +305,8 @@ describe.skipIf(!databaseAvailable)("log service", () => {
     const put = vi.spyOn(objectStore, "put");
     const remove = vi.spyOn(objectStore, "delete");
     const failure = new Error("injected transaction failure");
-    vi.spyOn(db, "transaction").mockRejectedValueOnce(failure);
-
-    await expect(uploadLogFile(db, objectStore, makeAuth(), input)).rejects.toBe(failure);
+    const failedMetadata = { query: db.query, transaction: async () => { throw failure; } };
+    await expect(withLogObjectCustody(db, objectStore, scoped => uploadLogFile(failedMetadata, scoped, makeAuth(), input))).rejects.toBe(failure);
 
     expect(put).toHaveBeenCalledOnce();
     expect(remove).not.toHaveBeenCalled();
@@ -737,9 +745,8 @@ describe.skipIf(!databaseAvailable)("log service", () => {
     expect(result.log.analysisQuestion).toBe("Try again");
     expect(result.job).toMatchObject({ status: "queued" });
     expect(result.job.runId).toMatch(/[0-9a-f-]{36}/);
-    // Both runs survive; the log now reads through the fresh run (stage back to parse,
-    // while the completed old run had reached report). created_at ordering is not
-    // observable here because now() is frozen inside the rollback-isolation transaction.
+    // Both runs survive; the log reads through the fresh run at parse while the
+    // completed old run has reached report.
     expect(result.runs.map((run) => run.id).sort()).toEqual([result.job.runId, oldRunId].sort());
     expect(result.runs.find((run) => run.id === oldRunId)).toMatchObject({ status: "complete" });
     expect(result.runs.find((run) => run.id === result.job.runId)).toMatchObject({ status: "queued" });

@@ -127,6 +127,7 @@ function createFixture(overrides: Partial<Fixture> = {}): Fixture {
 
 function createObjectStore(bytes: Buffer): ObjectStore {
   return {
+    planKey: () => "decoded.gz",
     async put() {
       throw new Error("put is not used by the worker");
     },
