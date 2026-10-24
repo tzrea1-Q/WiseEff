@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createWiseEffServer } from "../../app";
 import { requestJson } from "../../test/testClient";
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
-import { createPostgresDatabase } from "../../shared/database/client";
+import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
 import { createLocalObjectStore, type ObjectStore } from "../logs/objectStore";
 import { createXiaozeCheckpointer } from "../agent/xiaoze/checkpointer";
 import { seedCoreGraph } from "../../testing/fixtures";
@@ -18,12 +18,18 @@ import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../../t
 import pg from "pg";
 import { createArchiveAdapter, createLocalArchiveObjectStore, type ArchiveObjectStore } from "../catalog-cutover/archive";
 import { applyParameterIdentityCutover } from "../parameter-topology/migration";
-import { persistHandBuiltCandidate } from "../catalog-publication/authorization/testHarness";
+import { lowFacts, persistHandBuiltCandidate } from "../catalog-publication/authorization/testHarness";
 import { DefinitionProposalId, DefinitionProposalRevisionId } from "../parameter-catalog-contract";
+import { withPublicationCoordinator } from "../catalog-publication/coordinator";
+import { claimPublicationJob } from "../catalog-publication/jobs/claim";
+import { executeClaimedPublicationJob } from "../catalog-publication/jobs/execute";
+import { createCatalogInstaller } from "../catalog-kernel/install/installer";
+import { createUserInvocation } from "../auth/trustedInvocation";
+import { getAuthContext } from "../auth/repository";
 
 describe("Organization project/parameter erasure through HTTP and native PostgreSQL", () => {
   let lane: Awaited<ReturnType<typeof createEphemeralTestDatabase>>, db: ReturnType<typeof createPostgresDatabase>;
-  let api: ReturnType<typeof createPostgresDatabase>;
+  let api: ReturnType<typeof createPostgresDatabase>, manager: ReturnType<typeof createPostgresDatabase>;
   const token = `org1395${randomBytes(5).toString("hex")}`;
   let directory: string, store: ObjectStore;
   let archiveStore: ArchiveObjectStore;
@@ -41,10 +47,11 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
       { subjectId: "csub_org1395", schemaId: "org1395.configuration" });
     const runtime = await provisionPublicationRuntimeLogins(lane.url, { mode: "lab", runToken: token });
     api = createPostgresDatabase(runtime.apiUrl);
+    manager = createPostgresDatabase(runtime.managerUrl);
     expect((await api.query("select rolsuper from pg_roles where rolname=current_user")).rows).toEqual([{ rolsuper: false }]);
     await expect(api.query("delete from parameter_catalog.organization_parameter_erasure_objects where false")).rejects.toMatchObject({ code: "42501" });
   });
-  afterAll(async () => { await api?.close(); if (lane) await dropLabRuntimeLogins(lane.url, token); await db?.close(); await lane?.drop(); if (directory) await rm(directory, { recursive: true, force: true }); });
+  afterAll(async () => { await api?.close(); await manager?.close(); if (lane) await dropLabRuntimeLogins(lane.url, token); await db?.close(); await lane?.drop(); if (directory) await rm(directory, { recursive: true, force: true }); });
   const target = "/api/v1/platform/organizations/parameter-target";
   function request<T>(path: string, method = "GET", body?: unknown, objectStore = store) {
     return requestJson<T>(createWiseEffServer({ db: api, objectStore, catalogArchiveStore: archiveStore, catalogArchiveKey: archiveKey, agentCheckpointer }), path,
@@ -233,7 +240,7 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
     });
     const client = new pg.Client({ connectionString: lane.url }); await client.connect();
     try {
-      await persistHandBuiltCandidate(client, { token: "org1395_proposal", authorPrincipalId: "proposal-member", authorOrganizationId: org,
+      await persistHandBuiltCandidate(client, { token: "org1395_proposal", authorPrincipalId: "proposal-member", authorOrganizationId: org, impactFacts: lowFacts("proposal-member"),
         proposalId: DefinitionProposalId("org1395-proposal"), proposalRevisionId: DefinitionProposalRevisionId("org1395-proposal-revision") });
     } finally { await client.end(); }
     await db.query(`insert into catalog_publication.publication_authorizations(id,event_kind,candidate_id,artifact_digest,expected_base_release_id,expected_base_release_digest,proposal_revision_id,impact_report_digest,capability_contract_digest,policy_revision,actor_principal_id)
@@ -242,11 +249,25 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
     await db.query(`insert into catalog_publication.publication_jobs(id,candidate_id,authorization_id,request_scope,idempotency_key,request_digest,status)
       select 'cjob_org1395_proposal',id,'cauth_org1395_proposal','org1395-publication','org1395-publication',artifact_digest,'queued' from catalog_publication.candidates where id='ccand_org1395_proposal'`);
     const before = (await db.query("select * from catalog_publication.publication_authorizations where id='cauth_org1395_proposal'")).rows;
+    const claimed = await withPublicationCoordinator(manager, tx => claimPublicationJob(tx, { leaseOwner: "org1395-manager", leaseSeconds: 30 }));
+    expect(claimed.ok).toBe(true); if (!claimed.ok) throw new Error("Expected real publication worker claim");
+    const pointer = (await db.query("select current_catalog_release_id from parameter_catalog.catalog_state where singleton")).rows;
+    let entered!: () => void, release!: () => void;
+    const preparing = new Promise<void>(resolve => { entered = resolve; }), gate = new Promise<void>(resolve => { release = resolve; });
+    const pool = getRootPostgresPool(manager)!;
+    const worker = executeClaimedPublicationJob({ db: manager, pool, installer: createCatalogInstaller(pool), claimed: claimed.value,
+      retryBudget: 2, resolvePublisherActor: async () => { entered(); await gate; return createUserInvocation(await getAuthContext(db, "parameter-platform")); } });
+    await Promise.race([preparing, worker.then(result => { throw new Error(`Claimed worker did not prepare: ${result.kind}`); })]);
     const path = `/api/v1/platform/organizations/${org}`;
-    const preview = await request<{ item: { stateDigest: string; blockers: unknown[] } }>(`${path}/deletion-preview`);
-    expect(preview.body.item.blockers).toEqual([]);
-    const erased = await request<{ item: { status: string } }>(`${path}/deletions`, "POST", { stateDigest: preview.body.item.stateDigest, confirmationOrganizationId: org });
-    expect(erased.status, erased.bodyText).toBe(202); expect(erased.body.item.status).toBe("deleted");
+    try {
+      const preview = await request<{ item: { stateDigest: string; blockers: unknown[] } }>(`${path}/deletion-preview`);
+      expect(preview.body.item.blockers).toEqual([]);
+      const erased = await request<{ item: { status: string } }>(`${path}/deletions`, "POST", { stateDigest: preview.body.item.stateDigest, confirmationOrganizationId: org });
+      expect(erased.status, erased.bodyText).toBe(202); expect(erased.body.item.status).toBe("deleted");
+    } finally { release(); }
+    expect(await worker).toMatchObject({ kind: "stale-fence", job: { status: "cancelled", fencingToken: claimed.value.fencingToken + 1 } });
+    expect((await db.query("select current_catalog_release_id from parameter_catalog.catalog_state where singleton")).rows).toEqual(pointer);
+    expect((await db.query("select id from parameter_catalog.catalog_activation_receipts where publication_job_id='cjob_org1395_proposal'")).rows).toEqual([]);
     expect((await db.query("select id from parameter_catalog.definition_proposals where organization_id=$1", [org])).rows).toEqual([]);
     expect((await db.query("select proposal_id,proposal_revision_id from catalog_publication.candidates where id='ccand_org1395_proposal'")).rows).toEqual([{ proposal_id: null, proposal_revision_id: null }]);
     expect((await db.query("select * from catalog_publication.publication_authorizations where id='cauth_org1395_proposal'")).rows).toEqual(before);

@@ -200,7 +200,7 @@ begin
     from catalog_publication.publication_authorizations a join catalog_publication.candidates c on c.id=a.candidate_id
     where a.event_kind='approve' and (c.proposal_id=any(proposals) or c.identity_allocation->>'authorOrganizationId'=org)
       and not exists(select 1 from catalog_publication.publication_authorizations r where r.approved_authorization_id=a.id and r.event_kind='revoke');
-  update catalog_publication.publication_jobs j set status='cancelled',lease_owner=null,lease_until=null,
+  update catalog_publication.publication_jobs j set status='cancelled',lease_owner=null,lease_until=null,fencing_token=fencing_token+1,
     last_error_class='organization-erasure',last_error_reason='Organization authoring was permanently erased',updated_at=clock_timestamp()
     from catalog_publication.candidates c where c.id=j.candidate_id and j.status<>'active'
       and (c.proposal_id=any(proposals) or c.identity_allocation->>'authorOrganizationId'=org);
