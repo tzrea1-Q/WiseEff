@@ -9,6 +9,22 @@ export type AcceptanceRequirement = {
 
 export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
+    id: "ORG-PARAMETER-ERASURE-001", workflow: "H", required: true,
+    title: "A platform administrator erases Organization projects and parameter files, retries a durable domain failure, and preserves shared Definitions and foreign ownership."
+  },
+  {
+    id: "ORG-KNOWLEDGE-ERASURE-001", workflow: "H", required: true,
+    title: "A platform administrator erases Organization knowledge, indexes and actual attachments, retries durable failure, and prevents late producer resurrection."
+  },
+  {
+    id: "ORG-LOG-ERASURE-001", workflow: "H", required: true,
+    title: "A platform administrator erases Organization logs, queued analysis and physical files through confirmation and durable retry while preserving unrelated data."
+  },
+  {
+    id: "ORG-RUNTIME-ERASURE-001", workflow: "H", required: true,
+    title: "A platform administrator erases Organization runtime feedback bytes and foreign-Home projections, observes a real failure, and resumes the persisted cleanup."
+  },
+  {
     id: "ORG-EMPTY-ERASURE-001", workflow: "H", required: true,
     title: "A platform administrator permanently erases a management-only Organization, fences new writes and login, resumes durable failure after target deletion, and retains only a minimal independent receipt."
   },

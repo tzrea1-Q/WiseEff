@@ -27632,6 +27632,38 @@
                     "null"
                   ]
                 },
+                "domains": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "running",
+                          "failed",
+                          "complete"
+                        ]
+                      },
+                      "attempts": {
+                        "type": "number"
+                      },
+                      "errorCode": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "status",
+                      "attempts",
+                      "errorCode"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
                 "createdAt": {
                   "type": "string"
                 },
@@ -27715,6 +27747,38 @@
                   "string",
                   "null"
                 ]
+              },
+              "domains": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "running",
+                        "failed",
+                        "complete"
+                      ]
+                    },
+                    "attempts": {
+                      "type": "number"
+                    },
+                    "errorCode": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "attempts",
+                    "errorCode"
+                  ],
+                  "additionalProperties": false
+                }
               },
               "createdAt": {
                 "type": "string"
@@ -27917,6 +27981,9 @@
                 }
               },
               "admissionAvailable": {
+                "type": "boolean"
+              },
+              "executionAvailable": {
                 "type": "boolean"
               },
               "notes": {
