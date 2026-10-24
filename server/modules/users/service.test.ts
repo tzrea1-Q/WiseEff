@@ -670,6 +670,9 @@ describe("user governance service", () => {
 
   it("resets a user password, revokes sessions, and writes audit", async () => {
     const { db, txCalls } = createDb((text) => {
+      if (text.includes("users.id as user_id")) {
+        return [{ ...userRow(), user_id: adminAuth.user.id, organization_name: adminAuth.organization.name, organization_status: "active", project_id: null, role_id: "admin" }];
+      }
       if (text.includes("from users") || text.includes("returning")) {
         return [userRow({ email: null, username: "target.user" })];
       }

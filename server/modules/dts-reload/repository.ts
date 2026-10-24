@@ -633,6 +633,7 @@ export async function listExpiredReloadArtifactRuns(
     select id, organization_id, overlay_artifact_storage_key, overlay_source_storage_key
     from dts_reload_runs
     where coalesce(completed_at, created_at) < $1::timestamptz
+      and exists(select 1 from public.organizations o where o.id=dts_reload_runs.organization_id and o.status='active')
       and (overlay_artifact_storage_key is not null or overlay_source_storage_key is not null)
       and ($3::text is null or organization_id = $3)
     order by coalesce(completed_at, created_at) asc

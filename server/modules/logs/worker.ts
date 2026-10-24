@@ -735,7 +735,7 @@ async function processClaimedLogAnalysisJob(
     });
     if (!deadLettered) return { status: "idle" };
     if (snapshot?.submittedByUserId) {
-      await notifyLogAnalysisFailed(db, {
+      await notifyLogAnalysisFailed(notificationDb, {
         organizationId: snapshot.organizationId,
         logId: snapshot.logId,
         runId: snapshot.runId,

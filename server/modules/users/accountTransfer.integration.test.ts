@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import pg from "pg";
 import { createWiseEffServer } from "../../app";
-import { createPostgresDatabase, type RootDatabase } from "../../shared/database/client";
+import { createDatabase, createPostgresDatabase, type Database, type RootDatabase } from "../../shared/database/client";
 import { requestJson } from "../../test/testClient";
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
@@ -25,8 +26,8 @@ describe("local account transfer through real authentication, HTTP and PostgreSQ
     }
   });
   afterEach(async () => { await db?.close(); await ephemeral?.drop(); });
-  function api<T = { error: { details: { code: string } } }>(path: string, method = "GET", body?: unknown, token?: string) {
-    return requestJson<T>(createWiseEffServer({ db, objectStore: createMemoryObjectStore(), env: { AUTH_PROVIDER: "local" }, auth: { mode: "production" } }), `/api/v1/${path}`, {
+  function api<T = { error: { details: { code: string } } }>(path: string, method = "GET", body?: unknown, token?: string, database: Database = db) {
+    return requestJson<T>(createWiseEffServer({ db: database, objectStore: createMemoryObjectStore(), env: { AUTH_PROVIDER: "local" }, auth: { mode: "production" } }), `/api/v1/${path}`, {
       method, ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}), ...(body === undefined ? {} : { body: JSON.stringify(body) })
     });
   }
@@ -58,6 +59,61 @@ describe("local account transfer through real authentication, HTTP and PostgreSQ
     expect((await api(path(), "POST", { targetOrganizationId: "transfer-target", targetRoles: ["guest"], expectedVersion: item.version }, platform.token)).status).toBe(200);
     await db.query("insert into auth_sessions(id,user_id,organization_id,token_hash,expires_at) values('stale-source','transfer-member','transfer-source',$1,now()+interval '1 day')", [hashLocalSessionToken("stale-source-token")]);
     expect((await api("me", "GET", undefined, "stale-source-token")).status).toBe(401);
+  });
+  it("rejects a source password reset overtaken by transfer without changing the target password or sessions", async () => {
+    const platform = await login(), admin = await login("admin"), impact = await preview(platform.token);
+    const client = new pg.Client({ connectionString: ephemeral.url }); await client.connect();
+    let reached!: () => void, release!: () => void, paused = false;
+    const read = new Promise<void>(resolve => { reached = resolve; }), gate = new Promise<void>(resolve => { release = resolve; });
+    const resetDb = createDatabase({ async query(text, values = []) {
+      const result = await client.query(text, values);
+      if (!paused && text.includes("where users.organization_id = $1 and users.id = $2") && values[1] === "transfer-member") {
+        paused = true; reached(); await gate;
+      }
+      return { rows: result.rows, rowCount: result.rowCount };
+    } });
+    const resetting = api("users/transfer-member/password", "POST", { password: "Stale-source-reset-password" }, admin.token, resetDb);
+    try {
+      await read;
+      expect((await api(path(), "POST", { targetOrganizationId: "transfer-target", targetRoles: ["guest"], expectedVersion: impact.version }, platform.token)).status).toBe(200);
+      const target = await login("member");
+      release();
+      expect((await resetting).status).toBe(404);
+      expect((await api("me", "GET", undefined, target.token)).status).toBe(200);
+      expect((await login("member")).auth).toMatchObject({ user: { id: "transfer-member", username: "transfer-member" }, organization: { id: "transfer-target" } });
+      expect((await api("auth/login", "POST", { username: "transfer-member", password: "Stale-source-reset-password" })).status).toBe(401);
+      const targetAdmin = await login("target-admin");
+      expect((await api("users/transfer-member/password", "POST", { password: "Authorized-target-password" }, targetAdmin.token)).status).toBe(200);
+      expect((await api("me", "GET", undefined, target.token)).status).toBe(401);
+      const authorizedLogin = await api<{ auth: AuthContext }>("auth/login", "POST", { username: "transfer-member", password: "Authorized-target-password" });
+      expect(authorizedLogin.status).toBe(200);
+      expect(authorizedLogin.body.auth).toMatchObject({ user: { id: "transfer-member", username: "transfer-member" }, organization: { id: "transfer-target" } });
+    } finally { release(); await resetting; await client.end(); }
+  });
+  it.each([false, true])("projects source feedback progress only to a still-authorized transferred submitter (platform=%s)", async platformRecipient => {
+    if (platformRecipient) await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values('feedback-platform','transfer-member','transfer-source','platform-admin')");
+    const platform = await login(), member = await login("member"), admin = await login("admin");
+    const created = await api<{ item: { id: string; historicalAttribution: unknown } }>("product-feedback", "POST", { pagePath: "/knowledge", pageTitle: "Source work", feedbackType: "experience", description: "Retained source feedback", attachments: [] }, member.token);
+    expect(created.status, created.bodyText).toBe(201);
+    expect(created.body.item.historicalAttribution).toBeDefined();
+    const feedbackId = created.body.item.id;
+    const progress = (message: string) => api(`product-feedback/${feedbackId}/progress`, "POST", { publicMessage: message }, admin.token);
+    expect((await progress("Same-home progress")).status).toBe(200);
+    const original = await api<{ items: Array<{ body: string }> }>("notifications", "GET", undefined, member.token);
+    expect(original.body.items).toContainEqual(expect.objectContaining({ body: "Same-home progress" }));
+    const impact = await preview(platform.token);
+    expect((await api(path(), "POST", { targetOrganizationId: "transfer-target", targetRoles: ["guest"], expectedVersion: impact.version }, platform.token)).status).toBe(200);
+    const moved = await login("member");
+    expect((await progress("Private source progress after transfer")).status).toBe(200);
+    const projected = await api<{ items: Array<{ body: string; actionUrl: string }> }>("notifications", "GET", undefined, moved.token);
+    expect(projected.status).toBe(200);
+    if (platformRecipient) expect(projected.body.items).toContainEqual(expect.objectContaining({ body: "Private source progress after transfer", actionUrl: `/feedback?id=${feedbackId}&organizationId=transfer-source` }));
+    else expect(projected.body.items).toEqual([]);
+    expect((await api(`product-feedback/${feedbackId}?organizationId=transfer-source`, "GET", undefined, moved.token)).status).toBe(platformRecipient ? 200 : 403);
+    const retained = await api<{ item: { submitterUserId: string; historicalAttribution: unknown } }>(`product-feedback/${feedbackId}`, "GET", undefined, admin.token);
+    expect(retained.status).toBe(200);
+    expect(retained.body.item).toMatchObject({ submitterUserId: "transfer-member", historicalAttribution: created.body.item.historicalAttribution });
+    expect((await db.query("select organization_id from product_feedback where id=$1", [feedbackId])).rows).toEqual([{ organization_id: "transfer-source" }]);
   });
   it("allows explicit platform handover from a suspended source, but refuses a suspended destination before changing access", async () => {
     const platform = await login(), member = await login("member");
