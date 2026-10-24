@@ -65,12 +65,12 @@ describe("Mixed Organization erasure and minimal receipts through real HMAC HTTP
     return requestJson<T>(createWiseEffServer({ db: apiDb ?? db, objectStore: store, agentCheckpointer, deviceBridge: { connectionPool: bridgeConnectionPool }, auth: { mode: "production", verifier: createTokenVerifier({ issuer, secret }) } }), url,
       { method, headers: { Authorization: `Bearer ${token}` }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   }
-  async function start() {
-    const target = "/api/v1/platform/organizations/mixed-target";
+  async function start(organizationId = "mixed-target") {
+    const target = `/api/v1/platform/organizations/${organizationId}`;
     const preview = await request<{ item: { stateDigest: string } }>(`${target}/deletion-preview`);
     expect(preview.status, preview.bodyText).toBe(200);
     return request<{ item: { id: string; status: string; domains: Record<string, unknown>; attempts: number } }>(`${target}/deletions`, "POST",
-      { stateDigest: preview.body.item.stateDigest, confirmationOrganizationId: "mixed-target" });
+      { stateDigest: preview.body.item.stateDigest, confirmationOrganizationId: organizationId });
   }
   it("converges retained global audit proofs to content-free facts and a minimal final receipt", async () => {
     await db.query(`insert into audit_events(id,organization_id,actor_user_id,actor_type,app,kind,action,severity,target_type,target_id,trace_id,metadata)
@@ -135,11 +135,20 @@ describe("Mixed Organization erasure and minimal receipts through real HMAC HTTP
     });
     expect(feedback.status, feedback.bodyText).toBe(201);
     const objectKey = feedback.body.item.attachments[0]!.storageKey;
+    await withTestClusterRoleCatalogLock(() => seedCoreGraph(db, { organization: { id: "mixed-interrupted" }, users: [{ id: "mixed-interrupted-member" }] }));
+    const interruptedFeedback = await request<{ item: { attachments: Array<{ storageKey: string }> } }>("/api/v1/product-feedback?organizationId=mixed-interrupted", "POST", {
+      pagePath: "/", pageTitle: "Interrupted target", feedbackType: "experience", description: "Interrupted business sentinel", attachments: [{ fileName: "private.png", contentType: "image/png", contentBase64: Buffer.from("Interrupted image bytes").toString("base64") }]
+    }); expect(interruptedFeedback.status, interruptedFeedback.bodyText).toBe(201);
+    const interruptedKey = interruptedFeedback.body.item.attachments[0]!.storageKey;
     const retained = await store.put({ organizationId: "mixed-home", fileName: "retained.txt", contentType: "text/plain", bytes: Buffer.from("Retain A bytes") });
     const backupRoot = `${directory}-backup`; await cp(directory, backupRoot, { recursive: true });
     const oldData = await postgresTool("pg_dump", database.url, ["-Fc"]), oldCheckpoints = await postgresTool("pg_dump", checkpointDb.url, ["-Fc"]);
     const erased = await start(); expect(erased.body.item.status, erased.bodyText).toBe("deleted");
+    const remove = store.delete!; store.delete = async key => { if (key === interruptedKey) throw new Error("Interrupted storage unavailable"); await remove(key); };
+    const interrupted = await start("mixed-interrupted"); expect(interrupted.body.item.status, interrupted.bodyText).toBe("failed");
     const state = await captureOrganizationErasureState(db, { agentCheckpointer });
+    expect(state.receipts.map(item => [item.targetOrganizationId, item.status])).toEqual([["mixed-interrupted", "failed"], ["mixed-target", "deleted"]]);
+    expect(JSON.stringify(state)).not.toContain("business sentinel"); store.delete = remove;
     await saver.saver.end();
     const restored = await createEphemeralTestDatabase("org1399_restored"); extraDatabases.push(restored);
     await postgresTool("pg_restore", restored.url, ["--clean", "--if-exists", "--no-owner", "--no-privileges"], oldData);
@@ -151,16 +160,22 @@ describe("Mixed Organization erasure and minimal receipts through real HMAC HTTP
     expect((await agentCheckpointer.inspectStore(key)).entries.length).toBeGreaterThan(0); expect((await store.get(objectKey)).length).toBeGreaterThan(0);
     const caller = createUserInvocation(await getAuthContext(db, "mixed-platform"));
     await expect(replayOrganizationErasureState(db, caller, { ...state, checkpointStore: { kind: "postgres", id: "wrong-store" } }, { agentCheckpointer, objectStore: store })).rejects.toThrow(/physical store identity/);
-    const remove = store.delete!; store.delete = async () => { throw new Error("Restore storage unavailable"); };
+    store.delete = async () => { throw new Error("Restore storage unavailable"); };
     await expect(replayOrganizationErasureState(db, caller, state, { agentCheckpointer, objectStore: store })).rejects.toMatchObject({ code: "CONFLICT" });
-    expect((await db.query("select status from organizations where id='mixed-target'")).rows).toEqual([{ status: "deleting" }]);
+    expect((await db.query("select status from organizations where id in ('mixed-target','mixed-interrupted') order by id")).rows).toEqual([{ status: "deleting" }, { status: "deleting" }]);
+    expect((await db.query("select is_active from users where id in ('mixed-member','mixed-interrupted-member') order by id")).rows).toEqual([{ is_active: false }, { is_active: false }]);
     store.delete = remove;
-    expect(await replayOrganizationErasureState(db, caller, state, { agentCheckpointer, objectStore: store })).toMatchObject({ replayed: 1 });
+    expect(await replayOrganizationErasureState(db, caller, state, { agentCheckpointer, objectStore: store })).toMatchObject({ replayed: 2 });
     expect((await agentCheckpointer.inspectStore(key)).entries).toEqual([]); await expect(store.get(objectKey)).rejects.toBeDefined();
+    await expect(store.get(interruptedKey)).rejects.toBeDefined();
     expect((await store.get(retained.storageKey)).toString()).toBe("Retain A bytes");
     expect((await db.query("select id from users where id='mixed-platform'")).rowCount).toBe(1);
     expect((await request(`/api/v1/platform/organization-deletions/${erased.body.item.id}`)).body).toMatchObject({ item: { status: "deleted", domains: {}, attempts: 0 } });
     expect(await replayOrganizationErasureState(db, caller, state, { agentCheckpointer, objectStore: store })).toMatchObject({ replayed: 0 });
+    // The same physical checkpoint DB can be restored to an older point than
+    // the already-clean app DB. Identity alone cannot prove these rows owned.
+    await postgresTool("pg_restore", checkpointDb.url, ["--clean", "--if-exists", "--no-owner", "--no-privileges"], oldCheckpoints);
+    await expect(replayOrganizationErasureState(db, caller, state, { agentCheckpointer, objectStore: store })).rejects.toThrow(/checkpoint ownership/);
   }, 30_000);
   it("completes all four domains through API LOGIN after storage, process lease and final-receipt faults while preserving shared custody", async () => {
     await db.query("insert into audit_events(id,organization_id,actor_user_id,actor_type,app,kind,action,severity,target_type,target_id,trace_id,metadata) values('mixed-progress-proof',null,'mixed-platform','user','user-governance','organization-operating-scope','resolve-operating-scope','High','organization','mixed-target','scope-trace','{\"operatingOrganizationId\":\"mixed-target\",\"private\":\"B mixed sentinel\"}')");

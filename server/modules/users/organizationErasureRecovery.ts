@@ -10,6 +10,7 @@ import { lockAdministratorMutation } from "./administratorContinuity";
 import { revokePersonalAccess } from "./personalAccess";
 import { retryOrganizationErasure } from "./organizationErasure";
 import type { OrganizationErasureContext } from "./organizationErasureDomains";
+import { inspectOrganizationCheckpoints } from "../agent/xiaoze/checkpointOwnership";
 
 const receiptSchema = z.object({
   id: z.string().min(1).max(200), targetOrganizationId: z.string().min(1).max(200), actorUserId: z.string().min(1).max(200),
@@ -59,6 +60,10 @@ export async function replayOrganizationErasureState(db: Database, caller: UserI
   if (state.receipts.some(item => item.targetOrganizationId === actor.organization.id)) throw new Error("Recovery requires a real platform actor outside every erased Organization");
   const actual = await checkpointIdentity(db, runtime);
   if (actual.kind !== state.checkpointStore.kind || actual.id !== state.checkpointStore.id) throw new Error("Checkpoint recovery physical store identity does not match");
+  // Unknown physical namespaces are classified globally by the existing owner
+  // inspection, even when the app snapshot has already lost every target row.
+  if (state.receipts.length && (await inspectOrganizationCheckpoints(db, state.receipts[0]!.targetOrganizationId, runtime.agentCheckpointer))
+    .some(item => item.category === "unclassified")) throw new Error("Restored checkpoint ownership is unverified; keep access and queues stopped");
   const pending: string[] = [];
   await db.transaction(async tx => {
     await lockAdministratorMutation(tx);
