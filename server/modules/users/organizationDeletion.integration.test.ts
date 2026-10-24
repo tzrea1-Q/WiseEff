@@ -211,6 +211,18 @@ describe("Organization erasure preview through real HTTP and PostgreSQL", () => 
     expect((await db.query("select pending_object_refs from parameter_catalog.definition_erasures where definition_id='typed-global-receipt'")).rows)
       .toEqual([{ pending_object_refs: ["plane::plane-key", "catalog::cipher-key"] }]);
   });
+  it("refuses admission when a global pending object has no verified store type, even outside the target", async () => {
+    await db.query("insert into parameter_catalog.definition_erasures(definition_id,organization_id,erased_by,audit_event_id,pending_object_refs) values('untyped-global-receipt','preview-home','preview-platform','untyped-global-audit',array['untyped-global-key'])");
+    const result = await request<{ item: { stateDigest: string; admissionAvailable: boolean; executionAvailable: boolean; inventory: Array<{ key: string; category: string; count: number }>; blockers: Array<{ code: string }> } }>();
+    expect(result.status, result.bodyText).toBe(200);
+    expect(result.body.item.inventory).toContainEqual({ key: "storage.unknown-global-reference", category: "unclassified", count: 1 });
+    expect(result.body.item.blockers).toContainEqual(expect.objectContaining({ code: "unclassified-ownership" }));
+    expect(result.body.item).toMatchObject({ admissionAvailable: false, executionAvailable: false });
+    const caller = createUserInvocation(await getAuthContext(db, "preview-platform"));
+    await expect(db.transaction(tx => admitOrganizationDeletion(tx, caller, "preview-target", result.body.item.stateDigest)))
+      .rejects.toMatchObject({ code: "CONFLICT" });
+    expect((await db.query("select pending_object_refs from parameter_catalog.definition_erasures where definition_id='untyped-global-receipt'")).rows).toEqual([{ pending_object_refs: ["untyped-global-key"] }]);
+  });
   it.each(["preview-target", null])("reports retained global erasure provenance when its ledger Home differs from the audited organization (audit owner: %s)", async owner => {
     await db.query("insert into audit_events(id,organization_id,actor_user_id,actor_type,app,kind,action,severity,target_type,target_id,metadata,trace_id) values('foreign-global-proof',$1,'preview-platform','user','admin','definition-erasure','delete','info','parameter-definition','global-definition',$2,'foreign-global-trace')", [owner, { operatingOrganizationId: "preview-target" }]);
     await db.query("insert into parameter_catalog.definition_erasures(definition_id,organization_id,erased_by,audit_event_id) values('foreign-global-definition','preview-home','preview-platform','foreign-global-proof')");
