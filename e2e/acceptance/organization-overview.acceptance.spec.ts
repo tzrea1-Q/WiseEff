@@ -119,9 +119,18 @@ test("organization overview and six entries retain scope, real counts and ordina
     expect(pausedSuggestions).toEqual([]);
     const restored = await page.request.patch(apiRoute(`/api/v1/platform/organizations/${org}/lifecycle`), { headers: authHeadersForRole("platform-admin"), data: { status: "active", expectedStatus: "suspended" } });
     expect(restored.status()).toBe(200); suspendedSuccessfully = false;
-    const resumed = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/agent/xiaoze/suggest" && response.request().method() === "POST");
+    const proactiveEnabled = process.env.VITE_XIAOZE_PROACTIVE_ENABLED?.trim().toLowerCase() === "true";
+    const resumed = proactiveEnabled ? page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/agent/xiaoze/suggest" && response.request().method() === "POST") : null;
     await page.reload(); await prepareInteractionSurface(page);
-    expect((await resumed).status()).toBe(200);
+    if (resumed) expect((await resumed).status()).toBe(200);
+    else expect(pausedSuggestions).toEqual([]);
+    // The owned CI frontend deliberately disables opt-in suggestions. The same
+    // restored Organization must still admit the real server operation.
+    const restoredSuggestion = await page.request.post(apiRoute(`/api/v1/agent/xiaoze/suggest?organizationId=${org}`), {
+      headers: authHeadersForRole("platform-admin"),
+      data: { context: { pageKey: "parameters", projectId: `${org}-project-a`, path: `/parameters${scope}` } }
+    });
+    expect(restoredSuggestion.status()).toBe(200);
   } finally {
     if (suspendedSuccessfully) {
       const restored = await page.request.patch(apiRoute(`/api/v1/platform/organizations/${org}/lifecycle`), { headers: authHeadersForRole("platform-admin"), data: { status: "active", expectedStatus: "suspended" } });
