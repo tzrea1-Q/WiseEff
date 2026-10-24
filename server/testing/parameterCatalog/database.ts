@@ -181,7 +181,12 @@ export const S2_SCH_0285_FINGERPRINT =
 export const S2_SCH_0287_FINGERPRINT =
   "bf1aabdb7b422ba0943a139971bb8c532084144ed34a063dfe0144dabc53e497";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0287_FINGERPRINT;
+/** Fresh PostgreSQL through 0291 adds finite provenance compaction and
+ * Organization deletion replay. Earlier migration fingerprints stay fixed. */
+export const S2_SCH_0291_FINGERPRINT =
+  "225e57040eb9c2b1939e103f61db72cb5dc487d7286b1adb2b68b55676bd95a0";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0291_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

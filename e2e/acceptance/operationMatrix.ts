@@ -18,6 +18,14 @@ export type AcceptanceOperation = {
 
 export const acceptanceOperations: AcceptanceOperation[] = [
   {
+    id: "ORG-MIXED-ERASURE-RECOVERY-001", priority: "P1", area: "platform", coverage: "automated",
+    route: "/platform/organizations", roles: ["Platform Admin"],
+    action: "Confirm erasure of all four populated domains, retry an actual log-object failure and inspect a content-free final receipt; real PostgreSQL, file and independent checkpoint restoration separately proves deletion replay before reopening.",
+    acceptanceIds: ["ORG-MIXED-ERASURE-RECOVERY-001"],
+    specFiles: ["e2e/acceptance/organization-mixed-erasure.acceptance.spec.ts", "server/modules/users/organizationMixedErasure.integration.test.ts", "ops/self-hosted/scripts/upgrade-organization-erasure-recovery.test.ts"],
+    assertions: ["ui", "api", "db", "screenshot"]
+  },
+  {
     id: "ORG-PARAMETER-ERASURE-001", priority: "P1", area: "platform", coverage: "automated",
     route: "/platform/organizations", roles: ["Platform Admin"],
     action: "Confirm erasure of real project and parameter files, inspect a failed domain and retry its persisted progress while completed domains stay complete.",
