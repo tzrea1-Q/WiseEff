@@ -965,11 +965,7 @@ function AppShell({
   const navigateFromSidebar = useCallback(
     (nextPath: string) => {
       setMobileNavOpen(false);
-      const projectRoutes = ["/parameters", "/parameter-review", "/parameter-submissions"];
-      const params = new URLSearchParams(window.location.search);
-      const projectId = projectRoutes.includes(window.location.pathname)
-        ? params.get("project") || params.get("projectId") : null;
-      navigate(projectId && projectRoutes.includes(nextPath) ? `${nextPath}?project=${encodeURIComponent(projectId)}` : nextPath);
+      navigate(nextPath);
     },
     [navigate]
   );
@@ -1160,6 +1156,7 @@ function AppShell({
         {!isPlatformHome ? (
           <Sidebar
             activePath={page.path}
+            activeSearch={search}
             currentRoleId={currentRoleId}
             visibleWorkflows={visibleWorkflows}
             canManagePublication={canManagePublication}
@@ -1344,6 +1341,7 @@ function AppShell({
 
 function Sidebar({
   activePath,
+  activeSearch,
   currentRoleId,
   visibleWorkflows,
   canManagePublication,
@@ -1353,6 +1351,7 @@ function Sidebar({
   onFeedback
 }: {
   activePath: string;
+  activeSearch: string;
   currentRoleId: string;
   visibleWorkflows: readonly WorkflowId[];
   canManagePublication: boolean;
@@ -1362,6 +1361,9 @@ function Sidebar({
   onFeedback: () => void;
 }) {
   const activePageKey = getPageByPath(activePath).key;
+  const projectRoutes = ["/parameters", "/parameter-review", "/parameter-submissions"];
+  const params = new URLSearchParams(activeSearch);
+  const projectId = projectRoutes.includes(activePath) ? params.get("project") || params.get("projectId") : null;
   const compactHeight = useMediaQuery("(max-height: 820px)");
   const [managementOpen, setManagementOpen] = useState(false);
   useEffect(() => setManagementOpen(false), [compactHeight, isCollapsed]);
@@ -1447,6 +1449,7 @@ function Sidebar({
               {items.map((item) => {
                 const Icon = item.icon;
                 const isActive = item.key === activePageKey;
+                const href = projectId && projectRoutes.includes(item.path) ? `${item.path}?project=${encodeURIComponent(projectId)}` : item.path;
                 return (
                   <Tooltip key={item.path}>
                     <TooltipTrigger asChild>
@@ -1457,7 +1460,7 @@ function Sidebar({
                         className={`${isActive ? "nav-item active" : "nav-item"}${item.key.endsWith("-admin") ? " nav-item--admin" : ""}`}
                         variant="ghost"
                       >
-                        <a href={item.path} onClick={(event) => handleSpaLinkClick(event, item.path, onNavigate)}>
+                        <a href={href} onClick={(event) => handleSpaLinkClick(event, href, onNavigate)}>
                           <Icon size={18} aria-hidden="true" />
                           <span>{item.label}</span>
                         </a>
@@ -1485,7 +1488,7 @@ function Sidebar({
             {isCollapsed ? <TooltipContent side="right">{activeManagementItem ? `平台管理 · ${activeManagementItem.label}` : "平台管理"}</TooltipContent> : null}
           </Tooltip>
           <Popover.Portal>
-            <Popover.Content className="sidebar-management-popover" side="right" align="end" sideOffset={8}>
+            <Popover.Content className="sidebar-management-popover" aria-label="平台管理" side="right" align="end" sideOffset={8}>
               {managementNavigation}
             </Popover.Content>
           </Popover.Portal>

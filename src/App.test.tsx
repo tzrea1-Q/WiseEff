@@ -2225,8 +2225,12 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     window.history.replaceState(null, "", `/parameter-review?${key}=${encodeURIComponent(project.id)}`);
     renderApp({ initialAppState: adminState });
     const nav = screen.getByRole("navigation", { name: "主导航" });
-    fireEvent.click(within(nav).getByRole("link", { name: "项目参数" }));
+    const parameters = within(nav).getByRole("link", { name: "项目参数" });
+    expect(parameters).toHaveAttribute("href", `/parameters?project=${encodeURIComponent(project.id)}`);
+    expect(within(nav).getByRole("link", { name: "我的工作台" })).toHaveAttribute("href", "/parameter-home");
+    fireEvent.click(parameters);
     expect(new URLSearchParams(window.location.search).get("project")).toBe(project.id);
+    expect(within(nav).getByRole("link", { name: "变更审阅" })).toHaveAttribute("href", `/parameter-review?project=${encodeURIComponent(project.id)}`);
   });
 
   it("exposes the allowlisted sub-app entries on the homepage main region", () => {
@@ -3927,6 +3931,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       const managementTrigger = screen.getByRole("button", { name: "平台管理" });
       expect(screen.queryByRole("navigation", { name: "平台管理" })).not.toBeInTheDocument();
       await userEvent.click(managementTrigger);
+      expect(screen.getByRole("dialog", { name: "平台管理" })).toBeInTheDocument();
       const management = within(screen.getByRole("navigation", { name: "平台管理" }));
       expect(management.getByRole("link", { name: "工作流发布" })).toHaveAttribute("href", "/workflow-publication");
       expect(management.getByRole("link", { name: "反馈管理" })).toHaveAttribute("href", "/feedback-admin");
