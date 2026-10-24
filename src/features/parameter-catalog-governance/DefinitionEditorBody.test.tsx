@@ -18,6 +18,7 @@ import { catalogStateFromFailure, deriveCatalogDomainState } from "@/application
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 
 import { DefinitionEditorBody } from "./DefinitionEditorBody";
+import { publicationCopy } from "./publicationState";
 import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
 
 const ready = deriveCatalogDomainState({ document: readyCatalogDocument });
@@ -145,9 +146,9 @@ describe("DefinitionEditorBody", () => {
       catalogReleaseId={CATALOG_RELEASE_ID} definition={{ ...activeDefinition, currentRevision: {
         ...activeDefinition.currentRevision, unit: { kind: "symbol", symbol: "mA" }, examples: [100, 200]
       } }} subjects={[registeredSubject]} />);
-    expect(screen.getByLabelText("示例（JSON 数组）")).toHaveValue("[100,200]");
+    expect(screen.getByLabelText(publicationCopy.examples)).toHaveValue("[100,200]");
     await user.clear(screen.getByLabelText("单位"));
-    await user.clear(screen.getByLabelText("示例（JSON 数组）"));
+    await user.clear(screen.getByLabelText(publicationCopy.examples));
     expect(screen.getByText(/本次将移除：单位、示例/)).toBeVisible();
     await user.type(screen.getByLabelText("修改原因"), "清除错误的单位与示例");
     await user.click(screen.getByRole("button", { name: "保存内容修订" }));
@@ -166,18 +167,35 @@ describe("DefinitionEditorBody", () => {
         ...activeDefinition.currentRevision, valueShape: { kind: "json-schema", schema: { type: "string" } },
         examples: ["with,comma", "", "123"]
       } }} subjects={[registeredSubject]} />);
-    const examples = screen.getByLabelText("示例（JSON 数组）");
+    const examples = screen.getByLabelText(publicationCopy.examples);
     expect(examples).toHaveValue('["with,comma","","123"]');
     fireEvent.change(examples, { target: { value: "[invalid" } });
     await user.type(screen.getByLabelText("修改原因"), "更新示例");
     await user.click(screen.getByRole("button", { name: "保存内容修订" }));
-    expect(screen.getByText("示例必须为有效的 JSON 数组，当前输入已保留。")).toBeVisible();
+    expect(screen.getByText(`${publicationCopy.invalidExamples}当前输入已保留。`)).toBeVisible();
     expect(examples).toHaveValue("[invalid");
     expect(preview).not.toHaveBeenCalled();
     fireEvent.change(examples, { target: { value: '["with,comma","","123","new"]' } });
     await user.click(screen.getByRole("button", { name: "保存内容修订" }));
     await waitFor(() => expect(preview).toHaveBeenCalledWith({ changeSet: [expect.objectContaining({
       content: expect.objectContaining({ examples: ["with,comma", "", "123", "new"] })
+    })] }, expect.anything()));
+  });
+
+  it("accepts a multiline DTS property statement in the definition editor", async () => {
+    const user = userEvent.setup();
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const preview = vi.spyOn(ports.catalog, "createPublicationCandidate");
+    render(<DefinitionEditorBody authoringAllowed publishingAllowed history={<div />} actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={ready} catalog={ports.catalog}
+      catalogReleaseId={CATALOG_RELEASE_ID} definition={{ ...activeDefinition, propertyKey: "trx_plim", currentRevision: {
+        ...activeDefinition.currentRevision, valueShape: { kind: "json-schema", schema: { type: "array", items: { type: "string" } } }
+      } }} subjects={[registeredSubject]} />);
+    fireEvent.change(screen.getByLabelText(publicationCopy.examples), { target: { value: 'trx_plim =\n "5017", "-1", "6|9|10", "3|4";' } });
+    await user.type(screen.getByLabelText("修改原因"), "补充 DTS 示例");
+    await user.click(screen.getByRole("button", { name: "保存内容修订" }));
+    await waitFor(() => expect(preview).toHaveBeenCalledWith({ changeSet: [expect.objectContaining({
+      content: expect.objectContaining({ examples: [["5017", "-1", "6|9|10", "3|4"]] })
     })] }, expect.anything()));
   });
 

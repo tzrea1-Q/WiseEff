@@ -1,5 +1,5 @@
 import { selectControlOption } from "@/test/selectControlOption";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { cloneElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -111,6 +111,32 @@ async function confirm(label: string) {
   await user.click(within(dialog).getByRole("checkbox"));
   await user.click(within(dialog).getByRole("button", { name: label }));
 }
+
+it("saves and previews multiline DTS examples through the create form", async () => {
+  const { createProposal, createCandidate } = renderDialog({ actor: "org-admin" });
+  const user = userEvent.setup();
+  await fillSupportedDefinition(user);
+  await user.clear(screen.getByLabelText("属性键"));
+  await user.type(screen.getByLabelText("属性键"), "trx_plim");
+  await selectControlOption(screen.getByLabelText(publicationCopy.valueType), "string-list");
+  const examples = screen.getByLabelText(publicationCopy.examples);
+  expect(examples.tagName).toBe("TEXTAREA");
+  fireEvent.change(examples, { target: { value: 'other = "5017";' } });
+  await user.click(screen.getByRole("button", { name: "保存草稿" }));
+  expect(screen.getByText(/示例属性名应为「trx_plim」/)).toBeVisible();
+  expect(examples).toHaveAttribute("aria-invalid", "true");
+  expect(createProposal).not.toHaveBeenCalled();
+  fireEvent.change(examples, { target: { value: 'trx_plim =\n "5017", "-1", "6|9|10", "3|4";' } });
+  await user.click(screen.getByRole("button", { name: "保存草稿" }));
+  await waitFor(() => expect(createProposal).toHaveBeenCalledWith(expect.objectContaining({
+    requestedChange: expect.objectContaining({ content: expect.objectContaining({ examples: [["5017", "-1", "6|9|10", "3|4"]] }) })
+  }), expect.anything()));
+  await user.click(screen.getByRole("button", { name: "预览发布" }));
+  await confirm("确认预览");
+  await waitFor(() => expect(createCandidate).toHaveBeenCalledWith({ changeSet: [expect.objectContaining({
+    content: expect.objectContaining({ examples: [["5017", "-1", "6|9|10", "3|4"]] })
+  })] }, expect.anything()));
+});
 
 describe("PublicationDialog", () => {
   it("keeps creation separate from editing and has no permanent evidence refresh action", async () => {
