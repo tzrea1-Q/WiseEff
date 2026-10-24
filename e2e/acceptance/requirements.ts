@@ -9,6 +9,10 @@ export type AcceptanceRequirement = {
 
 export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
+    id: "ORG-OPERATING-LIFECYCLE-001", workflow: "H", required: false,
+    title: "In an isolated local-auth API lane, actual identities complete Organization creation, invitation, project participation, offboarding and handover, transfer, suspension/restoration and recoverable mixed deletion; signed OIDC continuity is verified separately."
+  },
+  {
     id: "ORG-MIXED-ERASURE-RECOVERY-001", workflow: "H", required: true,
     title: "A platform administrator erases mixed Organization data, resumes a real failed domain and reads a minimal receipt; actual older database, file and checkpoint backups replay applicable deletions before reopening."
   },

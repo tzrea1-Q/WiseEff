@@ -1,10 +1,10 @@
 # Organization management: operating scope, collaboration and lifecycle
 
-> Status: **Accepted design** — Q1–Q20 and the complete design (Q21) confirmed on 2026-10-23. The design interview is complete. Feature implementation and GitHub delivery remain separate subsequent requests.
+> Status: **Accepted design, implementation in acceptance** — Q1–Q20 and the complete design (Q21) were confirmed on 2026-10-23. All 33 slices are integrated, including mixed erasure/recovery, the complete operational scenario and user documentation. Current-candidate CI and independent review remain delivery gates tracked in the [implementation plan](../exec-plans/active/2026-10-23-organization-management.md).
 > Chinese: [组织管理整体设计](../zh-CN/design-docs/2026-10-23-organization-management-design.md)
 > Decisions: [ADR-0051](../adr/0051-organization-provisioning-and-member-admission.md)
 > Published specification: [GitHub Issue #1368](https://github.com/tzrea1-Q/WiseEff/issues/1368), labelled `ready-for-agent`.
-> Source baseline: `e795bd1a70c07391f893e4818cd8b07c138abcb3`.
+> Original design source baseline: `e795bd1a70c07391f893e4818cd8b07c138abcb3`. The starting-point observations below describe that historical baseline.
 
 ## Outcome and scope
 
@@ -152,4 +152,6 @@ Acceptance must demonstrate:
 7. Organization erasure survives process/object-store failure and retry, preserves shared/other-Organization data, prevents late producer writes and reports complete only after actual cleanup.
 8. Every new control is reachable and useful in the real API-mode UI, with pending/empty/error/read-only/cleanup states; existing business routes remain usable.
 
-Q1–Q20 and this assembled navigation, architecture, delivery order and acceptance boundary were confirmed in Q21 on 2026-10-23. The design interview is complete. Implementation, ticket creation, commits and GitHub delivery are separate subsequent requests. This document records an accepted design and source review, not an implemented or tested system.
+Q1–Q20 and this assembled navigation, architecture, delivery order and acceptance boundary were confirmed in Q21 on 2026-10-23. Implementation now follows the linked plan. Its executed local API/PostgreSQL/browser results remain distinct from candidate CI, independent review, Hosted and target-host evidence. Local acceptance does not establish production deployment or a target backup-restore drill. Recovery operations follow [Organization deletion replay](../runbooks/backup-restore.md#organization-deletion-replay).
+
+The current acceptance uses local password sessions and a controlled loopback OIDC issuer. Verification against a deployed external identity provider, MinIO, Redis restore and target-host recovery has not been executed for this candidate.

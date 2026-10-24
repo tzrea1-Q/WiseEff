@@ -8,6 +8,8 @@ import { withPgClient } from "./helpers/database";
 import { apiRoute } from "./helpers/runtime";
 import { prepareInteractionSurface } from "./helpers/interactionSurface";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { recordOperationEvidence } from "./helpers/operationEvidence";
+import { resolveEvidenceRunContext } from "./helpers/evidenceRun";
 
 // @acceptance ORG-OIDC-TRANSFER-001
 // @operation ORG-OIDC-TRANSFER-001
@@ -18,17 +20,23 @@ useBrowserDiagnostics(test, { expectedApiFailures: [
 ] });
 test("keeps OIDC transfer pending until a real signed target login and retries an honest synchronization check", async ({ page }, testInfo) => {
   test.skip(process.env.AUTH_PROVIDER !== "oidc" || !process.env.WISEEFF_OIDC_TRANSFER_TEST_SIGNING_KEY, "Requires the controlled OIDC issuer and its ephemeral signing fixture.");
+  const artifactRoot = resolveEvidenceRunContext().artifactsRoot;
+  mkdirSync(artifactRoot, { recursive: true });
+  const artifact = (name: string) => path.join(artifactRoot, name);
+  const outputRoot = process.env.PLAYWRIGHT_JSON_OUTPUT_FILE ? path.dirname(process.env.PLAYWRIGHT_JSON_OUTPUT_FILE) : process.env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR!;
+  const reportRoot = process.env.PLAYWRIGHT_HTML_OUTPUT_DIR ?? process.env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_REPORT_DIR!;
   const issuer = process.env.AUTH_OIDC_ISSUER!, issuerUrl = new URL(issuer);
   expect(issuerUrl.hostname).toBe("127.0.0.1");
   const signingKey = createPrivateKey(Buffer.from(process.env.WISEEFF_OIDC_TRANSFER_TEST_SIGNING_KEY!, "base64"));
   const registerSecret = (value: string) => {
-    for (const root of [process.env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR!, process.env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_REPORT_DIR!]) {
+    for (const root of [outputRoot, reportRoot, artifactRoot]) {
       mkdirSync(path.resolve(root), { recursive: true }); persistGate0ExactValuesForRescan(path.resolve(root), [value, `Bearer ${value}`]);
     }
   };
   function token(subject: string, org: string, issuedAt = Math.floor(Date.now() / 1000)) {
     const header = Buffer.from(JSON.stringify({ alg: "RS256", kid: "oidc-transfer-browser" })).toString("base64url");
-    const payload = Buffer.from(JSON.stringify({ iss: issuer, aud: process.env.AUTH_OIDC_AUDIENCE, sub: subject, organization_id: org, iat: issuedAt, exp: issuedAt + 3600 })).toString("base64url");
+    const payload = Buffer.from(JSON.stringify({ iss: issuer, aud: process.env.AUTH_OIDC_AUDIENCE, sub: subject, organization_id: org, iat: issuedAt, exp: issuedAt + 3600,
+      wiseeff_roles: [{ projectId: null, roleId: "platform-admin" }] })).toString("base64url");
     const jwt = `${header}.${payload}.${sign("RSA-SHA256", Buffer.from(`${header}.${payload}`), signingKey).toString("base64url")}`;
     registerSecret(jwt); return jwt;
   }
@@ -57,7 +65,7 @@ test("keeps OIDC transfer pending until a real signed target login and retries a
   await expect(dialog.getByRole("note", { name: "外部身份同步要求" })).toContainText(target);
   await expect(dialog.getByRole("note", { name: "外部身份同步要求" })).toContainText(issuer);
   await dialog.getByRole("note", { name: "外部身份同步要求" }).scrollIntoViewIfNeeded();
-  await page.screenshot({ path: testInfo.outputPath("oidc-transfer-preview-1440.png"), animations: "disabled" });
+  await page.screenshot({ path: artifact("oidc-transfer-preview-1440.png"), animations: "disabled" });
   await dialog.getByRole("button", { name: "确认调动", exact: true }).click();
   await expect(dialog.getByRole("alert")).toContainText("目标组织存在");
   expect((await page.request.get(apiRoute("/api/v1/me"), { headers: { Authorization: `Bearer ${oldToken}` } })).status()).toBe(200);
@@ -75,12 +83,12 @@ test("keeps OIDC transfer pending until a real signed target login and retries a
   const details = page.getByRole("dialog", { name: `${memberName} · 成员资料`, exact: true }), status = details.getByRole("status", { name: "外部身份同步结果" });
   await expect(status).toContainText("等待身份系统同步"); await expect(status).toContainText(target);
   await status.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: testInfo.outputPath("oidc-transfer-pending-1440.png"), animations: "disabled" });
+  await page.screenshot({ path: artifact("oidc-transfer-pending-1440.png"), animations: "disabled" });
   const usersRoute = (url: URL) => url.pathname === "/api/v1/users";
   await page.route(usersRoute, route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "INTERNAL_ERROR", message: "同步检查暂不可用" } }) }));
   await status.getByRole("button", { name: "刷新同步结果", exact: true }).click();
   await expect(details.getByRole("alert")).toContainText("同步检查暂不可用"); await expect(status).toContainText("等待身份系统同步");
-  await page.screenshot({ path: testInfo.outputPath("oidc-transfer-check-failure-1440.png"), animations: "disabled" });
+  await page.screenshot({ path: artifact("oidc-transfer-check-failure-1440.png"), animations: "disabled" });
   await page.unroute(usersRoute);
   const afterTransferSecond = Math.floor(Date.now() / 1000);
   await expect.poll(() => Math.floor(Date.now() / 1000)).toBeGreaterThan(afterTransferSecond);
@@ -89,11 +97,33 @@ test("keeps OIDC transfer pending until a real signed target login and retries a
   expect(await authenticated.json()).toMatchObject({ user: { id: member }, organization: { id: target }, roles: [{ projectId: null, roleId: "guest" }] });
   await status.getByRole("button", { name: "刷新同步结果", exact: true }).focus(); await page.keyboard.press("Enter");
   await expect(status).toContainText("已验证目标组织登录");
-  await page.screenshot({ path: testInfo.outputPath("oidc-transfer-verified-1440.png"), animations: "disabled" });
+  await page.screenshot({ path: artifact("oidc-transfer-verified-1440.png"), animations: "disabled" });
   await withPgClient(async db => {
     const result = await db.query("select transfer_pending_since is not null and transfer_verified_at>=transfer_pending_since as verified from user_oidc_identities where user_id=$1 and organization_id=$2", [member, target]);
     expect(result.rows).toEqual([{ verified: true }]);
     const audit = await db.query("select actor_user_id,organization_id,metadata->>'targetOrganizationId' as target from audit_events where kind='account-transfer' and target_id=$1", [member]);
     expect(audit.rows).toEqual([{ actor_user_id: platform, organization_id: source, target }]);
   });
+  const lifecycle = `/api/v1/platform/organizations/${target}/lifecycle`, freshMember = token(member, target);
+  expect((await page.request.patch(apiRoute(lifecycle), { headers, data: { status: "suspended", expectedStatus: "active" } })).status()).toBe(200);
+  await page.goto(`/organization?organizationId=${target}`); await prepareInteractionSurface(page);
+  await expect(page.getByRole("region", { name: "当前操作组织" })).toContainText("已停用 · 仅可查看");
+  const readOnlyIdentity = await page.request.get(apiRoute("/api/v1/me"), { headers: { Authorization: `Bearer ${freshMember}` } });
+  expect(readOnlyIdentity.status()).toBe(200);
+  expect(await readOnlyIdentity.json()).toMatchObject({ user: { id: member }, organization: { id: target }, roles: [{ projectId: null, roleId: "guest" }] });
+  await page.screenshot({ path: artifact("oidc-transfer-suspended-1440.png"), animations: "disabled" });
+  expect((await page.request.patch(apiRoute(lifecycle), { headers, data: { status: "active", expectedStatus: "suspended" } })).status()).toBe(200);
+  expect((await page.request.get(apiRoute("/api/v1/me"), { headers: { Authorization: `Bearer ${oldToken}` } })).status()).toBe(401);
+  const restoredIdentity = await page.request.get(apiRoute("/api/v1/me"), { headers: { Authorization: `Bearer ${freshMember}` } });
+  expect(restoredIdentity.status()).toBe(200); expect(await restoredIdentity.json()).toMatchObject({ roles: [{ projectId: null, roleId: "guest" }] });
+  await page.reload(); await prepareInteractionSurface(page);
+  await expect(page.getByRole("region", { name: "当前操作组织" })).not.toContainText("已停用");
+  await recordOperationEvidence({ operationId: "ORG-OIDC-TRANSFER-001", title: "Signed OIDC transfer, synchronization and lifecycle continuity", status: "passed", page, testInfo,
+    assertions: ["ui", "api", "db", "audit", "screenshot"],
+    report: { path: path.join(reportRoot, "index.html"), format: "html" }, trace: { mode: "retain-on-failure", path: outputRoot },
+    artifacts: ["oidc-transfer-preview-1440.png", "oidc-transfer-pending-1440.png", "oidc-transfer-check-failure-1440.png", "oidc-transfer-verified-1440.png", "oidc-transfer-suspended-1440.png"].map(artifact),
+    api: [{ method: "POST", path: `/api/v1/platform/organizations/${source}/members/${member}/transfer`, status: 200, responseSummary: "Real signed target login verified synchronization; source and pre-revocation claims stayed invalid." },
+      { method: "GET", path: "/api/v1/me", status: 200, responseSummary: "Target login remained guest through suspend/restore despite a provider claim requesting platform-admin." }],
+    db: [{ table: "user_oidc_identities", predicate: "the explicitly transferred member", observed: "Target login verified without broadening application roles", rowCount: 1 }],
+    audit: [{ kind: "account-transfer", targetId: member, metadataSummary: "The actual platform actor and source Organization matched the successful transfer." }] });
 });

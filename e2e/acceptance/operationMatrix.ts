@@ -18,6 +18,15 @@ export type AcceptanceOperation = {
 
 export const acceptanceOperations: AcceptanceOperation[] = [
   {
+    id: "ORG-OPERATING-LIFECYCLE-001", priority: "P1", area: "platform", coverage: "conditional",
+    route: "/platform/organizations", roles: ["Platform Admin", "Org Admin", "Invited Editor", "Organization Member"],
+    action: "Create and enter an Organization, invite preset participants, grant explicit project editing, retain an offboarded author's work through handover, transfer an account, suspend/restore and resume actual mixed-domain deletion after a persistent file fault.",
+    acceptanceIds: ["ORG-OPERATING-LIFECYCLE-001"],
+    specFiles: ["e2e/acceptance/organization-operational-lifecycle.acceptance.spec.ts", "server/modules/users/organizationOperationalLifecycle.integration.test.ts"],
+    assertions: ["ui", "api", "db", "audit", "screenshot"],
+    deferralReason: "Requires actual local password sessions in an isolated local-auth API lane; HMAC/OIDC lanes skip this provider-specific workflow. The signed OIDC companion has its own conditional operation and evidence."
+  },
+  {
     id: "ORG-MIXED-ERASURE-RECOVERY-001", priority: "P1", area: "platform", coverage: "automated",
     route: "/platform/organizations", roles: ["Platform Admin"],
     action: "Confirm erasure of all four populated domains, retry an actual log-object failure and inspect a content-free final receipt; real PostgreSQL, file and independent checkpoint restoration separately proves deletion replay before reopening.",

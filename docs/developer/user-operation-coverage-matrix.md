@@ -6,6 +6,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 
 | Operation ID | Priority | Area | Coverage | Route | Roles | Action | Assertions | Specs |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `ORG-OPERATING-LIFECYCLE-001` | P1 | platform | conditional | `/platform/organizations` | Platform Admin, Org Admin, Invited Editor, Organization Member | Create and enter an Organization, invite preset participants, grant explicit project editing, retain an offboarded author's work through handover, transfer an account, suspend/restore and resume actual mixed-domain deletion after a persistent file fault. | ui, api, db, audit, screenshot | `e2e/acceptance/organization-operational-lifecycle.acceptance.spec.ts`<br>`server/modules/users/organizationOperationalLifecycle.integration.test.ts` |
 | `ORG-MIXED-ERASURE-RECOVERY-001` | P1 | platform | automated | `/platform/organizations` | Platform Admin | Confirm erasure of all four populated domains, retry an actual log-object failure and inspect a content-free final receipt; real PostgreSQL, file and independent checkpoint restoration separately proves deletion replay before reopening. | ui, api, db, screenshot | `e2e/acceptance/organization-mixed-erasure.acceptance.spec.ts`<br>`server/modules/users/organizationMixedErasure.integration.test.ts`<br>`ops/self-hosted/scripts/upgrade-organization-erasure-recovery.test.ts` |
 | `ORG-PARAMETER-ERASURE-001` | P1 | platform | automated | `/platform/organizations` | Platform Admin | Confirm erasure of real project and parameter files, inspect a failed domain and retry its persisted progress while completed domains stay complete. | ui, api, db, screenshot | `e2e/acceptance/organization-parameter-erasure.acceptance.spec.ts`<br>`server/modules/users/organizationParameterErasure.integration.test.ts` |
 | `ORG-KNOWLEDGE-ERASURE-001` | P1 | platform | automated | `/platform/organizations` | Platform Admin | Confirm erasure of real knowledge attachments and indexes, observe a storage failure and finish cleanup from the independent retry records. | ui, api, db, screenshot | `e2e/acceptance/organization-knowledge-erasure.acceptance.spec.ts`<br>`server/modules/knowledge/organizationErasure.integration.test.ts` |
@@ -204,6 +205,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 
 ## Deferred Or Conditional Operations
 
+- `ORG-OPERATING-LIFECYCLE-001`: Requires actual local password sessions in an isolated local-auth API lane; HMAC/OIDC lanes skip this provider-specific workflow. The signed OIDC companion has its own conditional operation and evidence.
 - `ORG-OIDC-TRANSFER-001`: Requires an isolated OIDC API lane with a controlled loopback issuer/JWKS and its ephemeral test signing key; other provider lanes cannot establish this evidence.
 - `ORG-ACCOUNT-TRANSFER-001`: Browser workflow requires an isolated real local-auth API lane; HMAC and OIDC lanes skip this local-password interaction.
 - `PCAT-REGISTRATION-INITIALIZE-001`: Component and native PostgreSQL cases cover explicit initialization, authorization, concurrent replay and rollback; a dedicated browser write and audit receipt remain pending.
