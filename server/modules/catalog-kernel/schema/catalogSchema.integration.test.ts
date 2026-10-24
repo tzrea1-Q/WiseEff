@@ -185,6 +185,7 @@ describe("canonical parameter Catalog schema", () => {
     const expected = [
       "binding_history_events",
       "catalog_activation_receipts",
+      "catalog_archive_writes",
       "catalog_command_idempotency",
       "catalog_configuration_schemas",
       "catalog_drivers",
@@ -211,6 +212,8 @@ describe("canonical parameter Catalog schema", () => {
       "legacy_mapping_heads",
       "legacy_mapping_versions",
       "log_erasures",
+      "organization_log_erasure_objects",
+      "organization_parameter_erasure_objects",
       "organization_subject_registrations",
       "parameter_catalog_archives",
       "parameter_catalog_classification_ledger",

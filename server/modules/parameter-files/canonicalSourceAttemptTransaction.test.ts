@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createPostgresDatabase, getRootPostgresPool, type Database } from "../../shared/database/client";
+import { seedOrganization } from "../../testing/fixtures";
 import { createMemoryObjectStore } from "../../testing/objectStore";
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
 import type { CanonicalSourceAttempt } from "./canonicalSourceAttempt";
@@ -31,6 +32,7 @@ describe("canonical source attempt confirmed PostgreSQL rollback", () => {
   beforeAll(async () => {
     database = await createEphemeralTestDatabase("sourceattempt");
     db = createPostgresDatabase(database.url);
+    await seedOrganization(db, { id: "org-attempt-transaction-test" });
     await db.query("create table source_attempt_commit_test (id integer unique deferrable initially deferred)");
   }, 60_000);
 
