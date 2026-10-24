@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { assertShardJobs, l1CommandIds, type Identity } from "./ci-required-results";
@@ -24,6 +24,36 @@ function receipts(kind: "quality" | "server"): ShardReceipt[] {
 }
 
 describe("complete CI shard inventories", () => {
+  it("retains the failed quality command's native report without publishing a success receipt", () => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), "wiseeff-quality-failure-"));
+    try {
+      const report = { errors: [], stats: { duration: 120 }, suites: [{ title: "visual.quality.spec.ts", specs: [{
+        file: "visual.quality.spec.ts", title: "fails the original assertion", tests: [{ projectName: "visual", expectedStatus: "passed",
+          results: [{ status: "failed", errors: [{ message: "expect(locator).toHaveCount(expected) failed" }] }] }]
+      }] }] };
+      const bin = path.join(directory, "bin"), artifacts = path.join(directory, "artifacts");
+      mkdirSync(bin); mkdirSync(artifacts); mkdirSync(path.join(directory, "node_modules/playwright"), { recursive: true });
+      writeFileSync(path.join(directory, "node_modules/playwright/cli.js"),
+        `require('node:fs').writeFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_FILE, ${JSON.stringify(JSON.stringify(report))});`);
+      const npm = path.join(bin, "npm");
+      writeFileSync(npm, `#!${process.execPath}\nrequire('node:fs').writeFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_FILE, ${JSON.stringify(JSON.stringify(report))}); process.exit(1);`);
+      chmodSync(npm, 0o755);
+      const result = spawnSync(process.execPath, ["--experimental-strip-types", path.resolve("scripts/ci-shard-results.ts"), "quality"], {
+        cwd: directory, encoding: "utf8", env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+          GIT_DIR: execFileSync("git", ["rev-parse", "--absolute-git-dir"], { encoding: "utf8" }).trim(),
+          GITHUB_SHA: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+          GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/main", GITHUB_REPOSITORY: identity.repository,
+          GITHUB_RUN_ID: identity.runId, GITHUB_RUN_ATTEMPT: identity.attempt, GITHUB_JOB: "acceptance-quality-lanes",
+          EFF_FULL_ACCEPTANCE: "false", EFF_BASE_SHA: "", EFF_HEAD_SHA: "", EFF_MODE: "",
+          WISEEFF_QUALITY_LANE: "visual", WISEEFF_QUALITY_PLAYWRIGHT_OUTPUT_DIR: artifacts, RUNNER_TEMP: directory }
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("CI_SHARD_COMMAND_FAILED");
+      expect(JSON.parse(readFileSync(path.join(artifacts, "results.json"), "utf8"))).toEqual(report);
+      expect(existsSync(path.join(directory, "wiseeff-ci-shard/receipt.json"))).toBe(false);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it.each([undefined, "", "3/2", "1/3", "1"])("rejects an absent or invalid backend shard before reading receipts: %s", (shard) => {
     vi.stubEnv("WISEEFF_CI_SERVER_SHARD", shard);
     try {
