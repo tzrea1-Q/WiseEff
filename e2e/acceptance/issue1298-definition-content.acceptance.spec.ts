@@ -136,7 +136,9 @@ test("#1298 administrator clears optional content and round-trips DTS examples a
     const values = ["5017", "5500", "1200", "-1", "2", "-1", "-1", "-1",
       "12000", "12000", "2300", "-1", "6|9|10", "-1", "3", "-1",
       "12000", "12000", "2300", "-1", "255", "-1", "3|4", "-1"];
-    await editor.getByLabel("示例（DTS 或 JSON）").fill(`trx_plim =\n\t${values.map((value) => JSON.stringify(value)).join(",\n\t")};`);
+    const commentedRows = [0, 8, 16].map((start, row) =>
+      `${values.slice(start, start + 8).map((value) => JSON.stringify(value)).join(", ")}${row < 2 ? "," : ";"} /* row ${row + 1}: 6|9|10, >; */`);
+    await editor.getByLabel("示例（DTS 或 JSON）").fill(`/* power limits */ trx_plim =\n\t${commentedRows.join("\n\t")} // end`);
     await editor.getByLabel("修改原因").fill("补充完整 DTS 字符串列表示例");
     await catalogScreenshot(page, testInfo, "dts-string-list-example-input");
     const stringQueued = page.waitForResponse((response) => response.request().method() === "POST" && /\/publication-candidates\/[^/]+\/publish$/u.test(new URL(response.url()).pathname));
