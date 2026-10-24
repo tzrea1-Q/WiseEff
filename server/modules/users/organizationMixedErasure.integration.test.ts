@@ -75,7 +75,7 @@ describe("Mixed Organization erasure and minimal receipts through real HMAC HTTP
   it("converges retained global audit proofs to content-free facts and a minimal final receipt", async () => {
     await db.query(`insert into audit_events(id,organization_id,actor_user_id,actor_type,app,kind,action,severity,target_type,target_id,trace_id,metadata)
       values('mixed-global-proof','mixed-target','mixed-member','user','parameters','governance','definition-erased','High','parameter-definition','retained-definition','private-trace','{"private":"B business sentinel"}'),
-      ('mixed-global-scope',null,'mixed-platform','user','user-governance','organization-operating-scope','resolve-operating-scope','Medium','organization','mixed-target','scope-trace','{"operatingOrganizationId":"mixed-target","private":"B business sentinel"}'),
+      ('mixed-global-scope',null,'mixed-platform','user','user-governance','organization-operating-scope','resolve-operating-scope','Medium','organization','mixed-target','scope-trace','{"operatingOrganizationId":"mixed-target","actorUserId":"B business sentinel","private":"B business sentinel"}'),
       ('mixed-retain-audit','mixed-home','mixed-platform','user','user-governance','unrelated','retain','Low','organization','mixed-home','retain-trace','{"private":"Retain A sentinel"}');
       insert into parameter_catalog.definition_erasures(definition_id,organization_id,erased_by,audit_event_id,counts)
       values('retained-definition','mixed-home','mixed-member','mixed-global-proof','{"definitions":1}');`);
@@ -84,6 +84,8 @@ describe("Mixed Organization erasure and minimal receipts through real HMAC HTTP
     const proofs = (await db.query("select id,organization_id,metadata,historical_attribution,trace_id from audit_events where id in ('mixed-global-proof','mixed-global-scope') order by id")).rows;
     expect(proofs).toHaveLength(2); expect(JSON.stringify(proofs)).not.toContain("B business sentinel"); expect(JSON.stringify(proofs)).not.toContain("private-trace");
     expect(proofs.every(row => (row as { organization_id: unknown }).organization_id === null)).toBe(true);
+    expect(proofs.map(row => row.historical_attribution)).toEqual([{}, {}]);
+    expect(proofs.map(row => (row.metadata as { actorUserId: string }).actorUserId)).toEqual(["mixed-member", "mixed-platform"]);
     expect((await db.query("select metadata->>'private' content from audit_events where id='mixed-retain-audit'")).rows).toEqual([{ content: "Retain A sentinel" }]);
     expect((await db.query("select audit_event_id from parameter_catalog.definition_erasures where definition_id='retained-definition'")).rows).toEqual([{ audit_event_id: "mixed-global-proof" }]);
     expect((await request(`/api/v1/platform/organization-deletions/${erased.body.item.id}/retry`, "POST")).status).toBe(200);
