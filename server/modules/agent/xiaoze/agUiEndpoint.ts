@@ -23,6 +23,7 @@ import { createDeterministicPerceptionModel } from "./deterministicModel";
 import type { PerceptionAgentRunResult, PerceptionToolDescriptor } from "./modelTypes";
 import { formatApprovalExecutionFailure } from "./approvalExecutionFailure";
 import { createPlanningAgent } from "./planningGraph";
+import { registerAgentCheckpointNamespace } from "./checkpointOwnership";
 import { runXiaozeSuggest } from "./suggest";
 import { buildXiaozePlanningToolDescriptors, getXiaozeToolLabel, toOpenAiToolDefinitions } from "./toolCatalog";
 import { isXiaozeDeterministicMode } from "./runtimeMode";
@@ -511,6 +512,10 @@ export function createXiaozeAgentFactory(options: {
       return recorded.result;
     },
     listTools: () => planningToolDescriptors,
+    admitNamespace: async (input, checkpointThreadId) => {
+      if (!input.requestContext) throw new ApiError("UNAUTHENTICATED", "Agent request context is required.");
+      await registerAgentCheckpointNamespace(options.db, checkpointer, input.requestContext.auth, input.threadId, checkpointThreadId);
+    },
     checkpointer,
     approvalResolver: executionOrchestrator
   });
@@ -548,6 +553,7 @@ export function registerXiaozeRoutes(
     >;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
     createAgent?: (context: AgentToolExecutionContext) => XiaozePerceptionAgent;
+    checkpointer?: ReturnType<typeof createXiaozeCheckpointer>;
     approvalChain?: XiaozeApprovalChain;
     orchestrator?: AgentOrchestrator;
     toolRegistry?: ReturnType<typeof createAgentToolRegistry>;
@@ -598,6 +604,7 @@ export function registerXiaozeRoutes(
       env: envDefaults,
       toolRegistry: registry,
       orchestrator: orchestrator,
+      checkpointer: options.checkpointer,
       ...(options.env
         ? {}
         : {

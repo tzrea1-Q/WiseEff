@@ -55,6 +55,7 @@ const CANONICAL_SOURCE_READ_FUNCTIONS = [
   "parameter_catalog.finish_log_erasure_object(text, text, text, text)",
   "parameter_catalog.preview_project_deletion_catalog(text, text, text)",
   "parameter_catalog.preview_organization_deletion(text, text)",
+  "parameter_catalog.register_agent_checkpoint_namespace(text, text, text, text, text, text, boolean)",
   "parameter_catalog.lock_project_erasure(text, text, text)",
   "parameter_catalog.read_project_erasure(text, text, text)",
   "parameter_catalog.purge_project(text, text, text, text)",
@@ -443,6 +444,10 @@ export async function provisionPublicationRuntimeLogins(
 
       await grantPublicAppDml(admin, names.api);
       await grantPublicAppDml(admin, names.worker);
+      const checkpointOwnership = await admin.query<{ exists: boolean }>("select to_regclass('public.agent_checkpoint_namespaces') is not null as exists");
+      if (checkpointOwnership.rows[0]?.exists) {
+        await admin.query(`revoke insert, update, delete on public.agent_checkpoint_namespaces from ${quoteIdent(names.api)}, ${quoteIdent(names.worker)}`);
+      }
       const oidcIdentities = await admin.query<{ exists: boolean }>("select to_regclass('public.user_oidc_identities') is not null as exists");
       if (oidcIdentities.rows[0]?.exists) {
         await admin.query(`revoke insert, update, delete on public.user_oidc_identities from ${quoteIdent(names.worker)}`);

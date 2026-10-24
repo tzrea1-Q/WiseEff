@@ -11,9 +11,11 @@ import type { organizationDeletionPreviewSchema } from "../contracts/dtoSchemas/
 import { hasOrganizationRole, listUsableAdministratorIds, lockAdministratorMutation, type AdministratorMutationContext } from "./administratorContinuity";
 import { listUsers } from "./repository";
 import { requirePlatformOrganizationManager } from "./platformOrganizations";
+import type { XiaozeCheckpointer } from "../agent/xiaoze/checkpointer";
+import { inspectOrganizationCheckpoints } from "../agent/xiaoze/checkpointOwnership";
 
 type Preview = z.infer<typeof organizationDeletionPreviewSchema>;
-export type OrganizationDeletionContext = AdministratorMutationContext & ExperienceRegistrationDefaults;
+export type OrganizationDeletionContext = AdministratorMutationContext & ExperienceRegistrationDefaults & { agentCheckpointer?: XiaozeCheckpointer };
 
 async function readPreview(tx: Database, caller: UserInvocationContext, organizationId: string, context: OrganizationDeletionContext): Promise<Preview> {
   const actor = await getAuthContext(tx, caller.principal.user.id);
@@ -23,6 +25,9 @@ async function readPreview(tx: Database, caller: UserInvocationContext, organiza
     "select name,status,lifecycle_version::text as version from organizations where id=$1", [organizationId])).rows[0]!;
   const rows = (await tx.query<{ key: string; category: string; item_count: string; state_digest: string }>(
     "select * from parameter_catalog.preview_organization_deletion($1,$2) order by key", [organizationId, actor.user.id])).rows;
+  const runtime = await inspectOrganizationCheckpoints(tx, organizationId, context.agentCheckpointer);
+  rows.splice(0, rows.length, ...rows.filter(row => row.key !== "agent.checkpoint-runtime"), ...runtime);
+  rows.sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0);
   const inventory = rows.filter(row => row.category !== "storage").map(row => ({ key: row.key, category: row.category, count: Number(row.item_count) }));
   const users = await listUsers(tx, organizationId), usable = await listUsableAdministratorIds(tx, null, "platform-admin", context);
   const platformAccounts = users.filter(user => hasOrganizationRole(user.roles, "platform-admin"))

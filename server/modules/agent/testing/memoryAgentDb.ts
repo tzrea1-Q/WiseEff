@@ -10,6 +10,7 @@ export type MemoryAgentDbOptions = {
   failApprovalUpdates?: boolean;
   failToolUpdateStatuses?: string[];
   failAuditActions?: string[];
+  checkpointActors?: Array<{ organizationId: string; actorUserId: string }>;
 };
 
 /**
@@ -24,7 +25,8 @@ export function createMemoryAgentDb(options: MemoryAgentDbOptions = {}) {
     toolCalls: [] as MemoryRow[],
     approvals: [] as MemoryRow[],
     traces: [] as MemoryRow[],
-    audits: [] as MemoryRow[]
+    audits: [] as MemoryRow[],
+    checkpointNamespaces: [] as MemoryRow[]
   };
 
   function cloneTables() {
@@ -34,7 +36,8 @@ export function createMemoryAgentDb(options: MemoryAgentDbOptions = {}) {
       toolCalls: tables.toolCalls.map((row) => ({ ...row })),
       approvals: tables.approvals.map((row) => ({ ...row })),
       traces: tables.traces.map((row) => ({ ...row })),
-      audits: tables.audits.map((row) => ({ ...row }))
+      audits: tables.audits.map((row) => ({ ...row })),
+      checkpointNamespaces: tables.checkpointNamespaces.map((row) => ({ ...row }))
     };
   }
 
@@ -48,6 +51,23 @@ export function createMemoryAgentDb(options: MemoryAgentDbOptions = {}) {
     return {
       query: async <Row,>(text: string, values: unknown[] = []) => {
         const sql = text.replace(/\s+/g, " ").trim();
+
+        if (sql === "select parameter_catalog.register_agent_checkpoint_namespace($1,$2,$3,$4,$5,$6,$7)") {
+          if (!options.checkpointActors?.some(actor => actor.organizationId === values[0] && actor.actorUserId === values[1])) {
+            throw Object.assign(new Error("Unknown checkpoint actor in memory fixture"), { code: "42501" });
+          }
+          const prior = targetTables.checkpointNamespaces.find(row => row.store_id === values[3] && row.checkpoint_thread_id === values[5]);
+          if (prior && (prior.organization_id !== values[0] || prior.actor_user_id !== values[1] || prior.logical_thread_id !== values[2])) {
+            throw Object.assign(new Error("Checkpoint tuple conflict"), { code: "23505" });
+          }
+          if (!prior) targetTables.checkpointNamespaces.push({ organization_id: values[0], actor_user_id: values[1], logical_thread_id: values[2], store_id: values[3], store_kind: values[4], checkpoint_thread_id: values[5] });
+          return { rows: [] as Row[], rowCount: 1 };
+        }
+
+        if (sql === "select actor_user_id,organization_id from agent_sessions where id=$1") {
+          const rows = targetTables.sessions.filter(row => row.id === values[0]);
+          return { rows: rows as Row[], rowCount: rows.length };
+        }
 
         if (sql.includes("from public.organizations")) {
           const exists = targetTables.sessions.some(row => row.organization_id === values[0]);

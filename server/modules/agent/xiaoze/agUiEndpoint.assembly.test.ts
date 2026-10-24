@@ -139,7 +139,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
   it("recovers an owned first-turn approval from the parameters page without a prior read tool", async () => {
     primeParameterMocks("<3100>");
     mockedSubmit.mockClear();
-    const { db, tables } = createMemoryAgentDb();
+    const { db, tables } = createMemoryAgentDb({ checkpointActors: [{ organizationId: developmentAuthContext.organization.id, actorUserId: developmentAuthContext.user.id }] });
     const owner = developmentAuthContext;
     let currentAuth = owner;
     const options = {
@@ -225,7 +225,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
   });
 
   it("normalizes a partial route env before resolving the Xiaoze model label", async () => {
-    const { db } = createMemoryAgentDb();
+    const { db } = createMemoryAgentDb({ checkpointActors: [{ organizationId: developmentAuthContext.organization.id, actorUserId: developmentAuthContext.user.id }] });
     const router = createRouter();
     registerXiaozeRoutes(router, {
       db,
@@ -255,7 +255,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
     primeParameterMocks("<3600>");
     mockedSubmit.mockResolvedValue({ id: "cr-777" } as never);
 
-    const { db, tables } = createMemoryAgentDb();
+    const { db, tables } = createMemoryAgentDb({ checkpointActors: [{ organizationId: developmentAuthContext.organization.id, actorUserId: developmentAuthContext.user.id }] });
     const router = createRouter();
     registerXiaozeRoutes(router, {
       db,
@@ -364,7 +364,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
     primeParameterMocks("<42>");
     mockedSubmit.mockReset();
 
-    const { db, tables } = createMemoryAgentDb();
+    const { db, tables } = createMemoryAgentDb({ checkpointActors: [{ organizationId: developmentAuthContext.organization.id, actorUserId: developmentAuthContext.user.id }] });
     const router = createRouter();
     registerXiaozeRoutes(router, {
       db,
@@ -415,7 +415,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
     mockedCreateDraft.mockReset();
     primeParameterMocks("<3100>");
 
-    const { db, tables } = createMemoryAgentDb();
+    const { db, tables } = createMemoryAgentDb({ checkpointActors: [{ organizationId: developmentAuthContext.organization.id, actorUserId: developmentAuthContext.user.id }] });
     const router = createRouter();
     registerXiaozeRoutes(router, {
       db,
@@ -487,7 +487,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
   });
 
   it("refuses to run against a thread owned by another same-org user", async () => {
-    const { db, tables } = createMemoryAgentDb();
+    const { db, tables } = createMemoryAgentDb({ checkpointActors: [{ organizationId: developmentAuthContext.organization.id, actorUserId: developmentAuthContext.user.id }] });
     const owner = developmentAuthContext;
     const intruder = {
       ...owner,

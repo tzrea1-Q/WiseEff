@@ -110,6 +110,7 @@ describe("fresh database fixture policy", () => {
         "wayfinder671_psql_gexec:false", "wayfinder671_psql_lexer:false", "wayfinder671_rollback:false",
         "wayfinder671_source:false", "wayfinder671_unknown:false", "wayfinder671_zero_source:false"
       ],
+      "server/modules/agent/xiaoze/checkpointOwnership.integration.test.ts": ["checkpointupgrade:false"],
       "server/modules/agent/xiaoze/durableAgentResume.integration.test.ts": ["xiaoze_concurrent_admission:true", "xiaoze_owned_backend_loss:true"],
       // Replay the pre-snapshot schema with populated, pinned parameter history.
       "server/modules/audit/historicalAttributionUpgrade.integration.test.ts": ["history_upgrade:false"],
