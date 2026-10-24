@@ -30,6 +30,25 @@ function missingRuntimeGrants(sql: string): string[] {
           + (routine ? `executeformat('grantexecuteonfunction${routine}to%i',${recipient});` : "");
         if (recipient && cleanupLoop[2] === expected) return true;
       }
+      if (table === "parameter_object_writes") {
+        const afterCreate = uncommented.slice(create.index! + create[0].length).replace(/\s+|"/g, "").toLowerCase();
+        const entries = "parameter_catalog.reserve_parameter_object_write(text,text),parameter_catalog.lock_parameter_object_write(text)";
+        const owners = compact.match(/forroutineinselectoid::regprocedurenamefrompg_procwherepronamespace='parameter_catalog'::regnamespaceandpronamein\(([^)]*)\)loop(.*?)endloop;/);
+        const writers = compact.match(/forruntimeinselectrolnamefrompg_roleswhererolcanloginandnotrolsuperandnotrolinheritandpg_has_role\(oid,'parameter_governance_writer_role','member'\)andpg_has_role\(oid,'parameter_governance_writer_role','set'\)loop(.*?)endloop;/);
+        const grants = [...afterCreate.matchAll(/grant[^;]*onfunction[^;]*parameter_catalog\.(?:reserve_parameter_object_write|lock_parameter_object_write)\([^;]*;/g)].map(([grant]) => grant);
+        if (afterCreate.includes("altertablepublic.parameter_object_writesownertocatalog_migration_owner;")
+          && afterCreate.includes("revokeallonpublic.parameter_object_writesfrompublic;")
+          && !/grant[^;]*on(?:[^;]*parameter_object_writes(?:,|to)|alltablesinschema[^;]*public(?:,|to)|allfunctionsinschema[^;]*parameter_catalog(?:,|to))/.test(afterCreate)
+          && afterCreate.includes("createfunctionparameter_catalog.reserve_parameter_object_write(p_orgtext,p_reftext)returnstextlanguageplpgsqlsecuritydefinersetsearch_path=pg_catalog,publicas$$")
+          && afterCreate.includes("createfunctionparameter_catalog.lock_parameter_object_write(p_idtext)returnsvoidlanguageplpgsqlsecuritydefinersetsearch_path=pg_catalog,publicas$$")
+          && owners?.[1].includes("'reserve_parameter_object_write'") && owners[1].includes("'lock_parameter_object_write'")
+          && owners[2] === "executeformat('alterfunction%sownertocatalog_migration_owner',routine.name);executeformat('revokeallonfunction%sfrompublic',routine.name);"
+          && writers?.[1].includes(`executeformat('grantexecuteonfunction${entries}to%i',runtime.rolname);`)
+          && JSON.stringify(grants) === JSON.stringify([
+            `grantexecuteonfunction${entries}to%i',runtime.rolname);`,
+            `grantexecuteonfunction${entries}toparameter_governance_writer_role;`
+          ])) return true;
+      }
       // These two public tables are private owner custody, exposed only through
       // their exact DEFINER entry. Recognize no generic owner-transfer exception.
       const ownerRoutine = table === "agent_checkpoint_namespaces" ? "register_agent_checkpoint_namespace(text,text,text,text,text,text,boolean)"
@@ -229,6 +248,40 @@ describe("public table runtime grants (0185 onward)", () => {
       }
       expect(missingRuntimeGrants(sql.replaceAll(table, "unrelated")), file).toEqual(["unrelated"]);
     }
+  });
+
+  it("recognizes parameter write custody only through its owner and exact reservation entries", () => {
+    const sql = readFileSync(new URL("0280_organization_parameter_erasure.sql", migrationsDir), "utf8");
+    const table = "parameter_object_writes";
+    const entries = "parameter_catalog.reserve_parameter_object_write(text,text),parameter_catalog.lock_parameter_object_write(text)";
+    expect(missingRuntimeGrants(sql)).toEqual([]);
+    for (const invalid of [sql.replace(`alter table public.${table} owner to catalog_migration_owner`, `alter table public.${table} owner to catalog_worker_role`),
+      sql.replace(`revoke all on public.${table} from public;`, ""),
+      sql.replaceAll("security definer", "security invoker"),
+      sql.replace("'reserve_parameter_object_write','lock_parameter_object_write'", "'unrelated','lock_parameter_object_write'"),
+      sql.replace("alter function %s owner to catalog_migration_owner", "alter function %s owner to catalog_worker_role"),
+      sql.replace("revoke all on function %s from public", "revoke all on function %s from catalog_worker_role"),
+      sql.replace("rolcanlogin and not rolsuper and not rolinherit", "true"),
+      sql.replaceAll("'parameter_governance_writer_role'", "'catalog_worker_role'"),
+      sql.replaceAll("'MEMBER'", "'USAGE'"), sql.replaceAll("'SET'", "'USAGE'"),
+      sql.replace(`function ${entries} to %I',runtime.rolname`, `function ${entries} to %I',unrelated.rolname`),
+      sql.replace(`function ${entries} to parameter_governance_writer_role`, `function ${entries} to catalog_worker_role`),
+      sql.replaceAll(entries, `${entries},public.unrelated()`),
+      sql + `\ngrant execute on function ${entries} to catalog_worker_role;`]) {
+      expect(missingRuntimeGrants(invalid)).toEqual([table]);
+    }
+    for (const role of ["wiseeff_api_role", "catalog_worker_role", "catalog_publication_manager_role"]) {
+      for (const privilege of ["insert", "update", "delete", "all"]) {
+        expect(missingRuntimeGrants(sql + `\ngrant ${privilege} on public.${table} to ${role};`)).toEqual([table]);
+      }
+      expect(missingRuntimeGrants(sql + `\ngrant all on table "public"."${table}" to ${role};`)).toEqual([table]);
+      expect(missingRuntimeGrants(sql + `\ngrant all on public.${table},public.users to ${role};`)).toEqual([table]);
+      expect(missingRuntimeGrants(sql + `\ngrant all on all tables in schema public to ${role};`)).toEqual([table]);
+      expect(missingRuntimeGrants(sql + `\ngrant all on all tables in schema parameter_catalog,public to ${role};`)).toEqual([table]);
+      expect(missingRuntimeGrants(sql + `\ngrant execute on all functions in schema parameter_catalog to ${role};`)).toEqual([table]);
+      expect(missingRuntimeGrants(sql + `\ngrant execute on all functions in schema public,parameter_catalog to ${role};`)).toEqual([table]);
+    }
+    expect(missingRuntimeGrants(sql.replaceAll(table, "unrelated"))).toEqual(["unrelated"]);
   });
 
   it("recognizes exact member mirrors without granting unrelated readers or wider writes", () => {
