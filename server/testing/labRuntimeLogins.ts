@@ -15,7 +15,7 @@ export const provisionPublicationRuntimeLogins: typeof provision = (url, input) 
     ? withTestClusterRoleCatalogLock(() => provision(url, input))
     : provision(url, input);
 
-/** Remove only exact upgrade RPC grants copied into foreign fixtures; unexpected dependencies still fail DROP ROLE. */
+/** Remove only exact upgrade RPC/read grants copied into foreign fixtures; unexpected dependencies still fail DROP ROLE. */
 export async function revokeForeignTestRuntimeGrants(url: string, roles: readonly string[], ownershipComment: string): Promise<void> {
   if (!hasTestClusterRoleCatalogLock()) throw new Error("Lab runtime cleanup requires the cluster role catalog lease");
   if (!ownershipComment.startsWith("wiseeff-publication-runtime:lab:")) throw new Error("Lab runtime ownership is required");
@@ -58,11 +58,16 @@ export async function revokeForeignTestRuntimeGrants(url: string, roles: readonl
                  to_regprocedure('parameter_catalog.finish_parameter_definition_erasure_object(text,text)'),
                  to_regprocedure('parameter_catalog.lock_parameter_plane_archive()'),
                  to_regprocedure('parameter_catalog.definition_erasure_object_is_referenced(text,text)'),
-                 to_regprocedure('parameter_catalog.register_agent_checkpoint_namespace(text,text,text,text,text,text,boolean)')
+                 to_regprocedure('parameter_catalog.register_agent_checkpoint_namespace(text,text,text,text,text,text,boolean)'),
+                 to_regprocedure('parameter_catalog.preview_organization_deletion(text,text)')
                ]::oid[])`, [role, ownershipComment]
           );
           for (const { routine } of grants.rows) {
             await client.query(`revoke execute on function ${routine} from ${pg.escapeIdentifier(role)}`);
+          }
+          const checkpointOwnership = await client.query<{ exists: boolean }>("select to_regclass('public.agent_checkpoint_namespaces') is not null as exists");
+          if (checkpointOwnership.rows[0]?.exists) {
+            await client.query(`revoke select on public.agent_checkpoint_namespaces from ${pg.escapeIdentifier(role)}`);
           }
         } catch (error) {
           // Another fixture may drop its database after the dependency snapshot.
