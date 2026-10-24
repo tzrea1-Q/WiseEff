@@ -76,7 +76,7 @@ create trigger notification_erasure_source before insert or update of organizati
 -- this finite domain's DELETEs and the snapshot cycle-breaking NULL update.
 do $$ declare installed text; changed text; begin
   select pg_get_functiondef('public.guard_organization_lifecycle()'::regprocedure) into strict installed;
-  changed:=replace(installed,'if state=''deleting'' then', $guard$if state='deleting' then
+  changed:=replace(installed,'if state=''deleting''', $guard$if state='deleting' then
       if tg_table_schema='public' and current_setting('wiseeff.organization_erasure_domain',true)='agent-devices-feedback'
         and ((tg_op='DELETE' and tg_table_name=any(array['agent_checkpoint_namespaces','agent_sessions','agent_messages','agent_tool_calls','agent_approvals','agent_run_traces',
           'device_bridge_pairing_codes','debugging_events','node_operations','debugging_snapshots','debug_device_leases','debugging_sessions','debugging_targets','debugging_devices',
@@ -87,7 +87,9 @@ do $$ declare installed text; changed text; begin
           and e.id=current_setting('wiseeff.organization_erasure_id',true) and e.lease_owner=current_setting('wiseeff.organization_erasure_lease',true)
           and e.lease_expires_at>clock_timestamp()) then
         if tg_op='DELETE' then return old; else return new; end if;
-      end if;$guard$);
+      end if;
+    end if;
+    if state='deleting'$guard$);
   if changed=installed then raise exception 'Expected deleting guard was not found'; end if;
   execute changed;
 end $$;
