@@ -130,6 +130,10 @@ test("explicitly replaces an occupied placement after a stale preview without ch
     await dialog.getByRole("button", { name: "继续确认" }).click();
     const confirmation = page.getByRole("dialog", { name: "确认替换归属", exact: true });
     await expect(confirmation).toContainText("未分配模块");
+    await confirmation.evaluate(async (card) => {
+      const backdrop = card.parentElement ?? card;
+      await Promise.all(backdrop.getAnimations({ subtree: true }).map((animation) => animation.finished));
+    });
     await catalogScreenshot(page, testInfo, "placement-replacement-confirmation-1440x900");
     await confirmation.getByRole("button", { name: "取消", exact: true }).click();
     expect(writes).toHaveLength(0);
