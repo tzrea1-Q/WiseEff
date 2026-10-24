@@ -107,6 +107,12 @@ describe("publication operator state", () => {
   });
 
   it.each([
+    ["u32-array", "/* values */ value = <1/* separator */2>; // trailing", [[1, 2]]],
+    ["u32-array", "<0x10 // first\r\n20> /* trailing */", [[16, 20]]],
+    ["bytes", "value = [00 /* byte */ ff]; /* trailing */", ["[00   ff]"]],
+    ["empty", "/* flag */ value /* name */; // trailing", [null]],
+    ["string-list", '/* leading */ "http://host", "a/*literal*/b"; /* trailing */', [["http://host", "a/*literal*/b"]]],
+    ["string", String.raw`value = "quoted \"/*literal*/\" // text"; // trailing`, ['quoted "/*literal*/" // text']],
     ["u32-array", "value = <0x10 20>;", [[16, 20]]],
     ["integer", "<0x10>", [16]],
     ["string", 'value = "with,comma; and \\"quotes\\"";', ['with,comma; and "quotes"']],
@@ -123,9 +129,60 @@ describe("publication operator state", () => {
   });
 
   it.each(['other = "123";', 'value = "unterminated;', 'value = "first"; other = "second";',
+    '/* prefix */ other = "123"; /* suffix */', 'value = "123"; /* unterminated',
+    'value = "123", /* comment */;', 'value = "first"; /* comment */ other = "second";',
+    "/* comment only */", "// comment only", "value = /* no value */;",
     "value = ;", "value = <>, <1>;", "value = /bits/ 64 <9007199254740993>;"])("rejects mismatched, malformed or lossy DTS examples: %s", (examples) => {
     expect(() => buildPublicationChangeSet({ ...emptyPublicationDraft(), mode: "revise-definition",
       propertyKey: "value", valueType: "string-list", examples })).toThrow();
+  });
+
+  it.each(["create-definition", "revise-definition"] as const)("accepts the reported 18-row commented trx_plim example in %s", (mode) => {
+    const source = `trx_plim =
+      "5000",  "5500", "1000", "0x1",  "-1",     "-1",  "5",   "-1",       /* STHU */
+      "15000", "9000",   "1500", "-1",   "6",      "-1",  "5",  "-1",      /* CP62R */
+      "9000",  "9000", "1000", "-1",   "10",     "-1",  "5",   "-1",       /* CK030_LP */
+      "9000",  "9000", "1000", "-1",   "255",    "-1",  "5",   "-1",       /* CK030_LP:extra */
+      "15000",  "9000", "2000", "-1",  "-1",     "-1",  "5",   "-1",       /* BRACKETSHELL */
+      "15000", "9000", "1500", "-1",   "7|8",    "-1",  "-1",  "0xa",      /* CP39S | CP39S_HK */
+      "15000", "9000", "1900", "-1",   "4|5",    "-1",  "-1",  "0xa",      /* CP62_LX | CP62_XW*/
+      "15000", "9000",   "3000", "-1",   "6",      "-1",  "-1",  "0xa",      /* CP62R */
+      "-1",    "-1",    "4000", "-1",   "3^1",    "-1",  "-1",  "-1",       /* CP61_EXT */
+      "9000",  "9000", "1100", "-1",   "3",      "-1",  "-1",  "-1",       /* CP61 */
+      "9000",  "9000", "1100", "-1",   "2",      "-1",  "-1",  "-1",       /* CP60 */
+      "15000", "9000",   "2200", "-1",   "7|8",    "-1",  "-1",  "-1",       /* CP39S | CP39S_HK */
+      "15000", "9000",   "2200", "-1",   "4|5",    "-1",  "-1",  "-1",       /* CP62_LX | CP62_XW */
+      "9000",  "9000",   "1100", "-1",   "10^2",   "-1",  "-1",  "-1",       /* CK30_LP:CUSTOMIZED_ONE */
+      "15000", "9000",   "3000", "-1",   "10",     "-1",  "-1",  "-1",       /* CK30_LP */
+      "15000", "9000",   "3000", "-1",   "255",    "-1",  "-1",  "-1",       /* CK30_LP:extra */
+      "15000", "9000",   "2500", "-1",   "9",      "-1",  "-1",  "-1",       /* CK30_LX */
+      "15000", "9000",   "4700", "-1",   "6",      "-1",  "-1",  "-1";       /* CP62R */`;
+    const values = [
+      ["5000", "5500", "1000", "0x1", "-1", "-1", "5", "-1"],
+      ["15000", "9000", "1500", "-1", "6", "-1", "5", "-1"],
+      ["9000", "9000", "1000", "-1", "10", "-1", "5", "-1"],
+      ["9000", "9000", "1000", "-1", "255", "-1", "5", "-1"],
+      ["15000", "9000", "2000", "-1", "-1", "-1", "5", "-1"],
+      ["15000", "9000", "1500", "-1", "7|8", "-1", "-1", "0xa"],
+      ["15000", "9000", "1900", "-1", "4|5", "-1", "-1", "0xa"],
+      ["15000", "9000", "3000", "-1", "6", "-1", "-1", "0xa"],
+      ["-1", "-1", "4000", "-1", "3^1", "-1", "-1", "-1"],
+      ["9000", "9000", "1100", "-1", "3", "-1", "-1", "-1"],
+      ["9000", "9000", "1100", "-1", "2", "-1", "-1", "-1"],
+      ["15000", "9000", "2200", "-1", "7|8", "-1", "-1", "-1"],
+      ["15000", "9000", "2200", "-1", "4|5", "-1", "-1", "-1"],
+      ["9000", "9000", "1100", "-1", "10^2", "-1", "-1", "-1"],
+      ["15000", "9000", "3000", "-1", "10", "-1", "-1", "-1"],
+      ["15000", "9000", "3000", "-1", "255", "-1", "-1", "-1"],
+      ["15000", "9000", "2500", "-1", "9", "-1", "-1", "-1"],
+      ["15000", "9000", "4700", "-1", "6", "-1", "-1", "-1"]
+    ].flat();
+    expect(values).toHaveLength(144);
+    for (const examples of [source, source.slice(source.indexOf("=") + 1)]) {
+      expect(buildPublicationChangeSet({ ...emptyPublicationDraft(), mode,
+        propertyKey: "trx_plim", valueType: "string-list", examples })[0])
+        .toMatchObject({ content: { examples: [values] } });
+    }
   });
 
   it("builds nested create-subject definitions without a published subjectId", () => {

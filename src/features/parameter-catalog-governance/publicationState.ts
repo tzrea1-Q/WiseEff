@@ -333,8 +333,36 @@ function valueSchemaOf(draft: PublicationDraft) {
   };
 }
 
+/** Comments are DTS whitespace; quoted comment markers remain literal string data. */
+function stripDtsExampleComments(source: string): string {
+  let result = "";
+  let inString = false;
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i]!;
+    if (inString) {
+      result += ch;
+      if (ch === "\\" && i + 1 < source.length) result += source[++i];
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') {
+      inString = true;
+      result += ch;
+    } else if (ch === "/" && source[i + 1] === "*") {
+      const end = source.indexOf("*/", i + 2);
+      if (end < 0) throw new Error(publicationCopy.invalidExamples);
+      result += " ";
+      i = end + 1;
+    } else if (ch === "/" && source[i + 1] === "/") {
+      while (i + 1 < source.length && source[i + 1] !== "\n" && source[i + 1] !== "\r") i += 1;
+      result += " ";
+    } else {
+      result += ch;
+    }
+  }
+  return result.trim();
+}
+
 export function parsePublicationExamples(draft: PublicationDraft) {
-  const input = draft.examples.trim();
+  let input = draft.examples.trim();
   if (!input) return undefined;
   if (input.startsWith("[")) {
     try {
@@ -344,9 +372,11 @@ export function parsePublicationExamples(draft: PublicationDraft) {
       // A DTS byte literal also starts with '['; the DTS parser validates it below.
     }
   }
+  const startsWithDtsValue = /^[<"[/]/u.test(input);
+  input = stripDtsExampleComments(input);
   const statement = /^([A-Za-z0-9,._+?#-]+)\s*=\s*([\s\S]*)$/u.exec(input);
   const emptyProperty = /^([A-Za-z0-9,._+?#-]+)\s*;$/u.exec(input);
-  if (statement || emptyProperty || /^[<"[/]/u.test(input)) {
+  if (statement || emptyProperty || startsWithDtsValue) {
     const propertyKey = draft.propertyKey.trim();
     const sourceKey = statement?.[1] ?? emptyProperty?.[1] ?? propertyKey;
     if (sourceKey !== propertyKey) {
@@ -354,7 +384,7 @@ export function parsePublicationExamples(draft: PublicationDraft) {
     }
     const raw = emptyProperty ? "" : (statement?.[2] ?? input).replace(/;\s*$/u, "").trim();
     try {
-      if (statement && !raw) throw new SyntaxError("Missing DTS property value");
+      if (!emptyProperty && !raw) throw new SyntaxError("Missing DTS property value");
       const value = parseDtsValue(propertyKey, raw).value;
       if (draft.valueType === "bytes" || draft.valueType === "mixed") return [raw];
       switch (value.kind) {
