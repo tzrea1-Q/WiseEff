@@ -50,14 +50,12 @@ test("erases project parameter files and retries the failed domain from the Orga
   await withPgClient(async client => { await client.query("drop trigger test_parameter_erasure_domain on projects; drop function test_parameter_erasure_domain()"); });
   await region.getByRole("button", { name: "继续清理", exact: true }).press("Enter");
   await expect(region).toContainText("已删除");
-  await expect(region.getByLabel("领域清理进度")).toContainText("已完成 · 已执行 2 次");
+  await expect(region.getByLabel("领域清理进度")).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("organization-parameter-erasure-complete-1440.png"), animations: "disabled" });
   await withPgClient(async client => {
     expect((await client.query("select count(*)::int n from organizations where id=$1", [org])).rows).toEqual([{ n: 0 }]);
     expect((await client.query("select count(*)::int n from project_parameter_file_candidates where organization_id=$1", [org])).rows).toEqual([{ n: 0 }]);
-    expect((await client.query("select domain_progress->'projects-parameters'->>'status' status from organization_erasures where id=$1", [started.id])).rows).toEqual([{ status: "complete" }]);
-    expect((await client.query("select domain_progress->'knowledge'->>'attempts' knowledge,domain_progress->'agent-devices-feedback'->>'attempts' runtime from organization_erasures where id=$1", [started.id])).rows)
-      .toEqual([{ knowledge: "1", runtime: "1" }]);
+    expect((await client.query("select domain_progress,attempts from organization_erasures where id=$1", [started.id])).rows).toEqual([{ domain_progress: {}, attempts: 0 }]);
   });
   await recordOperationEvidence({ operationId: "ORG-PARAMETER-ERASURE-001", title: "Organization project and parameter domain failure/retry", status: "passed", page, testInfo,
     artifacts: ["organization-parameter-erasure-failed-1440.png", "organization-parameter-erasure-complete-1440.png"].map(file => testInfo.outputPath(file)),

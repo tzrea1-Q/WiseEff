@@ -18,8 +18,9 @@ export async function resolveOperatingContext(db: Queryable, invocation: UserInv
   if (!canOperateInOrganization(actor, targetId)) {
     throw new ApiError("FORBIDDEN", "The authenticated user cannot operate in this Organization.");
   }
-  const row = (await db.query<AuthContext["organization"]>("select id, name, status from organizations where id = $1", [targetId])).rows[0];
-  const organization = row ? { id: row.id, name: row.name, ...(row.status === "suspended" ? { status: row.status } : {}) } : undefined;
+  const row = (await db.query<{ id: string; name: string; status: string }>("select id, name, status from organizations where id = $1", [targetId])).rows[0];
+  if (row?.status === "deleting") throw new ApiError("FORBIDDEN", "组织正在清理，不能开始新的业务操作。", { reason: "organization-unavailable" });
+  const organization = row ? { id: row.id, name: row.name, ...(row.status === "suspended" ? { status: "suspended" as const } : {}) } : undefined;
   if (!organization) throw new ApiError("NOT_FOUND", "Organization was not found.");
   return withOperatingOrganization(invocation, organization);
 }

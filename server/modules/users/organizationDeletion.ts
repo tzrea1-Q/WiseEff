@@ -4,7 +4,6 @@ import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { getExperienceRegistrationSettings, type ExperienceRegistrationDefaults } from "../auth/experienceRegistration";
 import { getAuthContext } from "../auth/repository";
-import { resolveOperatingContext } from "../auth/operatingContext";
 import type { UserInvocationContext } from "../auth/trustedInvocation";
 import { requireUserInitiatedInvocation } from "../auth/trustedInvocationPolicy";
 import type { organizationDeletionPreviewSchema } from "../contracts/dtoSchemas/organizationDeletion";
@@ -21,9 +20,9 @@ export type OrganizationDeletionContext = AdministratorMutationContext & Experie
 async function readPreview(tx: Database, caller: UserInvocationContext, organizationId: string, context: OrganizationDeletionContext): Promise<Preview> {
   const actor = await getAuthContext(tx, caller.principal.user.id);
   requirePlatformOrganizationManager(actor);
-  const scoped = await resolveOperatingContext(tx, caller, organizationId);
   const organization = (await tx.query<{ name: string; status: string; version: string }>(
-    "select name,status,lifecycle_version::text as version from organizations where id=$1", [organizationId])).rows[0]!;
+    "select name,status,lifecycle_version::text as version from organizations where id=$1", [organizationId])).rows[0];
+  if (!organization) throw new ApiError("NOT_FOUND", "Organization was not found.");
   const rows = (await tx.query<{ key: string; category: string; item_count: string; state_digest: string }>(
     "select * from parameter_catalog.preview_organization_deletion($1,$2) order by key", [organizationId, actor.user.id])).rows;
   const runtime = await inspectOrganizationCheckpoints(tx, organizationId, context.agentCheckpointer);
@@ -57,15 +56,12 @@ async function readPreview(tx: Database, caller: UserInvocationContext, organiza
   if (actor.user.organizationId === organizationId) blockers.push({ code: "actor-home-organization", message: "当前操作账号属于此组织，请先将账号调往其他组织，再发起删除。" });
   if (experienceRegistration.isTarget && experienceRegistration.enabled) blockers.push({ code: "experience-registration", message: "此组织正在接纳公开体验注册，请先关闭入口或调整目标组织。" });
   if (inventory.some(row => row.category === "unclassified" && row.count)) blockers.push({ code: "unclassified-ownership", message: "发现尚未完成归属核实的数据或检查点，当前不能确认完整清理。" });
-  const supported = new Set(["accounts", "teams-invitations", "audit", "platform-catalog", ...organizationErasureDomains.flatMap(adapter => adapter.inventoryCategories)]);
-  if (!supported.has("shared-provenance") && inventory.some(row => row.key === "parameter_catalog.definition_erasure_audit_provenance" && row.count)) {
-    blockers.push({ code: "retained-global-erasure-provenance", message: "组织审计仍被全局参数删除证明引用，需先核实其平台保留边界。" });
-  }
+  const supported = new Set(["accounts", "teams-invitations", "audit", "platform-catalog", "shared-provenance", ...organizationErasureDomains.flatMap(adapter => adapter.inventoryCategories)]);
   if (!supported.has("legacy-archives") && inventory.some(row => row.category === "legacy-archives" && row.count)) blockers.push({ code: "protected-legacy-archives", message: "存在离线迁移归档或保护证据，需先核实共享引用与领域清理支持。" });
   const executionAvailable = blockers.length === 0 && !inventory.some(row => row.count && !supported.has(row.category));
   const snapshot = { organizationId, organizationName: organization.name, status: organization.status, inventory, platformAccounts, survivingPlatformAdministrators, experienceRegistration, producers, storage, blockers };
   return { ...snapshot, generatedAt: new Date().toISOString(), stateDigest: createHash("sha256").update(JSON.stringify([
-    "organization-erasure-preview-v1", scoped.principal.user.id, organization, rows, snapshot
+    "organization-erasure-preview-v1", actor.user.id, organization, rows, snapshot
   ])).digest("hex"), admissionAvailable: blockers.length === 0, executionAvailable, notes: [
     "本页只预览，不会删除、撤销凭据、停止任务或授予删除权限；实际执行前会重新核对权限、账号、对象数量和组织状态。",
     "需保留的平台账号请先调离；其余本组织账号、身份、业务数据、历史、文件和待办属于清理范围。",

@@ -77,7 +77,7 @@ describe("Durable empty Organization erasure through HTTP and PostgreSQL", () =>
     await expect(db.query("update organizations set status='active' where id='erasure-target'")).rejects.toMatchObject({ code: "55000" });
     await db.query("drop trigger test_erasure_failure on organization_teams");
     const retried = await request<{ item: { status: string; attempts: number } }>(`/api/v1/platform/organization-deletions/${started.body.item.id}/retry`, "POST");
-    expect(retried.status, retried.bodyText).toBe(200); expect(retried.body.item).toMatchObject({ status: "deleted", attempts: 2 });
+    expect(retried.status, retried.bodyText).toBe(200); expect(retried.body.item).toMatchObject({ status: "deleted", attempts: 0 });
     await expect(db.query("insert into organizations(id,name) values('erasure-target','Resurrect')")).rejects.toMatchObject({ code: "55000" });
     await expect(db.query("insert into users(id,organization_id,name,title) values('unknown-owner','missing-owner','Unknown','Member')")).rejects.toMatchObject({ code: "23503" });
   });
@@ -124,20 +124,18 @@ describe("Durable empty Organization erasure through HTTP and PostgreSQL", () =>
     expect((await db.query("select count(*)::int n from agent_checkpoint_namespaces where organization_id='erasure-target'")).rows).toEqual([{ n: 0 }]);
     expect((await agentCheckpointer.inspectStore(threadId)).entries).toEqual([]);
   });
-  it("refuses unsupported global erasure provenance before intent even when its operator Home is foreign", async () => {
+  it("compacts global erasure provenance even when its operator Home is foreign", async () => {
     await db.query("insert into audit_events(id,organization_id,actor_user_id,actor_type,app,kind,action,severity,target_type,target_id,trace_id,metadata) values('global-erasure-proof',null,'erasure-platform','user','parameter-admin','parameter-definition','delete','High','organization','erasure-target','global-trace','{\"operatingOrganizationId\":\"erasure-target\",\"proof\":\"Retain global fact\"}')");
     await db.query("insert into parameter_catalog.definition_erasures(definition_id,organization_id,erased_by,audit_event_id) values('global-definition-identity','erasure-home','erasure-platform','global-erasure-proof')");
-    const result = await start(); expect(result.status, result.bodyText).toBe(409);
-    expect((await db.query("select count(*)::int n from organization_erasures")).rows).toEqual([{ n: 0 }]);
-    expect((await db.query("select is_active from users where id='erasure-member'")).rows).toEqual([{ is_active: true }]);
-    expect((await db.query("select metadata->>'proof' proof from audit_events where id='global-erasure-proof'")).rows).toEqual([{ proof: "Retain global fact" }]);
+    const result = await start(); expect(result.status, result.bodyText).toBe(202); expect(result.body.item.status).toBe("deleted");
+    expect((await db.query("select id from users where id='erasure-member'")).rows).toEqual([]);
+    expect((await db.query("select metadata->>'proof' proof from audit_events where id='global-erasure-proof'")).rows).toEqual([{ proof: null }]);
     expect((await db.query("select audit_event_id from parameter_catalog.definition_erasures where definition_id='global-definition-identity'")).rows).toEqual([{ audit_event_id: "global-erasure-proof" }]);
   });
-  it("refuses a target audit retained as a foreign-Home global Definition erasure proof before intent", async () => {
+  it("retains a target audit's global Definition proof identity without its erased business payload", async () => {
     await db.query("insert into parameter_catalog.definition_erasures(definition_id,organization_id,erased_by,audit_event_id) values('foreign-global-definition','erasure-home','erasure-platform','erasure-create-audit')");
-    const result = await start(); expect(result.status, result.bodyText).toBe(409);
-    expect((await db.query("select count(*)::int n from organization_erasures")).rows).toEqual([{ n: 0 }]);
-    expect((await db.query("select metadata->>'name' name from audit_events where id='erasure-create-audit'")).rows).toEqual([{ name: "Secret audit payload" }]);
+    const result = await start(); expect(result.status, result.bodyText).toBe(202); expect(result.body.item.status).toBe("deleted");
+    expect((await db.query("select metadata->>'name' name from audit_events where id='erasure-create-audit'")).rows).toEqual([{ name: null }]);
   });
   it("accepts a suspended management-only Organization without treating suspension exceptions as erasure authority", async () => {
     await db.query("update organizations set status='suspended' where id='erasure-target'");

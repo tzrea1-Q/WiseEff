@@ -41,6 +41,7 @@ Options:
   -h, --help                   Show this help.
 
 The upgrade path never edits .env, runs seed/provision, rotates credentials, or deletes volumes.
+Data restore requires WISEEFF_ORGANIZATION_ERASURE_REPLAY_ACTOR_ID, a surviving platform user.
 EOF
 }
 
@@ -2216,6 +2217,7 @@ wiseeff_upgrade_verify_previous_app_images() {
 }
 
 wiseeff_upgrade_verify_restored_stack() {
+  wiseeff_upgrade_require_organization_erasure_replay || return $?
   local previous_api_tag
   previous_api_tag="$(wiseeff_upgrade_previous_image_tag_for api)"
   if ! wiseeff_upgrade_wait_data_plane_ready; then
@@ -2255,6 +2257,7 @@ wiseeff_upgrade_verify_restored_stack() {
 }
 
 wiseeff_upgrade_restore_old_stack_after_stop() {
+  wiseeff_upgrade_require_organization_erasure_replay || return $?
   local previous_sha previous_api_tag
   wiseeff_upgrade_state_write recovery_started true
   wiseeff_upgrade_state_write recovery_verified false
@@ -2424,6 +2427,7 @@ wiseeff_upgrade_candidate_recovery_inflight_phase_supported() {
 wiseeff_upgrade_run_recover_candidate() {
   wiseeff_upgrade_reject_root_runtime || return $?
   wiseeff_upgrade_load_run || return $?
+  wiseeff_upgrade_require_organization_erasure_replay || return $?
   wiseeff_upgrade_acquire_lock
   trap wiseeff_upgrade_release_lock EXIT
   wiseeff_upgrade_validate_env || return 10
@@ -2555,6 +2559,7 @@ wiseeff_upgrade_run_recover_candidate() {
 wiseeff_upgrade_run_resume() {
   wiseeff_upgrade_reject_root_runtime || return $?
   wiseeff_upgrade_load_run || return $?
+  wiseeff_upgrade_require_organization_erasure_replay || return $?
   wiseeff_upgrade_acquire_lock
   trap wiseeff_upgrade_release_lock EXIT
   wiseeff_upgrade_validate_env || return 10
@@ -2655,6 +2660,49 @@ wiseeff_upgrade_restore_postgres() {
   wiseeff_upgrade_compose exec -T postgres pg_restore --create --clean --if-exists --exit-on-error -U wiseeff -d postgres < "$dump"
 }
 
+wiseeff_upgrade_organization_erasure_command() {
+  local action="$1"
+  local directory
+  shift
+  [ -n "${upgrade_candidate_image_tag:-}" ] || return 1
+  directory="$(cd "$upgrade_run_dir" && pwd -P)" || return $?
+  wiseeff_upgrade_compose_for_image "$upgrade_candidate_image_tag" run --rm --no-deps \
+    --volume "${directory}:/recovery" api node --import tsx \
+    scripts/organization-erasure-recovery.ts "$action" --file /recovery/organization-erasures.json "$@"
+}
+
+wiseeff_upgrade_capture_organization_erasures() {
+  local file="${upgrade_run_dir}/organization-erasures.json"
+  [ -n "${WISEEFF_ORGANIZATION_ERASURE_REPLAY_ACTOR_ID:-}" ] || return 1
+  if [ "$(wiseeff_upgrade_state_read organization_erasure_capture_verified)" = "true" ]; then
+    [ -s "$file" ] && [ ! -L "$file" ]
+    return $?
+  fi
+  # Never replace the latest state with an already restored older database.
+  [ "$(wiseeff_upgrade_state_read organization_erasure_restore_started)" != "true" ] || return 1
+  [ ! -e "$file" ] && [ ! -L "$file" ] || return 1
+  wiseeff_upgrade_organization_erasure_command capture || return $?
+  [ -s "$file" ] && [ ! -L "$file" ] || return 1
+  wiseeff_upgrade_state_write organization_erasure_capture_verified true
+}
+
+wiseeff_upgrade_replay_organization_erasures() {
+  [ "$(wiseeff_upgrade_state_read organization_erasure_capture_verified)" = "true" ] || return 1
+  [ -s "${upgrade_run_dir}/organization-erasures.json" ] || return 1
+  [ -n "${WISEEFF_ORGANIZATION_ERASURE_REPLAY_ACTOR_ID:-}" ] || return 1
+  wiseeff_upgrade_organization_erasure_command replay \
+    --actor "$WISEEFF_ORGANIZATION_ERASURE_REPLAY_ACTOR_ID" || return $?
+  wiseeff_upgrade_state_write organization_erasure_replay_verified true
+}
+
+wiseeff_upgrade_require_organization_erasure_replay() {
+  if [ "$(wiseeff_upgrade_state_read organization_erasure_restore_started)" = "true" ] &&
+    [ "$(wiseeff_upgrade_state_read organization_erasure_replay_verified)" != "true" ]; then
+    wiseeff_upgrade_die 70 "Organization deletion replay is incomplete. Keep services isolated; retry rollback --restore-data with the preserved deletion state."
+    return $?
+  fi
+}
+
 wiseeff_upgrade_restore_objects() {
   local object_dir network image container release backup_release backup_image
   object_dir="$(wiseeff_upgrade_state_read object_backup)"
@@ -2738,6 +2786,9 @@ wiseeff_upgrade_run_rollback() {
     wiseeff_upgrade_status "$upgrade_run_id"
     return 0
   fi
+  if [ "$upgrade_restore_data" != "true" ]; then
+    wiseeff_upgrade_require_organization_erasure_replay || return $?
+  fi
   if [ "$migration_started" = "true" ] && [ "$upgrade_restore_data" != "true" ]; then
     wiseeff_upgrade_die 2 "This run started migrations. Use --restore-data --confirm restore-${upgrade_run_id} to restore the recorded recovery point."
     return $?
@@ -2778,6 +2829,9 @@ wiseeff_upgrade_run_rollback() {
     app_stop_status=$?
   fi
   wiseeff_upgrade_isolate_publication
+  if [ "$(wiseeff_upgrade_state_read publication_manager_isolated)" = "false" ]; then
+    app_stop_status=1
+  fi
   wiseeff_upgrade_state_write recovery_proxy_stopped "$([ "$proxy_stop_status" -eq 0 ] && printf true || printf false)"
   wiseeff_upgrade_state_write recovery_queue_paused "$([ "$queue_pause_status" -eq 0 ] && printf true || printf false)"
   if [ "$proxy_stop_status" -ne 0 ] || [ "$queue_pause_status" -ne 0 ] || [ "$app_stop_status" -ne 0 ]; then
@@ -2802,6 +2856,15 @@ wiseeff_upgrade_run_rollback() {
     return 70
   fi
 
+  if [ "$upgrade_restore_data" = "true" ]; then
+    if ! wiseeff_upgrade_run_recovery_action capture-organization-erasures wiseeff_upgrade_capture_organization_erasures; then
+      wiseeff_upgrade_record_failure rollback-stopping organization-erasures rollback-erasure-capture \
+        "Latest organization deletion state could not be preserved. Supply a surviving platform user and a compatible candidate image; stores remain isolated."
+      wiseeff_upgrade_mark_recovery_required
+      return 70
+    fi
+  fi
+
   wiseeff_upgrade_set_phase old-stack-restore running
   if ! wiseeff_upgrade_git checkout --detach "$upgrade_previous_sha"; then
     wiseeff_upgrade_record_failure old-stack-restore checkout restore-checkout "The previous checkout could not be selected for rollback."
@@ -2824,6 +2887,8 @@ wiseeff_upgrade_run_rollback() {
       wiseeff_upgrade_mark_recovery_required
       return 70
     fi
+    wiseeff_upgrade_state_write organization_erasure_replay_verified false
+    wiseeff_upgrade_state_write organization_erasure_restore_started true
     if ! wiseeff_upgrade_run_recovery_action restore-postgres wiseeff_upgrade_restore_postgres; then
       wiseeff_upgrade_record_failure restoring-data postgres rollback-postgres-restore "The PostgreSQL recovery point could not be restored."
       wiseeff_upgrade_mark_recovery_required
@@ -2841,6 +2906,18 @@ wiseeff_upgrade_run_rollback() {
     fi
     if ! wiseeff_upgrade_run_recovery_action snapshot-recovery-point wiseeff_upgrade_snapshot_manifest; then
       wiseeff_upgrade_record_failure restoring-data recovery-point rollback-manifest-write "The post-restore recovery manifest could not be written."
+      wiseeff_upgrade_mark_recovery_required
+      return 70
+    fi
+    # Restoring Redis can also restore an unpaused durable queue.
+    if ! wiseeff_upgrade_run_recovery_action restore-queue-pause wiseeff_upgrade_queue_command_for_image pause "$previous_api_tag"; then
+      wiseeff_upgrade_record_failure restoring-data queue rollback-restored-queue-pause "The restored queue could not be paused before deletion replay."
+      wiseeff_upgrade_mark_recovery_required
+      return 70
+    fi
+    if ! wiseeff_upgrade_run_recovery_action replay-organization-erasures wiseeff_upgrade_replay_organization_erasures; then
+      wiseeff_upgrade_record_failure restoring-data organization-erasures rollback-erasure-replay \
+        "Organization deletion replay did not finish. Keep services isolated; verify the preserved state, surviving platform user, schema and actual stores before retrying."
       wiseeff_upgrade_mark_recovery_required
       return 70
     fi

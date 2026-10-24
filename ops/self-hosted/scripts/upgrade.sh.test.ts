@@ -2847,6 +2847,8 @@ describe("upgrade.sh public interface", () => {
         return 0
       }
       wiseeff_upgrade_verify_backup_manifest() { printf 'manifest\\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_capture_organization_erasures() { return 0; }
+      wiseeff_upgrade_replay_organization_erasures() { wiseeff_upgrade_state_write organization_erasure_replay_verified true; }
       wiseeff_upgrade_restore_postgres() { printf 'postgres-restore\\n' >> "$trace"; return 0; }
       wiseeff_upgrade_restore_objects() { printf 'object-restore\\n' >> "$trace"; return 0; }
       wiseeff_upgrade_restore_redis() { printf 'redis-restore\\n' >> "$trace"; return 0; }
@@ -2905,6 +2907,8 @@ describe("upgrade.sh public interface", () => {
       wiseeff_upgrade_git() { return 0; }
       wiseeff_upgrade_wait_data_plane_ready() { return 0; }
       wiseeff_upgrade_verify_backup_manifest() { return 0; }
+      wiseeff_upgrade_capture_organization_erasures() { return 0; }
+      wiseeff_upgrade_replay_organization_erasures() { wiseeff_upgrade_state_write organization_erasure_replay_verified true; }
       wiseeff_upgrade_restore_postgres() { return 0; }
       wiseeff_upgrade_restore_objects() { return 0; }
       wiseeff_upgrade_restore_redis() { return 0; }
@@ -2965,6 +2969,8 @@ describe("upgrade.sh public interface", () => {
       wiseeff_upgrade_git() { return 0; }
       wiseeff_upgrade_wait_data_plane_ready() { return 0; }
       wiseeff_upgrade_verify_backup_manifest() { [ "$failure_target" != "manifest" ]; }
+      wiseeff_upgrade_capture_organization_erasures() { return 0; }
+      wiseeff_upgrade_replay_organization_erasures() { wiseeff_upgrade_state_write organization_erasure_replay_verified true; }
       wiseeff_upgrade_restore_postgres() { [ "$failure_target" != "postgres" ]; }
       wiseeff_upgrade_restore_objects() { [ "$failure_target" != "minio" ]; }
       wiseeff_upgrade_restore_redis() { [ "$failure_target" != "redis" ]; }

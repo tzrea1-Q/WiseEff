@@ -80,7 +80,7 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
     const retried = await request<typeof started.body>(`/api/v1/platform/organization-deletions/${started.body.item.id}/retry`, "POST");
     expect(retried.status, retried.bodyText).toBe(200);
     expect(retried.body.item.status).toBe("deleted");
-    expect(retried.body.item.domains["projects-parameters"]).toMatchObject({ status: "complete", attempts: 1 });
+    expect(retried.body.item.domains).toEqual({});
     expect((await db.query("select id from parameter_catalog.parameter_definitions where id='pdef_acme_power_iin_max'")).rows).toHaveLength(1);
   });
   it("retains durable object obligations across store failure and a fresh server retry", async () => {

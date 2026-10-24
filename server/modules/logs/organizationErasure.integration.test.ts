@@ -88,7 +88,7 @@ describe("Organization log erasure through HTTP, PostgreSQL and real object stor
     expect((await store.get(uploaded.fileObject.storageKey)).length).toBeGreaterThan(0);
     await db.close(); db = createPostgresDatabase(database.url); store = createLocalObjectStore(directory);
     const retry = await request<{ item: { status: string; domains: { logs: { status: string; attempts: number } } } }>(`/api/v1/platform/organization-deletions/${failed.body.item.id}/retry`, "POST");
-    expect(retry.status, retry.bodyText).toBe(200); expect(retry.body.item).toMatchObject({ status: "deleted", domains: { logs: { status: "complete", attempts: 2 } } });
+    expect(retry.status, retry.bodyText).toBe(200); expect(retry.body.item).toMatchObject({ status: "deleted", domains: {} });
     await expect(store.get(uploaded.fileObject.storageKey)).rejects.toThrow();
     expect(remove).toBeTypeOf("function");
   });
