@@ -126,7 +126,7 @@ export function eraseDefinitionFromPlaneArchive(document: ArchivedPlaneDocument,
   return { ...document, relations, counts };
 }
 
-function ownedCatalogGraph(graph: Record<string, unknown>, archive: DefinitionDeletionInventory["catalogArchives"][number], ids: ReadonlySet<string>): boolean {
+export function catalogArchiveGraphIsOwned(graph: Record<string, unknown>, archive: Pick<DefinitionDeletionInventory["catalogArchives"][number], "legacy_identity_id" | "protected_references">, ids: ReadonlySet<string>): boolean {
   const source = graph.sourcePayload;
   const relations = graph.relationGraph;
   if (!record(source) || !record(relations) || !Array.isArray(relations.edges)) return false;
@@ -198,7 +198,7 @@ export async function prepareDefinitionArchiveErasure(inventory: DefinitionDelet
       } catch {
         throw new ApiError("CONFLICT", "迁移归档校验失败，尚未删除任何数据。", { reason: "definition-catalog-archive-integrity-failed" });
       }
-      if (owned.has(archive.id) ? !ownedCatalogGraph(graph as Record<string, unknown>, archive, ids) :
+      if (owned.has(archive.id) ? !catalogArchiveGraphIsOwned(graph as Record<string, unknown>, archive, ids) :
         mentionsIdentity(graph, ids) || mentionsIdentity(archive.protected_references, ids)) {
         throw new ApiError("CONFLICT", "迁移归档混有其他参数或原始文件，需要先迁移归档格式后再删除。", { reason: "definition-catalog-archive-mixed-graph" });
       }

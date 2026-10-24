@@ -109,7 +109,10 @@ export async function retryOrganizationErasure(db: Database, caller: UserInvocat
       // Recheck actual domain/runtime ownership after adapters, rather than
       // trusting their success return or the intent's now-stale initial digest.
       const remaining = await previewOrganizationDeletion(db, caller, claimed.targetOrganizationId, context);
-      if (remaining.inventory.some(item => item.count && !managementCategories.has(item.category) && item.key !== "parameter_catalog.project_erasures") || remaining.storage.exclusiveObjects || remaining.storage.sharedObjects) {
+      // These immutable platform facts retain identity/provenance after their
+      // tenant edges and physical obligations have been removed.
+      const retainedPlatformKeys = new Set(["parameter_catalog.project_erasures", "catalog_publication.organization-proposal-artifacts"]);
+      if (remaining.inventory.some(item => item.count && !managementCategories.has(item.category) && !retainedPlatformKeys.has(item.key)) || remaining.storage.exclusiveObjects || remaining.storage.sharedObjects) {
         throw new ApiError("CONFLICT", "业务资产或未核实归属尚未清理完成。");
       }
       await db.transaction(async tx => {

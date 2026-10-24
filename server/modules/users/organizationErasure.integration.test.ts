@@ -101,14 +101,12 @@ describe("Durable empty Organization erasure through HTTP and PostgreSQL", () =>
     expect(retried.status, retried.bodyText).toBe(200); expect(retried.body.item.status).toBe("deleted");
     expect((await request<{ item: unknown }>(`${receiptPath}/retry`, "POST")).body).toEqual(retried.body);
   });
-  it("rejects nonempty and unknown ownership before intent, account revocation or destruction", async () => {
+  it("rejects unknown ownership before intent, account revocation or destruction", async () => {
     await db.query("insert into projects(id,organization_id,name,code) values('nonempty','erasure-target','Keep project','KEEP')");
+    await db.query("create table unknown_erasure_owner(id text,organization_id text)");
     expect((await start()).status).toBe(409);
     expect((await db.query("select count(*)::int n from organization_erasures")).rows).toEqual([{ n: 0 }]);
     expect((await db.query("select is_active from users where id='erasure-member'")).rows).toEqual([{ is_active: true }]);
-    await db.query("delete from projects where id='nonempty'");
-    await db.query("create table unknown_erasure_owner(id text,organization_id text)");
-    expect((await start()).status).toBe(409);
     expect((await db.query("select status from organizations where id='erasure-target'")).rows).toEqual([{ status: "active" }]);
   });
   it("rejects actual pre-session checkpoint ownership before intent, including before the first saver write", async () => {

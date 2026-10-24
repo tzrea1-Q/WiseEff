@@ -22,6 +22,8 @@ const routines = [
   "finish_parameter_definition_erasure_object(text,text)",
   "lock_parameter_plane_archive()",
   "definition_erasure_object_is_referenced(text,text)",
+  "list_platform_definition_erasures()",
+  "lock_definition_erasure_object(text,text,text)",
 ].map(name => `parameter_catalog.${name}`);
 
 describe("definition cleanup privileges on a populated API LOGIN upgrade", () => {
@@ -45,7 +47,10 @@ describe("definition cleanup privileges on a populated API LOGIN upgrade", () =>
               .toEqual([{ member: true, can_set: false }]);
             await applyMigrations(db, migrationsDir, { before: "0257" });
             const auth = makeTestAuthContext({ roleId: "platform-admin", organizationId: "org-cleanup-upgrade" });
-            await expect(listDefinitionErasures(api, auth)).rejects.toMatchObject({ code: "42501" });
+            // The current global list arrives in 0280; this historical state
+            // still denies its old Home-scoped reader and has no new routine.
+            await expect(listDefinitionErasures(api, auth)).rejects.toMatchObject({ code: "42883" });
+            await expect(api.query("select * from parameter_catalog.list_definition_erasures($1)", [auth.organization.id])).rejects.toMatchObject({ code: "42501" });
             expect((await api.query(`select
               has_function_privilege(current_user,'parameter_catalog.read_parameter_definition_erasure(text)','EXECUTE') as old_reader,
               has_function_privilege(current_user,'parameter_catalog.list_definition_erasures(text)','EXECUTE') as cleanup`
@@ -73,6 +78,7 @@ describe("definition cleanup privileges on a populated API LOGIN upgrade", () =>
             expect(response.status).toBe(200);
             expect(response.body.items).toEqual([
               expect.objectContaining({ definitionId: "cleanup-a", pendingObjectCount: 1 }),
+              expect.objectContaining({ definitionId: "cleanup-b", pendingObjectCount: 1 }),
             ]);
             await expect(listDefinitionErasures(api, makeTestAuthContext({ roleId: "admin" })))
               .rejects.toMatchObject({ code: "FORBIDDEN" });
