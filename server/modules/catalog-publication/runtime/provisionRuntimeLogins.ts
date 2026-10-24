@@ -63,6 +63,7 @@ const CANONICAL_SOURCE_READ_FUNCTIONS = [
   "parameter_catalog.finish_log_erasure_object(text, text, text, text)",
   "parameter_catalog.preview_project_deletion_catalog(text, text, text)",
   "parameter_catalog.preview_organization_deletion(text, text)",
+  "public.knowledge_erasure_object_referenced(text, text, text)",
   "parameter_catalog.register_agent_checkpoint_namespace(text, text, text, text, text, text, boolean)",
   "parameter_catalog.lock_project_erasure(text, text, text)",
   "parameter_catalog.read_project_erasure(text, text, text)",
@@ -476,6 +477,10 @@ export async function provisionPublicationRuntimeLogins(
       const organizationErasures = await admin.query<{ exists: boolean }>("select to_regclass('public.organization_erasures') is not null as exists");
       if (organizationErasures.rows[0]?.exists) {
         await admin.query(`revoke all on public.organization_erasures from ${quoteIdent(names.worker)}, ${quoteIdent(names.manager)}`);
+      }
+      const knowledgeCustody = await admin.query<{ exists: boolean }>("select to_regclass('public.knowledge_attachment_writes') is not null as exists");
+      if (knowledgeCustody.rows[0]?.exists) {
+        await admin.query(`revoke all on public.knowledge_attachment_writes from ${quoteIdent(names.worker)}, ${quoteIdent(names.manager)}`);
       }
       await revokeLegacyStructuralDml(admin, [names.api, names.worker, names.manager]);
 

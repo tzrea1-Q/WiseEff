@@ -4,9 +4,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../../auth/types";
 import { createUserInvocation } from "../../auth/trustedInvocation";
-import type { ObjectStore } from "../../logs/objectStore";
-import type { InMemoryTestDatabase } from "../../../testing/testDatabase";
-import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../../testing/testDatabase";
+import { planObjectStorageKey, type ObjectStore } from "../../logs/objectStore";
+import { createPostgresDatabase, type RootDatabase } from "../../../shared/database/client";
+import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../../testing/testDatabase";
 import { createDefaultKnowledgeTextExtractor } from "../extraction";
 import {
   archiveKnowledgeEntry,
@@ -46,6 +46,7 @@ function makeAuth(userId: string, permissions: BackendPermission[]): AuthContext
 function createFakeObjectStore(): ObjectStore {
   const objects = new Map<string, Buffer>();
   return {
+    planKey: planObjectStorageKey,
     async put(input) {
       const checksum = createHash("sha256").update(input.bytes).digest("hex");
       const storageKey = `${input.organizationId}/${checksum}-${input.fileName}`;
@@ -68,7 +69,7 @@ function createFakeObjectStore(): ObjectStore {
 
 const extractor = createDefaultKnowledgeTextExtractor();
 
-async function drainIndexQueue(db: InMemoryTestDatabase) {
+async function drainIndexQueue(db: RootDatabase) {
   for (let round = 0; round < 20; round += 1) {
     const outcome = await processNextKnowledgeIndexJob({ db });
     if (outcome === "idle") return;
@@ -76,7 +77,7 @@ async function drainIndexQueue(db: InMemoryTestDatabase) {
   throw new Error("Knowledge index queue did not drain within 20 rounds.");
 }
 
-async function listChunks(db: InMemoryTestDatabase, entryId: string) {
+async function listChunks(db: RootDatabase, entryId: string) {
   const result = await db.query<{ chunk_index: number; text: string; revision_id: string }>(
     `select chunk_index, text, revision_id from knowledge_chunks where entry_id = $1 order by chunk_index asc`,
     [entryId]
@@ -85,14 +86,16 @@ async function listChunks(db: InMemoryTestDatabase, entryId: string) {
 }
 
 describe.skipIf(!databaseAvailable)("knowledge index lifecycle", () => {
-  let db: InMemoryTestDatabase;
+  let db: RootDatabase;
+  let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>>;
   let objectStore: ObjectStore;
   const editor = makeAuth(EDITOR, viewEdit);
   const manager = makeAuth(MANAGER, manageAll);
   const viewer = makeAuth(VIEWER, viewOnly);
 
   beforeEach(async () => {
-    db = await createInMemoryTestDatabase();
+    database = await createEphemeralTestDatabase("knowledgeindex");
+    db = createPostgresDatabase(database.url);
     objectStore = createFakeObjectStore();
     await db.query(`insert into organizations (id, name) values ($1, $1) on conflict (id) do nothing`, [ORG_ID]);
     for (const userId of [EDITOR, MANAGER, VIEWER]) {
@@ -105,7 +108,7 @@ describe.skipIf(!databaseAvailable)("knowledge index lifecycle", () => {
   });
 
   afterEach(async () => {
-    await db.rollback();
+    await db.close(); await database.drop();
   });
 
   it("draft detection enqueues without indexing content, and publish builds chunks with entry/revision identity", async () => {

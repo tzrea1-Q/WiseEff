@@ -242,8 +242,11 @@ describe("#906 pending mixed request protects both source candidates over HTTP",
           details: { reason: "canonical-source-review-pending" } } } });
         expect(mutation.headers.get("date")).toBe(mutationDate);
         expect(retry.headers.get("date")).toBe(retryDate);
-        expect({ ...retry, headers: [...retry.headers].filter(([name]) => name !== "date") })
-          .toEqual({ ...mutation, headers: [...mutation.headers].filter(([name]) => name !== "date") });
+        const retryHeaders: Record<string, string> = {}, mutationHeaders: Record<string, string> = {};
+        retry.headers.forEach((value, name) => { if (name !== "date") retryHeaders[name] = value; });
+        mutation.headers.forEach((value, name) => { if (name !== "date") mutationHeaders[name] = value; });
+        expect({ ...retry, headers: retryHeaders })
+          .toEqual({ ...mutation, headers: mutationHeaders });
         expect(diff.status).toBe(200);
         expect(review).toMatchObject({ status: 200, body: { item: { status: "approved" } } });
         const sourceAfter = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
