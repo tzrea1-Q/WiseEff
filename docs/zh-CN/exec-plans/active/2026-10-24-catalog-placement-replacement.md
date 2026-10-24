@@ -21,7 +21,7 @@ English: [Implementation plan](../../../exec-plans/active/2026-10-24-catalog-pla
 
 编辑期间运行聚焦单元和组件测试。真实 PostgreSQL 覆盖原子性、角色与组织边界、当前发布、版本漂移、重放、并发和完整回滚。1440×900 真 API 浏览器用例修复已占用目标，覆盖失败和取消，并验证刷新后 A、B 的归属。执行影响选择器、生成契约检查、静态检查、生产构建与最终候选原生 CI；授权与并发边界交由独立审查。PR 记录准确结果和目标服务器尚未验证的边界；当前候选真实 Merge bar 和适用审查通过后合入。
 
-## Documentation Impact Matrix
+## 文档影响矩阵
 
 | 文档 | 必需更新 | 证据负责人 |
 | --- | --- | --- |
@@ -29,7 +29,7 @@ English: [Implementation plan](../../../exec-plans/active/2026-10-24-catalog-pla
 | `docs/generated/openapi.json` | 从源 schema 重新生成可选替换请求和目标占用错误契约 | 协调者与原生契约检查 |
 | 已应用迁移与 ADR-0042 | 不改写历史；可空放置和每登记保留一个放置的约束继续有效 | 独立审查与 PostgreSQL 测试 |
 
-## Documentation Update Gate
+## 文档更新门禁
 
 中英文计划必须描述一致的 A 改绑目标、B 置为未分配的行为。生成的 OpenAPI 通过 `contract:check`，计划通过 `docs:check`。当前候选测试结果、截图与尚未部署验证的边界记录在 PR，区分 Hosted 与生产证据。
 
