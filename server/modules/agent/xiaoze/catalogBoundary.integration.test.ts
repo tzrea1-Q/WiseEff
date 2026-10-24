@@ -519,6 +519,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       await pool.query(`grant select, insert, update, delete on all tables in schema public to ${role}`);
       await pool.query(`grant usage, select on all sequences in schema public to ${role}`);
       await pool.query(`grant select on all tables in schema parameter_catalog to ${role}`);
+      await pool.query(`grant execute on function parameter_catalog.register_agent_checkpoint_namespace(text,text,text,text,text,text,boolean) to ${role}`);
       await pool.query(`revoke select on parameter_catalog.project_parameter_bindings from ${role}`);
       const url = new URL(database.url);
       url.searchParams.set("options", `-c role=${role}`);
@@ -544,6 +545,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       });
       const actual = await runAgent({ runtimeUrl: await listen(restrictedServer), projectId: PROJECT });
       expect(actual.events).toContain("permission denied");
+      expect(actual.events).toContain("project_parameter_bindings");
       expect(actual.calls.map((call) => call.status)).toEqual(["failed"]);
       expect(actual.calls[0]?.result).toBeNull();
       expect(actual.audit).toEqual([{ actor_type: "agent", actor_user_id: ADMIN, action: "failed" }]);
@@ -632,7 +634,8 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       await ddl(`grant select on public.users, public.organizations, public.user_role_bindings,
         public.user_password_credentials, public.auth_sessions, public.projects,
         public.agent_sessions, public.agent_messages, public.agent_tool_calls,
-        public.agent_approvals, public.audit_events to %I`, role);
+        public.agent_approvals, public.agent_checkpoint_namespaces, public.audit_events to %I`, role);
+      await ddl("grant execute on function parameter_catalog.register_agent_checkpoint_namespace(text,text,text,text,text,text,boolean) to %I", role);
       await ddl("grant select (id, permissions) on public.roles to %I", role);
       await ddl("grant select (organization_id, project_id, user_id, roles) on public.project_members to %I", role);
       // The real failure-terminal thread persistence also updates its session.
