@@ -1,6 +1,7 @@
 import { registerAuditRoutes } from "./modules/audit/routes";
 import { registerNotificationRoutes } from "./modules/notifications/routes";
 import { registerXiaozeRoutes } from "./modules/agent/xiaoze/agUiEndpoint";
+import { resolveXiaozeCheckpointerFromEnv, type XiaozeCheckpointer } from "./modules/agent/xiaoze/checkpointer";
 import { createAuthContextResolver } from "./modules/auth/contextFactory";
 import { createAuthAttemptLimiter } from "./modules/auth/authAttemptLimiter";
 import { createLocalAuthService } from "./modules/auth/localAuth";
@@ -104,6 +105,7 @@ type DeviceBridgeEnv = Pick<
 >;
 
 export type WiseEffServerOptions = {
+  agentCheckpointer?: XiaozeCheckpointer;
   db?: Database;
   /** Optional server-owned DTS refusal writer when the supplied DB is not the pool root. */
   dtsReloadRefusalAuditSink?: TrustedRefusalAuditSink;
@@ -135,6 +137,7 @@ export type WiseEffServerOptions = {
  */
 export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   const router = createRouter();
+  const agentCheckpointer = options.agentCheckpointer ?? resolveXiaozeCheckpointerFromEnv(options.env ?? {});
   const handle = router.handle;
   router.handle = async (request) => {
     const pattern = router.matchRoutePattern(request.method, request.path);
@@ -217,6 +220,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     objectStore: options.objectStore,
     catalogArchiveStore: options.catalogArchiveStore,
     catalogArchiveKey: options.catalogArchiveKey,
+    agentCheckpointer,
     selfRegisterEnabled: options.env?.AUTH_LOCAL_SELF_REGISTER,
     registrationOrganizationId: options.env?.AUTH_LOCAL_REGISTRATION_ORGANIZATION_ID,
     localInvitationsEnabled: Boolean(localAuthService) && (options.env?.AUTH_PROVIDER === undefined || options.env.AUTH_PROVIDER === "local"),
@@ -320,6 +324,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerXiaozeRoutes(router, {
     db: options.db,
+    checkpointer: agentCheckpointer,
     env: options.env as ServerEnv | undefined,
     objectStore: options.objectStore,
     knowledgeEmbeddingClient: options.knowledgeEmbeddingClient,

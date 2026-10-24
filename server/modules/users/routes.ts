@@ -47,6 +47,7 @@ import { changeOrganizationLifecycleSchema } from "../contracts/dtoSchemas/platf
 import { previewOrganizationDeletion } from "./organizationDeletion";
 import { listOrganizationErasures, readOrganizationErasure, retryOrganizationErasure, startOrganizationErasure } from "./organizationErasure";
 import { startOrganizationErasureSchema } from "../contracts/dtoSchemas/organizationDeletion";
+import type { XiaozeCheckpointer } from "../agent/xiaoze/checkpointer";
 import { changeOrganizationLifecycle } from "../auth/organizationLifecycle";
 import { createPlatformOrganization, emergencyDisableAdministrator, getAdministratorRecovery, listPlatformOrganizations, recoverOrganizationAdministrator, requirePlatformOrganizationManager } from "./platformOrganizations";
 import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
@@ -96,11 +97,11 @@ function parseWithSchema<Schema extends z.ZodTypeAny>(schema: Schema, value: unk
 
 export function registerUserRoutes(
   router: WiseEffRouter,
-  options: { db?: Database; objectStore?: ObjectStore; catalogArchiveStore?: ArchiveObjectStore; catalogArchiveKey?: string; localInvitationsEnabled?: boolean; selfRegisterEnabled?: boolean; registrationOrganizationId?: string; oidcIssuer?: string; authenticationProvider?: "local" | "oidc" | "hmac"; bridgeConnectionPool?: Pick<BridgeConnectionPool, "disconnect">; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
+  options: { db?: Database; objectStore?: ObjectStore; catalogArchiveStore?: ArchiveObjectStore; catalogArchiveKey?: string; agentCheckpointer?: XiaozeCheckpointer; localInvitationsEnabled?: boolean; selfRegisterEnabled?: boolean; registrationOrganizationId?: string; oidcIssuer?: string; authenticationProvider?: "local" | "oidc" | "hmac"; bridgeConnectionPool?: Pick<BridgeConnectionPool, "disconnect">; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
 ) {
   const mutationContext = (request: RouteRequest) => ({ requestId: request.requestId, authenticationProvider: options.authenticationProvider, oidcIssuer: options.oidcIssuer, bridgeConnectionPool: options.bridgeConnectionPool });
   const erasureContext = (request: RouteRequest) => ({ ...mutationContext(request), selfRegisterEnabled: options.selfRegisterEnabled,
-    registrationOrganizationId: options.registrationOrganizationId, objectStore: options.objectStore, catalogArchiveStore: options.catalogArchiveStore, catalogArchiveKey: options.catalogArchiveKey });
+    registrationOrganizationId: options.registrationOrganizationId, objectStore: options.objectStore, catalogArchiveStore: options.catalogArchiveStore, catalogArchiveKey: options.catalogArchiveKey, agentCheckpointer: options.agentCheckpointer });
   const operatingInvocation = (db: Database, auth: AuthContext, request: RouteRequest) => {
     const query = parseWithSchema(z.object({ organizationId: z.string().trim().min(1).max(200).optional() }), request.query);
     return query.organizationId === undefined ? createUserInvocation(auth) : resolveOperatingContext(db, createUserInvocation(auth), query.organizationId);
@@ -197,7 +198,7 @@ export function registerUserRoutes(
   router.get("/api/v1/platform/organizations/:organizationId/deletion-preview", async request => {
     const db = requireDb(options.db), actor = createUserInvocation(await options.getCurrentAuthContext(request));
     return { status: 200, body: { item: await previewOrganizationDeletion(db, actor, request.params.organizationId, {
-      ...mutationContext(request), selfRegisterEnabled: options.selfRegisterEnabled, registrationOrganizationId: options.registrationOrganizationId
+      ...mutationContext(request), selfRegisterEnabled: options.selfRegisterEnabled, registrationOrganizationId: options.registrationOrganizationId, agentCheckpointer: options.agentCheckpointer
     }) } };
   });
   router.patch("/api/v1/platform/organizations/:organizationId/lifecycle", async request => {

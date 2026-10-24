@@ -71,7 +71,7 @@ describe("createXiaozeAgentFactory request isolation", () => {
     const productionModelFactory = vi.fn(() => {
       throw new Error("external provider model must not be constructed");
     });
-    const { db } = createMemoryAgentDb();
+    const { db } = createMemoryAgentDb({ checkpointActors: [{ organizationId: "org1", actorUserId: "deterministic-user" }] });
     const toolRegistry = createFakeRegistry([]);
     const factory = createXiaozeAgentFactory({
       db,
@@ -104,7 +104,7 @@ describe("createXiaozeAgentFactory request isolation", () => {
 
   it("keeps auth context and sink per request when runs overlap", async () => {
     const calls: RecordedCall[] = [];
-    const { db } = createMemoryAgentDb();
+    const { db } = createMemoryAgentDb({ checkpointActors: [{ organizationId: "org1", actorUserId: "user-slow" }, { organizationId: "org1", actorUserId: "user-fast" }] });
     const toolRegistry = createFakeRegistry(calls);
     let releaseSlow: (() => void) | undefined;
     const slowGate = new Promise<void>((resolve) => {
