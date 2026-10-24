@@ -59,9 +59,10 @@ describe("Organization log erasure through HTTP, PostgreSQL and real object stor
     const erased = await start();
     expect(erased.status, erased.bodyText).toBe(202);
     expect(erased.body.item.status).toBe("deleted");
-    for (const table of ["log_records", "log_file_objects", "log_analysis_runs", "jobs"]) {
-      expect((await db.query(`select count(*)::int n from ${table} where organization_id='log-target'`)).rows).toEqual([{ n: 0 }]);
-    }
+    expect((await db.query(`select 'log_records' relation from log_records where organization_id=$1
+      union all select 'log_file_objects' from log_file_objects where organization_id=$1
+      union all select 'log_analysis_runs' from log_analysis_runs where organization_id=$1
+      union all select 'jobs' from jobs where organization_id=$1`, ["log-target"])).rows).toEqual([]);
     await expect(store.get(uploaded.fileObject.storageKey)).rejects.toThrow();
     expect((await store.get(foreign.storageKey)).toString()).toBe("foreign log");
     expect((await readdir(directory)).length).toBeGreaterThan(0);
@@ -131,9 +132,11 @@ describe("Organization log erasure through HTTP, PostgreSQL and real object stor
       await Promise.race([analyzing, worker.then(() => { throw new Error("Worker did not reach actual analysis"); })]);
       const erased = await start(); expect(erased.status, erased.bodyText).toBe(202); expect(erased.body.item.status).toBe("deleted");
       release(); expect(await worker).toEqual({ status: "idle" });
-      for (const table of ["log_records", "log_analysis_reports", "log_analysis_trace_steps", "jobs", "log_webhook_outbox"]) {
-        expect((await db.query(`select count(*)::int n from ${table} where organization_id='log-target'`)).rows).toEqual([{ n: 0 }]);
-      }
+      expect((await db.query(`select 'log_records' relation from log_records where organization_id=$1
+        union all select 'log_analysis_reports' from log_analysis_reports where organization_id=$1
+        union all select 'log_analysis_trace_steps' from log_analysis_trace_steps where organization_id=$1
+        union all select 'jobs' from jobs where organization_id=$1
+        union all select 'log_webhook_outbox' from log_webhook_outbox where organization_id=$1`, ["log-target"])).rows).toEqual([]);
       expect(await processLogAnalysisJobById({ db, objectStore: store, jobId: uploaded.job.id })).toEqual({ status: "idle" });
     } finally { release(); await worker; }
   });
@@ -187,9 +190,15 @@ describe("Organization log erasure through HTTP, PostgreSQL and real object stor
     const old = await store.put({ organizationId: "log-target", fileName: "old-pending.bin", contentType: "application/octet-stream", bytes: Buffer.from("old pending bytes") });
     await db.query("insert into parameter_catalog.log_erasures(organization_id,log_id,preview_version,erased_by,run_ids,job_ids,pending_object_refs) values('log-target','old-log','old-version','log-member','{}','{}',array[$1])", [old.storageKey]);
     const erased = await start(); expect(erased.status, erased.bodyText).toBe(202); expect(erased.body.item.status).toBe("deleted");
-    for (const table of ["log_domains", "log_skill_revisions", "log_skill_samples", "log_skill_analysis_cases", "log_skill_analysis_case_runs", "log_skill_artifact_objects", "log_source_snapshots", "log_skill_deletions", "log_object_writes"]) {
-      expect((await db.query(`select count(*)::int n from ${table} where organization_id='log-target'`)).rows).toEqual([{ n: 0 }]);
-    }
+    expect((await db.query(`select 'log_domains' relation from log_domains where organization_id=$1
+      union all select 'log_skill_revisions' from log_skill_revisions where organization_id=$1
+      union all select 'log_skill_samples' from log_skill_samples where organization_id=$1
+      union all select 'log_skill_analysis_cases' from log_skill_analysis_cases where organization_id=$1
+      union all select 'log_skill_analysis_case_runs' from log_skill_analysis_case_runs where organization_id=$1
+      union all select 'log_skill_artifact_objects' from log_skill_artifact_objects where organization_id=$1
+      union all select 'log_source_snapshots' from log_source_snapshots where organization_id=$1
+      union all select 'log_skill_deletions' from log_skill_deletions where organization_id=$1
+      union all select 'log_object_writes' from log_object_writes where organization_id=$1`, ["log-target"])).rows).toEqual([]);
     await expect(store.get(archived.storageKey)).rejects.toThrow(); await expect(store.get(old.storageKey)).rejects.toThrow();
   });
   it("executes as the actual NOINHERIT API LOGIN while denying worker cleanup and private receipt DML", async () => {

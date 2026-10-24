@@ -57,9 +57,13 @@ describe("Knowledge Organization erasure through HTTP, PostgreSQL and isolated p
     const bytes = await store.get(entry.file!.storageKey); expect(bytes.length).toBeGreaterThan(0);
     const result = await start(); expect(result.status, result.bodyText).toBe(202); expect(result.body.item.status).toBe("deleted");
     await expect(store.get(entry.file!.storageKey)).rejects.toMatchObject({ code: "ENOENT" });
-    for (const table of ["knowledge_entries", "knowledge_revisions", "knowledge_files", "knowledge_index_status", "knowledge_chunks", "knowledge_import_batches", "knowledge_import_documents"]) {
-      expect((await db.query(`select count(*)::int n from ${table} where organization_id='knowledge-target'`)).rows).toEqual([{ n: 0 }]);
-    }
+    expect((await db.query(`select 'knowledge_entries' relation from knowledge_entries where organization_id=$1
+      union all select 'knowledge_revisions' from knowledge_revisions where organization_id=$1
+      union all select 'knowledge_files' from knowledge_files where organization_id=$1
+      union all select 'knowledge_index_status' from knowledge_index_status where organization_id=$1
+      union all select 'knowledge_chunks' from knowledge_chunks where organization_id=$1
+      union all select 'knowledge_import_batches' from knowledge_import_batches where organization_id=$1
+      union all select 'knowledge_import_documents' from knowledge_import_documents where organization_id=$1`, ["knowledge-target"])).rows).toEqual([]);
     expect((await request(`/api/v1/platform/organization-deletions/${result.body.item.id}`)).status).toBe(200);
   });
   it("cleans a physical upload whose response was lost before any metadata was registered", async () => {
@@ -155,9 +159,10 @@ describe("Knowledge Organization erasure through HTTP, PostgreSQL and isolated p
       release(); expect(await worker).toBe("processed");
       await detectKnowledgeReferenceSuggestions(db, snapshot!, "org1396-late-suggestion");
       await scanKnowledgeReferenceSuggestions(db, { organizationId: "knowledge-target", requestId: "org1396-restart-scan" });
-      for (const table of ["knowledge_chunks", "knowledge_index_status", "knowledge_reference_suggestions", "knowledge_entries"]) {
-        expect((await db.query(`select count(*)::int n from ${table} where organization_id='knowledge-target'`)).rows).toEqual([{ n: 0 }]);
-      }
+      expect((await db.query(`select 'knowledge_chunks' relation from knowledge_chunks where organization_id=$1
+        union all select 'knowledge_index_status' from knowledge_index_status where organization_id=$1
+        union all select 'knowledge_reference_suggestions' from knowledge_reference_suggestions where organization_id=$1
+        union all select 'knowledge_entries' from knowledge_entries where organization_id=$1`, ["knowledge-target"])).rows).toEqual([]);
       expect(await processNextKnowledgeIndexJob({ db })).toBe("idle");
     } finally { release(); await worker; }
   });
