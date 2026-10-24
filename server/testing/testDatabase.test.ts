@@ -139,6 +139,8 @@ describe("fresh database fixture policy", () => {
       "server/modules/projects/members.authorization.integration.test.ts": ["membercutover:false"],
       "server/modules/projects/members.migration.integration.test.ts": ["projectmembers:false"],
       "server/modules/release-verification/core/migration.integration.test.ts": ["s10per:false"],
+      // Replay existing API LOGIN grants before the durable cleanup boundary exists.
+      "server/modules/users/organizationErasure.integration.test.ts": ["erasureupgrade:false"],
       "server/modules/users/organizationLifecycle.integration.test.ts": ["lifecycleupgrade:false"],
       "server/shared/database/migrationCompatibility.integration.test.ts": ["purge_bounds:false", "purge_cutover:false", "purge_existing:false", "purge_retry:false"],
       "server/testing/testDatabase.test.ts": ["cleanup_race:false", "emptycompare:false", "freshcompare:true", "freshguard:true", "role_lease_a:false", "role_lease_b:false"]
