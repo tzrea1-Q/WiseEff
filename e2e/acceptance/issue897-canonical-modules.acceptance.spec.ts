@@ -138,7 +138,7 @@ test("retired Platform console has no page or promotion history query", async ({
     if (request.url().includes("driver-schema-promotion-history")) historyRequests.push(request.url());
   });
   await signInBrowserAsRole(page, "platform-admin", "/parameter-home");
-  await expect(page.getByRole("button", { name: "平台控制台", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "平台控制台", exact: true })).toHaveCount(0);
   await page.goto("/platform-console");
   await expect(page.getByRole("region", { name: "平台控制台", exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "让业务流程更智能、更高效、更可控" })).toBeVisible();
