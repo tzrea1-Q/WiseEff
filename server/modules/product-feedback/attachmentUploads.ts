@@ -1,9 +1,9 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { feedbackOrganizationId, type ProductFeedbackAccessContext as AuthContext } from "./scope";
 import { referencedLogObjects } from "../logs/deletionPreview";
-import { sanitizeFileName, sanitizePathSegment, type ObjectStore } from "../logs/objectStore";
+import { sanitizeFileName, type ObjectStore } from "../logs/objectStore";
 import { requireProductFeedbackSubmit } from "./policy";
 import type { InsertProductFeedbackAttachmentInput, ProductFeedbackAttachmentContentType } from "./types";
 
@@ -62,11 +62,12 @@ export async function cleanupFeedbackAttachmentUploads(db: Database, store: Obje
 export async function withFeedbackAttachmentWrites<T>(db: Database, store: ObjectStore, auth: AuthContext, uploads: Upload[],
   write: (tx: Database, put: () => Promise<InsertProductFeedbackAttachmentInput[]>) => Promise<T>): Promise<T> {
   requireProductFeedbackSubmit(auth);
+  if (uploads.length && !store.planKey) throw new ApiError("CONFLICT", "反馈附件存储不能提供持久清理所需的精确对象键。");
   const attemptId = randomUUID();
   const planned = uploads.map((input) => {
     const id = randomUUID(), fileName = sanitizeFileName(input.fileName);
     const objectName = `feedback-${id}.${input.contentType === "image/jpeg" ? "jpg" : input.contentType.slice(6)}`;
-    const key = `${sanitizePathSegment(feedbackOrganizationId(auth), "organization id")}/${createHash("sha256").update(input.bytes).digest("hex")}-${objectName}`;
+    const key = store.planKey!({ organizationId: feedbackOrganizationId(auth), fileName: objectName, contentType: input.contentType, bytes: input.bytes });
     return { ...input, id, fileName, objectName, key };
   });
   const keys = new Set(planned.map((item) => item.key));

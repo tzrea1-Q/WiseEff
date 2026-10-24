@@ -20,6 +20,7 @@ export type XiaozeCheckpointerOptions = {
 export type XiaozeCheckpointer = {
   put(threadId: string, state: XiaozeCheckpointSnapshot): Promise<void>;
   get(threadId: string): Promise<XiaozeCheckpointSnapshot | undefined>;
+  deleteThread(threadId: string): Promise<void>;
   saver: BaseCheckpointSaver;
   ensureReady(): Promise<void>;
   ensureInterruptCheckpointDurable(threadId: string): Promise<void>;
@@ -91,6 +92,13 @@ export function createXiaozeCheckpointer(options?: XiaozeCheckpointerOptions): X
     },
     async get(threadId) {
       return auxiliary.get(threadId);
+    },
+    async deleteThread(threadId) {
+      await this.ensureReady();
+      await this.withNamespaceLease(threadId, async () => {
+        await saver.deleteThread(threadId);
+        auxiliary.delete(threadId);
+      });
     },
     saver,
     async ensureInterruptCheckpointDurable(threadId) {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { agentOrganizationId, withAgentInvocation, type AgentAccessContext as AuthContext } from "../scope";
+import { agentOrganizationId, requireAgentRunAvailable, withAgentInvocation, type AgentAccessContext as AuthContext } from "../scope";
 import { resolveOperatingContext } from "../../auth/operatingContext";
 import { createUserInvocation } from "../../auth/trustedInvocation";
 import { ApiError } from "../../../shared/http/errors";
@@ -62,6 +62,7 @@ async function* pumpAgentRun(input: {
   stream: XiaozeTurnStream;
   run: () => Promise<PerceptionAgentRunResult>;
   outcome: { result?: PerceptionAgentRunResult; error?: unknown };
+  assertRunAvailable?: () => Promise<void>;
 }) {
   let settled = false;
 
@@ -79,7 +80,9 @@ async function* pumpAgentRun(input: {
     });
 
   while (true) {
-    for (const event of await input.sink.drain()) {
+    const events = await input.sink.drain();
+    if (events.length) await input.assertRunAvailable?.();
+    for (const event of events) {
       yield* input.stream.ingest(event);
     }
     if (settled) {
@@ -274,6 +277,7 @@ export function createXiaozeAgUiHandler(options: {
   persistTurn?: (input: PersistXiaozeTurnInput) => Promise<void>;
   /** Rejects runs whose client-supplied threadId addresses another user's thread. */
   assertThreadAccess?: (input: { auth: AuthContext; threadId: string }) => Promise<void>;
+  assertRunAvailable?: (auth: AuthContext) => Promise<void>;
 }) {
   return async function handleXiaozeAgUi(request: XiaozeAgUiRequest): Promise<RouteResponse> {
     const auth = await options.resolveAuth(request);
@@ -318,6 +322,7 @@ export function createXiaozeAgUiHandler(options: {
       };
       reasoningMessage?: { id: string; content: string };
     }) {
+      await options.assertRunAvailable?.(verifiedAuth);
       if (!options.persistTurn) {
         return;
       }
@@ -355,6 +360,7 @@ export function createXiaozeAgUiHandler(options: {
           sink,
           stream,
           outcome,
+          assertRunAvailable: () => options.assertRunAvailable?.(verifiedAuth) ?? Promise.resolve(),
           run: () =>
             agent.run({
               message: activeResume ? "" : message,
@@ -382,6 +388,7 @@ export function createXiaozeAgUiHandler(options: {
           throw outcome.error;
         }
         const result = outcome.result!;
+        await options.assertRunAvailable?.(verifiedAuth);
 
         if (result.interrupt && approvalChain) {
           const interrupt = await approvalChain.beginApproval({
@@ -512,6 +519,10 @@ export function createXiaozeAgentFactory(options: {
       return recorded.result;
     },
     listTools: () => planningToolDescriptors,
+    assertRunAvailable: async context => {
+      if (!context) throw new ApiError("UNAUTHENTICATED", "Agent request context is required.");
+      await requireAgentRunAvailable(options.db, context.auth);
+    },
     admitNamespace: async (input, checkpointThreadId) => {
       if (!input.requestContext) throw new ApiError("UNAUTHENTICATED", "Agent request context is required.");
       await registerAgentCheckpointNamespace(options.db, checkpointer, input.requestContext.auth, input.threadId, checkpointThreadId);
@@ -628,6 +639,7 @@ export function registerXiaozeRoutes(
     createAgent,
     approvalChain,
     persistTurn,
+    assertRunAvailable: auth => requireAgentRunAvailable(options.db!, auth),
     resolveModelLabel: options.env ? () => envDefaults.XIAOZE_LLM_CONFIG.config.model : undefined,
     assertThreadAccess: async ({ auth, threadId }) => {
       const session = (await options.db!.query<{ actor_user_id: string; organization_id: string }>(

@@ -192,6 +192,7 @@ export async function listReferenceSuggestionDetectionBatch(
      where status <> 'archived' and ($1::text is null or organization_id = $1)
        and (not $2::boolean or reference_suggestions_detected_at is null)
        and ($3::uuid is null or id > $3)
+       and exists(select 1 from public.organizations o where o.id=knowledge_entries.organization_id and o.status='active')
      order by id limit $4`,
     [input.organizationId ?? null, input.neverDetected ?? false, input.afterId ?? null, input.limit ?? 50]
   );

@@ -16,8 +16,13 @@ describe("notification service outbox delivery", () => {
         if (text.includes("insert into notification_outbox")) {
           return { rows: [{ id: "outbox-1" }], rowCount: 1 };
         }
+        if (text.includes("select payload,attempts")) return { rows: [{ attempts: 0, payload: {
+          organizationId: "org-1", recipientUserId: "u-1", category: "parameter.review.submitted", title: "Review", body: "Please review"
+        } }], rowCount: 1 };
+        if (text.includes("from organizations")) return { rows: [{ id: "org-1" }], rowCount: 1 };
         return { rows: [], rowCount: 0 };
-      }
+      },
+      transaction: async (write: (tx: Database) => Promise<unknown>) => write(db)
     } as unknown as Database;
 
     await notifyUsers(db, {
