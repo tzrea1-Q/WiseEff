@@ -170,6 +170,18 @@ describe("ModuleTreeSelect", () => {
     expect(onChange).toHaveBeenCalledWith("pm-b");
   });
 
+  it.each(["document", "window"] as const)("keeps internal scrolls open and closes on %s scroll", (outside) => {
+    render(<ModuleTreeSelect mode="single" label="模块" nodes={nodes} value="" onChange={() => undefined} portalMenu />);
+    fireEvent.click(screen.getByRole("button", { name: "模块" }));
+    const tree = screen.getByRole("tree");
+    fireEvent.scroll(tree);
+    expect(tree).toBeInTheDocument();
+    fireEvent.scroll(within(tree).getByRole("button", { name: "充电" }));
+    expect(tree).toBeInTheDocument();
+    fireEvent.scroll(outside === "document" ? document : window);
+    expect(screen.queryByRole("tree")).not.toBeInTheDocument();
+  });
+
   it("can portal its menu outside an overflow container", () => {
     render(
       <div style={{ overflow: "hidden" }}>
