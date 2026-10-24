@@ -11,6 +11,7 @@ const FAILURE_CODE: Record<CatalogApiFailureReason, string> = {
   "definition-retired": "CONFLICT",
   "registration-required": "CONFLICT",
   "placement-conflict": "CONFLICT",
+  "placement-occupied": "CONFLICT",
   "invalid-placement-parent": "CONFLICT",
   "observation-ambiguous": "CONFLICT",
   "proposal-stale": "CONFLICT",

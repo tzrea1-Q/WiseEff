@@ -20,6 +20,9 @@ export const assertCatalogSubjectActive = async (
   expectedRelease: CatalogReleasePin,
   subjectId: string,
 ): Promise<Result<true, RegistrationFailure>> => {
+  const current = await client.query("select current_user::text as role") as { rows: Array<{ role: string }> };
+  const originalRole = current.rows[0]?.role;
+  if (!originalRole) throw new Error("Catalog guard requires the current database role");
   await client.query("savepoint catalog_subject_guard");
   try {
     await client.query(`set local role ${quoteIdent(PARAMETER_GOVERNANCE_WRITER_ROLE)}`);
@@ -29,7 +32,10 @@ export const assertCatalogSubjectActive = async (
       subjectId,
       "active",
     ]);
-    await client.query("rollback to savepoint catalog_subject_guard");
+    // Retain the guard's transaction-scoped publication fence through commit.
+    // Restore the caller's actual role, including an enclosing SET ROLE scope.
+    await client.query(`set local role ${quoteIdent(originalRole)}`);
+    await client.query("release savepoint catalog_subject_guard");
     return { ok: true, value: true };
   } catch (error) {
     await client.query("rollback to savepoint catalog_subject_guard").catch(() => undefined);

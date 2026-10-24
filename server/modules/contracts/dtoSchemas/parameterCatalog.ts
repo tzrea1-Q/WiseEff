@@ -42,6 +42,7 @@ export const catalogApiFailureReasons = [
   "definition-retired",
   "registration-required",
   "placement-conflict",
+  "placement-occupied",
   "invalid-placement-parent",
   "observation-ambiguous",
   "proposal-stale",
@@ -83,6 +84,7 @@ export const catalogFailureClientBehaviors = {
   "definition-retired": "historical-read-block-mutation",
   "registration-required": "offer-explicit-registration",
   "placement-conflict": "refresh-placement-reconfirm",
+  "placement-occupied": "inspect-target-and-confirm-replacement",
   "invalid-placement-parent": "keep-review-unresolved",
   "observation-ambiguous": "open-review-item",
   "proposal-stale": "rebase-proposal",
@@ -427,7 +429,17 @@ export const catalogRestoreRegistrationRequestSchema = catalogObject({
 
 export const catalogUpdatePlacementRequestSchema = catalogObject({
   placement: catalogPlacementIntentSchema,
-  destinationModuleId: z.string().min(1).optional()
+  destinationModuleId: z.string().min(1).optional(),
+  replacement: catalogObject({
+    registrationId: z.string().trim().min(1),
+    placementEtag: z.string().trim().min(1),
+    registrationEtag: z.string().trim().min(1),
+    reason: z.string().trim().min(1).max(1000)
+  }).optional()
+}).superRefine((value, context) => {
+  if (value.replacement && (!value.destinationModuleId || value.placement.mode !== "use-default")) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "A placement replacement requires an explicit destination module." });
+  }
 });
 
 export const catalogObservationDtoSchema = catalogObject({

@@ -360,4 +360,112 @@ test.describe("canonical parameter catalog governance interactions", () => {
     await expect(row).toContainText(targetName);
     await catalogScreenshot(page, testInfo, "http-placement-persisted-1440x900");
   });
+
+  test("explicitly replaces an occupied placement after a stale preview without changing values or history", async ({ page }, testInfo) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(crypto, "randomUUID", { configurable: true, value: undefined });
+    });
+    const registrationPath = `/api/v2/organizations/${fixture.organizationId}/subject-registrations`;
+    const targetRows = await fixture.pool.query<{ id: string; placement_id: string; module_id: string; status: string }>(
+      `select r.id, p.id as placement_id, p.module_id, r.status
+       from parameter_catalog.organization_subject_registrations r
+       join parameter_catalog.subject_placements p on p.id = r.current_placement_id
+       where r.organization_id=$1 and r.subject_id=$2`,
+      [fixture.organizationId, fixture.powerSubjectId]
+    );
+    const target = targetRows.rows[0];
+    expect(target?.module_id).toBeTruthy();
+    const targetBefore = await catalogJson(page.request, "GET", `${registrationPath}/${target.id}`);
+    expect(targetBefore.status).toBe(200);
+    const impact = (targetBefore.body as { item: { impact: { bindingCount: number } } }).item.impact;
+    expect(impact.bindingCount).toBeGreaterThan(0);
+    const inventory = await catalogJson(page.request, "GET", registrationPath);
+    let sourceId = (inventory.body as { items: Array<{ id: string; subjectId: string; status: string }> }).items
+      .find((row) => row.subjectId === fixture.sensorSubjectId && row.status === "active")?.id;
+    if (!sourceId) {
+      const created = await catalogJson(page.request, "POST", registrationPath, {
+        headers: { "X-WiseEff-Catalog-Release": fixture.chain.pinF.id, "Idempotency-Key": `replace-register:${Date.now()}` },
+        data: { subjectId: fixture.sensorSubjectId, destinationModuleId: "pmod-op08-driver", placement: { mode: "use-default" }, reason: "replacement browser fixture" }
+      });
+      expect(created.status).toBe(201);
+      sourceId = (created.body as { item: { id: string } }).item.id;
+    }
+    const path = `${registrationPath}/${sourceId}/placement`;
+    const snapshot = async () => {
+      const result: Record<string, unknown[]> = {};
+      for (const table of ["project_parameter_bindings", "project_parameter_values", "binding_history_events"]) {
+        const rows = await fixture.pool.query<{ items: unknown[] }>(
+          `select coalesce(jsonb_agg(to_jsonb(item) order by item.id),'[]'::jsonb) as items
+           from parameter_catalog.${table} item where organization_id=$1`, [fixture.organizationId]
+        );
+        result[table] = rows.rows[0].items;
+      }
+      return result;
+    };
+    const before = await snapshot();
+    expect(before.project_parameter_bindings.length).toBeGreaterThan(0);
+    expect(before.project_parameter_values.length).toBeGreaterThan(0);
+    const sourceSubject = await catalogJson(page.request, "GET", `/api/v2/catalog/subjects/${fixture.sensorSubjectId}`);
+    const name = (sourceSubject.body as { item: { canonicalName: string } }).item.canonicalName;
+    await signInCatalogActor(page, "org-admin", `/parameter-admin/modules?subjectQ=${encodeURIComponent(name)}`);
+    const row = page.locator(`[data-canonical-subject-id="${fixture.sensorSubjectId}"]`);
+    const writes: string[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "PATCH" && new URL(request.url()).pathname === path) writes.push(request.url());
+    });
+    await row.getByRole("button", { name: /^调整归属：/ }).click();
+    const dialog = page.getByRole("dialog", { name: "调整放置", exact: true });
+    await selectControlOption(dialog.getByRole("combobox", { name: "目标模块" }), target.module_id);
+    const preview = dialog.getByRole("region", { name: "替换归属影响" });
+    await expect(preview).toContainText("未分配模块");
+    await expect(dialog.getByRole("button", { name: "继续确认" })).toBeDisabled();
+    await dialog.getByRole("checkbox", { name: /替换目标模块原有归属/ }).check();
+    await dialog.getByRole("textbox", { name: "替换原因" }).fill("修正已有主体与模块的错误对应");
+    await dialog.getByRole("button", { name: "继续确认" }).click();
+    const confirmation = page.getByRole("dialog", { name: "确认替换归属", exact: true });
+    await expect(confirmation).toContainText("未分配模块");
+    await catalogScreenshot(page, testInfo, "placement-replacement-confirmation-1440x900");
+    await confirmation.getByRole("button", { name: "取消", exact: true }).click();
+    expect(writes).toHaveLength(0);
+
+    await fixture.pool.query(`update parameter_catalog.subject_placements
+      set updated_at=updated_at + interval '1 microsecond' where id=$1`, [target.placement_id]);
+    await dialog.getByRole("button", { name: "继续确认" }).click();
+    await confirmGovernanceDialog(page, "确认替换归属");
+    await expect(dialog.getByRole("alert")).toContainText("输入已保留");
+    expect(writes).toHaveLength(1);
+    expect(await snapshot()).toEqual(before);
+    await expect(dialog.getByRole("textbox", { name: "替换原因" })).toHaveValue("修正已有主体与模块的错误对应");
+    await dialog.getByRole("button", { name: "刷新证据" }).click();
+    const acknowledgement = dialog.getByRole("checkbox", { name: /替换目标模块原有归属/ });
+    await expect(acknowledgement).not.toBeChecked();
+    await expect(preview).toContainText(`${impact.bindingCount} 个参数绑定`);
+    await acknowledgement.check();
+    await dialog.getByRole("button", { name: "继续确认" }).click();
+    const confirm = confirmation.getByRole("button", { name: "确认替换归属", exact: true });
+    await expect(confirm).toBeDisabled();
+    await confirmation.getByRole("checkbox").focus();
+    await page.keyboard.press("Space");
+    const saved = page.waitForResponse((response) => response.request().method() === "PATCH" && new URL(response.url()).pathname === path);
+    await confirm.press("Enter");
+    const response = await saved;
+    expect(response.status(), await response.text()).toBe(200);
+    expect(response.request().postDataJSON()).toMatchObject({ destinationModuleId: target.module_id,
+      replacement: { registrationId: target.id, reason: "修正已有主体与模块的错误对应" } });
+    expect(writes).toHaveLength(2);
+    await expect(dialog).toHaveCount(0);
+    const sourceAfter = await catalogJson(page.request, "GET", path);
+    expect((sourceAfter.body as { item: { moduleId: string } }).item.moduleId).toBe(target.module_id);
+    const targetAfter = await catalogJson(page.request, "GET", `${registrationPath}/${target.id}`);
+    const displaced = (targetAfter.body as { item: { status: string; placement: { id: string; moduleId?: string } } }).item;
+    expect(displaced.status).toBe(target.status);
+    expect(displaced.placement.id).toBe(target.placement_id);
+    expect(displaced.placement.moduleId ?? null).toBeNull();
+    expect(await snapshot()).toEqual(before);
+    await page.reload();
+    await expect(row.getByRole("button", { name: /^调整归属：/ })).toBeVisible();
+    const reread = await catalogJson(page.request, "GET", `${registrationPath}/${target.id}/placement`);
+    expect((reread.body as { item: { moduleId?: string } }).item.moduleId ?? null).toBeNull();
+    await catalogScreenshot(page, testInfo, "placement-replacement-persisted-1440x900");
+  });
 });

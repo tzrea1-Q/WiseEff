@@ -2,7 +2,7 @@ import type pg from "pg";
 
 import type { RegistrationCommand, RegisterSubjectCommand } from "./command";
 import { registrationCommandFamily } from "./command";
-import type { RegistrationMethod } from "./result";
+import type { RegistrationMethod, RegistrationResult } from "./result";
 
 export type RegistrationWriterClient = {
   query: pg.PoolClient["query"];
@@ -39,6 +39,24 @@ export type DestinationModuleRow = {
   organization_id: string;
   parent_id: string | null;
   kind: string;
+};
+
+/**
+ * A replacement always has existing registrations. Lock the organization's
+ * existing rows in one immutable order before any command-specific locks so
+ * opposing replacements and ordinary lifecycle/move commands cannot invert
+ * their registration lock order. Empty-organization registration still uses
+ * the existing uniqueness and idempotency constraints.
+ */
+export const lockOrganizationRegistrations = async (
+  client: RegistrationWriterClient,
+  organizationId: string,
+): Promise<void> => {
+  await client.query(
+    `select id from parameter_catalog.organization_subject_registrations
+     where organization_id = $1 order by id for update`,
+    [organizationId],
+  );
 };
 
 /** Canonical initialization shares the registration transaction and rollback. */
@@ -114,11 +132,12 @@ export const commitIdempotency = async (
   client: RegistrationWriterClient,
   command: RegistrationCommand,
   resultRef: string,
+  replacementResult?: RegistrationResult,
 ): Promise<void> => {
   await client.query(
     `update parameter_catalog.governance_command_idempotency
      set state = 'committed',
-         result_kind = 'registration',
+         result_kind = $5,
          result_ref = $4,
          committed_at = now()
      where organization_id = $1
@@ -129,7 +148,8 @@ export const commitIdempotency = async (
       command.organizationId,
       registrationCommandFamily,
       command.idempotencyKey,
-      resultRef,
+      replacementResult ? JSON.stringify(replacementResult) : resultRef,
+      replacementResult ? "placement-replacement" : "registration",
     ],
   );
 };
@@ -251,17 +271,51 @@ export const updateRegistrationStatus = async (
 export const updatePlacementModule = async (
   client: RegistrationWriterClient,
   placementId: string,
-  moduleId: string,
+  moduleId: string | null,
 ): Promise<PlacementRow> => {
+  // The legacy detach trigger overwrites updated_at with clock_timestamp().
+  // Finish the version without firing UPDATE OF module_id a second time.
+  const previous = moduleId === null ? await client.query<{ updated_at: string }>(
+    "select updated_at::text as updated_at from parameter_catalog.subject_placements where id = $1 for update",
+    [placementId],
+  ) : undefined;
   const result = await client.query<PlacementRow>(
     `update parameter_catalog.subject_placements
-     set module_id = $2, origin = 'curated', updated_at = now()
+     set module_id = $2, origin = 'curated',
+         updated_at = greatest(clock_timestamp(), updated_at + interval '1 microsecond')
      where id = $1
      returning id, registration_id, organization_id, module_id, origin,
        (extract(epoch from updated_at) * 1000000)::bigint::text as version`,
     [placementId, moduleId],
   );
+  if (previous?.rows[0]) {
+    const finalized = await client.query<PlacementRow>(
+      `update parameter_catalog.subject_placements
+       set updated_at = greatest(clock_timestamp(), $2::timestamptz + interval '1 microsecond')
+       where id = $1
+       returning id, registration_id, organization_id, module_id, origin,
+         (extract(epoch from updated_at) * 1000000)::bigint::text as version`,
+      [placementId, previous.rows[0].updated_at],
+    );
+    return finalized.rows[0]!;
+  }
   return result.rows[0]!;
+};
+
+/** Occupancy includes retired registrations, whose durable placement is retained. */
+export const findPlacementForModule = async (
+  client: RegistrationWriterClient,
+  organizationId: string,
+  moduleId: string,
+): Promise<PlacementRow | null> => {
+  const result = await client.query<PlacementRow>(
+    `select id, registration_id, organization_id, module_id, origin,
+            (extract(epoch from updated_at) * 1000000)::bigint::text as version
+     from parameter_catalog.subject_placements
+     where organization_id = $1 and module_id = $2`,
+    [organizationId, moduleId],
+  );
+  return result.rows[0] ?? null;
 };
 
 export const lockDestinationModule = async (

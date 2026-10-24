@@ -150,6 +150,7 @@ export const proposalChangeKindLabels = {
 const CONFLICT_COPY: Record<CatalogConflictReason, string> = {
   "release-drift": "目录发布已变化，请刷新证据后重新确认。输入已保留。",
   "placement-conflict": "放置发生冲突，请刷新后重新确认。输入已保留。",
+  "placement-occupied": "目标模块已关联其他主体。请刷新双方归属，核对替换影响后明确确认替换。输入已保留。",
   "invalid-placement-parent": "所选父放置无效。审核项仍未处理。输入已保留。",
   "revision-conflict": "审核版本已变化，请刷新后重新确认。输入已保留。",
   "proposal-stale": "修订基于过期目录发布，请变基后重新确认。输入已保留。",
