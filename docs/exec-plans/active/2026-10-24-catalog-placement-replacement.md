@@ -21,6 +21,16 @@ An explicit replacement moves source registration A to the selected module and c
 
 Use focused unit/component tests while editing; true PostgreSQL tests cover atomicity, role/tenant boundaries, current pins, stale versions, replay, concurrency and rollback. A 1440×900 real API browser test repairs an occupied target, checks failure/cancel paths and verifies reload persistence for A and B. Run the impact selector, generated contract checks, static checks and production build; run the complete native PR checks on the final candidate. Independent review owns the authorization/concurrency seams. Keep exact results and missing target-host evidence in the PR. Submit one PR and merge only after the current candidate's real Merge bar and applicable review pass.
 
-## Documentation impact
+## Documentation Impact Matrix
+
+| Artifact | Required change | Evidence owner |
+| --- | --- | --- |
+| This plan and its Chinese companion | Document explicit replacement, preserved identities and data, concurrency and evidence boundaries | Coordinator |
+| `docs/generated/openapi.json` | Regenerate optional replacement request and occupied-target failure contracts from the source schemas | Coordinator, native contract check |
+| Applied migrations and ADR-0042 | No rewrite; nullable placement and one retained Placement remain authoritative | Independent review, PostgreSQL tests |
+
+## Documentation Update Gate
+
+Both language companions must describe the same A-to-target/B-to-unset behavior. The generated OpenAPI must pass `contract:check`; plans must pass `docs:check`. Current-candidate test results, screenshots and missing deployment evidence belong in the PR, with production and Hosted evidence kept separate.
 
 This plan and its Chinese companion define the new repair behavior. The generated OpenAPI request/failure contracts must match the source schemas. Applied migrations and historical ADRs remain immutable; ADR-0042's one retained Placement invariant is preserved.
