@@ -17,6 +17,7 @@ import { processLogAnalysisJobById } from "./worker";
 import { createRuleBasedLogAnalyzer } from "./analyzer";
 import { randomBytes } from "node:crypto";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../../testing/labRuntimeLogins";
+import { notifyLogAnalysisCompleted } from "../notifications/producers";
 
 describe("Organization log erasure through HTTP, PostgreSQL and real object storage", () => {
   let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>>, db: RootDatabase;
@@ -136,7 +137,7 @@ describe("Organization log erasure through HTTP, PostgreSQL and real object stor
       expect(await processLogAnalysisJobById({ db, objectStore: store, jobId: uploaded.job.id })).toEqual({ status: "idle" });
     } finally { release(); await worker; }
   });
-  it("waits for an admitted real HTTP callback, records its actual result and never sends it again", async () => {
+  it.each([200, 503])("waits for an admitted real HTTP callback (%s), records its actual result and never sends it again", async status => {
     const uploaded = await upload();
     const skill = await request<{ item: { id: string } }>("/api/v1/log-skills", "POST", { name: "Callback erasure" }, "log-member");
     expect(skill.status, skill.bodyText).toBe(201);
@@ -144,7 +145,7 @@ describe("Organization log erasure through HTTP, PostgreSQL and real object stor
     const held = new Promise<void>(resolve => { release = resolve; }), sending = new Promise<void>(resolve => { entered = resolve; });
     const receiver = createServer(async (incoming, response) => {
       for await (const _chunk of incoming) { /* consume actual request */ }
-      received++; entered(); await held; response.writeHead(200); response.end("received");
+      received++; entered(); await held; response.writeHead(status); response.end("received");
     });
     await new Promise<void>(resolve => receiver.listen(0, "127.0.0.1", resolve));
     const address = receiver.address(); if (!address || typeof address === "string") throw new Error("Local callback unavailable");
@@ -161,9 +162,9 @@ describe("Organization log erasure through HTTP, PostgreSQL and real object stor
         if (!blocked) await delay(10);
       }
       expect(blocked).toBe(true); expect(received).toBe(1);
-      release(); expect(await delivery).toMatchObject({ status: "delivered", httpStatus: 200 });
+      release(); expect(await delivery).toMatchObject({ status: status === 200 ? "delivered" : "retrying", httpStatus: status });
       expect((await deleting).status).toBe(409); // Send bookkeeping invalidates the old preview.
-      expect((await db.query("select status,http_status from log_webhook_deliveries where organization_id='log-target'")).rows).toEqual([{ status: "delivered", http_status: 200 }]);
+      expect((await db.query("select status,http_status from log_webhook_deliveries where organization_id='log-target'")).rows).toEqual([{ status: status === 200 ? "delivered" : "retrying", http_status: status }]);
       const erased = await start(); expect(erased.status, erased.bodyText).toBe(202); expect(erased.body.item.status).toBe("deleted");
       expect(await deliverer.processNext()).toBeNull(); await deliverer.flush(); expect(received).toBe(1);
       expect((await db.query("select id from log_webhook_deliveries where organization_id='log-target'")).rows).toEqual([]);
@@ -205,5 +206,17 @@ describe("Organization log erasure through HTTP, PostgreSQL and real object stor
       const erased = await start(); expect(erased.status, erased.bodyText).toBe(202); expect(erased.body.item.status).toBe("deleted");
       await expect(store.get(uploaded.fileObject.storageKey)).rejects.toThrow();
     } finally { db = admin; await api?.close(); await worker?.close(); await dropLabRuntimeLogins(database.url, token); }
+  });
+  it("removes typed log projections in a suspended foreign Home and rejects their later recreation", async () => {
+    const uploaded = await upload();
+    await notifyLogAnalysisCompleted(db, { organizationId: "log-home", logId: uploaded.log.id, runId: uploaded.job.runId,
+      fileName: "private-target.log", recipientUserId: "log-platform", conclusion: "Target log content in foreign Home" });
+    expect((await db.query("select id from user_notifications where organization_id='log-home'")).rowCount).toBeGreaterThan(0);
+    await db.query("update organizations set status='suspended' where id='log-home'");
+    const erased = await start(); expect(erased.status, erased.bodyText).toBe(202); expect(erased.body.item.status).toBe("deleted");
+    expect((await db.query("select id from user_notifications where metadata->>'logId'=$1", [uploaded.log.id])).rows).toEqual([]);
+    await db.query("update organizations set status='active' where id='log-home'");
+    await expect(notifyLogAnalysisCompleted(db, { organizationId: "log-home", logId: uploaded.log.id, runId: uploaded.job.runId,
+      fileName: "private-target.log", recipientUserId: "log-platform", conclusion: "Late target content" })).rejects.toMatchObject({ code: "55000" });
   });
 });
