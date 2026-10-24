@@ -217,6 +217,9 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerUserRoutes(router, {
     db: options.db,
+    objectStore: options.objectStore,
+    catalogArchiveStore: options.catalogArchiveStore,
+    catalogArchiveKey: options.catalogArchiveKey,
     agentCheckpointer,
     selfRegisterEnabled: options.env?.AUTH_LOCAL_SELF_REGISTER,
     registrationOrganizationId: options.env?.AUTH_LOCAL_REGISTRATION_ORGANIZATION_ID,

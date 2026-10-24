@@ -18,6 +18,14 @@ export type AcceptanceOperation = {
 
 export const acceptanceOperations: AcceptanceOperation[] = [
   {
+    id: "ORG-EMPTY-ERASURE-001", priority: "P1", area: "platform", coverage: "automated",
+    route: "/platform/organizations", roles: ["Platform Admin"],
+    action: "Confirm permanent erasure of a management-only Organization, retry failed progress, and read a minimal independent receipt after its accounts and Organization disappear.",
+    acceptanceIds: ["ORG-EMPTY-ERASURE-001"],
+    specFiles: ["e2e/acceptance/organization-empty-erasure.acceptance.spec.ts", "server/modules/users/organizationErasure.integration.test.ts"],
+    assertions: ["ui", "api", "db", "screenshot"]
+  },
+  {
     id: "ORG-DELETION-PREVIEW-001", priority: "P1", area: "platform", coverage: "automated",
     route: "/platform/organizations", roles: ["Platform Admin"],
     action: "Read and refresh the selected Organization's erasure inventory, retry a failed preview, inspect account, shared-object and backup boundaries, and preserve all data while ordinary administrators are denied.",

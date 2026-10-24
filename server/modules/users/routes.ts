@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
+import type { ObjectStore } from "../logs/objectStore";
+import type { ArchiveObjectStore } from "../catalog-cutover/archive";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
@@ -43,6 +45,8 @@ import { getUserById } from "./repository";
 import { createPlatformOrganizationSchema, emergencyDisableAdministratorSchema, recoverOrganizationAdministratorSchema } from "../contracts/dtoSchemas/platformOrganizations";
 import { changeOrganizationLifecycleSchema } from "../contracts/dtoSchemas/platformOrganizations";
 import { previewOrganizationDeletion } from "./organizationDeletion";
+import { listOrganizationErasures, readOrganizationErasure, retryOrganizationErasure, startOrganizationErasure } from "./organizationErasure";
+import { startOrganizationErasureSchema } from "../contracts/dtoSchemas/organizationDeletion";
 import type { XiaozeCheckpointer } from "../agent/xiaoze/checkpointer";
 import { changeOrganizationLifecycle } from "../auth/organizationLifecycle";
 import { createPlatformOrganization, emergencyDisableAdministrator, getAdministratorRecovery, listPlatformOrganizations, recoverOrganizationAdministrator, requirePlatformOrganizationManager } from "./platformOrganizations";
@@ -93,9 +97,11 @@ function parseWithSchema<Schema extends z.ZodTypeAny>(schema: Schema, value: unk
 
 export function registerUserRoutes(
   router: WiseEffRouter,
-  options: { db?: Database; agentCheckpointer?: XiaozeCheckpointer; localInvitationsEnabled?: boolean; selfRegisterEnabled?: boolean; registrationOrganizationId?: string; oidcIssuer?: string; authenticationProvider?: "local" | "oidc" | "hmac"; bridgeConnectionPool?: Pick<BridgeConnectionPool, "disconnect">; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
+  options: { db?: Database; objectStore?: ObjectStore; catalogArchiveStore?: ArchiveObjectStore; catalogArchiveKey?: Buffer; agentCheckpointer?: XiaozeCheckpointer; localInvitationsEnabled?: boolean; selfRegisterEnabled?: boolean; registrationOrganizationId?: string; authenticationProvider?: "local" | "oidc" | "hmac"; oidcIssuer?: string; bridgeConnectionPool?: Pick<BridgeConnectionPool, "disconnect">; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
 ) {
   const mutationContext = (request: RouteRequest) => ({ requestId: request.requestId, authenticationProvider: options.authenticationProvider, oidcIssuer: options.oidcIssuer, bridgeConnectionPool: options.bridgeConnectionPool });
+  const erasureContext = (request: RouteRequest) => ({ ...mutationContext(request), selfRegisterEnabled: options.selfRegisterEnabled,
+    registrationOrganizationId: options.registrationOrganizationId, objectStore: options.objectStore, catalogArchiveStore: options.catalogArchiveStore, catalogArchiveKey: options.catalogArchiveKey, agentCheckpointer: options.agentCheckpointer });
   const operatingInvocation = (db: Database, auth: AuthContext, request: RouteRequest) => {
     const query = parseWithSchema(z.object({ organizationId: z.string().trim().min(1).max(200).optional() }), request.query);
     return query.organizationId === undefined ? createUserInvocation(auth) : resolveOperatingContext(db, createUserInvocation(auth), query.organizationId);
@@ -166,6 +172,22 @@ export function registerUserRoutes(
     const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(emergencyDisableAdministratorSchema, request.body);
     return { status: 200, body: { item: await emergencyDisableAdministrator(db, createUserInvocation(auth), request.params.organizationId, request.params.userId, body.reason, mutationContext(request)) } };
+  });
+  router.get("/api/v1/platform/organization-deletions", async request => {
+    const db = requireDb(options.db), caller = createUserInvocation(await options.getCurrentAuthContext(request));
+    return { status: 200, body: { items: await listOrganizationErasures(db, caller) } };
+  });
+  router.get("/api/v1/platform/organization-deletions/:erasureId", async request => {
+    const db = requireDb(options.db), caller = createUserInvocation(await options.getCurrentAuthContext(request));
+    return { status: 200, body: { item: await readOrganizationErasure(db, caller, request.params.erasureId) } };
+  });
+  router.post("/api/v1/platform/organization-deletions/:erasureId/retry", async request => {
+    const db = requireDb(options.db), caller = createUserInvocation(await options.getCurrentAuthContext(request));
+    return { status: 200, body: { item: await retryOrganizationErasure(db, caller, request.params.erasureId, erasureContext(request)) } };
+  });
+  router.post("/api/v1/platform/organizations/:organizationId/deletions", async request => {
+    const db = requireDb(options.db), caller = createUserInvocation(await options.getCurrentAuthContext(request));
+    return { status: 202, body: { item: await startOrganizationErasure(db, caller, request.params.organizationId, parseWithSchema(startOrganizationErasureSchema, request.body), erasureContext(request)) } };
   });
   router.get("/api/v1/platform/organizations", async (request) => {
     const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
