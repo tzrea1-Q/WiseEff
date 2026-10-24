@@ -58,6 +58,11 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
       { method, headers: { "x-wiseeff-user": "parameter-platform" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   }
   it("keeps completed domain progress when later management fails, then retries only unfinished work", async () => {
+    // Real legacy cross-domain FK: knowledge must release its own reference
+    // before the parameter adapter can remove this Organization Spec.
+    await db.query("insert into parameter_specs(id,organization_id,source_kind,specification_key,definition_lifecycle) values('parameter-knowledge-spec','parameter-target','manual','parameter-knowledge-spec','active')");
+    await db.query("insert into knowledge_entries(id,organization_id,title,content_form) values('00000000-0000-4000-8000-000000001395','parameter-target','Legacy parameter reference','markdown')");
+    await db.query("insert into knowledge_parameter_references(id,organization_id,entry_id,parameter_spec_id,created_by_user_id) values('00000000-0000-4000-8000-000000001396','parameter-target','00000000-0000-4000-8000-000000001395','parameter-knowledge-spec','parameter-member')");
     await db.query("insert into projects(id,organization_id,name,code) values('parameter-project','parameter-target','Erase project','ERASE')");
     await db.query("insert into organization_teams(id,organization_id,name) values('parameter-team','parameter-target','Erase team')");
     await db.query(`create function fail_parameter_management() returns trigger language plpgsql as $$ begin raise exception 'temporary management failure'; end $$;
@@ -70,6 +75,7 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
     expect(started.body.item.status).toBe("failed");
     expect(started.body.item.domains["projects-parameters"]).toMatchObject({ status: "complete", attempts: 1 });
     expect((await db.query("select id from projects where id='parameter-project'")).rows).toEqual([]);
+    expect((await db.query("select id from knowledge_parameter_references where parameter_spec_id='parameter-knowledge-spec'")).rows).toEqual([]);
     await db.query("drop trigger parameter_management_failure on organization_teams");
     const retried = await request<typeof started.body>(`/api/v1/platform/organization-deletions/${started.body.item.id}/retry`, "POST");
     expect(retried.status, retried.bodyText).toBe(200);

@@ -103,7 +103,7 @@ export async function deleteDefinition(db: Database, invocation: TrustedInvocati
       if (error instanceof pg.DatabaseError) throw error;
       throw new ApiError("CONFLICT", "当前规范快照无法安全删除，请先修复数据一致性。", { reason: "definition-erasure-catalog-drift" });
     });
-    const archiveErasure = await prepareDefinitionArchiveErasure(preview, stores, { db: tx });
+    const archiveErasure = await prepareDefinitionArchiveErasure(preview, stores, { db: tx, rootDb: db });
     preparedArchive = archiveErasure;
     const erased = await tx.query<{ result: { erased: boolean; counts: Record<string, number>; pendingObjectRefs: string[] } }>(
       "select parameter_catalog.purge_parameter_definition($1,$2::jsonb,$3,$4) as result",

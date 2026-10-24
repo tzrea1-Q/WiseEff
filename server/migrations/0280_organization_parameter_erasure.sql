@@ -82,6 +82,32 @@ do $$ declare installed text; changed text; begin
   if changed=installed then raise exception 'Organization legacy inventory seam was not found'; end if; execute changed;
 end $$;
 
+-- A validated global Definition archive rewrite takes over the exact old
+-- archive key. Otherwise an acknowledged historical parameter write would
+-- indefinitely retain bytes already owned by the global cleanup receipt.
+do $$ declare installed text; changed text; begin
+  select pg_get_functiondef('parameter_catalog.purge_parameter_definition(text,jsonb,text,text)'::regprocedure) into strict installed;
+  -- Sanitized replacement IO has already committed exact-key custody. Fence
+  -- after that IO, rather than deadlocking its independent reserve connection.
+  changed:=replace(installed,'perform parameter_catalog.lock_parameter_definition_purge(p_id);',
+    'perform parameter_catalog.lock_parameter_definition_purge(p_id); perform set_config(''lock_timeout'',''2s'',true); lock table public.parameter_object_writes,parameter_catalog.catalog_archive_writes in share row exclusive mode;');
+  if changed=installed then raise exception 'Definition archive write fence seam was not found'; end if;
+  installed:=changed;
+  changed:=replace(installed,$old$pending_refs:=array_append(pending_refs,'plane::'||(archive_update->>'oldObjectRef'));$old$,
+    $new$delete from public.parameter_object_writes w using public.project_parameter_plane_archives a
+      where a.id=archive_update->>'id' and w.organization_id=a.organization_id and w.object_ref=archive_update->>'oldObjectRef';
+    pending_refs:=array_append(pending_refs,'plane::'||(archive_update->>'oldObjectRef'));$new$);
+  if changed=installed then raise exception 'Definition plane archive custody seam was not found'; end if;
+  installed:=changed;
+  changed:=replace(installed,$old$pending_refs:=array_append(pending_refs,'catalog::'||(archive_update->>'oldObjectRef'));$old$,
+    $new$delete from parameter_catalog.catalog_archive_writes w using parameter_catalog.parameter_catalog_archives a
+      left join public.projects p on a.owner_scope_kind='project' and p.id=a.owner_scope_id
+      where a.id=archive_update->>'id' and w.org=case when a.owner_scope_kind='organization' then a.owner_scope_id else p.organization_id end
+        and w.object_ref=archive_update->>'oldObjectRef';
+    pending_refs:=array_append(pending_refs,'catalog::'||(archive_update->>'oldObjectRef'));$new$);
+  if changed=installed then raise exception 'Definition Catalog archive custody seam was not found'; end if; execute changed;
+end $$;
+
 grant select,update on public.organization_erasures to catalog_migration_owner;
 create function parameter_catalog.lock_organization_parameter_erasure(p_id text,p_actor text,p_lease text)
 returns text language plpgsql security definer set search_path=pg_catalog,public,parameter_catalog,catalog_publication as $$
