@@ -34,7 +34,7 @@ it.each([true, false])("uses the server's populated-domain execution signal (%s)
     onClose={vi.fn()} onNavigate={vi.fn()} onRequestDelete={requestDelete} />);
   await screen.findByText("包含知识的组织");
   if (executionAvailable) {
-    await userEvent.click(screen.getByRole("button", { name: "开始彻底删除", exact: true }));
+    await userEvent.click(screen.getByRole("button", { name: "开始彻底删除" }));
     expect(requestDelete).toHaveBeenCalledWith(preview);
-  } else expect(screen.queryByRole("button", { name: "开始彻底删除", exact: true })).not.toBeInTheDocument();
+  } else expect(screen.queryByRole("button", { name: "开始彻底删除" })).not.toBeInTheDocument();
 });
