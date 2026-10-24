@@ -2,7 +2,6 @@ import { loadLegacyLogFile, loadLogFiles } from "./filesRepository";
 import { compileSkillFiles } from "../../../src/domain/logs/fileApplicability";
 import { createLogFileReader, ensureStoredLogIndex } from "./fileReader";
 import { createPrefilterBudget, prefilterLogStream } from "./prefilter";
-import { createHash } from "node:crypto";
 import { decodeLogFilesCooperatively, gzipDecodedEvents, indexDecodedEvents, logDecodeLimits } from "./parsing/workerDecoding";
 import type { DecodeCounts } from "./parsing/spec";
 import { claimJobById, claimNextJob, failJob, getJobSnapshot, markJobDeadLettered, markJobRetryScheduled, updateJobProgress } from "../jobs/repository";
@@ -16,7 +15,7 @@ import { createRuleBasedLogAnalyzer, genericSignalRuleSet, type AnalyzeLogInput,
 import { extractLogSignalsCooperatively, logSignalLimits } from "./genericSignals";
 import { LogAnalysisProviderError, LOG_ANALYSIS_PROMPT_VERSION } from "./analyzer/llmAnalyzer";
 import { readStoredLogFormatProfile } from "./formatProfile";
-import { sanitizeFileName, sanitizePathSegment, type ObjectStore } from "./objectStore";
+import { sanitizeFileName, type ObjectStore } from "./objectStore";
 import { parseLogText } from "./parser";
 import { createSignalEvaluationBudget, withSignalFields } from "./signalRules";
 import {
@@ -405,9 +404,7 @@ async function processClaimedLogAnalysisJob(
         failureCode = "artifact_error";
         const bytes = await lease.run(() => gzipDecodedEvents(decoding!.events));
         const fileName = sanitizeFileName(`${snapshot.runId}-decoded-events.jsonl.gz`);
-        // Shipped local/S3 stores use this content-addressed key. Retain it before
-        // the write so even an upload with a lost response can be cleaned up.
-        cleanupKey = `${sanitizePathSegment(snapshot.organizationId, "organization id")}/${createHash("sha256").update(bytes).digest("hex")}-${fileName}`;
+        cleanupKey = lease.rawObjectStore.planKey?.({ organizationId: snapshot.organizationId, fileName, contentType: "application/gzip", bytes });
         decodedArtifact.objectKey = (await lease.run(() => writeArtifact(lease.rawObjectStore, snapshot.logId,
           { organizationId: snapshot.organizationId, fileName, contentType: "application/gzip", bytes }))).storageKey;
       } catch {

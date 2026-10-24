@@ -1,7 +1,6 @@
-import { createHash } from "node:crypto";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { sanitizeFileName, sanitizePathSegment, type ObjectStore } from "./objectStore";
+import type { ObjectStore } from "./objectStore";
 
 export type LogArtifactWriter = (store: ObjectStore, recordId: string,
   input: Parameters<ObjectStore["put"]>[0]) => ReturnType<typeof putLogArtifact>;
@@ -10,7 +9,8 @@ export type LogArtifactWriter = (store: ObjectStore, recordId: string,
  * caller's cancellation wins its own Promise.race or the store loses a response. */
 export async function putLogArtifact(db: Database, store: ObjectStore, recordId: string,
   input: Parameters<ObjectStore["put"]>[0], admit?: (tx: Database) => Promise<void>) {
-  const predictedKey = `${sanitizePathSegment(input.organizationId, "organization id")}/${createHash("sha256").update(input.bytes).digest("hex")}-${sanitizeFileName(input.fileName)}`;
+  if (!store.planKey) throw new ApiError("INTERNAL_ERROR", "日志产物存储不支持持久写入保管。");
+  const predictedKey = store.planKey(input);
   let failure: unknown;
   const stored = await db.transaction(async (tx) => {
     await admit?.(tx);

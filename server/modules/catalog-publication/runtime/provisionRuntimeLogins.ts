@@ -56,6 +56,10 @@ const CANONICAL_SOURCE_READ_FUNCTIONS = [
   "parameter_catalog.preview_project_deletion_catalog(text, text, text)",
   "parameter_catalog.preview_organization_deletion(text, text)",
   "parameter_catalog.register_agent_checkpoint_namespace(text, text, text, text, text, text, boolean)",
+  "parameter_catalog.erase_organization_logs(text, text, text)",
+  "parameter_catalog.organization_log_erasure_objects_pending(text, text, text)",
+  "parameter_catalog.organization_log_erasure_object_referenced(text, text, text, text)",
+  "parameter_catalog.finish_organization_log_erasure_object(text, text, text, text)",
   "parameter_catalog.lock_project_erasure(text, text, text)",
   "parameter_catalog.read_project_erasure(text, text, text)",
   "parameter_catalog.purge_project(text, text, text, text)",
@@ -465,6 +469,8 @@ export async function provisionPublicationRuntimeLogins(
       if (organizationErasures.rows[0]?.exists) {
         await admin.query(`revoke all on public.organization_erasures from ${quoteIdent(names.worker)}, ${quoteIdent(names.manager)}`);
       }
+      const logObjectWrites = await admin.query<{ exists: boolean }>("select to_regclass('public.log_object_writes') is not null as exists");
+      if (logObjectWrites.rows[0]?.exists) await admin.query(`revoke all on public.log_object_writes from ${quoteIdent(names.worker)}, ${quoteIdent(names.manager)}`);
       await revokeLegacyStructuralDml(admin, [names.api, names.worker, names.manager]);
 
       await revokeSchemaAccess(admin, names.worker, "parameter_catalog");

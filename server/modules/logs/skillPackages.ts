@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { withAuditedWrite, type AuditedWriteContext } from "../audit/auditedWrite";
+import { withLogObjectCustody } from "./objectWrites";
 import { type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { requireKnowledgeEdit, canReadEntry } from "../knowledge/policy";
 import { createKnowledgeEntry } from "../knowledge/service";
@@ -96,10 +97,17 @@ export async function importLogSkillPackage(db: Database, store: ObjectStore, au
     }
     throw error;
   }
+  const prepared = pkg.cases.flatMap(item => item.files.map(file => {
+    file.objectFileName = `case-${randomUUID()}.bin`;
+    return { organizationId: logOrganizationId(auth), fileName: file.objectFileName, contentType: "application/octet-stream", bytes: file.bytes };
+  }));
+  return withLogObjectCustody(db, store, async scoped => {
   const written: string[] = [];
-  const trackingStore: ObjectStore = { ...store, put: async (input) => {
-    const object = await store.put(input); written.push(object.storageKey); return object;
-  } };
+  // Nested case imports reuse the same committed custody scope. Track successful
+  // keys for the existing confirmed-rollback cleanup without hiding that scope.
+  const originalPut = scoped.put;
+  scoped.put = async input => { const object = await originalPut(input); written.push(object.storageKey); return object; };
+  const trackingStore = scoped;
   let rollbackConfirmed = false;
   try {
     return await db.transaction((transaction) => withAuditedWrite(transaction, invocation, context, async (tx) => {
@@ -132,5 +140,6 @@ export async function importLogSkillPackage(db: Database, store: ObjectStore, au
   } catch (error) {
     if (rollbackConfirmed) await Promise.all(written.map((key) => store.delete?.(key).catch(() => undefined)));
     throw error;
-  }
+  } finally { scoped.put = originalPut; }
+  }, prepared);
 }

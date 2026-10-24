@@ -63,6 +63,7 @@ export function keepLogJobLease(db: Database, store: ObjectStore, input: {
   };
   const objectStore: ObjectStore = {
     ...store,
+    ...(store.planKey ? { planKey: store.planKey.bind(store) } : {}),
     get: (key) => run(() => store.get(key)),
     put: (value) => run(() => store.put(value)),
     ...(store.delete ? { delete: (key: string) => store.delete!(key) } : {}),

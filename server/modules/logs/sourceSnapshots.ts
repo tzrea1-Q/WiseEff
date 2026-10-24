@@ -7,6 +7,7 @@ import { type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { requireLogAdminDomains, requireLogView } from "./policy";
 import { getLogDomainById } from "./domainsRepository";
 import type { ObjectStore } from "./objectStore";
+import { hasLogObjectCustody, withLogObjectCustody } from "./objectWrites";
 import { getSourceSnapshotLimits } from "./sourceArchive";
 import { insertSkillRevision, listSkillRevisions, lockSkill } from "./skillsRepository";
 import type { LogSkillSpec } from "./skillSpec";
@@ -65,7 +66,8 @@ export async function validateDefaultSourceSnapshot(db: Queryable, organizationI
 }
 
 export async function uploadSourceSnapshot(db: Database, objectStore: ObjectStore, auth: LogAccessContext, skillId: string,
-  input: { versionLabel: string; fileName: string; bytes: Buffer }, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  input: { versionLabel: string; fileName: string; bytes: Buffer }, invocation: TrustedInvocationContext, context: AuditedWriteContext): Promise<Awaited<ReturnType<typeof getSnapshot>>> {
+  if (!hasLogObjectCustody(objectStore)) return withLogObjectCustody(db, objectStore, scoped => uploadSourceSnapshot(db, scoped, auth, skillId, input, invocation, context));
   assertLogInvocation(auth, invocation, "Upload source snapshot");
   requireLogAdminDomains(auth);
   await requireSkill(db, auth, skillId);

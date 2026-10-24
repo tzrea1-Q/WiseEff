@@ -15,6 +15,7 @@ import { findLogDomainBySkillKey, getActiveLogDomainForBinding } from "./domains
 import { currentSkillRevisionId } from "./skillsRepository";
 import { selectUploadLogSkill, storedRecommendationFiles } from "./skillRecommendationService";
 import type { ObjectStore, StoredObject } from "./objectStore";
+import { hasLogObjectCustody, withLogObjectCustody } from "./objectWrites";
 import {
   aggregateFeedbackInsights,
   appendFeedback,
@@ -297,6 +298,7 @@ export async function uploadLogFile(
   input: UploadLogFileInput,
   context: ServiceContext = {}
 ): Promise<{ fileObject: LogFileObjectDto; log: LogRecordDto; job: LogAnalysisJobDto | null }> {
+  if (!hasLogObjectCustody(objectStore)) return withLogObjectCustody(db, objectStore, scoped => uploadLogFile(db, scoped, auth, input, context));
   if (!("kind" in auth)) requireLogUpload(auth);
   const logDomainId = await resolveUploadSkillId(db, auth, input);
   const relatedParameter = await resolveLogRelatedParameter(db, auth, input);

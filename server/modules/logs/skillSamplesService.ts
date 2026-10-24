@@ -7,6 +7,7 @@ import { withAuditedWrite, type AuditedWriteContext } from "../audit/auditedWrit
 import { type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { bundleFileUtf8Bytes, decodeLogBundleFile, intakeLogBundle, isLogArchive } from "./bundleIntake";
 import type { ObjectStore } from "./objectStore";
+import { hasLogObjectCustody, withLogObjectCustody } from "./objectWrites";
 import { requireLogAdminDomains } from "./policy";
 import { getLogSkill } from "./skillsService";
 import { lockSkill } from "./skillsRepository";
@@ -59,7 +60,8 @@ export async function getLogSkillSample(db: Database, store: ObjectStore, auth: 
   return { ...metadata(row), files, contentFilePath: first.path, content: first.content!, truncated: first.truncated ?? false };
 }
 export async function replaceLogSkillSample(db: Database, store: ObjectStore, auth: LogAccessContext, skillId: string,
-  input: { fileName: string; contentBase64: string }, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  input: { fileName: string; contentBase64: string }, invocation: TrustedInvocationContext, context: AuditedWriteContext): Promise<ReturnType<typeof metadata>> {
+  if (!hasLogObjectCustody(store)) return withLogObjectCustody(db, store, scoped => replaceLogSkillSample(db, scoped, auth, skillId, input, invocation, context));
   assertLogInvocation(auth, invocation, "Replace skill sample");
   requireSampleWrite(auth);
   const bytes = Buffer.from(input.contentBase64, "base64");
