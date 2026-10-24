@@ -138,7 +138,7 @@ describe("RegistrationDialog", () => {
     expect(confirmation).toHaveTextContent("5 个参数绑定，涉及 2 个项目");
     expect(confirmation).toHaveTextContent("7 个参数绑定，涉及 3 个项目");
     expect(within(confirmation).getByRole("button", { name: "确认替换归属" })).toBeDisabled();
-    await user.click(within(confirmation).getByRole("button", { name: "取消", exact: true }));
+    await user.click(within(confirmation).getByRole("button", { name: "取消" }));
     expect(updatePlacement).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "继续确认" }));
     confirmation = screen.getByRole("dialog", { name: "确认替换归属" });
