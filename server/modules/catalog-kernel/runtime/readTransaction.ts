@@ -8,6 +8,20 @@ import type {
 
 export type CatalogSnapshotClient = Pick<pg.PoolClient, "query">;
 
+const readTransactionBrand = Symbol("catalog.caller-owned-read-transaction");
+
+/** An already-open repeatable-read, read-only transaction owned by the caller. */
+export type CatalogReadTransaction = CatalogSnapshotClient & {
+  readonly [readTransactionBrand]: true;
+};
+
+export type CatalogReadSource = pg.Pool | CatalogReadTransaction;
+
+export const catalogReadTransaction = (client: CatalogSnapshotClient): CatalogReadTransaction => ({
+  [readTransactionBrand]: true,
+  query: client.query.bind(client),
+});
+
 export class CatalogSnapshotReadFailure extends Error {
   readonly kernelError: CatalogKernelError;
 
@@ -55,10 +69,18 @@ const releaseClient = (client: pg.PoolClient, destroy: boolean): void => {
 };
 
 export const withCatalogReadTransaction = async <T>(
-  pool: pg.Pool,
+  pool: CatalogReadSource,
   operation: Extract<CatalogKernelOperation, "loadCurrentCatalog" | "loadPinnedCatalog">,
-  work: (client: pg.PoolClient) => Promise<Result<T, CatalogKernelError>>,
+  work: (client: CatalogSnapshotClient) => Promise<Result<T, CatalogKernelError>>,
 ): Promise<Result<T, CatalogKernelError>> => {
+  if (readTransactionBrand in pool) {
+    try {
+      return await work(pool);
+    } catch (error) {
+      if (error instanceof CatalogSnapshotReadFailure) return { ok: false, error: error.kernelError };
+      return { ok: false, error: storageFailure(operation, isRetryableStorage(error)) };
+    }
+  }
   let client: pg.PoolClient | undefined;
   try {
     client = await pool.connect();

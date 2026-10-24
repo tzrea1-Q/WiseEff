@@ -762,7 +762,7 @@ export const appendProjectValue = async (
 };
 
 export const readProjectValueHistory = async (
-  pool: pg.Pool,
+  pool: ValueClient,
   query: ProjectValueHistoryQuery,
 ): Promise<Result<readonly ProjectValue[], ProjectValueConflict>> => {
   if (!controlFree(query.definitionRevisionId)) {

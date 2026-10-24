@@ -125,6 +125,64 @@ const compileOrThrow = (bundle: CatalogReleaseBundle) => {
   return compiled.value;
 };
 
+// Hold the exact locator lookup after discovery has already captured value IDs.
+// READ COMMITTED is the previous per-statement behavior, retained as a negative
+// control; neither reader changes the exact-pin join or any persisted data.
+function pausedBindingRead(
+  url: string,
+  auth: Parameters<typeof listCatalogBindingRowsForProject>[1],
+  input: Parameters<typeof listCatalogBindingRowsForProject>[2],
+  isolation: "repeatable read" | "read committed",
+) {
+  const reader = createPostgresDatabase(url);
+  const readerPool = getRootPostgresPool(reader)!;
+  readerPool.options.max = 1;
+  let resume = () => undefined as void;
+  const held = new Promise<void>((resolve) => { resume = resolve; });
+  let captured = () => undefined as void;
+  const reachedLocator = new Promise<void>((resolve) => { captured = resolve; });
+  let transaction: { isolation: string; read_only: string; backend_pid: number } | undefined;
+  const connect = readerPool.connect.bind(readerPool);
+  readerPool.connect = (async () => {
+    const client = await connect();
+    const query = client.query.bind(client);
+    const release = client.release.bind(client);
+    client.query = ((text: unknown, values?: unknown) => {
+      if (text === "begin isolation level repeatable read read only" && isolation === "read committed") {
+        return query("begin isolation level read committed read only");
+      }
+      if (typeof text === "string" && text.includes("select distinct on (b.id)")) {
+        return (async () => {
+          transaction = (await query<{ isolation: string; read_only: string; backend_pid: number }>(
+            `select current_setting('transaction_isolation') as isolation,
+                    current_setting('transaction_read_only') as read_only, pg_backend_pid() as backend_pid`,
+          )).rows[0];
+          captured();
+          await held;
+          return query(text, values as unknown[] | undefined);
+        })();
+      }
+      return query(text as never, values as never);
+    }) as typeof client.query;
+    client.release = ((destroy?: boolean | Error) => {
+      client.query = query;
+      return release(destroy);
+    }) as typeof client.release;
+    return client;
+  }) as typeof readerPool.connect;
+  const outcome = listCatalogBindingRowsForProject(reader, auth, input).then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+  return {
+    ready: Promise.race([reachedLocator, outcome.then(() => { throw new Error("binding reader completed before locator barrier"); })]),
+    outcome,
+    resume,
+    transaction: () => transaction,
+    close: async () => { resume(); await outcome; await reader.close(); },
+  };
+}
+
 describe("published catalog project values", () => {
   let database: EphemeralTestDatabase;
   let root: RootDatabase;
@@ -378,6 +436,19 @@ describe("published catalog project values", () => {
     expect(listed[0]?.propertyKey).toBe("iin_max");
     expect(listed[0]?.rawValue).toBe("<1000>");
     expect(listed[0]?.parameterSpecId).toBe("pdef_acme_power_iin_max");
+    const singleReader = createPostgresDatabase(database.url);
+    const singleReaderPool = getRootPostgresPool(singleReader)!;
+    singleReaderPool.options.max = 1;
+    singleReaderPool.options.connectionTimeoutMillis = 2_000;
+    try {
+      await expect(listCatalogBindingRowsForProject(singleReader, auth, { projectId: "missing-project" }))
+        .rejects.toMatchObject({ code: "NOT_FOUND" });
+      expect(await listCatalogBindingRowsForProject(singleReader, auth, { projectId: PROJECT })).toEqual(listed);
+      expect(await listCatalogBindingRowsForProject(singleReader, auth, { projectId: PROJECT, limit: 10 })).toEqual(listed);
+      expect(singleReaderPool.waitingCount).toBe(0);
+      expect(singleReaderPool.idleCount).toBe(1);
+      expect((await singleReaderPool.query("show transaction_isolation")).rows).toEqual([{ transaction_isolation: "read committed" }]);
+    } finally { await singleReader.close(); }
     const replayCounts = async () => (await pool.query(`select
       (select count(*) from parameter_catalog.project_parameter_values) as values,
       (select count(*) from parameter_catalog.binding_history_events) as histories,
@@ -600,7 +671,7 @@ describe("published catalog project values", () => {
     expect((await pool.query(`select count(*)::int as count from project_parameter_file_versions where file_id=$1`, [before.id])).rows[0]?.count).toBe(1);
   });
 
-  it("applies only the winning repeated DTS occurrence and resolves a fresh property pin for the same source identity", async () => {
+  it("reads a complete exact-pin snapshot while a reviewed source change commits between discovery and locator lookup", async () => {
     const binding = (await listCatalogBindingRowsForProject(root,auth,{ projectId: PROJECT }))[0]!;
     const prepared = await root.transaction((tx) => preparePinnedSourceChange(tx,objectStore,auth, {
       projectId: PROJECT,bindingId: binding.id,expectedValueId: binding.currentValueId,target: { format: "dts",sourceText: "<2000>" },
@@ -636,10 +707,37 @@ describe("published catalog project values", () => {
     },auth);
     await expect(syncPublishedCatalogProjectValues(pool, { organizationId: ORG,projectId: PROJECT,configSetId: CONFIG_SET,configRevisionId: newer.id }))
       .rejects.toThrow("reviewed source change");
-    const applied = await root.transaction((tx) => commitCanonicalSourceRevision(tx,objectStore,reviewer,snapshot, {
-      projectId: PROJECT,requestId,invocation: createUserInvocation(reviewer),traceId: "t11-dts-apply",refusalSink,
-    }));
-    expect(applied.status).toBe("approved");
+    const concurrentReads = [undefined, 10].flatMap((limit) =>
+      (["read committed", "repeatable read"] as const).map((isolation) => ({
+        isolation,
+        read: pausedBindingRead(database.url, auth, { projectId: PROJECT, revisionId: baseRevisionId, limit }, isolation),
+      })),
+    );
+    try {
+      await Promise.all(concurrentReads.map(({ read }) => read.ready));
+      for (const { read, isolation } of concurrentReads) {
+        expect(read.transaction()).toMatchObject({ isolation, read_only: "on" });
+      }
+      expect(new Set(concurrentReads.map(({ read }) => read.transaction()?.backend_pid)).size).toBe(4);
+      const applied = await root.transaction((tx) => commitCanonicalSourceRevision(tx,objectStore,reviewer,snapshot, {
+        projectId: PROJECT,requestId,invocation: createUserInvocation(reviewer),traceId: "t11-dts-apply",refusalSink,
+      }));
+      expect(applied.status).toBe("approved");
+      for (const { read } of concurrentReads) read.resume();
+      for (const { read, isolation } of concurrentReads) {
+        const result = await read.outcome;
+        if (isolation === "read committed") {
+          expect(result).toMatchObject({ ok: false, error: { code: "CONFLICT", message: "Canonical read requires an exact owned source pin." } });
+        } else {
+          expect(result.ok).toBe(true);
+          if (result.ok) expect(result.value).toEqual([expect.objectContaining({
+            id: binding.id, currentValueId: binding.currentValueId, rawValue: "<1000>",
+          })]);
+        }
+      }
+    } finally {
+      await Promise.all(concurrentReads.map(({ read }) => read.close()));
+    }
     const exported = await exportCanonicalBindingSource(root,objectStore,auth,{ projectId: PROJECT,bindingId: binding.id });
     expect(exported?.files[0]?.content).toBe(DTS.replace("<1000>","<2000>"));
     expect(exported?.manifest.locator.propertyOccurrenceId).not.toBe(prepared.bindings[0]?.locator.propertyOccurrenceId);

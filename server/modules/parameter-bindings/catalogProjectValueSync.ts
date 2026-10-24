@@ -20,6 +20,7 @@ import {
 } from "../catalog-kernel/interface";
 import { readCurrentCatalogPointer } from "../catalog-kernel/install/currentPointer";
 import { CURRENT_POINTER_LOCK_KEY } from "../catalog-kernel/install/lockProtocol";
+import { catalogReadTransaction, type CatalogReadTransaction } from "../catalog-kernel/runtime/readTransaction";
 import { createPinCapturingCatalogRuntime } from "../catalog-publication/runtime";
 import { createGovernanceCatalogQueries } from "../parameter-governance/queries";
 import {
@@ -936,7 +937,7 @@ type CatalogBindingListInput = {
 };
 
 async function readBoundedCatalogParameters(
-  pool: pg.Pool,
+  pool: CatalogReadTransaction,
   auth: AuthContext,
   input: CatalogBindingListInput & { limit: number },
 ): Promise<ProjectProtectedParameter[]> {
@@ -1010,11 +1011,31 @@ export async function listCatalogBindingRowsForProject(
 ): Promise<CatalogBindingView[]> {
   const pool = getRootPostgresPool(db);
   if (!pool) return [];
+  const client = await pool.connect();
+  let destroy = false;
+  try {
+    await client.query("begin isolation level repeatable read read only");
+    const rows = await listCatalogBindingRowsInSnapshot(catalogReadTransaction(client), auth, input);
+    await client.query("commit");
+    return rows;
+  } catch (error) {
+    try { await client.query("rollback"); } catch { destroy = true; }
+    throw error;
+  } finally {
+    client.release(destroy);
+  }
+}
+
+async function listCatalogBindingRowsInSnapshot(
+  pool: CatalogReadTransaction,
+  auth: AuthContext,
+  input: CatalogBindingListInput,
+): Promise<CatalogBindingView[]> {
   const protectedRows = input.limit === undefined
     ? await readProjectProtectedParameters(pool, { invocation: parameterInvocation(auth) ?? createUserInvocation(auth), projectId: input.projectId })
     : await readBoundedCatalogParameters(pool, auth, { ...input, limit: input.limit });
   const currentRevisions = input.revisionId
-    ? await db.query<{ config_revision_id: string }>(
+    ? await pool.query<{ config_revision_id: string }>(
       `select distinct pin.config_revision_id
        from dts_config_revisions candidate
        join parameter_catalog.project_value_source_pins pin
@@ -1038,8 +1059,12 @@ export async function listCatalogBindingRowsForProject(
   const rows = protectedRows.filter((row) => row.pin.source.sourceRef !== "canonical-binding-identity" &&
     (!input.revisionId || revisionIds.has(row.pin.source.configRevisionId)));
   if (rows.length === 0) return [];
-  const currentCatalog = await loadPublishedCatalog(pool);
-  const locator = await db.query<{
+  const pointer = await readCurrentCatalogPointer(pool);
+  const current = pointer.kind === "installed"
+    ? await createCatalogKernel(pool).loadCurrentCatalog(pinOf(pointer.current.id, pointer.current.digest))
+    : null;
+  const currentCatalog = current?.ok ? current.value : null;
+  const locator = await pool.query<{
       binding_id: string;
       node_locator: string | null;
       instance_name: string | null;

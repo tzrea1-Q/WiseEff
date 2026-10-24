@@ -22,9 +22,11 @@ import {
   createRegistrationDestination,
   insertPlacement,
   insertRegistration,
+  findPlacementForModule,
   loadPlacementById,
   loadRegistrationById,
   loadRegistrationByOrgSubject,
+  lockOrganizationRegistrations,
   lockDestinationModule,
   reserveIdempotency,
   updatePlacementModule,
@@ -36,6 +38,7 @@ import {
 } from "./repositories";
 import { assertCatalogSubjectActive } from "./guardAdapter";
 import type { RegistrationResult, Result } from "./result";
+import { readPlacementReplacementResult } from "./result";
 
 export type { RegistrationWriterClient };
 
@@ -175,6 +178,11 @@ const writeRegister = async (
     };
   }
 
+  const occupant = await findPlacementForModule(client, command.organizationId, command.destinationModuleId);
+  if (occupant) {
+    return fail({ kind: "placement-occupied", registrationId: occupant.registration_id, placementId: occupant.id });
+  }
+
   const registrationId = `sreg_${randomUUID()}`;
   const placementId = `spla_${randomUUID()}`;
   const origin = command.method === "automatic" ? "auto" : "curated";
@@ -277,14 +285,44 @@ const writeMove = async (
     command.destinationModuleId,
   );
   if (!destination.ok) return destination;
+  const occupant = await findPlacementForModule(client, command.organizationId, command.destinationModuleId);
+  let replacement: RegistrationResult["replacement"];
+  if (command.replacement) {
+    const expected = command.replacement;
+    const displaced = await loadStoredPair(client, command.organizationId, expected.registrationId);
+    if (!displaced || !occupant || occupant.registration_id !== expected.registrationId ||
+        occupant.id !== expected.placementId || displaced.placement.id !== expected.placementId ||
+        displaced.placement.registration_id !== displaced.registration.id ||
+        displaced.placement.module_id !== command.destinationModuleId ||
+        displaced.placement.version !== expected.expectedPlacementVersion ||
+        `${displaced.registration.status}:${displaced.registration.version}` !== expected.expectedRegistrationVersion) {
+      return fail({ kind: "placement-conflict", registrationId: pair.registration.id, placementId: pair.placement.id });
+    }
+    const detached = await updatePlacementModule(client, displaced.placement.id, null);
+    replacement = {
+      registrationId: SubjectRegistrationId(displaced.registration.id),
+      placementId: SubjectPlacementId(detached.id),
+      subjectId: CatalogSubjectId(displaced.registration.subject_id),
+      previousModuleId: command.destinationModuleId,
+      moduleId: null,
+      placementVersion: detached.version,
+      registrationStatus: displaced.registration.status,
+      registrationVersion: displaced.registration.version,
+      previousSourceModuleId: pair.placement.module_id,
+    };
+  } else if (occupant && occupant.registration_id !== pair.registration.id) {
+    return fail({ kind: "placement-occupied", registrationId: occupant.registration_id, placementId: occupant.id });
+  }
   const placement =
     pair.placement.module_id === command.destinationModuleId
       ? pair.placement
       : await updatePlacementModule(client, pair.placement.id, command.destinationModuleId);
-  await commitIdempotency(client, command, pair.registration.id);
+  const result = { ...toResult(pair.registration, placement, command, fingerprint, "committed"),
+    ...(replacement ? { replacement } : {}) };
+  await commitIdempotency(client, command, pair.registration.id, replacement ? result : undefined);
   return {
     ok: true,
-    value: toResult(pair.registration, placement, command, fingerprint, "committed"),
+    value: result,
   };
 };
 
@@ -315,6 +353,7 @@ export const writeGuardedRegistration = async (
   const fingerprint = fingerprintRegistrationCommand(command);
 
   try {
+    await lockOrganizationRegistrations(client, command.organizationId);
     const reserved = await reserveIdempotency(client, command, fingerprint);
     if (reserved.request_fingerprint !== fingerprint) {
       return fail({
@@ -325,6 +364,19 @@ export const writeGuardedRegistration = async (
       });
     }
     if (reserved.state === "committed" && reserved.result_ref) {
+      if (reserved.result_kind === "placement-replacement") {
+        const snapshot = readPlacementReplacementResult(reserved.result_ref);
+        if (command.kind !== "move-placement" || !command.replacement ||
+            snapshot.registrationId !== command.registrationId || snapshot.organizationId !== command.organizationId ||
+            snapshot.idempotencyKey !== command.idempotencyKey || snapshot.fingerprint !== fingerprint ||
+            snapshot.replacement?.registrationId !== command.replacement.registrationId ||
+            snapshot.replacement.placementId !== command.replacement.placementId ||
+            snapshot.moduleId !== command.destinationModuleId || snapshot.release.id !== command.expectedRelease.id ||
+            snapshot.release.digest !== command.expectedRelease.digest) {
+          throw new Error("Stored placement replacement result does not match its command");
+        }
+        return { ok: true, value: { ...snapshot, outcome: "replayed" } };
+      }
       const stored = await loadStoredPair(client, command.organizationId, reserved.result_ref);
       if (!stored) {
         return fail({ kind: "registration-not-found", registrationId: reserved.result_ref });

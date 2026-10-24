@@ -136,6 +136,7 @@ describe("parameter catalog stable failures", () => {
       "definition-retired",
       "registration-required",
       "placement-conflict",
+      "placement-occupied",
       "invalid-placement-parent",
       "observation-ambiguous",
       "proposal-stale",

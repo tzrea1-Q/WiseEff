@@ -393,6 +393,8 @@ function mapRegistrationFailure(
       return catalogNotReady(requestId);
     case "placement-conflict":
       return conflict(requestId, "placement-conflict");
+    case "placement-occupied":
+      return conflict(requestId, "placement-occupied");
     case "revision-conflict":
     case "registration-conflict":
       return revisionConflict(requestId);
@@ -728,6 +730,37 @@ async function handleUpdatePlacement(
     destinationModuleId: parsed.data.destinationModuleId,
   });
   if (!destinationModuleId) return validationFailed(request.requestId, "destinationModuleId");
+  let replacement: Extract<RegistrationCommand, { kind: "move-placement" }>["replacement"];
+  if (parsed.data.replacement) {
+    const choice = parsed.data.replacement;
+    if (choice.registrationId === registrationId) return validationFailed(request.requestId, "replacement");
+    const displaced = await ports.getRegistration({
+      ...queryScope(scope, request, pin.pin),
+      registrationId: choice.registrationId,
+    });
+    if (!displaced || displaced.id !== choice.registrationId || displaced.organizationId !== organizationId) return notFound(request.requestId);
+    const placementPrefix = `${displaced.placement.id}:`;
+    const placementToken = unquoteEtag(choice.placementEtag);
+    const displacedPlacementVersion = placementToken.startsWith(placementPrefix) ? placementToken.slice(placementPrefix.length) : "";
+    const registrationPrefix = `${displaced.id}:`;
+    const registrationToken = unquoteEtag(choice.registrationEtag);
+    const displacedRegistrationVersion = registrationToken.startsWith(registrationPrefix) ? registrationToken.slice(registrationPrefix.length) : "";
+    if (!/^\d+$/.test(displacedPlacementVersion)
+      || choice.placementEtag !== placementEtag(displaced.placement.id, displacedPlacementVersion)
+      || !/^(active|retired):\d+$/.test(displacedRegistrationVersion)
+      || choice.registrationEtag !== `"${registrationPrefix}${displacedRegistrationVersion}"`) {
+      return revisionConflict(request.requestId);
+    }
+    // Pass the captured versions, including on a replay. Only the transaction
+    // owner can validate both placements and atomically displace the old owner.
+    replacement = {
+      registrationId: SubjectRegistrationId(displaced.id),
+      placementId: SubjectPlacementId(displaced.placement.id),
+      expectedPlacementVersion: displacedPlacementVersion,
+      expectedRegistrationVersion: displacedRegistrationVersion,
+      reason: choice.reason,
+    };
+  }
   const command: RegistrationCommand = {
     kind: "move-placement",
     organizationId,
@@ -735,6 +768,7 @@ async function handleUpdatePlacement(
     expectedRelease: pin.pin,
     destinationModuleId,
     expectedPlacementVersion,
+    ...(replacement ? { replacement } : {}),
     idempotencyKey,
     context,
   };

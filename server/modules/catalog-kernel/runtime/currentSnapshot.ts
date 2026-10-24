@@ -65,6 +65,7 @@ import {
 import {
   CatalogSnapshotReadFailure,
   withCatalogReadTransaction,
+  type CatalogReadSource,
   type CatalogSnapshotClient,
 } from "./readTransaction";
 import { resolveCatalogSubject } from "./subjectMatch";
@@ -1069,7 +1070,7 @@ const loadProjection = async (
 };
 
 export const loadCurrentCatalogSnapshot = async (
-  pool: pg.Pool,
+  pool: CatalogReadSource,
   expected: CatalogReleasePin,
 ): Promise<Result<CurrentCatalogSnapshot, CatalogKernelError>> =>
   withCatalogReadTransaction(pool, "loadCurrentCatalog", async (client) => {

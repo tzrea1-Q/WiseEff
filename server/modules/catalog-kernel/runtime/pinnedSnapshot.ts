@@ -1,5 +1,3 @@
-import pg from "pg";
-
 import type {
   CatalogKernelError,
   CatalogReleasePin,
@@ -11,7 +9,7 @@ import {
 } from "../../parameter-catalog-contract/index";
 import type { PinnedCatalogSnapshot } from "../interface";
 import { loadProjection, locatorPin } from "./currentSnapshot";
-import { withCatalogReadTransaction } from "./readTransaction";
+import { withCatalogReadTransaction, type CatalogReadSource } from "./readTransaction";
 
 const asPinned = (
   snapshot: Exclude<Awaited<ReturnType<typeof loadProjection>>, null>["snapshot"],
@@ -26,7 +24,7 @@ const asPinned = (
 };
 
 export const resolveCatalogReleasePin = async (
-  pool: pg.Pool,
+  pool: CatalogReadSource,
   releaseId: CatalogReleaseId,
 ): Promise<Result<CatalogReleasePin, CatalogKernelError>> =>
   withCatalogReadTransaction(pool, "loadPinnedCatalog", async (client) => {
@@ -56,7 +54,7 @@ export const resolveCatalogReleasePin = async (
   });
 
 export const loadPinnedCatalogSnapshot = async (
-  pool: pg.Pool,
+  pool: CatalogReadSource,
   pin: CatalogReleasePin,
 ): Promise<Result<PinnedCatalogSnapshot, CatalogKernelError>> =>
   withCatalogReadTransaction(pool, "loadPinnedCatalog", async (client) => {
@@ -110,7 +108,7 @@ export const loadPinnedCatalogSnapshot = async (
   });
 
 export const loadPinnedCatalogById = async (
-  pool: pg.Pool,
+  pool: CatalogReadSource,
   releaseId: CatalogReleaseId,
 ): Promise<Result<PinnedCatalogSnapshot, CatalogKernelError>> => {
   const resolved = await resolveCatalogReleasePin(pool, releaseId);

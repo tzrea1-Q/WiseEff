@@ -361,6 +361,89 @@ describe("S8-GOV one-command HTTP mapping", () => {
     }
   });
 
+  it("passes explicit replacement identity and both captured target versions to the atomic owner", async () => {
+    const { ports, commands } = createHarness();
+    const source = {
+      id: registrationResult.registrationId, organizationId: orgAdmin.organizationId,
+      subjectId: registrationResult.subjectId, status: "active" as const, method: "explicit" as const,
+      catalogReleaseId: pin.id, etag: `${registrationResult.registrationId}:active:800`,
+      placement: { id: registrationResult.placementId, moduleId: "module-source", version: "800", displayName: "Source", parentPlacementId: null }
+    };
+    const target = { ...source, id: "sreg_target", subjectId: "csub_target",
+      etag: "sreg_target:retired:900", status: "retired" as const,
+      placement: { ...source.placement, id: "spla_target", moduleId: "module-target", version: "900" } };
+    const readPorts: CatalogGovernancePorts = { ...ports,
+      resolveDestinationModuleId: async (input) => input.destinationModuleId ?? null,
+      getRegistration: async (input) => input.registrationId === target.id ? target : source
+    };
+    const input = request("PATCH", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations/${source.id}/placement`, {
+      headers: { ...writeHeaders, [CATALOG_IF_MATCH_HEADER]: `"${source.placement.id}:500"` },
+      body: { placement: { mode: "use-default" }, destinationModuleId: "module-target",
+        replacement: { registrationId: target.id, placementEtag: '"spla_target:600"', registrationEtag: '"sreg_target:active:700"', reason: "修正错误归属" } }
+    });
+    expect((await handleCatalogGovernance(readPorts, input)).status).toBe(200);
+    expect((await handleCatalogGovernance(readPorts, input)).status).toBe(200);
+    expect(commands).toHaveLength(2);
+    expect(commands[0]).toMatchObject({
+      kind: "move-placement", registrationId: source.id, destinationModuleId: "module-target", expectedPlacementVersion: "500",
+      replacement: { registrationId: "sreg_target", placementId: "spla_target", expectedPlacementVersion: "600", expectedRegistrationVersion: "active:700", reason: "修正错误归属" }
+    });
+    expect(commands[1]).toEqual(commands[0]);
+  });
+
+  it("rejects incomplete or forged replacement confirmations before executing a command", async () => {
+    const { ports, commands } = createHarness();
+    const source = { id: registrationResult.registrationId, organizationId: orgAdmin.organizationId,
+      subjectId: registrationResult.subjectId, status: "active" as const, method: "explicit" as const,
+      catalogReleaseId: pin.id, etag: "source-etag",
+      placement: { id: registrationResult.placementId, displayName: "Source", parentPlacementId: null } };
+    const readPorts: CatalogGovernancePorts = { ...ports,
+      resolveDestinationModuleId: async (input) => input.destinationModuleId ?? null,
+      getRegistration: async (input) => input.registrationId === source.id ? source : { ...source, id: "sreg_target", placement: { ...source.placement, id: "spla_target" } }
+    };
+    const body = { placement: { mode: "use-default" as const }, destinationModuleId: "module-target",
+      replacement: { registrationId: "sreg_target", placementEtag: '"spla_target:600"', registrationEtag: '"sreg_target:active:700"', reason: "修正归属" } };
+    const cases = [
+      { ...body, destinationModuleId: undefined },
+      { ...body, replacement: { ...body.replacement, reason: " " } },
+      { ...body, replacement: { ...body.replacement, placementEtag: "" } },
+      { ...body, replacement: { ...body.replacement, registrationId: source.id } },
+      { ...body, replacement: { ...body.replacement, placementEtag: '"spla_another:600"' } },
+      { ...body, replacement: { ...body.replacement, registrationEtag: '"sreg_other:active:700"' } }
+    ];
+    for (const candidate of cases) {
+      const response = await handleCatalogGovernance(readPorts, request("PATCH", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations/${source.id}/placement`, {
+        headers: { ...writeHeaders, [CATALOG_IF_MATCH_HEADER]: `"${source.placement.id}:500"` }, body: candidate
+      }));
+      expect([400, 409]).toContain(response.status);
+    }
+    expect(commands).toHaveLength(0);
+  });
+
+  it("keeps out-of-organization replacement targets hidden and distinguishes ordinary occupancy from stale versions", async () => {
+    const { ports, commands } = createHarness();
+    const source = { id: registrationResult.registrationId, organizationId: orgAdmin.organizationId,
+      subjectId: registrationResult.subjectId, status: "active" as const, method: "explicit" as const,
+      catalogReleaseId: pin.id, etag: "source-etag",
+      placement: { id: registrationResult.placementId, displayName: "Source", parentPlacementId: null } };
+    const input = request("PATCH", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations/${source.id}/placement`, {
+      headers: { ...writeHeaders, [CATALOG_IF_MATCH_HEADER]: `"${source.placement.id}:500"` },
+      body: { placement: { mode: "use-default" }, destinationModuleId: "module-target",
+        replacement: { registrationId: "sreg_foreign", placementEtag: '"spla_foreign:600"', registrationEtag: '"sreg_foreign:active:700"', reason: "repair" } }
+    });
+    const readPorts: CatalogGovernancePorts = { ...ports,
+      resolveDestinationModuleId: async (value) => value.destinationModuleId ?? null,
+      getRegistration: async (value) => value.registrationId === source.id ? source : { ...source, id: "sreg_foreign", organizationId: "org-foreign" }
+    };
+    expect((await handleCatalogGovernance(readPorts, input)).status).toBe(404);
+    expect(commands).toHaveLength(0);
+    const occupied = await handleCatalogGovernance({ ...readPorts, executeRegistration: async () => ({ ok: false, error: {
+      kind: "placement-occupied", registrationId: source.id, placementId: source.placement.id
+    } }) }, { ...input, body: { placement: { mode: "use-default" }, destinationModuleId: "module-target" } });
+    expect(occupied.status).toBe(409);
+    expect(occupied.body).toMatchObject({ error: { details: { reason: "placement-occupied", retryable: false } } });
+  });
+
   it("requires an exact registration ETag and forwards its status/version into the locked write", async () => {
     const { ports, commands } = createHarness();
     const path = `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations/${registrationResult.registrationId}/retire`;

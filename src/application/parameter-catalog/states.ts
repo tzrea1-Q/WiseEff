@@ -40,6 +40,7 @@ export type CatalogRetiredTarget = "subject" | "definition" | "registration" | "
 export const catalogConflictReasons = [
   "release-drift",
   "placement-conflict",
+  "placement-occupied",
   "invalid-placement-parent",
   "revision-conflict",
   "proposal-stale",
