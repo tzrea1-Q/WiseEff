@@ -81,11 +81,12 @@ describe("Mixed Organization erasure and minimal receipts through real HMAC HTTP
       values('retained-definition','mixed-home','mixed-member','mixed-global-proof','{"definitions":1}');`);
     const erased = await start(); expect(erased.status, erased.bodyText).toBe(202); expect(erased.body.item.status).toBe("deleted");
     expect(erased.body.item.domains).toEqual({}); expect(erased.body.item.attempts).toBe(0);
-    const proofs = (await db.query("select id,organization_id,metadata,historical_attribution,trace_id from audit_events where id in ('mixed-global-proof','mixed-global-scope') order by id")).rows;
+    const proofs = (await db.query<{ id: string; organization_id: string | null; metadata: { actorUserId: string }; historical_attribution: unknown; trace_id: string }>(
+      "select id,organization_id,metadata,historical_attribution,trace_id from audit_events where id in ('mixed-global-proof','mixed-global-scope') order by id")).rows;
     expect(proofs).toHaveLength(2); expect(JSON.stringify(proofs)).not.toContain("B business sentinel"); expect(JSON.stringify(proofs)).not.toContain("private-trace");
-    expect(proofs.every(row => (row as { organization_id: unknown }).organization_id === null)).toBe(true);
+    expect(proofs.every(row => row.organization_id === null)).toBe(true);
     expect(proofs.map(row => row.historical_attribution)).toEqual([{}, {}]);
-    expect(proofs.map(row => (row.metadata as { actorUserId: string }).actorUserId)).toEqual(["mixed-member", "mixed-platform"]);
+    expect(proofs.map(row => row.metadata.actorUserId)).toEqual(["mixed-member", "mixed-platform"]);
     expect((await db.query("select metadata->>'private' content from audit_events where id='mixed-retain-audit'")).rows).toEqual([{ content: "Retain A sentinel" }]);
     expect((await db.query("select audit_event_id from parameter_catalog.definition_erasures where definition_id='retained-definition'")).rows).toEqual([{ audit_event_id: "mixed-global-proof" }]);
     expect((await request(`/api/v1/platform/organization-deletions/${erased.body.item.id}/retry`, "POST")).status).toBe(200);
