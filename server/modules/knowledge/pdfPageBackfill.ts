@@ -28,6 +28,7 @@ export async function ensureKnowledgePdfPages(db: Database, objectStore: ObjectS
      join knowledge_entries e on e.id = f.entry_id and e.organization_id = f.organization_id
      where f.content_type = 'application/pdf' and f.page_offsets is null
        and f.extraction_status = 'succeeded' and f.page_backfill_error is null
+       and exists(select 1 from public.organizations o where o.id=f.organization_id and o.status='active')
      order by f.organization_id, f.entry_id, f.id`
   );
   const entries = new Map<string, typeof candidates.rows>();
