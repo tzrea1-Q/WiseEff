@@ -29,7 +29,7 @@ Update affected English/Chinese companions before each integrated slice is hande
 
 The checklist tracks scoped implementation and integration; whole-candidate CI and independent review remain separate gates. Initial frontier: #1369, #1385, #1386.
 
-Thirty-one slices, #1369–#1398 and #1400, are integrated with scoped API/PostgreSQL and API-mode browser checks. All four erasure adapters are composed in dependency order: Agent/device/feedback, knowledge, projects/parameters, logs. Durable exact-key custody covers physical writes, lost responses and retries; unsupported or ambiguous ownership still blocks deletion. Mixed-domain completion, minimal-receipt compaction and backup-restoration replay remain #1399 work; the complete operating workflow remains #1401 work. Fresh PostgreSQL measured 282 migrations through 0287 and the new Catalog fingerprint; all historical pins remain intact. Latest completed CI run 40046004257 at 46acd5b failed six backend fixture/scanner assertions, two stale permission-page assertions and four visual comparisons. Scoped repairs for those backend and permission assertions are integrated; the four Linux baseline replacements await explicit human approval. Current-candidate full CI and independent review remain open. No visual baseline has changed.
+Thirty-two slices, #1369–#1400, are integrated with scoped API/PostgreSQL and API-mode browser checks. All four erasure adapters compose in dependency order; final receipts and retained audit proofs contain no business payload. Applicable deleted and failed states replay against real older PostgreSQL, file and independent checkpoint backups before reopening; inconsistent checkpoint ownership blocks access. The complete operating workflow remains #1401 work. Fresh PostgreSQL measured 286 migrations through 0291 and the new Catalog fingerprint; historical pins remain intact. CI run 40051468524 at f8f8ff5 passed static/build, frontend, scripts/bridge, smoke, accessibility and selected browser lanes, but exposed fixture, finite capability-list, preservation and browser-ordering failures. Related repairs are integrated or being verified; four Linux baseline replacements await explicit human approval. Full current-candidate CI and independent review remain open. Full MinIO/Redis and target-host restoration have not been run. No visual baseline has changed.
 
 - [x] [#1369](https://github.com/tzrea1-Q/WiseEff/issues/1369) 前置兼容：真实身份与操作范围分离
 - [x] [#1370](https://github.com/tzrea1-Q/WiseEff/issues/1370) 组织目录、创建与初始管理员
@@ -61,6 +61,6 @@ Thirty-one slices, #1369–#1398 and #1400, are integrated with scoped API/Postg
 - [x] [#1396](https://github.com/tzrea1-Q/WiseEff/issues/1396) 含知识、索引与附件的组织删除
 - [x] [#1397](https://github.com/tzrea1-Q/WiseEff/issues/1397) 含日志、分析和 Webhook 的组织删除
 - [x] [#1398](https://github.com/tzrea1-Q/WiseEff/issues/1398) Agent、设备及其他组织状态清理
-- [ ] [#1399](https://github.com/tzrea1-Q/WiseEff/issues/1399) 混合组织删除完成判定、回执与恢复
+- [x] [#1399](https://github.com/tzrea1-Q/WiseEff/issues/1399) 混合组织删除完成判定、回执与恢复
 - [x] [#1400](https://github.com/tzrea1-Q/WiseEff/issues/1400) 组织概览、资源索引与六入口整合
 - [ ] [#1401](https://github.com/tzrea1-Q/WiseEff/issues/1401) 组织运营闭环与整体验收交付

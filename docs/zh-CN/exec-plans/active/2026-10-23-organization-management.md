@@ -29,7 +29,7 @@
 
 勾选表示相关实现与检查已集成；整轮 CI 和独立审查仍为单独门禁。首批无阻塞任务：#1369、#1385、#1386。
 
-已集成 #1369–#1398 及 #1400 共三十一项切片，完成相关 API/PostgreSQL 及 API 模式浏览器检查。四个清理领域按依赖顺序组合：Agent/设备/反馈、知识、项目/参数、日志。实际文件写入、响应丢失及重试均有精确对象键的持久保管记录；未知或歧义归属仍阻止删除。跨领域完成判定、最小回执收敛及备份恢复重放继续由 #1399 实施，完整运营闭环由 #1401 实施。全新 PostgreSQL 实测覆盖至 0287 的 282 个迁移及新增 Catalog 指纹，历史指纹全部保留。最近完成的 CI 40046004257（46acd5b）有六项后端夹具/扫描器断言、两项过时权限页面断言及四处视觉比较失败；后端和权限相关修复已集成，四张 Linux 基线替换等待明确人工批准。当前候选完整 CI 和独立审查尚未完成。尚未修改视觉基线。
+已集成 #1369–#1400 共三十二项切片，完成相关 API/PostgreSQL 及 API 模式浏览器检查。四个清理领域按依赖顺序组合，最终回执和保留审计证明不含业务载荷；真实旧 PostgreSQL、文件及独立检查点备份按已删除、失败状态重放后才开放访问，检查点归属不一致时拒绝开放。完整运营闭环继续由 #1401 实施。全新 PostgreSQL 实测覆盖至 0291 的 286 个迁移及新增 Catalog 指纹，历史指纹全部保留。CI 40051468524（f8f8ff5）已通过静态/构建、前端、scripts/bridge、smoke、无障碍及部分浏览器通道，同时发现夹具、有限能力清单、数据保全和浏览器顺序问题；相关修复已集成或正在验证。四张 Linux 基线替换等待明确人工批准，当前候选完整 CI 和独立审查尚未完成。整栈 MinIO/Redis 和目标主机恢复未执行。尚未修改视觉基线。
 
 - [x] [#1369](https://github.com/tzrea1-Q/WiseEff/issues/1369) 前置兼容：真实身份与操作范围分离
 - [x] [#1370](https://github.com/tzrea1-Q/WiseEff/issues/1370) 组织目录、创建与初始管理员
@@ -61,6 +61,6 @@
 - [x] [#1396](https://github.com/tzrea1-Q/WiseEff/issues/1396) 含知识、索引与附件的组织删除
 - [x] [#1397](https://github.com/tzrea1-Q/WiseEff/issues/1397) 含日志、分析和 Webhook 的组织删除
 - [x] [#1398](https://github.com/tzrea1-Q/WiseEff/issues/1398) Agent、设备及其他组织状态清理
-- [ ] [#1399](https://github.com/tzrea1-Q/WiseEff/issues/1399) 混合组织删除完成判定、回执与恢复
+- [x] [#1399](https://github.com/tzrea1-Q/WiseEff/issues/1399) 混合组织删除完成判定、回执与恢复
 - [x] [#1400](https://github.com/tzrea1-Q/WiseEff/issues/1400) 组织概览、资源索引与六入口整合
 - [ ] [#1401](https://github.com/tzrea1-Q/WiseEff/issues/1401) 组织运营闭环与整体验收交付

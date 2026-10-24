@@ -9,6 +9,10 @@ export type AcceptanceRequirement = {
 
 export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
+    id: "ORG-MIXED-ERASURE-RECOVERY-001", workflow: "H", required: true,
+    title: "A platform administrator erases mixed Organization data, resumes a real failed domain and reads a minimal receipt; actual older database, file and checkpoint backups replay applicable deletions before reopening."
+  },
+  {
     id: "ORG-PARAMETER-ERASURE-001", workflow: "H", required: true,
     title: "A platform administrator erases Organization projects and parameter files, retries a durable domain failure, and preserves shared Definitions and foreign ownership."
   },
