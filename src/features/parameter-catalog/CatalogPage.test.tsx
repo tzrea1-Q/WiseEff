@@ -32,8 +32,17 @@ import { CatalogPage } from "./CatalogPage";
 import type { CatalogLayoutMode } from "./catalogLayout";
 import { catalogEmptyMessages } from "./copy";
 import { requestSettingsLeave } from "@/application/settingsFormNavigation";
+import type { CatalogModule } from "./catalogModuleScope";
 
 type PageProps = ComponentProps<typeof CatalogPage>;
+
+function moduleRegistry(modules: CatalogModule[]): NonNullable<PageProps["moduleRegistry"]> {
+  return { getRegistry: vi.fn(async () => ({ mappings: [], modules: modules.map(module => ({
+    description: "", scope: "", importance: "medium" as const, kind: "business" as const,
+    origin: "curated" as const, sourceKey: null, effectiveImportance: "medium" as const,
+    parameterCount: 0, definitionCount: 0, ...module
+  })) })) };
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -170,6 +179,7 @@ function renderCatalog(
     layoutMode?: CatalogLayoutMode;
     includeReview?: boolean;
     repository?: ParameterCatalogRepository;
+    moduleRegistry?: PageProps["moduleRegistry"];
     onHref?: (href: string, mode: "push" | "replace") => void;
     definitionAuthoringAllowed?: boolean;
     definitionPublishingAllowed?: boolean;
@@ -183,6 +193,9 @@ function renderCatalog(
   const view = render(
     <CatalogHarness
       repository={repository}
+      moduleRegistry={options.moduleRegistry ?? moduleRegistry([
+        { id: CATALOG_MODULE_ID, name: "Root", parentId: null, sortOrder: 0 }
+      ])}
       actor={options.actor ?? "org-admin"}
       onOpenPendingWork={vi.fn()}
       sessionPermissions={options.sessionPermissions}
@@ -255,7 +268,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ subjectLifecycle: "active", limit: 20 })));
     expect(screen.queryByRole("button", { name: "查看 historical-key" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: `选择主体 ${historicalSubject.canonicalName}` })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("checkbox", { name: "包含退役主体" }));
+    await user.click(screen.getByRole("checkbox", { name: "包含已停用和退役主体" }));
     await user.click(await screen.findByRole("button", { name: "查看 historical-key" }));
     const dialog = await screen.findByRole("dialog", { name: "查看 historical-key" });
     await waitFor(() => expect(within(dialog).getByText("主体已退役 · 只读")).toBeVisible());
@@ -265,9 +278,34 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect(screen.queryByRole("button", { name: "调整放置" })).not.toBeInTheDocument();
     expect(screen.getByRole("status", { name: catalogResultCountLabel })).toHaveTextContent("共 2 项");
     await user.click(within(dialog).getByRole("button", { name: "关闭" }));
-    await user.click(screen.getByRole("checkbox", { name: "包含退役主体" }));
+    await user.click(screen.getByRole("checkbox", { name: "包含已停用和退役主体" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "查看 historical-key" })).not.toBeInTheDocument());
     expect(parseCatalogUrlAnchor(onHref.mock.calls.at(-1)![0].split("?")[1])).toMatchObject({ includeRetiredSubjects: false, pageSize: 20 });
+  });
+
+  it("excludes retired organization registrations before paging and restores their navigation through the history filter", async () => {
+    const repository = createMockParameterCatalogRepository({ scenario: "ready" });
+    const stopped = { ...registeredSubject, id: "csub_stopped", canonicalName: "stopped,driver",
+      registration: { ...registeredSubject.registration,
+        status: "retired" as const, id: "sreg_stopped" } };
+    const stoppedDefinition = { ...activeDefinition, id: "pdef_stopped", propertyKey: "stopped-key",
+      subject: { ...activeDefinition.subject, id: stopped.id }, registration: stopped.registration };
+    vi.spyOn(repository, "listSubjects").mockImplementation(async (query) => ({ items: query?.lifecycle === "retired" ? [] : [registeredSubject, stopped],
+      totalCount: query?.lifecycle === "retired" ? 0 : 2, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID }));
+    const list = vi.spyOn(repository, "listDefinitions").mockImplementation(async (query) => {
+      const items = query?.registration === "not-retired" ? [activeDefinition] : [activeDefinition, stoppedDefinition];
+      return { items, totalCount: items.length, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID };
+    });
+    const user = userEvent.setup();
+    renderCatalog({ repository });
+    await screen.findByRole("table", { name: "参数定义列表" });
+    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ registration: "not-retired" }));
+    await user.click(screen.getByRole("button", { name: "展开 Root" }));
+    expect(screen.queryByRole("button", { name: "选择主体 stopped,driver" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status", { name: catalogResultCountLabel })).toHaveTextContent("共 1 项");
+    await user.click(screen.getByRole("checkbox", { name: "包含已停用和退役主体" }));
+    expect(await screen.findByRole("button", { name: "选择主体 stopped,driver" })).toBeVisible();
+    await waitFor(() => expect(screen.getByRole("status", { name: catalogResultCountLabel })).toHaveTextContent("共 2 项"));
   });
 
   it("restores a historical subject bookmark and clears its scope when history is hidden", async () => {
@@ -276,11 +314,11 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     const { onHref } = renderCatalog({ repository,
       search: `?subjectId=${historicalSubject.id}&q=key&pageSize=20&cursor=old-page` });
     expect(await screen.findByRole("button", { name: "查看 historical-key" })).toBeVisible();
-    expect(screen.getByRole("checkbox", { name: "包含退役主体" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "包含已停用和退役主体" })).toBeChecked();
     expect(parseCatalogUrlAnchor(onHref.mock.calls.at(-1)![0].split("?")[1])).toMatchObject({
       includeRetiredSubjects: true, subjectId: historicalSubject.id, cursor: null, q: "key", pageSize: 20
     });
-    await user.click(screen.getByRole("checkbox", { name: "包含退役主体" }));
+    await user.click(screen.getByRole("checkbox", { name: "包含已停用和退役主体" }));
     await waitFor(() => expect(parseCatalogUrlAnchor(onHref.mock.calls.at(-1)![0].split("?")[1])).toMatchObject({
       includeRetiredSubjects: false, subjectId: null, cursor: null, q: "key", pageSize: 20
     }));
@@ -490,6 +528,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     const user = userEvent.setup();
     const ports = createMockCatalogPorts({ scenario: "ready" });
     render(<CatalogPage repository={ports.catalog} actor="org-admin" search=""
+      moduleRegistry={moduleRegistry([{ id: CATALOG_MODULE_ID, name: "Root", parentId: null, sortOrder: 0 }])}
       taskContent={<section aria-label="节点对应确认">只读历史证据</section>} />);
     const task = screen.getByRole("region", { name: "目录列表" });
     expect(within(task).getByRole("region", { name: "节点对应确认" })).toHaveTextContent("只读历史证据");
@@ -644,14 +683,46 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
       listSubjectDefinitions: vi.fn(async () => listDefinitions()),
       getSubject: async (id) => ({ item: subjects.find((item) => item.id === id)! })
     };
-    return { repository, listSubjects, listDefinitions, first, second, retired, last };
+    return { repository, listSubjects, listDefinitions, first, second, retired, last,
+      moduleRegistry: moduleRegistry(subjects.map((subject, index) => ({
+        id: subject.registration.placement.moduleId, name: subject.registration.placement.displayName,
+        parentId: index === 0 ? null : "module_inventory_0", sortOrder: index
+      }))) };
   }
+
+  it("uses maintained business categories for navigation and subtree filtering", async () => {
+    const inventory = pagedInventory();
+    const registry = await inventory.moduleRegistry.getRegistry();
+    inventory.moduleRegistry = moduleRegistry([
+      { id: "business", name: "Maintained business category", parentId: null, sortOrder: 0 },
+      { id: "empty", name: "Empty category", parentId: null, sortOrder: 1 },
+      ...registry.modules.map(module => module.id === "module_inventory_0" ? { ...module, parentId: "business" } : module)
+    ]);
+    const user = userEvent.setup();
+    renderCatalog({ ...inventory });
+    const category = await screen.findByRole("button", { name: /^Maintained business category\s*101$/ });
+    expect(screen.getByRole("button", { name: /^Empty category\s*0$/ })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /^Inventory module 0\s*101$/ })).not.toBeInTheDocument();
+    await user.click(category);
+    await waitFor(() => expect(inventory.listDefinitions).toHaveBeenCalledWith(expect.objectContaining({ placementModuleId: "business" })));
+    expect(within(screen.getByRole("table", { name: "参数定义列表" })).getByText("gpio-int")).toBeVisible();
+    expect(screen.getByText("已选模块子树 · 101 个主体")).toBeVisible();
+  });
+
+  it("reports a module registry failure and reloads the maintained taxonomy on retry", async () => {
+    const registry = moduleRegistry([{ id: "category", name: "Maintained category", parentId: null, sortOrder: 0 }]);
+    vi.mocked(registry.getRegistry).mockRejectedValueOnce(new Error("module registry unavailable"));
+    renderCatalog({ moduleRegistry: registry });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "重试" }));
+    expect(await screen.findByRole("button", { name: /^Maintained category\s*0$/ })).toBeVisible();
+  });
 
   it("restores the module scope from its URL and clears it when the active module is reselected", async () => {
     const user = userEvent.setup();
     const inventory = pagedInventory();
     const onHref = vi.fn();
-    const first = renderCatalog({ repository: inventory.repository, onHref });
+    const first = renderCatalog({ ...inventory, onHref });
     await user.click(await screen.findByRole("button", { name: /^Inventory module 0\s*101$/ }));
     await waitFor(() => expect(screen.getByText("已选模块子树 · 101 个主体")).toBeVisible());
     await user.click(screen.getByRole("button", { name: "选择主体 inventory-subject-0" }));
@@ -661,7 +732,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect(new URL(href, "http://localhost").searchParams.get("moduleNodeId")).toBe("module_inventory_0");
     first.unmount();
 
-    renderCatalog({ repository: inventory.repository, search: href.slice(href.indexOf("?")), onHref });
+    renderCatalog({ ...inventory, search: href.slice(href.indexOf("?")), onHref });
     const selected = await screen.findByRole("button", { name: /^Inventory module 0\s*101$/ });
     expect(selected).toHaveAttribute("aria-pressed", "true");
     await user.click(selected);
@@ -676,7 +747,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     const gate = deferred<CatalogSubjectListResponse>();
     inventory.listSubjects.mockImplementation(async (query) => query?.lifecycle === "retired" ? inventory.retired : query?.cursor ? gate.promise : inventory.first);
     const { onHref } = renderCatalog({
-      repository: inventory.repository,
+      ...inventory,
       search: `?catalogReleaseId=${CATALOG_RELEASE_ID}&moduleNodeId=module_inventory_0`
     });
     await waitFor(() => expect(inventory.listSubjects).toHaveBeenCalledTimes(3));
@@ -720,7 +791,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
       if (query?.cursor) throw new Error("second page failed");
       return inventory.first;
     });
-    renderCatalog({ repository: inventory.repository, search: `?catalogReleaseId=${CATALOG_RELEASE_ID}` });
+    renderCatalog({ ...inventory, search: `?catalogReleaseId=${CATALOG_RELEASE_ID}` });
     expect(await screen.findByRole("button", { name: "重试" })).toBeVisible();
     expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-writes-enabled", "false");
     expect(screen.queryByRole("navigation", { name: "参数定义模块树" })).not.toBeInTheDocument();
@@ -737,7 +808,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
       ...inventory.first, items: [inventory.first.items[0], inventory.last],
       hasMore: false, nextCursor: null, totalCount: 2
     });
-    renderCatalog({ repository: inventory.repository,
+    renderCatalog({ ...inventory,
       search: `?catalogReleaseId=${CATALOG_RELEASE_ID}&moduleNodeId=module_inventory_0` });
     expect(await screen.findByRole("button", { name: /^Inventory module 0\s*2$/ })).toBeVisible();
     expect(screen.getByText("已选模块子树 · 2 个主体")).toBeVisible();
@@ -752,7 +823,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     inventory.listSubjects.mockImplementation(async (query) => query?.lifecycle === "retired" ? inventory.retired : query?.cursor
       ? { ...inventory.second, hasMore: true, nextCursor: cursor }
       : { ...inventory.first, nextCursor: cursor });
-    renderCatalog({ repository: inventory.repository, search: `?catalogReleaseId=${CATALOG_RELEASE_ID}` });
+    renderCatalog({ ...inventory, search: `?catalogReleaseId=${CATALOG_RELEASE_ID}` });
     expect(await screen.findByRole("button", { name: "重试" })).toBeVisible();
     expect(inventory.listSubjects).toHaveBeenCalledTimes(cursor ? 3 : 2);
     expect(inventory.listDefinitions).not.toHaveBeenCalled();
@@ -766,7 +837,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
       items: [], catalogReleaseId: CATALOG_RELEASE_ID, totalCount: 0,
       hasMore: false, nextCursor: null, emptyReason: "no-registrations"
     });
-    renderCatalog({ repository: inventory.repository, search: `?catalogReleaseId=${CATALOG_RELEASE_ID}` });
+    renderCatalog({ ...inventory, search: `?catalogReleaseId=${CATALOG_RELEASE_ID}` });
     await waitFor(() => expect(screen.getByRole("region", { name: "参数定义目录" }))
       .toHaveAttribute("data-empty-reason", "no-registrations"));
     expect(inventory.listDefinitions).not.toHaveBeenCalled();
@@ -776,7 +847,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
 
   it("pins every subject page to the captured document release before the URL is pinned", async () => {
     const inventory = pagedInventory();
-    renderCatalog({ repository: inventory.repository });
+    renderCatalog({ ...inventory });
     expect(await screen.findByRole("button", { name: /^Inventory module 0\s*101$/ })).toBeVisible();
     expect(inventory.listSubjects.mock.calls.slice(0, 3)).toEqual([
       [{ catalogReleaseId: CATALOG_RELEASE_ID, limit: 100 }],
@@ -790,7 +861,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
   it("keeps the previous complete snapshot read-only if a later subject page fails", async () => {
     const user = userEvent.setup();
     const inventory = pagedInventory();
-    renderCatalog({ repository: inventory.repository, search: `?catalogReleaseId=${CATALOG_RELEASE_ID}` });
+    renderCatalog({ ...inventory, search: `?catalogReleaseId=${CATALOG_RELEASE_ID}` });
     expect(await screen.findByRole("button", { name: /^Inventory module 0\s*101$/ })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "展开 Inventory module 0" }));
     inventory.listSubjects.mockImplementation(async (query) => {

@@ -204,7 +204,8 @@ describe("historical registry isolation", () => {
     expect(within(historical).queryByRole("alert")).not.toBeInTheDocument();
     expect(listDriverRegistry).toHaveBeenCalledTimes(3);
     expect(getRegistry).toHaveBeenCalledTimes(1);
-    expect(listSubjects).toHaveBeenCalledTimes(1);
+    expect(listSubjects).toHaveBeenCalledTimes(2);
+    expect(listSubjects).toHaveBeenCalledWith(expect.objectContaining({ lifecycle: "retired" }));
     expect(repository).not.toHaveProperty("getDiscoveryHints");
     await userEvent.click(screen.getByRole("tab", { name: "模块" }));
     const restored = await screen.findByRole("region", { name: "规范主体归属" });

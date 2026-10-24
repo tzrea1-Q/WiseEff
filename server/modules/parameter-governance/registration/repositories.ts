@@ -22,6 +22,7 @@ export type RegistrationRow = {
   status: "active" | "retired";
   registration_method: RegistrationMethod;
   current_placement_id: string;
+  version: string;
 };
 
 export type PlacementRow = {
@@ -139,7 +140,8 @@ export const loadRegistrationByOrgSubject = async (
   subjectId: string,
 ): Promise<RegistrationRow | null> => {
   const result = await client.query<RegistrationRow>(
-    `select id, organization_id, subject_id, status, registration_method, current_placement_id
+    `select id, organization_id, subject_id, status, registration_method, current_placement_id,
+       (extract(epoch from updated_at) * 1000000)::bigint::text as version
      from parameter_catalog.organization_subject_registrations
      where organization_id = $1 and subject_id = $2
      for update`,
@@ -154,7 +156,8 @@ export const loadRegistrationById = async (
   registrationId: string,
 ): Promise<RegistrationRow | null> => {
   const result = await client.query<RegistrationRow>(
-    `select id, organization_id, subject_id, status, registration_method, current_placement_id
+    `select id, organization_id, subject_id, status, registration_method, current_placement_id,
+       (extract(epoch from updated_at) * 1000000)::bigint::text as version
      from parameter_catalog.organization_subject_registrations
      where organization_id = $1 and id = $2
      for update`,
@@ -194,7 +197,8 @@ export const insertRegistration = async (
     `insert into parameter_catalog.organization_subject_registrations (
        id, organization_id, subject_id, status, registration_method, proof, current_placement_id
      ) values ($1,$2,$3,'active',$4,$5::jsonb,$6)
-     returning id, organization_id, subject_id, status, registration_method, current_placement_id`,
+     returning id, organization_id, subject_id, status, registration_method, current_placement_id,
+       (extract(epoch from updated_at) * 1000000)::bigint::text as version`,
     [
       input.id,
       input.organizationId,
@@ -232,13 +236,16 @@ export const updateRegistrationStatus = async (
   client: RegistrationWriterClient,
   registrationId: string,
   status: "active" | "retired",
-): Promise<void> => {
-  await client.query(
+): Promise<RegistrationRow> => {
+  const result = await client.query<RegistrationRow>(
     `update parameter_catalog.organization_subject_registrations
-     set status = $2, updated_at = now()
-     where id = $1`,
+     set status = $2, updated_at = greatest(clock_timestamp(), updated_at + interval '1 microsecond')
+     where id = $1
+     returning id, organization_id, subject_id, status, registration_method, current_placement_id,
+       (extract(epoch from updated_at) * 1000000)::bigint::text as version`,
     [registrationId, status],
   );
+  return result.rows[0]!;
 };
 
 export const updatePlacementModule = async (

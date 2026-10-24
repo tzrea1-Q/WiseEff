@@ -75,6 +75,7 @@ const registrationResult: RegistrationResult = {
   subjectId: CatalogSubjectId("csub_acme_power"),
   registrationStatus: "active",
   registrationMethod: "explicit",
+  registrationVersion: "1727000000000000",
   placementOrigin: "curated",
   moduleId: orgAdmin.defaultDestinationModuleId,
   release: pin,
@@ -358,6 +359,22 @@ describe("S8-GOV one-command HTTP mapping", () => {
       expect(body.item.impact).toEqual(canMutateOrganization ? { bindingCount: 7, projectCount: 3 } : undefined);
       expect(body.item.placement.version).toBeUndefined();
     }
+  });
+
+  it("requires an exact registration ETag and forwards its status/version into the locked write", async () => {
+    const { ports, commands } = createHarness();
+    const path = `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations/${registrationResult.registrationId}/retire`;
+    const etag = `"${registrationResult.registrationId}:active:1727000000000000"`;
+    const headers = { [CATALOG_RELEASE_HEADER]: pin.id, [CATALOG_IDEMPOTENCY_HEADER]: "retire-1", [CATALOG_IF_MATCH_HEADER]: etag };
+    const input = request("POST", path, { headers, body: { reason: "retire" } });
+    const response = await handleCatalogGovernance(ports, input);
+    expect(response.status).toBe(200);
+    expect(response.headers.ETag).toBe(etag);
+    expect(commands).toContainEqual(expect.objectContaining({ kind: "retire", expectedRegistrationVersion: "active:1727000000000000" }));
+    for (const offered of ["*", `W/${etag}`, `"${registrationResult.registrationId}:active"`, '"other:active:1727000000000000"']) {
+      expect((await handleCatalogGovernance(ports, { ...input, headers: { ...headers, [CATALOG_IF_MATCH_HEADER]: offered } })).status).toBe(409);
+    }
+    expect((await handleCatalogGovernance({ ...ports, executeRegistration: async () => ({ ok: false, error: { kind: "registration-conflict", registrationId: registrationResult.registrationId } }) }, input)).status).toBe(409);
   });
 
   it("matches every frozen governance route and refuses legacy lookup", () => {

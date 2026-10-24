@@ -66,7 +66,8 @@ export type GovernancePlacementRecord = {
 };
 
 export type GovernanceRegistrationRecord = {
-  readonly impact?: { readonly bindingCount: number; readonly projectCount: number };
+  readonly impact?: { readonly bindingCount: number; readonly projectCount: number;
+    readonly projects?: readonly { readonly id: string; readonly name: string; readonly bindingCount: number }[] };
   readonly id: string;
   readonly organizationId: string;
   readonly subjectId: CatalogSubjectId;
@@ -145,7 +146,7 @@ export type ProposalList = {
   readonly emptyReason?: CatalogQueryEmptyReason;
 };
 
-export type RegistrationFilter = "active" | "retired" | "unregistered";
+export type RegistrationFilter = "active" | "retired" | "unregistered" | "not-retired";
 
 export type CatalogDefinitionIndexEntry = {
   readonly id: ParameterDefinitionId;

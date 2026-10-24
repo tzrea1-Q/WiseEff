@@ -18,6 +18,7 @@ import {
   type RegistrationModuleOption,
   type RegistrationSubjectImpact
 } from "@/features/parameter-catalog-governance/RegistrationDialog";
+import { RegistrationLifecycleDialog } from "@/features/parameter-catalog-governance/RegistrationLifecycleDialog";
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type {
@@ -130,7 +131,7 @@ export function CanonicalSubjectPlacementPanel({
   const search = params.get("subjectQ") ?? "";
   const requestedKind = params.get("subjectKind") ?? "all";
   const typeFilter = Object.hasOwn(SUBJECT_KIND_LABEL, requestedKind) ? requestedKind : "all";
-  const registrationFilter = ["registered", "unregistered"].includes(params.get("subjectRegistration") ?? "") ? params.get("subjectRegistration")! : "all";
+  const registrationFilter = ["registered", "unregistered", "retired", "all-statuses"].includes(params.get("subjectRegistration") ?? "") ? params.get("subjectRegistration")! : "all";
   const definitionsFilter = ["with", "without"].includes(params.get("subjectDefinitions") ?? "") ? params.get("subjectDefinitions")! : "all";
   const pageParameter = Number(params.get("subjectPage"));
   const requestedPage = Number.isSafeInteger(pageParameter) && pageParameter > 0 ? pageParameter - 1 : 0;
@@ -147,6 +148,8 @@ export function CanonicalSubjectPlacementPanel({
   const readGeneration = useRef(0);
   const placementGeneration = useRef(0);
   const [openingSubjectId, setOpeningSubjectId] = useState<string | null>(null);
+  const [lifecycleDialog, setLifecycleDialog] = useState<{ intent: "retire-registration" | "restore-registration"; subject: SubjectRow; registrationId: string } | null>(null);
+  const [lifecycleNotice, setLifecycleNotice] = useState("");
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [definitionRefresh, setDefinitionRefresh] = useState(0);
   const [definitionStates, setDefinitionStates] = useState<Map<string, DefinitionState>>(
@@ -170,6 +173,14 @@ export function CanonicalSubjectPlacementPanel({
     const isCancelled = () => failed || generation !== readGeneration.current;
     const revealFirstBatch = () => {
       if (subjectsReceived && registrationsReceived) setLoading(false);
+    };
+    const subjectPages = new Map<string, SubjectRow[]>();
+    const publishSubjects = (lifecycle: string, items: SubjectRow[]) => {
+      subjectPages.set(lifecycle, items);
+      const inventory = [...new Map([...subjectPages.values()].flat().map(item => [item.id, item])).values()];
+      setSubjects(inventory);
+      subjectsReceived = true;
+      revealFirstBatch();
     };
     setLoading(true);
     setInventoryComplete(false);
@@ -197,11 +208,16 @@ export function CanonicalSubjectPlacementPanel({
 
       const release = document.item.catalogReleaseId;
       setCatalogReleaseId(release);
-      const [nextSubjects, nextRegistrations] = await Promise.all([
+      const [activeSubjects, retiredSubjects, nextRegistrations] = await Promise.all([
         listAllCanonicalPages(
           (query) => catalog.listSubjects(query),
           { catalogReleaseId: release, limit: 100 },
-          { isCancelled, onPage: (items) => { setSubjects(items); subjectsReceived = true; revealFirstBatch(); } }
+          { isCancelled, onPage: (items) => publishSubjects("active", items) }
+        ),
+        listAllCanonicalPages(
+          (query) => catalog.listSubjects(query),
+          { catalogReleaseId: release, lifecycle: "retired", limit: 100 },
+          { isCancelled, onPage: (items) => publishSubjects("retired", items) }
         ),
         listAllCanonicalPages(
           (query) => governance.listRegistrations(organizationId, query),
@@ -210,6 +226,7 @@ export function CanonicalSubjectPlacementPanel({
         )
       ]);
       if (generation !== readGeneration.current) return null;
+      const nextSubjects = [...new Map([...activeSubjects, ...retiredSubjects].map(item => [item.id, item])).values()];
       setCatalogReleaseId(release);
       setSubjects(nextSubjects);
       setRegistrations(nextRegistrations);
@@ -255,7 +272,10 @@ export function CanonicalSubjectPlacementPanel({
       if (visibleModuleIds && (!placement?.moduleId || !visibleModuleIds.includes(placement.moduleId))) return false;
       if (typeFilter !== "all" && subject.type !== typeFilter) return false;
       const registered = (registration?.status ?? subject.registration.status) === "active";
+      const retired = (registration?.status ?? subject.registration.status) === "retired";
+      if (registrationFilter === "all" && retired) return false;
       if (registrationFilter === "registered" && !registered) return false;
+      if (registrationFilter === "retired" && !retired) return false;
       if (registrationFilter === "unregistered" && (registration?.status ?? subject.registration.status) !== "unregistered") return false;
       if (definitionsFilter === "with" && subject.definitionCounts.active === 0) return false;
       if (definitionsFilter === "without" && subject.definitionCounts.active !== 0) return false;
@@ -318,8 +338,9 @@ export function CanonicalSubjectPlacementPanel({
   }, [moduleImpactById, modules, moduleLabels]);
 
   const activeSubjectCount = useMemo(
-    () => filteredSubjects.filter((subject) => subject.membership.status === "active").length,
-    [filteredSubjects]
+    () => filteredSubjects.filter((subject) => subject.membership.status === "active" &&
+      (registrationBySubjectId.get(subject.id)?.status ?? subject.registration.status) !== "retired").length,
+    [filteredSubjects, registrationBySubjectId]
   );
   const expandedSubject = subjects.find((subject) => subject.id === expandedSubjectId);
 
@@ -500,6 +521,7 @@ export function CanonicalSubjectPlacementPanel({
             刷新规范数据
           </button> : null}
         </header>
+        {lifecycleNotice ? <p role="status">{lifecycleNotice}</p> : null}
 
         {loading ? (
           <p role="status">
@@ -554,7 +576,7 @@ export function CanonicalSubjectPlacementPanel({
               </label>
               <label>登记状态<SelectControl ariaLabel="筛选登记状态" value={registrationFilter} size="filter"
                 onValueChange={(value) => updateQuery({ subjectRegistration: value, subjectPage: null })}
-                options={[{ value: "all", label: "全部登记状态" }, { value: "registered", label: "已登记" }, { value: "unregistered", label: "未登记" }]} /></label>
+                options={[{ value: "all", label: "当前主体" }, { value: "registered", label: "已登记" }, { value: "unregistered", label: "未登记" }, { value: "retired", label: "已停用" }, { value: "all-statuses", label: "全部（含已停用）" }]} /></label>
               <label>定义数量<SelectControl ariaLabel="筛选有效定义" value={definitionsFilter} size="filter"
                 onValueChange={(value) => updateQuery({ subjectDefinitions: value, subjectPage: null })}
                 options={[{ value: "all", label: "全部定义数量" }, { value: "with", label: "有有效定义" }, { value: "without", label: "无有效定义" }]} /></label>
@@ -592,6 +614,11 @@ export function CanonicalSubjectPlacementPanel({
                     registration?.status === "active" &&
                     Boolean(registrationId) &&
                     isCatalogActionEnabled(actor, "update-placement", domainState, sessionPermissions);
+                  const registrationStatus = registration?.status ?? subject.registration.status;
+                  const lifecycleIntent = registrationStatus === "retired" ? "restore-registration" : "retire-registration";
+                  const lifecycleAllowed = canAdmin && Boolean(registrationId) && registrationStatus !== "unregistered" &&
+                    isCatalogActionEnabled(actor, lifecycleIntent, domainState, sessionPermissions);
+                  const subjectLabel = subjectTypeLabel(subject.type);
                   return (
                     <li
                       key={subject.id}
@@ -610,6 +637,7 @@ export function CanonicalSubjectPlacementPanel({
                         {subject.definitionCounts.active} 个有效定义{subject.definitionCounts.deprecated > 0 ? ` · ${subject.definitionCounts.deprecated} 个已废弃定义` : ""}
                       </span>
                       <span className="canonical-subject-meta">
+                        {registrationStatus === "retired" ? <span className="parameter-catalog__badge" data-tone="warning">已停用 · </span> : null}
                         {placement && !placement.moduleId ? <span className="parameter-catalog__badge" data-tone="warning">unset（未分配模块）</span> : placement
                           ? `归属：${moduleLabels.get(placement.moduleId ?? "") ?? placement.displayName}`
                           : "未登记"}
@@ -655,6 +683,13 @@ export function CanonicalSubjectPlacementPanel({
                             {openingSubjectId === subject.id ? "读取归属…" : "调整归属"}
                           </button>
                         ) : null}
+                        {lifecycleAllowed ? <button type="button" className="button subtle"
+                          aria-label={`${registrationStatus === "retired" ? "恢复" : "移除"}${subjectLabel}：${subject.canonicalName}`}
+                          disabled={!inventoryComplete || (registrationStatus === "retired" && subject.membership.status !== "active")}
+                          title={registrationStatus === "retired" && subject.membership.status !== "active" ? "平台主体已退役，当前无法恢复登记" : undefined}
+                          onClick={() => setLifecycleDialog({ intent: lifecycleIntent, subject, registrationId: registrationId! })}>
+                          {registrationStatus === "retired" ? `恢复${subjectLabel}` : `移除${subjectLabel}`}
+                        </button> : null}
                       </div>
                       {rowErrors[subject.id] ? <div className="canonical-subject-row-error" role="alert">
                         {rowErrors[subject.id]}<button type="button" className="button subtle sm" onClick={() => void openPlacement(subject, registrationId ?? "")}>重试读取归属</button>
@@ -742,6 +777,15 @@ export function CanonicalSubjectPlacementPanel({
           onRefreshEvidence={refreshPlacementEvidence}
         />
       ) : null}
+      {lifecycleDialog ? <RegistrationLifecycleDialog key={`${organizationId}:${lifecycleDialog.subject.id}:${lifecycleDialog.intent}`}
+        {...lifecycleDialog} actor={actor} catalog={catalog} governance={governance} organizationId={organizationId} modules={modules}
+        onClose={() => setLifecycleDialog(null)} onCompleted={() => {
+          setLifecycleNotice(lifecycleDialog.intent === "retire-registration"
+            ? `已移除 ${lifecycleDialog.subject.canonicalName}，可在“已停用”中恢复。`
+            : `已恢复 ${lifecycleDialog.subject.canonicalName}。`);
+          setLifecycleDialog(null);
+          void handleCompleted();
+        }} /> : null}
     </section>
   );
 }

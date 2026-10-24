@@ -341,11 +341,11 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
     expect(pinned.searchParams.get("projectId")).toBe("project-1");
     expect(pinned.searchParams.get("catalogReleaseId")).toBeTruthy();
     const navigator = screen.getByRole("region", { name: "模块导航" });
-    await userEvent.click(await within(navigator).findByRole("button", { name: /^Root/ }));
+    await userEvent.click(await within(navigator).findByRole("button", { name: /^充电策略/ }));
     const selected = new URL(onNavigate.mock.calls.at(-1)![0], window.location.origin);
     expect(selected.pathname).toBe("/parameter-admin/specs/identity-mapping");
     expect(selected.searchParams.get("project")).toBe("aurora");
-    expect(selected.searchParams.get("moduleNodeId")).toBeTruthy();
+    expect(selected.searchParams.get("moduleNodeId")).toBe("mod-charging");
   });
 
   it("redirects the organization entry to the specs sub-route while preserving query", () => {

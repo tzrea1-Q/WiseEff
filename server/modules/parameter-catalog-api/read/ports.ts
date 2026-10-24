@@ -175,6 +175,7 @@ export function createRegistrationProjectionFromQueries(
       const registration =
         input.registration === "active" ||
         input.registration === "retired" ||
+        input.registration === "not-retired" ||
         input.registration === "unregistered"
           ? input.registration
           : undefined;
@@ -197,6 +198,7 @@ export function createRegistrationProjectionFromQueries(
       const registration =
         input.registration === "active" ||
         input.registration === "retired" ||
+        input.registration === "not-retired" ||
         input.registration === "unregistered"
           ? input.registration
           : undefined;

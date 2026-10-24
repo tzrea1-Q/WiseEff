@@ -28,7 +28,7 @@ export type RegisteredSubjectRow = {
 
 export const selectSubjectIdsFromRows = (
   rows: readonly RegisteredSubjectRow[],
-  registration: "active" | "retired" | "unregistered" | undefined,
+  registration: "active" | "retired" | "unregistered" | "not-retired" | undefined,
   catalogSubjectIds: readonly CatalogSubjectId[] | undefined,
 ): CatalogIdSelection<CatalogSubjectId> => {
   if (registration === undefined) {
@@ -39,6 +39,10 @@ export const selectSubjectIdsFromRows = (
     const registered = new Set(rows.map((row) => row.subject_id));
     const ids = universe.filter((id) => !registered.has(id));
     return onlySelection(ids);
+  }
+  if (registration === "not-retired") {
+    const retired = new Set(rows.filter((row) => row.status === "retired").map((row) => row.subject_id));
+    return onlySelection((catalogSubjectIds ?? []).filter((id) => !retired.has(id)));
   }
   const ids = rows
     .filter((row) => row.status === registration)

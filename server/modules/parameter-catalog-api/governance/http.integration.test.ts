@@ -455,10 +455,10 @@ describe("registration pagination through public HTTP and real PostgreSQL", () =
     const last = all.at(-1)!;
     const detail = await fetch(`${baseUrl}${path()}/${last.id}`);
     expect(detail.status).toBe(200);
-    expect(catalogRegistrationResponseSchema.parse(await detail.json()).item).toEqual({ ...last, impact: { bindingCount: 0, projectCount: 0 } });
+    expect(catalogRegistrationResponseSchema.parse(await detail.json()).item).toEqual({ ...last, impact: { bindingCount: 0, projectCount: 0, projects: [] } });
     const placement = await fetch(`${baseUrl}${path()}/${last.id}/placement`);
     expect(placement.status).toBe(200);
-    expect((await placement.json()).item.id).toBe(last.placement.id);
+    expect(await placement.json()).toMatchObject({ item: { id: last.placement.id } });
     const decoded = decodeCatalogCursor(page100.nextCursor!);
     if ("malformed" in decoded) throw new Error("public cursor malformed");
     expect(decoded.releaseId).toBe(pin.id);

@@ -114,7 +114,7 @@ const countingPool = (pool: pg.Pool) => {
           const originalQuery = client.query.bind(client);
           client.query = ((...args: never[]) => {
             statements += 1;
-            return originalQuery(...args);
+            return Reflect.apply(originalQuery, client, args);
           }) as typeof client.query;
           wrapped.add(client);
         }
@@ -527,6 +527,10 @@ describe("CATFIX-QUERY real governance and usage projections", () => {
       currentValueCount: 2,
       policyCount: null,
     });
+    const registration = await queries.getRegistration({ organizationId: ORG_A, registrationId,
+      observedCatalogReleaseId: pin.id, authScope: authA });
+    expect(registration).toMatchObject({ ok: true, value: { impact: { bindingCount: 2, projectCount: 2,
+      projects: [{ id: PROJECT_A, name: "CATFIX A1", bindingCount: 1 }, { id: PROJECT_B, name: "CATFIX A2", bindingCount: 1 }] } } });
   });
 
   it("CATFIX-QUERY-06 keeps organization A and B projections isolated", async () => {

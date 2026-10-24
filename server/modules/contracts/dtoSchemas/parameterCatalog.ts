@@ -396,7 +396,8 @@ export const catalogRegistrationDtoSchema = catalogObject({
   placement: catalogPlacementDtoSchema,
   impact: catalogObject({
     bindingCount: z.number().int().nonnegative(),
-    projectCount: z.number().int().nonnegative()
+    projectCount: z.number().int().nonnegative(),
+    projects: z.array(catalogObject({ id: z.string(), name: z.string(), bindingCount: z.number().int().nonnegative() })).max(50).optional()
   }).optional(),
   catalogReleaseId: z.string()
 });

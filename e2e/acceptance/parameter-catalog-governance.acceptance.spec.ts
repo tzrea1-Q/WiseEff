@@ -1,4 +1,5 @@
 import "./helpers/loadAcceptanceEnvironment";
+import { selectControlOption } from "./helpers/selectControl";
 import { expect } from "playwright/test";
 import { catalogAppUrl, test } from "./helpers/catalogFixtureRuntime";
 
@@ -15,6 +16,7 @@ import {
   openCatalogAt,
   openCatalogViaNav,
   openDefinitionEditor,
+  signInCatalogActor,
   waitForCatalogState
 } from "./helpers/catalogBrowser";
 import {
@@ -34,6 +36,85 @@ test.beforeAll(async ({ catalogAcceptanceRuntime }) => {
 });
 
 test.describe("canonical parameter catalog governance interactions", () => {
+  test("removes and restores organization subjects with visible impact and stale-state recovery", async ({ page }, testInfo) => {
+    // @acceptance PCAT-UI-07
+    // @operation PCAT-REGISTRATION-001
+    const registrationPath = `/api/v2/organizations/${fixture.organizationId}/subject-registrations`;
+    const created = await catalogJson(page.request, "POST", registrationPath, {
+      headers: { "X-WiseEff-Catalog-Release": fixture.chain.pinF.id, "Idempotency-Key": `lifecycle-register:${Date.now()}` },
+      data: { subjectId: fixture.sensorSubjectId, destinationModuleId: "pmod-op08-driver", placement: { mode: "use-default" }, reason: "lifecycle browser fixture" }
+    });
+    expect(created.status).toBe(201);
+    const registration = (created.body as { item: { id: string; placement: { id: string } } }).item;
+    const subject = await catalogJson(page.request, "GET", `/api/v2/catalog/subjects/${fixture.sensorSubjectId}`);
+    const name = (subject.body as { item: { canonicalName: string } }).item.canonicalName;
+    const modulesUrl = "/parameter-admin/modules?moduleId=pmod-op08-driver";
+    await signInCatalogActor(page, "org-admin", modulesUrl);
+    const row = page.locator(`[data-canonical-subject-id="${fixture.sensorSubjectId}"]`);
+    await row.getByRole("button", { name: `移除驱动：${name}` }).click();
+    const remove = page.getByRole("dialog", { name: "移除驱动", exact: true });
+    await expect(remove).toContainText("0 个参数绑定，涉及 0 个项目");
+    await expect(remove.getByRole("button", { name: "确认移除" })).toBeDisabled();
+    await remove.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(remove).toHaveCount(0);
+    const initial = await catalogJson(page.request, "GET", `${registrationPath}/${registration.id}`);
+    expect((initial.body as { item: { status: string } }).item.status).toBe("active");
+
+    await row.getByRole("button", { name: `移除驱动：${name}` }).click();
+    await expect(remove).toContainText("0 个参数绑定，涉及 0 个项目");
+    await remove.getByRole("textbox", { name: "操作原因" }).fill("浏览器移除验证，保留此原因");
+    // A real intervening retire/restore cycle makes the open confirmation stale.
+    const retire = await catalogJson(page.request, "POST", `${registrationPath}/${registration.id}/retire`, {
+      headers: { "X-WiseEff-Catalog-Release": fixture.chain.pinF.id, "Idempotency-Key": `lifecycle-race-retire:${Date.now()}`, "If-Match": initial.headers.etag }, data: { reason: "concurrent browser test" }
+    });
+    expect(retire.status).toBe(200);
+    const restore = await catalogJson(page.request, "POST", `${registrationPath}/${registration.id}/restore`, {
+      headers: { "X-WiseEff-Catalog-Release": fixture.chain.pinF.id, "Idempotency-Key": `lifecycle-race-restore:${Date.now()}`, "If-Match": retire.headers.etag }, data: { reason: "concurrent restore test" }
+    });
+    expect(restore.status).toBe(200);
+    const acknowledgement = remove.getByRole("checkbox");
+    await acknowledgement.focus();
+    await acknowledgement.press("Space");
+    await remove.getByRole("button", { name: "确认移除" }).click();
+    await expect(remove.getByRole("alert")).toContainText("输入已保留");
+    await expect(remove.getByRole("textbox", { name: "操作原因" })).toHaveValue("浏览器移除验证，保留此原因");
+    await remove.getByRole("button", { name: "刷新影响数据" }).click();
+    await expect(remove).toContainText("0 个参数绑定，涉及 0 个项目");
+    await expect(acknowledgement).not.toBeChecked();
+    await acknowledgement.check();
+    await catalogScreenshot(page, testInfo, "registration-removal-impact-1440x900");
+    await remove.getByRole("button", { name: "确认移除" }).click();
+    await expect(remove).toHaveCount(0);
+    await expect(row).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "修改模块 Driver", exact: true })).toBeVisible();
+
+    await openCatalogAt(page, "org-admin");
+    const navigator = catalogPage(page).getByRole("navigation", { name: "参数定义模块树" });
+    await expect(navigator.getByRole("button", { name: "Driver 0", exact: true })).toBeVisible();
+    await expect(navigator.getByRole("button", { name: `选择主体 ${name}` })).toHaveCount(0);
+    await page.getByRole("checkbox", { name: "包含已停用和退役主体" }).check();
+    await navigator.getByRole("button", { name: "展开 Driver", exact: true }).click();
+    await expect(navigator.getByRole("button", { name: `选择主体 ${name}` })).toBeVisible();
+
+    await page.goto(catalogAppUrl(modulesUrl));
+    await selectControlOption(page.getByRole("combobox", { name: "筛选登记状态" }), "retired");
+    await expect(row).toContainText("已停用");
+    await row.getByRole("button", { name: `恢复驱动：${name}` }).click();
+    const recovery = page.getByRole("dialog", { name: "恢复驱动", exact: true });
+    await expect(recovery).toContainText("当前归属：Driver");
+    await recovery.getByRole("textbox", { name: "操作原因" }).fill("恢复浏览器测试登记");
+    await recovery.getByRole("checkbox").check();
+    await recovery.getByRole("button", { name: "确认恢复" }).click();
+    await expect(recovery).toHaveCount(0);
+    const final = await catalogJson(page.request, "GET", `${registrationPath}/${registration.id}`);
+    expect((final.body as { item: { status: string; placement: { id: string } } }).item).toMatchObject({ status: "active", placement: { id: registration.placement.id } });
+    await selectControlOption(page.getByRole("combobox", { name: "筛选登记状态" }), "registered");
+    await expect(row.getByRole("button", { name: `移除驱动：${name}` })).toBeEnabled();
+    await catalogScreenshot(page, testInfo, "registration-restored-1440x900");
+    await signInCatalogActor(page, "user", modulesUrl);
+    await expect(page.getByRole("button", { name: `移除驱动：${name}` })).toHaveCount(0);
+  });
+
   test("resolves Review Queue items through one atomic typed command", async ({ page }, testInfo) => {
     // @acceptance PCAT-UI-04
     // @operation PCAT-REVIEW-RESOLVE-001

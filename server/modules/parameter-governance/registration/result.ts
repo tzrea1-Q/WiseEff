@@ -20,6 +20,9 @@ export type RegistrationResult = {
   readonly subjectId: CatalogSubjectId;
   readonly registrationStatus: RegistrationStatus;
   readonly registrationMethod: RegistrationMethod;
+  readonly registrationVersion?: string;
+  /** Locked lifecycle state before a committed retire/restore, for its transaction audit. */
+  readonly previousRegistrationStatus?: RegistrationStatus;
   readonly placementOrigin: PlacementOrigin;
   readonly moduleId: string | null;
   /** Current Placement version for conditional move callers. */

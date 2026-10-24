@@ -461,8 +461,8 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     const registrationPath = `${path}/${created.body.item.id}`;
     const detail = await request("dual", "GET", registrationPath);
     expect(detail.status).toBe(200);
-    expect(detail.body.item.impact).toEqual({ bindingCount: 0, projectCount: 0 });
-    expect((await request("platform", "GET", registrationPath)).body.item.impact).toEqual({ bindingCount: 0, projectCount: 0 });
+    expect(detail.body.item.impact).toEqual({ bindingCount: 0, projectCount: 0, projects: [] });
+    expect((await request("platform", "GET", registrationPath)).body.item.impact).toEqual({ bindingCount: 0, projectCount: 0, projects: [] });
     for (const actor of ["member", "project", "foreign-role"] as const) {
       const readOnly = await request(actor, "GET", registrationPath);
       expect(readOnly.status).toBe(200);

@@ -38,7 +38,10 @@ export const executeRegistration = async (
         await writeAuditEventInTx(asAuditTx(client), invocation, { requestId: requestId! }, {
           app: "parameter-governance", kind: "parameter-catalog-registration", action: `registration-${command.kind}`, severity: "Medium",
           projectId: null, targetType: "organization-subject-registration", targetId: result.value.registrationId,
-          metadata: { catalogReleaseId: command.expectedRelease.id, actorKind: context.actorKind }
+          metadata: { catalogReleaseId: command.expectedRelease.id, actorKind: context.actorKind,
+            ...((command.kind === "retire" || command.kind === "restore") ? {
+              reason: command.reason, beforeStatus: result.value.previousRegistrationStatus, afterStatus: result.value.registrationStatus,
+            } : {}) }
         });
       }
       return result;

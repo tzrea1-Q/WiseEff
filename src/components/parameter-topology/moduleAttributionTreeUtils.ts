@@ -20,7 +20,7 @@ export const IMPORTANCE_LABEL: Record<"high" | "medium" | "low", string> = {
   low: "低"
 };
 
-export function toAttributionFlatNodes(modules: readonly ParameterModule[]): FlatModuleNode[] {
+export function toAttributionFlatNodes(modules: readonly Pick<ParameterModule, "id" | "name" | "parentId" | "sortOrder">[]): FlatModuleNode[] {
   const byId = new Map(modules.map((module) => [module.id, module]));
 
   const pathFor = (id: string): string => {

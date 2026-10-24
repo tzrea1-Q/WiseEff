@@ -38,7 +38,7 @@ type RegistrationJoinRow = {
   status: string;
   registration_method: string;
   current_placement_id: string;
-  updated_at: Date | string;
+  registration_version: string;
   placement_id: string | null;
   module_id: string | null;
   module_name: string | null;
@@ -133,7 +133,7 @@ const registrationSelect = `
     registration.status,
     registration.registration_method,
     registration.current_placement_id,
-    registration.updated_at,
+    (extract(epoch from registration.updated_at) * 1000000)::bigint::text as registration_version,
     placement.id as placement_id,
     (extract(epoch from placement.updated_at) * 1000000)::bigint::text as placement_version,
     placement.module_id,
@@ -150,9 +150,6 @@ const registrationSelect = `
     on parent_placement.module_id = module.parent_id
    and parent_placement.organization_id = registration.organization_id
 `;
-
-const toIso = (value: Date | string): string =>
-  value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 
 const mapPlacement = (
   row: RegistrationJoinRow,
@@ -198,7 +195,7 @@ const mapRecord = (
       method,
       placement: placement.value,
       catalogReleaseId: observedCatalogReleaseId,
-      etag: `${row.id}:${status}:${toIso(row.updated_at)}`,
+      etag: `${row.id}:${status}:${row.registration_version}`,
     },
   };
 };
@@ -347,11 +344,12 @@ export const selectSubjectIds = async (
     query.registration !== undefined &&
     query.registration !== "active" &&
     query.registration !== "retired" &&
+    query.registration !== "not-retired" &&
     query.registration !== "unregistered"
   ) {
     return fail({ kind: "invalid-query", reason: "registration" });
   }
-  if (query.registration === "unregistered" && query.catalogSubjectIds === undefined) {
+  if ((query.registration === "unregistered" || query.registration === "not-retired") && query.catalogSubjectIds === undefined) {
     return fail({ kind: "invalid-query", reason: "catalogSubjectIds" });
   }
   return runQuery(source, "selectSubjectIds", async (client) => {
@@ -526,9 +524,20 @@ export const getRegistration = async (
         where organization_id = $1 and registration_id = $2`,
       [query.organizationId, query.registrationId],
     );
+    const projects = await client.query<{ id: string; name: string; bindingCount: number }>(
+      `select project.id, project.name, count(*)::int as "bindingCount"
+         from parameter_catalog.current_project_parameter_bindings binding
+         join public.projects project on project.id = binding.project_id
+          and project.organization_id = binding.organization_id
+        where binding.organization_id = $1 and binding.registration_id = $2
+        group by project.id, project.name
+        order by project.name, project.id limit 50`,
+      [query.organizationId, query.registrationId],
+    );
     return { ok: true, value: { ...registration.value, impact: {
       bindingCount: impact.rows[0]!.binding_count,
       projectCount: impact.rows[0]!.project_count,
+      projects: projects.rows,
     } } };
   });
 };
