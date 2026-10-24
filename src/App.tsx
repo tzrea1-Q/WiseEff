@@ -2,9 +2,10 @@ import {
   AlertTriangle,
   ChevronDown,
   FileText,
+  Grid2X2,
   LoaderCircle,
   Menu,
-  MessageSquareText,
+  MessageSquarePlus,
   PanelLeftClose,
   PanelLeftOpen,
   UserRound
@@ -115,6 +116,7 @@ import { unsavedParameterWorkCount } from "@/application/parameters/unsavedParam
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createMockRuntimeState, type MockRuntimeState } from "@/infrastructure/mock/mockState";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { handleSpaLinkClick } from "@/linear-template/spaLinkNavigation";
 import { presentError } from "@/infrastructure/http/presentError";
 import { wiseEffRuntimeMode, xiaozeInspectorEnabled, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
@@ -1360,6 +1362,9 @@ function Sidebar({
   onFeedback: () => void;
 }) {
   const activePageKey = getPageByPath(activePath).key;
+  const compactHeight = useMediaQuery("(max-height: 820px)");
+  const [managementOpen, setManagementOpen] = useState(false);
+  useEffect(() => setManagementOpen(false), [compactHeight, isCollapsed]);
   const visibleNavigationItems = navigationItems.filter(
     (item) => item.key !== "parameter-submissions" && canAccessPage(currentRoleId, item.key) && isDiscoveryGroupVisible(item.group, visibleWorkflows)
   );
@@ -1369,6 +1374,40 @@ function Sidebar({
   }, {});
   const ToggleIcon = isCollapsed ? PanelLeftOpen : PanelLeftClose;
   const toggleLabel = isCollapsed ? "展开侧边栏" : "收起侧边栏";
+  const visibleUtilityItems = utilityItems.filter((item) => item.path &&
+    canAccessPage(currentRoleId, getPageByPath(item.path).key) &&
+    (item.path !== "/workflow-publication" || canManagePublication));
+  const activeManagementItem = visibleUtilityItems.find((item) => item.path && getPageByPath(item.path).key === activePageKey);
+  const managementNavigation = visibleUtilityItems.length ? (
+    <nav className="sidebar-management" aria-label="平台管理">
+      <div className="nav-group-label">平台管理</div>
+      <div className="sidebar-management__links">
+        {visibleUtilityItems.map((item) => {
+            const href = item.path;
+            if (!href) return null;
+            const Icon = item.icon;
+            const isActive = getPageByPath(href).key === activePageKey;
+            return (
+              <Tooltip key={href}>
+                <TooltipTrigger asChild>
+                  <Button asChild aria-label={item.label} aria-current={isActive ? "page" : undefined}
+                    className={isActive ? "nav-item compact active" : "nav-item compact"} variant="ghost">
+                    <a href={href} onClick={(event) => {
+                      handleSpaLinkClick(event, href, onNavigate);
+                      if (event.defaultPrevented) setManagementOpen(false);
+                    }}>
+                      <Icon size={18} aria-hidden="true" />
+                      <span>{item.label}</span>
+                    </a>
+                  </Button>
+                </TooltipTrigger>
+                {isCollapsed && !compactHeight ? <TooltipContent side="right">{item.label}</TooltipContent> : null}
+              </Tooltip>
+            );
+          })}
+      </div>
+    </nav>
+  ) : null;
 
   return (
     <aside
@@ -1403,7 +1442,7 @@ function Sidebar({
       <ScrollArea className="nav-scroll">
         <nav aria-label="主导航">
           {Object.entries(groups).map(([group, items]) => (
-            <div className="nav-group" key={group}>
+            <div className="nav-group" role="group" aria-label={group} key={group}>
               <div className="nav-group-label">{group}</div>
               {items.map((item) => {
                 const Icon = item.icon;
@@ -1412,18 +1451,19 @@ function Sidebar({
                   <Tooltip key={item.path}>
                     <TooltipTrigger asChild>
                       <Button
+                        asChild
                         aria-label={item.label}
                         aria-current={isActive ? "page" : undefined}
-                        className={isActive ? "nav-item active" : "nav-item"}
-                        type="button"
+                        className={`${isActive ? "nav-item active" : "nav-item"}${item.key.endsWith("-admin") ? " nav-item--admin" : ""}`}
                         variant="ghost"
-                        onClick={() => onNavigate(item.path)}
                       >
-                        <Icon size={18} />
-                        <span>{item.label}</span>
+                        <a href={item.path} onClick={(event) => handleSpaLinkClick(event, item.path, onNavigate)}>
+                          <Icon size={18} aria-hidden="true" />
+                          <span>{item.label}</span>
+                        </a>
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent side="right">{item.label}</TooltipContent>
+                    {isCollapsed ? <TooltipContent side="right">{item.label}</TooltipContent> : null}
                   </Tooltip>
                 );
               })}
@@ -1432,44 +1472,32 @@ function Sidebar({
         </nav>
       </ScrollArea>
       <div className="utility-nav">
-        {utilityItems
-          .filter((item) => (!item.path || canAccessPage(currentRoleId, getPageByPath(item.path).key)) &&
-            (item.path !== "/workflow-publication" || canManagePublication))
-          .map((item) => {
-            const Icon = item.icon;
-            const button = (
-              <Button
-                aria-label={item.label}
-                className={
-                  item.path && getPageByPath(item.path).key === activePageKey
-                    ? "nav-item compact active"
-                    : "nav-item compact"
-                }
-                disabled={!item.path}
-                type="button"
-                variant="ghost"
-                onClick={() => item.path && onNavigate(item.path)}
-              >
-                <Icon size={18} />
-                <span>{item.label}</span>
-              </Button>
-            );
-
-            return (
-              <Tooltip key={item.label}>
-                <TooltipTrigger asChild>{button}</TooltipTrigger>
-                <TooltipContent side="right">{item.label}</TooltipContent>
-              </Tooltip>
-            );
-          })}
+        {managementNavigation && (compactHeight ? <Popover.Root open={managementOpen} onOpenChange={setManagementOpen}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Popover.Trigger asChild>
+                <Button type="button" className={`nav-item sidebar-management-trigger${activeManagementItem ? " active" : ""}`} variant="ghost" aria-label="平台管理">
+                  <Grid2X2 size={18} aria-hidden="true" /><span>{activeManagementItem?.label ?? "平台管理"}</span>
+                  {!isCollapsed ? <ChevronDown size={16} aria-hidden="true" /> : null}
+                </Button>
+              </Popover.Trigger>
+            </TooltipTrigger>
+            {isCollapsed ? <TooltipContent side="right">{activeManagementItem ? `平台管理 · ${activeManagementItem.label}` : "平台管理"}</TooltipContent> : null}
+          </Tooltip>
+          <Popover.Portal>
+            <Popover.Content className="sidebar-management-popover" side="right" align="end" sideOffset={8}>
+              {managementNavigation}
+            </Popover.Content>
+          </Popover.Portal>
+        </Popover.Root> : managementNavigation)}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button aria-label="问题反馈" className="nav-item compact feedback-entry" type="button" variant="ghost" onClick={onFeedback}>
-              <MessageSquareText size={18} />
+              <MessageSquarePlus size={18} aria-hidden="true" />
               <span>问题反馈</span>
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="right">问题反馈</TooltipContent>
+          {isCollapsed ? <TooltipContent side="right">问题反馈</TooltipContent> : null}
         </Tooltip>
       </div>
     </aside>

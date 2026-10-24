@@ -56,6 +56,21 @@ async function selectKernelLogCommand(command: string) {
 }
 
 describe("ReloadConfigurationAdminPanel", () => {
+  it("keeps a save entry visible before editing and after saving without sending unchanged writes", async () => {
+    const repository = createRepository();
+    render(<ReloadConfigurationAdminPanel repository={repository} canEdit />);
+    const directory = await screen.findByDisplayValue("/vendor/firmware/");
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    fireEvent.submit(screen.getByRole("form", { name: "DTS 重载设置" }));
+    expect(repository.updateOrganisationReloadConfiguration).not.toHaveBeenCalled();
+    fireEvent.change(directory, { target: { value: "/oem/firmware/" } });
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await screen.findByText("组织默认重载配置已保存");
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    expect(repository.updateOrganisationReloadConfiguration).toHaveBeenCalledTimes(1);
+  });
+
   it("does not report a load failure as a failed save", async () => {
     const repository = createRepository({ getReloadConfiguration: vi.fn().mockRejectedValue(new Error("无法读取配置")) });
     render(<ReloadConfigurationAdminPanel repository={repository} canEdit />);
@@ -63,7 +78,7 @@ describe("ReloadConfigurationAdminPanel", () => {
     expect(screen.queryByText("保存失败")).not.toBeInTheDocument();
     expect(screen.queryByText("系统默认")).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "组织 Overlay 目标目录" })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     vi.mocked(repository.getReloadConfiguration).mockResolvedValueOnce(seededView());
     fireEvent.click(screen.getByRole("button", { name: "重新加载配置" }));
     expect(await screen.findByDisplayValue("/vendor/firmware/")).toBeEnabled();
@@ -109,7 +124,7 @@ describe("ReloadConfigurationAdminPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "重新加载配置" }));
     fireEvent.click(screen.getByRole("button", { name: "放弃并重新加载" }));
     expect(await screen.findByDisplayValue("/vendor/firmware/")).toBeEnabled();
-    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     expect(repository.updateOrganisationReloadConfiguration).toHaveBeenCalledTimes(1);
   });
 
@@ -124,7 +139,7 @@ describe("ReloadConfigurationAdminPanel", () => {
     expect(repository.updateOrganisationReloadConfiguration).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "放弃" }));
     expect(directory).toHaveValue("/vendor/firmware/");
-    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
   });
 
   it("keeps drafts available to retry after a failed save", async () => {
@@ -175,7 +190,7 @@ describe("ReloadConfigurationAdminPanel", () => {
     expect(repository.getReloadConfiguration).toHaveBeenCalled();
     expect(screen.getByText("系统默认")).toBeInTheDocument();
 
-    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
 
     await selectKernelLogCommand("hilog");
     const saveButton = screen.getByRole("button", { name: "保存" });

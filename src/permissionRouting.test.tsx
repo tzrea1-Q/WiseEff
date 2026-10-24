@@ -19,6 +19,7 @@ const guestState = { ...initialState, activeRoleId: "guest" };
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   window.history.replaceState(null, "", "/");
 });
 
@@ -29,22 +30,29 @@ describe("permission-aware routing", () => {
 
     const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
     for (const [pageKey, label] of [["logs", "智能分析"], ["log-admin", "日志后台"], ["knowledge", "知识库"], ["knowledge-admin", "知识后台"]] as const) {
-      expect(within(sidebar).queryByRole("button", { name: label }) !== null).toBe(canAccessPage(roleId, pageKey));
+      expect(within(sidebar).queryByRole("link", { name: label }) !== null).toBe(canAccessPage(roleId, pageKey));
     }
     expect(sidebar.textContent?.includes("日志分析")).toBe(canAccessPage(roleId, "logs"));
     expect(sidebar.textContent?.includes("知识库")).toBe(canAccessPage(roleId, "knowledge"));
   });
 
-  it("hides admin and operational navigation for Guest", () => {
+  it.each([false, true])("hides admin and operational navigation for Guest with compact height %s", (compactHeight) => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: compactHeight && query === "(max-height: 820px)", media: query,
+      addEventListener: vi.fn(), removeEventListener: vi.fn()
+    }));
     window.history.replaceState(null, "", "/parameter-home");
 
     render(<App initialAppState={guestState} />);
 
     const navigation = within(screen.getByRole("navigation", { name: /主导航|涓诲鑸?/ }));
-    expect(navigation.getByRole("button", { name: "项目参数" })).toBeInTheDocument();
-    expect(navigation.queryByRole("button", { name: /变更审阅|鍙傛暟瀹￠槄/ })).not.toBeInTheDocument();
-    expect(navigation.queryByRole("button", { name: /参数调试|鍙傛暟璋冭瘯/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /组织管理/ })).not.toBeInTheDocument();
+    expect(navigation.getByRole("link", { name: "项目参数" })).toBeInTheDocument();
+    expect(navigation.queryByRole("link", { name: /变更审阅|鍙傛暟瀹￠槄/ })).not.toBeInTheDocument();
+    expect(navigation.queryByRole("link", { name: /参数调试|鍙傛暟璋冭瘯/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /组织管理/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "平台管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "平台管理" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("complementary", { name: "主导航侧边栏" })).getByRole("button", { name: "问题反馈" })).toBeInTheDocument();
   });
 
   it("removes the retired platform console utility entry for platform-admin", async () => {
@@ -52,7 +60,7 @@ describe("permission-aware routing", () => {
 
     render(<App initialAppState={{ ...initialState, activeRoleId: "platform-admin", currentUserId: "u-platform-admin" }} />);
 
-    expect(screen.queryByRole("button", { name: "平台控制台" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "平台控制台" })).not.toBeInTheDocument();
   });
 
   it("lets Admin see the shared user permissions utility entry", async () => {

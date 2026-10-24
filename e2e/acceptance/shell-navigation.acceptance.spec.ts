@@ -146,9 +146,9 @@ test.describe("M5.4 manual flow A - shell navigation", () => {
         if (route !== "/") {
           const sidebar = page.getByRole("complementary", { name: "主导航侧边栏" });
           const logGroup = sidebar.locator(".nav-group").filter({ has: page.locator(".nav-group-label", { hasText: /^日志分析$/ }) });
-          await expect(logGroup.getByRole("button")).toHaveText(["智能分析", "日志后台"]);
+          await expect(logGroup.getByRole("link")).toHaveText(["智能分析", "日志后台"]);
           const knowledgeGroup = sidebar.locator(".nav-group").filter({ has: page.locator(".nav-group-label", { hasText: /^知识库$/ }) });
-          await expect(knowledgeGroup.getByRole("button")).toHaveText(["知识库", "知识后台"]);
+          await expect(knowledgeGroup.getByRole("link")).toHaveText(["知识库", "知识后台"]);
         }
 
         await recordOperationEvidence({
@@ -182,13 +182,13 @@ test.describe("M5.4 manual flow A - shell navigation", () => {
   test("offers log and knowledge workflows without administration to hardware users", async ({ page }) => {
     await signInBrowserAsRole(page, "hardware-user", "/parameter-home");
     const sidebar = page.getByRole("complementary", { name: "主导航侧边栏" });
-    await expect(sidebar.getByRole("button", { name: "智能分析", exact: true })).toBeVisible();
-    await expect(sidebar.getByRole("button", { name: "日志后台", exact: true })).toHaveCount(0);
-    await expect(sidebar.getByRole("button", { name: "知识库", exact: true })).toBeVisible();
-    await expect(sidebar.getByRole("button", { name: "知识后台", exact: true })).toHaveCount(0);
-    await sidebar.getByRole("button", { name: "智能分析", exact: true }).click();
+    await expect(sidebar.getByRole("link", { name: "智能分析", exact: true })).toBeVisible();
+    await expect(sidebar.getByRole("link", { name: "日志后台", exact: true })).toHaveCount(0);
+    await expect(sidebar.getByRole("link", { name: "知识库", exact: true })).toBeVisible();
+    await expect(sidebar.getByRole("link", { name: "知识后台", exact: true })).toHaveCount(0);
+    await sidebar.getByRole("link", { name: "智能分析", exact: true }).click();
     await expect(page).toHaveURL((url) => url.pathname === "/logs");
-    await sidebar.getByRole("button", { name: "知识库", exact: true }).click();
+    await sidebar.getByRole("link", { name: "知识库", exact: true }).click();
     await expect(page).toHaveURL((url) => url.pathname === "/knowledge");
     await expect(page.getByRole("table", { name: "知识条目列表" })).toBeVisible();
   });
@@ -198,10 +198,10 @@ test.describe("M5.4 manual flow A - shell navigation", () => {
 
     await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
     const sidebar = page.getByRole("complementary", { name: "主导航侧边栏" });
-    await expect(sidebar.getByRole("button", { name: "智能分析", exact: true })).toHaveCount(0);
-    await expect(sidebar.getByRole("button", { name: "日志后台", exact: true })).toHaveCount(0);
-    await expect(sidebar.getByRole("button", { name: "知识库", exact: true })).toBeVisible();
-    await expect(sidebar.getByRole("button", { name: "知识后台", exact: true })).toHaveCount(0);
+    await expect(sidebar.getByRole("link", { name: "智能分析", exact: true })).toHaveCount(0);
+    await expect(sidebar.getByRole("link", { name: "日志后台", exact: true })).toHaveCount(0);
+    await expect(sidebar.getByRole("link", { name: "知识库", exact: true })).toBeVisible();
+    await expect(sidebar.getByRole("link", { name: "知识后台", exact: true })).toHaveCount(0);
     await expectUsableShell(page, testInfo, "/log-admin");
     await recordOperationEvidence({
       operationId: "SHELL-FOOTER-001",
