@@ -4,7 +4,7 @@ import { expect, test, type Locator, type Page } from "playwright/test";
 
 import { runNpmScript, withPgClient } from "./helpers/database";
 import { apiRoute } from "./helpers/runtime";
-import { authHeadersForUser, signInBrowserAsRoleLabel } from "./helpers/bearerAuth";
+import { authHeadersForRole, authHeadersForUser, signInBrowserAsRoleLabel } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
 import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
@@ -241,7 +241,7 @@ async function seedDeletedUserHistory(userId: string) {
   });
 }
 
-async function deletedUserDbSummary(input: { userId: string; roleId: string }) {
+async function deletedUserDbSummary(input: { userId: string; userName: string; roleId: string }) {
   return withPgClient(async (client) => {
     const result = await client.query<{
       user_count: string;
@@ -249,6 +249,8 @@ async function deletedUserDbSummary(input: { userId: string; roleId: string }) {
       historical_actor_user_id: string | null;
       knowledge_creator_user_id: string | null;
       initialization_submitter_user_id: string | null;
+      recorded_knowledge_creator_name: string | null;
+      recorded_initialization_submitter_name: string | null;
     }>(
       `
       select
@@ -256,15 +258,22 @@ async function deletedUserDbSummary(input: { userId: string; roleId: string }) {
         (select count(*)::text from user_role_bindings where user_id = $1 and role_id = $2) as role_count,
         (select actor_user_id from audit_events where id = $3) as historical_actor_user_id,
         (select created_by_user_id from knowledge_entries where id = '00000000-0000-4000-8000-0000000000a1') as knowledge_creator_user_id,
-        (select submitted_by_user_id from project_parameter_initialization_reviews where id = 'acceptance-delete-init-review') as initialization_submitter_user_id
+        (select submitted_by_user_id from project_parameter_initialization_reviews where id = 'acceptance-delete-init-review') as initialization_submitter_user_id,
+        (select historical_attribution #>> '{actors,created_by_user_id,name}' from knowledge_entries where id = '00000000-0000-4000-8000-0000000000a1') as recorded_knowledge_creator_name,
+        (select historical_attribution #>> '{actors,submitted_by_user_id,name}' from project_parameter_initialization_reviews where id = 'acceptance-delete-init-review') as recorded_initialization_submitter_name
       `,
       [input.userId, input.roleId, `acceptance-delete-history-${input.userId}`]
     );
     const row = result.rows[0];
+    expect(row).toMatchObject({
+      user_count: "0", role_count: "0", historical_actor_user_id: null,
+      knowledge_creator_user_id: null, initialization_submitter_user_id: null,
+      recorded_knowledge_creator_name: input.userName, recorded_initialization_submitter_name: input.userName
+    });
     return {
       table: "users,user_role_bindings,audit_events",
       predicate: `deleted userId=${input.userId}; retained audit actor is null`,
-      observed: `users=${row?.user_count ?? 0}; roles=${row?.role_count ?? 0}; historicalActor=${row?.historical_actor_user_id ?? "null"}; knowledgeCreator=${row?.knowledge_creator_user_id ?? "null"}; initializationSubmitter=${row?.initialization_submitter_user_id ?? "null"}`,
+      observed: `users=${row?.user_count ?? 0}; roles=${row?.role_count ?? 0}; historicalActor=${row?.historical_actor_user_id ?? "null"}; knowledgeCreator=${row?.knowledge_creator_user_id ?? "null"}; initializationSubmitter=${row?.initialization_submitter_user_id ?? "null"}; recordedKnowledgeCreator=${row?.recorded_knowledge_creator_name}; recordedInitializationSubmitter=${row?.recorded_initialization_submitter_name}`,
       rowCount: Number(row?.user_count ?? 0)
     };
   });
@@ -368,6 +377,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
   test("loads users, shows role/status, and gates user governance to Admin", async ({ page }, testInfo) => {
     // @acceptance PERM-GOV-001
     // @operation PERM-GOV-001
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/organization/members");
 
     await expect(page.getByRole("region", { name: "用户权限" })).toBeVisible();
@@ -423,13 +433,17 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await expect(ownPlatformAdminRole).toBeChecked();
     await expect(ownAdminRole).toBeEnabled();
     await ownAdminRole.uncheck();
-    await expect(ownPlatformAdminRole).toBeDisabled();
-    await expect(currentAdminDialog).toContainText("需保留至少一个管理员角色，避免当前账号失去管理权限。");
+    await expect(ownPlatformAdminRole).toBeEnabled();
     await ownAdminRole.check();
     await currentAdminDialog.getByRole("button", { name: "关闭", exact: true }).click();
     await currentAdminRow.getByRole("button", { name: /：更多$/ }).click();
-    await expect(page.getByRole("menuitem", { name: /^停用/ })).toBeDisabled();
-    await page.keyboard.press("Escape");
+    const selfDisable = page.getByRole("menuitem", { name: /^停用/ });
+    await expect(selfDisable).toBeEnabled();
+    await selfDisable.click();
+    const selfDisableDialog = page.getByRole("dialog", { name: "确认停用用户" });
+    await expect(selfDisableDialog).toContainText("操作成功后将退出当前账号。服务端会检查是否保留有效管理员。");
+    await selfDisableDialog.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(selfDisableDialog).toHaveCount(0);
 
     await filterUsersTo(page, "Wang Jie");
     await table.getByRole("row").filter({ hasText: "Wang Jie" }).getByRole("button", { name: "查看 Wang Jie 的成员资料" }).click();
@@ -453,10 +467,12 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     }
 
     await setPrototypeRole(page, "Hardware User");
-    await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
-    await expect(page.getByText("当前角色：硬件开发")).toBeVisible();
-    await expect(page.getByText("所需角色：管理员")).toBeVisible();
+    await expect(page.getByText("此区域由组织管理员维护", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "查看组织资源", exact: true })).toBeVisible();
     await expect(page.getByRole("region", { name: "用户权限" })).toHaveCount(0);
+    const deniedUsers = await page.request.get(apiRoute("/api/v1/users"), { headers: authHeadersForRole("hardware-user") });
+    expect(deniedUsers.status()).toBe(403);
+    await page.screenshot({ path: testInfo.outputPath("permissions-hardware-member-readonly-1440.png"), animations: "disabled" });
 
     await setPrototypeRole(page, "Admin");
     await expect(page.getByRole("region", { name: "用户权限" })).toBeVisible();
@@ -467,13 +483,15 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
       status: "passed",
       page,
       testInfo,
-      notes: "Admin saw user governance, active Admin self-disable controls were disabled, and Hardware User received controlled permission denial."
+      api: [summarizeApiResponse(deniedUsers, { method: "GET", path: "/api/v1/users", responseSummary: "non-Admin user directory denied with 403" })],
+      notes: "Admin saw user governance and could prepare self-handoff with other active administrators. Self-disable confirmation explained sign-out and server-side administrator checks; cancelling retained the active account. Hardware User saw organization resource guidance without user governance and received 403 from the users API."
     });
   });
 
   test("lets Admin manage a non-self user in UI while denying non-Admin access", async ({ page }, testInfo) => {
     // @acceptance PERM-USER-MGMT-001
     // @operation PERM-USER-MGMT-001
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/organization/members");
 
     await expect(page.getByRole("region", { name: "用户权限" })).toBeVisible();
@@ -529,7 +547,8 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await page.getByRole("menuitem", { name: "注销 Chen Rui" }).click();
     const deleteDialog = page.getByRole("dialog", { name: "确认注销用户" });
     await expect(deleteDialog).toContainText("业务与审计历史记录会保留");
-    await expect(deleteDialog).toContainText("历史记录中的用户关联会解除");
+    await expect(deleteDialog).toContainText("业务与审计历史记录会保留");
+    await expect(deleteDialog).toContainText("既有历史署名不会改成接任者");
     await deleteDialog.getByRole("button", { name: "确认注销" }).click();
     const deleteResponse = await deleteResponsePromise;
     expect(deleteResponse.status()).toBe(204);
@@ -538,11 +557,17 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
 
     await page.goto("/knowledge-admin");
     const retainedKnowledgeRow = page.getByRole("row").filter({ hasText: "Retained deleted-user knowledge" });
-    await expect(retainedKnowledgeRow).toContainText("已注销用户");
+    await expect(retainedKnowledgeRow).toContainText(`创建人 ${createdUser!.name}`);
+    await testInfo.attach("deleted-user-knowledge-attribution-1440", {
+      body: await page.screenshot({ fullPage: true, animations: "disabled" }), contentType: "image/png"
+    });
 
     await page.goto("/parameter-review");
     const retainedInitializationRow = page.getByRole("row").filter({ hasText: "Deleted user initialization" });
-    await expect(retainedInitializationRow).toContainText("已注销用户");
+    await expect(retainedInitializationRow).toContainText(createdUser!.name);
+    await testInfo.attach("deleted-user-initialization-attribution-1440", {
+      body: await page.screenshot({ fullPage: true, animations: "disabled" }), contentType: "image/png"
+    });
 
     const usersAfterDeleteApi = await expectSuccessfulApiGet<{ items: GovernedUserApiItem[] }>(page, "/api/v1/users");
     expect(usersAfterDeleteApi.body.items.some((user) => user.id === createdUser!.id)).toBe(false);
@@ -570,9 +595,8 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
 
     await page.goto("/organization/members");
     await setPrototypeRole(page, "Software User");
-    await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
-    await expect(page.getByText("当前角色：软件开发")).toBeVisible();
-    await expect(page.getByText("所需角色：管理员")).toBeVisible();
+    await expect(page.getByText("此区域由组织管理员维护", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "查看组织资源", exact: true })).toBeVisible();
     await expect(page.getByRole("table", { name: "平台用户" })).toHaveCount(0);
 
     const deniedDelete = await page.request.delete(apiRoute("/api/v1/users/u-wang-jie"), {
@@ -615,6 +639,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
       db: [
         await deletedUserDbSummary({
           userId: createdUser!.id,
+          userName: createdUser!.name,
           roleId: "software-user"
         })
       ],
@@ -633,21 +658,22 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
         })
       ],
       notes:
-        "Admin changed a non-self user's role, created a backend-governed user, and permanently deleted that user through the UI. The user and role rows were removed; retained audit, knowledge, and parameter-initialization attribution adapted to null; /knowledge-admin and /parameter-review rendered the deleted-user label; and a non-Admin DELETE was denied with 403."
+        "Admin changed a non-self user's role, created a backend-governed user, and permanently deleted that user through the UI. The user and role rows were removed and live historical user associations detached; /knowledge-admin and /parameter-review retained the original creator and submitter names; and a non-Admin DELETE was denied with 403."
     });
   });
 
   test("lets Admin rename the home organization while denying non-Admin writes", async ({ page }, testInfo) => {
     // @acceptance ORG-ADMIN-RENAME-001
     // @operation ORG-ADMIN-RENAME-001
-    await page.goto("/organization");
+    await page.goto("/organization/settings");
 
     await expect(page.getByRole("region", { name: "组织档案" })).toBeVisible();
     const nameInput = page.getByLabel("显示名称");
     await expect(nameInput).toHaveValue("ChargeLab");
-    await expect(page.locator(".organization-profile__id")).toHaveText("org-chargelab");
+    const organizationId = page.getByRole("region", { name: "当前操作组织", exact: true }).locator("code");
+    await expect(organizationId).toHaveText("org-chargelab");
 
-    await page.route("**/api/v1/organization", async (route) => {
+    await page.route(/\/api\/v1\/organization(?:\?.*)?$/, async (route) => {
       if (route.request().method() === "PATCH") {
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
@@ -664,7 +690,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     const renameResponse = await renameResponsePromise;
     expect(renameResponse.ok()).toBe(true);
     await expect(nameInput).toHaveValue(renamed);
-    await expect(page.locator(".organization-profile__id")).toHaveText("org-chargelab");
+    await expect(organizationId).toHaveText("org-chargelab");
 
     const orgApi = await expectSuccessfulApiGet<{ organization: { id: string; name: string; createdAt: string } }>(
       page,

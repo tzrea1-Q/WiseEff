@@ -23,6 +23,7 @@ export type LogEvidenceDto = {
 };
 
 export type LogRecordDto = {
+  historicalAttribution?: LogRecord["historicalAttribution"];
   canDelete?: boolean;
   skillSelection?: LogRecord["skillSelection"];
   createdByCredentialId?: string | null;
@@ -117,6 +118,7 @@ export function confidencePercentFromDto(confidence: number): number {
 
 export function logRecordFromDto(dto: LogRecordDto): LogRecord {
   return {
+    historicalAttribution: dto.historicalAttribution,
     skillSelection: dto.skillSelection,
     createdByCredentialId: dto.createdByCredentialId,
     createdByCredentialName: dto.createdByCredentialName,

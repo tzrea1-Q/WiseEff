@@ -9,6 +9,50 @@ export type AcceptanceRequirement = {
 
 export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
+    id: "ORG-OPERATING-LIFECYCLE-001", workflow: "H", required: false,
+    title: "In an isolated local-auth API lane, actual identities complete Organization creation, invitation, project participation, offboarding and handover, transfer, suspension/restoration and recoverable mixed deletion; signed OIDC continuity is verified separately."
+  },
+  {
+    id: "ORG-MIXED-ERASURE-RECOVERY-001", workflow: "H", required: true,
+    title: "A platform administrator erases mixed Organization data, resumes a real failed domain and reads a minimal receipt; actual older database, file and checkpoint backups replay applicable deletions before reopening."
+  },
+  {
+    id: "ORG-PARAMETER-ERASURE-001", workflow: "H", required: true,
+    title: "A platform administrator erases Organization projects and parameter files, retries a durable domain failure, and preserves shared Definitions and foreign ownership."
+  },
+  {
+    id: "ORG-KNOWLEDGE-ERASURE-001", workflow: "H", required: true,
+    title: "A platform administrator erases Organization knowledge, indexes and actual attachments, retries durable failure, and prevents late producer resurrection."
+  },
+  {
+    id: "ORG-LOG-ERASURE-001", workflow: "H", required: true,
+    title: "A platform administrator erases Organization logs, queued analysis and physical files through confirmation and durable retry while preserving unrelated data."
+  },
+  {
+    id: "ORG-RUNTIME-ERASURE-001", workflow: "H", required: true,
+    title: "A platform administrator erases Organization runtime feedback bytes and foreign-Home projections, observes a real failure, and resumes the persisted cleanup."
+  },
+  {
+    id: "ORG-EMPTY-ERASURE-001", workflow: "H", required: true,
+    title: "A platform administrator permanently erases a management-only Organization, fences new writes and login, resumes durable failure after target deletion, and retains only a minimal independent receipt."
+  },
+  {
+    id: "ORG-DELETION-PREVIEW-001", workflow: "H", required: true,
+    title: "A platform administrator reads a fixed Organization's complete erasure impact, retries failures, sees account and shared-resource boundaries, and cannot mistake a readonly preview for deletion authority."
+  },
+  {
+    id: "ORG-LIFECYCLE-001", workflow: "H", required: true,
+    title: "A platform administrator suspends and restores an explicit organization with keyboard confirmation and safe retry; members retain read access, business writes stop, and individually disabled members stay disabled."
+  },
+  {
+    id: "ORG-OIDC-TRANSFER-001", workflow: "H", required: false,
+    title: "OIDC transfers retain strict organization claims and explicit binding, show pending external synchronization, and report success only after a verified target login."
+  },
+  {
+    id: "ORG-ACCOUNT-TRANSFER-001", workflow: "H", required: false,
+    title: "A platform administrator previews and transfers a local account with explicit target roles, revoked old sessions and pairings, retained source work and machine credentials, and a successful target login."
+  },
+  {
     id: "PCAT-REGISTRATION-INITIALIZE-001", workflow: "C", required: false,
     title: "An authorized organization administrator explicitly creates a typed destination under a business parent and registers its subject atomically, with tenant, release, retry and rollback guards."
   },
@@ -440,6 +484,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     workflow: "D",
     title: "A degraded analysis (rules fallback) is visibly marked with its provenance and reason.",
     required: true
+  },
+  {
+    id: "LOG-REGISTER-001",
+    workflow: "D",
+    title: "Admin edits register bits and mappings, imports previewed datasheet rows, round-trips YAML, and inspects decoded sample-line values; dedicated browser automation remains pending as recorded in the coverage map.",
+    required: false
   },
   {
     id: "LOG-SKILL-KNOWLEDGE-001",

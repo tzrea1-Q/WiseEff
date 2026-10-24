@@ -40,6 +40,7 @@ function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
     },
     organization: { id: "org-1", name: "ChargeLab" },
     roles: [{ projectId: "project-1", roleId: "software-user" }],
+    projectMemberships: [{ projectId: "project-1", roles: ["software-user"] }],
     permissions: ["parameter:view", "parameter:edit"],
     ...overrides
   };
@@ -203,12 +204,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
       await expect(countDrafts()).resolves.toBe(0);
     });
 
-    it("accepts an organization-wide (null-project) editor binding for any project", async () => {
-      // Self-service registration approval and the M0 seed grant business roles
-      // with projectId null: an organization-wide binding, not a no-project one.
-      // The project-scope guard must not reject it; the call proceeds past
-      // authorization into the domain lookup, which reports the parameter as
-      // missing from project-2 instead of a role failure.
+    it("does not extend an organization-wide business role to an unassigned project", async () => {
       await expect(
         saveDraft(db, makeAuth({ roles: [{ projectId: null, roleId: "hardware-user" }] }), {
           projectId: "project-2",
@@ -217,10 +213,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
           reason: "org-wide binding"
         })
       ).rejects.toMatchObject(
-        new ApiError("NOT_FOUND", "Parameter was not found for this project.", {
-          parameterId: "param-1",
-          projectId: "project-2"
-        })
+        new ApiError("FORBIDDEN", "Parameter edit role is required for this project.")
       );
     });
 

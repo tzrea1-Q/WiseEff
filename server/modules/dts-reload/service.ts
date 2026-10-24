@@ -7,6 +7,7 @@ import {
   writeTrustedMilestoneAudit
 } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
+import { assertTrustedInvocationMatchesScope, type UserInvocationContext, type AgentInvocationContext } from "../auth/trustedInvocation";
 import type { DtsValue } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import {
@@ -14,6 +15,7 @@ import {
   type Queryable
 } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { reloadCompletionDatabase, requireCurrentReloadLifecycle } from "./lifecycle";
 import { buildReloadBaseSource } from "./baseSource";
 import { classifyReloadCandidate, normalizeReloadCandidates } from "./candidates";
 import {
@@ -1519,10 +1521,13 @@ export async function getReloadRun(
 export async function getReloadRunRecord(
   db: Queryable,
   auth: AuthContext,
-  runId: string
+  runId: string,
+  invocation?: UserInvocationContext | AgentInvocationContext
 ): Promise<ReloadRunDto> {
   requireDtsReloadView(auth);
-  const row = await getReloadRunRow(db, { organizationId: auth.organization.id, runId });
+  const organizationId = invocation?.operatingOrganization?.id ?? auth.organization.id;
+  if (invocation) assertTrustedInvocationMatchesScope(auth, invocation, organizationId, "Stored reload evidence");
+  const row = await getReloadRunRow(db, { organizationId, runId });
   if (!row) {
     throw new ApiError("NOT_FOUND", "Reload run was not found.", { runId });
   }
@@ -1704,6 +1709,7 @@ export async function deployReloadRun(
 
   const run = await getReloadRun(db, objectStore, auth, input.runId);
   requireDtsReloadProjectMutation(auth, run.projectId);
+  await requireCurrentReloadLifecycle(db, auth.organization.id, run.id);
   if (!run.artifact?.sha256) {
     throw new ApiError("CONFLICT", "Reload run has no compiled overlay artifact to deploy.", {
       code: "reload-artifact-missing",
@@ -1797,6 +1803,13 @@ export async function deployReloadRun(
 
   let result: ReloadRunDto;
   try {
+    const admissionDb = db, rpc = deps.bridgeRpcClient;
+    let deployWasClaimed = false;
+    db = reloadCompletionDatabase(db, { runId: run.id, organizationId: auth.organization.id, deviceId: canonicalDeviceId, wasClaimed: () => deployWasClaimed });
+    deps = { ...deps, bridgeRpcClient: { ...rpc, call: (...args) => admissionDb.transaction(async tx => {
+      await requireCurrentReloadLifecycle(tx, auth.organization.id, run.id);
+      return rpc.call(...args);
+    }) } };
     result = await db.transaction(async (tx) => {
       await lockReloadCanonicalSourceCohorts(tx, auth, run);
       await assertReloadRunCanonicalPinsCurrent(tx, auth, run);
@@ -1832,6 +1845,7 @@ export async function deployReloadRun(
           // gives a cheap refusal before deploy milestones; this second check closes the race in
           // which a value/source pin changes between that read and the deploy claim.
           const claimed = await db.transaction(async (tx) => {
+            await requireCurrentReloadLifecycle(tx, auth.organization.id, run.id);
             const next = await claimReloadRunForDeploy(tx, payload);
             if (!next) return null;
             await assertReloadRunCanonicalPinsCurrent(tx, auth, run);
@@ -1844,6 +1858,7 @@ export async function deployReloadRun(
               { code: "reload-deploy-already-in-progress", runId: run.id, status: run.status }
             );
           }
+          deployWasClaimed = true;
           return toReloadRunDto(claimed, run.targets, run.overlaySource);
         }
         if (update.completedAt === null) {

@@ -1,9 +1,11 @@
+import { organizationId as logOrganizationId, assertLogInvocation, type LogAccessContext } from "./principal";
+import { withKnowledgeInvocation } from "../knowledge/scope";
 import { randomUUID } from "node:crypto";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { withAuditedWrite, type AuditedWriteContext } from "../audit/auditedWrite";
-import type { AuthContext } from "../auth/types";
-import { assertTrustedInvocationMatchesAuth, type TrustedInvocationContext } from "../auth/trustedInvocation";
+import { withLogObjectCustody } from "./objectWrites";
+import { type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { requireKnowledgeEdit, canReadEntry } from "../knowledge/policy";
 import { createKnowledgeEntry } from "../knowledge/service";
 import { createDefaultKnowledgeTextExtractor } from "../knowledge/extraction";
@@ -18,7 +20,7 @@ import { exportSkillPackageArchive, importSkillPackageArchive, SkillPackageArchi
 import type { ObjectStore } from "./objectStore";
 import { createLogSkillBodySchema } from "./schemas";
 
-function requireAdmin(auth: AuthContext) {
+function requireAdmin(auth: LogAccessContext) {
   requireLogAdminDomains(auth);
   if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "无权访问此组织的日志。");
 }
@@ -33,23 +35,23 @@ function archiveError(error: unknown): never {
   throw error;
 }
 
-export async function exportLogSkillPackage(db: Database, store: ObjectStore, auth: AuthContext, skillId: string, revision: "published" | "draft" = "published") {
+export async function exportLogSkillPackage(db: Database, store: ObjectStore, auth: LogAccessContext, skillId: string, revision: "published" | "draft" = "published") {
   requireAdmin(auth);
   // One database snapshot keeps the selected revision, knowledge heads and cases coherent.
   return db.transaction(async (tx) => {
     await tx.query("set transaction isolation level repeatable read");
-    const skill = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: skillId });
+    const skill = await getLogDomainById(tx, { organizationId: logOrganizationId(auth), domainId: skillId });
     if (!skill) throw new ApiError("NOT_FOUND", "未找到分析技能。");
-    const selected = (await listSkillRevisions(tx, auth.organization.id, skillId)).find((item) => item.status === revision);
+    const selected = (await listSkillRevisions(tx, logOrganizationId(auth), skillId)).find((item) => item.status === revision);
     if (!selected) throw new ApiError("NOT_FOUND", "未找到所选技能版本。");
     const ids = selected.spec.knowledgeEntryIds ?? [];
     const entries = (await tx.query<{ id: string; title: string; tags: string[]; status: "draft" | "published" | "archived";
-      createdByUserId: string | null; sourceType: "human" | "agent"; revisionId: string; revisionNumber: number; body: string | null }>(
-      `select e.id, r.title, r.tags, e.status, e.created_by_user_id as "createdByUserId", e.source_type as "sourceType",
+      createdByUserId: string | null; responsibleUserId: string | null; sourceType: "human" | "agent"; revisionId: string; revisionNumber: number; body: string | null }>(
+      `select e.id, r.title, r.tags, e.status, e.created_by_user_id as "createdByUserId", e.responsible_user_id as "responsibleUserId", e.source_type as "sourceType",
         r.id as "revisionId", r.revision_number as "revisionNumber", coalesce(r.content_markdown, f.extracted_text) as body
        from knowledge_entries e join knowledge_revisions r on r.id=e.head_revision_id and r.organization_id=e.organization_id
        left join knowledge_files f on f.id=r.file_id and f.organization_id=r.organization_id
-       where e.organization_id=$1 and e.id=any($2::uuid[]) order by e.id`, [auth.organization.id, ids])).rows;
+       where e.organization_id=$1 and e.id=any($2::uuid[]) order by e.id`, [logOrganizationId(auth), ids])).rows;
     const knowledge: PackagedKnowledge[] = [];
     for (const id of ids) {
       const entry = entries.find((item) => item.id === id);
@@ -58,7 +60,7 @@ export async function exportLogSkillPackage(db: Database, store: ObjectStore, au
       knowledge.push({ path: `knowledge/${entry.id}.md`, title: entry.title, tags: entry.tags, body: entry.body,
         source: { type: entry.sourceType, entryId: entry.id, revisionId: entry.revisionId, revisionNumber: entry.revisionNumber } });
     }
-    const cases = (await readAnalysisCases(tx, auth.organization.id, skillId)).length
+    const cases = (await readAnalysisCases(tx, logOrganizationId(auth), skillId)).length
       ? await readBoundedZipArchive(await exportSkillAnalysisCases(tx, store, auth, skillId)) : new Map<string, Buffer>();
     // Legacy/seeded skills may keep portable identity attributes only on the row.
     const spec = { ...selected.spec, description: selected.spec.description ?? skill.description,
@@ -69,9 +71,9 @@ export async function exportLogSkillPackage(db: Database, store: ObjectStore, au
   });
 }
 
-export async function importLogSkillPackage(db: Database, store: ObjectStore, auth: AuthContext, bytes: Buffer,
+export async function importLogSkillPackage(db: Database, store: ObjectStore, auth: LogAccessContext, bytes: Buffer,
   status: "draft" | "published" = "draft", invocation: TrustedInvocationContext, context: AuditedWriteContext, caps: LogSkillBudgetCaps = defaultLogSkillBudgetCaps, name?: string) {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Import skill package");
+  assertLogInvocation(auth, invocation, "Import skill package");
   requireAdmin(auth);
   if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "技能包导入必须由用户发起。");
   if (status !== "draft" && status !== "published") throw new ApiError("VALIDATION_FAILED", "导入状态无效。");
@@ -95,34 +97,41 @@ export async function importLogSkillPackage(db: Database, store: ObjectStore, au
     }
     throw error;
   }
+  const prepared = pkg.cases.flatMap(item => item.files.map(file => {
+    file.objectFileName = `case-${randomUUID()}.bin`;
+    return { organizationId: logOrganizationId(auth), fileName: file.objectFileName, contentType: "application/octet-stream", bytes: file.bytes };
+  }));
+  return withLogObjectCustody(db, store, async scoped => {
   const written: string[] = [];
-  const trackingStore: ObjectStore = { ...store, put: async (input) => {
-    const object = await store.put(input); written.push(object.storageKey); return object;
-  } };
+  // Nested case imports reuse the same committed custody scope. Track successful
+  // keys for the existing confirmed-rollback cleanup without hiding that scope.
+  const originalPut = scoped.put;
+  scoped.put = async input => { const object = await originalPut(input); written.push(object.storageKey); return object; };
+  const trackingStore = scoped;
   let rollbackConfirmed = false;
   try {
     return await db.transaction((transaction) => withAuditedWrite(transaction, invocation, context, async (tx) => {
-      if (await findLogDomainByName(tx, { organizationId: auth.organization.id, name: skillName })) {
+      if (await findLogDomainByName(tx, { organizationId: logOrganizationId(auth), name: skillName })) {
         throw new ApiError("CONFLICT", "已存在同名技能，请修改技能名称后重试。", {
           fieldErrors: { name: "已存在同名技能，请使用其他名称。" }, nameSuggestion: `${skillName}（导入）`, packageName: pkg.name
         });
       }
-      const skill = await insertLogDomain(tx, { id: randomUUID(), organizationId: auth.organization.id, name: skillName,
+      const skill = await insertLogDomain(tx, { id: randomUUID(), organizationId: logOrganizationId(auth), name: skillName,
         description: pkg.spec.description, formatProfile: pkg.spec.formatProfile });
-      if (pkg.skillKey && !await findLogDomainBySkillKey(tx, { organizationId: auth.organization.id, skillKey: pkg.skillKey })) {
-        await updateLogDomainRow(tx, { organizationId: auth.organization.id, domainId: skill.id, skillKey: pkg.skillKey });
+      if (pkg.skillKey && !await findLogDomainBySkillKey(tx, { organizationId: logOrganizationId(auth), skillKey: pkg.skillKey })) {
+        await updateLogDomainRow(tx, { organizationId: logOrganizationId(auth), domainId: skill.id, skillKey: pkg.skillKey });
       }
-      if (pkg.spec.modelOverride) await updateLogDomainRow(tx, { organizationId: auth.organization.id, domainId: skill.id, modelOverride: pkg.spec.modelOverride });
+      if (pkg.spec.modelOverride) await updateLogDomainRow(tx, { organizationId: logOrganizationId(auth), domainId: skill.id, modelOverride: pkg.spec.modelOverride });
       const knowledgeEntryIds: string[] = [];
       for (const entry of pkg.knowledge) {
-        const created = await createKnowledgeEntry(tx, trackingStore, createDefaultKnowledgeTextExtractor(), auth,
+        const created = await createKnowledgeEntry(tx, trackingStore, createDefaultKnowledgeTextExtractor(), auth.logInvocation ? withKnowledgeInvocation(auth, invocation) : auth,
           { title: entry.title, contentForm: "markdown", tags: entry.tags, contentMarkdown: entry.body, origin: "imported" }, context);
         knowledgeEntryIds.push(created.id);
       }
-      await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId: skill.id,
+      await insertSkillRevision(tx, { organizationId: logOrganizationId(auth), skillId: skill.id,
         spec: { ...pkg.spec, knowledgeEntryIds }, userId: auth.user.id, published: status === "published" });
       if (pkg.cases.length) await importArchivedSkillAnalysisCases(tx, trackingStore, auth, skill.id, pkg.cases, invocation, context);
-      return { result: await readSkill(tx, auth.organization.id, skill.id, caps), audit: {
+      return { result: await readSkill(tx, logOrganizationId(auth), skill.id, caps), audit: {
         app: "log-analysis", kind: "log-skill-package-import", action: "log-skill-package-import", severity: "Medium", projectId: null,
         targetType: "log-skill", targetId: skill.id, metadata: { status, knowledgeEntryIds,
           knowledgeSources: pkg.knowledge.map(({ path, source }) => ({ path, source })), caseCount: pkg.cases.length }
@@ -131,5 +140,6 @@ export async function importLogSkillPackage(db: Database, store: ObjectStore, au
   } catch (error) {
     if (rollbackConfirmed) await Promise.all(written.map((key) => store.delete?.(key).catch(() => undefined)));
     throw error;
-  }
+  } finally { scoped.put = originalPut; }
+  }, prepared);
 }

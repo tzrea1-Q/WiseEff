@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { crc32, inflateSync } from "node:zlib";
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 
@@ -94,9 +95,83 @@ describe("Gate0 artifact sanitizer", () => {
     expect((await scanGate0ArtifactTree(root, undefined, [exactSecret])).violations).toEqual([]);
   });
 
+  it.each([
+    ["sanitize", false, sanitizeGate0ArtifactTree], ["scan", false, scanGate0ArtifactTree],
+    ["sanitize", true, sanitizeGate0ArtifactTree], ["scan", true, scanGate0ArtifactTree],
+  ] as const)("preserves a valid PNG with incidental EOCD pixels during %s (nested=%s)", async (_operation, nested, run) => {
+    const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-png-eocd-"));
+    const png = incidentalEocdPng();
+    expect(inflateSync(png.subarray(41, 57))).toEqual(Buffer.from([0, 0x50, 0x4b, 0x05, 0x06]));
+    const zip = new JSZip();
+    zip.file("resources/screenshot.png", png);
+    const original = nested ? await zip.generateAsync({ type: "nodebuffer" }) : png;
+    const artifact = path.join(root, nested ? "trace.zip" : "screenshot.png");
+    writeFileSync(artifact, original);
+
+    await expect(run(root, undefined, [])).resolves.toMatchObject({ archivesScanned: nested ? 1 : 0 });
+    expect(readFileSync(artifact)).toEqual(original);
+  });
+
+  it.each(["appended", "chunk", "empty-chunk", "truncated-chunk", "bad-crc", "explicit-zip"])(
+    "rejects an ambiguous PNG/ZIP container (%s) without changing evidence", async (variant) => {
+      const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-png-zip-"));
+      const png = incidentalEocdPng();
+      const zip = new JSZip();
+      if (variant !== "empty-chunk") zip.file("safe.txt", "safe\n");
+      const archive = await zip.generateAsync({ type: "nodebuffer" });
+      const value = variant === "appended" ? Buffer.concat([png, archive])
+        : variant === "explicit-zip" || variant === "bad-crc" ? Buffer.from(png)
+        // The real archive comes before IDAT's incidental marker: the last
+        // marker alone must not hide an earlier embedded (even empty) ZIP.
+        : Buffer.concat([png.subarray(0, 33), pngChunk("ziPc", variant === "truncated-chunk" ? archive.subarray(0, 30) : archive), png.subarray(33)]);
+      if (variant === "bad-crc") value[value.length - 1] ^= 1;
+      const artifact = path.join(root, variant === "explicit-zip" ? "image.zip" : "image.png");
+      writeFileSync(artifact, value);
+
+      await expect(sanitizeGate0ArtifactTree(root, undefined, [])).rejects.toThrow(/Gate0 artifact ZIP.*refusing upload/u);
+      await expect(scanGate0ArtifactTree(root, undefined, [])).rejects.toThrow(/Gate0 artifact ZIP.*refusing upload/u);
+      expect(readFileSync(artifact)).toEqual(value);
+    },
+  );
+
+  it.each([
+    ["sanitize", false, sanitizeGate0ArtifactTree], ["scan", false, scanGate0ArtifactTree],
+    ["sanitize", true, sanitizeGate0ArtifactTree], ["scan", true, scanGate0ArtifactTree],
+  ] as const)("rejects a valid empty ZIP64 inside a complete PNG during %s (nested=%s)", async (_operation, nested, run) => {
+    const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-png-zip64-"));
+    const archive = emptyZip64();
+    expect(archive.length).toBe(98);
+    expect(Object.keys((await JSZip.loadAsync(archive)).files)).toEqual([]);
+    const png = incidentalEocdPng();
+    const mixed = Buffer.concat([png.subarray(0, 33), pngChunk("ziPc", archive), png.subarray(33)]);
+    expect(mixed.length).toBe(183);
+    const zip = new JSZip(); zip.file("resources/image.png", mixed);
+    const original = nested ? await zip.generateAsync({ type: "nodebuffer" }) : mixed;
+    const artifact = path.join(root, nested ? "trace.zip" : "image.png");
+    writeFileSync(artifact, original);
+
+    await expect(run(root, undefined, [])).rejects.toThrow(/Gate0 artifact ZIP.*refusing upload/u);
+    expect(readFileSync(artifact)).toEqual(original);
+  });
+
+  it("still scans incidental-marker PNGs for registered secrets", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-png-secret-"));
+    const secret = "registered-private-png-diagnostic-value";
+    const png = incidentalEocdPng();
+    const value = Buffer.concat([png.subarray(0, 33), pngChunk("tEXt", Buffer.from(`Comment\0${secret}`)), png.subarray(33)]);
+    const artifact = path.join(root, "image.png");
+    writeFileSync(artifact, value);
+
+    await expect(sanitizeGate0ArtifactTree(root, undefined, [secret])).rejects.toThrow(/binary artifact.*injected-secret/u);
+    expect((await scanGate0ArtifactTree(root, undefined, [secret])).violations).toEqual([
+      expect.objectContaining({ categories: ["injected-secret"] }),
+    ]);
+    expect(readFileSync(artifact)).toEqual(value);
+  });
+
   it("fails closed on excessive nested ZIP depth before publication", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-zip-depth-"));
-    let value = Buffer.from("safe\n", "utf8");
+    let value: Buffer = Buffer.from("safe\n", "utf8");
     for (let depth = 0; depth < 5; depth += 1) {
       const zip = new JSZip();
       zip.file(depth === 0 ? "leaf.txt" : "nested.zip", value);
@@ -114,8 +189,7 @@ describe("Gate0 artifact sanitizer", () => {
     const commentRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-zip-comment-"));
     const commented = new JSZip();
     commented.file("safe.txt", "safe\n");
-    commented.comment = secret;
-    writeFileSync(path.join(commentRoot, "comment.zip"), await commented.generateAsync({ type: "nodebuffer" }));
+    writeFileSync(path.join(commentRoot, "comment.zip"), await commented.generateAsync({ type: "nodebuffer", comment: secret }));
     expect((await scanGate0ArtifactTree(commentRoot, undefined, [secret])).violations).toHaveLength(1);
     await expect(sanitizeGate0ArtifactTree(commentRoot, undefined, [secret])).rejects.toThrow(/immutable metadata/i);
 
@@ -539,6 +613,33 @@ function replaceAllAscii(value: Buffer, from: string, to: string) {
     offset += to.length;
   }
   return copy;
+}
+
+function incidentalEocdPng() {
+  // Complete 1x1 RGBA PNG, valid chunk CRCs, one uncompressed IDAT pixel containing PK\x05\x06.
+  return Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAEElEQVR4AQEFAPr/AFBLBQYCNgCnG0628QAAAABJRU5ErkJggg==", "base64");
+}
+
+function emptyZip64() {
+  const archive = Buffer.alloc(98);
+  archive.writeUInt32LE(0x06064b50, 0);
+  archive.writeBigUInt64LE(44n, 4);
+  archive.writeUInt16LE(45, 12); archive.writeUInt16LE(45, 14);
+  archive.writeUInt32LE(0x07064b50, 56);
+  archive.writeUInt32LE(1, 72);
+  archive.writeUInt32LE(0x06054b50, 76);
+  archive.writeUInt16LE(0xffff, 84); archive.writeUInt16LE(0xffff, 86);
+  archive.writeUInt32LE(0xffffffff, 88); archive.writeUInt32LE(0xffffffff, 92);
+  return archive;
+}
+
+function pngChunk(type: string, data: Buffer) {
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length);
+  const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(body));
+  return Buffer.concat([length, body, crc]);
 }
 
 function patchZipHeaderWord(value: Buffer, localOffset: number, centralOffset: number, replacement: number) {

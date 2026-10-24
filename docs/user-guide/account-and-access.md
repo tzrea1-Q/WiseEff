@@ -4,16 +4,28 @@
 
 ## Who can do this
 
-New users can register only when the deployment enables local self-registration. Guests, hardware users, and software users can sign in immediately after registering; hardware/software committer requests need Admin approval. Once signed in to a local account, you can change your own password. Organization Admins (`admin`) and Platform Admins (`platform-admin`) with `users:manage` can approve requests and reset members' local passwords in their home Organization. Neither Admin role is available through self-registration.
+Public local registration defaults closed. Platform super administrators can open Experience registration settings in the Organization directory, select one experience Organization and enable its entry. Formal Organizations use invitation links or administrator-created accounts. Closing the entry preserves existing members and pending requests. Guests, hardware users, and software users can sign in immediately after registering; hardware/software committer requests need Admin approval. Once signed in to a local account, you can change your own password. Organization Admins (`admin`) and Platform Admins (`platform-admin`) with `users:manage` can approve requests and reset members' local passwords in the Organization they manage. Neither Admin role is available through self-registration.
 
 ## Register a local account
 
-1. Open a protected workflow such as `/parameter-home`, or enter it from the app homepage at `/`. In API mode, visitors who have not signed in see Sign in; select Register. If that tab is absent, ask your administrator for an account.
+1. Open a protected workflow such as `/parameter-home`, or enter it from the app homepage at `/`. In API mode, visitors who have not signed in see Sign in; select Register and check the displayed experience Organization. If that tab is absent, ask your administrator for an invitation link or account.
 2. Enter your name, username, role, password, and password confirmation. Usernames are 3–64 characters using letters, numbers, dots, underscores, or hyphens; passwords must contain at least eight characters. Follow the form's validation messages.
 3. Choose guest (`guest`), hardware user (`hardware-user`), software user (`software-user`), hardware committer (`hardware-committer`), or software committer (`software-committer`). The role selector uses English role names; the hints explain immediate access or required approval.
 4. Submit. Registering as a guest, hardware user, or software user signs you in; a Committer request shows the pending-approval result.
 
-The screen tells you which Evaluation Organization your account will join. It is ChargeLab when seed data is present; otherwise there must be exactly one available bootstrap Organization. You cannot choose an Organization during registration or change your home Organization in your profile. If there is no suitable Organization, or several exist and the destination is unclear, ask the deployment operator to resolve the setup. Registration does not verify an email address or accept an invitation.
+The screen shows the experience Organization selected in the platform's saved settings or explicit deployment configuration. It does not choose a destination from the number of Organizations or the presence of demo seeds. You cannot select another Organization during registration or change your home Organization in your profile. An unavailable, suspended or deleting destination cannot accept registration. Registration does not verify an email address or accept an invitation.
+
+## Accept an invitation
+
+Open the one-time link supplied by your Organization administrator and check the Organization, roles, Teams and project editing roles. Enter your name, choose a local username and password, then select **Accept invitation and create account**. After success, follow **Go to sign in** and use those credentials. Valid presets take effect together; project participation does not grant independent review, merge or device duties.
+
+An accepted, expired, revoked or replaced link cannot be reused. If the offer's projects, Teams or authority are no longer valid, no partial account is created: ask the administrator to correct and regenerate the invitation. Do not use an invitation to move an existing account to another Organization.
+
+## After an account transfer
+
+Only a platform administrator can preview and confirm a transfer. Your account identifier and local username remain the same, but old sessions, personal pairings and source Organization grants are revoked. Sign in again with your local credentials; source drafts and historical work stay with the original Organization for handover.
+
+On OIDC deployments, the administrator may see **Waiting for identity-system synchronization**. The identity provider must issue a fresh token with the target `organization_id` and the correct explicitly bound subject. Old source claims and tokens issued before revocation remain invalid. Token-supplied roles do not grant WiseEff permissions. The administrator can refresh the synchronization result in member details; a failed check does not mark synchronization complete. Continue to use your deployment's existing identity-provider sign-in entry.
 
 ![Local sign-in form](images/account-and-access-sign-in.png)
 

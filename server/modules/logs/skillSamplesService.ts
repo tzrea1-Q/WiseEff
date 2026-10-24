@@ -1,12 +1,13 @@
+import { organizationId as logOrganizationId, assertLogInvocation, type LogAccessContext } from "./principal";
 import { createHash, randomUUID } from "node:crypto";
 import { loadLogBundleLimits } from "../../config/env";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { withAuditedWrite, type AuditedWriteContext } from "../audit/auditedWrite";
-import type { AuthContext } from "../auth/types";
-import { assertTrustedInvocationMatchesAuth, type TrustedInvocationContext } from "../auth/trustedInvocation";
+import { type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { bundleFileUtf8Bytes, decodeLogBundleFile, intakeLogBundle, isLogArchive } from "./bundleIntake";
 import type { ObjectStore } from "./objectStore";
+import { hasLogObjectCustody, withLogObjectCustody } from "./objectWrites";
 import { requireLogAdminDomains } from "./policy";
 import { getLogSkill } from "./skillsService";
 import { lockSkill } from "./skillsRepository";
@@ -34,7 +35,7 @@ function audit(skillId: string, kind: string) {
   return { app: "log-analysis", kind, action: kind, severity: "Medium" as const, projectId: null,
     targetType: "log-skill", targetId: skillId, metadata: {} };
 }
-function requireSampleWrite(auth: AuthContext) {
+function requireSampleWrite(auth: LogAccessContext) {
   if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "无权访问此组织的日志。");
   requireLogAdminDomains(auth);
 }
@@ -45,9 +46,9 @@ export async function readStoredSkillSampleBundle(store: ObjectStore, fileName: 
   if (!text.startsWith(bundleMarker)) throw new Error("Invalid stored skill sample bundle.");
   return JSON.parse(text.slice(bundleMarker.length)) as SampleFile[];
 }
-export async function getLogSkillSample(db: Database, store: ObjectStore, auth: AuthContext, skillId: string) {
+export async function getLogSkillSample(db: Database, store: ObjectStore, auth: LogAccessContext, skillId: string) {
   await getLogSkill(db, auth, skillId);
-  const row = (await db.query<SampleRow>(`${selectSample} where organization_id = $1 and skill_id = $2`, [auth.organization.id, skillId])).rows[0];
+  const row = (await db.query<SampleRow>(`${selectSample} where organization_id = $1 and skill_id = $2`, [logOrganizationId(auth), skillId])).rows[0];
   if (!row) return null;
   const bundle = await readStoredSkillSampleBundle(store, row.fileName, row.objectKey);
   const files: SampleFile[] = bundle
@@ -58,9 +59,10 @@ export async function getLogSkillSample(db: Database, store: ObjectStore, auth: 
   const first = files.find((file) => file.status === "analyzed")!;
   return { ...metadata(row), files, contentFilePath: first.path, content: first.content!, truncated: first.truncated ?? false };
 }
-export async function replaceLogSkillSample(db: Database, store: ObjectStore, auth: AuthContext, skillId: string,
-  input: { fileName: string; contentBase64: string }, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Replace skill sample");
+export async function replaceLogSkillSample(db: Database, store: ObjectStore, auth: LogAccessContext, skillId: string,
+  input: { fileName: string; contentBase64: string }, invocation: TrustedInvocationContext, context: AuditedWriteContext): Promise<ReturnType<typeof metadata>> {
+  if (!hasLogObjectCustody(store)) return withLogObjectCustody(db, store, scoped => replaceLogSkillSample(db, scoped, auth, skillId, input, invocation, context));
+  assertLogInvocation(auth, invocation, "Replace skill sample");
   requireSampleWrite(auth);
   const bytes = Buffer.from(input.contentBase64, "base64");
   if (bytes.length > maxBytes) throw new ApiError("VALIDATION_FAILED", "样例日志不能超过 2 MiB。");
@@ -89,31 +91,31 @@ export async function replaceLogSkillSample(db: Database, store: ObjectStore, au
   const content = archive ? Buffer.from(bundleMarker + JSON.stringify(manifest)) : bundleFileUtf8Bytes(first);
   const id = randomUUID();
   return withAuditedWrite(db, invocation, context, async (tx) => {
-    await lockSkill(tx, auth.organization.id, skillId);
+    await lockSkill(tx, logOrganizationId(auth), skillId);
     // Unique names isolate sample objects from content-addressed record objects.
     // Old objects are retained: a failed DB write must never remove shared data.
-    const object = await store.put({ organizationId: auth.organization.id, fileName: `sample-${id}.log`,
+    const object = await store.put({ organizationId: logOrganizationId(auth), fileName: `sample-${id}.log`,
       contentType: archive ? "application/octet-stream" : "text/plain; charset=utf-8", bytes: content });
-    await recordSkillArtifacts(tx, auth.organization.id, skillId, [object.storageKey]);
+    await recordSkillArtifacts(tx, logOrganizationId(auth), skillId, [object.storageKey]);
     await tx.query(`insert into log_skill_samples (id, organization_id, skill_id, file_name, size_bytes, sha256,
       encoding, line_count, object_key, uploaded_by_user_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       on conflict (skill_id) do update set id = excluded.id, file_name = excluded.file_name,
       size_bytes = excluded.size_bytes, sha256 = excluded.sha256, encoding = excluded.encoding,
       line_count = excluded.line_count, object_key = excluded.object_key,
       uploaded_by_user_id = excluded.uploaded_by_user_id, updated_at = now()`,
-    [id, auth.organization.id, skillId, input.fileName, bytes.length, createHash("sha256").update(bytes).digest("hex"), first.encoding,
+    [id, logOrganizationId(auth), skillId, input.fileName, bytes.length, createHash("sha256").update(bytes).digest("hex"), first.encoding,
       files.reduce((sum, file) => sum + (file.status === "analyzed" ? file.lineCount : 0), 0), object.storageKey, auth.user.id]);
-    const row = (await tx.query<SampleRow>(`${selectSample} where organization_id = $1 and skill_id = $2`, [auth.organization.id, skillId])).rows[0];
+    const row = (await tx.query<SampleRow>(`${selectSample} where organization_id = $1 and skill_id = $2`, [logOrganizationId(auth), skillId])).rows[0];
     return { result: metadata(row), audit: audit(skillId, "log-skill-sample-replace") };
   });
 }
-export async function deleteLogSkillSample(db: Database, auth: AuthContext, skillId: string,
+export async function deleteLogSkillSample(db: Database, auth: LogAccessContext, skillId: string,
   invocation: TrustedInvocationContext, context: AuditedWriteContext) {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Delete skill sample");
+  assertLogInvocation(auth, invocation, "Delete skill sample");
   requireSampleWrite(auth);
   return withAuditedWrite(db, invocation, context, async (tx) => {
-    await lockSkill(tx, auth.organization.id, skillId);
-    await tx.query("delete from log_skill_samples where organization_id = $1 and skill_id = $2", [auth.organization.id, skillId]);
+    await lockSkill(tx, logOrganizationId(auth), skillId);
+    await tx.query("delete from log_skill_samples where organization_id = $1 and skill_id = $2", [logOrganizationId(auth), skillId]);
     return { result: undefined, audit: audit(skillId, "log-skill-sample-delete") };
   });
 }

@@ -265,7 +265,8 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
   it.each<{ sessionRoles: ParameterAdminNextPageProps["sessionRoles"]; editable: boolean }>([
     { sessionRoles: [{ roleId: "platform-admin", projectId: null }, { roleId: "admin", projectId: null }], editable: true },
     { sessionRoles: [{ roleId: "admin", projectId: null }], editable: true },
-    { sessionRoles: [{ roleId: "platform-admin", projectId: null }], editable: false },
+    { sessionRoles: [{ roleId: "platform-admin", projectId: null }], editable: true },
+    { sessionRoles: [{ roleId: "platform-admin", projectId: "aurora" }], editable: false },
     { sessionRoles: [{ roleId: "admin", projectId: "aurora" }], editable: false },
     { sessionRoles: [{ roleId: "hardware-user", projectId: null }], editable: false },
     { sessionRoles: [], editable: false },

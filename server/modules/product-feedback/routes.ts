@@ -4,6 +4,9 @@ import { deleteProductFeedbackAttachment } from "./attachmentDeletion";
 
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
+import { resolveOperatingContext } from "../auth/operatingContext";
+import { feedbackInvocation, withProductFeedbackInvocation } from "./scope";
+import { listFeedbackHandovers, assignFeedbackResponsibility, feedbackHandoverBodySchema } from "./handover";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -117,8 +120,11 @@ function parseMyCursor(cursor: string | undefined) {
   }
 }
 
-async function getAuth(getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext, request: RouteRequest) {
-  return getCurrentAuthContext(request);
+async function getAuth(getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext, request: RouteRequest, db?: Database) {
+  const auth = await getCurrentAuthContext(request);
+  const { organizationId } = parseWithSchema(z.object({ organizationId: z.string().trim().min(1).max(200).optional() }), flattenQuery(request.query));
+  const invocation = createUserInvocation(auth);
+  return withProductFeedbackInvocation(auth, organizationId === undefined ? invocation : await resolveOperatingContext(requireDb(db), invocation, organizationId));
 }
 
 export function registerProductFeedbackRoutes(
@@ -129,10 +135,16 @@ export function registerProductFeedbackRoutes(
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
+  router.get("/api/v1/product-feedback/handovers", async request => ({ status: 200, body: await listFeedbackHandovers(requireDb(options.db), await getAuth(options.getCurrentAuthContext, request, options.db)) }));
+  router.patch("/api/v1/product-feedback/handovers/:id", async request => {
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db), { id } = parseWithSchema(z.object({ id: z.string().uuid() }), request.params);
+    await assignFeedbackResponsibility(requireDb(options.db), auth, id, parseWithSchema(feedbackHandoverBodySchema, request.body), request.requestId);
+    return { status: 200, body: { ok: true } };
+  });
   router.post("/api/v1/product-feedback", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db);
     const body = parseWithSchema(createProductFeedbackBodySchema, request.body);
     const item = await createProductFeedback(db, objectStore, auth, body, { requestId: request.requestId });
 
@@ -141,7 +153,7 @@ export function registerProductFeedbackRoutes(
 
   router.get("/api/v1/product-feedback/mine", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db);
     const query = parseWithSchema(listMyFeedbackQuerySchema, flattenQuery(request.query));
     const result = await listMyProductFeedback(db, auth, {
       ...query,
@@ -155,19 +167,19 @@ export function registerProductFeedbackRoutes(
   });
 
   router.post("/api/v1/product-feedback/mine/attachment-cleanup", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db);
     return { status: 200, body: await cleanupFeedbackAttachmentUploads(requireDb(options.db), requireObjectStore(options.objectStore), auth) };
   });
 
   router.delete("/api/v1/product-feedback/:id/attachments/:attachmentId", async (request) => {
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(z.object({ id: z.string().uuid(), attachmentId: z.string().uuid() }), request.params);
-    return { status: 200, body: await deleteProductFeedbackAttachment(requireDb(options.db), requireObjectStore(options.objectStore), auth, params.id, params.attachmentId, createUserInvocation(auth), request.requestId) };
+    return { status: 200, body: await deleteProductFeedbackAttachment(requireDb(options.db), requireObjectStore(options.objectStore), auth, params.id, params.attachmentId, feedbackInvocation(auth), request.requestId) };
   });
 
   router.get("/api/v1/product-feedback/mine/:id", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithFeedbackIdSchema, request.params);
     const item = await getMyProductFeedback(db, auth, params.id);
 
@@ -177,7 +189,7 @@ export function registerProductFeedbackRoutes(
   router.post("/api/v1/product-feedback/mine/:id/replies", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithFeedbackIdSchema, request.params);
     const body = parseWithSchema(replyToProductFeedbackBodySchema, request.body);
     const item = await replyToProductFeedback(db, objectStore, auth, params.id, body, { requestId: request.requestId });
@@ -187,7 +199,7 @@ export function registerProductFeedbackRoutes(
   router.get("/api/v1/product-feedback/mine/:id/attachments/:attachmentId/content", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithAttachmentIdSchema, request.params);
     const result = await getMyProductFeedbackAttachmentContent(db, objectStore, auth, params.id, params.attachmentId);
 
@@ -202,7 +214,7 @@ export function registerProductFeedbackRoutes(
   router.post("/api/v1/product-feedback/drafts", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db);
     const body = parseWithSchema(createProductFeedbackDraftBodySchema, request.body ?? {});
     const item = await createProductFeedbackDraft(db, objectStore, auth, body);
 
@@ -212,7 +224,7 @@ export function registerProductFeedbackRoutes(
   router.patch("/api/v1/product-feedback/drafts/:id", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithFeedbackIdSchema, request.params);
     const body = parseWithSchema(patchProductFeedbackDraftBodySchema, request.body ?? {});
     const item = await saveProductFeedbackDraft(db, objectStore, auth, params.id, body);
@@ -223,7 +235,7 @@ export function registerProductFeedbackRoutes(
   router.delete("/api/v1/product-feedback/drafts/:id", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithFeedbackIdSchema, request.params);
     const result = await deleteProductFeedbackDraft(db, objectStore, auth, params.id);
 
@@ -232,7 +244,7 @@ export function registerProductFeedbackRoutes(
 
   router.post("/api/v1/product-feedback/drafts/:id/submit", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithFeedbackIdSchema, request.params);
     const body = parseWithSchema(submitProductFeedbackDraftBodySchema, request.body ?? {});
     const item = await submitProductFeedbackDraft(db, auth, params.id, body, { requestId: request.requestId });
@@ -242,7 +254,7 @@ export function registerProductFeedbackRoutes(
 
   router.get("/api/v1/product-feedback", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db);
     const query = parseWithSchema(listProductFeedbackQuerySchema, flattenQuery(request.query));
     const result = await listProductFeedback(db, auth, {
       ...query,
@@ -257,7 +269,7 @@ export function registerProductFeedbackRoutes(
 
   router.get("/api/v1/product-feedback/stats", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db);
     const stats = await getProductFeedbackStats(db, auth);
 
     return { status: 200, body: stats };
@@ -265,13 +277,13 @@ export function registerProductFeedbackRoutes(
 
   router.get("/api/v1/product-feedback/assignees", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db);
     return { status: 200, body: await listProductFeedbackAssignees(db, auth) };
   });
 
   router.get("/api/v1/product-feedback/:id", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithFeedbackIdSchema, request.params);
     const item = await getProductFeedback(db, auth, params.id);
 
@@ -280,7 +292,7 @@ export function registerProductFeedbackRoutes(
 
   router.patch("/api/v1/product-feedback/:id", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithFeedbackIdSchema, request.params);
     const body = parseWithSchema(patchProductFeedbackBodySchema, request.body);
     const item = await updateProductFeedback(db, auth, params.id, body, { requestId: request.requestId });
@@ -290,7 +302,7 @@ export function registerProductFeedbackRoutes(
 
   router.post("/api/v1/product-feedback/:id/progress", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithFeedbackIdSchema, request.params);
     const body = parseWithSchema(appendProductFeedbackProgressBodySchema, request.body ?? {});
     const item = await appendProductFeedbackProgress(db, auth, params.id, body, { requestId: request.requestId });
@@ -301,7 +313,7 @@ export function registerProductFeedbackRoutes(
   router.get("/api/v1/product-feedback/:id/attachments/:attachmentId/content", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getAuth(options.getCurrentAuthContext, request, options.db);
     const params = parseWithSchema(paramsWithAttachmentIdSchema, request.params);
     const result = await getProductFeedbackAttachmentContent(db, objectStore, auth, params.id, params.attachmentId);
 

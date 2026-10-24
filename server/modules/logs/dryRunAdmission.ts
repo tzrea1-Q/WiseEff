@@ -34,6 +34,7 @@ export function dryRunConcurrencyLimit(env: NodeJS.ProcessEnv = process.env) {
 export async function recoverInterruptedDryRuns(db: Database, organizationId?: string) {
   await db.query(`update log_skill_dry_runs run set status = 'failed', error = $1
     where run.status = 'processing' and ($2::text is null or run.organization_id = $2)
+      and exists(select 1 from public.organizations o where o.id=run.organization_id and o.status='active')
       and (run.deadline_at <= clock_timestamp() or not exists (
         select 1 from pg_locks owner where owner.locktype = 'advisory' and owner.granted
           and owner.pid = run.owner_pid and owner.classid = $3::oid
@@ -42,6 +43,7 @@ export async function recoverInterruptedDryRuns(db: Database, organizationId?: s
   await withAuditedWrite(db, createSystemInvocation({ kind: "service", name: "log-analysis-case-recovery" }), { requestId: randomUUID() }, async (tx) => {
   const recovered = await tx.query<{ id: string; organization_id: string; skill_id: string }>(`update log_skill_analysis_case_runs run set status = 'failed', error = $1
     where run.status = 'processing' and ($2::text is null or run.organization_id = $2)
+      and exists(select 1 from public.organizations o where o.id=run.organization_id and o.status='active')
       and (run.deadline_at <= clock_timestamp() or not exists (
         select 1 from pg_locks owner where owner.locktype = 'advisory' and owner.granted
           and owner.pid = run.owner_pid and owner.classid = $3::oid

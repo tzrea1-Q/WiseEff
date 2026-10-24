@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../parameters/operatingScope";
 import { randomUUID } from "node:crypto";
 
 import type { Database } from "../../shared/database/client";
@@ -47,7 +48,7 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
     targetType: "project-parameter-value-change-request", targetId: input.requestId });
   let visible = (await tx.query<RequestRow>(`select * from public.project_parameter_value_change_requests
     where id=$1 and organization_id=$2 and project_id=$3 and request_kind='source_revision'`,
-    [input.requestId, auth.organization.id, input.projectId])).rows[0];
+    [input.requestId, parameterOrganizationId(auth), input.projectId])).rows[0];
   if (!visible) throw new ApiError("NOT_FOUND", "Whole-source request was not found.");
   const direct = input.applicationMode === "administrator_direct";
   if (direct) auth = await requireCurrentSourceAdministrator(tx, auth, input.projectId);
@@ -61,7 +62,7 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
   // commits. Re-read its receipt before inspecting a now superseded source base.
   visible = (await tx.query<RequestRow>(`select * from public.project_parameter_value_change_requests
     where id=$1 and organization_id=$2 and project_id=$3 and request_kind='source_revision'`,
-    [input.requestId, auth.organization.id, input.projectId])).rows[0];
+    [input.requestId, parameterOrganizationId(auth), input.projectId])).rows[0];
   if (!visible || (direct ? visible.source_revision_application_mode !== "administrator_direct"
     || visible.submitter_user_id !== auth.user.id || visible.assigned_to_user_id !== null
     : visible.assigned_to_user_id !== auth.user.id || visible.submitter_user_id === auth.user.id)) {
@@ -76,7 +77,7 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
         and audit.project_id=request.project_id and audit.target_id=request.id and audit.action='value-change-applied'
       where request.id=$1 and request.organization_id=$2 and request.project_id=$3
         and audit.metadata->'result'=request.applied_source_result`,
-      [visible.id, auth.organization.id, input.projectId, receipt.fileVersionId])).rows.length === 1;
+      [visible.id, parameterOrganizationId(auth), input.projectId, receipt.fileVersionId])).rows.length === 1;
     if (!receipt || !verified || receipt.sourceRevisionProofDigest !== visible.source_revision_proof_digest) conflict("Approved source request has no complete immutable receipt.");
     return { requestId: visible.id, status: "approved", sourceRevisionProofDigest: visible.source_revision_proof_digest };
   }
@@ -90,13 +91,13 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
   }
   const request = (await tx.query<RequestRow>(`select * from public.project_parameter_value_change_requests
     where id=$1 and organization_id=$2 and project_id=$3 and request_kind='source_revision' for update`,
-    [input.requestId, auth.organization.id, input.projectId])).rows[0];
+    [input.requestId, parameterOrganizationId(auth), input.projectId])).rows[0];
   if (!request || request.status !== "pending" || request.source_revision_application_mode !== visible.source_revision_application_mode
     || request.assigned_to_user_id !== visible.assigned_to_user_id || request.submitter_user_id !== visible.submitter_user_id
     || !sameSourceRevision(request.source_revision_context, frozen)) conflict("Source revision lost its pending review transition.");
   // Freeze the complete source cohort, not only parameters with changed business values.
-  await lockSourceConfigurationBindings(tx, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: frozen.configSetId });
-  const candidate = await getParameterFileCandidateByIdForUpdate(tx, { organizationId: auth.organization.id,
+  await lockSourceConfigurationBindings(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: frozen.configSetId });
+  const candidate = await getParameterFileCandidateByIdForUpdate(tx, { organizationId: parameterOrganizationId(auth),
     projectId: input.projectId, candidateId: frozen.candidateId });
   if (!candidate || candidate.status !== "ready" || !candidate.storageKey || !candidate.checksum || !storage.getBounded) conflict("Whole-source candidate is no longer immutable and ready.");
   const candidateBytes = await storage.getBounded(candidate.storageKey, MAX_PARAMETER_SOURCE_BYTES);
@@ -119,7 +120,7 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
       fileName: member.sourceName, sourceName: member.sourceName, format: member.format,
       role: member.role as ConfigRevisionMemberRole, sortOrder: member.sortOrder, content });
   }
-  const revision = await ingestConfigRevisionInTransaction(tx, { organizationId: auth.organization.id, projectId: input.projectId,
+  const revision = await ingestConfigRevisionInTransaction(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId,
     configSetId: frozen.configSetId, entryFile: frozen.entryFile, includeSearchPaths: frozen.includeSearchPaths,
     overlayOrder: frozen.overlayOrder, members }, auth, { createdByUserId: attribution.userId, domain: attribution },
     { reviewedSource: frozen.continuity });
@@ -135,7 +136,7 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
     if (restoration) {
       const property = observed.find((row) => row.fileId === restoration.fileId && row.logicalNodeId === restoration.logicalNodeId && row.propertyKey === restoration.propertyName);
       if (!property) conflict("恢复参数缺少实际生效来源，所有变更已回滚。");
-      const restored = await applySourceRestoration(tx, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: frozen.configSetId },
+      const restored = await applySourceRestoration(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: frozen.configSetId },
         restoration, { requestId: request.id, configRevisionId: revision.id, auditRef }, pinnedSnapshot, property);
       results.push({ ...restored, kind: "changed" });
       await tx.query(`update public.project_parameter_value_change_targets set applied_value_id=$3,applied_history_event_id=$4,
@@ -143,9 +144,9 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
       [request.id,entry.bindingId,restored.newValueId,restored.historyEventId,restored.sourcePinId,restored.fileVersionId]);
       continue;
     }
-    const current = await readOwnedCurrentBinding(tx, { organizationId: auth.organization.id,
+    const current = await readOwnedCurrentBinding(tx, { organizationId: parameterOrganizationId(auth),
       projectId: input.projectId, bindingId: entry.bindingId, lock: true });
-    const old = await readOwnedProjectValueIdentity(tx, { organizationId: auth.organization.id,
+    const old = await readOwnedProjectValueIdentity(tx, { organizationId: parameterOrganizationId(auth),
       projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
     if (current.status !== "current" || !old || current.binding.currentValueId !== entry.oldValueId
       || current.binding.sourceOccurrenceId !== entry.sourceOccurrenceId || current.binding.definitionId !== entry.definitionId
@@ -181,7 +182,7 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
       (id,project_value_id,binding_id,definition_id,organization_id,project_id,source_occurrence_id,config_revision_id,
        file_id,file_version_id,format,property_occurrence_id,locator,locator_digest,value_state,base_source_pin_id,delete_request_id,delete_proof)
       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$18,$11,$12::jsonb,$13,$14,$15,$16,$17::jsonb)`,
-      [sourcePinId, appended.value.currentTip, entry.bindingId, entry.definitionId, auth.organization.id, input.projectId,
+      [sourcePinId, appended.value.currentTip, entry.bindingId, entry.definitionId, parameterOrganizationId(auth), input.projectId,
         entry.sourceOccurrenceId, revision.id, entry.fileId, fileVersionId, deleted || entry.format === "json" ? null : property!.propertyOccurrenceId,
         JSON.stringify(locator), `sha256:${sourceRevisionDigest(locator)}`, deleted ? "deleted" : "present",
         deleted ? entry.sourcePinId : null, deleted ? request.id : null, deletionProof ? JSON.stringify(deletionProof) : null, entry.format ?? "dts"]);
@@ -198,7 +199,7 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
   }
   const moved = await tx.query(`update public.project_parameter_files set current_version_id=$2,updated_at=now()
     where id=$1 and organization_id=$4 and project_id=$5 and current_version_id=$3`,
-    [frozen.fileId, version.id, frozen.baseVersionId, auth.organization.id, input.projectId]);
+    [frozen.fileId, version.id, frozen.baseVersionId, parameterOrganizationId(auth), input.projectId]);
   if (moved.rowCount !== 1) conflict("Source file lost its compare-and-swap.");
   if (frozen.newProperties.length) {
     if (!snapshot) conflict("New registered source properties require a Catalog.");
@@ -207,10 +208,10 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
       if (!actual || !sameSourceRevision(rawTextToPayload(actual.propertyKey, actual.rawText), planned.payload)) conflict("New source occurrence differs from its reviewed match.");
       return actual.propertyOccurrenceId;
     });
-    await syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), snapshot, { organizationId: auth.organization.id,
+    await syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), snapshot, { organizationId: parameterOrganizationId(auth),
       projectId: input.projectId, configSetId: frozen.configSetId, configRevisionId: revision.id, propertyOccurrenceIds: selected });
     for (const planned of frozen.newProperties) {
-      const created = await loadCreatedSourceBindingReceipt(tx, { organizationId: auth.organization.id,
+      const created = await loadCreatedSourceBindingReceipt(tx, { organizationId: parameterOrganizationId(auth),
         projectId: input.projectId, configSetId: frozen.configSetId, fileId: planned.fileId,
         logicalNodeId: planned.logicalNodeId, definitionId: planned.definitionId, configRevisionId: revision.id });
       if (!created) conflict("New registered source Binding has no complete owner receipt.");
@@ -246,17 +247,17 @@ export async function applySourceRevisionCandidate(db: Database, storage: Object
     throw new ApiError("VALIDATION_FAILED", "A reason and mutation key are required.");
   }
   const snapshot = await loadSnapshot(db);
-  const snapshots = await loadSourceRevisionCatalogSnapshots(db, input.projectId, auth.organization.id, snapshot);
+  const snapshots = await loadSourceRevisionCatalogSnapshots(db, input.projectId, parameterOrganizationId(auth), snapshot);
   const mutationDigest = sourceRevisionDigest({ ...input, applicationMode: "administrator_direct" });
   return db.transaction(async (tx) => {
     auth = await requireCurrentSourceAdministrator(tx, auth, input.projectId);
     await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
-      `source-revision-submit:${auth.organization.id}:${input.projectId}:${auth.user.id}:${input.clientMutationId}`
+      `source-revision-submit:${parameterOrganizationId(auth)}:${input.projectId}:${auth.user.id}:${input.clientMutationId}`
     ]);
     const replay = (await tx.query<{ id: string; source_revision_mutation_digest: string; source_revision_application_mode: string }>(
       `select id,source_revision_mutation_digest,source_revision_application_mode from public.project_parameter_value_change_requests
        where organization_id=$1 and project_id=$2 and submitter_user_id=$3 and source_revision_mutation_id=$4`,
-      [auth.organization.id, input.projectId, auth.user.id, input.clientMutationId])).rows[0];
+      [parameterOrganizationId(auth), input.projectId, auth.user.id, input.clientMutationId])).rows[0];
     let requestId: string;
     if (replay) {
       if (replay.source_revision_mutation_digest !== mutationDigest || replay.source_revision_application_mode !== "administrator_direct") {

@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { getPageByPath, getXiaozeContextSummary, navigationItems, utilityItems } from "./appConfig";
 
 describe("WiseEff prototype configuration", () => {
+  it("describes the project participation route with project-specific guidance", () => {
+    expect(getPageByPath("/organization/projects")).toMatchObject({ path: "/organization/projects", subtitle: "管理项目参与者与编辑角色" });
+  });
   it("keeps the skill workspace deep link under the log-admin page gate", () => {
     expect(getPageByPath("/log-admin/skills/skill-charging")).toMatchObject({ key: "log-admin", path: "/log-admin/skills/skill-charging", title: "分析技能工作区" });
     expect(getPageByPath("/log-admin/skills/skill-charging/extra").path).toBe("/");
@@ -129,12 +132,12 @@ describe("WiseEff prototype configuration", () => {
 
     expect(page.key).toBe("user-permissions");
     expect(page.path).toBe("/organization");
-    expect(page.subtitle).toContain("档案");
+    expect(page.subtitle).toContain("统计");
     expect(members.key).toBe("user-permissions");
     expect(members.path).toBe("/organization/members");
     expect(members.subtitle).toContain("成员");
     expect(legacy.path).toBe("/organization/members");
-    expect(getXiaozeContextSummary("/organization")).toContain("档案");
+    expect(getXiaozeContextSummary("/organization")).toContain("统计");
     expect(getXiaozeContextSummary("/organization/members")).toContain("成员");
     expect(navigationItems.map((item) => item.path)).not.toContain("/organization");
     expect(navigationItems.map((item) => item.path)).not.toContain("/user-permissions");
@@ -169,6 +172,7 @@ describe("WiseEff prototype configuration", () => {
 
   it("keeps admin utilities discoverable", () => {
     expect(utilityItems.map((item) => item.label)).toEqual(["工作流发布", "反馈管理", "审计中心", "组织管理"]);
+    expect(getPageByPath("/platform/organizations")).toMatchObject({ key: "platform-organizations", title: "组织目录" });
   });
 
   it("does not expose a disabled Agent utility item", () => {

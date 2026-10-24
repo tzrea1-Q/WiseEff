@@ -30,9 +30,9 @@ import { resolveWiseEffApiBaseUrl } from "./runtimeMode";
 type ApiClient = ReturnType<typeof createApiClient>;
 type ItemEnvelope<T> = { item: T };
 type ListEnvelope<T> = { items: T[] };
-type HttpKnowledgeRepositoryOptions =
+type HttpKnowledgeRepositoryOptions = { organizationId?: string } & (
   | { apiClient?: undefined; baseUrl?: string; fetchImpl?: typeof fetch }
-  | { apiClient: ApiClient; baseUrl: string; fetchImpl?: typeof fetch };
+  | { apiClient: ApiClient; baseUrl: string; fetchImpl?: typeof fetch });
 
 export type KnowledgeFileDto = {
   id: string;
@@ -52,6 +52,8 @@ export type KnowledgeFileDto = {
 export type KnowledgeParameterReferenceDto = KnowledgeParameterReference;
 
 export type KnowledgeEntryDto = {
+  responsibleUserId?: string | null;
+  historicalAttribution?: KnowledgeEntry["historicalAttribution"];
   pendingSuggestionCount?: number;
   origin: KnowledgeOrigin;
   id: string;
@@ -78,6 +80,7 @@ export type KnowledgeEntryDto = {
 };
 
 export type KnowledgeRevisionDto = {
+  historicalAttribution?: KnowledgeRevision["historicalAttribution"];
   id: string;
   entryId: string;
   organizationId: string;
@@ -105,6 +108,7 @@ function entryPath(entryId: string) {
 
 function entryFromDto(dto: KnowledgeEntryDto): KnowledgeEntry {
   return {
+    historicalAttribution: dto.historicalAttribution,
     id: dto.id,
     title: dto.title,
     contentForm: dto.contentForm,
@@ -117,6 +121,7 @@ function entryFromDto(dto: KnowledgeEntryDto): KnowledgeEntry {
     sourceLogDeleted: dto.sourceLogDeleted ?? false,
     sourceReloadRunId: dto.sourceReloadRunId,
     createdByUserId: dto.createdByUserId,
+    responsibleUserId: dto.responsibleUserId,
     headRevisionNumber: dto.headRevisionNumber,
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
@@ -141,6 +146,7 @@ function entryFromDto(dto: KnowledgeEntryDto): KnowledgeEntry {
 
 function revisionFromDto(dto: KnowledgeRevisionDto): KnowledgeRevision {
   return {
+    historicalAttribution: dto.historicalAttribution,
     id: dto.id,
     entryId: dto.entryId,
     revisionNumber: dto.revisionNumber,
@@ -218,7 +224,7 @@ function translateConflict(error: unknown): never {
 
 export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOptions = {}): KnowledgeRepository {
   const baseUrl = options.baseUrl ?? resolveWiseEffApiBaseUrl();
-  const apiClient = options.apiClient ?? createDefaultApiClient({ baseUrl, fetchImpl: options.fetchImpl });
+  const apiClient = options.apiClient ?? createDefaultApiClient({ baseUrl, fetchImpl: options.fetchImpl, organizationId: options.organizationId });
 
   return {
     async batch(input) {

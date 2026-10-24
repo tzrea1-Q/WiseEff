@@ -1,9 +1,10 @@
+import { withKnowledgeInvocation } from "../knowledge/scope";
+import { organizationId as logOrganizationId, type LogAccessContext } from "./principal";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 
 import { withAuditedWrite, type AuditSpec } from "../audit/auditedWrite";
 import type { AuditedWriteContext } from "../audit/auditedWrite";
-import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -100,16 +101,16 @@ function skillNameConflict(skill: LogDomainDto) {
 
 export async function listLogDomainRecords(
   db: Queryable,
-  auth: AuthContext,
+  auth: LogAccessContext,
   query: { includeArchived?: boolean } = {}
 ): Promise<{ items: LogDomainDto[] }> {
   requireLogView(auth);
-  return { items: await listLogDomains(db, { organizationId: auth.organization.id, includeArchived: query.includeArchived }) };
+  return { items: await listLogDomains(db, { organizationId: logOrganizationId(auth), includeArchived: query.includeArchived }) };
 }
 
 export async function createLogDomainRecord(
   db: Database,
-  auth: AuthContext,
+  auth: LogAccessContext,
   input: CreateLogDomainInput,
   context: AuditedWriteContext
 ): Promise<LogDomainDto> {
@@ -117,8 +118,8 @@ export async function createLogDomainRecord(
   const name = trimmedName(input.name);
   const formatProfile = parseFormatProfileOrThrow(input.formatProfile);
 
-  return withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
-    const existing = await findLogDomainByName(tx, { organizationId: auth.organization.id, name });
+  return withAuditedWrite(db, (auth.logInvocation ?? createUserInvocation(auth)), context, async (tx) => {
+    const existing = await findLogDomainByName(tx, { organizationId: logOrganizationId(auth), name });
     if (existing) {
       throw new ApiError("CONFLICT", "组织内已存在同名技能。", {
         name
@@ -127,12 +128,12 @@ export async function createLogDomainRecord(
 
     const domain = await insertLogDomain(tx, {
       id: randomUUID(),
-      organizationId: auth.organization.id,
+      organizationId: logOrganizationId(auth),
       name,
       description: input.description,
       formatProfile
     });
-    await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId: domain.id,
+    await insertSkillRevision(tx, { organizationId: logOrganizationId(auth), skillId: domain.id,
       spec: { schemaVersion: "skill/v1", ...(formatProfile ? { formatProfile } : {}) }, userId: auth.user.id, published: true });
 
     return {
@@ -149,7 +150,7 @@ export async function createLogDomainRecord(
 
 export async function updateLogDomainRecord(
   db: Database,
-  auth: AuthContext,
+  auth: LogAccessContext,
   input: UpdateLogDomainInput,
   context: AuditedWriteContext
 ): Promise<LogDomainDto> {
@@ -161,35 +162,35 @@ export async function updateLogDomainRecord(
   const formatProfile =
     input.formatProfile === undefined ? undefined : input.formatProfile === null ? null : parseFormatProfileOrThrow(input.formatProfile);
 
-  return withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
-    await lockSkill(tx, auth.organization.id, input.domainId);
-    const existing = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: input.domainId });
+  return withAuditedWrite(db, (auth.logInvocation ?? createUserInvocation(auth)), context, async (tx) => {
+    await lockSkill(tx, logOrganizationId(auth), input.domainId);
+    const existing = await getLogDomainById(tx, { organizationId: logOrganizationId(auth), domainId: input.domainId });
     if (!existing) {
       throw new ApiError("NOT_FOUND", "未找到分析技能。", { domainId: input.domainId });
     }
     if (input.skillKey !== undefined && input.skillKey !== existing.skillKey) {
       // Serialize key allocation and edits in this organization, including the
       // database creation trigger, before checking the unique constraint.
-      await tx.query("select pg_advisory_xact_lock(hashtextextended('log-skill-key:' || $1, 0))", [auth.organization.id]);
-      const conflicting = await findLogDomainBySkillKey(tx, { organizationId: auth.organization.id, skillKey: input.skillKey });
+      await tx.query("select pg_advisory_xact_lock(hashtextextended('log-skill-key:' || $1, 0))", [logOrganizationId(auth)]);
+      const conflicting = await findLogDomainBySkillKey(tx, { organizationId: logOrganizationId(auth), skillKey: input.skillKey });
       if (conflicting) throw new ApiError("VALIDATION_FAILED", "组织内已存在相同的技能标识。", {
         fieldErrors: { skillKey: "组织内已存在相同的技能标识。" }
       });
     }
     const revisioned = input.formatProfile !== undefined || input.modelOverride !== undefined || input.description !== undefined;
-    const revisions = revisioned ? await listSkillRevisions(tx, auth.organization.id, input.domainId) : [];
+    const revisions = revisioned ? await listSkillRevisions(tx, logOrganizationId(auth), input.domainId) : [];
     if (revisions.some((revision) => revision.status === "draft")) {
       throw new ApiError("LOG_SKILL_DRAFT_EXISTS", "请先发布或放弃技能草稿。");
     }
     if (name && name !== existing.name) {
-      const conflicting = await findLogDomainByName(tx, { organizationId: auth.organization.id, name });
+      const conflicting = await findLogDomainByName(tx, { organizationId: logOrganizationId(auth), name });
       if (conflicting && conflicting.id !== input.domainId) {
         throw skillNameConflict(conflicting);
       }
     }
 
     const domain = await updateLogDomainRow(tx, {
-      organizationId: auth.organization.id,
+      organizationId: logOrganizationId(auth),
       domainId: input.domainId,
       skillKey: input.skillKey,
       name,
@@ -216,8 +217,8 @@ export async function updateLogDomainRecord(
       }
       // The compatibility API publishes immediately, only when no authored draft exists.
       await tx.query(`update log_skill_revisions set status = 'superseded'
-        where organization_id = $1 and skill_id = $2 and status = 'published'`, [auth.organization.id, domain.id]);
-      await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId: domain.id, spec, userId: auth.user.id, published: true });
+        where organization_id = $1 and skill_id = $2 and status = 'published'`, [logOrganizationId(auth), domain.id]);
+      await insertSkillRevision(tx, { organizationId: logOrganizationId(auth), skillId: domain.id, spec, userId: auth.user.id, published: true });
     }
 
     return {
@@ -242,7 +243,7 @@ export async function updateLogDomainRecord(
     // A concurrent create/rename can win after the availability check. The
     // failed audited transaction has rolled back before reading its occupier.
     if (cause instanceof pg.DatabaseError && cause.code === "23505" && name) {
-      const conflicting = await findLogDomainByName(db, { organizationId: auth.organization.id, name });
+      const conflicting = await findLogDomainByName(db, { organizationId: logOrganizationId(auth), name });
       if (conflicting && conflicting.id !== input.domainId) throw skillNameConflict(conflicting);
     }
     throw cause;
@@ -251,20 +252,20 @@ export async function updateLogDomainRecord(
 
 export async function archiveLogDomainRecord(
   db: Database,
-  auth: AuthContext,
+  auth: LogAccessContext,
   domainId: string,
   context: AuditedWriteContext
 ): Promise<LogDomainDto> {
   requireLogAdminDomains(auth);
 
-  return withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
-    const existing = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId });
+  return withAuditedWrite(db, (auth.logInvocation ?? createUserInvocation(auth)), context, async (tx) => {
+    const existing = await getLogDomainById(tx, { organizationId: logOrganizationId(auth), domainId });
     if (!existing) {
       throw new ApiError("NOT_FOUND", "未找到分析技能。", { domainId });
     }
 
     const domain = await updateLogDomainRow(tx, {
-      organizationId: auth.organization.id,
+      organizationId: logOrganizationId(auth),
       domainId,
       status: "archived"
     });
@@ -286,11 +287,11 @@ export async function archiveLogDomainRecord(
 
 export async function listLogDomainKnowledgeLinkRecords(
   db: Queryable,
-  auth: AuthContext,
+  auth: LogAccessContext,
   domainId: string
 ): Promise<{ items: LogDomainKnowledgeLinkDto[] }> {
   requireLogAdminDomains(auth);
-  const domain = await getLogDomainById(db, { organizationId: auth.organization.id, domainId });
+  const domain = await getLogDomainById(db, { organizationId: logOrganizationId(auth), domainId });
   if (!domain) {
     throw new ApiError("NOT_FOUND", "未找到分析技能。", { domainId });
   }
@@ -306,26 +307,26 @@ export async function listLogDomainKnowledgeLinkRecords(
  */
 export async function setLogDomainKnowledgeLinkRecords(
   db: Database,
-  auth: AuthContext,
+  auth: LogAccessContext,
   input: { domainId: string; knowledgeEntryIds: string[] },
   context: AuditedWriteContext
 ): Promise<{ items: LogDomainKnowledgeLinkDto[] }> {
   requireLogAdminDomains(auth);
   const knowledgeEntryIds = [...new Set(input.knowledgeEntryIds)];
 
-  const items = await withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
-    await lockSkill(tx, auth.organization.id, input.domainId);
-    const revisions = await listSkillRevisions(tx, auth.organization.id, input.domainId);
+  const items = await withAuditedWrite(db, (auth.logInvocation ?? createUserInvocation(auth)), context, async (tx) => {
+    await lockSkill(tx, logOrganizationId(auth), input.domainId);
+    const revisions = await listSkillRevisions(tx, logOrganizationId(auth), input.domainId);
     if (revisions.some((revision) => revision.status === "draft")) {
       throw new ApiError("LOG_SKILL_DRAFT_EXISTS", "请先发布或放弃技能草稿，再修改关联知识。");
     }
-    const domain = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: input.domainId });
+    const domain = await getLogDomainById(tx, { organizationId: logOrganizationId(auth), domainId: input.domainId });
     if (!domain) {
       throw new ApiError("NOT_FOUND", "未找到分析技能。", { domainId: input.domainId });
     }
 
     for (const entryId of knowledgeEntryIds) {
-      const entry = await getKnowledgeEntryById(tx, auth, entryId);
+      const entry = await getKnowledgeEntryById(tx, auth.logInvocation ? withKnowledgeInvocation(auth, auth.logInvocation) : auth, entryId);
       if (!entry || (entry.status !== "published" && !canReadEntry(auth, entry))) {
         throw new ApiError("NOT_FOUND", "未找到知识条目。", { knowledgeEntryId: entryId });
       }
@@ -340,7 +341,7 @@ export async function setLogDomainKnowledgeLinkRecords(
     const current = revisions.find((revision) => revision.status === "published")!;
     const previousIds = current.spec.knowledgeEntryIds ?? [];
     await replaceLogDomainKnowledgeLinks(tx, {
-      organizationId: auth.organization.id,
+      organizationId: logOrganizationId(auth),
       domainId: input.domainId,
       knowledgeEntryIds,
       createdByUserId: auth.user.id,
@@ -348,8 +349,8 @@ export async function setLogDomainKnowledgeLinkRecords(
     });
 
     await tx.query(`update log_skill_revisions set status = 'superseded'
-      where organization_id = $1 and skill_id = $2 and status = 'published'`, [auth.organization.id, input.domainId]);
-    await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId: input.domainId,
+      where organization_id = $1 and skill_id = $2 and status = 'published'`, [logOrganizationId(auth), input.domainId]);
+    await insertSkillRevision(tx, { organizationId: logOrganizationId(auth), skillId: input.domainId,
       spec: { ...current.spec, knowledgeEntryIds }, userId: auth.user.id, published: true });
 
     return {
@@ -394,7 +395,7 @@ export type LogDomainWebhookSecurityOptions = {
  */
 export async function setLogDomainWebhookRecord(
   db: Database,
-  auth: AuthContext,
+  auth: LogAccessContext,
   input: SetLogDomainWebhookInput,
   context: AuditedWriteContext,
   security: LogDomainWebhookSecurityOptions = {}
@@ -412,8 +413,8 @@ export async function setLogDomainWebhookRecord(
     throw new ApiError("VALIDATION_FAILED", "启用结果通知前，请填写接收地址。", { reason: "webhook-url-required" });
   }
 
-  return withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
-    const existing = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: input.domainId });
+  return withAuditedWrite(db, (auth.logInvocation ?? createUserInvocation(auth)), context, async (tx) => {
+    const existing = await getLogDomainById(tx, { organizationId: logOrganizationId(auth), domainId: input.domainId });
     if (!existing) {
       throw new ApiError("NOT_FOUND", "未找到分析技能。", { domainId: input.domainId });
     }
@@ -426,7 +427,7 @@ export async function setLogDomainWebhookRecord(
     }
 
     const domain = await updateLogDomainWebhookRow(tx, {
-      organizationId: auth.organization.id,
+      organizationId: logOrganizationId(auth),
       domainId: input.domainId,
       url,
       enabled: input.enabled,
@@ -455,17 +456,17 @@ export async function setLogDomainWebhookRecord(
 
 export async function listLogDomainWebhookDeliveryRecords(
   db: Queryable,
-  auth: AuthContext,
+  auth: LogAccessContext,
   input: { domainId: string; limit?: number }
 ): Promise<{ items: LogWebhookDeliveryDto[] }> {
   requireLogAdminDomains(auth);
-  const domain = await getLogDomainById(db, { organizationId: auth.organization.id, domainId: input.domainId });
+  const domain = await getLogDomainById(db, { organizationId: logOrganizationId(auth), domainId: input.domainId });
   if (!domain) {
     throw new ApiError("NOT_FOUND", "未找到分析技能。", { domainId: input.domainId });
   }
   return {
     items: await listRecentLogWebhookDeliveries(db, {
-      organizationId: auth.organization.id,
+      organizationId: logOrganizationId(auth),
       domainId: input.domainId,
       limit: input.limit
     })
@@ -478,20 +479,20 @@ export async function listLogDomainWebhookDeliveryRecords(
  */
 export async function sendLogDomainWebhookTestDelivery(
   db: Database,
-  auth: AuthContext,
+  auth: LogAccessContext,
   domainId: string,
   deliverer: Pick<LogWebhookDeliverer, "sendTestDelivery">,
   context: AuditedWriteContext
 ): Promise<LogWebhookDeliveryOutcome> {
   requireLogAdminDomains(auth);
-  const domain = await getLogDomainById(db, { organizationId: auth.organization.id, domainId });
+  const domain = await getLogDomainById(db, { organizationId: logOrganizationId(auth), domainId });
   if (!domain) {
     throw new ApiError("NOT_FOUND", "未找到分析技能。", { domainId });
   }
 
-  const outcome = await deliverer.sendTestDelivery({ organizationId: auth.organization.id, domainId });
+  const outcome = await deliverer.sendTestDelivery({ organizationId: logOrganizationId(auth), domainId });
 
-  return withAuditedWrite(db, createUserInvocation(auth), context, async () => ({
+  return withAuditedWrite(db, (auth.logInvocation ?? createUserInvocation(auth)), context, async () => ({
     result: outcome,
     audit: logDomainAudit({
       kind: "log-domain-webhook-test",

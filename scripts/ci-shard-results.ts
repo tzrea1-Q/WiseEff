@@ -1,7 +1,7 @@
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import type { Identity, NativeSummary } from "./ci-required-results";
 
@@ -206,9 +206,9 @@ async function runQuality() {
   const owned = list("owned.json", lane!);
   const output = path.join(directory, "results.json");
   const result = spawnSync("npm", ["run", "acceptance:quality-run"], { stdio: "inherit", env: { ...process.env, PLAYWRIGHT_JSON_OUTPUT_FILE: output } });
+  if (existsSync(output)) writeFileSync(path.join(process.env.WISEEFF_QUALITY_PLAYWRIGHT_OUTPUT_DIR ?? "test-results/quality", "results.json"), readFileSync(output, "utf8"));
   requireShard(result.status === 0 && !result.error, "COMMAND_FAILED");
   const report = JSON.parse(readFileSync(output, "utf8"));
-  writeFileSync(path.join(process.env.WISEEFF_QUALITY_PLAYWRIGHT_OUTPUT_DIR ?? "test-results/quality", "results.json"), JSON.stringify(report));
   const executed = playwrightInventory(report, true);
   requireShard(equal(owned, executed), "COVERAGE");
   save("receipt.json", { version: 1, kind: "quality", lane: lane!, identity, inventory: planned, executed, receipt: null } satisfies ShardReceipt);

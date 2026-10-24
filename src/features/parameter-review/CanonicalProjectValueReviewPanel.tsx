@@ -818,7 +818,7 @@ export function CanonicalProjectValueReviewPanel({
                 <details className="review-inspector__disclosure"><summary>处理记录</summary>
                 <dl className="review-inspector__meta">
                   <div><dt>提交时间</dt><dd><time dateTime={selected.createdAt} title={formatAbsolute(selected.createdAt)}>{formatRelativeOrAbsolute(selected.createdAt)}</time></dd></div>
-                  {selected.reviewerUserId ? <div><dt>实际审核人</dt><dd>{selected.reviewerName ?? userName(selected.reviewerUserId)}</dd></div> : null}
+                  {selected.reviewerName || selected.reviewerUserId ? <div><dt>实际审核人</dt><dd>{selected.reviewerName ?? userName(selected.reviewerUserId)}</dd></div> : null}
                   {selected.status !== "pending" || selected.updatedAt !== selected.createdAt ? <div><dt>{selected.status === "pending" ? "更新时间" : "处理时间"}</dt><dd><time dateTime={selected.updatedAt} title={formatAbsolute(selected.updatedAt)}>{formatRelativeOrAbsolute(selected.updatedAt)}</time></dd></div> : null}
                 </dl>
                 </details>
@@ -901,7 +901,7 @@ export function CanonicalProjectValueReviewPanel({
               <details className="review-inspector__disclosure"><summary>处理记录</summary>
               <dl className="review-inspector__meta">
                 <div><dt>提交时间</dt><dd>{batchRequest.createdAt ? <time dateTime={batchRequest.createdAt} title={formatAbsolute(batchRequest.createdAt)}>{formatRelativeOrAbsolute(batchRequest.createdAt)}</time> : "提交时间未记录"}</dd></div>
-                {batchRequest.reviewerUserId ? <div><dt>实际审核人</dt><dd>{batchRequest.reviewerName ?? userName(batchRequest.reviewerUserId)}</dd></div> : null}
+                {batchRequest.reviewerName || batchRequest.reviewerUserId ? <div><dt>实际审核人</dt><dd>{batchRequest.reviewerName ?? userName(batchRequest.reviewerUserId)}</dd></div> : null}
                 {batchRequest.status !== "pending" || batchRequest.updatedAt !== batchRequest.createdAt ? <div><dt>{batchRequest.status === "pending" ? "更新时间" : "处理时间"}</dt><dd>{batchRequest.updatedAt ? <time dateTime={batchRequest.updatedAt} title={formatAbsolute(batchRequest.updatedAt)}>{formatRelativeOrAbsolute(batchRequest.updatedAt)}</time> : "时间未记录"}</dd></div> : null}
               </dl>
               </details>

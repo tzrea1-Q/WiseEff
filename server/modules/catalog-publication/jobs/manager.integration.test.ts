@@ -1,5 +1,5 @@
 import pg from "pg";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createCatalogInstaller } from "../../catalog-kernel/install/installer";
 import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
@@ -161,6 +161,8 @@ describe("CP-07 publication manager production seam", () => {
 
   it("clears the activation timer when execute wins and does not unhandled-reject later", async () => {
     await provisionOnlineActivation(pool, client, "iin_tmr1");
+    // Select execute as the winner without bounding real PostgreSQL IO to 200ms.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const rejections: unknown[] = [];
     const onReject = (reason: unknown) => {
       rejections.push(reason);
@@ -182,9 +184,12 @@ describe("CP-07 publication manager production seam", () => {
       expect(claimed).toBe("claimed");
       expect(events).toContain("activated");
       expect(events).not.toContain("activation-timeout");
-      await new Promise((resolve) => setTimeout(resolve, 350));
+      const pendingTimers = vi.getTimerCount();
+      await vi.advanceTimersByTimeAsync(350);
+      expect(vi.getTimerCount()).toBe(pendingTimers);
       expect(rejections).toEqual([]);
     } finally {
+      vi.useRealTimers();
       process.off("unhandledRejection", onReject);
     }
   });

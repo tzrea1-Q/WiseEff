@@ -1,4 +1,5 @@
 import { knowledgeEntryHref } from "@/domain/knowledge/citations";
+import { historicalIdentityLabel } from "@/domain/identity/historicalAttribution";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DatabaseZap, ExternalLink, RefreshCw, BookOpen } from "lucide-react";
 
@@ -23,11 +24,13 @@ import { presentError, presentErrorMessage } from "@/infrastructure/http/present
 import { KnowledgeTagList, KnowledgeUnsearchableBadge } from "./badges";
 import { KnowledgeEntryEditorDialog } from "./KnowledgeEntryEditorDialog";
 import { KnowledgeFileUploadDialog } from "./KnowledgeFileUploadDialog";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 
 const collectionTabs = ["drafts", "index", "archived"] as const;
 
 export type KnowledgeAdminPageProps = {
   repository: KnowledgeRepository;
+  organizationId?: string;
   capability: KnowledgeCapability;
   /** Opens review deep links (/knowledge?entryId=… and /logs?logId=…). */
   onNavigate?: (path: string) => void;
@@ -48,7 +51,7 @@ function formatDateTime(value: string | null) {
  * archive-reject), archived-entry management, manage-gated hard delete, and
  * retrieval index health (per-entry status, retry, rebuild-all).
  */
-export function KnowledgeAdminPage({ repository, capability, onNavigate }: KnowledgeAdminPageProps) {
+export function KnowledgeAdminPage({ repository, capability, onNavigate, organizationId }: KnowledgeAdminPageProps) {
   const canManage = capability.canManage;
   const [collection, selectCollection] = useCollectionTab(collectionTabs, "drafts");
   const [rows, setRows] = useState<KnowledgeEntry[]>([]);
@@ -116,7 +119,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
   }, [loadAgentDrafts, loadArchived, loadIndexHealth]);
 
   const archivedCount = useMemo(() => rows.length, [rows]);
-  const knowledgeNextStep = <EmptyContent><Button asChild variant="outline" size="sm"><a href="/knowledge">前往知识库</a></Button></EmptyContent>;
+  const knowledgeNextStep = <EmptyContent><Button asChild variant="outline" size="sm"><a href={withOrganizationScope("/knowledge", organizationId)}>前往知识库</a></Button></EmptyContent>;
 
   const publishAgentDraft = async (entry: KnowledgeEntry) => {
     setAgentActionPendingId(entry.id);
@@ -144,7 +147,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
       render: (entry) => (
         <div className="min-w-0">
           <p className="truncate font-medium text-foreground">{entry.title}</p>
-          <p className="text-xs text-muted-foreground">创建人 {entry.createdByUserId ?? "已注销用户"} · 修订 #{entry.headRevisionNumber}</p>
+          <p className="text-xs text-muted-foreground">创建人 {historicalIdentityLabel(entry.historicalAttribution?.actors.created_by_user_id)} · 修订 #{entry.headRevisionNumber}</p>
         </div>
       ),
       sortAccessor: (entry) => entry.title
@@ -347,7 +350,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
       render: (entry) => (
         <div className="min-w-0">
           <p className="truncate font-medium text-foreground">{entry.title}</p>
-          <p className="text-xs text-muted-foreground">修订 #{entry.headRevisionNumber} · {entry.createdByUserId ?? "已注销用户"}</p>
+          <p className="text-xs text-muted-foreground">修订 #{entry.headRevisionNumber} · {historicalIdentityLabel(entry.historicalAttribution?.actors.created_by_user_id)}</p>
         </div>
       ),
       sortAccessor: (entry) => entry.title
@@ -392,7 +395,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
         {collection === "drafts" ? (
           <AdminListPage label="小泽草稿" headerContent={<></>}
             headerActions={<Button size="sm" onClick={() => void loadAgentDrafts()} disabled={agentDraftsLoading} aria-busy={agentDraftsLoading || undefined}><RefreshCw data-icon="inline-start" />刷新</Button>}
-            filterBar={<p className="text-sm text-muted-foreground">知识编辑者可发布本人会话的草稿，知识管理员可发布任意草稿。拒绝后归档。</p>}
+            filterBar={<p className="text-sm text-muted-foreground">知识编辑者可发布自己负责的草稿，知识管理员可发布任意草稿。拒绝后归档。</p>}
             notice={agentDraftError ? <p role="alert" className="text-destructive">{agentDraftError}</p> : null}
             table={{ "aria-label": "小泽知识草稿", rows: agentDrafts, rowKey: (entry) => entry.id, columns: agentDraftColumns, pageSize: 10, emptyState: <Empty className="section-empty"><EmptyHeader><EmptyMedia variant="icon"><BookOpen /></EmptyMedia><EmptyDescription>{agentDraftsLoading ? "正在加载小泽草稿…" : "暂无待审阅的小泽知识草稿。"}</EmptyDescription></EmptyHeader>{knowledgeNextStep}</Empty> }}
             rowActions={(entry) => ({

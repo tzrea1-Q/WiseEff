@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../parameters/operatingScope";
 import { ApiError } from "../../shared/http/errors";
 import { getRootPostgresPool, type Database } from "../../shared/database/client";
 import type { AuthContext } from "../auth/types";
@@ -17,7 +18,7 @@ export async function resolveCanonicalParameter(db: Database, auth: AuthContext,
        join projects project on project.id = identity.owner_scope_id
        where identity.source_system = $1 and identity.source_kind = 'project-parameter-binding'
          and identity.owner_scope_kind = 'project' and identity.source_id = $2
-         and project.organization_id = $3`, [LEGACY_LOOKUP_SOURCE_SYSTEM, parameterId, auth.organization.id]
+         and project.organization_id = $3`, [LEGACY_LOOKUP_SOURCE_SYSTEM, parameterId, parameterOrganizationId(auth)]
     );
     if (identities.rows.length !== 1) return null;
     mappedProjectId = identities.rows[0]!.project_id;
@@ -38,7 +39,7 @@ export async function resolveCanonicalParameter(db: Database, auth: AuthContext,
   const result = await db.query<{ id: string; project_id: string }>(
     `select id, project_id from parameter_catalog.project_parameter_bindings
      where organization_id = $1 and id = $2 and ($3::text is null or project_id = $3)`,
-    [auth.organization.id, bindingId, mappedProjectId]
+    [parameterOrganizationId(auth), bindingId, mappedProjectId]
   );
   const binding = result.rows[0];
   if (!binding && mappedProjectId) return null;

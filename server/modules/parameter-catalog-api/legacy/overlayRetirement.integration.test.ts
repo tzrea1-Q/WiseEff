@@ -120,6 +120,19 @@ describe("assembled overlay retirement preserves historical storage on PostgreSQ
     });
   });
 
+  it("keeps retired writes gone while the organization is suspended, without reviving legacy storage", async () => {
+    await db.query("update organizations set status='suspended' where id='org-overlay-t1066'");
+    try {
+      for (const userId of ["admin-t1066", "missing-user-t1066"]) {
+        await harness.assertRetired({ method: "POST", path: schemaPath }, {
+          headers: { "X-WiseEff-User": userId }, body: JSON.stringify({ compatible: "test,must-stay-retired" }),
+        });
+      }
+    } finally {
+      await db.query("update organizations set status='active' where id='org-overlay-t1066'");
+    }
+  });
+
   it.each([
     `${schemaPath}?compatible=test,retained-t1066&organizationId=org-overlay-t1066`,
     `${schemaPath}/source-overlay-t1066?view=effective`,

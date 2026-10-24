@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
 import { canSeeEntry, type KnowledgeCapability } from "@/domain/knowledge/rules";
 import type { KnowledgeEntry } from "@/domain/knowledge/types";
@@ -18,11 +19,12 @@ import { KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT, KNOWLEDGE_FILE_BYTE_LIMIT, KNOWLEDG
 type UploadFile = { id: number; file: File; content?: string; status: "validating" | "ready" | "invalid" | "uploading" | "success" | "failed"; error?: string };
 const uploadStatus = { validating: "正在校验…", ready: "待上传", invalid: "文件无效", uploading: "正在创建…", success: "已创建并链接", failed: "创建失败" };
 
-export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRepository: repository, knowledgeCapability: capability, canOpenKnowledge = true, onBusyChange, onNavigate }: {
+export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRepository: repository, knowledgeCapability: capability, canOpenKnowledge = true, onBusyChange, onNavigate, organizationId }: {
   spec: SkillSpec; setSpec: (spec: SkillSpec) => void; disabled: boolean; apiMode: boolean;
   knowledgeRepository?: KnowledgeRepository; knowledgeCapability?: KnowledgeCapability; onBusyChange: (busy: boolean) => void;
   onNavigate?: (path: string) => void;
   canOpenKnowledge?: boolean;
+  organizationId?: string;
 }) {
   const ids = spec.knowledgeEntryIds ?? [];
   const idsKey = JSON.stringify(ids);
@@ -160,7 +162,7 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
       : <DataTable rows={visibleEntries} rowKey={(row) => row.id} ariaLabel="已链接知识条目" tableClassName="table-fixed"
         emptyState={<SectionEmpty title="尚未链接知识" message={canOpenKnowledge ? "链接已发布条目，或上传 Markdown / 文本 创建知识草稿。" : "该技能暂无知识参考。"} />}
         columns={[
-          { key: "title", header: "标题", render: ({ entry, deleted }) => entry ? canOpenKnowledge ? <a className="break-words underline" title={entry.title} href={`/knowledge?entryId=${encodeURIComponent(entry.id)}`} onClick={(event) => {
+          { key: "title", header: "标题", render: ({ entry, deleted }) => entry ? canOpenKnowledge ? <a className="break-words underline" title={entry.title} href={withOrganizationScope(`/knowledge?entryId=${encodeURIComponent(entry.id)}`, organizationId)} onClick={(event) => {
             if (onNavigate && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(event.currentTarget.getAttribute("href")!); }
           }}>{entry.title}</a> : <span className="break-words">{entry.title}</span> : <span>{deleted ? "已删除" : "无权查看的条目"}</span> },
           { key: "status", header: "状态", widthClass: "w-44", render: ({ entry }) => entry?.status === "archived" ? <span>已归档，不参与检索</span> : entry ? <KnowledgeStatusBadge status={entry.status} /> : null },

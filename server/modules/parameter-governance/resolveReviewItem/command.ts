@@ -16,6 +16,7 @@ import {
 
 import type { GovernanceFailure } from "./failures";
 import type { Result } from "./result";
+import type { UserInvocationContext } from "../../auth/trustedInvocation";
 
 export const reviewResolutionCommandFamily = "review-resolution";
 
@@ -51,6 +52,8 @@ export type RegistrationProof = {
 };
 
 type ResolveReviewItemCommandBase = {
+  readonly invocation?: UserInvocationContext;
+  readonly requestId?: string;
   readonly organizationId: string;
   readonly reviewItemId: ReviewItemId;
   readonly expectedRelease: CatalogReleasePin;
@@ -156,13 +159,13 @@ export const validateResolveReviewItemCommand = (
   if (!context || !("actorKind" in context)) {
     return permissionDenied("anonymous");
   }
-  if (context.actorKind !== "org-admin") {
+  if (context.actorKind !== "org-admin" && context.actorKind !== "platform-admin") {
     return permissionDenied(context.actorKind);
   }
-  if (!controlFree(context.principalId) || !controlFree(context.organizationId)) {
+  if (!controlFree(context.principalId) || (context.actorKind === "org-admin" && !controlFree(context.organizationId))) {
     return permissionDenied(context.actorKind);
   }
-  if (context.organizationId !== command.organizationId) {
+  if (context.actorKind === "org-admin" && context.organizationId !== command.organizationId) {
     return permissionDenied(context.actorKind);
   }
 

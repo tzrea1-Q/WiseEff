@@ -1,4 +1,5 @@
 import type { LogAnalysisDegradedReason, LogAnalysisSource } from "./analyzer";
+import type { HistoricalAttribution } from "../../../src/domain/identity/historicalAttribution";
 import type { LogRecordStatus, LogRunStatus, LogStage } from "./status";
 export type LogArchiveState = "active" | "archived";
 export type LogFeedbackRating = "helpful" | "not_helpful";
@@ -25,6 +26,7 @@ export type LogEvidenceDto = {
 };
 
 export type LogRecordDto = {
+  historicalAttribution?: HistoricalAttribution;
   skillSelection?: {
     mode: "recommended" | "explicit" | "generic";
     reasons: import("./skillRecommendation").LogSkillRecommendationReason[];

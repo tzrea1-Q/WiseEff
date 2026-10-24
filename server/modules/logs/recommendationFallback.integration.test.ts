@@ -13,6 +13,8 @@ import { registerLogRoutes } from "./routes";
 import { provisionChargingSkill } from "./provisionChargingSkill";
 import { insertSkillRevision, lockSkill, publishSkillRevision } from "./skillsRepository";
 import type { LogRecordDto } from "./types";
+import { withLogObjectCustody } from "./objectWrites";
+import type { ObjectStore } from "./objectStore";
 
 const available = await isTestDatabaseAvailable();
 const auth = makeTestAuthContext({ organizationId: "fallback-org", userId: "fallback-user",
@@ -21,7 +23,7 @@ const sample = readFileSync("test-fixtures/logs/charging-foldback.log");
 const uploadBody = { fileName: "charging.log", contentType: "text/plain", contentBase64: sample.toString("base64") };
 type Upload = { log: LogRecordDto; fileObject: { id: string }; job: { id: string } };
 
-function api(db: Database, objectStore = createMemoryObjectStore()) {
+function api(db: Database, objectStore: ObjectStore = createMemoryObjectStore()) {
   const router = createRouter();
   registerLogRoutes(router, { db, objectStore, getCurrentAuthContext: () => auth });
   return <T,>(path: string, method = "GET", body?: unknown) => requestJson<T>(createHttpServer(router), path,
@@ -39,7 +41,7 @@ describe.skipIf(!available)("advisory routing cannot abort uploads", () => {
     const db = createPostgresDatabase(ephemeral.url);
     try {
       await seed(db);
-      await db.transaction(async (tx) => {
+      await withLogObjectCustody(db, createMemoryObjectStore(), scoped => db.transaction(async (tx) => {
         await tx.query("select set_config('statement_timeout', '5s', true), set_config('lock_timeout', '3s', true)");
         let observed = false;
         const inspect = (connection: Database): Database => ({
@@ -53,13 +55,13 @@ describe.skipIf(!available)("advisory routing cannot abort uploads", () => {
           },
           transaction: (fn) => connection.transaction((inner) => fn(inspect(inner)))
         });
-        const response = await api(inspect(tx))<Upload>("/api/v1/log-files", "POST", uploadBody);
+        const response = await api(inspect(tx), scoped)<Upload>("/api/v1/log-files", "POST", uploadBody);
         expect(response.status).toBe(201);
         expect(response.body.log.skillSelection?.mode).toBe("recommended");
         expect(observed).toBe(true);
         expect((await tx.query("select current_setting('statement_timeout') as statement, current_setting('lock_timeout') as lock")).rows)
           .toEqual([{ statement: "5s", lock: "3s" }]);
-      });
+      }));
     } finally { await db.close(); await ephemeral.drop(); }
   });
 
@@ -86,7 +88,8 @@ describe.skipIf(!available)("advisory routing cannot abort uploads", () => {
         },
         transaction: (fn) => connection.transaction((tx) => fn(interleave(tx)))
       });
-      const response = await api(interleave(db))<Upload>("/api/v1/log-files", "POST", uploadBody);
+      const response = await withLogObjectCustody(db, createMemoryObjectStore(), scoped =>
+        api(interleave(db), scoped)<Upload>("/api/v1/log-files", "POST", uploadBody));
       expect(response.status).toBe(201);
       expect(published).toBe(true);
       expect(response.body.log).toMatchObject({ logDomainId: skillId,
@@ -147,20 +150,22 @@ describe.skipIf(!available)("advisory routing cannot abort uploads", () => {
             : "do $$ begin raise exception 'injected query cancellation' using errcode='57014'; end $$") : connection.query(sql, values),
         transaction: (fn) => connection.transaction((tx) => fn(inject(tx)))
       });
-      const request = api(inject(db), objectStore);
-      for (const [path, body] of [["/api/v1/log-files", uploadBody], ["/api/v1/logs", {
-        fileObjectId: source.body.fileObject.id, fileName: uploadBody.fileName
-      }]] as const) {
-        const response = await request<Upload>(path, "POST", body);
-        expect(response.status).toBe(201);
-        expect(response.body.log).toMatchObject({ skillRevision: null, skillSelection: { mode: "generic", reasons: [] } });
-        expect(response.body.job.id).toBeTruthy();
-        const readback = await request<{ item: LogRecordDto }>(`/api/v1/logs/${response.body.log.id}`);
-        expect(readback.body.item.skillSelection?.mode).toBe("generic");
-      }
-      const explicit = await request<Upload>("/api/v1/log-files", "POST", { ...uploadBody, skillId: `seed-charging:${auth.organization.id}` });
-      expect(explicit.status).toBe(201);
-      expect(explicit.body.log).toMatchObject({ logDomainId: `seed-charging:${auth.organization.id}`, skillSelection: { mode: "explicit", reasons: [] } });
+      await withLogObjectCustody(db, objectStore, async scoped => {
+        const request = api(inject(db), scoped);
+        for (const [path, body] of [["/api/v1/log-files", uploadBody], ["/api/v1/logs", {
+          fileObjectId: source.body.fileObject.id, fileName: uploadBody.fileName
+        }]] as const) {
+          const response = await request<Upload>(path, "POST", body);
+          expect(response.status).toBe(201);
+          expect(response.body.log).toMatchObject({ skillRevision: null, skillSelection: { mode: "generic", reasons: [] } });
+          expect(response.body.job.id).toBeTruthy();
+          const readback = await request<{ item: LogRecordDto }>(`/api/v1/logs/${response.body.log.id}`);
+          expect(readback.body.item.skillSelection?.mode).toBe("generic");
+        }
+        const explicit = await request<Upload>("/api/v1/log-files", "POST", { ...uploadBody, skillId: `seed-charging:${auth.organization.id}` });
+        expect(explicit.status).toBe(201);
+        expect(explicit.body.log).toMatchObject({ logDomainId: `seed-charging:${auth.organization.id}`, skillSelection: { mode: "explicit", reasons: [] } });
+      });
     } finally { await db.close(); await ephemeral.drop(); }
   });
 });

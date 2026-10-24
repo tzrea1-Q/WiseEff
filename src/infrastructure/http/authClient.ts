@@ -13,12 +13,14 @@ export type AuthContextDto = {
   organization: {
     id: string;
     name: string;
+    status?: "active" | "suspended";
   };
   roles: Array<{
     projectId: string | null;
     roleId: string;
   }>;
   permissions: string[];
+  projectMemberships?: Array<{ projectId: string; roles: Array<"hardware-user" | "software-user" | "hardware-committer" | "software-committer"> }>;
 };
 
 export type AuthSessionDto = {

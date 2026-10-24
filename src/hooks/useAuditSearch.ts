@@ -34,7 +34,7 @@ export function parseAuditSearch(search: string, defaults: Partial<AuditQuerySta
     timeWindow,
     ...(projectId ? { projectId } : {}),
     ...(traceId ? { traceId } : {}),
-    ...Object.fromEntries(["eventId", "kind", "targetId", "from", "to"].flatMap((key) => {
+    ...Object.fromEntries(["organizationId", "eventId", "kind", "targetId", "from", "to"].flatMap((key) => {
       const value = params.get(key) ?? defaults[key as keyof AuditQueryState];
       return typeof value === "string" && value ? [[key, value]] : [];
     }))
@@ -61,7 +61,7 @@ export function buildAuditSearch(state: AuditQueryState) {
   if (state.traceId) {
     params.set("traceId", state.traceId);
   }
-  for (const key of ["eventId", "kind", "targetId", "from", "to"] as const) {
+  for (const key of ["organizationId", "eventId", "kind", "targetId", "from", "to"] as const) {
     if (state[key]) params.set(key, state[key]);
   }
   const query = params.toString();

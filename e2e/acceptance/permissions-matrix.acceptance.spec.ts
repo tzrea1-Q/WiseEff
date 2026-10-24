@@ -1,6 +1,7 @@
 import "./helpers/loadAcceptanceEnvironment";
 import { expect, test } from "playwright/test";
 import { signInBrowserAsRoleLabel, signInBrowserAsUser, authHeadersForRole, authHeadersForUser } from "./helpers/bearerAuth";
+import { acceptanceCast } from "./helpers/cast";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { disposableRuntimeOutcomeFromTestInfo } from "./helpers/disposablePostCutoverRuntime";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
@@ -128,11 +129,19 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
       .not.toEqual(expect.arrayContaining([expect.objectContaining({ value: "platform-admin" })]));
     await addUserDialog.getByRole("button", { name: "取消" }).click();
 
-    // The accounts table is a paginated DataTable (10 rows per page); narrow via
-    // the search filter so Zhao Heng's row is on the visible page.
-    await page.getByRole("search", { name: "用户筛选" }).getByLabel("搜索").fill("Zhao Heng");
-    await page.getByRole("button", { name: "查看 Zhao Heng 的成员资料" }).click();
-    const memberDialog = page.getByRole("dialog", { name: "Zhao Heng · 成员资料" });
+    // Profile workflows may change display names; find the intended account by its stable ID.
+    const listed = await page.request.get(apiRoute("/api/v1/users"), {
+      headers: authHeadersForUser(acceptanceAdminOnlyUser.userId, acceptanceAdminOnlyUser.email, acceptanceAdminOnlyUser.name)
+    });
+    expect(listed.status(), await listed.text()).toBe(200);
+    const target = ((await listed.json()) as { items: Array<{ id: string; name: string; username: string | null; email: string | null }> })
+      .items.find((user) => user.id === acceptanceCast.zhaoHeng.userId);
+    expect(target).toBeDefined();
+    const identifier = target!.username ?? target!.email ?? target!.name;
+    await page.getByRole("search", { name: "用户筛选" }).getByLabel("搜索").fill(identifier);
+    const member = page.getByRole("table", { name: "平台用户", exact: true }).getByRole("row").filter({ hasText: identifier });
+    await member.getByRole("button", { name: `查看 ${target!.name} 的成员资料` }).click();
+    const memberDialog = page.getByRole("dialog", { name: `${target!.name} · 成员资料` });
     const assignableRoles = memberDialog.getByRole("group", { name: "组织角色选择" });
     await expect(assignableRoles).toBeVisible();
     await expect(assignableRoles.getByRole("checkbox", { name: "平台超级管理员" })).toHaveCount(0);

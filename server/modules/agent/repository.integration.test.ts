@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { AgentToolStatus } from "./types";
 import {
   createInMemoryTestDatabase,
   isTestDatabaseAvailable,
@@ -49,7 +50,7 @@ describe.skipIf(!databaseAvailable)("agent repository (behavior)", () => {
       organizationId: ORG_A,
       actorUserId: USER_A,
       pageKey: "parameters",
-      context: { projectId: "aurora", route: "/parameters" },
+      context: { projectId: "aurora", path: "/parameters", pageKey: "parameters" },
       title: "Charging tuning"
     });
   });
@@ -69,9 +70,52 @@ describe.skipIf(!databaseAvailable)("agent repository (behavior)", () => {
       title: "Charging tuning"
     });
     // Context is normalized into the AgentContext projection, not passed through.
-    expect(session?.context).toEqual({ path: "", pageKey: "", projectId: "aurora", roleId: undefined });
+    expect(session?.context).toEqual({ path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: undefined });
 
     expect(await getAgentSession(db, ORG_B, SESSION)).toBeNull();
+  });
+
+  it("retains session and approval event signatures independently of live ownership", async () => {
+    await seedToolCall();
+    await createAgentApproval(db, { id: "historical-approval", sessionId: SESSION, toolCallId: "tool-1",
+      organizationId: ORG_A, status: "pending", title: "Review", message: "Review action", requestedByUserId: USER_A });
+    expect(await markAgentApprovalApproved(db, ORG_A, "historical-approval", USER_A)).toBe(true);
+    const organization = { id: ORG_A, name: "Agent Org A", source: "recorded" };
+    const actor = { id: USER_A, name: "Agent User A", source: "recorded" };
+    expect(await getAgentSession(db, ORG_A, SESSION)).toMatchObject({
+      historicalAttribution: { organization, actors: { actor_user_id: actor } }
+    });
+    await db.query("delete from user_oidc_identities where user_id=$1", [USER_A]);
+    await db.query("update users set name='Renamed actor',organization_id=$2 where id=$1", [USER_A, ORG_B]);
+    await db.query("update organizations set name='Renamed organization' where id=$1", [ORG_A]);
+    await db.query("delete from users where id=$1", [USER_A]);
+    expect(await getAgentSession(db, ORG_A, SESSION)).toMatchObject({ actorUserId: null,
+      historicalAttribution: { organization, actors: { actor_user_id: actor } } });
+    const approval = await getAgentApproval(db, ORG_A, "historical-approval");
+    expect(approval).toMatchObject({ requestedByUserId: null, decidedByUserId: null,
+      historicalAttribution: { organization, actors: { requested_by_user_id: actor, decided_by_user_id: actor } } });
+    expect((await listAgentApprovals(db, ORG_A, SESSION))[0]).toMatchObject({
+      historicalAttribution: { organization, actors: { requested_by_user_id: actor, decided_by_user_id: actor } } });
+    expect(await getAgentSession(db, ORG_B, SESSION)).toBeNull();
+  });
+
+  it("records a cross-organization actor without replacing the recorded organization's scope", async () => {
+    await db.query(`insert into user_role_bindings(id,organization_id,user_id,role_id)
+      values('historical-platform-admin',$1,$2,'platform-admin')`, [ORG_A, USER_A]);
+    await createAgentSession(db, { id: "cross-org-session", organizationId: ORG_B, actorUserId: USER_A,
+      pageKey: "xiaoze", context: { path: "/knowledge", pageKey: "xiaoze" }, title: "Target organization action" });
+    expect(await getAgentSession(db, ORG_B, "cross-org-session")).toMatchObject({
+      organizationId: ORG_B, actorUserId: USER_A, historicalAttribution: {
+        organization: { id: ORG_B, name: "Agent Org B", source: "recorded" },
+        actors: { actor_user_id: { id: USER_A, name: "Agent User A", source: "recorded" } }
+      }
+    });
+    expect(await getAgentSession(db, ORG_A, "cross-org-session")).toBeNull();
+    await createAgentSession(db, { id: "foreign-ordinary-session", organizationId: ORG_A, actorUserId: USER_B,
+      pageKey: "xiaoze", context: { path: "/knowledge", pageKey: "xiaoze" }, title: "Malformed legacy actor association" });
+    expect(await getAgentSession(db, ORG_A, "foreign-ordinary-session")).toMatchObject({
+      historicalAttribution: { actors: { actor_user_id: { id: USER_B, name: null, source: "unknown" } } }
+    });
   });
 
   it("appends messages and lists them in order with citations round-tripped, scoped by org and session", async () => {
@@ -101,7 +145,7 @@ describe.skipIf(!databaseAvailable)("agent repository (behavior)", () => {
     expect(await listAgentMessages(db, ORG_A, "other-session")).toEqual([]);
   });
 
-  async function seedToolCall(id = "tool-1", status = "running") {
+  async function seedToolCall(id = "tool-1", status: AgentToolStatus = "running") {
     await createAgentToolCall(db, {
       id,
       sessionId: SESSION,
@@ -133,12 +177,12 @@ describe.skipIf(!databaseAvailable)("agent repository (behavior)", () => {
     expect(
       await updateAgentToolCall(db, ORG_A, "tool-1", {
         status: "succeeded",
-        result: { changeRequestId: "cr-1" }
+        result: { summary: "Submitted for review", data: { changeRequestId: "cr-1" }, citations: [] }
       })
     ).toBe(true);
     const updated = await getAgentToolCall(db, ORG_A, "tool-1");
     expect(updated?.status).toBe("succeeded");
-    expect(updated?.result).toEqual({ changeRequestId: "cr-1" });
+    expect(updated?.result).toEqual({ summary: "Submitted for review", data: { changeRequestId: "cr-1" }, citations: [] });
     // Fields not passed stay untouched (coalesce semantics).
     expect(updated?.payload).toEqual({ parameterId: "param-1", targetValue: "3200" });
   });

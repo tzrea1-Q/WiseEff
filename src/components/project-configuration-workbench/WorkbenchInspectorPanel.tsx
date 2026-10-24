@@ -1,4 +1,5 @@
 import { RowActionMenu } from "@/components/common/RowActionMenu";
+import { historicalIdentityLabel } from "@/domain/identity/historicalAttribution";
 import { Button } from "@/components/ui/button";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ModalDialog } from "@/components/common/ModalDialog";
@@ -606,7 +607,8 @@ export function WorkbenchInspectorPanel({
                       </strong>
                       <span>来源：{ORIGIN_LABELS[version.origin]}</span>
                       <span title={formatAbsolute(version.createdAt)}>创建时间：{formatRelativeOrAbsolute(version.createdAt)}</span>
-                      <span>
+                      <span title={version.historicalAttribution ? `发生组织：${version.historicalAttribution.organization.name
+                        ? historicalIdentityLabel(version.historicalAttribution.organization) : "历史组织名称未记录"}` : undefined}>
                         操作人：{version.createdByDisplayName === null ? "用户已注销或未记录" : version.createdByDisplayName ?? "未记录"}
                       </span>
                     </button>

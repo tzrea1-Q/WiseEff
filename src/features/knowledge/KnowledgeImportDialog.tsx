@@ -9,15 +9,19 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 import { Button } from "@/components/ui/button";
 import { presentError } from "@/infrastructure/http/presentError";
 import { parseTagsInput } from "./KnowledgeEntryEditorDialog";
+import { SettingsLeaveGuard } from "@/components/layout/SettingsFormPage";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
+import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 
 type Row = { name: string; outcome?: KnowledgeImportOutcome; requestError?: string };
 const labels = { created: "已创建草稿", duplicate_skipped: "重复，已跳过", unsupported_skipped: "格式不支持，已跳过",
   extraction_failed: "提取失败，草稿已保留", rejected: "导入失败" };
 const isZip = (file: File) => /\.zip$/i.test(file.name);
 
-export function KnowledgeImportDialog({ open, repository, onClose, onComplete }: {
-  open: boolean; repository: KnowledgeRepository; onClose: () => void; onComplete: () => void;
+export function KnowledgeImportDialog({ open, repository, onClose, onComplete, organizationId, resumeBatchId }: {
+  open: boolean; repository: KnowledgeRepository; onClose: () => void; onComplete: () => void; organizationId?: string; resumeBatchId?: string;
 }) {
+  const requestClose = () => { const decision = requestSettingsLeave(); if (decision instanceof Promise) void decision.then((allowed) => { if (allowed) onClose(); }); else if (decision) onClose(); };
   const [files, setFiles] = useState<File[]>([]);
   const [tags, setTags] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
@@ -29,6 +33,16 @@ export function KnowledgeImportDialog({ open, repository, onClose, onComplete }:
   const [error, setError] = useState("");
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    if (!open || !resumeBatchId) return;
+    let cancelled = false;
+    setBatchId(resumeBatchId);
+    void repository.getImport(resumeBatchId).then(report => {
+      if (cancelled) return;
+      setRows(report.outcomes.map(outcome => ({ name: outcome.relativePath, outcome }))); setFinished(true); setSummaryPending(!report.completed);
+    }).catch((failure: unknown) => { if (!cancelled) setError(presentError(failure, "导入报告加载失败，请重新打开。")); });
+    return () => { cancelled = true; };
+  }, [open, repository, resumeBatchId]);
 
   const complete = async (id: string) => {
     setError("");
@@ -89,7 +103,8 @@ export function KnowledgeImportDialog({ open, repository, onClose, onComplete }:
     setPending(false);
   };
 
-  return <ModalDialog open={open} onDismiss={onClose} describedBy backdropClassName="knowledge-modal-backdrop"
+  return <><SettingsLeaveGuard dirty={open && (!finished && (files.length > 0 || tags.length > 0) || pending || summaryPending)} saving={pending || summaryPending} />
+  <ModalDialog open={open} onDismiss={requestClose} describedBy backdropClassName="knowledge-modal-backdrop"
     className="submission-dialog modal-card--lg flex min-w-0 flex-col gap-4">
     {({ titleId, descriptionId }) => <>
       <div>
@@ -119,7 +134,7 @@ export function KnowledgeImportDialog({ open, repository, onClose, onComplete }:
               </p> : null}
             </div> },
             { key: "entry", header: "条目", render: (row) => row.outcome?.entryId ?
-              <a className="text-primary underline" href={knowledgeEntryHref({ entryId: row.outcome.entryId })}>
+              <a className="text-primary underline" href={withOrganizationScope(knowledgeEntryHref({ entryId: row.outcome.entryId }), organizationId)}>
                 {row.outcome.status === "duplicate_skipped" ? "查看已有条目" : "查看草稿"}
               </a> : "—" }
           ]} /> : <div aria-live="polite">
@@ -129,18 +144,18 @@ export function KnowledgeImportDialog({ open, repository, onClose, onComplete }:
           )}</ol>
         </div>}
       </div>
-      {pending ? <p className="text-xs text-muted-foreground">关闭对话框或离开此页面不会取消已提交的文档。</p> : null}
+      {pending ? <p className="text-xs text-muted-foreground">已提交的文档会继续保存在当前组织，完成后可关闭。</p> : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       <div className="flex shrink-0 justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={onClose}>关闭</Button>
+        <Button variant="outline" size="sm" onClick={requestClose}>关闭</Button>
         {!batchId ? <Button size="sm" disabled={pending || !files.length} aria-busy={pending || undefined} onClick={() => void submit()}>
           {pending ? "正在开始…" : "开始导入"}
         </Button> : null}
-        {summaryPending ? <Button size="sm" onClick={() => void complete(batchId!)}>重试汇总</Button> : null}
+        {summaryPending ? <Button size="sm" onClick={() => void complete(batchId!)}>{resumeBatchId ? "完成批次汇总" : "重试汇总"}</Button> : null}
         {finished && !summaryPending ? <Button size="sm" onClick={() => {
           setBatchId(null); setFiles([]); setRows([]); setTags(""); setFinished(false); setError("");
         }}>继续导入</Button> : null}
       </div>
     </>}
-  </ModalDialog>;
+  </ModalDialog></>;
 }

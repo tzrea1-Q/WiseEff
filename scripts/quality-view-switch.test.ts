@@ -20,7 +20,7 @@ describe("view-switch consistency", () => {
     const auditPaths = [
       "/debugging-admin", "/debugging-admin/nodes", "/knowledge-admin",
       "/log-admin", "/log-admin?tab=quality", "/log-admin?tab=records", "/log-admin?tab=skills", "/logs",
-      "/organization", "/organization/members", "/parameter-admin", "/parameter-admin/identity-mapping",
+      "/organization", "/organization/members", "/organization/settings", "/parameter-admin", "/parameter-admin/identity-mapping",
       "/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry",
       "/parameter-admin/projects", "/parameter-admin/projects/aurora/configuration?tab=conflicts",
       "/parameter-admin/projects/aurora/review-roles", "/parameter-admin/spec-review",

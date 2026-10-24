@@ -28,6 +28,7 @@ type AuditEventRow = {
   actor_user_id: string | null;
   actor_type: "user" | "agent" | "system" | "integration";
   actor_name: string | null;
+  historical_attribution?: AuditEventListItemDto["historicalAttribution"];
   app: string;
   kind: string;
   action: string;
@@ -58,6 +59,7 @@ function toListItem(row: AuditEventRow): AuditEventListItemDto {
     actorUserId: row.actor_user_id,
     actorType: row.actor_type,
     actorName: row.actor_name,
+    ...(row.historical_attribution ? { historicalAttribution: row.historical_attribution } : {}),
     app: row.app,
     kind: row.kind,
     action: row.action,
@@ -194,7 +196,7 @@ export async function listAuditEvents(db: Queryable, query: ListAuditEventsQuery
 
   if (query.actorUserId) {
     values.push(query.actorUserId);
-    conditions.push(`ae.actor_user_id = $${values.length}`);
+    conditions.push(`ae.historical_attribution->'actors'->'actor_user_id'->>'id' = $${values.length}`);
   }
 
   if (query.targetType) {
@@ -233,7 +235,7 @@ export async function listAuditEvents(db: Queryable, query: ListAuditEventsQuery
     const unknownApp = `$${values.length}`;
     conditions.push(
       `(ae.action ilike ${param} or ae.kind ilike ${param} or ae.app ilike ${param}
-        or coalesce(ae.target_id, '') ilike ${param} or coalesce(u.name, '') ilike ${param}
+        or coalesce(ae.target_id, '') ilike ${param} or coalesce(ae.historical_attribution->'actors'->'actor_user_id'->>'name', '') ilike ${param}
         or coalesce(p.name, '') ilike ${param} or coalesce(p.code, '') ilike ${param}
         or coalesce(revision.content->>'displayName', definition.property_key, '') ilike ${param}
         or ae.action = any(${actions}::text[]) or ae.kind = any(${kinds}::text[]) or ae.actor_type = any(${actors}::text[])
@@ -280,7 +282,8 @@ export async function listAuditEvents(db: Queryable, query: ListAuditEventsQuery
       appended_value.value_state as appended_value_state,
       ae.actor_user_id,
       ae.actor_type,
-      u.name as actor_name,
+      ae.historical_attribution->'actors'->'actor_user_id'->>'name' as actor_name,
+      ae.historical_attribution,
       ae.app,
       ae.kind,
       ae.action,
@@ -292,9 +295,6 @@ export async function listAuditEvents(db: Queryable, query: ListAuditEventsQuery
       ae.created_at,
       to_char(ae.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_timestamp
     from audit_events ae
-    left join users u on u.id = ae.actor_user_id and ${query.includePlatformWorkflowPublication
-      ? `(u.organization_id = ae.organization_id or ${platformPublicationScope})`
-      : "u.organization_id = ae.organization_id"}
     left join projects p on p.id = ae.project_id and p.organization_id = ae.organization_id
     left join public.project_parameter_value_change_requests request
       on request.id = case when ae.target_type = 'project-parameter-value-change-request' then ae.target_id end

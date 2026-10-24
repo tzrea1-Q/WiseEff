@@ -4,6 +4,9 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
+import { createHttpServer } from "../../../shared/http/server";
+import { createRouter } from "../../../shared/http/router";
+import { requestJson } from "../../../test/testClient";
 import { createLocalObjectStore } from "../../logs/objectStore";
 import { createTrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
 import { createUserInvocation } from "../../auth/trustedInvocation";
@@ -26,6 +29,7 @@ import {
   aggregateHotspotGroups
 } from "./hotspotRepository";
 import { aggregatePersonalTrend, aggregateRiskDistribution, aggregateTrend, aggregateWorkbenchSignals, countKpis } from "./repository";
+import { registerParameterDashboardRoutes } from "./routes";
 
 const ORGANIZATION_ID = "org-dashboard-canonical-repository";
 const PROJECT_ID = "project-dashboard-canonical-repository";
@@ -449,6 +453,31 @@ describe("canonical dashboard repository", () => {
           expect(groups.map((group) => group.groupId)).toEqual(visibleIds.length ? [moduleIds.get(scope.organizationId)] : []);
         }
       }
+    }
+    const viewerId = "dashboard-isolation-roleless-viewer";
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,$1,'Viewer',true)",
+      [viewerId, first.organizationId]);
+    const viewer = makeTestAuthContext({ userId: viewerId, organizationId: first.organizationId,
+      roles: [], projectMemberships: [], permissions: ["parameter:view"] });
+    const router = createRouter();
+    registerParameterDashboardRoutes(router, { db, getCurrentAuthContext: () => viewer });
+    const server = createHttpServer(router);
+    for (const projectId of [undefined, first.projectId, second.projectId]) {
+      const query = projectId ? `?projectId=${projectId}` : "";
+      const summary = await requestJson<{ item: { kpis: { totalBindings: number }; workbenchSignals: { reviewQueue: number } } }>(
+        server, `/api/v1/parameters/dashboard/summary${query}`);
+      expect(summary.status, summary.bodyText).toBe(200);
+      expect(summary.body.item.kpis.totalBindings).toBe(projectId ? 2 : 4);
+      expect(summary.body.item.workbenchSignals.reviewQueue).toBe(0);
+      const hotspots = await requestJson<{ items: Array<{ projectId: string }> }>(
+        server, `/api/v1/parameters/dashboard/hotspots${query}`);
+      expect(hotspots.status, hotspots.bodyText).toBe(200);
+      expect(hotspots.body.items.map((item) => item.projectId).sort())
+        .toEqual(projectId ? [projectId] : [first.projectId, second.projectId].sort());
+    }
+    for (const endpoint of ["summary", "hotspots"]) {
+      const denied = await requestJson(server, `/api/v1/parameters/dashboard/${endpoint}?projectId=${foreign.projectId}`);
+      expect(denied.status, denied.bodyText).toBe(404);
     }
   }, 120_000);
 });

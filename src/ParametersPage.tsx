@@ -1,4 +1,5 @@
 import { SelectControl } from "@/components/common/SelectControl";
+import { SectionEmpty } from "@/components/common/SectionState";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import {
@@ -68,6 +69,7 @@ type ParametersPageAction =
   | { type: "DISCARD_STASHED_PARAMETER_DRAFTS"; projectId: string; parameterIds: string[] };
 
 type ParametersPageProps = {
+  parameterFileRepository?: import("@/application/ports/ParameterFileRepository").ParameterFileRepository;
   state: PrototypeState;
   dispatch: Dispatch<ParametersPageAction>;
   onNavigate: (path: string) => void;
@@ -93,6 +95,7 @@ export function ParametersPage({
   parameterActions,
   topologyRepository,
   canonicalRepository,
+  parameterFileRepository,
   listConfigSets,
   effectiveProjectId,
   topBarProjectId,
@@ -970,7 +973,7 @@ export function ParametersPage({
   return (
     <WorkbenchLayout title="项目参数">
       <div className="parameters-page-layout">
-        {isApiMode ? (
+        {isApiMode && !resolvedProjectId ? <SectionEmpty message="请先选择项目，或由管理员创建项目。" /> : isApiMode ? (
           <ApiProjectTopologyWorkspace
             projectId={resolvedProjectId}
             projectName={activeProject?.name}
@@ -981,6 +984,7 @@ export function ParametersPage({
             runtimeMode="api"
             topologyRepository={topologyRepository}
             canonicalRepository={canonicalRepository}
+            parameterFileRepository={parameterFileRepository}
             listConfigSets={listConfigSets}
             listDrafts={listDrafts}
             deleteDraft={deleteDraft}

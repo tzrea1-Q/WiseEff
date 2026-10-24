@@ -6,7 +6,6 @@ import { createAuditEvent } from "../audit/repository";
 import { getAuthContext } from "./repository";
 import { countLocalAdminBindings } from "./bootstrapLocalAdmin";
 import { authAttemptKey, createAuthAttemptLimiter, type AuthAttemptLimiter } from "./authAttemptLimiter";
-import { resolveEvaluationOrganization, type ResolvedOrganization } from "./evaluationOrganization";
 import {
   hashLocalAccountPassword,
   hashLocalSessionToken,
@@ -14,6 +13,8 @@ import {
   validateLocalAccountUsername
 } from "./localAccountCredentials";
 import type { AuthContext, BackendRoleId } from "./types";
+import { getExperienceRegistrationSettings, requireExperienceRegistrationOrganization, updateExperienceRegistrationSettings } from "./experienceRegistration";
+import type { UserInvocationContext } from "./trustedInvocation";
 export type { UpdateCurrentUserProfileInput } from "./profile";
 
 const scryptAsync = promisify(scrypt);
@@ -60,8 +61,8 @@ export type LocalAuthServiceOptions = {
   now?: () => Date;
   sessionTtlMs?: number;
   selfRegisterEnabled?: boolean;
+  registrationOrganizationId?: string;
   attemptLimiter?: AuthAttemptLimiter;
-  registrationOrganizationResolver?: (db: Queryable) => ResolvedOrganization | Promise<ResolvedOrganization>;
 };
 
 export type RegisterLocalAccountInput = {
@@ -321,10 +322,7 @@ async function hasPendingRegistrationRoleRequest(db: Queryable, userId: string) 
 export function createLocalAuthService(db: Database, options: LocalAuthServiceOptions = {}) {
   const now = options.now ?? (() => new Date());
   const sessionTtlMs = options.sessionTtlMs ?? defaultSessionTtlMs;
-  const selfRegisterEnabled = options.selfRegisterEnabled ?? true;
   const attemptLimiter = options.attemptLimiter ?? createAuthAttemptLimiter();
-  const resolveRegistrationOrganization =
-    options.registrationOrganizationResolver ?? resolveEvaluationOrganization;
 
   function consumeAttempt(kind: "login" | "register", username: string, clientIp?: string) {
     const key = authAttemptKey(kind, clientIp ?? "unknown", username);
@@ -340,24 +338,20 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
   return {
     async getPublicConfig(): Promise<LocalAuthPublicConfig> {
       const adminCount = await countLocalAdminBindings(db);
-      let evaluationOrganizationName: string | null = null;
-      try {
-        evaluationOrganizationName = (await resolveRegistrationOrganization(db)).name;
-      } catch {
-        evaluationOrganizationName = null;
-      }
+      const settings = await getExperienceRegistrationSettings(db, options);
       return {
         provider: "local",
-        selfRegisterEnabled,
+        selfRegisterEnabled: settings.enabled && settings.available,
         hasLocalAdmin: adminCount > 0,
-        evaluationOrganizationName
+        evaluationOrganizationName: settings.organizationName
       };
     },
 
+    getRegistrationSettings: () => getExperienceRegistrationSettings(db, options),
+    updateRegistrationSettings: (invocation: UserInvocationContext, input: { enabled: boolean; organizationId: string | null }, requestId: string) =>
+      updateExperienceRegistrationSettings(db, invocation, input, requestId, options),
+
     async register(input: RegisterLocalAccountInput, context: AuthAttemptContext) {
-      if (!selfRegisterEnabled) {
-        throw new ApiError("FORBIDDEN", "Self-registration is disabled.");
-      }
       const username = normalizeUsername(input.username);
       requireUsername(username);
       consumeAttempt("register", username, context.clientIp);
@@ -375,6 +369,9 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
       }
 
       return db.transaction(async (tx) => {
+        const settings = await getExperienceRegistrationSettings(tx, options, true);
+        if (!settings.enabled) throw new ApiError("FORBIDDEN", "Self-registration is disabled.", { reason: "experience-registration-disabled" });
+        const registrationOrganization = await requireExperienceRegistrationOrganization(tx, settings.organizationId, true);
         const existing = await tx.query<{ id: string }>(
           `
           select user_id as id
@@ -388,7 +385,6 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
           throw new ApiError("CONFLICT", "Username is already registered.", { username });
         }
 
-        const registrationOrganization = await resolveRegistrationOrganization(tx);
         const organizationId = registrationOrganization.id;
         const userId = `u-${randomUUID()}`;
         await tx.query(
@@ -467,9 +463,8 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
       const attemptKey = consumeAttempt("login", username, context.clientIp);
       const user = await findUserForLogin(db, username);
       if (!user || !user.password_hash || !(await verifyPassword(input.password, user.password_hash))) {
-        const organizationId =
-          user?.organization_id ??
-          (await Promise.resolve(resolveRegistrationOrganization(db)).catch(() => null))?.id;
+        const experience = user ? null : await getExperienceRegistrationSettings(db, options).catch(() => null);
+        const organizationId = user?.organization_id ?? (experience?.available ? experience.organizationId : null);
         if (organizationId) {
           await auditAuthEvent(db, {
             organizationId,
@@ -497,6 +492,11 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
       }
 
       return db.transaction(async (tx) => {
+        await tx.query("select id from users where id=$1 for no key update", [user.id]);
+        const current = await findUserForLogin(tx, username);
+        if (!current || current.id !== user.id || !current.is_active || current.organization_id !== user.organization_id || current.password_hash !== user.password_hash) {
+          throw new ApiError("UNAUTHENTICATED", "Account access changed during login; sign in again.");
+        }
         await tx.query("update users set last_active_at = $3 where organization_id = $1 and id = $2", [
           user.organization_id,
           user.id,
@@ -531,7 +531,9 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
         throw new ApiError("UNAUTHENTICATED", "Session is not active.");
       }
       await db.query("update auth_sessions set last_used_at = $2 where id = $1", [session.id, now().toISOString()]);
-      return getAuthContext(db, session.user_id);
+      const auth = await getAuthContext(db, session.user_id);
+      if (auth.organization.id !== session.organization_id) throw new ApiError("UNAUTHENTICATED", "Session belongs to a former organization; sign in again.");
+      return auth;
     },
 
     async logout(authorization: string | string[] | undefined, auth: AuthContext, context: { requestId: string }) {

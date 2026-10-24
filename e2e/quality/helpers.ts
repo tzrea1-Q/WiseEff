@@ -177,7 +177,7 @@ const ORGANIZATION_VISUAL_CREATED_AT = "2026-08-19T03:53:01.000Z";
  * the read response used by this page is normalized; the database is untouched.
  */
 export async function stabilizeOrganizationVisualClock(page: Page) {
-  await page.route("**/api/v1/organization", async (route) => {
+  await page.route(/\/api\/v1\/organization(?:\?.*)?$/, async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
       return;
@@ -288,6 +288,16 @@ export async function waitForFontsAndNextPaint(page: Page) {
  */
 export async function settleQualityRoute(page: Page, routePath: string, options: { readOnly?: boolean } = {}) {
   const timeout = 20_000;
+
+  if (["/parameter-review", "/parameter-submissions"].includes(routePath.split("?")[0])) {
+    const inbox = page.locator(".review-inbox");
+    // The shell and tabs mount before the legacy/canonical queue reads finish.
+    // The enabled refresh action and loaded table distinguish even an empty queue.
+    await expect(inbox.getByRole("button", { name: "刷新队列", exact: true })).toBeEnabled({ timeout });
+    await expect(inbox.getByRole("table", { name: routePath.split("?")[0] === "/parameter-review" ? "审阅队列" : "我的提交", exact: true })).toBeVisible({ timeout });
+    await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
+    return;
+  }
 
   if (["/parameter-admin", "/parameter-admin/specs", "/parameter-admin/identity-mapping", "/parameter-admin/specs/identity-mapping"].includes(routePath.split("?")[0])) {
     await expect(page.getByTestId("organization-specs-readiness")).toHaveAttribute("data-state", /^(ready|error)$/, { timeout });

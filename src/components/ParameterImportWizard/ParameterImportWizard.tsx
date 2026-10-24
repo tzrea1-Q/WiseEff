@@ -15,6 +15,9 @@ import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialo
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
+import type { ApiClient } from "@/infrastructure/http/apiClient";
+import { createDtsStructuredClient } from "@/infrastructure/http/dtsStructuredClient";
+import { createHttpParameterTopologyRepository } from "@/infrastructure/http/parameterTopologyClient";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { ParameterRecord, Project } from "@/domain/prototype/types";
 import { buildParameterLibraryFromRecords, buildParameterModulesFromRecords } from "@/parameterAdminLibrary";
@@ -34,17 +37,18 @@ function reviewRowMatchKey(row: ReviewedImportRow): string {
 async function libraryForImport(
   parameters: ParameterRecord[],
   projectId: string,
-  runtimeMode: WiseEffRuntimeMode | undefined
+  runtimeMode: WiseEffRuntimeMode | undefined,
+  apiClient?: ApiClient
 ): Promise<ParameterRecord[]> {
   if (runtimeMode !== "api") {
     return parameters;
   }
-  const sets = await resolveDtsStructuredRepository("api").listConfigSets(projectId);
+  const sets = await (apiClient ? createDtsStructuredClient(apiClient) : resolveDtsStructuredRepository("api")).listConfigSets(projectId);
   const configSet = sets.find((item) => item.name === "default") ?? sets[0];
   if (!configSet) {
     return [];
   }
-  const topology = resolveParameterTopologyRepository("api");
+  const topology = apiClient ? createHttpParameterTopologyRepository(apiClient) : resolveParameterTopologyRepository("api");
   const tree = await topology.getTopology(projectId, configSet.id, "current", "effective");
   const items = await topology.listBindings(projectId, tree.revisionId);
   return items.map((binding) => parameterRecordFromBinding(projectId, binding));
@@ -88,6 +92,7 @@ function reconcileReviewedRows(rows: ReviewedImportRow[], parameters: ParameterR
 export type ParameterImportWizardStep = 1 | 2 | 3 | 4 | 5;
 
 export type ParameterImportWizardProps = {
+  apiClient?: ApiClient;
   open: boolean;
   onClose: () => void;
   projects: Project[];
@@ -127,6 +132,7 @@ function downloadImportTemplate() {
 }
 
 export function ParameterImportWizard({
+  apiClient,
   open,
   onClose,
   projects,
@@ -138,7 +144,7 @@ export function ParameterImportWizard({
   runtimeMode
 }: ParameterImportWizardProps) {
   const isApiMode = runtimeMode === "api";
-  const adminClient = useMemo(() => createParameterAdminClient(), []);
+  const adminClient = useMemo(() => createParameterAdminClient(apiClient), [apiClient]);
   const [step, setStep] = useState<ParameterImportWizardStep>(1);
   const [targetProjectId, setTargetProjectId] = useState(activeProjectId);
   const [sourceName, setSourceName] = useState("");
@@ -256,7 +262,7 @@ export function ParameterImportWizard({
       return false;
     }
     try {
-      const library = await libraryForImport(parameters, projectId, runtimeMode);
+      const library = await libraryForImport(parameters, projectId, runtimeMode, apiClient);
       if (requestGeneration !== importRequestGeneration.current) {
         return false;
       }

@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../parameters/operatingScope";
 import { createHash, randomUUID } from "node:crypto";
 
 import type { Database } from "../../shared/database/client";
@@ -10,7 +11,7 @@ import type { CatalogSnapshot } from "../catalog-kernel/interface";
 import type { ObjectStore } from "../logs/objectStore";
 import { CatalogSubjectId, DefinitionRevisionId, ParameterBindingId, ParameterDefinitionId, ProjectValueId, SubjectRegistrationId, serializeContract, type ContractJsonValue } from "../parameter-catalog-contract";
 import { readSourceRegistrationAgreement } from "../parameter-bindings/binding";
-import { canEditParameters, canReviewParameters, canReviewParameterStage } from "../parameter-kernel/policy";
+import { canReviewParameters, canReviewParameterStage } from "../parameter-kernel/policy";
 import { hasCurrentCanonicalReviewRole } from "../parameters/reviewWorkflowRepository";
 import { asValueClient, dtsValueToPayload, listObservedProperties, rawTextToPayload } from "../parameter-bindings/catalogProjectValueSync";
 import { appendProjectValue, type ProjectValuePayload } from "../parameter-bindings/values";
@@ -77,10 +78,10 @@ export async function commitCanonicalSourceBatchRevision(
       projectId: input.projectId, operation: "canonical batch source apply",
       targetType: "project-parameter-value-change-request", targetId: input.requestId
     });
-    if (!canEditParameters(auth, input.projectId) || !canReviewParameters(auth)
+    if (!canReviewParameters(auth)
       || !canReviewParameterStage(auth, input.projectId, "software_review")
       || !await hasCurrentCanonicalReviewRole(tx, {
-        organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
+        organizationId: parameterOrganizationId(auth), projectId: input.projectId, userId: auth.user.id
       })) {
       await recordCanonicalPermissionRefusal(security, {
         projectId: input.projectId, operation: "canonical batch source apply",
@@ -91,7 +92,7 @@ export async function commitCanonicalSourceBatchRevision(
     }
     const initial = (await tx.query<Request>(`select * from public.project_parameter_value_change_requests
       where id=$1 and organization_id=$2 and project_id=$3 and request_kind='batch'`,
-    [input.requestId, auth.organization.id, input.projectId])).rows[0];
+    [input.requestId, parameterOrganizationId(auth), input.projectId])).rows[0];
     if (!initial) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
     if (initial.submitter_user_id === auth.user.id) throw new ApiError("FORBIDDEN", "The submitter cannot approve their own parameter change.");
     if (initial.status === "approved") {
@@ -114,7 +115,7 @@ export async function commitCanonicalSourceBatchRevision(
              and audit.organization_id=request.organization_id and audit.project_id=request.project_id
              and audit.target_id=request.id and audit.action='value-change-applied'
           where request.id=$1 and request.organization_id=$2 and request.project_id=$3`,
-        [initial.id, auth.organization.id, input.projectId])).rows[0];
+        [initial.id, parameterOrganizationId(auth), input.projectId])).rows[0];
       if (!replay || replay.target_count !== initial.batch_target_count
         || replay.complete_count !== initial.batch_target_count
         || replay.candidate_status !== "active"
@@ -147,7 +148,7 @@ export async function commitCanonicalSourceBatchRevision(
       });
     const request = (await tx.query<Request>(`select * from public.project_parameter_value_change_requests
       where id=$1 and organization_id=$2 and project_id=$3 and request_kind='batch' for update`,
-      [input.requestId, auth.organization.id, input.projectId])).rows[0];
+      [input.requestId, parameterOrganizationId(auth), input.projectId])).rows[0];
     if (!request || request.status !== "pending" || request.submitter_user_id === auth.user.id
       || request.candidate_id !== proof.candidateId || request.batch_file_id !== proof.fileId
       || request.batch_base_version_id !== proof.baseVersionId || request.batch_config_set_id !== proof.configSetId
@@ -163,7 +164,7 @@ export async function commitCanonicalSourceBatchRevision(
       || !same(request.candidate_binding_manifest, proof.cohort)) conflict("Batch request no longer matches the locked source proof.");
     const targets = (await tx.query<Target>(`select * from public.project_parameter_value_change_targets
       where request_id=$1 and organization_id=$2 and project_id=$3 order by ordinal for update`,
-      [request.id, auth.organization.id, input.projectId])).rows;
+      [request.id, parameterOrganizationId(auth), input.projectId])).rows;
     if (!composition && targets.some((target) => target.draft_id !== null || target.frozen_draft_id !== null)) {
       conflict("Unproved draft target cannot reach the batch source writer.");
     }
@@ -187,7 +188,7 @@ export async function commitCanonicalSourceBatchRevision(
       frozen_member_manifest: unknown; frozen_binding_manifest: unknown;
     }>(`select *,size_bytes::float8 as size_bytes from public.project_parameter_file_candidates
       where id=$1 and organization_id=$2 and project_id=$3 for update`,
-      [proof.candidateId, auth.organization.id, input.projectId])).rows[0];
+      [proof.candidateId, parameterOrganizationId(auth), input.projectId])).rows[0];
     if (!candidate || candidate.status !== "ready" || candidate.base_digest !== proof.baseDigest
       || candidate.proposed_digest !== proof.proposedDigest || candidate.diff_digest !== proof.batchProofDigest
       || !same(candidate.frozen_member_manifest, proof.members)
@@ -210,7 +211,7 @@ export async function commitCanonicalSourceBatchRevision(
     const first = proof.cohort[0];
     if (!first) conflict("Batch has no source cohort.");
     const base = await loadCanonicalSourceSnapshot(tx, storage, {
-      organizationId: auth.organization.id, projectId: input.projectId,
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId,
       bindingId: first.bindingId, projectValueId: first.oldValueId
     });
     const manifest = base.manifest;
@@ -222,13 +223,13 @@ export async function commitCanonicalSourceBatchRevision(
       const pinned = [];
       for (const target of targets) {
         const source = await loadCanonicalSourceSnapshot(tx, storage, {
-          organizationId: auth.organization.id, projectId: input.projectId,
+          organizationId: parameterOrganizationId(auth), projectId: input.projectId,
           bindingId: target.binding_id, projectValueId: target.base_current_value_id
         });
         if (source.manifest.sourcePinId !== target.source_pin_id
           || source.manifest.fileId !== proof.fileId || source.manifest.fileVersionId !== proof.baseVersionId
           || source.manifest.format !== "dts") conflict("DTS batch target lost its exact source pin.");
-        await assertPinnedCanonicalSensitiveNodeWriteAllowed(tx, auth, source.manifest, security);
+        await assertPinnedCanonicalSensitiveNodeWriteAllowed(tx, auth, source.manifest, security, "review");
         pinned.push(source.manifest);
       }
       const changes = await readPinnedDtsSourceBatchChanges(tx, pinned, base.files[sourceIndex]!.content, after);
@@ -262,7 +263,7 @@ export async function commitCanonicalSourceBatchRevision(
         [manifest.configRevisionId])).rows[0];
       if (!previous?.entry_file) conflict("DTS batch source has no complete entry manifest.");
       const revision = await ingestConfigRevisionInTransaction(tx, {
-        organizationId: auth.organization.id, projectId: input.projectId, configSetId: proof.configSetId,
+        organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: proof.configSetId,
         entryFile: previous.entry_file, includeSearchPaths: previous.include_search_paths,
         overlayOrder: previous.overlay_order, members
       }, auth, { createdByUserId: attribution.userId, domain: attribution },
@@ -272,7 +273,7 @@ export async function commitCanonicalSourceBatchRevision(
     } else {
       revisionId = randomUUID();
       await insertConfigRevision(tx, {
-        id: revisionId, organizationId: auth.organization.id, projectId: input.projectId,
+        id: revisionId, organizationId: parameterOrganizationId(auth), projectId: input.projectId,
         configSetId: proof.configSetId, revisionNumber: await nextConfigRevisionNumber(tx, proof.configSetId),
         status: "resolved", attribution
       });
@@ -295,7 +296,7 @@ export async function commitCanonicalSourceBatchRevision(
         || stored.definition_id !== entry.definitionId
         || stored.effective_revision_id !== entry.effectiveRevisionId) conflict("Batch Binding base is stale.");
       const registration = await readSourceRegistrationAgreement(tx, {
-        organizationId: auth.organization.id, subjectId: stored.subject_id
+        organizationId: parameterOrganizationId(auth), subjectId: stored.subject_id
       });
       if (registration?.id !== stored.registration_id
         || snapshot.getDefinitionRevision({
@@ -303,7 +304,7 @@ export async function commitCanonicalSourceBatchRevision(
           revisionId: DefinitionRevisionId(stored.effective_revision_id)
         }).status !== "found") conflict("Batch Binding definition or registration is unavailable.");
       const sibling = await loadCanonicalSourceSnapshot(tx, storage, {
-        organizationId: auth.organization.id, projectId: input.projectId,
+        organizationId: parameterOrganizationId(auth), projectId: input.projectId,
         bindingId: entry.bindingId, projectValueId: entry.oldValueId
       });
       const pin = sibling.manifest;
@@ -403,7 +404,7 @@ export async function commitCanonicalSourceBatchRevision(
          config_revision_id,file_id,file_version_id,format,locator,locator_digest,property_occurrence_id,
          value_state,base_source_pin_id,delete_request_id,delete_proof)
         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15,$16,$17,$18::jsonb)`,
-      [pinId, valueId, entry.bindingId, entry.definitionId, auth.organization.id, input.projectId,
+      [pinId, valueId, entry.bindingId, entry.definitionId, parameterOrganizationId(auth), input.projectId,
         entry.sourceOccurrenceId, revisionId, pin.fileId, fileVersionId,
         pin.format, JSON.stringify(locator), locatorDigest,
         pin.format === "dts" && !deleted ? locator.propertyOccurrenceId : null,

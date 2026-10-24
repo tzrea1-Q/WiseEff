@@ -157,11 +157,13 @@ describe("dts search routes", () => {
     const db = makeDb();
     vi.mocked(dtsSearchService.searchProjectDts).mockResolvedValue(hitsBody);
     const response = await requestJson(makeServer({ db, auth: makeViewOnlyAuth() }),
-      "/api/v1/projects/project-1/dts-search?q=sample&navigationScope=organization&organizationId=other-org");
+      "/api/v1/projects/project-1/dts-search?q=sample&navigationScope=organization");
     expect(response.status).toBe(200);
     expect(dtsSearchService.searchProjectDts).toHaveBeenCalledWith(db, {
       organizationId: "org-1", principalId: "user-1", projectId: "project-1", q: "sample", navigationScope: "organization",
     });
+    const foreign = await requestJson(makeServer({ db, auth: makeViewOnlyAuth() }), "/api/v1/projects/project-1/dts-search?q=sample&organizationId=other-org");
+    expect(foreign.status).toBe(403);
   });
 
   it("rejects unsupported navigation scopes and unauthorized scoped searches", async () => {

@@ -3,12 +3,15 @@ import { isUtf8 } from "node:buffer";
 
 import { asAuditTx, writeAuditEventInTx, type AuditSpec, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext, AuditSeverity } from "../audit/types";
-import type { AuthContext } from "../auth/types";
-import { assertTrustedInvocationMatchesAuth, createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
-import { sanitizeFileName, type ObjectStore } from "../logs/objectStore";
+import { assertKnowledgeInvocationMatches, knowledgeOrganizationId, type KnowledgeAccessContext as AuthContext } from "./scope";
+import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
+
+import { sanitizeFileName, type ObjectStore, type StoredObject } from "../logs/objectStore";
 import { getLogRecord } from "../logs/service";
+import { withLogInvocation } from "../logs/principal";
 import { getReloadRunRecord } from "../dts-reload/service";
-import type { Database, Queryable } from "../../shared/database/client";
+import { isRootDatabase, type Database, type Queryable, type RootDatabase } from "../../shared/database/client";
+import { withKnowledgeAttachmentWrite } from "./attachmentWrites";
 import { ApiError, serializeApiError } from "../../shared/http/errors";
 import { readCatalogDefinitionForKnowledge, listCatalogDefinitionsForKnowledge } from "../parameter-catalog-api/productionWire";
 import { buildLogAnalysisProvenanceNotice, buildLogDistillationDraft } from "./distillation";
@@ -83,7 +86,7 @@ import type {
   ListKnowledgeEntriesQuery
 } from "./types";
 
-export type KnowledgeServiceContext = AuditCorrelationContext & { importBatchId?: string };
+export type KnowledgeServiceContext = AuditCorrelationContext & { importBatchId?: string; attachmentRoot?: RootDatabase };
 
 export type KnowledgeFileUploadInput = {
   fileName: string;
@@ -102,6 +105,11 @@ export type UpdateKnowledgeEntryInput = {
   contentMarkdown?: string;
   file?: KnowledgeFileUploadInput;
 };
+
+/** Preserve routed provenance; legacy direct Home callers retain their existing User entry. */
+export function knowledgeServiceInvocation(auth: AuthContext) {
+  return auth.knowledgeInvocation ?? createUserInvocation(auth);
+}
 
 function knowledgeEntryNotFound(entryId: string) {
   return new ApiError("NOT_FOUND", "Knowledge entry was not found.", { entryId });
@@ -197,7 +205,7 @@ async function runFileExtraction(
           // The chunk projection reads the extracted text, so a published file
           // entry re-enqueues once extraction lands (covers the worker racing
           // ahead of a file replacement's extraction).
-          await enqueueEntryIndexRefresh(tx, { entryId: input.entryId, organizationId: auth.organization.id });
+          await enqueueEntryIndexRefresh(tx, { entryId: input.entryId, organizationId: knowledgeOrganizationId(auth) });
         }
       }
     }
@@ -231,7 +239,7 @@ export async function createKnowledgeEntry(
   rawInput: CreateKnowledgeEntryInput,
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
-  const invocation = createUserInvocation(auth);
+  const invocation = knowledgeServiceInvocation(auth);
   requireKnowledgeEdit(auth);
 
   const input = prepareKnowledgeEntry(rawInput);
@@ -293,16 +301,13 @@ export async function createKnowledgeEntry(
   }
 
   const bytes = input.bytes;
-  const stored = await objectStore.put({
-    organizationId: auth.organization.id,
-    fileName: `knowledge-${randomUUID()}-${input.file.fileName}`,
-    contentType: input.file.contentType,
-    bytes
-  });
-
-  stored.fileName = sanitizeFileName(input.file.fileName);
   const fileId = randomUUID();
-  const storedFile = await db.transaction(async (tx) => {
+  const storedFile = await withKnowledgeAttachmentWrite(db, isRootDatabase(db) ? db : context.attachmentRoot, objectStore, {
+    organizationId: knowledgeOrganizationId(auth), fileName: `knowledge-${randomUUID()}-${input.file.fileName}`,
+    contentType: input.file.contentType, bytes
+  }, async (tx, put) => {
+    const stored = await put();
+    stored.fileName = sanitizeFileName(input.file.fileName);
     await insertEntry(tx, auth, {
       id: entryId,
       title: input.title,
@@ -462,7 +467,7 @@ export async function distillKnowledgeFromLog(
 ): Promise<KnowledgeEntryDto> {
   requireKnowledgeEdit(auth);
 
-  const log = await getLogRecord(db, auth, input.logId);
+  const log = await getLogRecord(db, auth.knowledgeInvocation ? withLogInvocation(auth, auth.knowledgeInvocation) : auth, input.logId);
   if (log.status !== "complete") {
     throw new ApiError("VALIDATION_FAILED", "Only completed log analyses can be distilled into knowledge.", {
       logId: input.logId,
@@ -474,7 +479,7 @@ export async function distillKnowledgeFromLog(
   return createMarkdownDraftWithSource(
     db,
     auth,
-    createUserInvocation(auth),
+    knowledgeServiceInvocation(auth),
     {
       ...draft,
       origin: "distilled",
@@ -519,7 +524,7 @@ export async function distillKnowledgeFromReloadRun(
 ): Promise<KnowledgeEntryDto> {
   requireKnowledgeEdit(auth);
 
-  const run = await getReloadRunRecord(db, auth, input.runId);
+  const run = await getReloadRunRecord(db, auth, input.runId, auth.knowledgeInvocation);
   if (!isReloadRunDistillable(run.status)) {
     throw new ApiError(
       "VALIDATION_FAILED",
@@ -532,7 +537,7 @@ export async function distillKnowledgeFromReloadRun(
   return createMarkdownDraftWithSource(
     db,
     auth,
-    createUserInvocation(auth),
+    knowledgeServiceInvocation(auth),
     {
       ...draft,
       origin: "distilled",
@@ -576,14 +581,14 @@ export async function createAgentKnowledgeDraft(
   invocation: TrustedInvocationContext,
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Agent knowledge draft");
+  assertKnowledgeInvocationMatches(auth, invocation, "Agent knowledge draft");
   requireKnowledgeEdit(auth);
 
   let sourceLogId: string | null = null;
   let contentMarkdown = input.contentMarkdown;
   if (input.sourceLogId) {
     // Linking is a read of the analysis record: same logs:view + org scope gate.
-    const log = await getLogRecord(db, auth, input.sourceLogId);
+    const log = await getLogRecord(db, auth.knowledgeInvocation ? withLogInvocation(auth, auth.knowledgeInvocation) : auth, input.sourceLogId);
     sourceLogId = log.id;
     const notice = buildLogAnalysisProvenanceNotice(log);
     if (notice && !contentMarkdown.startsWith(notice)) {
@@ -594,7 +599,7 @@ export async function createAgentKnowledgeDraft(
   let sourceReloadRunId: string | null = null;
   if (input.sourceReloadRunId) {
     // Linking is a read of the run: same reload read gate + org scope as the API path.
-    const run = await getReloadRunRecord(db, auth, input.sourceReloadRunId);
+    const run = await getReloadRunRecord(db, auth, input.sourceReloadRunId, auth.knowledgeInvocation);
     sourceReloadRunId = run.id;
   }
 
@@ -639,7 +644,7 @@ export async function rejectAgentKnowledgeDraft(
   entryId: string,
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
-  const invocation = createUserInvocation(auth);
+  const invocation = knowledgeServiceInvocation(auth);
   await db.transaction(async (tx) => {
     const entry = await getEntryForUpdate(tx, auth, entryId);
     if (!entry || !canReadEntry(auth, entry)) {
@@ -689,13 +694,13 @@ export async function updateKnowledgeEntry(
   input: UpdateKnowledgeEntryInput,
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
-  const invocation = createUserInvocation(auth);
+  const invocation = knowledgeServiceInvocation(auth);
   if (!hasKnowledgeManage(auth)) requireKnowledgeEdit(auth);
 
-  let uploadedBytes: Buffer | null = null;
+  const uploadedBytes = input.file ? decodeFileUpload(input.file) : null;
   let storedForExtraction: { file: KnowledgeFileDto; bytes: Buffer } | null = null;
 
-  await db.transaction(async (tx) => {
+  const save = async (tx: Database, put?: () => Promise<StoredObject>) => {
     const entry = await getEntryForUpdate(tx, auth, entryId);
     if (!entry || !canReadEntry(auth, entry)) {
       throw knowledgeEntryNotFound(entryId);
@@ -744,13 +749,8 @@ export async function updateKnowledgeEntry(
       let searchContent: string | null =
         entry.file && entry.file.extractionStatus === "succeeded" ? await getFileByIdForSearch(tx, auth, entry.file.id) : null;
       if (input.file) {
-        uploadedBytes = decodeFileUpload(input.file);
-        const stored = await objectStore.put({
-          organizationId: auth.organization.id,
-          fileName: `knowledge-${randomUUID()}-${input.file.fileName}`,
-          contentType: input.file.contentType,
-          bytes: uploadedBytes
-        });
+        if (!put || !uploadedBytes) throw new Error("Knowledge attachment custody unavailable");
+        const stored = await put();
         stored.fileName = sanitizeFileName(input.file.fileName);
         const file = await insertFile(tx, auth, {
           id: randomUUID(),
@@ -802,7 +802,13 @@ export async function updateKnowledgeEntry(
       },
       context
     );
-  });
+  };
+  if (input.file && uploadedBytes) {
+    await withKnowledgeAttachmentWrite(db, isRootDatabase(db) ? db : context.attachmentRoot, objectStore, {
+      organizationId: knowledgeOrganizationId(auth), fileName: `knowledge-${randomUUID()}-${input.file.fileName}`,
+      contentType: input.file.contentType, bytes: uploadedBytes
+    }, save);
+  } else await db.transaction(tx => save(tx));
 
   if (storedForExtraction !== null) {
     const pendingExtraction = storedForExtraction as { file: KnowledgeFileDto; bytes: Buffer };
@@ -849,7 +855,7 @@ async function transitionKnowledgeEntry(
     await setEntryStatus(tx, auth, { entryId, status: input.toStatus });
     // Publish and restore add the entry to the retrieval index; archive removes
     // it (the worker deletes chunks for any non-published entry).
-    await enqueueEntryIndexRefresh(tx, { entryId, organizationId: auth.organization.id });
+    await enqueueEntryIndexRefresh(tx, { entryId, organizationId: knowledgeOrganizationId(auth) });
     await writeKnowledgeAudit(
       asAuditTx(tx),
       invocation,
@@ -878,7 +884,7 @@ export async function publishKnowledgeEntry(
   return transitionKnowledgeEntry(
     db,
     auth,
-    createUserInvocation(auth),
+    knowledgeServiceInvocation(auth),
     entryId,
     { fromStatuses: ["draft"], toStatus: "published", kind: "knowledge-entry-publish", action: "publish" },
     context
@@ -894,7 +900,7 @@ export async function archiveKnowledgeEntry(
   return transitionKnowledgeEntry(
     db,
     auth,
-    createUserInvocation(auth),
+    knowledgeServiceInvocation(auth),
     entryId,
     { fromStatuses: ["draft", "published"], toStatus: "archived", kind: "knowledge-entry-archive", action: "archive" },
     context
@@ -912,7 +918,7 @@ export async function batchKnowledgeEntries(
 ) {
   requireKnowledgeView(auth);
   const requestId = context.requestId ?? randomUUID();
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Knowledge batch");
+  assertKnowledgeInvocationMatches(auth, invocation, "Knowledge batch");
   const results: {
     entryId: string; title: string | null; status: "succeeded" | "refused" | "failed";
     entry: KnowledgeEntryDto | null; error: { code: string; message: string; reason?: string } | null;
@@ -985,7 +991,7 @@ export async function restoreKnowledgeEntry(
   return transitionKnowledgeEntry(
     db,
     auth,
-    createUserInvocation(auth),
+    knowledgeServiceInvocation(auth),
     entryId,
     { fromStatuses: ["archived"], toStatus: "published", kind: "knowledge-entry-restore", action: "restore" },
     context
@@ -998,7 +1004,7 @@ export async function hardDeleteKnowledgeEntry(
   entryId: string,
   context: KnowledgeServiceContext = {}
 ): Promise<void> {
-  const invocation = createUserInvocation(auth);
+  const invocation = knowledgeServiceInvocation(auth);
   requireKnowledgeManage(auth);
 
   await db.transaction(async (tx) => {
@@ -1087,7 +1093,7 @@ export async function addKnowledgeDefinitionReference(
   input: { entryId: string; definitionId: string; fromSuggestion?: boolean },
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Knowledge definition reference");
+  assertKnowledgeInvocationMatches(auth, invocation, "Knowledge definition reference");
   await db.transaction((tx) => addKnowledgeDefinitionReferenceInTx(db, tx, auth, invocation, input, context));
   const entry = await getEntryById(db, auth, input.entryId);
   if (!entry) throw knowledgeEntryNotFound(input.entryId);
@@ -1102,14 +1108,14 @@ async function addKnowledgeDefinitionReferenceInTx(
   if (input.fromSuggestion) {
     const suggestion = await tx.query<{ status: string }>(
       "select status from knowledge_reference_suggestions where organization_id = $1 and entry_id = $2 and definition_id = $3 for update",
-      [auth.organization.id, input.entryId, input.definitionId]
+      [knowledgeOrganizationId(auth), input.entryId, input.definitionId]
     );
     if (!suggestion.rows[0] || !["pending", "accepted"].includes(suggestion.rows[0].status)) {
       throw new ApiError("CONFLICT", "Reference suggestion is not pending.", { reason: "suggestion-not-pending" });
     }
     await tx.query(
       "update knowledge_reference_suggestions set status = 'accepted', updated_at = now() where organization_id = $1 and entry_id = $2 and definition_id = $3",
-      [auth.organization.id, input.entryId, input.definitionId]
+      [knowledgeOrganizationId(auth), input.entryId, input.definitionId]
     );
   }
   if (await hasDefinitionReference(tx, auth, input)) return;
@@ -1162,11 +1168,11 @@ async function listPendingReferenceSuggestions(db: Queryable, auth: AuthContext,
      join knowledge_entries e on e.organization_id = s.organization_id and e.id = s.entry_id
      where s.organization_id = $1 and ($2::uuid is null or s.entry_id = $2) and s.status = 'pending'
        and e.status <> 'archived' and ($3::text[] is null or s.definition_id = any($3::text[]))
-       and ($4::boolean or (e.created_by_user_id = $5 and $6::boolean))
+       and ($4::boolean or (e.responsible_user_id = $5 and $6::boolean))
        and not exists (select 1 from knowledge_definition_references r
          where r.organization_id = s.organization_id and r.entry_id = s.entry_id and r.definition_id = s.definition_id)
      order by s.mention_count desc, s.property_key, s.definition_id`,
-    [auth.organization.id, entryId ?? null, definitionIds,
+    [knowledgeOrganizationId(auth), entryId ?? null, definitionIds,
       canGovernKnowledgeEntry(auth, { createdByUserId: null }), auth.user.id,
       canGovernKnowledgeEntry(auth, { createdByUserId: auth.user.id })]
   );
@@ -1193,13 +1199,13 @@ export async function dismissKnowledgeReferenceSuggestion(
   db: Database, auth: AuthContext, invocation: TrustedInvocationContext,
   input: { entryId: string; definitionId: string }, context: KnowledgeServiceContext = {}
 ) {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Knowledge reference suggestion dismissal");
+  assertKnowledgeInvocationMatches(auth, invocation, "Knowledge reference suggestion dismissal");
   await db.transaction(async (tx) => {
     await requireReferenceEditableEntry(tx, auth, input.entryId);
     const changed = await tx.query(
       `update knowledge_reference_suggestions set status = 'dismissed', updated_at = now()
        where organization_id = $1 and entry_id = $2 and definition_id = $3 and status = 'pending'
-       returning definition_id`, [auth.organization.id, input.entryId, input.definitionId]
+       returning definition_id`, [knowledgeOrganizationId(auth), input.entryId, input.definitionId]
     );
     if (!changed.rowCount) return;
     await writeKnowledgeAudit(asAuditTx(tx), invocation, {
@@ -1215,7 +1221,7 @@ export async function removeKnowledgeParameterReference(
   input: { entryId: string; specId: string },
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
-  const invocation = createUserInvocation(auth);
+  const invocation = knowledgeServiceInvocation(auth);
   await db.transaction(async (tx) => {
     const entry = await requireReferenceEditableEntry(tx, auth, input.entryId);
 
@@ -1254,7 +1260,7 @@ export async function removeKnowledgeDefinitionReference(
   input: { entryId: string; definitionId: string },
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
-  const invocation = createUserInvocation(auth);
+  const invocation = knowledgeServiceInvocation(auth);
   await db.transaction(async (tx) => {
     const entry = await requireReferenceEditableEntry(tx, auth, input.entryId);
     const removed = await deleteDefinitionReference(tx, auth, input);
@@ -1292,7 +1298,7 @@ export async function findRelatedKnowledgeForSpec(
 ): Promise<{ items: KnowledgeSearchResultDto[] }> {
   requireKnowledgeView(auth);
 
-  const spec = await resolveReferenceableSpec(db, auth.organization.id, input.specId);
+  const spec = await resolveReferenceableSpec(db, knowledgeOrganizationId(auth), input.specId);
   if (!spec) {
     throw new ApiError("NOT_FOUND", "Parameter definition was not found.", { specId: input.specId });
   }
@@ -1363,7 +1369,7 @@ export async function restoreKnowledgeRevision(
   input: { expectedHeadRevisionNumber: number },
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
-  const invocation = createUserInvocation(auth);
+  const invocation = knowledgeServiceInvocation(auth);
   requireKnowledgeEdit(auth);
 
   await db.transaction(async (tx) => {
@@ -1448,7 +1454,7 @@ async function getFileByIdForSearch(tx: Queryable, auth: AuthContext, fileId: st
       and id = $2
     limit 1
     `,
-    [auth.organization.id, fileId]
+    [knowledgeOrganizationId(auth), fileId]
   );
   const row = result.rows[0];
   return row && row.extraction_status === "succeeded" ? row.extracted_text : null;
@@ -1548,7 +1554,7 @@ export async function findRelatedKnowledgeForLog(
 ): Promise<KnowledgeSearchResponseDto> {
   requireKnowledgeView(auth);
 
-  const log = await getLogRecord(db, auth, input.logId);
+  const log = await getLogRecord(db, auth.knowledgeInvocation ? withLogInvocation(auth, auth.knowledgeInvocation) : auth, input.logId);
   if (log.status !== "complete") {
     throw new ApiError("VALIDATION_FAILED", "Only completed log analyses have related knowledge.", {
       logId: input.logId,
@@ -1651,7 +1657,7 @@ export async function getKnowledgeIndexHealth(
       vectorAvailable,
       embeddingConfigured
     },
-    items: await listIndexStatuses(db, auth.organization.id)
+    items: await listIndexStatuses(db, knowledgeOrganizationId(auth))
   };
 }
 
@@ -1661,14 +1667,14 @@ export async function retryKnowledgeEntryIndex(
   entryId: string,
   context: KnowledgeServiceContext = {}
 ): Promise<void> {
-  const invocation = createUserInvocation(auth);
+  const invocation = knowledgeServiceInvocation(auth);
   requireKnowledgeManage(auth);
   await db.transaction(async (tx) => {
     const entry = await getEntryById(tx, auth, entryId);
     if (!entry) {
       throw knowledgeEntryNotFound(entryId);
     }
-    await enqueueEntryIndexRefresh(tx, { entryId, organizationId: auth.organization.id });
+    await enqueueEntryIndexRefresh(tx, { entryId, organizationId: knowledgeOrganizationId(auth) });
     await writeKnowledgeAudit(
       asAuditTx(tx),
       invocation,
@@ -1690,11 +1696,11 @@ export async function rebuildKnowledgeIndex(
   invocation: TrustedInvocationContext,
   context: KnowledgeServiceContext = {}
 ): Promise<{ enqueued: number }> {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Knowledge index rebuild");
+  assertKnowledgeInvocationMatches(auth, invocation, "Knowledge index rebuild");
   requireKnowledgeManage(auth);
   let enqueued = 0;
   await db.transaction(async (tx) => {
-    enqueued = await enqueueAllPublishedEntries(tx, auth.organization.id);
+    enqueued = await enqueueAllPublishedEntries(tx, knowledgeOrganizationId(auth));
     await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId: context.requestId ?? randomUUID() }, {
       app: "knowledge",
       kind: "knowledge-index-rebuild",
@@ -1702,7 +1708,7 @@ export async function rebuildKnowledgeIndex(
       severity: "Medium",
       projectId: null,
       targetType: "knowledge-index",
-      targetId: auth.organization.id,
+      targetId: knowledgeOrganizationId(auth),
       metadata: { enqueued }
     });
   });
@@ -1713,11 +1719,11 @@ export async function rescanKnowledgeReferenceSuggestions(
   db: Database, auth: AuthContext, invocation: TrustedInvocationContext,
   context: KnowledgeServiceContext = {}
 ): Promise<{ enqueued: number }> {
-  assertTrustedInvocationMatchesAuth(auth, invocation, "Knowledge reference suggestions rescan");
+  assertKnowledgeInvocationMatches(auth, invocation, "Knowledge reference suggestions rescan");
   requireKnowledgeManage(auth);
   const requestId = context.requestId ?? randomUUID();
   const result = await db.transaction(async (tx) => {
-    const enqueued = await countReferenceSuggestionRescanEntries(tx, auth.organization.id);
+    const enqueued = await countReferenceSuggestionRescanEntries(tx, knowledgeOrganizationId(auth));
     await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId }, {
       app: "knowledge",
       kind: "knowledge-reference-suggestions-rescan",
@@ -1725,12 +1731,12 @@ export async function rescanKnowledgeReferenceSuggestions(
       severity: "Medium",
       projectId: null,
       targetType: "knowledge-reference-suggestions",
-      targetId: auth.organization.id,
+      targetId: knowledgeOrganizationId(auth),
       metadata: { enqueued }
     });
     return { enqueued };
   });
-  void scanKnowledgeReferenceSuggestions(db, { organizationId: auth.organization.id, requestId }).catch((error) => {
+  void scanKnowledgeReferenceSuggestions(db, { organizationId: knowledgeOrganizationId(auth), requestId }).catch((error) => {
     console.error("[knowledge-reference-suggestions] Organization rescan failed:", { requestId, error });
   });
   return result;

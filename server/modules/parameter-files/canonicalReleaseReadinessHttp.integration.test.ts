@@ -20,6 +20,7 @@ import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
 import { addConfigSetFile, createConfigSet } from "./configSetService";
 import { uploadProjectParameterFile } from "./service";
+import { parameterObjectWriteCustody } from "./objectWriteCustody";
 import type { ReleaseReadinessResult } from "./releaseReadinessService";
 
 const organizationId = "org-1061";
@@ -31,7 +32,7 @@ const admin = makeTestAuthContext({ userId: adminId, organizationId });
 
 describe("#1061 assembled-server canonical release readiness", () => {
   let db: RootDatabase;
-  let storage: ReturnType<typeof createLocalObjectStore>;
+  let storage: ReturnType<typeof parameterObjectWriteCustody>;
   let directory: string;
   let databaseName: string;
   let server: ReturnType<typeof createWiseEffServer>;
@@ -50,7 +51,7 @@ describe("#1061 assembled-server canonical release readiness", () => {
     db = createPostgresDatabase(connection.toString());
     await applyTestMigrations(db, migrationsDir);
     directory = await mkdtemp(join(tmpdir(), "wiseeff-t1061-readiness-"));
-    storage = createLocalObjectStore(directory);
+    storage = parameterObjectWriteCustody(db, createLocalObjectStore(directory));
     await seedCoreGraph(db, {
       organization: { id: organizationId },
       users: [{ id: adminId }, { id: authorId }, { id: reviewerId }],
@@ -61,6 +62,8 @@ describe("#1061 assembled-server canonical release readiness", () => {
       ('author-role-1061',$3,$2,$5,'software-user'),
       ('reviewer-role-1061',$4,$2,$5,'software-committer')`,
     [adminId, organizationId, authorId, reviewerId, projectId]);
+    await db.query(`insert into project_members(organization_id,project_id,user_id,roles)
+      values ($1,$2,$3,array['software-user'])`, [organizationId, projectId, authorId]);
     await installConfigurationSourceFixture(db, admin, {
       subjectId: "csub_acme_power", schemaId: "wiseeff.1061.readiness"
     });
@@ -82,13 +85,13 @@ describe("#1061 assembled-server canonical release readiness", () => {
     if (directory) await rm(directory, { recursive: true, force: true });
   });
 
-  async function request(path: string, userId = adminId, body?: unknown) {
+  async function request<Body = unknown>(path: string, userId = adminId, body?: unknown) {
     const response = await fetch(`${baseUrl}${path}`, {
       method: body === undefined ? "GET" : "POST",
       headers: { "Content-Type": "application/json", "X-WiseEff-User": userId },
       ...(body === undefined ? {} : { body: JSON.stringify(body) })
     });
-    return { status: response.status, body: await response.json() };
+    return { status: response.status, body: JSON.parse(await response.text()) as Body };
   }
 
   async function source(name: string, sourceProjectId = projectId, singletonProbe = false) {
@@ -124,18 +127,18 @@ describe("#1061 assembled-server canonical release readiness", () => {
   }
 
   async function readiness(source: { configSetId: string; projectId: string }): Promise<ReleaseReadinessResult> {
-    const result = await request(`/api/v1/projects/${source.projectId}/config-sets/${source.configSetId}/release-readiness`);
+    const result = await request<{ item: ReleaseReadinessResult }>(`/api/v1/projects/${source.projectId}/config-sets/${source.configSetId}/release-readiness`);
     expect(result.status, JSON.stringify(result.body)).toBe(200);
     expect(result.body.item.available).toBe(true);
     return result.body.item;
   }
 
   async function submit(selected: Awaited<ReturnType<typeof source>>) {
-    const draft = await request(`/api/v2/projects/${selected.projectId}/parameter-bindings/${selected.bindingId}/drafts`, authorId, {
+    const draft = await request<{ item: { draftId: string } }>(`/api/v2/projects/${selected.projectId}/parameter-bindings/${selected.bindingId}/drafts`, authorId, {
       baseRevisionId: selected.revisionId, sourceTarget: { format: "json", sourceText: "50" }, reason: "#1061 pending review"
     });
     expect(draft.status, JSON.stringify(draft.body)).toBe(201);
-    const submitted = await request(`/api/v2/projects/${selected.projectId}/parameter-value-drafts/${draft.body.item.draftId}/submit`, authorId, {
+    const submitted = await request<{ item: { id: string; status: string } }>(`/api/v2/projects/${selected.projectId}/parameter-value-drafts/${draft.body.item.draftId}/submit`, authorId, {
       assignedToUserId: reviewerId
     });
     expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
@@ -160,7 +163,7 @@ describe("#1061 assembled-server canonical release readiness", () => {
         href: `/parameter-review?project=${encodeURIComponent(projectId)}&request=${encodeURIComponent(requestId)}`
       })
     }));
-    const reviewed = await request(`/api/v2/projects/${projectId}/parameter-value-change-requests/${requestId}/${decision === "withdraw" ? "withdraw" : "review"}`,
+    const reviewed = await request<{ item: { status: string } }>(`/api/v2/projects/${projectId}/parameter-value-change-requests/${requestId}/${decision === "withdraw" ? "withdraw" : "review"}`,
       decision === "withdraw" ? authorId : reviewerId, decision === "withdraw" ? {} : { decision });
     expect(reviewed.status, JSON.stringify(reviewed.body)).toBe(200);
     expect(reviewed.body.item.status).toBe({ approve: "approved", reject: "rejected", withdraw: "withdrawn" }[decision]);
@@ -175,7 +178,7 @@ describe("#1061 assembled-server canonical release readiness", () => {
     const selected = await source(`stale-${action}`);
     const initial = await readiness(selected);
     expect(initial.canRelease, JSON.stringify(initial)).toBe(true);
-    const baseline = await request(`/api/v1/projects/${projectId}/config-sets/${selected.configSetId}/baselines`, adminId, {
+    const baseline = await request<{ item: { id: string } }>(`/api/v1/projects/${projectId}/config-sets/${selected.configSetId}/baselines`, adminId, {
       name: `baseline-${action}`, gateToken: initial.gateToken
     });
     expect(baseline.status, JSON.stringify(baseline.body)).toBe(201);
@@ -184,7 +187,7 @@ describe("#1061 assembled-server canonical release readiness", () => {
     const path = action === "create"
       ? `/api/v1/projects/${projectId}/config-sets/${selected.configSetId}/baselines`
       : `/api/v1/projects/${projectId}/baselines/${baseline.body.item.id}/release`;
-    const result = await request(path, adminId, { gateToken: confirmed.gateToken, ...(action === "create" ? { name: "must-not-create" } : {}) });
+    const result = await request<{ error: { details: { code: string } } }>(path, adminId, { gateToken: confirmed.gateToken, ...(action === "create" ? { name: "must-not-create" } : {}) });
     expect(result.status, JSON.stringify(result.body)).toBe(409);
     expect(result.body.error.details.code).toBe("readiness-gate-stale");
     const saved = await db.query<{ status: string; count: number }>(
@@ -198,19 +201,19 @@ describe("#1061 assembled-server canonical release readiness", () => {
     const initial = await readiness(selected);
     expect(initial.canRelease, JSON.stringify(initial)).toBe(true);
     const baseline = action === "release"
-      ? await request(`/api/v1/projects/${projectId}/config-sets/${selected.configSetId}/baselines`, adminId, {
+      ? await request<{ item: { id: string } }>(`/api/v1/projects/${projectId}/config-sets/${selected.configSetId}/baselines`, adminId, {
         name: "atomic-release", gateToken: initial.gateToken
       })
       : undefined;
     if (baseline) expect(baseline.status, JSON.stringify(baseline.body)).toBe(201);
-    const draft = await request(`/api/v2/projects/${projectId}/parameter-bindings/${selected.bindingId}/drafts`, authorId, {
+    const draft = await request<{ item: { draftId: string } }>(`/api/v2/projects/${projectId}/parameter-bindings/${selected.bindingId}/drafts`, authorId, {
       baseRevisionId: selected.revisionId, sourceTarget: { format: "json", sourceText: "50" }, reason: "#1071 interleaving"
     });
     expect(draft.status, JSON.stringify(draft.body)).toBe(201);
     const confirmed = await readiness(selected);
     const barrier = await getRootPostgresPool(db)!.connect();
-    let mutation: ReturnType<typeof request> | undefined;
-    let submission: ReturnType<typeof request> | undefined;
+    let mutation: ReturnType<typeof request<{ error: { details: { code: string } } }>> | undefined;
+    let submission: ReturnType<typeof request<{ item: { id: string } }>> | undefined;
     let submissionWaited = false;
     try {
       await barrier.query("begin");
@@ -219,7 +222,7 @@ describe("#1061 assembled-server canonical release readiness", () => {
       const path = action === "create"
         ? `/api/v1/projects/${projectId}/config-sets/${selected.configSetId}/baselines`
         : `/api/v1/projects/${projectId}/baselines/${baseline!.body.item.id}/release`;
-      mutation = request(path, adminId, {
+      mutation = request<{ error: { details: { code: string } } }>(path, adminId, {
         gateToken: confirmed.gateToken, ...(action === "create" ? { name: "atomic-create" } : {})
       });
       let mutationPid: number | undefined;
@@ -231,7 +234,7 @@ describe("#1061 assembled-server canonical release readiness", () => {
         mutationPid = blocked.rows[0]!.pid;
       }, { timeout: 10_000, interval: 20 });
       let submitted = false;
-      submission = request(`/api/v2/projects/${projectId}/parameter-value-drafts/${draft.body.item.draftId}/submit`, authorId, {
+      submission = request<{ item: { id: string } }>(`/api/v2/projects/${projectId}/parameter-value-drafts/${draft.body.item.draftId}/submit`, authorId, {
         assignedToUserId: reviewerId
       }).then((result) => { submitted = true; return result; });
       await vi.waitFor(async () => {
@@ -268,7 +271,7 @@ describe("#1061 assembled-server canonical release readiness", () => {
   it.each(["create", "release"] as const)("#1071 keeps external validation outside the %s serialization lock", async (action) => {
     const selected = await source(`validation-lock-${action}`);
     const initial = await readiness(selected);
-    const baseline = action === "release" ? await request(
+    const baseline = action === "release" ? await request<{ item: { id: string } }>(
       `/api/v1/projects/${projectId}/config-sets/${selected.configSetId}/baselines`, adminId,
       { name: "validation-lock-release", gateToken: initial.gateToken }
     ) : undefined;
@@ -323,6 +326,8 @@ describe("#1061 assembled-server canonical release readiness", () => {
     await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values
       ('author-other-1061',$1,$2,'other-project-1061','software-user'),
       ('reviewer-other-1061',$3,$2,'other-project-1061','software-committer')`, [authorId, organizationId, reviewerId]);
+    await db.query(`insert into project_members(organization_id,project_id,user_id,roles)
+      values ($1,'other-project-1061',$2,array['software-user'])`, [organizationId, authorId]);
     const otherProject = await source("other-project", "other-project-1061");
     await submit(otherProject);
     const unaffected = await readiness(selected);

@@ -6,6 +6,20 @@
 
 ## 使用方式
 
+`ORG-OPERATING-LIFECYCLE-001`：在隔离的真实本地密码 API 模式、1440×900 下，以平台管理员、组织管理员、受邀编辑者、非参与者、离职和调动账号连续完成创建、邀请预设、明确项目授权、交接、调动、停用恢复及混合删除。实际文件故障后刷新页面仍能重试并收敛为最小回执；其他认证模式明确跳过本地密码流程，受控签名 OIDC 连续性另有独立证据。真实 API/worker SQL LOGIN、PostgreSQL、文件和本机 HTTP 回调另验停用期间暂停、恢复继续及新连接重试。文件为 `e2e/acceptance/organization-operational-lifecycle.acceptance.spec.ts` 和 `server/modules/users/organizationOperationalLifecycle.integration.test.ts`。
+
+`ORG-MIXED-ERASURE-RECOVERY-001`：1440×900 API 浏览器确认四域混合组织删除，显示真实对象故障、继续清理并检查最小回执。真实 API/PostgreSQL、文件与独立检查点专项另行恢复已删除、失败两种旧备份，验证先落实删除状态、再开放访问；实际存储身份不符或归属未知时拒绝开放。现有升级包装测试核对队列、代理的开放顺序；整栈 MinIO/Redis 及目标主机恢复属于单独证据。文件为 `e2e/acceptance/organization-mixed-erasure.acceptance.spec.ts`、`server/modules/users/organizationMixedErasure.integration.test.ts` 和 `ops/self-hosted/scripts/upgrade-organization-erasure-recovery.test.ts`。
+
+`ORG-PARAMETER-ERASURE-001`、`ORG-KNOWLEDGE-ERASURE-001`、`ORG-LOG-ERASURE-001`、`ORG-RUNTIME-ERASURE-001`：在 1440×900 的真实 API 模式组织目录中，分别确认项目参数文件、知识附件/索引、日志/排队分析、反馈文件/跨组织通知清理。每个专属浏览器文件覆盖真实故障和持久进度重试；真实 PostgreSQL 与实际存储专项另外覆盖共享引用、响应丢失、晚到生产者、检查点存储、设备连接和真实 HTTP 回调，不用单个浏览器操作代替这些后台证明。对应文件为 `e2e/acceptance/organization-{parameter,knowledge,log,runtime}-erasure.acceptance.spec.ts`。
+
+`ORG-EMPTY-ERASURE-001`：通过影响预览和组织编号确认删除仅含管理数据的组织，立即撤销访问，在成员与组织消失后仍可读取独立进度并重试。未知归属仍阻止准入；最小回执不保留业务内容。`ORG-DELETION-PREVIEW-001`：只读查看与刷新明确组织的数量盘点、共享资源和备份边界，不把预览当作删除授权；普通管理员被拒绝。专属文件分别为 `e2e/acceptance/organization-empty-erasure.acceptance.spec.ts` 和 `e2e/acceptance/organization-deletion-preview.acceptance.spec.ts`。
+
+`ORG-LIFECYCLE-001`：平台管理员在 1440×900 的真实 API 模式组织目录中确认停用与恢复，支持键盘操作和服务失败后重试；成员仍可查看资料，显示一条准确的只读提示，后台拒绝业务写入，恢复不启用单独停用的成员。专属浏览器文件为 `e2e/acceptance/organization-lifecycle.acceptance.spec.ts`；真实 PostgreSQL 文件为 `server/modules/users/organizationLifecycle.integration.test.ts`，另覆盖 SQL LOGIN、并发、任务收尾、机器访问、通知领取、Webhook、设备及已有数据升级。
+
+`ORG-ACCOUNT-TRANSFER-001`：平台管理员在真实本地密码 API 模式、1440×900 的成员页预览源组织权限、凭据和待交接事项，明确配置目标组织角色，处理调动失败并重试。调动后旧会话和个人配对失效，原密码重新登录目标组织；源组织草稿、审核待办、历史署名及机器凭据保留。专属浏览器文件为 `e2e/acceptance/organization-account-transfer.acceptance.spec.ts`，真实 PostgreSQL 文件为 `server/modules/users/accountTransfer.integration.test.ts`。HMAC/OIDC 模式跳过本地密码交互，不作为本项本地登录验收。
+
+`ORG-OIDC-TRANSFER-001`：在隔离的受控 OIDC API 通道、1440×900 成员页预览所需组织声明，处理真实目标身份冲突，查看同步等待状态并重试失败的状态刷新；只有通过签名、组织声明和显式绑定校验的新登录才会完成同步。浏览器文件为 `e2e/acceptance/organization-oidc-transfer.acceptance.spec.ts`，真实签名认证及 PostgreSQL 文件为 `server/modules/users/oidcAccountTransfer.integration.test.ts`。其他认证通道跳过本条件用例；受控本地身份系统不代表部署身份系统验收。
+
 `LOG-REGISTER-001`：Admin 在 1440x900 的技能工作区编辑寄存器位段与映射，预览粘贴表格的有效行及逐行拒绝原因后导入，往返 YAML，并选择常驻样例面板中的日志行查看位条数值与枚举含义。组件和 PostgreSQL 集成测试已覆盖；协调者执行浏览器走查，专属浏览器自动化尚待补充，不记为已完成的自动化浏览器覆盖。
 
 `PCAT-REGISTRATION-INITIALIZE-001`：组织管理员明确选择业务父分类和目标名称，在同一事务创建对应类型目标并登记主体。组件及真实 PostgreSQL 并发、租户隔离、失败回滚已有专项覆盖；专属浏览器写入与审计回执仍待补，不记为已完成的自动化浏览器覆盖。

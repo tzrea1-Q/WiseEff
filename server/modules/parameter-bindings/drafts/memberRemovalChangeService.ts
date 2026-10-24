@@ -1,5 +1,7 @@
+import { parameterOrganizationId } from "../../parameters/operatingScope";
 /** #906 C: the existing canonical request ledger for reviewed JSON member removal. */
 import { randomUUID } from "node:crypto";
+import { historicalActorSql } from "../../../shared/database/historicalAttribution";
 
 import { getRootPostgresPool, type Database } from "../../../shared/database/client";
 import { ApiError } from "../../../shared/http/errors";
@@ -55,7 +57,7 @@ const dto = (row: Row): CanonicalMemberRemovalRequestDto => ({
 });
 
 async function ownedProject(db: Database, auth: AuthContext, projectId: string) {
-  if (!await getProjectById(db, { organizationId: auth.organization.id, projectId })) {
+  if (!await getProjectById(db, { organizationId: parameterOrganizationId(auth), projectId })) {
     throw new ApiError("NOT_FOUND", "Project was not found for this organization.");
   }
 }
@@ -63,14 +65,14 @@ async function load(db: Database, auth: AuthContext, projectId: string, requestI
   return (await db.query<Row>(`select * from public.project_parameter_value_change_requests
     where id=$1 and organization_id=$2 and project_id=$3 and request_kind='member-removal' and member_application_mode='separate_review'
     ${lock ? "for update" : ""}`,
-  [requestId, auth.organization.id, projectId])).rows[0] ?? null;
+  [requestId, parameterOrganizationId(auth), projectId])).rows[0] ?? null;
 }
 async function currentReviewer(db: Database, auth: AuthContext, projectId: string,
   context: Context, requestId: string) {
-  if (canEditParameters(auth, projectId) && canReviewParameters(auth)
+  if (canReviewParameters(auth)
     && canReviewParameterStage(auth, projectId, "software_review")
     && await hasCurrentCanonicalReviewRole(db, {
-      organizationId: auth.organization.id, projectId, userId: auth.user.id
+      organizationId: parameterOrganizationId(auth), projectId, userId: auth.user.id
     })) return;
   await recordCanonicalPermissionRefusal(security(context), {
     projectId, operation: "canonical member removal review",
@@ -105,17 +107,17 @@ export async function submitCanonicalMemberRemoval(
   }
   return db.transaction(async (tx) => {
     const reviewer = await lockUserById(tx, {
-      organizationId: auth.organization.id, userId: input.assignedToUserId
+      organizationId: parameterOrganizationId(auth), userId: input.assignedToUserId
     });
     if (!reviewer || !await hasEligibleWorkflowAssignee(tx, {
-      organizationId: auth.organization.id, projectId: input.projectId,
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId,
       userId: input.assignedToUserId, roleId: "software-committer"
     })) throw new ApiError("VALIDATION_FAILED", "The selected software reviewer is no longer eligible.");
     const proof = await prepareCanonicalMemberRemoval(tx, storage, auth, input);
     const pending = await tx.query<Row>(`select * from public.project_parameter_value_change_requests
       where organization_id=$1 and project_id=$2 and member_file_id=$3
         and request_kind='member-removal' and status='pending'`,
-    [auth.organization.id, input.projectId, input.fileId]);
+    [parameterOrganizationId(auth), input.projectId, input.fileId]);
     if (pending.rows.length) {
       const prior = pending.rows[0]!;
       if (prior.submitter_user_id === auth.user.id
@@ -129,11 +131,11 @@ export async function submitCanonicalMemberRemoval(
        assigned_to_user_id,member_file_id,member_config_set_id,member_file_version_id,
        member_proof_digest,member_frozen_proof)
       values ($1,$2,$3,'member-removal',$4,'pending',$5,$6,$7,$8,$9,$10,$11::jsonb)
-      returning *`, [id, auth.organization.id, input.projectId, reason, auth.user.id,
+      returning *`, [id, parameterOrganizationId(auth), input.projectId, reason, auth.user.id,
       input.assignedToUserId, proof.fileId, proof.configSetId, proof.fileVersionId,
       proof.proofDigest, JSON.stringify(proof)])).rows[0]!;
     await writeTrustedGovernanceAudit(asAuditTx(tx), input.invocation, {
-      action: "value-change-submitted", organizationId: auth.organization.id,
+      action: "value-change-submitted", organizationId: parameterOrganizationId(auth),
       projectId: input.projectId, targetType: "project-parameter-value-change-request", targetId: id,
       metadata: { requestId: id, requestKind: "member-removal", fileId: proof.fileId,
         configSetId: proof.configSetId, proofDigest: proof.proofDigest }
@@ -146,21 +148,19 @@ export async function getCanonicalMemberRemovalForAuth(db: Database, auth: AuthC
   input: { projectId: string; requestId: string }): Promise<CanonicalMemberRemovalRequestDto | null> {
   await ownedProject(db, auth, input.projectId);
   if (!auth.user.isActive || !canViewParameters(auth)) throw new ApiError("FORBIDDEN", "Parameter view access is required.");
-  const row = (await db.query<Row>(`select request.*, submitter.name as submitter_name,
-    assignee.name as assigned_to_name, reviewer.name as reviewer_name
+  const row = (await db.query<Row>(`select request.*, ${historicalActorSql("request", "submitter_user_id")} as submitter_name,
+    assignee.name as assigned_to_name, ${historicalActorSql("request", "reviewer_user_id")} as reviewer_name
     from public.project_parameter_value_change_requests request
-    left join public.users submitter on submitter.id=request.submitter_user_id and submitter.organization_id=request.organization_id
     left join public.users assignee on assignee.id=request.assigned_to_user_id and assignee.organization_id=request.organization_id
-    left join public.users reviewer on reviewer.id=request.reviewer_user_id and reviewer.organization_id=request.organization_id
     where request.id=$1 and request.organization_id=$2 and request.project_id=$3 and request.request_kind='member-removal'
       and request.member_application_mode='separate_review'`,
-    [input.requestId, auth.organization.id, input.projectId])).rows[0];
+    [input.requestId, parameterOrganizationId(auth), input.projectId])).rows[0];
   if (!row) return null;
   if (row.submitter_user_id === auth.user.id) return dto(row);
   if (row.assigned_to_user_id === auth.user.id && canReviewParameters(auth)
     && canReviewParameterStage(auth, input.projectId, "software_review")
     && await hasCurrentCanonicalReviewRole(db, {
-      organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId, userId: auth.user.id
     })) return dto(row);
   return null;
 }
@@ -172,19 +172,17 @@ export async function listCanonicalMemberRemovalsForAuth(db: Database, auth: Aut
   const reviewer = !input.mine && canReviewParameters(auth)
     && canReviewParameterStage(auth, input.projectId, "software_review")
     && await hasCurrentCanonicalReviewRole(db, {
-      organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId, userId: auth.user.id
     });
-  const rows = await db.query<Row>(`select request.*, submitter.name as submitter_name,
-    assignee.name as assigned_to_name, reviewer.name as reviewer_name
+  const rows = await db.query<Row>(`select request.*, ${historicalActorSql("request", "submitter_user_id")} as submitter_name,
+    assignee.name as assigned_to_name, ${historicalActorSql("request", "reviewer_user_id")} as reviewer_name
     from public.project_parameter_value_change_requests request
-    left join public.users submitter on submitter.id=request.submitter_user_id and submitter.organization_id=request.organization_id
     left join public.users assignee on assignee.id=request.assigned_to_user_id and assignee.organization_id=request.organization_id
-    left join public.users reviewer on reviewer.id=request.reviewer_user_id and reviewer.organization_id=request.organization_id
     where request.organization_id=$1 and request.project_id=$2 and request.request_kind='member-removal'
       and request.member_application_mode='separate_review'
       and ($3::text is null or request.status=$3)
       and (request.submitter_user_id=$4 or ($5::boolean and request.assigned_to_user_id=$4))
-    order by request.updated_at desc,request.id`, [auth.organization.id, input.projectId,
+    order by request.updated_at desc,request.id`, [parameterOrganizationId(auth), input.projectId,
     input.status ?? null, auth.user.id, reviewer]);
   return rows.rows.map(dto);
 }
@@ -242,7 +240,7 @@ export async function reviewCanonicalMemberRemoval(db: Database, storage: Object
         set status='rejected',reviewer_user_id=$2,reviewer_note=$3,updated_at=now()
         where id=$1 and status='pending'`, [locked.id, auth.user.id, input.note ?? null]);
       await writeTrustedGovernanceAudit(asAuditTx(tx), input.invocation, {
-        action: "value-change-reviewed", organizationId: auth.organization.id,
+        action: "value-change-reviewed", organizationId: parameterOrganizationId(auth),
         projectId: input.projectId, targetType: "project-parameter-value-change-request", targetId: locked.id,
         metadata: { requestId: locked.id, requestKind: "member-removal", decision: "reject",
           proofDigest: locked.member_proof_digest }
@@ -276,7 +274,7 @@ export async function withdrawCanonicalMemberRemoval(db: Database, auth: AuthCon
       set status='withdrawn',reviewer_user_id=$2,updated_at=now()
       where id=$1 and status='pending' returning *`, [row.id, auth.user.id])).rows[0]!;
     await writeTrustedGovernanceAudit(asAuditTx(tx), input.invocation, {
-      action: "value-change-withdrawn", organizationId: auth.organization.id,
+      action: "value-change-withdrawn", organizationId: parameterOrganizationId(auth),
       projectId: input.projectId, targetType: "project-parameter-value-change-request", targetId: row.id,
       metadata: { requestId: row.id, requestKind: "member-removal", proofDigest: row.member_proof_digest }
     }, input.traceId);

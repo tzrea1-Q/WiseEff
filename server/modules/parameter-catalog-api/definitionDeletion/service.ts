@@ -64,11 +64,17 @@ async function readErasure(db: Queryable, definitionId: string): Promise<Erasure
 }
 
 /** Retry is idempotent; no deleted definition content is retained to finish object cleanup. */
-async function finishObjectCleanup(db: Database, definitionId: string, state: ErasureState, stores: DefinitionArchiveStores) {
+async function finishObjectCleanup(db: Database, definitionId: string, actorId: string, state: ErasureState, stores: DefinitionArchiveStores) {
   for (const reference of state.pending_object_refs) {
     try {
-      await deleteErasedArchiveObject(reference, stores, db);
-      await db.query("select parameter_catalog.finish_parameter_definition_erasure_object($1,$2)", [definitionId, reference]);
+      await db.transaction(async tx => {
+        const ready = (await tx.query<{ ready: boolean }>("select parameter_catalog.lock_definition_erasure_object($1,$2,$3) as ready",
+          [definitionId, actorId, reference])).rows[0]?.ready;
+        if (ready === false) return;
+        if (ready !== true) throw new Error("Definition object custody is unavailable");
+        await deleteErasedArchiveObject(reference, stores, tx);
+        await tx.query("select parameter_catalog.finish_parameter_definition_erasure_object($1,$2)", [definitionId, reference]);
+      });
     } catch {
       throw new ApiError("CONFLICT", "定义记录已移除，但归档清理未完成。请重试完成清理。", {
         reason: "definition-erasure-cleanup-pending", definitionId,
@@ -97,7 +103,7 @@ export async function deleteDefinition(db: Database, invocation: TrustedInvocati
       if (error instanceof pg.DatabaseError) throw error;
       throw new ApiError("CONFLICT", "当前规范快照无法安全删除，请先修复数据一致性。", { reason: "definition-erasure-catalog-drift" });
     });
-    const archiveErasure = await prepareDefinitionArchiveErasure(preview, stores, { db: tx });
+    const archiveErasure = await prepareDefinitionArchiveErasure(preview, stores, { db: tx, rootDb: db });
     preparedArchive = archiveErasure;
     const erased = await tx.query<{ result: { erased: boolean; counts: Record<string, number>; pendingObjectRefs: string[] } }>(
       "select parameter_catalog.purge_parameter_definition($1,$2::jsonb,$3,$4) as result",
@@ -120,14 +126,14 @@ export async function deleteDefinition(db: Database, invocation: TrustedInvocati
     if (rolledBack && preparedArchive) await cleanupPreparedArchiveErasure(preparedArchive, stores, db);
     rethrowErasureConflict(error);
   });
-  await finishObjectCleanup(db, definitionId, result, stores);
+  await finishObjectCleanup(db, definitionId, auth.user.id, result, stores);
   return { item: { definitionId, deleted: true as const, counts: result.counts, originalFilesRetained: true as const } };
 }
 
 export async function listDefinitionErasures(db: Database, auth: AuthContext) {
   requireDefinitionErasureAdministrator(auth);
   const result = await db.query<{ definition_id: string; erased_at: Date; pending_object_refs: string[] }>(
-    "select * from parameter_catalog.list_definition_erasures($1) where cardinality(pending_object_refs)>0", [auth.organization.id]);
+    "select * from parameter_catalog.list_platform_definition_erasures()");
   return { items: result.rows.map(row => ({ definitionId: row.definition_id,
     deletedAt: row.erased_at.toISOString(), pendingObjectCount: row.pending_object_refs.length })) };
 }
@@ -140,17 +146,15 @@ export async function retryDefinitionCleanup(db: Database, invocation: TrustedIn
   requireDefinitionErasureAdministrator(auth);
   const actor = projectTrustedInvocationForAudit(trusted);
   const state = await db.transaction(async tx => {
-    const result = await tx.query<ErasureState>(
-      "select * from parameter_catalog.list_definition_erasures($1) where definition_id=$2", [auth.organization.id, definitionId]);
-    const receipt = result.rows[0];
-    if (!receipt) throw new ApiError("NOT_FOUND", "本组织没有此参数定义的删除回执。");
+    const receipt = await readErasure(tx, definitionId);
+    if (!receipt) throw new ApiError("NOT_FOUND", "平台没有此参数定义的删除回执。");
     await writePlatformAuditEvent(tx, { id: randomUUID(), app: "parameters", kind: "governance",
       action: "definition-cleanup-retried", severity: "High", projectId: null,
       targetType: "parameter-definition", targetId: definitionId, actorUserId: actor.actorUserId,
-      actorType: actor.actorType, traceId: requestId, affectedOrganizationIds: [auth.organization.id],
+      actorType: actor.actorType, traceId: requestId, affectedOrganizationIds: [],
       metadata: { ...actor.metadata, pendingObjectCount: receipt.pending_object_refs.length } });
     return receipt;
   });
-  await finishObjectCleanup(db, definitionId, state, stores);
+  await finishObjectCleanup(db, definitionId, auth.user.id, state, stores);
   return { item: { definitionId, deleted: true as const, counts: state.counts, originalFilesRetained: true as const } };
 }

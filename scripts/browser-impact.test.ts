@@ -14,6 +14,15 @@ const inventory: BrowserInventory = {
 };
 
 describe("browser impact selection", () => {
+  it("measures organization settings at their real route without dropping overview or compact coverage", () => {
+    expect(compactQualityRoutes).toHaveLength(9);
+    expect(compactQualityRoutes.filter((route) => route.template === "SettingsFormPage").map((route) => route.path))
+      .toEqual(["/organization/settings"]);
+    expect(consistencyRoutes.find((route) => route.path === "/organization")?.required).toContain("viewSwitches");
+    expect(consistencyRoutes.find((route) => route.path === "/organization/settings")?.required).toContain("settingsForms");
+    expect(routeOwnership["src/OrganizationPage.tsx"]).toContain("/organization/settings");
+  });
+
   it("selects knowledge acceptance flows visiting /logs for a logs change", () => {
     const selection = selectBrowserImpact(["src/features/log-analysis/LogsPage.tsx"]);
 
@@ -28,6 +37,9 @@ describe("browser impact selection", () => {
       "e2e/acceptance/log-skill-design-goals.acceptance.spec.ts",
       "e2e/acceptance/log-skill-knowledge.acceptance.spec.ts",
       "e2e/acceptance/log904-related-parameter.acceptance.spec.ts",
+      "e2e/acceptance/organization-log-scope.acceptance.spec.ts",
+      "e2e/acceptance/organization-overview.acceptance.spec.ts",
+      "e2e/acceptance/organization-resources.acceptance.spec.ts",
       "e2e/acceptance/shell-navigation.acceptance.spec.ts",
       "e2e/acceptance/skill-experiment-deletion.acceptance.spec.ts",
       "e2e/acceptance/skill-lifecycle.acceptance.spec.ts",
@@ -84,12 +96,14 @@ describe("browser impact selection", () => {
     expect(home.qualityRoutes).toEqual(["/parameter-home"]);
     expect(home.acceptanceSpecs).toEqual([
       "e2e/acceptance/canonical-dashboard.acceptance.spec.ts",
+      "e2e/acceptance/experience-registration.acceptance.spec.ts",
       "e2e/acceptance/issue897-canonical-modules.acceptance.spec.ts",
       "e2e/acceptance/parameter-admin-projects.acceptance.spec.ts",
       "e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts",
       "e2e/acceptance/parameter-catalog.acceptance.spec.ts",
       "e2e/acceptance/parameter-home.acceptance.spec.ts",
       "e2e/acceptance/permissions-matrix.acceptance.spec.ts",
+      "e2e/acceptance/platform-organizations.acceptance.spec.ts",
       "e2e/acceptance/project-configuration-workbench.acceptance.spec.ts",
       "e2e/acceptance/shell-navigation.acceptance.spec.ts",
       "e2e/acceptance/xiaoze-popup-layout.acceptance.spec.ts",

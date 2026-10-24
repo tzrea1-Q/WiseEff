@@ -10,6 +10,8 @@ import {
 import { permissionsForRoles } from "../auth/policy";
 import type { UsageProjectScope } from "../parameter-bindings/usage";
 import { createUserInvocation } from "../auth/trustedInvocation";
+import { resolveOperatingContext } from "../auth/operatingContext";
+import { parameterOrganizationId, parameterRequestAccess } from "../parameters/operatingScope";
 import { createCatalogKernel, type CatalogKernel, type CatalogSubjectDetailSnapshot } from "../catalog-kernel/interface";
 import { isCatalogProjectionEmpty, readCurrentCatalogPointer } from "../catalog-kernel/install/currentPointer";
 import {
@@ -433,44 +435,48 @@ const catalogProjectScope = (auth: AuthContext): UsageProjectScope | null => {
   return { kind: "only", ids: [...new Set(eligible.flatMap((binding) => binding.projectId === null ? [] : [binding.projectId]))] };
 };
 
-const catalogScope = (auth: AuthContext): TrustedCatalogScope => {
+const catalogScope = (auth: AuthContext, organizationId = auth.organization.id): TrustedCatalogScope => {
   const actorKind = catalogActorKind(auth);
   const projectScope = catalogProjectScope(auth);
   return {
     principalId: auth.user.id,
-    organizationId: auth.organization.id,
+    organizationId,
     actorKind,
     canReadCatalog: projectScope !== null && canViewParameters(auth),
-    canRegister: actorKind === "org-admin",
+    canRegister: (actorKind === "org-admin" || actorKind === "platform-admin") && auth.roles.some((role) => role.projectId === null && (role.roleId === "admin" || role.roleId === "platform-admin")),
     projectScope: projectScope ?? { kind: "only", ids: [] },
     subjects: { kind: "all" },
     definitions: { kind: "all" },
   };
 };
 
-const governanceScope = (auth: AuthContext): TrustedGovernanceScope => {
+const governanceScope = (auth: AuthContext, invocation?: ReturnType<typeof createUserInvocation>): TrustedGovernanceScope => {
   const actorKind = governanceActorKind(auth);
   return {
     principalId: auth.user.id,
-    organizationId: auth.organization.id,
+    organizationId: invocation?.operatingOrganization?.id ?? auth.organization.id,
     actorKind,
     canReadGovernance: canViewParameters(auth),
-    canMutateOrganization: actorKind === "org-admin",
+    canMutateOrganization: actorKind === "org-admin" || actorKind === "platform-admin",
     canReviewProposals: actorKind === "platform-admin",
     defaultDestinationModuleId: "",
     defaultSubjectKind: "driver",
-    trustedActor: createUserInvocation(auth),
+    trustedActor: invocation ?? createUserInvocation(auth),
   };
 };
 
 const authenticateCatalog =
-  (resolveAuth: CatalogApiAuthResolver) =>
+  (resolveAuth: CatalogApiAuthResolver, db?: Database) =>
   async (request: CatalogReadRequest) => {
     const auth = await resolveAuth(request as RouteRequest);
     if (!auth.user.isActive) {
       return { ok: false as const, status: 401 as const };
     }
-    return { ok: true as const, scope: catalogScope(auth) };
+    if (request.query.organizationId === undefined) return { ok: true as const, scope: catalogScope(auth) };
+    const invocation = governanceScope(auth).trustedActor;
+    if (!invocation || invocation.initiator !== "user") return { ok: false as const, status: 403 as const };
+    const access = await parameterRequestAccess(db, invocation, request as RouteRequest);
+    return { ok: true as const, scope: catalogScope(auth, parameterOrganizationId(access)) };
   };
 
 const authenticateGovernance =
@@ -482,27 +488,29 @@ const authenticateGovernance =
     }
     const scope = governanceScope(auth);
     const matched = matchCatalogGovernanceRoute(request.method, request.path);
-    const organizationDetail = matched?.id === "catalog.getRegistration" &&
-      matched.params.organizationId === auth.organization.id &&
-      auth.roles.some((role) => role.roleId === "admin" && role.projectId === null);
+    const organizationDetail = matched?.id === "catalog.getRegistration";
     if (matched && (organizationDetail || [
       "catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem",
       "catalog.createRegistration", "catalog.retireRegistration", "catalog.restoreRegistration", "catalog.updatePlacement"
     ].includes(matched.id))) {
-      if (matched.params.organizationId !== auth.organization.id ||
-        !auth.roles.some((role) => role.roleId === "admin" && role.projectId === null)) {
+      const targetId = matched.params.organizationId;
+      if (!targetId || (request.query.organizationId !== undefined && request.query.organizationId !== targetId) ||
+        !auth.roles.some((role) => role.projectId === null && (role.roleId === "platform-admin" || (targetId === auth.organization.id && role.roleId === "admin")))) {
+        if (organizationDetail) return { ok: true as const, scope: { ...scope, canMutateOrganization: false } };
         return { ok: false as const, status: 403 as const };
       }
       const organizationAdmin = pool && await pool.query<{ authorized: boolean }>(
         `select exists (select 1 from public.user_role_bindings
-          where user_id = $1 and organization_id = $2 and project_id is null and role_id = 'admin') as authorized`,
-        [auth.user.id, auth.organization.id],
+          where user_id = $1 and organization_id = $2 and project_id is null and (role_id = 'platform-admin' or (role_id = 'admin' and organization_id = $3))) as authorized`,
+        [auth.user.id, auth.organization.id, targetId],
       );
       if (!organizationAdmin?.rows[0]?.authorized) {
         if (organizationDetail) return { ok: true as const, scope: { ...scope, canMutateOrganization: false } };
         return { ok: false as const, status: 403 as const };
       }
-      return { ok: true as const, scope: { ...scope, actorKind: "org-admin" as const, canMutateOrganization: true } };
+      if (!scope.trustedActor || scope.trustedActor.initiator !== "user") return { ok: false as const, status: 403 as const };
+      const invocation = await resolveOperatingContext(pool!, scope.trustedActor, targetId);
+      return { ok: true as const, scope: governanceScope(auth, invocation) };
     }
     return { ok: true as const, scope };
   };
@@ -687,7 +695,7 @@ const createReadPorts = (
       registration: unavailableRegistrationProjection,
       usage: unavailableUsageProjection,
       timeline: kernelOnlyTimelineComposer,
-      authenticate: authenticateCatalog(resolveAuth),
+      authenticate: authenticateCatalog(resolveAuth, db),
     };
   }
 
@@ -701,7 +709,7 @@ const createReadPorts = (
     registration: createRegistrationProjectionFromQueries(queries),
     usage: createUsageProjectionFromQueries(usage),
     timeline: kernelOnlyTimelineComposer,
-    authenticate: authenticateCatalog(resolveAuth),
+    authenticate: authenticateCatalog(resolveAuth, db),
   };
 };
 
@@ -990,6 +998,11 @@ export const registerParameterCatalogApi = (
   );
   registerCatalogDriverCompatibleDiscoveryRoute(router, {
     db: options.db, objectStore: options.objectStore, resolveAuth: options.resolveAuth,
+    resolveInvocation: async (request) => {
+      const invocation = governanceScope(await options.resolveAuth(request)).trustedActor;
+      if (!invocation || invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "A real user is required for organization discovery.");
+      return invocation;
+    },
   });
   registerDefinitionDeletionRoutes(router, options);
   registerCatalogDefinitionReplacementRoutes(

@@ -8,6 +8,7 @@ import { createPrototypeState } from "./mockData";
 import { declarationsFor, readStylesheet } from "./test/cssAssertions";
 import type { PlatformRoleId } from "./domain/users/types";
 import { WiseEffApiError } from "./infrastructure/http/apiClient";
+import { requestSettingsLeave } from "./application/settingsFormNavigation";
 
 afterEach(() => {
   cleanup();
@@ -25,7 +26,7 @@ function renderPage(search = "") {
   return { ...utils, state, dispatch, onNavigate };
 }
 
-function renderPageWithActions(userGovernanceActions: UserGovernanceActions) {
+function renderPageWithActions(userGovernanceActions: UserGovernanceActions, onCurrentAccountChanged?: (accessEnded: boolean) => Promise<void>) {
   const state = { ...createPrototypeState(), activeRoleId: "admin" };
   const dispatch = vi.fn();
   const onNavigate = vi.fn();
@@ -37,6 +38,7 @@ function renderPageWithActions(userGovernanceActions: UserGovernanceActions) {
       onNavigate={onNavigate}
       search=""
       userGovernanceActions={userGovernanceActions}
+      onCurrentAccountChanged={onCurrentAccountChanged}
       // The page owns the hydrate lifecycle now; these cases assert on the
       // ready directory, so pin the override instead of awaiting the stub.
       userDirectoryStatus="ready"
@@ -86,7 +88,44 @@ async function openActivationAction(row: HTMLElement, name: "停用" | "启用")
 }
 
 describe("UserPermissionsPage", () => {
-  it("enables own role editing while protecting the final administrator role", async () => {
+  it("waits for the app's approved route before restoring another target's history filters", async () => {
+    window.history.replaceState(null, "", "/organization/members?organizationId=target-A&q=kept");
+    const actions: UserGovernanceActions = { listUsers: vi.fn(async () => []), createUser: vi.fn(), updateOrganizationRoles: vi.fn(), setUserActive: vi.fn(), deleteUser: vi.fn() };
+    render(<UserPermissionsPage state={{ ...createPrototypeState(), activeRoleId: "admin" }} dispatch={vi.fn()} onNavigate={vi.fn()} search="?organizationId=target-A&q=kept" directoryScope="target-A" userGovernanceActions={actions} />);
+    await waitFor(() => expect(actions.listUsers).toHaveBeenCalled());
+    act(() => {
+      window.history.pushState(null, "", "/organization/members?organizationId=target-B&q=foreign");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(screen.getByRole("searchbox", { name: "搜索用户" })).toHaveValue("kept");
+  });
+  it("guards an unfinished account draft before switching organization without storing its password", async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
+    await userEvent.type(screen.getByLabelText("姓名"), "Unfinished member");
+    await userEvent.type(screen.getByLabelText("初始密码"), "private-draft-password");
+    let decision!: boolean | Promise<boolean>;
+    act(() => { decision = requestSettingsLeave(); });
+    const confirm = screen.getByRole("dialog", { name: "放弃未保存的更改？" });
+    await userEvent.click(within(confirm).getByRole("button", { name: "继续编辑" }));
+    expect(await decision).toBe(false);
+    expect(screen.getByLabelText("初始密码")).toHaveValue("private-draft-password");
+    await userEvent.click(within(screen.getByRole("dialog", { name: "添加用户" })).getByRole("button", { name: "取消" }));
+    await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
+    expect(screen.getByLabelText("初始密码")).toHaveValue("");
+  });
+  it("keeps a target directory separate from the authenticated home actor", async () => {
+    const state = { ...createPrototypeState(), activeRoleId: "platform-admin" as const };
+    const member = { ...state.users[0], id: "target-member", name: "Target-only member", roleId: "software-user" as const, roles: [{ projectId: null, roleId: "software-user" as const }] };
+    const dispatch = vi.fn();
+    const actions: UserGovernanceActions = { listUsers: vi.fn(async () => [member]), createUser: vi.fn(), updateOrganizationRoles: vi.fn(), setUserActive: vi.fn(), deleteUser: vi.fn() };
+    render(<UserPermissionsPage state={state} dispatch={dispatch} onNavigate={vi.fn()} search="" userGovernanceActions={actions} directoryScope="target-organization" />);
+    const table = await screen.findByRole("table", { name: "平台用户" });
+    expect(await within(table).findByText("Target-only member")).toBeInTheDocument();
+    expect(within(table).queryByText(state.users.find((user) => user.id === state.currentUserId)!.name)).not.toBeInTheDocument();
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_USERS" }));
+  });
+  it("enables own role editing while the server protects the last effective administrator", async () => {
     const base = createPrototypeState();
     const current = base.users.find((user) => user.id === base.currentUserId)!;
     const state = { ...base, activeRoleId: "admin", users: base.users.map((user) => user.id === current.id
@@ -94,7 +133,7 @@ describe("UserPermissionsPage", () => {
     render(<UserPermissionsPage state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
     const dialog = await openMemberDetails(current.name);
     const roles = within(dialog).getByRole("group", { name: "组织角色选择" });
-    expect(within(roles).getByRole("checkbox", { name: "管理员" })).toBeDisabled();
+    expect(within(roles).getByRole("checkbox", { name: "管理员" })).toBeEnabled();
     const software = within(roles).getByRole("checkbox", { name: "软件开发" });
     expect(software).toBeEnabled();
     await userEvent.click(software);
@@ -261,7 +300,7 @@ describe("UserPermissionsPage", () => {
     const dialog = await openMemberDetails("Liu Min");
     expect(within(dialog).getByRole("checkbox", { name: "软件开发" })).toBeChecked();
     expect(
-      within(dialog).getByText("软件侧可查看并提交参数修改，在变更审阅页完成合入推进，并使用参数调试和日志分析。")
+      within(dialog).getByText("可查看组织项目，使用参数调试和日志分析；参数修改需配置项目参与和编辑角色，合入职责单独配置。")
     ).toBeInTheDocument();
     expect(within(dialog).queryByText("parameter:view")).not.toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
@@ -278,7 +317,7 @@ describe("UserPermissionsPage", () => {
     expect(roleSelect).toBeChecked();
     act(() => roleSelect.focus());
     expect(roleSelect).toHaveFocus();
-    expect(within(dialog).getByText("包含硬件开发权限，并可执行硬件侧参数检视。")).toBeInTheDocument();
+    expect(within(dialog).getByText("包含硬件开发工具权限；参数修改需项目编辑角色，硬件审核职责单独配置。")).toBeInTheDocument();
     await userEvent.keyboard(" ");
     expect(roleSelect).not.toBeChecked();
     await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
@@ -768,7 +807,8 @@ describe("UserPermissionsPage", () => {
     const dialog = screen.getByRole("dialog", { name: "确认注销用户" });
     expect(dialog).toHaveTextContent("永久删除");
     expect(dialog).toHaveTextContent("业务与审计历史记录会保留");
-    expect(dialog).toHaveTextContent("历史记录中的用户关联会解除");
+    expect(dialog).toHaveTextContent("个人设备配对将撤销");
+    expect(dialog).toHaveTextContent("既有历史署名不会改成接任者");
     expect(dialog).toHaveTextContent("此操作不可恢复");
     await userEvent.click(within(dialog).getByRole("button", { name: "确认注销" }));
 
@@ -803,15 +843,25 @@ describe("UserPermissionsPage", () => {
     expect(dispatch).not.toHaveBeenCalledWith({ type: "DELETE_USER", userId: "u-liu-min" });
   });
 
-  it("disables permanent deletion for the current signed-in user", async () => {
+  it("allows confirming self deletion with an explicit session-ending warning", async () => {
     renderPage();
     const currentUserRow = screen.getByText("Xu Yun").closest("tr")!;
 
     await userEvent.click(within(currentUserRow).getByRole("button", { name: /：更多$/ }));
     const deleteItem = screen.getByRole("menuitem", { name: "注销 Xu Yun" });
-    expect(deleteItem).toHaveAttribute("aria-disabled", "true");
-    expect(deleteItem).toHaveAccessibleDescription("不能注销当前登录账号。");
-    expect(within(deleteItem).getByText("不能注销当前登录账号。")).toBeVisible();
+    expect(deleteItem).not.toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(deleteItem);
+    expect(screen.getByRole("dialog", { name: "确认注销用户" })).toHaveTextContent("操作成功后将退出当前账号");
+  });
+
+  it("ends the current session only after the server accepts self deactivation", async () => {
+    const onCurrentAccountChanged = vi.fn(async () => undefined);
+    const actions = { listUsers: vi.fn(async () => []), createUser: vi.fn(async () => undefined), updateOrganizationRoles: vi.fn(async () => undefined), setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined) };
+    renderPageWithActions(actions, onCurrentAccountChanged);
+    await openActivationAction(screen.getByText("Xu Yun").closest("tr")!, "停用");
+    await userEvent.click(within(screen.getByRole("dialog", { name: "确认停用用户" })).getByRole("button", { name: "确认停用" }));
+    await waitFor(() => expect(onCurrentAccountChanged).toHaveBeenCalledWith(true));
+    expect(actions.setUserActive).toHaveBeenCalledWith("u-xu-yun", false);
   });
 
   it("resets a member password through the governance action", async () => {

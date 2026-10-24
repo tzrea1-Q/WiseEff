@@ -112,7 +112,7 @@ describe.skipIf(!databaseAvailable)("dashboard service", () => {
     expect(hotspots).toEqual([]);
   });
 
-  it("rejects a missing or unauthorized project scope before returning zeroes", async () => {
+  it("rejects missing projects and permits reads across projects in the caller's organization", async () => {
     await expect(
       getDashboardSummary(db, { auth, projectId: "dashboard-fixture-missing", window: "30d" })
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
@@ -120,24 +120,22 @@ describe.skipIf(!databaseAvailable)("dashboard service", () => {
       getDashboardHotspots(db, { auth, projectId: "dashboard-fixture-missing", window: "30d", dimension: "project" })
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
 
-    const projectScopedAuth = {
+    const projectScopedAuth: AuthContext = {
       ...auth,
       roles: [{ projectId: PARAMETER_DASHBOARD_FIXTURE.projectIds.aurora, roleId: "admin" }]
     };
-    await expect(
-      getDashboardSummary(db, {
-        auth: projectScopedAuth,
-        projectId: PARAMETER_DASHBOARD_FIXTURE.projectIds.zephyr,
-        window: "30d"
-      })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(
-      getDashboardHotspots(db, {
-        auth: projectScopedAuth,
-        projectId: PARAMETER_DASHBOARD_FIXTURE.projectIds.zephyr,
-        window: "30d",
-        dimension: "project"
-      })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const summary = await getDashboardSummary(db, {
+      auth: projectScopedAuth,
+      projectId: PARAMETER_DASHBOARD_FIXTURE.projectIds.zephyr,
+      window: "30d"
+    });
+    expect(summary.kpis.totalBindings).toBe(0);
+    const hotspots = await getDashboardHotspots(db, {
+      auth: projectScopedAuth,
+      projectId: PARAMETER_DASHBOARD_FIXTURE.projectIds.zephyr,
+      window: "30d",
+      dimension: "project"
+    });
+    expect(hotspots).toEqual([]);
   });
 });

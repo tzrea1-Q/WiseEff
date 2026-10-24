@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,9 +9,10 @@ import type { LogDomain } from "@/domain/logs/types";
 import type { LogDomainUpdateInput } from "@/application/ports/LogAnalysisRepository";
 import "./skill-workspace.css";
 
-export function SkillIdentityDialog({ skill, restore, onSave, onSaved, onDismiss, onNavigate }: {
+export function SkillIdentityDialog({ skill, restore, onSave, onSaved, onDismiss, onNavigate, organizationId }: {
   skill: LogDomain; restore: boolean; onSave: (input: LogDomainUpdateInput) => Promise<LogDomain | null>;
   onSaved: (skill: LogDomain) => void; onDismiss: () => void; onNavigate: (path: string) => void;
+  organizationId?: string;
 }) {
   const [name, setName] = useState(skill.name);
   const [pending, setPending] = useState(false);
@@ -36,7 +38,7 @@ export function SkillIdentityDialog({ skill, restore, onSave, onSaved, onDismiss
         <Input id="skill-identity-name" ref={nameRef} required maxLength={120} value={name} disabled={pending}
           aria-invalid={!!error} aria-describedby={error ? "skill-identity-error" : undefined} onChange={event => setName(event.target.value)} /></div>
       {error ? <div id="skill-identity-error" role="alert"><p>{error.message}</p>{error.conflict ? <Button asChild variant="link">
-        <a href={`/log-admin/skills/${encodeURIComponent(error.conflict.id)}`} onClick={event => {
+        <a href={withOrganizationScope(`/log-admin/skills/${encodeURIComponent(error.conflict.id)}`, organizationId)} onClick={event => {
           if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(event.currentTarget.getAttribute("href")!); }
         }}>查看占用技能「{error.conflict.name}」</a></Button> : null}</div> : null}
       <div className="dialog-actions"><Button type="button" variant="outline" disabled={pending} onClick={onDismiss}>取消</Button>

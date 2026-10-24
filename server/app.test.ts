@@ -76,7 +76,7 @@ function createAuthBoundaryDb() {
               title: "No View",
               is_active: true,
               project_id: null,
-              role_id: "no-parameter-view"
+              role_id: null
             }
           ] as Row[],
           rowCount: 1
@@ -128,6 +128,10 @@ function createDebuggingDetectDb() {
   const db: Database = {
     query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
       calls.push({ text, values });
+
+      if (text.includes("from public.organizations")) {
+        return { rows: [{ id: "org-1", name: "ChargeLab", status: "active" }] as Row[], rowCount: 1 };
+      }
 
       if (text.includes("from users")) {
         return {
@@ -284,6 +288,7 @@ function createDevelopmentLocalAuthDb() {
   const projects = [{ id: "aurora", name: "Aurora", code: "AUR", organizationId: "org-chargelab" }];
   const db: Database = {
     query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
+      if (text.includes("from public_experience_registration")) return { rows: [{ enabled: null, organization_id: null }] as Row[], rowCount: 1 };
       const normalized = text.replace(/\s+/g, " ").trim();
 
       if (normalized.startsWith("select user_id as id from user_password_credentials")) {
@@ -294,7 +299,7 @@ function createDevelopmentLocalAuthDb() {
 
       if (normalized.includes("from organizations") && normalized.includes("where id = $1")) {
         const organization = organizations.get(values[0] as string);
-        return { rows: (organization ? [organization] : []) as Row[], rowCount: organization ? 1 : 0 };
+        return { rows: (organization ? [{ ...organization, status: "active" }] : []) as Row[], rowCount: organization ? 1 : 0 };
       }
 
       if (normalized.includes("from organizations") && normalized.includes("id <> all($1::text[])")) {
@@ -614,10 +619,10 @@ describe("WiseEff API", () => {
     expect(remoteResponse.headers.get("access-control-allow-origin")).toBeNull();
   });
 
-  it("uses request auth context for integrated parameter routes", async () => {
+  it("uses the authenticated organization for a roleless member's project reads", async () => {
     const { calls, db } = createAuthBoundaryDb();
 
-    const response = await requestJson<{ error: { code: string; message: string } }>(
+    const response = await requestJson<{ items: Array<{ id: string }> }>(
       createWiseEffServer({ db }),
       "/api/v1/projects",
       {
@@ -625,17 +630,14 @@ describe("WiseEff API", () => {
       }
     );
 
-    expect(response.status).toBe(403);
-    expect(response.body.error).toMatchObject({
-      code: "FORBIDDEN",
-      message: "Parameter view permission is required."
-    });
-    expect(calls).toHaveLength(2);
+    expect(response.status).toBe(200);
+    expect(response.body.items).toContainEqual(expect.objectContaining({ id: "aurora" }));
     expect(calls[0].text).toContain("from users");
     expect(calls[0].values).toEqual(["user-no-parameter-view"]);
     expect(calls[1].text).toContain("from user_role_bindings");
     expect(calls[1].text).toContain("roles.id like 'catalog-capability-%'");
     expect(calls[1].values).toEqual(["user-no-parameter-view"]);
+    expect(calls.find((call) => call.text.includes("from projects"))?.values).toContain("org-1");
   });
 
   it("uses production bearer auth for /me without development fallback", async () => {
@@ -797,7 +799,8 @@ describe("WiseEff API", () => {
           env: loadServerEnv({
             NODE_ENV: "development",
             AUTH_MODE: "production",
-            AUTH_PROVIDER: "local"
+            AUTH_PROVIDER: "local",
+            AUTH_LOCAL_SELF_REGISTER: "true"
           })
         });
 
@@ -849,7 +852,8 @@ describe("WiseEff API", () => {
         env: loadServerEnv({
           NODE_ENV: "test",
           AUTH_MODE: "production",
-          AUTH_PROVIDER: "local"
+          AUTH_PROVIDER: "local",
+          AUTH_LOCAL_SELF_REGISTER: "true"
         })
       }),
       "/api/v1/auth/register",
@@ -1033,11 +1037,12 @@ describe("WiseEff API", () => {
       expect(calls.some((call) => call.values.includes("org-forged"))).toBe(false);
     });
 
-    it("does not report a successful Catalog list for an authenticated caller without parameter view (CATFIX-AUTH-05)", async () => {
+    it("rejects an inactive member before Catalog reads (CATFIX-AUTH-05)", async () => {
       const { db } = createProductionIdentityDb({
         dbUserId: "u-noview",
         email: "noview@example.com",
-        roleId: "no-parameter-view" as never
+        roleId: "guest",
+        isActive: false
       });
       const response = await requestJson<{ error?: { code: string }; items?: unknown[] }>(
         productionCatalogServer({

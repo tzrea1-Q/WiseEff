@@ -22,7 +22,9 @@ test("inventories a member's live Bridge and revokes it by keyboard while retain
   try {
     await new Promise<void>((resolve, reject) => { socket.once("message", raw => { expect(JSON.parse(raw.toString()).type).toBe("bridge.hello"); resolve(); }); socket.once("error", reject); });
     await signInBrowserAsRole(page, "admin", "/organization"); await prepareInteractionSurface(page);
-    await page.getByRole("button", { name: "设备代理", exact: true }).focus(); await page.keyboard.press("Enter"); await expect(page).toHaveURL(/\/organization\/bridges$/);
+    await page.getByRole("button", { name: "资源", exact: true }).click();
+    await page.getByRole("button", { name: "设备代理", exact: true }).focus(); await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(url => url.pathname === "/organization/bridges" && url.searchParams.get("organizationId") === "org-chargelab");
     const row = page.getByRole("row").filter({ has: page.getByText(machineLabel, { exact: true }) });
     await expect(row.getByText("在线", { exact: true })).toBeVisible(); await expect(row).toContainText("0.1.1"); await expect(row).toContainText(paired.bridgeId);
     expect(await page.locator("body").innerText()).not.toContain(paired.bridgeToken);
@@ -31,7 +33,7 @@ test("inventories a member's live Bridge and revokes it by keyboard while retain
     await expect(dialog.getByRole("button", { name: "撤销配对", exact: true })).toBeDisabled();
     await dialog.getByRole("textbox", { name: "撤销原因", exact: true }).fill("成员离职，回收配对授权");
     const path = `/api/v1/device-bridges/organization/${paired.bridgeId}/revoke`;
-    await page.route(`**${path}`, route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "INTERNAL_ERROR", message: "撤销暂时不可用，请重试。" } }) }), { times: 1 });
+    await page.route(url => url.pathname === path, route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "INTERNAL_ERROR", message: "撤销暂时不可用，请重试。" } }) }), { times: 1 });
     await dialog.getByRole("button", { name: "撤销配对", exact: true }).focus(); await page.keyboard.press("Enter");
     await expect(dialog.getByRole("alert")).toContainText("请重试"); await expect(dialog.getByRole("textbox", { name: "撤销原因", exact: true })).toHaveValue("成员离职，回收配对授权");
     const failureImage = testInfo.outputPath("bridge-revoke-failed-1440.png"); await page.screenshot({ path: failureImage, animations: "disabled" }); await testInfo.attach("bridge-revoke-failed-1440", { path: failureImage, contentType: "image/png" });

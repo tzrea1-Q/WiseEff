@@ -4,7 +4,6 @@ import { writeRefusalAudit } from "../audit/auditedWrite";
 import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import {
   assertTrustedMutationInvocation,
-  assertTrustedInvocationMatchesAuth,
   TrustedInvocationContextError,
   type TrustedInvocationContext
 } from "../auth/trustedInvocation";
@@ -12,8 +11,9 @@ import type { Database } from "../../shared/database/client";
 import type { AuthContext, BackendPermission } from "../auth/types";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { canEditCriticalParameters } from "./policy";
+import { canEditCriticalParameters, canReviewParameters, canReviewParameterStage } from "./policy";
 import { nodePathFromSourceNodePath } from "./nodePath";
+import { parameterOrganizationId, parameterScopeInvocation } from "../parameters/operatingScope";
 
 export type SensitiveRiskTier = "high" | "critical";
 export type SensitiveMatchType = "path" | "compatible";
@@ -312,9 +312,9 @@ export async function resolveDtsNodeCompatible(
   return result.rows[0]?.compatible ?? null;
 }
 
-function hasRequiredCapability(auth: AuthContext, capability: BackendPermission) {
+function hasRequiredCapability(auth: AuthContext, capability: BackendPermission, projectId: string) {
   if (capability === "parameter:edit-critical") {
-    return canEditCriticalParameters(auth);
+    return canEditCriticalParameters(auth, projectId);
   }
   return auth.user.isActive && auth.permissions.includes(capability);
 }
@@ -397,7 +397,7 @@ export function assertTrustedSensitiveNodeWriteContext<T extends TrustedSensitiv
     );
   }
   assertTrustedRefusalAuditSink(context.refusalSink);
-  const invocation = assertTrustedInvocationMatchesAuth(auth, context.invocation, operation);
+  const invocation = parameterScopeInvocation(auth, context.invocation, operation);
   assertTrustedMutationInvocation(invocation, operation);
   return { ...context, invocation, requestId: context.requestId.trim() };
 }
@@ -415,13 +415,14 @@ export async function assertTrustedSensitiveNodeWriteAllowed(
     sourcePath?: SensitiveNodeSourcePath;
     compatible?: string | null;
     compatibleIsAuthoritative?: boolean;
+    authorization?: "review";
     invocation: TrustedInvocationContext;
     requestId: string;
     refusalSink: TrustedRefusalAuditSink;
   }
 ) {
   const trustedContext = assertTrustedSensitiveNodeWriteContext(auth, input, "parameter sensitive-node write");
-  if (input.organizationId.trim() !== auth.organization.id) {
+  if (input.organizationId.trim() !== parameterOrganizationId(auth)) {
     throw new TrustedInvocationContextError(
       "parameter sensitive-node write organization does not match the authenticated target scope"
     );
@@ -463,7 +464,10 @@ export async function assertTrustedSensitiveNodeWriteAllowed(
     });
   }
 
-  if (!hasRequiredCapability(auth, matched.requiredCapability)) {
+  const reviewAllowed = input.authorization === "review" && invocation.initiator === "user"
+    && canReviewParameters(auth) && canReviewParameterStage(auth, input.projectId, "software_review")
+    && auth.permissions.includes(matched.requiredCapability);
+  if (input.authorization === "review" ? !reviewAllowed : !hasRequiredCapability(auth, matched.requiredCapability, input.projectId)) {
     throw new ApiError("FORBIDDEN", `Missing permission: ${matched.requiredCapability}.`, {
       riskTier: matched.riskTier,
       nodePath,
@@ -532,7 +536,7 @@ export async function assertSensitiveNodeWriteAllowed(
 
   if (input.actorType === "agent" && matched.riskTier === "critical") {
     if (deps.refusalDb) {
-      const invocation = assertTrustedInvocationMatchesAuth(auth, deps.invocation, "sensitive-node refusal audit");
+      const invocation = parameterScopeInvocation(auth, deps.invocation, "sensitive-node refusal audit");
       if (invocation.initiator !== "agent") {
         throw new TrustedInvocationContextError("sensitive-node Agent refusal requires an Agent invocation");
       }
@@ -591,7 +595,7 @@ export async function assertSensitiveNodeWriteAllowed(
     );
   }
 
-  if (!hasRequiredCapability(auth, matched.requiredCapability)) {
+  if (!hasRequiredCapability(auth, matched.requiredCapability, input.projectId)) {
     throw new ApiError(
       "FORBIDDEN",
       `Missing permission: ${matched.requiredCapability}.`,

@@ -11,12 +11,15 @@ describe("KnowledgeRevisionsDialog", () => {
     const content = `${"完整正文\n".repeat(100)}末尾内容`;
     const revision: KnowledgeRevision = { id: "old", entryId: entry.id, revisionNumber: 1,
       title: "原始标题", tags: ["原始标签"], contentMarkdown: content, fileId: null,
-      authorUserId: null, restoredFromRevisionId: null, createdAt: entry.createdAt };
+      authorUserId: null, restoredFromRevisionId: null, createdAt: entry.createdAt,
+      historicalAttribution: { organization: { id: "original-org", name: "原组织", source: "legacy-current" },
+        actors: { author_user_id: { id: "original-author", name: "迁移时作者", source: "legacy-current" } } } };
     const onRestore = vi.fn().mockResolvedValue(undefined);
     render(<KnowledgeRevisionsDialog open entry={entry} loadRevisions={async () => [revision]}
       onViewFile={vi.fn()} onRestore={onRestore} canRestore onClose={vi.fn()} />);
     const user = userEvent.setup();
     await screen.findByRole("button", { name: "查看修订 #1" });
+    expect(screen.getByText(/迁移时作者（迁移时名称）/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "恢复此版本" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "查看修订 #1" }));
     expect(screen.getByLabelText("修订 #1 完整内容").querySelector("pre")?.textContent).toBe(content);

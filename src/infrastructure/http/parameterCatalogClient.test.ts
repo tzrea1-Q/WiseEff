@@ -33,7 +33,7 @@ describe("platform definition deletion client", () => {
 
   it("forwards the preview token through the API adapter without publication prerequisites", async () => {
     const fetchImpl = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => jsonResponse(init?.method === "DELETE" ? deleted : preview));
-    const repository = createApiParameterCatalogRepository(createParameterCatalogClient({ fetchImpl, authorization: "Bearer admin" }));
+    const repository = createApiParameterCatalogRepository(createParameterCatalogClient({ fetchImpl, authorization: "Bearer admin", organizationId: "target" }));
     expect(await repository.previewDefinitionDeletion!("pdef/a")).toEqual(preview);
     expect(await repository.deleteDefinition!("pdef/a", { previewToken: preview.item.previewToken })).toEqual(deleted);
     expect(fetchImpl.mock.calls[0]).toEqual(["/api/v2/catalog/definitions/pdef%2Fa/deletion-preview", expect.objectContaining({ method: "GET" })]);
@@ -57,7 +57,7 @@ describe("platform definition deletion client", () => {
   it("lists organization cleanup and retries a selected definition without a preview token", async () => {
     const list = { items: [{ definitionId: "pdef/a", deletedAt: "2026-10-21T00:00:00.000Z", pendingObjectCount: 2 }] };
     const fetchImpl = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => jsonResponse(init?.method === "POST" ? deleted : list));
-    const repository = createApiParameterCatalogRepository(createParameterCatalogClient({ fetchImpl }));
+    const repository = createApiParameterCatalogRepository(createParameterCatalogClient({ fetchImpl, organizationId: "target" }));
     expect(await repository.listDefinitionErasures!()).toEqual(list);
     expect(await repository.retryDefinitionCleanup!("pdef/a")).toEqual(deleted);
     expect(fetchImpl.mock.calls[0]![0]).toBe("/api/v2/catalog/definition-erasures");
@@ -119,12 +119,12 @@ describe("parameter catalog client contract", () => {
     const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({
       items: [], nextCursor: null, catalogReleaseId: "crel_01K42", totalCount: 0, hasMore: false
     }));
-    const client = createParameterCatalogClient({ fetchImpl: fetchMock });
+    const client = createParameterCatalogClient({ fetchImpl: fetchMock, organizationId: "target" });
     await client.listDefinitions({ lifecycle: "active", subjectLifecycle });
     await client.listSubjectDefinitions("csub_acme_power", { subjectLifecycle });
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      `/api/v2/catalog/definitions?lifecycle=active&subjectLifecycle=${subjectLifecycle}`,
-      `/api/v2/catalog/subjects/csub_acme_power/definitions?subjectLifecycle=${subjectLifecycle}`
+      `/api/v2/catalog/definitions?lifecycle=active&subjectLifecycle=${subjectLifecycle}&organizationId=target`,
+      `/api/v2/catalog/subjects/csub_acme_power/definitions?subjectLifecycle=${subjectLifecycle}&organizationId=target`
     ]);
   });
 
@@ -162,7 +162,7 @@ describe("parameter catalog client contract", () => {
 
   it("reads GET /api/v2/catalog through the frozen document schema", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(catalogDocument));
-    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock, organizationId: "target" });
     await expect(client.getCatalog()).resolves.toEqual(catalogDocument);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v2/catalog",

@@ -115,12 +115,11 @@ describe("CatalogOrganizationSurface Organization Review Queue permission", () =
     }
   );
 
-  it.each(["?review=open", "?reviewItemId=prit_bookmark", ""])(
-    "explains the Organization boundary without reading the queue for a Platform-only session at %s",
+  it.each(["?review=open", `?reviewItemId=${catalogReviewItem.id}`, ""])(
+    "lets a Platform Admin read the target Organization queue at %s",
     async (search) => {
       const ports = createMockCatalogPorts({ scenario: "ready" });
-      const listReviewItems = vi.spyOn(ports.governance, "listReviewItems")
-        .mockRejectedValue(new Error("403 forbidden"));
+      const listReviewItems = vi.spyOn(ports.governance, "listReviewItems");
       render(<CatalogOrganizationSurface {...ports} actor="platform-admin"
         sessionRoles={[{ roleId: "platform-admin", projectId: null }]}
         sessionPermissions={["parameter:view", "catalog:author", "catalog:publish"]} search={search}
@@ -128,12 +127,9 @@ describe("CatalogOrganizationSurface Organization Review Queue permission", () =
         onAnchorChange={vi.fn()} />);
 
       expect(await screen.findByRole("region", { name: "参数定义目录" })).toBeVisible();
-      expect(await screen.findByText("组织审核队列需要 Organization 权限；Platform 权限不能代替组织审核权限。"))
-        .toBeVisible();
-      expect(screen.queryByRole("button", { name: /待审核事项/ })).not.toBeInTheDocument();
-      expect(screen.queryByRole("dialog", { name: "待审核事项" })).not.toBeInTheDocument();
-      expect(screen.queryByText(/审核队列加载失败/)).not.toBeInTheDocument();
-      expect(listReviewItems).not.toHaveBeenCalled();
+      if (!search) await userEvent.setup().click(screen.getByRole("button", { name: /待审核事项/ }));
+      await waitFor(() => expect(listReviewItems).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID));
+      expect(screen.queryByText("组织审核队列需要 Organization 权限；Platform 权限不能代替组织审核权限。")).not.toBeInTheDocument();
     }
   );
 

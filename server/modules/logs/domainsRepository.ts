@@ -1,3 +1,4 @@
+import { organizationId } from "./principal";
 import type { Queryable } from "../../shared/database/client";
 import type { AuthContext } from "../auth/types";
 import { canReadEntry } from "../knowledge/policy";
@@ -295,6 +296,7 @@ export type LogDomainKnowledgeLinkDto = {
 };
 
 type LogDomainKnowledgeLinkRow = {
+  responsible_user_id: string | null;
   id: string;
   log_domain_id: string;
   knowledge_entry_id: string;
@@ -306,7 +308,7 @@ type LogDomainKnowledgeLinkRow = {
 };
 
 function toLogDomainKnowledgeLinkDto(row: LogDomainKnowledgeLinkRow, auth: AuthContext): LogDomainKnowledgeLinkDto {
-  const readable = canReadEntry(auth, { status: row.entry_status, createdByUserId: row.created_by_user_id });
+  const readable = canReadEntry(auth, { status: row.entry_status, createdByUserId: row.created_by_user_id, responsibleUserId: row.responsible_user_id });
   return {
     id: row.id,
     logDomainId: row.log_domain_id,
@@ -333,6 +335,7 @@ export async function listLogDomainKnowledgeLinks(
       entry.status as entry_status,
       entry.tags as entry_tags,
       entry.created_by_user_id,
+      entry.responsible_user_id,
       coalesce(link.created_at, revision.published_at) as created_at
     from log_skill_revisions revision
     cross join lateral jsonb_array_elements_text(coalesce(revision.spec->'knowledgeEntryIds', '[]'::jsonb)) linked(entry_id)
@@ -343,7 +346,7 @@ export async function listLogDomainKnowledgeLinks(
       and revision.skill_id = $2 and revision.status = 'published'
     order by entry.id asc
     `,
-    [auth.organization.id, domainId]
+    [organizationId(auth), domainId]
   );
 
   return result.rows.map((row) => toLogDomainKnowledgeLinkDto(row, auth))

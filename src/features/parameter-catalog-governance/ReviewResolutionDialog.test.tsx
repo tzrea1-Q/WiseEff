@@ -228,7 +228,7 @@ describe("ReviewResolutionDialog", () => {
     expect(screen.queryByRole("button", { name: "前往定义目录继续编辑" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "前往参数定义管理" }));
     expect(onContinueDefinition).toHaveBeenCalledWith({ proposalId: expect.any(String), subjectId: undefined, propertyKey: "gpio-int" });
-    expect(within(receipt).getByRole("link", { name: "查看处理记录" })).toHaveAttribute("href", `/audit?kind=parameter-catalog-governance&targetId=${CATALOG_REVIEW_ITEM_ID}`);
+    expect(within(receipt).getByRole("link", { name: "查看处理记录" })).toHaveAttribute("href", `/audit?kind=parameter-catalog-governance&targetId=${CATALOG_REVIEW_ITEM_ID}&organizationId=${CATALOG_ORGANIZATION_ID}`);
   });
 
   it("allows completion and definition continuation to navigate after the write has succeeded", async () => {

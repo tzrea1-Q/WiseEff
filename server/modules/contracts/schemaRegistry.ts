@@ -1,7 +1,15 @@
 import type { RouteManifestEntry } from "./routeManifest";
+import { organizationDeletionSchemaRegistry } from "./dtoSchemas/organizationDeletion";
+import { accountTransferSchemaRegistry } from "./dtoSchemas/accountTransfer";
 import { parameterCatalogSchemaRegistry } from "./dtoSchemas/parameterCatalog";
 import { parameterDefinitionDeletionSchemaRegistry } from "./dtoSchemas/parameterDefinitionDeletion";
 import { workflowPublicationSchemaRegistry } from "./dtoSchemas/workflowPublication";
+import { platformOrganizationSchemaRegistry } from "./dtoSchemas/platformOrganizations";
+import { organizationTeamSchemaRegistry } from "./dtoSchemas/organizationTeams";
+import { organizationWorkspaceSchemaRegistry } from "./dtoSchemas/organizationWorkspace";
+import { projectMembersSchemaRegistry } from "./dtoSchemas/projectMembers";
+import { assetHandoverSchemaRegistry } from "./dtoSchemas/organizationAssetHandover";
+import { organizationInvitationSchemaRegistry } from "./dtoSchemas/organizationInvitations";
 
 export type ContractParameterRef = {
   name: string;
@@ -52,6 +60,14 @@ function retireLegacySurface(
 }
 
 export const schemaRegistry: Record<string, ContractSchemaRef> = {
+  ...organizationDeletionSchemaRegistry,
+  ...accountTransferSchemaRegistry,
+  ...assetHandoverSchemaRegistry,
+  ...platformOrganizationSchemaRegistry,
+  ...organizationTeamSchemaRegistry,
+  ...organizationWorkspaceSchemaRegistry,
+  ...projectMembersSchemaRegistry,
+  ...organizationInvitationSchemaRegistry,
   ...workflowPublicationSchemaRegistry,
   ...parameterDefinitionDeletionSchemaRegistry,
   "auth.localConfig": {
@@ -82,6 +98,11 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "401": "ErrorResponse" }
   },
   "auth.me": { summary: "Get current user context", tags: ["auth"], responseBody: "MeResponse" },
+  "auth.enterOperatingContext": {
+    summary: "Resolve and audit a request-local operating Organization without changing account membership",
+    tags: ["auth"], requestBody: "EnterOperatingContextRequest", responseBody: "OperatingContextResponse",
+    additionalResponses: { "400": "ErrorResponse", "401": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "auth.updateProfile": {
     summary: "Update the current user profile",
     tags: ["auth"],
@@ -125,13 +146,19 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   },
 
   "organization.get": {
-    summary: "Get the caller's home organization",
+    summary: "Get the operating Organization (Home by default)",
     tags: ["users"],
     responseBody: "OrganizationResponse",
     additionalResponses: { "401": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "organization.projectCandidates": {
+    summary: "List project names in the operating Organization for member review-duty management",
+    tags: ["users"], responseBody: "OrganizationProjectCandidatesResponse",
+    requestParameters: [{ name: "organizationId", in: "query", schema: { type: "string" } }],
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "organization.update": {
-    summary: "Rename the caller's home organization",
+    summary: "Rename the operating Organization (Home by default)",
     tags: ["users"],
     requestBody: "UpdateOrganizationRequest",
     responseBody: "OrganizationResponse",
@@ -2306,3 +2333,27 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
 
   ...(parameterCatalogSchemaRegistry as unknown as Record<string, ContractSchemaRef>)
 };
+
+for (const routeId of [
+  "organization.get", "organization.workspaceSummary", "organization.update", "users.list", "users.create", "users.setOidcIdentity", "users.update", "users.delete", "users.activation",
+  "users.replaceRoles", "users.replaceOrganizationRoles", "users.resetPassword", "users.getProjectWorkflowRoleBindings", "users.replaceProjectWorkflowRoleBindings",
+  "users.listRegistrationRoleRequests", "users.approveRegistrationRoleRequest", "users.enableBasicRegistrationRoleRequest", "users.rejectRegistrationRoleRequest",
+  "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.revokeOrganizationBridge",
+  "audit.createEvent", "audit.listEvents", "jobs.get", "jobs.events", "parameterSpecs.listReviewTasks",
+  "parameterModules.getRegistry", "parameterModules.discoveryHints", "parameterModules.listDriverRegistry",
+  "catalog.listSubjects", "catalog.getSubject", "catalog.listSubjectDefinitions", "catalog.listDefinitions",
+  "catalog.getDefinition", "catalog.listDefinitionRevisions", "catalog.getDefinitionRevision", "catalog.listDefinitionTimeline",
+  "catalog.listRegistrations", "catalog.createRegistration", "catalog.getRegistration", "catalog.retireRegistration", "catalog.restoreRegistration",
+  "catalog.getPlacement", "catalog.updatePlacement", "catalog.listDriverCompatibleDiscovery",
+  "catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem",
+  ...Object.keys(schemaRegistry).filter((routeId) => schemaRegistry[routeId].successStatus !== 410 && (
+    routeId.startsWith("organization.teams.") || routeId.startsWith("knowledge.") || routeId.startsWith("xiaoze.") || routeId.startsWith("logs.") || routeId.startsWith("productFeedback.") ||
+    routeId.startsWith("parameters.") || routeId.startsWith("parameters-dashboard-") ||
+    routeId.startsWith("parameterFiles.") || routeId.startsWith("parameterTopology.")
+  ))
+]) {
+  schemaRegistry[routeId].requestParameters = [...(schemaRegistry[routeId].requestParameters ?? []), {
+    name: "organizationId", in: "query", description: "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.", schema: { type: "string" }
+  }];
+  schemaRegistry[routeId].additionalResponses = { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", ...schemaRegistry[routeId].additionalResponses };
+}

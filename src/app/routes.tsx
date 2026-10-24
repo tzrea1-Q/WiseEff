@@ -1,4 +1,5 @@
 import { knowledgeEntryHref, parseKnowledgeEntryQuery } from "@/domain/knowledge/citations";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { useMemo, type Dispatch, type ReactNode } from "react";
 
 import type {
@@ -53,6 +54,7 @@ import { DtsReloadPage } from "@/features/dts-reload/DtsReloadPage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
 import type { AuthContextDto } from "@/infrastructure/http/authClient";
 import { OrganizationPage } from "@/OrganizationPage";
+import { OrganizationWorkspace } from "@/features/organization/OrganizationWorkspace";
 import { RetiredNotice } from "@/components/layout/RetiredNotice";
 import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/domain/prototype/types";
@@ -62,6 +64,7 @@ import type { KnowledgeDefinitionPickerPage } from "@/features/knowledge/Knowled
 import { buildCatalogHref, CATALOG_PAGE_PATH, CATALOG_READ_PAGE_PATH, EMPTY_CATALOG_URL_ANCHOR } from "@/application/parameter-catalog/urlAnchor";
 import { CatalogPage } from "@/features/parameter-catalog/CatalogPage";
 import { WorkflowPublicationPage } from "@/features/workflow-publication/WorkflowPublicationPage";
+import { PlatformOrganizationsPage } from "@/features/organization/PlatformOrganizationsPage";
 import { WorkflowPublicationNotice } from "@/components/layout/WorkflowPublicationNotice";
 import { workflowForGroup, VISIBLE_WORKFLOWS, type WorkflowId } from "@/domain/workflowDiscovery";
 import type { WorkflowPublicationView } from "@/application/workflow-publication/useWorkflowPublication";
@@ -107,9 +110,11 @@ export type PageProps = {
   onDashboardOverviewScopeChange?: (scope: OverviewScope) => void;
   onDashboardProjectChange?: (projectId: string | null) => void;
   onAuthContextRefresh?: (context: AuthContextDto) => void;
+  onEndSession?: () => Promise<void>;
   organizationId?: string;
   sessionPermissions?: readonly string[] | null;
   sessionRoles?: readonly AuthContextDto["roles"][number][] | null;
+  projectMemberships?: AuthContextDto["projectMemberships"];
 };
 
 /**
@@ -165,9 +170,11 @@ export function PageRouter({
   onDashboardOverviewScopeChange,
   onDashboardProjectChange,
   onAuthContextRefresh,
+  onEndSession,
   organizationId,
   sessionPermissions,
   sessionRoles,
+  projectMemberships,
   onFeedback,
   onNewProject,
   TopBarProjectId,
@@ -190,7 +197,8 @@ export function PageRouter({
   const activeProjectInitializationStatus =
     state.projectInitializationStatuses[effectiveParametersProjectId] ?? "initialized";
   const canEditParameters =
-    canPerform(currentRoleId, "parameter.edit") &&
+    (runtimeMode === "api" ? Boolean(sessionRoles?.some((role) => role.projectId === null && (role.roleId === "admin" || role.roleId === "platform-admin")) ||
+      projectMemberships?.some((member) => member.projectId === effectiveParametersProjectId && member.roles.length > 0)) : canPerform(currentRoleId, "parameter.edit")) &&
     (activeProjectInitializationStatus === "initialized" || activeProjectInitializationStatus === "maintenance");
 
   // Definition detail 相关知识: published entries referencing the open spec.
@@ -288,8 +296,8 @@ export function PageRouter({
     try { workspaceSkillId = decodeURIComponent(workspaceSkillId); } catch { /* The API returns not-found for a malformed id. */ }
   }
   const canManagePublication = currentRoleId === "platform-admin" && (!sessionRoles || sessionRoles.some((role) => role.roleId === "platform-admin" && role.projectId === null));
-  if ((!canAccessPage(currentRoleId, page.key) && !(skillWorkspaceMatch && sessionPermissions?.includes("logs:view"))) ||
-    (page.key === "workflow-publication" && !canManagePublication)) {
+  if ((!canAccessPage(currentRoleId, page.key) && !(runtimeMode === "api" && page.key === "parameter-submissions" && projectMemberships?.length) && !(skillWorkspaceMatch && sessionPermissions?.includes("logs:view"))) ||
+    ((page.key === "workflow-publication" || page.key === "platform-organizations") && !canManagePublication)) {
     const requiredRole = getRequiredRoleForPage(page.key);
     return (
       <section className="permission-denied-page" aria-label="无权访问">
@@ -334,6 +342,7 @@ export function PageRouter({
           parameterActions={parameterActions}
           topologyRepository={parameterTopologyRepository}
           canonicalRepository={runtime?.parameterCatalogRepository}
+          parameterFileRepository={runtime?.parameterFileRepository}
           listConfigSets={listParameterConfigSets}
           effectiveProjectId={effectiveParametersProjectId}
           canEdit={canEditParameters}
@@ -412,7 +421,7 @@ export function PageRouter({
           relatedKnowledge={specRelatedKnowledge}
           definitionRelatedKnowledge={definitionRelatedKnowledge}
           runtime={runtime}
-          catalogOrganizationId={organizationId}
+          catalogOrganizationId={runtime?.operatingOrganizationId ?? organizationId}
           sessionPermissions={sessionPermissions}
           sessionRoles={sessionRoles}
         />
@@ -423,7 +432,7 @@ export function PageRouter({
         <LogsPage
           state={state}
           dispatch={dispatch}
-          onNavigate={onNavigate}
+          onNavigate={(path) => onNavigate(withOrganizationScope(path, new URLSearchParams(search).get("organizationId") ?? undefined))}
           search={search}
           logActions={runtimeMode === "api" ? logActions : undefined}
           parameterActions={parameterActions}
@@ -439,12 +448,12 @@ export function PageRouter({
         repository={runtime?.logAnalysisRepository} apiMode={runtimeMode === "api"}
         knowledgeRepository={knowledgeRepository} knowledgeCapability={knowledgeCapability} canOpenKnowledge={canOpenKnowledge}
         canEdit={runtimeMode === "api" && (sessionPermissions ? sessionPermissions.includes("logs:admin-domains") : canPerform(currentRoleId, "logs.admin-domains"))}
-        onNavigate={onNavigate} onPublished={(message) => dispatch({ type: "ADD_NOTIFICATION", message })} />;
+        onNavigate={(path) => onNavigate(withOrganizationScope(path, new URLSearchParams(search).get("organizationId") ?? undefined))} onPublished={(message) => dispatch({ type: "ADD_NOTIFICATION", message })} />;
       return (
         <LogAdminPage
           state={state}
           dispatch={dispatch}
-          onNavigate={onNavigate}
+          onNavigate={(path) => onNavigate(withOrganizationScope(path, new URLSearchParams(search).get("organizationId") ?? undefined))}
           search={search}
           logActions={logActions}
           knowledgeRepository={knowledgeRepository}
@@ -459,11 +468,14 @@ export function PageRouter({
       return productFeedbackRepository ? <FeedbackCenterPage productFeedbackRepository={productFeedbackRepository} search={search} onSearchChange={onSearchChange} /> : null;
     case "workflow-publication":
       return runtime?.workflowPublicationClient ? <WorkflowPublicationPage client={runtime.workflowPublicationClient} onSaved={publication?.retry} /> : null;
+    case "platform-organizations":
+      return runtime?.platformOrganizationsClient ? <PlatformOrganizationsPage client={runtime.platformOrganizationsClient} authClient={runtime.authClient} onNavigate={onNavigate} /> : null;
     case "knowledge": {
       const citation = parseKnowledgeEntryQuery(new URLSearchParams(search));
       return knowledgeRepository && knowledgeCapability ? (
         <KnowledgePage
           repository={knowledgeRepository}
+          organizationId={new URLSearchParams(search).get("organizationId") ?? undefined}
           capability={knowledgeCapability}
           askXiaozeEnabled={runtimeMode === "api"}
           initialEntryId={citation.entryId}
@@ -475,13 +487,14 @@ export function PageRouter({
             ? (definitionId) => onNavigate(buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, definitionId })
               .replace(CATALOG_PAGE_PATH, canAccessPage(currentRoleId, "parameter-admin") ? CATALOG_PAGE_PATH : CATALOG_READ_PAGE_PATH))
             : undefined}
-          onNavigate={onNavigate}
+          onNavigate={(path) => onNavigate(withOrganizationScope(path, new URLSearchParams(search).get("organizationId") ?? undefined))}
         />
       ) : null;
     }
     case "knowledge-admin":
       return knowledgeRepository && knowledgeCapability ? (
-        <KnowledgeAdminPage repository={knowledgeRepository} capability={knowledgeCapability} onNavigate={onNavigate} />
+        <KnowledgeAdminPage repository={knowledgeRepository} organizationId={new URLSearchParams(search).get("organizationId") ?? undefined} capability={knowledgeCapability}
+          onNavigate={(path) => onNavigate(withOrganizationScope(path, new URLSearchParams(search).get("organizationId") ?? undefined))} />
       ) : null;
     case "debugging":
       return (
@@ -558,16 +571,30 @@ export function PageRouter({
         />
       );
     }
-    case "user-permissions":
+    case "user-permissions": {
+      const OrganizationComponent = runtimeMode === "api" ? OrganizationWorkspace : OrganizationPage;
       return (
-        <OrganizationPage
+        <OrganizationComponent
+          workspaceClient={runtime?.organizationWorkspaceClient}
           state={state}
           dispatch={dispatch}
           onNavigate={onNavigate}
           search={search}
-          area={parseOrganizationAdminArea(page.path) ?? "profile"}
+          area={parseOrganizationAdminArea(page.path) ?? "overview"}
           apiMode={runtimeMode === "api"}
           userGovernanceActions={userGovernanceActions}
+          onCurrentAccountChanged={async (accessEnded) => {
+            if (runtimeMode !== "api") return;
+            if (accessEnded) { await onEndSession?.(); return; }
+            try {
+              const context = await runtime!.authClient.getCurrentAuthContext();
+              onAuthContextRefresh?.(context);
+              if (!context.permissions.includes("users:manage")) onNavigate("/");
+            } catch {
+              // The mutation already succeeded; replace stale authority with a fresh login.
+              await onEndSession?.();
+            }
+          }}
           organizationActions={organizationActions}
           onOrganizationUpdated={async () => {
             if (runtimeMode !== "api") {
@@ -584,6 +611,7 @@ export function PageRouter({
           }}
         />
       );
+    }
     case "audit":
       return <AuditCenterPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} runtimeMode={runtimeMode} />;
     default:

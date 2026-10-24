@@ -11,6 +11,54 @@ function deps(): AppRuntimeDeps {
 }
 
 describe("createAppRuntime", () => {
+  it("binds feedback to the URL target while identity requests retain the real account", async () => {
+    vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "http://127.0.0.1:18781");
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ items: [] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const target = createAppRuntime("api", { ...deps(), organizationId: "target-feedback" });
+      const home = createAppRuntime("api", deps());
+      await target.productFeedbackRepository.list();
+      await home.productFeedbackRepository.list();
+      await target.authClient.getCurrentAuthContext();
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+        "http://127.0.0.1:18781/api/v1/product-feedback?organizationId=target-feedback",
+        "http://127.0.0.1:18781/api/v1/product-feedback", "http://127.0.0.1:18781/api/v1/me"
+      ]);
+    } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
+  });
+  it("keeps parameter runtimes fixed to their own target and shared Catalog requests global", async () => {
+    vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "http://127.0.0.1:18781");
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => new Response(JSON.stringify(
+      url.endsWith("/catalog") ? readyCatalogDocument : { items: [] }
+    ), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const target = createAppRuntime("api", { ...deps(), organizationId: "target-parameters" });
+      const home = createAppRuntime("api", deps());
+      await target.parameterRepository.listProjects();
+      await home.parameterRepository.listProjects();
+      await target.parameterCatalogRepository.getCatalog();
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+        "http://127.0.0.1:18781/api/v1/projects?organizationId=target-parameters",
+        "http://127.0.0.1:18781/api/v1/projects", "http://127.0.0.1:18781/api/v2/catalog"
+      ]);
+    } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
+  });
+  it("binds each log runtime to the explicit URL organization", async () => {
+    vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "http://127.0.0.1:18781");
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ items: [] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const target = createAppRuntime("api", { ...deps(), organizationId: "target-logs" });
+      const home = createAppRuntime("api", deps());
+      await target.logAnalysisRepository!.listLogs();
+      await home.logAnalysisRepository!.listLogs();
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+        "http://127.0.0.1:18781/api/v1/logs?organizationId=target-logs", "http://127.0.0.1:18781/api/v1/logs"
+      ]);
+    } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
+  });
   it("R2 Catalog API client honors the configured backend origin", async () => {
     vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "http://127.0.0.1:18781");
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(readyCatalogDocument), { status: 200, headers: { "content-type": "application/json" } }));
@@ -89,6 +137,7 @@ describe("createAppRuntime", () => {
   it("selects mock catalog ports with the same operation names as api ports", async () => {
     const runtime = createAppRuntime("mock", deps());
     const document = await runtime.parameterCatalogRepository.getCatalog();
+    if (!document.item) throw new Error("Mock Catalog must be published.");
     expect(document.item.catalogReleaseId).toBeTruthy();
     expect(typeof runtime.parameterCatalogGovernanceRepository.listReviewItems).toBe("function");
   });
@@ -99,7 +148,9 @@ describe("createAppRuntime", () => {
     if (!admin) throw new Error("test requires the independent admin fixture");
     state.currentUserId = admin.id;
     const runtime = createAppRuntime("mock", { getState: () => state, mockParameterRuntime: createMockRuntimeState(state) });
-    const release = (await runtime.parameterCatalogRepository.getCatalog()).item.catalogReleaseId;
+    const catalog = await runtime.parameterCatalogRepository.getCatalog();
+    if (!catalog.item) throw new Error("Mock Catalog must be published.");
+    const release = catalog.item.catalogReleaseId;
     const body = { base: { catalogReleaseId: release }, requestedChange: { kind: "new-definition" }, reason: "runtime session" };
     const write = { catalogReleaseId: release, idempotencyKey: "runtime-proposal" };
     const created = await runtime.parameterCatalogGovernanceRepository.createProposal(body, write);

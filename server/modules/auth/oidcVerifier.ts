@@ -114,6 +114,8 @@ function validateClaims(claims: Record<string, unknown>, options: Pick<OidcVerif
   if (nbf !== undefined && nbf > nowSeconds) {
     throw new ApiError("UNAUTHENTICATED", "OIDC token is not valid yet.");
   }
+  const issuedAt = numberClaim(claims, "iat");
+  if (issuedAt !== undefined && issuedAt > nowSeconds) throw new ApiError("UNAUTHENTICATED", "OIDC token is not valid yet.");
 }
 
 function parseRoles(value: unknown): RoleBinding[] {
@@ -209,6 +211,7 @@ export function createOidcVerifier(options: OidcVerifierOptions): TokenVerifier 
 
       return {
         externalIdentity: { provider: "oidc", issuer: options.issuer },
+        tokenIssuedAt: numberClaim(parsed.claims, "iat"),
         user: {
           id: subject,
           organizationId,

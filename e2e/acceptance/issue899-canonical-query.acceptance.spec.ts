@@ -68,6 +68,8 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
     ] as const) {
       await withPgClient(async client => {
         await client.query(`insert into projects(id,organization_id,name,code,status) values ($1,$2,$3,$1,'initialized')`, [id, organizationId, name]);
+        if (id === projectId) await client.query(`insert into project_members(organization_id,project_id,user_id,roles)
+          values ($1,$2,$3,ARRAY['software-user'])`, [organizationId,id,acceptanceCast.liuMin.userId]);
         await client.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ($1,$2,$3,$4,'software-user')`,
           [`${id}-reader`, acceptanceCast.liuMin.userId, organizationId, id]);
         await client.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ($1,$2,$3,$4,'software-committer')`,
@@ -260,20 +262,24 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
     await expect(detail.getByLabel("对比目标配置实例")).toBeVisible();
   });
 
-  test("filters inaccessible project instances and displays real authorization failures", async ({ page, request }, info) => {
+  test("keeps organization projects visible and displays real authorization failures", async ({ page, request }, info) => {
     await withPgClient(async client => {
       expect((await client.query(`delete from user_role_bindings where id='issue899-project-b-reader' returning id`)).rowCount).toBe(1);
+      await client.query("insert into organizations(id,name) values ('issue899-foreign','Foreign organization')");
+      await client.query("insert into projects(id,organization_id,name,code) values ('issue899-foreign','issue899-foreign','Foreign project','FOREIGN')");
     });
     try {
       const compared = await request.get(apiRoute(`/api/v2/projects/${projectId}/bindings/${bindingId}/compare`), { headers: authHeadersForRole("software-user") });
       expect(compared.status(), await compared.text()).toBe(200);
       const items = (await compared.json()).items;
-      expect(items).toHaveLength(1);
-      expect(items[0].projectId).toBe(projectId);
-      expect(items[0].bindingId).not.toBe(bindingId);
+      expect(items).toHaveLength(3);
+      expect(new Set(items.map((item: { projectId: string }) => item.projectId))).toEqual(new Set([projectId, "issue899-project-b"]));
+      expect(items.every((item: { bindingId: string }) => item.bindingId !== bindingId)).toBe(true);
       for (const query of ["history", "compare"]) {
-        const denied = await request.get(apiRoute(`/api/v2/projects/issue899-project-b/bindings/${otherProjectBindingId}/${query}`), { headers: authHeadersForRole("software-user") });
-        expect(denied.status(), await denied.text()).toBe(403);
+        const visible = await request.get(apiRoute(`/api/v2/projects/issue899-project-b/bindings/${otherProjectBindingId}/${query}`), { headers: authHeadersForRole("software-user") });
+        expect(visible.status(), await visible.text()).toBe(200);
+        const denied = await request.get(apiRoute(`/api/v2/projects/issue899-foreign/bindings/${otherProjectBindingId}/${query}`), { headers: authHeadersForRole("software-user") });
+        expect(denied.status(), await denied.text()).toBe(404);
       }
       await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameters?project=${projectId}`);
       const dismiss = page.getByRole("button", { name: "不再提示" });
@@ -281,22 +287,26 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
       const view = page.locator(`[data-binding-id="${bindingId}"]`).getByRole("button", { name: /^参数详情 / });
       await expect(view).toBeVisible();
       await withPgClient(async client => {
-        expect((await client.query(`delete from user_role_bindings where id='issue899-project-a-reader' returning id`)).rowCount).toBe(1);
+        expect((await client.query(`update users set is_active=false where id=$1 returning id`, [acceptanceCast.liuMin.userId])).rowCount).toBe(1);
       });
       try {
         for (const query of ["history", "compare"]) expectedApiFailures.push({ method: "GET", path: `/api/v2/projects/${projectId}/bindings/${bindingId}/${query}`, status: 403 });
+        const definitionPath = `/api/v2/catalog/definitions/${definitionId}/revisions/${effectiveRevisionId}`;
+        expectedApiFailures.push({ method: "GET", path: definitionPath, status: 403 });
+        const deniedDefinition = page.waitForResponse(response => response.request().method() === "GET"
+          && new URL(response.url()).pathname === definitionPath);
         await view.click();
+        expect((await deniedDefinition).status()).toBe(403);
         const detail = page.getByRole("dialog", { name: /参数详情/ });
         for (const name of ["变更历史", "跨项目对比"]) {
           await detail.getByRole("tab", { name, exact: true }).click();
           const alert = detail.getByRole("tabpanel", { name, exact: true }).getByRole("alert");
           await expect(alert).toHaveCount(1);
-          await expect(alert).toContainText(/权限|无权/);
+          await expect(alert).toContainText(/权限|无权|停用|inactive/i);
         }
         await page.screenshot({ path: info.outputPath("query-forbidden.png"), animations: "disabled" });
       } finally {
-        await withPgClient(client => client.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
-          values ('issue899-project-a-reader',$1,'org-chargelab',$2,'software-user')`, [acceptanceCast.liuMin.userId, projectId]));
+        await withPgClient(client => client.query("update users set is_active=true where id=$1", [acceptanceCast.liuMin.userId]));
       }
       const recoveredDetail = page.getByRole("dialog", { name: /参数详情/ });
       for (const [name, retry] of [["变更历史", "重试历史"], ["跨项目对比", "重试对比"]]) {
@@ -367,10 +377,10 @@ test.describe("Issue 899 JSON query regression", () => {
     });
     try {
       for (const operation of ["change-history", "export"]) {
-        const denied = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings/${bindingId}/${operation}`), {
+        const visible = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings/${bindingId}/${operation}`), {
           headers: authHeadersForRole("software-user")
         });
-        expect(denied.status(), await denied.text()).toBe(403);
+        expect(visible.status(), await visible.text()).toBe(200);
       }
     } finally {
       await withPgClient(client => client.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)

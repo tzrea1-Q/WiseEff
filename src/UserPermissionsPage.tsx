@@ -16,7 +16,10 @@ import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MemberDetailsDialog } from "@/components/admin/MemberDetailsDialog";
+import { AccountTransferDialog } from "@/features/organization/AccountTransferDialog";
+import type { AccountTransferClient } from "@/infrastructure/http/accountTransferClient";
 import { MemberOrganizationRolesPanel } from "@/components/admin/MemberOrganizationRolesPanel";
+import { SettingsLeaveGuard } from "@/components/layout/SettingsFormPage";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import {
@@ -29,7 +32,7 @@ import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { formatLastActive, normalizeTimestampInput } from "@/domain/format/formatLastActive";
 import { presentError } from "@/infrastructure/http/presentError";
 import { migrateLegacyRoleId, organizationRoleIds, pickPrimaryPlatformRoleId, platformRoles, type PlatformRoleId } from "@/domain/users/types";
-import type { CreateGovernedUserInput, UpdateOrganizationRolesInput } from "@/infrastructure/http/userGovernanceClient";
+import type { CreateGovernedUserInput, UpdateOrganizationRolesInput, OrganizationTeamsClient, OrganizationTeamDto } from "@/infrastructure/http/userGovernanceClient";
 import type { LocalAuthPublicConfigDto } from "@/infrastructure/http/authClient";
 import type { PrototypeState, User } from "@/domain/prototype/types";
 import type { DataTableSort } from "@/components/admin/DataTable";
@@ -43,10 +46,17 @@ export type UserPermissionsPageProps = {
   onNavigate: (path: string) => void;
   search: string;
   userGovernanceActions?: UserGovernanceActions;
+  teamActions?: OrganizationTeamsClient;
+  accountTransferClient?: AccountTransferClient;
+  /** Directory state belongs to this explicit organization, never to the shell identity. */
+  directoryScope?: string;
+  projectCandidates?: Array<{ id: string; name: string }>;
+  reviewRolesClient?: import("@/components/parameter-admin-next/ProjectReviewRolesPanel").ProjectReviewRolesPanelProps["userGovernanceClient"];
   /** API-mode user-directory hydration lifecycle; mock mode stays "ready". */
   userDirectoryStatus?: UserDirectoryStatus;
   userDirectoryError?: string;
   onUserDirectoryRetry?: () => void;
+  onCurrentAccountChanged?: (accessEnded: boolean) => Promise<void>;
 };
 
 export type UserGovernanceActions = {
@@ -98,10 +108,10 @@ export const roleLabels: Record<PlatformRoleId, string> = {
 
 export const roleCapabilityDescriptions: Record<PlatformRoleId, string> = {
   guest: "仅可查看参数页面。",
-  "hardware-user": "硬件侧可查看并提交参数修改，使用参数调试和日志分析。",
-  "software-user": "软件侧可查看并提交参数修改，在变更审阅页完成合入推进，并使用参数调试和日志分析。",
-  "hardware-committer": "包含硬件开发权限，并可执行硬件侧参数检视。",
-  "software-committer": "包含软件开发权限，并可执行软件侧参数检视。",
+  "hardware-user": "可查看组织项目，使用参数调试和日志分析；参数修改需配置项目参与和编辑角色。",
+  "software-user": "可查看组织项目，使用参数调试和日志分析；参数修改需配置项目参与和编辑角色，合入职责单独配置。",
+  "hardware-committer": "包含硬件开发工具权限；参数修改需项目编辑角色，硬件审核职责单独配置。",
+  "software-committer": "包含软件开发工具权限；参数修改需项目编辑角色，软件审核职责单独配置。",
   admin: "包含全部提交人权限，并可访问各应用后台和组织管理。",
   "platform-admin": "平台运营角色，在本组织内拥有管理员能力，并可管理平台超级管理员授权。"
 };
@@ -207,10 +217,21 @@ export function UserPermissionsPage({
   dispatch,
   search,
   userGovernanceActions,
+  teamActions,
+  accountTransferClient,
+  directoryScope,
+  projectCandidates,
+  reviewRolesClient,
   userDirectoryStatus: userDirectoryStatusOverride,
   userDirectoryError: userDirectoryErrorOverride,
-  onUserDirectoryRetry
+  onUserDirectoryRetry,
+  onCurrentAccountChanged
 }: UserPermissionsPageProps) {
+  const [scopedUsers, setScopedUsers] = useState<User[]>([]);
+  const [transferringUser, setTransferringUser] = useState<User | null>(null);
+  const [transferMessage, setTransferMessage] = useState("");
+  const users = directoryScope ? scopedUsers : state.users;
+  const projects = projectCandidates ?? state.configDraft.projects;
   // Governed rows hydrate when the page mounts (the governance client only
   // exists in api mode, so its presence doubles as the mode guard); the page
   // owns the loading/error lifecycle, with the props kept as test overrides.
@@ -221,6 +242,16 @@ export function UserPermissionsPage({
   );
   const [selfDirectoryError, setSelfDirectoryError] = useState("");
   const [directoryReloadToken, setDirectoryReloadToken] = useState(0);
+  const [teams, setTeams] = useState<OrganizationTeamDto[] | null>(null), [teamError, setTeamError] = useState("");
+  useEffect(() => {
+    if (!teamActions) return;
+    let cancelled = false;
+    setTeams(null); setTeamError("");
+    void teamActions.listTeams().then((items) => { if (!cancelled) setTeams(items); })
+      .catch((failure: unknown) => { if (!cancelled) setTeamError(presentError(failure, "团队归属加载失败，请刷新名录。")); });
+    return () => { cancelled = true; };
+  }, [teamActions, directoryReloadToken]);
+  const teamNames = (userId: string) => teams?.filter((team) => team.memberIds.includes(userId)).map((team) => team.name).join("、") || "未加入团队";
   const [authentication, setAuthentication] = useState<{ provider: string; oidcIssuer?: string }>({ provider: userGovernanceActions?.getAuthenticationConfig ? "pending" : "local" });
   useEffect(() => {
     if (!userGovernanceActions || !canPerform(migrateLegacyRoleId(state.activeRoleId), "users.manage")) {
@@ -235,7 +266,8 @@ export function UserPermissionsPage({
       .then(([users, config]) => {
         if (!cancelled) {
           if (config) setAuthentication(config);
-          dispatch({ type: "HYDRATE_USERS", users });
+          if (directoryScope) setScopedUsers(users);
+          else dispatch({ type: "HYDRATE_USERS", users });
           setSelfDirectoryStatus("ready");
           setSelfDirectoryError("");
         }
@@ -251,7 +283,7 @@ export function UserPermissionsPage({
     return () => {
       cancelled = true;
     };
-  }, [directoryReloadToken, dispatch, state.activeRoleId, userGovernanceActions]);
+  }, [directoryReloadToken, dispatch, state.activeRoleId, userGovernanceActions, directoryScope]);
   const userDirectoryStatus = userDirectoryStatusOverride ?? selfDirectoryStatus;
   const userDirectoryError = userDirectoryErrorOverride ?? selfDirectoryError;
   const handleUserDirectoryRetry =
@@ -282,7 +314,7 @@ export function UserPermissionsPage({
   const [requestReloadToken, setRequestReloadToken] = useState(0);
   const [pendingRequestDecision, setPendingRequestDecision] = useState<{ request: RegistrationRoleRequest; decision: "approve" | "reject" | "enable-basic" } | null>(null);
   const [memberId, setMemberId] = useState<string | null>(null);
-  const selectedMember = state.users.find((user) => user.id === memberId);
+  const selectedMember = users.find((user) => user.id === memberId);
   const inactiveWorkspace = workspace === "accounts" ? "approvals" : "accounts";
   const [pendingGovernance, setPendingGovernance] = useState<PendingGovernanceAction | null>(null);
   const [governancePending, setGovernancePending] = useState(false);
@@ -305,10 +337,12 @@ export function UserPermissionsPage({
       setPage(readPage(value)); setSort(readSort(value));
     };
     restore(search);
+    // Scoped views follow the shell only after its unsaved-work guard approves Back/Forward.
+    if (directoryScope) return;
     const onPopState = () => restore(window.location.search);
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [search]);
+  }, [search, directoryScope]);
 
   useEffect(() => {
     if (!window.location.pathname.startsWith("/organization/members")) return;
@@ -325,14 +359,15 @@ export function UserPermissionsPage({
   }, [query, columnFilters, workspace, approvalView, page, sort]);
 
   function applyUpdatedUser(user: User) {
-    dispatch({ type: "HYDRATE_USERS", users: state.users.map((current) => current.id === user.id ? user : current) });
+    if (directoryScope) setScopedUsers((current) => current.map((item) => item.id === user.id ? user : item));
+    else dispatch({ type: "HYDRATE_USERS", users: state.users.map((current) => current.id === user.id ? user : current) });
   }
 
   function clearFilters() { setQuery(""); setColumnFilters({}); setPage(1); }
 
   const filteredUsers = useMemo(
     () => {
-      const searched = filterItems(state.users, query, userAccountSearchProfile);
+      const searched = filterItems(users, query, userAccountSearchProfile);
       return searched.filter((user) => {
         const matchesColumnFilters = (["user", "title", "role", "status", "lastActive"] as UserColumnFilterKey[]).every((key) => {
           const selectedValues = columnFilters[key] ?? [];
@@ -343,7 +378,7 @@ export function UserPermissionsPage({
         return matchesColumnFilters;
       });
     },
-    [columnFilters, query, state.users]
+    [columnFilters, query, users]
   );
 
   function toggleColumnFilter(key: UserColumnFilterKey, value: string) {
@@ -362,7 +397,7 @@ export function UserPermissionsPage({
     return {
       label,
       groupLabel: `${label}筛选`,
-      values: key === "role" ? [...new Set(state.users.flatMap(organizationRoleLabels))].sort((a, b) => a.localeCompare(b, "zh-CN")) : uniqueFilterValues(state.users, (user) => userColumnFilterValue(user, key)),
+      values: key === "role" ? [...new Set(users.flatMap(organizationRoleLabels))].sort((a, b) => a.localeCompare(b, "zh-CN")) : uniqueFilterValues(users, (user) => userColumnFilterValue(user, key)),
       selectedValues: columnFilters[key] ?? [],
       getValue: (user) => userColumnFilterValue(user, key),
       onToggle: (value) => toggleColumnFilter(key, value),
@@ -418,13 +453,17 @@ export function UserPermissionsPage({
           throw new Error("注册角色申请审批尚未启用。");
         }
         result = await userGovernanceActions.approveRegistrationRoleRequest(request.id);
-        dispatch({ type: "ASSIGN_USER_ROLE", userId: request.userId, roleId: request.requestedRoleId });
-        dispatch({ type: "TOGGLE_USER_ACTIVE", userId: request.userId, isActive: true });
+        if (!directoryScope) {
+          dispatch({ type: "ASSIGN_USER_ROLE", userId: request.userId, roleId: request.requestedRoleId });
+          dispatch({ type: "TOGGLE_USER_ACTIVE", userId: request.userId, isActive: true });
+        }
       } else if (decision === "enable-basic") {
         if (!userGovernanceActions?.enableBasicRegistrationRoleRequest) throw new Error("普通成员启用尚未启用。");
         result = await userGovernanceActions.enableBasicRegistrationRoleRequest(request.id);
-        dispatch({ type: "ASSIGN_USER_ROLE", userId: request.userId, roleId: request.currentRoleId });
-        dispatch({ type: "TOGGLE_USER_ACTIVE", userId: request.userId, isActive: true });
+        if (!directoryScope) {
+          dispatch({ type: "ASSIGN_USER_ROLE", userId: request.userId, roleId: request.currentRoleId });
+          dispatch({ type: "TOGGLE_USER_ACTIVE", userId: request.userId, isActive: true });
+        }
       } else {
         if (!userGovernanceActions?.rejectRegistrationRoleRequest) {
           throw new Error("注册角色申请拒绝尚未启用。");
@@ -451,21 +490,35 @@ export function UserPermissionsPage({
     setGovernancePending(true);
     setGovernanceError(null);
     try {
+      const self = pendingGovernance.user.id === state.currentUserId;
       if (pendingGovernance.kind === "active") {
         await userGovernanceActions?.setUserActive(pendingGovernance.user.id, pendingGovernance.nextActive);
-        dispatch({
+        if (self && !pendingGovernance.nextActive && onCurrentAccountChanged) {
+          setPendingGovernance(null);
+          await onCurrentAccountChanged(true);
+          return;
+        }
+        if (directoryScope) setScopedUsers((users) => users.map((user) => user.id === pendingGovernance.user.id ? { ...user, isActive: pendingGovernance.nextActive } : user));
+        else dispatch({
           type: "TOGGLE_USER_ACTIVE",
           userId: pendingGovernance.user.id,
           isActive: pendingGovernance.nextActive
         });
+        dispatch({ type: "ADD_NOTIFICATION", message: pendingGovernance.nextActive ? `已启用用户 ${pendingGovernance.user.name}，请重新登录；原会话和设备配对不会恢复` : `已停用用户 ${pendingGovernance.user.name}，个人会话和设备配对已撤销，业务交接可随后完成` });
       } else {
         await userGovernanceActions?.deleteUser(pendingGovernance.user.id);
-        dispatch({ type: "DELETE_USER", userId: pendingGovernance.user.id });
+        if (self && onCurrentAccountChanged) {
+          setPendingGovernance(null);
+          await onCurrentAccountChanged(true);
+          return;
+        }
+        if (directoryScope) setScopedUsers((users) => users.filter((user) => user.id !== pendingGovernance.user.id));
+        else dispatch({ type: "DELETE_USER", userId: pendingGovernance.user.id });
         dispatch({ type: "ADD_NOTIFICATION", message: `已注销用户 ${pendingGovernance.user.name}` });
       }
       setPendingGovernance(null);
     } catch (error) {
-      // Server refusals (e.g. self-lock protection) must be visible, not swallowed.
+      // Server refusals (including last-administrator protection) remain visible.
       setGovernanceError(presentError(error, "用户治理操作失败，请稍后重试。"));
     } finally {
       setGovernancePending(false);
@@ -502,7 +555,8 @@ export function UserPermissionsPage({
         password,
         roleId: initialRoleId
       });
-      if (oidc && createdUser) dispatch({ type: "HYDRATE_USERS", users: [...state.users.filter((user) => user.id !== createdUser.id), createdUser] });
+      if (directoryScope && createdUser) setScopedUsers((users) => [...users.filter((user) => user.id !== createdUser.id), createdUser]);
+      else if (oidc && createdUser) dispatch({ type: "HYDRATE_USERS", users: [...state.users.filter((user) => user.id !== createdUser.id), createdUser] });
       else dispatch({
         type: "ADD_USER",
         id: createdUser?.id,
@@ -543,6 +597,11 @@ export function UserPermissionsPage({
     setResetPasswordError("");
   }
 
+  function dismissResetPassword() {
+    if (resetPasswordPending) return;
+    setResetPasswordUser(null); setResetPassword(""); setResetConfirmPassword(""); setResetPasswordError("");
+  }
+
   async function handleResetPasswordSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!resetPasswordUser || !userGovernanceActions?.resetUserPassword || resetPasswordPending) {
@@ -580,7 +639,7 @@ export function UserPermissionsPage({
         <div className="member-identity">
           <strong>{user.name}{user.id === state.currentUserId ? <Badge variant="secondary">我</Badge> : null}</strong>
           <span>{userAccountIdentifier(user)}</span>
-          <span className="member-list-meta">{user.oidcIdentity ? "OIDC · 已绑定" : authentication.provider === "oidc" ? "OIDC · 未显式绑定" : user.username ? "本地账号" : "外部身份"}</span>
+          <span className="member-list-meta">{user.oidcTransfer?.status === "pending" ? "OIDC · 等待身份系统同步" : user.oidcIdentity ? "OIDC · 已绑定" : authentication.provider === "oidc" ? "OIDC · 未显式绑定" : user.username ? "本地账号" : "外部身份"}</span>
         </div>
       )
     },
@@ -595,7 +654,7 @@ export function UserPermissionsPage({
       header: "组织角色",
       sortAccessor: (user) => roleLabelOf(organizationRoleOf(user)),
       headerFilter: <ColumnFilter compact label="组织角色" groupLabel="组织角色筛选"
-        values={[...new Set(state.users.flatMap(organizationRoleLabels))].sort((a, b) => a.localeCompare(b, "zh-CN"))}
+        values={[...new Set(users.flatMap(organizationRoleLabels))].sort((a, b) => a.localeCompare(b, "zh-CN"))}
         selectedValues={columnFilters.role ?? []} onToggle={(value) => toggleColumnFilter("role", value)} onClear={() => clearColumnFilter("role")} />,
       render: (user) => {
         const roles = organizationRoleIds(user);
@@ -610,7 +669,7 @@ export function UserPermissionsPage({
           (r) => r.projectId !== null && !r.roleId.startsWith("catalog-capability-")
         );
         return (
-          <span title={projectBindings.map((binding) => `${state.configDraft.projects.find((project) => project.id === binding.projectId)?.name ?? binding.projectId}：${roleLabelOf(binding.roleId)}`).join("；")}>
+          <span title={projectBindings.map((binding) => `${projects.find((project) => project.id === binding.projectId)?.name ?? binding.projectId}：${roleLabelOf(binding.roleId)}`).join("；")}>
             {projectBindings.length ? `${new Set(projectBindings.map((binding) => binding.projectId)).size} 个项目` : "未分配"}
           </span>
         );
@@ -630,6 +689,7 @@ export function UserPermissionsPage({
       render: (user) => <span title={lastActiveTooltip(user.lastActive)}>{user.lastActive === "never" ? "从未登录" : formatLastActive(user.lastActive)}</span>
     }
   ];
+  if (teamActions) accountColumns.splice(2, 0, { key: "teams", header: "团队", render: (user) => teamError ? "加载失败" : teams ? teamNames(user.id) : "正在加载" });
 
   return (
     <section className="user-permissions-page" aria-label="用户权限">
@@ -670,6 +730,7 @@ export function UserPermissionsPage({
 
       {workspace === "accounts" ? (
         <>
+          {teamError ? <SectionError message={teamError} onRetry={() => setDirectoryReloadToken((value) => value + 1)} /> : null}
           <TabPanel
             className="user-permissions-grid"
             role={approvalWorkflowEnabled ? "tabpanel" : undefined}
@@ -683,29 +744,29 @@ export function UserPermissionsPage({
                     <span className="user-permissions-filter-label">搜索</span>
                     <SearchField value={query} onValueChange={(value) => { setQuery(value); setPage(1); }} placeholder="搜索姓名、账号或职务" ariaLabel="搜索用户" />
                   </label>
-                  <span className="member-list-meta" role="status">{filteredUsers.length === state.users.length ? `共 ${state.users.length} 位成员` : `找到 ${filteredUsers.length} / ${state.users.length} 位成员`}</span>
+                  <span className="member-list-meta" role="status">{filteredUsers.length === users.length ? `共 ${users.length} 位成员` : `找到 ${filteredUsers.length} / ${users.length} 位成员`}</span>
                   {filteredUsers.length > 0 && (query || Object.values(columnFilters).some((values) => values.length)) ? <Button type="button" size="sm" variant="ghost" onClick={clearFilters}>清除筛选条件</Button> : null}
                 </div>}
               tableState={userDirectoryStatus === "loading" ? <SectionSkeleton label="正在加载用户名录" />
                 : userDirectoryStatus === "error" ? <SectionError message={userDirectoryError || "无法加载用户名录，请稍后重试。"} onRetry={handleUserDirectoryRetry} /> : undefined}
               table={{ ariaLabel: "平台用户", rows: filteredUsers, rowKey: (user) => user.id, columns: accountColumns,
                 page, onPageChange: setPage, sort, onSort: (key) => { setSort({ key, direction: sort.key === key && sort.direction === "asc" ? "desc" : "asc" }); setPage(1); } }}
-              emptyState={{ message: state.users.length === 0 ? "还没有任何用户，点击右上角「添加用户」创建第一个账号。" : "没有符合筛选条件的用户，请调整搜索或筛选条件。",
-                actionLabel: state.users.length === 0 ? "添加用户" : "清除筛选条件", onAction: () => {
-                  if (state.users.length === 0) setAddUserOpen(true);
+              emptyState={{ message: users.length === 0 ? "还没有任何用户，点击右上角「添加用户」创建第一个账号。" : "没有符合筛选条件的用户，请调整搜索或筛选条件。",
+                actionLabel: users.length === 0 ? "添加用户" : "清除筛选条件", onAction: () => {
+                  if (users.length === 0) setAddUserOpen(true);
                   else clearFilters();
                 } }}
               rowActions={(user) => {
                 const locked = isPlatformAdminLocked(state, user);
-                const disabledReason = user.id === state.currentUserId ? "不能注销当前登录账号。"
-                  : locked ? "只有平台超级管理员可以注销平台超级管理员。" : undefined;
+                const disabledReason = locked ? "只有平台超级管理员可以注销平台超级管理员。" : undefined;
                 return {
                   label: `${user.name} 操作`,
                   primaryAction: { id: "details", label: "查看", ariaLabel: `查看 ${user.name} 的成员资料`, onSelect: () => setMemberId(user.id) },
                   items: [
+                    ...(accountTransferClient ? [{ id: "transfer", label: "调动组织", ariaLabel: `调动 ${user.name} 到其他组织`, onSelect: () => { setTransferMessage(""); setTransferringUser(user); } }] : []),
                     ...(authentication.provider !== "oidc" && userGovernanceActions?.resetUserPassword ? [{ id: "password", label: "重置密码", ariaLabel: `重置 ${user.name} 的密码`, onSelect: () => openResetPassword(user) }] : []),
-                    { id: "active", label: user.isActive ? "停用" : "启用", disabled: user.id === state.currentUserId || locked,
-                      description: user.id === state.currentUserId ? "不能停用当前登录账号。" : locked ? "只有平台超级管理员可以停用平台超级管理员。" : undefined,
+                    { id: "active", label: user.isActive ? "停用" : "启用", disabled: locked,
+                      description: locked ? "只有平台超级管理员可以停用平台超级管理员。" : undefined,
                       onSelect: () => { setGovernanceError(null); setPendingGovernance({ kind: "active", user, nextActive: !user.isActive }); } },
                     { id: "delete", label: "注销", ariaLabel: `注销 ${user.name}`, destructive: true as const,
                       disabled: Boolean(disabledReason), description: disabledReason, descriptionId: disabledReason ? `delete-user-reason-${user.id}` : undefined,
@@ -713,9 +774,9 @@ export function UserPermissionsPage({
                   ]
                 };
               }} />
-            {filteredUsers.filter((user) => user.id === state.currentUserId || isPlatformAdminLocked(state, user)).map((user) =>
+            {filteredUsers.filter((user) => isPlatformAdminLocked(state, user)).map((user) =>
               <span key={user.id} id={`delete-user-reason-${user.id}`} className="sr-only">
-                {user.id === state.currentUserId ? "不能注销当前登录账号。" : "只有平台超级管理员可以注销平台超级管理员。"}
+                只有平台超级管理员可以注销平台超级管理员。
               </span>)}
           </TabPanel>
         </>
@@ -798,7 +859,14 @@ export function UserPermissionsPage({
           aria-labelledby={`user-permissions-workspace-${inactiveWorkspace}`} />
       ) : null}
 
-      {selectedMember ? <MemberDetailsDialog key={selectedMember.id} user={selectedMember} state={state} actions={userGovernanceActions}
+      {transferMessage ? <p role="status">{transferMessage}</p> : null}
+      {transferringUser && accountTransferClient ? <AccountTransferDialog user={transferringUser} client={accountTransferClient} onClose={() => setTransferringUser(null)} onTransferred={async () => {
+        const self = transferringUser.id === state.currentUserId;
+        setTransferMessage(`${transferringUser.name} 已调动，源组织业务可在业务交接中继续处理。`); setTransferringUser(null); setDirectoryReloadToken(value => value + 1);
+        if (self) await onCurrentAccountChanged?.(true);
+      }} /> : null}
+      {selectedMember ? <MemberDetailsDialog key={selectedMember.id} user={selectedMember} state={state} actions={userGovernanceActions} projects={projects} reviewRolesClient={reviewRolesClient}
+        teamMembership={teamActions ? <section className="member-details__section" aria-label="团队归属"><h3>团队</h3><p>{teamError || (teams ? teamNames(selectedMember.id) : "正在加载团队归属")}</p></section> : undefined}
         oidcIssuer={authentication.provider === "oidc" ? authentication.oidcIssuer : undefined}
         onUpdated={applyUpdatedUser} onClose={() => { setMemberId(null); setDirectoryReloadToken((value) => value + 1); }} roleLabel={roleLabelOf}
         roleEditor={<MemberOrganizationRolesPanel user={selectedMember}
@@ -814,6 +882,7 @@ export function UserPermissionsPage({
             dispatch({ type: "ADD_NOTIFICATION", message: `已更新 ${selectedMember.name} 的组织角色` });
             return updated;
           }}
+          onSaved={async (updated) => { if (updated.id === state.currentUserId) await onCurrentAccountChanged?.(false); }}
           onReload={async () => {
             const updated = userGovernanceActions ? (await userGovernanceActions.listUsers()).find((user) => user.id === selectedMember.id) : selectedMember;
             if (!updated) throw new Error("该成员已不存在，请关闭成员资料并刷新名录。");
@@ -843,21 +912,21 @@ export function UserPermissionsPage({
         description={
           pendingGovernance ? (
             pendingGovernance.kind === "delete" ? (
-              <p>
+              <><p>
                 将永久删除 <strong>{pendingGovernance.user.name}</strong>（
-                {userAccountIdentifier(pendingGovernance.user)}）。账号的角色、凭据、会话和临时数据将一并清除；业务与审计历史记录会保留，
-                历史记录中的用户关联会解除。此操作不可恢复。
-              </p>
+                {userAccountIdentifier(pendingGovernance.user)}）。账号的角色、凭据、会话和临时数据将一并清除，个人设备配对将撤销；业务与审计历史记录会保留，
+                既有历史署名不会改成接任者。此操作不可恢复。
+              </p>{pendingGovernance.user.id === state.currentUserId ? <p>操作成功后将退出当前账号。服务端会检查是否保留有效管理员。</p> : null}</>
             ) : pendingGovernance.nextActive ? (
               <p>
                 将启用 <strong>{pendingGovernance.user.name}</strong>（
-                {userAccountIdentifier(pendingGovernance.user)}），该账号将恢复登录与操作权限。
+                {userAccountIdentifier(pendingGovernance.user)}），该账号可重新登录。原有会话和设备配对不会恢复，需要重新登录和配对。
               </p>
             ) : (
-              <p>
+              <><p>
                 将停用 <strong>{pendingGovernance.user.name}</strong>（
-                {userAccountIdentifier(pendingGovernance.user)}），停用后该账号无法登录平台。
-              </p>
+                {userAccountIdentifier(pendingGovernance.user)}）。将立即撤销个人会话、访问凭据和设备配对；账号与业务资料保留，交接可随后完成。组织集成凭据不受影响。
+              </p>{pendingGovernance.user.id === state.currentUserId ? <p>操作成功后将退出当前账号。服务端会检查是否保留有效管理员。</p> : null}</>
             )
           ) : null
         }
@@ -1002,7 +1071,7 @@ export function UserPermissionsPage({
       {resetPasswordUser && userGovernanceActions?.resetUserPassword ? (
         <ModalDialog
           open
-          onDismiss={resetPasswordPending ? undefined : () => setResetPasswordUser(null)}
+          onDismiss={resetPasswordPending ? undefined : dismissResetPassword}
           className="user-permissions-modal-card modal-card--sm"
           backdropClassName="user-permissions-modal"
         >
@@ -1051,7 +1120,7 @@ export function UserPermissionsPage({
                   className="button user-permissions-modal-action user-permissions-modal-action--secondary"
                   type="button"
                   disabled={resetPasswordPending}
-                  onClick={() => setResetPasswordUser(null)}
+                  onClick={dismissResetPassword}
                 >
                   取消
                 </button>
@@ -1067,6 +1136,8 @@ export function UserPermissionsPage({
           )}
         </ModalDialog>
       ) : null}
+      <SettingsLeaveGuard dirty={Boolean((addUserOpen && (name || username || title || password || confirmPassword || oidcSubject || oidcEmail || initialRoleId !== "hardware-user")) ||
+        (resetPasswordUser && (resetPassword || resetConfirmPassword)))} saving={addUserPending || resetPasswordPending} />
     </section>
   );
 }

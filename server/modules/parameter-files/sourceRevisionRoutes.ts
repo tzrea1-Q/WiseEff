@@ -1,4 +1,6 @@
+import { parameterOrganizationId, parameterInvocation, parameterRequestAccess } from "../parameters/operatingScope";
 import { z } from "zod";
+import { historicalIdentityLabel, type HistoricalAttribution } from "../../../src/domain/identity/historicalAttribution";
 import { getRootPostgresPool, isRootDatabase, type Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -23,6 +25,7 @@ export type SourceRevisionRequestDto = {
   id: string; projectId: string; candidateId: string; fileId: string; fileName: string; configSetId: string;
   status: Status; reason: string; submitterUserId: string | null; assignedToUserId: string | null; reviewerUserId: string | null;
   submitterName?: string | null; assignedToName?: string | null; reviewerName?: string | null;
+  organizationName?: string | null;
   reviewerNote: string | null; createdAt: string; updatedAt: string; proofDigest: string;
   impact: { parameterChanges: number; nodeAdditions: number; nodeRemovals: number; restoredParameters?: number };
   before?: string; after?: string;
@@ -38,6 +41,7 @@ type Row = {
   source_revision_context: SourceRevisionProof; status: Status; reason: string;
   submitter_user_id: string | null; assigned_to_user_id: string | null; reviewer_user_id: string | null;
   submitter_name: string | null; assigned_to_name: string | null; reviewer_name: string | null;
+  historical_attribution?: HistoricalAttribution;
   reviewer_note: string | null; created_at: Date | string; updated_at: Date | string;
   applied_source_result: SourceRevisionRequestDto["appliedSourceResult"];
   source_revision_application_mode: SourceRevisionRequestDto["applicationMode"];
@@ -61,7 +65,13 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
 const selection = `select request.*, candidate.file_id as source_file_id, candidate.file_name as source_file_name,
   candidate.storage_key as after_storage_key,candidate.checksum as after_checksum,
   base.storage_key as before_storage_key,base.checksum as before_checksum,
-  submitter.name as submitter_name,assignee.name as assigned_to_name,reviewer.name as reviewer_name,
+  case when request.historical_attribution->'actors'->'submitter_user_id'->>'source' = 'legacy-current'
+    then (request.historical_attribution->'actors'->'submitter_user_id'->>'name') || '（迁移时名称）'
+    else request.historical_attribution->'actors'->'submitter_user_id'->>'name' end as submitter_name,
+  assignee.name as assigned_to_name,
+  case when request.historical_attribution->'actors'->'reviewer_user_id'->>'source' = 'legacy-current'
+    then (request.historical_attribution->'actors'->'reviewer_user_id'->>'name') || '（迁移时名称）'
+    else request.historical_attribution->'actors'->'reviewer_user_id'->>'name' end as reviewer_name,
   cancellation.actor_user_id as cancellation_user_id,cancellation.metadata->>'administratorName' as cancellation_name,
   cancellation.metadata->>'reason' as cancellation_reason,
   (select count(*)::int from public.dts_logical_node_revisions node
@@ -79,9 +89,7 @@ const selection = `select request.*, candidate.file_id as source_file_id, candid
     and file.organization_id=request.organization_id and file.project_id=request.project_id
   left join public.project_parameter_file_versions base on base.id=request.source_revision_context->>'baseVersionId'
     and base.file_id=candidate.file_id
-  left join public.users submitter on submitter.id=request.submitter_user_id and submitter.organization_id=request.organization_id
   left join public.users assignee on assignee.id=request.assigned_to_user_id and assignee.organization_id=request.organization_id
-  left join public.users reviewer on reviewer.id=request.reviewer_user_id and reviewer.organization_id=request.organization_id
   left join lateral (select audit.actor_user_id,audit.metadata from public.audit_events audit
     where audit.organization_id=request.organization_id and audit.project_id=request.project_id and audit.target_id=request.id
       and audit.target_type='project-parameter-value-change-request' and audit.action='source-request-cancelled'
@@ -91,19 +99,19 @@ const selection = `select request.*, candidate.file_id as source_file_id, candid
 async function ownedProject(db: Database, auth: AuthContext, projectId: string): Promise<void> {
   if (!auth.user.isActive) throw new ApiError("FORBIDDEN", "An active user is required.");
   requireCanViewProject(auth, projectId);
-  if (!await getProjectById(db, { organizationId: auth.organization.id, projectId })) throw new ApiError("NOT_FOUND", "Project was not found.");
+  if (!await getProjectById(db, { organizationId: parameterOrganizationId(auth), projectId })) throw new ApiError("NOT_FOUND", "Project was not found.");
 }
 async function load(db: Database, auth: AuthContext, projectId: string, requestId: string, lock = false): Promise<Row | null> {
   if (lock) return (await db.query<Row>(`${selection}
     where request.organization_id=$1 and request.project_id=$2 and request.id=$3 and request.request_kind='source_revision'
-    for update of request`, [auth.organization.id, projectId, requestId])).rows[0] ?? null;
+    for update of request`, [parameterOrganizationId(auth), projectId, requestId])).rows[0] ?? null;
   return (await db.query<Row>(`${selection}
     where request.organization_id=$1 and request.project_id=$2 and request.id=$3 and request.request_kind='source_revision'`,
-    [auth.organization.id, projectId, requestId])).rows[0] ?? null;
+    [parameterOrganizationId(auth), projectId, requestId])).rows[0] ?? null;
 }
 function frozenProof(row: Row, auth: AuthContext): SourceRevisionProof {
   const proof = row.source_revision_context;
-  if (!proof || proof.kind !== "source_revision" || proof.organizationId !== auth.organization.id
+  if (!proof || proof.kind !== "source_revision" || proof.organizationId !== parameterOrganizationId(auth)
     || proof.projectId !== row.project_id || proof.fileId !== row.source_file_id || proof.candidateId !== row.candidate_id
     || proof.configSetId !== row.source_revision_config_set_id || proof.proofDigest !== row.source_revision_proof_digest
     || !Array.isArray(proof.targets) || !Array.isArray(proof.newProperties) || !Array.isArray(proof.continuity?.nodes)) {
@@ -120,6 +128,8 @@ function dto(row: Row, auth: AuthContext): SourceRevisionRequestDto {
     fileName: row.source_file_name, configSetId: row.source_revision_config_set_id, status: row.status, reason: row.reason,
     submitterUserId: row.submitter_user_id, assignedToUserId: row.assigned_to_user_id, reviewerUserId: row.reviewer_user_id,
     submitterName: row.submitter_name, assignedToName: row.assigned_to_name, reviewerName: row.reviewer_name,
+    ...(row.historical_attribution ? { organizationName: row.historical_attribution.organization.name
+      ? historicalIdentityLabel(row.historical_attribution.organization) : null } : {}),
     reviewerNote: row.reviewer_note, createdAt: iso(row.created_at), updatedAt: iso(row.updated_at), proofDigest: proof.proofDigest,
     impact: { parameterChanges: proof.targets.length + proof.newProperties.length,
       restoredParameters: proof.restorations?.length ?? 0,
@@ -160,11 +170,11 @@ export function registerSourceRevisionRoutes(router: WiseEffRouter, options: {
   }
   function security(auth: AuthContext, request: RouteRequest): CanonicalSourceSecurityContext {
     if (!refusalSink) throw new ApiError("INTERNAL_ERROR", "Whole-source requests require a trusted refusal audit sink.");
-    return { invocation: createUserInvocation(auth), requestId: request.requestId, refusalSink };
+    return { invocation: parameterInvocation(auth) ?? createUserInvocation(auth), requestId: request.requestId, refusalSink };
   }
   const path = "/api/v2/projects/:projectId/source-revision-requests";
   router.post("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-apply", async (request) => {
-    const db = database(), auth = await options.getCurrentAuthContext(request);
+    const db = database(), auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parse(z.object({ projectId: z.string().min(1), candidateId: z.string().min(1) }), request.params);
     const body = parse(sourceRevisionDirectApplyRequestSchema, request.body);
     const context = security(auth, request);
@@ -176,7 +186,7 @@ export function registerSourceRevisionRoutes(router: WiseEffRouter, options: {
     return { status: 200, body: { item: dto(row, auth) } };
   });
   router.get(path, async (request) => {
-    const db = database(), auth = await options.getCurrentAuthContext(request);
+    const db = database(), auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const { projectId } = parse(z.object({ projectId: z.string().min(1) }), request.params);
     const query = parse(querySchema, Object.fromEntries(Object.entries(request.query).map(([key, value]) => [key, Array.isArray(value) ? value[0] : value])));
     await ownedProject(db, auth, projectId);
@@ -186,11 +196,11 @@ export function registerSourceRevisionRoutes(router: WiseEffRouter, options: {
       where request.organization_id=$1 and request.project_id=$2 and request.request_kind='source_revision'
         and ($3::text is null or request.status=$3)
         and (request.submitter_user_id=$4 or ($5::boolean and request.assigned_to_user_id=$4) or $6::boolean)
-      order by request.updated_at desc,request.id`, [auth.organization.id, projectId, query.status ?? null, auth.user.id, reviewer,administrator]);
+      order by request.updated_at desc,request.id`, [parameterOrganizationId(auth), projectId, query.status ?? null, auth.user.id, reviewer,administrator]);
     return { status: 200, body: { items: rows.rows.map((row) => dto(row, auth)) } };
   });
   router.get(`${path}/:requestId`, async (request) => {
-    const db = database(), auth = await options.getCurrentAuthContext(request);
+    const db = database(), auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parse(paramsSchema, request.params);
     await ownedProject(db, auth, params.projectId);
     const row = await load(db, auth, params.projectId, params.requestId);
@@ -203,7 +213,7 @@ export function registerSourceRevisionRoutes(router: WiseEffRouter, options: {
       ...(administrator && row.status === "pending" ? { eligibleReviewers: await sourceRevisionReviewers(db,auth,params.projectId,row.submitter_user_id) } : {}) } } };
   });
   router.post(`${path}/:requestId/cancel`, async (request) => {
-    const db = database(),auth = await options.getCurrentAuthContext(request);
+    const db = database(),auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parse(paramsSchema,request.params),body = parse(sourceRequestCancelSchema,request.body);
     const context = security(auth,request);
     await requireCanonicalUserInvocation(auth,context,{ projectId: params.projectId,operation: "source request administration",
@@ -219,13 +229,13 @@ export function registerSourceRevisionRoutes(router: WiseEffRouter, options: {
       }
       if (row.status === "withdrawn" && row.cancellation_user_id === administrator.user.id && row.cancellation_reason === body.reason) return dto(row,administrator);
       if (row.status !== "pending" || row.source_revision_application_mode !== "separate_review") throw new ApiError("CONFLICT","源码请求已终结，不能取消。");
-      await writeTrustedGovernanceAudit(asAuditTx(tx),context.invocation,{ action: "source-request-cancelled",organizationId: administrator.organization.id,
+      await writeTrustedGovernanceAudit(asAuditTx(tx),context.invocation,{ action: "source-request-cancelled",organizationId: parameterOrganizationId(administrator),
         projectId: params.projectId,targetType: "project-parameter-value-change-request",targetId: row.id,
         metadata: { requestKind: "source_revision",proofDigest: row.source_revision_proof_digest,reason: body.reason,
           administratorName: administrator.user.name,fromAssignedToUserId: row.assigned_to_user_id } },request.requestId);
       await tx.query(`update public.project_parameter_value_change_requests set status='withdrawn',updated_at=now()
         where id=$1 and organization_id=$2 and project_id=$3 and request_kind='source_revision' and status='pending'`,
-        [row.id,administrator.organization.id,params.projectId]);
+        [row.id,parameterOrganizationId(administrator),params.projectId]);
       const updated = await load(tx,administrator,params.projectId,params.requestId);
       if (!updated) throw new ApiError("CONFLICT","源码请求的取消回执不可用。");
       return dto(updated,administrator);
@@ -233,7 +243,7 @@ export function registerSourceRevisionRoutes(router: WiseEffRouter, options: {
     return { status: 200,body: { item } };
   });
   router.post(`${path}/:requestId/reassign`, async (request) => {
-    const db = database(),auth = await options.getCurrentAuthContext(request);
+    const db = database(),auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parse(paramsSchema,request.params),body = parse(sourceRequestReassignSchema,request.body);
     const context = security(auth,request);
     await requireCanonicalUserInvocation(auth,context,{ projectId: params.projectId,operation: "source request administration",
@@ -243,13 +253,13 @@ export function registerSourceRevisionRoutes(router: WiseEffRouter, options: {
       // Both authority fences precede the request lock. Sorting also prevents
       // administrators assigning each other from acquiring opposite user locks.
       await tx.query(`select id from public.users where organization_id=$1 and id=any($2::text[])
-        order by id for no key update`,[auth.organization.id,[auth.user.id,body.assignedToUserId].sort()]);
+        order by id for no key update`,[parameterOrganizationId(auth),[auth.user.id,body.assignedToUserId].sort()]);
       const administrator = await requireCurrentSourceAdministrator(tx,auth,params.projectId);
       const assignee = await getAuthContext(tx,body.assignedToUserId).catch((error: unknown) => {
         if (error instanceof ApiError && ["UNAUTHENTICATED","FORBIDDEN","NOT_FOUND"].includes(error.code)) return null;
         throw error;
       });
-      if (!assignee || assignee.organization.id !== administrator.organization.id || !await isSourceRevisionReviewer(tx,assignee,params.projectId)) {
+      if (!assignee || assignee.organization.id !== parameterOrganizationId(administrator) || !await isSourceRevisionReviewer(tx,assignee,params.projectId)) {
         throw new ApiError("VALIDATION_FAILED","所选成员已不具备当前项目的源码审核资格，请刷新后选择其他审核人。");
       }
       const row = await load(tx,administrator,params.projectId,params.requestId,true);
@@ -261,17 +271,17 @@ export function registerSourceRevisionRoutes(router: WiseEffRouter, options: {
       if (row.assigned_to_user_id === body.assignedToUserId && (await tx.query(`select id from public.audit_events
         where organization_id=$1 and project_id=$2 and target_id=$3 and actor_user_id=$4 and action='source-request-reassigned'
           and metadata->>'proofDigest'=$5 and metadata->>'fromAssignedToUserId' is not distinct from $6::text
-          and metadata->>'toAssignedToUserId'=$7`,[administrator.organization.id,params.projectId,row.id,administrator.user.id,
+          and metadata->>'toAssignedToUserId'=$7`,[parameterOrganizationId(administrator),params.projectId,row.id,administrator.user.id,
         body.proofDigest,body.expectedAssignedToUserId,body.assignedToUserId])).rows.length) return dto(row,administrator);
       if (row.assigned_to_user_id !== body.expectedAssignedToUserId) throw new ApiError("CONFLICT","源码请求的审核人已变化，请刷新后重试。");
       if (row.assigned_to_user_id !== body.assignedToUserId) {
-        await writeTrustedGovernanceAudit(asAuditTx(tx),context.invocation,{ action: "source-request-reassigned",organizationId: administrator.organization.id,
+        await writeTrustedGovernanceAudit(asAuditTx(tx),context.invocation,{ action: "source-request-reassigned",organizationId: parameterOrganizationId(administrator),
           projectId: params.projectId,targetType: "project-parameter-value-change-request",targetId: row.id,
           metadata: { requestKind: "source_revision",proofDigest: row.source_revision_proof_digest,
             fromAssignedToUserId: row.assigned_to_user_id,toAssignedToUserId: body.assignedToUserId } },request.requestId);
         await tx.query(`update public.project_parameter_value_change_requests set assigned_to_user_id=$4,updated_at=now()
           where id=$1 and organization_id=$2 and project_id=$3 and request_kind='source_revision' and status='pending'`,
-          [row.id,administrator.organization.id,params.projectId,body.assignedToUserId]);
+          [row.id,parameterOrganizationId(administrator),params.projectId,body.assignedToUserId]);
       }
       const updated = await load(tx,administrator,params.projectId,params.requestId);
       if (!updated) throw new ApiError("CONFLICT","源码请求的指派回执不可用。");
@@ -280,7 +290,7 @@ export function registerSourceRevisionRoutes(router: WiseEffRouter, options: {
     return { status: 200,body: { item } };
   });
   router.post(`${path}/:requestId/review`, async (request) => {
-    const db = database(), auth = await options.getCurrentAuthContext(request);
+    const db = database(), auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parse(paramsSchema, request.params), body = parse(reviewSchema, request.body);
     const context = security(auth, request);
     await requireCanonicalUserInvocation(auth, context, { projectId: params.projectId, operation: "whole DTS source review", targetType: "project-parameter-value-change-request", targetId: params.requestId });
@@ -303,7 +313,7 @@ export function registerSourceRevisionRoutes(router: WiseEffRouter, options: {
       const pool = getRootPostgresPool(db);
       if (!pool || !options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source approval requires root Catalog access and source storage.");
       const snapshot = await loadPublishedCatalog(pool);
-      return { snapshot, snapshots: await loadSourceRevisionCatalogSnapshots(db, params.projectId, auth.organization.id, snapshot) };
+      return { snapshot, snapshots: await loadSourceRevisionCatalogSnapshots(db, params.projectId, parameterOrganizationId(auth), snapshot) };
     })() : null;
     const item = await db.transaction(async (tx) => {
       // The source owner takes config/file locks before the request lock for approval.
@@ -322,8 +332,8 @@ export function registerSourceRevisionRoutes(router: WiseEffRouter, options: {
         if (row.status === "rejected" && row.reviewer_user_id === auth.user.id) return dto(row, auth);
         if (row.status !== "pending") throw new ApiError("CONFLICT", "Whole-source request is already closed.");
         await tx.query(`update public.project_parameter_value_change_requests set status='rejected',reviewer_user_id=$4,
-          reviewer_note=$5,updated_at=now() where id=$1 and organization_id=$2 and project_id=$3 and request_kind='source_revision' and status='pending'`, [row.id, auth.organization.id, params.projectId, auth.user.id, body.note ?? null]);
-        await writeTrustedGovernanceAudit(asAuditTx(tx), context.invocation, { action: "value-change-reviewed", organizationId: auth.organization.id, projectId: params.projectId, targetType: "project-parameter-value-change-request", targetId: row.id,
+          reviewer_note=$5,updated_at=now() where id=$1 and organization_id=$2 and project_id=$3 and request_kind='source_revision' and status='pending'`, [row.id, parameterOrganizationId(auth), params.projectId, auth.user.id, body.note ?? null]);
+        await writeTrustedGovernanceAudit(asAuditTx(tx), context.invocation, { action: "value-change-reviewed", organizationId: parameterOrganizationId(auth), projectId: params.projectId, targetType: "project-parameter-value-change-request", targetId: row.id,
           metadata: { requestId: row.id, requestKind: "source_revision", decision: "reject", proofDigest: body.proofDigest } }, request.requestId);
       }
       const updated = await load(tx, auth, params.projectId, params.requestId);
@@ -333,7 +343,7 @@ export function registerSourceRevisionRoutes(router: WiseEffRouter, options: {
     return { status: 200, body: { item } };
   });
   router.post(`${path}/:requestId/withdraw`, async (request) => {
-    const db = database(), auth = await options.getCurrentAuthContext(request);
+    const db = database(), auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parse(paramsSchema, request.params);
     parse(z.object({}).strict(), request.body ?? {});
     const context = security(auth, request);
@@ -350,8 +360,8 @@ export function registerSourceRevisionRoutes(router: WiseEffRouter, options: {
       if (row.status === "withdrawn") return dto(row, auth);
       if (row.status !== "pending") throw new ApiError("CONFLICT", "Whole-source request is already closed.");
       await tx.query(`update public.project_parameter_value_change_requests set status='withdrawn',reviewer_user_id=$4,
-        updated_at=now() where id=$1 and organization_id=$2 and project_id=$3 and request_kind='source_revision' and status='pending'`, [row.id, auth.organization.id, params.projectId, auth.user.id]);
-      await writeTrustedGovernanceAudit(asAuditTx(tx), context.invocation, { action: "value-change-withdrawn", organizationId: auth.organization.id, projectId: params.projectId, targetType: "project-parameter-value-change-request", targetId: row.id,
+        updated_at=now() where id=$1 and organization_id=$2 and project_id=$3 and request_kind='source_revision' and status='pending'`, [row.id, parameterOrganizationId(auth), params.projectId, auth.user.id]);
+      await writeTrustedGovernanceAudit(asAuditTx(tx), context.invocation, { action: "value-change-withdrawn", organizationId: parameterOrganizationId(auth), projectId: params.projectId, targetType: "project-parameter-value-change-request", targetId: row.id,
         metadata: { requestId: row.id, requestKind: "source_revision", proofDigest: row.source_revision_proof_digest } }, request.requestId);
       const updated = await load(tx, auth, params.projectId, params.requestId);
       if (!updated) throw new ApiError("CONFLICT", "Whole-source request receipt is unavailable.");

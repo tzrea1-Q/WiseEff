@@ -15,9 +15,11 @@ vi.mock("node:crypto", async (original) => {
 const id = "f1016303-7cfa-41ed-9b63-0d953ea769da";
 const secret = "s".repeat(43);
 const token = `Bearer wie_${id}_${secret}`;
-function database(overrides: Record<string, unknown> = {}) {
-  const query = vi.fn().mockResolvedValue({ rows: [{ id, organization_id: "org-1", name: "CI logs", skill_id: null,
-    status: "active", secret_hash: hashIntegrationSecret(secret), last_used_at: new Date(), ...overrides }], rowCount: 1 });
+function database(overrides: Record<string, unknown> = {}, organizationStatus = "active") {
+  const query = vi.fn().mockImplementation(async (sql: string) => sql.includes("from public.organizations")
+    ? { rows: [{ id: "org-1", name: "Organization", status: organizationStatus }], rowCount: 1 }
+    : { rows: [{ id, organization_id: "org-1", name: "CI logs", skill_id: null,
+      status: "active", secret_hash: hashIntegrationSecret(secret), last_used_at: new Date(), ...overrides }], rowCount: 1 });
   return { query } satisfies Queryable;
 }
 afterEach(() => { vi.restoreAllMocks(); vi.clearAllMocks(); vi.useRealTimers(); });
@@ -74,6 +76,12 @@ describe("integration credential resolver", () => {
     expect(() => requireUserInitiatedInvocation(principal.invocation)).toThrowError(expect.objectContaining({ status: 403 }));
   });
 
+  it("refuses a suspended organization without recording credential use", async () => {
+    const db = database({ last_used_at: null }, "suspended");
+    await expect(resolveIntegrationCredential(db, token)).rejects.toMatchObject({ status: 403, details: { reason: "organization-suspended" } });
+    expect(db.query.mock.calls.some(([sql]) => /^update log_integration_credentials/.test(sql))).toBe(false);
+  });
+
   it("throttles last_used_at to one minute, with a SQL predicate protecting concurrent resolvers", async () => {
     vi.useFakeTimers();
     const now = new Date("2026-10-19T12:00:00Z");
@@ -81,10 +89,11 @@ describe("integration credential resolver", () => {
     for (const age of [0, 59_999, 60_000, null]) {
       const db = database({ last_used_at: age === null ? null : new Date(now.getTime() - age) });
       await resolveIntegrationCredential(db, token);
-      expect(db.query).toHaveBeenCalledTimes(age === null || age >= 60_000 ? 2 : 1);
-      if (db.query.mock.calls.length === 2) {
-        expect(db.query.mock.calls[1][0]).toContain("last_used_at <= clock_timestamp() - interval '1 minute'");
-        expect(db.query.mock.calls[1][1]).toEqual([id, "org-1"]);
+      const updates = db.query.mock.calls.filter(([sql]) => /^update log_integration_credentials/.test(sql));
+      expect(updates).toHaveLength(age === null || age >= 60_000 ? 1 : 0);
+      if (updates.length) {
+        expect(updates[0][0]).toContain("last_used_at <= clock_timestamp() - interval '1 minute'");
+        expect(updates[0][1]).toEqual([id, "org-1"]);
       }
     }
   });

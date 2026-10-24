@@ -7,6 +7,8 @@ import { mapWriterDatabaseError } from "./failures";
 import { writeGuardedRegistration } from "./internalGuardedRegistrationWriter";
 import type { RegistrationResult, Result } from "./result";
 import { withRegistrationUnitOfWork } from "./unitOfWork";
+import { assertTrustedInvocationMatchesScope, TrustedInvocationContextError } from "../../auth/trustedInvocation";
+import { asAuditTx, writeAuditEventInTx } from "../../audit/auditedWrite";
 
 export type RegistrationService = {
   execute(
@@ -21,9 +23,26 @@ export const executeRegistration = async (
   const validated = validateRegistrationCommand(command);
   if (!validated.ok) return validated;
   try {
-    return await withRegistrationUnitOfWork(pool, (client) =>
-      writeGuardedRegistration(client, validated.value),
-    );
+    return await withRegistrationUnitOfWork(pool, async (client) => {
+      const context = command.context;
+      const invocation = "invocation" in context ? context.invocation : undefined;
+      const requestId = "requestId" in context ? context.requestId : undefined;
+      if (invocation) {
+        const trusted = assertTrustedInvocationMatchesScope(invocation.principal, invocation, command.organizationId, "organization registration");
+        if (trusted.initiator !== "user" || context.principalId !== trusted.principal.user.id || !requestId?.trim()) {
+          throw new TrustedInvocationContextError("Organization registration requires its real actor and request correlation");
+        }
+      }
+      const result = await writeGuardedRegistration(client, validated.value);
+      if (result.ok && result.value.outcome === "committed" && invocation) {
+        await writeAuditEventInTx(asAuditTx(client), invocation, { requestId: requestId! }, {
+          app: "parameter-governance", kind: "parameter-catalog-registration", action: `registration-${command.kind}`, severity: "Medium",
+          projectId: null, targetType: "organization-subject-registration", targetId: result.value.registrationId,
+          metadata: { catalogReleaseId: command.expectedRelease.id, actorKind: context.actorKind }
+        });
+      }
+      return result;
+    });
   } catch (error) {
     const subjectId =
       command.kind === "register" ? command.subjectId : command.registrationId;

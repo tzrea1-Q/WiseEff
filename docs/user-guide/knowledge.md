@@ -8,7 +8,9 @@
 - Hardware/software users and committers have `knowledge:edit`: they can create entries and edit, publish, archive, or restore their own entries. Managing someone else's entries requires additional permission.
 - Organization Admins and Platform Admins also have `knowledge:manage`: they can maintain other people's entries and use Knowledge admin (`/knowledge-admin`) to check index health and manage Agent drafts and archived entries. These operations are limited to the current Organization.
 
-Drafts are visible only to their creator and knowledge managers. Members with view permission can read published and archived entries; search and Xiaoze knowledge retrieval use only published entries. For account and role setup, see [Account and access](account-and-access.md).
+Drafts are visible only to their current responsible person and knowledge managers. New entries are assigned to their creator; administrators can hand responsibility to another active Organization knowledge editor through Organization → Members → Business handover (`/organization/handovers`). Ownership permissions described below follow the current responsible person after a handover; the original creator and revision signatures remain unchanged. Members with view permission can read published and archived entries; search and Xiaoze knowledge retrieval use only published entries. For account and role setup, see [Account and access](account-and-access.md).
+
+Platform Admins can enter a target Organization and use the same Knowledge base and Knowledge admin pages. The target banner identifies where entries, imports, revisions, index work and Agent drafts are stored; the administrator retains their own identity. Business navigation and citation links retain the target, and separate tabs can manage different Organizations. Returning to the Home Organization or using browser history asks before discarding unsaved edits. Shared platform model and Catalog configuration keeps its platform scope.
 
 ## Find a published answer
 

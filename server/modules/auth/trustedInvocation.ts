@@ -1,4 +1,5 @@
 import { BACKEND_PERMISSIONS, BACKEND_ROLE_IDS, type AuthContext } from "./types";
+import { canOperateInOrganization } from "./policy";
 
 const trustedInvocationBrand = Symbol("wiseeff.trusted-invocation");
 
@@ -24,11 +25,13 @@ export type SystemInvocationInput = {
 export type UserInvocationContext = {
   readonly initiator: "user";
   readonly principal: AuthContext;
+  readonly operatingOrganization?: Readonly<AuthContext["organization"]>;
 } & TrustedInvocationBrand;
 
 export type AgentInvocationContext = {
   readonly initiator: "agent";
   readonly principal: AuthContext;
+  readonly operatingOrganization?: Readonly<AuthContext["organization"]>;
   readonly sessionId: string;
   readonly toolCallId: string;
   readonly approvalRequired: boolean;
@@ -171,6 +174,11 @@ function validateAuthContext(value: unknown): asserts value is AuthContext {
   ) {
     invalid("principal permissions are malformed");
   }
+  if (value.projectMemberships !== undefined && (!Array.isArray(value.projectMemberships) || !value.projectMemberships.every((member) =>
+    isRecord(member) && typeof member.projectId === "string" && member.projectId.length > 0 && Array.isArray(member.roles) && member.roles.length > 0 &&
+    member.roles.every((role) => typeof role === "string" && ["hardware-user", "software-user", "hardware-committer", "software-committer"].includes(role))))) {
+    invalid("principal project participation is malformed");
+  }
 }
 
 function snapshotAuthContext(principal: AuthContext): AuthContext {
@@ -178,6 +186,8 @@ function snapshotAuthContext(principal: AuthContext): AuthContext {
     user: Object.freeze({ ...principal.user }),
     organization: Object.freeze({ ...principal.organization }),
     roles: Object.freeze(principal.roles.map((role) => Object.freeze({ ...role }))),
+    ...(principal.projectMemberships ? { projectMemberships: Object.freeze(principal.projectMemberships.map((member) =>
+      Object.freeze({ projectId: member.projectId, roles: Object.freeze([...member.roles]) }))) } : {}),
     permissions: Object.freeze([...principal.permissions])
   }) as AuthContext;
 }
@@ -215,9 +225,30 @@ function validateSystemInvocationInput(value: unknown): SystemInvocationInput {
   return { kind: value.kind, name: nonEmptyString(value.name, "system.name") };
 }
 
-export function createUserInvocation(principal: AuthContext): UserInvocationContext {
+function validateOperatingOrganization(principal: AuthContext, organization: AuthContext["organization"]) {
+  nonEmptyString(organization.id, "operatingOrganization.id");
+  nonEmptyString(organization.name, "operatingOrganization.name");
+  if (!canOperateInOrganization(principal, organization.id)) {
+    invalid("principal cannot operate in the selected Organization");
+  }
+}
+
+export function createUserInvocation(principal: AuthContext, operatingOrganization?: AuthContext["organization"]): UserInvocationContext {
   validateAuthContext(principal);
-  return brand({ initiator: "user" as const, principal: snapshotAuthContext(principal) });
+  if (operatingOrganization) validateOperatingOrganization(principal, operatingOrganization);
+  return brand({
+    initiator: "user" as const,
+    principal: snapshotAuthContext(principal),
+    ...(operatingOrganization ? { operatingOrganization: Object.freeze({ ...operatingOrganization }) } : {})
+  });
+}
+
+/** Derive an authorized resource scope from the caller's existing, trusted User provenance. */
+export function withOperatingOrganization(invocation: UserInvocationContext, organization: AuthContext["organization"]): UserInvocationContext {
+  const trusted = assertTrustedInvocationContext(invocation);
+  if (trusted.initiator !== "user") invalid("an operating Organization requires a trusted user invocation");
+  validateOperatingOrganization(trusted.principal, organization);
+  return brand({ ...trusted, operatingOrganization: Object.freeze({ ...organization }) });
 }
 
 export function createAgentInvocation(principal: AuthContext, input: AgentInvocationInput): AgentInvocationContext {
@@ -231,6 +262,16 @@ export function createAgentInvocation(principal: AuthContext, input: AgentInvoca
     approvalRequired: validated.approval.required,
     approvalId: validated.approval.required ? validated.approval.approvalId : null
   });
+}
+
+/** Preserve the authorized User target when the server starts an Agent tool execution. */
+export function createAgentInvocationFromUser(invocation: UserInvocationContext, input: AgentInvocationInput): AgentInvocationContext {
+  const trusted = assertTrustedInvocationContext(invocation);
+  if (trusted.initiator !== "user") invalid("Agent scope must derive from a trusted User invocation");
+  const agent = createAgentInvocation(trusted.principal, input);
+  return trusted.operatingOrganization
+    ? brand({ ...agent, operatingOrganization: trusted.operatingOrganization })
+    : agent;
 }
 
 export function createSystemInvocation(input: SystemInvocationInput): SystemInvocationContext {
@@ -252,11 +293,19 @@ function validateBrandedContext(value: unknown): TrustedInvocationContext {
 
   if (value.initiator === "user") {
     validateAuthContext(value.principal);
+    if (value.operatingOrganization !== undefined) {
+      if (!isRecord(value.operatingOrganization) || !Object.isFrozen(value.operatingOrganization)) invalid("operating Organization must be immutable");
+      validateOperatingOrganization(value.principal, value.operatingOrganization as AuthContext["organization"]);
+    }
     return value as UserInvocationContext;
   }
 
   if (value.initiator === "agent") {
     validateAuthContext(value.principal);
+    if (value.operatingOrganization !== undefined) {
+      if (!isRecord(value.operatingOrganization) || !Object.isFrozen(value.operatingOrganization)) invalid("operating Organization must be immutable");
+      validateOperatingOrganization(value.principal, value.operatingOrganization as AuthContext["organization"]);
+    }
     nonEmptyString(value.sessionId, "agent.sessionId");
     nonEmptyString(value.toolCallId, "agent.toolCallId");
     if (typeof value.approvalRequired !== "boolean") {
@@ -317,11 +366,35 @@ export function assertTrustedInvocationMatchesAuth(
     invocation.initiator !== "system" &&
     (invocation.principal.user.id !== auth.user.id ||
       invocation.principal.organization.id !== auth.organization.id ||
-      invocation.principal.user.organizationId !== auth.organization.id)
+      invocation.principal.user.organizationId !== auth.organization.id ||
+      (invocation.operatingOrganization !== undefined &&
+        invocation.operatingOrganization.id !== auth.organization.id))
   ) {
     throw new TrustedInvocationContextError(
       `${operation} invocation principal does not match the authenticated principal`
     );
+  }
+  return invocation;
+}
+
+/** Match a resource to an explicit trusted scope while keeping the authenticated Home actor. */
+export function assertTrustedInvocationMatchesScope(
+  auth: AuthContext,
+  value: unknown,
+  organizationId: string,
+  operation: string
+): UserInvocationContext | AgentInvocationContext {
+  const invocation = assertTrustedInvocationContext(value);
+  if (invocation.initiator !== "user" && invocation.initiator !== "agent") {
+    invalid(`${operation} requires a User or Agent invocation`);
+  }
+  validateAuthContext(auth);
+  const targetId = invocation.operatingOrganization?.id ?? invocation.principal.organization.id;
+  if (invocation.principal.user.id !== auth.user.id ||
+    invocation.principal.organization.id !== auth.organization.id ||
+    invocation.principal.user.organizationId !== auth.user.organizationId ||
+    targetId !== organizationId || !canOperateInOrganization(auth, targetId)) {
+    invalid(`${operation} invocation does not match the authenticated actor and resource Organization`);
   }
   return invocation;
 }

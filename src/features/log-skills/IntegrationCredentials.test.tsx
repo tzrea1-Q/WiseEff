@@ -24,6 +24,23 @@ async function acknowledge(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("integration credentials", () => {
+  it("reuses the organization overview for all bindings, filters by skill, and issues an unbound credential without a current skill", async () => {
+    const repository = { listIntegrationCredentials: vi.fn().mockResolvedValue([credential, { ...credential, id: "other", name: "Other skill credential", skillId: "other-skill", skillName: "Other skill" }, { ...credential, id: "unbound", name: "Unbound credential", skillId: null }]),
+      issueIntegrationCredential: vi.fn().mockResolvedValue({ item: { ...credential, id: "issued", name: "Organization pipeline", skillId: null }, token: "wie_issued_once" }), rotateIntegrationCredential: vi.fn(), revokeIntegrationCredential: vi.fn() };
+    render(<IntegrationCredentials repository={repository} apiMode canEdit disabled={false} onBusyChange={vi.fn()} />);
+    expect(await screen.findByText("Other skill credential")).toBeInTheDocument();
+    expect(screen.getByText("Unbound credential")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("combobox", { name: "筛选绑定技能" }));
+    await userEvent.click(screen.getByRole("option", { name: "Other skill" }));
+    expect(screen.queryByText("Factory")).not.toBeInTheDocument(); expect(screen.queryByText("Unbound credential")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "签发凭据" }));
+    const dialog = screen.getByRole("dialog", { name: "签发集成凭据" });
+    await userEvent.type(within(dialog).getByLabelText("凭据名称"), "Organization pipeline");
+    await userEvent.click(within(dialog).getByRole("button", { name: "签发" }));
+    await screen.findByRole("dialog", { name: "保存集成凭据" });
+    expect(repository.issueIntegrationCredential).toHaveBeenCalledWith({ name: "Organization pipeline", skillId: null });
+  });
+
   it("fits four fluid columns, keeps active credentials first and puts binding/creation metadata under the name", async () => {
     const older = { ...credential, id: "older", name: "Older active", createdAt: "2026-10-18T12:00:00Z" };
     const revoked = { ...credential, id: "revoked", name: "Revoked newest", status: "revoked" as const, createdAt: "2026-10-20T12:00:00Z" };

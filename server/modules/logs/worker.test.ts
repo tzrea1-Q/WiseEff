@@ -127,6 +127,7 @@ function createFixture(overrides: Partial<Fixture> = {}): Fixture {
 
 function createObjectStore(bytes: Buffer): ObjectStore {
   return {
+    planKey: () => "decoded.gz",
     async put() {
       throw new Error("put is not used by the worker");
     },
@@ -166,6 +167,12 @@ function createFakeWorkerDb(fixture = createFixture()) {
     async query<Row>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> {
       const normalized = text.replace(/\s+/g, " ").trim();
       calls.push(normalized);
+      if (normalized.startsWith("select j.target_id,r.log_record_id")) {
+        const owned = fixture.job.id === values[0] && fixture.job.organization_id === values[1]
+          && fixture.job.lease_owner === values[2] && fixture.job.status === "processing";
+        return { rows: owned ? [{ target_id: fixture.run.id, log_record_id: fixture.log.id } as Row] : [], rowCount: owned ? 1 : 0 };
+      }
+      if (normalized.startsWith("select set_config('wiseeff.lifecycle_completion'")) return { rows: [], rowCount: 1 };
 
       if (normalized.startsWith("select job.id from jobs job") && normalized.includes("for update of job")) {
         const current = values[0] === fixture.job.organization_id && values[1] === fixture.job.id && values[2] === fixture.run.id

@@ -57,10 +57,13 @@ describe("audit routes", () => {
         permissions: ["admin:access"]
       }) } }
     });
-    const response = await requestJson(server, "/api/v1/audit-events?eventId=event-1&severity=info&organizationId=foreign");
+    const denied = await requestJson(server, "/api/v1/audit-events?organizationId=foreign");
+    expect(denied.status).toBe(403);
+    expect(repository.listAuditEvents).not.toHaveBeenCalled();
+    const response = await requestJson(server, "/api/v1/audit-events?eventId=event-1&severity=info");
     expect(response.status).toBe(200);
     expect(repository.listAuditEvents).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ organizationId: "org-prod", eventId: "event-1", severity: "info" }));
-    const multi = await requestJson(server, "/api/v1/audit-events?severities=High,Medium&organizationId=foreign");
+    const multi = await requestJson(server, "/api/v1/audit-events?severities=High,Medium");
     expect(multi.status).toBe(200);
     expect(repository.listAuditEvents).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ organizationId: "org-prod", severities: ["High", "Medium"] }));
     for (const severities of ["High,invalid", "", "High,Medium,Low,info,High"]) {

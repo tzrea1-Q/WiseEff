@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Database, QueryResult } from "../../shared/database/client";
 import { createAuthAttemptLimiter } from "./authAttemptLimiter";
-import { createLocalAuthService, type RegisterLocalAccountResult } from "./localAuth";
+import { createLocalAuthService as createConfiguredLocalAuthService, type RegisterLocalAccountResult } from "./localAuth";
 import { updateCurrentUserProfile } from "./profile";
 import { createUserInvocation } from "./trustedInvocation";
 
@@ -9,6 +9,9 @@ type QueryCall = {
   text: string;
   values: unknown[];
 };
+
+const createLocalAuthService = (db: Database, options: Parameters<typeof createConfiguredLocalAuthService>[1] = {}) =>
+  createConfiguredLocalAuthService(db, { selfRegisterEnabled: true, ...options });
 
 function createMemoryLocalAuthDb(extraOrganizations: Array<{ id: string; name: string }> = []) {
   const calls: QueryCall[] = [];
@@ -24,6 +27,7 @@ function createMemoryLocalAuthDb(extraOrganizations: Array<{ id: string; name: s
 
   async function query<Row>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> {
     calls.push({ text, values });
+    if (text.includes("from public_experience_registration")) return { rows: [{ enabled: null, organization_id: null }] as Row[], rowCount: 1 };
     const normalized = text.replace(/\s+/g, " ").trim();
 
     if (normalized.startsWith("select user_id as id from user_password_credentials")) {
@@ -34,7 +38,7 @@ function createMemoryLocalAuthDb(extraOrganizations: Array<{ id: string; name: s
 
     if (normalized.includes("from organizations") && normalized.includes("where id = $1")) {
       const organization = organizations.get(values[0] as string);
-      return { rows: (organization ? [organization] : []) as Row[], rowCount: organization ? 1 : 0 };
+      return { rows: (organization ? [{ ...organization, status: "active" }] : []) as Row[], rowCount: organization ? 1 : 0 };
     }
 
     if (normalized.includes("from organizations") && normalized.includes("id <> all($1::text[])")) {
@@ -295,7 +299,7 @@ describe("local auth service", () => {
     const { db } = createMemoryLocalAuthDb([{ id: "org-fixture", name: "Fixture Org" }]);
     const service = createLocalAuthService(db, {
       now: () => new Date("2026-06-12T00:00:00.000Z"),
-      registrationOrganizationResolver: () => ({ id: "org-fixture", name: "Fixture Org" })
+      registrationOrganizationId: "org-fixture"
     });
 
     const result = expectAuthenticatedRegistration(await service.register(

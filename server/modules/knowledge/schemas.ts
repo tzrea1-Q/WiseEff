@@ -3,6 +3,8 @@ import { z } from "zod";
 import { knowledgeContentForms, knowledgeOrigins, knowledgeSourceTypes, knowledgeStatuses } from "./types";
 
 const nonEmptyString = z.string().min(1);
+export const knowledgeHandoverParamsSchema = z.object({ kind: z.enum(["entry", "import"]), id: z.string().uuid() });
+export const knowledgeHandoverBodySchema = z.object({ responsibleUserId: z.string().min(1).max(200).nullable(), expectedResponsibleUserId: z.string().min(1).max(200).nullable() }).strict();
 export const KNOWLEDGE_MARKDOWN_CHARACTER_LIMIT = 200_000;
 export const KNOWLEDGE_TITLE_CHARACTER_LIMIT = 200;
 export const KNOWLEDGE_TAG_CHARACTER_LIMIT = 60;

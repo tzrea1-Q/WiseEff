@@ -1,6 +1,7 @@
 import { registerAuditRoutes } from "./modules/audit/routes";
 import { registerNotificationRoutes } from "./modules/notifications/routes";
 import { registerXiaozeRoutes } from "./modules/agent/xiaoze/agUiEndpoint";
+import { resolveXiaozeCheckpointerFromEnv, type XiaozeCheckpointer } from "./modules/agent/xiaoze/checkpointer";
 import { createAuthContextResolver } from "./modules/auth/contextFactory";
 import { createAuthAttemptLimiter } from "./modules/auth/authAttemptLimiter";
 import { createLocalAuthService } from "./modules/auth/localAuth";
@@ -39,11 +40,12 @@ import { defaultTracingBoundary, type TracingBoundary } from "./observability/tr
 import type { ObjectStore, ObjectStoreHealthCheck } from "./modules/logs/objectStore";
 import type { LogAnalysisQueue } from "./modules/logs/logAnalysisQueue";
 import { registerParameterFileRoutes } from "./modules/parameter-files/routes";
+import { parameterObjectWriteCustody } from "./modules/parameter-files/objectWriteCustody";
 import { MAX_PARAMETER_SOURCE_BYTES } from "./modules/parameter-files/jsonSource";
 import { registerParameterRoutes } from "./modules/parameters/routes";
 import { registerParameterDashboardRoutes } from "./modules/parameters/dashboard/routes";
 import { registerParameterSpecRoutes } from "./modules/parameter-specs/routes";
-import { registerCatalogLegacyRetirementRoutes } from "./modules/parameter-catalog-api/legacy/routes";
+import { isRetiredCatalogWriteRoute, registerCatalogLegacyRetirementRoutes } from "./modules/parameter-catalog-api/legacy/routes";
 import { registerParameterModuleRoutes } from "./modules/parameter-modules/routes";
 import { registerParameterTopologyRoutes } from "./modules/parameter-topology/routes";
 import { registerCatalogProjectValueConsumerRoutes } from "./modules/parameter-bindings/catalogProjectValueRoutes";
@@ -63,6 +65,7 @@ import { loadLogBundleLimits } from "./config/env";
 import { getSourceSnapshotLimits } from "./modules/logs/sourceArchive";
 import { analysisCaseArchiveLimits } from "./modules/logs/analysisCaseArchive";
 import { ApiError } from "./shared/http/errors";
+import { requireActiveOrganization } from "./modules/auth/organizationLifecycle";
 import type { JsonWebKey } from "node:crypto";
 
 type LocalAuthService = ReturnType<typeof createLocalAuthService>;
@@ -84,7 +87,8 @@ function createEnvLocalAuthService(db: Database, env?: PilotReadinessEnv & Parti
   }
 
   return createLocalAuthService(db, {
-    selfRegisterEnabled: env.AUTH_LOCAL_SELF_REGISTER ?? true,
+    selfRegisterEnabled: env.AUTH_LOCAL_SELF_REGISTER,
+    registrationOrganizationId: env.AUTH_LOCAL_REGISTRATION_ORGANIZATION_ID,
     attemptLimiter: createAuthAttemptLimiter({
       maxAttempts: env.AUTH_LOCAL_AUTH_MAX_ATTEMPTS,
       windowMs: env.AUTH_LOCAL_AUTH_WINDOW_MS
@@ -102,6 +106,7 @@ type DeviceBridgeEnv = Pick<
 >;
 
 export type WiseEffServerOptions = {
+  agentCheckpointer?: XiaozeCheckpointer;
   db?: Database;
   /** Optional server-owned DTS refusal writer when the supplied DB is not the pool root. */
   dtsReloadRefusalAuditSink?: TrustedRefusalAuditSink;
@@ -133,14 +138,31 @@ export type WiseEffServerOptions = {
  */
 export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   const router = createRouter();
+  const agentCheckpointer = options.agentCheckpointer ?? resolveXiaozeCheckpointerFromEnv(options.env ?? {});
   const handle = router.handle;
   router.handle = async (request) => {
-    requireIntegrationRouteAccess(request.method, router.matchRoutePattern(request.method, request.path), request.headers.authorization);
+    const pattern = router.matchRoutePattern(request.method, request.path);
+    requireIntegrationRouteAccess(request.method, pattern, request.headers.authorization);
+    if (options.db && pattern && request.method !== "GET" && !isIntegrationAuthorization(request.headers.authorization)
+      && !isRetiredCatalogWriteRoute(request.method, pattern)
+      && !pattern.startsWith("/api/v1/auth/") && !pattern.startsWith("/api/v1/me/") && pattern !== "/api/v1/me"
+      && !pattern.startsWith("/api/v1/notifications/") && !pattern.startsWith("/api/v1/platform/")
+      && pattern !== "/api/v1/device-bridges/pair"
+      && pattern !== "/api/v1/organization/operating-scope" && !pattern.includes("/handovers/") && !pattern.includes("/project-handovers/")) {
+      const actor = await authResolver(request);
+      const requested = request.query.organizationId;
+      if (requested !== undefined && (typeof requested !== "string" || !requested.trim())) throw new ApiError("VALIDATION_FAILED", "Invalid operating Organization.");
+      const organizationId = typeof requested === "string" ? requested : actor.organization.id;
+      if (organizationId !== actor.organization.id && !actor.roles.some(role => role.projectId === null && role.roleId === "platform-admin")) throw new ApiError("FORBIDDEN", "Cannot operate in this Organization.");
+      if (organizationId !== actor.organization.id) await requireActiveOrganization(options.db, organizationId);
+      else if (actor.organization.status === "suspended") throw new ApiError("FORBIDDEN", "组织已停用，当前仅可查看。请联系平台管理员恢复组织。", { reason: "organization-suspended", organizationId });
+    }
     return handle(request);
   };
   const metrics = options.metrics ?? createMetricsRegistry({ serviceName: "wiseeff-api" });
   const tracing = options.tracing ?? defaultTracingBoundary;
-  const localAuthService = options.localAuthService ?? (options.db ? createEnvLocalAuthService(options.db, options.env) : undefined);
+  const localAuthService = options.env?.AUTH_PROVIDER && options.env.AUTH_PROVIDER !== "local" ? undefined
+    : options.localAuthService ?? (options.db ? createEnvLocalAuthService(options.db, options.env) : undefined);
   const authResolver = createAuthContextResolver({
     mode: options.auth?.mode ?? "development",
     verifier: options.auth?.verifier,
@@ -196,22 +218,32 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerUserRoutes(router, {
     db: options.db,
+    objectStore: options.objectStore,
+    catalogArchiveStore: options.catalogArchiveStore,
+    catalogArchiveKey: options.catalogArchiveKey,
+    agentCheckpointer,
+    selfRegisterEnabled: options.env?.AUTH_LOCAL_SELF_REGISTER,
+    registrationOrganizationId: options.env?.AUTH_LOCAL_REGISTRATION_ORGANIZATION_ID,
+    localInvitationsEnabled: Boolean(localAuthService) && (options.env?.AUTH_PROVIDER === undefined || options.env.AUTH_PROVIDER === "local"),
+    bridgeConnectionPool: options.deviceBridge?.connectionPool,
+    authenticationProvider: options.auth?.mode === "production" ? options.env?.AUTH_PROVIDER : undefined,
     oidcIssuer: options.env?.AUTH_PROVIDER === "oidc" ? options.env.AUTH_OIDC_ISSUER : undefined,
     getCurrentAuthContext: authResolver
   });
+  const parameterObjectStore = options.db && options.objectStore ? parameterObjectWriteCustody(options.db, options.objectStore) : options.objectStore;
   registerCatalogProjectValueConsumerRoutes(router, {
     db: options.db,
-    objectStore: options.objectStore,
+    objectStore: parameterObjectStore,
     getCurrentAuthContext: authResolver
   });
   registerParameterRoutes(router, {
     db: options.db,
-    objectStore: options.objectStore,
+    objectStore: parameterObjectStore,
     getCurrentAuthContext: authResolver
   });
   registerParameterFileRoutes(router, {
     db: options.db,
-    objectStore: options.objectStore,
+    objectStore: parameterObjectStore,
     getCurrentAuthContext: authResolver
   });
   registerParameterSpecRoutes(router, {
@@ -224,7 +256,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerParameterTopologyRoutes(router, {
     db: options.db,
-    objectStore: options.objectStore,
+    objectStore: parameterObjectStore,
     getCurrentAuthContext: authResolver
   });
   registerParameterDashboardRoutes(router, {
@@ -294,6 +326,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerXiaozeRoutes(router, {
     db: options.db,
+    checkpointer: agentCheckpointer,
     env: options.env as ServerEnv | undefined,
     objectStore: options.objectStore,
     knowledgeEmbeddingClient: options.knowledgeEmbeddingClient,
@@ -568,6 +601,7 @@ function resolveDeviceBridgeRuntime(options: {
     loadToolReleaseManifest,
     pairingService: createPairingService({
       repo,
+      db: options.db,
       ...(pairingTtlMs !== undefined ? { pairingTtlMs } : {}),
       ...(tokenTtlDays !== undefined ? { tokenTtlDays } : {})
     }),

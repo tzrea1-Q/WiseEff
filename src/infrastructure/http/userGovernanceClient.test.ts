@@ -1,13 +1,53 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApiClient } from "./apiClient";
 import { resolveWiseEffApiBaseUrl } from "./runtimeMode";
-import { createDefaultUserGovernanceApiClient, createUserGovernanceClient } from "./userGovernanceClient";
+import { createDefaultUserGovernanceApiClient, createOrganizationWorkspaceClient, createUserGovernanceClient } from "./userGovernanceClient";
+import { withOrganizationScope } from "./organizationScope";
 
 function createFetchMock(response: unknown, status = 200) {
   return vi.fn<typeof fetch>(async () => new Response(JSON.stringify(response), { status }));
 }
 
 describe("createUserGovernanceClient", () => {
+  it("loads real workspace summary through the fixed organization client without hydrating management lists", async () => {
+    const item = { organization: { id: "target", name: "Target", status: "active" }, counts: { members: 2, teams: 1, projects: 3 }, administration: null };
+    const fetchMock = createFetchMock({ item });
+    const client = createUserGovernanceClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }), "target");
+    await expect(client.getWorkspaceSummary()).resolves.toEqual(item);
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith("/api/v1/organization/workspace-summary?organizationId=target", expect.objectContaining({ method: "GET" }));
+  });
+  it("opens Home with the current authenticated identity without a write, while explicit targets use the audited entry", async () => {
+    const actor = { user: { id: "actual-user", organizationId: "home" }, organization: { id: "home", name: "Home" } };
+    const fetchMock = vi.fn<typeof fetch>(async (path) => new Response(JSON.stringify(String(path).endsWith("/me") ? actor : { actor, organization: { id: "target", name: "Target" } })));
+    const client = createOrganizationWorkspaceClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+    await expect(client.enterOperatingContext()).resolves.toEqual({ actor, organization: actor.organization });
+    await expect(client.enterOperatingContext("target")).resolves.toEqual({ actor, organization: { id: "target", name: "Target" } });
+    expect(fetchMock.mock.calls.map(([path, init]) => [path, init?.method])).toEqual([
+      ["/api/v1/me", "GET"], ["/api/v1/organization/operating-scope", "POST"]
+    ]);
+  });
+  it("retains a fixed target when a resource URL supplies another organization", () => {
+    expect(withOrganizationScope("/api/v1/users?status=decided&organizationId=other#section", "target")).toBe("/api/v1/users?status=decided&organizationId=target#section");
+    expect(withOrganizationScope("/api/v1/users?status=decided")).toBe("/api/v1/users?status=decided");
+  });
+  it("binds independent member and project requests to their own organization even when responses arrive late", async () => {
+    let finishFirst!: (value: Response) => void;
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(() => new Promise((resolve) => { finishFirst = resolve; }))
+      .mockImplementation(async () => new Response(JSON.stringify({ items: [], item: { id: "member", roles: [] }, bindings: [] })));
+    const api = createApiClient({ baseUrl: "", fetchImpl: fetchMock });
+    const first = createUserGovernanceClient(api, "target A"), second = createUserGovernanceClient(api, "target-B");
+    const late = first.listUsers();
+    await second.listUsers();
+    await first.updateUserProfile("member", { name: "A member", title: "" });
+    await second.listRegistrationRoleRequests("decided");
+    await first.getProjectWorkflowRoleBindings("project");
+    finishFirst(new Response(JSON.stringify({ items: [] })));
+    await late;
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "/api/v1/users?organizationId=target+A", "/api/v1/users?organizationId=target-B", "/api/v1/users/member?organizationId=target+A",
+      "/api/v1/users/registration-role-requests?status=decided&organizationId=target-B", "/api/v1/projects/project/workflow-role-bindings?organizationId=target+A"
+    ]);
+  });
   it("picks the highest organization role without promoting project bindings", async () => {
     const fetchMock = createFetchMock({ items: [
       { id: "admin", roles: [{ projectId: null, roleId: "admin" }, { projectId: null, roleId: "platform-admin" }] },

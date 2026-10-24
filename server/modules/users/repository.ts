@@ -27,6 +27,8 @@ type UserGovernanceRow = {
   oidc_issuer?: string | null;
   oidc_subject?: string | null;
   legacy_oidc_email?: string | null;
+  oidc_transfer_pending_since?: string | null;
+  oidc_transfer_verified_at?: string | null;
 };
 
 type RegistrationRoleRequestRow = {
@@ -73,7 +75,8 @@ function toDto(row: UserGovernanceRow): UserGovernanceDto {
     lastActiveAt: row.last_active_at,
     roles: parseRoles(row.roles),
     ...(row.oidc_issuer && row.oidc_subject ? { oidcIdentity: { issuer: row.oidc_issuer,subject: row.oidc_subject } } : {}),
-    ...(row.legacy_oidc_email ? { legacyOidcEmail: row.legacy_oidc_email } : {})
+    ...(row.legacy_oidc_email ? { legacyOidcEmail: row.legacy_oidc_email } : {}),
+    ...(row.oidc_transfer_pending_since ? { oidcTransfer: { targetOrganizationId: row.organization_id, pendingSince: row.oidc_transfer_pending_since, verifiedAt: row.oidc_transfer_verified_at ?? null, status: row.oidc_transfer_verified_at ? "verified" as const : "pending" as const } } : {})
   };
 }
 
@@ -106,6 +109,7 @@ const userWithRolesSelect = `
     users.email,
     user_password_credentials.username,
     identity.issuer as oidc_issuer,identity.subject as oidc_subject,identity.legacy_email as legacy_oidc_email,
+    identity.transfer_pending_since::text as oidc_transfer_pending_since,identity.transfer_verified_at::text as oidc_transfer_verified_at,
     users.title,
     users.is_active,
     users.created_at::text as created_at,
@@ -330,22 +334,6 @@ export async function replaceRoleBindings(db: Queryable, input: { organizationId
       [randomUUID(), input.userId, input.organizationId, role.projectId, role.roleId]
     );
   }
-}
-
-export async function countActiveAdmins(db: Queryable, organizationId: string) {
-  const result = await db.query<{ count: string }>(
-    `
-    select count(distinct users.id)::text as count
-    from users
-    join user_role_bindings on user_role_bindings.user_id = users.id
-    where users.organization_id = $1
-      and users.is_active = true
-      and user_role_bindings.role_id in ('admin', 'platform-admin')
-    `,
-    [organizationId]
-  );
-
-  return Number(result.rows[0]?.count ?? 0);
 }
 
 export async function listActiveAdminUserIds(db: Queryable, organizationId: string) {

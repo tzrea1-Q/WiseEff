@@ -42,6 +42,7 @@ export type UserRoleBinding = {
 
 export type UserAccount = {
   oidcIdentity?: { issuer: string; subject: string };
+  oidcTransfer?: { targetOrganizationId: string; pendingSince: string; verifiedAt: string | null; status: "pending" | "verified" };
   legacyOidcEmail?: string;
   id: string;
   name: string;
@@ -71,7 +72,7 @@ export const platformRoles = [
   {
     id: "hardware-user",
     name: "Hardware User",
-    description: "Hardware-side user who can submit parameter changes and operate analysis/debugging tools.",
+    description: "Hardware-side tools; parameter editing requires explicit project participation and an editing role.",
     discipline: "hardware",
     level: "user",
     permissions: ["parameter:view", "parameter:edit", "debugging:use", "logs:upload"]
@@ -79,7 +80,7 @@ export const platformRoles = [
   {
     id: "software-user",
     name: "Software User",
-    description: "Software-side user who can perform Hardware User actions and close merged parameter rounds.",
+    description: "Software-side tools; project editing and independent merge duties are configured separately.",
     discipline: "software",
     level: "user",
     permissions: ["parameter:view", "parameter:edit", "debugging:use", "logs:upload"]
@@ -87,7 +88,7 @@ export const platformRoles = [
   {
     id: "hardware-committer",
     name: "Hardware Committer",
-    description: "Can perform Hardware User actions and review hardware-side parameter submissions.",
+    description: "Hardware-side tools; project editing and independent hardware review duties are configured separately.",
     discipline: "hardware",
     level: "committer",
     permissions: [
@@ -102,7 +103,7 @@ export const platformRoles = [
   {
     id: "software-committer",
     name: "Software Committer",
-    description: "Can perform Hardware User actions and review software-side parameter submissions.",
+    description: "Software-side tools; project editing and independent software review duties are configured separately.",
     discipline: "software",
     level: "committer",
     permissions: [

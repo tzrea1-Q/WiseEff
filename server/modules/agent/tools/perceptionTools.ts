@@ -8,6 +8,8 @@ import { listCanonicalValueChangesForAuth } from "../../parameter-bindings/draft
 import type { OptionalValue } from "../../parameter-catalog-contract";
 import { buildLogAnalysisProvenanceNotice } from "../../knowledge/distillation";
 import type { LogRecordDto } from "../../logs/types";
+import { withParameterAccess } from "../../parameters/operatingScope";
+import { agentOrganizationId } from "../scope";
 
 type ToolOptions = {
   db: { query<Row>(text: string, values?: unknown[]): Promise<{ rows: Row[]; rowCount: number | null }> };
@@ -64,7 +66,7 @@ export function createPerceptionTools(options: ToolOptions): AgentToolDefinition
         const parameters = await readConfiguredParameters(options, context, projectId);
         if (!projectId) throw new ApiError("FORBIDDEN", "Agent project access is required.", { projectId });
         const openRequests = (
-          await listCanonicalValueChangesForAuth(options.db as Database, context.auth, {
+          await listCanonicalValueChangesForAuth(options.db as Database, context.auth.agentInvocation && context.invocation?.initiator === "agent" ? withParameterAccess(context.auth, context.invocation) : context.auth, {
             projectId,
             status: "pending"
           })
@@ -133,7 +135,7 @@ export function createPerceptionTools(options: ToolOptions): AgentToolDefinition
             type: "parameter" as const,
             id: item.id,
             label: item.name,
-            href: `/parameters?project=${encodeURIComponent(item.project_id)}&bindingId=${encodeURIComponent(item.id)}`,
+            href: `/parameters?project=${encodeURIComponent(item.project_id)}&bindingId=${encodeURIComponent(item.id)}${context.auth.agentInvocation?.operatingOrganization ? `&organizationId=${encodeURIComponent(agentOrganizationId(context.auth))}` : ""}`,
             snippet: item.description || item.explanation || item.current_value
           }))
         };
@@ -161,7 +163,7 @@ where p.organization_id = $1
 order by p.sort_order asc, p.name asc
 limit 20
           `,
-          [context.auth.organization.id]
+          [agentOrganizationId(context.auth)]
         );
         return {
           summary: `Node snapshot: ${rows.length} debugging parameters with bindings.`,
@@ -170,7 +172,7 @@ limit 20
             type: "debugging" as const,
             id: row.id,
             label: row.name,
-            href: `/debugging?parameterId=${encodeURIComponent(row.id)}`,
+            href: `/node-debugging?parameterId=${encodeURIComponent(row.id)}${context.auth.agentInvocation?.operatingOrganization ? `&organizationId=${encodeURIComponent(agentOrganizationId(context.auth))}` : ""}`,
             snippet: row.node_path ? `${row.protocol ?? "unknown"}://${row.node_path}` : undefined
           }))
         };
@@ -193,7 +195,7 @@ where lr.organization_id = $1
 order by lr.captured_at desc
 limit 10
           `,
-          [context.auth.organization.id]
+          [agentOrganizationId(context.auth)]
         );
         const primary = rows[0];
         const notice = primary ? buildLogAnalysisProvenanceNotice({
@@ -209,7 +211,7 @@ limit 10
             type: "log" as const,
             id: row.id,
             label: `${row.severity} ${row.status} log`,
-            href: `/logs?logId=${encodeURIComponent(row.id)}`,
+            href: `/logs?logId=${encodeURIComponent(row.id)}${context.auth.agentInvocation?.operatingOrganization ? `&organizationId=${encodeURIComponent(agentOrganizationId(context.auth))}` : ""}`,
             snippet: row.conclusion ?? undefined
           }))
         };

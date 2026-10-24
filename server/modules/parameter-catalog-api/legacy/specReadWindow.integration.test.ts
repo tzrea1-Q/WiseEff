@@ -52,7 +52,7 @@ describe("assembled canonical spec read window", () => {
       values ('t1072-role', 't1072-reader', 't1072-org', 'software-user')`);
     await db.query("insert into organizations (id, name) values ('t1072-other-org', 'Other tenant')");
     await db.query(`insert into users (id, organization_id, name, email, title, is_active)
-      values ('t1072-no-view', 't1072-org', 'No view', 't1072-no-view@example.test', 'Engineer', true)`);
+      values ('t1072-no-view', 't1072-org', 'Inactive reader', 't1072-no-view@example.test', 'Engineer', false)`);
     await db.query("insert into roles (id, name, level, permissions) values ('t1072-observer', 'Observer', 1, array[]::text[])");
     await db.query(`insert into user_role_bindings (id, user_id, organization_id, role_id)
       values ('t1072-observer-role', 't1072-no-view', 't1072-org', 't1072-observer')`);
@@ -223,7 +223,7 @@ describe("assembled canonical spec read window", () => {
     }
   });
 
-  it("preserves parameter-view permission and owner-scoped identity visibility", async () => {
+  it("preserves inactive-member refusal and owner-scoped identity visibility", async () => {
     for (const path of ["/api/v2/parameter-specs", `/api/v2/parameter-specs/${specId}`]) {
       const denied = await requestJson(harness.server, path, { headers: { "X-WiseEff-User": "t1072-no-view" } });
       expect(denied.status, path).toBe(403);

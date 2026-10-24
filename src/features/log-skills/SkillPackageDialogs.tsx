@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { FileDropZone } from "@/components/common/FileDropZone";
 import { SelectControl } from "@/components/common/SelectControl";
@@ -27,8 +28,8 @@ function packageErrors(cause: unknown): PackageIssue[] {
   return [{ path: "", message: "导入技能包失败，请重试。" }];
 }
 
-export function ImportSkillPackageDialog({ repository, onDismiss, onNavigate, onImported }: {
-  repository: Partial<SkillAuthoringRepository>; onDismiss: () => void; onNavigate: (path: string) => void; onImported: () => void;
+export function ImportSkillPackageDialog({ repository, onDismiss, onNavigate, onImported, organizationId }: {
+  repository: Partial<SkillAuthoringRepository>; onDismiss: () => void; onNavigate: (path: string) => void; onImported: () => void; organizationId?: string;
 }) {
   const [file, setFile] = useState<File>();
   const [name, setName] = useState("");
@@ -63,7 +64,7 @@ export function ImportSkillPackageDialog({ repository, onDismiss, onNavigate, on
       <h2 id={titleId}>导入技能包</h2>
       <p id={descriptionId} className="skill-package-intro">选择技能 ZIP 包。校验通过后创建技能；包内知识条目始终作为草稿导入并链接到技能。源码快照请在导入后单独上传。</p>
       {created ? <div role="status"><p>技能包校验通过，已导入「{created.name}」。</p>
-        <Button asChild variant="link"><a href={`/log-admin/skills/${encodeURIComponent(created.id)}`} onClick={(event) => {
+        <Button asChild variant="link"><a href={withOrganizationScope(`/log-admin/skills/${encodeURIComponent(created.id)}`, organizationId)} onClick={(event) => {
           if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(event.currentTarget.getAttribute("href")!); onDismiss(); }
         }}>打开技能工作区</a></Button></div> : <>
         <div className="grid gap-2"><Label htmlFor="skill-package-file">技能包 ZIP</Label>

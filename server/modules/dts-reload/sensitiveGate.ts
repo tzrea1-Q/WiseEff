@@ -76,9 +76,9 @@ export async function matchReloadCandidatesSensitive(
   });
 }
 
-function callerHasRequiredCapability(auth: AuthContext, rule: SensitiveNodeRule) {
+function callerHasRequiredCapability(auth: AuthContext, rule: SensitiveNodeRule, projectId: string) {
   if (rule.requiredCapability === "parameter:edit-critical") {
-    return canEditCriticalParameters(auth);
+    return canEditCriticalParameters(auth, projectId);
   }
   return auth.user.isActive && auth.permissions.includes(rule.requiredCapability);
 }
@@ -207,7 +207,7 @@ export async function assertSensitiveReloadBatchAllowed(
   }
 
   for (const hit of hits) {
-    if (!callerHasRequiredCapability(auth, hit.rule)) {
+    if (!callerHasRequiredCapability(auth, hit.rule, input.projectId)) {
       await auditSensitiveReloadDenied(input.refusalSink, {
         projectId: input.projectId,
         invocation,

@@ -66,25 +66,27 @@ npm run restore:drill --target-env-file=ops/self-hosted/.env
 
 Avoid `source ops/self-hosted/.env` because dotenv values can contain spaces, including `Bearer <token>` authorization values.
 
-9. Restore PostgreSQL into `RESTORE_DATABASE_URL`.
-10. Restore object storage into `RESTORE_OBJECT_STORAGE_BUCKET` and `RESTORE_OBJECT_STORAGE_PREFIX`.
-11. Restore Redis persistence when durable queue mode is enabled.
-12. Start API and worker against the restored state.
-13. Validate table counts and sampled log object references.
-14. Run smoke against the restored environment:
+9. With proxy traffic, API, workers and publication writers stopped, capture the latest applicable organization deletion state from the current database into a protected file outside the database/object snapshots being restored. See [Organization deletion replay](#organization-deletion-replay). If the latest database cannot be read, stop the restore.
+10. Restore PostgreSQL into `RESTORE_DATABASE_URL`.
+11. Restore object storage into `RESTORE_OBJECT_STORAGE_BUCKET` and `RESTORE_OBJECT_STORAGE_PREFIX`.
+12. Restore Redis persistence when durable queue mode is enabled, then pause the restored queues again. Restored Redis may contain an unpaused queue.
+13. Replay the preserved deletion state against the restored database and actual configured object/checkpoint stores using a real surviving platform user. Keep all application producers and public traffic stopped until replay succeeds.
+14. Start API and worker against the restored state.
+15. Validate table counts and sampled log object references.
+16. Run smoke against the restored environment:
 
 ```bash
 npm run smoke:m5
 ```
 
-15. When durable queue mode is enabled, also run:
+17. When durable queue mode is enabled, also run:
 
 ```bash
 npm run queue:check -- --base-url https://<host>
 ```
 
-16. Confirm `/health/live`, `/health/ready`, and `/api/v1/operations/pilot-readiness` behave as expected.
-17. Generate and check redacted M6 backup/restore evidence:
+18. Confirm `/health/live`, `/health/ready`, and `/api/v1/operations/pilot-readiness` behave as expected.
+19. Generate and check redacted M6 backup/restore evidence:
 
 ```bash
 npm run backup:drill
@@ -97,8 +99,28 @@ The backup drill accepts the same env-file alias:
 npm run backup:drill --target-env-file=ops/self-hosted/.env
 ```
 
-18. Record `M5_BACKUP_RESTORE_DRILL_AT` only after the real target restore drill passes.
-19. Update [../generated/m5-pilot-acceptance.md](../generated/m5-pilot-acceptance.md) or the external release evidence record.
+20. Record `M5_BACKUP_RESTORE_DRILL_AT` only after the real target restore drill passes.
+21. Update [../generated/m5-pilot-acceptance.md](../generated/m5-pilot-acceptance.md) or the external release evidence record.
+
+## Organization Deletion Replay
+
+An older backup can contain organizations and files deleted after that backup. Retain the latest minimal deletion state outside the older recovery point, then apply it to restored content before reopening access. Copying a completed receipt alone does not erase restored business data. This procedure does not claim immediate erasure of backup media.
+
+The maintenance process uses the configured database and actual stores, without starting an API or worker daemon:
+
+```bash
+node --import tsx scripts/organization-erasure-recovery.ts capture --file /protected/recovery/organization-erasures.json
+# After restoring all stores, while traffic and producers remain stopped:
+node --import tsx scripts/organization-erasure-recovery.ts replay --file /protected/recovery/organization-erasures.json --actor actual-surviving-platform-user-id
+```
+
+For an isolated drill, capture from the latest source before replacement and configure replay for the isolated restore targets. Keep the file private, retain it through retries, and never regenerate it from an already restored older database. Capture exclusively creates the file; an existing or incomplete unverified file is not permission to overwrite deletion history. A valid empty deletion list is distinct from a missing, empty or malformed file.
+
+The self-hosted `upgrade.sh rollback --restore-data` owner performs these gates automatically. Set `WISEEFF_ORGANIZATION_ERASURE_REPLAY_ACTOR_ID` explicitly to an actual surviving platform user. The owner stores `organization-erasures.json` in its protected upgrade run directory, captures before replacing PostgreSQL, and reuses the verified capture after interruption. After restoring PostgreSQL, objects and Redis, it pauses queues again and replays before recreating application services, resuming queues or starting the proxy. Restart-only rollback, resume and candidate recovery cannot bypass an incomplete replay.
+
+The recorded candidate image must contain the recovery CLI and support the restored schema and configured stores. A missing CLI, unavailable latest database, incompatible schema, missing platform actor, failed deletion, or absent/changed native Agent checkpoint store blocks reopening. The owner does not silently migrate the restored database or fall back to an older image without the gate. Keep services isolated and use the existing recovery procedure to resolve compatibility before retrying. A separate checkpoint database must be restored and ownership-verified as well; changing a physical store identity is not proof of erasure.
+
+Acceptance needs a real old-backup restore: later deletion state must remove restored target data and block target credentials, new operations, queue claims and callback replay while retaining other organizations and shared objects. Include interrupted/failed intents and a completed receipt whose old business rows return with the backup. Shell wrapper tests prove ordering and refusal behavior only; they do not prove Docker, target-host, PostgreSQL, object-store or checkpoint recovery.
 
 ## Local Evidence
 

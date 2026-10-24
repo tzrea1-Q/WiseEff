@@ -22,6 +22,7 @@ export async function persistKnowledgeIndexJob(
         [claim.organizationId, claim.entryId, claim.startedAt]
       );
       if (!current.rows.length) return false;
+      await tx.query("select set_config('wiseeff.lifecycle_completion',$1,true)", [JSON.stringify({ kind: "knowledge-index", organizationId: claim.organizationId, entryId: claim.entryId })]);
     }
     await write(tx);
     return true;
@@ -173,6 +174,7 @@ export async function enqueueAllPublishedEntriesAcrossOrganizations(db: Queryabl
     select id, organization_id, 'pending', null, now(), now()
     from knowledge_entries
     where status = 'published'
+      and exists(select 1 from public.organizations o where o.id=knowledge_entries.organization_id and o.status='active' for share)
     on conflict (entry_id) do update
       set status = 'pending', error = null, enqueued_at = now(), updated_at = now()
     `
@@ -190,6 +192,7 @@ export async function listReferenceSuggestionDetectionBatch(
      where status <> 'archived' and ($1::text is null or organization_id = $1)
        and (not $2::boolean or reference_suggestions_detected_at is null)
        and ($3::uuid is null or id > $3)
+       and exists(select 1 from public.organizations o where o.id=knowledge_entries.organization_id and o.status='active')
      order by id limit $4`,
     [input.organizationId ?? null, input.neverDetected ?? false, input.afterId ?? null, input.limit ?? 50]
   );
@@ -220,8 +223,9 @@ export async function claimNextIndexJob(
     where entry_id = (
       select entry_id
       from knowledge_index_status
-      where status = 'pending'
-         or (status = 'processing' and started_at < now() - interval '${STALE_PROCESSING_INTERVAL}')
+      where (status = 'pending'
+         or (status = 'processing' and started_at < now() - interval '${STALE_PROCESSING_INTERVAL}'))
+        and exists(select 1 from public.organizations o where o.id=knowledge_index_status.organization_id and o.status='active')
       order by enqueued_at asc
       limit 1
       for update skip locked

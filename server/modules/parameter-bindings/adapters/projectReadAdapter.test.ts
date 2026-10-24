@@ -36,8 +36,6 @@ describe("project parameter read scope", () => {
   });
 
   it.each([
-    { label: "another project", auth: makeAuth({ roles: [{ roleId: "hardware-user", projectId: "other-project" }] }), projectId },
-    { label: "no role binding", auth: makeAuth({ roles: [], permissions: ["parameter:view"] }), projectId },
     { label: "missing permission", auth: makeAuth({ permissions: [] }), projectId },
     { label: "inactive account", auth: makeAuth({ isActive: false }), projectId },
     { label: "missing project", auth: makeAuth(), projectId: undefined }
@@ -67,14 +65,13 @@ describe("project parameter read scope", () => {
     })).resolves.toEqual([]);
   });
 
-  it("keeps an Agent with a project grant out of another project", async () => {
-    const { pool, query } = makePool();
+  it("allows organization-visible Agent reads independently of editing participation", async () => {
+    const { pool } = makePool();
     await expect(readProjectProtectedParameters(pool, {
       invocation: createAgentInvocation(makeAuth({ roles: [{ roleId: "hardware-user", projectId: "other-project" }] }), {
         sessionId: "read-session", toolCallId: "read-call", approval: { required: false }
       }), projectId
-    })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    expect(query).not.toHaveBeenCalled();
+    })).resolves.toEqual([]);
   });
 
   it("still requires a trusted, accountable invocation", async () => {

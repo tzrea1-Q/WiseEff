@@ -110,7 +110,10 @@ describe("fresh database fixture policy", () => {
         "wayfinder671_psql_gexec:false", "wayfinder671_psql_lexer:false", "wayfinder671_rollback:false",
         "wayfinder671_source:false", "wayfinder671_unknown:false", "wayfinder671_zero_source:false"
       ],
+      "server/modules/agent/xiaoze/checkpointOwnership.integration.test.ts": ["checkpointupgrade:false"],
       "server/modules/agent/xiaoze/durableAgentResume.integration.test.ts": ["xiaoze_concurrent_admission:true", "xiaoze_owned_backend_loss:true"],
+      // Replay the pre-snapshot schema with populated, pinned parameter history.
+      "server/modules/audit/historicalAttributionUpgrade.integration.test.ts": ["history_upgrade:false"],
       "server/modules/catalog-kernel/schema/catalogSchemaPrivileges.integration.test.ts": ["pcat_compat:false", "pcat_floor:false", "pcat_fresh:false", "pcat_privileges:true", "pcat_upgrade:false"],
       "server/modules/catalog-kernel/security/catalogRoles.integration.test.ts": ["pcat_rbac_0138_replay:false", "pcat_rbac_0170_upgrade:false", "pcat_rbac_0179:false", "pcat_rbac_0179_v1:false", "pcat_rbac_floor:false", "pcat_rbac_fresh:true", "pcat_rbac_missing:false", "pcat_rbac_upgrade:false"],
       "server/modules/catalog-kernel/security/retainedDismissedIdentities.integration.test.ts": ["retainedfresh:true", "retainedids:false"],
@@ -118,7 +121,10 @@ describe("fresh database fixture policy", () => {
       // The cleanup upgrade must create its API LOGIN before the erasure routines exist.
       "server/modules/catalog-publication/runtime/definitionCleanupUpgrade.integration.test.ts": ["cleanup_acl_upgrade:false"],
       "server/modules/catalog-publication/runtime/draftReadUpgrade.integration.test.ts": ["draft_acl_upgrade:false"],
+      // Replay pre-0260 authors and published revisions to prove truthful backfill.
+      "server/modules/knowledge/historicalAttribution.migration.integration.test.ts": ["history1386upgrade:false"],
       "server/modules/logs/sourceIndexWorker.integration.test.ts": ["stmtupgrade:false"],
+      "server/modules/logs/webhookMigration.acl.integration.test.ts": ["whacl:false"],
       "server/modules/parameter-bindings/binding/propertyDeleteMigration.integration.test.ts": ["deleteupgrade:false"],
       "server/modules/parameter-bindings/binding/sourceOccurrenceMigration.integration.test.ts": ["src_occ_0151:false"],
       "server/modules/parameter-catalog-migration/sourceOccurrenceGuard.integration.test.ts": ["srcintegrityupgrade:false"],
@@ -129,7 +135,13 @@ describe("fresh database fixture policy", () => {
       "server/modules/parameter-topology/migration.test.ts": ["mig14-provenance-matrix:false", "mig14-red-constraints:false", "mig14-upgrade:false"],
       "server/modules/parameter-topology/schemaMigration.test.ts": ["schema_mig:false"],
       "server/modules/parameters/moduleParentRepairMigration.test.ts": ["mig0109:false"],
+      // Replay populated project memberships and the pre-cutover edit policy.
+      "server/modules/projects/members.authorization.integration.test.ts": ["membercutover:false"],
+      "server/modules/projects/members.migration.integration.test.ts": ["projectmembers:false"],
       "server/modules/release-verification/core/migration.integration.test.ts": ["s10per:false"],
+      // Replay existing API LOGIN grants before the durable cleanup boundary exists.
+      "server/modules/users/organizationErasure.integration.test.ts": ["erasureupgrade:false"],
+      "server/modules/users/organizationLifecycle.integration.test.ts": ["lifecycleupgrade:false"],
       "server/shared/database/migrationCompatibility.integration.test.ts": ["purge_bounds:false", "purge_cutover:false", "purge_existing:false", "purge_retry:false"],
       "server/testing/testDatabase.test.ts": ["cleanup_race:false", "emptycompare:false", "freshcompare:true", "freshguard:true", "role_lease_a:false", "role_lease_b:false"]
     });

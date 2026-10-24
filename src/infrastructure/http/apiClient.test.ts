@@ -1,11 +1,31 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApiClient, WiseEffApiError } from "./apiClient";
+import { createDefaultApiClient } from "./defaultApiClient";
 
 function createFetchMock(response: Response) {
   return vi.fn<typeof fetch>(async () => response);
 }
 
 describe("createApiClient", () => {
+  it("keeps each client's Organization fixed across JSON, uploads and raw API downloads while leaving signed object paths alone", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response("{}", { status: 200 }));
+    const target = createDefaultApiClient({ baseUrl: "https://api.example", organizationId: "target", fetchImpl: fetchMock });
+    const other = createApiClient({ baseUrl: "https://api.example", organizationId: "other", fetchImpl: fetchMock });
+    const path = "/api/v1/projects?organizationId=caller&status=active";
+    await target.get(path); await other.get(path);
+    await target.post(path, {}); await target.put(path, {}); await target.patch(path, {}); await target.delete(path);
+    await target.upload(path, new File(["source"], "source.json")); await target.raw(path, { method: "GET" });
+    const targetUrl = "https://api.example/api/v1/projects?organizationId=target&status=active";
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      targetUrl, "https://api.example/api/v1/projects?organizationId=other&status=active",
+      targetUrl, targetUrl, targetUrl, targetUrl, targetUrl, targetUrl
+    ]);
+    await target.raw("/objects/source?X-Amz-Signature=fixture", { method: "GET" });
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe("https://api.example/objects/source?X-Amz-Signature=fixture");
+    await createApiClient({ baseUrl: "https://api.example", fetchImpl: fetchMock }).get("/api/v1/projects");
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe("https://api.example/api/v1/projects");
+  });
+
   it("forwards a caller's GET abort signal without changing authentication", async () => {
     const fetchMock = createFetchMock(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     const client = createApiClient({ baseUrl: "", authorization: "Bearer test-token", fetchImpl: fetchMock });

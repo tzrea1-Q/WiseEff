@@ -56,6 +56,12 @@ v1 **不新建** `xiaoze_threads` 表。
 
 理由：审批桥、tool call、run trace 与 audit 已以 `agent_sessions.id` 为键；第二张表会重复 scope 校验并增加 join 复杂度。
 
+### 组织删除中的检查点归属
+
+图运行时可能先保存检查点，再写入 `agent_sessions`。Agent factory 在首次写入前，使用既有 namespace lease 和组织生命周期锁，将操作组织、原始执行人、逻辑 thread、实际存储标识及完整检查点键登记到 `agent_checkpoint_namespaces`。登记不随账号删除而消失。检查点键仍使用 `organization:actor:thread`；不同元组产生同一字符串时，在读取或写入检查点前拒绝运行。
+
+删除预览检查实际配置的 saver，包括独立 PostgreSQL 存储或当前内存 saver。旧检查点必须由完整的已持久会话及冻结的原始执行人证明归属，不按字符串前缀推断。孤儿键、歧义键、无法访问的存储，以及本进程已无法检查的登记存储，均保持未分类并阻止空组织删除。这些登记仅解决归属与准入，Agent 运行时的停止和删除由后续领域清理步骤完成。
+
 ### Session `context` JSON（小泽扩展）
 
 ```json

@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterInvocation } from "../parameters/operatingScope";
 import { createHash } from "node:crypto";
 
 import type { Database } from "../../shared/database/client";
@@ -42,7 +43,7 @@ async function candidateObject(
   tx: Database, store: ObjectStore, auth: AuthContext, projectId: string, candidateId: string
 ): Promise<{ candidate: ProjectParameterFileCandidateDto; bytes: Buffer; object: SourceFacts["uploadObject"] }> {
   const candidate = await getParameterFileCandidateByIdForUpdate(tx, {
-    organizationId: auth.organization.id, projectId, candidateId
+    organizationId: parameterOrganizationId(auth), projectId, candidateId
   });
   if (!candidate?.storageKey || candidate.status !== "ready" || !candidate.checksum
     || !Number.isSafeInteger(candidate.sizeBytes) || candidate.sizeBytes! < 0
@@ -68,7 +69,7 @@ async function selectedDraft(
     select to_jsonb(draft) as snapshot from public.project_parameter_value_drafts draft
      where draft.id=$1 and draft.organization_id=$2 and draft.project_id=$3
        and draft.binding_id=$4 for update`,
-    [input.draftId, auth.organization.id, input.projectId, input.bindingId])).rows[0]?.snapshot;
+    [input.draftId, parameterOrganizationId(auth), input.projectId, input.bindingId])).rows[0]?.snapshot;
   const member = cohort.find((entry) => entry.bindingId === input.bindingId);
   if (!row || !member || typeof row.candidate_id !== "string"
     || row.base_current_value_id !== member.oldValueId
@@ -114,7 +115,7 @@ async function renderSource(
   const first = proof.cohort[0];
   if (!first) fail("canonical-batch-cohort-stale");
   const source = await loadCanonicalSourceSnapshot(tx, store, {
-    organizationId: auth.organization.id, projectId: proof.projectId,
+    organizationId: parameterOrganizationId(auth), projectId: proof.projectId,
     bindingId: first.bindingId, projectValueId: first.oldValueId
   });
   const index = source.manifest.members.findIndex((member) =>
@@ -130,7 +131,7 @@ async function renderSource(
         fail("canonical-batch-locator-stale");
       }
       const pinned = await loadCanonicalSourceSnapshot(tx, store, {
-        organizationId: auth.organization.id, projectId: proof.projectId,
+        organizationId: parameterOrganizationId(auth), projectId: proof.projectId,
         bindingId: member.bindingId, projectValueId: member.oldValueId
       });
       if (pinned.manifest.rootPointer === null) fail("canonical-batch-locator-stale");
@@ -145,7 +146,7 @@ async function renderSource(
     const member = proof.cohort.find((entry) => entry.bindingId === decision.bindingId);
     if (!member) fail("canonical-batch-cohort-stale");
     const pinned = await loadCanonicalSourceSnapshot(tx, store, {
-      organizationId: auth.organization.id, projectId: proof.projectId,
+      organizationId: parameterOrganizationId(auth), projectId: proof.projectId,
       bindingId: member.bindingId, projectValueId: member.oldValueId
     });
     if (pinned.manifest.fileId !== proof.fileId || pinned.manifest.fileVersionId !== proof.baseVersionId) {
@@ -221,7 +222,7 @@ export async function prepareCanonicalBatchDraftCompositionInTransaction(
     select target_id from public.audit_events
      where organization_id=$1 and project_id=$2 and trace_id=$3
        and target_type='project-parameter-file-candidate' and action='create'
-     limit 1`, [auth.organization.id, input.projectId, input.requestId]);
+     limit 1`, [parameterOrganizationId(auth), input.projectId, input.requestId]);
   if (prior.rows.length) fail("canonical-batch-composition-request-replayed");
   const original = await candidateObject(tx, objectStore, auth, input.projectId, input.uploadCandidateId);
   if (original.object.sha256 !== upload.proposedDigest) fail("canonical-batch-upload-object-drift");
@@ -251,7 +252,7 @@ export async function prepareCanonicalBatchDraftCompositionInTransaction(
   const composedCandidate = await createCandidateInTransaction(tx, objectStore, auth, {
     projectId: input.projectId, fileId: upload.fileId, fileName: original.candidate.fileName,
     bytes: composedBytes
-  }, { invocation: createUserInvocation(auth), requestId: input.requestId });
+  }, { invocation: parameterInvocation(auth) ?? createUserInvocation(auth), requestId: input.requestId });
   if (composedCandidate.status !== "ready") fail("canonical-batch-composed-candidate-blocked");
   const preview = await previewCanonicalCandidateInTransaction(tx, objectStore, auth, {
     projectId: input.projectId, candidateId: composedCandidate.id
@@ -265,7 +266,7 @@ export async function prepareCanonicalBatchDraftCompositionInTransaction(
   const stored = await candidateObject(tx, objectStore, auth, input.projectId, candidate.candidateId);
   if (!stored.bytes.equals(composedBytes)) fail("canonical-batch-composed-object-drift");
   return { candidate, compositionProof: {
-    kind: "canonical-batch-draft-composition", organizationId: auth.organization.id,
+    kind: "canonical-batch-draft-composition", organizationId: parameterOrganizationId(auth),
     projectId: input.projectId, format: upload.format, fileId: upload.fileId,
     baseVersionId: upload.baseVersionId, configSetId: upload.configSetId,
     cohortProofToken: upload.cohortProofToken,
@@ -283,7 +284,7 @@ export async function recheckCanonicalBatchDraftCompositionForReviewInTransactio
   input: { projectId: string; compositionProof: CanonicalBatchDraftCompositionProof }
 ): Promise<CanonicalSourceBatchPrepareDto> {
   const frozen = input.compositionProof;
-  if (frozen.organizationId !== auth.organization.id || frozen.projectId !== input.projectId
+  if (frozen.organizationId !== parameterOrganizationId(auth) || frozen.projectId !== input.projectId
     || !/^[0-9a-f]{64}$/.test(frozen.draftImpactDigest)
     || !frozen.targetDecisions.some((decision) => decision.choice === "draft")) {
     fail("canonical-batch-proof-mismatch");

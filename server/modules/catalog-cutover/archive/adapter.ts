@@ -260,9 +260,19 @@ export const createArchiveAdapter = (options: ArchiveAdapterOptions): ArchiveAda
       return persistFail("PCAT-ARC-PLAINTEXT-LEAK", "refusing to persist plaintext archive bytes");
     }
 
+    let custodyId: string | null;
+    try {
+      // This adapter owns BEGIN below: commit exact ciphertext custody first.
+      custodyId = (await client.query<{ id: string | null }>(
+        "select parameter_catalog.reserve_catalog_archive_write($1,$2,$3,$4) as id",
+        [command.legacyIdentityId, command.ownerScopeKind, command.ownerScopeId, encryptedObjectRef])).rows[0]?.id ?? null;
+    } catch {
+      return persistFail("PCAT-ARC-INVALID-INPUT", "archive owner is unavailable or cannot create new archives");
+    }
     let objectWritten = false;
     await client.query("begin");
     try {
+      if (custodyId) await client.query("select parameter_catalog.lock_catalog_archive_write($1)", [custodyId]);
       await client.query("select pg_catalog.pg_advisory_xact_lock(hashtext($1), hashtext($2))", [
         `s7-arc:${command.legacyIdentityId}`,
         command.cutoverRunId,

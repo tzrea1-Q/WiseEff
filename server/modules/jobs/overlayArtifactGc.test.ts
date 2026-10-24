@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import { insertReloadRun } from "../dts-reload/repository";
 import { RELOAD_ARTIFACT_RETENTION_DAYS } from "../dts-reload/types";
@@ -9,7 +12,10 @@ import {
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { createMemoryObjectStore } from "../../testing/objectStore";
+import { createLocalObjectStore } from "../logs/objectStore";
 import {
+  drainOverlayArtifactGcJobs,
+  enqueueOverlayArtifactGcJobsForExpiredArtifacts,
   enqueueOverlayArtifactGcJob,
   processNextOverlayArtifactGcJob
 } from "./overlayArtifactGc";
@@ -118,6 +124,36 @@ describe.skipIf(!databaseAvailable)("overlay-artifact-gc job", () => {
       [ORG]
     );
     expect(rows.rows).toEqual([{ id: "gc-job-1" }]);
+  });
+
+  it("keeps suspended artifacts queued while the sweep drains active Organizations, then resumes after restore", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "overlay-lifecycle-")), objectStore = createLocalObjectStore(directory);
+    try {
+      const paused = await objectStore.put({ organizationId: ORG, fileName: "paused.dtbo", contentType: "application/octet-stream", bytes: Buffer.from("paused artifact") });
+      const active = await objectStore.put({ organizationId: OTHER_ORG, fileName: "active.dtbo", contentType: "application/octet-stream", bytes: Buffer.from("active artifact") });
+      const pausedSource = await objectStore.put({ organizationId: ORG, fileName: "paused.dts", contentType: "text/plain", bytes: Buffer.from("paused source") });
+      const activeSource = await objectStore.put({ organizationId: OTHER_ORG, fileName: "active.dts", contentType: "text/plain", bytes: Buffer.from("active source") });
+      await seedExpiredRun({ id: "paused-run", artifactKey: paused.storageKey, sourceKey: pausedSource.storageKey });
+      await seedExpiredRun({ id: "active-run", organizationId: OTHER_ORG, projectId: "project-gc-other", artifactKey: active.storageKey, sourceKey: activeSource.storageKey });
+      await enqueueOverlayArtifactGcJob(db, { organizationId: ORG, id: "paused-gc" });
+      await db.query("update jobs set created_at=now()-interval '1 day' where id='paused-gc'");
+      await db.query("update organizations set status='suspended' where id=$1", [ORG]);
+      const enqueued = await enqueueOverlayArtifactGcJobsForExpiredArtifacts(db);
+      expect(enqueued.map(job => job.organizationId)).toEqual([OTHER_ORG]);
+      expect(await drainOverlayArtifactGcJobs({ db, objectStore })).toEqual([{ status: "processed", digest: { scannedRuns: 1, reclaimedRuns: 1, deletedBlobs: 2 } }]);
+      expect((await objectStore.get(paused.storageKey)).toString()).toBe("paused artifact");
+      expect((await objectStore.get(pausedSource.storageKey)).toString()).toBe("paused source");
+      await expect(objectStore.get(active.storageKey)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(objectStore.get(activeSource.storageKey)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await jobRow("paused-gc")).toMatchObject({ status: "queued", attempt_count: 0 });
+      await db.query("update organizations set status='active' where id=$1", [ORG]);
+      expect((await enqueueOverlayArtifactGcJobsForExpiredArtifacts(db)).map(job => job.id)).toEqual(["paused-gc"]);
+      expect(await drainOverlayArtifactGcJobs({ db, objectStore })).toEqual([{ status: "processed", digest: { scannedRuns: 1, reclaimedRuns: 1, deletedBlobs: 2 } }]);
+      await expect(objectStore.get(paused.storageKey)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(objectStore.get(pausedSource.storageKey)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await jobRow("paused-gc")).toMatchObject({ status: "complete", attempt_count: 1 });
+      expect((await db.query("select overlay_artifact_storage_key,overlay_artifact_sha256 from dts_reload_runs where id='paused-run'")).rows).toEqual([{ overlay_artifact_storage_key: null, overlay_artifact_sha256: "art-sha" }]);
+    } finally { await rm(directory, { recursive: true, force: true }); }
   });
 
   it("reclaims expired overlay blobs, keeps run digests, writes audit, and completes", async () => {

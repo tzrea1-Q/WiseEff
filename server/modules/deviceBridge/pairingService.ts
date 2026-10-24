@@ -3,10 +3,11 @@ import { randomUUID } from "node:crypto";
 import { createSystemInvocation } from "../auth/trustedInvocation";
 
 import { ApiError } from "../../shared/http/errors";
-import type { DeviceBridgeRepository } from "./repository";
+import { createDeviceBridgeRepository, type DeviceBridgeRepository } from "./repository";
 import { normalizeMachineLabel, pickBridgeToReuse } from "./machineIdentity";
 import type { DeviceBridgePlatform } from "./types";
 import type { Database } from "../../shared/database/client";
+import { requireActiveOrganization } from "../auth/organizationLifecycle";
 import { writeTrustedMilestoneAudit } from "../audit/auditedWrite";
 import {
   bridgeTokenExpiresAt,
@@ -46,12 +47,13 @@ export function createPairingService(options: PairingServiceOptions) {
     bridgeId: string,
     pairing: { userId: string; organizationId: string },
     platform: string,
-    arch: string
+    arch: string,
+    db: Database | undefined
   ) {
-    if (!options.db) {
+    if (!db) {
       return;
     }
-    await writeAudit(options.db, {
+    await writeAudit(db, {
       id: randomUUID(),
       organizationId: pairing.organizationId,
       projectId: null,
@@ -93,98 +95,102 @@ export function createPairingService(options: PairingServiceOptions) {
       arch: string;
       clientVersion?: string;
     }) {
-      const consumedAt = now();
-      const pairing = await options.repo.consumePairingCode({
-        codeHash: sha256Hex(input.code),
-        consumedAt
-      });
+      const pair = async (repo: DeviceBridgeRepository, db?: Database) => {
+        const consumedAt = now();
+        const pairing = await repo.consumePairingCode({
+          codeHash: sha256Hex(input.code),
+          consumedAt
+        });
 
-      if (!pairing) {
-        throw new ApiError(
-          "VALIDATION_FAILED",
-          "Pairing code is invalid, expired, or already consumed."
-        );
-      }
+        if (!pairing) {
+          throw new ApiError(
+            "VALIDATION_FAILED",
+            "Pairing code is invalid, expired, or already consumed."
+          );
+        }
+        if (db) await requireActiveOrganization(db, pairing.organizationId, true);
 
-      const machineLabel = normalizeMachineLabel(input.machineLabel);
-      const existingBridges = await options.repo.listActiveBridgesForMachine({
-        userId: pairing.userId,
-        organizationId: pairing.organizationId,
-        machineLabel,
-        platform: input.platform,
-        arch: input.arch
-      });
+        const machineLabel = normalizeMachineLabel(input.machineLabel);
+        const existingBridges = await repo.listActiveBridgesForMachine({
+          userId: pairing.userId,
+          organizationId: pairing.organizationId,
+          machineLabel,
+          platform: input.platform,
+          arch: input.arch
+        });
 
-      const bridgeToken = issueToken();
-      const tokenExpiresAt = bridgeTokenExpiresAt(consumedAt, tokenTtlDays);
+        const bridgeToken = issueToken();
+        const tokenExpiresAt = bridgeTokenExpiresAt(consumedAt, tokenTtlDays);
 
-      if (existingBridges.length > 0) {
-        const reuseBridge = pickBridgeToReuse(existingBridges);
+        if (existingBridges.length > 0) {
+          const reuseBridge = pickBridgeToReuse(existingBridges);
 
-        for (const bridge of existingBridges) {
-          if (bridge.id === reuseBridge.id) {
-            continue;
+          for (const bridge of existingBridges) {
+            if (bridge.id === reuseBridge.id) {
+              continue;
+            }
+            await repo.revokeBridge({
+              bridgeId: bridge.id,
+              userId: pairing.userId,
+              organizationId: pairing.organizationId,
+              revokedAt: consumedAt
+            });
           }
-          await options.repo.revokeBridge({
-            bridgeId: bridge.id,
-            userId: pairing.userId,
-            organizationId: pairing.organizationId,
+
+          await repo.revokeBridgeTokensForBridge({
+            bridgeId: reuseBridge.id,
             revokedAt: consumedAt
           });
+          await repo.updateBridgeClientVersion({
+            bridgeId: reuseBridge.id,
+            clientVersion: input.clientVersion ?? null
+          });
+          await repo.createBridgeToken({
+            id: randomUUID(),
+            bridgeId: reuseBridge.id,
+            tokenHash: sha256Hex(bridgeToken),
+            scopes: defaultBridgeTokenScopes(),
+            expiresAt: tokenExpiresAt
+          });
+
+          await auditPair(reuseBridge.id, pairing, input.platform, input.arch, db);
+
+          return {
+            bridgeId: reuseBridge.id,
+            bridgeToken,
+            tokenExpiresAt: tokenExpiresAt.toISOString()
+          };
         }
 
-        await options.repo.revokeBridgeTokensForBridge({
-          bridgeId: reuseBridge.id,
-          revokedAt: consumedAt
-        });
-        await options.repo.updateBridgeClientVersion({
-          bridgeId: reuseBridge.id,
+        const bridgeId = nextBridgeId();
+
+        await repo.createBridge({
+          id: bridgeId,
+          organizationId: pairing.organizationId,
+          userId: pairing.userId,
+          machineLabel,
+          platform: input.platform,
+          arch: input.arch,
           clientVersion: input.clientVersion ?? null
         });
-        await options.repo.createBridgeToken({
+
+        await repo.createBridgeToken({
           id: randomUUID(),
-          bridgeId: reuseBridge.id,
+          bridgeId,
           tokenHash: sha256Hex(bridgeToken),
           scopes: defaultBridgeTokenScopes(),
           expiresAt: tokenExpiresAt
         });
 
-        await auditPair(reuseBridge.id, pairing, input.platform, input.arch);
+        await auditPair(bridgeId, pairing, input.platform, input.arch, db);
 
         return {
-          bridgeId: reuseBridge.id,
+          bridgeId,
           bridgeToken,
           tokenExpiresAt: tokenExpiresAt.toISOString()
         };
-      }
-
-      const bridgeId = nextBridgeId();
-
-      await options.repo.createBridge({
-        id: bridgeId,
-        organizationId: pairing.organizationId,
-        userId: pairing.userId,
-        machineLabel,
-        platform: input.platform,
-        arch: input.arch,
-        clientVersion: input.clientVersion ?? null
-      });
-
-      await options.repo.createBridgeToken({
-        id: randomUUID(),
-        bridgeId,
-        tokenHash: sha256Hex(bridgeToken),
-        scopes: defaultBridgeTokenScopes(),
-        expiresAt: tokenExpiresAt
-      });
-
-      await auditPair(bridgeId, pairing, input.platform, input.arch);
-
-      return {
-        bridgeId,
-        bridgeToken,
-        tokenExpiresAt: tokenExpiresAt.toISOString()
       };
+      return options.db ? options.db.transaction(tx => pair(createDeviceBridgeRepository(tx), tx)) : pair(options.repo);
     }
   };
 }

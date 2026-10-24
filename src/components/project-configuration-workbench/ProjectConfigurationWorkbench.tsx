@@ -98,6 +98,11 @@ import { useWorkbenchCandidateOrchestration } from "@/application/project-config
 import { useWorkbenchConfigSetOrchestration } from "@/application/project-configuration/useWorkbenchConfigSetOrchestration";
 import { useWorkbenchKeyboardShortcuts } from "@/application/project-configuration/useWorkbenchKeyboardShortcuts";
 import "./configuration-workbench.css";
+import type { ApiClient } from "@/infrastructure/http/apiClient";
+import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
+import { createCanonicalConflictClient } from "@/infrastructure/http/canonicalConflictClient";
+import { createCanonicalMemberAdditionClient } from "@/infrastructure/http/canonicalMemberAdditionClient";
+import { createAdministratorMemberRemovalClient } from "@/infrastructure/http/administratorMemberRemovalClient";
 
 export type ProjectConfigurationWorkbenchProject = {
   id: string;
@@ -107,6 +112,7 @@ export type ProjectConfigurationWorkbenchProject = {
 };
 
 export type ProjectConfigurationWorkbenchProps = {
+  apiClient?: ApiClient;
   project: ProjectConfigurationWorkbenchProject;
   search: string;
   onNavigate: (path: string) => void;
@@ -140,6 +146,7 @@ export type ProjectConfigurationWorkbenchProps = {
 };
 
 export function ProjectConfigurationWorkbench({
+  apiClient,
   project,
   search,
   onNavigate,
@@ -157,6 +164,10 @@ export function ProjectConfigurationWorkbench({
   draftStorage,
   topologyRepository
 }: ProjectConfigurationWorkbenchProps) {
+  const governanceClient = useMemo(() => createUserGovernanceClient(apiClient), [apiClient]);
+  const conflictClient = useMemo(() => createCanonicalConflictClient(apiClient), [apiClient]);
+  const additionClient = useMemo(() => createCanonicalMemberAdditionClient(apiClient), [apiClient]);
+  const removalClient = useMemo(() => createAdministratorMemberRemovalClient(apiClient), [apiClient]);
   const { toast } = useToast();
   const [memberRemovalTarget, setMemberRemovalTarget] = useState<DtsConfigSetMemberFile | null>(null);
   const [setRootTarget, setSetRootTarget] = useState<DtsConfigSetMemberFile | null>(null);
@@ -2050,6 +2061,7 @@ export function ProjectConfigurationWorkbench({
         onSetRoot={apiMode ? setSetRootTarget : undefined}
       /> : null}
       {memberAdditionOpen && selectedConfigSet ? <WorkbenchMemberAdditionDialog projectId={project.id} configSets={configSets}
+        client={additionClient}
         catalogRepository={memberRemovalRepository} fileRepository={fileRepository}
         initialConfigSetId={selectedConfigSet.id} availableFiles={ungroupedFiles} onDismiss={() => setMemberAdditionOpen(false)}
         onApplied={(configSetId, fileId) => {
@@ -2077,6 +2089,7 @@ export function ProjectConfigurationWorkbench({
         && sourcePreview.proofToken && !sourcePreview.request
         && ((sourcePreview.bindings?.length ?? 0) <= 1 || singleConflictOpened) && canAdmin && canEdit ? (
         <WorkbenchCanonicalConflictDecision key={`single-conflict:${activeCandidate.id}`}
+          repository={conflictClient} governanceClient={governanceClient}
           inlineTarget={!canSubmitBatchReview || singleConflictActive ? sourceUpdateReviewTarget : null}
           projectId={project.id} currentUserId={currentUserId} candidate={activeCandidate} preview={sourcePreview}
           allowed={(canSubmitSourceReview || canSubmitBatchReview) && !sourceUpdateBlockedReason} blockedReason={sourceUpdateBlockedReason}
@@ -2087,6 +2100,7 @@ export function ProjectConfigurationWorkbench({
       ) : null}
       {canSubmitBatchReview && sourcePreview && activeCandidate ? (
         <CanonicalBatchSubmitDialog key={`batch-review:${activeCandidate.id}`} inlineTarget={singleConflictActive ? null : sourceUpdateReviewTarget}
+          conflictClient={conflictClient} governanceClient={governanceClient}
           submissionBlockedReason={sourceUpdateBlockedReason}
           onSelectSingleConflict={() => setSingleConflictReview({ candidateId: activeCandidate.id, active: true })}
           projectId={project.id} currentUserId={currentUserId}
@@ -2111,6 +2125,7 @@ export function ProjectConfigurationWorkbench({
         }}
         onConfirm={(reason) => void handleConfirmSourceRollback(reason)}
         batch={rollbackBatchContext && batchRollbackClient ? {
+          conflictClient, governanceClient,
           projectId: project.id, fileId: rollbackBatchContext.fileId, currentUserId,
           workflowProofToken: rollbackBatchContext.workflowProofToken, client: batchRollbackClient,
           onSubmitted: (requestId) => {
@@ -2127,6 +2142,7 @@ export function ProjectConfigurationWorkbench({
       {taskDock}
 
       {setRootTarget && selectedConfigSet ? <WorkbenchSetRootDialog projectId={project.id} configSetId={selectedConfigSet.id}
+        client={additionClient}
         fileId={setRootTarget.fileId} fileName={setRootTarget.fileName} onDismiss={() => setSetRootTarget(null)}
         onApplied={() => {
           setSetRootTarget(null); workspaceLoadSession.retryMembers(); workspaceLoadSession.retryFiles();
@@ -2135,6 +2151,7 @@ export function ProjectConfigurationWorkbench({
           if (topologyRepository) void revisionGate.session.load(project.id, selectedConfigSet.id, topologyRepository);
         }} /> : null}
       {memberRemovalTarget && selectedConfigSet ? <WorkbenchMemberRemovalDialog
+        client={removalClient}
         projectId={project.id}
         configSetId={selectedConfigSet.id}
         fileId={memberRemovalTarget.fileId}
@@ -2150,6 +2167,7 @@ export function ProjectConfigurationWorkbench({
         }}
       /> : null}
       {reviewedMemberRemovalTarget && selectedConfigSet ? <CanonicalMemberRemovalSubmitDialog projectId={project.id}
+        governanceClient={governanceClient}
         configSetId={selectedConfigSet.id} configSetName={selectedConfigSet.name === "default" ? "默认配置" : selectedConfigSet.name}
         member={reviewedMemberRemovalTarget} members={selectedMembers} currentUserId={currentUserId} repository={memberRemovalRepository}
         onReloadMembers={() => dtsRepository.listConfigSetFiles(project.id, selectedConfigSet.id)}

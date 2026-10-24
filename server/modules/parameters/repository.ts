@@ -331,7 +331,9 @@ export async function listParameterHistory(db: Queryable, query: { organizationI
         phe.version,
         phe.value,
         phe.changed_at,
-        users.name as changed_by,
+        case when phe.historical_attribution->'actors'->'changed_by_user_id'->>'source' = 'legacy-current'
+          then (phe.historical_attribution->'actors'->'changed_by_user_id'->>'name') || '（迁移时名称）'
+          else phe.historical_attribution->'actors'->'changed_by_user_id'->>'name' end as changed_by,
         phe.request_id,
         phe.initiator_type,
         phe.initiator_principal_deleted,
@@ -341,7 +343,6 @@ export async function listParameterHistory(db: Queryable, query: { organizationI
         phe.initiator_tool_call_id,
         phe.initiator_approval_id
       from parameter_history_entries phe
-      left join users on users.id = phe.changed_by_user_id
       where phe.organization_id = $1
         and phe.project_parameter_binding_id = $2
       order by phe.changed_at desc
@@ -357,7 +358,9 @@ export async function listParameterHistory(db: Queryable, query: { organizationI
       phe.version,
       phe.value,
         phe.changed_at,
-        users.name as changed_by,
+        case when phe.historical_attribution->'actors'->'changed_by_user_id'->>'source' = 'legacy-current'
+          then (phe.historical_attribution->'actors'->'changed_by_user_id'->>'name') || '（迁移时名称）'
+          else phe.historical_attribution->'actors'->'changed_by_user_id'->>'name' end as changed_by,
         phe.request_id,
         phe.initiator_type,
         phe.initiator_principal_deleted,
@@ -369,7 +372,6 @@ export async function listParameterHistory(db: Queryable, query: { organizationI
     from parameter_history_entries phe
     inner join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.id = phe.project_parameter_value_id
     inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = phe.parameter_definition_id
-    left join users on users.id = phe.changed_by_user_id
     where phe.organization_id = $1
       and ppv.organization_id = $1
       and pd.organization_id = $1

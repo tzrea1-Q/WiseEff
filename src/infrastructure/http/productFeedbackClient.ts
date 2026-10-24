@@ -28,8 +28,8 @@ type ApiClient = ReturnType<typeof createApiClient>;
 type ItemEnvelope<T> = { item: T };
 type ListEnvelope<T> = { items: T[]; nextCursor?: string | null; pendingAttachmentCleanupCount?: number };
 type HttpProductFeedbackRepositoryOptions =
-  | { apiClient?: undefined; baseUrl?: string; fetchImpl?: typeof fetch }
-  | { apiClient: ApiClient; baseUrl: string; fetchImpl?: typeof fetch };
+  | { apiClient?: undefined; baseUrl?: string; fetchImpl?: typeof fetch; organizationId?: string }
+  | { apiClient: ApiClient; baseUrl: string; fetchImpl?: typeof fetch; organizationId?: undefined };
 
 export type ProductFeedbackAttachmentDto = {
   deletedAt?: string | null;
@@ -131,6 +131,7 @@ function attachmentFromDto(dto: ProductFeedbackAttachmentDto): ProductFeedbackAt
 
 function productFeedbackFromDto(dto: ProductFeedbackDto): ProductFeedback {
   return {
+    organizationId: dto.organizationId,
     id: dto.id,
     submitterUserId: dto.submitterUserId,
     submitter: dto.submitter,
@@ -233,7 +234,7 @@ export function createHttpProductFeedbackRepository(
   options: HttpProductFeedbackRepositoryOptions = {}
 ): ProductFeedbackRepository {
   const baseUrl = options.baseUrl ?? resolveWiseEffApiBaseUrl();
-  const apiClient = options.apiClient ?? createDefaultApiClient({ baseUrl, fetchImpl: options.fetchImpl });
+  const apiClient = options.apiClient ?? createDefaultApiClient({ baseUrl, fetchImpl: options.fetchImpl, organizationId: options.organizationId });
 
   return {
     async submit(input) {

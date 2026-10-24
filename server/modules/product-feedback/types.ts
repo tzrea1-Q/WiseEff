@@ -1,3 +1,4 @@
+import type { HistoricalAttribution } from "../../../src/domain/identity/historicalAttribution";
 export const feedbackTypes = ["experience", "data", "export_submit", "feature"] as const;
 export const feedbackStatuses = ["open", "in_progress", "resolved", "closed"] as const;
 export const feedbackPriorities = ["low", "normal", "high"] as const;
@@ -49,6 +50,7 @@ export type SubmitterIdentityDto = {
 };
 
 export type ProductFeedbackProgressEventUserDto = {
+  historicalAttribution?: HistoricalAttribution;
   id: string;
   feedbackId: string;
   kind: ProductFeedbackProgressEventKind;
@@ -66,6 +68,7 @@ export type ProductFeedbackProgressEventAdminDto = ProductFeedbackProgressEventU
 };
 
 export type ProductFeedbackUserDto = {
+  historicalAttribution?: HistoricalAttribution;
   id: string;
   organizationId: string;
   pagePath: string;
@@ -83,6 +86,7 @@ export type ProductFeedbackUserDto = {
 };
 
 export type ProductFeedbackAdminDto = {
+  historicalAttribution?: HistoricalAttribution;
   id: string;
   organizationId: string;
   submitterUserId: string | null;

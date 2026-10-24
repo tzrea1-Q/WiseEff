@@ -45,7 +45,15 @@ const CANONICAL_SOURCE_READ_FUNCTIONS = [
   "parameter_catalog.purge_parameter_definition(text, jsonb, text, text)",
   "parameter_catalog.read_parameter_definition_erasure(text)",
   "parameter_catalog.list_definition_erasures(text)",
+  "parameter_catalog.list_platform_definition_erasures()",
+  "parameter_catalog.reserve_parameter_object_write(text,text)",
+  "parameter_catalog.lock_parameter_object_write(text)",
+  "parameter_catalog.purge_organization_parameter_assets(text,text,text)",
+  "parameter_catalog.organization_parameter_pending_objects(text,text,text)",
+  "parameter_catalog.finish_organization_parameter_object(text,text,text,text,text,boolean)",
   "parameter_catalog.finish_parameter_definition_erasure_object(text, text)",
+  "parameter_catalog.lock_definition_erasure_object(text, text, text)",
+  "parameter_catalog.organization_parameter_archives(text, text, text)",
   "parameter_catalog.lock_parameter_plane_archive()",
   "parameter_catalog.definition_erasure_object_is_referenced(text, text)",
   "parameter_catalog.lock_log_erasure(text, text, text)",
@@ -54,6 +62,15 @@ const CANONICAL_SOURCE_READ_FUNCTIONS = [
   "parameter_catalog.purge_log(text, text, text, text)",
   "parameter_catalog.finish_log_erasure_object(text, text, text, text)",
   "parameter_catalog.preview_project_deletion_catalog(text, text, text)",
+  "parameter_catalog.preview_organization_deletion(text, text)",
+  "public.knowledge_erasure_object_referenced(text, text, text)",
+  "parameter_catalog.register_agent_checkpoint_namespace(text, text, text, text, text, text, boolean)",
+  "parameter_catalog.erase_organization_logs(text, text, text)",
+  "parameter_catalog.organization_log_erasure_objects_pending(text, text, text)",
+  "parameter_catalog.organization_log_erasure_object_referenced(text, text, text, text)",
+  "parameter_catalog.finish_organization_log_erasure_object(text, text, text, text)",
+  "parameter_catalog.erase_organization_runtime(text, text, text, text)",
+  "parameter_catalog.compact_organization_erasure_provenance(text, text)",
   "parameter_catalog.lock_project_erasure(text, text, text)",
   "parameter_catalog.read_project_erasure(text, text, text)",
   "parameter_catalog.purge_project(text, text, text, text)",
@@ -442,6 +459,14 @@ export async function provisionPublicationRuntimeLogins(
 
       await grantPublicAppDml(admin, names.api);
       await grantPublicAppDml(admin, names.worker);
+      const checkpointOwnership = await admin.query<{ exists: boolean }>("select to_regclass('public.agent_checkpoint_namespaces') is not null as exists");
+      if (checkpointOwnership.rows[0]?.exists) {
+        await admin.query(`revoke insert, update, delete on public.agent_checkpoint_namespaces from ${quoteIdent(names.api)}, ${quoteIdent(names.worker)}`);
+      }
+      const parameterObjectWrites = await admin.query<{ exists: boolean }>("select to_regclass('public.parameter_object_writes') is not null as exists");
+      if (parameterObjectWrites.rows[0]?.exists) {
+        await admin.query(`revoke insert, update, delete on public.parameter_object_writes from ${quoteIdent(names.api)}, ${quoteIdent(names.worker)}`);
+      }
       const oidcIdentities = await admin.query<{ exists: boolean }>("select to_regclass('public.user_oidc_identities') is not null as exists");
       if (oidcIdentities.rows[0]?.exists) {
         await admin.query(`revoke insert, update, delete on public.user_oidc_identities from ${quoteIdent(names.worker)}`);
@@ -455,6 +480,19 @@ export async function provisionPublicationRuntimeLogins(
       }
       await revokePublicDml(admin, names.manager);
       await grantPublicSelect(admin, names.manager);
+      const organizationErasures = await admin.query<{ exists: boolean }>("select to_regclass('public.organization_erasures') is not null as exists");
+      if (organizationErasures.rows[0]?.exists) {
+        await admin.query(`revoke all on public.organization_erasures from ${quoteIdent(names.worker)}, ${quoteIdent(names.manager)}`);
+      }
+      const logObjectWrites = await admin.query<{ exists: boolean }>("select to_regclass('public.log_object_writes') is not null as exists");
+      if (logObjectWrites.rows[0]?.exists) await admin.query(`revoke all on public.log_object_writes from ${quoteIdent(names.worker)}, ${quoteIdent(names.manager)}`);
+      if ((await admin.query<{ exists: boolean }>("select to_regclass('public.organization_runtime_erasure_objects') is not null as exists")).rows[0]?.exists) {
+        await admin.query(`revoke all on public.organization_runtime_erasure_objects from ${quoteIdent(names.worker)}, ${quoteIdent(names.manager)}`);
+      }
+      const knowledgeCustody = await admin.query<{ exists: boolean }>("select to_regclass('public.knowledge_attachment_writes') is not null as exists");
+      if (knowledgeCustody.rows[0]?.exists) {
+        await admin.query(`revoke all on public.knowledge_attachment_writes from ${quoteIdent(names.worker)}, ${quoteIdent(names.manager)}`);
+      }
       await revokeLegacyStructuralDml(admin, [names.api, names.worker, names.manager]);
 
       await revokeSchemaAccess(admin, names.worker, "parameter_catalog");

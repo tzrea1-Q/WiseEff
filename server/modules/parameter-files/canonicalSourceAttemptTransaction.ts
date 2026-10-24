@@ -1,5 +1,6 @@
 import { isRootDatabase, type Database } from "../../shared/database/client";
 import type { ObjectStore } from "../logs/objectStore";
+import { parameterObjectWriteCustody } from "./objectWriteCustody";
 import {
   createCanonicalSourceAttempt,
   type CanonicalSourceAttempt,
@@ -15,7 +16,7 @@ export async function withCanonicalSourceAttemptTransaction<T>(
   objectStore: ObjectStore,
   callback: (tx: Database, attempt: CanonicalSourceAttempt) => Promise<T>,
 ): Promise<T> {
-  const attempt = createCanonicalSourceAttempt(objectStore);
+  const attempt = createCanonicalSourceAttempt(isRootDatabase(db) ? parameterObjectWriteCustody(db, objectStore) : objectStore);
   let rollbackConfirmed = false;
   try {
     return await db.transaction((tx) => callback(tx, attempt), {

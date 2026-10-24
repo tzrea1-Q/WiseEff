@@ -3,9 +3,9 @@ import type { MetricsRegistry } from "../../observability/metrics";
 import type { TracingBoundary } from "../../observability/tracing";
 import { isRootDatabase, type Database, type Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import type { AuthContext } from "../auth/types";
+import { agentOrganizationId, type AgentAccessContext as AuthContext } from "./scope";
 import { asAuditTx, withAuditedWrite, writeTrustedAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
-import { createAgentInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
+import { createAgentInvocation, createAgentInvocationFromUser, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createCanonicalSourceAttempt } from "../parameter-files/canonicalSourceAttempt";
 import type { ObjectStore } from "../logs/objectStore";
@@ -233,7 +233,7 @@ export function createAgentOrchestrator(options: {
   }
 
   async function loadSessionOrThrow(context: AgentRequestContext, sessionId: string) {
-    const session = await getAgentSession(db, context.auth.organization.id, sessionId);
+    const session = await getAgentSession(db, agentOrganizationId(context.auth), sessionId);
     if (!session) {
       throw new ApiError("NOT_FOUND", "Agent session was not found.", { sessionId });
     }
@@ -257,11 +257,10 @@ export function createAgentOrchestrator(options: {
     const approval = toolCall.requiresApproval
       ? { required: true as const, approvalId: effectiveApprovalId! }
       : { required: false as const };
-    const invocation = createAgentInvocation(input.auth, {
-      sessionId: toolCall.sessionId,
-      toolCallId: toolCall.id,
-      approval
-    });
+    const correlation = { sessionId: toolCall.sessionId, toolCallId: toolCall.id, approval };
+    const invocation = input.auth.agentInvocation
+      ? createAgentInvocationFromUser(input.auth.agentInvocation, correlation)
+      : createAgentInvocation(input.auth, correlation);
     return {
       auth: input.auth,
       invocation,
@@ -292,12 +291,12 @@ export function createAgentOrchestrator(options: {
 
   async function assembleTurn(context: AgentRequestContext, sessionId: string): Promise<AgentTurnDto> {
     const session = await loadSessionOrThrow(context, sessionId);
-    const messages = await listAgentMessages(db, context.auth.organization.id, sessionId);
-    const toolCalls = await listAgentToolCalls(db, context.auth.organization.id, sessionId);
-    const approvals = await listAgentApprovals(db, context.auth.organization.id, sessionId);
+    const messages = await listAgentMessages(db, agentOrganizationId(context.auth), sessionId);
+    const toolCalls = await listAgentToolCalls(db, agentOrganizationId(context.auth), sessionId);
+    const approvals = await listAgentApprovals(db, agentOrganizationId(context.auth), sessionId);
 
     return {
-      session: { id: session.id, context: session.context, messages },
+      session: { id: session.id, context: session.context, messages, historicalAttribution: session.historicalAttribution },
       messages,
       toolCalls,
       approvals
@@ -306,11 +305,14 @@ export function createAgentOrchestrator(options: {
 
   async function createApprovalForToolCall(input: AgentRequestContext, toolCall: AgentToolCallRecord, sessionId: string) {
     const approvalId = newId("agent-approval");
-    const invocation = createAgentInvocation(input.auth, {
+    const correlation = {
       sessionId: toolCall.sessionId,
       toolCallId: toolCall.id,
-      approval: { required: true, approvalId }
-    });
+      approval: { required: true as const, approvalId }
+    };
+    const invocation = input.auth.agentInvocation
+      ? createAgentInvocationFromUser(input.auth.agentInvocation, correlation)
+      : createAgentInvocation(input.auth, correlation);
     // Approval row, tool-call transition, and audit commit together (ADR-0027);
     // previously each auto-committed and the audit could be lost after them.
     await withAuditedWrite(db, invocation, { requestId: input.requestId }, async (tx) => {
@@ -318,14 +320,14 @@ export function createAgentOrchestrator(options: {
         id: approvalId,
         sessionId,
         toolCallId: toolCall.id,
-        organizationId: input.auth.organization.id,
+        organizationId: agentOrganizationId(input.auth),
         projectId: typeof toolCall.payload.projectId === "string" ? toolCall.payload.projectId : undefined,
         status: "pending",
         title: toolCall.label,
         message: `Approval is required before running ${toolCall.label}.`,
         requestedByUserId: input.auth.user.id
       });
-      const updated = await updateAgentToolCall(tx, input.auth.organization.id, toolCall.id, { status: "pending_approval" });
+      const updated = await updateAgentToolCall(tx, agentOrganizationId(input.auth), toolCall.id, { status: "pending_approval" });
       if (!updated) {
         throw staleTransition("Agent tool call could not be moved to pending approval.", { toolCallId: toolCall.id });
       }
@@ -349,7 +351,7 @@ export function createAgentOrchestrator(options: {
     const executionContext = buildAgentExecutionContext(input, toolCall);
     const sessionId = toolCall.sessionId;
 
-    const running = await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, { status: "running" });
+    const running = await updateAgentToolCall(db, agentOrganizationId(input.auth), toolCall.id, { status: "running" });
     if (!running) {
       throw staleTransition("Agent tool call could not be started.", { toolCallId: toolCall.id });
     }
@@ -359,7 +361,7 @@ export function createAgentOrchestrator(options: {
     } catch (error) {
       // Failure transition and audit commit together, then the error propagates.
       await withAuditedWrite(db, executionContext.invocation!, { requestId: input.requestId }, async (tx) => {
-        const failed = await updateAgentToolCall(tx, input.auth.organization.id, toolCall.id, {
+        const failed = await updateAgentToolCall(tx, agentOrganizationId(input.auth), toolCall.id, {
           status: "failed",
           expectedStatus: "running",
           errorMessage: errorMessage(error)
@@ -388,7 +390,7 @@ export function createAgentOrchestrator(options: {
     // Result transition and audit commit together (ADR-0027); "running" remains
     // visible outside this transaction during execution.
     await withAuditedWrite(db, executionContext.invocation!, { requestId: input.requestId }, async (tx) => {
-      const succeeded = await updateAgentToolCall(tx, input.auth.organization.id, toolCall.id, {
+      const succeeded = await updateAgentToolCall(tx, agentOrganizationId(input.auth), toolCall.id, {
         status: "succeeded",
         expectedStatus: "running",
         result
@@ -452,7 +454,7 @@ export function createAgentOrchestrator(options: {
     await createAgentToolCall(db, {
       id: toolCallId,
       sessionId,
-      organizationId: input.auth.organization.id,
+      organizationId: agentOrganizationId(input.auth),
       projectId,
       name: request.name,
       label: request.label,
@@ -461,7 +463,7 @@ export function createAgentOrchestrator(options: {
       status: "requested"
     });
 
-    const toolCall = await getAgentToolCall(db, input.auth.organization.id, toolCallId);
+    const toolCall = await getAgentToolCall(db, agentOrganizationId(input.auth), toolCallId);
     if (!toolCall) {
       throw new ApiError("INTERNAL_ERROR", "Agent tool call was not recorded.", { toolCallId });
     }
@@ -472,7 +474,7 @@ export function createAgentOrchestrator(options: {
       await executeToolCall(input, toolCall);
     }
 
-    const recorded = await getAgentToolCall(db, input.auth.organization.id, toolCallId);
+    const recorded = await getAgentToolCall(db, agentOrganizationId(input.auth), toolCallId);
     if (!recorded) {
       throw new ApiError("INTERNAL_ERROR", "Agent tool call was not found after recording.", { toolCallId });
     }
@@ -480,7 +482,7 @@ export function createAgentOrchestrator(options: {
   }
 
   async function runToolCall(input: ToolCallInput): Promise<AgentTurnDto> {
-    const toolCall = await getAgentToolCall(db, input.auth.organization.id, input.toolCallId);
+    const toolCall = await getAgentToolCall(db, agentOrganizationId(input.auth), input.toolCallId);
     if (!toolCall) {
       throw new ApiError("NOT_FOUND", "Agent tool call was not found.", { toolCallId: input.toolCallId });
     }
@@ -495,7 +497,7 @@ export function createAgentOrchestrator(options: {
   }
 
   async function approveToolCall(input: ApprovalInput): Promise<AgentTurnDto> {
-    const approval = await getAgentApproval(db, input.auth.organization.id, input.approvalId);
+    const approval = await getAgentApproval(db, agentOrganizationId(input.auth), input.approvalId);
     if (!approval) {
       throw new ApiError("NOT_FOUND", "Agent approval was not found.", { approvalId: input.approvalId });
     }
@@ -503,7 +505,7 @@ export function createAgentOrchestrator(options: {
       throw new ApiError("INVALID_APPROVAL_STATE", "Approval is not pending.", { approvalId: input.approvalId });
     }
     requireApprovalRequester(approval, input.auth);
-    const toolCall = await getAgentToolCall(db, input.auth.organization.id, approval.toolCallId);
+    const toolCall = await getAgentToolCall(db, agentOrganizationId(input.auth), approval.toolCallId);
     if (!toolCall) {
       throw new ApiError("NOT_FOUND", "Agent tool call was not found.", { toolCallId: approval.toolCallId });
     }
@@ -515,11 +517,11 @@ export function createAgentOrchestrator(options: {
       ? createCanonicalSourceAttempt(toolRegistry.sourceObjectStore)
       : undefined;
     const runApprovalTransaction = async (tx: Database) => {
-      const persistedApproval = await getAgentApproval(tx, input.auth.organization.id, approval.id);
+      const persistedApproval = await getAgentApproval(tx, agentOrganizationId(input.auth), approval.id);
       if (!persistedApproval || persistedApproval.status !== "pending") {
         throw staleTransition("Agent approval was already decided.", { approvalId: approval.id });
       }
-      const persistedToolCall = await getAgentToolCall(tx, input.auth.organization.id, persistedApproval.toolCallId);
+      const persistedToolCall = await getAgentToolCall(tx, agentOrganizationId(input.auth), persistedApproval.toolCallId);
       if (!persistedToolCall) {
         throw new ApiError("NOT_FOUND", "Agent tool call was not found.", { toolCallId: persistedApproval.toolCallId });
       }
@@ -558,7 +560,7 @@ export function createAgentOrchestrator(options: {
             throw resumeTargetMismatch(approval.id);
           }
         }
-        const updated = await updateAgentToolCall(tx, input.auth.organization.id, persistedToolCall.id, {
+        const updated = await updateAgentToolCall(tx, agentOrganizationId(input.auth), persistedToolCall.id, {
           payload: editedPayload,
           expectedStatus: "pending_approval"
         });
@@ -569,7 +571,7 @@ export function createAgentOrchestrator(options: {
 
       const approved = await markAgentApprovalApproved(
         tx,
-        input.auth.organization.id,
+        agentOrganizationId(input.auth),
         persistedApproval.id,
         input.auth.user.id
       );
@@ -577,7 +579,7 @@ export function createAgentOrchestrator(options: {
         throw staleTransition("Agent approval was already decided.", { approvalId: approval.id });
       }
 
-      const executableToolCall = await getAgentToolCall(tx, input.auth.organization.id, persistedToolCall.id);
+      const executableToolCall = await getAgentToolCall(tx, agentOrganizationId(input.auth), persistedToolCall.id);
       if (!executableToolCall) {
         throw new ApiError("INTERNAL_ERROR", "Agent tool call disappeared before execution.", {
           toolCallId: persistedToolCall.id
@@ -598,7 +600,7 @@ export function createAgentOrchestrator(options: {
             : txToolRegistry.run(executableToolCall.name, executionContext, executableToolCall.payload, authorization)
         );
       } catch (error) {
-        const failed = await updateAgentToolCall(tx, input.auth.organization.id, executableToolCall.id, {
+        const failed = await updateAgentToolCall(tx, agentOrganizationId(input.auth), executableToolCall.id, {
           status: "failed",
           errorMessage: errorMessage(error)
         });
@@ -625,7 +627,7 @@ export function createAgentOrchestrator(options: {
         return error;
       }
 
-      const succeeded = await updateAgentToolCall(tx, input.auth.organization.id, executableToolCall.id, {
+      const succeeded = await updateAgentToolCall(tx, agentOrganizationId(input.auth), executableToolCall.id, {
         status: "succeeded",
         result
       });
@@ -686,12 +688,12 @@ export function createAgentOrchestrator(options: {
   }
 
   async function rejectToolCall(input: ApprovalInput): Promise<AgentTurnDto> {
-    const approval = await getAgentApproval(db, input.auth.organization.id, input.approvalId);
+    const approval = await getAgentApproval(db, agentOrganizationId(input.auth), input.approvalId);
     if (!approval || approval.status !== "pending") {
       throw new ApiError("NOT_FOUND", "Pending Agent approval was not found.", { approvalId: input.approvalId });
     }
     requireApprovalRequester(approval, input.auth);
-    const toolCall = await getAgentToolCall(db, input.auth.organization.id, approval.toolCallId);
+    const toolCall = await getAgentToolCall(db, agentOrganizationId(input.auth), approval.toolCallId);
     if (!toolCall) {
       throw new ApiError("NOT_FOUND", "Agent tool call was not found.", { toolCallId: approval.toolCallId });
     }
@@ -703,7 +705,7 @@ export function createAgentOrchestrator(options: {
     await withAuditedWrite(db, invocation, { requestId: input.requestId }, async (tx) => {
       const rejected = await markAgentApprovalRejected(
         tx,
-        input.auth.organization.id,
+        agentOrganizationId(input.auth),
         approval.id,
         input.auth.user.id,
         input.reason
@@ -711,7 +713,7 @@ export function createAgentOrchestrator(options: {
       if (!rejected) {
         throw staleTransition("Agent approval was already decided.", { approvalId: approval.id });
       }
-      const toolRejected = await updateAgentToolCall(tx, input.auth.organization.id, approval.toolCallId, {
+      const toolRejected = await updateAgentToolCall(tx, agentOrganizationId(input.auth), approval.toolCallId, {
         status: "rejected",
         errorMessage: input.reason
       });
@@ -721,7 +723,7 @@ export function createAgentOrchestrator(options: {
       await appendAgentMessage(tx, {
         id: newId("agent-msg"),
         sessionId: approval.sessionId,
-        organizationId: input.auth.organization.id,
+        organizationId: agentOrganizationId(input.auth),
         role: "assistant",
         content: `Tool request rejected: ${input.reason}`,
         citations: []
@@ -752,12 +754,12 @@ export function createAgentOrchestrator(options: {
   async function recordSessionToolRequest(
     input: AgentRequestContext & { sessionId: string; request: AgentToolRequest; toolCallId?: string }
   ) {
-    const existing = await getAgentSession(db, input.auth.organization.id, input.sessionId);
+    const existing = await getAgentSession(db, agentOrganizationId(input.auth), input.sessionId);
     const sessionProjectId = input.projectId ?? existing?.projectId;
     if (!existing) {
       await createAgentSession(db, {
         id: input.sessionId,
-        organizationId: input.auth.organization.id,
+        organizationId: agentOrganizationId(input.auth),
         projectId: typeof input.request.payload.projectId === "string" ? input.request.payload.projectId : sessionProjectId,
         actorUserId: input.auth.user.id,
         pageKey: "xiaoze",
@@ -776,13 +778,13 @@ export function createAgentOrchestrator(options: {
   }
 
   async function ensureAgentSession(input: ApprovalBeginInput) {
-    const existing = await getAgentSession(db, input.auth.organization.id, input.sessionId);
+    const existing = await getAgentSession(db, agentOrganizationId(input.auth), input.sessionId);
     if (existing) {
       return;
     }
     await createAgentSession(db, {
       id: input.sessionId,
-      organizationId: input.auth.organization.id,
+      organizationId: agentOrganizationId(input.auth),
       projectId: input.projectId,
       actorUserId: input.auth.user.id,
       pageKey: input.pageKey ?? "xiaoze",
@@ -828,12 +830,12 @@ export function createAgentOrchestrator(options: {
     if (!input.expectedSessionId || !input.expectedToolCallId) {
       throw resumeTargetMismatch(input.approvalId);
     }
-    const approval = await getAgentApproval(db, input.auth.organization.id, input.approvalId);
+    const approval = await getAgentApproval(db, agentOrganizationId(input.auth), input.approvalId);
     if (!approval || approval.status !== "pending") {
       throw new ApiError("NOT_FOUND", "Pending Agent approval was not found.", { approvalId: input.approvalId });
     }
     requireApprovalRequester(approval, input.auth);
-    const toolCall = await getAgentToolCall(db, input.auth.organization.id, approval.toolCallId);
+    const toolCall = await getAgentToolCall(db, agentOrganizationId(input.auth), approval.toolCallId);
     if (!toolCall) {
       throw new ApiError("NOT_FOUND", "Agent tool call was not found.", { toolCallId: approval.toolCallId });
     }

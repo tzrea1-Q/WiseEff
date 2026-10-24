@@ -54,7 +54,10 @@ test("#939 blocks a pending sibling JSON request, then allows refreshed batch su
       roles: [{ roleId: "admin", projectId: null }] });
     const author = makeTestAuthContext({ userId: acceptanceCast.liuMin.userId,
       organizationId: "org-chargelab", permissions: ["parameter:view", "parameter:edit"],
-      roles: [{ roleId: "software-user", projectId: "aurora" }] });
+      roles: [{ roleId: "software-user", projectId: "aurora" }],
+      projectMemberships: [{ projectId: "aurora", roles: ["software-user"] }] });
+    await db.query(`insert into project_members(organization_id,project_id,user_id,roles)
+      values ('org-chargelab','aurora',$1,ARRAY['software-user'])`, [author.user.id]);
     await installConfigurationSourceFixture(db, admin, {
       subjectId: "csub_a939_pending_sibling", schemaId: "wiseeff.a939.pending.sibling"
     });

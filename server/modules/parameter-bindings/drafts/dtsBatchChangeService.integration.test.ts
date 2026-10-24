@@ -42,6 +42,7 @@ const reviewer = makeTestAuthContext({ userId: REVIEWER, organizationId: ORG,
   permissions: ["parameter:view", "parameter:edit", "parameter:review"],
   roles: [{ roleId: "software-committer", projectId: PROJECT }] });
 const otherReviewer = makeTestAuthContext({ userId: OTHER_REVIEWER, organizationId: ORG,
+  projectMemberships: [{ projectId: PROJECT, roles: ["software-committer"] }],
   permissions: ["parameter:view", "parameter:edit", "parameter:review"],
   roles: [{ roleId: "software-committer", projectId: PROJECT }] });
 
@@ -162,6 +163,8 @@ describe("#906 C canonical DTS batch HTTP review", () => {
       projectId: PROJECT, fileId, fileName: "board.dts", bytes: candidateBytes
     });
     const preview = await previewCanonicalCandidate(db, storage, admin, { projectId: PROJECT, candidateId: candidate.id });
+    const proofToken = preview.proofToken;
+    if (!proofToken) throw new Error("Expected a prepared DTS candidate proof token");
     const target = preview.bindings?.[0]?.bindingId;
     const sibling = bindingIds.find((id) => !preview.bindings?.some((change) => change.bindingId === id));
     expect(target).toBeTruthy();
@@ -184,7 +187,7 @@ describe("#906 C canonical DTS batch HTTP review", () => {
     }
     const captureFor = (choice: "file" | "draft") => db.transaction(async (tx) => {
       const proof = await freezeCanonicalCandidateBatchSnapshotInTransaction(tx, storage, admin, {
-        projectId: PROJECT, candidateId: candidate.id, expectedProofToken: preview.proofToken
+        projectId: PROJECT, candidateId: candidate.id, expectedProofToken: proofToken
       });
       return captureCanonicalBatchDraftImpactInTransaction(tx, admin, PROJECT, proof,
         proof.targets.map((entry) => entry.bindingId === target

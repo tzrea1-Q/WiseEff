@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { historicalIdentityLabel } from "@/domain/identity/historicalAttribution";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -33,6 +34,7 @@ import { SourceSnapshots } from "./SourceSnapshots";
 import { matchSkillFile } from "@/domain/logs/fileApplicability";
 import { SkillDryRunDrawer } from "./SkillDryRunDrawer";
 import { KnowledgeSection } from "./KnowledgeSection";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { IntegrationSection } from "./IntegrationSection";
 import { ParseTestsSection } from "./ParseTestsSection";
 import { AnalysisCasesSection, AnalysisCasePublishSummary } from "./AnalysisCasesSection";
@@ -54,6 +56,7 @@ export type SectionProps = { skill: AnalysisSkill; spec: SkillSpec; setSpec: (sp
   repository?: Partial<LogAnalysisRepository>; apiMode: boolean; canEdit: boolean; dirty: boolean;
   knowledgeRepository?: KnowledgeRepository; knowledgeCapability?: KnowledgeCapability;
   canOpenKnowledge?: boolean;
+  organizationId?: string;
   fieldErrors?: Record<string, string>;
   onSkillUpdated: (skill: AnalysisSkill) => void; onBusyChange: (busy: boolean) => void;
   onWebhookDirtyChange?: (dirty: boolean) => void;
@@ -145,7 +148,7 @@ function Overview({ skill, spec, setSpec, disabled, stats, fieldErrors, sample, 
   ];
   return <section className="skill-section" aria-label="概览">
     <h2>概览</h2>
-    {skill.currentRevision.status !== "draft" ? <p>v{skill.currentRevision.number} · {skill.currentRevision.publishedByDisplayName ?? (skill.currentRevision.publishedByUserId ? "已删除用户" : "系统")} 发布于 {time(skill.currentRevision.publishedAt)}</p> : null}
+    {skill.currentRevision.status !== "draft" ? <p>v{skill.currentRevision.number} · {historicalIdentityLabel(skill.currentRevision.historicalAttribution?.actors.published_by_user_id)} 发布于 {time(skill.currentRevision.publishedAt)}</p> : null}
     <dl className="skill-facts"><dt>近 7 天分析</dt><dd>{stats?.analyses7d ?? "暂无数据"}</dd>
       <dt>有帮助率</dt><dd>{stats?.helpfulRate7d == null ? "暂无反馈" : formatPercent(stats.helpfulRate7d)}</dd>
     </dl>
@@ -184,7 +187,7 @@ function Versions({ skill, revisions, disabled, onRestore, repository, apiMode, 
       { key: "number", header: "版本", render: (r) => <Button variant="link" size="sm" onClick={() => { setLeftId(r.id); setRightId(null); }}>v{r.number}</Button> },
       { key: "status", header: "状态", render: (r) => <span className="badge">{status[r.status]}</span> },
       { key: "publishedAt", header: "发布时间", render: (r) => time(r.publishedAt) },
-      { key: "publisher", header: "发布者", render: (r) => r.status === "draft" ? "尚未发布" : r.publishedByDisplayName ?? (r.publishedByUserId ? "已删除用户" : "系统") },
+      { key: "publisher", header: "发布者", render: (r) => r.status === "draft" ? "尚未发布" : historicalIdentityLabel(r.historicalAttribution?.actors.published_by_user_id) },
       { key: "restore", header: "操作", render: (r) => r.status === "superseded" ? <Button variant="outline" size="sm" disabled={disabled} onClick={() => onRestore(r)}>回滚到此版本</Button> : null }
     ]} />
     {revisions.length >= 2 ? <><div className="skill-compare-selectors">{(["left", "right"] as const).map((side) => <label key={side}>{side === "left" ? "变更前版本" : "变更后版本"}
@@ -410,7 +413,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
       inspectorLabel="样例日志" inspector={<SkillSamplePane key={skillId} skillId={skillId} repository={repository} apiMode={apiMode} canEdit={canEdit} onSampleChange={updateSample} highlightedLine={highlight.line} highlightRequest={highlight.request}
         selectedLine={selectedLine} onLineSelect={setSelectedLine} extractors={highlightSpec?.extractors}
         highlightPreview={currentHighlights?.preview} highlightError={currentHighlights?.error} />}
-      toolbar={<header className="skill-workspace-header"><Button variant="link" asChild><a href="/log-admin?tab=skills" onClick={(event) => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); back(); } }}>← 分析技能</a></Button>
+      toolbar={<header className="skill-workspace-header"><Button variant="link" asChild><a href={withOrganizationScope("/log-admin?tab=skills", new URLSearchParams(search).get("organizationId") ?? undefined)} onClick={(event) => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); back(); } }}>← 分析技能</a></Button>
         <div className="skill-workspace-identity"><h1 title={skill.name}>{skill.name}</h1><span className="badge" role="status">{workspaceStatus}</span></div>
         {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Disabled buttons cannot receive focus; the wrapper exposes their reason to keyboard users. */}
         {apiMode && canEdit ? <TooltipProvider><Tooltip><TooltipTrigger asChild><span className="skill-dry-run-action" tabIndex={dryRunReason ? 0 : undefined}>
@@ -456,7 +459,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
           if (pending || yamlInvalid || testsInvalid || !formatValid || conflict) throw new Error("请先修正草稿错误再运行用例。");
           if ((dirty || !skill.draft) && !await run(async () => { await save(); })) throw new Error("草稿保存失败，请重试后再运行用例。");
         }}
-        knowledgeRepository={knowledgeRepository} knowledgeCapability={knowledgeCapability} canOpenKnowledge={canOpenKnowledge}
+        knowledgeRepository={knowledgeRepository} knowledgeCapability={knowledgeCapability} canOpenKnowledge={canOpenKnowledge} organizationId={new URLSearchParams(search).get("organizationId") ?? undefined}
         onSkillUpdated={(updated) => { setSkill(updated); if (updated.currentRevision !== skill.currentRevision || updated.draft !== skill.draft) setSpec(structuredClone((updated.draft ?? updated.currentRevision).spec));
           setRevisions((history) => [...(updated.draft ? [updated.draft] : []), ...history.filter((revision) => revision.status !== "draft")]); }}
         onRestore={(revision) => {

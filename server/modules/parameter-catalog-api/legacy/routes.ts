@@ -46,6 +46,10 @@ const writeRoutes = routeManifest.filter((route) =>
   (parameterCatalogLegacyWriteRouteIds as readonly string[]).includes(route.id),
 );
 
+/** Retired handlers only return 410 (and a refusal receipt); they never admit business writes. */
+export const isRetiredCatalogWriteRoute = (method: RouteRequest["method"], pattern: string): boolean =>
+  writeRoutes.some(route => route.method === method && route.path === pattern);
+
 const eligibleRoutes = routeManifest.filter((route) =>
   (parameterCatalogBoundedLegacyReadRouteIds as readonly string[]).includes(route.id),
 );

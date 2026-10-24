@@ -12,13 +12,16 @@ import {
 
 import type { RegistrationFailure } from "./failures";
 import type { Result } from "./result";
+import type { UserInvocationContext } from "../../auth/trustedInvocation";
 
 export const registrationCommandFamily = "subject-registration";
 
 export type TrustedInvocationContext =
   | {
-      readonly actorKind: "org-admin";
+      readonly actorKind: "org-admin" | "platform-admin";
       readonly principalId: string;
+      readonly invocation?: UserInvocationContext;
+      readonly requestId?: string;
     }
   | {
       readonly actorKind: "trusted-system";
@@ -123,7 +126,7 @@ export const validateRegistrationCommand = (
       return invalid("destinationModuleId");
     }
     if (command.newDestination) {
-      if (command.method !== "explicit" || command.context.actorKind !== "org-admin") return permissionDenied(command.context.actorKind, "initialize-destination");
+      if (command.method !== "explicit" || (command.context.actorKind !== "org-admin" && command.context.actorKind !== "platform-admin")) return permissionDenied(command.context.actorKind, "initialize-destination");
       if (!controlFree(command.newDestination.parentModuleId) || !controlFree(command.newDestination.name) || command.newDestination.name.length > 120 || command.placement.mode !== "use-default") return invalid("newDestination");
     }
     if (command.method === "automatic") {
@@ -134,7 +137,7 @@ export const validateRegistrationCommand = (
         return invalid("automatic-registration-requires-use-default");
       }
     } else if (command.method === "explicit") {
-      if (command.context.actorKind !== "org-admin") {
+      if (command.context.actorKind !== "org-admin" && command.context.actorKind !== "platform-admin") {
         return permissionDenied(command.context.actorKind, command.method);
       }
     } else if (command.context.actorKind !== "review-coordinator") {
@@ -156,7 +159,7 @@ export const validateRegistrationCommand = (
     ) {
       return invalid("expectedPlacementVersion");
     }
-    if (command.context.actorKind !== "org-admin") {
+    if (command.context.actorKind !== "org-admin" && command.context.actorKind !== "platform-admin") {
       return permissionDenied(command.context.actorKind, command.kind);
     }
     return { ok: true, value: command };

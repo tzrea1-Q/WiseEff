@@ -3,7 +3,8 @@ import { collectConsistencyMeasurements } from "./consistency-collector";
 import { installConsistencyReadGuard } from "./consistency";
 import { requirePrimaryActionColors } from "./primary-color";
 import { requireViewSwitchStyles } from "./view-switch";
-import { settleQualityRoute } from "./helpers";
+import { expectUsablePage, prepareInteractionSurface, settleQualityRoute } from "./helpers";
+import { requireReviewInboxStructure } from "./consistency-assertions";
 
 test("measures only the active governance task and keeps historical counts and empty states", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -188,6 +189,42 @@ test("settles project review roles on its loaded governance content, not a DTS f
   await test.step("quality:readiness", () => settleQualityRoute(page, "/parameter-admin/projects/aurora/review-roles", { readOnly: true }));
   await expect(page.getByText("aurora-board.dts")).toHaveCount(0);
 });
+
+for (const [path, queue, width] of [["/parameter-review", "审阅队列", 1280], ["/parameter-submissions", "我的提交", 1280], ["/parameter-review", "审阅队列", 1440]] as const) {
+  test(`settles ${path} after its actual review API response, including an empty queue at ${width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: width === 1280 ? 800 : 900 });
+    let release!: () => void, received!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const arrived = new Promise<void>(resolve => { received = resolve; });
+    let reads = 0;
+    await page.route(url => /^\/api\/v2\/projects\/[^/]+\/parameter-value-change-requests$/.test(url.pathname), async route => {
+      const response = await route.fetch();
+      expect(response.status()).toBe(200);
+      reads += 1; received(); await held;
+      await route.fulfill({ response });
+    });
+    await test.step("quality:navigation", () => page.goto(path));
+    await expectUsablePage(page); await prepareInteractionSurface(page); await arrived;
+    await page.evaluate(() => document.documentElement.classList.add("dark"));
+    const before = await page.evaluate(collectConsistencyMeasurements);
+    await page.screenshot({ path: testInfo.outputPath(`review-inbox-held-${width}-dark.png`), animations: "disabled" });
+    await testInfo.attach("held-review-structure", { body: JSON.stringify({ tabs: before.viewSwitches.filter(tab => tab.role === "tab"), visibleTableCount: before.visibleTableCount }), contentType: "application/json" });
+    expect(before.visibleTableCount).toBe(0);
+    expect(() => requireReviewInboxStructure(before, path)).toThrow("one visible queue");
+    let settled = false;
+    const settling = settleQualityRoute(page, path, { readOnly: true }).then(() => { settled = true; });
+    try {
+      await page.evaluate(() => Promise.resolve());
+      expect(settled).toBe(false);
+    } finally {
+      release(); await settling;
+      await expect(page.getByRole("table", { name: queue, exact: true })).toBeVisible();
+    }
+    expect(reads).toBeGreaterThan(0);
+    requireReviewInboxStructure(await page.evaluate(collectConsistencyMeasurements), path);
+    await page.screenshot({ path: testInfo.outputPath(`review-inbox-ready-${width}-dark.png`), animations: "disabled" });
+  });
+}
 
 test("stubs Bridge pairing setup without sending a POST to the server", async ({ context, page }) => {
   const forwarded: string[] = [];

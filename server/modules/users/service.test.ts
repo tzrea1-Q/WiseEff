@@ -216,19 +216,21 @@ describe("user governance service", () => {
     expect(txCalls.some((call) => call.text.includes("insert into user_role_bindings"))).toBe(true);
   });
 
-  it("prevents the active admin from disabling itself", async () => {
-    const { db } = createDb();
+  it("prevents disabling the last effective organization administrator", async () => {
+    const { db } = createDb((text) => text.includes("select users.id from users") ? [{ id: "u-admin" }]
+      : text.includes("from users") ? [userRow({ id: "u-admin", roles: [{ projectId: null, roleId: "admin" }] })] : []);
 
     await expect(deactivateUser(db, adminAuth, adminAuth.user.id, { isActive: false }, { requestId: "request-1" })).rejects.toThrow(
-      "Active Admin cannot disable itself."
+      "At least one usable organization administrator must remain."
     );
   });
 
-  it("prevents the active admin from deleting itself", async () => {
-    const { db, txCalls } = createDb((text) => (text.includes("from users") ? [userRow({ id: "u-admin" })] : []));
+  it("prevents deleting the last effective organization administrator", async () => {
+    const { db, txCalls } = createDb((text) => text.includes("select users.id from users") ? [{ id: "u-admin" }]
+      : text.includes("from users") ? [userRow({ id: "u-admin", roles: [{ projectId: null, roleId: "admin" }] })] : []);
 
     await expect(deleteUser(db, adminAuth, adminAuth.user.id, { requestId: "request-1" })).rejects.toThrow(
-      "Active Admin cannot delete itself."
+      "At least one usable organization administrator must remain."
     );
     expect(txCalls.some((call) => call.text.includes("delete from users"))).toBe(false);
     expect(txCalls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
@@ -360,11 +362,12 @@ describe("user governance service", () => {
     expect(listUsersCall?.values[0]).toBe("org-chargelab");
   });
 
-  it("prevents removing the active admin's last Admin capability", async () => {
-    const { db } = createDb((text) => (text.includes("count") ? [{ count: "1" }] : [userRow({ id: "u-admin" })]));
+  it("prevents removing the last effective organization administrator role", async () => {
+    const { db } = createDb((text) => text.includes("select users.id from users") ? [{ id: "u-admin" }]
+      : [userRow({ id: "u-admin", roles: [{ projectId: null, roleId: "admin" }] })]);
 
     await expect(replaceUserRoles(db, adminAuth, adminAuth.user.id, { roles: [{ projectId: null, roleId: "software-user" }] })).rejects.toThrow(
-      "Active Admin cannot remove its last Admin capability."
+      "At least one usable organization administrator must remain."
     );
   });
 
@@ -667,6 +670,9 @@ describe("user governance service", () => {
 
   it("resets a user password, revokes sessions, and writes audit", async () => {
     const { db, txCalls } = createDb((text) => {
+      if (text.includes("users.id as user_id")) {
+        return [{ ...userRow(), user_id: adminAuth.user.id, organization_name: adminAuth.organization.name, organization_status: "active", project_id: null, role_id: "admin" }];
+      }
       if (text.includes("from users") || text.includes("returning")) {
         return [userRow({ email: null, username: "target.user" })];
       }

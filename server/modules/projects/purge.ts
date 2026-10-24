@@ -8,22 +8,23 @@ import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import type { ObjectStore } from "../logs/objectStore";
 import type { ProjectDeletionStatus } from "../../../src/domain/parameters/projectDeletionPreview";
 import { readProjectDeletionPreview } from "./deletionPreview";
+import { parameterOrganizationId, withParameterAccess, type ParameterScopeContext } from "../parameters/operatingScope";
 
 type Receipt = { digest: string; pending: string[] };
 function requireCurrentAdministrator(error: unknown): never {
   if (error instanceof pg.DatabaseError && error.code === "42501") throw new ApiError("FORBIDDEN", "需要本组织当前有效的管理员权限。");
   throw error;
 }
-async function receipt(db: Database, auth: AuthContext, projectId: string) {
+async function receipt(db: Database, auth: AuthContext, projectId: string, context: ParameterScopeContext = {}) {
   return (await db.query<{ item: Receipt | null }>("select parameter_catalog.read_project_erasure($1,$2,$3) as item",
-    [auth.organization.id, projectId, auth.user.id]).catch(requireCurrentAdministrator)).rows[0]?.item ?? null;
+    [parameterOrganizationId(auth, context), projectId, auth.user.id]).catch(requireCurrentAdministrator)).rows[0]?.item ?? null;
 }
 const status = (projectId: string, item: Receipt): ProjectDeletionStatus => ({ projectId, stateDigest: item.digest, database: "deleted",
   objects: item.pending.length ? "pending" : "complete", pendingObjects: item.pending.length });
 
 /** Reusing a display code creates a new project, never the erased identity. */
-export async function resolveProjectCreateId(db: Database, auth: AuthContext, proposedId: string, explicitId: boolean) {
-  if (!await receipt(db, auth, proposedId)) return proposedId;
+export async function resolveProjectCreateId(db: Database, auth: AuthContext, proposedId: string, explicitId: boolean, context: ParameterScopeContext = {}) {
+  if (!await receipt(db, auth, proposedId, context)) return proposedId;
   if (explicitId) throw new ApiError("CONFLICT", "此项目 ID 已永久删除。请不指定 ID 创建新项目，项目代号可以复用。", { reason: "project-id-erased" });
   return `${proposedId}-${randomUUID()}`;
 }
@@ -36,15 +37,15 @@ export async function projectDeletionStatus(db: Database, auth: AuthContext, pro
 
 export async function listProjectDeletions(db: Database, auth: AuthContext): Promise<ProjectDeletionStatus[]> {
   const rows = (await db.query<{ project_id: string; digest: string; pending: string[] }>(
-    "select * from parameter_catalog.list_project_erasures($1,$2)", [auth.organization.id, auth.user.id]).catch(requireCurrentAdministrator)).rows;
+    "select * from parameter_catalog.list_project_erasures($1,$2)", [parameterOrganizationId(auth), auth.user.id]).catch(requireCurrentAdministrator)).rows;
   return rows.map(row => status(row.project_id, row));
 }
 
 export async function purgeProject(db: Database, invocation: TrustedInvocationContext, projectId: string, stateDigest: string, requestId: string, store?: ObjectStore) {
   const trusted = assertTrustedInvocationContext(invocation);
   if (trusted.initiator !== "user") throw new ApiError("FORBIDDEN", "项目彻底删除必须由管理员本人确认。");
-  const auth = trusted.principal;
-  const values = [auth.organization.id, projectId, auth.user.id];
+  const auth = withParameterAccess(trusted.principal, trusted);
+  const values = [parameterOrganizationId(auth), projectId, auth.user.id];
   try {
     await db.transaction(async tx => {
       await tx.query("select parameter_catalog.lock_project_erasure($1,$2,$3)", values);
@@ -53,7 +54,7 @@ export async function purgeProject(db: Database, invocation: TrustedInvocationCo
         if (previous.digest !== stateDigest) throw new ApiError("CONFLICT", "删除确认与原请求不一致，请读取删除状态。", { reason: "project-purge-retry-mismatch" });
         return;
       }
-      const preview = await readProjectDeletionPreview(tx, auth.organization.id, projectId, auth.user.id);
+      const preview = await readProjectDeletionPreview(tx, parameterOrganizationId(auth), projectId, auth.user.id);
       if (preview.stateDigest !== stateDigest) throw new ApiError("CONFLICT", "项目数据已变化，请刷新删除影响预览后确认。", { reason: "project-purge-preview-stale" });
       if (preview.blockers.length) throw new ApiError("CONFLICT", "项目仍有未完成的工作，请先处理后刷新。", { reason: "project-purge-blocked", blockers: preview.blockers });
       await tx.query("select parameter_catalog.purge_project($1,$2,$3,$4)", [...values, stateDigest]);

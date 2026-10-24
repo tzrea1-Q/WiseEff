@@ -248,13 +248,18 @@ test.describe("canonical parameter catalog page", () => {
 
     await openCatalogAt(page, "platform-admin");
     await assertReleaseVisible();
-    await expect(page.getByText("组织审核队列需要 Organization 权限；Platform 权限不能代替组织审核权限。", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: /^待审核事项/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^待审核事项/ })).toBeEnabled();
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["accept-proposal"] })).toHaveCount(0);
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["reject-proposal"] })).toHaveCount(0);
+    await selectCatalogSubject(page, "acme,sensor");
     await expect(
       page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"], exact: true })
-    ).toHaveCount(0);
+    ).toBeEnabled();
+    const platformQueue = await catalogJson(page.request, "GET", `/api/v2/organizations/${fixture.organizationId}/parameter-review-items`, {
+      actor: "platform-admin"
+    });
+    expect(platformQueue.status).toBe(200);
+    await assertReleaseVisible();
     await catalogScreenshot(page, testInfo, "pcat-ui-06-platform-admin");
 
     await signInCatalogActor(page, "guest", CATALOG_PAGE_PATH);

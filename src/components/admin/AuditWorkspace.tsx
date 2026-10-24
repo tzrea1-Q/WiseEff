@@ -10,6 +10,7 @@ import { formatAuditAbsoluteTime, formatAuditRelativeTime } from "@/domain/audit
 import { AUDIT_SEVERITIES, getAuditSeverityLabel, type AuditEventView } from "@/domain/audit/types";
 import { AUDIT_EXPORT_MAX_ROWS, useAuditEvent, useAuditEvents, useAuditTraceEvents, type AuditQueryState } from "@/hooks/useAuditEvents";
 import { buildAuditSearch } from "@/hooks/useAuditSearch";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import type { AuditEvent } from "@/domain/prototype/types";
 import { presentError } from "@/infrastructure/http/presentError";
 import { ColumnFilter } from "@/components/ColumnFilter";
@@ -44,7 +45,7 @@ function businessUrl(event: AuditEventView) {
   const params = new URLSearchParams({ project: event.projectId });
   const binding = event.metadata?.bindingId ?? event.metadata?.targetBindingId;
   if (typeof binding === "string") params.set("bindingId", binding);
-  return "/parameters?" + params.toString();
+  return withOrganizationScope("/parameters?" + params.toString(), event.organizationId ?? undefined);
 }
 
 function AuditKindField({ initialKind = "" }: { initialKind?: string }) {
@@ -86,8 +87,8 @@ export function AuditWorkspace({ mockEvents, isApiMode, query, onQueryChange, pr
   const result = useAuditEvents({ isApiMode, mockEvents, query, enabled: !invalidRange });
   const { events, loading, loadingMore, error, updatedAt, hasMore, loadMore, reload, fetchAllForExport } = result;
   const cachedEvent = events.find((event) => event.id === detailEventId) ?? (selectedEvent?.id === detailEventId ? selectedEvent : undefined);
-  const detail = useAuditEvent(detailEventId, cachedEvent, isApiMode, mockEvents);
-  const related = useAuditTraceEvents(detail.event?.traceId, isApiMode, mockEvents);
+  const detail = useAuditEvent(detailEventId, cachedEvent, isApiMode, mockEvents, query.organizationId);
+  const related = useAuditTraceEvents(detail.event?.traceId, isApiMode, mockEvents, query.organizationId);
   const detailIndex = events.findIndex((event) => event.id === detailEventId);
   const selectedSeverities = Array.isArray(query.severity) ? query.severity : query.severity === "all" ? [] : [query.severity];
   const activeFilters = query.appGroup !== "all" || query.severity !== "all" || query.search || query.projectId ||

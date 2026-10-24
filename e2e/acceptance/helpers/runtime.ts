@@ -10,7 +10,7 @@ export function createBearerTokenForUser(userId: string, email: string, name: st
   if (!issuer || !secret) return null;
   const payload = Buffer.from(JSON.stringify({
     iss: issuer, sub: userId, org: scopedOrganizationId, name, email, title: "Acceptance User", orgName: "ChargeLab",
-    roles: [], permissions: [], isActive: true, nbf: 0, exp: 9_999_999_999
+    roles: [], permissions: [], isActive: true, nbf: 0, iat: Math.floor(Date.now() / 1000), exp: 9_999_999_999
   })).toString("base64url");
   const signature = createHmac("sha256", secret).update(payload).digest("base64url");
   return `Bearer ${payload}.${signature}`;

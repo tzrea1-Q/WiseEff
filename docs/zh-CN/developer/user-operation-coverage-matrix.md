@@ -6,6 +6,22 @@
 
 ## 使用方式
 
+`ORG-OPERATING-LIFECYCLE-001`（P1，`coverage: conditional`）：实际本地密码身份在 `/platform/organizations` 连续完成组织创建、邀请、团队及项目授权、离职交接、调动、停用恢复与故障可重试的混合删除。证据包括界面、API、数据库、真实操作者审计及 1440×900 截图；后台专项另覆盖 API/worker SQL LOGIN、真实文件、本机回调及新连接继续。该流程需要隔离的 local 认证环境，HMAC/OIDC 模式跳过；`ORG-OIDC-TRANSFER-001` 单独以受控签名/JWKS 验证调动后的声明、同步和停用恢复，不把默认 HMAC CI 或本机身份提供方声明为部署验收。
+
+`ORG-MIXED-ERASURE-RECOVERY-001`（P1，`coverage: automated`）：平台管理员确认实际四域混合组织，观察日志对象故障并重试，完成后仅显示编号、操作者、时间、数量和结果。恢复专项使用真实旧 PostgreSQL、文件及独立 Agent 检查点备份，验证已删除和失败状态重放、身份/未知归属拒绝及既有队列/代理开放边界；不把本地验证宣称为整栈 MinIO/Redis 或目标主机恢复验收。
+
+`ORG-PARAMETER-ERASURE-001`、`ORG-KNOWLEDGE-ERASURE-001`、`ORG-LOG-ERASURE-001`、`ORG-RUNTIME-ERASURE-001`（均为 P1，`coverage: automated`）：平台管理员通过 `/platform/organizations` 的编号确认，分别清理实际项目参数文件、知识附件和索引、日志与排队分析、运行状态与反馈文件。1440×900 API 浏览器检查真实故障显示、独立记录重试和物理文件消失；各领域真实 PostgreSQL/API/存储专项覆盖并发生产者、丢失响应、共享对象和他组织引用保留。运行状态专项另验证实际检查点存储、设备连接及跨组织通知投影；浏览器覆盖实际反馈文件和通知，不把浏览器结果当作全部后台协议的证明。跨领域最终回执和备份恢复由后续组合验收单独覆盖。
+
+`ORG-EMPTY-ERASURE-001`（P1，`coverage: automated`）：平台管理员先预览再输入组织编号，彻底删除只含成员、角色、团队、邀请和管理审计的组织。确认后账号立即停用且访问被撤销；清理失败不能恢复为正常组织。独立“清理记录”入口在组织、成员消失后仍可读取进度和重试，只保留发起人、目标编号、时间、数量和结果。真实 PostgreSQL 验证停用组织、受限 API LOGIN、未知和非空业务归属事前拒绝、并发授权变化、晚到写入和重启后的继续；1440×900 API 浏览器验证编号确认、故障重试、实际删除和键盘操作。业务领域适配器尚未接入的非空组织会明确拒绝，在线删除不宣称同步擦除备份。
+
+`ORG-DELETION-PREVIEW-001`（P1，`coverage: automated`）：平台管理员在 `/platform/organizations` 查看明确组织的删除影响，失败可重试，展示账号、业务数据、文件共享引用、在途工作及备份边界。预览只读，不提供删除授权；真实多组织 API/数据库与 1440×900 浏览器检查保留原数据，组织管理员无权读取平台预览。后台 PostgreSQL 另验实际 API LOGIN 的受限查询、OIDC 待同步账号、未知归属阻断、陈旧预览和管理员并发变化；不宣称已执行清理或擦除备份。
+
+`ORG-LIFECYCLE-001`（P1，`coverage: automated`）：平台管理员从组织目录停用、重试并恢复明确的组织；组织管理员只读查看，业务写入返回拒绝，恢复保留成员单独停用状态。自动化记录界面、API、数据库、真实操作者审计和 1440×900 截图；后台专项覆盖在途工作收尾及各入口暂停。
+
+`ORG-ACCOUNT-TRANSFER-001`（P1，`coverage: conditional`）：平台管理员在 `/organization/members` 预览源组织影响，选择目标组织及新组织角色，确认调动。真实本地认证浏览器覆盖失败保留与重试、旧会话/配对失效、原密码登录新组织、源组织草稿及审核待交接、历史保全和机器凭据保留。HMAC/OIDC 通道跳过本地密码交互；后台 PostgreSQL 用例另外验证权限、身份冲突、管理员并发连续性和事务回滚。
+
+`ORG-OIDC-TRANSFER-001`（P1，`coverage: conditional`）：平台管理员在成员页预览 OIDC 调动所需声明，处理目标外部身份冲突，查看等待外部同步，并刷新经过真实目标组织登录验证的结果。覆盖 UI、API、数据库、审计及截图；真实签名认证/数据库另外验证旧声明、同秒令牌、无绑定身份拒绝、并发管理员连续性和审计失败回滚。浏览器要求隔离受控 OIDC issuer/JWKS 与临时测试签名密钥；本地密码和 HMAC 通道的跳过不能充当本项验收，受控本地身份系统不代表部署身份系统验收。
+
 `LOG-REGISTER-001`（P1，`coverage: future`）：Admin 在 `/log-admin/skills/:skillId?section=decoding` 编辑寄存器字段与映射，预览并导入数据手册表格，往返 YAML，并选择样例行检查位条。组件与真实 PostgreSQL 集成覆盖已提供；协调者浏览器走查与专属自动化覆盖分别记录，后者尚待补充。
 
 `PCAT-REGISTRATION-INITIALIZE-001`（P1，`coverage: future`）：组织管理员在 `/parameter-admin/modules` 明确选择业务父分类和目标名称，确认原子创建目标并登记主体。组件测试及原生 PostgreSQL 覆盖租户、发布、重试并发和失败回滚；专属浏览器写入与审计回执仍待补。

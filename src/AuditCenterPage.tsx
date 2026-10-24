@@ -9,6 +9,7 @@ export function AuditCenterPage({ state, onNavigate, search, runtimeMode }: Page
 
   return (
     <AuditWorkspace
+      key={queryState.organizationId ?? "home"}
       mockEvents={state.auditEvents}
       isApiMode={isApiMode}
       query={queryState}

@@ -9,6 +9,7 @@ import { claimLogWebhook, enqueueLogWebhook } from "./webhookOutbox";
 import { decryptLogWebhookSecret, LogWebhookSecretDecryptionError } from "./webhookSecrets";
 import { getLogDomainWebhookConfig } from "./domainsRepository";
 import { insertLogWebhookDelivery } from "./webhookRepository";
+import { requireActiveOrganization } from "../auth/organizationLifecycle";
 import {
   signWebhookPayload,
   validateWebhookUrl,
@@ -239,6 +240,8 @@ export function createLogWebhookDeliverer({
          and status = 'processing' for update`, [row.id, row.lease_token]
       );
       if (!locked.rows.length) return null;
+      const organization = (await tx.query<{ status: string }>("select status from public.organizations where id=$1 for share", [row.organization_id])).rows[0];
+      if (organization?.status !== "active") return null;
       const outcome = await sendAttempt(tx, {
         organizationId: row.organization_id, logDomainId: row.log_domain_id,
         logRecordId: row.log_record_id, runId: row.run_id, kind: "result",
@@ -279,11 +282,14 @@ export function createLogWebhookDeliverer({
     },
     notifyAnalysisTerminal() { void flush(); },
     async sendTestDelivery(input) {
-      return sendAttempt(db, {
+      return db.transaction(async tx => {
+        await requireActiveOrganization(tx, input.organizationId, true);
+        return sendAttempt(tx, {
         organizationId: input.organizationId, logDomainId: input.domainId, kind: "test",
         payload: { event: "log-analysis.test", logDomainId: input.domainId,
           occurredAt: now().toISOString(), message: "WiseEff 日志分析结果通知测试。" },
         attempt: 1, maxAttempts: 1
+        });
       });
     },
     start() {

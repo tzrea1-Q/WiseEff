@@ -485,6 +485,32 @@ describe("createHttpLogAnalysisRepository", () => {
     expect(close).toHaveBeenCalledTimes(1);
   });
 
+  it("pins HTTP and SSE to each repository's organization and ignores events after cleanup", async () => {
+    const fetchMock = createFetchMock({ item: baseJobDto });
+    vi.stubGlobal("fetch", fetchMock);
+    const listeners: Array<(event: MessageEvent<string>) => void> = [];
+    const EventSourceStub = vi.fn(function EventSource(this: unknown, _url: string) {
+      Object.assign(this as Record<string, unknown>, { close: vi.fn(), addEventListener: (_event: string, listener: typeof listeners[number]) => listeners.push(listener) });
+    });
+    vi.stubGlobal("EventSource", EventSourceStub);
+    const first = createHttpLogAnalysisRepository({ baseUrl: "http://127.0.0.1:8787", organizationId: "first-org" });
+    const second = createHttpLogAnalysisRepository({ baseUrl: "http://127.0.0.1:8787", organizationId: "second-org" });
+    await first.getJob("job-1"); await second.getJob("job-1");
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8787/api/v1/jobs/job-1?organizationId=first-org",
+      "http://127.0.0.1:8787/api/v1/jobs/job-1?organizationId=second-org"
+    ]);
+    const onEvent = vi.fn(), cleanup = first.watchJob!("job-1", onEvent);
+    const secondCleanup = second.watchJob!("job-1", vi.fn());
+    expect(EventSourceStub.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8787/api/v1/jobs/job-1/events?organizationId=first-org",
+      "http://127.0.0.1:8787/api/v1/jobs/job-1/events?organizationId=second-org"
+    ]);
+    cleanup(); secondCleanup();
+    listeners[0](new MessageEvent("job", { data: JSON.stringify(baseJobDto) }));
+    expect(onEvent).not.toHaveBeenCalled();
+  });
+
   it("uses the same custom base URL for injected HTTP client and EventSource", async () => {
     const fetchMock = createFetchMock({ item: baseJobDto });
     const addEventListener = vi.fn();

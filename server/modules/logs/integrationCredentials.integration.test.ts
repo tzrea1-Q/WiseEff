@@ -11,8 +11,7 @@ import { createTracingBoundary } from "../../observability/tracing";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { createMemoryObjectStore } from "../../testing/objectStore";
-import { applyMigrations, migrationsDir, resolveTestDatabaseUrl } from "../../testing/tempDatabase";
-import { createInMemoryTestDatabase, type InMemoryTestDatabase } from "../../testing/testDatabase";
+import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../../testing/testDatabase";
 import type { LogRecordDto } from "./types";
 import { provisionChargingSkill } from "./provisionChargingSkill";
 import { processLogAnalysisJobById } from "./worker";
@@ -23,20 +22,21 @@ type Skill = { id: string; skillKey: string };
 type Upload = { log: LogRecordDto; fileObject: { id: string }; job: { id: string } };
 
 describe.skipIf(!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)("integration credential HTTP acceptance over PostgreSQL (#1248)", () => {
-  let root: RootDatabase;
-  let db: InMemoryTestDatabase;
+  let ephemeral: EphemeralTestDatabase;
+  let db: RootDatabase;
   let server: Server;
   let baseUrl: string;
   const objectStore = createMemoryObjectStore();
   const suffix = randomUUID();
   const organizations = [`credential-a-${suffix}`, `credential-b-${suffix}`];
   const users = organizations.map((organizationId) => makeTestAuthContext({ organizationId, userId: `${organizationId}-admin` }));
+  const platform = makeTestAuthContext({ organizationId: organizations[0], userId: `credential-platform-${suffix}`, roles: [{ roleId: "platform-admin", projectId: null }] });
   const plaintext: string[] = [];
   const logged: string[] = [];
   const traces: unknown[] = [];
   const queries = vi.spyOn(pg.Client.prototype, "query");
   const verifier = vi.fn(async (authorization: string | string[] | undefined) => {
-    const auth = users.find((_, index) => authorization === `Bearer user-${index}`);
+    const auth = authorization === "Bearer platform" ? platform : users.find((_, index) => authorization === `Bearer user-${index}`);
     if (!auth) throw new ApiError("UNAUTHENTICATED", "Unknown test user.");
     return { ...auth, user: { ...auth.user, emailVerified: true } };
   });
@@ -75,14 +75,15 @@ describe.skipIf(!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)("in
     for (const method of ["log", "info", "warn", "error", "debug"] as const) {
       vi.spyOn(console, method).mockImplementation((...args) => { logged.push(format(...args)); });
     }
-    root = createPostgresDatabase(resolveTestDatabaseUrl());
-    await applyMigrations(root, migrationsDir);
-    db = await createInMemoryTestDatabase(resolveTestDatabaseUrl());
+    ephemeral = await createEphemeralTestDatabase("logcredentials");
+    db = createPostgresDatabase(ephemeral.url);
     for (const auth of users) {
       await seedCoreGraph(db, { organization: { id: auth.organization.id }, users: [{ id: auth.user.id }] });
       await db.query(`insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
         values ($1, $2, $3, null, 'admin')`, [randomUUID(), auth.user.id, auth.organization.id]);
     }
+    await db.query("insert into users(id,organization_id,name,title) values($1,$2,'Platform credential operator','Admin')", [platform.user.id, platform.organization.id]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values($1,$2,$3,'platform-admin')", [randomUUID(), platform.user.id, platform.organization.id]);
     server = createWiseEffServer(options());
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
@@ -95,10 +96,48 @@ describe.skipIf(!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)("in
       server.closeAllConnections();
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     }
-    await db?.rollback();
-    await root?.close();
+    try { await db?.close(); } finally { await ephemeral?.drop(); }
     vi.restoreAllMocks();
   });
+
+  it("governs target credentials with real actor audit while machine identity stays fixed and independent of its creator", async () => {
+    const scope = `?organizationId=${organizations[1]}`, path = "/api/v1/log-integration-credentials";
+    const homeCredential = await issue("Home-only credential");
+    const targetSkill = await request<{ item: Skill }>("POST", "/api/v1/log-skills", { name: "Target scope skill" }, "user-1");
+    expect(targetSkill.status).toBe(201);
+    const created = await request<Issued>("POST", `${path}${scope}`, { name: "Target machine", skillId: targetSkill.body.item.id }, "platform");
+    expect(created.status).toBe(201); rememberSecret(created.body.token);
+    expect(created.body.item).toMatchObject({ organizationId: organizations[1], createdBy: platform.user.id, skillId: targetSkill.body.item.id });
+    const listed = await request<{ items: Credential[] }>("GET", `${path}${scope}`, undefined, "platform");
+    expect(listed.body.items.map(item => item.id)).toContain(created.body.item.id);
+    expect(listed.body.items.map(item => item.id)).not.toContain(homeCredential.item.id);
+    expect(JSON.stringify(listed.body)).not.toMatch(/secret|token|hash/i);
+    const credentialPath = `${path}/${created.body.item.id}`;
+    for (const [route, method, body] of [[path, "GET"], [path, "POST", { name: "Forbidden" }], [`${credentialPath}/rotate`, "POST", {}], [`${credentialPath}/revoke`, "POST", {}]] as const) {
+      expect((await request(method, `${route}${scope}`, body)).status).toBe(403);
+      expect((await request(method, `${route}${scope}`, body, created.body.token)).status).toBe(403);
+    }
+    expect((await request("POST", `${path}/${homeCredential.item.id}/rotate${scope}`, {}, "platform")).status).toBe(404);
+    const homeSkill = await request<{ item: Skill }>("POST", "/api/v1/log-skills", { name: "Home scope skill" });
+    expect((await request("POST", `${path}${scope}`, { name: "Wrong skill", skillId: homeSkill.body.item.id }, "platform")).status).toBe(404);
+    await db.query("update users set is_active=false where id=$1", [platform.user.id]);
+    try {
+      expect((await request("POST", `/api/v1/log-files?organizationId=${organizations[0]}`, uploadBody(), created.body.token)).status).toBe(403);
+      const machineUpload = await request<Upload>("POST", "/api/v1/log-files", uploadBody(), created.body.token);
+      expect(machineUpload.status).toBe(201); expect(machineUpload.body.log.createdByCredentialId).toBe(created.body.item.id);
+      expect((await request("GET", ownPath(machineUpload.body.log.id), undefined, "user-1")).status).toBe(200);
+      expect((await request("GET", ownPath(machineUpload.body.log.id))).status).toBe(404);
+    } finally { await db.query("update users set is_active=true where id=$1", [platform.user.id]); }
+    const rotated = await request<Issued>("POST", `${credentialPath}/rotate${scope}`, {}, "platform");
+    expect(rotated.status).toBe(200); rememberSecret(rotated.body.token);
+    expect((await upload(created.body.token)).status).toBe(401); expect((await upload(rotated.body.token)).status).toBe(201);
+    expect((await request("POST", `${credentialPath}/revoke${scope}`, {}, "platform")).status).toBe(200);
+    expect((await upload(rotated.body.token)).status).toBe(401);
+    const events = (await request<{ items: Array<{ actorUserId: string; organizationId: string; metadata: Record<string, unknown> }> }>("GET", `/api/v1/audit-events?targetId=${created.body.item.id}`, undefined, "user-1")).body.items;
+    const audit = events.filter(event => event.metadata.name === "Target machine");
+    expect(audit).toHaveLength(3);
+    expect(audit.every(event => event.actorUserId === platform.user.id && event.organizationId === organizations[1] && event.metadata.actorHomeOrganizationId === organizations[0] && event.metadata.operatingOrganizationId === organizations[1])).toBe(true);
+  }, 120_000);
 
   it("uploads through both endpoints, reads its own report/files, preserves provenance, isolates owners and rotates/revokes immediately", async () => {
     const primary = await issue("Build pipeline");

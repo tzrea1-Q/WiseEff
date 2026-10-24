@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterInvocation } from "./operatingScope";
 import { randomUUID } from "node:crypto";
 
 import type { AuditCorrelationContext } from "../audit/types";
@@ -184,7 +185,7 @@ export async function getProjectInitializationStatus(
 ): Promise<ProjectInitializationStatus> {
   requireCanView(auth);
   const status = await loadProjectInitializationStatus(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId
   });
   if (!status) {
@@ -204,7 +205,7 @@ export async function upsertDraft(
 
   return db.transaction(async (tx) => {
     const existingStatus = await lockProjectInitialization(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId
     });
     if (!existingStatus) {
@@ -221,7 +222,7 @@ export async function upsertDraft(
     let persistedInput = input;
     if (!input.emptyLibrary) {
       await assertSourceProjectsOwned(tx, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectIds: input.sourceProjectIds,
       });
       const canonical = await previewSnapshot(tx, auth, {
@@ -237,18 +238,18 @@ export async function upsertDraft(
     }
 
     const existing = await getDraftByProject(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId
     });
     const draft = await upsertDraftInRepo(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       id: existing?.id ?? randomUUID(),
       createdByUserId: auth.user.id,
       draft: persistedInput
     });
 
     await setProjectInitializationStatus(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       status: "initialization_draft"
     });
@@ -270,13 +271,13 @@ export async function previewSnapshot(
   }
 
   await assertSourceProjectsOwned(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectIds: [input.primarySourceProjectId, ...input.supplementSourceProjectIds],
   });
 
   const supplementIds = input.supplementSourceProjectIds.filter((id) => id !== input.primarySourceProjectId);
   const primary = await listSourceBindingCandidates(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectIds: [input.primarySourceProjectId],
     bindingIds: input.selectedSourceBindingIds,
     moduleIds: input.selectedModuleIds,
@@ -287,7 +288,7 @@ export async function previewSnapshot(
   for (const projectId of supplementIds) {
     supplements.push(
       await listSourceBindingCandidates(db, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectIds: [projectId],
         bindingIds: input.selectedSourceBindingIds,
         moduleIds: input.selectedModuleIds,
@@ -319,11 +320,11 @@ export async function submitDraft(
   context: InitializationServiceContext = {}
 ): Promise<InitializationReviewDto> {
   requireCanEdit(auth, input.projectId);
-  const invocation = context.invocation ?? createUserInvocation(auth);
+  const invocation = context.invocation ?? parameterInvocation(auth) ?? createUserInvocation(auth);
 
   return db.transaction(async (tx) => {
     const status = await lockProjectInitialization(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId
     });
     if (!status) {
@@ -338,7 +339,7 @@ export async function submitDraft(
     }
 
     const draft = await getDraftByProject(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId
     });
     if (!draft) {
@@ -351,20 +352,20 @@ export async function submitDraft(
 
     const review = await insertReview(tx, {
       id: randomUUID(),
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       draftId: draft.id,
       submittedByUserId: auth.user.id
     });
 
     await setProjectInitializationStatus(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       status: "initialization_pending_review"
     });
 
     await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId: context.requestId ?? randomUUID() }, {
-      ...(invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
+      ...(invocation.initiator === "system" ? { organizationId: parameterOrganizationId(auth) } : {}),
       app: "parameter-admin",
       kind: "project-initialization-submitted",
       action: "submit",
@@ -391,7 +392,7 @@ export async function listPendingReviews(
   auth: AuthContext
 ): Promise<InitializationReviewDto[]> {
   requireCanAdmin(auth);
-  return listPendingReviewsFromRepo(db, { organizationId: auth.organization.id });
+  return listPendingReviewsFromRepo(db, { organizationId: parameterOrganizationId(auth) });
 }
 
 export async function approveReview(
@@ -401,14 +402,14 @@ export async function approveReview(
   context: InitializationServiceContext = {}
 ): Promise<InitializationReviewDto> {
   requireCanAdmin(auth);
-  const invocation = context.invocation ?? createUserInvocation(auth);
+  const invocation = context.invocation ?? parameterInvocation(auth) ?? createUserInvocation(auth);
 
   const approve = async (tx: Database, objectStore?: ObjectStore) => {
     // Every lifecycle mutation takes the project lock before the review lock.
     // This keeps approval/rejection ordered with draft upsert/submit and
     // prevents a submitted review from being paired with a later draft edit.
     const reviewHint = await getReviewById(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       reviewId: input.reviewId
     });
     if (!reviewHint) {
@@ -417,14 +418,14 @@ export async function approveReview(
       });
     }
     const projectStatus = await lockProjectInitialization(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: reviewHint.projectId
     });
     if (!projectStatus) {
       throw new ApiError("NOT_FOUND", "Project was not found.", { projectId: reviewHint.projectId });
     }
     const review = await getReviewByIdForUpdate(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       reviewId: input.reviewId
     });
     if (!review) {
@@ -443,7 +444,7 @@ export async function approveReview(
     }
 
     const draft = await getDraftByProject(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: review.projectId
     });
     if (!draft || draft.id !== review.draftId) {
@@ -462,7 +463,7 @@ export async function approveReview(
     }
 
     const approved = await markReviewApproved(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       reviewId: input.reviewId,
       reviewedByUserId: auth.user.id
     });
@@ -473,13 +474,13 @@ export async function approveReview(
     }
 
     await setProjectInitializationStatus(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: review.projectId,
       status: "initialized"
     });
 
     await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId: context.requestId ?? randomUUID() }, {
-      ...(invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
+      ...(invocation.initiator === "system" ? { organizationId: parameterOrganizationId(auth) } : {}),
       app: "parameter-admin",
       kind: "project-initialization-approved",
       action: "approve",
@@ -510,7 +511,7 @@ export async function rejectReview(
   context: InitializationServiceContext = {}
 ): Promise<InitializationReviewDto> {
   requireCanAdmin(auth);
-  const invocation = context.invocation ?? createUserInvocation(auth);
+  const invocation = context.invocation ?? parameterInvocation(auth) ?? createUserInvocation(auth);
 
   const reason = input.reason.trim();
   if (!reason) {
@@ -521,7 +522,7 @@ export async function rejectReview(
     // Match approval's project -> review lock order so reject cannot race a
     // draft upsert or deadlock with an in-flight approval.
     const reviewHint = await getReviewById(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       reviewId: input.reviewId
     });
     if (!reviewHint) {
@@ -530,14 +531,14 @@ export async function rejectReview(
       });
     }
     const projectStatus = await lockProjectInitialization(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: reviewHint.projectId
     });
     if (!projectStatus) {
       throw new ApiError("NOT_FOUND", "Project was not found.", { projectId: reviewHint.projectId });
     }
     const review = await getReviewByIdForUpdate(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       reviewId: input.reviewId
     });
     if (!review) {
@@ -554,12 +555,12 @@ export async function rejectReview(
 
     // Keep draft row editable after reject (status moves back to rejected lifecycle).
     await getDraftByProject(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: review.projectId
     });
 
     const rejected = await markReviewRejected(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       reviewId: input.reviewId,
       reviewedByUserId: auth.user.id,
       rejectionReason: reason
@@ -571,13 +572,13 @@ export async function rejectReview(
     }
 
     await setProjectInitializationStatus(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: review.projectId,
       status: "initialization_rejected"
     });
 
     await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId: context.requestId ?? randomUUID() }, {
-      ...(invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
+      ...(invocation.initiator === "system" ? { organizationId: parameterOrganizationId(auth) } : {}),
       app: "parameter-admin",
       kind: "project-initialization-rejected",
       action: "reject",

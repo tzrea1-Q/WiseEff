@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../parameters/operatingScope";
 import { createHash, randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -8,7 +9,7 @@ import { trustedDomainAttribution, type TrustedInvocationContext } from "../auth
 import type { CatalogSnapshot } from "../catalog-kernel/interface";
 import { getCanonicalValueChangeRequest, getCanonicalValueChangeRequestForUpdate, type CanonicalValueChangeRequestRow } from "../parameter-bindings/drafts/changeRepository";
 import { readSourceRegistrationAgreement } from "../parameter-bindings/binding";
-import { canEditParameters, canReviewParameters, canReviewParameterStage } from "../parameter-kernel/policy";
+import { canReviewParameters, canReviewParameterStage } from "../parameter-kernel/policy";
 import { assertPinnedCanonicalSensitiveNodeWriteAllowed, canonicalSourceMemberMatchesCurrentFile, lockCanonicalSourceCohort, loadCanonicalSourceCohort, loadCanonicalSourceSnapshot, requireCanonicalUserInvocation, recordCanonicalPermissionRefusal, validatePinnedDtsSourceChange, validatePinnedDtsSourceDeletion, type CanonicalSourceBindingPin, type CanonicalSourceManifest, type CanonicalSourceCurrentMember, type CanonicalSourceSecurityContext } from "./canonicalSource";
 import type { TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { MAX_PARAMETER_SOURCE_BYTES, deleteJsonSourceMember, parseJsonSource, proveJsonSourceMemberAbsent, readJsonSourceValue } from "./jsonSource";
@@ -183,15 +184,15 @@ export async function commitCanonicalSourceRevision(
   const invocation = await requireCanonicalUserInvocation(auth, security, {
     projectId: input.projectId, operation: "canonical source apply", targetType: "project-parameter-value-change-request", targetId: input.requestId
   });
-  if (!canEditParameters(auth,input.projectId) || !canReviewParameters(auth) || !canReviewParameterStage(auth,input.projectId,"software_review")) {
+  if (!canReviewParameters(auth) || !canReviewParameterStage(auth,input.projectId,"software_review")) {
     await recordCanonicalPermissionRefusal(security, {
       projectId: input.projectId, operation: "canonical source apply", targetType: "project-parameter-value-change-request", targetId: input.requestId,
-      details: { permission: !canEditParameters(auth,input.projectId) ? "parameter:edit" : "parameter:review" }
+      details: { permission: "parameter:review" }
     });
     throw new ApiError("FORBIDDEN", "Project software review authorization is required.");
   }
   if (!await hasCurrentCanonicalReviewRole(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     userId: auth.user.id
   })) {
@@ -205,7 +206,7 @@ export async function commitCanonicalSourceRevision(
     throw new ApiError("FORBIDDEN", "Project software review authorization is required.");
   }
   const readRequest = (lock = false) => (lock ? getCanonicalValueChangeRequestForUpdate : getCanonicalValueChangeRequest)(db,
-    { requestId: input.requestId,organizationId: auth.organization.id,projectId: input.projectId }) as Promise<SourceRequest | null>;
+    { requestId: input.requestId,organizationId: parameterOrganizationId(auth),projectId: input.projectId }) as Promise<SourceRequest | null>;
   const initial = await readRequest();
   if (!initial) throw new ApiError("NOT_FOUND", "Source change request was not found.");
   if (initial.submitter_user_id === auth.user.id) {
@@ -228,18 +229,18 @@ export async function commitCanonicalSourceRevision(
     bindingId: initial.binding_id, sourcePinId: initial.source_pin_id
   });
   const sourceIdentity = await loadOwnedProjectValueSourcePin(db, {
-    organizationId: auth.organization.id,projectId: input.projectId,bindingId: initial.binding_id,projectValueId: initial.base_current_value_id,
+    organizationId: parameterOrganizationId(auth),projectId: input.projectId,bindingId: initial.binding_id,projectValueId: initial.base_current_value_id,
   });
   if (!sourceIdentity) conflict("Source value has no exact owned pin.");
   await lockCanonicalSourceCohort(db,sourceIdentity);
   const base = await loadCanonicalSourceSnapshot(db,storage, {
-    organizationId: auth.organization.id,projectId: input.projectId,bindingId: initial.binding_id,projectValueId: initial.base_current_value_id,
+    organizationId: parameterOrganizationId(auth),projectId: input.projectId,bindingId: initial.binding_id,projectValueId: initial.base_current_value_id,
   });
   const manifest = base.manifest;
-  await assertPinnedCanonicalSensitiveNodeWriteAllowed(db, auth, manifest, security);
+  await assertPinnedCanonicalSensitiveNodeWriteAllowed(db, auth, manifest, security, "review");
   const current = await db.query<CanonicalSourceCurrentMember>(
     `select id,current_version_id,config_set_role,config_set_sort_order,format from project_parameter_files where config_set_id=$1 order by id for update nowait`, [manifest.configSetId]);
-  const cohort = await loadCanonicalSourceCohort(db,{ organizationId: auth.organization.id,projectId: input.projectId,configSetId: manifest.configSetId });
+  const cohort = await loadCanonicalSourceCohort(db,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,configSetId: manifest.configSetId });
   const request = await readRequest(true);
   if (!request) conflict("Source request disappeared.");
   if (request.status === "approved") {
@@ -263,7 +264,7 @@ export async function commitCanonicalSourceRevision(
     size_bytes: number; parsed_index: ParsedIndex; status: string; base_digest: string; proposed_digest: string; diff_digest: string;
     frozen_member_manifest: unknown; frozen_binding_manifest: unknown;
   }>(`select *,size_bytes::float8 as size_bytes from project_parameter_file_candidates where id=$1 and organization_id=$2 and project_id=$3`,
-  [request.candidate_id,auth.organization.id,input.projectId])).rows[0];
+  [request.candidate_id,parameterOrganizationId(auth),input.projectId])).rows[0];
   if (!candidate || candidate.status !== "ready" || candidate.file_id !== manifest.fileId || candidate.base_version_id !== manifest.fileVersionId
     || candidate.format !== manifest.format || candidate.base_digest !== request.candidate_base_digest
     || candidate.proposed_digest !== request.candidate_proposed_digest || candidate.diff_digest !== request.candidate_diff_digest
@@ -298,14 +299,14 @@ export async function commitCanonicalSourceRevision(
       `select entry_file,include_search_paths,overlay_order from dts_config_revisions where id=$1`, [manifest.configRevisionId])).rows[0];
     if (!previous?.entry_file) conflict("DTS source revision has no complete entry manifest.");
     const revision = await ingestConfigRevisionInTransaction(db,{
-      organizationId: auth.organization.id,projectId: input.projectId,configSetId: manifest.configSetId,
+      organizationId: parameterOrganizationId(auth),projectId: input.projectId,configSetId: manifest.configSetId,
       entryFile: previous.entry_file,includeSearchPaths: previous.include_search_paths,overlayOrder: previous.overlay_order,members,
     },auth,{ createdByUserId: attribution.userId,domain: attribution },{ sourceCommit: { baseConfigRevisionId: manifest.configRevisionId } });
     if (revision.status !== "resolved") conflict("Prepared DTS revision has unresolved syntax or source identity.");
     revisionId = revision.id;
   } else {
     revisionId = randomUUID();
-    await insertConfigRevision(db,{ id: revisionId,organizationId: auth.organization.id,projectId: input.projectId,configSetId: manifest.configSetId,
+    await insertConfigRevision(db,{ id: revisionId,organizationId: parameterOrganizationId(auth),projectId: input.projectId,configSetId: manifest.configSetId,
       revisionNumber: await nextConfigRevisionNumber(db,manifest.configSetId),status: "resolved",attribution });
     await insertConfigRevisionMembers(db,revisionId,members);
   }
@@ -337,12 +338,12 @@ export async function commitCanonicalSourceRevision(
     const stored = await loadBindingById(asValueClient(db),entry.bindingId,"none");
     const old = await loadProjectValueById(asValueClient(db),entry.oldValueId);
     if (!stored || !old || stored.catalog_release_id !== snapshot.release.id) conflict("Binding release is stale or unavailable.");
-    const registration = await readSourceRegistrationAgreement(db,{ organizationId: auth.organization.id,subjectId: stored.subject_id });
+    const registration = await readSourceRegistrationAgreement(db,{ organizationId: parameterOrganizationId(auth),subjectId: stored.subject_id });
     if (registration?.id !== stored.registration_id) conflict("Binding registration is no longer active.");
     const revision = snapshot.getDefinitionRevision({ definitionId: ParameterDefinitionId(stored.definition_id),revisionId: DefinitionRevisionId(stored.effective_revision_id) });
     if (revision.status !== "found") conflict("Binding Definition revision is unavailable.");
     // ponytail: bounded owner reads per sibling; cache verified immutable objects if large cohorts make this costly.
-    const sibling = await loadCanonicalSourceSnapshot(db,storage,{ organizationId: auth.organization.id,projectId: input.projectId,bindingId: entry.bindingId,projectValueId: entry.oldValueId });
+    const sibling = await loadCanonicalSourceSnapshot(db,storage,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,bindingId: entry.bindingId,projectValueId: entry.oldValueId });
     const pin = sibling.manifest;
     if (pin.configRevisionId !== manifest.configRevisionId) conflict("Source cohort spans different historical revisions.");
     if (pin.members.length !== manifest.members.length || pin.members.some((member) => !manifest.members.some((baseMember) => baseMember.fileId === member.fileId && baseMember.fileVersionId === member.fileVersionId
@@ -419,7 +420,7 @@ export async function commitCanonicalSourceRevision(
     await db.query(`insert into parameter_catalog.project_value_source_pins
       (id,project_value_id,binding_id,definition_id,organization_id,project_id,source_occurrence_id,config_revision_id,file_id,file_version_id,format,locator,locator_digest,property_occurrence_id,value_state,base_source_pin_id,delete_request_id,delete_proof)
       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15,$16,$17,$18::jsonb)`,
-    [pinId,valueId,entry.bindingId,entry.definitionId,auth.organization.id,input.projectId,entry.sourceOccurrenceId,revisionId,pin.fileId,fileVersionId,pin.format,JSON.stringify(locator),locatorDigest,pin.format === "dts" && !deleted ? locator.propertyOccurrenceId : null,
+    [pinId,valueId,entry.bindingId,entry.definitionId,parameterOrganizationId(auth),input.projectId,entry.sourceOccurrenceId,revisionId,pin.fileId,fileVersionId,pin.format,JSON.stringify(locator),locatorDigest,pin.format === "dts" && !deleted ? locator.propertyOccurrenceId : null,
       deleted ? "deleted" : "present", deleted ? pin.sourcePinId : null, deleted ? request.id : null,
       deleted ? JSON.stringify(deleteProof) : null]);
     results.push({ ordinal: results.length,bindingId: entry.bindingId,oldValueId: entry.oldValueId,newValueId: valueId,sourcePinId: pinId,configRevisionId: revisionId,fileVersionId,

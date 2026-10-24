@@ -1,4 +1,15 @@
 import type { ZodTypeAny } from "zod";
+import { organizationDeletionDtoSchemaCatalog, organizationDeletionRoutes } from "./organizationDeletion";
+export * from "./organizationDeletion";
+import { accountTransferDtoSchemaCatalog, accountTransferRoutes } from "./accountTransfer";
+export * from "./accountTransfer";
+import { assetHandoverDtoSchemaCatalog, assetHandoverRoutes } from "./organizationAssetHandover";
+import { organizationInvitationDtoSchemaCatalog, organizationInvitationRoutes } from "./organizationInvitations";
+import { projectMembersCoveredRouteIds, projectMembersDtoSchemaCatalog } from "./projectMembers";
+import { platformOrganizationDtoSchemaCatalog, platformOrganizationRoutes } from "./platformOrganizations";
+import { organizationTeamDtoSchemaCatalog, organizationTeamRoutes } from "./organizationTeams";
+import { organizationWorkspaceDtoSchemaCatalog, organizationWorkspaceRoutes } from "./organizationWorkspace";
+export { administratorRecoverySchema, createPlatformOrganizationSchema, platformOrganizationSchema, recoverOrganizationAdministratorSchema, experienceRegistrationSchema, updateExperienceRegistrationSchema } from "./platformOrganizations";
 import { knowledgeCoveredRouteIds, knowledgeDtoSchemaCatalog } from "./knowledge";
 export { parsePreviewRequestSchema, parsePreviewResponseSchema, decodedEventSchema, decodedValueSchema } from "./logs";
 export { parsingSpecSchema, registerCaseKey } from "../../logs/parsing/spec";
@@ -23,6 +34,14 @@ import { workflowPublicationDtoSchemaCatalog, workflowPublicationCoveredRouteIds
 export { workflowPublicationAdminStateSchema, workflowPublicationStateSchema } from "./workflowPublication";
 
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
+  ...organizationDeletionDtoSchemaCatalog,
+  ...accountTransferDtoSchemaCatalog,
+  ...assetHandoverDtoSchemaCatalog,
+  ...organizationInvitationDtoSchemaCatalog,
+  ...projectMembersDtoSchemaCatalog,
+  ...platformOrganizationDtoSchemaCatalog,
+  ...organizationTeamDtoSchemaCatalog,
+  ...organizationWorkspaceDtoSchemaCatalog,
   ...workflowPublicationDtoSchemaCatalog,
   ...knowledgeDtoSchemaCatalog,
   ...coreDtoSchemaCatalog,
@@ -38,6 +57,14 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 };
 
 export const dtoSchemaCoveredRouteIds = [
+  ...organizationDeletionRoutes.map(route => route.id),
+  ...accountTransferRoutes.map(route => route.id),
+  ...assetHandoverRoutes.map(route => route.id),
+  ...organizationInvitationRoutes.map((route) => route.id),
+  ...projectMembersCoveredRouteIds,
+  ...platformOrganizationRoutes.map((route) => route.id),
+  ...organizationTeamRoutes.map((route) => route.id),
+  ...organizationWorkspaceRoutes.map(route => route.id),
   ...workflowPublicationCoveredRouteIds,
   ...knowledgeCoveredRouteIds,
   ...coreDtoSchemaCoveredRouteIds,

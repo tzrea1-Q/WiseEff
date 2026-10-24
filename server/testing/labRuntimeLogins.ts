@@ -15,7 +15,7 @@ export const provisionPublicationRuntimeLogins: typeof provision = (url, input) 
     ? withTestClusterRoleCatalogLock(() => provision(url, input))
     : provision(url, input);
 
-/** Remove only migration 0257's foreign-fixture grants; unexpected dependencies still fail DROP ROLE. */
+/** Remove only exact upgrade RPC/read grants copied into foreign fixtures; unexpected dependencies still fail DROP ROLE. */
 export async function revokeForeignTestRuntimeGrants(url: string, roles: readonly string[], ownershipComment: string): Promise<void> {
   if (!hasTestClusterRoleCatalogLock()) throw new Error("Lab runtime cleanup requires the cluster role catalog lease");
   if (!ownershipComment.startsWith("wiseeff-publication-runtime:lab:")) throw new Error("Lab runtime ownership is required");
@@ -57,11 +57,32 @@ export async function revokeForeignTestRuntimeGrants(url: string, roles: readonl
                  to_regprocedure('parameter_catalog.list_definition_erasures(text)'),
                  to_regprocedure('parameter_catalog.finish_parameter_definition_erasure_object(text,text)'),
                  to_regprocedure('parameter_catalog.lock_parameter_plane_archive()'),
-                 to_regprocedure('parameter_catalog.definition_erasure_object_is_referenced(text,text)')
+                 to_regprocedure('parameter_catalog.definition_erasure_object_is_referenced(text,text)'),
+                 to_regprocedure('parameter_catalog.source_origin_matches(text,text,text)'),
+                 to_regprocedure('parameter_catalog.source_member_is_restored(text,text)'),
+                 to_regprocedure('parameter_catalog.source_anchor_restoration_matches(text,text,text,text)'),
+                 to_regprocedure('parameter_catalog.reserve_parameter_object_write(text,text)'),
+                 to_regprocedure('parameter_catalog.lock_parameter_object_write(text)'),
+                 to_regprocedure('parameter_catalog.organization_parameter_archives(text,text,text)'),
+                 to_regprocedure('parameter_catalog.purge_organization_parameter_assets(text,text,text)'),
+                 to_regprocedure('parameter_catalog.organization_parameter_pending_objects(text,text,text)'),
+                 to_regprocedure('parameter_catalog.finish_organization_parameter_object(text,text,text,text,text,boolean)'),
+                 to_regprocedure('parameter_catalog.lock_definition_erasure_object(text,text,text)'),
+                 to_regprocedure('parameter_catalog.list_platform_definition_erasures()'),
+                 to_regprocedure('parameter_catalog.register_agent_checkpoint_namespace(text,text,text,text,text,text,boolean)'),
+                 to_regprocedure('parameter_catalog.erase_organization_logs(text,text,text)'),
+                 to_regprocedure('parameter_catalog.organization_log_erasure_objects_pending(text,text,text)'),
+                 to_regprocedure('parameter_catalog.organization_log_erasure_object_referenced(text,text,text,text)'),
+                 to_regprocedure('parameter_catalog.finish_organization_log_erasure_object(text,text,text,text)'),
+                 to_regprocedure('parameter_catalog.preview_organization_deletion(text,text)')
                ]::oid[])`, [role, ownershipComment]
           );
           for (const { routine } of grants.rows) {
             await client.query(`revoke execute on function ${routine} from ${pg.escapeIdentifier(role)}`);
+          }
+          const checkpointOwnership = await client.query<{ exists: boolean }>("select to_regclass('public.agent_checkpoint_namespaces') is not null as exists");
+          if (checkpointOwnership.rows[0]?.exists) {
+            await client.query(`revoke select on public.agent_checkpoint_namespaces from ${pg.escapeIdentifier(role)}`);
           }
         } catch (error) {
           // Another fixture may drop its database after the dependency snapshot.

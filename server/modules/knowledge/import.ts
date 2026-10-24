@@ -1,22 +1,22 @@
 import { createHash, randomUUID } from "node:crypto";
 import JSZip from "jszip";
 import type { z } from "zod";
-import type { Database } from "../../shared/database/client";
+import { isRootDatabase, type Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
-import type { AuthContext } from "../auth/types";
+import { knowledgeOrganizationId, type KnowledgeAccessContext as AuthContext } from "./scope";
 import type { TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { ObjectStore } from "../logs/objectStore";
 import { AnalysisCaseArchiveError, analysisCaseArchiveLimits, readBoundedZipArchive } from "../logs/analysisCaseArchive";
 import type { KnowledgeTextExtractor } from "./extraction";
-import { canReadEntry, requireKnowledgeEdit } from "./policy";
+import { canReadEntry, hasKnowledgeManage, requireKnowledgeEdit } from "./policy";
 import { importKnowledgeDocumentSchema, type importKnowledgeArchiveSchema,
   KNOWLEDGE_IMPORT_DOCUMENT_LIMIT, KNOWLEDGE_IMPORT_BYTE_LIMIT, KNOWLEDGE_FILE_BYTE_LIMIT,
   KNOWLEDGE_IMPORT_FOLDER_DEPTH_LIMIT, KNOWLEDGE_TAG_CHARACTER_LIMIT, KNOWLEDGE_TAG_LIMIT, KNOWLEDGE_TITLE_CHARACTER_LIMIT } from "./schemas";
 import { createKnowledgeEntry, type KnowledgeServiceContext } from "./service";
 
 type BatchRow = { id: string; tags: string[]; document_count: number; total_bytes: string; completed_at: Date | null };
-type ReadableEntryRow = { id: string; status: "draft" | "published" | "archived"; createdByUserId: string | null };
+type ReadableEntryRow = { id: string; status: "draft" | "published" | "archived"; createdByUserId: string | null; responsibleUserId: string | null };
 export type KnowledgeImportOutcome = {
   id: string; relativePath: string;
   status: "created" | "duplicate_skipped" | "unsupported_skipped" | "extraction_failed" | "rejected";
@@ -31,8 +31,8 @@ const contentTypes = new Map([
 
 async function lockBatch(tx: Database, auth: AuthContext, id: string) {
   const result = await tx.query<BatchRow>(`select * from knowledge_import_batches
-    where id = $1 and organization_id = $2 and created_by_user_id = $3 for update`,
-  [id, auth.organization.id, auth.user.id]);
+    where id = $1 and organization_id = $2 and (responsible_user_id = $3 or $4) for update`,
+  [id, knowledgeOrganizationId(auth), auth.user.id, hasKnowledgeManage(auth)]);
   if (!result.rows[0]) throw new ApiError("NOT_FOUND", "找不到导入批次。");
   return result.rows[0];
 }
@@ -42,7 +42,7 @@ export async function openKnowledgeImport(db: Database, auth: AuthContext, tags:
   const id = randomUUID();
   // Opening a batch is bookkeeping, not a domain write; completion and each created entry are audited.
   await db.query(`insert into knowledge_import_batches (id, organization_id, created_by_user_id, tags)
-    values ($1, $2, $3, $4)`, [id, auth.organization.id, auth.user.id, [...new Set(tags.map((tag) => tag.trim()).filter(Boolean))]]);
+    values ($1, $2, $3, $4)`, [id, knowledgeOrganizationId(auth), auth.user.id, [...new Set(tags.map((tag) => tag.trim()).filter(Boolean))]]);
   return { id };
 }
 
@@ -58,6 +58,7 @@ export async function importKnowledgeArchive(
   db: Database, objectStore: ObjectStore, extractor: KnowledgeTextExtractor, auth: AuthContext,
   batchId: string, input: z.infer<typeof importKnowledgeArchiveSchema>, context: KnowledgeServiceContext = {}
 ): Promise<{ outcomes: KnowledgeImportOutcome[] }> {
+  context = { ...context, attachmentRoot: isRootDatabase(db) ? db : context.attachmentRoot };
   requireKnowledgeEdit(auth);
   const archiveBytes = Buffer.from(input.file.contentBase64, "base64");
   let members: Map<string, Buffer>;
@@ -105,6 +106,7 @@ export async function importKnowledgeDocument(
   db: Database, objectStore: ObjectStore, extractor: KnowledgeTextExtractor, auth: AuthContext,
   batchId: string, input: z.infer<typeof importKnowledgeDocumentSchema>, context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeImportOutcome> {
+  context = { ...context, attachmentRoot: isRootDatabase(db) ? db : context.attachmentRoot };
   requireKnowledgeEdit(auth);
   const bytes = Buffer.from(input.file.contentBase64, "base64");
   if (bytes.length > KNOWLEDGE_FILE_BYTE_LIMIT) throw new ApiError("VALIDATION_FAILED", `文件超过 ${KNOWLEDGE_FILE_BYTE_LIMIT / 1024 / 1024} MB 上限。`);
@@ -118,13 +120,13 @@ export async function importKnowledgeDocument(
     const contentType = contentTypes.get(extension);
     if (contentType) {
       // Serialize identical imports within an organization, including across batches.
-      await tx.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`${auth.organization.id}:${checksum}`]);
+      await tx.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`${knowledgeOrganizationId(auth)}:${checksum}`]);
       const matches = await tx.query<ReadableEntryRow>(`
-        select e.id, e.status, e.created_by_user_id as "createdByUserId"
+        select e.id, e.status, e.created_by_user_id as "createdByUserId", e.responsible_user_id as "responsibleUserId"
         from knowledge_entries e join knowledge_revisions r on r.id = e.head_revision_id and r.organization_id = e.organization_id
         left join knowledge_files f on f.id = r.file_id and f.organization_id = e.organization_id
         where e.organization_id = $1 and (r.source_checksum = $2 or f.checksum = $2)
-        order by e.created_at, e.id`, [auth.organization.id, checksum]);
+        order by e.created_at, e.id`, [knowledgeOrganizationId(auth), checksum]);
       const match = matches.rows.find((entry) => canReadEntry(auth, entry));
       if (match) {
         outcome.status = "duplicate_skipped";
@@ -154,9 +156,9 @@ export async function importKnowledgeDocument(
     }
     await tx.query(`insert into knowledge_import_documents (id, batch_id, relative_path, size_bytes, status, entry_id, error, organization_id, warnings)
       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [outcome.id, batchId, input.relativePath, bytes.length, outcome.status, outcome.entryId, outcome.error, auth.organization.id, outcome.warnings]);
+    [outcome.id, batchId, input.relativePath, bytes.length, outcome.status, outcome.entryId, outcome.error, knowledgeOrganizationId(auth), outcome.warnings]);
     await tx.query(`update knowledge_import_batches set document_count = document_count + 1, total_bytes = total_bytes + $1
-      where id = $2 and organization_id = $3`, [bytes.length, batchId, auth.organization.id]);
+      where id = $2 and organization_id = $3`, [bytes.length, batchId, knowledgeOrganizationId(auth)]);
     return outcome;
   });
 }
@@ -167,7 +169,7 @@ export async function completeKnowledgeImport(db: Database, auth: AuthContext, i
     const batch = await lockBatch(tx, auth, batchId);
     const report = await readKnowledgeImport(tx, auth, batchId);
     if (!batch.completed_at) {
-      await tx.query("update knowledge_import_batches set completed_at = now() where id = $1 and organization_id = $2", [batchId, auth.organization.id]);
+      await tx.query("update knowledge_import_batches set completed_at = now() where id = $1 and organization_id = $2", [batchId, knowledgeOrganizationId(auth)]);
       await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId: context.requestId ?? randomUUID() }, {
         app: "knowledge", kind: "knowledge-import-complete", action: "import", severity: "Medium", projectId: null,
         targetType: "knowledge-import-batch", targetId: batchId,
@@ -183,12 +185,12 @@ export async function readKnowledgeImport(db: Database, auth: AuthContext, batch
   return db.transaction(async (tx) => {
     const batch = await lockBatch(tx, auth, batchId);
     const result = await tx.query<KnowledgeImportOutcome>(`select id, relative_path as "relativePath", status, entry_id as "entryId", error, warnings
-      from knowledge_import_documents where batch_id = $1 and organization_id = $2 order by created_at, id`, [batchId, auth.organization.id]);
+      from knowledge_import_documents where batch_id = $1 and organization_id = $2 order by created_at, id`, [batchId, knowledgeOrganizationId(auth)]);
     const counts = { created: 0, duplicate_skipped: 0, unsupported_skipped: 0, extraction_failed: 0, rejected: 0 };
     for (const outcome of result.rows) counts[outcome.status]++;
-    const entries = await tx.query<ReadableEntryRow>(`select id, status, created_by_user_id as "createdByUserId"
+    const entries = await tx.query<ReadableEntryRow>(`select id, status, created_by_user_id as "createdByUserId", responsible_user_id as "responsibleUserId"
       from knowledge_entries where organization_id = $1 and id = any($2::uuid[])`,
-    [auth.organization.id, result.rows.flatMap((outcome) => outcome.entryId ? [outcome.entryId] : [])]);
+    [knowledgeOrganizationId(auth), result.rows.flatMap((outcome) => outcome.entryId ? [outcome.entryId] : [])]);
     const readableIds = new Set(entries.rows.filter((entry) => canReadEntry(auth, entry)).map((entry) => entry.id));
     for (const outcome of result.rows) if (outcome.entryId && !readableIds.has(outcome.entryId)) outcome.entryId = null;
     return { id: batchId, tags: batch.tags, completed: Boolean(batch.completed_at),

@@ -40,6 +40,9 @@ const reviewer = makeTestAuthContext({ userId: reviewerId, organizationId,
 const reviewerWithoutEdit = makeTestAuthContext({ userId: reviewerId, organizationId,
   permissions: ["parameter:view", "parameter:review"],
   roles: [{ roleId: "software-committer", projectId }] });
+const reviewerWithoutReview = makeTestAuthContext({ userId: reviewerId, organizationId,
+  permissions: ["parameter:view", "parameter:edit"],
+  roles: [{ roleId: "software-committer", projectId }] });
 const otherReviewer = makeTestAuthContext({ userId: otherReviewerId, organizationId,
   permissions: ["parameter:view", "parameter:edit", "parameter:review"],
   roles: [{ roleId: "software-committer", projectId }] });
@@ -163,17 +166,21 @@ describe("#906 C reviewed JSON member removal HTTP entry", () => {
     expect(list.body).toMatchObject({ items: [{
       id: pendingId, submitterName: "admin", assignedToName: "reviewer", reviewerName: null
     }] });
-    // A stale actor reference must not reveal a name from a different organization.
+    // Account movement/rename must not replace the event-time submitter label
+    // with a name from its new organization. The pending assignee stays live.
     await db.transaction(tx => moveUnboundUsersToOrganization(tx, [adminId], foreign.organization.id));
     try {
+      await db.query("update users set name='Foreign renamed administrator' where id=$1", [adminId]);
       const staleActor = await requestJson(route(reviewer),
         `/api/v2/projects/${projectId}/parameter-value-change-requests/${pendingId}/member-removal`);
       expect(staleActor.status).toBe(200);
       expect(staleActor.body).toMatchObject({ item: {
-        submitterUserId: adminId, submitterName: null, assignedToName: "reviewer", reviewerName: null
+        submitterUserId: adminId, submitterName: "admin", assignedToName: "reviewer", reviewerName: null
       }});
+      expect(JSON.stringify(staleActor.body)).not.toContain("Foreign renamed administrator");
     } finally {
       await db.transaction(tx => moveUnboundUsersToOrganization(tx, [adminId], organizationId));
+      await db.query("update users set name='admin' where id=$1", [adminId]);
     }
   }, 120_000);
 
@@ -193,7 +200,8 @@ describe("#906 C reviewed JSON member removal HTTP entry", () => {
     expect((await reviewWithoutProof(pendingId, foreign)).status).toBe(404);
     expect((await reviewWithoutProof(pendingId, admin)).status).toBe(404);
     expect((await reviewWithoutProof(pendingId, otherReviewer)).status).toBe(404);
-    expect((await reviewWithoutProof(pendingId, reviewerWithoutEdit)).status).toBe(403);
+    expect((await reviewWithoutProof(pendingId, reviewerWithoutReview)).status).toBe(403);
+    expect((await reviewWithoutProof(pendingId, reviewerWithoutEdit)).status).toBe(400);
     const missingProof = await reviewWithoutProof(pendingId);
     expect(missingProof.status).toBe(400);
     expect(missingProof.body).toMatchObject({ error: { details: {
@@ -235,7 +243,8 @@ describe("#906 C reviewed JSON member removal HTTP entry", () => {
     expect((await requestJson(route(wrongProject, null),
       `/api/v2/projects/${projectId}/parameter-value-change-requests/${pendingId}/member-removal`)).status).toBe(404);
     expect((await review(pendingId, pendingDigest, "approve", wrongProject, null)).status).toBe(404);
-    expect((await review(pendingId, pendingDigest, "reject", reviewerWithoutEdit, null)).status).toBe(403);
+    expect((await review(pendingId, pendingDigest, "reject", reviewerWithoutReview, null)).status).toBe(403);
+    expect((await review(pendingId, pendingDigest, "approve", reviewerWithoutEdit, null)).status).toBe(500);
     expect((await db.query<{ count: number }>(`select count(*)::int as count from audit_events
       where kind='parameter-source-permission-denied' and target_id=$1`,
     [pendingId])).rows[0]!.count).toBeGreaterThan(0);
@@ -318,8 +327,9 @@ describe("#906 C reviewed JSON member removal HTTP entry", () => {
   }, 120_000);
 
   it("retains reviewed removal receipts when both submitter and reviewer accounts are deleted", async () => {
-    await db.query("insert into users(id,organization_id,name,title) values('member-history-admin',$1,'History administrator','Admin')", [organizationId]);
-    const manager = makeTestAuthContext({ userId: "member-history-admin", organizationId, roles: [{ roleId: "platform-admin", projectId: null }] });
+    await db.query("insert into users(id,organization_id,name,title,is_active) values('member-history-admin',$1,'History administrator','Admin',true)", [organizationId]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('member-history-admin-org','member-history-admin',$1,null,'admin'),('member-history-admin-platform','member-history-admin',$1,null,'platform-admin')", [organizationId]);
+    const manager = makeTestAuthContext({ userId: "member-history-admin", organizationId, roles: [{ roleId: "admin", projectId: null }, { roleId: "platform-admin", projectId: null }] });
     const sql = "select id,status,member_frozen_proof,applied_source_result,applied_audit_ref from project_parameter_value_change_requests where organization_id=$1 order by id";
     const before = (await db.query(sql, [organizationId])).rows;
     await deleteUser(db, manager, adminId);

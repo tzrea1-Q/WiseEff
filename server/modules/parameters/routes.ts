@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
+import { parameterOrganizationId, parameterInvocation, parameterRequestAccess } from "./operatingScope";
 import { previewProjectDeletion } from "../projects/deletionPreview";
 import { listProjectDeletions, projectDeletionStatus, purgeProject, resolveProjectCreateId } from "../projects/purge";
 import {
@@ -237,7 +238,7 @@ export function registerParameterRoutes(
       throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for module retirement.");
     }
     await refusalAuditSink.write({
-      invocation: createUserInvocation(auth),
+      invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
       projectId: null,
       app: "parameter-catalog",
       kind: "legacy-surface-retired",
@@ -252,30 +253,30 @@ export function registerParameterRoutes(
   };
   router.get("/api/v1/projects", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
-    const items = (await listProjects(db, { organizationId: auth.organization.id }))
-      .filter((project) => auth.roles.some((role) => role.projectId === null || role.projectId === project.id));
+    const scope = { invocation: parameterInvocation(auth) };
+    const items = await listProjects(db, { organizationId: parameterOrganizationId(auth, scope) });
 
     return { status: 200, body: { items } };
   });
 
   router.get("/api/v1/parameters/admin/projects", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
-    const items = await listProjectAdminSummaries(db, { organizationId: auth.organization.id });
+    const items = await listProjectAdminSummaries(db, { organizationId: parameterOrganizationId(auth) });
 
     return { status: 200, body: { items } };
   });
 
   router.get("/api/v1/parameters/admin/projects/:projectId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const item = await getProjectAdminDetail(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: params.projectId
     });
 
@@ -288,41 +289,42 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/parameters/admin/projects/:projectId/deletion-preview", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
-    const item = await previewProjectDeletion(db, auth.organization.id, params.projectId, auth.user.id);
+    const item = await previewProjectDeletion(db, parameterOrganizationId(auth), params.projectId, auth.user.id);
     return { status: 200, body: { item } };
   });
 
   router.get("/api/v1/parameters/admin/project-deletions", async (request) => {
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     return { status: 200, body: { items: await listProjectDeletions(requireDb(options.db), auth) } };
   });
 
   router.get("/api/v1/parameters/admin/projects/:projectId/deletion-status", async (request) => {
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     return { status: 200, body: { item: await projectDeletionStatus(requireDb(options.db), auth, params.projectId) } };
   });
 
   router.post("/api/v1/parameters/admin/projects/:projectId/purge", async (request) => {
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const body = parseWithSchema(z.object({ stateDigest: z.string().regex(/^[a-f0-9]{64}$/) }).strict(), request.body);
-    return { status: 200, body: { item: await purgeProject(requireDb(options.db), createUserInvocation(auth), params.projectId,
+    return { status: 200, body: { item: await purgeProject(requireDb(options.db), parameterInvocation(auth) ?? createUserInvocation(auth), params.projectId,
       body.stateDigest, request.requestId, options.objectStore) } };
   });
 
   router.post("/api/v1/parameters/admin/projects", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const body = parseWithSchema(createProjectBodySchema, request.body, "Invalid project create payload.");
-    const projectId = await resolveProjectCreateId(db, auth, body.id?.trim() || slugifyProjectId(body.code), Boolean(body.id?.trim()));
+    const scope = { invocation: parameterInvocation(auth) };
+    const projectId = await resolveProjectCreateId(db, auth, body.id?.trim() || slugifyProjectId(body.code), Boolean(body.id?.trim()), scope);
     const item = await createProjectForAuth(
       db,
       auth,
@@ -331,7 +333,7 @@ export function registerParameterRoutes(
         name: body.name.trim(),
         code: body.code.trim().toUpperCase()
       },
-      { requestId: request.requestId }
+      { requestId: request.requestId, ...scope }
     );
 
     return { status: 201, body: { item } };
@@ -339,7 +341,7 @@ export function registerParameterRoutes(
 
   router.patch("/api/v1/parameters/admin/projects/:projectId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const body = parseWithSchema(updateProjectBodySchema, request.body, "Invalid project update payload.");
@@ -364,11 +366,11 @@ export function registerParameterRoutes(
 
   router.delete("/api/v1/parameters/admin/projects/:projectId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const existing = await getProjectAdminDetail(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: params.projectId
     });
     if (!existing) {
@@ -391,11 +393,11 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/projects/:projectId/modules", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const items = await listProjectModules(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: params.projectId
     });
 
@@ -404,7 +406,7 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/parameter-modules", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const items = await listParameterModulesForAuth(db, auth);
 
     return { status: 200, body: { items } };
@@ -412,7 +414,7 @@ export function registerParameterRoutes(
 
   router.post("/api/v1/parameter-modules", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const body = parseWithSchema(createParameterModuleBodySchema, request.body, "Invalid parameter module create payload.");
     let item;
     try {
@@ -429,7 +431,7 @@ export function registerParameterRoutes(
 
   router.patch("/api/v1/parameter-modules/:moduleId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(parameterModuleParamsSchema, request.params);
     const body = parseWithSchema(updateParameterModuleBodySchema, request.body, "Invalid parameter module update payload.");
     let item;
@@ -447,7 +449,7 @@ export function registerParameterRoutes(
 
   router.post("/api/v1/parameter-modules/:moduleId/move", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(parameterModuleParamsSchema, request.params);
     const body = parseWithSchema(moveParameterModuleBodySchema, request.body, "Invalid parameter module move payload.");
     let item;
@@ -465,7 +467,7 @@ export function registerParameterRoutes(
 
   router.delete("/api/v1/parameter-modules/:moduleId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(parameterModuleParamsSchema, request.params);
     try {
       await deleteParameterModuleForAuth(db, auth, params.moduleId, { requestId: request.requestId });
@@ -481,24 +483,20 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/parameters", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     if (!auth.user.isActive) {
       throw new ApiError("FORBIDDEN", "Missing permission: parameter:view.");
     }
     const query = parseWithSchema(listParametersQuerySchema, request.query) as ListParametersQuery;
-    const resolved = await resolveParameterListQuery(db, auth.organization.id, query);
+    const resolved = await resolveParameterListQuery(db, parameterOrganizationId(auth), query);
     const project = resolved.projectId
-      ? await getProjectById(db, { organizationId: auth.organization.id, projectId: resolved.projectId })
+      ? await getProjectById(db, { organizationId: parameterOrganizationId(auth), projectId: resolved.projectId })
       : null;
     if (resolved.projectId && !project) {
       throw new ApiError("NOT_FOUND", "Project was not found for this organization.", { projectId: resolved.projectId });
     }
-    const projects = project ? [project] : (await listProjects(db, { organizationId: auth.organization.id }))
-      .filter((candidate) => auth.roles.some((role) => role.projectId === null || role.projectId === candidate.id));
-    if (project && !auth.roles.some((role) => role.projectId === null || role.projectId === project.id)) {
-      throw new ApiError("FORBIDDEN", "Project parameter scope is required.");
-    }
+    const projects = project ? [project] : await listProjects(db, { organizationId: parameterOrganizationId(auth) });
     if (resolved.risk !== undefined) return { status: 200, body: { items: [] } };
     const modules = await listParameterModulesForAuth(db, auth);
     const modulesById = new Map(modules.map((module) => [module.id, module]));
@@ -526,7 +524,7 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/parameters/:parameterId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(paramsWithParameterIdSchema, request.params);
     const binding = await resolveCanonicalParameter(db, auth, params.parameterId);
     if (!binding) return catalogLegacyGoneResult(request.requestId, "Legacy parameter identity has no exact canonical Binding mapping.");
@@ -542,14 +540,14 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/parameters/:parameterId/history", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(paramsWithParameterIdSchema, request.params);
     const binding = await resolveCanonicalParameter(db, auth, params.parameterId);
     if (!binding) return catalogLegacyGoneResult(request.requestId, "Legacy parameter identity has no exact canonical Binding mapping.");
     const pool = getRootPostgresPool(db);
     if (!pool) throw new ApiError("INTERNAL_ERROR", "Canonical history requires the root database.");
     const items = await readCanonicalBindingChangeHistory(pool, {
-      organizationId: auth.organization.id, projectId: binding.project_id, bindingId: binding.id
+      organizationId: parameterOrganizationId(auth), projectId: binding.project_id, bindingId: binding.id
     });
     if (!items) throw new ApiError("NOT_FOUND", "Parameter was not found.", { parameterId: params.parameterId });
     return { status: 200, body: { items } };
@@ -557,7 +555,7 @@ export function registerParameterRoutes(
 
   router.post("/api/v1/parameter-drafts", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const body = parseWithSchema(saveDraftBodySchema, request.body);
     const item = await saveDraft(db, auth, body);
     const [pinned] = await attachDraftCanonicalPins(db, [item]);
@@ -567,20 +565,20 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/parameter-drafts/mine", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const query = parseWithSchema(listDraftsQuerySchema, request.query);
-    const items = await listDrafts(db, auth, query, { invocation: createUserInvocation(auth) });
+    const items = await listDrafts(db, auth, query, { invocation: parameterInvocation(auth) ?? createUserInvocation(auth) });
 
     return { status: 200, body: { items: await attachDraftCanonicalPins(db, items) } };
   });
 
   router.delete("/api/v1/parameter-drafts/:draftId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(paramsWithDraftIdSchema, request.params);
 
     await deleteDraft(db, auth, params.draftId, {
-      invocation: createUserInvocation(auth),
+      invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
       requestId: request.requestId
     });
 
@@ -589,11 +587,11 @@ export function registerParameterRoutes(
 
   router.post("/api/v1/parameter-submission-rounds", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const body = parseWithSchema(submitRoundBodySchema, request.body);
     const refusalSink = requireSubmissionRefusalSink(refusalAuditSink);
     const item = await submitParameterChanges(db, auth, body, {
-      invocation: createUserInvocation(auth),
+      invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
       requestId: request.requestId,
       refusalSink
     });
@@ -603,7 +601,7 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/projects/:projectId/parameter-workflow-assignees", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const item = await listWorkflowAssignees(db, auth, params.projectId);
 
@@ -612,7 +610,7 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/parameter-submission-rounds", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const { mine, ...query } = parseWithSchema(listSubmissionRoundsQuerySchema, request.query);
     const status = normalizeArray(query.status);
     if (mine !== "true") {
@@ -654,7 +652,7 @@ export function registerParameterRoutes(
             where organization_id = $1
               and submitter_user_id = $2
               and id = any($3::text[])`,
-          [auth.organization.id, auth.user.id, roundIds]
+          [parameterOrganizationId(auth), auth.user.id, roundIds]
         )
       : await db.query<{ id: string }>(
           `select id from parameter_submission_rounds
@@ -662,7 +660,7 @@ export function registerParameterRoutes(
               and submitter_user_id = $2
               and id = any($3::text[])
               and project_id = any($4::text[])`,
-          [auth.organization.id, auth.user.id, roundIds, [...authorizedProjectIds]]
+          [parameterOrganizationId(auth), auth.user.id, roundIds, [...authorizedProjectIds]]
         );
     const ownRoundIds = new Set(ownership.rows.map((row) => row.id));
     const items = rounds.filter((round) =>
@@ -675,7 +673,7 @@ export function registerParameterRoutes(
 
   router.post("/api/v1/parameter-submission-rounds/:roundId/withdraw", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(paramsWithRoundIdSchema, request.params);
     const item = await withdrawSubmissionRound(db, auth, params.roundId, { requestId: request.requestId });
 
@@ -684,7 +682,7 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/parameter-change-requests", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const query = parseWithSchema(listChangeRequestsQuerySchema, request.query);
     const items = await listChangeRequests(db, auth, {
       ...query,
@@ -696,7 +694,7 @@ export function registerParameterRoutes(
 
   router.post("/api/v1/parameter-change-requests/:requestId/review", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(paramsWithRequestIdSchema, request.params);
     const body = parseWithSchema(reviewChangeBodySchema, withRouteField(request.body, "requestId", params.requestId));
     requireCanReviewOrMerge(auth);
@@ -704,7 +702,7 @@ export function registerParameterRoutes(
       throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for parameter review.");
     }
     const item = await reviewChange(db, auth, body, {
-      invocation: createUserInvocation(auth),
+      invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
       requestId: request.requestId,
       refusalSink: refusalAuditSink,
       objectStore: options.objectStore
@@ -715,7 +713,7 @@ export function registerParameterRoutes(
 
 
   router.post("/api/v1/parameter-import/parse-dts", async (request) => {
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const body = parseWithSchema(parseDtsImportBodySchema, request.body);
     const result = parseDtsImportForAuth(auth, body);
 
@@ -724,11 +722,11 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/parameters/projects/:projectId/initialization", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const status = await getProjectInitializationStatus(db, auth, params.projectId);
     const draft = await getDraftByProject(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: params.projectId
     });
     return { status: 200, body: { status, draft } };
@@ -736,7 +734,7 @@ export function registerParameterRoutes(
 
   router.put("/api/v1/parameters/projects/:projectId/initialization/draft", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const body = parseWithSchema(
       upsertInitializationDraftBodySchema,
@@ -761,7 +759,7 @@ export function registerParameterRoutes(
 
   router.post("/api/v1/parameters/projects/:projectId/initialization/preview", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const body = parseWithSchema(
       previewInitializationSnapshotBodySchema,
@@ -781,7 +779,7 @@ export function registerParameterRoutes(
 
   router.post("/api/v1/parameters/projects/:projectId/initialization/submit", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const item = await submitDraft(db, auth, { projectId: params.projectId }, { requestId: request.requestId });
     return { status: 201, body: { item } };
@@ -789,20 +787,20 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/parameters/admin/initialization-reviews", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const items = await listPendingReviews(db, auth);
     return { status: 200, body: { items } };
   });
 
   router.post("/api/v1/parameters/admin/initialization-reviews/:reviewId/approve", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(paramsWithInitializationReviewIdSchema, request.params);
     const pool = getRootPostgresPool(db);
     const catalogSnapshot = pool ? await loadPublishedCatalog(pool) : null;
     const item = await approveReview(db, auth, { reviewId: params.reviewId }, {
       requestId: request.requestId,
-      invocation: createUserInvocation(auth),
+      invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
       refusalSink: refusalAuditSink,
       objectStore: options.objectStore,
       catalogSnapshot: catalogSnapshot ?? undefined
@@ -812,7 +810,7 @@ export function registerParameterRoutes(
 
   router.post("/api/v1/parameters/admin/initialization-reviews/:reviewId/reject", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(paramsWithInitializationReviewIdSchema, request.params);
     const body = parseWithSchema(
       rejectInitializationReviewBodySchema,

@@ -26,8 +26,13 @@ export type ObjectStoreHealth = {
   message?: string;
 };
 
+export type ObjectStorePutInput = { organizationId: string; fileName: string; contentType: string; bytes: Buffer };
+
 export interface ObjectStore {
-  put(input: { organizationId: string; fileName: string; contentType: string; bytes: Buffer }): Promise<StoredObject>;
+  /** Exact target of put for the same input, including writes with an uncertain response.
+   * Absence means durable pre-IO custody is unavailable; callers must not guess. */
+  planKey?(input: ObjectStorePutInput): string;
+  put(input: ObjectStorePutInput): Promise<StoredObject>;
   get(storageKey: string): Promise<Buffer>;
   /** Streaming reads for archives larger than the worker's memory budget. */
   getStream?(storageKey: string, range?: { start: number; end?: number }): Promise<Readable>;
@@ -98,6 +103,11 @@ export function sanitizePathSegment(value: string, label: string) {
   return sanitized;
 }
 
+export function planObjectStorageKey(input: ObjectStorePutInput): string {
+  return path.posix.join(sanitizePathSegment(input.organizationId, "organization id"),
+    `${createHash("sha256").update(input.bytes).digest("hex")}-${sanitizeFileName(input.fileName)}`);
+}
+
 export function rejectUnsafeStorageKey(storageKey: string) {
   if (
     path.isAbsolute(storageKey) ||
@@ -134,11 +144,12 @@ export function createLocalObjectStore(rootDir: string, options: LocalObjectStor
   const probe = { ...defaultHealthProbeIo, ...options.probe };
 
   return {
+    planKey: planObjectStorageKey,
     async put(input) {
       const organizationId = sanitizePathSegment(input.organizationId, "organization id");
       const fileName = sanitizeFileName(input.fileName);
       const checksumSha256 = createHash("sha256").update(input.bytes).digest("hex");
-      const storageKey = path.posix.join(organizationId, `${checksumSha256}-${fileName}`);
+      const storageKey = planObjectStorageKey(input);
       const { rootPath, objectPath } = resolveInsideRoot(rootDir, storageKey);
 
       await fsMkdir(path.join(rootPath, organizationId), { recursive: true });

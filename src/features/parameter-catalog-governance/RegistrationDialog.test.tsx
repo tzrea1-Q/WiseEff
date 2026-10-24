@@ -217,7 +217,7 @@ describe("RegistrationDialog", () => {
     );
   });
 
-  it("refuses Agent, User, and Platform Admin mutating registration", async () => {
+  it("refuses Agent and User writes while allowing Platform Admin registration management", async () => {
     const { unmount, createRegistration } = renderDialog({ actor: "agent" });
     expect(screen.getByText(/仅可阅读/)).toBeVisible();
     expect(screen.queryByRole("button", { name: "继续确认" })).not.toBeInTheDocument();
@@ -230,7 +230,7 @@ describe("RegistrationDialog", () => {
     userView.unmount();
 
     renderDialog({ actor: "platform-admin" });
-    expect(screen.queryByRole("button", { name: "继续确认" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "继续确认" })).toBeVisible();
   });
 
   it("preserves Placement and reason on conflict and does not silently retry", async () => {

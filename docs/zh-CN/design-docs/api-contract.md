@@ -197,6 +197,8 @@ ADR-0038 为敏感写定义服务端内部可信调用上下文，#610 已实现
 
 ## 3. Auth 与用户
 
+`GET /api/v1/projects/:projectId/members?organizationId=...` 要求已启用的组织管理员或平台超级管理员具备 `users:manage`，返回授权操作组织的 `{ projectId, members: [{ userId, name, username, title, isActive, roles }] }`。项目不存在或不在范围内返回 `404`，无管理权限返回 `403`。`project_members` 只保存明确的项目参与关系，`user_role_bindings` 继续独立保存审核、合入职责。迁移 `0266` 将四种现有业务编辑角色展开到对应存量项目，保留停用账号、原角色记录及现有授权，不激活账号。本轮兼容展开不提供参与关系修改接口。
+
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/v1/me` | 当前用户、组织、角色和权限 |

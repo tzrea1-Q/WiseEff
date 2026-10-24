@@ -45,21 +45,41 @@ async function fixture(runtime = false) {
 }
 
 describe.skipIf(!available)("permanent log deletion over real HTTP and PostgreSQL", () => {
-  it("keeps a lost worker attempt's actual decoded upload fenced after its cancellation returns", async () => {
+  it.each([
+    { artifact: "decoded-events.jsonl.gz", responseLost: false },
+    { artifact: "decoded-events.jsonl.gz", responseLost: true },
+    { artifact: "line-offsets", responseLost: false },
+    { artifact: "line-offsets", responseLost: true },
+  ])("keeps a lost worker's $artifact upload fenced after cancellation (response lost: $responseLost)", async ({ artifact, responseLost }) => {
     const h = await fixture(); let release: () => void = () => undefined; let worker: ReturnType<typeof processLogAnalysisJobById> | undefined;
     try {
       const invocation = createUserInvocation(admin), context = { requestId: "purge-old-attempt" };
       const skill = await createLogSkill(h.db, admin, { name: "Decoded cancellation" }, invocation, context);
       const draft = await saveLogSkillDraft(h.db, admin, skill.id, { schemaVersion: "skill/v1", parsing: { schemaVersion: "parsing/v1",
-        extractors: [{ id: "value", pattern: "(?P<value>.+)", fields: { value: { type: "string" } } }] } }, null, skill.currentRevision.id, invocation, context);
+        extractors: artifact === "line-offsets" ? [] : [{ id: "value", pattern: "(?P<value>.+)", fields: { value: { type: "string" } } }] } }, null, skill.currentRevision.id, invocation, context);
       await publishLogSkill(h.db, admin, skill.id, draft.id, invocation, context);
       const selected = await h.upload("owned.log", skill.id), path = `/api/v1/logs/${selected.log.id}`;
+      if (artifact === "line-offsets") await h.db.query("update log_files set line_index_key=null where record_id=$1", [selected.log.id]);
       let entered!: () => void;
       const writing = new Promise<void>((resolve) => { entered = resolve; }), held = new Promise<void>((resolve) => { release = resolve; });
       const put = h.store.put;
-      h.store.put = async (input) => { if (input.fileName.endsWith("decoded-events.jsonl.gz")) { entered(); await held; } return put(input); };
-      worker = processLogAnalysisJobById({ db: h.db, objectStore: h.store, jobId: selected.job.id, leaseTtlMs: 900, maxJobMs: 15_000 });
-      await writing;
+      h.store.put = async (input) => {
+        const delayed = input.fileName.includes(artifact);
+        if (delayed) { entered(); await held; }
+        const stored = await put(input);
+        if (delayed && responseLost) throw new Error("upload response lost after lease cancellation");
+        return stored;
+      };
+      worker = processLogAnalysisJobById({ db: h.db, objectStore: h.store, jobId: selected.job.id, leaseTtlMs: 900, maxJobMs: 15_000,
+        analyzer: { async analyze(input) {
+          if (artifact === "line-offsets") {
+            const reader = input.files?.[0].reader;
+            if (!reader) throw new Error("Worker must expose its real indexed reader");
+            await reader.readRange(1, 2);
+          }
+          return createRuleBasedLogAnalyzer().analyze(input);
+        } } });
+      await Promise.race([writing, worker.then(() => { throw new Error("Worker completed without starting the expected artifact upload"); })]);
       await h.db.query("update jobs set lease_owner='replacement-worker',lease_expires_at=now()+interval '1 minute' where id=$1", [selected.job.id]);
       expect(await worker).toEqual({ status: "idle" });
       const before = await h.request<{ item: LogDeletionPreview }>(`${path}/deletion-preview`);

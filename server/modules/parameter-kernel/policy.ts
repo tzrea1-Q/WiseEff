@@ -29,18 +29,19 @@ export function canViewParameters(auth: AuthContext) {
   return hasPermission(auth, "parameter:view");
 }
 
-/** Roles whose binding to a project grants parameter editing there. */
-const projectEditRoles: BackendRoleId[] = ["hardware-user", "software-user", "hardware-committer", "software-committer"];
-
 export function canEditParameters(auth: AuthContext, projectId?: string) {
   if (!isActive(auth) || !hasPermission(auth, "parameter:edit")) return false;
   if (projectId === undefined) return true;
   if (hasRole(auth, ["admin", "platform-admin"])) return true;
-  return hasRole(auth, projectEditRoles, projectId);
+  return auth.projectMemberships?.some((member) => member.projectId === projectId && member.roles.length > 0) ?? false;
 }
 
-export function canEditCriticalParameters(auth: AuthContext) {
-  return isActive(auth) && hasPermission(auth, "parameter:edit-critical");
+export function canEditCriticalParameters(auth: AuthContext, projectId?: string) {
+  if (!isActive(auth) || !hasPermission(auth, "parameter:edit-critical")) return false;
+  if (projectId === undefined) return true;
+  if (hasRole(auth, ["admin", "platform-admin"])) return true;
+  return auth.projectMemberships?.some((member) => member.projectId === projectId &&
+    member.roles.some((role) => role === "hardware-committer" || role === "software-committer")) ?? false;
 }
 
 export function canReviewParameters(auth: AuthContext) {

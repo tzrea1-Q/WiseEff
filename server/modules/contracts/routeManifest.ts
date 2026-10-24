@@ -1,7 +1,14 @@
 import type { HttpMethod } from "../../shared/http/router";
+import { organizationDeletionRoutes } from "./dtoSchemas/organizationDeletion";
+import { accountTransferRoutes } from "./dtoSchemas/accountTransfer";
 import { parameterCatalogCanonicalRoutes } from "./dtoSchemas/parameterCatalog";
 import { parameterDefinitionDeletionRoutes } from "./dtoSchemas/parameterDefinitionDeletion";
 import { workflowPublicationRoutes } from "./dtoSchemas/workflowPublication";
+import { platformOrganizationRoutes } from "./dtoSchemas/platformOrganizations";
+import { organizationInvitationRoutes } from "./dtoSchemas/organizationInvitations";
+import { organizationTeamRoutes } from "./dtoSchemas/organizationTeams";
+import { organizationWorkspaceRoutes } from "./dtoSchemas/organizationWorkspace";
+import { assetHandoverRoutes } from "./dtoSchemas/organizationAssetHandover";
 
 export type RouteModule =
   | "workflow-publication"
@@ -33,12 +40,20 @@ export type RouteManifestEntry = {
 };
 
 export const routeManifest = [
+  ...organizationDeletionRoutes,
+  ...accountTransferRoutes,
+  ...assetHandoverRoutes,
+  ...organizationInvitationRoutes,
+  ...platformOrganizationRoutes,
+  ...organizationTeamRoutes,
+  ...organizationWorkspaceRoutes,
   ...workflowPublicationRoutes,
   { id: "auth.localConfig", method: "GET", path: "/api/v1/auth/local-config", module: "auth", stability: "commercial-readiness" },
   { id: "auth.register", method: "POST", path: "/api/v1/auth/register", module: "auth", stability: "commercial-readiness" },
   { id: "auth.login", method: "POST", path: "/api/v1/auth/login", module: "auth", stability: "commercial-readiness" },
   { id: "auth.logout", method: "POST", path: "/api/v1/auth/logout", module: "auth", stability: "commercial-readiness" },
   { id: "auth.me", method: "GET", path: "/api/v1/me", module: "auth", stability: "mvp" },
+  { id: "auth.enterOperatingContext", method: "POST", path: "/api/v1/organization/operating-scope", module: "auth", stability: "commercial-readiness" },
   { id: "auth.updateProfile", method: "PATCH", path: "/api/v1/me/profile", module: "auth", stability: "commercial-readiness" },
   { id: "auth.changePassword", method: "POST", path: "/api/v1/me/password", module: "auth", stability: "commercial-readiness" },
 
@@ -69,6 +84,7 @@ export const routeManifest = [
   },
 
   { id: "organization.get", method: "GET", path: "/api/v1/organization", module: "users", stability: "commercial-readiness" },
+  { id: "organization.projectCandidates", method: "GET", path: "/api/v1/organization/project-candidates", module: "users", stability: "commercial-readiness" },
   {
     id: "organization.update",
     method: "PATCH",
@@ -137,6 +153,8 @@ export const routeManifest = [
     module: "users",
     stability: "commercial-readiness"
   },
+  { id: "users.getProjectMembers", method: "GET", path: "/api/v1/projects/:projectId/members", module: "users", stability: "commercial-readiness" },
+  { id: "users.updateProjectMember", method: "PUT", path: "/api/v1/projects/:projectId/members/:userId", module: "users", stability: "commercial-readiness" },
   {
     id: "users.replaceProjectWorkflowRoleBindings",
     method: "PUT",

@@ -18,6 +18,97 @@ export type AcceptanceOperation = {
 
 export const acceptanceOperations: AcceptanceOperation[] = [
   {
+    id: "ORG-OPERATING-LIFECYCLE-001", priority: "P1", area: "platform", coverage: "conditional",
+    route: "/platform/organizations", roles: ["Platform Admin", "Org Admin", "Invited Editor", "Organization Member"],
+    action: "Create and enter an Organization, invite preset participants, grant explicit project editing, retain an offboarded author's work through handover, transfer an account, suspend/restore and resume actual mixed-domain deletion after a persistent file fault.",
+    acceptanceIds: ["ORG-OPERATING-LIFECYCLE-001"],
+    specFiles: ["e2e/acceptance/organization-operational-lifecycle.acceptance.spec.ts", "server/modules/users/organizationOperationalLifecycle.integration.test.ts"],
+    assertions: ["ui", "api", "db", "audit", "screenshot"],
+    deferralReason: "Requires actual local password sessions in an isolated local-auth API lane; HMAC/OIDC lanes skip this provider-specific workflow. The signed OIDC companion has its own conditional operation and evidence."
+  },
+  {
+    id: "ORG-MIXED-ERASURE-RECOVERY-001", priority: "P1", area: "platform", coverage: "automated",
+    route: "/platform/organizations", roles: ["Platform Admin"],
+    action: "Confirm erasure of all four populated domains, retry an actual log-object failure and inspect a content-free final receipt; real PostgreSQL, file and independent checkpoint restoration separately proves deletion replay before reopening.",
+    acceptanceIds: ["ORG-MIXED-ERASURE-RECOVERY-001"],
+    specFiles: ["e2e/acceptance/organization-mixed-erasure.acceptance.spec.ts", "server/modules/users/organizationMixedErasure.integration.test.ts", "ops/self-hosted/scripts/upgrade-organization-erasure-recovery.test.ts"],
+    assertions: ["ui", "api", "db", "screenshot"]
+  },
+  {
+    id: "ORG-PARAMETER-ERASURE-001", priority: "P1", area: "platform", coverage: "automated",
+    route: "/platform/organizations", roles: ["Platform Admin"],
+    action: "Confirm erasure of real project and parameter files, inspect a failed domain and retry its persisted progress while completed domains stay complete.",
+    acceptanceIds: ["ORG-PARAMETER-ERASURE-001"],
+    specFiles: ["e2e/acceptance/organization-parameter-erasure.acceptance.spec.ts", "server/modules/users/organizationParameterErasure.integration.test.ts"],
+    assertions: ["ui", "api", "db", "screenshot"]
+  },
+  {
+    id: "ORG-KNOWLEDGE-ERASURE-001", priority: "P1", area: "platform", coverage: "automated",
+    route: "/platform/organizations", roles: ["Platform Admin"],
+    action: "Confirm erasure of real knowledge attachments and indexes, observe a storage failure and finish cleanup from the independent retry records.",
+    acceptanceIds: ["ORG-KNOWLEDGE-ERASURE-001"],
+    specFiles: ["e2e/acceptance/organization-knowledge-erasure.acceptance.spec.ts", "server/modules/knowledge/organizationErasure.integration.test.ts"],
+    assertions: ["ui", "api", "db", "screenshot"]
+  },
+  {
+    id: "ORG-LOG-ERASURE-001", priority: "P1", area: "platform", coverage: "automated",
+    route: "/platform/organizations", roles: ["Platform Admin"],
+    action: "Confirm erasure of real log files and queued analysis, inspect a durable domain failure and retry until the database records and physical files are gone.",
+    acceptanceIds: ["ORG-LOG-ERASURE-001"],
+    specFiles: ["e2e/acceptance/organization-log-erasure.acceptance.spec.ts", "server/modules/logs/organizationErasure.integration.test.ts"],
+    assertions: ["ui", "api", "db", "screenshot"]
+  },
+  {
+    id: "ORG-RUNTIME-ERASURE-001", priority: "P1", area: "platform", coverage: "automated",
+    route: "/platform/organizations", roles: ["Platform Admin"],
+    action: "Confirm erasure of actual feedback bytes and foreign-Home notification projections, inspect failed progress and retry without deleting the real platform operator.",
+    acceptanceIds: ["ORG-RUNTIME-ERASURE-001"],
+    specFiles: ["e2e/acceptance/organization-runtime-erasure.acceptance.spec.ts", "server/modules/agent/organizationErasure.integration.test.ts"],
+    assertions: ["ui", "api", "db", "screenshot"]
+  },
+  {
+    id: "ORG-EMPTY-ERASURE-001", priority: "P1", area: "platform", coverage: "automated",
+    route: "/platform/organizations", roles: ["Platform Admin"],
+    action: "Confirm permanent erasure of a management-only Organization, retry failed progress, and read a minimal independent receipt after its accounts and Organization disappear.",
+    acceptanceIds: ["ORG-EMPTY-ERASURE-001"],
+    specFiles: ["e2e/acceptance/organization-empty-erasure.acceptance.spec.ts", "server/modules/users/organizationErasure.integration.test.ts"],
+    assertions: ["ui", "api", "db", "screenshot"]
+  },
+  {
+    id: "ORG-DELETION-PREVIEW-001", priority: "P1", area: "platform", coverage: "automated",
+    route: "/platform/organizations", roles: ["Platform Admin"],
+    action: "Read and refresh the selected Organization's erasure inventory, retry a failed preview, inspect account, shared-object and backup boundaries, and preserve all data while ordinary administrators are denied.",
+    acceptanceIds: ["ORG-DELETION-PREVIEW-001"],
+    specFiles: ["e2e/acceptance/organization-deletion-preview.acceptance.spec.ts", "server/modules/users/organizationDeletion.integration.test.ts"],
+    assertions: ["ui", "api", "db", "screenshot"]
+  },
+  {
+    id: "ORG-LIFECYCLE-001", priority: "P1", area: "platform", coverage: "automated",
+    route: "/platform/organizations → /organization", roles: ["Platform Admin", "Org Admin"],
+    action: "Suspend and restore the selected organization with keyboard confirmation and safe retry, retain member read access with one clear readonly notice, reject business writes, and keep individually disabled members disabled.",
+    acceptanceIds: ["ORG-LIFECYCLE-001"],
+    specFiles: ["e2e/acceptance/organization-lifecycle.acceptance.spec.ts", "server/modules/users/organizationLifecycle.integration.test.ts"],
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
+  },
+  {
+    id: "ORG-OIDC-TRANSFER-001", priority: "P1", area: "platform", coverage: "conditional",
+    route: "/organization/members", roles: ["Platform Admin"],
+    action: "Preview and transfer an explicitly bound OIDC identity, resolve a destination conflict, inspect pending synchronization and refresh the actual signed target-login result.",
+    acceptanceIds: ["ORG-OIDC-TRANSFER-001"],
+    specFiles: ["e2e/acceptance/organization-oidc-transfer.acceptance.spec.ts", "server/modules/users/oidcAccountTransfer.integration.test.ts"],
+    assertions: ["ui", "api", "db", "audit", "screenshot"],
+    deferralReason: "Requires an isolated OIDC API lane with a controlled loopback issuer/JWKS and its ephemeral test signing key; other provider lanes cannot establish this evidence."
+  },
+  {
+    id: "ORG-ACCOUNT-TRANSFER-001", priority: "P1", area: "platform", coverage: "conditional",
+    route: "/organization/members", roles: ["Platform Admin"],
+    action: "Preview source grants and retained work, choose target organization roles, safely retry a failed transfer, and verify new local login with old sessions and pairings revoked while source business and machine credentials remain.",
+    acceptanceIds: ["ORG-ACCOUNT-TRANSFER-001"],
+    specFiles: ["e2e/acceptance/organization-account-transfer.acceptance.spec.ts", "server/modules/users/accountTransfer.integration.test.ts"],
+    assertions: ["ui", "api", "db", "audit", "screenshot"],
+    deferralReason: "Browser workflow requires an isolated real local-auth API lane; HMAC and OIDC lanes skip this local-password interaction."
+  },
+  {
     id: "PCAT-REGISTRATION-INITIALIZE-001", priority: "P1", area: "parameters", coverage: "future",
     route: "/parameter-admin/modules", roles: ["Org Admin"],
     action: "Choose an explicit business parent and destination name, confirm atomic typed-module initialization and subject registration; retain tenant, release, idempotency and rollback guards.",

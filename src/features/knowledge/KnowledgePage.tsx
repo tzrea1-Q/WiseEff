@@ -43,10 +43,12 @@ import { KnowledgeFileUploadDialog, type KnowledgeFileUploadSubmit } from "./Kno
 import { KnowledgeImportDialog } from "./KnowledgeImportDialog";
 import { KnowledgeRevisionsDialog } from "./KnowledgeRevisionsDialog";
 import { KnowledgeBatchDialog, knowledgeBatchLabels } from "./KnowledgeBatchDialog";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 
 export type KnowledgePageProps = {
   visibleWorkflows?: readonly WorkflowId[];
   repository: KnowledgeRepository;
+  organizationId?: string;
   capability: KnowledgeCapability;
   /** Ask-the-knowledge-base opens Xiaoze — API mode only (mock has no Agent UI). */
   askXiaozeEnabled?: boolean;
@@ -74,6 +76,7 @@ function formatDateTime(value: string) {
 export function KnowledgePage({
   visibleWorkflows,
   repository,
+  organizationId,
   capability,
   askXiaozeEnabled = false,
   initialEntryId = null,
@@ -580,7 +583,7 @@ export function KnowledgePage({
               {searchResults.map((result) => (
                 <li key={result.entryId}>
                   <a
-                    href={knowledgeEntryHref({ entryId: result.entryId, revisionId: result.pageStart ? result.revisionId : null, page: result.pageStart })}
+                    href={withOrganizationScope(knowledgeEntryHref({ entryId: result.entryId, revisionId: result.pageStart ? result.revisionId : null, page: result.pageStart }), organizationId)}
                     onClick={(event) => {
                       if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
                       event.preventDefault();
@@ -695,7 +698,7 @@ export function KnowledgePage({
         }}
       />
 
-      {capability.canEdit ? <KnowledgeImportDialog open={importOpen} repository={repository}
+      {capability.canEdit ? <KnowledgeImportDialog open={importOpen} repository={repository} organizationId={organizationId}
         onClose={() => setImportOpen(false)} onComplete={() => { void loadEntries(); }} /> : null}
       <KnowledgeFileUploadDialog
         open={uploadOpen}

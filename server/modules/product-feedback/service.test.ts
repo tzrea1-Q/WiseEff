@@ -96,7 +96,7 @@ function makeObjectStore() {
   const get = vi.fn(async () => Buffer.from("stored-image"));
   const deleteFn = vi.fn(async () => {});
 
-  return { objectStore: { put, get, delete: deleteFn } as ObjectStore, get, put, deleteFn };
+  return { objectStore: { planKey: input => `${input.organizationId}/stored-${input.fileName}`, put, get, delete: deleteFn } as ObjectStore, get, put, deleteFn };
 }
 
 describe.skipIf(!databaseAvailable)("product feedback service", () => {

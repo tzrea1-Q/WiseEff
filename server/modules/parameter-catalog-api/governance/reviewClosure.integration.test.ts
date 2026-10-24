@@ -102,6 +102,9 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
       await pool.query("insert into public.users(id,organization_id,name,email,title,is_active) values ($1,$2,$1,$3,'Review fixture',true)", [actor, org, `${actor}@review.test`]);
       await pool.query("insert into public.user_role_bindings(id,user_id,organization_id,project_id,role_id) values ($1,$2,$3,null,$4)", [`role-${actor}`, actor, org, role]);
     }
+    // These negative actors have no valid organization-level platform grant.
+    await pool.query("update public.user_role_bindings set project_id='own-project' where id='role-project'");
+    await pool.query("update public.user_role_bindings set organization_id=$1 where id='role-foreign-role'", [OTHER_ORG]);
     await pool.query("insert into public.user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('role-dual-admin','dual',$1,null,'admin')", [ORG]);
     await pool.query("insert into public.user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('role-foreign-admin','foreign-role',$1,null,'admin')", [OTHER_ORG]);
     for (const [owner, organizationId] of [["own", ORG], ["foreign", OTHER_ORG], ["other", ORG]] as const) {
@@ -153,7 +156,7 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
       const organizationId = actor === "other" ? OTHER_ORG : ORG;
       const roles: AuthContext["roles"] = actor === "dual" || actor === "foreign-role"
         ? [{ roleId: "platform-admin", projectId: null }, { roleId: "admin", projectId: null }]
-        : actor === "project" ? [{ roleId: "platform-admin", projectId: null }, { roleId: "admin", projectId: "own-project" }]
+        : actor === "project" ? [{ roleId: "platform-admin", projectId: "own-project" }, { roleId: "admin", projectId: "own-project" }]
           : [{ roleId: actor === "platform" ? "platform-admin" : actor === "member" ? "software-user" : "admin", projectId: null }];
       return { user: { id: actor, organizationId, name: actor, email: `${actor}@review.test`, emailVerified: true, title: "Review fixture", isActive: true }, organization: { id: organizationId, name: organizationId }, roles, permissions: ["parameter:view"] };
     } } } });
@@ -169,7 +172,7 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     await database?.close();
   });
 
-  it.each([["dual", 200], ["platform", 403], ["member", 403], ["other", 403], ["admin", 200], ["project", 403], ["foreign-role", 403]] as const)("reads Organization review items as %s with status %s", async (actor, status) => {
+  it.each([["dual", 200], ["platform", 200], ["member", 403], ["other", 403], ["admin", 200], ["project", 403], ["foreign-role", 403]] as const)("reads Organization review items as %s with status %s", async (actor, status) => {
     const path = `/api/v2/organizations/${ORG}/parameter-review-items`;
     const result = await request(actor, "GET", path);
     expect(result.status).toBe(status);
@@ -412,7 +415,7 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     expect((await pool.query("select count(*)::int as count from audit_events where target_id=$1 and action='review-item-resolved'", [item.id])).rows[0]?.count).toBe(1);
   });
 
-  it.each([["dual", 200], ["platform", 403], ["member", 403], ["other", 403], ["admin", 200], ["project", 403], ["foreign-role", 403]] as const)("reads and resolves a populated Organization review item as %s with status %s", async (actor, status) => {
+  it.each([["dual", 200], ["platform", 200], ["member", 403], ["other", 403], ["admin", 200], ["project", 403], ["foreign-role", 403]] as const)("reads and resolves a populated Organization review item as %s with status %s", async (actor, status) => {
     const evidenceId = await ingestFixture({ organizationId: ORG, sourceIdentity: `authority:${randomUUID()}`,
       catalogReleaseId: pin.id, matcherRevision: MATCHER, matcherOutput: { status: "unknown" },
       evidence: { propertyKey: `authority:${actor}`, compatible: "vendor,device" } });
@@ -459,7 +462,8 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     const detail = await request("dual", "GET", registrationPath);
     expect(detail.status).toBe(200);
     expect(detail.body.item.impact).toEqual({ bindingCount: 0, projectCount: 0 });
-    for (const actor of ["platform", "member", "project", "foreign-role"] as const) {
+    expect((await request("platform", "GET", registrationPath)).body.item.impact).toEqual({ bindingCount: 0, projectCount: 0 });
+    for (const actor of ["member", "project", "foreign-role"] as const) {
       const readOnly = await request(actor, "GET", registrationPath);
       expect(readOnly.status).toBe(200);
       expect(readOnly.body.item.impact).toBeUndefined();
@@ -489,7 +493,7 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     expect((await pool.query("select count(*)::int as count from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='csub_charger'", [ORG])).rows[0]?.count).toBe(1);
   });
 
-  it.each(["platform", "member", "other", "project", "foreign-role"] as const)("refuses registration and placement writes without a home-organization grant: %s", async (actor) => {
+  it.each(["member", "other", "project", "foreign-role"] as const)("refuses registration and placement writes without a valid administrator grant: %s", async (actor) => {
     const before = (await pool.query("select count(*)::int as count from parameter_catalog.organization_subject_registrations")).rows;
     for (const [method, suffix] of [["POST", ""], ["POST", "/preg_authority/retire"], ["POST", "/preg_authority/restore"], ["PATCH", "/preg_authority/placement"]] as const) {
       const result = await request(actor, method, `/api/v2/organizations/${ORG}/subject-registrations${suffix}`, {

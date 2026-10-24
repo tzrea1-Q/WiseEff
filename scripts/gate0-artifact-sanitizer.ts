@@ -672,7 +672,52 @@ function hasZipSignature(value: Buffer) {
 }
 
 function hasZipEnvelopeSignature(value: Buffer) {
-  return hasZipSignature(value) || findZipEndOfCentralDirectory(value) >= 0;
+  if (hasZipSignature(value)) return true;
+  if (findZipEndOfCentralDirectory(value) < 0) return false;
+  // Unknown or damaged containers remain fail-closed. Only a complete PNG may
+  // contain an incidental EOCD marker; corroborating ZIP records still win.
+  if (!hasCompletePngFraming(value)) return true;
+  for (const [signature, minimum] of [[0x04034b50, 30], [0x02014b50, 46]] as const) {
+    const bytes = Buffer.alloc(4);
+    bytes.writeUInt32LE(signature);
+    const offset = value.indexOf(bytes);
+    if (offset >= 0 && offset + minimum <= value.length) return true;
+  }
+  for (let offset = value.length - 22; offset >= Math.max(0, value.length - 65_557); offset -= 1) {
+    if (value.readUInt32LE(offset) !== 0x06054b50) continue;
+    const centralSize = value.readUInt32LE(offset + 12);
+    const centralOffset = value.readUInt32LE(offset + 16);
+    // ZIP64 sentinels in a complete EOCD record corroborate the container even
+    // when an empty archive has no local/central file headers.
+    if (centralSize === 0xffffffff || centralOffset === 0xffffffff
+      || value.readUInt16LE(offset + 8) === 0xffff || value.readUInt16LE(offset + 10) === 0xffff) return true;
+    // This is only evidence of an archive, not acceptance: empty, prefixed,
+    // suffixed and malformed archives must reach the unchanged strict inspector.
+    if (centralOffset + centralSize <= offset && (centralSize === 0 || centralSize >= 46)) return true;
+  }
+  return false;
+}
+
+const PNG_SIGNATURE = Buffer.from("89504e470d0a1a0a", "hex");
+
+function hasCompletePngFraming(value: Buffer) {
+  if (!value.subarray(0, 8).equals(PNG_SIGNATURE)) return false;
+  let imageData = false;
+  for (let offset = 8; offset + 12 <= value.length;) {
+    const length = value.readUInt32BE(offset);
+    const end = offset + 12 + length;
+    if (end > value.length) return false;
+    const type = value.toString("latin1", offset + 4, offset + 8);
+    if (!/^[A-Za-z]{2}[A-Z][A-Za-z]$/u.test(type)
+      || (offset === 8 && (type !== "IHDR" || length !== 13))
+      || (offset !== 8 && type === "IHDR")) return false;
+    const crc = (updateCrc32(0xffffffff, value.subarray(offset + 4, end - 4)) ^ 0xffffffff) >>> 0;
+    if (crc !== value.readUInt32BE(end - 4)) return false;
+    if (type === "IDAT") imageData = true;
+    if (type === "IEND") return imageData && length === 0 && end === value.length;
+    offset = end;
+  }
+  return false;
 }
 
 function isZipArtifactFile(filePath: string) {
@@ -680,14 +725,16 @@ function isZipArtifactFile(filePath: string) {
   const stat = lstatSync(filePath);
   const descriptor = openSync(filePath, "r");
   try {
-    const first = Buffer.alloc(Math.min(4, stat.size));
+    const first = Buffer.alloc(Math.min(8, stat.size));
     if (first.length > 0) readSync(descriptor, first, 0, first.length, 0);
     if (hasZipSignature(first)) return true;
     const tailSize = Math.min(65_557, stat.size);
     if (tailSize < 22) return false;
     const tail = Buffer.alloc(tailSize);
     readSync(descriptor, tail, 0, tailSize, stat.size - tailSize);
-    return findZipEndOfCentralDirectory(tail) >= 0;
+    if (findZipEndOfCentralDirectory(tail) < 0) return false;
+    if (!first.equals(PNG_SIGNATURE) || stat.size > MAX_ZIP_ARCHIVE_BYTES) return true;
+    return hasZipEnvelopeSignature(readBuffer(filePath));
   } finally {
     closeSync(descriptor);
   }

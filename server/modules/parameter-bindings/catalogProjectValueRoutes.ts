@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterInvocation, parameterRequestAccess } from "../parameters/operatingScope";
 /**
  * HTTP consumer of Binding/ProjectValue owners for published project values.
  * Lives outside S12 scanned families so Catalog SQL does not shift allow-list
@@ -102,20 +103,16 @@ function flattenQuery(query: Record<string, string | string[]>) {
 async function visibleValueChangeRequests(
   db: Database,
   auth: AuthContext,
-  input: { projectId: string; status?: "pending" | "approved" | "rejected" | "withdrawn"; mine?: boolean },
-  concealProject = false
+  input: { projectId: string; status?: "pending" | "approved" | "rejected" | "withdrawn"; mine?: boolean }
 ) {
   if (!auth.user.isActive || !canViewParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter view access is required for this project.");
-  }
-  if (!auth.roles.some((role) => role.projectId === null || role.projectId === input.projectId)) {
-    throw new ApiError(concealProject ? "NOT_FOUND" : "FORBIDDEN", "Project parameter requests are not available.");
   }
   const items = await listCanonicalValueChangesForAuth(db, auth, input);
   const canReadReviewQueue = !input.mine && canReviewParameters(auth)
     && canReviewParameterStage(auth, input.projectId, "software_review")
     && await hasCurrentCanonicalReviewRole(db, {
-      organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
+      organizationId: parameterOrganizationId(auth), projectId: input.projectId, userId: auth.user.id
     });
   if (!canReadReviewQueue) return items.filter((item) => item.submitterUserId === auth.user.id);
   const conflictIds = await db.query<{ id: string }>(`
@@ -127,7 +124,7 @@ async function visibleValueChangeRequests(
       from project_parameter_file_candidates
      where organization_id=$1 and project_id=$2
        and impact->'canonicalSourceWorkflow'->'conflictDecision' is not null`,
-    [auth.organization.id, input.projectId]);
+    [parameterOrganizationId(auth), input.projectId]);
   const frozenConflictIds = new Set(conflictIds.rows.map((row) => row.id));
   return items.filter((item) => (!frozenConflictIds.has(item.id)
     || item.assignedToUserId === auth.user.id || item.submitterUserId === auth.user.id)
@@ -145,19 +142,19 @@ async function visibleConflictDecision(
      where organization_id=$1 and project_id=$2
        and impact->'canonicalSourceWorkflow'->>'requestId'=$3
       and impact->'canonicalSourceWorkflow'->'conflictDecision' is not null`,
-    [auth.organization.id, input.projectId, input.requestId]);
+    [parameterOrganizationId(auth), input.projectId, input.requestId]);
   const receipts = await db.query<{ metadata: Record<string, unknown> }>(`select metadata from audit_events
      where organization_id=$1 and project_id=$2 and target_id=$3
        and action='value-change-submitted' and metadata ? 'decisionProofDigest'`,
-    [auth.organization.id, input.projectId, input.requestId]);
+    [parameterOrganizationId(auth), input.projectId, input.requestId]);
   if (!links.rows.length && !receipts.rows.length) return null;
-  const requests = await visibleValueChangeRequests(db, auth, { projectId: input.projectId }, true);
+  const requests = await visibleValueChangeRequests(db, auth, { projectId: input.projectId });
   const visible = requests.find((item) => item.id === input.requestId);
   const mayRead = visible && (visible.submitterUserId === auth.user.id
     || (visible.assignedToUserId === auth.user.id && canReviewParameters(auth)
       && canReviewParameterStage(auth, input.projectId, "software_review")
       && await hasCurrentCanonicalReviewRole(db, {
-        organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
+        organizationId: parameterOrganizationId(auth), projectId: input.projectId, userId: auth.user.id
       })));
   if (!mayRead) throw new ApiError("NOT_FOUND", "Source conflict decision was not found.");
   if (links.rows.length !== 1) throw new ApiError("CONFLICT", "Source conflict decision link is missing or duplicated.", {
@@ -258,11 +255,11 @@ async function syncUploadedFilePublishedValues(
   const pool = getRootPostgresPool(db);
   if (!pool) return;
   const configSetId = await getProjectParameterFileConfigSetId(db, {
-    organizationId: auth.organization.id, projectId, fileId
+    organizationId: parameterOrganizationId(auth), projectId, fileId
   });
   if (!configSetId) return;
   const revision = await getLatestConfigRevision(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId,
     configSetId
   });
@@ -271,11 +268,11 @@ async function syncUploadedFilePublishedValues(
   if (!members.some(member => member.fileId === fileId && member.fileVersionId === fileVersionId)) return;
   const snapshot = await loadPublishedCatalog(pool);
   if (!snapshot) return;
-  await withAuditedWrite(db, createUserInvocation(auth), { requestId: context.requestId }, async (tx) => {
+  await withAuditedWrite(db, parameterInvocation(auth) ?? createUserInvocation(auth), { requestId: context.requestId }, async (tx) => {
     const written = await syncPublishedCatalogProjectValuesInTransaction(
       asValueClient(tx),snapshot,
       {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId,
         configSetId,
         configRevisionId: revision.id
@@ -315,14 +312,14 @@ export function registerCatalogProjectValueConsumerRoutes(
 ) {
   router.get("/api/v2/projects/:projectId/parameter-bindings", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     if (!canViewParameters(auth)) {
       throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
     }
     const params = parseWithSchema(projectBindingsParamsSchema, request.params);
     const query = parseWithSchema(projectBindingsQuerySchema, flattenQuery(request.query));
     const project = await getProjectById(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: params.projectId
     });
     if (!project) {
@@ -374,7 +371,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     "/api/v2/projects/:projectId/parameter-bindings/:bindingId/change-history",
     async (request) => {
       const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
+      const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
       if (!canViewParameters(auth)) {
         throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
       }
@@ -388,7 +385,7 @@ export function registerCatalogProjectValueConsumerRoutes(
       );
       requireCanViewProject(auth, params.projectId);
       const project = await getProjectById(db, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: params.projectId
       });
       if (!project) {
@@ -401,7 +398,7 @@ export function registerCatalogProjectValueConsumerRoutes(
         throw new ApiError("INTERNAL_ERROR", "Canonical history requires the root database.");
       }
       const items = await readCanonicalBindingChangeHistory(pool, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: params.projectId,
         bindingId: params.bindingId,
         limit: query.limit
@@ -428,7 +425,7 @@ export function registerCatalogProjectValueConsumerRoutes(
       if (!options.objectStore) {
         throw new ApiError("INTERNAL_ERROR", "Object store is required for canonical export.");
       }
-      const auth = await options.getCurrentAuthContext(request);
+      const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
       if (!canViewParameters(auth)) {
         throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
       }
@@ -438,7 +435,7 @@ export function registerCatalogProjectValueConsumerRoutes(
       );
       requireCanViewProject(auth, params.projectId);
       const project = await getProjectById(db, {
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: params.projectId
       });
       if (!project) {
@@ -449,7 +446,7 @@ export function registerCatalogProjectValueConsumerRoutes(
       const item = await exportCanonicalBindingSource(db, options.objectStore, auth, {
         projectId: params.projectId,
         bindingId: params.bindingId,
-        ...parseWithSchema(z.object({ projectValueId: z.string().min(1).optional() }).strict(),flattenQuery(request.query))
+        ...parseWithSchema(z.object({ projectValueId: z.string().min(1).optional(), organizationId: z.string().min(1).optional() }).strict(),flattenQuery(request.query))
       });
       if (!item) {
         throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", {
@@ -463,14 +460,14 @@ export function registerCatalogProjectValueConsumerRoutes(
 
   router.post("/api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(createBindingDraftParamsSchema, request.params);
     const rawBody = request.body ?? {};
     if (!canEditParameters(auth)) {
       throw new ApiError("FORBIDDEN", "Parameter edit permission is required.");
     }
     const catalogBinding = await findCatalogBindingRow(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: params.projectId,
       bindingId: params.bindingId
     });
@@ -519,7 +516,7 @@ export function registerCatalogProjectValueConsumerRoutes(
         where binding.organization_id = $1 and binding.project_id = $2 and binding.id = $3
           and pin.config_revision_id = value.config_revision_id
         limit 1`,
-      [auth.organization.id, params.projectId, params.bindingId]
+      [parameterOrganizationId(auth), params.projectId, params.bindingId]
     );
     if (sourcePin.rows.length !== 1) {
       throw new ApiError("CONFLICT", "Canonical binding has no exact current source pin.", { bindingId: params.bindingId });
@@ -534,19 +531,19 @@ export function registerCatalogProjectValueConsumerRoutes(
       }
       try {
         await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           projectId: params.projectId,
           nodePath: nodeLocator,
           compatible: sourcePin.rows[0]?.compatible,
           compatibleIsAuthoritative: true,
-          invocation: createUserInvocation(auth),
+          invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
           requestId: request.requestId,
           refusalSink: canonicalRefusalAuditSink
         });
       } catch (error) {
         if (error instanceof ApiError && error.code === "FORBIDDEN") {
           await canonicalRefusalAuditSink.write({
-            invocation: createUserInvocation(auth),
+            invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
             projectId: params.projectId,
             app: "parameter-management",
             kind: "parameter-source-permission-denied",
@@ -567,7 +564,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     const item = await withCanonicalSourceAttemptTransaction(
       db,
       options.objectStore,
-      async (outerTx, attempt) => withAuditedWrite(outerTx, createUserInvocation(auth), { requestId: request.requestId }, async (tx) => {
+      async (outerTx, attempt) => withAuditedWrite(outerTx, parameterInvocation(auth) ?? createUserInvocation(auth), { requestId: request.requestId }, async (tx) => {
         const draft = await createCanonicalValueDraft(tx, auth, {
           projectId: params.projectId,
           bindingId: params.bindingId,
@@ -578,16 +575,16 @@ export function registerCatalogProjectValueConsumerRoutes(
           baseRevisionId: body.baseRevisionId
         }, {
           objectStore: attempt.objectStore,
-          invocation: createUserInvocation(auth),
+          invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
           requestId: request.requestId,
           refusalSink: canonicalRefusalAuditSink
         });
         await writeTrustedGovernanceAudit(
           asAuditTx(tx),
-          createUserInvocation(auth),
+          parameterInvocation(auth) ?? createUserInvocation(auth),
           {
             action: "value-drafted",
-            organizationId: auth.organization.id,
+            organizationId: parameterOrganizationId(auth),
             projectId: params.projectId,
             targetType: "project-parameter-binding",
             targetId: params.bindingId,
@@ -637,14 +634,14 @@ export function registerCatalogProjectValueConsumerRoutes(
    */
   router.get("/api/v2/projects/:projectId/parameter-value-drafts", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(projectBindingsParamsSchema, request.params);
     const catalogItems = await listCanonicalValueDraftsForUser(db, auth, { projectId: params.projectId });
     const topologyDrafts = await listTopologyDrafts(
       db,
       auth,
       { projectId: params.projectId },
-      { invocation: createUserInvocation(auth) }
+      { invocation: parameterInvocation(auth) ?? createUserInvocation(auth) }
     );
     const seen = new Set(catalogItems.map((item) => item.id));
     const items = [
@@ -663,7 +660,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     "/api/v2/projects/:projectId/parameter-value-drafts/:draftId",
     async (request) => {
       const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
+      const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
       const params = parseWithSchema(
         z.object({ projectId: z.string().min(1), draftId: z.string().min(1) }),
         request.params
@@ -673,7 +670,7 @@ export function registerCatalogProjectValueConsumerRoutes(
           projectId: params.projectId,
           draftId: params.draftId
         }, {
-          invocation: createUserInvocation(auth),
+          invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
           requestId: request.requestId
         });
         return { status: 200, body: { item } };
@@ -682,7 +679,7 @@ export function registerCatalogProjectValueConsumerRoutes(
           throw error;
         }
         await deleteTopologyDraft(db, auth, params.draftId, {
-          invocation: createUserInvocation(auth),
+          invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
           projectId: params.projectId,
           requestId: request.requestId
         });
@@ -696,7 +693,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     if (!options.objectStore) {
       throw new ApiError("INTERNAL_ERROR", "Object store is required for parameter file routes.");
     }
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     if (!canAdminParameters(auth)) {
       throw new ApiError("FORBIDDEN", "Parameter admin permission is required.");
     }
@@ -727,7 +724,7 @@ export function registerCatalogProjectValueConsumerRoutes(
 
   router.post("/api/v2/projects/:projectId/parameter-bindings/:bindingId/reimport-preview", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(z.object({ projectId: z.string().min(1),bindingId: z.string().min(1) }),request.params);
     const source = parseWithSchema(catalogBindingExportDtoSchema,request.body);
     if (!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Canonical reimport requires source storage.");
@@ -737,13 +734,13 @@ export function registerCatalogProjectValueConsumerRoutes(
 
   router.post("/api/v1/parameter-import-batches", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const body = parseWithSchema(createImportBatchBodySchema, request.body);
     if (!canAdminParameters(auth)) throw new ApiError("FORBIDDEN", "Parameter import administration is required.");
     requireCanViewProject(auth, body.projectId);
-    if (!await getProjectById(db,{ organizationId: auth.organization.id,projectId: body.projectId })) throw new ApiError("NOT_FOUND", "Project was not found for this organization.");
+    if (!await getProjectById(db,{ organizationId: parameterOrganizationId(auth),projectId: body.projectId })) throw new ApiError("NOT_FOUND", "Project was not found for this organization.");
     const catalog = await listCatalogBindingsForImport(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: body.projectId,
       names: body.items.map((row) => row.name),
       definitionIds: body.items.map((row) => row.id).filter((id): id is string => Boolean(id))
@@ -751,7 +748,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     const catalogMatches = body.items.map((source) =>
       matchCatalogImportRow({ id: source.id, name: source.name }, catalog)
     );
-    const rewritten = await withAuditedWrite(db, createUserInvocation(auth), { requestId: request.requestId }, async (tx) => {
+    const rewritten = await withAuditedWrite(db, parameterInvocation(auth) ?? createUserInvocation(auth), { requestId: request.requestId }, async (tx) => {
       const items = body.items.map((row, index) => {
         const match = catalogMatches[index];
         return {
@@ -767,7 +764,7 @@ export function registerCatalogProjectValueConsumerRoutes(
       const updated = items.filter((row) => row.classification === "updated").length;
       const unchanged = items.filter((row) => row.classification === "unchanged").length;
       const summary = { added,updated,unchanged,conflict: items.length-updated-unchanged,highRisk: items.filter((row) => row.riskFlag).length };
-      const item = await insertImportBatch(tx,{ id: randomUUID(),organizationId: auth.organization.id,projectId: body.projectId,
+      const item = await insertImportBatch(tx,{ id: randomUUID(),organizationId: parameterOrganizationId(auth),projectId: body.projectId,
         createdByUserId: auth.user.id,sourceName: body.sourceName,summary,items });
       return {
         result: parameterImportBatchDtoSchema.parse({ ...item, items, summary }),
@@ -797,7 +794,7 @@ export function registerCatalogProjectValueConsumerRoutes(
 
   router.post("/api/v1/parameter-import-batches/:batchId/apply", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(paramsWithBatchIdSchema, request.params);
     const body = parseWithSchema(
       applyImportBatchBodySchema,
@@ -805,7 +802,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     );
     if (!isRootDatabase(db) || !options.objectStore) throw new ApiError("INTERNAL_ERROR", "Canonical import requires root database and source storage.");
     const item = await stageCanonicalImportBatch(db,options.objectStore,auth,body,{
-      invocation: createUserInvocation(auth),requestId: request.requestId,refusalSink: createTrustedRefusalAuditSink(db)
+      invocation: parameterInvocation(auth) ?? createUserInvocation(auth),requestId: request.requestId,refusalSink: createTrustedRefusalAuditSink(db)
     });
     return { status: 200,body: { item: parameterImportBatchDtoSchema.parse(item) } };
   });
@@ -818,7 +815,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     "/api/v2/projects/:projectId/parameter-value-drafts/:draftId/submit",
     async (request) => {
       const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
+      const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
       const params = parseWithSchema(
         z.object({ projectId: z.string().min(1), draftId: z.string().min(1) }),
         request.params
@@ -831,21 +828,21 @@ export function registerCatalogProjectValueConsumerRoutes(
       if (!refusalAuditSink) {
         throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for canonical value submission.");
       }
-      const item = await withAuditedWrite(db, createUserInvocation(auth), { requestId: request.requestId }, async (tx) => {
+      const item = await withAuditedWrite(db, parameterInvocation(auth) ?? createUserInvocation(auth), { requestId: request.requestId }, async (tx) => {
         const submitted = await submitCanonicalValueChange(tx, auth, {
           projectId: params.projectId,
           draftId: params.draftId,
           assignedToUserId: body.assignedToUserId ?? null,
-          invocation: createUserInvocation(auth),
+          invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
           requestId: request.requestId,
           refusalSink: refusalAuditSink
         });
         await writeTrustedGovernanceAudit(
           asAuditTx(tx),
-          createUserInvocation(auth),
+          parameterInvocation(auth) ?? createUserInvocation(auth),
           {
             action: "value-change-submitted",
-            organizationId: auth.organization.id,
+            organizationId: parameterOrganizationId(auth),
             projectId: params.projectId,
             targetType: "project-parameter-value-change-request",
             targetId: submitted.id,
@@ -868,7 +865,7 @@ export function registerCatalogProjectValueConsumerRoutes(
 
   router.get("/api/v2/projects/:projectId/parameter-value-change-requests", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(projectBindingsParamsSchema, request.params);
     const query = parseWithSchema(
       z.object({
@@ -887,7 +884,7 @@ export function registerCatalogProjectValueConsumerRoutes(
 
   router.post("/api/v2/projects/:projectId/parameter-value-change-requests/batches", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const { projectId } = parseWithSchema(projectBindingsParamsSchema, request.params);
     const body = parseWithSchema(z.object({
       candidateId: z.string().min(1), expectedProofToken: z.string().min(1),
@@ -900,7 +897,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     }), request.body ?? {});
     if (!isRootDatabase(db)) throw new ApiError("INTERNAL_ERROR", "Canonical batch submit requires root database.");
     const item = await submitCanonicalBatchValueChange(db, options.objectStore, auth, {
-      projectId, ...body, invocation: createUserInvocation(auth), requestId: request.requestId,
+      projectId, ...body, invocation: parameterInvocation(auth) ?? createUserInvocation(auth), requestId: request.requestId,
       refusalSink: createTrustedRefusalAuditSink(db)
     });
     return { status: 201, body: { item } };
@@ -908,7 +905,7 @@ export function registerCatalogProjectValueConsumerRoutes(
 
   router.get("/api/v2/projects/:projectId/parameter-value-change-requests/batches", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const { projectId } = parseWithSchema(projectBindingsParamsSchema, request.params);
     const query = parseWithSchema(z.object({
       status: z.enum(["pending", "approved", "rejected", "withdrawn"]).optional(),
@@ -922,7 +919,7 @@ export function registerCatalogProjectValueConsumerRoutes(
 
   router.post("/api/v2/projects/:projectId/parameter-value-change-requests/member-removals", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const { projectId } = parseWithSchema(projectBindingsParamsSchema, request.params);
     const body = parseWithSchema(z.object({
       configSetId: z.string().min(1), fileId: z.string().min(1),
@@ -930,7 +927,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     }), request.body ?? {});
     if (!isRootDatabase(db)) throw new ApiError("INTERNAL_ERROR", "Canonical member removal requires root database.");
     const item = await submitCanonicalMemberRemoval(db, options.objectStore, auth, {
-      projectId, ...body, invocation: createUserInvocation(auth), traceId: request.requestId,
+      projectId, ...body, invocation: parameterInvocation(auth) ?? createUserInvocation(auth), traceId: request.requestId,
       refusalSink: createTrustedRefusalAuditSink(db)
     });
     return { status: 201, body: { item } };
@@ -938,7 +935,7 @@ export function registerCatalogProjectValueConsumerRoutes(
 
   router.get("/api/v2/projects/:projectId/parameter-value-change-requests/member-removals", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const { projectId } = parseWithSchema(projectBindingsParamsSchema, request.params);
     const query = parseWithSchema(z.object({
       status: z.enum(["pending", "approved", "rejected", "withdrawn"]).optional(),
@@ -952,7 +949,7 @@ export function registerCatalogProjectValueConsumerRoutes(
 
   router.get("/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/member-removal", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(z.object({ projectId: z.string().min(1), requestId: z.string().min(1) }), request.params);
     const item = await getCanonicalMemberRemovalForAuth(db, auth, params);
     if (!item) throw new ApiError("NOT_FOUND", "Member removal request was not found.");
@@ -961,7 +958,7 @@ export function registerCatalogProjectValueConsumerRoutes(
 
   router.get("/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/batch", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(z.object({ projectId: z.string().min(1), requestId: z.string().min(1) }), request.params);
     const item = await getCanonicalBatchValueChangeForAuth(db, auth, params);
     if (!item) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
@@ -970,12 +967,12 @@ export function registerCatalogProjectValueConsumerRoutes(
 
   router.get("/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/source-diff", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(z.object({ projectId: z.string().min(1),requestId: z.string().min(1) }),request.params);
     const kind = (await db.query<{ request_kind: string }>(`
       select request_kind from public.project_parameter_value_change_requests
        where id=$1 and organization_id=$2 and project_id=$3`,
-      [params.requestId, auth.organization.id, params.projectId])).rows[0]?.request_kind;
+      [params.requestId, parameterOrganizationId(auth), params.projectId])).rows[0]?.request_kind;
     if (kind === "source_revision") {
       throw new ApiError("CONFLICT", "Whole-source requests use the source revision detail endpoint.", { reason: "source-request-kind-mismatch" });
     }
@@ -995,7 +992,7 @@ export function registerCatalogProjectValueConsumerRoutes(
         if (frozen.compositionProof) {
           const { decisionProofDigest, ...facts } = frozen.compositionProof;
           const upload = await getParameterFileCandidateById(tx, {
-            organizationId: auth.organization.id, projectId: params.projectId,
+            organizationId: parameterOrganizationId(auth), projectId: params.projectId,
             candidateId: frozen.compositionProof.uploadCandidateId
           });
           const object = frozen.compositionProof.uploadObject;
@@ -1047,7 +1044,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     const item = await db.transaction(async (tx) => {
       await visibleConflictDecision(tx, auth, params);
       // Keep the current-review-role lock through the frozen single-source object read.
-      const visible = await visibleValueChangeRequests(tx, auth, { projectId: params.projectId }, true);
+      const visible = await visibleValueChangeRequests(tx, auth, { projectId: params.projectId });
       if (!visible.some((request) => request.id === params.requestId)) {
         throw new ApiError("NOT_FOUND", "Source change request was not found.");
       }
@@ -1059,12 +1056,12 @@ export function registerCatalogProjectValueConsumerRoutes(
 
   router.get("/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/conflict-decision", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(z.object({ projectId: z.string().min(1), requestId: z.string().min(1) }), request.params);
     const item = await db.transaction(async (tx) => {
       const decision = await visibleConflictDecision(tx, auth, params);
       if (!decision) {
-        const requests = await visibleValueChangeRequests(tx, auth, { projectId: params.projectId }, true);
+        const requests = await visibleValueChangeRequests(tx, auth, { projectId: params.projectId });
         if (!requests.some((item) => item.id === params.requestId)) {
           throw new ApiError("NOT_FOUND", "Source conflict decision was not found.");
         }
@@ -1090,7 +1087,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     "/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/review",
     async (request) => {
       const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
+      const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
       const params = parseWithSchema(
         z.object({ projectId: z.string().min(1), requestId: z.string().min(1) }),
         request.params
@@ -1114,7 +1111,7 @@ export function registerCatalogProjectValueConsumerRoutes(
       const requestKind = (await db.query<{ request_kind: string }>(`
         select request_kind from public.project_parameter_value_change_requests
          where id=$1 and organization_id=$2 and project_id=$3`,
-        [params.requestId, auth.organization.id, params.projectId])).rows[0]?.request_kind;
+        [params.requestId, parameterOrganizationId(auth), params.projectId])).rows[0]?.request_kind;
       if (!requestKind) throw new ApiError("NOT_FOUND", "Canonical value request was not found.");
       if (requestKind === "source_revision") {
         throw new ApiError("CONFLICT", "Whole-source requests use the source revision review endpoint.", { reason: "source-request-kind-mismatch" });
@@ -1122,14 +1119,14 @@ export function registerCatalogProjectValueConsumerRoutes(
       if (requestKind === "member-removal") {
         const item = await reviewCanonicalMemberRemoval(db, options.objectStore, auth, {
           ...params, decision: body.decision, proofDigest: body.memberProofDigest ?? "",
-          note: body.note ?? null, invocation: createUserInvocation(auth),
+          note: body.note ?? null, invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
           traceId: request.requestId, refusalSink: refusalAuditSink
         });
         return { status: 200, body: { item } };
       }
       if (requestKind === "batch") {
         const visibleBatch = await getCanonicalBatchValueChangeForReviewer(db, auth, params, {
-          invocation: createUserInvocation(auth), requestId: request.requestId, refusalSink: refusalAuditSink
+          invocation: parameterInvocation(auth) ?? createUserInvocation(auth), requestId: request.requestId, refusalSink: refusalAuditSink
         });
         if (!visibleBatch) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
         if (!body.batchProofDigest) {
@@ -1142,7 +1139,7 @@ export function registerCatalogProjectValueConsumerRoutes(
             ...params, batchProofDigest: body.batchProofDigest,
             draftImpactDigest: body.draftImpactDigest,
             decisionProofDigest: body.decisionProofDigest, note: body.note ?? null,
-            invocation: createUserInvocation(auth), traceId: request.requestId,
+            invocation: parameterInvocation(auth) ?? createUserInvocation(auth), traceId: request.requestId,
             refusalSink: refusalAuditSink
           });
           return { status: 200, body: { item } };
@@ -1152,13 +1149,13 @@ export function registerCatalogProjectValueConsumerRoutes(
         }
         const batchSnapshot = await loadPublishedCatalog(pool);
         if (!batchSnapshot) throw new ApiError("CONFLICT", "The published catalog snapshot is unavailable.");
-        const item = await withAuditedWrite(db, createUserInvocation(auth), { requestId: request.requestId }, async (tx) => ({
+        const item = await withAuditedWrite(db, parameterInvocation(auth) ?? createUserInvocation(auth), { requestId: request.requestId }, async (tx) => ({
           result: await approveCanonicalBatchValueChange(tx, options.objectStore!, auth, batchSnapshot, {
             projectId: params.projectId, requestId: params.requestId,
             batchProofDigest: body.batchProofDigest!, draftImpactDigest: body.draftImpactDigest,
             decisionProofDigest: body.decisionProofDigest,
             note: body.note ?? null,
-            invocation: createUserInvocation(auth), traceId: request.requestId,
+            invocation: parameterInvocation(auth) ?? createUserInvocation(auth), traceId: request.requestId,
             refusalSink: refusalAuditSink
           }),
           audit: null
@@ -1213,7 +1210,7 @@ export function registerCatalogProjectValueConsumerRoutes(
               and pin.project_value_id = change_request.base_current_value_id
               and pin.config_revision_id = change_request.config_revision_id
             limit 1`,
-          [auth.organization.id, params.projectId, params.requestId]
+          [parameterOrganizationId(auth), params.projectId, params.requestId]
         );
         if (sourcePin.rows.length !== 1) {
           throw new ApiError("CONFLICT", "Change request has no exact owned source pin.", { requestId: params.requestId });
@@ -1232,19 +1229,19 @@ export function registerCatalogProjectValueConsumerRoutes(
           }
           try {
             await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
-              organizationId: auth.organization.id,
+              organizationId: parameterOrganizationId(auth),
               projectId: params.projectId,
               nodePath: nodeLocator,
               compatible: sourcePin.rows[0]?.compatible ?? null,
               compatibleIsAuthoritative: true,
-              invocation: createUserInvocation(auth),
+              invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
               requestId: request.requestId,
               refusalSink: refusalAuditSink
             });
           } catch (error) {
             if (error instanceof ApiError && error.code === "FORBIDDEN") {
               await refusalAuditSink.write({
-                invocation: createUserInvocation(auth),
+                invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
                 projectId: params.projectId,
                 app: "parameter-management",
                 kind: "parameter-source-permission-denied",
@@ -1262,7 +1259,7 @@ export function registerCatalogProjectValueConsumerRoutes(
       }
       const item = await withAuditedWrite(
         db,
-        createUserInvocation(auth),
+        parameterInvocation(auth) ?? createUserInvocation(auth),
         { requestId: request.requestId },
         async (tx) => {
           const reviewed = await reviewCanonicalValueChange(tx, auth, {
@@ -1273,17 +1270,17 @@ export function registerCatalogProjectValueConsumerRoutes(
           }, {
             objectStore: options.objectStore,
             snapshot: snapshot ?? undefined,
-            invocation: createUserInvocation(auth),
+            invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
             traceId: request.requestId,
             refusalSink: refusalAuditSink
           });
           if (body.decision === "reject") {
             await writeTrustedGovernanceAudit(
               asAuditTx(tx),
-              createUserInvocation(auth),
+              parameterInvocation(auth) ?? createUserInvocation(auth),
               {
                 action: "value-change-reviewed",
-                organizationId: auth.organization.id,
+                organizationId: parameterOrganizationId(auth),
                 projectId: params.projectId,
                 targetType: "project-parameter-value-change-request",
                 targetId: reviewed.id,
@@ -1303,7 +1300,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     "/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/withdraw",
     async (request) => {
       const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
+      const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
       const params = parseWithSchema(
         z.object({ projectId: z.string().min(1), requestId: z.string().min(1) }),
         request.params
@@ -1315,38 +1312,38 @@ export function registerCatalogProjectValueConsumerRoutes(
       const requestKind = (await db.query<{ request_kind: string }>(`
         select request_kind from public.project_parameter_value_change_requests
          where id=$1 and organization_id=$2 and project_id=$3`,
-        [params.requestId, auth.organization.id, params.projectId])).rows[0]?.request_kind;
+        [params.requestId, parameterOrganizationId(auth), params.projectId])).rows[0]?.request_kind;
       if (requestKind === "source_revision") {
         throw new ApiError("CONFLICT", "Whole-source requests use the source revision withdrawal endpoint.", { reason: "source-request-kind-mismatch" });
       }
       if (requestKind === "member-removal") {
         const item = await withdrawCanonicalMemberRemoval(db, auth, {
-          ...params, invocation: createUserInvocation(auth), traceId: request.requestId,
+          ...params, invocation: parameterInvocation(auth) ?? createUserInvocation(auth), traceId: request.requestId,
           refusalSink: refusalAuditSink
         });
         return { status: 200, body: { item } };
       }
       if (requestKind === "batch") {
         const item = await withdrawCanonicalBatchValueChange(db, auth, {
-          ...params, invocation: createUserInvocation(auth), traceId: request.requestId,
+          ...params, invocation: parameterInvocation(auth) ?? createUserInvocation(auth), traceId: request.requestId,
           refusalSink: refusalAuditSink
         });
         return { status: 200, body: { item } };
       }
-      const item = await withAuditedWrite(db, createUserInvocation(auth), { requestId: request.requestId }, async (tx) => {
+      const item = await withAuditedWrite(db, parameterInvocation(auth) ?? createUserInvocation(auth), { requestId: request.requestId }, async (tx) => {
         const withdrawn = await withdrawCanonicalValueChange(tx, auth, {
           projectId: params.projectId,
           requestId: params.requestId,
-          invocation: createUserInvocation(auth),
+          invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
           refusalSink: refusalAuditSink,
           traceId: request.requestId
         });
         await writeTrustedGovernanceAudit(
           asAuditTx(tx),
-          createUserInvocation(auth),
+          parameterInvocation(auth) ?? createUserInvocation(auth),
           {
             action: "value-change-withdrawn",
-            organizationId: auth.organization.id,
+            organizationId: parameterOrganizationId(auth),
             projectId: params.projectId,
             targetType: "project-parameter-value-change-request",
             targetId: withdrawn.id,

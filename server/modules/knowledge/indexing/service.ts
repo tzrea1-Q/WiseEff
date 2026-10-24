@@ -120,6 +120,7 @@ export async function indexKnowledgeEntry(
   }
 
   const detectSuggestions = async () => {
+    // Derived suggestions can be refreshed later; only the already-admitted retrieval projection finishes.
     try {
       await detectKnowledgeReferenceSuggestions(db, snapshot, randomUUID());
     } catch (error) {

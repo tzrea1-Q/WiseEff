@@ -1,10 +1,13 @@
 import { mkdtemp, rm } from "node:fs/promises";
+import { createHmac } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
+import { createWiseEffServer } from "../../app";
+import { createTokenVerifier } from "../auth/tokenVerifier";
 import { requestJson } from "../../test/testClient";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
@@ -15,6 +18,7 @@ import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../cata
 import { createLocalObjectStore } from "../logs/objectStore";
 import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
+import { registerParameterTopologyRoutes } from "../parameter-topology/routes";
 import { addConfigSetFile, createConfigSet } from "./configSetService";
 import { registerParameterFileRoutes } from "./routes";
 import { uploadProjectParameterFile } from "./service";
@@ -43,6 +47,7 @@ describe("whole-source HTTP through the real API database role", () => {
     const router = createRouter();
     registerParameterFileRoutes(router, { db: api, objectStore: storage,
       refusalAuditSink: createTrustedRefusalAuditSink(db), getCurrentAuthContext: () => auth });
+    registerParameterTopologyRoutes(router, { db: api, getCurrentAuthContext: () => auth });
     return createHttpServer(router);
   }
   function post<T>(url: string, body: unknown, auth = author) {
@@ -402,5 +407,108 @@ describe("whole-source HTTP through the real API database role", () => {
     versionId = receipt.fileVersionId; revisionId = receipt.configRevisionId;
     expect((await listCatalogBindingRowsForProject(api, author, { projectId: PROJECT }))[0]).toMatchObject({ id: bindingId,
       rawValue: replies[0]!.status === 200 ? "<44>" : "<45>" });
+  });
+
+  it("lets a scoped platform actor reassign and cancel target requests while keeping approval with the separate target reviewer", async () => {
+    const HOME = "source-platform-home", PLATFORM = "source-platform-actor", secret = "source-operating-scope-only";
+    await db.query("insert into organizations(id,name) values($1,'Platform Home')", [HOME]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values($1,$2,'Platform administrator','Platform',true)", [PLATFORM, HOME]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values('source-platform-grant',$1,$2,'platform-admin')", [PLATFORM, HOME]);
+    const actual = createWiseEffServer({ db: api, objectStore: storage, env: { AUTH_PROVIDER: "hmac" }, auth: { mode: "production", verifier: createTokenVerifier({ issuer: "source-operating", secret }) } });
+    const scoped = <T,>(url: string, body?: unknown, userId = PLATFORM, organizationId = HOME, method = body === undefined ? "GET" : "POST") => {
+      const payload = Buffer.from(JSON.stringify({ iss: "source-operating", sub: userId, org: organizationId, exp: 9_999_999_999 })).toString("base64url");
+      return requestJson<T>(actual, `${url}${url.includes("?") ? "&" : "?"}organizationId=${ORG}`, {
+        method, headers: { Authorization: `Bearer ${payload}.${createHmac("sha256", secret).update(payload).digest("base64url")}` },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) })
+      });
+    };
+    async function targetPending(mutation: string) {
+      const currentFile = (await db.query<{ current_version_id: string }>("select current_version_id from project_parameter_files where id=$1", [fileId])).rows[0]!;
+      const currentRevision = (await db.query<{ id: string }>("select id from dts_config_revisions where config_set_id=$1 order by revision_number desc limit 1", [configSetId])).rows[0]!;
+      const candidate = await scoped<{ item: { id: string } }>(`/api/v1/projects/${PROJECT}/parameter-file-candidates`, {
+        fileId, fileName: "board.dts", contentBase64: Buffer.from(`${source}\n/* ${mutation} */\n`).toString("base64"), intent: "source_revision",
+        expectedCurrentVersionId: currentFile.current_version_id, expectedConfigRevisionId: currentRevision.id, clientMutationId: mutation
+      });
+      expect(candidate.status, candidate.bodyText).toBe(201);
+      const preview = await scoped<{ item: SourceRevisionPreview }>(`/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidate.body.item.id}/source-preview`);
+      expect(preview.status, preview.bodyText).toBe(200);
+      const submitted = await scoped<{ item: { requestId: string } }>(`/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidate.body.item.id}/source-submit`, {
+        expectedCurrentVersionId: currentFile.current_version_id, expectedProofToken: preview.body.item.proofToken,
+        clientMutationId: `${mutation}-submit`, reason: "Target source managed by a real platform actor", assignedToUserId: REVIEWER
+      });
+      expect(submitted.status, submitted.bodyText).toBe(200);
+      return { id: submitted.body.item.requestId, digest: preview.body.item.proofToken };
+    }
+    const pending = await targetPending("cross-organization-approval");
+    const handoverPath = `/api/v1/organization/project-handovers/value-review/${pending.id}`;
+    const readHandover = async () => {
+      const response = await scoped<{ items: Array<{ id: string; version: string; responsibleUserId: string | null; pending: boolean }> }>("/api/v1/organization/project-handovers");
+      expect(response.status, response.bodyText).toBe(200);
+      return response.body.items.find(item => item.id === pending.id)!;
+    };
+    const originalHandover = await readHandover();
+    expect((await scoped(handoverPath, { responsibleUserId: null, expectedVersion: originalHandover.version }, PLATFORM, HOME, "PATCH")).status).toBe(200);
+    const unassigned = await readHandover();
+    expect(unassigned).toMatchObject({ responsibleUserId: null, pending: true });
+    const handedOver = await scoped(handoverPath, { responsibleUserId: REVIEWER, expectedVersion: unassigned.version }, PLATFORM, HOME, "PATCH");
+    expect(handedOver.status, handedOver.bodyText).toBe(200);
+    const frozenAfterHandover = await scoped<{ item: SourceRevisionRequestDto }>(`${path}/${pending.id}`);
+    expect(frozenAfterHandover.body.item).toMatchObject({ status: "pending", proofDigest: pending.digest, reviewerUserId: null, submitterUserId: PLATFORM, assignedToUserId: REVIEWER });
+    const reassigned = await scoped(`${path}/${pending.id}/reassign`, { proofDigest: pending.digest, expectedAssignedToUserId: REVIEWER, assignedToUserId: outsider.user.id });
+    expect(reassigned.status, reassigned.bodyText).toBe(200);
+    expect((await scoped(`${path}/${pending.id}/reassign`, { proofDigest: pending.digest, expectedAssignedToUserId: outsider.user.id, assignedToUserId: REVIEWER })).status).toBe(200);
+    expect((await scoped(`${path}/${pending.id}/review`, { decision: "approve", proofDigest: pending.digest })).status).toBe(403);
+    const approved = await scoped<{ item: SourceRevisionRequestDto }>(`${path}/${pending.id}/review`, { decision: "approve", proofDigest: pending.digest }, REVIEWER, ORG);
+    expect(approved.status, approved.bodyText).toBe(200);
+    versionId = approved.body.item.appliedSourceResult!.fileVersionId;
+    revisionId = approved.body.item.appliedSourceResult!.configRevisionId;
+    const cancelled = await targetPending("cross-organization-cancellation");
+    const cancellation = await scoped<{ item: SourceRevisionRequestDto }>(`${path}/${cancelled.id}/cancel`, {
+      proofDigest: cancelled.digest, expectedAssignedToUserId: REVIEWER, reason: "Administrator cancels the target draft"
+    });
+    expect(cancellation.status, cancellation.bodyText).toBe(200);
+    expect(cancellation.body.item).toMatchObject({ status: "withdrawn", cancellation: { userId: PLATFORM } });
+    expect((await db.query("select organization_id from users where id=$1", [PLATFORM])).rows).toEqual([{ organization_id: HOME }]);
+    const audit = (await db.query<{ organization_id: string; actor_user_id: string; metadata: Record<string, unknown> }>(
+      "select organization_id,actor_user_id,metadata from audit_events where target_id=$1 and action='source-request-cancelled'", [cancelled.id])).rows[0];
+    expect(audit).toMatchObject({ organization_id: ORG, actor_user_id: PLATFORM, metadata: { actorHomeOrganizationId: HOME, operatingOrganizationId: ORG } });
+    const directCandidate = await scoped<{ item: { id: string } }>(`/api/v1/projects/${PROJECT}/parameter-file-candidates`, {
+      fileId, fileName: "board.dts", contentBase64: Buffer.from(`${source}\n/* explicit target administrator application */\n`).toString("base64"),
+      intent: "source_revision", expectedCurrentVersionId: versionId, expectedConfigRevisionId: revisionId, clientMutationId: "target-direct-preview"
+    });
+    expect(directCandidate.status, directCandidate.bodyText).toBe(201);
+    const directPreview = await scoped<{ item: SourceRevisionPreview }>(`/api/v1/projects/${PROJECT}/parameter-file-candidates/${directCandidate.body.item.id}/source-preview`);
+    expect(directPreview.status, directPreview.bodyText).toBe(200);
+    const applied = await scoped<{ item: SourceRevisionRequestDto }>(`/api/v1/projects/${PROJECT}/parameter-file-candidates/${directCandidate.body.item.id}/source-apply`, {
+      expectedCurrentVersionId: versionId, expectedProofToken: directPreview.body.item.proofToken,
+      clientMutationId: "target-direct-apply", reason: "Administrator confirms the existing direct-application workflow"
+    });
+    expect(applied.status, applied.bodyText).toBe(200);
+    expect(applied.body.item).toMatchObject({ applicationMode: "administrator_direct", submitterUserId: PLATFORM, assignedToUserId: null, reviewerUserId: null });
+    versionId = applied.body.item.appliedSourceResult!.fileVersionId;
+    revisionId = applied.body.item.appliedSourceResult!.configRevisionId;
+  });
+
+  it("retains source review, version and binding-history authors after rename and account deletion", async () => {
+    const pending = await stage(`${source}\n/* attribution */\n`, "http-history-attribution");
+    const rejected = await post<{ item: SourceRevisionRequestDto }>(`${path}/${pending.id}/review`, {
+      decision: "reject", proofDigest: pending.proofDigest, note: "Preserve this historical review"
+    }, reviewer);
+    expect(rejected.status, rejected.bodyText).toBe(200);
+    await db.query("update users set name='Replacement name' where id=any($1::text[])", [[AUTHOR, REVIEWER]]);
+    await db.query("update organizations set name='Renamed organization' where id=$1", [ORG]);
+    const read = () => requestJson<{ item: SourceRevisionRequestDto }>(route(outsider), `${path}/${pending.id}`);
+    expect((await read()).body.item).toMatchObject({ submitterName: "Author", reviewerName: "Reviewer", organizationName: "Source HTTP" });
+    await db.query("delete from users where id=any($1::text[])", [[AUTHOR, REVIEWER]]);
+    expect((await read()).body.item).toMatchObject({ submitterUserId: null, reviewerUserId: null,
+      submitterName: "Author", reviewerName: "Reviewer" });
+    const versions = await requestJson<{ items: Array<{ createdByDisplayName: string | null }> }>(route(outsider),
+      `/api/v1/projects/${PROJECT}/parameter-files/${fileId}/versions`);
+    expect(versions.status, versions.bodyText).toBe(200);
+    expect(versions.body.items.map((item) => item.createdByDisplayName)).toContain("Author");
+    const history = await requestJson<{ items: Array<{ actor: string | null }> }>(route(outsider),
+      `/api/v2/projects/${PROJECT}/bindings/${bindingId}/history`);
+    expect(history.status, history.bodyText).toBe(200);
+    expect(history.body.items.map((item) => item.actor)).toContain("Reviewer");
   });
 });

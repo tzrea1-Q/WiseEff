@@ -15,7 +15,8 @@ describe("createApiInitialState leftover slices", () => {
     expect(createApiInitialState()).toMatchObject({
       users: [],
       currentUserId: "",
-      activeRoleId: "guest"
+      activeRoleId: "guest",
+      activeProjectId: ""
     });
   });
 

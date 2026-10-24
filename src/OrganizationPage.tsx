@@ -4,11 +4,22 @@ import type { OrganizationAdminArea } from "@/application/organization/organizat
 import { OrganizationAdminScopeNav } from "@/components/admin/OrganizationAdminScopeNav";
 import { OrganizationBridgePanel } from "@/components/admin/OrganizationBridgePanel";
 import { canPerform } from "@/app/permissions";
-import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
+import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { SettingsFormPage, SettingsFormSection, useDirtyState } from "@/components/layout/SettingsFormPage";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { presentError } from "@/infrastructure/http/presentError";
 import { UserPermissionsPage, type UserPermissionsPageProps } from "@/UserPermissionsPage";
+import { IntegrationCredentials } from "@/features/log-skills/IntegrationCredentials";
+import { OrganizationProjectsPanel, type ProjectMembershipClient } from "@/features/organization/OrganizationProjectsPanel";
+import { OrganizationTeamsPage } from "@/features/organization/OrganizationTeamsPage";
+import { OrganizationAssetHandoverPanel } from "@/features/organization/OrganizationAssetHandoverPanel";
+import { Button } from "@/components/ui/button";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
+import { OrganizationInvitationsPage } from "@/features/organization/OrganizationInvitationsPage";
+import type { OrganizationInvitationsClient } from "@/infrastructure/http/organizationInvitationsClient";
+import type { ComponentProps } from "react";
+import { OrganizationOverviewPanel, OrganizationResourcesPanel } from "@/features/organization/OrganizationOverviewPanel";
+import type { OrganizationWorkspaceSummary } from "@/infrastructure/http/userGovernanceClient";
 import "./organization-page.css";
 
 export type OrganizationRecord = {
@@ -18,22 +29,33 @@ export type OrganizationRecord = {
 };
 
 export type OrganizationActions = {
+  getWorkspaceSummary?(): Promise<OrganizationWorkspaceSummary>;
   getOrganization(): Promise<OrganizationRecord>;
   updateOrganization(input: { name: string }): Promise<OrganizationRecord>;
 };
 
-type OrganizationPageProps = UserPermissionsPageProps & {
+export type OrganizationPageProps = UserPermissionsPageProps & {
   area?: OrganizationAdminArea;
   apiMode?: boolean;
+  readOnly?: boolean;
   organizationActions?: OrganizationActions;
   onOrganizationUpdated?: (organization: OrganizationRecord) => void | Promise<void>;
+  bridgeActions?: ComponentProps<typeof OrganizationBridgePanel>["actions"];
+  credentialRepository?: ComponentProps<typeof IntegrationCredentials>["repository"];
+  invitationActions?: OrganizationInvitationsClient;
+  projectMembershipClient?: ProjectMembershipClient;
 };
 
 export function OrganizationPage({
-  area = "profile",
+  area = "overview",
   apiMode = false,
+  readOnly = false,
   organizationActions,
   onOrganizationUpdated,
+  bridgeActions,
+  credentialRepository,
+  invitationActions,
+  projectMembershipClient,
   ...memberProps
 }: OrganizationPageProps) {
   const [organization, setOrganization] = useState<OrganizationRecord | null>(null);
@@ -45,6 +67,7 @@ export function OrganizationPage({
   const [fieldError, setFieldError] = useState("");
   const [saved, setSaved] = useState(false);
   const nameInput = useRef<HTMLInputElement>(null);
+  const administrator = canPerform(memberProps.state.activeRoleId, "users.manage");
 
   const loadOrganization = useCallback(async () => {
     if (!organizationActions) {
@@ -72,7 +95,7 @@ export function OrganizationPage({
   }, [area, loadOrganization]);
 
   async function submitRename() {
-    if (!organizationActions || !organization || saving) {
+    if (!organizationActions || !organization || saving || readOnly || !administrator) {
       return;
     }
     const name = displayName.trim();
@@ -106,11 +129,15 @@ export function OrganizationPage({
 
   return (
     <div className="organization-page">
-      <OrganizationAdminScopeNav active={area} onNavigate={memberProps.onNavigate} />
-      {area === "bridges" ? <OrganizationBridgePanel enabled={apiMode && canPerform(memberProps.state.activeRoleId, "users.manage")} /> : area === "members" ? (
-        <UserPermissionsPage {...memberProps} />
+      <OrganizationAdminScopeNav active={area === "handovers" ? "members" : area} organizationId={memberProps.directoryScope} onNavigate={memberProps.onNavigate} />
+      {administrator && (area === "bridges" || area === "integrations") ? <nav className="organization-operating-scope__actions" aria-label="组织资源控制台"><Button variant="outline" onClick={() => memberProps.onNavigate(withOrganizationScope("/organization/bridges", memberProps.directoryScope))}>设备代理</Button><Button variant="outline" onClick={() => memberProps.onNavigate(withOrganizationScope("/organization/integrations", memberProps.directoryScope))}>集成凭据</Button></nav> : null}
+      {area === "overview" ? <OrganizationOverviewPanel load={organizationActions?.getWorkspaceSummary} organizationId={memberProps.directoryScope} onNavigate={memberProps.onNavigate} /> : area === "resources" ? <OrganizationResourcesPanel administrator={administrator} roleId={memberProps.state.activeRoleId} organizationId={memberProps.directoryScope} onNavigate={memberProps.onNavigate} /> : !administrator && area !== "profile" ? <SectionEmpty title="此区域由组织管理员维护" message="你仍可查看本组织的项目和业务资源；如需调整成员、团队、项目权限或访问凭据，请联系组织管理员。" actionLabel="查看组织资源" onAction={() => memberProps.onNavigate(withOrganizationScope("/organization/resources", memberProps.directoryScope))} /> : area === "handovers" ? <OrganizationAssetHandoverPanel organizationId={memberProps.directoryScope} enabled={apiMode} currentUserId={memberProps.state.currentUserId} onNavigate={memberProps.onNavigate} /> : area === "invitations" ? <OrganizationInvitationsPage client={invitationActions} canGrantPlatformAdmin={memberProps.state.activeRoleId === "platform-admin"} onBack={() => memberProps.onNavigate(withOrganizationScope("/organization/members", memberProps.directoryScope))} /> : area === "teams" ? <OrganizationTeamsPage client={memberProps.teamActions} /> : area === "bridges" ? <OrganizationBridgePanel enabled={apiMode && canPerform(memberProps.state.activeRoleId, "users.manage")} actions={bridgeActions} /> : area === "integrations" ? (
+        <div className="skill-section"><IntegrationCredentials repository={credentialRepository} apiMode={apiMode} canEdit={!readOnly && canPerform(memberProps.state.activeRoleId, "logs.admin-domains")} disabled={false} /></div>
+      ) : area === "projects" ? <OrganizationProjectsPanel client={projectMembershipClient} /> : area === "members" ? (
+        <><div className="organization-operating-scope__actions">{invitationActions ? <Button variant="outline" onClick={() => memberProps.onNavigate(withOrganizationScope("/organization/invitations", memberProps.directoryScope))}>管理邀请</Button> : null}<Button variant="outline" onClick={() => memberProps.onNavigate(withOrganizationScope("/organization/handovers", memberProps.directoryScope))}>业务交接</Button></div><UserPermissionsPage {...memberProps} /></>
       ) : (
         <section className="organization-profile" aria-label="组织档案">
+          {!administrator ? <p>组织设置仅供查看，显示名称由组织管理员维护。</p> : null}
           {status === "loading" ? <SectionSkeleton label="正在加载组织档案" /> : null}
           {status === "error" ? <SectionError message={error} onRetry={() => void loadOrganization()} /> : null}
           {status === "ready" && organizationActions && organization ? (
@@ -127,7 +154,7 @@ export function OrganizationPage({
                     className="organization-profile__control"
                     value={displayName}
                     maxLength={80}
-                    disabled={saving}
+                    disabled={saving || readOnly || !administrator}
                     aria-invalid={fieldError ? true : undefined}
                     aria-describedby={fieldError ? "organization-display-name-error" : undefined}
                     onChange={(event) => {
@@ -145,10 +172,10 @@ export function OrganizationPage({
                   ) : null}
                 </div>
                 <dl className="organization-profile__meta">
-                  <div>
+                  {!memberProps.directoryScope ? <div>
                     <dt className="organization-profile__label">组织编号</dt>
                     <dd><code className="organization-profile__id">{organization.id}</code></dd>
-                  </div>
+                  </div> : null}
                   <div>
                     <dt className="organization-profile__label">创建时间</dt>
                     <dd>

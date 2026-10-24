@@ -13,6 +13,12 @@ export const DTS_TOOLCHAIN_UNAVAILABLE_MESSAGE = "DTS 校验工具不可用，�
 
 /** Known backend English messages that deserve specific product copy. */
 const MESSAGE_LABELS: Array<{ match: RegExp; label: string | ((match: RegExpMatchArray) => string) }> = [
+  { match: /^At least one usable organization administrator must remain\./, label: "组织至少需要保留一位可登录的有效管理员。请先指定接任者；紧急离职由平台管理员从组织目录处理。" },
+  { match: /^At least one usable platform super administrator must remain\./, label: "平台至少需要保留一位可登录的平台超级管理员，请先完成平台权限交接。" },
+  { match: /^The successor needs a login identity/, label: "接任者缺少当前登录方式的身份，请先配置本地密码或 OIDC 绑定，或新建管理员。" },
+  { match: /^Only a platform super admin may change platform-admin activation\./, label: "只有平台超级管理员可以启用或停用此平台账号。" },
+  { match: /^Emergency disabling requires an active organization administrator\./, label: "该成员已停用或已不再是组织管理员，请刷新后重试。" },
+  { match: /^The initial administrator's login identity is already registered\./, label: "初始管理员的登录标识已被使用，请更换用户名或核对外部身份。" },
   { match: /^Account settings changed after registration\./, label: "账号已有后续管理调整，不能用旧申请覆盖。请关闭申请以保留现状，再直接管理成员。" },
   { match: /^OIDC identity matches another member;/, label: "该身份已关联其他成员或旧账号。请核对 Subject 和原始迁移邮箱，使用对应成员，不能合并账号。" },
   { match: /^OIDC binding changed;/, label: "身份绑定已被其他管理员修改，请刷新成员资料后重试。" },
@@ -39,6 +45,7 @@ const MESSAGE_LABELS: Array<{ match: RegExp; label: string | ((match: RegExpMatc
   { match: /^Username can only contain letters, numbers, dots, underscores, or hyphens\.?$/i, label: "用户名须为 3–64 个字符，仅限字母、数字、点、下划线和连字符。" },
   { match: /^Password must be at least 8 characters\.?$/i, label: "密码至少需要 8 个字符。" },
   { match: /^Session is not active\.?$/i, label: "登录状态已失效，请重新登录。" },
+  { match: /^Access was revoked; sign in again with a newly issued token\.?$/i, label: "个人访问已撤销，请重新登录获取新凭据。使用 OIDC 时需由身份系统签发新的令牌。" },
   { match: /^Token has expired\.?$/i, label: "登录状态已过期，请重新登录。" },
   { match: /^Release readiness could not load open conflicts\.?$/i, label: "发布就绪检查暂时不可用：冲突清单加载失败。" },
   { match: /^Release readiness could not load config set members\.?$/i, label: "发布就绪检查暂时不可用：配置集成员加载失败。" },

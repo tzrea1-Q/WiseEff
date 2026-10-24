@@ -1,4 +1,4 @@
-import type { AuthContext } from "../auth/types";
+import { knowledgeOrganizationId, type KnowledgeAccessContext as AuthContext } from "./scope";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { readCatalogDefinitionForKnowledge } from "../parameter-catalog-api/productionWire";
@@ -16,6 +16,7 @@ import type {
  */
 
 type ReferenceRow = {
+  historical_attribution?: KnowledgeParameterReferenceDto["historicalAttribution"];
   entry_id: string;
   parameter_spec_id: string;
   created_by_user_id: string | null;
@@ -64,6 +65,7 @@ const REFERENCE_SPEC_JOINS = `
 
 function toReferenceDto(row: ReferenceRow): KnowledgeLegacySpecReferenceDto {
   return {
+    historicalAttribution: row.historical_attribution,
     kind: "legacy-spec",
     specId: row.parameter_spec_id,
     propertyKey: row.property_key ?? row.parameter_spec_id,
@@ -76,6 +78,7 @@ function toReferenceDto(row: ReferenceRow): KnowledgeLegacySpecReferenceDto {
 }
 
 type DefinitionReferenceRow = {
+  historical_attribution?: KnowledgeParameterReferenceDto["historicalAttribution"];
   entry_id: string;
   definition_id: string;
   created_by_user_id: string | null;
@@ -88,6 +91,7 @@ type CatalogDefinitionReader = (
 
 function unavailableDefinitionReference(row: DefinitionReferenceRow): KnowledgeDefinitionReferenceDto {
   return {
+    historicalAttribution: row.historical_attribution,
     kind: "definition",
     definitionId: row.definition_id,
     availability: "unavailable",
@@ -113,6 +117,7 @@ async function mapDefinitionReferenceRows(
       return {
         entryId: row.entry_id,
         reference: {
+          historicalAttribution: row.historical_attribution,
           kind: "definition",
           definitionId: row.definition_id,
           availability: "current",
@@ -146,6 +151,7 @@ export async function loadParameterReferencesByEntryIds(
     `
     select
       r.entry_id,
+      r.historical_attribution,
       r.parameter_spec_id,
       r.created_by_user_id,
       r.created_at,
@@ -157,17 +163,17 @@ export async function loadParameterReferencesByEntryIds(
       and r.entry_id = any($2::uuid[])
     order by r.created_at asc, r.parameter_spec_id asc
     `,
-    [auth.organization.id, entryIds]
+    [knowledgeOrganizationId(auth), entryIds]
     ),
     db.query<DefinitionReferenceRow>(
       `
-      select entry_id, definition_id, created_by_user_id, created_at
+      select entry_id, definition_id, created_by_user_id, created_at, historical_attribution
       from knowledge_definition_references
       where organization_id = $1
         and entry_id = any($2::uuid[])
       order by created_at asc, definition_id asc
       `,
-      [auth.organization.id, entryIds]
+      [knowledgeOrganizationId(auth), entryIds]
     )
   ]);
 
@@ -247,7 +253,7 @@ export async function hasParameterReference(
       and parameter_spec_id = $3
     limit 1
     `,
-    [auth.organization.id, input.entryId, input.specId]
+    [knowledgeOrganizationId(auth), input.entryId, input.specId]
   );
   return result.rows.length > 0;
 }
@@ -266,7 +272,7 @@ export async function hasDefinitionReference(
       and definition_id = $3
     limit 1
     `,
-    [auth.organization.id, input.entryId, input.definitionId]
+    [knowledgeOrganizationId(auth), input.entryId, input.definitionId]
   );
   return result.rows.length > 0;
 }
@@ -283,7 +289,7 @@ export async function deleteParameterReference(
       and entry_id = $2
       and parameter_spec_id = $3
     `,
-    [auth.organization.id, input.entryId, input.specId]
+    [knowledgeOrganizationId(auth), input.entryId, input.specId]
   );
   return (result.rowCount ?? 0) > 0;
 }
@@ -300,7 +306,7 @@ export async function insertDefinitionReference(
     values ($1, $2, $3, $4, $5)
     on conflict (entry_id, definition_id) do nothing
     `,
-    [input.id, auth.organization.id, input.entryId, input.definitionId, auth.user.id]
+    [input.id, knowledgeOrganizationId(auth), input.entryId, input.definitionId, auth.user.id]
   );
   return (result.rowCount ?? 0) > 0;
 }
@@ -317,7 +323,7 @@ export async function deleteDefinitionReference(
       and entry_id = $2
       and definition_id = $3
     `,
-    [auth.organization.id, input.entryId, input.definitionId]
+    [knowledgeOrganizationId(auth), input.entryId, input.definitionId]
   );
   return (result.rowCount ?? 0) > 0;
 }
@@ -335,7 +341,7 @@ export async function countParameterReferencesForEntry(
       (select count(*) from knowledge_definition_references where organization_id = $1 and entry_id = $2)
     )::int as reference_count
     `,
-    [auth.organization.id, entryId]
+    [knowledgeOrganizationId(auth), entryId]
   );
   return Number(result.rows[0]?.reference_count ?? 0);
 }
@@ -378,7 +384,7 @@ export async function listPublishedEntriesReferencingSpec(
     order by e.updated_at desc, e.id desc
     limit $3
     `,
-    [auth.organization.id, input.specId, input.limit ?? 20]
+    [knowledgeOrganizationId(auth), input.specId, input.limit ?? 20]
   );
 
   return result.rows.map((row) => ({
@@ -410,7 +416,7 @@ export async function listPublishedEntriesReferencingDefinition(
     order by e.updated_at desc, e.id desc
     limit $3
     `,
-    [auth.organization.id, input.definitionId, input.limit ?? 20]
+    [knowledgeOrganizationId(auth), input.definitionId, input.limit ?? 20]
   );
 
   return result.rows.map((row) => ({
@@ -442,7 +448,7 @@ async function mapLoadedReferenceRows(
       client: db as never,
       legacyType: "parameter-spec",
       legacyId: row.parameter_spec_id,
-      organizationId: auth.organization.id
+      organizationId: knowledgeOrganizationId(auth)
     });
     if (outcome.kind === "archived") {
       historicalOnly = true;

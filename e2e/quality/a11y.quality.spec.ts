@@ -127,7 +127,7 @@ test.describe("M5.11 accessibility quality gate", () => {
     test(`has no WCAG A/AA violations on ${route}${theme === "dark" ? " (dark)" : ""}`, async ({ page }, testInfo) => {
       const populatedReview = route === "/parameter-review" && visualReviewFixtureAllowed();
       if (populatedReview) {
-        await signInBrowserAsRole(page, "software-committer", route);
+        await signInBrowserAsRole(page, "software-committer", `${route}?project=aurora`);
       } else {
         await test.step("quality:navigation", () => page.goto(route));
       }

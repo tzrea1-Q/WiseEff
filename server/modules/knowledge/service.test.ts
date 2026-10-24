@@ -4,10 +4,10 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../auth/types";
-import type { ObjectStore } from "../logs/objectStore";
+import { planObjectStorageKey, type ObjectStore } from "../logs/objectStore";
 import { ApiError } from "../../shared/http/errors";
-import type { InMemoryTestDatabase } from "../../testing/testDatabase";
-import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { createPostgresDatabase, type RootDatabase } from "../../shared/database/client";
+import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { createDefaultKnowledgeTextExtractor } from "./extraction";
 import {
   archiveKnowledgeEntry,
@@ -57,6 +57,7 @@ function createFakeObjectStore(): ObjectStore & { objects: Map<string, Buffer> }
   const objects = new Map<string, Buffer>();
   return {
     objects,
+    planKey: planObjectStorageKey,
     async put(input) {
       const checksum = createHash("sha256").update(input.bytes).digest("hex");
       const storageKey = `${input.organizationId}/${checksum}-${input.fileName}`;
@@ -79,7 +80,7 @@ function createFakeObjectStore(): ObjectStore & { objects: Map<string, Buffer> }
 
 const extractor = createDefaultKnowledgeTextExtractor();
 
-async function seedUsers(db: InMemoryTestDatabase) {
+async function seedUsers(db: RootDatabase) {
   for (const [orgId, name] of [
     [ORG_ID, "KB Service Org"],
     [OTHER_ORG_ID, "KB Other Org"]
@@ -116,7 +117,7 @@ function markdownInput(overrides: Partial<{ title: string; tags: string[]; conte
   };
 }
 
-async function listAuditEvents(db: InMemoryTestDatabase, entryId: string) {
+async function listAuditEvents(db: RootDatabase, entryId: string) {
   const result = await db.query<{ kind: string; action: string; severity: string; trace_id: string; metadata: Record<string, unknown> }>(
     `select kind, action, severity, trace_id, metadata from audit_events where organization_id = $1 and target_id = $2 order by created_at asc, kind asc`,
     [ORG_ID, entryId]
@@ -125,17 +126,19 @@ async function listAuditEvents(db: InMemoryTestDatabase, entryId: string) {
 }
 
 describe.skipIf(!databaseAvailable)("knowledge service", () => {
-  let db: InMemoryTestDatabase;
+  let db: RootDatabase;
+  let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>>;
   let objectStore: ReturnType<typeof createFakeObjectStore>;
 
   beforeEach(async () => {
-    db = await createInMemoryTestDatabase();
+    database = await createEphemeralTestDatabase("knowledgeservice");
+    db = createPostgresDatabase(database.url);
     objectStore = createFakeObjectStore();
     await seedUsers(db);
   });
 
   afterEach(async () => {
-    await db.rollback();
+    await db.close(); await database.drop();
   });
 
   it("creates a markdown draft with revision 1, audit evidence, and owner attribution", async () => {
@@ -440,7 +443,7 @@ describe.skipIf(!databaseAvailable)("knowledge service", () => {
       expect(archived.archivedAt).not.toBeNull();
       await expect(archiveKnowledgeEntry(db, auth, entry.id)).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
       const audits = await listAuditEvents(db, entry.id);
-      expect(audits.map((event) => event.kind)).toEqual(["knowledge-entry-archive", "knowledge-entry-create"]);
+      expect(audits.map((event) => event.kind)).toEqual(["knowledge-entry-create", "knowledge-entry-archive"]);
     }
   });
 

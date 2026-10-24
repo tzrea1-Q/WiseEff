@@ -37,6 +37,16 @@ function toOpenApiMethod(method: string): OpenApiMethod {
 }
 
 describe("M5 OpenAPI contract", () => {
+  it("documents fixed organization scope without scoping shared Catalog deletion or retired commands", () => {
+    for (const routeId of ["organization.teams.list", "organization.teams.delete", "parameters.admin.createProject", "parameterFiles.listFiles", "parameterTopology.listBindings",
+      "parameterSpecs.listReviewTasks", "logs.upload", "jobs.events", "catalog.getDefinition", "catalog.updatePlacement"]) {
+      expect(schemaRegistry[routeId].requestParameters?.filter((parameter) => parameter.in === "query" && parameter.name === "organizationId")).toHaveLength(1);
+    }
+    for (const routeId of ["catalog.get", "catalog.previewDefinitionDeletion", "catalog.deleteDefinition", "parameterTopology.resolveIdentityMappingTask"]) {
+      expect(schemaRegistry[routeId].requestParameters?.some((parameter) => parameter.in === "query" && parameter.name === "organizationId") ?? false).toBe(false);
+    }
+  });
+
   it("publishes feedback owner replies, assignment choices, opaque pagination and private/admin response separation", () => {
     const document = buildOpenApiDocument();
     expect(document.paths["/api/v1/product-feedback/assignees"]?.get?.responses["200"]).toMatchObject({
@@ -370,7 +380,8 @@ describe("M5 OpenAPI contract", () => {
     const operation = document.paths["/api/v1/agent/xiaoze/threads/{threadId}"]?.patch;
 
     expect(operation?.parameters).toEqual([
-      { name: "threadId", in: "path", required: true, schema: { type: "string" } }
+      { name: "threadId", in: "path", required: true, schema: { type: "string" } },
+      expect.objectContaining({ name: "organizationId", in: "query", schema: { type: "string" } })
     ]);
   });
 

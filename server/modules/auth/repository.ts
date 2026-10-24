@@ -8,13 +8,15 @@ type AuthRow = {
   user_id: string;
   organization_id: string;
   organization_name: string;
+  organization_status: "active" | "suspended";
   name: string;
   email: string | null;
   username: string | null;
   title: string;
   is_active: boolean;
+  external_tokens_revoked_at: Date | string | null;
   project_id: string | null;
-  role_id: BackendRoleId;
+  role_id: BackendRoleId | null;
 };
 
 const authContextSelect = `
@@ -22,20 +24,22 @@ const authContextSelect = `
       users.id as user_id,
       users.organization_id,
       organizations.name as organization_name,
+      organizations.status as organization_status,
       users.name,
       users.email,
       user_password_credentials.username,
       users.title,
       users.is_active,
+      users.external_tokens_revoked_at,
       user_role_bindings.project_id,
       user_role_bindings.role_id
     from users
     join organizations on organizations.id = users.organization_id
-    join user_role_bindings on user_role_bindings.user_id = users.id
+    left join user_role_bindings on user_role_bindings.user_id = users.id
     left join user_password_credentials on user_password_credentials.user_id = users.id
 `;
 
-function authContextFromRows(rows: AuthRow[]) {
+function authContextFromRows(rows: AuthRow[], externalToken?: { issuedAt?: number }) {
   if (rows.length === 0) {
     throw new ApiError("UNAUTHENTICATED", "User is not authenticated.");
   }
@@ -43,6 +47,10 @@ function authContextFromRows(rows: AuthRow[]) {
   const first = rows[0];
   if (!first.is_active) {
     throw new ApiError("FORBIDDEN", "User is inactive.");
+  }
+  if (externalToken && first.external_tokens_revoked_at && (externalToken.issuedAt === undefined ||
+    externalToken.issuedAt * 1000 <= new Date(first.external_tokens_revoked_at).getTime())) {
+    throw new ApiError("UNAUTHENTICATED", "Access was revoked; sign in again with a newly issued token.");
   }
 
   const knownRoleIds = new Set<BackendRoleId>([
@@ -55,8 +63,7 @@ function authContextFromRows(rows: AuthRow[]) {
     "platform-admin"
   ]);
   const roles = rows
-    .filter((row) => knownRoleIds.has(row.role_id))
-    .map((row) => ({ projectId: row.project_id, roleId: row.role_id }))
+    .flatMap((row) => row.role_id && knownRoleIds.has(row.role_id) ? [{ projectId: row.project_id, roleId: row.role_id }] : [])
     .sort((left, right) => compareRoles(right.roleId, left.roleId));
 
   return {
@@ -71,10 +78,12 @@ function authContextFromRows(rows: AuthRow[]) {
     },
     organization: {
       id: first.organization_id,
-      name: first.organization_name
+      name: first.organization_name,
+      ...(first.organization_status === "suspended" ? { status: "suspended" as const } : {})
     },
     roles,
     permissions: uniquePermissions([
+      "parameter:view",
       ...permissionsForRoles(roles.map((role) => role.roleId)),
       ...catalogTestCapabilitiesForUser(first.user_id)
     ])
@@ -118,16 +127,19 @@ async function withCatalogCapabilityGrants(
   context: AuthContext
 ): Promise<AuthContext> {
   const grants = await loadCatalogCapabilityGrants(db, userId);
-  if (grants.length === 0) {
-    return context;
-  }
+  const projectMemberships = (await db.query<NonNullable<AuthContext["projectMemberships"]>[number]>(
+    'select project_id as "projectId", roles from project_members where user_id=$1 and organization_id=$2 order by project_id',
+    [userId, context.organization.id])).rows;
+  const editGrants: BackendPermission[] = projectMemberships.length ? ["parameter:edit"] : [];
+  if (projectMemberships.some((member) => member.roles.some((role) => role === "hardware-committer" || role === "software-committer"))) editGrants.push("parameter:edit-critical");
   return {
     ...context,
-    permissions: uniquePermissions([...context.permissions, ...grants])
+    projectMemberships,
+    permissions: uniquePermissions([...context.permissions, ...grants, ...editGrants])
   };
 }
 
-export async function getAuthContext(db: Queryable, userId: string): Promise<AuthContext> {
+export async function getAuthContext(db: Queryable, userId: string, externalToken?: { issuedAt?: number }): Promise<AuthContext> {
   const result = await db.query<AuthRow>(
     `
     ${authContextSelect}
@@ -137,22 +149,22 @@ export async function getAuthContext(db: Queryable, userId: string): Promise<Aut
     [userId]
   );
 
-  return withCatalogCapabilityGrants(db, userId, authContextFromRows(result.rows));
+  return withCatalogCapabilityGrants(db, userId, authContextFromRows(result.rows, externalToken));
 }
 
 export async function getAuthContextForExternalIdentity(
   db: Queryable,
-  input: { organizationId: string; subject: string; email?: string; issuer?: string }
+  input: { organizationId: string; subject: string; email?: string; issuer?: string; issuedAt?: number }
 ): Promise<AuthContext> {
   if (input.issuer) {
     const explicit = await db.query<{ user_id: string }>("select user_id from public.user_oidc_identities where organization_id=$1 and issuer=$2 and subject=$3", [input.organizationId,input.issuer,input.subject]);
-    if (explicit.rows[0]) return getAuthContext(db, explicit.rows[0].user_id);
+    if (explicit.rows[0]) return getAuthContext(db, explicit.rows[0].user_id, { issuedAt: input.issuedAt });
     const legacy = await db.query<{ user_id: string }>(`
       select user_id from public.user_oidc_identities where organization_id=$1 and issuer is null and legacy_subject=true
         and (user_id=$2 or ($3::text is not null and legacy_email=lower($3)))
     `, [input.organizationId,input.subject,input.email ?? null]);
     if (legacy.rows.length !== 1) throw new ApiError("UNAUTHENTICATED", "OIDC identity has no unambiguous member binding; contact an administrator.");
-    return getAuthContext(db, legacy.rows[0].user_id);
+    return getAuthContext(db, legacy.rows[0].user_id, { issuedAt: input.issuedAt });
   }
   const subjectResult = await db.query<AuthRow>(
     `
@@ -166,7 +178,7 @@ export async function getAuthContextForExternalIdentity(
     return withCatalogCapabilityGrants(
       db,
       subjectResult.rows[0].user_id,
-      authContextFromRows(subjectResult.rows)
+      authContextFromRows(subjectResult.rows, { issuedAt: input.issuedAt })
     );
   }
 
@@ -186,6 +198,6 @@ export async function getAuthContextForExternalIdentity(
   return withCatalogCapabilityGrants(
     db,
     emailResult.rows[0]?.user_id ?? "",
-    authContextFromRows(emailResult.rows)
+    authContextFromRows(emailResult.rows, { issuedAt: input.issuedAt })
   );
 }

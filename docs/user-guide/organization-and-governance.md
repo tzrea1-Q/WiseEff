@@ -4,11 +4,19 @@
 
 ## Who can do this
 
-Organization Admins (`admin`) and Platform Admins (`platform-admin`) can manage their home Organization and use business consoles within their permissions. Changing member details or the Organization name requires `users:manage`; using Audit center and Feedback management requires `admin:access`. Each business console also checks its own permissions and resource scope. Active, signed-in users, including guests, can send product feedback and view their own feedback.
+Organization Admins (`admin`) manage their home Organization. Platform Admins (`platform-admin`) can explicitly enter another Organization while keeping their own account and home Organization. Changing member details or the operating Organization's name requires `users:manage`; using Audit center and Feedback management requires `admin:access`. Each business console also checks its own permissions and resource scope. Active, signed-in users, including guests, can send product feedback and view their own feedback.
 
 The other roles are guest, hardware user, software user, hardware committer, and software committer. See [Account and access](account-and-access.md) for registration, password tasks, and access requests. Admin consoles are not the entry point for requesting access.
 
-An Organization represents a company or deployment customer. Departments such as hardware and software do not form separate Organizations. Organization administration manages only your home Organization; it does not create, list, or switch Organizations. Members still need project access separately. Platform Admins cannot freely access other Organizations' business data, but they can review pending registration requests across Organizations.
+An Organization is an independent collaboration and data space. Use Teams for hardware/software groups within that space. Every account belongs to one home Organization. The operating Organization shown on the page controls business requests; choosing an identifier alone grants no access. Project participation, review duties and human approval for Agent/device writes remain independent.
+
+## Create and enter an Organization
+
+Platform administrators open **Organization management** to reach the directory (`/platform/organizations`). Search by name or identifier, or select **Create organization** and provide the initial administrator's identity. On a local deployment, supply a username and initial password; an OIDC deployment requires an explicit provider subject. Confirm creation, then check the resulting Organization and administrator before sharing their sign-in details.
+
+Select **View**, then **Enter organization**. The workspace provides Overview, Members and permissions, Teams, Project participation, Resources and Settings. Check **Current operating organization** before changing data. Each tab keeps its own target; **Organization directory** returns to the directory and **Return to home organization** ends the selected scope. Your profile, password and sessions continue to belong to your real account.
+
+Use **Resources** to open the existing parameter, knowledge, log, device-pairing and integration-credential consoles in the displayed scope. Resource links do not grant additional access. Ordinary members continue to use their home Organization without a scope selector.
 
 ## Maintain your Organization and members
 
@@ -20,11 +28,33 @@ An Organization represents a company or deployment customer. Departments such as
 
 An Organization Admin cannot grant or revoke the Platform Admin role or manage a Platform Admin account through the protected row controls. Only a Platform Admin can perform those privileged operations. You cannot disable or delete your own signed-in account, or remove your own final Admin capability.
 
-If you only need to stop access, disable the account. Delete user is permanent and removes the account's roles, credentials, sessions and temporary data. Retained business and audit history remains, with attribution to the deleted user where applicable. Read the confirmation before proceeding. For password resets, use [Reset a member's local password](account-and-access.md#reset-a-members-local-password).
+If you only need to stop access, disable the account. This immediately revokes personal sessions, credentials and device pairings; handover can follow. Delete user permanently removes the account and personal access, while unfinished business, drafts and historical authorship stay in the original Organization for handover. Organization machine credentials remain independent of their creator. Permanent Organization erasure is a separate operation that also removes that Organization's business history. For password resets, use [Reset a member's local password](account-and-access.md#reset-a-members-local-password).
+
+## Invite a collaborator
+
+In Members and permissions, open **Manage invitations**, then **Create invitation**. Choose the Organization roles, preset Teams, projects and each project's editing roles. Generate and copy the one-time link; the recipient checks the offer and sets their own local username and password. The accepted account receives the valid presets together. See [Accept an invitation](account-and-access.md#accept-an-invitation) for the recipient steps.
+
+Check pending, accepted, revoked and expired states in the invitation list. Regenerating a link invalidates its previous version. If a preset or the inviter's authority is no longer valid, acceptance stops without creating a partial account: correct the offer and regenerate it. An invitation never moves an existing account between Organizations or lets an Organization administrator grant Platform Admin.
 
 ![Organization member management with seeded accounts](images/organization-and-governance-members.png)
 
 *Seeded member management as an Organization Admin; no role or account is changed.*
+
+## Manage project participation
+
+In **Manage invitations**, select Organization roles, Teams, projects and the editing roles for each project before generating the one-time link. The invitation list and recipient preview show the complete offer. Acceptance applies all current grants together. If a Team or project was deleted or moved, or the sender lost authority, acceptance creates no account: an administrator must correct the preset and regenerate the link. Regeneration invalidates the old link. Teams do not confer project access, and project editing roles do not grant independent review or merge duties.
+
+Open **Project participation** (`/organization/projects`) and choose a project. Use **Add participant** or **Modify** to select a member and editing roles. Clearing the roles and saving removes participation. Disabled accounts stay marked and are never activated by changing participation. Platform administrators can use the target Organization shown on the page; each tab keeps its own target.
+
+Use **Bulk grant project roles** to select a Team, choose concrete members and preview their existing and proposed roles. Grants add roles while preserving existing ones; disabled or unavailable members are marked and skipped. Each person is saved separately, so a failed operation does not undo other successful grants. Review the per-person results and **Recheck unfinished items** before retrying. Later Team membership changes neither inherit nor withdraw these individual grants.
+
+Organization members can view projects. Editing requires participation and an editing role in that project; committer editing roles can edit critical parameters there. Organization and platform administrators manage directly. Review, merge and device duties remain separate and are not granted by editing roles. Existing editing eligibility is migrated once; organization business roles do not grant implicit access to future projects.
+
+## Group members into teams
+
+Open **Teams** (`/organization/teams`) in the current Organization workspace. Administrators can create, rename and delete flat teams. Choose **Manage members** to select several members, select all, or clear the selection, then save. A member may belong to several teams; disabled members remain identifiable in the selector. The team list shows its members, and the member directory and member details show team membership.
+
+Teams only group people. Membership changes grant no project permissions. Deleting a team removes its grouping relationships while retaining member accounts, projects and individually configured roles. Platform administrators can use the same page after explicitly entering the target Organization; the operation remains attributed to their real account.
 
 ## Decide a Committer registration request
 
@@ -41,7 +71,7 @@ Processing history and notifications record the roles and ability to sign in at 
 
 ## Find who changed what, when and why
 
-Open Audit center (`/audit`) to search parameter, log, debugging, Agent and user-governance events. The available records are limited to your Organization.
+Open Audit center (`/audit`) to search parameter, log, debugging, Agent and user-governance events within the displayed operating Organization. A platform administrator's cross-Organization action retains that administrator as its actor.
 
 1. Search for the operation, actor or event type. Narrow by business module, project, time window and severity; the project filter is available when projects are listed.
 2. Select an event. Check the actor, occurrence time, operation and target. Review the change summary, before/after values and reason when available; some events do not include these details.
@@ -68,6 +98,34 @@ Organization management and Organization-scoped parameter governance have differ
 For parameter modules, open Module management (`/parameter-admin/modules`), expand the tree and check the parent before adding a root or child module. Use the available edit, rename and move controls to adjust the hierarchy. Inspect registered Catalog subjects through their placement controls; changing a classification does not create a new definition. Ordinary modules can be deleted only when they have no children, parameter references or Catalog placements. Read driver-group dissolution warnings separately; do not treat this as deleting an empty category.
 
 For debugging modules, open Debugging admin's Node debugging area (`/debugging-admin/nodes`) and Module management. Add roots or children, rename, or move modules to an allowed parent. Delete only modules without children or node references. The parameter and debugging trees are maintained separately: changing one does not reorganize the other.
+
+## Suspend and restore an Organization
+
+Platform administrators can open an Organization's details in **Organization directory** and confirm **Suspend organization** or **Restore organization**. Suspension preserves member read access and business history. New changes, invitations and public registrations, machine integration calls, queued task claims, outgoing callbacks and device operations pause. Personal profiles, password/session management and sign-out remain available. The Organization workspace shows its suspended state; platform administrators can still restore administration and assign handovers.
+
+Analysis and indexing already in progress can save their results. Device operations already dispatched retain their actual outcome; suspension does not claim to undo them. Restoring an Organization rechecks queued work against current data and configuration. It keeps individually disabled members and revoked credentials disabled, and previous device approvals or reload deployment intents must be requested again.
+
+## Continue business work after departure
+
+Open **Business handover** from Organization → Members (`/organization/handovers`) to continue Knowledge drafts, unfinished import batches, feedback drafts and open feedback responsibilities after a member leaves. These remain in their original Organization after disabling, deleting or transferring a member. The default list shows work with no currently eligible responsible person; clear the filter to inspect all unfinished work.
+
+The same page lists project parameter/value and node drafts, unsubmitted source candidates, initialization drafts, and outstanding hardware review, software review and merge duties. Assign work to a currently qualified member, explicitly leave it pending, or claim a draft as the real administrator and continue it. Existing competing drafts are never overwritten. Project participation and review duties remain separate: handover grants neither. Initialization continues in its retained draft; parameter and source editing resume in their existing workbenches. Original authors, Agent provenance and completed review signatures remain unchanged; assignment checks the latest work version and rolls back if its audit cannot commit.
+
+Administrators can continue pending work immediately or assign a successor: an active Organization knowledge editor for knowledge, an active member for feedback drafts, and an active administrator for submitted feedback triage. Leaving work unassigned keeps it pending and available to administrators. Assignment never submits a draft or changes original creators and historical signatures. Analysis-skill drafts remain editable in skill administration. Organization machine credentials remain independent; personal passwords, sessions, private Agent conversations and pairings never transfer.
+
+## Transfer an account
+
+A platform administrator opens the member's row menu and chooses **Transfer to another organization**. Select the target and its explicit roles, then **Preview impact**. Check source responsibilities, drafts, identity conflicts and credential revocation before confirming. Normal changes must leave an active Organization administrator; emergency administrator recovery is a separate platform action.
+
+Transfer keeps the account identifier and local username, clears the source Organization's roles, Team membership and project grants, and revokes old personal sessions and pairings. Source work and historical signatures stay in the source Organization. Assign successors there; the destination's roles do not grant access back to that work. Local users sign in again. OIDC users remain marked **Waiting for identity-system synchronization** until a fresh login has the target Organization claim and the correct explicit binding. The member details show the target and **Refresh synchronization result**; a failed check remains retryable. See [After an account transfer](account-and-access.md#after-an-account-transfer).
+
+## Permanently erase an Organization
+
+Only a platform administrator can start erasure. Move any accounts that must survive into another Organization first, including platform accounts whose home would otherwise be deleted. In the directory, open the Organization's details and **Deletion impact**, inspect the actual affected data and shared-retention notices, then **Start permanent deletion**. Enter the displayed Organization identifier to confirm this irreversible operation.
+
+Accepted erasure stops new use and new producers immediately. **Cleanup records** remains available independently of the Organization and its members. It shows each domain's progress and failures; after a process or storage fault, reopen that record and choose **Continue cleanup**. Completed domains remain complete. A failure is not a completed deletion, and restarting or recreating the Organization is not a retry procedure. Only the final **Deleted** result confirms convergence; the final receipt retains the approved minimal actor, target, time, counts and result rather than business content.
+
+Other Organizations' data, shared Catalog history and references still needed elsewhere remain protected. Erasure cannot recall a callback already sent or promise immediate removal from retained backups. Before restoring an older backup, operations must preserve the latest deletion state and replay it against the isolated restored stores before reopening traffic or workers. Follow [Backup and restore](../runbooks/backup-restore.md#organization-deletion-replay); do not re-enable restored accounts or edit deletion rows as a shortcut.
 
 ## Send product feedback with screenshots
 

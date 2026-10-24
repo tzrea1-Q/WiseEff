@@ -1,9 +1,10 @@
+import { organizationId as logOrganizationId, type LogAccessContext } from "./principal";
 import { randomUUID } from "node:crypto";
+import { admittedLogTestDatabase } from "./admittedCompletion";
 import { Readable } from "node:stream";
 import { compileSkillFiles } from "../../../src/domain/logs/fileApplicability";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import type { AuthContext } from "../auth/types";
 import { logTraceStepSchema, logDryRunReportSchema, logSkillDryRunSchema } from "../contracts/dtoSchemas/logs";
 import { genericSignalRuleSet, type AnalyzeLogInput, type LogAnalysisAdapter } from "./analyzer";
 import { requireLogAdminDomains } from "./policy";
@@ -43,33 +44,33 @@ function withSampleContents(store: ObjectStore, contents: Map<string, Buffer>): 
     }
   };
 }
-function requireAdmin(auth: AuthContext) {
+function requireAdmin(auth: LogAccessContext) {
   requireLogAdminDomains(auth);
   if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "无权访问此组织的日志。");
 }
-export async function getLogTrace(db: Database, auth: AuthContext, logId: string) {
+export async function getLogTrace(db: Database, auth: LogAccessContext, logId: string) {
   requireAdmin(auth);
   // Preserve the record's related-parameter visibility boundary as well as tenancy.
   await getLogRecord(db, auth, logId);
-  const row = (await db.query<{ current_run_id: string }>("select current_run_id from log_records where organization_id = $1 and id = $2", [auth.organization.id, logId])).rows[0];
-  return { steps: row?.current_run_id ? await readLogTraceSteps(db, auth.organization.id, { runId: row.current_run_id }) : [] };
+  const row = (await db.query<{ current_run_id: string }>("select current_run_id from log_records where organization_id = $1 and id = $2", [logOrganizationId(auth), logId])).rows[0];
+  return { steps: row?.current_run_id ? await readLogTraceSteps(db, logOrganizationId(auth), { runId: row.current_run_id }) : [] };
 }
-export async function getSkillDryRun(db: Database, auth: AuthContext, skillId: string, id: string) {
+export async function getSkillDryRun(db: Database, auth: LogAccessContext, skillId: string, id: string) {
   requireAdmin(auth);
-  await recoverInterruptedDryRuns(db, auth.organization.id);
+  await recoverInterruptedDryRuns(db, logOrganizationId(auth));
   const row = (await db.query<DryRun>(`select id, skill_revision_id as "skillRevisionId", status, progress, report, error, created_at as "createdAt"
-    from log_skill_dry_runs where organization_id = $1 and skill_id = $2 and id = $3`, [auth.organization.id, skillId, id])).rows[0];
+    from log_skill_dry_runs where organization_id = $1 and skill_id = $2 and id = $3`, [logOrganizationId(auth), skillId, id])).rows[0];
   if (!row) throw new ApiError("NOT_FOUND", "试运行记录不存在。");
   const run = logSkillDryRunSchema.parse({ ...row, createdAt: new Date(row.createdAt).toISOString() });
-  return { run, steps: await readLogTraceSteps(db, auth.organization.id, { dryRunId: id }) };
+  return { run, steps: await readLogTraceSteps(db, logOrganizationId(auth), { dryRunId: id }) };
 }
-export async function getSkillDryRunLines(db: Database, store: ObjectStore, auth: AuthContext, skillId: string, id: string,
+export async function getSkillDryRunLines(db: Database, store: ObjectStore, auth: LogAccessContext, skillId: string, id: string,
   input: { file: string; startLine: number; endLine: number }) {
   requireAdmin(auth);
   const range = logLineRangeQuerySchema.safeParse(input);
   if (!range.success) throw new ApiError("VALIDATION_FAILED", "每次最多查看 400 行日志（含起止行）。");
   const row = (await db.query<{ sample_file_name: string; sample_object_key: string }>(`select sample_file_name, sample_object_key from log_skill_dry_runs
-    where organization_id = $1 and skill_id = $2 and id = $3`, [auth.organization.id, skillId, id])).rows[0];
+    where organization_id = $1 and skill_id = $2 and id = $3`, [logOrganizationId(auth), skillId, id])).rows[0];
   if (!row) throw new ApiError("NOT_FOUND", "试运行样本不存在。");
   const bundle = await readStoredSkillSampleBundle(store, row.sample_file_name, row.sample_object_key);
   const file = bundle?.find((file) => file.path === input.file && file.status === "analyzed");
@@ -87,7 +88,7 @@ export async function getSkillDryRunLines(db: Database, store: ObjectStore, auth
 
 /** Admission is serialized in PostgreSQL; execution shares the configured read-only analyzer. */
 export async function startSkillDryRun(db: Database, store: ObjectStore, analyzer: LogAnalysisAdapter,
-  auth: AuthContext, skillId: string) {
+  auth: LogAccessContext, skillId: string) {
   requireAdmin(auth);
   const timeoutMs = Math.min(LOG_DRY_RUN_TIMEOUT_MS, logJobLimits().maxJobMs);
   const owner = await acquireDryRunOwner(db);
@@ -95,28 +96,28 @@ export async function startSkillDryRun(db: Database, store: ObjectStore, analyze
     const admitted = await owner.db.transaction(async (tx) => {
       // One transaction lock covers counts and insertion across all API instances.
       await tx.query("select pg_advisory_xact_lock($1)", [LOG_DRY_RUN_ADMISSION_LOCK]);
-      await lockSkill(tx, auth.organization.id, skillId);
+      await lockSkill(tx, logOrganizationId(auth), skillId);
       await recoverInterruptedDryRuns(tx);
-      await assertDryRunCapacity(tx, auth.organization.id);
-      const draft = (await listSkillRevisions(tx, auth.organization.id, skillId)).find((revision) => revision.status === "draft");
+      await assertDryRunCapacity(tx, logOrganizationId(auth));
+      const draft = (await listSkillRevisions(tx, logOrganizationId(auth), skillId)).find((revision) => revision.status === "draft");
       if (!draft) throw new ApiError("CONFLICT", "请先保存草稿，再开始试运行。");
       const sample = (await tx.query<{ object_key: string; file_name: string; size_bytes: string; line_count: number; name: string; description: string | null }>(
         `select sample.object_key, sample.file_name, sample.size_bytes, sample.line_count, skill.name, skill.description from log_skill_samples sample
           join log_domains skill on skill.id = sample.skill_id and skill.organization_id = sample.organization_id
-          where sample.organization_id = $1 and sample.skill_id = $2`, [auth.organization.id, skillId])).rows[0];
+          where sample.organization_id = $1 and sample.skill_id = $2`, [logOrganizationId(auth), skillId])).rows[0];
       if (!sample) throw new ApiError("CONFLICT", "请先上传样本，再开始试运行。");
       const id = randomUUID();
       await tx.query(`insert into log_skill_dry_runs (id, organization_id, skill_id, skill_revision_id, status, deadline_at, sample_file_name, sample_object_key, owner_pid, owner_key)
-        values ($1, $2, $3, $4, 'processing', now() + $5 * interval '1 millisecond', $6, $7, $8, $9)`, [id, auth.organization.id, skillId, draft.id, timeoutMs, sample.file_name, sample.object_key, owner.pid, owner.key]);
+        values ($1, $2, $3, $4, 'processing', now() + $5 * interval '1 millisecond', $6, $7, $8, $9)`, [id, logOrganizationId(auth), skillId, draft.id, timeoutMs, sample.file_name, sample.object_key, owner.pid, owner.key]);
       // Cascading trace deletion bounds retained history without touching user logs.
       await tx.query(`delete from log_skill_dry_runs where organization_id = $1 and skill_id = $2 and id in
         (select id from log_skill_dry_runs where organization_id = $1 and skill_id = $2 order by created_at desc, id desc offset $3)`,
-      [auth.organization.id, skillId, LOG_DRY_RUN_KEEP]);
+      [logOrganizationId(auth), skillId, LOG_DRY_RUN_KEEP]);
       return { id, spec: draft.spec, sample };
     });
     const initial = await getSkillDryRun(owner.db, auth, skillId, admitted.id);
     if (initial.run.status !== "processing") { await owner.close(); return { run: initial.run }; }
-    void executeDryRun(db, store, analyzer, auth.organization.id, skillId, admitted, timeoutMs, owner);
+    void executeDryRun(db, store, analyzer, logOrganizationId(auth), skillId, admitted, timeoutMs, owner);
     return { run: initial.run };
   } catch (error) { await owner.close(); throw error; }
 }
@@ -124,6 +125,7 @@ export async function startSkillDryRun(db: Database, store: ObjectStore, analyze
 async function executeDryRun(db: Database, store: ObjectStore, analyzer: LogAnalysisAdapter, organizationId: string, skillId: string,
   admitted: { id: string; spec: LogSkillSpec; sample: { object_key: string; file_name: string; size_bytes: string; line_count: number; name: string; description: string | null } }, timeoutMs: number,
   owner: Awaited<ReturnType<typeof acquireDryRunOwner>>) {
+  db = admittedLogTestDatabase(db, { kind: "dry-run", organizationId, id: admitted.id, ownerKey: owner.key });
   activeWork.set(admitted.id, organizationId);
   const controller = new AbortController();
   const onOwnerLost = () => controller.abort();

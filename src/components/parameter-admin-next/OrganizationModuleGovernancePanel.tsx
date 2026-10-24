@@ -11,11 +11,13 @@ import type { ParameterCatalogGovernanceRepository } from "@/application/ports/P
 import { ParameterModuleMappingPanel } from "@/components/parameter-topology/ParameterModuleMappingPanel";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdminRecentAudits";
+import type { ApiClient } from "@/infrastructure/http/apiClient";
 
 /**
  * Organization-scoped module tree + driver mapping, composed over the admin facade.
  */
 export function OrganizationModuleGovernancePanel({
+  apiClient,
   pathname = "/parameter-admin/modules",
   search = "",
   onNavigate,
@@ -27,6 +29,7 @@ export function OrganizationModuleGovernancePanel({
   canonicalEnabled = false,
   projects = []
 }: {
+  apiClient?: ApiClient;
   pathname?: string;
   search?: string;
   onNavigate?: (path: string, options?: { replace?: boolean }) => void;
@@ -39,7 +42,7 @@ export function OrganizationModuleGovernancePanel({
   projects?: readonly Project[];
 }) {
   const { application } = useParameterAdmin();
-  const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
+  const refreshRecentAudits = useRefreshParameterAdminRecentAudits(apiClient);
   const canManageTaxonomy = !canonicalEnabled || (actor !== "agent" && Boolean(sessionPermissions?.includes("admin:access")));
 
   const repository = useMemo((): ParameterModuleRegistryRepository => {
@@ -76,7 +79,7 @@ export function OrganizationModuleGovernancePanel({
   return (
     <ParameterModuleMappingPanel
       projects={projects}
-      canAdmin={!canonicalEnabled || actor === "org-admin"}
+      canAdmin={!canonicalEnabled || actor === "org-admin" || actor === "platform-admin"}
       canManageTaxonomy={canManageTaxonomy}
       repository={repository}
       pathname={pathname}

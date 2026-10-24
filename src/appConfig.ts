@@ -60,6 +60,7 @@ export type PageKey =
   | "feedback-admin"
   | "feedback"
   | "workflow-publication"
+  | "platform-organizations"
   | "audit";
 
 export type PageConfig = {
@@ -200,6 +201,9 @@ export const utilityItems: Array<{ label: string; icon: LucideIcon; path?: strin
 ];
 
 export function getPageByPath(path: string): PageConfig {
+  if (path === "/platform/organizations") {
+    return { key: "platform-organizations", path, label: "组织目录", group: "平台总览", icon: Settings2, title: "组织目录", subtitle: "建立组织并指定初始管理员" };
+  }
   if (path === "/workflow-publication") {
     return { key: "workflow-publication", path, label: "工作流发布", group: "平台总览", icon: Network,
       title: "工作流发布", subtitle: "配置向所有组织用户开放的工作流" };
@@ -219,7 +223,7 @@ export function getPageByPath(path: string): PageConfig {
     };
   }
   if (isOrganizationAdminPath(path)) {
-    const area = parseOrganizationAdminArea(path) ?? "profile";
+    const area = parseOrganizationAdminArea(path) ?? "overview";
     return {
       key: "user-permissions",
       path: buildOrganizationAdminPath(area),
@@ -227,7 +231,7 @@ export function getPageByPath(path: string): PageConfig {
       group: "平台总览",
       icon: Building2,
       title: "组织管理",
-      subtitle: area === "bridges" ? ORGANIZATION_ADMIN_UI.bridgesSubtitle : area === "members" ? ORGANIZATION_ADMIN_UI.membersSubtitle : ORGANIZATION_ADMIN_UI.profileSubtitle
+      subtitle: area === "overview" ? ORGANIZATION_ADMIN_UI.overviewSubtitle : area === "resources" ? ORGANIZATION_ADMIN_UI.resourcesSubtitle : area === "invitations" ? "管理一次性邀请及加入状态" : area === "projects" ? ORGANIZATION_ADMIN_UI.projectsSubtitle : area === "teams" ? ORGANIZATION_ADMIN_UI.teamsSubtitle : area === "integrations" ? ORGANIZATION_ADMIN_UI.integrationsSubtitle : area === "bridges" ? ORGANIZATION_ADMIN_UI.bridgesSubtitle : area === "members" ? ORGANIZATION_ADMIN_UI.membersSubtitle : ORGANIZATION_ADMIN_UI.profileSubtitle
     };
   }
 
@@ -425,6 +429,8 @@ export function getXiaozeContextSummary(path: string): string {
       }
       return "正在关注 DTS 重载配置：落地路径、触发节点与内核日志命令。";
     case "user-permissions":
+      if (parseOrganizationAdminArea(path) === "overview") return "正在关注本组织状态、协作统计和待办。";
+      if (parseOrganizationAdminArea(path) === "resources") return "正在查看本组织的业务资源入口。";
       if (parseOrganizationAdminArea(path) === "bridges") return "正在关注本组织设备代理的所有者、连接状态与配对撤销。";
       if (parseOrganizationAdminArea(path) === "members") {
         return "正在关注本组织成员、角色权限和注册申请。";

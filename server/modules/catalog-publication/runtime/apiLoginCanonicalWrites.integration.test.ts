@@ -39,6 +39,7 @@ describe("API LOGIN canonical source writes", () => {
     let api: RootDatabase | undefined;
     try {
       const fixture = await seedCanonicalParameterFixture(owner, storage, { sourceFormat });
+      expect(fixture.reviewerAuth.projectMemberships).toEqual([]);
       await owner.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
         values ('api-source-admin',$1,$2,null,'admin')`, [fixture.reviewerAuth.user.id, fixture.organizationId]);
       const runtime = await provisionPublicationRuntimeLogins(database.url, { mode: "lab", runToken });

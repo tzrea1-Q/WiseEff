@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { historicalIdentityLabel } from "@/domain/identity/historicalAttribution";
 import { History } from "lucide-react";
 
 import { KnowledgeRevisionConflictError } from "@/application/ports/KnowledgeRepository";
@@ -159,7 +160,7 @@ export function KnowledgeRevisionsDialog({
                       </p>
                       <p className="truncate text-xs text-muted-foreground">{snippet(revision.contentMarkdown)}</p>
                       <p className="text-[11px] text-muted-foreground">
-                        {revision.authorUserId ?? "已注销用户"} · {formatDateTime(revision.createdAt)}
+                        {historicalIdentityLabel(revision.historicalAttribution?.actors.author_user_id)} · {formatDateTime(revision.createdAt)}
                       </p>
                     </div>
                       <Button variant="outline" size="sm" onClick={() => { setViewedRevision(revision); setViewedFileRevisionId(null); setRestoreError(""); }}>

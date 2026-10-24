@@ -10,7 +10,8 @@ import type { AuthContext } from "../auth/types";
 import { createLocalObjectStore } from "../logs/objectStore";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
-import { createInMemoryTestDatabase, isTestDatabaseAvailable, type InMemoryTestDatabase } from "../../testing/testDatabase";
+import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { createPostgresDatabase, type RootDatabase } from "../../shared/database/client";
 import type { KnowledgeEntryDto, KnowledgeSearchResponseDto } from "./types";
 import { registerKnowledgeRoutes } from "./routes";
 import { processNextKnowledgeIndexJob } from "./indexing/worker";
@@ -29,7 +30,8 @@ function fixture(fileName: string, contentType = "application/pdf") {
 }
 
 describe.skipIf(!databaseAvailable)("PDF search pages over HTTP and PostgreSQL", () => {
-  let db: InMemoryTestDatabase;
+  let db: RootDatabase;
+  let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>>;
   let server: Server;
   let baseUrl: string;
   let root: string;
@@ -44,7 +46,8 @@ describe.skipIf(!databaseAvailable)("PDF search pages over HTTP and PostgreSQL",
   };
 
   beforeAll(async () => {
-    db = await createInMemoryTestDatabase();
+    database = await createEphemeralTestDatabase("knowledgefiles");
+    db = createPostgresDatabase(database.url);
     await db.query("insert into organizations (id, name) values ($1, $1), ('k1342-other', 'Other')", [auth.organization.id]);
     await db.query("insert into users (id, organization_id, name, title, is_active) values ($1, $2, 'Uploader', 'Engineer', true)", [auth.user.id, auth.organization.id]);
     root = await mkdtemp(join(tmpdir(), "k1342-"));
@@ -57,7 +60,7 @@ describe.skipIf(!databaseAvailable)("PDF search pages over HTTP and PostgreSQL",
 
   afterAll(async () => {
     if (server?.listening) await new Promise<void>((resolve) => server.close(() => resolve()));
-    await db?.rollback();
+    await db?.close(); await database?.drop();
     if (root) await rm(root, { recursive: true, force: true });
   });
 

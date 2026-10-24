@@ -139,8 +139,54 @@ export const S2_SCH_0255_FINGERPRINT =
 /** 0256 lets a log's uploader erase their own failed log and retry its pending
  * storage cleanup: a shared erasure-actor guard used by the lock and receipt readers,
  * plus an owner-scoped pending-cleanup listing. */
-export const S2_SCH_LIVE_FINGERPRINT =
+export const S2_SCH_0256_FINGERPRINT =
   "348caf501d780aec9efd1bf7f740c7e946025444f711d28be3de40aaadd916e0";
+
+/** 0262 changes only three Catalog function definitions: the project erasure
+ * actor guard, its preview caller, and source-request administration. Active
+ * persisted platform administrators retain their Home identity while operating
+ * on an explicit target; all earlier inventory categories and pins are intact. */
+export const S2_SCH_0262_FINGERPRINT =
+  "e39d15ffb9fce4500e652d9d192a8eea0ab722a9d90c20cbbc1bc1916e8a2934";
+
+/** Combined 0262/0263 stage: the two log erasure actor/receipt functions now
+ * accept a persisted active platform administrator operating on another
+ * organization. Measured on fresh PostgreSQL; earlier pins remain intact. */
+export const S2_SCH_0263_FINGERPRINT =
+  "d4bb5881fc24a088b7ccc923366e887da97145f222ee038e3ce1131fa49de737";
+
+/** 0275 adds organization lifecycle triggers to organization-owned Catalog
+ * records. Measured on fresh PostgreSQL with the complete migration chain;
+ * shared Catalog objects and every historical schema pin remain unchanged. */
+export const S2_SCH_0275_FINGERPRINT =
+  "644a0cf9b4632d99d0b4627bca35c4809fb374dd7cca445306cb280bf89f6db8";
+
+/** 0276 adds the bounded, counts-only organization erasure preview capability.
+ * Measured on fresh PostgreSQL through 0278; the latter's public integrity and
+ * webhook column-read repairs leave the private Catalog inventory unchanged. */
+export const S2_SCH_0276_FINGERPRINT =
+  "b992cc5ded4403aabcafa92048bb08cea6795e55afa0888cf239821f46f0a4d9";
+
+/** 0279 records exact Agent checkpoint ownership and replaces the erasure
+ * preview's runtime and store-qualified reference seams. Measured on fresh
+ * PostgreSQL; every earlier migration pin remains unchanged. */
+export const S2_SCH_0279_FINGERPRINT =
+  "b56e61372b4a7a0a823dbb87136669f13ac7f9cabee28ec9ad51e9dade032663";
+
+export const S2_SCH_0285_FINGERPRINT =
+  "9543f9d3582e6ed8f58b219d54afba057e3efb062b18e47f92ec5fd08c9cff60";
+
+/** Fresh PostgreSQL through 0287 includes all four Organization erasure
+ * adapters. Historical migration fingerprints remain immutable. */
+export const S2_SCH_0287_FINGERPRINT =
+  "bf1aabdb7b422ba0943a139971bb8c532084144ed34a063dfe0144dabc53e497";
+
+/** Fresh PostgreSQL through 0291 adds finite provenance compaction and
+ * Organization deletion replay. Earlier migration fingerprints stay fixed. */
+export const S2_SCH_0291_FINGERPRINT =
+  "225e57040eb9c2b1939e103f61db72cb5dc487d7286b1adb2b68b55676bd95a0";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0291_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

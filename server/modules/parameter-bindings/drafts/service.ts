@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterInvocation, parameterScopeInvocation } from "../../parameters/operatingScope";
 /**
  * Canonical pending value drafts (Issue #849 C4).
  *
@@ -13,7 +14,6 @@ import { ApiError } from "../../../shared/http/errors";
 import type { Database, Queryable } from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
 import {
-  assertTrustedInvocationMatchesAuth,
   createUserInvocation,
   type TrustedInvocationContext
 } from "../../auth/trustedInvocation";
@@ -122,7 +122,7 @@ function requireEditPermission(auth: AuthContext, projectId: string) {
 
 async function requireOwnedProject(db: Queryable, auth: AuthContext, projectId: string) {
   const project = await getProjectById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId
   });
   if (!project) {
@@ -206,7 +206,7 @@ export async function createCanonicalValueDraft(
   }
 
   const pins = await loadCanonicalBindingPins(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     bindingId: input.bindingId
   });
@@ -267,7 +267,7 @@ export async function createCanonicalValueDraft(
       refusalSink: options.refusalSink!
     });
     return upsertCanonicalValueDraft(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       pins,
       action,
       targetValue,
@@ -295,7 +295,7 @@ export async function listCanonicalValueDraftsForUser(
   }
   await requireOwnedProject(db, auth, input.projectId);
   const rows = await listCanonicalValueDrafts(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     userId: auth.user.id
   });
@@ -318,14 +318,14 @@ export async function listCanonicalValueDraftsForReviewer(
   }
   const rows = await db.transaction(async (tx) => {
     if (!await hasCurrentCanonicalReviewRole(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       userId: auth.user.id
     })) {
       throw new ApiError("FORBIDDEN", "The software review role is required to inspect parameter drafts.");
     }
     return listCanonicalValueDraftsForBinding(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       bindingId: input.bindingId
     });
@@ -343,11 +343,11 @@ export async function removeCanonicalValueDraft(
   requireEditPermission(auth, input.projectId);
 
   const invocation = options.invocation
-    ? assertTrustedInvocationMatchesAuth(auth, options.invocation, "canonical parameter draft delete")
-    : createUserInvocation(auth);
+    ? parameterScopeInvocation(auth, options.invocation, "canonical parameter draft delete")
+    : parameterInvocation(auth) ?? createUserInvocation(auth);
   return db.transaction(async (tx) => {
     const removed = await deleteCanonicalValueDraft(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       userId: auth.user.id,
       draftId: input.draftId
@@ -364,7 +364,7 @@ export async function removeCanonicalValueDraft(
       invocation,
       {
         action: "value-draft-removed",
-        organizationId: auth.organization.id,
+        organizationId: parameterOrganizationId(auth),
         projectId: input.projectId,
         targetType: "project-parameter-value-draft",
         targetId: input.draftId,

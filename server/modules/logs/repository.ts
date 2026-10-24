@@ -1,6 +1,7 @@
 import { loadLogFiles, fileInventory } from "./filesRepository";
+import { historicalIdentityLabel } from "../../../src/domain/identity/historicalAttribution";
 import type { AuthContext } from "../auth/types";
-import type { IntegrationPrincipal } from "../auth/integrationPrincipal";
+import { organizationId as logOrganizationId, type LogPrincipal } from "./principal";
 import { enqueueTerminalLogWebhook } from "./webhookOutbox";
 import { completeJob, createLogAnalysisJob, updateJobProgress } from "../jobs/repository";
 import type { LogAnalysisJobDto } from "../jobs/types";
@@ -47,6 +48,7 @@ type RevisionRow = {
 };
 
 type LogRecordRow = RevisionRow & {
+  historical_attribution?: LogRecordDto["historicalAttribution"];
   skill_selection?: LogRecordDto["skillSelection"] | null;
   signal_summary?: import("./genericSignals").LogSignalSummary | null;
   id: string;
@@ -66,10 +68,8 @@ type LogRecordRow = RevisionRow & {
   raw_lines: string[] | null;
   captured_at: string | Date;
   updated_at: string | Date;
-  submitted_by: string | null;
   submitted_by_user_id?: string | null;
   created_by_credential_id?: string | null;
-  created_by_credential_name?: string | null;
   related_parameter_id: string | null;
   related_parameter_project_id?: string | null;
   failure_reason: string | null;
@@ -297,6 +297,8 @@ function defaultImpact(status: LogRecordStatus) {
 
 function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"], readableKnowledgeIds = new Set<string>()): LogRecordDto {
   const status = row.status;
+  const credential = row.historical_attribution?.actors.created_by_credential_id;
+  const credentialName = credential?.id ? historicalIdentityLabel(credential) : undefined;
 
   return {
     ...sourceProvenance(row),
@@ -320,9 +322,10 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"], 
     rawLines: row.raw_lines ?? [],
     capturedAt: dateTimeToIso(row.captured_at),
     updatedAt: dateTimeToIso(row.updated_at),
-    submittedBy: row.submitted_by ?? "已注销用户",
+    historicalAttribution: row.historical_attribution,
+    submittedBy: credentialName ? `集成凭据 ${credentialName}` : historicalIdentityLabel(row.historical_attribution?.actors.submitted_by_user_id),
     createdByCredentialId: row.created_by_credential_id ?? undefined,
-    createdByCredentialName: row.created_by_credential_name ?? undefined,
+    createdByCredentialName: credentialName,
     relatedParameterId: row.related_parameter_id ?? undefined,
     relatedParameterProjectId: row.related_parameter_project_id ?? undefined,
     failureReason: row.failure_reason ?? undefined,
@@ -448,10 +451,9 @@ const logSelect = `
     report.signal_summary,
     lr.captured_at,
     lr.updated_at,
-    users.name as submitted_by,
+    lr.historical_attribution,
     lr.submitted_by_user_id,
     lr.created_by_credential_id,
-    credential.name as created_by_credential_name,
     lr.related_parameter_id,
     lr.related_parameter_project_id,
     lr.failure_reason,
@@ -470,8 +472,6 @@ const logSelect = `
   left join log_skill_revisions sr on sr.id = lar.skill_revision_id and sr.organization_id = lr.organization_id
   left join log_source_snapshots source on source.id = lar.source_snapshot_id and source.organization_id = lr.organization_id
   left join log_analysis_reports report on report.run_id = lr.current_run_id
-  left join users on users.id = lr.submitted_by_user_id
-  left join log_integration_credentials credential on credential.id = lr.created_by_credential_id and credential.organization_id = lr.organization_id
   left join log_domains ld on ld.id = lr.log_domain_id
 `;
 
@@ -618,9 +618,8 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
         null::text as degraded_reason,
         captured_at,
         updated_at,
-        (select name from users where id = log_records.submitted_by_user_id) as submitted_by,
+        historical_attribution,
         created_by_credential_id,
-        (select name from log_integration_credentials where id = log_records.created_by_credential_id and organization_id = log_records.organization_id) as created_by_credential_name,
         related_parameter_id,
         related_parameter_project_id,
         failure_reason,
@@ -684,9 +683,8 @@ export async function markUnsupportedLog(
       null::text as degraded_reason,
       captured_at,
       updated_at,
-      (select name from users where id = log_records.submitted_by_user_id) as submitted_by,
+      historical_attribution,
       created_by_credential_id,
-      (select name from log_integration_credentials where id = log_records.created_by_credential_id and organization_id = log_records.organization_id) as created_by_credential_name,
       related_parameter_id,
       related_parameter_project_id,
       failure_reason,
@@ -729,7 +727,7 @@ export async function listLogs(
     : null;
   const { organizationWide, projectIds } = relatedParameterVisibilityValues(auth);
   const values: unknown[] = [
-    auth.organization.id,
+    logOrganizationId(auth),
     query.status || null,
     interval,
     Boolean(query.includeArchived),
@@ -762,12 +760,12 @@ export async function listLogs(
   );
 
   const readableKnowledgeIds = await readableKnowledgeEntryIds(db, auth, result.rows.flatMap((row) => (row.knowledge_revisions ?? []).map((revision) => revision.entryId)));
-  return Promise.all(result.rows.map(async (row) => ({ ...toLogDto(row, [], readableKnowledgeIds), canDelete: canDeleteLog(auth, row), files: fileInventory(await loadLogFiles(db, auth.organization.id, row.id)) })));
+  return Promise.all(result.rows.map(async (row) => ({ ...toLogDto(row, [], readableKnowledgeIds), canDelete: canDeleteLog(auth, row), files: fileInventory(await loadLogFiles(db, logOrganizationId(auth), row.id)) })));
 }
 
-export async function getLogDetail(db: Queryable, auth: AuthContext | IntegrationPrincipal, logId: string) {
+export async function getLogDetail(db: Queryable, auth: LogPrincipal, logId: string) {
   const integration = "kind" in auth;
-  const organizationId = integration ? auth.organizationId : auth.organization.id;
+  const organizationId = logOrganizationId(auth);
   const { organizationWide, projectIds } = integration ? { organizationWide: false, projectIds: [] } : relatedParameterVisibilityValues(auth);
   const result = await db.query<LogRecordRow>(
     `
@@ -828,7 +826,7 @@ export async function listRuns(db: Queryable, auth: AuthContext, logId: string) 
       and lar.log_record_id = $2
     order by lar.created_at desc, lar.id desc
     `,
-    [auth.organization.id, logId]
+    [logOrganizationId(auth), logId]
   );
 
   const readableKnowledgeIds = await readableKnowledgeEntryIds(db, auth, result.rows.flatMap((row) => (row.knowledge_revisions ?? []).map((revision) => revision.entryId)));
@@ -1300,7 +1298,7 @@ async function setArchiveState(db: Queryable, auth: AuthContext, logId: string, 
     where organization_id = $1
       and id = $2
     `,
-    [auth.organization.id, logId, archiveState]
+    [logOrganizationId(auth), logId, archiveState]
   );
 
   return getLogDetail(db, auth, logId);
@@ -1329,7 +1327,7 @@ export async function appendFeedback(
       (select current_run_id from log_records where organization_id = $2 and id = $3)
     )
     `,
-    [input.id, auth.organization.id, input.logId, auth.user.id, input.rating, input.note ?? null]
+    [input.id, logOrganizationId(auth), input.logId, auth.user.id, input.rating, input.note ?? null]
   );
 }
 
@@ -1372,7 +1370,7 @@ export async function aggregateFeedbackInsights(
     ? query.timeWindow === "today" ? "1 day" : query.timeWindow === "7d" ? "7 days" : "30 days"
     : null;
   const { organizationWide, projectIds } = relatedParameterVisibilityValues(auth);
-  const values: unknown[] = [auth.organization.id, interval, organizationWide, projectIds];
+  const values: unknown[] = [logOrganizationId(auth), interval, organizationWide, projectIds];
 
   const result = await db.query<FeedbackInsightRow>(
     `

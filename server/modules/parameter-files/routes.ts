@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parameterRequestAccess, parameterInvocation, parameterOrganizationId } from "../parameters/operatingScope";
 import {
   canonicalBatchRollbackPrepareRequestSchema,
   canonicalBatchRollbackSubmitRequestSchema
@@ -274,7 +275,7 @@ async function requireProjectFile(
   fileId: string
 ) {
   const file = await getProjectParameterFileById(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     fileId
   });
   if (!file || file.projectId !== projectId) {
@@ -318,7 +319,7 @@ export function registerParameterFileRoutes(
   }
   router.post("/api/v2/projects/:projectId/parameter-files/:fileId/configuration-instances", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(paramsWithFileIdSchema,request.params);
     const body = parseWithSchema(z.object({
       configSetId: z.string().min(1),fileVersionId: z.string().min(1),configurationSchemaId: z.string().min(1),rootPointer: z.string(),
@@ -329,20 +330,20 @@ export function registerParameterFileRoutes(
     const snapshot = await loadPublishedCatalog(pool);
     if (!snapshot) throw new ApiError("CONFLICT", "The published catalog snapshot is unavailable.");
     const refusalSink = createTrustedRefusalAuditSink(db);
-    const registered = await withAuditedWrite(db,createUserInvocation(auth),{ requestId: request.requestId },async (tx) => ({
+    const registered = await withAuditedWrite(db,parameterInvocation(auth) ?? createUserInvocation(auth),{ requestId: request.requestId },async (tx) => ({
       result: await registerCanonicalJsonSource(tx,requireObjectStore(options.objectStore),auth,snapshot,{
-        ...params,...body,invocation: createUserInvocation(auth),requestId: request.requestId,refusalSink
+        ...params,...body,invocation: parameterInvocation(auth) ?? createUserInvocation(auth),requestId: request.requestId,refusalSink
       }),audit: null
     }));
     return { status: 201,body: { items: registered.bindings } };
   });
   router.get("/api/v1/projects/:projectId/parameter-files", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const items = await listProjectParameterFiles(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: params.projectId
     });
 
@@ -351,7 +352,7 @@ export function registerParameterFileRoutes(
 
   router.get("/api/v1/projects/:projectId/parameter-files/:fileId/source-workflow", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithFileIdSchema, request.params);
     const item = await getCanonicalSourceWorkflow(db, auth, params);
@@ -362,7 +363,7 @@ export function registerParameterFileRoutes(
   router.post("/api/v1/projects/:projectId/parameter-files/:fileId/versions", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithFileIdSchema, request.params);
     const body = parseWithSchema(uploadVersionBodySchema, request.body, "Invalid parameter file version upload payload.");
@@ -398,7 +399,7 @@ export function registerParameterFileRoutes(
 
   router.get("/api/v1/projects/:projectId/parameter-files/:fileId/versions", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithFileIdSchema, request.params);
     await requireProjectFile(db, auth, params.projectId, params.fileId);
@@ -410,7 +411,7 @@ export function registerParameterFileRoutes(
   router.post("/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/rollback", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithVersionIdSchema, request.params);
     await requireProjectFile(db, auth, params.projectId, params.fileId);
@@ -438,7 +439,7 @@ export function registerParameterFileRoutes(
   router.get("/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/content", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithVersionIdSchema, request.params);
     const file = await requireProjectFile(db, auth, params.projectId, params.fileId);
@@ -461,7 +462,7 @@ export function registerParameterFileRoutes(
 
   router.get("/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithVersionIdSchema, request.params);
     const query = parseWithSchema(structuralReadQuerySchema, {
@@ -477,7 +478,7 @@ export function registerParameterFileRoutes(
     }
     const body = query.navigationScope
       ? await getParameterFileVersionStructure(db, version.id, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           principalId: auth.user.id,
         })
       : await getParameterFileVersionStructure(db, version.id);
@@ -487,7 +488,7 @@ export function registerParameterFileRoutes(
 
   router.get("/api/v1/projects/:projectId/dts-search", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const query = parseWithSchema(
@@ -500,7 +501,7 @@ export function registerParameterFileRoutes(
       "Invalid DTS search query."
     );
     const body = await searchProjectDts(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: params.projectId,
       q: query.q,
       ...(query.by ? { by: query.by } : {}),
@@ -512,7 +513,7 @@ export function registerParameterFileRoutes(
 
   router.post("/api/v1/projects/:projectId/dts-structured-edits/submit", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanEdit(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const body = parseWithSchema(
@@ -530,7 +531,7 @@ export function registerParameterFileRoutes(
         assignees: body.assignees
       },
       {
-        invocation: createUserInvocation(auth),
+        invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
         requestId: request.requestId,
         refusalSink: requireSubmissionRefusalSink()
       }
@@ -541,7 +542,7 @@ export function registerParameterFileRoutes(
 
   router.post("/api/v1/projects/:projectId/parameter-files/:fileId/sync", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithFileIdSchema, request.params);
     const body = parseWithSchema(syncFileBodySchema, request.body ?? {}, "Invalid parameter file sync payload.");
@@ -561,7 +562,7 @@ export function registerParameterFileRoutes(
     }
     // Manual re-sync previously ran its draft/binding/conflict writes and audits
     // auto-committed; one audited write makes the whole sync atomic (ADR-0027).
-    const summary = await withAuditedWrite(db, createUserInvocation(auth), { requestId: request.requestId }, async (tx) => ({
+    const summary = await withAuditedWrite(db, parameterInvocation(auth) ?? createUserInvocation(auth), { requestId: request.requestId }, async (tx) => ({
       result: await syncFileVersion(asAuditTx(tx), auth, { fileId: file.id, versionId }, { requestId: request.requestId }),
       audit: null
     }));
@@ -571,11 +572,11 @@ export function registerParameterFileRoutes(
 
   router.get("/api/v1/projects/:projectId/parameter-file-conflicts", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const items = await listOpenConflicts(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: params.projectId
     });
 
@@ -584,7 +585,7 @@ export function registerParameterFileRoutes(
 
   router.post("/api/v1/projects/:projectId/parameter-file-conflicts/:conflictId/resolve", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithConflictIdSchema, request.params);
     const body = parseWithSchema(resolveConflictBodySchema, request.body, "Invalid parameter file conflict resolve payload.");
@@ -600,7 +601,7 @@ export function registerParameterFileRoutes(
 
   router.post("/api/v1/projects/:projectId/parameter-file-conflicts/bulk-preview", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const body = parseWithSchema(
@@ -619,7 +620,7 @@ export function registerParameterFileRoutes(
 
   router.post("/api/v1/projects/:projectId/parameter-file-conflicts/bulk-resolve", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const body = parseWithSchema(
@@ -639,17 +640,17 @@ export function registerParameterFileRoutes(
 
   router.get("/api/v1/projects/:projectId/config-sets", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
-    const items = await listConfigSets(db, auth, params.projectId);
+    const items = await listConfigSets(db, auth, params.projectId, { invocation: parameterInvocation(auth) });
 
     return { status: 200, body: { items } };
   });
 
   router.post("/api/v1/projects/:projectId/config-sets", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const body = parseWithSchema(createConfigSetBody, request.body, "Invalid create config set payload.");
@@ -670,7 +671,7 @@ export function registerParameterFileRoutes(
 
   router.get("/api/v1/projects/:projectId/config-sets/:configSetId/files", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithConfigSetIdSchema, request.params);
     const items = await listConfigSetFiles(db, auth, {
@@ -683,7 +684,7 @@ export function registerParameterFileRoutes(
 
   router.post("/api/v1/projects/:projectId/config-sets/:configSetId/files", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithConfigSetIdSchema, request.params);
     const body = parseWithSchema(addConfigSetFileBody, request.body, "Invalid add config set file payload.");
@@ -704,7 +705,7 @@ export function registerParameterFileRoutes(
 
   router.delete("/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithConfigSetFileIdSchema, request.params);
     await removeConfigSetFile(
@@ -719,7 +720,7 @@ export function registerParameterFileRoutes(
 
   router.get("/api/v1/projects/:projectId/config-sets/:configSetId/baselines", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithConfigSetIdSchema, request.params);
     const items = await listBaselines(db, auth, params.configSetId);
@@ -729,7 +730,7 @@ export function registerParameterFileRoutes(
 
   router.get("/api/v1/projects/:projectId/config-sets/:configSetId/release-readiness", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithConfigSetIdSchema, request.params);
     const acknowledgedRaw = firstQueryValue(request.query.acknowledgedWarningIds);
@@ -747,7 +748,7 @@ export function registerParameterFileRoutes(
 
   router.post("/api/v1/projects/:projectId/config-sets/:configSetId/baselines", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithConfigSetIdSchema, request.params);
     const body = parseWithSchema(createBaselineBody, request.body, "Invalid create baseline payload.");
@@ -770,7 +771,7 @@ export function registerParameterFileRoutes(
 
   router.get("/api/v1/projects/:projectId/baselines/:baselineId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
     const item = await getBaseline(db, auth, params.baselineId);
@@ -779,7 +780,7 @@ export function registerParameterFileRoutes(
 
   router.get("/api/v1/projects/:projectId/baselines/:baselineId/compare", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
     const againstRaw = firstQueryValue(request.query.against);
@@ -797,7 +798,7 @@ export function registerParameterFileRoutes(
 
   router.get("/api/v1/projects/:projectId/baselines/:baselineId/restore-preview", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
     const item = await previewRestoreBaseline(db, auth, params.baselineId);
@@ -813,7 +814,7 @@ export function registerParameterFileRoutes(
   router.post("/api/v1/projects/:projectId/baselines/:baselineId/rollback", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
     try {
@@ -822,7 +823,7 @@ export function registerParameterFileRoutes(
         const { applyCanonicalBaselineRestore } = await import("./canonicalBaselineRestore");
         const body = parseWithSchema(canonicalBaselineRestoreBodySchema,request.body,"Invalid configuration restore payload.");
         const item = await applyCanonicalBaselineRestore(db,objectStore,auth,{ ...body,projectId: params.projectId,baselineId: params.baselineId },{
-          invocation: createUserInvocation(auth),requestId: request.requestId,refusalSink: requireSubmissionRefusalSink() });
+          invocation: parameterInvocation(auth) ?? createUserInvocation(auth),requestId: request.requestId,refusalSink: requireSubmissionRefusalSink() });
         return { status: 200,body: { item } };
       }
       const item = await rollbackToBaseline(db, objectStore, auth, params.baselineId, { requestId: request.requestId });
@@ -831,9 +832,9 @@ export function registerParameterFileRoutes(
       if (error instanceof ApiError && error.code === "CONFLICT"
         && error.details.reason === "canonical-source-transaction-required") {
         const { baseline } = await getBaseline(db, auth, params.baselineId);
-        const configSet = await getConfigSetById(db, { organizationId: auth.organization.id, configSetId: baseline.configSetId });
+        const configSet = await getConfigSetById(db, { organizationId: parameterOrganizationId(auth), configSetId: baseline.configSetId });
         await requireSubmissionRefusalSink().write({
-          invocation: createUserInvocation(auth), projectId: configSet?.projectId ?? null,
+          invocation: parameterInvocation(auth) ?? createUserInvocation(auth), projectId: configSet?.projectId ?? null,
           app: "parameters", kind: "baseline", action: "deny", severity: "Medium",
           targetType: "dts-release-baseline", targetId: params.baselineId,
           metadata: { operation: "baseline-rollback", reason: error.details.reason }, traceId: request.requestId
@@ -845,7 +846,7 @@ export function registerParameterFileRoutes(
 
   router.post("/api/v1/projects/:projectId/baselines/:baselineId/release", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
     const body = parseWithSchema(releaseBaselineBody, request.body ?? {}, "Invalid release baseline payload.");
@@ -863,7 +864,7 @@ export function registerParameterFileRoutes(
 
   router.get("/api/v1/projects/:projectId/config-sets/:configSetId/export", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithConfigSetIdSchema, request.params);
     const result = await exportConfigSet(db, auth, params.configSetId, validationDeps(), {
@@ -875,7 +876,7 @@ export function registerParameterFileRoutes(
 
   router.get("/api/v1/projects/:projectId/parameter-file-candidates", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const fileId = firstQueryValue(request.query.fileId);
@@ -891,7 +892,7 @@ export function registerParameterFileRoutes(
   router.post("/api/v1/projects/:projectId/parameter-file-candidates", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const body = parseWithSchema(createCandidateBodySchema, request.body, "Invalid candidate upload payload.");
@@ -916,7 +917,7 @@ export function registerParameterFileRoutes(
 
   router.get("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
     const item = await getCandidate(db, auth, {
@@ -928,7 +929,7 @@ export function registerParameterFileRoutes(
 
   router.get("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/impact", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
     const result = await getCandidateImpact(db, auth, {
@@ -943,7 +944,7 @@ export function registerParameterFileRoutes(
 
   router.get("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-preview", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
     const candidate = await getCandidate(db, auth, params);
@@ -955,7 +956,7 @@ export function registerParameterFileRoutes(
 
   router.get("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-conflicts", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
     if (!canAdminParameters(auth) || !canEditParameters(auth, params.projectId)) {
       throw new ApiError("FORBIDDEN", "Parameter administration and project edit permission are required.");
@@ -984,7 +985,7 @@ export function registerParameterFileRoutes(
          from project_parameter_value_drafts draft
         where draft.organization_id=$1 and draft.project_id=$2 and draft.binding_id=any($3::text[])
         order by draft.binding_id,draft.id`,
-      [auth.organization.id, params.projectId, bindings.map((binding) => binding.bindingId)]
+      [parameterOrganizationId(auth), params.projectId, bindings.map((binding) => binding.bindingId)]
     );
     const items = [];
     const ineligible = [];
@@ -1023,7 +1024,7 @@ export function registerParameterFileRoutes(
 
   router.post("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-conflict-submit", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
     const body = parseWithSchema(canonicalConflictSubmitBodySchema, request.body,
       "Invalid canonical source conflict decision payload.");
@@ -1038,7 +1039,7 @@ export function registerParameterFileRoutes(
   router.get("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/content", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
     const result = await getCandidateContent(db, objectStore, auth, {
@@ -1055,7 +1056,7 @@ export function registerParameterFileRoutes(
 
   router.post("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/abandon", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
     const item = await abandonCandidate(
@@ -1070,7 +1071,7 @@ export function registerParameterFileRoutes(
   router.post("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/recompute", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
     const item = await recomputeCandidateImpact(
@@ -1086,7 +1087,7 @@ export function registerParameterFileRoutes(
   router.post("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/activate", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
     const body = parseWithSchema(activateCandidateBodySchema, request.body ?? {}, "Invalid candidate activation payload.");
@@ -1117,7 +1118,7 @@ export function registerParameterFileRoutes(
   router.post("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-submit", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
     const body = parseWithSchema(canonicalSourceSubmitBodySchema, request.body, "Invalid canonical source submit payload.");
@@ -1127,7 +1128,7 @@ export function registerParameterFileRoutes(
       const item = await submitSourceRevisionCandidate(db, objectStore, auth, {
         ...params, expectedCurrentVersionId: body.expectedCurrentVersionId, expectedProofToken: body.expectedProofToken,
         assignedToUserId: body.assignedToUserId, reason: body.reason, clientMutationId: body.clientMutationId
-      }, { invocation: createUserInvocation(auth), requestId: request.requestId, refusalSink: requireSubmissionRefusalSink() });
+      }, { invocation: parameterInvocation(auth) ?? createUserInvocation(auth), requestId: request.requestId, refusalSink: requireSubmissionRefusalSink() });
       return { status: 200, body: { item } };
     }
     const item = await submitCanonicalCandidate(db, objectStore, auth, {
@@ -1147,7 +1148,7 @@ export function registerParameterFileRoutes(
   router.post("/api/v1/projects/:projectId/parameter-files/:fileId/source-rollback", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithFileIdSchema, request.params);
     const body = parseWithSchema(canonicalSourceRollbackBodySchema, request.body, "Invalid canonical source rollback payload.");
@@ -1166,7 +1167,7 @@ export function registerParameterFileRoutes(
 
   router.post("/api/v1/projects/:projectId/parameter-files/:fileId/source-batch-rollback/prepare", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithFileIdSchema, request.params);
     const body = parseWithSchema(canonicalBatchRollbackPrepareRequestSchema, request.body,
@@ -1179,7 +1180,7 @@ export function registerParameterFileRoutes(
 
   router.post("/api/v1/projects/:projectId/parameter-files/:fileId/source-manual-sync/prepare", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithFileIdSchema, request.params);
     const body = parseWithSchema(canonicalManualSyncPrepareRequestSchema, request.body,
@@ -1196,7 +1197,7 @@ export function registerParameterFileRoutes(
 
   router.post("/api/v1/projects/:projectId/parameter-files/:fileId/source-batch-rollback/submit", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithFileIdSchema, request.params);
     const body = parseWithSchema(canonicalBatchRollbackSubmitRequestSchema, request.body,

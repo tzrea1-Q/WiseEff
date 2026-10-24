@@ -1,3 +1,4 @@
+import { parameterInvocation, parameterRequestAccess } from "../parameters/operatingScope";
 import { z } from "zod";
 import { historicalTaskReadWindow } from "../parameter-catalog-api/taskReadWindow";
 import { catalogLegacyGoneResult, legacyRouteSuccessor, LEGACY_WRITE_GONE_MESSAGE } from "../parameter-catalog-api/legacy/gone";
@@ -91,7 +92,7 @@ export function registerParameterTopologyRoutes(
     "/api/v2/projects/:projectId/config-sets/:configSetId/revisions",
     async (request) => {
       const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
+      const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
       requireCanView(auth);
       const params = parseWithSchema(listConfigRevisionsParamsSchema, request.params);
       const result = await listConfigRevisions(db, auth, params);
@@ -103,7 +104,7 @@ export function registerParameterTopologyRoutes(
     "/api/v2/projects/:projectId/config-sets/:configSetId/revisions/:revisionId/topology",
     async (request) => {
       const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
+      const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
       requireCanView(auth);
       const params = parseWithSchema(topologyParamsSchema, request.params);
       const query = parseWithSchema(topologyQuerySchema, flattenQuery(request.query));
@@ -117,7 +118,7 @@ export function registerParameterTopologyRoutes(
 
   router.get("/api/v2/projects/:projectId/bindings/:bindingId/history", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const params = parseWithSchema(bindingHistoryParamsSchema, request.params);
     const result = await getBindingHistory(db, auth, {
@@ -129,7 +130,7 @@ export function registerParameterTopologyRoutes(
 
   router.get("/api/v2/projects/:projectId/bindings/:bindingId/compare", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const params = parseWithSchema(bindingCompareParamsSchema, request.params);
     const result = await getBindingCompare(db, auth, {
@@ -141,7 +142,7 @@ export function registerParameterTopologyRoutes(
 
   router.get("/api/v2/identity-mapping-tasks", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanView(auth);
     const query = parseWithSchema(listIdentityMappingTasksQuerySchema, flattenQuery(request.query));
     const result = await listIdentityMappingTasks(db, auth, query);
@@ -162,7 +163,7 @@ export function registerParameterTopologyRoutes(
 
   router.post("/api/v2/projects/:projectId/config-revisions/:revisionId/validate", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(validateConfigRevisionParamsSchema, request.params);
     const body = parseWithSchema(validateConfigRevisionBodySchema, request.body ?? {});
@@ -178,7 +179,7 @@ export function registerParameterTopologyRoutes(
 
   router.post("/api/v2/projects/:projectId/node-enablement-drafts", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanEdit(auth);
     const params = parseWithSchema(createNodeEnablementDraftParamsSchema, request.params);
     const body = parseWithSchema(createNodeEnablementDraftBodySchema, request.body ?? {});
@@ -194,7 +195,7 @@ export function registerParameterTopologyRoutes(
       },
       { objectStore: options.objectStore },
       {
-        invocation: createUserInvocation(auth),
+        invocation: parameterInvocation(auth) ?? createUserInvocation(auth),
         requestId: request.requestId,
         refusalSink: refusalAuditSink
       }

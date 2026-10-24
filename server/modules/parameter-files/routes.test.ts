@@ -126,7 +126,7 @@ describe("parameter file routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ items });
-    expect(configSetService.listConfigSets).toHaveBeenCalledWith(db, expect.any(Object), "project-1");
+    expect(configSetService.listConfigSets).toHaveBeenCalledWith(db, expect.any(Object), "project-1", { invocation: undefined });
   });
 
   it("POST /api/v1/projects/:projectId/parameter-files returns 201 with file dto", async () => {
@@ -147,6 +147,7 @@ describe("parameter file routes", () => {
       id: "ver-1",
       fileId: "file-1",
       versionNumber: 1,
+      storageKey: "fixture/config.json",
       checksum: "checksum-config",
       sizeBytes: bytes.byteLength,
       parsedIndex: {},
@@ -301,6 +302,7 @@ describe("parameter file routes", () => {
       id: "ver-3",
       fileId: "file-1",
       versionNumber: 3,
+      storageKey: "fixture/rollback.dts",
       checksum: "checksum-rollback",
       sizeBytes: 12,
       parsedIndex: {},

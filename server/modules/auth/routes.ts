@@ -7,6 +7,10 @@ import type { createLocalAuthService, LocalAuthPublicConfig, LocalAuthSessionRes
 import type { Database } from "../../shared/database/client";
 import { updateCurrentUserProfile } from "./profile";
 import { createUserInvocation } from "./trustedInvocation";
+import { enterOperatingContext } from "./operatingContext";
+import { enterOperatingContextBodySchema } from "../contracts/dtoSchemas/organizationScope";
+import { updateExperienceRegistrationSchema } from "../contracts/dtoSchemas/platformOrganizations";
+import { requirePlatformOrganizationManager } from "../users/platformOrganizations";
 
 const platformRoleIdSchema = z.enum([
   "guest",
@@ -130,6 +134,19 @@ export function registerAuthRoutes(
     };
   });
 
+  router.get("/api/v1/platform/experience-registration", async (request) => {
+    requirePlatformOrganizationManager(await options.getCurrentAuthContext(request));
+    return { status: 200, body: { item: options.localAuthService ? await options.localAuthService.getRegistrationSettings()
+      : { enabled: false, organizationId: null, organizationName: null, source: "default", available: false } } };
+  });
+  router.patch("/api/v1/platform/experience-registration", async (request) => {
+    const actor = await options.getCurrentAuthContext(request);
+    requirePlatformOrganizationManager(actor);
+    if (!options.localAuthService) throw new ApiError("FORBIDDEN", "当前认证方式不支持本地密码公开注册。");
+    const input = parseWithSchema(updateExperienceRegistrationSchema, request.body, "Invalid experience registration settings.");
+    return { status: 200, body: { item: await options.localAuthService.updateRegistrationSettings(createUserInvocation(actor), input, request.requestId) } };
+  });
+
   router.post("/api/v1/auth/register", async (request) => {
     if (!options.localAuthService) {
       throw new ApiError("NOT_FOUND", "Local account registration is not enabled.");
@@ -183,6 +200,13 @@ export function registerAuthRoutes(
       status: 200,
       body: await options.getCurrentAuthContext(request)
     };
+  });
+
+  router.post("/api/v1/organization/operating-scope", async (request) => {
+    const actor = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(enterOperatingContextBodySchema, request.body, "Invalid operating Organization input.");
+    if (!options.db) throw new ApiError("NOT_FOUND", "Organization storage is not enabled.");
+    return { status: 200, body: await enterOperatingContext(options.db, createUserInvocation(actor), body.organizationId, { requestId: request.requestId }) };
   });
 
   router.patch("/api/v1/me/profile", async (request) => {

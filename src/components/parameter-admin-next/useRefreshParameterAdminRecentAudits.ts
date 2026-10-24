@@ -3,13 +3,14 @@ import { createAuditClient } from "@/infrastructure/http/auditClient";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { refreshParameterAdminRecentAudits } from "@/application/parameters/refreshParameterAdminRecentAudits";
 import { useParameterAdmin } from "./ParameterAdminProvider";
+import type { ApiClient } from "@/infrastructure/http/apiClient";
 
 /**
  * Refetches parameter-admin recent audit projection from the audit center.
  * Mock runtime has no audit API; skip the fetch so demos do not log a refused
  * connection to the default API base URL.
  */
-export function useRefreshParameterAdminRecentAudits() {
+export function useRefreshParameterAdminRecentAudits(apiClient?: ApiClient) {
   const { dispatch } = useParameterAdmin();
 
   return useCallback(
@@ -19,10 +20,10 @@ export function useRefreshParameterAdminRecentAudits() {
       }
       await refreshParameterAdminRecentAudits({
         dispatch,
-        listAuditEvents: (params) => createAuditClient().listAuditEvents(params),
+        listAuditEvents: (params) => createAuditClient(apiClient).listAuditEvents(params),
         projectId
       });
     },
-    [dispatch]
+    [dispatch, apiClient]
   );
 }

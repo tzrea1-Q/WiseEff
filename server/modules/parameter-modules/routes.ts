@@ -11,6 +11,8 @@ import {
   LEGACY_MODULE_WARNING,
 } from "../parameter-catalog-api/legacy/headers";
 import { getModuleDiscoveryHints, getParameterModuleRegistry, listDriverRegistry } from "./service";
+import { parameterRequestAccess } from "../parameters/operatingScope";
+import { createUserInvocation } from "../auth/trustedInvocation";
 
 const legacyReadHeaders = boundedLegacyHeaders({
   sunsetHttpDate: CATALOG_SUNSET_HTTP_DATE,
@@ -42,21 +44,21 @@ export function registerParameterModuleRoutes(
       return catalogLegacyGoneResult(request.requestId, LEGACY_GOVERNANCE_GONE_MESSAGE);
     }
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const result = await getParameterModuleRegistry(db, auth);
     return { status: 200, headers: legacyReadHeaders, body: result };
   });
 
   router.get("/api/v2/parameter-modules/discovery-hints", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const result = await getModuleDiscoveryHints(db, auth);
     return { status: 200, headers: legacyReadHeaders, body: result };
   });
 
   router.get("/api/v2/parameter-modules/driver-registry", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
+    const auth = await parameterRequestAccess(db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const result = await listDriverRegistry(db, auth);
     return { status: 200, headers: legacyReadHeaders, body: result };
   });

@@ -1,4 +1,4 @@
-import type { AuthContext } from "../auth/types";
+import { knowledgeOrganizationId, type KnowledgeAccessContext as AuthContext } from "./scope";
 import { isRootDatabase, type Queryable } from "../../shared/database/client";
 import { readCatalogDefinitionForKnowledge } from "../parameter-catalog-api/productionWire";
 import { loadParameterReferencesByEntryIds } from "./parameterReferences";
@@ -18,6 +18,8 @@ import type {
 } from "./types";
 
 type KnowledgeEntryRow = {
+  responsible_user_id: string | null;
+  historical_attribution?: KnowledgeEntryDto["historicalAttribution"];
   origin: KnowledgeEntryDto["origin"];
   id: string;
   organization_id: string;
@@ -40,6 +42,7 @@ type KnowledgeEntryRow = {
 };
 
 type KnowledgeRevisionRow = {
+  historical_attribution?: KnowledgeRevisionDto["historicalAttribution"];
   id: string;
   entry_id: string;
   organization_id: string;
@@ -122,6 +125,7 @@ function toFileDto(row: KnowledgeFileRow): KnowledgeFileDto {
 
 function toRevisionDto(row: KnowledgeRevisionRow): KnowledgeRevisionDto {
   return {
+    historicalAttribution: row.historical_attribution,
     id: row.id,
     entryId: row.entry_id,
     organizationId: row.organization_id,
@@ -145,6 +149,7 @@ function toEntryDto(
   }
 ): KnowledgeEntryDto {
   return {
+    historicalAttribution: row.historical_attribution,
     id: row.id,
     organizationId: row.organization_id,
     title: row.title,
@@ -158,6 +163,7 @@ function toEntryDto(
     sourceLogDeleted: row.source_log_deleted ?? false,
     sourceReloadRunId: row.source_reload_run_id,
     createdByUserId: row.created_by_user_id,
+    responsibleUserId: row.responsible_user_id,
     headRevisionId: row.head_revision_id,
     headRevisionNumber: Number(row.head_revision_number),
     createdAt: dateTimeToIso(row.created_at),
@@ -186,7 +192,7 @@ async function loadEntryExtras(db: Queryable, auth: AuthContext, rows: Knowledge
       where r.organization_id = $1
         and r.id = any($2::uuid[])
       `,
-      [auth.organization.id, headRevisionIds]
+      [knowledgeOrganizationId(auth), headRevisionIds]
     );
     for (const row of revisionResult.rows) {
       markdownByRevisionId.set(row.id, row.content_markdown);
@@ -222,7 +228,7 @@ export async function insertEntry(db: Queryable, auth: AuthContext, input: Inser
     `,
     [
       input.id,
-      auth.organization.id,
+      knowledgeOrganizationId(auth),
       input.title,
       input.contentForm,
       input.tags,
@@ -256,7 +262,7 @@ export async function insertRevision(
     [
       input.id,
       input.entryId,
-      auth.organization.id,
+      knowledgeOrganizationId(auth),
       input.revisionNumber,
       input.title,
       input.tags,
@@ -283,7 +289,7 @@ export async function insertFile(db: Queryable, auth: AuthContext, input: Insert
     [
       input.id,
       input.entryId,
-      auth.organization.id,
+      knowledgeOrganizationId(auth),
       input.storageKey,
       input.fileName,
       input.contentType,
@@ -319,10 +325,10 @@ export async function setEntryHead(
     where organization_id = $1
       and id = $2
     `,
-    [auth.organization.id, input.entryId, input.headRevisionId, input.headRevisionNumber, input.title, input.tags, input.searchText]
+    [knowledgeOrganizationId(auth), input.entryId, input.headRevisionId, input.headRevisionNumber, input.title, input.tags, input.searchText]
   );
   // Every revision gets suggestion detection; the indexer keeps drafts out of retrieval.
-  await enqueueEntryIndexRefresh(db, { entryId: input.entryId, organizationId: auth.organization.id });
+  await enqueueEntryIndexRefresh(db, { entryId: input.entryId, organizationId: knowledgeOrganizationId(auth) });
 }
 
 export async function setEntrySearchText(
@@ -337,7 +343,7 @@ export async function setEntrySearchText(
     where organization_id = $1
       and id = $2
     `,
-    [auth.organization.id, input.entryId, input.searchText]
+    [knowledgeOrganizationId(auth), input.entryId, input.searchText]
   );
 }
 
@@ -356,7 +362,7 @@ export async function setEntryStatus(
     where organization_id = $1
       and id = $2
     `,
-    [auth.organization.id, input.entryId, input.status]
+    [knowledgeOrganizationId(auth), input.entryId, input.status]
   );
 }
 
@@ -382,7 +388,7 @@ export async function updateFileExtraction(
     where organization_id = $1
       and id = $2
     `,
-    [auth.organization.id, input.fileId, input.extractionStatus, input.extractedText, input.extractionError, input.pageOffsets]
+    [knowledgeOrganizationId(auth), input.fileId, input.extractionStatus, input.extractedText, input.extractionError, input.pageOffsets]
   );
 }
 
@@ -395,7 +401,7 @@ export async function getEntryById(db: Queryable, auth: AuthContext, entryId: st
       and id = $2
     limit 1
     `,
-    [auth.organization.id, entryId]
+    [knowledgeOrganizationId(auth), entryId]
   );
   const row = result.rows[0];
   if (!row) return null;
@@ -417,7 +423,7 @@ export async function getEntryForUpdate(db: Queryable, auth: AuthContext, entryI
       and id = $2
     for update
     `,
-    [auth.organization.id, entryId]
+    [knowledgeOrganizationId(auth), entryId]
   );
   const row = result.rows[0];
   if (!row) return null;
@@ -431,7 +437,7 @@ export async function listEntries(
   auth: AuthContext,
   query: ListKnowledgeEntriesQuery & { visibleDraftOwnerUserId?: string | null; pendingEntryIds?: string[] }
 ): Promise<KnowledgeEntryDto[]> {
-  const values: unknown[] = [auth.organization.id];
+  const values: unknown[] = [knowledgeOrganizationId(auth)];
   const where = ["organization_id = $1"];
   if (query.pendingEntryIds) {
     values.push(query.pendingEntryIds);
@@ -442,7 +448,7 @@ export async function listEntries(
     where.push("status <> 'archived'");
     if (!hasKnowledgeManage(auth)) {
       values.push(auth.user.id);
-      where.push(`created_by_user_id = $${values.length}`);
+      where.push(`responsible_user_id = $${values.length}`);
     }
   }
 
@@ -460,7 +466,7 @@ export async function listEntries(
       where.push(`status <> 'draft'`);
     } else {
       values.push(query.visibleDraftOwnerUserId);
-      where.push(`(status <> 'draft' or created_by_user_id = $${values.length})`);
+      where.push(`(status <> 'draft' or responsible_user_id = $${values.length})`);
     }
   }
   if (query.contentForm) {
@@ -506,7 +512,7 @@ export async function listRevisions(db: Queryable, auth: AuthContext, entryId: s
       and entry_id = $2
     order by revision_number desc
     `,
-    [auth.organization.id, entryId]
+    [knowledgeOrganizationId(auth), entryId]
   );
 
   return result.rows.map(toRevisionDto);
@@ -527,7 +533,7 @@ export async function getRevisionById(
       and id = $3
     limit 1
     `,
-    [auth.organization.id, entryId, revisionId]
+    [knowledgeOrganizationId(auth), entryId, revisionId]
   );
   const row = result.rows[0];
   return row ? toRevisionDto(row) : null;
@@ -542,7 +548,7 @@ export async function getFileById(db: Queryable, auth: AuthContext, fileId: stri
       and id = $2
     limit 1
     `,
-    [auth.organization.id, fileId]
+    [knowledgeOrganizationId(auth), fileId]
   );
   const row = result.rows[0];
   return row ? toFileDto(row) : null;
@@ -557,7 +563,7 @@ export async function deleteEntry(db: Queryable, auth: AuthContext, entryId: str
     where organization_id = $1
       and id = $2
     `,
-    [auth.organization.id, entryId]
+    [knowledgeOrganizationId(auth), entryId]
   );
   const result = await db.query(
     `
@@ -565,7 +571,7 @@ export async function deleteEntry(db: Queryable, auth: AuthContext, entryId: str
     where organization_id = $1
       and id = $2
     `,
-    [auth.organization.id, entryId]
+    [knowledgeOrganizationId(auth), entryId]
   );
 
   return (result.rowCount ?? 0) > 0;
@@ -620,7 +626,7 @@ export async function searchPublishedEntries(
       updated_at desc
     limit $4
     `,
-    [auth.organization.id, trimmed, `%${trimmed}%`, query.limit ?? 20]
+    [knowledgeOrganizationId(auth), trimmed, `%${trimmed}%`, query.limit ?? 20]
   );
 
   return result.rows.map((row) => ({
@@ -664,7 +670,7 @@ export async function searchPublishedEntriesByTextSimilarity(
       updated_at desc
     limit $4
     `,
-    [auth.organization.id, query.q, query.minSimilarity, query.limit]
+    [knowledgeOrganizationId(auth), query.q, query.minSimilarity, query.limit]
   );
 
   return result.rows.map((row) => ({
@@ -690,7 +696,7 @@ export async function searchPublishedChunksByEmbedding(
   auth: AuthContext,
   query: { embedding: number[]; limit?: number; maxDistance?: number }
 ): Promise<KnowledgeSearchResultDto[]> {
-  const values: unknown[] = [auth.organization.id, `[${query.embedding.join(",")}]`];
+  const values: unknown[] = [knowledgeOrganizationId(auth), `[${query.embedding.join(",")}]`];
   let distanceCutoff = "";
   if (query.maxDistance !== undefined) {
     values.push(query.maxDistance);

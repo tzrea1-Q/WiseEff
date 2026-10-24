@@ -165,6 +165,7 @@ const draftBody = {
 const projectEditor = (projectId: string) =>
   makeAuth({
     roles: [{ projectId, roleId: "software-user" }],
+    projectMemberships: [{ projectId, roles: ["software-user"] }],
     permissions: ["parameter:view", "parameter:edit"]
   });
 
@@ -1172,14 +1173,17 @@ describe("canonical request tracking access", () => {
     expect((await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests")).body).toEqual({ items: [own] });
   });
 
-  it("rejects an unrelated project role, inactive account, and malformed mine filter", async () => {
-    const auth = makeAuth({ roles: [{ projectId: "another-project", roleId: "software-user" }] });
-    const unauthorized = await requestJson(makeServer({ db: makeDb(), auth }), "/api/v2/projects/project-1/parameter-value-change-requests");
-    expect(unauthorized.status).toBe(403);
-    const db = makeDb();
-    vi.mocked(db.query).mockResolvedValue({ rows: [] } as never);
-    const hidden = await requestJson(makeServer({ db, auth, withoutObjectStore: true }), "/api/v2/projects/project-1/parameter-value-change-requests/own-request/source-diff");
-    expect(hidden.status).toBe(404);
+  it("keeps personal tracking visible without project roles and rejects inactive accounts and malformed filters", async () => {
+    for (const roles of [[{ projectId: "another-project", roleId: "software-user" }], []] satisfies AuthContext["roles"][]) {
+      const auth = makeAuth({ roles, permissions: ["parameter:view"] });
+      const response = await requestJson(makeServer({ db: makeDb(), auth }), "/api/v2/projects/project-1/parameter-value-change-requests?mine=true");
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ items: [own] });
+      const db = makeDb();
+      vi.mocked(db.query).mockResolvedValue({ rows: [] } as never);
+      const hidden = await requestJson(makeServer({ db, auth, withoutObjectStore: true }), "/api/v2/projects/project-1/parameter-value-change-requests/other-request/source-diff");
+      expect(hidden.status).toBe(404);
+    }
     const inactive = makeAuth();
     inactive.user = { ...inactive.user, isActive: false };
     expect((await requestJson(makeServer({ db: makeDb(), auth: inactive }), "/api/v2/projects/project-1/parameter-value-change-requests")).status).toBe(403);

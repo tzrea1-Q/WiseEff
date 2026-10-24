@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../operatingScope";
 import type { AuthContext } from "../../auth/types";
 import type { Database } from "../../../shared/database/client";
 import { ApiError } from "../../../shared/http/errors";
@@ -101,25 +102,14 @@ function resolvePerspectiveRoleId(input: ServiceInput) {
   }, "guest");
 }
 
-function resolveAuthorizedProjectIds(input: ServiceInput): readonly string[] | null {
-  if (input.auth.roles.some((role) => role.projectId === null)) return null;
-  return [...new Set(input.auth.roles.map((role) => role.projectId).filter((id): id is string => Boolean(id)))];
-}
-
 async function assertProjectScope(db: Database, input: ServiceInput) {
   if (!input.projectId) return;
   const project = await getProjectById(db, {
-    organizationId: input.auth.organization.id,
+    organizationId: parameterOrganizationId(input.auth),
     projectId: input.projectId
   });
   if (!project) {
     throw new ApiError("NOT_FOUND", "Project was not found for this organization.", {
-      projectId: input.projectId
-    });
-  }
-  const allowed = input.auth.roles.some((role) => role.projectId === null || role.projectId === input.projectId);
-  if (!allowed) {
-    throw new ApiError("FORBIDDEN", "Parameter dashboard project scope is not allowed.", {
       projectId: input.projectId
     });
   }
@@ -140,13 +130,13 @@ async function resolveReviewableProjectIds(
          and ($3::text[] is null or id = any($3::text[]))
        order by id asc
     `,
-    [input.auth.organization.id, input.projectId ?? null, authorizedProjectIds]
+    [parameterOrganizationId(input.auth), input.projectId ?? null, authorizedProjectIds]
   );
   const reviewable: string[] = [];
   for (const project of projects.rows) {
     if (!canReviewParameterStage(input.auth, project.id, "software_review")) continue;
     if (await hasCurrentCanonicalReviewRole(db, {
-      organizationId: input.auth.organization.id,
+      organizationId: parameterOrganizationId(input.auth),
       projectId: project.id,
       userId: input.auth.user.id
     })) {
@@ -228,10 +218,10 @@ function mapBehavioralGroupToHotspot(
 
 export async function getDashboardSummary(db: Database, input: ServiceInput): Promise<DashboardSummary> {
   await assertProjectScope(db, input);
-  const organizationId = input.auth.organization.id;
+  const organizationId = parameterOrganizationId(input.auth);
   const { windowStart, windowEnd, granularity } = resolveWindowBounds(input.window);
   const projectId = input.projectId ?? null;
-  const authorizedProjectIds = resolveAuthorizedProjectIds(input);
+  const authorizedProjectIds = null;
   const reviewableProjectIds = await resolveReviewableProjectIds(db, input, authorizedProjectIds);
   const workbenchSignalsPromise = aggregateWorkbenchSignals(db, {
     organizationId,
@@ -288,13 +278,13 @@ export async function getDashboardSummary(db: Database, input: ServiceInput): Pr
 
 export async function getDashboardHotspots(db: Database, input: HotspotServiceInput): Promise<DashboardHotspot[]> {
   await assertProjectScope(db, input);
-  const organizationId = input.auth.organization.id;
+  const organizationId = parameterOrganizationId(input.auth);
   const { windowStart, windowEnd, days } = resolveWindowBounds(input.window);
   const previousEnd = windowStart;
   const previousStart = new Date(windowStart);
   previousStart.setUTCDate(previousStart.getUTCDate() - days);
   const projectId = input.projectId ?? null;
-  const authorizedProjectIds = resolveAuthorizedProjectIds(input);
+  const authorizedProjectIds = null;
 
   const [currentGroups, previousGroups] = await Promise.all([
     aggregateHotspotGroups(db, {

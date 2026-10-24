@@ -75,6 +75,8 @@ export { offsetToLineColumn };
 export type ConfigRevisionIngestOptions = {
   sourceCommit?: { baseConfigRevisionId: string };
   reviewedSource?: ReviewedSourceContinuity;
+  /** Typed edits keep identity against the exact persisted revision they patch. */
+  continuityBaseConfigRevisionId?: string;
 };
 
 /** Frozen by the whole-source owner after read-only continuity inspection. */
@@ -883,6 +885,7 @@ async function ingestConfigRevisionTx(
     registry,
     sourceCommit: options?.sourceCommit,
     reviewedSource: options?.reviewedSource,
+    continuityBaseConfigRevisionId: options?.continuityBaseConfigRevisionId,
   });
 
   if (continuity.ambiguous.length) {

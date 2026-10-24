@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../parameters/operatingScope";
 import { createHash, randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -50,7 +51,7 @@ export async function registerCanonicalJsonSource(
     if (definition.status !== "found" || definition.definition.subjectId !== subject.subject.id) throw new ApiError("CONFLICT", "Definition does not belong to the selected ConfigurationSchema.");
     return { ...mapping, definition: definition.definition };
   });
-  const set = await db.query(`select id from dts_config_set where id=$1 and organization_id=$2 and project_id=$3 for update nowait`, [input.configSetId,auth.organization.id,input.projectId]);
+  const set = await db.query(`select id from dts_config_set where id=$1 and organization_id=$2 and project_id=$3 for update nowait`, [input.configSetId,parameterOrganizationId(auth),input.projectId]);
   if (set.rows.length !== 1) throw new ApiError("NOT_FOUND", "Configuration set is unavailable.");
   await db.query(`select id from project_parameter_files where config_set_id=$1 order by id for update nowait`, [input.configSetId]);
   await db.query(`select version.id from project_parameter_file_versions version
@@ -63,9 +64,9 @@ export async function registerCanonicalJsonSource(
       file.config_set_role as role,file.config_set_sort_order as "sortOrder",version.storage_key as "storageKey",
       version.checksum,version.size_bytes::float8 as "sizeBytes"
     from project_parameter_files file left join project_parameter_file_versions version on version.id=file.current_version_id and version.file_id=file.id
-    where file.config_set_id=$1 and file.organization_id=$2 and file.project_id=$3 order by file.id`, [input.configSetId,auth.organization.id,input.projectId]);
+    where file.config_set_id=$1 and file.organization_id=$2 and file.project_id=$3 order by file.id`, [input.configSetId,parameterOrganizationId(auth),input.projectId]);
   if (members.rows.some((member) => !member.fileVersionId || !member.storageKey || !["dts", "json"].includes(member.format))) throw new ApiError("CONFLICT", "Configuration membership is incomplete or unsupported.");
-  const sourcePins = await discoverCurrentSourceRevisionPins(db,{ organizationId: auth.organization.id,projectId: input.projectId,configSetId: input.configSetId });
+  const sourcePins = await discoverCurrentSourceRevisionPins(db,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,configSetId: input.configSetId });
   await lockExactSourceRevisionsForProof(db,sourcePins);
   let revisionId: string | undefined;
   if (new Set(sourcePins.map((pin) => pin.configRevisionId)).size > 1) throw new ApiError("CONFLICT", "Existing source cohort is not on one exact current member revision.");
@@ -83,24 +84,24 @@ export async function registerCanonicalJsonSource(
           left join dts_config_revision_members member on member.config_revision_id=revision.id and member.file_id=file.id
           where file.config_set_id=$3 and (member.id is null or member.file_version_id<>file.current_version_id
             or member.role<>file.config_set_role or member.sort_order<>file.config_set_sort_order or member.source_name is null))`,
-    [auth.organization.id,input.projectId,input.configSetId,members.rows.length]);
+    [parameterOrganizationId(auth),input.projectId,input.configSetId,members.rows.length]);
     if (revisions.rows.length !== 1) throw new ApiError("CONFLICT", "Mixed source registration requires one exact resolved DTS member revision.");
     revisionId = revisions.rows[0]!.id;
   }
   if (!revisionId) {
     const next = await db.query<{ next: number }>(`select coalesce(max(revision_number),0)+1 as next from dts_config_revisions where config_set_id=$1`, [input.configSetId]);
     revisionId = randomUUID();
-    await insertConfigRevision(db, { id: revisionId,organizationId: auth.organization.id,projectId: input.projectId,configSetId: input.configSetId,
+    await insertConfigRevision(db, { id: revisionId,organizationId: parameterOrganizationId(auth),projectId: input.projectId,configSetId: input.configSetId,
       revisionNumber: next.rows[0]!.next,status: "resolved",attribution: trustedDomainAttribution(invocation) });
     await insertConfigRevisionMembers(db, revisionId, members.rows.map((member) => ({ ...member,content: "" })));
   }
-  await lockExactSourceRevisionsForProof(db,members.rows.map((member) => ({ ...member,organizationId: auth.organization.id,
+  await lockExactSourceRevisionsForProof(db,members.rows.map((member) => ({ ...member,organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,configSetId: input.configSetId,configRevisionId: revisionId })));
-  const cohort = await loadCanonicalSourceCohort(db,{ organizationId: auth.organization.id,projectId: input.projectId,configSetId: input.configSetId });
+  const cohort = await loadCanonicalSourceCohort(db,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,configSetId: input.configSetId });
   if (cohort.length) {
     const existing = cohort[0]!;
     const source = await loadCanonicalSourceSnapshot(db,storage,{
-      organizationId: auth.organization.id,projectId: input.projectId,bindingId: existing.bindingId,projectValueId: existing.oldValueId,
+      organizationId: parameterOrganizationId(auth),projectId: input.projectId,bindingId: existing.bindingId,projectValueId: existing.oldValueId,
     });
     if (source.manifest.configRevisionId !== revisionId || source.manifest.members.length !== members.rows.length || members.rows.some((member) => !source.manifest.members.some((pinned) =>
       pinned.fileId===member.fileId && pinned.fileVersionId===member.fileVersionId && pinned.role===member.role && pinned.sortOrder===member.sortOrder && pinned.format===member.format))) {
@@ -116,7 +117,7 @@ export async function registerCanonicalJsonSource(
     const revision = (await db.query<{ entry_file: string; include_search_paths: string[]; overlay_order: string[] }>(
       `select entry_file,include_search_paths,overlay_order from dts_config_revisions
        where id=$1 and organization_id=$2 and project_id=$3 and status='resolved' and manifest_state='complete'`,
-      [revisionId,auth.organization.id,input.projectId])).rows[0];
+      [revisionId,parameterOrganizationId(auth),input.projectId])).rows[0];
     const dtsMembers = await db.query<ConfigRevisionManifestMember>(`select member.file_id as "fileId",member.file_version_id as "fileVersionId",
       member.source_name as "fileName",member.source_name as "sourceName",member.role,member.sort_order as "sortOrder",'' as content
       from dts_config_revision_members member join project_parameter_files file on file.id=member.file_id
@@ -124,34 +125,34 @@ export async function registerCanonicalJsonSource(
     if (!revision || !normalizePersistedManifest({ entryFile: revision.entry_file,includeSearchPaths: revision.include_search_paths,
       overlayOrder: revision.overlay_order,members: dtsMembers.rows }).ok) throw new ApiError("CONFLICT", "Mixed source registration has no complete resolved DTS entry manifest.");
   }
-  const source = await loadExactSourceRevisionForProof(db,storage,{ organizationId: auth.organization.id,projectId: input.projectId,
+  const source = await loadExactSourceRevisionForProof(db,storage,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,
     configSetId: input.configSetId,configRevisionId: revisionId,fileId: file.fileId,fileVersionId: file.fileVersionId });
   for (const member of source.members) if (member.format === "json") parseJsonSource(member.bytes);
   const bytes = source.members.find((member) => member.fileId === file.fileId)!.bytes;
   readJsonSourceValue(bytes, input.rootPointer);
   const values = definitions.map((definition) => ({ ...definition, value: readJsonSourceValue(bytes, definition.pointer, input.rootPointer) as ContractJsonValue }));
-  const registration = await readSourceRegistrationAgreement(db,{ organizationId: auth.organization.id,subjectId: subject.subject.id });
+  const registration = await readSourceRegistrationAgreement(db,{ organizationId: parameterOrganizationId(auth),subjectId: subject.subject.id });
   if (!registration) throw new ApiError("CONFLICT", "An active governed registration and placement are required.");
   await db.query(`insert into parameter_catalog.project_parameter_source_occurrences
     (id,organization_id,project_id,config_set_id,file_id,occurrence_kind,configuration_instance_id,configuration_schema_subject_id,root_pointer,root_pointer_digest)
     values ($1,$2,$3,$4,$5,'json',$6,$7,$8,$9) on conflict do nothing`,
-  [randomUUID(),auth.organization.id,input.projectId,input.configSetId,input.fileId,randomUUID(),subject.subject.id,input.rootPointer,`sha256:${createHash("sha256").update(input.rootPointer).digest("hex")}`]);
+  [randomUUID(),parameterOrganizationId(auth),input.projectId,input.configSetId,input.fileId,randomUUID(),subject.subject.id,input.rootPointer,`sha256:${createHash("sha256").update(input.rootPointer).digest("hex")}`]);
   const occurrence = await db.query<{ id: string }>(`select id from parameter_catalog.project_parameter_source_occurrences
     where organization_id=$1 and project_id=$2 and config_set_id=$3 and file_id=$4 and occurrence_kind='json'
       and configuration_schema_subject_id=$5 and root_pointer=$6`,
-  [auth.organization.id,input.projectId,input.configSetId,input.fileId,subject.subject.id,input.rootPointer]);
+  [parameterOrganizationId(auth),input.projectId,input.configSetId,input.fileId,subject.subject.id,input.rootPointer]);
   if (occurrence.rows.length !== 1) throw new ApiError("CONFLICT", "JSON instance identity is ambiguous.");
   const occurrenceId = occurrence.rows[0]!.id;
   const bindings: Binding[] = [];
   for (const mapping of values) {
     const stabilized = await stabilizeCanonicalBinding(asValueClient(db), {
-      snapshot,organizationId: auth.organization.id,projectId: input.projectId,logicalNodeId: null,sourceOccurrenceId: occurrenceId,
+      snapshot,organizationId: parameterOrganizationId(auth),projectId: input.projectId,logicalNodeId: null,sourceOccurrenceId: occurrenceId,
       registrationId: SubjectRegistrationId(registration.id),definitionId: mapping.definition.id,
       effectiveRevisionId: mapping.definition.selectedRevision.id,expectedEffectiveRevisionId: null,
     });
     if (!stabilized.ok) throw new ApiError("CONFLICT", "JSON source could not establish a canonical Binding.", { reason: stabilized.error });
     const binding = stabilized.value.binding;
-    const pin = await loadSourceValueReplay(db,{ organizationId: auth.organization.id,projectId: input.projectId,
+    const pin = await loadSourceValueReplay(db,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,
       projectValueId: binding.currentValueId,bindingId: binding.id,sourceOccurrenceId: occurrenceId });
     if (pin) {
       if (pin.fileVersionId !== input.fileVersionId || pin.locator.pointer !== mapping.pointer
@@ -170,7 +171,7 @@ export async function registerCanonicalJsonSource(
     await db.query(`insert into parameter_catalog.project_value_source_pins
       (id,project_value_id,binding_id,definition_id,organization_id,project_id,source_occurrence_id,config_revision_id,file_id,file_version_id,format,locator,locator_digest)
       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'json',$11::jsonb,$12)`,
-    [randomUUID(),appended.value.currentTip,binding.id,binding.definitionId,auth.organization.id,input.projectId,occurrenceId,revisionId,input.fileId,input.fileVersionId,
+    [randomUUID(),appended.value.currentTip,binding.id,binding.definitionId,parameterOrganizationId(auth),input.projectId,occurrenceId,revisionId,input.fileId,input.fileVersionId,
       JSON.stringify(locator),`sha256:${createHash("sha256").update(serializeContract(locator)).digest("hex")}`]);
     bindings.push({ ...binding,currentValueId: appended.value.currentTip });
   }

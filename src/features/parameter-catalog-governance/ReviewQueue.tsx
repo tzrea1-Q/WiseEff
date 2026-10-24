@@ -13,6 +13,7 @@ import type { CatalogSubjectListResponse } from "@/infrastructure/http/parameter
 import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/common/SearchField";
 import { SelectControl } from "@/components/common/SelectControl";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import "./review-queue.css";
 import {
   canExecuteGovernanceAction,
@@ -272,7 +273,7 @@ export function ReviewQueue({
         <p>核对来源与识别依据，再选择处理方式。</p>
         <div className="review-queue__tools">
           <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => void load()}>刷新列表</Button>
-          {actor === "org-admin" ? <Button asChild variant="outline" size="sm"><a href="/audit?kind=parameter-catalog-governance">处理记录</a></Button> : null}
+          {actor === "org-admin" || actor === "platform-admin" ? <Button asChild variant="outline" size="sm"><a href={withOrganizationScope("/audit?kind=parameter-catalog-governance", organizationId)}>处理记录</a></Button> : null}
         </div>
       </div>
       {loading ? <SectionSkeleton label={governanceCopy.reviewLoading} /> : null}

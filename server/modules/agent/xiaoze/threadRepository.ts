@@ -2,12 +2,14 @@ import type { Queryable } from "../../../shared/database/client";
 import { serializePostgresJsonb } from "../../../shared/database/jsonb";
 import type { AgentCitation, AgentContext, AgentMessageDto } from "../types";
 import { getAgentSession, listAgentMessages } from "../repository";
+import { ApiError } from "../../../shared/http/errors";
 
 export const XIAOZE_PAGE_KEY = "xiaoze";
 export const XIAOZE_THREAD_DEFAULT_LIMIT = 30;
 export const XIAOZE_THREAD_MAX_LIMIT = 50;
 
 export type XiaozeThreadListItem = {
+  historicalAttribution?: import("../../../../src/domain/identity/historicalAttribution").HistoricalAttribution;
   id: string;
   title: string;
   preview: string;
@@ -17,6 +19,7 @@ export type XiaozeThreadListItem = {
 };
 
 export type XiaozeThreadDetail = {
+  historicalAttribution?: import("../../../../src/domain/identity/historicalAttribution").HistoricalAttribution;
   id: string;
   title: string;
   preview: string;
@@ -70,6 +73,7 @@ type AgentSessionRow = {
 };
 
 type XiaozeThreadListRow = {
+  historical_attribution?: XiaozeThreadListItem["historicalAttribution"];
   id: string;
   title: string;
   context: unknown;
@@ -140,6 +144,7 @@ function decodeCursor(cursor: string) {
 
 function mapListRow(row: XiaozeThreadListRow): XiaozeThreadListItem {
   return {
+    historicalAttribution: row.historical_attribution,
     id: row.id,
     title: row.title,
     preview: readXiaozePreview(row.context),
@@ -186,6 +191,7 @@ export async function listXiaozeThreads(db: Queryable, input: ListXiaozeThreadsI
       s.id,
       s.title,
       s.context,
+      s.historical_attribution,
       s.created_at,
       s.updated_at,
       (
@@ -235,6 +241,7 @@ export async function getXiaozeThread(
 
   return {
     id: session.id,
+    historicalAttribution: session.historicalAttribution,
     title: session.title,
     preview: readXiaozePreview(session.context),
     createdAt: session.createdAt,
@@ -323,6 +330,7 @@ export async function persistXiaozeTurnMessages(db: Queryable, input: PersistXia
   }
 
   const existing = await getAgentSession(db, input.organizationId, input.threadId);
+  if (existing && existing.actorUserId !== input.actorUserId) throw new ApiError("FORBIDDEN", "This conversation belongs to another actor.");
   const title = deriveThreadTitleFromMessages(normalizedMessages, existing?.title ?? "新对话");
   const preview = deriveThreadPreviewFromMessages(normalizedMessages);
   const context: AgentContext & { xiaoze?: Record<string, unknown> } = {
@@ -338,13 +346,16 @@ export async function persistXiaozeTurnMessages(db: Queryable, input: PersistXia
   };
 
   if (!existing) {
-    await db.query(
+    const claimed = await db.query(
       `
       insert into agent_sessions (
         id, organization_id, project_id, actor_user_id, page_key, role_id, context, title
       )
       values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
-      on conflict (id) do nothing
+      on conflict (id) do update set id = agent_sessions.id
+        where agent_sessions.organization_id = excluded.organization_id
+          and agent_sessions.actor_user_id = excluded.actor_user_id
+      returning id
       `,
       [
         input.threadId,
@@ -357,6 +368,7 @@ export async function persistXiaozeTurnMessages(db: Queryable, input: PersistXia
         title
       ]
     );
+    if (claimed.rowCount !== 1) throw new ApiError("FORBIDDEN", "This conversation belongs to another organization or actor.");
   }
 
   for (const message of normalizedMessages) {

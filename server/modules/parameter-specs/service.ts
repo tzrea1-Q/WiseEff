@@ -1,3 +1,4 @@
+import { parameterOrganizationId } from "../parameters/operatingScope";
 import type { AuthContext } from "../auth/types";
 import {
   canAdminParameters,
@@ -161,7 +162,7 @@ export async function listParameterSpecs(
 ): Promise<{ items: ParameterSpecSummaryDto[] }> {
   requireCanView(auth);
   const rows = await listParameterSpecRows(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     ...query,
   });
   return {
@@ -197,7 +198,7 @@ export async function listSpecReviewTasks(
   const limit = query.limit ?? 50;
   const cursor = decodeReviewCursor(query.cursor);
   const result = await listSpecReviewTaskRows(db, {
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
     status: query.status,
     projectId: query.projectId,
     configRevisionId: query.configRevisionId,

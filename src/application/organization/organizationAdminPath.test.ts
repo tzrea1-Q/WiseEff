@@ -16,12 +16,21 @@ describe("organizationAdminPath", () => {
     expect(isOrganizationAdminPath("/user-permissions")).toBe(true);
     expect(isOrganizationAdminPath("/parameter-admin")).toBe(false);
 
-    expect(parseOrganizationAdminArea(ORGANIZATION_ADMIN_PATH)).toBe("profile");
+    expect(parseOrganizationAdminArea(ORGANIZATION_ADMIN_PATH)).toBe("overview");
+    expect(buildOrganizationAdminPath("overview")).toBe(ORGANIZATION_ADMIN_PATH);
+    expect(parseOrganizationAdminArea("/organization/resources")).toBe("resources");
+    expect(buildOrganizationAdminPath("resources")).toBe("/organization/resources");
+    expect(parseOrganizationAdminArea("/organization/settings")).toBe("profile");
     expect(parseOrganizationAdminArea(ORGANIZATION_ADMIN_MEMBERS_PATH)).toBe("members");
     expect(parseOrganizationAdminArea("/user-permissions")).toBe("members");
-    expect(buildOrganizationAdminPath("profile")).toBe(ORGANIZATION_ADMIN_PATH);
+    expect(buildOrganizationAdminPath("profile")).toBe("/organization/settings");
     expect(buildOrganizationAdminPath("members")).toBe(ORGANIZATION_ADMIN_MEMBERS_PATH);
     expect(parseOrganizationAdminArea(ORGANIZATION_ADMIN_BRIDGES_PATH)).toBe("bridges");
     expect(buildOrganizationAdminPath("bridges")).toBe(ORGANIZATION_ADMIN_BRIDGES_PATH);
+    expect(parseOrganizationAdminArea("/organization/integrations")).toBe("integrations");
+    expect(buildOrganizationAdminPath("integrations")).toBe("/organization/integrations");
+    expect(parseOrganizationAdminArea("/organization/projects")).toBe("projects");
+    expect(buildOrganizationAdminPath("projects")).toBe("/organization/projects");
+    expect(parseOrganizationAdminArea("/organization/teams")).toBe("teams");
   });
 });

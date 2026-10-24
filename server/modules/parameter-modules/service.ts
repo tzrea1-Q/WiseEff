@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterInvocation } from "../parameters/operatingScope";
 import { randomUUID } from "node:crypto";
 
 import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
@@ -237,7 +238,7 @@ export async function getParameterModuleRegistry(
 ): Promise<{ item: ParameterModuleRegistryDto }> {
   requireCanView(auth);
   const catalog = await captureRegistryCatalog(db);
-  const item = await readRegistry(db, auth.organization.id, catalog);
+  const item = await readRegistry(db, parameterOrganizationId(auth), catalog);
   return { item: {
     navigationOnly: true,
     modules: item.modules.map(module => ({ ...module, sourceKey: null, attributionSubjectId: null })),
@@ -270,10 +271,10 @@ export async function getModuleDiscoveryHints(
   requireCanView(auth);
   const [page, dismissedCompatibles] = await Promise.all([
     listObservedCompatiblesForDiscovery(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
     }),
     listDismissedCompatiblesForDiscovery(db, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
     }),
   ]);
   return {
@@ -316,12 +317,12 @@ export async function recomputeBindingModules(
     try {
       await db.transaction(async (tx) => {
         const { moves, conflicts } = await planScopedMoves(tx, {
-          organizationId: auth.organization.id,
+          organizationId: parameterOrganizationId(auth),
           projectId: input.projectId ?? null,
         });
         const preview = await summarizeMoves(
           tx,
-          auth.organization.id,
+          parameterOrganizationId(auth),
           moves,
           conflicts,
         );
@@ -346,7 +347,7 @@ export async function recomputeBindingModules(
 
   return db.transaction(async (tx) => {
     const { moves, conflicts } = await planScopedMoves(tx, {
-      organizationId: auth.organization.id,
+      organizationId: parameterOrganizationId(auth),
       projectId: input.projectId ?? null,
     });
 
@@ -358,22 +359,22 @@ export async function recomputeBindingModules(
       );
     }
 
-    await applyPlannedMoves(tx, auth.organization.id, moves);
+    await applyPlannedMoves(tx, parameterOrganizationId(auth), moves);
     const emptiedModules = await collectEmptyUnclassifiedBuckets(
       tx,
-      auth.organization.id,
+      parameterOrganizationId(auth),
     );
     const preview = await summarizeMoves(
       tx,
-      auth.organization.id,
+      parameterOrganizationId(auth),
       moves,
       [],
       emptiedModules,
     );
-    await writeModuleAttributionAudit(asAuditTx(tx), createUserInvocation(auth), {
+    await writeModuleAttributionAudit(asAuditTx(tx), parameterInvocation(auth) ?? createUserInvocation(auth), {
       kind: "parameter-module-bindings-recomputed",
       action: "recompute",
-      targetId: input.projectId ?? auth.organization.id,
+      targetId: input.projectId ?? parameterOrganizationId(auth),
       metadata: {
         updated: moves.length,
         projectId: input.projectId ?? null,
@@ -411,10 +412,10 @@ export async function listDriverRegistry(
 ): Promise<{ items: DriverRegistryEntry[]; total: number }> {
   requireCanView(auth);
   const catalog = await captureRegistryCatalog(db);
-  const registry = await readRegistry(db, auth.organization.id, catalog);
+  const registry = await readRegistry(db, parameterOrganizationId(auth), catalog);
   const schemaRegistry = await getCachedOrganizationSchemaRegistry(db, {
     schemasRoot,
-    organizationId: auth.organization.id,
+    organizationId: parameterOrganizationId(auth),
   });
   const registrationByModuleId = new Map<
     string,
@@ -452,7 +453,7 @@ export async function listDriverRegistry(
       and pm.kind = 'driver-group'
       and pm.attribution_subject_id is not null
     `,
-    [auth.organization.id],
+    [parameterOrganizationId(auth)],
   );
   for (const row of registrationRows.rows) {
     registrationByModuleId.set(row.module_id, {

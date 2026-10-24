@@ -19,7 +19,7 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
 import { TopBarNotifications } from "./components/notifications/TopBarNotifications";
 import { createStateBackedNotificationsClient } from "@/infrastructure/mock/mockNotificationsGateway";
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { WiseEffIcon } from "./components/WiseEffIcon";
 import { ProjectParameterInitializationWizard } from "./ProjectParameterInitializationWizard";
@@ -70,6 +70,9 @@ import {
 } from "@/domain/users/types";
 import { XiaozePageContext, XiaozePageContextRegistrar } from "@/features/agent/useXiaozePageContext";
 import { XiaozeProvider, XiaozeProactiveInsights } from "@/features/agent/XiaozeProvider";
+import { OrganizationBusinessWorkspace } from "@/features/organization/OrganizationBusinessWorkspace";
+import { InvitationAcceptancePage } from "@/features/organization/InvitationAcceptancePage";
+import { isOrganizationBusinessPath, withBusinessOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiveInsights";
 import { FeedbackDialog } from "@/features/product-feedback/FeedbackDialog";
 import { xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
@@ -81,6 +84,7 @@ import { INITIAL_MOCK_WORKFLOW_PUBLICATION } from "@/infrastructure/mock/mockWor
 import { createApiInitialState } from "@/application/state/apiInitialState";
 import { reducer, type AppAction, type ApiRuntimeDataDomain } from "@/application/state/appState";
 import { createAppRuntime, type AppRuntime, type WiseEffAuthClient } from "@/app/appRuntime";
+import { createAuthClient } from "@/infrastructure/http/authClient";
 import { CATALOG_ORGANIZATION_ID } from "@/application/parameter-catalog/fixtures";
 import { appFooterConfig } from "@/config/appFooterConfig";
 import { isProjectConfigurationWorkbenchPath } from "@/application/project-configuration/workbenchPath";
@@ -228,7 +232,7 @@ function App({
   return (
     <TooltipProvider delayDuration={0}>
       <ToastProvider>
-        <AppShell
+        {runtimeMode === "api" && window.location.pathname === "/invite" ? <InvitationAcceptancePage /> : <AppShell
           authClient={authClient}
           workflowPublicationClient={workflowPublicationClient}
           debuggingAdminClient={debuggingAdminClient}
@@ -247,7 +251,7 @@ function App({
           dtsReloadRepository={dtsReloadRepository}
           runtimeMode={runtimeMode}
           userGovernanceActions={userGovernanceActions}
-        />
+        />}
       </ToastProvider>
     </TooltipProvider>
   );
@@ -294,6 +298,11 @@ function AppShell({
   const stateRef = useRef(state);
   const [path, setPath] = useState(() => getPageByPath(window.location.pathname).path);
   const [search, setSearch] = useState(() => window.location.pathname === "/log-dashboard" ? "" : window.location.search);
+  const operatingOrganizationId = new URLSearchParams(search).get("organizationId") ?? undefined;
+  const scopeKey = `${state.currentUserId}:${operatingOrganizationId ?? "home"}`;
+  const scopeRef = useRef({ key: scopeKey, generation: 0 });
+  if (scopeRef.current.key !== scopeKey) scopeRef.current = { key: scopeKey, generation: scopeRef.current.generation + 1 };
+  const scopeGeneration = scopeRef.current.generation;
   const historyIndex = useRef(0);
   const navigationRequest = useRef(0);
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
@@ -305,6 +314,8 @@ function AppShell({
   const [authProbeAttempt, setAuthProbeAttempt] = useState(0);
   const [apiAuthPermissions, setApiAuthPermissions] = useState<string[]>([]);
   const [apiAuthRoles, setApiAuthRoles] = useState<AuthContextDto["roles"] | null>(null);
+  const [apiProjectMemberships, setApiProjectMemberships] = useState<AuthContextDto["projectMemberships"]>([]);
+  const [homeOrganizationSuspended, setHomeOrganizationSuspended] = useState(false);
   const [organizationId, setOrganizationId] = useState(
     () => (runtimeMode === "api" ? "" : CATALOG_ORGANIZATION_ID)
   );
@@ -316,6 +327,7 @@ function AppShell({
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const effectiveSidebarCollapsed = !isMobileNavViewport && (sidebarCollapsed || isTabletRailViewport);
   const page = getPageByPath(path);
+  const showHomeOrganizationSuspended = homeOrganizationSuspended && page.key !== "user-permissions" && page.key !== "platform-organizations";
   const pageKeyRef = useRef(page.key);
   const xiaozeContextSummary = useMemo(() => getXiaozeContextSummary(path), [path]);
   const topBarActionsContextValue = useMemo(
@@ -328,19 +340,21 @@ function AppShell({
   const showsApplicationFooter = !isProjectConfigurationWorkbenchPath(path)
     && page.key !== "parameter-review" && page.key !== "parameter-submissions";
   const usesProjectScope = pageUsesProjectScope(page.key);
+  const pageProjectId = (page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions"
+    ? new URLSearchParams(search).get("project") || new URLSearchParams(search).get("projectId") : null) || state.activeProjectId;
   const xiaozePageContext = useMemo(
     () => ({
       path,
       pageKey: page.key,
       ...(usesProjectScope
         ? {
-            projectId: state.activeProjectId,
-            projectName: state.configDraft.projects.find((project) => project.id === state.activeProjectId)?.name
+            projectId: pageProjectId,
+            projectName: state.configDraft.projects.find((project) => project.id === pageProjectId)?.name
           }
         : {}),
       roleId: currentRoleId
     }),
-    [path, page.key, usesProjectScope, state.activeProjectId, state.configDraft.projects, currentRoleId]
+    [path, page.key, usesProjectScope, pageProjectId, state.configDraft.projects, currentRoleId]
   );
   const mockParameterRuntimeRef = useRef<MockRuntimeState | null>(null);
   if (mockParameterRuntimeRef.current === null) {
@@ -348,13 +362,14 @@ function AppShell({
   } else {
     mockParameterRuntimeRef.current.current = state;
   }
+  const homeAuthClient = useMemo(() => authClient ?? createAuthClient(), [authClient]);
   const appRuntime = useMemo(
     () =>
       createAppRuntime(
         runtimeMode,
-        { getState: () => stateRef.current, mockParameterRuntime: mockParameterRuntimeRef.current! },
+        { getState: () => stateRef.current, mockParameterRuntime: mockParameterRuntimeRef.current!, organizationId: operatingOrganizationId },
         {
-          authClient,
+          authClient: homeAuthClient,
           workflowPublicationClient,
           parameterRepository,
           parameterTopologyRepository,
@@ -373,7 +388,9 @@ function AppShell({
       ),
     [
       runtimeMode,
-      authClient,
+      operatingOrganizationId,
+      state.currentUserId,
+      homeAuthClient,
       workflowPublicationClient,
       parameterRepository,
       parameterTopologyRepository,
@@ -418,12 +435,15 @@ function AppShell({
   const currentWorkflow = workflowForGroup(page.group);
   const canEnterPublishedPage = currentWorkflow === null || isPublicationAdministrator ||
     publication.status === "ready" && publication.publication?.workflows[currentWorkflow] === true;
-  const canAccessCurrentPage = canAccessPage(currentRoleId, page.key) && canEnterPublishedPage &&
-    (page.key !== "workflow-publication" || canManagePublication);
+  const canAccessCurrentPage = (canAccessPage(currentRoleId, page.key) || runtimeMode === "api" && page.key === "parameter-submissions" && Boolean(apiProjectMemberships?.length)) && canEnterPublishedPage &&
+    ((page.key !== "workflow-publication" && page.key !== "platform-organizations") || canManagePublication);
   const [dashboardState, dashboardDispatch] = useReducer(dashboardReducer, initialDashboardState);
+  const dashboardRepositoryRef = useRef(dashboardRepository);
+  dashboardRepositoryRef.current = dashboardRepository;
   const dashboardRuntime = useMemo(
-    () => createParameterDashboardRuntime({ repository: dashboardRepository, dispatch: dashboardDispatch }),
-    [dashboardRepository]
+    () => createParameterDashboardRuntime({ repository: dashboardRepository,
+      dispatch: (action) => { if (scopeRef.current.generation === scopeGeneration && dashboardRepositoryRef.current === dashboardRepository) dashboardDispatch(action); } }),
+    [dashboardRepository, scopeGeneration]
   );
   const knowledgeCapability = useMemo<KnowledgeCapability>(
     () => ({
@@ -450,26 +470,30 @@ function AppShell({
       ? apiAuthPermissions.includes("parameter:edit") &&
         (apiAuthPermissions.includes("debugging:dts-reload") || apiAuthPermissions.includes("admin:access"))
       : true;
+  const parameterRepositoryRef = useRef(parameterRepositoryClient);
+  parameterRepositoryRef.current = parameterRepositoryClient;
   const parameterActions = useMemo<ParameterRuntimeActions>(
     () =>
       createParameterRuntimeActions({
         runtimeMode,
         repository: parameterRepositoryClient,
         canonicalRepository: appRuntime.parameterCatalogRepository,
-        dispatch,
+        dispatch: (action) => { if (scopeRef.current.generation === scopeGeneration && parameterRepositoryRef.current === parameterRepositoryClient) dispatch(action); },
         getParameterProjectId: (parameterId) => stateRef.current.parameters.find((parameter) => parameter.id === parameterId)?.projectId
       }),
-    [appRuntime.parameterCatalogRepository, parameterRepositoryClient, runtimeMode]
+    [appRuntime.parameterCatalogRepository, parameterRepositoryClient, runtimeMode, scopeGeneration]
   );
+  const logRepositoryRef = useRef(logAnalysisRepositoryClient);
+  logRepositoryRef.current = logAnalysisRepositoryClient;
   const logActions = useMemo<LogRuntimeActions>(
     () =>
       createLogRuntimeActions({
         mode: runtimeMode,
         repository: logAnalysisRepositoryClient,
-        dispatch,
+        dispatch: (action) => { if (scopeRef.current.generation === scopeGeneration && logRepositoryRef.current === logAnalysisRepositoryClient) dispatch(action); },
         getState: () => stateRef.current
       }),
-    [logAnalysisRepositoryClient, runtimeMode]
+    [logAnalysisRepositoryClient, runtimeMode, scopeGeneration]
   );
   const debuggingActions = useMemo<DebuggingRuntimeActions>(
     () =>
@@ -534,9 +558,10 @@ function AppShell({
     }
   }, [apiAuthPermissions, parameterInitializationRepositoryClient, runtimeMode]);
 
+  const hydratedParameterScope = useRef<number | null>(null);
   const hydrateActiveProjectInitialization = useCallback(
     async (projectId: string) => {
-      if (runtimeMode !== "api" || !projectId) {
+      if (runtimeMode !== "api" || !projectId || hydratedParameterScope.current !== scopeRef.current.generation) {
         return;
       }
       try {
@@ -583,7 +608,7 @@ function AppShell({
         return;
       }
       try {
-        const adminClient = createParameterAdminClient();
+        const adminClient = appRuntime.parameterAdminClient ?? createParameterAdminClient();
         if (!initializationCreatedProjectIds.current.has(projectId)) {
           await adminClient.createProject({
             id: projectId,
@@ -640,7 +665,7 @@ function AppShell({
         if (expectedSnapshots !== undefined) throw error;
       }
     },
-    [parameterInitializationRepositoryClient]
+    [parameterInitializationRepositoryClient, appRuntime.parameterAdminClient]
   );
 
   const handleInitializationWizardDispatch = useCallback(
@@ -658,6 +683,8 @@ function AppShell({
     const primaryRole = pickPrimaryPlatformRoleId(context.roles.map((role) => role.roleId));
     setApiAuthPermissions(context.permissions);
     setApiAuthRoles(context.roles);
+    setApiProjectMemberships(context.projectMemberships ?? []);
+    setHomeOrganizationSuspended(context.organization.status === "suspended");
     setOrganizationId(context.organization.id);
     dispatch({
       type: "HYDRATE_AUTH_CONTEXT",
@@ -686,6 +713,19 @@ function AppShell({
   );
   const domainDataHydratedRef = useRef(false);
   const apiRuntimeGeneration = useRef(0);
+  const hydratedScope = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (runtimeMode !== "api" || apiAuthStatus !== "authenticated") return;
+    const previous = hydratedScope.current;
+    hydratedScope.current = scopeGeneration;
+    if (previous === null || previous === scopeGeneration) return;
+    domainDataHydratedRef.current = false;
+    apiRuntimeGeneration.current += 1;
+    dashboardDispatch({ type: "DASHBOARD_SUMMARY_LOADING" });
+    dashboardDispatch({ type: "DASHBOARD_HOTSPOTS_LOADING" });
+    dispatch({ type: "HYDRATE_PARAMETER_RUNTIME", projects: [], parameters: [], changeRequests: [], parameterSubmissionRounds: [], parameterDrafts: [] });
+    dispatch({ type: "HYDRATE_LOG_RUNTIME", logs: [] });
+  }, [runtimeMode, apiAuthStatus, scopeGeneration]);
 
   const refreshApiRuntimeData = useCallback(
     async (cancelledRef?: { current: boolean }, roleId = stateRef.current.activeRoleId) => {
@@ -720,7 +760,10 @@ function AppShell({
           next.delete(domain);
           return next;
         });
-        if (domain === "parameters") setApiRuntimeSynced(true);
+        if (domain === "parameters") {
+          hydratedParameterScope.current = failed ? null : scopeRef.current.generation;
+          setApiRuntimeSynced(true);
+        }
       };
       await Promise.all([
         settleDomain("parameters", parameterActions.refresh({ notifyOnFailure: false })),
@@ -805,17 +848,14 @@ function AppShell({
     setApiAuthStatus("checking");
     client
       .getCurrentAuthContext()
-      .then(async (context) => {
+      .then((context) => {
         if (cancelledRef.current) return;
-        const primaryRoleId = pickPrimaryPlatformRoleId(context.roles.map((role) => role.roleId));
+        domainDataHydratedRef.current = false;
         hydrateAuthContext(context);
         setApiAuthStatus("authenticated");
         setApiAuthError("");
         if (pageKeyRef.current === "home") {
           setApiRuntimeSynced(true);
-        } else {
-          domainDataHydratedRef.current = true;
-          await refreshApiRuntimeData(cancelledRef, primaryRoleId);
         }
       })
       .catch((error) => {
@@ -835,7 +875,7 @@ function AppShell({
     return () => {
       cancelledRef.current = true;
     };
-  }, [appRuntime.authClient, authProbeAttempt, hydrateAuthContext, refreshApiRuntimeData, runtimeMode]);
+  }, [appRuntime.authClient, authProbeAttempt, hydrateAuthContext, runtimeMode]);
 
   useEffect(() => {
     historyIndex.current = window.history.state?.wiseeffNavigationIndex ?? 0;
@@ -1006,19 +1046,16 @@ function AppShell({
 
   const handleAuthSession = useCallback(
     async (session: AuthSessionDto) => {
-      const primaryRoleId = pickPrimaryPlatformRoleId(session.auth.roles.map((role) => role.roleId));
+      domainDataHydratedRef.current = false;
       hydrateAuthContext(session.auth);
       setApiAuthStatus("authenticated");
       setApiAuthError("");
       if (pageKeyRef.current === "home") {
         setApiRuntimeSynced(true);
-      } else {
-        domainDataHydratedRef.current = true;
-        await refreshApiRuntimeData(undefined, primaryRoleId);
       }
       dispatch({ type: "ADD_NOTIFICATION", message: "已登录雷泽账号" });
     },
-    [hydrateAuthContext, refreshApiRuntimeData]
+    [hydrateAuthContext]
   );
 
   const handleLogout = useCallback(async () => {
@@ -1033,6 +1070,7 @@ function AppShell({
     clearLocalAuthToken();
     clearSessionDraftsForLogout();
     setApiAuthRoles(null);
+    setApiProjectMemberships([]);
     setApiAuthStatus("unauthenticated");
     setApiAuthError("");
     dispatch({ type: "ADD_NOTIFICATION", message: "已退出登录" });
@@ -1107,7 +1145,7 @@ function AppShell({
     supportsXiaozeProactiveInsights(page.key);
   const proactiveInsightsBanner = showXiaozeProactiveInsights ? (
     <div className="xiaoze-proactive-insights">
-      <XiaozeProactiveInsights enabled />
+      <XiaozeProactiveInsights key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}`} enabled organizationId={operatingOrganizationId} />
     </div>
   ) : null;
 
@@ -1157,6 +1195,7 @@ function AppShell({
           <Sidebar
             activePath={page.path}
             activeSearch={search}
+            operatingOrganizationId={operatingOrganizationId}
             currentRoleId={currentRoleId}
             visibleWorkflows={visibleWorkflows}
             canManagePublication={canManagePublication}
@@ -1185,6 +1224,7 @@ function AppShell({
             pageActions={topBarActions}
             pageLeadingActions={topBarLeadingActions}
             onNewProject={() => setProjectInitOpen(true)}
+            canCreateProject={runtimeMode === "api" ? apiAuthPermissions.includes("admin:access") : undefined}
             onLogout={handleLogout}
             onUpdateCurrentUserProfile={handleUpdateCurrentUserProfile}
             onChangeCurrentUserPassword={handleChangeCurrentUserPassword}
@@ -1197,8 +1237,8 @@ function AppShell({
         <TopBarActionsContext.Provider value={topBarActionsContextValue}>
           {isPlatformHome ? (
             <div className="main-content home-content" data-runtime-state="ready">
-              {proactiveInsightsBanner}
-              <PageRouter
+              <OrganizationBusinessWorkspace proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
+              <PageRouter key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}:${page.key}`}
                 page={page}
                 publication={publication}
                 visibleWorkflows={visibleWorkflows}
@@ -1231,11 +1271,13 @@ function AppShell({
                   dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
                 }
                 onAuthContextRefresh={hydrateAuthContext}
+                onEndSession={handleLogout}
                 organizationId={organizationId}
                 sessionPermissions={apiAuthPermissions}
                 sessionRoles={runtimeMode === "api" ? apiAuthRoles : undefined}
+                projectMemberships={runtimeMode === "api" ? apiProjectMemberships : undefined}
                 DebuggingAdminPage={DebuggingAdminPageWithRuntime}
-              />
+              /></OrganizationBusinessWorkspace>
             </div>
           ) : (
             <main
@@ -1248,9 +1290,9 @@ function AppShell({
             >
               {apiRuntimeStatusBanner}
               {publicationPreviewBanner}
-              {proactiveInsightsBanner}
               <div className="page-content" inert={pageRuntimeState === "loading"}>
-                <PageRouter
+                <OrganizationBusinessWorkspace proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
+                <PageRouter key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}:${page.key}`}
                   page={page}
                   publication={publication}
                   visibleWorkflows={visibleWorkflows}
@@ -1283,11 +1325,13 @@ function AppShell({
                     dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
                   }
                   onAuthContextRefresh={hydrateAuthContext}
+                  onEndSession={handleLogout}
                   organizationId={organizationId}
                   sessionPermissions={apiAuthPermissions}
                   sessionRoles={runtimeMode === "api" ? apiAuthRoles : undefined}
+                  projectMemberships={runtimeMode === "api" ? apiProjectMemberships : undefined}
                   DebuggingAdminPage={DebuggingAdminPageWithRuntime}
-                />
+                /></OrganizationBusinessWorkspace>
               </div>
               {showsApplicationFooter ? (
                 <AppFooter config={appFooterConfig} onFeedback={() => setFeedbackOpen(true)} />
@@ -1305,7 +1349,7 @@ function AppShell({
         <XiaozePageContextRegistrar
           path={path}
           pageKey={page.key}
-          projectId={usesProjectScope ? state.activeProjectId : undefined}
+          projectId={usesProjectScope ? pageProjectId : undefined}
           roleId={currentRoleId}
           visibleRecords={xiaozeContextSummary ? [{ summary: xiaozeContextSummary }] : undefined}
         />
@@ -1320,6 +1364,7 @@ function AppShell({
           />
         ) : null}
       <FeedbackDialog
+        key={scopeKey}
         open={feedbackOpen}
         pagePath={path}
         pageTitle={page.title}
@@ -1332,7 +1377,7 @@ function AppShell({
 
   return runtimeMode === "api" ? (
     <XiaozePageContext.Provider value={xiaozePageContext}>
-      <XiaozeProvider enableInspector={enableXiaozeInspector} userId={state.currentUserId}>{appShell}</XiaozeProvider>
+      <XiaozeProvider enableInspector={enableXiaozeInspector} userId={state.currentUserId} organizationId={operatingOrganizationId}>{appShell}</XiaozeProvider>
     </XiaozePageContext.Provider>
   ) : (
     appShell
@@ -1342,6 +1387,7 @@ function AppShell({
 function Sidebar({
   activePath,
   activeSearch,
+  operatingOrganizationId,
   currentRoleId,
   visibleWorkflows,
   canManagePublication,
@@ -1352,6 +1398,7 @@ function Sidebar({
 }: {
   activePath: string;
   activeSearch: string;
+  operatingOrganizationId?: string;
   currentRoleId: string;
   visibleWorkflows: readonly WorkflowId[];
   canManagePublication: boolean;
@@ -1376,19 +1423,22 @@ function Sidebar({
   }, {});
   const ToggleIcon = isCollapsed ? PanelLeftOpen : PanelLeftClose;
   const toggleLabel = isCollapsed ? "展开侧边栏" : "收起侧边栏";
-  const visibleUtilityItems = utilityItems.filter((item) => item.path &&
+  const visibleUtilityItems = utilityItems.map(item => ({ ...item,
+    path: item.path === "/organization" && canManagePublication ? "/platform/organizations" : item.path
+  })).filter((item) => item.path &&
     canAccessPage(currentRoleId, getPageByPath(item.path).key) &&
-    (item.path !== "/workflow-publication" || canManagePublication));
-  const activeManagementItem = visibleUtilityItems.find((item) => item.path && getPageByPath(item.path).key === activePageKey);
+    ((item.path !== "/workflow-publication" && item.path !== "/platform/organizations") || canManagePublication));
+  const activeManagementItem = visibleUtilityItems.find((item) => item.path && (getPageByPath(item.path).key === activePageKey
+    || (item.path === "/platform/organizations" && activePageKey === "user-permissions")));
   const managementNavigation = visibleUtilityItems.length ? (
     <nav className="sidebar-management" aria-label="平台管理">
       <div className="nav-group-label">平台管理</div>
       <div className="sidebar-management__links">
         {visibleUtilityItems.map((item) => {
-            const href = item.path;
+            const href = item.path && withBusinessOrganizationScope(item.path, operatingOrganizationId);
             if (!href) return null;
             const Icon = item.icon;
-            const isActive = getPageByPath(href).key === activePageKey;
+            const isActive = activeManagementItem === item;
             return (
               <Tooltip key={href}>
                 <TooltipTrigger asChild>
@@ -1449,7 +1499,7 @@ function Sidebar({
               {items.map((item) => {
                 const Icon = item.icon;
                 const isActive = item.key === activePageKey;
-                const href = projectId && projectRoutes.includes(item.path) ? `${item.path}?project=${encodeURIComponent(projectId)}` : item.path;
+                const href = withBusinessOrganizationScope(projectId && projectRoutes.includes(item.path) ? `${item.path}?project=${encodeURIComponent(projectId)}` : item.path, operatingOrganizationId);
                 return (
                   <Tooltip key={item.path}>
                     <TooltipTrigger asChild>
@@ -1516,6 +1566,7 @@ function TopBar({
   pageActions,
   pageLeadingActions,
   onNewProject,
+  canCreateProject: canCreateProjectOverride,
   onLogout,
   onUpdateCurrentUserProfile,
   onChangeCurrentUserPassword,
@@ -1532,6 +1583,7 @@ function TopBar({
   pageActions?: ReactNode;
   pageLeadingActions?: ReactNode;
   onNewProject: () => void;
+  canCreateProject?: boolean;
   onLogout?: () => Promise<void> | void;
   onUpdateCurrentUserProfile?: (input: UpdateCurrentUserProfileInput) => Promise<void>;
   onChangeCurrentUserPassword?: (input: ChangeCurrentUserPasswordInput) => Promise<void>;
@@ -1547,7 +1599,7 @@ function TopBar({
     unsavedCount: number;
   } | null>(null);
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
-  const canCreateProject = canPerform(currentRoleId, "parameter.edit");
+  const canCreateProject = canCreateProjectOverride ?? canPerform(currentRoleId, "parameter.edit");
   const showProjectInitAction = page.key === "parameters" && canCreateProject;
   const showProjectSelector = pageUsesProjectScope(page.key) && page.key !== "parameter-home";
   const workspaceOwnsHeader = /^\/log-admin\/skills\/[^/]+\/?$/.test(page.path);
@@ -1712,8 +1764,8 @@ function TopBar({
 
 const selfRegistrationRoleHints: Record<string, string> = {
   guest: "访客只能查看参数页面。",
-  "hardware-user": "硬件开发可提交参数修改，注册后即可登录。",
-  "software-user": "软件开发可提交参数修改，注册后即可登录。",
+  "hardware-user": "注册后可登录；参数修改需由管理员配置项目参与和编辑角色。",
+  "software-user": "注册后可登录；参数修改需由管理员配置项目参与和编辑角色。",
   "hardware-committer": "硬件MDE 注册后需管理员批准才能登录。",
   "software-committer": "软件MDE 注册后需管理员批准才能登录。"
 };
@@ -1778,7 +1830,7 @@ function ApiAuthPage({
         if (!cancelled) {
           setLocalConfig({
             provider: "local",
-            selfRegisterEnabled: Boolean(authClient.register),
+            selfRegisterEnabled: false,
             hasLocalAdmin: true,
             evaluationOrganizationName: null
           });
@@ -1875,12 +1927,14 @@ function ApiAuthPage({
           </div>
         ) : null}
 
+        {!canSelfRegister && localConfig ? <p className="auth-help">加入组织请联系管理员获取邀请链接或创建账号。</p> : null}
+
         {mode === "register" ? (
           <p className="auth-help">
             {`${
               localConfig?.evaluationOrganizationName
-                ? `新账号将加入评估组织「${localConfig.evaluationOrganizationName}」。`
-                : "新账号将加入评估组织。"
+                ? `新账号将加入体验组织「${localConfig.evaluationOrganizationName}」。`
+                : "新账号将加入指定体验组织。"
             } 用户名须为 3–64 个字符，仅限字母、数字、点、下划线和连字符。`}
           </p>
         ) : null}

@@ -4,7 +4,7 @@ import type { PrototypeState, User } from "@/domain/prototype/types";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SettingsFormPage } from "@/components/layout/SettingsFormPage";
 import { Button } from "@/components/ui/button";
-import { ProjectReviewRolesPanel } from "@/components/parameter-admin-next/ProjectReviewRolesPanel";
+import { ProjectReviewRolesPanel, type ProjectReviewRolesPanelProps } from "@/components/parameter-admin-next/ProjectReviewRolesPanel";
 import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 import { presentError } from "@/infrastructure/http/presentError";
 import { MemberOidcIdentityPanel } from "./MemberOidcIdentityPanel";
@@ -15,13 +15,16 @@ type Props = {
   state: PrototypeState;
   actions?: UserGovernanceActions;
   roleEditor: ReactNode;
+  teamMembership?: ReactNode;
   roleLabel: (roleId: User["roleId"]) => string;
   onUpdated: (user: User) => void;
   onClose: () => void;
   oidcIssuer?: string;
+  projects?: Array<{ id: string; name: string }>;
+  reviewRolesClient?: ProjectReviewRolesPanelProps["userGovernanceClient"];
 };
 
-export function MemberDetailsDialog({ user, state, actions, roleEditor, roleLabel, onUpdated, onClose, oidcIssuer }: Props) {
+export function MemberDetailsDialog({ user, state, actions, roleEditor, teamMembership, roleLabel, onUpdated, onClose, oidcIssuer, projects = state.configDraft.projects, reviewRolesClient }: Props) {
   const [name, setName] = useState(user.name);
   const [title, setTitle] = useState(user.title);
   const [pending, setPending] = useState(false);
@@ -55,7 +58,7 @@ export function MemberDetailsDialog({ user, state, actions, roleEditor, roleLabe
       {({ titleId }) => <>
         <h2 id={titleId}>{user.name} · 成员资料</h2>
         <div className="member-details modal-body">
-          {projectId ? <ProjectReviewRolesPanel projectId={projectId} projectName={state.configDraft.projects.find((project) => project.id === projectId)?.name} userId={user.id} backLabel="返回成员资料"
+          {projectId ? <ProjectReviewRolesPanel projectId={projectId} projectName={projects.find((project) => project.id === projectId)?.name} userId={user.id} backLabel="返回成员资料" userGovernanceClient={reviewRolesClient}
             onBack={() => { void (async () => { if (await requestSettingsLeave()) {
               setProjectId(null);
               try { const updated = (await actions?.listUsers())?.find((item) => item.id === user.id); if (updated) onUpdated(updated); }
@@ -78,10 +81,11 @@ export function MemberDetailsDialog({ user, state, actions, roleEditor, roleLabe
               </div>
             </SettingsFormPage>
             {oidcIssuer ? <MemberOidcIdentityPanel user={user} issuer={oidcIssuer} actions={actions} onUpdated={onUpdated} disabledReason={identityDisabledReason} /> : null}
+            {teamMembership}
             <section className="member-details__section" aria-label="组织角色与权限"><h3>组织角色</h3>{roleEditor}</section>
             <section className="member-details__section" aria-label="项目职责"><h3>项目职责</h3>
               <p className="member-details__hint">项目职责独立于组织角色，调整一个项目不会修改其他项目的授权。</p>
-              <div className="member-details__projects">{state.configDraft.projects.map((project) => {
+              <div className="member-details__projects">{projects.map((project) => {
                 const roles = (user.roles ?? []).filter((role) => role.projectId === project.id && !role.roleId.startsWith("catalog-capability-"));
                 return <div className="member-details__project" key={project.id}><div><strong>{project.name}</strong>
                   <span className="member-details__hint">{roles.length ? roles.map((role) => roleLabel(role.roleId)).join("、") : "未分配审核职责"}</span></div>

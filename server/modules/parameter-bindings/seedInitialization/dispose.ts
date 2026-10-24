@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterInvocation } from "../../parameters/operatingScope";
 /**
  * T2.3b residue disposal for one captured project parameter plane.
  * Does not run from materializeSeedSources. Ordinary DELETE of immutable
@@ -92,8 +93,8 @@ const requireApproval = (operator: PlaneDisposalOperator): void => {
   }
 };
 
-const requireEditorAndOperator = (auth: AuthContext, operator: PlaneDisposalOperator): void => {
-  if (!canEditParameters(auth)) {
+const requireEditorAndOperator = (auth: AuthContext, operator: PlaneDisposalOperator, projectId: string): void => {
+  if (!canEditParameters(auth, projectId)) {
     throw new ApiError("FORBIDDEN", "Plane disposal requires parameter edit permission.");
   }
   requireApproval(operator);
@@ -502,9 +503,9 @@ export async function planProjectParameterPlaneDisposal(
     readonly archiveDigest: string;
   },
 ): Promise<PlaneDisposalPlan> {
-  requireEditorAndOperator(auth, operator);
+  requireEditorAndOperator(auth, operator, input.projectId);
   requireTargetProject(input.projectId);
-  const organizationId = auth.organization.id;
+  const organizationId = parameterOrganizationId(auth);
   const document = await loadDocument(root, objectStore, auth, {
     organizationId,
     projectId: input.projectId,
@@ -580,11 +581,11 @@ export async function disposeProjectParameterPlaneResidue(
     readonly archiveDigest: string;
   },
 ): Promise<{ readonly phase: "residue-deleted"; readonly archive: ProjectParameterPlaneArchive | null }> {
-  requireEditorAndOperator(auth, operator);
+  requireEditorAndOperator(auth, operator, input.projectId);
   requireTargetProject(input.projectId);
-  const organizationId = auth.organization.id;
+  const organizationId = parameterOrganizationId(auth);
   const plan = await planProjectParameterPlaneDisposal(root, objectStore, auth, operator, input);
-  return withAuditedWrite(root, createUserInvocation(auth), { requestId: operator.approvalRef }, async (tx) => {
+  return withAuditedWrite(root, parameterInvocation(auth) ?? createUserInvocation(auth), { requestId: operator.approvalRef }, async (tx) => {
     await tx.query("select pg_advisory_xact_lock(hashtext('plane-disposal'), hashtext($1))", [
       `${organizationId}:${input.projectId}`,
     ]);

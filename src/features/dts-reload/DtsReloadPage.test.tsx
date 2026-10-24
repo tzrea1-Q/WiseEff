@@ -371,6 +371,26 @@ afterEach(() => {
 });
 
 describe("DtsReloadPage", () => {
+  it("adopts a late initial project without replacing the user's project or staged values", async () => {
+    const repository = createRepository({ listCandidates: vi.fn(async (projectId) => ({ items: [candidate({ projectId })] })) });
+    const props = { repository, canStartRun: true, bridges: testBridges, initialTargetRef: "device-serial-1", initialBindingIds: ["binding-1"], moduleRegistryRepository: null };
+    const view = render(<DtsReloadPage {...props} projects={[]} initialProjectId="" />);
+    expect(repository.listCandidates).not.toHaveBeenCalled();
+    const projects = [{ id: "project-1", name: "Demo" }, { id: "project-2", name: "Other" }, { id: "project-3", name: "Later default" }];
+    view.rerender(<DtsReloadPage {...props} projects={projects} initialProjectId="project-1" />);
+    await waitFor(() => expect(repository.listCandidates).toHaveBeenCalledWith("project-1"));
+    expect(screen.getByRole("status", { name: "工作台带入的参数" })).toHaveTextContent("已从参数工作台带入 1 个参数");
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("combobox", { name: "选择项目" }));
+    await user.click(screen.getByRole("option", { name: "Other" }));
+    await waitFor(() => expect(repository.listCandidates).toHaveBeenCalledWith("project-2"));
+    await setWatchdogDebugValue(user);
+    view.rerender(<DtsReloadPage {...props} projects={projects} initialProjectId="project-3" />);
+    expect(screen.getByRole("combobox", { name: "选择项目" })).toHaveTextContent("Other");
+    expect(screen.getByLabelText("Watchdog 值变更")).toHaveTextContent("<7000>");
+    expect(repository.listCandidates).not.toHaveBeenCalledWith("project-3");
+  });
+
   it("protects staged values across project changes, navigation and reload until discard is confirmed", async () => {
     const user = userEvent.setup({ delay: null });
     const repository = createRepository({ listCandidates: vi.fn(async (projectId) => ({ items: [candidate({ projectId })] })) });
@@ -580,9 +600,10 @@ describe("DtsReloadPage", () => {
     );
     const repository = createRepository({ getRun });
 
-    renderPage(repository, { initialRunId: "run-history" });
+    const view = renderPage(repository, { initialRunId: "run-history", projects: [], initialProjectId: "" });
 
     await waitFor(() => expect(getRun).toHaveBeenCalledWith("run-history"));
+    view.rerender(<DtsReloadPage projects={[{ id: "project-2", name: "Late default" }]} initialProjectId="project-2" repository={repository} canStartRun initialRunId="run-history" moduleRegistryRepository={null} />);
     expect(repository.listCandidates).not.toHaveBeenCalled();
     expect(repository.listRuns).not.toHaveBeenCalled();
 

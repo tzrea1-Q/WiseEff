@@ -96,4 +96,32 @@ describe("xiaozeHttpAgent", () => {
     await agent.runAgent();
     expect(fetchImpl).toHaveBeenCalled();
   });
+
+  it("binds chat and approval resume transport to its fixed organization without changing the actor token", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(
+      `data: ${JSON.stringify({ type: "RUN_STARTED", threadId: "target-thread", runId: "run-1" })}\n\n` +
+      `data: ${JSON.stringify({ type: "RUN_FINISHED", threadId: "target-thread", runId: "run-1" })}\n\n`,
+      { headers: { "Content-Type": "text/event-stream" } }));
+    const agent = createXiaozeHttpAgent({ agentUrl: "https://wiseeff.test/api/v1/agent/xiaoze?organizationId=untrusted", organizationId: "target-b", fetchImpl });
+    await agent.runAgent();
+    expect(String(fetchImpl.mock.calls[0][0])).toBe("https://wiseeff.test/api/v1/agent/xiaoze?organizationId=target-b");
+    expect(new Headers(fetchImpl.mock.calls[0][1]?.headers).get("Authorization")).toBe("Bearer we_local_test_token");
+  });
+
+  it("cancels a target stream without reporting a failed run", async () => {
+    const failed = vi.fn();
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => { started = resolve; });
+    const fetchImpl: typeof fetch = async (_input, init) => new Response(new ReadableStream<Uint8Array>({ start(controller) {
+      controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: "RUN_STARTED", threadId: "cancelled-thread", runId: "run-1" })}\n\n`));
+      init?.signal?.addEventListener("abort", () => controller.error(new DOMException("Cancelled workspace", "AbortError")), { once: true });
+    } }), { headers: { "Content-Type": "text/event-stream" } });
+    const agent = createXiaozeHttpAgent({ fetchImpl });
+    const run = agent.runAgent(undefined, { onRunStartedEvent: () => started(), onRunFailed: failed }).catch((error: unknown) => error);
+    await ready;
+    clearXiaozeAgentPendingTurn(agent);
+    await run;
+    expect(failed).not.toHaveBeenCalled();
+    expect(agent.isRunning).toBe(false);
+  });
 });

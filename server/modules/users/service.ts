@@ -5,10 +5,9 @@ import { ApiError } from "../../shared/http/errors";
 import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext, BackendRoleId, RoleBinding } from "../auth/types";
-import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
+import { assertTrustedInvocationContext, createUserInvocation, type TrustedInvocationContext, type UserInvocationContext } from "../auth/trustedInvocation";
 import {
   checkProjectBelongsToOrg,
-  countActiveAdmins,
   deleteUserById,
   decideRegistrationRoleRequest,
   getPendingRegistrationRoleRequestByIdForAdmin,
@@ -35,6 +34,7 @@ import {
 } from "./repository";
 import { notifyRegistrationRoleDecided, notifyUserDeactivated, notifyUserRoleChanged } from "../notifications/producers";
 import { revokeLocalUserSessions } from "../auth/localAuth";
+import { revokePersonalAccess } from "./personalAccess";
 import type {
   CreateUserInput,
   RegistrationRoleRequestListStatus,
@@ -49,7 +49,11 @@ import type {
   UpdateUserProfileInput
 } from "./types";
 import { organizationNameMaxLength } from "./schemas";
+import { listProjectMembers, type ProjectMemberRoleId } from "../projects/members";
 import { setOidcIdentity } from "../auth/oidcIdentity";
+import { assertAdministratorContinuity, hasOrganizationRole, lockAdministratorMutation, type AdministratorMutationContext } from "./administratorContinuity";
+import { getAuthContext } from "../auth/repository";
+import { canOperateInOrganization } from "../auth/policy";
 
 const roleIds = new Set<BackendRoleId>([
   "guest",
@@ -62,6 +66,13 @@ const roleIds = new Set<BackendRoleId>([
 ]);
 const scryptAsync = promisify(scrypt);
 const passwordHashPrefix = "scrypt";
+
+type GovernanceCaller = AuthContext | UserInvocationContext;
+function governanceScope(caller: GovernanceCaller) {
+  const invocation = "initiator" in caller ? assertTrustedInvocationContext(caller) : createUserInvocation(caller);
+  if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "User management requires a user invocation.");
+  return { auth: invocation.principal, invocation, organizationId: invocation.operatingOrganization?.id ?? invocation.principal.organization.id };
+}
 
 function requireUserManager(auth: AuthContext) {
   if (!auth.user.isActive || !auth.permissions.includes("users:manage")) {
@@ -130,16 +141,12 @@ async function hashPassword(password: string) {
   return `${passwordHashPrefix}$${salt}$${derived.toString("base64url")}`;
 }
 
-function hasAdminRole(roles: RoleBinding[]) {
-  return roles.some((role) => role.roleId === "admin" || role.roleId === "platform-admin");
-}
-
 function callerHasPlatformAdmin(auth: AuthContext) {
-  return auth.roles.some((role) => role.roleId === "platform-admin");
+  return hasOrganizationRole(auth.roles, "platform-admin");
 }
 
 function rolesIncludePlatformAdmin(roles: RoleBinding[]) {
-  return roles.some((role) => role.roleId === "platform-admin");
+  return hasOrganizationRole(roles, "platform-admin");
 }
 
 function assertPlatformAdminGrantAllowed(auth: AuthContext, currentRoles: RoleBinding[], nextRoles: RoleBinding[]) {
@@ -155,30 +162,6 @@ function assertPlatformAdminGrantAllowed(auth: AuthContext, currentRoles: RoleBi
       "Only a platform super admin may grant or revoke the platform-admin role.",
       { roleId: "platform-admin" }
     );
-  }
-}
-
-async function assertNoSelfLockout(
-  tx: Queryable,
-  auth: AuthContext,
-  userId: string,
-  next: { isActive?: boolean; roles?: RoleBinding[] }
-) {
-  if (userId !== auth.user.id) return;
-
-  if (next.isActive === false) {
-    throw new ApiError("CONFLICT", "Active Admin cannot disable itself.", { userId });
-  }
-
-  if (next.roles && !hasAdminRole(next.roles)) {
-    throw new ApiError("CONFLICT", "Active Admin cannot remove its last Admin capability.", { userId });
-  }
-
-  if (next.roles && hasAdminRole(auth.roles) && !hasAdminRole(next.roles)) {
-    const activeAdmins = await countActiveAdmins(tx, auth.organization.id);
-    if (activeAdmins <= 1) {
-      throw new ApiError("CONFLICT", "Active Admin cannot remove its last Admin capability.", { userId });
-    }
   }
 }
 
@@ -242,11 +225,12 @@ function normalizeOrganizationName(name: string) {
   return trimmed;
 }
 
-export async function getHomeOrganization(db: Queryable, auth: AuthContext) {
+export async function getHomeOrganization(db: Queryable, caller: GovernanceCaller) {
+  const { auth, organizationId } = governanceScope(caller);
   if (!auth.user.isActive) {
     throw new ApiError("FORBIDDEN", "User is inactive.");
   }
-  const organization = await getOrganizationById(db, auth.organization.id);
+  const organization = await getOrganizationById(db, organizationId);
   if (!organization) {
     throw new ApiError("NOT_FOUND", "Organization was not found.");
   }
@@ -255,25 +239,26 @@ export async function getHomeOrganization(db: Queryable, auth: AuthContext) {
 
 export async function updateHomeOrganization(
   db: Database,
-  auth: AuthContext,
+  caller: GovernanceCaller,
   input: UpdateOrganizationInput,
   context: AuditCorrelationContext = {}
 ) {
+  const { auth, organizationId, invocation } = governanceScope(caller);
   requireUserManager(auth);
   const name = normalizeOrganizationName(input.name);
 
   return db.transaction(async (tx) => {
-    const current = await getOrganizationById(tx, auth.organization.id);
+    const current = await getOrganizationById(tx, organizationId);
     if (!current) {
       throw new ApiError("NOT_FOUND", "Organization was not found.");
     }
 
-    const organization = await updateOrganizationName(tx, auth.organization.id, name);
+    const organization = await updateOrganizationName(tx, organizationId, name);
     if (!organization) {
       throw new ApiError("NOT_FOUND", "Organization was not found.");
     }
 
-    await writeAuditEventInTx(asAuditTx(tx), createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
+    await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId: context.requestId ?? randomUUID() }, {
       app: "user-governance",
       kind: "organization-update",
       action: "update",
@@ -288,12 +273,51 @@ export async function updateHomeOrganization(
   });
 }
 
-export async function listGovernedUsers(db: Queryable, auth: AuthContext) {
+export async function listGovernedUsers(db: Queryable, caller: GovernanceCaller) {
+  const { auth, organizationId } = governanceScope(caller);
   requireUserManager(auth);
-  return listUsers(db, auth.organization.id);
+  return listUsers(db, organizationId);
 }
 
-export async function createUser(db: Database, auth: AuthContext, input: CreateUserInput, context: AuditCorrelationContext = {}, configuredOidcIssuer?: string) {
+export async function listGovernedProjectCandidates(db: Queryable, caller: GovernanceCaller) {
+  const { auth, organizationId } = governanceScope(caller);
+  requireOrgAdmin(auth);
+  return (await db.query<{ id: string; name: string }>("select id, name from projects where organization_id=$1 order by name,id", [organizationId])).rows;
+}
+
+export async function getGovernedProjectMembers(db: Queryable, caller: GovernanceCaller, projectId: string) {
+  const { auth, organizationId } = governanceScope(caller);
+  requireOrgAdmin(auth);
+  if (!await checkProjectBelongsToOrg(db, { organizationId, projectId })) {
+    throw new ApiError("NOT_FOUND", "Project was not found.", { projectId });
+  }
+  return { projectId, members: await listProjectMembers(db, organizationId, projectId) };
+}
+
+export async function updateGovernedProjectMember(db: Database, caller: GovernanceCaller, projectId: string, userId: string,
+  input: { roles: ProjectMemberRoleId[]; expectedRoles: ProjectMemberRoleId[] }, requestId: string) {
+  const { auth, organizationId, invocation } = governanceScope(caller);
+  requireOrgAdmin(auth);
+  const roles = [...new Set(input.roles)].sort(), expectedRoles = [...new Set(input.expectedRoles)].sort();
+  return db.transaction(async (tx) => {
+    const project = await tx.query("select id from projects where id=$1 and organization_id=$2 for update", [projectId, organizationId]);
+    if (!project.rowCount) throw new ApiError("NOT_FOUND", "Project was not found.");
+    const person = await tx.query("select id from users where id=$1 and organization_id=$2 for key share", [userId, organizationId]);
+    if (!person.rowCount) throw new ApiError("NOT_FOUND", "Member was not found in this organization.");
+    const previous = (await tx.query<{ roles: ProjectMemberRoleId[] }>(
+      "select roles from project_members where organization_id=$1 and project_id=$2 and user_id=$3", [organizationId, projectId, userId])).rows[0]?.roles ?? [];
+    if (JSON.stringify([...previous].sort()) !== JSON.stringify(expectedRoles)) throw new ApiError("CONFLICT", "项目参与角色已更新，请刷新后重试。");
+    if (roles.length) await tx.query(`insert into project_members(organization_id,project_id,user_id,roles) values($1,$2,$3,$4)
+      on conflict(organization_id,project_id,user_id) do update set roles=excluded.roles`, [organizationId, projectId, userId, roles]);
+    else await tx.query("delete from project_members where organization_id=$1 and project_id=$2 and user_id=$3", [organizationId, projectId, userId]);
+    await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId }, { app: "user-governance", kind: "project-membership", action: roles.length ? "update" : "remove",
+      severity: "High", projectId, targetType: "user", targetId: userId, metadata: { previousRoles: previous, roles } });
+    return { projectId, members: await listProjectMembers(tx, organizationId, projectId) };
+  });
+}
+
+export async function createUser(db: Database, caller: GovernanceCaller, input: CreateUserInput, context: AuditCorrelationContext = {}, configuredOidcIssuer?: string) {
+  const { auth, organizationId, invocation } = governanceScope(caller);
   requireUserManager(auth);
   if (input.roles.some((r) => r.projectId !== null && r.projectId !== undefined)) {
     throw new ApiError(
@@ -314,8 +338,8 @@ export async function createUser(db: Database, auth: AuthContext, input: CreateU
     throw new ApiError("VALIDATION_FAILED", "User name is required.");
   }
 
-  const invocation = createUserInvocation(auth);
   return db.transaction(async (tx) => {
+    await lockAdministratorMutation(tx);
     const existingCredential = username ? await findPasswordCredentialByUsername(tx, username) : null;
     if (existingCredential) {
       throw new ApiError("CONFLICT", "Username is already registered.", { username });
@@ -323,7 +347,7 @@ export async function createUser(db: Database, auth: AuthContext, input: CreateU
 
     const user = await insertUser(tx, {
       id: `u-${randomUUID()}`,
-      organizationId: auth.organization.id,
+      organizationId,
       name,
       title: input.title?.trim() || "User",
       ...(oidc && input.email ? { email: input.email.trim().toLowerCase() } : {})
@@ -334,7 +358,7 @@ export async function createUser(db: Database, auth: AuthContext, input: CreateU
       passwordHash: await hashPassword(input.password)
     });
     await updateOrganizationRoles(tx, {
-      organizationId: auth.organization.id,
+      organizationId,
       userId: user.id,
       roles: roles.map((r) => r.roleId)
     });
@@ -346,7 +370,7 @@ export async function createUser(db: Database, auth: AuthContext, input: CreateU
       metadata: { username, roles }
     }, context);
 
-    return oidc ? (await getUserById(tx, { organizationId: auth.organization.id,userId: user.id }))! : { ...user, username, roles };
+    return oidc ? (await getUserById(tx, { organizationId,userId: user.id }))! : { ...user, username, roles };
   }).catch((error: unknown) => {
     if (oidc && (error as { code?: string })?.code === "23505") throw new ApiError("CONFLICT", "OIDC identity matches another member; check the subject and original migration email instead of merging accounts.");
     throw error;
@@ -355,16 +379,17 @@ export async function createUser(db: Database, auth: AuthContext, input: CreateU
 
 export async function updateUserProfile(
   db: Database,
-  auth: AuthContext,
+  caller: GovernanceCaller,
   userId: string,
   input: UpdateUserProfileInput,
   context: AuditCorrelationContext = {}
 ) {
+  const { auth, organizationId, invocation } = governanceScope(caller);
   requireUserManager(auth);
 
   return db.transaction(async (tx) => {
     const user = await updateUser(tx, {
-      organizationId: auth.organization.id,
+      organizationId,
       userId,
       name: input.name?.trim(),
       email: input.email?.trim().toLowerCase(),
@@ -373,7 +398,7 @@ export async function updateUserProfile(
     if (!user) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
-    await auditUserMutation(asAuditTx(tx), createUserInvocation(auth), {
+    await auditUserMutation(asAuditTx(tx), invocation, {
       kind: "user-update",
       action: "update",
       userId,
@@ -386,28 +411,38 @@ export async function updateUserProfile(
 
 export async function resetUserPassword(
   db: Database,
-  auth: AuthContext,
+  caller: GovernanceCaller,
   userId: string,
   input: ResetUserPasswordInput,
   context: AuditCorrelationContext = {}
 ) {
+  const { auth, organizationId, invocation } = governanceScope(caller);
   requireUserManager(auth);
   requirePasswordPolicy(input.password);
 
+  if (!(await getUserById(db, { organizationId, userId }))) {
+    throw new ApiError("NOT_FOUND", "User was not found.", { userId });
+  }
+  const passwordHash = await hashPassword(input.password);
   return db.transaction(async (tx) => {
-    const current = await getUserById(tx, { organizationId: auth.organization.id, userId });
+    // Transfer and role changes share these user locks; recheck authority after hashing.
+    await tx.query("select id from users where id=any($1::text[]) order by id for update", [[...new Set([auth.user.id, userId])].sort()]);
+    const actor = await getAuthContext(tx, auth.user.id);
+    requireUserManager(actor);
+    if (!canOperateInOrganization(actor, organizationId)) throw new ApiError("FORBIDDEN", "The authenticated user cannot operate in this Organization.");
+    const current = await getUserById(tx, { organizationId, userId });
     if (!current) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
     const updated = await updatePasswordCredential(tx, {
       userId,
-      passwordHash: await hashPassword(input.password)
+      passwordHash
     });
     if (updated === 0) {
       throw new ApiError("NOT_FOUND", "Local password credential was not found.", { userId });
     }
     await revokeLocalUserSessions(tx, { userId, revokedAt: new Date().toISOString() });
-    await auditUserMutation(asAuditTx(tx), createUserInvocation(auth), {
+    await auditUserMutation(asAuditTx(tx), invocation, {
       kind: "user-password-reset",
       action: "reset-password",
       userId,
@@ -419,20 +454,27 @@ export async function resetUserPassword(
 
 export async function deactivateUser(
   db: Database,
-  auth: AuthContext,
+  caller: GovernanceCaller,
   userId: string,
   input: UpdateUserActiveInput,
-  context: AuditCorrelationContext = {}
+  context: AdministratorMutationContext = {}
 ) {
+  const { auth, organizationId, invocation } = governanceScope(caller);
   requireUserManager(auth);
 
-  return db.transaction(async (tx) => {
-    await assertNoSelfLockout(tx, auth, userId, { isActive: input.isActive });
-    const user = await updateUserActive(tx, { organizationId: auth.organization.id, userId, isActive: input.isActive });
+  const result = await db.transaction(async (tx) => {
+    await lockAdministratorMutation(tx);
+    await lockUserById(tx, { organizationId, userId });
+    const current = await getUserById(tx, { organizationId, userId });
+    if (!current) throw new ApiError("NOT_FOUND", "User was not found.", { userId });
+    if (rolesIncludePlatformAdmin(current.roles) && !callerHasPlatformAdmin(auth)) throw new ApiError("FORBIDDEN", "Only a platform super admin may change platform-admin activation.");
+    await assertAdministratorContinuity(tx, current, input, context);
+    const user = await updateUserActive(tx, { organizationId, userId, isActive: input.isActive });
     if (!user) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
-    await auditUserMutation(asAuditTx(tx), createUserInvocation(auth), {
+    const revokedBridgeIds = input.isActive ? [] : await revokePersonalAccess(tx, organizationId, userId);
+    await auditUserMutation(asAuditTx(tx), invocation, {
       kind: "user-activation",
       action: input.isActive ? "activate" : "deactivate",
       userId,
@@ -440,36 +482,36 @@ export async function deactivateUser(
     }, context);
 
     if (!input.isActive) {
-      const adminUserIds = await listActiveAdminUserIds(tx, auth.organization.id);
+      const adminUserIds = await listActiveAdminUserIds(tx, organizationId);
       await notifyUserDeactivated(tx, {
-        organizationId: auth.organization.id,
+        organizationId,
         userId,
         actorName: auth.user.name,
         adminUserIds: adminUserIds.filter((id) => id !== userId)
       });
     }
 
-    return user;
+    return { user, revokedBridgeIds };
   });
+  for (const bridgeId of result.revokedBridgeIds) context.bridgeConnectionPool?.disconnect(bridgeId);
+  return result.user;
 }
 
 export async function deleteUser(
   db: Database,
-  auth: AuthContext,
+  caller: GovernanceCaller,
   userId: string,
-  context: AuditCorrelationContext = {}
+  context: AdministratorMutationContext = {}
 ) {
+  const { auth, organizationId, invocation } = governanceScope(caller);
   requireUserManager(auth);
-  if (userId === auth.user.id) {
-    throw new ApiError("CONFLICT", "Active Admin cannot delete itself.", { userId });
-  }
-
-  await db.transaction(async (tx) => {
-    const lockedUserId = await lockUserById(tx, { organizationId: auth.organization.id, userId });
+  const revokedBridgeIds = await db.transaction(async (tx) => {
+    await lockAdministratorMutation(tx);
+    const lockedUserId = await lockUserById(tx, { organizationId, userId });
     if (!lockedUserId) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
-    const user = await getUserById(tx, { organizationId: auth.organization.id, userId });
+    const user = await getUserById(tx, { organizationId, userId });
     if (!user) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
@@ -479,20 +521,22 @@ export async function deleteUser(
         roleId: "platform-admin"
       });
     }
+    await assertAdministratorContinuity(tx, user, { isActive: false }, context);
+    const bridges = await revokePersonalAccess(tx, organizationId, userId);
 
-    await auditUserMutation(asAuditTx(tx), createUserInvocation(auth), {
+    await auditUserMutation(asAuditTx(tx), invocation, {
       kind: "user-delete",
       action: "delete",
       userId,
       metadata: { isActive: user.isActive, roles: user.roles }
     }, context);
     const deletedRows = await deleteUserById(tx, {
-      organizationId: auth.organization.id,
+      organizationId,
       userId,
       allowPlatformAdmin: callerHasPlatformAdmin(auth)
     });
     if (deletedRows !== 1) {
-      const currentUser = await getUserById(tx, { organizationId: auth.organization.id, userId });
+      const currentUser = await getUserById(tx, { organizationId, userId });
       if (currentUser && rolesIncludePlatformAdmin(currentUser.roles) && !callerHasPlatformAdmin(auth)) {
         throw new ApiError("FORBIDDEN", "Only a platform super admin may delete a platform-admin user.", {
           userId,
@@ -501,16 +545,19 @@ export async function deleteUser(
       }
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
+    return bridges;
   });
+  for (const bridgeId of revokedBridgeIds) context.bridgeConnectionPool?.disconnect(bridgeId);
 }
 
 export async function replaceUserRoles(
   db: Database,
-  auth: AuthContext,
+  caller: GovernanceCaller,
   userId: string,
   input: ReplaceUserRolesInput,
-  context: AuditCorrelationContext = {}
+  context: AdministratorMutationContext = {}
 ) {
+  const { auth, organizationId, invocation } = governanceScope(caller);
   requireUserManager(auth);
   if (input.roles.some((r) => r.projectId !== null && r.projectId !== undefined)) {
     throw new ApiError(
@@ -522,77 +569,80 @@ export async function replaceUserRoles(
   const roles = normalizeRoles(input.roles);
 
   return db.transaction(async (tx) => {
-    const lockedUserId = await lockUserById(tx, { organizationId: auth.organization.id, userId });
+    await lockAdministratorMutation(tx);
+    const lockedUserId = await lockUserById(tx, { organizationId, userId });
     if (!lockedUserId) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
-    await assertNoSelfLockout(tx, auth, userId, { roles });
-    const user = await getUserById(tx, { organizationId: auth.organization.id, userId });
+    const user = await getUserById(tx, { organizationId, userId });
     if (!user) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
     assertPlatformAdminGrantAllowed(auth, user.roles, roles);
+    await assertAdministratorContinuity(tx, user, { roles }, context);
     const desiredOrgRoles = roles.map((r) => r.roleId);
     await updateOrganizationRoles(tx, {
-      organizationId: auth.organization.id,
+      organizationId,
       userId,
       roles: desiredOrgRoles
     });
-    await auditUserMutation(asAuditTx(tx), createUserInvocation(auth), {
+    await auditUserMutation(asAuditTx(tx), invocation, {
       kind: "user-role-replace",
       action: "replace-roles",
       userId,
       metadata: { roles }
     }, context);
 
-    const adminUserIds = await listActiveAdminUserIds(tx, auth.organization.id);
+    const adminUserIds = await listActiveAdminUserIds(tx, organizationId);
     await notifyUserRoleChanged(tx, {
-      organizationId: auth.organization.id,
+      organizationId,
       userId,
       actorName: auth.user.name,
       roles,
       adminUserIds: adminUserIds.filter((id) => id !== userId)
     });
 
-    const updated = await getUserById(tx, { organizationId: auth.organization.id, userId });
+    const updated = await getUserById(tx, { organizationId, userId });
     return updated!;
   });
 }
 
 export async function listRegistrationRoleRequests(
   db: Queryable,
-  auth: AuthContext,
+  caller: GovernanceCaller,
   status: RegistrationRoleRequestListStatus = "pending"
 ) {
+  const { auth, organizationId, invocation } = governanceScope(caller);
   requireUserManager(auth);
   // Cross-organization visibility is a platform-admin capability; an org admin
   // only governs registrations inside their own tenant.
   return listRegistrationRoleRequestsByScope(db, {
-    organizationId: callerHasPlatformAdmin(auth) ? undefined : auth.organization.id,
+    organizationId: callerHasPlatformAdmin(auth) && !invocation.operatingOrganization ? undefined : organizationId,
     status
   });
 }
 
-export function approveRegistrationRoleRequest(db: Database, auth: AuthContext, requestId: string, context: AuditCorrelationContext = {}) {
-  return decidePendingRegistration(db, auth, requestId, "approve", context);
+export function approveRegistrationRoleRequest(db: Database, caller: GovernanceCaller, requestId: string, context: AuditCorrelationContext = {}) {
+  return decidePendingRegistration(db, caller, requestId, "approve", context);
 }
 
-export function enableBasicRegistrationRoleRequest(db: Database, auth: AuthContext, requestId: string, context: AuditCorrelationContext = {}) {
-  return decidePendingRegistration(db, auth, requestId, "enable-basic", context);
+export function enableBasicRegistrationRoleRequest(db: Database, caller: GovernanceCaller, requestId: string, context: AuditCorrelationContext = {}) {
+  return decidePendingRegistration(db, caller, requestId, "enable-basic", context);
 }
 
-export function rejectRegistrationRoleRequest(db: Database, auth: AuthContext, requestId: string, context: AuditCorrelationContext = {}) {
-  return decidePendingRegistration(db, auth, requestId, "reject", context);
+export function rejectRegistrationRoleRequest(db: Database, caller: GovernanceCaller, requestId: string, context: AuditCorrelationContext = {}) {
+  return decidePendingRegistration(db, caller, requestId, "reject", context);
 }
 
 async function decidePendingRegistration(
-  db: Database, auth: AuthContext, requestId: string, decision: "approve" | "enable-basic" | "reject", context: AuditCorrelationContext
+  db: Database, caller: GovernanceCaller, requestId: string, decision: "approve" | "enable-basic" | "reject", context: AuditCorrelationContext
 ) {
+  const { auth, organizationId, invocation } = governanceScope(caller);
   requireUserManager(auth);
   return db.transaction(async (tx) => {
-    const readRequest = (lock = false) => callerHasPlatformAdmin(auth)
+    const readRequest = (lock = false) => callerHasPlatformAdmin(auth) && !invocation.operatingOrganization
       ? getPendingRegistrationRoleRequestByIdForAdmin(tx, requestId, lock)
-      : getPendingRegistrationRoleRequestById(tx, { organizationId: auth.organization.id, requestId }, lock);
+      : getPendingRegistrationRoleRequestById(tx, { organizationId, requestId }, lock);
     const initial = await readRequest();
     if (!initial) throw new ApiError("NOT_FOUND", "Pending registration role request was not found.", { requestId });
     const scope = { organizationId: initial.organizationId, userId: initial.userId };
@@ -623,7 +673,7 @@ async function decidePendingRegistration(
       decidedByUserId: auth.user.id, decidedAt: new Date().toISOString(), outcome, canLogin, roles
     });
     if (!decided) throw new ApiError("CONFLICT", "Registration role request was already decided.", { requestId });
-    await auditRegistrationRoleRequestDecision(asAuditTx(tx), createUserInvocation(auth), {
+    await auditRegistrationRoleRequestDecision(asAuditTx(tx), invocation, {
       action: decision, requestId, userId: request.userId,
       metadata: { username: request.username, currentRoleId: request.currentRoleId, requestedRoleId: request.requestedRoleId,
         outcome, canLogin, roles, organizationId: request.organizationId }
@@ -638,12 +688,13 @@ async function decidePendingRegistration(
 
 export async function getProjectRoleBindings(
   db: Queryable,
-  auth: AuthContext,
+  caller: GovernanceCaller,
   projectId: string
 ): Promise<ProjectWorkflowRoleBindingsDto> {
+  const { auth, organizationId } = governanceScope(caller);
   requireOrgAdmin(auth);
   const belongs = await checkProjectBelongsToOrg(db, {
-    organizationId: auth.organization.id,
+    organizationId,
     projectId
   });
   if (!belongs) {
@@ -651,7 +702,7 @@ export async function getProjectRoleBindings(
   }
 
   const bindings = await getProjectWorkflowRoleBindings(db, {
-    organizationId: auth.organization.id,
+    organizationId,
     projectId
   });
 
@@ -675,15 +726,16 @@ export async function getProjectRoleBindings(
 
 export async function replaceProjectWorkflowRoles(
   db: Database,
-  auth: AuthContext,
+  caller: GovernanceCaller,
   projectId: string,
   userId: string,
   input: UpdateProjectWorkflowRoleBindingsInput,
   context: AuditCorrelationContext = {}
 ) {
+  const { auth, organizationId, invocation } = governanceScope(caller);
   requireOrgAdmin(auth);
   const belongs = await checkProjectBelongsToOrg(db, {
-    organizationId: auth.organization.id,
+    organizationId,
     projectId
   });
   if (!belongs) {
@@ -691,17 +743,17 @@ export async function replaceProjectWorkflowRoles(
   }
 
   return db.transaction(async (tx) => {
-    const lockedUserId = await lockUserById(tx, { organizationId: auth.organization.id, userId });
+    const lockedUserId = await lockUserById(tx, { organizationId, userId });
     if (!lockedUserId) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
-    const targetUser = await getUserById(tx, { organizationId: auth.organization.id, userId });
+    const targetUser = await getUserById(tx, { organizationId, userId });
     if (!targetUser) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
 
     const currentRoles = await getUserProjectWorkflowRoles(tx, {
-      organizationId: auth.organization.id,
+      organizationId,
       projectId,
       userId
     });
@@ -732,7 +784,7 @@ export async function replaceProjectWorkflowRoles(
     }
 
     await updateProjectWorkflowRoles(tx, {
-      organizationId: auth.organization.id,
+      organizationId,
       projectId,
       userId,
       roles: sortedDesired
@@ -740,7 +792,7 @@ export async function replaceProjectWorkflowRoles(
 
     await writeAuditEventInTx(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      invocation,
       { requestId: context.requestId ?? randomUUID() },
       {
         app: "user-governance",
@@ -765,19 +817,21 @@ export async function replaceProjectWorkflowRoles(
 
 export async function replaceOrganizationRoles(
   db: Database,
-  auth: AuthContext,
+  caller: GovernanceCaller,
   userId: string,
   input: UpdateOrganizationRolesInput,
-  context: AuditCorrelationContext = {}
+  context: AdministratorMutationContext = {}
 ) {
+  const { auth, organizationId, invocation } = governanceScope(caller);
   requireOrgAdmin(auth);
 
   return db.transaction(async (tx) => {
-    const lockedUserId = await lockUserById(tx, { organizationId: auth.organization.id, userId });
+    await lockAdministratorMutation(tx);
+    const lockedUserId = await lockUserById(tx, { organizationId, userId });
     if (!lockedUserId) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
-    const targetUser = await getUserById(tx, { organizationId: auth.organization.id, userId });
+    const targetUser = await getUserById(tx, { organizationId, userId });
     if (!targetUser) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
@@ -785,9 +839,6 @@ export async function replaceOrganizationRoles(
     const sortedDesired = [...new Set(input.roles)].sort();
     const sortedExpected = [...new Set(input.expectedRoles)].sort();
 
-    await assertNoSelfLockout(tx, auth, userId, {
-      roles: sortedDesired.map((roleId) => ({ projectId: null, roleId }))
-    });
     assertPlatformAdminGrantAllowed(
       auth,
       targetUser.roles.filter((r) => r.projectId === null),
@@ -795,7 +846,7 @@ export async function replaceOrganizationRoles(
     );
 
     const currentRoles = await getUserOrganizationRoles(tx, {
-      organizationId: auth.organization.id,
+      organizationId,
       userId
     });
     const sortedCurrent = [...currentRoles].sort();
@@ -811,16 +862,17 @@ export async function replaceOrganizationRoles(
         expectedRoles: sortedExpected
       });
     }
+    await assertAdministratorContinuity(tx, targetUser, { roles: sortedDesired.map((roleId) => ({ projectId: null, roleId })) }, context);
 
     await updateOrganizationRoles(tx, {
-      organizationId: auth.organization.id,
+      organizationId,
       userId,
       roles: sortedDesired
     });
 
     await auditUserMutation(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      invocation,
       {
         kind: "user-role-replace",
         action: "replace-roles",
@@ -830,16 +882,16 @@ export async function replaceOrganizationRoles(
       context
     );
 
-    const adminUserIds = await listActiveAdminUserIds(tx, auth.organization.id);
+    const adminUserIds = await listActiveAdminUserIds(tx, organizationId);
     await notifyUserRoleChanged(tx, {
-      organizationId: auth.organization.id,
+      organizationId,
       userId,
       actorName: auth.user.name,
       roles: sortedDesired.map((r) => ({ projectId: null, roleId: r })),
       adminUserIds: adminUserIds.filter((id) => id !== userId)
     });
 
-    const updated = await getUserById(tx, { organizationId: auth.organization.id, userId });
+    const updated = await getUserById(tx, { organizationId, userId });
     return updated!;
   });
 }

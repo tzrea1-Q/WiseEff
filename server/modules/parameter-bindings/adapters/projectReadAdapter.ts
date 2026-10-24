@@ -1,3 +1,5 @@
+import { parameterOrganizationId, withParameterAccess } from "../../parameters/operatingScope";
+import { getAuthContext } from "../../auth/repository";
 import type pg from "pg";
 
 import { ApiError } from "../../../shared/http/errors";
@@ -38,21 +40,20 @@ export async function readProjectProtectedParameters(
   if (invocation.initiator === "system" || invocation.initiator === "integration") {
     throw new ApiError("FORBIDDEN", "Project parameter reads require an accountable principal.");
   }
-  const auth = invocation.principal;
+  const auth = invocation.operatingOrganization
+    ? withParameterAccess(await getAuthContext(pool, invocation.principal.user.id), invocation)
+    : invocation.principal;
   const projectId = input.projectId;
   if (!auth.user.isActive || !auth.permissions.includes("parameter:view")) {
     throw new ApiError("FORBIDDEN", "Missing permission: parameter:view.");
   }
-  // A null-project role grants organization-wide access; tenant isolation is checked below.
-  const hasProjectScope = auth.roles.some(
-    (role) => role.projectId === null || role.projectId === projectId
-  );
-  if (!projectId || !hasProjectScope) {
+  // Project visibility is organization-wide; participation gates writes only.
+  if (!projectId) {
     throw new ApiError("FORBIDDEN", "Project parameter scope is required.");
   }
   const project = await pool.query("select 1 from public.projects where id = $1 and organization_id = $2", [
     projectId,
-    auth.organization.id
+    parameterOrganizationId(auth)
   ]);
   if (project.rowCount !== 1) {
     throw new ApiError("NOT_FOUND", "Project was not found.");
@@ -63,7 +64,7 @@ export async function readProjectProtectedParameters(
        from parameter_catalog.current_project_parameter_bindings
       where organization_id = $1 and project_id = $2
       order by id`,
-    [auth.organization.id, projectId]
+    [parameterOrganizationId(auth), projectId]
   );
   const kernel = createCatalogKernel(pool);
   const snapshots = new Map<string, PinnedCatalogSnapshot>();

@@ -24,12 +24,14 @@ vi.mock("../../parameter-bindings/drafts", () => ({
 }));
 
 import { createAgentToolRegistry } from "../toolRegistry";
-import { createAgentInvocation } from "../../auth/trustedInvocation";
+import { createAgentInvocation, createAgentInvocationFromUser, createUserInvocation, withOperatingOrganization } from "../../auth/trustedInvocation";
+import { withAgentInvocation } from "../scope";
 import { makeTestAuthContext } from "../../../testing/authContext";
 import { createPerceptionTools } from "./perceptionTools";
-import { getContextQuery } from "../../../../src/workbenchUi";
+import { createDatabase } from "../../../shared/database/client";
+import { getContextQuery } from "../../../../src/workbenchContextQuery";
 
-const fakeDb = { query: async () => ({ rows: [], rowCount: 0 }) };
+const fakeDb = createDatabase({ query: async () => ({ rows: [], rowCount: 0 }) });
 
 const overviewRow = { project_id: "p1", parameter_count: 12, open_change_requests: 3 };
 const db = {
@@ -75,9 +77,32 @@ describe("perception tools registration", () => {
     expect(overview?.kind).toBe("read");
     expect(overview?.requiresApproval).toBe(false);
   });
+
+  it("rejects an Agent invocation for a different target before reading organization tools", async () => {
+    const auth = makeTestAuthContext({ organizationId: "home-a", userId: "platform-a", roles: [{ roleId: "platform-admin", projectId: null }] });
+    const user = withOperatingOrganization(createUserInvocation(auth), { id: "target-b", name: "Target B" });
+    const context = { auth: withAgentInvocation(auth, user), invocation: createAgentInvocation(auth, { sessionId: "session-b", toolCallId: "call-b", approval: { required: false } }),
+      requestId: "request-b", sessionId: "session-b", toolCallId: "call-b" };
+    const registry = createAgentToolRegistry({ db: fakeDb });
+    await expect(registry.run("perception.getRecentLogConclusions", context, {})).rejects.toMatchObject({ code: "INVALID_TRUSTED_INVOCATION_CONTEXT" });
+  });
 });
 
 describe("createPerceptionTools", () => {
+  it("retains the authorized target in parameter citations without changing the actor's Home", async () => {
+    const auth = makeTestAuthContext({ organizationId: "home-a", userId: "platform-a", roles: [{ roleId: "platform-admin", projectId: null }] });
+    const user = withOperatingOrganization(createUserInvocation(auth), { id: "target-b", name: "Target B" });
+    const invocation = createAgentInvocationFromUser(user, { sessionId: "session-b", toolCallId: "call-b", approval: { required: false } });
+    mockedReadProjectProtectedParameters.mockResolvedValue([{
+      propertyKey: "temperature", revision: { content: { displayName: "温度", description: { kind: "absent" }, documentation: { kind: "absent" },
+        unit: { kind: "absent" }, schemaDefault: { kind: "absent" } } },
+      pin: { projectId: "project-b", bindingId: "binding-b", definitionId: "def-b", revisionId: "revision-b", payload: { value: "25" } }
+    }]);
+    const tool = createPerceptionTools({ db: testRoot }).find((entry) => entry.name === "perception.searchParameters")!;
+    const result = await tool.run({ auth: withAgentInvocation(auth, user), invocation, requestId: "request-b", sessionId: "session-b", toolCallId: "call-b", projectId: "project-b" }, {});
+    expect(result.citations[0].href).toBe("/parameters?project=project-b&bindingId=binding-b&organizationId=target-b");
+    expect(invocation.principal.organization.id).toBe("home-a");
+  });
   it("links canonical search citations to their protected project scope and binding", async () => {
     mockedReadProjectProtectedParameters.mockResolvedValue([{
       propertyKey: "temperature", revision: { content: { displayName: "温度", description: { kind: "absent" }, documentation: { kind: "absent" }, unit: { kind: "absent" }, schemaDefault: { kind: "absent" } } },
@@ -308,7 +333,7 @@ describe("createPerceptionTools", () => {
 
 describe("perception authz boundary", () => {
   it("rejects perception for a project the user cannot access", async () => {
-    const registry = createAgentToolRegistry({ db: { query: async () => ({ rows: [], rowCount: 0 }) } });
+    const registry = createAgentToolRegistry({ db: fakeDb });
     const context = {
       auth: {
         organization: { id: "org1" },

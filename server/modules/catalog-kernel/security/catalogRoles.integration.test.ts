@@ -745,12 +745,18 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       where child.rolname = any($1::text[]) or parent.rolname = any($1::text[])
     `, [maintenanceRoles])).rows).toEqual([]);
 
-    // Compare the actual column ACL with the complete, checksum-pinned 0180 grant list.
+    // Preserve the checksum-pinned 0180 list and the exact forward auth reads.
     const migration = await fs.readFile(path.join(migrationsDir, "0180_mod_d02_offline_capture.sql"), "utf8");
     expect(createHash("sha256").update(migration).digest("hex"))
       .toBe("3c7f39c3d5866b0a61be8ccd3b1a5f5c2d44514e9d77857634b303b7237caffb");
-    const expectedColumns = [...migration.matchAll(/grant select \(([^)]+)\)\s+on ([a-z_]+\.[a-z_]+)\s+to wiseeff_mod_d02_source_reader;/g)]
-      .flatMap(([, columns, relation]) => columns.split(",").map((column) => `${relation}.${column.trim()}`)).sort();
+    const expectedColumns = [
+      ...[...migration.matchAll(/grant select \(([^)]+)\)\s+on ([a-z_]+\.[a-z_]+)\s+to wiseeff_mod_d02_source_reader;/g)]
+        .flatMap(([, columns, relation]) => columns.split(",").map((column) => `${relation}.${column.trim()}`)),
+      "public.organizations.status",
+      "public.project_members.organization_id", "public.project_members.project_id",
+      "public.project_members.roles", "public.project_members.user_id",
+      "public.users.external_tokens_revoked_at",
+    ].sort();
     expect(expectedColumns.length).toBeGreaterThan(0);
     const actualColumns = await client.query<{ identity: string }>(`
       select table_schema || '.' || table_name || '.' || column_name as identity
@@ -826,9 +832,12 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       ...GOVERNANCE_RELATIONS,
       ...BINDING_CUTOVER_RELATIONS,
       ...VERIFICATION_RELATIONS,
+      "catalog_archive_writes",
       "definition_erasures",
       "definition_purge_rows",
       "log_erasures",
+      "organization_log_erasure_objects",
+      "organization_parameter_erasure_objects",
       "project_erasures",
     ].sort());
     expect(new Set(tables.rows.map((row) => row.tableowner))).toEqual(
@@ -1340,23 +1349,31 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       { proname: "definition_erasure_object_is_referenced" },
       { proname: "ensure_dts_observation_source_occurrence" },
       { proname: "finish_log_erasure_object" },
+      { proname: "finish_organization_parameter_object" },
       { proname: "finish_parameter_definition_erasure_object" },
       { proname: "finish_project_erasure_object" },
       { proname: "insert_reviewed_member_tombstone" },
       { proname: "list_definition_erasures" },
       { proname: "list_log_erasures" },
+      { proname: "list_platform_definition_erasures" },
       { proname: "list_project_erasures" },
+      { proname: "lock_definition_erasure_object" },
       { proname: "lock_log_erasure" },
       { proname: "lock_parameter_definition_purge" },
+      { proname: "lock_parameter_object_write" },
       { proname: "lock_parameter_plane_archive" },
       { proname: "lock_project_erasure" },
+      { proname: "organization_parameter_archives" },
+      { proname: "organization_parameter_pending_objects" },
       { proname: "preview_parameter_definition_purge" },
       { proname: "purge_log" },
+      { proname: "purge_organization_parameter_assets" },
       { proname: "purge_parameter_definition" },
       { proname: "purge_project" },
       { proname: "read_log_erasure" },
       { proname: "read_parameter_definition_erasure" },
       { proname: "read_project_erasure" },
+      { proname: "reserve_parameter_object_write" },
       { proname: "source_anchor_restoration_matches" },
     ]);
 
@@ -1537,6 +1554,53 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       "update public.audit_events set action = action where false",
     );
     expect(auditMutate.code).toBe("42501");
+  });
+
+  it("captures history through private triggers without granting identity reads or a definer lookup oracle", async () => {
+    const routines = await client.query<{ name: string; owner: string; definer: boolean; settings: string[]; writer_execute: boolean }>(`
+      select p.proname as name, pg_get_userbyid(p.proowner) as owner, p.prosecdef as definer, p.proconfig as settings,
+        has_function_privilege($1,p.oid,'EXECUTE') as writer_execute
+      from pg_proc p where p.oid = any(array[
+        'public.capture_parameter_history_attribution()'::regprocedure,
+        'public.capture_knowledge_log_agent_attribution()'::regprocedure]) order by p.proname`, [PARAMETER_GOVERNANCE_WRITER_ROLE]);
+    expect(routines.rows).toEqual([
+      { name: "capture_knowledge_log_agent_attribution", owner: CATALOG_MIGRATION_OWNER, definer: true,
+        settings: ["search_path=pg_catalog, public, pg_temp"], writer_execute: false },
+      { name: "capture_parameter_history_attribution", owner: CATALOG_MIGRATION_OWNER, definer: true,
+        settings: ["search_path=pg_catalog, public, pg_temp"], writer_execute: false }
+    ]);
+    expect((await client.query("select prosecdef from pg_proc where oid='public.knowledge_log_agent_identity_snapshot(text,text,text,text)'::regprocedure")).rows)
+      .toEqual([{ prosecdef: false }]);
+
+    await client.query("insert into public.organizations(id,name) values('org-history-privileges','History role organization')");
+    await client.query("insert into public.users(id,organization_id,name,title,is_active) values('user-history-privileges','org-history-privileges','Recorded role actor','Engineer',true)");
+    try {
+      await withLocalRole(client, PARAMETER_GOVERNANCE_WRITER_ROLE, async () => {
+        await client.query("create temporary table organizations(id text,name text) on commit drop");
+        await client.query("insert into pg_temp.organizations values('org-history-privileges','Forged temporary organization')");
+        await client.query("create temporary table users(id text,organization_id text,name text) on commit drop");
+        await client.query("insert into pg_temp.users values('user-history-privileges','org-history-privileges','Forged temporary actor')");
+        expect((await client.query(`insert into public.audit_events(id,organization_id,actor_user_id,actor_type,app,kind,action,severity,trace_id)
+          values('aud-history-privileges','org-history-privileges','user-history-privileges','user','wiseeff','parameter-governance','append','Low','history-privileges')`)).rowCount).toBe(1);
+        // Observe through the privileged fixture connection after the actual
+        // insert ran as the append-only writer; the writer gains no SELECT.
+        await client.query("reset role");
+        expect((await client.query("select historical_attribution from public.audit_events where id='aud-history-privileges'")).rows)
+          .toMatchObject([{ historical_attribution: { organization: { name: "History role organization" },
+            actors: { actor_user_id: { name: "Recorded role actor", source: "recorded" } } } }]);
+        expect((await client.query("select public.knowledge_log_agent_identity_snapshot('user-history-privileges','user','recorded','org-history-privileges')->>'name' as name")).rows)
+          .toEqual([{ name: "Recorded role actor" }]);
+      });
+      for (const sql of [
+        "select name from public.organizations", "select name from public.users", "select role_id from public.user_role_bindings",
+        "select name from public.log_integration_credentials", "select public.capture_parameter_history_attribution()",
+        "select public.capture_knowledge_log_agent_attribution()",
+        "select public.knowledge_log_agent_identity_snapshot('user-history-privileges','user','recorded','org-history-privileges')"
+      ]) expect((await captureRoleStatementError(client, PARAMETER_GOVERNANCE_WRITER_ROLE, sql)).code).toBe("42501");
+    } finally {
+      await client.query("delete from public.users where id='user-history-privileges'");
+      await client.query("delete from public.organizations where id='org-history-privileges'");
+    }
   });
 
   it("Catalog writer login memberships follow the documented inheritance boundary", async () => {

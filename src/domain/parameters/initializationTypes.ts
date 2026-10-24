@@ -76,8 +76,10 @@ export type InitializationReviewDto = {
   projectId: string;
   status: "pending" | "approved" | "rejected";
   submittedByUserId: string | null;
+  submittedByName?: string | null;
   submittedAt: string;
   reviewedByUserId?: string | null;
+  reviewedByName?: string | null;
   reviewedAt?: string;
   rejectionReason?: string;
 };

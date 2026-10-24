@@ -13,6 +13,7 @@ export type UserGovernanceDto = {
   lastActiveAt: string | null;
   roles: RoleBinding[];
   oidcIdentity?: OidcIdentity;
+  oidcTransfer?: { targetOrganizationId: string; pendingSince: string; verifiedAt: string | null; status: "pending" | "verified" };
   legacyOidcEmail?: string;
 };
 

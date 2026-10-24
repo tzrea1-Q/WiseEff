@@ -34,7 +34,8 @@ describe("app permission policy", () => {
     for (const roleId of ["hardware-committer", "software-committer"]) {
       expect(canAccessPage(roleId, "parameter-review")).toBe(true);
       expect(canAccessPage(roleId, "log-admin")).toBe(false);
-      expect(canAccessPage(roleId, "user-permissions")).toBe(false);
+      expect(canAccessPage(roleId, "user-permissions")).toBe(true);
+      expect(canPerform(roleId, "users.manage")).toBe(false);
     }
   });
 

@@ -15,6 +15,9 @@ test.use({ viewport: { width: 1440, height: 900 } });
 useBrowserDiagnostics(test, { expectedApiFailures: [{ method: "POST", path: "/api/v1/users/registration-role-requests", status: 503 }] });
 const password = "registration-browser-password";
 const local = process.env.AUTH_PROVIDER === "local" && !process.env.VITE_WISEEFF_API_AUTHORIZATION && !process.env.M5_SMOKE_AUTHORIZATION && !process.env.WISEEFF_SMOKE_AUTHORIZATION;
+test.beforeAll(async () => {
+  if (local) await withPgClient((client) => client.query("update public_experience_registration set enabled=true,organization_id='org-chargelab' where singleton=true"));
+});
 type Applicant = { username: string; name: string; token?: string };
 async function signIn(page: Page, token: string, path: string) {
   await page.goto("/favicon.svg"); await page.evaluate(value => localStorage.setItem("wiseeff.localAuthToken", value), token);
@@ -73,7 +76,7 @@ test(`${local ? "local signup" : "existing request under HMAC"}: enables an appl
   await expect(dialog).not.toContainText("申请角色：");
   await expect(dialog).toContainText("软件开发"); await expect(dialog).toContainText("不授予申请角色"); await expect(dialog).toContainText(target.name);
   const path = `/api/v1/users/registration-role-requests/${item.id}/enable-basic`;
-  await page.route(`**${path}`, route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "INTERNAL_ERROR", message: "启用暂时不可用，请重试。" } }) }), { times: 1 });
+  await page.route(url => url.pathname === path, route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "INTERNAL_ERROR", message: "启用暂时不可用，请重试。" } }) }), { times: 1 });
   await dialog.getByRole("button", { name: "启用普通成员", exact: true }).focus(); await page.keyboard.press("Enter");
   await expect(dialog.getByRole("alert")).toContainText("请重试"); await expect(dialog).toContainText(target.name); expect((await login()).status).toBe(403);
   const failureImage = testInfo.outputPath("registration-basic-failure-1440.png"); await page.screenshot({ path: failureImage, animations: "disabled" }); await testInfo.attach("registration-basic-failure-1440", { path: failureImage, contentType: "image/png" });

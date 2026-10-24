@@ -1,3 +1,4 @@
+import { parameterOrganizationId, parameterInvocation } from "../../parameters/operatingScope";
 /**
  * Issue #849 T1.3: materialize reviewed DTS and JSON seed sources into the three
  * target projects through the existing config-set / ingest / JSON-source owners.
@@ -143,7 +144,7 @@ export async function materializeSeedSources(
   auth: AuthContext,
   input: SeedMaterializationInput,
 ): Promise<SeedMaterializationOutcome> {
-  if (input.organizationId !== auth.organization.id) {
+  if (input.organizationId !== parameterOrganizationId(auth)) {
     throw new ApiError("FORBIDDEN", "Seed materialization cannot cross organizations.", {
       reason: "organization-mismatch"
     });
@@ -427,7 +428,7 @@ async function materializeSeedSourcesLocked(
     const configurationSchema = publishedConfigurationSchemaSubject(snapshot);
     if (snapshot && configurationSchema && jsonFiles.length > 0) {
       const refusalSink = createTrustedRefusalAuditSink(root);
-      const invocation = createUserInvocation(auth);
+      const invocation = parameterInvocation(auth) ?? createUserInvocation(auth);
       jsonBindingsWritten = await root.transaction(async (tx) => {
         let written = 0;
         for (const jsonFile of jsonFiles) {

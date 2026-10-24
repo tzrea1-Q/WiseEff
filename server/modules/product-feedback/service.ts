@@ -4,8 +4,8 @@ import { MAX_FEEDBACK_ATTACHMENT_COUNT as MAX_ATTACHMENT_COUNT, MAX_FEEDBACK_ATT
 
 import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
-import type { AuthContext } from "../auth/types";
-import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
+import { feedbackOrganizationId, feedbackInvocation, type ProductFeedbackAccessContext as AuthContext } from "./scope";
+import { type TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { ObjectStore } from "../logs/objectStore";
 import { notifyUsers } from "../notifications/service";
 import type { Database, Queryable } from "../../shared/database/client";
@@ -174,7 +174,7 @@ export async function createProductFeedback(
     const item = (await getFeedbackById(tx, auth, feedback.id)) ?? { ...feedback, attachments: insertedAttachments };
     await createProductFeedbackAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      feedbackInvocation(auth),
       {
         kind: "product-feedback-create",
         action: "create",
@@ -266,7 +266,7 @@ export async function updateProductFeedback(
           const archived = await tx.query(`
             select id from product_feedback_progress_events
             where organization_id = $1 and feedback_id = $2 and internal_message = $3 limit 1
-          `, [auth.organization.id, feedbackId, existing.admin_note]);
+          `, [feedbackOrganizationId(auth), feedbackId, existing.admin_note]);
           if (archived.rows.length === 0) {
             await insertProgressEvent(tx, auth, {
               id: randomUUID(), feedbackId, actorUserId: auth.user.id, kind: "legacy_note",
@@ -306,7 +306,7 @@ export async function updateProductFeedback(
     }
     await createProductFeedbackAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      feedbackInvocation(auth),
       {
         kind: "product-feedback-update",
         action: "update",
@@ -382,7 +382,7 @@ export async function saveProductFeedbackDraft(
   requireProductFeedbackSubmit(auth);
   const decodedNewAttachments = decodeAndValidateAttachments(input.newAttachments);
   return withFeedbackAttachmentWrites(db, objectStore, auth, decodedNewAttachments, async (tx, put) => {
-    await tx.query("select id from product_feedback where organization_id=$1 and id=$2 and submitter_user_id=$3 for update", [auth.organization.id, draftId, auth.user.id]);
+    await tx.query("select id from product_feedback where organization_id=$1 and id=$2 and (draft_owner_user_id=$3 or $4) for update", [feedbackOrganizationId(auth), draftId, auth.user.id, auth.permissions.includes("admin:access")]);
     const existing = await getMyFeedbackById(tx, auth, draftId);
     if (!existing) {
       throw productFeedbackNotFound(draftId);
@@ -516,7 +516,7 @@ export async function submitProductFeedbackDraft(
 
     await createProductFeedbackAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      feedbackInvocation(auth),
       {
         kind: "product-feedback-submit",
         action: "create",
@@ -622,21 +622,25 @@ export async function appendProductFeedbackProgress(
     });
 
     if (publicMessage && existing.submitter_user_id) {
-      await notifyUsers(tx, {
-        organizationId: auth.organization.id,
+      const recipient = (await tx.query<{ organization_id: string }>(`select organization_id from users where id=$1
+        and (organization_id=$2 or (is_active and exists(select 1 from user_role_bindings binding
+          where binding.user_id=users.id and binding.organization_id=users.organization_id
+            and binding.project_id is null and binding.role_id='platform-admin')))`, [existing.submitter_user_id, feedbackOrganizationId(auth)])).rows[0];
+      if (recipient) await notifyUsers(tx, {
+        organizationId: recipient.organization_id,
         recipientUserIds: [existing.submitter_user_id],
         category: "product-feedback.progress",
         title: nextStatus === "resolved" ? "问题反馈已解决" : "问题反馈有新进展",
         body: publicMessage,
         severity: nextStatus === "resolved" ? "success" : "info",
-        actionUrl: `/feedback?id=${encodeURIComponent(feedbackId)}`,
+        actionUrl: `/feedback?id=${encodeURIComponent(feedbackId)}${recipient.organization_id !== feedbackOrganizationId(auth) ? `&organizationId=${encodeURIComponent(feedbackOrganizationId(auth))}` : ""}`,
         sourceKind: "product-feedback-progress",
         sourceId: progressId,
-        metadata: { feedbackId, status: nextStatus }
+        metadata: { feedbackId, status: nextStatus, feedbackOrganizationId: feedbackOrganizationId(auth) }
       });
     }
 
-    await writeAuditEventInTx(asAuditTx(tx), createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
+    await writeAuditEventInTx(asAuditTx(tx), feedbackInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
       app: "product-feedback",
       kind: "product-feedback-progress",
       action: "update",
@@ -682,7 +686,7 @@ export async function listProductFeedbackAssignees(db: Queryable, auth: AuthCont
           and 'admin:access' = any(roles.permissions)
       )
     order by users.name, users.id
-  `, [auth.organization.id]);
+  `, [feedbackOrganizationId(auth)]);
   return { items: result.rows };
 }
 
@@ -702,7 +706,7 @@ export async function replyToProductFeedback(
   const decoded = decodeAndValidateAttachments(input.attachments);
   return withFeedbackAttachmentWrites(db, objectStore, auth, decoded, async (tx, put) => {
     const existing = await getFeedbackForUpdate(tx, auth, feedbackId);
-    if (!existing || existing.submitter_user_id !== auth.user.id) throw productFeedbackNotFound(feedbackId);
+    if (!existing || (existing.submitter_user_id !== auth.user.id && existing.draft_owner_user_id !== auth.user.id)) throw productFeedbackNotFound(feedbackId);
     if (existing.status === "closed" && !input.reopen) {
       throw new ApiError("VALIDATION_FAILED", "Closed feedback must be reopened before replying.");
     }
@@ -719,7 +723,7 @@ export async function replyToProductFeedback(
     });
     await insertAttachments(tx, auth, feedbackId, (await put()).map((attachment) => ({ ...attachment, messageId })));
     await updateFeedbackProgressStatus(tx, auth, feedbackId, nextStatus, resolutionCode);
-    await writeAuditEventInTx(asAuditTx(tx), createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
+    await writeAuditEventInTx(asAuditTx(tx), feedbackInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
       app: "product-feedback", kind: "product-feedback-reply", action: "update", severity: "Medium",
       projectId: null, targetType: "product-feedback", targetId: feedbackId,
       metadata: { previousStatus: existing.status, nextStatus, attachmentCount: decoded.length }

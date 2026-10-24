@@ -142,7 +142,7 @@ export function ReviewInbox({ projectId, repository, sourceRepository, state, se
           createdAt: request.createdAt, handledAt: request.status === "pending" ? undefined : request.updatedAt,
           handledBy: request.cancellation ? request.cancellation.name ?? userName(request.cancellation.userId)
             : request.status === "withdrawn" ? request.submitterName ?? userName(request.submitterUserId)
-            : request.reviewerUserId ? request.reviewerName ?? userName(request.reviewerUserId) : undefined,
+            : request.reviewerName ?? (request.reviewerUserId ? userName(request.reviewerUserId) : undefined),
           status: request.cancellation ? "已取消" : canonicalStatusLabels[request.status], view: request.status === "pending" ? "pending" : "history" })),
         ...[...values, ...batches].map((request): ReviewInboxRow => {
           const parameter = "bindingId" in request ? parameters.find((item) => item.id === request.bindingId) : undefined;
@@ -156,7 +156,7 @@ export function ReviewInbox({ projectId, repository, sourceRepository, state, se
             assignedTo: request.assignedToName ?? (request.assignedToUserId ? userName(request.assignedToUserId) : "项目审核人"),
             createdAt: request.createdAt ?? "", handledAt: request.status === "pending" ? undefined : request.updatedAt,
             handledBy: request.status === "withdrawn" ? request.submitterName ?? userName(request.submitterUserId)
-              : request.reviewerUserId ? request.reviewerName ?? userName(request.reviewerUserId) : undefined,
+              : request.reviewerName ?? (request.reviewerUserId ? userName(request.reviewerUserId) : undefined),
             status: canonicalStatusLabels[request.status], view: request.status === "pending" ? "pending" : "history" };
         }),
         ...members.map((request): ReviewInboxRow => ({ id: request.id, kind: "member", projectId, project,
@@ -167,7 +167,7 @@ export function ReviewInbox({ projectId, repository, sourceRepository, state, se
           assignedTo: request.assignedToName ?? (request.assignedToUserId ? userName(request.assignedToUserId) : "项目审核人"),
           handledAt: request.status === "pending" ? undefined : request.updatedAt,
           handledBy: request.status === "withdrawn" ? request.submitterName ?? userName(request.submitterUserId)
-            : request.reviewerUserId ? request.reviewerName ?? userName(request.reviewerUserId) : undefined,
+            : request.reviewerName ?? (request.reviewerUserId ? userName(request.reviewerUserId) : undefined),
           createdAt: request.createdAt, status: canonicalStatusLabels[request.status], view: request.status === "pending" ? "pending" : "history" }))
       ] });
     }).catch((failure) => {
