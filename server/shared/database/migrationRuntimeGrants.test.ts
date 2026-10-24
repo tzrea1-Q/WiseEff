@@ -13,7 +13,44 @@ function missingRuntimeGrants(sql: string): string[] {
     const table = parts.at(-1)!;
     if (optOuts.includes(table)) continue;
     const hasGrant = blocks.some((block) => {
-      if (block.index! <= create.index! || !new RegExp(`\\b${table}\\b`).test(block[2])) return false;
+      if (block.index! <= create.index!) return false;
+      const compact = block[2].replace(/\s+/g, "").toLowerCase();
+      const cleanupRoutines: Record<string, string> = {
+        organization_erasures: "",
+        knowledge_attachment_writes: "public.knowledge_erasure_object_referenced(text,text,text)",
+        log_object_writes: "parameter_catalog.erase_organization_logs(text,text,text),parameter_catalog.organization_log_erasure_objects_pending(text,text,text),parameter_catalog.organization_log_erasure_object_referenced(text,text,text,text),parameter_catalog.finish_organization_log_erasure_object(text,text,text,text)"
+      };
+      const cleanupLoop = compact.match(/for(\w+)inselectrolnamefrompg_roleswherenotrolsuperandhas_table_privilege\(oid,'public.users','update'\)andpg_has_role\(oid,'catalog_publication_coordinator_role','member'\)loop(.*?)endloop;/);
+      if (Object.hasOwn(cleanupRoutines, table) && cleanupLoop) {
+        const variable = cleanupLoop[1];
+        const recipient = new RegExp(`(?:declare|;)${variable}text;`).test(compact) ? variable
+          : new RegExp(`(?:declare|;)${variable}record;`).test(compact) ? `${variable}.rolname` : "";
+        const routine = cleanupRoutines[table];
+        const expected = `executeformat('grantselect,insert,update,deleteonpublic.${table}to%i',${recipient});`
+          + (routine ? `executeformat('grantexecuteonfunction${routine}to%i',${recipient});` : "");
+        if (recipient && cleanupLoop[2] === expected) return true;
+      }
+      // These two public tables are private owner custody, exposed only through
+      // their exact DEFINER entry. Recognize no generic owner-transfer exception.
+      const ownerRoutine = table === "agent_checkpoint_namespaces" ? "register_agent_checkpoint_namespace(text,text,text,text,text,text,boolean)"
+        : table === "organization_runtime_erasure_objects" ? "erase_organization_runtime(text,text,text,text)" : null;
+      if (ownerRoutine) {
+        const afterCreate = uncommented.slice(create.index! + create[0].length).replace(/\s+/g, "").toLowerCase();
+        const grants = [...afterCreate.matchAll(new RegExp(`grant[^;]*on(?:table)?public\\.${table}to[^;]*;`, "g"))].map(([grant]) => grant);
+        const allowedGrants = table === "agent_checkpoint_namespaces" ? [`grantselectonpublic.${table}tocatalog_baseline_reader_role;`] : [];
+        const routinePattern = ownerRoutine.replace(/[().]/g, "\\$&");
+        const routineGrants = [...afterCreate.matchAll(new RegExp(`grant[^;]*onfunctionparameter_catalog\\.${routinePattern}to[^;]*;`, "g"))].map(([grant]) => grant);
+        const guard = table === "agent_checkpoint_namespaces"
+          ? "pg_has_role(oid,'parameter_governance_writer_role','member')andpg_has_role(oid,'parameter_governance_writer_role','set')"
+          : "has_table_privilege(oid,'public.users','update')andpg_has_role(oid,'catalog_publication_coordinator_role','member')";
+        if (afterCreate.includes(`altertablepublic.${table}ownertocatalog_migration_owner;`)
+          && afterCreate.includes(`alterfunctionparameter_catalog.${ownerRoutine}ownertocatalog_migration_owner;`)
+          && afterCreate.includes(`revokeallonfunctionparameter_catalog.${ownerRoutine}frompublic;`)
+          && JSON.stringify(grants) === JSON.stringify(allowedGrants)
+          && JSON.stringify(routineGrants) === JSON.stringify([`grantexecuteonfunctionparameter_catalog.${ownerRoutine}to%i',actor.rolname);`])
+          && compact === `declareactorrecord;beginforactorinselectrolnamefrompg_roleswhererolcanloginandnotrolsuperandnotrolinheritand${guard}loopexecuteformat('grantexecuteonfunctionparameter_catalog.${ownerRoutine}to%i',actor.rolname);endloop;end`) return true;
+      }
+      if (!new RegExp(`\\b${table}\\b`).test(block[2])) return false;
       const runtimeDml = /has_table_privilege\s*\(\s*oid\s*,\s*'public\.log_domains'\s*,\s*'INSERT'\s*\)/i.test(block[2])
         && /grant\s+select\s*,\s*insert\s*,\s*update\s*,\s*delete\s+on\b/i.test(block[2]);
       // Feedback cleanup companions inherit the existing attachment writers,
@@ -145,6 +182,55 @@ describe("public table runtime grants (0185 onward)", () => {
   });
 
   const migrationsDir = new URL("../../migrations/", import.meta.url);
+  it("recognizes only the finite coordinated API cleanup grants", () => {
+    for (const [table, routines, recipient] of [
+      ["organization_erasures", "", "role_name"],
+      ["knowledge_attachment_writes", "public.knowledge_erasure_object_referenced(text,text,text)", "role_name"],
+      ["log_object_writes", "parameter_catalog.erase_organization_logs(text,text,text),parameter_catalog.organization_log_erasure_objects_pending(text,text,text),parameter_catalog.organization_log_erasure_object_referenced(text,text,text,text),parameter_catalog.finish_organization_log_erasure_object(text,text,text,text)", "role_name.rolname"]
+    ]) {
+      const create = `create table public.${table}(id text);`;
+      const block = `do $$ declare ${recipient.includes(".") ? "installed text; " : ""}role_name ${recipient.includes(".") ? "record" : "text"}; begin
+        for role_name in select rolname from pg_roles where not rolsuper
+          and has_table_privilege(oid,'public.users','UPDATE')
+          and pg_has_role(oid,'catalog_publication_coordinator_role','MEMBER') loop
+          execute format('grant select,insert,update,delete on public.${table} to %I',${recipient});
+          ${routines ? `execute format('grant execute on function ${routines} to %I',${recipient});` : ""}
+        end loop; end $$;`;
+      expect(missingRuntimeGrants(create + block), table).toEqual([]);
+      for (const invalid of [block.replace("not rolsuper", "true"),
+        block.replace("'public.users'", "'public.unrelated'"), block.replace("'UPDATE'", "'SELECT'"),
+        block.replace("'MEMBER'", "'USAGE'"), block.replace("catalog_publication_coordinator_role", "catalog_worker_role"),
+        block.replace("select,insert,update,delete", "all"), block.replace(`on public.${table}`, "on public.unrelated"),
+        block.replaceAll(`,${recipient})`, ",unrelated)"),
+        block.replace("end loop", "execute format('grant all on public.unrelated to %I',role_name); end loop")]) {
+        expect(missingRuntimeGrants(create + invalid), table).toEqual([table]);
+      }
+      expect(missingRuntimeGrants(block + create), table).toEqual([table]);
+      expect(missingRuntimeGrants((create + block).replaceAll(table, "unrelated"))).toEqual(["unrelated"]);
+      if (routines) expect(missingRuntimeGrants(create + block.replace(routines, "public.unrelated()"))).toEqual([table]);
+    }
+  });
+
+  it("recognizes exact owner custody and API-only function entry grants without table DML", () => {
+    for (const [file, table, routine] of [
+      ["0279_agent_checkpoint_ownership_and_typed_preview.sql", "agent_checkpoint_namespaces", "register_agent_checkpoint_namespace(text,text,text,text,text,text,boolean)"],
+      ["0283_organization_runtime_erasure.sql", "organization_runtime_erasure_objects", "erase_organization_runtime(text,text,text,text)"]
+    ]) {
+      const sql = readFileSync(new URL(file, migrationsDir), "utf8");
+      expect(missingRuntimeGrants(sql), file).toEqual([]);
+      for (const invalid of [sql.replace(`alter table public.${table} owner to catalog_migration_owner`, `alter table public.${table} owner to catalog_worker_role`),
+        sql.replace("rolcanlogin and not rolsuper and not rolinherit", "true"),
+        sql.replaceAll("'MEMBER'", "'USAGE'"), sql.replace("'SET'", "'USAGE'"),
+        sql.replace(`grant execute on function parameter_catalog.${routine} to %I`, `grant execute on function public.unrelated() to %I`),
+        sql + `\ngrant select,insert,update,delete on public.${table} to catalog_worker_role;`,
+        sql + `\ngrant all on table public.${table} to public;`,
+        sql + `\ngrant execute on function parameter_catalog.${routine} to catalog_worker_role;`]) {
+        if (invalid !== sql) expect(missingRuntimeGrants(invalid), file).toEqual([table]);
+      }
+      expect(missingRuntimeGrants(sql.replaceAll(table, "unrelated")), file).toEqual(["unrelated"]);
+    }
+  });
+
   it("recognizes exact member mirrors without granting unrelated readers or wider writes", () => {
     for (const [file, tables] of [
       ["0264_organization_teams.sql", ["organization_teams", "organization_team_members"]],
