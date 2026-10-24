@@ -70,6 +70,7 @@ const CANONICAL_SOURCE_READ_FUNCTIONS = [
   "parameter_catalog.organization_log_erasure_object_referenced(text, text, text, text)",
   "parameter_catalog.finish_organization_log_erasure_object(text, text, text, text)",
   "parameter_catalog.erase_organization_runtime(text, text, text, text)",
+  "parameter_catalog.compact_organization_erasure_provenance(text, text)",
   "parameter_catalog.lock_project_erasure(text, text, text)",
   "parameter_catalog.read_project_erasure(text, text, text)",
   "parameter_catalog.purge_project(text, text, text, text)",

@@ -16,7 +16,7 @@ import { revokePersonalAccess } from "./personalAccess";
 type Erasure = z.infer<typeof organizationErasureSchema>;
 const projection = `id,target_organization_id as "targetOrganizationId",actor_user_id as "actorUserId",status,stage,counts,attempts,
   domain_progress as domains,error_code as "errorCode",created_at::text as "createdAt",updated_at::text as "updatedAt",completed_at::text as "completedAt"`;
-const managementCategories = new Set(["accounts", "teams-invitations", "audit", "platform-catalog"]);
+const managementCategories = new Set(["accounts", "teams-invitations", "audit", "platform-catalog", "shared-provenance"]);
 
 async function authorize(db: Database, caller: UserInvocationContext) {
   requireUserInitiatedInvocation(caller);
@@ -42,12 +42,6 @@ export async function startOrganizationErasure(db: Database, caller: UserInvocat
     if (!["active", "suspended"].includes(preview.status)) throw new ApiError("CONFLICT", "组织已经进入清理，请从清理记录继续。");
     const supported = new Set([...managementCategories, ...organizationErasureDomains.flatMap(adapter => adapter.inventoryCategories)]);
     const unsupported = preview.inventory.filter(item => item.count && !supported.has(item.category));
-    // NULL-organization facts may belong to global erasure proofs and retained
-    // foreign source pins even when their operator Home is outside this target.
-    // Their finite custody/compaction adapter must be installed before admission.
-    const globalFacts = (await tx.query<{ count: number }>(`select count(*)::int count from audit_events where organization_id is null
-      and ((target_type='organization' and target_id=$1) or metadata->>'operatingOrganizationId'=$1)`, [organizationId])).rows[0]!.count;
-    if (globalFacts && !supported.has("shared-provenance")) unsupported.push({ key: "platform-global-audit-provenance", category: "shared-provenance", count: globalFacts });
     if (unsupported.length || (!organizationErasureDomains.length && (preview.storage.exclusiveObjects || preview.storage.sharedObjects))) {
       throw new ApiError("CONFLICT", "此组织仍关联尚不能完整清理的业务资产或共享来源记录，暂不能执行彻底删除。", { code: "organization-erasure-unsupported", inventory: unsupported });
     }
@@ -106,6 +100,7 @@ export async function retryOrganizationErasure(db: Database, caller: UserInvocat
       await advance(db, id, leaseOwner, "management");
     }
     if (claimed.stage !== "finalize") {
+      await db.query("select parameter_catalog.compact_organization_erasure_provenance($1,$2)", [id, leaseOwner]);
       // Recheck actual domain/runtime ownership after adapters, rather than
       // trusting their success return or the intent's now-stale initial digest.
       const remaining = await previewOrganizationDeletion(db, caller, claimed.targetOrganizationId, context);
@@ -138,7 +133,8 @@ export async function retryOrganizationErasure(db: Database, caller: UserInvocat
     await db.transaction(async tx => {
       await ownLease(tx, id, leaseOwner);
       if ((await tx.query("select id from organizations where id=$1", [claimed.targetOrganizationId])).rowCount) throw new Error("Organization remains");
-      await tx.query("update organization_erasures set status='deleted',stage='complete',lease_owner=null,lease_expires_at=null,error_code=null,completed_at=clock_timestamp(),updated_at=clock_timestamp() where id=$1", [id]);
+      await tx.query("select parameter_catalog.compact_organization_erasure_provenance($1,$2)", [id, leaseOwner]);
+      await tx.query("update organization_erasures set status='deleted',stage='complete',domain_progress='{}',attempts=0,lease_owner=null,lease_expires_at=null,error_code=null,completed_at=clock_timestamp(),updated_at=clock_timestamp() where id=$1", [id]);
     });
   } catch {
     // Do not persist database errors, file keys or tenant business payloads.
