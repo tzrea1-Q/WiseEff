@@ -32,14 +32,10 @@ test("erases real log files and analysis through Organization confirmation and d
     fileName: "private.log", contentType: "text/plain", skillSelection: "generic", contentBase64: Buffer.from("INFO boot\nERROR private device failed\n").toString("base64")
   } });
   expect(uploaded.status(), await uploaded.text()).toBe(201);
-  const log = await uploaded.json() as { log: { id: string }; fileObject: { storageKey: string } };
+  const log = await uploaded.json() as { log: { id: string }; fileObject: { storageKey: string }; job: { id: string } };
+  expect(log.job.id).toBeTruthy();
   const physicalFile = resolve(process.env.OBJECT_STORE_ROOT ?? ".wiseeff-object-store", log.fileObject.storageKey);
   expect((await stat(physicalFile)).size).toBeGreaterThan(0);
-  if (process.env.LOG_WORKER_ENABLED !== "false") await expect.poll(async () => {
-    const result = await page.request.get(apiRoute(`/api/v1/logs/${log.log.id}`), { headers });
-    expect(result.status()).toBe(200);
-    return ["complete", "failed"].includes((await result.json() as { item: { status: string } }).item.status);
-  }).toBe(true);
   await withPgClient(client => client.query(`create function test_log_erasure_${suffix}() returns trigger language plpgsql as $$ begin
     if old.organization_id='${org}' then raise exception 'acceptance log deletion fault'; end if; return old; end $$;
     create trigger test_log_erasure_${suffix} before delete on log_records for each row execute function test_log_erasure_${suffix}()`));
@@ -50,6 +46,7 @@ test("erases real log files and analysis through Organization confirmation and d
     await page.getByRole("dialog", { name: "组织资料", exact: true }).getByRole("button", { name: "删除影响", exact: true }).click();
     const preview = page.getByRole("dialog", { name: "组织删除影响预览", exact: true });
     await expect(preview).toContainText("log_records");
+    await expect(preview).toContainText("public.jobs");
     await preview.getByRole("button", { name: "开始彻底删除", exact: true }).scrollIntoViewIfNeeded();
     await preview.getByRole("button", { name: "开始彻底删除", exact: true }).press("Enter");
     const confirmation = page.getByRole("dialog", { name: "彻底删除组织", exact: true });
