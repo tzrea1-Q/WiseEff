@@ -52,6 +52,8 @@ import { organizationNameMaxLength } from "./schemas";
 import { listProjectMembers, type ProjectMemberRoleId } from "../projects/members";
 import { setOidcIdentity } from "../auth/oidcIdentity";
 import { assertAdministratorContinuity, hasOrganizationRole, lockAdministratorMutation, type AdministratorMutationContext } from "./administratorContinuity";
+import { getAuthContext } from "../auth/repository";
+import { canOperateInOrganization } from "../auth/policy";
 
 const roleIds = new Set<BackendRoleId>([
   "guest",
@@ -418,14 +420,23 @@ export async function resetUserPassword(
   requireUserManager(auth);
   requirePasswordPolicy(input.password);
 
+  if (!(await getUserById(db, { organizationId, userId }))) {
+    throw new ApiError("NOT_FOUND", "User was not found.", { userId });
+  }
+  const passwordHash = await hashPassword(input.password);
   return db.transaction(async (tx) => {
+    // Transfer and role changes share these user locks; recheck authority after hashing.
+    await tx.query("select id from users where id=any($1::text[]) order by id for update", [[...new Set([auth.user.id, userId])].sort()]);
+    const actor = await getAuthContext(tx, auth.user.id);
+    requireUserManager(actor);
+    if (!canOperateInOrganization(actor, organizationId)) throw new ApiError("FORBIDDEN", "The authenticated user cannot operate in this Organization.");
     const current = await getUserById(tx, { organizationId, userId });
     if (!current) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
     const updated = await updatePasswordCredential(tx, {
       userId,
-      passwordHash: await hashPassword(input.password)
+      passwordHash
     });
     if (updated === 0) {
       throw new ApiError("NOT_FOUND", "Local password credential was not found.", { userId });

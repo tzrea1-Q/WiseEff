@@ -622,7 +622,10 @@ export async function appendProductFeedbackProgress(
     });
 
     if (publicMessage && existing.submitter_user_id) {
-      const recipient = (await tx.query<{ organization_id: string }>("select organization_id from users where id=$1", [existing.submitter_user_id])).rows[0];
+      const recipient = (await tx.query<{ organization_id: string }>(`select organization_id from users where id=$1
+        and (organization_id=$2 or (is_active and exists(select 1 from user_role_bindings binding
+          where binding.user_id=users.id and binding.organization_id=users.organization_id
+            and binding.project_id is null and binding.role_id='platform-admin')))`, [existing.submitter_user_id, feedbackOrganizationId(auth)])).rows[0];
       if (recipient) await notifyUsers(tx, {
         organizationId: recipient.organization_id,
         recipientUserIds: [existing.submitter_user_id],

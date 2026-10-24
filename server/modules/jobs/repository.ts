@@ -453,6 +453,7 @@ export async function claimNextOverlayArtifactGcJob(
       select id
       from jobs
       where kind = 'overlay-artifact-gc'
+        and exists(select 1 from public.organizations o where o.id=jobs.organization_id and o.status='active')
         and (
           status = 'queued'
           or (

@@ -1,7 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { Readable } from "node:stream";
 import JSZip from "jszip";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { createPostgresDatabase, type RootDatabase } from "../../shared/database/client";
 import { seedCoreGraph } from "../../testing/fixtures";
@@ -11,6 +11,8 @@ import { createRuleBasedLogAnalyzer, type AnalyzeLogInput } from "./analyzer";
 import { getLogRecord, uploadLogFile } from "./service";
 import { processLogAnalysisJobById } from "./worker";
 import type { ObjectStore } from "./objectStore";
+import { listUserNotifications } from "../notifications/service";
+import { createLogDomainRecord } from "./domainsService";
 
 const available = await isTestDatabaseAvailable();
 
@@ -42,6 +44,25 @@ function abortSignal(input: AnalyzeLogInput): AbortSignal {
 }
 
 describe.skipIf(!available)("log worker lease heartbeat over PostgreSQL", () => {
+  it("notifies the actual submitter and wakes the durable webhook after final analysis failure", async () => {
+    await withFixture(async fixture => {
+      const { db, auth, store } = fixture;
+      const domain = await createLogDomainRecord(db, { ...auth, permissions: [...auth.permissions, "logs:admin-domains"] }, { name: "Failure notifications" }, { requestId: "failure-notification-test" });
+      await db.query("update log_domains set webhook_enabled=true,webhook_url='https://callback.example.test/hook',webhook_secret='isolated-test-secret' where id=$1", [domain.id]);
+      const uploaded = await uploadLogFile(db, store, auth, { fileName: "failure.log", contentType: "text/plain", bytes: Buffer.from("ERROR controlled failure\n"), logDomainId: domain.id });
+      const metrics = { recordLogAnalysisJobResult: vi.fn() }, webhooks = { notifyAnalysisTerminal: vi.fn() };
+      const result = await processLogAnalysisJobById({ db, objectStore: store, jobId: uploaded.job!.id, maxAttempts: 1, metrics, webhooks,
+        analyzer: { async analyze() { throw new Error("Controlled final analyzer failure"); } } });
+      expect(result.status).toBe("dead-lettered");
+      expect((await getLogRecord(db, auth, uploaded.log.id)).status).toBe("failed");
+      expect((await db.query("select status,lease_owner,lease_expires_at from jobs where id=$1", [uploaded.job!.id])).rows).toEqual([{ status: "failed", lease_owner: null, lease_expires_at: null }]);
+      const notifications = await listUserNotifications(db, { organizationId: auth.organization.id, recipientUserId: auth.user.id });
+      expect(notifications.items).toContainEqual(expect.objectContaining({ category: "log.analysis.failed", body: expect.stringContaining("Controlled final analyzer failure") }));
+      expect((await db.query("select status,payload->>'status' as result from log_webhook_outbox where log_record_id=$1", [uploaded.log.id])).rows).toEqual([{ status: "pending", result: "failed" }]);
+      expect(webhooks.notifyAnalysisTerminal).toHaveBeenCalledWith(expect.objectContaining({ logId: uploaded.log.id, status: "failed" }));
+      expect(metrics.recordLogAnalysisJobResult).toHaveBeenCalledWith(expect.objectContaining({ status: "dead_lettered" }));
+    });
+  });
   it("completes analysis longer than its lease without reclaiming the job", async () => {
     await withFixture(async (fixture) => {
       const { db, auth, store } = fixture;
