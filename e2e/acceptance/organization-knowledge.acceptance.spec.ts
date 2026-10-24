@@ -84,7 +84,9 @@ test.describe("fixed-target knowledge and Agent workspace", () => {
     expect(threads.some((thread) => homeIds.includes(thread.id))).toBe(false);
     await page.screenshot({ path: testInfo.outputPath("knowledge-target-agent-1440.png"), animations: "disabled" });
     await popup.getByRole("button", { name: "关闭小泽", exact: true }).click();
-    await page.getByRole("button", { name: "知识后台", exact: true }).click();
+    const knowledgeAdmin = page.getByRole("complementary", { name: "主导航侧边栏", exact: true }).getByRole("link", { name: "知识后台", exact: true });
+    await expect(knowledgeAdmin).toHaveAttribute("href", `/knowledge-admin?organizationId=${target}`);
+    await knowledgeAdmin.click();
     await expect(page).toHaveURL(new RegExp(`knowledge-admin\\?organizationId=${target}`));
     const draft = page.getByRole("table", { name: "小泽知识草稿", exact: true }).getByRole("row").filter({ hasText: `目标助手知识-${suffix}` });
     await expect(draft).toContainText("Xu Yun");
