@@ -18,6 +18,38 @@ export type AcceptanceOperation = {
 
 export const acceptanceOperations: AcceptanceOperation[] = [
   {
+    id: "ORG-PARAMETER-ERASURE-001", priority: "P1", area: "platform", coverage: "automated",
+    route: "/platform/organizations", roles: ["Platform Admin"],
+    action: "Confirm erasure of real project and parameter files, inspect a failed domain and retry its persisted progress while completed domains stay complete.",
+    acceptanceIds: ["ORG-PARAMETER-ERASURE-001"],
+    specFiles: ["e2e/acceptance/organization-parameter-erasure.acceptance.spec.ts", "server/modules/users/organizationParameterErasure.integration.test.ts"],
+    assertions: ["ui", "api", "db", "screenshot"]
+  },
+  {
+    id: "ORG-KNOWLEDGE-ERASURE-001", priority: "P1", area: "platform", coverage: "automated",
+    route: "/platform/organizations", roles: ["Platform Admin"],
+    action: "Confirm erasure of real knowledge attachments and indexes, observe a storage failure and finish cleanup from the independent retry records.",
+    acceptanceIds: ["ORG-KNOWLEDGE-ERASURE-001"],
+    specFiles: ["e2e/acceptance/organization-knowledge-erasure.acceptance.spec.ts", "server/modules/knowledge/organizationErasure.integration.test.ts"],
+    assertions: ["ui", "api", "db", "screenshot"]
+  },
+  {
+    id: "ORG-LOG-ERASURE-001", priority: "P1", area: "platform", coverage: "automated",
+    route: "/platform/organizations", roles: ["Platform Admin"],
+    action: "Confirm erasure of real log files and queued analysis, inspect a durable domain failure and retry until the database records and physical files are gone.",
+    acceptanceIds: ["ORG-LOG-ERASURE-001"],
+    specFiles: ["e2e/acceptance/organization-log-erasure.acceptance.spec.ts", "server/modules/logs/organizationErasure.integration.test.ts"],
+    assertions: ["ui", "api", "db", "screenshot"]
+  },
+  {
+    id: "ORG-RUNTIME-ERASURE-001", priority: "P1", area: "platform", coverage: "automated",
+    route: "/platform/organizations", roles: ["Platform Admin"],
+    action: "Confirm erasure of actual feedback bytes and foreign-Home notification projections, inspect failed progress and retry without deleting the real platform operator.",
+    acceptanceIds: ["ORG-RUNTIME-ERASURE-001"],
+    specFiles: ["e2e/acceptance/organization-runtime-erasure.acceptance.spec.ts", "server/modules/agent/organizationErasure.integration.test.ts"],
+    assertions: ["ui", "api", "db", "screenshot"]
+  },
+  {
     id: "ORG-EMPTY-ERASURE-001", priority: "P1", area: "platform", coverage: "automated",
     route: "/platform/organizations", roles: ["Platform Admin"],
     action: "Confirm permanent erasure of a management-only Organization, retry failed progress, and read a minimal independent receipt after its accounts and Organization disappear.",
