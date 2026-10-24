@@ -23,3 +23,18 @@ it("keeps a failed read retryable, shows the fixed target and offers no destruct
   expect(client.previewDeletion).toHaveBeenNthCalledWith(1, "target");
   expect(client.previewDeletion).toHaveBeenNthCalledWith(2, "target");
 });
+
+it.each([true, false])("uses the server's populated-domain execution signal (%s)", async executionAvailable => {
+  const preview: OrganizationDeletionPreview = { organizationId: "target", organizationName: "包含知识的组织", status: "active", generatedAt: "2026-10-23", stateDigest: "b".repeat(64),
+    inventory: [{ key: "public.knowledge_entries", category: "knowledge", count: 4 }], platformAccounts: [], survivingPlatformAdministrators: 1,
+    experienceRegistration: { isTarget: false, enabled: false }, producers: [], storage: { exclusiveObjects: 1, sharedObjects: 0 },
+    blockers: [], admissionAvailable: true, executionAvailable, notes: [] };
+  const requestDelete = vi.fn();
+  render(<OrganizationDeletionPreviewDialog organizationId="target" client={{ previewDeletion: vi.fn().mockResolvedValue(preview) }}
+    onClose={vi.fn()} onNavigate={vi.fn()} onRequestDelete={requestDelete} />);
+  await screen.findByText("包含知识的组织");
+  if (executionAvailable) {
+    await userEvent.click(screen.getByRole("button", { name: "开始彻底删除" }));
+    expect(requestDelete).toHaveBeenCalledWith(preview);
+  } else expect(screen.queryByRole("button", { name: "开始彻底删除" })).not.toBeInTheDocument();
+});

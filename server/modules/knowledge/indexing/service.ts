@@ -121,8 +121,6 @@ export async function indexKnowledgeEntry(
 
   const detectSuggestions = async () => {
     // Derived suggestions can be refreshed later; only the already-admitted retrieval projection finishes.
-    const organization = (await db.query<{ status: string }>("select status from public.organizations where id=$1", [snapshot.organizationId])).rows[0];
-    if (organization?.status !== "active") return;
     try {
       await detectKnowledgeReferenceSuggestions(db, snapshot, randomUUID());
     } catch (error) {

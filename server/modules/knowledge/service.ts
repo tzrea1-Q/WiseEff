@@ -6,11 +6,12 @@ import type { AuditCorrelationContext, AuditSeverity } from "../audit/types";
 import { assertKnowledgeInvocationMatches, knowledgeOrganizationId, type KnowledgeAccessContext as AuthContext } from "./scope";
 import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 
-import { sanitizeFileName, type ObjectStore } from "../logs/objectStore";
+import { sanitizeFileName, type ObjectStore, type StoredObject } from "../logs/objectStore";
 import { getLogRecord } from "../logs/service";
 import { withLogInvocation } from "../logs/principal";
 import { getReloadRunRecord } from "../dts-reload/service";
-import type { Database, Queryable } from "../../shared/database/client";
+import { isRootDatabase, type Database, type Queryable, type RootDatabase } from "../../shared/database/client";
+import { withKnowledgeAttachmentWrite } from "./attachmentWrites";
 import { ApiError, serializeApiError } from "../../shared/http/errors";
 import { readCatalogDefinitionForKnowledge, listCatalogDefinitionsForKnowledge } from "../parameter-catalog-api/productionWire";
 import { buildLogAnalysisProvenanceNotice, buildLogDistillationDraft } from "./distillation";
@@ -85,7 +86,7 @@ import type {
   ListKnowledgeEntriesQuery
 } from "./types";
 
-export type KnowledgeServiceContext = AuditCorrelationContext & { importBatchId?: string };
+export type KnowledgeServiceContext = AuditCorrelationContext & { importBatchId?: string; attachmentRoot?: RootDatabase };
 
 export type KnowledgeFileUploadInput = {
   fileName: string;
@@ -300,16 +301,13 @@ export async function createKnowledgeEntry(
   }
 
   const bytes = input.bytes;
-  const stored = await objectStore.put({
-    organizationId: knowledgeOrganizationId(auth),
-    fileName: `knowledge-${randomUUID()}-${input.file.fileName}`,
-    contentType: input.file.contentType,
-    bytes
-  });
-
-  stored.fileName = sanitizeFileName(input.file.fileName);
   const fileId = randomUUID();
-  const storedFile = await db.transaction(async (tx) => {
+  const storedFile = await withKnowledgeAttachmentWrite(db, isRootDatabase(db) ? db : context.attachmentRoot, objectStore, {
+    organizationId: knowledgeOrganizationId(auth), fileName: `knowledge-${randomUUID()}-${input.file.fileName}`,
+    contentType: input.file.contentType, bytes
+  }, async (tx, put) => {
+    const stored = await put();
+    stored.fileName = sanitizeFileName(input.file.fileName);
     await insertEntry(tx, auth, {
       id: entryId,
       title: input.title,
@@ -699,10 +697,10 @@ export async function updateKnowledgeEntry(
   const invocation = knowledgeServiceInvocation(auth);
   if (!hasKnowledgeManage(auth)) requireKnowledgeEdit(auth);
 
-  let uploadedBytes: Buffer | null = null;
+  const uploadedBytes = input.file ? decodeFileUpload(input.file) : null;
   let storedForExtraction: { file: KnowledgeFileDto; bytes: Buffer } | null = null;
 
-  await db.transaction(async (tx) => {
+  const save = async (tx: Database, put?: () => Promise<StoredObject>) => {
     const entry = await getEntryForUpdate(tx, auth, entryId);
     if (!entry || !canReadEntry(auth, entry)) {
       throw knowledgeEntryNotFound(entryId);
@@ -751,13 +749,8 @@ export async function updateKnowledgeEntry(
       let searchContent: string | null =
         entry.file && entry.file.extractionStatus === "succeeded" ? await getFileByIdForSearch(tx, auth, entry.file.id) : null;
       if (input.file) {
-        uploadedBytes = decodeFileUpload(input.file);
-        const stored = await objectStore.put({
-          organizationId: knowledgeOrganizationId(auth),
-          fileName: `knowledge-${randomUUID()}-${input.file.fileName}`,
-          contentType: input.file.contentType,
-          bytes: uploadedBytes
-        });
+        if (!put || !uploadedBytes) throw new Error("Knowledge attachment custody unavailable");
+        const stored = await put();
         stored.fileName = sanitizeFileName(input.file.fileName);
         const file = await insertFile(tx, auth, {
           id: randomUUID(),
@@ -809,7 +802,13 @@ export async function updateKnowledgeEntry(
       },
       context
     );
-  });
+  };
+  if (input.file && uploadedBytes) {
+    await withKnowledgeAttachmentWrite(db, isRootDatabase(db) ? db : context.attachmentRoot, objectStore, {
+      organizationId: knowledgeOrganizationId(auth), fileName: `knowledge-${randomUUID()}-${input.file.fileName}`,
+      contentType: input.file.contentType, bytes: uploadedBytes
+    }, save);
+  } else await db.transaction(tx => save(tx));
 
   if (storedForExtraction !== null) {
     const pendingExtraction = storedForExtraction as { file: KnowledgeFileDto; bytes: Buffer };

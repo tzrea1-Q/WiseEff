@@ -2,10 +2,13 @@ import { z } from "zod";
 import { itemEnvelopeSchema, itemsEnvelopeSchema } from "./envelopes";
 
 export const startOrganizationErasureSchema = z.object({ stateDigest: z.string().regex(/^[a-f0-9]{64}$/), confirmationOrganizationId: z.string().min(1).max(200) }).strict();
+export const organizationErasureDomainSchema = z.enum(["projects-parameters", "knowledge", "logs", "agent-devices-feedback"]);
+const domainProgressSchema = z.object({ status: z.enum(["pending", "running", "failed", "complete"]), attempts: z.number().int().nonnegative(), errorCode: z.string().nullable() }).strict();
 export const organizationErasureSchema = z.object({
   id: z.string(), targetOrganizationId: z.string(), actorUserId: z.string(),
   status: z.enum(["queued", "running", "failed", "deleted"]), stage: z.enum(["domains", "management", "finalize", "complete"]),
   counts: z.record(z.string(), z.number().int().nonnegative()), attempts: z.number().int().nonnegative(), errorCode: z.string().nullable(),
+  domains: z.record(organizationErasureDomainSchema, domainProgressSchema).default({}),
   createdAt: z.string(), updatedAt: z.string(), completedAt: z.string().nullable()
 }).strict();
 
@@ -18,7 +21,7 @@ export const organizationDeletionPreviewSchema = z.object({
   producers: z.array(z.object({ key: z.string(), label: z.string(), count: z.number().int().nonnegative() }).strict()),
   storage: z.object({ exclusiveObjects: z.number().int().nonnegative(), sharedObjects: z.number().int().nonnegative() }).strict(),
   blockers: z.array(z.object({ code: z.string(), message: z.string() }).strict()),
-  admissionAvailable: z.boolean(), notes: z.array(z.string())
+  admissionAvailable: z.boolean(), executionAvailable: z.boolean().optional(), notes: z.array(z.string())
 }).strict();
 
 export const organizationDeletionDtoSchemaCatalog = {

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import JSZip from "jszip";
 import type { z } from "zod";
-import type { Database } from "../../shared/database/client";
+import { isRootDatabase, type Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import { knowledgeOrganizationId, type KnowledgeAccessContext as AuthContext } from "./scope";
@@ -58,6 +58,7 @@ export async function importKnowledgeArchive(
   db: Database, objectStore: ObjectStore, extractor: KnowledgeTextExtractor, auth: AuthContext,
   batchId: string, input: z.infer<typeof importKnowledgeArchiveSchema>, context: KnowledgeServiceContext = {}
 ): Promise<{ outcomes: KnowledgeImportOutcome[] }> {
+  context = { ...context, attachmentRoot: isRootDatabase(db) ? db : context.attachmentRoot };
   requireKnowledgeEdit(auth);
   const archiveBytes = Buffer.from(input.file.contentBase64, "base64");
   let members: Map<string, Buffer>;
@@ -105,6 +106,7 @@ export async function importKnowledgeDocument(
   db: Database, objectStore: ObjectStore, extractor: KnowledgeTextExtractor, auth: AuthContext,
   batchId: string, input: z.infer<typeof importKnowledgeDocumentSchema>, context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeImportOutcome> {
+  context = { ...context, attachmentRoot: isRootDatabase(db) ? db : context.attachmentRoot };
   requireKnowledgeEdit(auth);
   const bytes = Buffer.from(input.file.contentBase64, "base64");
   if (bytes.length > KNOWLEDGE_FILE_BYTE_LIMIT) throw new ApiError("VALIDATION_FAILED", `文件超过 ${KNOWLEDGE_FILE_BYTE_LIMIT / 1024 / 1024} MB 上限。`);
