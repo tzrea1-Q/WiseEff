@@ -121,7 +121,7 @@ describe("settings form layout contract", () => {
     </form>`);
     expect(measurements.settingsForms).toEqual([expect.objectContaining({ direction: "column", sectionCount: 1,
       titledSections: 1, helpedSections: 1, dirty: true, saveBars: [bar] })]);
-    for (const path of ["/organization", "/debugging-admin", "/parameter-admin/projects/aurora/review-roles"]) {
+    for (const path of ["/organization/settings", "/debugging-admin", "/parameter-admin/projects/aurora/review-roles"]) {
       expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("settingsForms");
     }
   });

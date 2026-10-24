@@ -14,6 +14,15 @@ const inventory: BrowserInventory = {
 };
 
 describe("browser impact selection", () => {
+  it("measures organization settings at their real route without dropping overview or compact coverage", () => {
+    expect(compactQualityRoutes).toHaveLength(9);
+    expect(compactQualityRoutes.filter((route) => route.template === "SettingsFormPage").map((route) => route.path))
+      .toEqual(["/organization/settings"]);
+    expect(consistencyRoutes.find((route) => route.path === "/organization")?.required).toContain("viewSwitches");
+    expect(consistencyRoutes.find((route) => route.path === "/organization/settings")?.required).toContain("settingsForms");
+    expect(routeOwnership["src/OrganizationPage.tsx"]).toContain("/organization/settings");
+  });
+
   it("selects knowledge acceptance flows visiting /logs for a logs change", () => {
     const selection = selectBrowserImpact(["src/features/log-analysis/LogsPage.tsx"]);
 

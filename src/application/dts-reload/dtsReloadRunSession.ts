@@ -117,6 +117,7 @@ export type DtsReloadRunSessionOptions = {
 export type DtsReloadRunSession = {
   subscribe(listener: () => void): () => void;
   getSnapshot(): DtsReloadRunSessionSnapshot;
+  initializeProject(projectId: string): void;
   selectProject(projectId: string): void;
   loadCandidates(repository: Pick<DtsReloadRepository, "listCandidates" | "getRun">): Promise<void>;
   toggleCandidate(bindingId: string): void;
@@ -185,6 +186,7 @@ export function createDtsReloadRunSession(
   const listeners = new Set<() => void>();
 
   let projectId = options.initialProjectId ?? "";
+  let projectInitialized = Boolean(projectId);
   let candidates: DtsReloadCandidate[] = [];
   let loading = false;
   let errorMessage = "";
@@ -416,7 +418,16 @@ export function createDtsReloadRunSession(
       return cachedSnapshot;
     },
 
+    initializeProject(nextProjectId) {
+      if (projectInitialized || !nextProjectId) return;
+      projectInitialized = true;
+      if (projectId || readRunId() || historyRunLoading || run || selectedBindingIds.length) return;
+      projectId = nextProjectId;
+      emit();
+    },
+
     selectProject(nextProjectId) {
+      projectInitialized = true;
       if (projectId === nextProjectId) return;
       invalidateContext();
       projectId = nextProjectId;
