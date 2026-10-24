@@ -191,14 +191,23 @@ describe("exact Agent checkpoint ownership before session persistence", () => {
         const routine = (await legacy.query<{ id: number }>("select to_regprocedure('parameter_catalog.register_agent_checkpoint_namespace(text,text,text,text,text,text,boolean)')::oid id")).rows[0].id;
         expect((await api.query("select has_function_privilege(current_user,$1::oid,'EXECUTE') allowed", [routine])).rows).toEqual([{ allowed: true }]);
         expect((await worker.query("select has_function_privilege(current_user,$1::oid,'EXECUTE') allowed", [routine])).rows).toEqual([{ allowed: false }]);
-        const preview = await previewOrganizationDeletion(legacy, createUserInvocation(await getAuthContext(legacy, "upgrade-platform")), "upgrade-target", { agentCheckpointer: cp });
+        expect((await applyMigrations(legacy, migrationsDir, { through: "0284_organization_preview_runtime_grants.sql" })).at(-1)).toBe("0284_organization_preview_runtime_grants.sql");
+        const previewRoutine = (await legacy.query<{ id: number }>("select to_regprocedure('parameter_catalog.preview_organization_deletion(text,text)')::oid id")).rows[0].id;
+        expect((await api.query("select has_function_privilege(current_user,$1::oid,'EXECUTE') allowed,has_function_privilege('catalog_baseline_reader_role',$1::oid,'EXECUTE') reader_allowed", [previewRoutine])).rows)
+          .toEqual([{ allowed: true, reader_allowed: true }]);
+        expect((await worker.query("select has_function_privilege(current_user,$1::oid,'EXECUTE') allowed", [previewRoutine])).rows).toEqual([{ allowed: false }]);
+        expect((await legacy.query("select 1 from pg_proc p cross join lateral aclexplode(p.proacl) a where p.oid=$1::oid and a.grantee=0 and a.privilege_type='EXECUTE'", [previewRoutine])).rows).toEqual([]);
+        await expect(api.query("select * from parameter_catalog.preview_organization_deletion_0276('upgrade-target','upgrade-platform')")).rejects.toMatchObject({ code: "42501" });
+        await expect(api.query("select * from parameter_catalog.organization_deletion_object_references()")).rejects.toMatchObject({ code: "42501" });
+        await expect(api.query("delete from public.agent_checkpoint_namespaces where false")).rejects.toMatchObject({ code: "42501" });
+        const preview = await previewOrganizationDeletion(api, createUserInvocation(await getAuthContext(api, "upgrade-platform")), "upgrade-target", { agentCheckpointer: cp });
         expect(preview.inventory).toContainEqual({ key: "public.checkpoints", category: "agent", count: 1 });
         expect(preview.blockers.map(row => row.code)).not.toContain("unclassified-ownership");
         expect(preview.storage).toEqual({ exclusiveObjects: 0, sharedObjects: 1 });
         expect(await cp.inspectStore()).toEqual(before);
         expect((await legacy.query("select pending_object_refs from parameter_catalog.definition_erasures where definition_id='upgrade-global'")).rows)
           .toEqual([{ pending_object_refs: ["plane::upgrade-key"] }]);
-        expect(await applyMigrations(legacy, migrationsDir, { through: "0279_agent_checkpoint_ownership_and_typed_preview.sql" })).toEqual([]);
+        expect(await applyMigrations(legacy, migrationsDir, { through: "0284_organization_preview_runtime_grants.sql" })).toEqual([]);
       } finally { await handle.saver.end(); await api.close(); await worker.close(); await dropLabRuntimeLogins(connectionString, token); }
     });
   });
