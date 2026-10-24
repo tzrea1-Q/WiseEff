@@ -5,6 +5,193 @@
     "version": "m5"
   },
   "paths": {
+    "/api/v1/platform/organization-deletions": {
+      "get": {
+        "operationId": "organizationErasures.list",
+        "summary": "List independent Organization cleanup progress and minimal receipts",
+        "tags": [
+          "users"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationErasureListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/organization-deletions/{erasureId}": {
+      "get": {
+        "operationId": "organizationErasures.get",
+        "summary": "Read durable cleanup after the target Organization and accounts are removed",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "erasureId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationErasureResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/organization-deletions/{erasureId}/retry": {
+      "post": {
+        "operationId": "organizationErasures.retry",
+        "summary": "Resume admitted Organization cleanup with fresh platform authority",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "erasureId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationErasureResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/organizations/{organizationId}/deletions": {
+      "post": {
+        "operationId": "organizationErasures.start",
+        "summary": "Admit and permanently erase an Organization with supported inventory",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartOrganizationErasureRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationErasureResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/platform/organizations/{organizationId}/deletion-preview": {
       "get": {
         "operationId": "platformOrganizations.deletionPreview",
@@ -27395,6 +27582,192 @@
           }
         }
       },
+      "OrganizationErasureListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "targetOrganizationId": {
+                  "type": "string"
+                },
+                "actorUserId": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "queued",
+                    "running",
+                    "failed",
+                    "deleted"
+                  ]
+                },
+                "stage": {
+                  "type": "string",
+                  "enum": [
+                    "domains",
+                    "management",
+                    "finalize",
+                    "complete"
+                  ]
+                },
+                "counts": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "number"
+                  }
+                },
+                "attempts": {
+                  "type": "number"
+                },
+                "errorCode": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "completedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "targetOrganizationId",
+                "actorUserId",
+                "status",
+                "stage",
+                "counts",
+                "attempts",
+                "errorCode",
+                "createdAt",
+                "updatedAt",
+                "completedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "OrganizationErasureListResponse"
+      },
+      "OrganizationErasureResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "targetOrganizationId": {
+                "type": "string"
+              },
+              "actorUserId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "running",
+                  "failed",
+                  "deleted"
+                ]
+              },
+              "stage": {
+                "type": "string",
+                "enum": [
+                  "domains",
+                  "management",
+                  "finalize",
+                  "complete"
+                ]
+              },
+              "counts": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number"
+                }
+              },
+              "attempts": {
+                "type": "number"
+              },
+              "errorCode": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "completedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "targetOrganizationId",
+              "actorUserId",
+              "status",
+              "stage",
+              "counts",
+              "attempts",
+              "errorCode",
+              "createdAt",
+              "updatedAt",
+              "completedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "OrganizationErasureResponse"
+      },
+      "StartOrganizationErasureRequest": {
+        "type": "object",
+        "properties": {
+          "stateDigest": {
+            "type": "string"
+          },
+          "confirmationOrganizationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "stateDigest",
+          "confirmationOrganizationId"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "StartOrganizationErasureRequest"
+      },
       "OrganizationDeletionPreviewResponse": {
         "type": "object",
         "properties": {
@@ -28291,7 +28664,8 @@
                 "type": "string",
                 "enum": [
                   "active",
-                  "suspended"
+                  "suspended",
+                  "deleting"
                 ]
               },
               "administrators": {
@@ -28567,7 +28941,8 @@
                   "type": "string",
                   "enum": [
                     "active",
-                    "suspended"
+                    "suspended",
+                    "deleting"
                   ]
                 },
                 "administrators": {
