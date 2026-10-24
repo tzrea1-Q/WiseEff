@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
-import type { ObjectStore } from "../modules/logs/objectStore";
+import { planObjectStorageKey, type ObjectStore } from "../modules/logs/objectStore";
 
 export type MemoryObjectStore = ObjectStore & {
   /** Backing map, exposed so suites can assert on stored keys or simulate loss. */
@@ -16,9 +16,10 @@ export function createMemoryObjectStore(): MemoryObjectStore {
 
   return {
     entries,
+    planKey: planObjectStorageKey,
     async put(input) {
       const checksum = createHash("sha256").update(input.bytes).digest("hex");
-      const storageKey = `${input.organizationId}/${checksum}-${input.fileName}`;
+      const storageKey = planObjectStorageKey(input);
       entries.set(storageKey, Buffer.from(input.bytes));
       return {
         storageKey,

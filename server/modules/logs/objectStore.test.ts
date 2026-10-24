@@ -35,6 +35,7 @@ describe("createLocalObjectStore", () => {
       await expect(store.getStream!("../escape")).rejects.toThrow("Unsafe storage key");
       expect(stored.storageKey).toContain("org-chargelab/");
       expect(stored.storageKey).toContain("charging-foldback.log");
+      expect(store.planKey!({ organizationId: "org-chargelab", fileName: "charging foldback.log", contentType: "text/plain", bytes })).toBe(stored.storageKey);
     });
   });
 

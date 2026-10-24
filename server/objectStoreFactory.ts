@@ -57,6 +57,7 @@ function traceObjectStore(
   const sourceGetStream = store.getStream?.bind(store);
   const sourceDelete = store.delete?.bind(store);
   return {
+    ...(store.planKey ? { planKey: store.planKey.bind(store) } : {}),
     put(input) {
       return trace("put", () => store.put(input));
     },
