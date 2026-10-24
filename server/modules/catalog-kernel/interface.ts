@@ -1,5 +1,3 @@
-import pg from "pg";
-
 export { readRetainedDismissedCompatibleIdentities, type RetainedDismissedCompatibleIdentity } from "./security/retainedDismissedIdentities";
 export { resolveCatalogSubject } from "./runtime/subjectMatch";
 
@@ -33,6 +31,7 @@ import {
   PublicationJobId,
 } from "../parameter-catalog-contract/index";
 import { loadCurrentCatalogSnapshot } from "./runtime/currentSnapshot";
+import type { CatalogReadSource } from "./runtime/readTransaction";
 import {
   loadPinnedCatalogSnapshot,
   resolveCatalogReleasePin,
@@ -556,7 +555,7 @@ export const jsonCatalogReleaseSource = (
   },
 });
 
-export const createCatalogKernel = (pool: pg.Pool): CatalogKernel => ({
+export const createCatalogKernel = (pool: CatalogReadSource): CatalogKernel => ({
   async compilePublishedRelease(source) {
     try {
       const bundle = await parseBundle(source);

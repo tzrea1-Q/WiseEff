@@ -1,7 +1,5 @@
 import { parameterOrganizationId, withParameterAccess } from "../../parameters/operatingScope";
 import { getAuthContext } from "../../auth/repository";
-import type pg from "pg";
-
 import { ApiError } from "../../../shared/http/errors";
 import { assertTrustedInvocationContext, type TrustedInvocationContext } from "../../auth/trustedInvocation";
 import {
@@ -9,6 +7,7 @@ import {
   type DefinitionRevisionSnapshot,
   type PinnedCatalogSnapshot
 } from "../../catalog-kernel/interface";
+import type { CatalogReadSource } from "../../catalog-kernel/runtime/readTransaction";
 import {
   CatalogReleaseId,
   CatalogSubjectId,
@@ -33,7 +32,7 @@ export type ProjectProtectedParameter = {
  * provide a trusted principal and project, never a client-selected release,
  * reconstructed Binding, or a latest/name-based fallback. */
 export async function readProjectProtectedParameters(
-  pool: pg.Pool,
+  pool: CatalogReadSource,
   input: { readonly invocation: TrustedInvocationContext; readonly projectId?: string }
 ): Promise<readonly ProjectProtectedParameter[]> {
   const invocation = assertTrustedInvocationContext(input.invocation);

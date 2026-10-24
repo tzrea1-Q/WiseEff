@@ -16,10 +16,13 @@ An explicit replacement moves source registration A to the selected module and c
 - Read both sides' impact before confirming. Identify retired occupancy as well as active occupancy. Require an explicit acknowledgement, reason and final confirmation; never replace automatically after a conflict.
 - Validate organization, current ownership, lifecycle and both captured versions in one transaction. Serialize registration writes in a consistent order, retain Catalog guard locks through commit, preserve a strict idempotent result and write an audit with both before/after assignments.
 - Distinguish `placement-occupied` from a stale placement. A stale preview preserves the draft but requires fresh evidence and renewed confirmation.
+- Keep canonical Binding list discovery, protected values and exact source locators in one read snapshot. Full CI exposed an existing race with concurrent human-reviewed value updates; preserve exact-pin and tenant checks rather than accepting an unexpected query conflict.
 
 ## Evidence and delivery
 
 Use focused unit/component tests while editing; true PostgreSQL tests cover atomicity, role/tenant boundaries, current pins, stale versions, replay, concurrency and rollback. A 1440×900 real API browser test repairs an occupied target, checks failure/cancel paths and verifies reload persistence for A and B. Run the impact selector, generated contract checks, static checks and production build; run the complete native PR checks on the final candidate. Independent review owns the authorization/concurrency seams. Keep exact results and missing target-host evidence in the PR. Submit one PR and merge only after the current candidate's real Merge bar and applicable review pass.
+
+The canonical-list read correction also requires a controlled two-session PostgreSQL regression: a writer commits between Binding discovery and source-locator resolution, the in-flight reader returns a complete old snapshot, and the next read observes the new one. Keep the existing Issue 899 browser diagnostics strict; no conflict allowlist, blind retry or weakened locator match substitutes for a consistent read.
 
 ## Documentation Impact Matrix
 

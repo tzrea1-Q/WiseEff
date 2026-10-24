@@ -34,7 +34,7 @@ const currentValueFromHistory = (
 ): ProjectValue | null => history.find((value) => value.id === currentValueId) ?? null;
 
 export const readProtectedReference = async (
-  pool: pg.Pool,
+  pool: Pick<pg.Pool, "query">,
   command: ProtectedReadCommand,
 ): Promise<ProtectedReferenceReadResult> => {
   const binding = requireBinding(command);
