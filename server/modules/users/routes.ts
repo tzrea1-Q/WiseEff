@@ -97,7 +97,7 @@ function parseWithSchema<Schema extends z.ZodTypeAny>(schema: Schema, value: unk
 
 export function registerUserRoutes(
   router: WiseEffRouter,
-  options: { db?: Database; objectStore?: ObjectStore; catalogArchiveStore?: ArchiveObjectStore; catalogArchiveKey?: Buffer; agentCheckpointer?: XiaozeCheckpointer; localInvitationsEnabled?: boolean; selfRegisterEnabled?: boolean; registrationOrganizationId?: string; authenticationProvider?: "local" | "oidc" | "hmac"; oidcIssuer?: string; bridgeConnectionPool?: Pick<BridgeConnectionPool, "disconnect">; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
+  options: { db?: Database; objectStore?: ObjectStore; catalogArchiveStore?: ArchiveObjectStore; catalogArchiveKey?: Buffer; agentCheckpointer?: XiaozeCheckpointer; localInvitationsEnabled?: boolean; selfRegisterEnabled?: boolean; registrationOrganizationId?: string; authenticationProvider?: "local" | "oidc" | "hmac"; oidcIssuer?: string; bridgeConnectionPool?: Pick<BridgeConnectionPool, "disconnect"> & Partial<Pick<BridgeConnectionPool, "drain">>; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
 ) {
   const mutationContext = (request: RouteRequest) => ({ requestId: request.requestId, authenticationProvider: options.authenticationProvider, oidcIssuer: options.oidcIssuer, bridgeConnectionPool: options.bridgeConnectionPool });
   const erasureContext = (request: RouteRequest) => ({ ...mutationContext(request), selfRegisterEnabled: options.selfRegisterEnabled,

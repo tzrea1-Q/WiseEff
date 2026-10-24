@@ -8,7 +8,7 @@ import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
 export type AdministratorMutationContext = AuditCorrelationContext & {
   authenticationProvider?: "local" | "oidc" | "hmac";
   oidcIssuer?: string;
-  bridgeConnectionPool?: Pick<BridgeConnectionPool, "disconnect">;
+  bridgeConnectionPool?: Pick<BridgeConnectionPool, "disconnect"> & Partial<Pick<BridgeConnectionPool, "drain">>;
 };
 
 // Shared by continuity checks and directory status; $3 is provider, $4 the configured issuer.

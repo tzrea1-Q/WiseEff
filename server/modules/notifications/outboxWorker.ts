@@ -33,21 +33,39 @@ function readableError(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function deliverOutboxRecord(db: Queryable, record: NotificationOutboxRecord) {
+async function deliverOutboxRecord(db: Queryable, record: NotificationOutboxRecord, workerId?: string) {
+  const current = (await db.query<{ payload: NotificationOutboxPayload; attempts: number }>(`select payload,attempts from notification_outbox
+    where id=$1 and (($2::text is null and status='pending') or (status='processing' and lease_owner=$2 and lease_expires_at>clock_timestamp())) for update`, [record.id, workerId ?? null])).rows[0];
+  if (!current || current.attempts !== record.attempts) return false;
+  const payload = current.payload;
+  let sourceOrganizationId = typeof payload.metadata?.feedbackOrganizationId === "string" ? payload.metadata.feedbackOrganizationId : undefined;
+  if (payload.sourceKind === "product-feedback" || payload.sourceKind === "product-feedback-progress") {
+    const source = (await db.query<{ organization_id: string }>(payload.sourceKind === "product-feedback"
+      ? "select organization_id from product_feedback where id::text=$1"
+      : "select organization_id from product_feedback_progress_events where id::text=$1", [payload.sourceId ?? ""])).rows[0];
+    if (!source || (sourceOrganizationId && source.organization_id !== sourceOrganizationId)) return false;
+    sourceOrganizationId = source.organization_id;
+  }
+  // A foreign recipient Home does not own the feedback content. Hold both
+  // organizations through projection; a deleting/missing source cannot reappear.
+  for (const id of [...new Set([payload.organizationId, sourceOrganizationId].filter((id): id is string => Boolean(id)))].sort()) {
+    if (!(await db.query("select id from organizations where id=$1 and status<>'deleting' for share", [id])).rowCount) return false;
+  }
   await insertNotification(db, {
     id: record.id,
-    organizationId: record.payload.organizationId,
-    recipientUserIds: [record.payload.recipientUserId],
-    recipientUserId: record.payload.recipientUserId,
-    category: record.payload.category,
-    title: record.payload.title,
-    body: record.payload.body,
-    severity: record.payload.severity,
-    actionUrl: record.payload.actionUrl,
-    sourceKind: record.payload.sourceKind,
-    sourceId: record.payload.sourceId,
-    metadata: record.payload.metadata
+    organizationId: payload.organizationId,
+    recipientUserIds: [payload.recipientUserId],
+    recipientUserId: payload.recipientUserId,
+    category: payload.category,
+    title: payload.title,
+    body: payload.body,
+    severity: payload.severity,
+    actionUrl: payload.actionUrl,
+    sourceKind: payload.sourceKind,
+    sourceId: payload.sourceId,
+    metadata: payload.metadata
   });
+  return true;
 }
 
 async function processClaimedOutboxRecord(
@@ -64,10 +82,12 @@ async function processClaimedOutboxRecord(
   };
 
   try {
-    await options.db.transaction(async (tx) => {
-      await deliverOutboxRecord(tx, record);
+    const delivered = await options.db.transaction(async (tx) => {
+      if (!await deliverOutboxRecord(tx, record, options.workerId)) return false;
       await markNotificationOutboxDelivered(tx, record.id);
+      return true;
     });
+    if (!delivered) return { status: "idle" };
     recordMetric("delivered");
     return { status: "processed" };
   } catch (error) {
@@ -178,17 +198,21 @@ export async function deliverNotificationPayload(
   db: Queryable,
   input: { outboxId: string; payload: NotificationOutboxPayload }
 ) {
-  await deliverOutboxRecord(db, {
-    id: input.outboxId,
-    organizationId: input.payload.organizationId,
-    idempotencyKey: "",
-    payload: input.payload,
-    status: "pending",
-    attempts: 0,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  });
-  await markNotificationOutboxDelivered(db, input.outboxId);
+  const deliver = async (tx: Queryable) => {
+    const delivered = await deliverOutboxRecord(tx, {
+      id: input.outboxId,
+      organizationId: input.payload.organizationId,
+      idempotencyKey: "",
+      payload: input.payload,
+      status: "pending",
+      attempts: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    if (delivered) await markNotificationOutboxDelivered(tx, input.outboxId);
+  };
+  if (!("transaction" in db) || typeof db.transaction !== "function") throw new Error("Synchronous notification delivery requires its write transaction.");
+  await (db as Database).transaction(deliver);
 }
 
 export function startNotificationOutboxWorkerLoop(options: ProcessNotificationOutboxOptions, intervalMs = 1000) {

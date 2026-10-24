@@ -43,6 +43,16 @@ function rpcRequest(id: string): BridgeRpcRequest {
 }
 
 describe("bridge connection pool", () => {
+  it("drains rejected and queued RPCs while a late send callback cannot revive the connection", async () => {
+    const pool = createBridgeConnectionPool(); let callback: ((error?: Error) => void) | undefined;
+    const socket = createMockSocket(); socket.send = ((_data: unknown, done?: (error?: Error) => void) => { callback = done; }) as BridgeSocket["send"];
+    pool.register("br-1", socket);
+    const first = pool.send("br-1", rpcRequest("sent")), queued = pool.send("br-1", rpcRequest("queued"));
+    const settled = Promise.allSettled([first, queued]); await Promise.resolve();
+    await pool.drain("br-1"); callback?.(new Error("late callback"));
+    expect((await settled).map(result => result.status)).toEqual(["rejected", "rejected"]);
+    expect(pool.isConnected("br-1")).toBe(false);
+  });
   it("disconnects a revoked bridge and rejects its in-flight and queued RPCs", async () => {
     const pool = createBridgeConnectionPool(), socket = createMockSocket();
     pool.register("br-1", socket);

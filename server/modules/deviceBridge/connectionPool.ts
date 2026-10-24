@@ -111,6 +111,11 @@ export function createBridgeConnectionPool(options: BridgeConnectionPoolOptions 
       this.unregister(bridgeId);
       try { connection?.socket.close(4401, "Bridge pairing revoked."); } catch { /* Already disconnected. */ }
     },
+    async drain(bridgeId: string) {
+      this.disconnect(bridgeId);
+      // Include queued sends: their continuation observes the disconnected pool.
+      for (let pending = bridgeLocks.get(bridgeId); pending; pending = bridgeLocks.get(bridgeId)) await pending;
+    },
 
     getLastSeenAt(bridgeId: string) {
       return getConnection(bridgeId)?.lastSeenAt ?? null;
