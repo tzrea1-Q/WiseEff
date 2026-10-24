@@ -5,7 +5,7 @@ import { Readable } from "node:stream";
 import {
   rejectUnsafeStorageKey,
   sanitizeFileName,
-  sanitizePathSegment,
+  planObjectStorageKey,
   type ObjectStore,
   type ObjectStoreHealthCheck
 } from "./objectStore";
@@ -331,11 +331,11 @@ export function createS3ObjectStore(options: S3ObjectStoreOptions): ObjectStore 
   const encryptionMode = options.encryptionMode ?? "provider-managed";
 
   return {
+    planKey: planObjectStorageKey,
     async put(input) {
-      const organizationId = sanitizePathSegment(input.organizationId, "organization id");
       const fileName = sanitizeFileName(input.fileName);
       const checksumSha256 = createHash("sha256").update(input.bytes).digest("hex");
-      const storageKey = path.posix.join(organizationId, `${checksumSha256}-${fileName}`);
+      const storageKey = planObjectStorageKey(input);
 
       await transport.put({
         bucket: options.bucket,
