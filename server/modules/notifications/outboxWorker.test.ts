@@ -7,6 +7,9 @@ describe("notification outbox worker", () => {
     let phase = 0;
     const db = {
       query: async (text: string) => {
+        if (text.includes("select payload,attempts")) return { rows: [{ attempts: 1, payload: {
+          organizationId: "org-1", recipientUserId: "u-1", category: "parameter.review.submitted", title: "Review", body: "Please review"
+        } }], rowCount: 1 };
         if (text.includes("update notification_outbox") && text.includes("returning")) {
           phase = 1;
           return {

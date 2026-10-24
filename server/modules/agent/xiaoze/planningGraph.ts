@@ -197,6 +197,7 @@ export function createPlanningAgent(options: {
   checkpointer?: XiaozeCheckpointer;
   approvalResolver?: PlanningApprovalResolver;
   admitNamespace?: (input: PlanningAgentRunInput, checkpointThreadId: string) => Promise<void>;
+  assertRunAvailable?: (context: PlanningRequestContext | undefined) => Promise<void>;
 }) {
   const checkpointer = options.checkpointer ?? createXiaozeCheckpointer();
 
@@ -205,7 +206,8 @@ export function createPlanningAgent(options: {
   }
 
   async function invokeModel(messages: unknown[], config?: PlanningNodeConfig) {
-    return invokeModelWithStreaming(options.model, messages, (chunk) => {
+    await options.assertRunAvailable?.(readRunScope(config).requestContext);
+    const result = await invokeModelWithStreaming(options.model, messages, (chunk) => {
       if (chunk.reasoningDelta) {
         pushSink(config, { type: "reasoning_delta", delta: chunk.reasoningDelta });
       }
@@ -213,6 +215,8 @@ export function createPlanningAgent(options: {
         pushSink(config, { type: "answer_delta", delta: chunk.answerDelta });
       }
     });
+    await options.assertRunAvailable?.(readRunScope(config).requestContext);
+    return result;
   }
 
   function intentNode(state: PlanningGraphState): Partial<PlanningGraphState> {
@@ -237,11 +241,13 @@ export function createPlanningAgent(options: {
       return { text: "I could not complete the request within the allowed tool turns." };
     }
 
+    await options.assertRunAvailable?.(readRunScope(config).requestContext);
     const response = await invokeModelTurnWithStreaming(options.model, state.messages, (chunk) => {
       if (chunk.reasoningDelta) {
         pushSink(config, { type: "reasoning_delta", delta: chunk.reasoningDelta });
       }
     });
+    await options.assertRunAvailable?.(readRunScope(config).requestContext);
     if (!response.toolCalls?.length) {
       const answer = response.content?.trim();
       if (answer) {

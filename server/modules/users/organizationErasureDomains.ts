@@ -2,6 +2,7 @@ import type { Database } from "../../shared/database/client";
 import type { ObjectStore } from "../logs/objectStore";
 import type { ArchiveObjectStore } from "../catalog-cutover/archive";
 import type { OrganizationDeletionContext } from "./organizationDeletion";
+import { agentDevicesFeedbackErasure } from "../agent/organizationErasure";
 import { knowledgeOrganizationErasure } from "../knowledge/organizationErasure";
 
 /** Actual handles from app composition; absence is unavailable, never a cue to
@@ -22,4 +23,4 @@ export type OrganizationErasureDomainAdapter = {
     runtime: OrganizationErasureContext & { renewLease(): Promise<void> }): Promise<void>;
 };
 
-export const organizationErasureDomains: readonly OrganizationErasureDomainAdapter[] = [knowledgeOrganizationErasure];
+export const organizationErasureDomains: readonly OrganizationErasureDomainAdapter[] = [agentDevicesFeedbackErasure, knowledgeOrganizationErasure];

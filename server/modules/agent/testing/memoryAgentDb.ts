@@ -69,8 +69,8 @@ export function createMemoryAgentDb(options: MemoryAgentDbOptions = {}) {
           return { rows: rows as Row[], rowCount: rows.length };
         }
 
-        if (sql.includes("from public.organizations")) {
-          const exists = targetTables.sessions.some(row => row.organization_id === values[0]);
+        if (sql.includes("from public.organizations") || sql.includes("from organizations")) {
+          const exists = options.checkpointActors?.some(actor => actor.organizationId === values[0]) || targetTables.sessions.some(row => row.organization_id === values[0]);
           return { rows: (exists ? [{ id: values[0], name: "Memory organization", status: "active" }] : []) as Row[], rowCount: exists ? 1 : 0 };
         }
 
