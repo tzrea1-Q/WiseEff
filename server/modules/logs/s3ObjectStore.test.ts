@@ -30,6 +30,15 @@ function createStore(transport: ObjectStorageTransport = createTransport()) {
 }
 
 describe("createS3ObjectStore", () => {
+  it("plans the exact sanitized key before an uncertain physical write response", async () => {
+    let written: string | undefined;
+    const store = createStore(createTransport({ put: async input => { written = input.key; throw new Error("response lost"); } }));
+    const input = { organizationId: "org", fileName: "private report.txt", contentType: "text/plain", bytes: Buffer.from("hello") };
+    const planned = store.planKey!(input);
+    expect(planned).toBe("org/2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824-private-report.txt");
+    await expect(store.put(input)).rejects.toThrow("response lost");
+    expect(written).toBe(planned);
+  });
   it("preserves deployment HTTP status and the bounded S3 error code for callers", async () => {
     const store = createS3ObjectStore({ endpoint: "https://storage.example.com", bucket: "feedback", accessKeyId: "fixture", secretAccessKey: "fixture",
       fetchImpl: async () => new Response("<Error><Code>EntityTooLarge</Code><Message>backend limit</Message></Error>", { status: 413 }) });
