@@ -114,13 +114,36 @@ describe.skipIf(!available)("lab runtime role isolation", () => {
       const functionPrivilege = async (role: string) => (await upgradedDb.query<{ allowed: boolean }>(
         "select has_function_privilege($1, 'parameter_catalog.preview_parameter_definition_purge(text)', 'EXECUTE') as allowed", [role]
       )).rows[0].allowed;
+      const upgradeRoutines = [
+        "reserve_parameter_object_write(text,text)", "lock_parameter_object_write(text)",
+        "organization_parameter_archives(text,text,text)", "purge_organization_parameter_assets(text,text,text)",
+        "organization_parameter_pending_objects(text,text,text)", "finish_organization_parameter_object(text,text,text,text,text,boolean)",
+        "lock_definition_erasure_object(text,text,text)", "list_platform_definition_erasures()",
+        "source_origin_matches(text,text,text)", "source_member_is_restored(text,text)",
+        "source_anchor_restoration_matches(text,text,text,text)",
+      ].map(routine => `parameter_catalog.${routine}`);
+      for (const routine of upgradeRoutines) {
+        await upgradedDb.query(`grant execute on function ${routine} to ${quoteIdent(runtime.apiRole)}`);
+      }
+      const upgradePrivileges = async () => (await upgradedDb.query<{ allowed: boolean }>(
+        "select has_function_privilege($1, routine, 'EXECUTE') as allowed from unnest($2::text[]) routine",
+        [runtime!.apiRole, upgradeRoutines],
+      )).rows.map(row => row.allowed);
+      await upgradedDb.query(`create function parameter_catalog.unreviewed_runtime_cleanup() returns void language sql as $$ select $$;
+        revoke all on function parameter_catalog.unreviewed_runtime_cleanup() from public;
+        grant execute on function parameter_catalog.unreviewed_runtime_cleanup() to ${quoteIdent(runtime.apiRole)}`);
       expect(await functionPrivilege(runtime.apiRole)).toBe(true);
       await upgradedDb.query(`grant select on organizations to ${quoteIdent(runtime.apiRole)};
         grant execute on function parameter_catalog.preview_parameter_definition_purge(text) to ${quoteIdent(runtime.workerRole)}`);
       await withTestClusterRoleCatalogLock(() => revokeForeignTestRuntimeGrants(source.url, [runtime!.apiRole], `${runtime!.ownershipComment}other`));
       expect(await functionPrivilege(runtime.apiRole)).toBe(true);
+      expect(await upgradePrivileges()).toEqual(upgradeRoutines.map(() => true));
       await withTestClusterRoleCatalogLock(() => revokeForeignTestRuntimeGrants(source.url, [runtime!.apiRole], runtime!.ownershipComment));
       expect(await functionPrivilege(runtime.apiRole)).toBe(false);
+      expect(await upgradePrivileges()).toEqual(upgradeRoutines.map(() => false));
+      expect((await upgradedDb.query<{ allowed: boolean }>(
+        "select has_function_privilege($1, 'parameter_catalog.unreviewed_runtime_cleanup()', 'EXECUTE') as allowed", [runtime.apiRole]
+      )).rows[0].allowed).toBe(true);
       expect(await functionPrivilege(runtime.workerRole)).toBe(true);
       expect((await upgradedDb.query<{ allowed: boolean }>(
         "select has_table_privilege($1, 'organizations', 'SELECT') as allowed", [runtime.apiRole]
@@ -133,7 +156,8 @@ describe.skipIf(!available)("lab runtime role isolation", () => {
       } else {
         expect((await dropLabRuntimeLogins(source.url, token)).failed).toEqual([runtime.apiRole]);
       }
-      await upgradedDb.query(`revoke select on organizations from ${quoteIdent(runtime.apiRole)}`);
+      await upgradedDb.query(`revoke select on organizations from ${quoteIdent(runtime.apiRole)};
+        revoke execute on function parameter_catalog.unreviewed_runtime_cleanup() from ${quoteIdent(runtime.apiRole)}`);
       if (dropOrder === "after") {
         await withTestClusterRoleCatalogLock(() => withAdminClient(async (admin) => {
           const roles = [runtime!.apiRole, runtime!.workerRole, runtime!.managerRole];
