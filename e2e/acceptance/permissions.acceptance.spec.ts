@@ -4,7 +4,7 @@ import { expect, test, type Locator, type Page } from "playwright/test";
 
 import { runNpmScript, withPgClient } from "./helpers/database";
 import { apiRoute } from "./helpers/runtime";
-import { authHeadersForUser, signInBrowserAsRoleLabel } from "./helpers/bearerAuth";
+import { authHeadersForRole, authHeadersForUser, signInBrowserAsRoleLabel } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
 import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
@@ -467,10 +467,12 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     }
 
     await setPrototypeRole(page, "Hardware User");
-    await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
-    await expect(page.getByText("当前角色：硬件开发")).toBeVisible();
-    await expect(page.getByText("所需角色：管理员")).toBeVisible();
+    await expect(page.getByText("此区域由组织管理员维护", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "查看组织资源", exact: true })).toBeVisible();
     await expect(page.getByRole("region", { name: "用户权限" })).toHaveCount(0);
+    const deniedUsers = await page.request.get(apiRoute("/api/v1/users"), { headers: authHeadersForRole("hardware-user") });
+    expect(deniedUsers.status()).toBe(403);
+    await page.screenshot({ path: testInfo.outputPath("permissions-hardware-member-readonly-1440.png"), animations: "disabled" });
 
     await setPrototypeRole(page, "Admin");
     await expect(page.getByRole("region", { name: "用户权限" })).toBeVisible();
@@ -481,7 +483,8 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
       status: "passed",
       page,
       testInfo,
-      notes: "Admin saw user governance and could prepare self-handoff with other active administrators. Self-disable confirmation explained sign-out and server-side administrator checks; cancelling retained the active account. Hardware User received controlled permission denial."
+      api: [summarizeApiResponse(deniedUsers, { method: "GET", path: "/api/v1/users", responseSummary: "non-Admin user directory denied with 403" })],
+      notes: "Admin saw user governance and could prepare self-handoff with other active administrators. Self-disable confirmation explained sign-out and server-side administrator checks; cancelling retained the active account. Hardware User saw organization resource guidance without user governance and received 403 from the users API."
     });
   });
 
@@ -592,9 +595,8 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
 
     await page.goto("/organization/members");
     await setPrototypeRole(page, "Software User");
-    await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
-    await expect(page.getByText("当前角色：软件开发")).toBeVisible();
-    await expect(page.getByText("所需角色：管理员")).toBeVisible();
+    await expect(page.getByText("此区域由组织管理员维护", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "查看组织资源", exact: true })).toBeVisible();
     await expect(page.getByRole("table", { name: "平台用户" })).toHaveCount(0);
 
     const deniedDelete = await page.request.delete(apiRoute("/api/v1/users/u-wang-jie"), {
