@@ -11,8 +11,7 @@ import { createTracingBoundary } from "../../observability/tracing";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { createMemoryObjectStore } from "../../testing/objectStore";
-import { applyMigrations, migrationsDir, resolveTestDatabaseUrl } from "../../testing/tempDatabase";
-import { createInMemoryTestDatabase, type InMemoryTestDatabase } from "../../testing/testDatabase";
+import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../../testing/testDatabase";
 import type { LogRecordDto } from "./types";
 import { provisionChargingSkill } from "./provisionChargingSkill";
 import { processLogAnalysisJobById } from "./worker";
@@ -23,8 +22,8 @@ type Skill = { id: string; skillKey: string };
 type Upload = { log: LogRecordDto; fileObject: { id: string }; job: { id: string } };
 
 describe.skipIf(!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)("integration credential HTTP acceptance over PostgreSQL (#1248)", () => {
-  let root: RootDatabase;
-  let db: InMemoryTestDatabase;
+  let ephemeral: EphemeralTestDatabase;
+  let db: RootDatabase;
   let server: Server;
   let baseUrl: string;
   const objectStore = createMemoryObjectStore();
@@ -76,9 +75,8 @@ describe.skipIf(!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)("in
     for (const method of ["log", "info", "warn", "error", "debug"] as const) {
       vi.spyOn(console, method).mockImplementation((...args) => { logged.push(format(...args)); });
     }
-    root = createPostgresDatabase(resolveTestDatabaseUrl());
-    await applyMigrations(root, migrationsDir);
-    db = await createInMemoryTestDatabase(resolveTestDatabaseUrl());
+    ephemeral = await createEphemeralTestDatabase("logcredentials");
+    db = createPostgresDatabase(ephemeral.url);
     for (const auth of users) {
       await seedCoreGraph(db, { organization: { id: auth.organization.id }, users: [{ id: auth.user.id }] });
       await db.query(`insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
@@ -98,8 +96,7 @@ describe.skipIf(!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)("in
       server.closeAllConnections();
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     }
-    await db?.rollback();
-    await root?.close();
+    try { await db?.close(); } finally { await ephemeral?.drop(); }
     vi.restoreAllMocks();
   });
 
