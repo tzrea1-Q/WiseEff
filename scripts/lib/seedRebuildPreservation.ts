@@ -40,6 +40,8 @@ const TARGET_SCOPED_RELATIONS = new Set([
 
 /** New rows are allowed; existing rows remain protected by their primary keys. */
 const APPEND_ONLY_RELATIONS = new Set([
+  // Archive/materialization IO appends custody; prior receipts remain immutable.
+  "public.parameter_object_writes",
   "public.parameter_modules",
   "public.audit_events",
   "public.audit_subject_links",
@@ -397,11 +399,13 @@ export async function captureSeedPreservation(
       ...hash,
     });
 
-    if (row.columns.includes("storage_key")) {
+    const objectColumn = row.columns.includes("storage_key") ? "storage_key"
+      : row.relation === "public.parameter_object_writes" ? "object_ref" : null;
+    if (objectColumn) {
       const keys = await db.query<{ key: string }>(
-        `select distinct storage_key as key
+        `select distinct ${objectColumn} as key
          from ${sqlRelation(row.relation)} t
-         where (${spec.predicate}) and storage_key is not null
+         where (${spec.predicate}) and ${objectColumn} is not null
          limit ${ROW_LIMIT + 1}`,
         spec.args,
       );

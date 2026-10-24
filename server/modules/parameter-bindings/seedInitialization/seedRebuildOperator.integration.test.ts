@@ -13,12 +13,13 @@ import { enablePublicationPolicy } from "../../catalog-publication/authorization
 import { createLocalObjectStore } from "../../logs/objectStore";
 import { addConfigSetFile, ensureDefaultConfigSet } from "../../parameter-files/configSetService";
 import { uploadProjectParameterFile } from "../../parameter-files/service";
+import { parameterObjectWriteCustody } from "../../parameter-files/objectWriteCustody";
 import { insertConfigRevision, insertConfigRevisionMembers } from "../../parameter-topology/repository";
 import { getParameterSpecRow, upsertMatchedDriverSchema, upsertMatchedPropertySpec } from "../../parameter-specs/repository";
 import { getCachedSchemaRegistry } from "../../parameter-specs/schemaRegistryCache";
 import { planSeedRebuild, checkSeedRebuildState, rebuildSeedProjects, verifySeedRebuild, assertSeedPublicationIdle,
   captureSeedMaintenanceBaseline, verifySeedMaintenanceBaseline, type SeedRebuildState } from "../../../../scripts/lib/seedRebuild";
-import { verifySeedPreservation } from "../../../../scripts/lib/seedRebuildPreservation";
+import { captureSeedPreservation, verifySeedPreservation } from "../../../../scripts/lib/seedRebuildPreservation";
 import { prepareSeedCatalog, publishSeedCatalog, getSeedCatalogPublicationStatus } from "../../../../scripts/lib/seedCatalogPublication";
 import { collectPublicationPolicyInstanceSnapshot } from "../../catalog-publication/authorization/instanceSnapshot";
 import { runPublicationManagerOnce } from "../../catalog-publication/jobs/manager";
@@ -246,25 +247,25 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
           where parameter_spec_id=$1`,
         [persisted.parameterSpecId],
       );
-      const parameterSpec = await tx.query(
+      const parameterSpec = await tx.query<Record<string, unknown>>(
         `select id, attribution_subject_id, property_key, definition_lifecycle
            from parameter_specs
           where id=$1`,
         [persisted.parameterSpecId],
       );
-      const parameterSpecVersion = await tx.query(
+      const parameterSpecVersion = await tx.query<Record<string, unknown>>(
         `select id, parameter_spec_id, version, description, lifecycle, version_status
            from parameter_spec_versions
           where id=$1`,
         [persisted.parameterSpecVersionId],
       );
-      const dtsPropertySpec = await tx.query(
+      const dtsPropertySpec = await tx.query<Record<string, unknown>>(
         `select id, parameter_spec_id, driver_schema_id, property_key, schema_namespace, documentation
            from dts_property_specs
           where parameter_spec_id=$1`,
         [persisted.parameterSpecId],
       );
-      const driverSchemaVersion = await tx.query(
+      const driverSchemaVersion = await tx.query<Record<string, unknown>>(
         `select id, driver_schema_id, parameter_spec_version_id, version
            from driver_schema_versions
           where id=$1`,
@@ -329,6 +330,37 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
     } finally {
       await client.query("rollback");
     }
+  });
+
+  it("preserves existing custody rows and bytes while accepting new exact-key writes", async () => {
+    await db.query("insert into organizations (id,name) values ('org-rebuild-foreign','Preserved custody')");
+    const custody = parameterObjectWriteCustody(db, store);
+    const bytes = Buffer.from("preserved foreign pending write");
+    const original = await custody.put({ organizationId: "org-rebuild-foreign", fileName: "pending.bin",
+      contentType: "application/octet-stream", bytes });
+    const receipt = (await db.query<{ id: string; organization_id: string; object_ref: string }>(
+      "select * from parameter_object_writes where object_ref=$1", [original.storageKey])).rows[0]!;
+    const baseline = await captureSeedPreservation(db, store, org);
+    await custody.put({ organizationId: org, fileName: "new-pending.bin", contentType: "application/octet-stream",
+      bytes: Buffer.from("new pending write") });
+    await expect(verifySeedPreservation(db, store, org, baseline)).resolves.toBeUndefined();
+    expect(baseline.objects.map((object) => object.key)).toContain(original.storageKey);
+    try {
+      await db.query("update parameter_object_writes set object_ref=object_ref||'.changed' where id=$1", [receipt.id]);
+      await expect(verifySeedPreservation(db, store, org, baseline)).rejects.toThrow("public.parameter_object_writes");
+      await db.query("delete from parameter_object_writes where id=$1", [receipt.id]);
+      await expect(verifySeedPreservation(db, store, org, baseline)).rejects.toThrow("public.parameter_object_writes");
+    } finally {
+      await db.query(`insert into parameter_object_writes(id,organization_id,object_ref) values($1,$2,$3)
+        on conflict(id) do update set object_ref=excluded.object_ref`, [receipt.id, receipt.organization_id, receipt.object_ref]);
+    }
+    try {
+      await writeFile(path.join(directory, original.storageKey), "corrupted pending bytes");
+      await expect(verifySeedPreservation(db, store, org, baseline)).rejects.toThrow("preservation-object-drift");
+    } finally {
+      await writeFile(path.join(directory, original.storageKey), bytes);
+    }
+    await expect(verifySeedPreservation(db, store, org, baseline)).resolves.toBeUndefined();
   });
 
   it("plans without writing and binds the real persisted actor and all reviewed identities", async () => {
@@ -492,9 +524,18 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
     wrongReceipt.publications.vendor!.receiptId = "not-the-observed-receipt";
     await expect(rebuildSeedProjects(ctx(), wrongReceipt, async () => {})).rejects.toThrow("publication-receipt-drift");
     const failedAttempt = structuredClone(plan);
+    let uncertainArchive: Awaited<ReturnType<typeof store.put>> | undefined;
     await expect(rebuildSeedProjects({ ...ctx(), store: { ...store,
-      put: async () => { throw new Error("injected archive store outage"); } } }, failedAttempt, async () => {}))
+      put: async (input) => {
+        uncertainArchive = await store.put(input);
+        throw new Error("injected archive store outage");
+      } } }, failedAttempt, async () => {}))
       .rejects.toThrow("injected archive store outage");
+    expect(uncertainArchive).toBeDefined();
+    const uncertainReceipts = (await db.query("select * from parameter_object_writes where object_ref=$1",
+      [uncertainArchive!.storageKey])).rows;
+    expect(uncertainReceipts).toHaveLength(1);
+    const uncertainBytes = await store.get(uncertainArchive!.storageKey);
     expect(failedAttempt.phase).toBe("recovery-required");
     await expect(rebuildSeedProjects(ctx(), failedAttempt, async () => {})).rejects.toThrow("publication-or-recovery-required");
     expect((await db.query("select id from parameter_drafts where id='old-draft-atlas'")).rows).toHaveLength(1);
@@ -608,6 +649,9 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
       expect.objectContaining({ bytesBase64: Buffer.from(oldAuroraSource, "utf8").toString("base64") }),
     ]));
     expect((await store.get(sharedObjectKey)).toString()).toContain('old-property');
+    expect((await db.query("select * from parameter_object_writes where object_ref=$1",
+      [uncertainArchive!.storageKey])).rows).toEqual(uncertainReceipts);
+    expect(await store.get(uncertainArchive!.storageKey)).toEqual(uncertainBytes);
     expect(await verifySeedRebuild(ctx(), plan)).toEqual(rebuilt);
     expect(await rebuildSeedProjects(ctx(), plan, async () => { throw new Error("no replay writes"); })).toEqual(rebuilt);
     const wrongArchives = structuredClone(plan);

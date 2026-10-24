@@ -20,6 +20,7 @@ import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
 import { addConfigSetFile, createConfigSet } from "./configSetService";
 import { uploadProjectParameterFile } from "./service";
+import { parameterObjectWriteCustody } from "./objectWriteCustody";
 import type { ReleaseReadinessResult } from "./releaseReadinessService";
 
 const organizationId = "org-1061";
@@ -31,7 +32,7 @@ const admin = makeTestAuthContext({ userId: adminId, organizationId });
 
 describe("#1061 assembled-server canonical release readiness", () => {
   let db: RootDatabase;
-  let storage: ReturnType<typeof createLocalObjectStore>;
+  let storage: ReturnType<typeof parameterObjectWriteCustody>;
   let directory: string;
   let databaseName: string;
   let server: ReturnType<typeof createWiseEffServer>;
@@ -50,7 +51,7 @@ describe("#1061 assembled-server canonical release readiness", () => {
     db = createPostgresDatabase(connection.toString());
     await applyTestMigrations(db, migrationsDir);
     directory = await mkdtemp(join(tmpdir(), "wiseeff-t1061-readiness-"));
-    storage = createLocalObjectStore(directory);
+    storage = parameterObjectWriteCustody(db, createLocalObjectStore(directory));
     await seedCoreGraph(db, {
       organization: { id: organizationId },
       users: [{ id: adminId }, { id: authorId }, { id: reviewerId }],
