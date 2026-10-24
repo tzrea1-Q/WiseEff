@@ -76,7 +76,7 @@ describe("Organization runtime erasure through HTTP and PostgreSQL", () => {
     const key = await checkpoint(), feedback = randomUUID(), progress = randomUUID(), erasedNotification = randomUUID(), retainedNotification = randomUUID();
     await db.query("insert into product_feedback(id,organization_id,submitter_user_id,page_path,page_title,feedback_type,description,submitted_at) values($1,'runtime-target','runtime-platform','/','B page','experience','B content',now())", [feedback]);
     await db.query("insert into product_feedback_progress_events(id,organization_id,feedback_id,kind,public_message) values($1,'runtime-target',$2,'progress','B public message')", [progress, feedback]);
-    await db.query("insert into user_notifications(id,organization_id,recipient_user_id,category,title,body,source_kind,source_id,metadata) values($1,'runtime-home','runtime-platform','product-feedback.progress','B title','B content','product-feedback-progress',$2,$3),($4,'runtime-home','runtime-platform','unrelated','A title','A content',null,null,'{}')", [erasedNotification, progress, { feedbackOrganizationId: "runtime-target", feedbackId: feedback }, retainedNotification]);
+    await db.query("insert into user_notifications(id,organization_id,recipient_user_id,category,title,body,source_kind,source_id,metadata) values($1,'runtime-home','runtime-platform','product-feedback.progress','B title','B content','product-feedback-progress',$2,$3),($4,'runtime-home','runtime-platform','unrelated','A title','A content',null,null,'{}')", [erasedNotification, progress, {}, retainedNotification]);
     const result = await start(); expect(result.status, result.bodyText).toBe(202); expect(result.body.item.status).toBe("deleted");
     expect((await checkpointer.inspectStore(key)).entries).toEqual([]); expect(await checkpointer.get(key)).toBeUndefined();
     expect((await db.query("select id from users where id='runtime-platform'")).rowCount).toBe(1);
@@ -85,8 +85,8 @@ describe("Organization runtime erasure through HTTP and PostgreSQL", () => {
   });
   it("clears archived Agent state, nested debug modules and operation/snapshot cycles", async () => {
     await db.query(`insert into agent_sessions(id,organization_id,actor_user_id,page_key,context,status,title) values('archived-run','runtime-target','runtime-platform','xiaoze','{}','archived','Archived B content');
-      insert into debug_node_modules(id,organization_id,name) values('parent-module','runtime-target','Parent');
-      insert into debug_node_modules(id,organization_id,name,parent_id) values('child-module','runtime-target','Child','parent-module');
+      insert into debug_node_modules(id,organization_id,name,path,depth) values('parent-module','runtime-target','Parent','/Parent',0);
+      insert into debug_node_modules(id,organization_id,name,parent_id,path,depth) values('child-module','runtime-target','Child','parent-module','/Parent/Child',1);
       insert into debug_nodes(id,organization_id,name,debug_node_module_id) values('debug-node','runtime-target','Node','child-module');
       insert into debug_node_bindings(id,organization_id,node_id,protocol,node_path,access_mode) values('debug-binding','runtime-target','debug-node','adb','/node','RW');
       insert into debugging_devices(id,organization_id,name,transport,status,firmware) values('device','runtime-target','Device','adb','online','firmware');
@@ -108,7 +108,7 @@ describe("Organization runtime erasure through HTTP and PostgreSQL", () => {
       { organizationId: "runtime-home", recipientUserId: "runtime-platform", category: "product-feedback.progress", title: "B title", body: "B private content", metadata: { feedbackOrganizationId: "runtime-target", feedbackId: randomUUID() } }]);
     let release!: () => void, entered!: () => void;
     const held = new Promise<void>(resolve => { release = resolve; }), started = new Promise<void>(resolve => { entered = resolve; });
-    const delivery = processNextNotificationOutboxEntry({ db, tracing: { async withSpan(_name, _attributes, work) { entered(); await held; return work({}); } } });
+    const delivery = processNextNotificationOutboxEntry({ db, tracing: { async withSpan(_name, _attributes, work) { entered(); await held; return work(); } } });
     await started;
     try { expect((await start()).body.item.status).toBe("deleted"); }
     finally { release(); }
