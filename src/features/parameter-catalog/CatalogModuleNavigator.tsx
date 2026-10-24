@@ -118,7 +118,7 @@ function TreeNode({
 /**
  * Organization module navigator for the restored definition workspace.
  *
- * One tree carries the whole navigation: module placements are the branches and
+ * One tree carries the whole navigation: maintained modules are the branches and
  * every subject is a leaf (registered subjects under their module, subjects with
  * no placement yet under one `未登记主体` branch). Selecting a module scopes the
  * collection to the node and its whole subtree, selecting a subject scopes it to

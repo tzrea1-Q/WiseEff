@@ -11,6 +11,7 @@ import type { TrustedInvocationContext } from "./command";
 export type GuardSqlState = "PCA01" | "PCA02" | "PCA03" | "PCA04" | "PCA05";
 
 export type RegistrationFailure =
+  | { readonly kind: "registration-conflict"; readonly registrationId: string }
   | {
       readonly kind: "release-drift";
       readonly code: Extract<CatalogCurrentGuardFailureCode, "PCAT-GUARD-RELEASE-MISMATCH">;

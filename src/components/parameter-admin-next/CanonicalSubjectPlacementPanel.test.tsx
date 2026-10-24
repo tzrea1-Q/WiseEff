@@ -91,6 +91,7 @@ function createPorts() {
   const definitionQueries: CatalogListQuery[] = [];
   const listSubjects = vi.fn(async (query?: CatalogListQuery) => {
     subjectQueries.push(query ?? {});
+    if (query?.lifecycle === "retired") return { items: [], totalCount: 0, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID };
     if (query?.cursor === "subjects-2") {
       return {
         items: [configuration],
@@ -252,6 +253,27 @@ function createPorts() {
 }
 
 describe("CanonicalSubjectPlacementPanel", () => {
+  it("hides retired registrations by default and exposes a labelled recovery in the retired filter", async () => {
+    const ports = createPorts();
+    const registrations = await ports.listRegistrations(CATALOG_ORGANIZATION_ID);
+    ports.listRegistrations.mockResolvedValue({ ...registrations, items: registrations.items.map(item => ({ ...item, status: "retired" })) });
+    render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin />);
+    await screen.findByRole("list", { name: "规范主体列表" });
+    expect(screen.queryByText("vendor,driver")).not.toBeInTheDocument();
+    await selectControlOption(screen.getByRole("combobox", { name: "筛选登记状态" }), "retired");
+    const row = await screen.findByRole("listitem", { name: "vendor,driver（驱动）" });
+    expect(row).toHaveTextContent("已停用");
+    expect(within(row).getByRole("button", { name: "恢复驱动：vendor,driver" })).toBeEnabled();
+    expect(within(row).queryByRole("button", { name: /调整归属|移除驱动/ })).not.toBeInTheDocument();
+  });
+
+  it.each([true, false])("offers removal only to an administrator (canAdmin=%s)", async (canAdmin) => {
+    const ports = createPorts();
+    render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor={canAdmin ? "org-admin" : "user"} canAdmin={canAdmin} />);
+    await screen.findByRole("list", { name: "规范主体列表" });
+    expect(screen.queryByRole("button", { name: "移除驱动：vendor,driver" })).toBe(canAdmin ? screen.getByRole("button", { name: "移除驱动：vendor,driver" }) : null);
+  });
+
   it("keeps a failed partial inventory readable and retries the complete inventory before enabling writes", async () => {
     const ports = createPorts();
     const original = ports.listSubjects.getMockImplementation()!;
@@ -305,7 +327,7 @@ describe("CanonicalSubjectPlacementPanel", () => {
     resolveSecondPage({ items: [], totalCount: 3, hasMore: true, nextCursor: "subjects-3", catalogReleaseId: CATALOG_RELEASE_ID });
     await secondPage.promise;
     await Promise.resolve();
-    expect(ports.listSubjects).toHaveBeenCalledTimes(2);
+    expect(ports.listSubjects).toHaveBeenCalledTimes(3);
   });
   it("restores a later subject page and treats an empty tree-filter scope as empty", async () => {
     const ports = createPorts();
@@ -438,6 +460,7 @@ describe("CanonicalSubjectPlacementPanel", () => {
     expect(screen.getAllByText("配置规范").length).toBeGreaterThan(0);
     expect(ports.subjectQueries).toEqual([
       { catalogReleaseId: CATALOG_RELEASE_ID, limit: 100 },
+      { catalogReleaseId: CATALOG_RELEASE_ID, lifecycle: "retired", limit: 100 },
       { catalogReleaseId: CATALOG_RELEASE_ID, limit: 100, cursor: "subjects-2" }
     ]);
 
@@ -624,13 +647,13 @@ describe("CanonicalSubjectPlacementPanel", () => {
       }
     };
     ports.listSubjects.mockReset();
-    ports.listSubjects.mockResolvedValue({
-      items: [retiredSubject],
-      totalCount: 1,
+    ports.listSubjects.mockImplementation(async (query) => ({
+      items: query?.lifecycle === "retired" ? [retiredSubject] : [],
+      totalCount: query?.lifecycle === "retired" ? 1 : 0,
       hasMore: false,
       nextCursor: null,
       catalogReleaseId: CATALOG_RELEASE_ID
-    } as never);
+    }) as never);
     render(
       <CanonicalSubjectPlacementPanel
         catalog={ports.catalog}
@@ -642,9 +665,11 @@ describe("CanonicalSubjectPlacementPanel", () => {
       />
     );
 
+    await selectControlOption(await screen.findByRole("combobox", { name: "筛选登记状态" }), "retired");
     const row = await screen.findByRole("listitem", { name: /vendor,retired/ });
     expect(within(row).queryByRole("button", { name: "登记主体：vendor,retired" })).not.toBeInTheDocument();
     expect(within(row).queryByRole("button", { name: "调整归属：vendor,retired" })).not.toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "恢复驱动：vendor,retired" })).toBeDisabled();
   });
 
   it("does not show a zero active count while canonical loading fails", async () => {
@@ -701,6 +726,7 @@ describe("CanonicalSubjectPlacementPanel", () => {
       />
     );
 
+    await selectControlOption(await screen.findByRole("combobox", { name: "筛选登记状态" }), "retired");
     const row = await screen.findByRole("listitem", { name: /vendor,driver/ });
     expect(within(row).queryByRole("button", { name: "调整归属：vendor,driver" })).not.toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "规范模块统计" })).not.toBeInTheDocument();

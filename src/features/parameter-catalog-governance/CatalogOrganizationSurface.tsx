@@ -310,6 +310,7 @@ export function CatalogOrganizationSurface({
           ) : null}
         </> : undefined}
         repository={catalog}
+        moduleRegistry={moduleRegistry}
         actor={actor}
         sessionPermissions={sessionPermissions}
         search={search}

@@ -198,7 +198,7 @@ export function registrationEtag(result: RegistrationResult | RegistrationRecord
   if ("etag" in result) {
     return quoteEtag(result.etag);
   }
-  return quoteEtag(`${result.registrationId}:${result.registrationStatus}`);
+  return quoteEtag(`${result.registrationId}:${result.registrationStatus}:${result.registrationVersion}`);
 }
 
 export function placementEtag(placementId: string, version?: string): string {

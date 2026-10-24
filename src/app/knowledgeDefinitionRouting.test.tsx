@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getPageByPath } from "@/appConfig";
 import { initialState } from "@/mockData";
@@ -9,11 +9,17 @@ import { ToastProvider } from "@/components/common/toast/ToastProvider";
 import { activeDefinition, CATALOG_RELEASE_ID } from "@/application/parameter-catalog/fixtures";
 import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
 import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
+import { createMockParameterModuleRegistryRepository } from "@/infrastructure/mock/mockParameterModuleRegistryRepository";
+import * as moduleRegistryResolve from "@/application/parameters/parameterModuleRegistryResolve";
 import type { AppRuntime } from "./appRuntime";
 import { canAccessPage } from "./permissions";
 import { PageRouter } from "./routes";
 
 describe("Knowledge Definition navigation", () => {
+  beforeEach(() => {
+    vi.spyOn(moduleRegistryResolve, "resolveParameterModuleRegistryRepository")
+      .mockReturnValue(createMockParameterModuleRegistryRepository());
+  });
   it.each([false, true])("gates definition-page linking by knowledge:edit (%s)", async (canEdit) => {
     const repository = createMockKnowledgeRepository({ userId: initialState.currentUserId, canManage: false });
     const entry = await repository.createMarkdown({ title: "定义页关联条目", tags: [], contentMarkdown: "说明" });

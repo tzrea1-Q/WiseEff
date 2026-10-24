@@ -412,7 +412,8 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         "GET",
         canonical("catalog.getRegistration", { organizationId, registrationId }),
         catalogRegistrationResponseSchema,
-        "CatalogRegistrationResponse"
+        "CatalogRegistrationResponse",
+        { preserveEtag: true }
       ),
     retireRegistration: (
       organizationId: string,

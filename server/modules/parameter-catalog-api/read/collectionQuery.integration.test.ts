@@ -273,6 +273,28 @@ describe("issue 847 collection contract", () => {
     expect(retargeted).toMatchObject({ status: "invalid-page", reason: "query-mismatch" });
   }, 60_000);
 
+  it("applies not-retired before paging and retains unregistered definitions with exact totals", async () => {
+    const snapshot = await loadSnapshot();
+    const all = snapshot.listDefinitions({ selection: { kind: "all" }, scope: { kind: "all" }, lifecycles: ["active"],
+      propertyKey: { kind: "absent" }, search: { kind: "absent" }, page: { limit: CatalogPageLimit(100), after: { kind: "absent" } } });
+    if (all.status !== "found") throw new Error("fixture definitions missing");
+    const definitions = all.page.items.map((item) => ({ id: item.id, subjectId: item.subjectId }));
+    const queries = createGovernanceCatalogQueries(pool);
+    for (const organizationId of [ORGANIZATION_ID, OTHER_ORGANIZATION_ID]) {
+      const selection = await queries.selectDefinitionIds({ organizationId, registration: "not-retired", catalogDefinitions: definitions,
+        authScope: { organizationId, principalId: OWNER.principalId } });
+      if (!selection.ok) throw new Error(JSON.stringify(selection.error));
+      const expected = definitions.filter((item) => organizationId === ORGANIZATION_ID || item.subjectId !== SUBJECT_WITH_DEFINITION);
+      const result = snapshot.listDefinitions({ selection: selection.value, scope: { kind: "all" }, lifecycles: ["active"],
+        propertyKey: { kind: "absent" }, search: { kind: "absent" }, page: { limit: CatalogPageLimit(1), after: { kind: "absent" } } });
+      expect(result.status).toBe("found");
+      if (result.status !== "found") return;
+      expect(result.page.pageInfo.totalCount).toBe(expected.length);
+      expect(result.page.items).toHaveLength(Math.min(1, expected.length));
+      expect(result.page.pageInfo.hasMore).toBe(expected.length > 1);
+    }
+  });
+
   it("scopes the definition collection to an explicit trusted subject selection", async () => {
     const snapshot = await loadSnapshot();
 

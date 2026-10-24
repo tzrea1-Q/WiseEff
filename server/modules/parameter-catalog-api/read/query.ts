@@ -43,7 +43,7 @@ const absent = { kind: "absent" as const };
 const SUBJECT_KINDS = new Set<CatalogSubjectKind>(["driver", "node-type"]);
 const SUBJECT_LIFECYCLES = new Set<SubjectLifecycle>(["active", "retired"]);
 const DEFINITION_LIFECYCLES = new Set<DefinitionLifecycle>(["active", "deprecated", "retired"]);
-const REGISTRATION_FILTERS = new Set(["unregistered", "active", "retired"]);
+const REGISTRATION_FILTERS = new Set(["unregistered", "active", "retired", "not-retired"]);
 
 export function queryArray(
   query: Record<string, string | string[]>,

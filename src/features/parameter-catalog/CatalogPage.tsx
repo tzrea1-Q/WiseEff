@@ -24,6 +24,8 @@ import {
 } from "@/application/parameter-catalog/urlAnchor";
 import type { CatalogActorKind, CatalogAuthorizedAction } from "@/application/parameter-catalog/authority";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
+import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import type { SettingsLeaveRequest } from "@/application/settingsFormNavigation";
 import { DataTable, type Column } from "@/components/admin";
 import { listAllCanonicalPages } from "@/components/parameter-admin-next/CanonicalSubjectPlacementPanel";
@@ -49,7 +51,6 @@ import { DefinitionDeletionDialog } from "./DefinitionDeletionDialog";
 import type { CatalogNavigatorNode } from "./catalogModuleScope";
 import {
   buildCatalogModuleTree,
-  filterDefinitionIdsByModule,
   subjectIdsForModule
 } from "./catalogModuleScope";
 import {
@@ -98,6 +99,7 @@ export type CatalogPageProps = {
   notice?: ReactNode;
   taskContent?: ReactNode;
   repository: ParameterCatalogRepository;
+  moduleRegistry?: Pick<ParameterModuleRegistryRepository, "getRegistry">;
   actor: CatalogActorKind;
   sessionPermissions?: readonly string[] | null;
   search?: string;
@@ -162,6 +164,7 @@ export type CatalogPageProps = {
 type CatalogSnapshot = {
   document: Exclude<CatalogDocumentResponse, { item: null }>;
   subjects: CatalogSubjectListResponse;
+  modules: ParameterModule[];
   definitions: CatalogDefinitionListResponse;
   subject: SubjectItem | null;
   definition: DefinitionItem | null;
@@ -227,6 +230,7 @@ export function CatalogPage({
   notice,
   taskContent,
   repository,
+  moduleRegistry,
   actor,
   sessionPermissions,
   search,
@@ -407,7 +411,7 @@ export function CatalogPage({
       const pin = { catalogReleaseId: document.item.catalogReleaseId };
       const listQuery: CatalogListQuery = {
         ...pin,
-        ...(!currentAnchor.includeRetiredSubjects ? { subjectLifecycle: "active" as const } : {}),
+        ...(!currentAnchor.includeRetiredSubjects ? { subjectLifecycle: "active" as const, registration: "not-retired" } : {}),
         limit: currentAnchor.pageSize ?? CATALOG_DEFAULT_PAGE_SIZE
       };
       if (currentAnchor.q) {
@@ -422,22 +426,23 @@ export function CatalogPage({
       if (currentAnchor.moduleNodeId) {
         listQuery.placementModuleId = currentAnchor.moduleNodeId;
       }
-      // The navigator needs every organization placement, so the subject
-      // inventory is complete while the definition table stays paged.
+      // Load the maintained taxonomy and every subject before publishing the navigator.
       let firstSubjectPage: CatalogSubjectListResponse | undefined;
-      const inventories = await Promise.all([
+      const [activeSubjects, retiredSubjects, registry] = await Promise.all([
         listAllCanonicalPages(async (query) => {
           const page = await catalog.listSubjects(query);
           firstSubjectPage ??= page;
           return page;
         }, { ...pin, limit: 100 }),
-        listAllCanonicalPages((query) => catalog.listSubjects(query), { ...pin, lifecycle: "retired", limit: 100 })
+        listAllCanonicalPages((query) => catalog.listSubjects(query), { ...pin, lifecycle: "retired", limit: 100 }),
+        moduleRegistry?.getRegistry()
       ]);
-      const subjectItems = [...new Map(inventories.flat().map((item) => [item.id, item])).values()];
+      const subjectItems = [...new Map([...activeSubjects, ...retiredSubjects].map((item) => [item.id, item])).values()];
       if (generation !== loadGeneration.current) return;
       // Historical subject bookmarks opt into history without losing their scope.
       if (!currentAnchor.includeRetiredSubjects && subjectItems.some((item) =>
-        item.id === currentAnchor.subjectId && item.membership.status === "retired")) {
+        item.id === currentAnchor.subjectId && (item.membership.status === "retired" || item.registration.status === "retired"))) {
+        delete listQuery.registration;
         delete listQuery.subjectLifecycle;
         commitAnchor({ ...currentAnchor, includeRetiredSubjects: true, cursor: null }, "replace");
       }
@@ -512,6 +517,7 @@ export function CatalogPage({
       setSnapshot({
         document,
         subjects,
+        modules: registry?.modules ?? [],
         definitions,
         subject,
         definition,
@@ -527,7 +533,7 @@ export function CatalogPage({
     } finally {
       if (generation === loadGeneration.current) setInFlight(false);
     }
-  }, [commitAnchor, historyOpen, organizationId, catalogReadSearch]);
+  }, [commitAnchor, historyOpen, organizationId, catalogReadSearch, moduleRegistry]);
 
   useEffect(() => {
     void load();
@@ -602,10 +608,11 @@ export function CatalogPage({
   const listEmptyReason = emptyCollectionReason(snapshot?.definitions ?? null);
   const definitions = snapshot?.definitions.items ?? [];
   const subjects = snapshot?.subjects.items ?? [];
+  const modules = snapshot?.modules ?? [];
   const includesRetiredSubjects = Boolean(anchor.includeRetiredSubjects || subjects.some((item) =>
-    item.id === anchor.subjectId && item.membership.status === "retired"));
+    item.id === anchor.subjectId && (item.membership.status === "retired" || item.registration.status === "retired")));
   const navigationSubjects = useMemo(() => includesRetiredSubjects ? subjects
-    : subjects.filter((item) => item.membership.status === "active"), [subjects, includesRetiredSubjects]);
+    : subjects.filter((item) => item.membership.status === "active" && item.registration.status !== "retired"), [subjects, includesRetiredSubjects]);
   const subjectsById = useMemo(() => new Map([
     ...subjects.map((item) => [item.id, item] as const),
     ...(snapshot?.subject ? [[snapshot.subject.id, snapshot.subject] as const] : [])
@@ -630,24 +637,15 @@ export function CatalogPage({
     []
   );
   const navigatorNodes = useMemo(
-    () => buildCatalogModuleTree(navigationSubjects, describeSubject),
-    [navigationSubjects, describeSubject]
+    () => buildCatalogModuleTree(navigationSubjects, describeSubject, modules),
+    [navigationSubjects, describeSubject, modules]
   );
-  // Client scope mirrors the server traversal so visible rows always agree with
-  // the reported count for the same query.
-  const visibleDefinitions = useMemo(() => {
-    if (!anchor.moduleNodeId) {
-      return definitions;
-    }
-    const scoped = filterDefinitionIdsByModule(subjects, anchor.moduleNodeId);
-    return definitions.filter((item) => scoped.has(item.subject.id));
-  }, [anchor.moduleNodeId, definitions, subjects]);
   const totalCount = snapshot?.definitions.totalCount ?? null;
   const scopedSubjectCount = anchor.moduleNodeId
-    ? subjectIdsForModule(navigationSubjects, anchor.moduleNodeId).size
+    ? subjectIdsForModule(navigationSubjects, anchor.moduleNodeId, modules).size
     : navigationSubjects.length;
   const filterEmptyReason: CatalogEmptyReason | null =
-    visibleDefinitions.length === 0 &&
+    definitions.length === 0 &&
     (activeLifecycles.length > 0 || Boolean(anchor.q) || Boolean(anchor.moduleNodeId))
       ? "no-filter-match"
       : listEmptyReason;
@@ -659,7 +657,7 @@ export function CatalogPage({
   const pageEmptyReason =
     domainState.kind === "empty"
       ? domainState.emptyReason
-      : filterEmptyReason && visibleDefinitions.length === 0
+      : filterEmptyReason && definitions.length === 0
         ? filterEmptyReason
         : noOrgRegistrations
           ? "no-registrations"
@@ -729,7 +727,7 @@ export function CatalogPage({
 
   const toggleRetiredSubjects = (include: boolean) => {
     setCursorTrail([]);
-    const retiredSelection = subjects.some((item) => item.id === anchor.subjectId && item.membership.status === "retired");
+    const retiredSelection = subjects.some((item) => item.id === anchor.subjectId && (item.membership.status === "retired" || item.registration.status === "retired"));
     commitAnchor({ ...anchor, includeRetiredSubjects: include, cursor: null,
       subjectId: !include && retiredSelection ? null : anchor.subjectId, definitionId: null }, "push");
   };
@@ -789,12 +787,12 @@ export function CatalogPage({
       headerFilter: {
         label: "所属模块",
         groupLabel: "所属模块筛选",
-        values: moduleFilterValues(subjects),
+        values: modules.map(module => module.id),
         selectedValues: anchor.moduleNodeId ? [anchor.moduleNodeId] : [],
-        renderLabel: (value) => moduleFilterLabel(subjects, value),
+        renderLabel: (value) => modules.find(module => module.id === value)?.name ?? value,
         onToggle: (value) => selectModuleNode(value === anchor.moduleNodeId ? null : value),
         onClear: () => selectModuleNode(null),
-        // visibleDefinitions already applies the selected module's full subtree.
+        // The server already scopes the paged collection to the selected subtree.
         getValue: (row) =>
           anchor.moduleNodeId ?? (row.registration.status === "unregistered"
             ? ""
@@ -937,7 +935,7 @@ export function CatalogPage({
           <label className="parameter-catalog__historical-filter">
             <input type="checkbox" checked={includesRetiredSubjects}
               onChange={(event) => toggleRetiredSubjects(event.target.checked)} />
-            包含退役主体
+            包含已停用和退役主体
           </label>
           {actions.length > 0 || onOpenPendingWork ? (
             <div className="parameter-catalog__actions" role="group" aria-label="目录动作">
@@ -1037,7 +1035,7 @@ export function CatalogPage({
               </div>
             ) : compactList ? (
               <div className="parameter-catalog__cards parameter-catalog__table-wrap--mobile">
-                {visibleDefinitions.map((item) => (
+                {definitions.map((item) => (
                   <div key={item.id} className="parameter-catalog__card-row">
                     <button
                       type="button"
@@ -1070,14 +1068,14 @@ export function CatalogPage({
             ) : (
               <div className="parameter-catalog__table-wrap--desktop">
                 <DataTable
-                  rows={visibleDefinitions}
+                  rows={definitions}
                   rowKey={(row) => row.id}
                   columns={columns}
                   tableClassName="parameter-catalog__table"
                   selectedRowKey={definition?.id}
                   onRowClick={selectDefinition}
                   aria-label={catalogDefinitionsLabel}
-                  pageSize={Math.max(visibleDefinitions.length, 1)}
+                  pageSize={Math.max(definitions.length, 1)}
                   renderRowActions={(row) => (
                     <span className="parameter-catalog__row-actions">
                       <button
@@ -1270,29 +1268,6 @@ export function CatalogPage({
         onCancel={() => finishEditorLeave(false)} />
     </div>
   );
-}
-
-function moduleFilterValues(subjects: readonly SubjectItem[]): string[] {
-  const ids = new Set<string>();
-  for (const subject of subjects) {
-    const placement =
-      subject.registration.status === "unregistered" ? undefined : subject.registration.placement;
-    if (placement?.moduleId) {
-      ids.add(placement.moduleId);
-    }
-  }
-  return [...ids];
-}
-
-function moduleFilterLabel(subjects: readonly SubjectItem[], moduleId: string): string {
-  for (const subject of subjects) {
-    const placement =
-      subject.registration.status === "unregistered" ? undefined : subject.registration.placement;
-    if (placement?.moduleId === moduleId) {
-      return placement.displayName;
-    }
-  }
-  return moduleId;
 }
 
 function CatalogDetailBody({

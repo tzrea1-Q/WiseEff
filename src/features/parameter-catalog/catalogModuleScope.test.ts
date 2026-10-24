@@ -39,13 +39,36 @@ const subject = (input: {
 const describeSubject = (item: SubjectItem) => `${item.type} · ${item.registration.status}`;
 
 describe("catalog module navigator tree", () => {
+  it("uses the maintained taxonomy, including empty categories and modules without registrations", () => {
+    const modules = [
+      { id: "power", name: "Power", parentId: null, sortOrder: 1 },
+      { id: "empty", name: "Empty category", parentId: null, sortOrder: 2 },
+      { id: "middle", name: "Business category", parentId: "power", sortOrder: 0 },
+      { id: "driver", name: "Maintained driver", parentId: "middle", sortOrder: 0 }
+    ];
+    const subjects = [subject({ id: "driver-subject", canonicalName: "vendor,driver",
+      placement: { id: "driver-placement", moduleId: "driver", displayName: "Old name", parentPlacementId: null } })];
+    const tree = buildCatalogModuleTree(subjects, describeSubject, modules);
+    expect(tree.map(node => node.id)).toEqual(["power", "empty"]);
+    expect(tree[0]).toMatchObject({ subjectCount: 1, children: [
+      { id: "middle", children: [{ id: "driver", displayName: "Maintained driver", children: [
+        { subjectId: "driver-subject" }
+      ] }] }
+    ] });
+    expect(tree[1]).toMatchObject({ subjectCount: 0, children: [] });
+    expect(subjectIdsForModule(subjects, "power", modules)).toEqual(new Set(["driver-subject"]));
+    expect(subjectIdsForModule(subjects, "empty", modules)).toEqual(new Set());
+    const moved = modules.map(module => module.id === "driver" ? { ...module, parentId: "empty" } : module);
+    expect(subjectIdsForModule(subjects, "power", moved)).toEqual(new Set());
+    expect(subjectIdsForModule(subjects, "empty", moved)).toEqual(new Set(["driver-subject"]));
+  });
   it("keeps registered subjects with cleared module attribution in an unset group", () => {
     const cleared = subject({ id: "unset-subject", canonicalName: "retained-driver",
       placement: { id: "retained-placement", displayName: "unset", parentPlacementId: null } });
-    const tree = buildCatalogModuleTree([cleared], describeSubject);
+    const tree = buildCatalogModuleTree([cleared], describeSubject, []);
     expect(tree).toMatchObject([{ id: "group:unset", displayName: "unset（未分配模块）", subjectCount: 1,
       children: [{ id: "subject:unset-subject", subjectId: "unset-subject" }] }]);
-    expect(subjectIdsForModule([cleared], "retained-placement").size).toBe(0);
+    expect(subjectIdsForModule([cleared], "retained-placement", []).size).toBe(0);
   });
   it("renders one tree: module branches with their registered subjects as leaves", () => {
     const nodes = buildCatalogModuleTree(
@@ -62,7 +85,8 @@ describe("catalog module navigator tree", () => {
           }
         })
       ],
-      describeSubject
+      describeSubject,
+      [{ id: "pmod-op08-node-type", name: "Node type", parentId: null, sortOrder: 0 }]
     );
 
     expect(nodes).toHaveLength(1);
@@ -86,7 +110,7 @@ describe("catalog module navigator tree", () => {
     const retired: SubjectItem = source === "membership"
       ? { ...item, membership: { ...item.membership, status: "retired" } }
       : { ...item, registration: { status: "retired", id: "registration-old" } };
-    const roots = buildCatalogModuleTree([retired], describeSubject);
+    const roots = buildCatalogModuleTree([retired], describeSubject, []);
     expect(roots[0].children[0]).toMatchObject({ subjectId: "old", retired: true });
   });
 
@@ -106,7 +130,8 @@ describe("catalog module navigator tree", () => {
         subject({ id: "csub_sensor", canonicalName: "acme,sensor", registration: "unregistered" }),
         subject({ id: "csub_extra", canonicalName: "acme,extra", registration: "unregistered" })
       ],
-      describeSubject
+      describeSubject,
+      [{ id: "pmod_driver", name: "Drivers", parentId: null, sortOrder: 0 }]
     );
 
     // Module branches first, then the single unregistered branch.
@@ -141,9 +166,13 @@ describe("catalog module navigator tree", () => {
         }
       })
     ];
-    const nodes = buildCatalogModuleTree(subjects, describeSubject);
+    const modules = [
+      { id: "pmod_parent", name: "Parent", parentId: null, sortOrder: 0 },
+      { id: "pmod_child", name: "Child", parentId: "pmod_parent", sortOrder: 0 }
+    ];
+    const nodes = buildCatalogModuleTree(subjects, describeSubject, modules);
     expect(nodes[0]!.subjectCount).toBe(2);
-    expect(subjectIdsForModule(subjects, "pmod_parent")).toEqual(new Set(["csub_parent", "csub_child"]));
-    expect(subjectIdsForModule(subjects, "pmod_child")).toEqual(new Set(["csub_child"]));
+    expect(subjectIdsForModule(subjects, "pmod_parent", modules)).toEqual(new Set(["csub_parent", "csub_child"]));
+    expect(subjectIdsForModule(subjects, "pmod_child", modules)).toEqual(new Set(["csub_child"]));
   });
 });

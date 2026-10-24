@@ -53,6 +53,7 @@ const toResult = (
   command: RegistrationCommand,
   fingerprint: string,
   outcome: RegistrationResult["outcome"],
+  previousRegistrationStatus?: RegistrationResult["registrationStatus"],
 ): RegistrationResult => ({
   outcome,
   registrationId: SubjectRegistrationId(registration.id),
@@ -61,6 +62,8 @@ const toResult = (
   subjectId: CatalogSubjectId(registration.subject_id),
   registrationStatus: registration.status,
   registrationMethod: registration.registration_method,
+  registrationVersion: registration.version,
+  ...(previousRegistrationStatus === undefined ? {} : { previousRegistrationStatus }),
   placementOrigin: placement.origin,
   moduleId: placement.module_id,
   placementVersion: placement.version,
@@ -206,14 +209,17 @@ const writeRetire = async (
   if (!pair) {
     return fail({ kind: "registration-not-found", registrationId: command.registrationId });
   }
+  if (command.expectedRegistrationVersion !== undefined && command.expectedRegistrationVersion !== `${pair.registration.status}:${pair.registration.version}`) {
+    return fail({ kind: "registration-conflict", registrationId: pair.registration.id });
+  }
+  const previousStatus = pair.registration.status;
   if (pair.registration.status !== "retired") {
-    await updateRegistrationStatus(client, pair.registration.id, "retired");
-    pair.registration.status = "retired";
+    pair.registration = await updateRegistrationStatus(client, pair.registration.id, "retired");
   }
   await commitIdempotency(client, command, pair.registration.id);
   return {
     ok: true,
-    value: toResult(pair.registration, pair.placement, command, fingerprint, "committed"),
+    value: toResult(pair.registration, pair.placement, command, fingerprint, "committed", previousStatus),
   };
 };
 
@@ -226,14 +232,17 @@ const writeRestore = async (
   if (!pair) {
     return fail({ kind: "registration-not-found", registrationId: command.registrationId });
   }
+  if (command.expectedRegistrationVersion !== undefined && command.expectedRegistrationVersion !== `${pair.registration.status}:${pair.registration.version}`) {
+    return fail({ kind: "registration-conflict", registrationId: pair.registration.id });
+  }
+  const previousStatus = pair.registration.status;
   if (pair.registration.status !== "active") {
-    await updateRegistrationStatus(client, pair.registration.id, "active");
-    pair.registration.status = "active";
+    pair.registration = await updateRegistrationStatus(client, pair.registration.id, "active");
   }
   await commitIdempotency(client, command, pair.registration.id);
   return {
     ok: true,
-    value: toResult(pair.registration, pair.placement, command, fingerprint, "committed"),
+    value: toResult(pair.registration, pair.placement, command, fingerprint, "committed", previousStatus),
   };
 };
 

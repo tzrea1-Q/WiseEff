@@ -56,6 +56,8 @@ export type RetireRegistrationCommand = {
   readonly organizationId: string;
   readonly registrationId: SubjectRegistrationId;
   readonly expectedRelease: CatalogReleasePin;
+  /** Status and exact timestamp captured from the current Registration ETag. */
+  readonly expectedRegistrationVersion?: string;
   readonly idempotencyKey: string;
   readonly context: TrustedInvocationContext;
   readonly reason: string;
@@ -66,6 +68,7 @@ export type RestoreRegistrationCommand = {
   readonly organizationId: string;
   readonly registrationId: SubjectRegistrationId;
   readonly expectedRelease: CatalogReleasePin;
+  readonly expectedRegistrationVersion?: string;
   readonly idempotencyKey: string;
   readonly context: TrustedInvocationContext;
   readonly reason: string;
@@ -167,6 +170,9 @@ export const validateRegistrationCommand = (
   if (!controlFree(command.reason)) {
     return invalid("reason");
   }
+  if (command.expectedRegistrationVersion !== undefined && !/^(active|retired):\d+$/.test(command.expectedRegistrationVersion)) {
+    return invalid("expectedRegistrationVersion");
+  }
   return { ok: true, value: command };
 };
 
@@ -223,6 +229,9 @@ const commandFingerprintModel = (command: RegistrationCommand): ContractJsonValu
         registrationId: command.registrationId,
         expectedRelease: release,
         reason: command.reason,
+        ...(command.expectedRegistrationVersion !== undefined
+          ? { expectedRegistrationVersion: command.expectedRegistrationVersion }
+          : {}),
         context: actor,
       };
   }

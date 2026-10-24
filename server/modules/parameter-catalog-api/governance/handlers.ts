@@ -394,6 +394,7 @@ function mapRegistrationFailure(
     case "placement-conflict":
       return conflict(requestId, "placement-conflict");
     case "revision-conflict":
+    case "registration-conflict":
       return revisionConflict(requestId);
     case "auto-restore-forbidden":
     case "restore-required":
@@ -654,11 +655,19 @@ async function handleRetireOrRestore(
   }
   const context = registrationContext(scope, request.requestId);
   if (!context) return forbidden(request.requestId);
+  const offered = ifMatchHeader(request.headers) ?? "";
+  const prefix = `${registrationId}:`;
+  const token = unquoteEtag(offered);
+  const expectedRegistrationVersion = token.startsWith(prefix) ? token.slice(prefix.length) : "";
+  if (!/^(active|retired):\d+$/.test(expectedRegistrationVersion) || offered !== `"${prefix}${expectedRegistrationVersion}"`) {
+    return revisionConflict(request.requestId);
+  }
   const command: RegistrationCommand = {
     kind,
     organizationId: request.params.organizationId ?? scope.organizationId,
     registrationId,
     expectedRelease: pin.pin,
+    expectedRegistrationVersion,
     idempotencyKey,
     context,
     reason: parsed.data.reason,

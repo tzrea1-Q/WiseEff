@@ -200,6 +200,18 @@ describe("definition owner lifecycle filtering", () => {
     }
   });
 
+  it("passes not-retired to the registration selection before counting or paging", async () => {
+    const { ports, definitions } = lifecycleHarness(4);
+    const select = vi.fn(async () => ({ kind: "only" as const,
+      ids: definitions.slice(2).map((item) => item.id), fingerprint: "without-org-retired" }));
+    const result = await handleCatalogRead({ ...ports, registration: { ...ports.registration, selectDefinitionIds: select } }, get("/api/v2/catalog/definitions", {
+      query: { registration: "not-retired", limit: "1" },
+    }));
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({ totalCount: 2, hasMore: true, items: [{ subject: { id: "csub_owner_2" } }] });
+    expect(select).toHaveBeenCalledWith(expect.objectContaining({ registration: "not-retired", catalogDefinitions: expect.arrayContaining(definitions.map((item) => ({ id: item.id, subjectId: item.subjectId }))) }));
+  });
+
   it("distinguishes owner retirement from the definition lifecycle and keeps direct subject scope", async () => {
     const { ports } = lifecycleHarness();
     const retired = await handleCatalogRead(ports, get("/api/v2/catalog/definitions", {

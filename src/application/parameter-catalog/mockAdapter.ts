@@ -352,6 +352,7 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       }
       const items =
         (query?.search && query.search !== store.definition.propertyKey) ||
+        (query?.registration === "not-retired" && store.subject.registration.status === "retired") ||
         (query?.subjectLifecycle && query.subjectLifecycle !== store.subject.membership.status)
           ? [] : [store.definition];
       return collection(items, items.length === 0 ? "no-filter-match" : undefined);
@@ -761,6 +762,8 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       }
       return replayOrStore(store, "retireRegistration", write, parsed, () => {
         store.registration = { ...store.registration!, status: "retired" };
+        store.subject = { ...store.subject, registration: { ...projectRegistration(store.registration), status: "retired", method: store.registration.method } };
+        store.definition = { ...store.definition, registration: store.subject.registration };
         return { item: clone(store.registration) };
       });
     },
@@ -781,6 +784,8 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
           ...store.registration!,
           status: "active"
         };
+        store.subject = { ...store.subject, registration: { ...projectRegistration(store.registration), status: "active", method: store.registration.method } };
+        store.definition = { ...store.definition, registration: store.subject.registration };
         return { item: clone(store.registration) };
       });
     },

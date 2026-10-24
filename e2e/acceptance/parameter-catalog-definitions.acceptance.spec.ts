@@ -68,7 +68,7 @@ test.describe("restored definition workspace and governed authoring", () => {
     const historicalPage = catalogDefinitionListResponseSchema.parse(historical.body);
     expect(historicalPage.items.some((item) => item.id === fixture.xDefinitionId && item.subject.id === fixture.powerSubjectId)).toBe(true);
     expect(historicalPage.totalCount).toBeGreaterThan(activePage.totalCount);
-    const includeRetired = region.getByRole("checkbox", { name: "包含退役主体" });
+    const includeRetired = region.getByRole("checkbox", { name: "包含已停用和退役主体" });
     await expect(includeRetired).not.toBeChecked();
     await expect(region.getByRole("status", { name: "结果计数" })).toContainText(`共 ${activePage.totalCount} 项`);
     await includeRetired.check();
@@ -94,6 +94,16 @@ test.describe("restored definition workspace and governed authoring", () => {
     await expect(count).toContainText(/共 \d+ 项/);
 
     const navigator = region.getByRole("navigation", { name: "参数定义模块树" });
+    const registryResponse = await catalogJson(page.request, "GET", "/api/v2/parameter-modules");
+    expect(registryResponse.status).toBe(200);
+    const modules = (registryResponse.body as { item: { modules: Array<{
+      id: string; name: string; parentId: string | null; sortOrder: number;
+    }> } }).item.modules;
+    const moduleIds = new Set(modules.map(module => module.id));
+    const roots = modules.filter(module => !module.parentId || !moduleIds.has(module.parentId))
+      .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name));
+    await expect(navigator.locator(":scope > ul > li > .parameter-catalog__tree-row [data-catalog-node-kind='module'] .parameter-catalog__tree-label"))
+      .toHaveText(roots.map(module => module.name));
     // The navigator is one tree; its module branches scope the collection and its
     // subject leaves select a single subject.
     const moduleOption = navigator.locator('[data-catalog-node-kind="module"]').first();

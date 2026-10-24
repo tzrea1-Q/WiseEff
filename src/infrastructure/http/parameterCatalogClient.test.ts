@@ -7,6 +7,7 @@ import {
   parameterCatalogClientMethodByRouteId
 } from "@wiseeff/dto-schemas";
 import { WiseEffApiError } from "./apiClient";
+import { catalogRegistration } from "@/application/parameter-catalog/fixtures";
 import { createApiParameterCatalogGovernanceRepository, createApiParameterCatalogRepository } from "../../application/parameter-catalog/apiAdapter";
 import {
   catalogFailureClientBehavior,
@@ -253,6 +254,17 @@ describe("parameter catalog client contract", () => {
 
     const init = fetchMock.mock.calls[1]?.[1] as RequestInit;
     expect((init.headers as Record<string, string>)["If-Match"]).toBe("etag-before");
+  });
+
+  it("preserves the registration version through the API repository for lifecycle confirmation", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ item: catalogRegistration, etag: '"registration-v1"' }))
+      .mockResolvedValueOnce(jsonResponse({ item: catalogRegistration }, 200, { ETag: '"registration-v2"' }));
+    const repository = createApiParameterCatalogGovernanceRepository(createParameterCatalogClient({ fetchImpl }));
+    await expect(repository.getRegistration(catalogRegistration.organizationId, catalogRegistration.id))
+      .resolves.toMatchObject({ item: catalogRegistration, etag: '"registration-v1"' });
+    await expect(repository.getRegistration(catalogRegistration.organizationId, catalogRegistration.id))
+      .resolves.toMatchObject({ item: catalogRegistration, etag: '"registration-v2"' });
   });
 
   it("posts a typed ChangeSet to publication-candidates with the catalog release header", async () => {

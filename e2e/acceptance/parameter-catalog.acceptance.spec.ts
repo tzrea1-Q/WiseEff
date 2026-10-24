@@ -80,7 +80,7 @@ test.describe("canonical parameter catalog page", () => {
       await route.continue();
     });
     await openCatalogViaNav(page, "org-admin");
-    await page.getByRole("checkbox", { name: "包含退役主体" }).check();
+    await page.getByRole("checkbox", { name: "包含已停用和退役主体" }).check();
     await selectCatalogSubject(page, "acme,power");
     await selectDefinitionByKey(page, "iin_max");
     await expect(page).toHaveURL(new RegExp(`subjectId=${fixture.powerSubjectId}`));
@@ -361,7 +361,7 @@ test.describe("canonical parameter catalog page", () => {
     await expect(page.getByText(catalogUiCopy.emptyMessages["no-filter-match"]).first()).toBeVisible();
 
     await selectCatalogSubject(page, "charger");
-    await page.getByRole("checkbox", { name: "包含退役主体" }).check();
+    await page.getByRole("checkbox", { name: "包含已停用和退役主体" }).check();
     await waitForCatalogState(page, "ready");
     await expect(page.getByRole("table", { name: "参数定义列表" })).toBeVisible();
     // UI-state simulation: this published fixture has definitions. Exercise a
