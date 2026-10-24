@@ -1,6 +1,6 @@
 # 组织管理整体设计：操作范围、协作与生命周期
 
-> 状态：**已接受设计，实施进入整体验收**——Q1–Q20 及完整方案（Q21）已于 2026-10-23 确认。第 1–32 票已集成，包括混合删除与恢复；#1401 补完整运营场景及使用文档。候选 CI、构建和独立审查仍是交付要求，实际进度见[实施计划](../exec-plans/active/2026-10-23-organization-management.md)。
+> 状态：**已接受设计，实施进入整体验收**——Q1–Q20 及完整方案（Q21）已于 2026-10-23 确认。33 票已全部集成，包括混合删除与恢复、完整运营场景及使用文档。当前候选 CI 和独立审查仍是交付要求，实际进度见[实施计划](../exec-plans/active/2026-10-23-organization-management.md)。
 > English: [Organization management design](../../design-docs/2026-10-23-organization-management-design.md)
 > 决策记录：[ADR-0051](adr-0051-organization-provisioning-and-member-admission.md)
 > 已发布规格：[GitHub Issue #1368](https://github.com/tzrea1-Q/WiseEff/issues/1368)，标签 `ready-for-agent`。

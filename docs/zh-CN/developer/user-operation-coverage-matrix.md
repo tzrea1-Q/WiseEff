@@ -6,6 +6,8 @@
 
 ## 使用方式
 
+`ORG-OPERATING-LIFECYCLE-001`（P1，`coverage: conditional`）：实际本地密码身份在 `/platform/organizations` 连续完成组织创建、邀请、团队及项目授权、离职交接、调动、停用恢复与故障可重试的混合删除。证据包括界面、API、数据库、真实操作者审计及 1440×900 截图；后台专项另覆盖 API/worker SQL LOGIN、真实文件、本机回调及新连接继续。该流程需要隔离的 local 认证环境，HMAC/OIDC 模式跳过；`ORG-OIDC-TRANSFER-001` 单独以受控签名/JWKS 验证调动后的声明、同步和停用恢复，不把默认 HMAC CI 或本机身份提供方声明为部署验收。
+
 `ORG-MIXED-ERASURE-RECOVERY-001`（P1，`coverage: automated`）：平台管理员确认实际四域混合组织，观察日志对象故障并重试，完成后仅显示编号、操作者、时间、数量和结果。恢复专项使用真实旧 PostgreSQL、文件及独立 Agent 检查点备份，验证已删除和失败状态重放、身份/未知归属拒绝及既有队列/代理开放边界；不把本地验证宣称为整栈 MinIO/Redis 或目标主机恢复验收。
 
 `ORG-PARAMETER-ERASURE-001`、`ORG-KNOWLEDGE-ERASURE-001`、`ORG-LOG-ERASURE-001`、`ORG-RUNTIME-ERASURE-001`（均为 P1，`coverage: automated`）：平台管理员通过 `/platform/organizations` 的编号确认，分别清理实际项目参数文件、知识附件和索引、日志与排队分析、运行状态与反馈文件。1440×900 API 浏览器检查真实故障显示、独立记录重试和物理文件消失；各领域真实 PostgreSQL/API/存储专项覆盖并发生产者、丢失响应、共享对象和他组织引用保留。运行状态专项另验证实际检查点存储、设备连接及跨组织通知投影；浏览器覆盖实际反馈文件和通知，不把浏览器结果当作全部后台协议的证明。跨领域最终回执和备份恢复由后续组合验收单独覆盖。

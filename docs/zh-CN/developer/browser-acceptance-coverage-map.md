@@ -6,6 +6,8 @@
 
 ## 使用方式
 
+`ORG-OPERATING-LIFECYCLE-001`：在隔离的真实本地密码 API 模式、1440×900 下，以平台管理员、组织管理员、受邀编辑者、非参与者、离职和调动账号连续完成创建、邀请预设、明确项目授权、交接、调动、停用恢复及混合删除。实际文件故障后刷新页面仍能重试并收敛为最小回执；其他认证模式明确跳过本地密码流程，受控签名 OIDC 连续性另有独立证据。真实 API/worker SQL LOGIN、PostgreSQL、文件和本机 HTTP 回调另验停用期间暂停、恢复继续及新连接重试。文件为 `e2e/acceptance/organization-operational-lifecycle.acceptance.spec.ts` 和 `server/modules/users/organizationOperationalLifecycle.integration.test.ts`。
+
 `ORG-MIXED-ERASURE-RECOVERY-001`：1440×900 API 浏览器确认四域混合组织删除，显示真实对象故障、继续清理并检查最小回执。真实 API/PostgreSQL、文件与独立检查点专项另行恢复已删除、失败两种旧备份，验证先落实删除状态、再开放访问；实际存储身份不符或归属未知时拒绝开放。现有升级包装测试核对队列、代理的开放顺序；整栈 MinIO/Redis 及目标主机恢复属于单独证据。文件为 `e2e/acceptance/organization-mixed-erasure.acceptance.spec.ts`、`server/modules/users/organizationMixedErasure.integration.test.ts` 和 `ops/self-hosted/scripts/upgrade-organization-erasure-recovery.test.ts`。
 
 `ORG-PARAMETER-ERASURE-001`、`ORG-KNOWLEDGE-ERASURE-001`、`ORG-LOG-ERASURE-001`、`ORG-RUNTIME-ERASURE-001`：在 1440×900 的真实 API 模式组织目录中，分别确认项目参数文件、知识附件/索引、日志/排队分析、反馈文件/跨组织通知清理。每个专属浏览器文件覆盖真实故障和持久进度重试；真实 PostgreSQL 与实际存储专项另外覆盖共享引用、响应丢失、晚到生产者、检查点存储、设备连接和真实 HTTP 回调，不用单个浏览器操作代替这些后台证明。对应文件为 `e2e/acceptance/organization-{parameter,knowledge,log,runtime}-erasure.acceptance.spec.ts`。

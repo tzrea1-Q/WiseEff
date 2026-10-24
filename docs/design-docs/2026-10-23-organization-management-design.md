@@ -1,6 +1,6 @@
 # Organization management: operating scope, collaboration and lifecycle
 
-> Status: **Accepted design, implementation in acceptance** — Q1–Q20 and the complete design (Q21) were confirmed on 2026-10-23. Slices 1–32, including mixed erasure/recovery, are integrated; #1401 adds the complete operational scenario and user documentation. Candidate CI, build and independent review remain delivery gates tracked in the [implementation plan](../exec-plans/active/2026-10-23-organization-management.md).
+> Status: **Accepted design, implementation in acceptance** — Q1–Q20 and the complete design (Q21) were confirmed on 2026-10-23. All 33 slices are integrated, including mixed erasure/recovery, the complete operational scenario and user documentation. Current-candidate CI and independent review remain delivery gates tracked in the [implementation plan](../exec-plans/active/2026-10-23-organization-management.md).
 > Chinese: [组织管理整体设计](../zh-CN/design-docs/2026-10-23-organization-management-design.md)
 > Decisions: [ADR-0051](../adr/0051-organization-provisioning-and-member-admission.md)
 > Published specification: [GitHub Issue #1368](https://github.com/tzrea1-Q/WiseEff/issues/1368), labelled `ready-for-agent`.
