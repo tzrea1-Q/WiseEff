@@ -15,7 +15,7 @@ export const createPlatformOrganizationSchema = z.object({
   ])
 }).strict();
 export const platformOrganizationSchema = z.object({
-  id: z.string(), name: z.string(), createdAt: z.string(), status: z.enum(["active", "suspended"]),
+  id: z.string(), name: z.string(), createdAt: z.string(), status: z.enum(["active", "suspended", "deleting"]),
   administrators: z.array(z.object({ id: z.string(), name: z.string(), isActive: z.boolean(), canLogin: z.boolean() }).strict())
 }).strict();
 export const recoverOrganizationAdministratorSchema = z.union([

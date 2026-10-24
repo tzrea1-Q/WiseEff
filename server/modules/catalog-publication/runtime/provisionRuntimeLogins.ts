@@ -456,6 +456,10 @@ export async function provisionPublicationRuntimeLogins(
       }
       await revokePublicDml(admin, names.manager);
       await grantPublicSelect(admin, names.manager);
+      const organizationErasures = await admin.query<{ exists: boolean }>("select to_regclass('public.organization_erasures') is not null as exists");
+      if (organizationErasures.rows[0]?.exists) {
+        await admin.query(`revoke all on public.organization_erasures from ${quoteIdent(names.worker)}, ${quoteIdent(names.manager)}`);
+      }
       await revokeLegacyStructuralDml(admin, [names.api, names.worker, names.manager]);
 
       await revokeSchemaAccess(admin, names.worker, "parameter_catalog");

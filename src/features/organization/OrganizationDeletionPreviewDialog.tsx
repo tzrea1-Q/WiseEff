@@ -13,8 +13,9 @@ const categories: Record<string, string> = {
   "shared-references": "保留的共享资源关联", "platform-catalog": "平台共享 Catalog（保留）", unclassified: "尚未核实归属的关系"
 };
 
-export function OrganizationDeletionPreviewDialog({ organizationId, client, onClose, onNavigate }: {
+export function OrganizationDeletionPreviewDialog({ organizationId, client, onClose, onNavigate, onRequestDelete }: {
   organizationId: string; client: Pick<PlatformOrganizationsClient, "previewDeletion">; onClose: () => void; onNavigate: (path: string) => void;
+  onRequestDelete?: (preview: OrganizationDeletionPreview) => void;
 }) {
   const [preview, setPreview] = useState<OrganizationDeletionPreview | null>(null), [error, setError] = useState("");
   const [loading, setLoading] = useState(true), [attempt, setAttempt] = useState(0);
@@ -27,11 +28,13 @@ export function OrganizationDeletionPreviewDialog({ organizationId, client, onCl
     return () => { cancelled = true; };
   }, [client, organizationId, attempt]);
   const counts = preview?.inventory.reduce<Record<string, number>>((result, row) => { result[row.category] = (result[row.category] ?? 0) + row.count; return result; }, {});
+  const managementOnly = preview && !preview.inventory.some(item => item.count && !["accounts", "teams-invitations", "audit", "platform-catalog"].includes(item.category)) && !preview.storage.exclusiveObjects && !preview.storage.sharedObjects;
   return <ModalDialog open onDismiss={onClose} className="platform-organizations__dialog modal-card--lg">
     {({ titleId }) => <><h3 id={titleId}>组织删除影响预览</h3>
       {loading ? <SectionSkeleton label="正在核对组织删除影响" /> : error ? <SectionError message={error} onRetry={() => setAttempt(value => value + 1)} /> : preview ? <>
         <p><strong>{preview.organizationName}</strong>（{preview.organizationId}）</p>
         <p>本页仅查看影响，不会执行删除。需保留的平台账号请先调离。</p>
+        {onRequestDelete && !managementOnly ? <p>此组织仍关联业务资产或共享来源记录，目前无法执行彻底删除。成员、团队、邀请和管理记录可随空组织一起清理。</p> : null}
         {preview.blockers.length ? <div role="status"><strong>执行前需处理</strong><ul>{preview.blockers.map(item => <li key={item.code}>{item.message}</li>)}</ul></div> : null}
         <p>下列数量包含历史及关联记录；尚未核实的归属按关系项计数。</p>
         <dl className="platform-organizations__details" aria-label="组织删除影响数量">
@@ -48,6 +51,7 @@ export function OrganizationDeletionPreviewDialog({ organizationId, client, onCl
         <section aria-label="删除边界"><h4>保留范围与恢复边界</h4><ul>{preview.notes.slice(2).map(note => <li key={note}>{note}</li>)}</ul></section>
       </> : null}
       <div className="platform-organizations__actions">
+        {preview && onRequestDelete && preview.admissionAvailable && managementOnly && ["active", "suspended"].includes(preview.status) ? <Button variant="destructive" onClick={() => onRequestDelete(preview)}>开始彻底删除</Button> : null}
         <Button variant="outline" disabled={loading} onClick={() => setAttempt(value => value + 1)}>刷新影响</Button>
         <Button variant="outline" onClick={() => onNavigate(`/organization/members?organizationId=${encodeURIComponent(organizationId)}`)}>管理与调动成员</Button>
         <Button onClick={onClose}>关闭预览</Button>
