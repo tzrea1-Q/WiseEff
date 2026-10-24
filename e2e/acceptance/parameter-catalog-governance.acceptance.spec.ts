@@ -281,4 +281,83 @@ test.describe("canonical parameter catalog governance interactions", () => {
     expect(userWrite.status).toBe(403);
     await catalogScreenshot(page, testInfo, "pcat-ui-15-journey");
   });
+
+  test("adjusts a subject placement without randomUUID, reports preparation failures and persists an explicit retry", async ({ page }, testInfo) => {
+    // Model the missing capability on ordinary HTTP while retaining Chromium's
+    // real getRandomValues and the real API/database behind the page.
+    await page.addInitScript(() => {
+      Object.defineProperty(crypto, "randomUUID", { configurable: true, value: undefined });
+    });
+    const targetModuleId = "pmod-http-placement-target";
+    const targetName = "HTTP 归属调整目标";
+    await fixture.pool.query(
+      `insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin, attribution_subject_id)
+       select $1, organization_id, $2, $1, 1, kind, origin, attribution_subject_id
+       from public.parameter_modules where id = 'pmod-op08-driver'`,
+      [targetModuleId, targetName]
+    );
+    const subject = await catalogJson(page.request, "GET", `/api/v2/catalog/subjects/${fixture.sensorSubjectId}`);
+    expect(subject.status).toBe(200);
+    const subjectItem = (subject.body as { item: { canonicalName: string; registration: { status: string; id?: string } } }).item;
+    let registrationId = subjectItem.registration.id;
+    if (subjectItem.registration.status !== "active") {
+      const registration = await catalogJson(page.request, "POST", `/api/v2/organizations/${fixture.organizationId}/subject-registrations`, {
+        headers: { "X-WiseEff-Catalog-Release": fixture.chain.pinF.id, "Idempotency-Key": `http-placement-register:${Date.now()}` },
+        data: { subjectId: fixture.sensorSubjectId, destinationModuleId: "pmod-op08-driver", placement: { mode: "use-default" }, reason: "HTTP placement browser fixture" }
+      });
+      expect(registration.status).toBe(201);
+      registrationId = (registration.body as { item: { id: string } }).item.id;
+    }
+    expect(registrationId).toBeTruthy();
+    const path = `/api/v2/organizations/${fixture.organizationId}/subject-registrations/${registrationId}/placement`;
+    const initial = await catalogJson(page.request, "GET", path);
+    expect(initial.status).toBe(200);
+    const modulesUrl = `/parameter-admin/modules?subjectQ=${encodeURIComponent(subjectItem.canonicalName)}`;
+    await signInCatalogActor(page, "org-admin", modulesUrl);
+    expect(await page.evaluate(() => ({ uuid: typeof crypto.randomUUID, random: typeof crypto.getRandomValues })))
+      .toEqual({ uuid: "undefined", random: "function" });
+    const row = page.locator(`[data-canonical-subject-id="${fixture.sensorSubjectId}"]`);
+    await row.getByRole("button", { name: /^调整归属：/ }).click();
+    const dialog = page.getByRole("dialog", { name: "调整放置", exact: true });
+    await selectControlOption(dialog.getByRole("combobox", { name: "目标模块" }), targetModuleId);
+    const writes: string[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "PATCH" && new URL(request.url()).pathname === path) writes.push(request.url());
+    });
+    await page.evaluate(() => {
+      Object.defineProperty(crypto, "getRandomValues", { configurable: true, value: () => { throw new Error("random source unavailable"); } });
+    });
+    await dialog.getByRole("button", { name: "继续确认" }).click();
+    await confirmGovernanceDialog(page, "确认调整放置");
+    await expect(dialog.getByRole("alert")).toContainText("目录写入失败，请稍后重试。");
+    expect(writes).toHaveLength(0);
+    await expect(dialog.getByRole("combobox", { name: "目标模块" })).toHaveAttribute("data-value", targetModuleId);
+    await catalogScreenshot(page, testInfo, "http-placement-preparation-failure-1440x900");
+
+    await page.evaluate(() => { Reflect.deleteProperty(crypto, "getRandomValues"); });
+    await dialog.getByRole("button", { name: "继续确认" }).click();
+    const confirmation = page.getByRole("dialog", { name: "确认调整放置", exact: true });
+    const confirm = confirmation.getByRole("button", { name: "确认调整放置", exact: true });
+    await expect(confirm).toBeDisabled();
+    await confirmation.getByRole("checkbox").focus();
+    await page.keyboard.press("Space");
+    const saved = page.waitForResponse((response) => response.request().method() === "PATCH" && new URL(response.url()).pathname === path);
+    await confirm.press("Enter");
+    const response = await saved;
+    expect(response.status(), await response.text()).toBe(200);
+    const headers = response.request().headers();
+    expect(headers["if-match"]).toBe(initial.headers.etag);
+    expect(headers["x-wiseeff-catalog-release"]).toBe(fixture.chain.pinF.id);
+    expect(headers["idempotency-key"]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(response.request().postDataJSON()).toMatchObject({ destinationModuleId: targetModuleId });
+    expect(writes).toHaveLength(1);
+    await expect(dialog).toHaveCount(0);
+    const persisted = await catalogJson(page.request, "GET", path);
+    expect(persisted.status).toBe(200);
+    expect((persisted.body as { item: { moduleId: string } }).item.moduleId).toBe(targetModuleId);
+    await expect(row).toContainText(targetName);
+    await page.reload();
+    await expect(row).toContainText(targetName);
+    await catalogScreenshot(page, testInfo, "http-placement-persisted-1440x900");
+  });
 });

@@ -1,7 +1,7 @@
 import { selectControlOption } from "@/test/selectControlOption";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CATALOG_ORGANIZATION_ID,
@@ -22,6 +22,7 @@ import type { CatalogDomainState } from "@/application/parameter-catalog/states"
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 
 import { RegistrationDialog } from "./RegistrationDialog";
+import { createGovernanceIdempotencyKey } from "./governanceState";
 import { CatalogOrganizationSurface } from "./CatalogOrganizationSurface";
 import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 
@@ -86,6 +87,69 @@ async function confirmWrite(confirmName: string) {
 }
 
 describe("RegistrationDialog", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("confirms the selected placement once on HTTP without randomUUID and retains write preconditions", async () => {
+    vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
+    const repository = createMockParameterCatalogGovernanceRepository();
+    const onCompleted = vi.fn();
+    const { updatePlacement } = renderDialog({
+      repository, domainState: ready, intent: "update-placement", ifMatch: "etag-reg",
+      moduleOptions: [{ id: "source", displayName: "原模块" }, { id: "target", displayName: "目标模块" }],
+      initialDestinationModuleId: "source", createIdempotencyKey: createGovernanceIdempotencyKey, onCompleted
+    });
+    let release!: (value: Awaited<ReturnType<ParameterCatalogGovernanceRepository["updatePlacement"]>>) => void;
+    updatePlacement.mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+    const user = userEvent.setup();
+    await selectControlOption(screen.getByLabelText("目标模块"), "target");
+    await user.click(screen.getByRole("button", { name: "继续确认" }));
+    const confirmation = screen.getByRole("dialog", { name: "确认调整放置" });
+    const confirm = within(confirmation).getByRole("button", { name: "确认调整放置" });
+    expect(confirm).toBeDisabled();
+    await user.click(within(confirmation).getByRole("checkbox"));
+    // Deliver both clicks before React commits pending, exercising the gate's
+    // synchronous protection as well as the rendered disabled state.
+    act(() => { confirm.click(); confirm.click(); });
+
+    expect(updatePlacement).toHaveBeenCalledExactlyOnceWith(
+      CATALOG_ORGANIZATION_ID, CATALOG_REGISTRATION_ID,
+      { placement: { mode: "use-default" }, destinationModuleId: "target" },
+      { catalogReleaseId: CATALOG_RELEASE_ID, ifMatch: "etag-reg",
+        idempotencyKey: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/) }
+    );
+    expect(within(confirmation).getByRole("button", { name: "处理中…" })).toBeDisabled();
+    await act(async () => { release({ item: catalogRegistration.placement }); });
+    expect(onCompleted).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows preparation failures without writing, retains the target and permits an explicitly reconfirmed retry", async () => {
+    const createIdempotencyKey = vi.fn()
+      .mockImplementationOnce(() => { throw new Error("secure random source failed"); })
+      .mockReturnValue("retry-key");
+    const { updatePlacement } = renderDialog({
+      repository: createMockParameterCatalogGovernanceRepository(), domainState: ready,
+      intent: "update-placement", ifMatch: "etag-reg", createIdempotencyKey,
+      moduleOptions: [{ id: "source", displayName: "原模块" }, { id: "target", displayName: "目标模块" }],
+      initialDestinationModuleId: "source"
+    });
+    await selectControlOption(screen.getByLabelText("目标模块"), "target");
+    await confirmWrite("确认调整放置");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("目录写入失败，请稍后重试。");
+    expect(updatePlacement).not.toHaveBeenCalled();
+    expect(createIdempotencyKey).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText("目标模块")).toHaveAttribute("data-value", "target");
+    expect(screen.queryByRole("dialog", { name: "确认调整放置" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "继续确认" })).toBeEnabled();
+
+    await confirmWrite("确认调整放置");
+    await waitFor(() => expect(updatePlacement).toHaveBeenCalledOnce());
+    expect(updatePlacement.mock.calls[0]?.[3]).toEqual({
+      catalogReleaseId: CATALOG_RELEASE_ID, ifMatch: "etag-reg", idempotencyKey: "retry-key"
+    });
+  });
+
   it("initializes a typed destination only after an explicit business parent, name and confirmation", async () => {
     const { createRegistration } = renderDialog({ newDestinationParents: [{ id: "parent-business", displayName: "电源 / 充电" }] });
     const user = userEvent.setup();
