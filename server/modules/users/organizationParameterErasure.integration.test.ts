@@ -98,7 +98,7 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
     expect((await db.query("select id from projects where id=$1", [project])).rows).toEqual([]);
     expect((await store.get(uploaded.version.storageKey)).toString()).toBe('{"limit":42}');
     const retried = await request<typeof started.body>(`/api/v1/platform/organization-deletions/${started.body.item.id}/retry`, "POST");
-    expect(retried.body.item.status, retried.body).toBe("deleted");
+    expect(retried.body.item.status, retried.bodyText).toBe("deleted");
     await expect(store.get(uploaded.version.storageKey)).rejects.toMatchObject({ code: "ENOENT" });
   });
   it("keeps global Definition cleanup discoverable after its original account and Home vanish", async () => {
