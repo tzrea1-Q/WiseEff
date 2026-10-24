@@ -361,6 +361,8 @@ export function collectConsistencyMeasurements() {
       saveBars: [...form.querySelectorAll(".settings-form-page__save-bar")].filter(visible).map((bar) => ({
         position: getComputedStyle(bar).position, bottom: Number.parseFloat(getComputedStyle(bar).bottom),
         primaryCount: bar.querySelectorAll('[data-variant="default"]').length,
+        buttonCount: bar.querySelectorAll("button").length,
+        saveDisabled: bar.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled ?? false,
         saveLabel: bar.querySelector('button[type="submit"]')?.textContent?.trim() ?? "",
         discardLabel: bar.querySelector('button[type="button"]')?.textContent?.trim() ?? ""
       }))

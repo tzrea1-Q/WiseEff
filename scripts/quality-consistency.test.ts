@@ -113,7 +113,7 @@ describe("settings form layout contract", () => {
   const form = { dom: "form", rect: { left: 100, right: 1060, top: 100, bottom: 800, width: 960, height: 700 },
     maxWidth: 960, widthToken: 960, direction: "column", sectionCount: 2, titledSections: 2, helpedSections: 2,
     dirty: false, saveBars: [] };
-  const bar = { position: "sticky", bottom: 16, primaryCount: 1, saveLabel: "保存", discardLabel: "放弃" };
+  const bar = { position: "sticky", bottom: 16, primaryCount: 1, saveLabel: "保存", discardLabel: "放弃", buttonCount: 2, saveDisabled: false };
   it("collects section help and dirty actions, and requires coverage on all three routes", () => {
     const measurements = collectMarkup(`<form class="settings-form-page" data-settings-dirty="true" style="display:flex;flex-direction:column;max-width:960px">
       <section class="settings-form-page__section"><header><h2>设置</h2><p>说明</p></header></section>
@@ -128,6 +128,16 @@ describe("settings form layout contract", () => {
   it("accepts clean single-column forms and dirty forms with the shared save bar", () => {
     expect(() => requireSettingsFormPresentation([form], "/organization")).not.toThrow();
     expect(() => requireSettingsFormPresentation([{ ...form, dirty: true, saveBars: [bar] }], "/organization")).not.toThrow();
+  });
+  it("requires a disabled clean save entry only on reload settings and keeps dirty discard actions", () => {
+    const idleBar = { ...bar, discardLabel: "", buttonCount: 1, saveDisabled: true };
+    expect(() => requireSettingsFormPresentation([{ ...form, saveBars: [idleBar] }], "/debugging-admin")).not.toThrow();
+    expect(() => requireSettingsFormPresentation([{ ...form, dirty: true, saveBars: [bar] }], "/debugging-admin")).not.toThrow();
+    expect(() => requireSettingsFormPresentation([form], "/debugging-admin")).toThrow(/save/);
+    for (const invalid of [{ ...idleBar, saveDisabled: false }, { ...idleBar, buttonCount: 2 }, { ...idleBar, discardLabel: "放弃" }]) {
+      expect(() => requireSettingsFormPresentation([{ ...form, saveBars: [invalid] }], "/debugging-admin")).toThrow(/save/);
+    }
+    expect(() => requireSettingsFormPresentation([{ ...form, saveBars: [idleBar] }], "/organization")).toThrow(/save/);
   });
   it("rejects absent coverage, untitled sections, non-token widths and non-sticky or missing save actions", () => {
     for (const forms of [[], [form, form], [{ ...form, sectionCount: 0 }], [{ ...form, helpedSections: 1 }],
