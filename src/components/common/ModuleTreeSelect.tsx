@@ -125,7 +125,8 @@ export function ModuleTreeSelect({
       setOpen(false);
     };
     const handleReposition = () => updateMenuPosition();
-    const handleScroll = () => {
+    const handleScroll = (event: Event) => {
+      if (event.target instanceof Node && menuRef.current?.contains(event.target)) return;
       if (portalMenu) setOpen(false);
     };
     const handleEscape = (event: KeyboardEvent) => {
