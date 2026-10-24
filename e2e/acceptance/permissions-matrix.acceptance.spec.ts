@@ -83,11 +83,11 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
       }
 
       await navigateWithinApp(page, "/parameter-home");
-      await expect(page.getByRole("button", { name: "平台控制台", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "平台控制台", exact: true })).toHaveCount(0);
       await navigateWithinApp(page, "/platform-console");
       // @acceptance PLAT-ROLE-001
       // @operation PLAT-ROLE-001
-      await expect(page.getByRole("button", { name: "平台控制台", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "平台控制台", exact: true })).toHaveCount(0);
       await expect(page.getByRole("region", { name: "平台控制台", exact: true })).toHaveCount(0);
       await expect(page.getByRole("heading", { name: "让业务流程更智能、更高效、更可控" })).toBeVisible();
 

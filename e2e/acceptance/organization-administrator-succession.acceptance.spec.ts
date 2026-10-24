@@ -142,7 +142,10 @@ test.describe("organization administrator succession with actual local login", (
     await page.getByRole("link", { name: "打开雷泽工作台", exact: true }).click();
     await expect(page).toHaveURL(/\/parameter-home$/);
     await prepareInteractionSurface(page);
-    await expect(page.getByRole("button", { name: "组织管理", exact: true })).toHaveCount(0);
+    await page.getByRole("link", { name: "组织管理", exact: true }).click();
+    await page.getByRole("navigation", { name: "组织管理范围" }).getByRole("button", { name: "成员与权限", exact: true }).click();
+    await expect(page.getByText("此区域由组织管理员维护", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "添加用户", exact: true })).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath("administrator-self-handover-permissions-refreshed-1440.png"), animations: "disabled" });
   });
 });

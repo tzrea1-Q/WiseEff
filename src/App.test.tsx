@@ -73,13 +73,13 @@ it("waits for the settings leave dialog before changing a shell route", async ()
   window.history.replaceState(null, "", "/organization/settings");
   renderApp({ initialAppState: adminState });
   render(<SettingsFormPage label="未保存设置" dirty onSave={vi.fn()} onDiscard={vi.fn()}>未保存的草稿</SettingsFormPage>);
-  fireEvent.click(await screen.findByRole("button", { name: "成员与权限" }));
+  fireEvent.click(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "项目参数" }));
   expect(window.location.pathname).toBe("/organization/settings");
   fireEvent.click(within(screen.getByRole("dialog", { name: "放弃未保存的更改？" })).getByRole("button", { name: "继续编辑" }));
   expect(window.location.pathname).toBe("/organization/settings");
-  fireEvent.click(screen.getByRole("button", { name: "成员与权限" }));
+  fireEvent.click(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "项目参数" }));
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "放弃并离开" }));
-  await waitFor(() => expect(window.location.pathname).toBe("/organization/members"));
+  await waitFor(() => expect(window.location.pathname).toBe("/parameters"));
 });
 
 it("keeps the current page until an asynchronous browser-back guard is resolved", async () => {
@@ -1280,7 +1280,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(debuggingGateway.listRuntimeNodes).toHaveBeenCalledTimes(1);
 
     fireEvent.click(
-      within(screen.getByRole("navigation", { name: "主导航" })).getByRole("button", { name: "节点调试" })
+      within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "节点调试" })
     );
 
     await waitFor(() => expect(debuggingGateway.listRuntimeNodes).toHaveBeenCalledTimes(2));
@@ -2082,8 +2082,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(topbar).queryByRole("combobox", { name: "时间范围" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("radiogroup", { name: "时间窗口" }).length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByRole("button", { name: "看板" })).not.toBeInTheDocument();
-    const activeNavButtons = screen.getAllByRole("button", { name: "我的工作台" }).filter((btn) => btn.classList.contains("active"));
-    expect(activeNavButtons.length).toBe(1);
+    expect(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "我的工作台", current: "page" })).toHaveClass("active");
   });
 
   it("updates parameter homepage analytics from the in-page time window controls", async () => {
@@ -2216,9 +2215,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     window.history.replaceState(null, "", "/parameter-submissions");
     renderApp({ initialAppState: { ...initialState, activeRoleId } });
     const nav = screen.getByRole("navigation", { name: "主导航" });
-    expect(within(nav).queryByRole("button", { name: "我的提交" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "我的提交" })).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "我的提交" })).toBeInTheDocument();
-    if (activeRoleId === "hardware-user") expect(within(nav).queryByRole("button", { name: "变更审阅" })).not.toBeInTheDocument();
+    if (activeRoleId === "hardware-user") expect(within(nav).queryByRole("link", { name: "变更审阅" })).not.toBeInTheDocument();
   });
 
   it.each(["project", "projectId"])("preserves an explicit %s scope across parameter sidebar tasks", (key) => {
@@ -2226,8 +2225,24 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     window.history.replaceState(null, "", `/parameter-review?${key}=${encodeURIComponent(project.id)}`);
     renderApp({ initialAppState: adminState });
     const nav = screen.getByRole("navigation", { name: "主导航" });
-    fireEvent.click(within(nav).getByRole("button", { name: "项目参数" }));
+    const parameters = within(nav).getByRole("link", { name: "项目参数" });
+    expect(parameters).toHaveAttribute("href", `/parameters?project=${encodeURIComponent(project.id)}`);
+    expect(within(nav).getByRole("link", { name: "我的工作台" })).toHaveAttribute("href", "/parameter-home");
+    fireEvent.click(parameters);
     expect(new URLSearchParams(window.location.search).get("project")).toBe(project.id);
+    expect(within(nav).getByRole("link", { name: "变更审阅" })).toHaveAttribute("href", `/parameter-review?project=${encodeURIComponent(project.id)}`);
+  });
+
+  it("keeps the operating Organization in native sidebar links and SPA navigation", () => {
+    window.history.replaceState(null, "", "/parameter-review?project=aurora&organizationId=org-chargelab");
+    renderApp({ initialAppState: adminState });
+    const navigation = within(screen.getByRole("navigation", { name: "主导航" }));
+    const parameters = navigation.getByRole("link", { name: "项目参数" });
+    expect(parameters).toHaveAttribute("href", "/parameters?project=aurora&organizationId=org-chargelab");
+    expect(navigation.getByRole("link", { name: "我的工作台" })).toHaveAttribute("href", "/parameter-home?organizationId=org-chargelab");
+    expect(within(screen.getByRole("navigation", { name: "平台管理" })).getByRole("link", { name: "审计中心" })).toHaveAttribute("href", "/audit?organizationId=org-chargelab");
+    fireEvent.click(parameters);
+    expect(window.location.pathname + window.location.search).toBe("/parameters?project=aurora&organizationId=org-chargelab");
   });
 
   it("exposes the allowlisted sub-app entries on the homepage main region", () => {
@@ -2471,7 +2486,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(topbar).queryByRole("button", { name: "返回参数修改" })).not.toBeInTheDocument();
     expect(topbar).toHaveTextContent("我的提交");
     expect(within(topbar).queryByRole("button", { name: "新建项目" })).not.toBeInTheDocument();
-    expect(within(screen.getByRole("navigation", { name: "主导航" })).queryByRole("button", { name: "我的提交" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("navigation", { name: "主导航" })).queryByRole("link", { name: "我的提交" })).not.toBeInTheDocument();
   });
 
   it("submits a round with multiple parameter changes and shows it in personal history", async () => {
@@ -3743,7 +3758,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(screen.getByRole("heading", { level: 2, name: "页面暂时不可用" })).toBeInTheDocument();
     expect(screen.queryByText("实时可调参数")).not.toBeInTheDocument();
-    const replacement = screen.getByRole("link", { name: "节点调试" });
+    const replacement = within(screen.getByRole("main")).getByRole("link", { name: "节点调试" });
     expect(replacement).toHaveAttribute("href", "/node-debugging");
     fireEvent.click(replacement);
     expect(window.location.pathname).toBe("/node-debugging");
@@ -3832,7 +3847,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(feedbackEntry).toBeInTheDocument();
     expect(within(sidebar).getByRole("button", { name: "问题反馈" })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "问题反馈" })).toHaveLength(2);
-    expect(within(sidebar).queryByRole("button", { name: "我的反馈" })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole("link", { name: "我的反馈" })).not.toBeInTheDocument();
 
     fireEvent.click(feedbackEntry);
 
@@ -3875,6 +3890,74 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(localStorage.getItem("wiseeff.sidebar.collapsed")).toBe("true");
   });
 
+  it("exposes shell destinations as links and marks the current platform management page", () => {
+    window.history.replaceState(null, "", "/parameters");
+    renderApp({ initialAppState: adminState });
+
+    const navigation = within(screen.getByRole("navigation", { name: "主导航" }));
+    const parameters = navigation.getByRole("link", { name: "项目参数", current: "page" });
+    expect(parameters).toHaveAttribute("href", "/parameters");
+    const management = within(screen.getByRole("navigation", { name: "平台管理" }));
+    const organization = management.getByRole("link", { name: "组织管理" });
+    expect(organization).toHaveAttribute("href", "/organization");
+    expect(management.getByRole("link", { name: "反馈管理" })).toHaveAttribute("href", "/feedback-admin");
+    expect(management.getByRole("link", { name: "审计中心" })).toHaveAttribute("href", "/audit");
+
+    expect(fireEvent.click(organization)).toBe(false);
+    expect(window.location.pathname).toBe("/organization");
+    expect(organization).toHaveAttribute("aria-current", "page");
+    expect(parameters).not.toHaveAttribute("aria-current");
+  });
+
+  it("leaves modified sidebar link clicks to the browser without opening the settings leave dialog", () => {
+    window.history.replaceState(null, "", "/organization");
+    renderApp({ initialAppState: adminState });
+    render(<SettingsFormPage label="未保存设置" dirty onSave={vi.fn()} onDiscard={vi.fn()}>未保存的草稿</SettingsFormPage>);
+    const parameters = within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "项目参数" });
+    const preventedByRouter: boolean[] = [];
+    const stopNativeTestNavigation = (event: MouseEvent) => {
+      preventedByRouter.push(event.defaultPrevented);
+      event.preventDefault();
+    };
+    window.addEventListener("click", stopNativeTestNavigation);
+    try {
+      for (const modifier of [{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }]) {
+        fireEvent.click(parameters, modifier);
+      }
+      expect(preventedByRouter).toEqual([false, false, false, false, false]);
+      expect(window.location.pathname).toBe("/organization");
+      expect(screen.queryByRole("dialog", { name: "放弃未保存的更改？" })).not.toBeInTheDocument();
+    } finally {
+      window.removeEventListener("click", stopNativeTestNavigation);
+    }
+  });
+
+  it("keeps platform management destinations reachable from the short-window menu", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(max-height: 820px)", media: query,
+      addEventListener: vi.fn(), removeEventListener: vi.fn()
+    }));
+    try {
+      window.history.replaceState(null, "", "/parameters");
+      renderApp({ initialAppState: { ...adminState, activeRoleId: "platform-admin", currentUserId: "u-platform-admin" } });
+      const managementTrigger = screen.getByRole("button", { name: "平台管理" });
+      expect(screen.queryByRole("navigation", { name: "平台管理" })).not.toBeInTheDocument();
+      await userEvent.click(managementTrigger);
+      expect(screen.getByRole("dialog", { name: "平台管理" })).toBeInTheDocument();
+      const management = within(screen.getByRole("navigation", { name: "平台管理" }));
+      expect(management.getByRole("link", { name: "工作流发布" })).toHaveAttribute("href", "/workflow-publication");
+      expect(management.getByRole("link", { name: "反馈管理" })).toHaveAttribute("href", "/feedback-admin");
+      expect(management.getByRole("link", { name: "审计中心" })).toHaveAttribute("href", "/audit");
+      await userEvent.click(management.getByRole("link", { name: "组织管理" }));
+      expect(window.location.pathname).toBe("/platform/organizations");
+      expect(screen.queryByRole("navigation", { name: "平台管理" })).not.toBeInTheDocument();
+      await userEvent.click(managementTrigger);
+      expect(within(screen.getByRole("navigation", { name: "平台管理" })).getByRole("link", { name: "组织管理", current: "page" })).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("opens and closes the mobile navigation drawer from the topbar hamburger", () => {
     window.history.replaceState(null, "", "/parameters");
 
@@ -3909,7 +3992,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     fireEvent.click(hamburger);
     expect(shell).toHaveClass("mobile-nav-open");
     const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
-    fireEvent.click(within(sidebar).getByRole("button", { name: "节点调试" }));
+    fireEvent.click(within(sidebar).getByRole("link", { name: "节点调试" }));
     expect(shell).not.toHaveClass("mobile-nav-open");
     expect(window.location.pathname).toBe("/node-debugging");
   });
@@ -3923,7 +4006,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(mainContent).not.toBeNull();
     mainContent!.scrollTop = 480;
 
-    fireEvent.click(screen.getByRole("button", { name: "节点调试" }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "节点调试" }));
 
     expect(window.location.pathname).toBe("/node-debugging");
     expect(mainContent!.scrollTop).toBe(0);
@@ -4001,7 +4084,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(within(scopeNav).getByRole("button", { name: "项目运营" })).toHaveAttribute("aria-current", "page");
     expect(
-      within(parameterAdminNavGroup(screen.getByRole("complementary", { name: "主导航侧边栏" }))).getByRole("button", {
+      within(parameterAdminNavGroup(screen.getByRole("complementary", { name: "主导航侧边栏" }))).getByRole("link", {
         name: /^参数后台$/
       })
     ).toHaveAttribute("aria-current", "page");
@@ -4057,18 +4140,18 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     renderApp({ initialAppState: adminState });
 
     const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
-    const groupLabels = Array.from(sidebar.querySelectorAll(".nav-group-label")).map((node) => node.textContent);
+    const groupLabels = Array.from(screen.getByRole("navigation", { name: "主导航" }).querySelectorAll(".nav-group-label")).map((node) => node.textContent);
     expect(groupLabels).toEqual(["平台总览", "参数管理", "调试平台", "日志分析", "知识库"]);
-    expect(within(sidebar).getByRole("button", { name: "智能分析" })).toBeInTheDocument();
-    expect(within(sidebar).getByRole("button", { name: "知识库" })).toBeInTheDocument();
-    expect(within(sidebar).getByRole("button", { name: "知识后台" })).toBeInTheDocument();
-    expect(within(sidebar).getByRole("button", { name: "日志后台" })).toBeInTheDocument();
+    expect(within(sidebar).getByRole("link", { name: "智能分析" })).toBeInTheDocument();
+    expect(within(sidebar).getByRole("link", { name: "知识库" })).toBeInTheDocument();
+    expect(within(sidebar).getByRole("link", { name: "知识后台" })).toBeInTheDocument();
+    expect(within(sidebar).getByRole("link", { name: "日志后台" })).toBeInTheDocument();
     const logGroup = Array.from(sidebar.querySelectorAll(".nav-group")).find((group) =>
       group.querySelector(".nav-group-label")?.textContent === "日志分析"
     );
-    expect(within(logGroup as HTMLElement).getAllByRole("button").map((button) => button.getAttribute("aria-label")))
+    expect(within(logGroup as HTMLElement).getAllByRole("link").map((link) => link.getAttribute("aria-label")))
       .toEqual(["智能分析", "日志后台"]);
-    expect(within(sidebar).getByRole("button", { name: "节点调试" })).toBeInTheDocument();
+    expect(within(sidebar).getByRole("link", { name: "节点调试" })).toBeInTheDocument();
   });
 
   it("exposes a single parameter admin sidebar entry with in-page scope switching", () => {
@@ -4078,9 +4161,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
     const parameterGroup = parameterAdminNavGroup(sidebar);
-    expect(within(parameterGroup).getByRole("button", { name: /^参数后台$/ })).toBeInTheDocument();
-    expect(within(parameterGroup).queryByRole("button", { name: /组织配置/ })).not.toBeInTheDocument();
-    expect(within(parameterGroup).queryByRole("button", { name: /项目运营/ })).not.toBeInTheDocument();
+    expect(within(parameterGroup).getByRole("link", { name: /^参数后台$/ })).toBeInTheDocument();
+    expect(within(parameterGroup).queryByRole("link", { name: /组织配置/ })).not.toBeInTheDocument();
+    expect(within(parameterGroup).queryByRole("link", { name: /项目运营/ })).not.toBeInTheDocument();
   });
 
   it("keeps the sidebar admin entry active on project-scoped deep links", () => {
@@ -4089,7 +4172,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     renderApp({ initialAppState: adminState });
 
     const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
-    expect(within(parameterAdminNavGroup(sidebar)).getByRole("button", { name: /^参数后台$/ })).toHaveAttribute(
+    expect(within(parameterAdminNavGroup(sidebar)).getByRole("link", { name: /^参数后台$/ })).toHaveAttribute(
       "aria-current",
       "page"
     );

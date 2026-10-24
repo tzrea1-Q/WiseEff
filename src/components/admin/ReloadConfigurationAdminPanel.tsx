@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { RefreshCw } from "lucide-react";
 
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import type { OrganisationReloadConfiguration, ReloadConfigurationContract } from "@/domain/dtsReload/types";
@@ -207,18 +208,27 @@ export function ReloadConfigurationAdminPanel({
 
   return (
     <section className="reload-configuration-panel" aria-label="重载配置">
+      <header className="reload-configuration-heading">
+        <div>
+          <h2>DTS 重载配置</h2>
+          <p>管理本组织的设备重载默认值，修改后保存，供后续 DTS 调试使用。</p>
+        </div>
+        <Button type="button" variant="outline" disabled={loading || saving} onClick={reloadConfiguration}>
+          <RefreshCw aria-hidden="true" />重新加载配置
+        </Button>
+      </header>
       <div className="reload-configuration-layout">
       <SettingsFormPage label="DTS 重载设置" dirty={isDirty && !loading} saving={saving} saveDisabled={fieldsDisabled || conflict} error={errorMessage}
         onSave={() => void saveOrganisation()} onDiscard={() => {
           setOrganisationDraft(savedContract); setFieldErrors({}); setErrorMessage(""); setStatusMessage("");
         }}>
-      <SettingsFormSection title="DTS 重载配置" help="配置设备上的产物位置、触发节点和日志采集方式，作为本组织后续部署的默认值。">
-        {loadError ? <div className="reload-configuration-load-error" role="alert"><p>无法读取当前配置：{loadError}</p><button type="button" className="button subtle" onClick={reloadConfiguration}>重新加载配置</button></div> : null}
-        {conflict ? <div className="reload-configuration-load-error" role="alert"><p>其他管理员已更新配置。当前修改已保留，请重新加载并核对后再编辑。</p><button type="button" className="button subtle" onClick={reloadConfiguration}>重新加载配置</button></div> : null}
+      <SettingsFormSection title="设备执行设置" help="按目标设备的实际环境，依次配置产物位置、触发方式和日志采集。">
+        {loadError ? <div className="reload-configuration-load-error" role="alert"><p>无法读取当前配置：{loadError}</p><p>请使用上方“重新加载配置”重试。</p></div> : null}
+        {conflict ? <div className="reload-configuration-load-error" role="alert"><p>其他管理员已更新配置。当前修改已保留，请重新加载并核对后再编辑。</p></div> : null}
         {loading ? <p className="reload-configuration-muted" role="status">正在加载配置…</p> : null}
 
         <div className="reload-configuration-form">
-          <fieldset className="reload-configuration-group"><legend>产物位置</legend><div className="reload-configuration-group__fields">
+          <fieldset className="reload-configuration-group"><legend><span className="reload-configuration-group__step" aria-hidden="true">01</span>产物位置</legend><div className="reload-configuration-group__fields">
           <div className="reload-configuration-form__field">
             <Label htmlFor="reload-org-destination-directory">Overlay 目标目录</Label>
             <Input
@@ -258,7 +268,7 @@ export function ReloadConfigurationAdminPanel({
           </div>
 
           </div></fieldset>
-          <fieldset className="reload-configuration-group"><legend>触发重载</legend><div className="reload-configuration-group__fields">
+          <fieldset className="reload-configuration-group"><legend><span className="reload-configuration-group__step" aria-hidden="true">02</span>触发重载</legend><div className="reload-configuration-group__fields reload-configuration-group__fields--trigger">
           <div className="reload-configuration-form__field">
             <Label htmlFor="reload-org-trigger-node-path">触发节点路径</Label>
             <Input
@@ -298,7 +308,7 @@ export function ReloadConfigurationAdminPanel({
           </div>
 
           </div></fieldset>
-          <fieldset className="reload-configuration-group"><legend>日志采集</legend><div className="reload-configuration-group__fields reload-configuration-group__fields--single">
+          <fieldset className="reload-configuration-group"><legend><span className="reload-configuration-group__step" aria-hidden="true">03</span>日志采集</legend><div className="reload-configuration-group__fields reload-configuration-group__fields--single">
           <div className="reload-configuration-form__field">
             <Label htmlFor="reload-org-kernel-log-command">内核日志命令</Label>
             <DebugAdminSelectControl
@@ -322,8 +332,11 @@ export function ReloadConfigurationAdminPanel({
           </div></fieldset>
         </div>
 
-        {statusMessage ? <p className="reload-configuration-status" role="status">{statusMessage}</p> : null}
       </SettingsFormSection>
+      {!isDirty ? <div className="settings-form-page__save-bar" role="group" aria-label="配置保存">
+        <span className={statusMessage ? "reload-configuration-status" : undefined} role="status">{statusMessage || (loading ? "正在加载配置…" : loadError ? "加载配置后可编辑" : savedConfiguration?.source === "seeded-default" ? "当前使用系统默认值，修改后可保存" : "当前没有未保存的更改")}</span>
+        <Button type="submit" disabled>保存</Button>
+      </div> : null}
       </SettingsFormPage>
       {savedConfiguration ? <aside className="reload-configuration-aside" aria-label="配置预览与记录">
         <section className="reload-configuration-preview" aria-label="最终配置摘要">

@@ -746,8 +746,8 @@ styleTest("admin navigation fits without scrolling and the existing compact draw
   const navigation = sidebar.getByRole("navigation", { name: "主导航" });
   const viewport = sidebar.locator('[data-slot="scroll-area-viewport"]');
   expect(await viewport.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeLessThanOrEqual(1);
-  for (const item of await navigation.getByRole("button").all()) await expect(item).toBeInViewport({ ratio: 1 });
-  await expect(navigation.getByRole("button", { name: "知识后台", exact: true })).toBeInViewport({ ratio: 1 });
+  for (const item of await navigation.getByRole("link").all()) await expect(item).toBeInViewport({ ratio: 1 });
+  await expect(navigation.getByRole("link", { name: "知识后台", exact: true })).toBeInViewport({ ratio: 1 });
   const bottomInset = await sidebar.evaluate((element) => parseFloat(getComputedStyle(element).paddingBottom));
   expect((await bounds(sidebar.locator(".utility-nav"))).bottom).toBeCloseTo((await bounds(sidebar)).bottom - bottomInset, 0);
   await sidebar.getByRole("button", { name: "收起侧边栏" }).click();
@@ -764,7 +764,7 @@ styleTest("admin navigation fits without scrolling and the existing compact draw
   await expect(sidebar).toBeVisible();
   await expect.poll(async () => (await bounds(sidebar)).x).toBeCloseTo(0, 0);
   expect((await bounds(sidebar)).width).toBe(280);
-  const parameterPage = navigation.getByRole("button", { name: "项目参数", exact: true });
+  const parameterPage = navigation.getByRole("link", { name: "项目参数", exact: true });
   await expect(parameterPage).toBeInViewport();
   await parameterPage.click();
   await expect(sidebar).toBeHidden();

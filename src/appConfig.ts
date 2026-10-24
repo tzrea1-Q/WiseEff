@@ -1,13 +1,16 @@
 import {
   Activity,
   BookOpen,
+  Building2,
   Database,
   FileText,
   Gauge,
   Home,
+  LayoutDashboard,
   LibraryBig,
   LucideIcon,
   MessageSquareText,
+  Network,
   ScrollText,
   Settings2,
   ShieldCheck,
@@ -85,7 +88,7 @@ export const navigationItems: PageConfig[] = [
     path: "/parameter-home",
     label: "我的工作台",
     group: "参数管理",
-    icon: Home,
+    icon: LayoutDashboard,
     title: "我的工作台",
     subtitle: ""
   },
@@ -191,10 +194,10 @@ export const navigationItems: PageConfig[] = [
 ];
 
 export const utilityItems: Array<{ label: string; icon: LucideIcon; path?: string }> = [
-  { label: "工作流发布", icon: Settings2, path: "/workflow-publication" },
+  { label: "工作流发布", icon: Network, path: "/workflow-publication" },
   { label: "反馈管理", icon: MessageSquareText, path: "/feedback-admin" },
   { label: "审计中心", icon: ScrollText, path: "/audit" },
-  { label: "组织管理", icon: Settings2, path: "/organization" }
+  { label: "组织管理", icon: Building2, path: "/organization" }
 ];
 
 export function getPageByPath(path: string): PageConfig {
@@ -202,7 +205,7 @@ export function getPageByPath(path: string): PageConfig {
     return { key: "platform-organizations", path, label: "组织目录", group: "平台总览", icon: Settings2, title: "组织目录", subtitle: "建立组织并指定初始管理员" };
   }
   if (path === "/workflow-publication") {
-    return { key: "workflow-publication", path, label: "工作流发布", group: "平台总览", icon: Settings2,
+    return { key: "workflow-publication", path, label: "工作流发布", group: "平台总览", icon: Network,
       title: "工作流发布", subtitle: "配置向所有组织用户开放的工作流" };
   }
   if (path === "/log-dashboard") {
@@ -226,7 +229,7 @@ export function getPageByPath(path: string): PageConfig {
       path: buildOrganizationAdminPath(area),
       label: "组织管理",
       group: "平台总览",
-      icon: Settings2,
+      icon: Building2,
       title: "组织管理",
       subtitle: area === "overview" ? ORGANIZATION_ADMIN_UI.overviewSubtitle : area === "resources" ? ORGANIZATION_ADMIN_UI.resourcesSubtitle : area === "invitations" ? "管理一次性邀请及加入状态" : area === "projects" ? ORGANIZATION_ADMIN_UI.projectsSubtitle : area === "teams" ? ORGANIZATION_ADMIN_UI.teamsSubtitle : area === "integrations" ? ORGANIZATION_ADMIN_UI.integrationsSubtitle : area === "bridges" ? ORGANIZATION_ADMIN_UI.bridgesSubtitle : area === "members" ? ORGANIZATION_ADMIN_UI.membersSubtitle : ORGANIZATION_ADMIN_UI.profileSubtitle
     };

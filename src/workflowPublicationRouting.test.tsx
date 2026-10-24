@@ -22,8 +22,8 @@ describe("workflow publication routing", () => {
     render(<App initialAppState={{ ...initialState, activeRoleId: "hardware-user" }} runtimeMode="mock" workflowPublicationClient={client()} />);
     expect(await screen.findByRole("heading", { name: "暂未开放" })).toBeInTheDocument();
     const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
-    expect(within(sidebar).queryByRole("button", { name: "知识库" })).not.toBeInTheDocument();
-    expect(within(sidebar).queryByRole("button", { name: "智能分析" })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole("link", { name: "知识库" })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole("link", { name: "智能分析" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "返回首页" }));
     expect(await screen.findByRole("main", { name: "雷泽首页" })).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("heading", { name: "正在读取开放状态…" })).not.toBeInTheDocument());
@@ -35,9 +35,9 @@ describe("workflow publication routing", () => {
     window.history.replaceState(null, "", "/parameter-home");
     render(<App initialAppState={{ ...initialState, activeRoleId: roleId }} runtimeMode="mock" workflowPublicationClient={client()} />);
     const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
-    expect(within(sidebar).getByRole("button", { name: "知识库" })).toBeInTheDocument();
-    expect(within(sidebar).queryByRole("button", { name: "工作流发布" }) !== null).toBe(roleId === "platform-admin");
-    fireEvent.click(within(sidebar).getByRole("button", { name: "知识库" }));
+    expect(within(sidebar).getByRole("link", { name: "知识库" })).toBeInTheDocument();
+    expect(within(sidebar).queryByRole("link", { name: "工作流发布" }) !== null).toBe(roleId === "platform-admin");
+    fireEvent.click(within(sidebar).getByRole("link", { name: "知识库" }));
     expect(await screen.findByText("管理员预览 · 此工作流尚未向用户开放")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "暂未开放" })).not.toBeInTheDocument();
   });
@@ -47,7 +47,7 @@ describe("workflow publication routing", () => {
     vi.mocked(api.getPublication).mockRejectedValueOnce(new Error("offline"));
     window.history.replaceState(null, "", "/knowledge");
     render(<App initialAppState={{ ...initialState, activeRoleId: "hardware-user" }} runtimeMode="mock" workflowPublicationClient={api} />);
-    expect(screen.queryByRole("button", { name: "知识库" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "知识库" })).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "暂时无法读取开放状态" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重新检查" }));
     expect(await screen.findByRole("heading", { name: "暂未开放" })).toBeInTheDocument();

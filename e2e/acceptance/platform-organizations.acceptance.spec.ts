@@ -47,8 +47,8 @@ test.describe("platform Organization provisioning with actual local login", () =
     const platform = await signInLocally(page, operatorUsername, LOCAL_DEMO_SHARED_PASSWORD, "/parameter-home");
     expect(platform.auth.roles).toContainEqual({ projectId: null, roleId: "platform-admin" });
     const sidebar = page.getByRole("complementary", { name: "主导航侧边栏" });
-    const organizationEntry = sidebar.getByRole("button", { name: "组织管理", exact: true });
-    await expect(sidebar.getByRole("button", { name: "组织目录", exact: true })).toHaveCount(0);
+    const organizationEntry = page.getByRole("link", { name: "组织管理", exact: true });
+    await expect(sidebar.getByRole("link", { name: "组织目录", exact: true })).toHaveCount(0);
     await organizationEntry.focus(); await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/platform\/organizations$/);
     await expect(organizationEntry).toHaveClass(/active/);
@@ -61,11 +61,15 @@ test.describe("platform Organization provisioning with actual local login", () =
     await expect(page).toHaveURL(/\/platform\/organizations$/);
     await prepareInteractionSurface(page);
     await expect(page.getByRole("table", { name: "平台组织目录" })).toBeVisible();
-    await expect(sidebar.getByRole("button", { name: "工作流发布", exact: true })).toBeVisible();
-    await expect(sidebar.getByRole("button", { name: "知识后台", exact: true })).toBeInViewport({ ratio: 1 });
+    await expect(sidebar.getByRole("link", { name: "工作流发布", exact: true })).toBeVisible();
+    await expect(sidebar.getByRole("link", { name: "知识后台", exact: true })).toBeInViewport({ ratio: 1 });
     await page.screenshot({ path: testInfo.outputPath("organization-navigation-1440.png"), animations: "disabled" });
     await page.setViewportSize({ width: 1280, height: 800 });
+    const managementTrigger = sidebar.getByRole("button", { name: "平台管理", exact: true });
+    await expect(managementTrigger).toBeInViewport({ ratio: 1 });
+    await managementTrigger.click();
     await expect(organizationEntry).toBeInViewport({ ratio: 1 });
+    await page.keyboard.press("Escape");
     await expect(page.getByRole("button", { name: "所属组织", exact: true })).toBeInViewport({ ratio: 1 });
     await page.screenshot({ path: testInfo.outputPath("organization-navigation-1280.png"), animations: "disabled" });
     await page.setViewportSize({ width: 1440, height: 900 });

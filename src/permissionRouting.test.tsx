@@ -19,6 +19,7 @@ const guestState = { ...initialState, activeRoleId: "guest" };
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   window.history.replaceState(null, "", "/");
 });
 
@@ -29,23 +30,30 @@ describe("permission-aware routing", () => {
 
     const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
     for (const [pageKey, label] of [["logs", "智能分析"], ["log-admin", "日志后台"], ["knowledge", "知识库"], ["knowledge-admin", "知识后台"]] as const) {
-      expect(within(sidebar).queryByRole("button", { name: label }) !== null).toBe(canAccessPage(roleId, pageKey));
+      expect(within(sidebar).queryByRole("link", { name: label }) !== null).toBe(canAccessPage(roleId, pageKey));
     }
     expect(sidebar.textContent?.includes("日志分析")).toBe(canAccessPage(roleId, "logs"));
     expect(sidebar.textContent?.includes("知识库")).toBe(canAccessPage(roleId, "knowledge"));
   });
 
-  it("lets Guest enter the organization workspace while hiding admin and operational controls", () => {
+  it.each([false, true])("lets Guest enter the organization workspace without admin controls with compact height %s", (compactHeight) => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: compactHeight && query === "(max-height: 820px)", media: query,
+      addEventListener: vi.fn(), removeEventListener: vi.fn()
+    }));
     window.history.replaceState(null, "", "/parameter-home");
 
     render(<App initialAppState={guestState} />);
 
     const navigation = within(screen.getByRole("navigation", { name: /主导航|涓诲鑸?/ }));
-    expect(navigation.getByRole("button", { name: "项目参数" })).toBeInTheDocument();
-    expect(navigation.queryByRole("button", { name: /变更审阅|鍙傛暟瀹￠槄/ })).not.toBeInTheDocument();
-    expect(navigation.queryByRole("button", { name: /参数调试|鍙傛暟璋冭瘯/ })).not.toBeInTheDocument();
+    expect(navigation.getByRole("link", { name: "项目参数" })).toBeInTheDocument();
+    expect(navigation.queryByRole("link", { name: /变更审阅|鍙傛暟瀹￠槄/ })).not.toBeInTheDocument();
+    expect(navigation.queryByRole("link", { name: /参数调试|鍙傛暟璋冭瘯/ })).not.toBeInTheDocument();
     const sidebar = within(screen.getByRole("complementary", { name: "主导航侧边栏" }));
-    fireEvent.click(sidebar.getByRole("button", { name: "组织管理" }));
+    if (compactHeight) fireEvent.click(sidebar.getByRole("button", { name: "平台管理" }));
+    const management = within(screen.getByRole("navigation", { name: "平台管理" }));
+    expect(management.queryByRole("link", { name: /工作流发布|反馈管理|审计中心/ })).not.toBeInTheDocument();
+    fireEvent.click(management.getByRole("link", { name: "组织管理" }));
     expect(window.location.pathname).toBe("/organization");
     fireEvent.click(within(screen.getByRole("navigation", { name: "组织管理范围" })).getByRole("button", { name: "资源" }));
     const resources = within(screen.getByRole("region", { name: "组织资源" }));
@@ -53,6 +61,7 @@ describe("permission-aware routing", () => {
     expect(resources.getByRole("button", { name: "知识库" })).toBeInTheDocument();
     expect(resources.queryByRole("button", { name: "设备代理" })).not.toBeInTheDocument();
     expect(resources.queryByRole("button", { name: "集成凭据" })).not.toBeInTheDocument();
+    expect(sidebar.getByRole("button", { name: "问题反馈" })).toBeInTheDocument();
   });
 
   it.each(["guest", "user", "committer"])("keeps member management unavailable to %s through the legacy organization URL", (activeRoleId) => {
@@ -77,7 +86,7 @@ describe("permission-aware routing", () => {
 
     render(<App initialAppState={{ ...initialState, activeRoleId: "platform-admin", currentUserId: "u-platform-admin" }} />);
 
-    expect(screen.queryByRole("button", { name: "平台控制台" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "平台控制台" })).not.toBeInTheDocument();
   });
 
   it("lets Admin see the shared user permissions utility entry", async () => {
@@ -100,10 +109,12 @@ describe("permission-aware routing", () => {
     render(<App initialAppState={{ ...initialState, activeRoleId }} />);
 
     const sidebar = within(screen.getByRole("complementary", { name: "主导航侧边栏" }));
-    expect(sidebar.queryByRole("button", { name: "组织目录" })).not.toBeInTheDocument();
-    fireEvent.click(sidebar.getByRole("button", { name: "组织管理" }));
+    expect(sidebar.queryByRole("link", { name: "组织目录" })).not.toBeInTheDocument();
+    const organization = sidebar.getByRole("link", { name: "组织管理" });
+    expect(organization).toHaveAttribute("href", activeRoleId === "platform-admin" ? "/platform/organizations" : "/organization");
+    fireEvent.click(organization);
     expect(window.location.pathname).toBe(activeRoleId === "platform-admin" ? "/platform/organizations" : "/organization");
-    expect(sidebar.getByRole("button", { name: "组织管理" })).toHaveClass("active");
+    expect(sidebar.getByRole("link", { name: "组织管理" })).toHaveClass("active");
   });
 
   it("filters personal workbench entries by role", async () => {

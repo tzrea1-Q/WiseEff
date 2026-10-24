@@ -156,7 +156,7 @@ test.describe("Xiaoze modeless popup layout", () => {
     expect(businessModalZ).toBeGreaterThan(layerZ);
     await businessDialog.getByRole("button", { name: "取消" }).click();
 
-    await page.getByRole("button", { name: "我的工作台" }).click();
+    await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "我的工作台" }).click();
     await expect(page).toHaveURL(/\/parameter-home$/u);
     await expect(layer).toBeVisible();
     await expect(popup).toHaveAttribute("role", "dialog");
