@@ -257,4 +257,28 @@ describe("Knowledge Organization erasure through HTTP, PostgreSQL and isolated p
     expect((await db.query("select storage_key from knowledge_files where id=$1", [id])).rows).toEqual([{ storage_key: foreign.storageKey }]);
     expect((await store.get(foreign.storageKey)).toString()).toBe("Foreign private attachment");
   });
+  it("keeps exclusive bytes pending when the configured store has no deletion capability", async () => {
+    const entry = await upload(); store = { ...store, delete: undefined };
+    const failed = await start(); expect(failed.body.item.status).toBe("failed");
+    expect((await store.get(entry.file!.storageKey)).length).toBeGreaterThan(0);
+    store = createLocalObjectStore(directory);
+    const retried = await request<{ item: { status: string } }>(`/api/v1/platform/organization-deletions/${failed.body.item.id}/retry`, "POST");
+    expect(retried.body.item.status).toBe("deleted");
+    await expect(store.get(entry.file!.storageKey).then(() => true, () => false)).resolves.toBe(false);
+  });
+  it("leaves a key pending while a foreign reference is committing, then retains the committed shared bytes", async () => {
+    const entry = await upload(), id = randomUUID(); let entered!: () => void, release!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; }), held = new Promise<void>(resolve => { release = resolve; });
+    const foreign = db.transaction(async tx => {
+      await tx.query("insert into knowledge_attachment_writes(id,organization_id,storage_key) values($1,'knowledge-home',$2)", [id, entry.file!.storageKey]);
+      entered(); await held;
+    });
+    try {
+      await started; const failed = await start(); expect(failed.body.item.status).toBe("failed");
+      expect((await store.get(entry.file!.storageKey)).length).toBeGreaterThan(0);
+      release(); await foreign;
+      const retried = await request<{ item: { status: string } }>(`/api/v1/platform/organization-deletions/${failed.body.item.id}/retry`, "POST");
+      expect(retried.body.item.status).toBe("deleted"); expect((await store.get(entry.file!.storageKey)).length).toBeGreaterThan(0);
+    } finally { release(); await foreign; }
+  });
 });
