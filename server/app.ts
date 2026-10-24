@@ -40,6 +40,7 @@ import { defaultTracingBoundary, type TracingBoundary } from "./observability/tr
 import type { ObjectStore, ObjectStoreHealthCheck } from "./modules/logs/objectStore";
 import type { LogAnalysisQueue } from "./modules/logs/logAnalysisQueue";
 import { registerParameterFileRoutes } from "./modules/parameter-files/routes";
+import { parameterObjectWriteCustody } from "./modules/parameter-files/objectWriteCustody";
 import { MAX_PARAMETER_SOURCE_BYTES } from "./modules/parameter-files/jsonSource";
 import { registerParameterRoutes } from "./modules/parameters/routes";
 import { registerParameterDashboardRoutes } from "./modules/parameters/dashboard/routes";
@@ -229,19 +230,20 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     oidcIssuer: options.env?.AUTH_PROVIDER === "oidc" ? options.env.AUTH_OIDC_ISSUER : undefined,
     getCurrentAuthContext: authResolver
   });
+  const parameterObjectStore = options.db && options.objectStore ? parameterObjectWriteCustody(options.db, options.objectStore) : options.objectStore;
   registerCatalogProjectValueConsumerRoutes(router, {
     db: options.db,
-    objectStore: options.objectStore,
+    objectStore: parameterObjectStore,
     getCurrentAuthContext: authResolver
   });
   registerParameterRoutes(router, {
     db: options.db,
-    objectStore: options.objectStore,
+    objectStore: parameterObjectStore,
     getCurrentAuthContext: authResolver
   });
   registerParameterFileRoutes(router, {
     db: options.db,
-    objectStore: options.objectStore,
+    objectStore: parameterObjectStore,
     getCurrentAuthContext: authResolver
   });
   registerParameterSpecRoutes(router, {
@@ -254,7 +256,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerParameterTopologyRoutes(router, {
     db: options.db,
-    objectStore: options.objectStore,
+    objectStore: parameterObjectStore,
     getCurrentAuthContext: authResolver
   });
   registerParameterDashboardRoutes(router, {

@@ -2,6 +2,7 @@ import type { Database } from "../../shared/database/client";
 import type { ObjectStore } from "../logs/objectStore";
 import type { ArchiveObjectStore } from "../catalog-cutover/archive";
 import type { OrganizationDeletionContext } from "./organizationDeletion";
+import { organizationParameterErasure } from "./organizationParameterErasure";
 import { agentDevicesFeedbackErasure } from "../agent/organizationErasure";
 import { knowledgeOrganizationErasure } from "../knowledge/organizationErasure";
 
@@ -23,4 +24,4 @@ export type OrganizationErasureDomainAdapter = {
     runtime: OrganizationErasureContext & { renewLease(): Promise<void> }): Promise<void>;
 };
 
-export const organizationErasureDomains: readonly OrganizationErasureDomainAdapter[] = [agentDevicesFeedbackErasure, knowledgeOrganizationErasure];
+export const organizationErasureDomains: readonly OrganizationErasureDomainAdapter[] = [agentDevicesFeedbackErasure, knowledgeOrganizationErasure, organizationParameterErasure];
