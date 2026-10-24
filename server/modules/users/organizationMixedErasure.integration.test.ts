@@ -27,7 +27,7 @@ import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../../t
 async function postgresTool(tool: string, url: string, args: string[], input?: Buffer) {
   const target = new URL(url), container = process.env.WISEEFF_RESTORE_TEST_CONTAINER;
   const command = container ? "docker" : tool;
-  const commandArgs = container ? ["exec", "-i", container, tool, "-U", decodeURIComponent(target.username), "-d", target.pathname.slice(1), ...args] : args;
+  const commandArgs = container ? ["exec", "-i", container, tool, "-U", decodeURIComponent(target.username), "-d", target.pathname.slice(1), ...args] : ["-d", target.pathname.slice(1), ...args];
   return new Promise<Buffer>((resolve, reject) => {
     const child = spawn(command, commandArgs, { env: { ...process.env, PGHOST: target.hostname, PGPORT: target.port, PGDATABASE: target.pathname.slice(1), PGUSER: decodeURIComponent(target.username), PGPASSWORD: decodeURIComponent(target.password) }, stdio: "pipe" });
     const chunks: Buffer[] = []; let error = "";
