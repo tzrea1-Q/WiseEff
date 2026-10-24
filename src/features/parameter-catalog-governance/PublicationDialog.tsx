@@ -32,6 +32,7 @@ import {
   canSavePublicationDraft,
   createPublicationSubmitGate,
   emptyPublicationDraft,
+  parsePublicationExamples,
   fingerprintPublicationDraft,
   publicationApprovalCopy,
   publicationCopy,
@@ -321,6 +322,16 @@ export function PublicationDialog({
       : publicationFailureCopy(error));
   };
 
+  const validateExamples = () => {
+    try {
+      parsePublicationExamples(draft);
+      return true;
+    } catch (error) {
+      setFieldError({ input: "examples", message: `${error instanceof Error ? error.message : publicationCopy.invalidExamples}当前输入已保留。` });
+      return false;
+    }
+  };
+
   const saveDraft = async () => {
     if (!canSaveDraft || !targetAllowed || pending || !draft.propertyKey.trim() || !draft.reason.trim()) {
       return;
@@ -334,7 +345,7 @@ export function PublicationDialog({
     if (draft.mode === "create-subject" && !draft.selectorValue.trim()) {
       return;
     }
-    if (!gateRef.current.begin()) {
+    if (!validateExamples() || !gateRef.current.begin()) {
       return;
     }
     setPending(true);
@@ -385,7 +396,7 @@ export function PublicationDialog({
     if (draft.mode === "create-subject" && !draft.selectorValue.trim()) {
       return;
     }
-    if (!gateRef.current.begin()) {
+    if (!validateExamples() || !gateRef.current.begin()) {
       return;
     }
     setPending(true);
@@ -753,9 +764,13 @@ export function PublicationDialog({
                     </label>
                     <label>
                       {publicationCopy.examples}
-                      <input
+                      <textarea
                         aria-label={publicationCopy.examples}
+                        aria-invalid={fieldError?.input === "examples"}
+                        aria-describedby={fieldError?.input === "examples" ? fieldMessageId : describedById}
                         value={draft.examples}
+                        rows={4}
+                        placeholder={publicationCopy.examplesPlaceholder}
                         onChange={(event) => patchDraft({ examples: event.target.value })}
                       />
                     </label>

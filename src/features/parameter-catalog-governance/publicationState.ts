@@ -3,6 +3,8 @@ import { isCatalogActionEnabled } from "@/application/parameter-catalog/authorit
 import type { CatalogDomainState } from "@/application/parameter-catalog/states";
 import { catalogStateFromFailure } from "@/application/parameter-catalog/states";
 import { catalogErrorCopy } from "@/features/parameter-catalog/copy";
+import { parseDtsValue } from "@/domain/parameter-topology/parseDtsValue";
+import { decodeDtsString } from "@/domain/dts/dtsValueClient";
 import type {
   CatalogCreatePublicationCandidateRequest,
   CatalogPublicationCandidateResponse,
@@ -153,7 +155,9 @@ export const publicationCopy = {
   maximum: "最大值",
   unit: "单位",
   unitNone: "无单位",
-  examples: "示例",
+  examples: "示例（DTS 或 JSON）",
+  examplesPlaceholder: '可粘贴完整属性语句，如 trx_plim = "5017", "6|9|10";，也可填写 DTS 取值或 JSON 示例数组',
+  invalidExamples: "示例格式无效，请填写 DTS 属性语句、DTS 取值或 JSON 示例数组。",
   reason: "草稿原因",
   saveDraft: "保存草稿",
   preview: "预览发布",
@@ -329,10 +333,53 @@ function valueSchemaOf(draft: PublicationDraft) {
   };
 }
 
-function examplesOf(draft: PublicationDraft) {
-  if (draft.mode === "revise-definition" && draft.examples.trim().startsWith("[")) {
-    const parsed: unknown = JSON.parse(draft.examples);
-    if (Array.isArray(parsed)) return parsed;
+export function parsePublicationExamples(draft: PublicationDraft) {
+  const input = draft.examples.trim();
+  if (!input) return undefined;
+  if (input.startsWith("[")) {
+    try {
+      const parsed: unknown = JSON.parse(input);
+      if (Array.isArray(parsed) && !(draft.valueType === "bytes" && parsed.every((value) => typeof value === "number"))) return parsed;
+    } catch {
+      // A DTS byte literal also starts with '['; the DTS parser validates it below.
+    }
+  }
+  const statement = /^([A-Za-z0-9,._+?#-]+)\s*=\s*([\s\S]*)$/u.exec(input);
+  const emptyProperty = /^([A-Za-z0-9,._+?#-]+)\s*;$/u.exec(input);
+  if (statement || emptyProperty || /^[<"[/]/u.test(input)) {
+    const propertyKey = draft.propertyKey.trim();
+    const sourceKey = statement?.[1] ?? emptyProperty?.[1] ?? propertyKey;
+    if (sourceKey !== propertyKey) {
+      throw new Error(`示例属性名应为「${propertyKey}」，当前为「${sourceKey}」。`);
+    }
+    const raw = emptyProperty ? "" : (statement?.[2] ?? input).replace(/;\s*$/u, "").trim();
+    try {
+      if (statement && !raw) throw new SyntaxError("Missing DTS property value");
+      const value = parseDtsValue(propertyKey, raw).value;
+      if (draft.valueType === "bytes" || draft.valueType === "mixed") return [raw];
+      switch (value.kind) {
+        case "strings": {
+          const strings = value.values.map(decodeDtsString);
+          return [draft.valueType === "string" && strings.length === 1 ? strings[0] : strings];
+        }
+        case "cells": {
+          const cells = value.groups.flat().map((cell) => {
+            if (cell.kind === "phandle") return `&${cell.label}`;
+            const number = Number(cell.value);
+            if (!Number.isSafeInteger(number)) throw new RangeError("Unsafe JSON integer");
+            return number;
+          });
+          if (value.groups.some((group) => group.length === 0)) throw new SyntaxError("Empty DTS cell group");
+          return [(draft.valueType === "integer" || draft.valueType === "number") && cells.length === 1 ? cells[0] : cells];
+        }
+        case "bytes": return [value.values];
+        case "boolean": return [draft.valueType === "empty" ? null : true];
+        case "empty": return [null];
+        case "mixed": return [raw];
+      }
+    } catch {
+      throw new Error(publicationCopy.invalidExamples);
+    }
   }
   if (draft.valueType === "boolean") {
     const tokens = draft.examples
@@ -361,7 +408,7 @@ function examplesOf(draft: PublicationDraft) {
 }
 
 export function definitionContentOf(draft: PublicationDraft) {
-  const examples = examplesOf(draft);
+  const examples = parsePublicationExamples(draft);
   const unit = draft.unit.trim();
   const description = draft.description.trim();
   return {

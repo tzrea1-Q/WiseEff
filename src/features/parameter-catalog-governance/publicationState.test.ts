@@ -96,6 +96,38 @@ describe("publication operator state", () => {
     });
   });
 
+  it.each(["create-definition", "revise-definition"] as const)("keeps a complete multiline trx_plim statement as one string-list example in %s", (mode) => {
+    const values = ["5017", "5500", "1200", "-1", "2", "-1", "-1", "-1",
+      "12000", "12000", "2300", "-1", "6|9|10", "-1", "3", "-1",
+      "12000", "12000", "2300", "-1", "255", "-1", "3|4", "-1"];
+    const change = buildPublicationChangeSet({ ...emptyPublicationDraft(), mode,
+      propertyKey: "trx_plim", valueType: "string-list",
+      examples: `trx_plim =\n\t${values.map((value) => JSON.stringify(value)).join(",\n\t")};` });
+    expect(change[0]).toMatchObject({ content: { examples: [values] } });
+  });
+
+  it.each([
+    ["u32-array", "value = <0x10 20>;", [[16, 20]]],
+    ["integer", "<0x10>", [16]],
+    ["string", 'value = "with,comma; and \\"quotes\\"";', ['with,comma; and "quotes"']],
+    ["string", '"voltage=5;";', ["voltage=5;"]],
+    ["string-list", '"", "123", "6|9|10"', [["", "123", "6|9|10"]]],
+    ["bytes", "value = [00 ff];", ["[00 ff]"]],
+    ["bytes", "[10]", ["[10]"]],
+    ["bytes", '["[10]"]', ["[10]"]],
+    ["phandle-list", "value = <&intc>;", [["&intc"]]],
+    ["empty", "value;", [null]]
+  ] as const)("converts a DTS %s example without losing its value", (valueType, examples, expected) => {
+    expect(buildPublicationChangeSet({ ...emptyPublicationDraft(), mode: "revise-definition",
+      propertyKey: "value", valueType, examples })[0]).toMatchObject({ content: { examples: expected } });
+  });
+
+  it.each(['other = "123";', 'value = "unterminated;', 'value = "first"; other = "second";',
+    "value = ;", "value = <>, <1>;", "value = /bits/ 64 <9007199254740993>;"])("rejects mismatched, malformed or lossy DTS examples: %s", (examples) => {
+    expect(() => buildPublicationChangeSet({ ...emptyPublicationDraft(), mode: "revise-definition",
+      propertyKey: "value", valueType: "string-list", examples })).toThrow();
+  });
+
   it("builds nested create-subject definitions without a published subjectId", () => {
     const draft = {
       ...emptyPublicationDraft(),

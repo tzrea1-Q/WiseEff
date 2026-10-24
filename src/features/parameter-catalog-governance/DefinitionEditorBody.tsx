@@ -32,6 +32,8 @@ import {
   canExecutePublicationAction,
   definitionContentOf,
   emptyPublicationDraft,
+  parsePublicationExamples,
+  publicationCopy,
   publicationJobIsPending,
   publicationStatusCopy,
   publicationSuccessKind,
@@ -420,14 +422,13 @@ export function DefinitionEditorBody({
   });
 
   const validateExamples = () => {
-    if (!content.examples.trim()) return true;
     try {
-      if (Array.isArray(JSON.parse(content.examples))) return true;
-    } catch {
-      // Keep invalid text in the editor so the operator can correct it.
+      parsePublicationExamples(contentDraft());
+      return true;
+    } catch (error) {
+      setError(`${error instanceof Error ? error.message : publicationCopy.invalidExamples}当前输入已保留。`);
+      return false;
     }
-    setError("示例必须为有效的 JSON 数组，当前输入已保留。");
-    return false;
   };
 
   /** Content-only edit: publish a revision, no project reference moves. */
@@ -663,12 +664,12 @@ export function DefinitionEditorBody({
                   <div className="definition-editor__field-placeholder" aria-hidden="true" />
                 )}
                 <label className="definition-editor__field definition-editor__field--full">
-                  <span className="definition-editor__field-label">示例（JSON 数组）</span>
+                  <span className="definition-editor__field-label">{publicationCopy.examples}</span>
                   <textarea
                     value={content.examples}
-                    aria-label="示例（JSON 数组）"
-                    rows={2}
-                    placeholder="例如 [100, 200]；留空移除示例"
+                    aria-label={publicationCopy.examples}
+                    rows={4}
+                    placeholder={publicationCopy.examplesPlaceholder}
                     onChange={(event) => setContent({ ...content, examples: event.target.value })}
                   />
                 </label>
