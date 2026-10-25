@@ -26,6 +26,20 @@ function props(overrides: Partial<WorkbenchConfigurationFilesDialogProps> = {}):
 }
 
 describe("WorkbenchConfigurationFilesDialog", () => {
+  it("creates shared resources from checked private DTS sources and keeps JSON and fixed shared members out", async () => {
+    const user = userEvent.setup(), onCreateShared = vi.fn(), values = props();
+    values.members.push({ ...values.members[0]!, fileId:"include",fileName:"parts/power.dtsi",role:"misc" });
+    const view = render(<WorkbenchConfigurationFilesDialog {...values} onCreateShared={onCreateShared} />);
+    await user.click(screen.getByRole("button", {name:"parts/power.dtsi 更多"}));
+    await user.click(screen.getByRole("menuitem", {name:"创建共享资源"}));
+    expect(onCreateShared).toHaveBeenCalledWith(values.members[2]);
+    await user.click(screen.getByRole("button", {name:"charging.json 更多"}));
+    expect(screen.queryByRole("menuitem", {name:"创建共享资源"})).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    view.rerender(<WorkbenchConfigurationFilesDialog {...values} onCreateShared={onCreateShared} canAdmin={false} />);
+    await user.click(screen.getByRole("button", {name:"主板.dts 更多"}));
+    expect(screen.queryByRole("menuitem", {name:"创建共享资源"})).not.toBeInTheDocument();
+  });
   it("identifies fixed shared source and offers viewing without project file mutation controls", () => {
     const values = props({ canonical: true });
     values.members = [{ ...values.members[0]!, fileName: "shared.dtsi", sharedReference: {

@@ -268,13 +268,14 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
     <header className="shared-dtsi-header"><div><Button variant="ghost" disabled={pending} onClick={() => setPreview(null)}>返回编辑</Button>
       <h1>发布 {currentPreview.data.name}</h1></div><Button disabled={pending} onClick={() => void publish()}>{pending ? "正在发布…" : "发布版本"}</Button></header>
     {error ? <p role="alert" className="shared-dtsi-error">{error}</p> : null}
-    <p>发布共享版本，不会自动更新项目配置。</p>
+    <p>本组织有查看权限的用户可读取完整源码；发布不会自动更新项目配置。</p>
     <dl className="shared-dtsi-metadata"><div><dt>文件</dt><dd>{currentPreview.data.manifest.members.length} 个 · 共享源码库</dd></div>
       <div><dt>变更说明</dt><dd>{currentPreview.data.changeDescription}</dd></div>
       {currentPreview.data.manifest.externalReferences.length ? <div><dt>项目需提供的引用</dt><dd>{currentPreview.data.manifest.externalReferences.join("、")}</dd></div> : null}</dl>
     {fixedBuildInputs(currentPreview.data.manifest.buildInputs)}
     {currentPreview.data.manifest.dependencyClosure?.length?<details><summary>完整固定依赖（{currentPreview.data.manifest.dependencyClosure.length}）</summary>
-      <ul>{currentPreview.data.manifest.dependencyClosure.map(pin=><li key={pin.resourceId}>{pin.name} · 版本 {pin.version} · {pin.mountPath||"资源根目录"}</li>)}</ul></details>:null}
+      <ul>{currentPreview.data.manifest.dependencyClosure.map(pin=><li key={pin.resourceId}>{pin.name} · 版本 {pin.version} · {pin.mountPath||"资源根目录"} <a
+        href={path(pin.resourceId,{version:pin.versionId,tab:"source"})} target="_blank" rel="noreferrer">查看源码</a></li>)}</ul></details>:null}
     <div className="shared-dtsi-workspace">{memberNavigation(sourceMembers(form),selectMember)}
       <div className="shared-dtsi-source"><WorkbenchDtsEditor sessionKey={`shared-dtsi-preview/${currentPreview.data.id}/${memberIndex}`} text={form.content}
       readOnly ariaLabel="待发布 DTSI 源码" /></div></div>
@@ -300,7 +301,8 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
           <div><dt>变更说明</dt><dd>{published.changeDescription}</dd></div></dl>
         {fixedBuildInputs(published.manifest.buildInputs)}
         {published.manifest.dependencyClosure?.length?<details><summary>完整固定依赖（{published.manifest.dependencyClosure.length}）</summary>
-          <ul>{published.manifest.dependencyClosure.map(pin=><li key={pin.resourceId}>{pin.name} · 版本 {pin.version} · {pin.mountPath||"资源根目录"}</li>)}</ul></details>:null}
+          <ul>{published.manifest.dependencyClosure.map(pin=><li key={pin.resourceId}>{pin.name} · 版本 {pin.version} · {pin.mountPath||"资源根目录"} <a
+            href={path(pin.resourceId,{version:pin.versionId,tab:"source"})} target="_blank" rel="noreferrer">查看源码</a></li>)}</ul></details>:null}
         <div className="shared-dtsi-workspace">{memberNavigation(published.members,setMemberIndex)}
           <div className="shared-dtsi-source"><WorkbenchDtsEditor sessionKey={`shared-dtsi-version/${published.id}/${memberIndex}`} text={published.members[memberIndex]?.content ?? ""}
           readOnly focusLine={published.members[memberIndex]?.id === selectedMember && /^[1-9]\d*$/.test(requestedLine) ? Number(requestedLine) : null}
@@ -353,16 +355,18 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
     {loading ? <SectionSkeleton label="正在加载共享 DTSI 草稿" /> : error && !draft && selected !== "new" ? <SectionError message={error} onRetry={() => setReload(value => value + 1)} /> : <>
       {error ? <div className="shared-dtsi-error" role="alert"><p>{error}</p>{conflict ? <Button variant="outline" onClick={() => setReloadOpen(true)}>重新载入</Button> : null}</div> : null}
       {saved === selected ? <p role="status">草稿已保存</p> : null}
+      {draft?.sourceEvidence ? <p className="shared-dtsi-hint">已复制所选私有源码及依赖。本组织有查看权限的用户可读取草稿与发布版本；来源项目配置保持不变。</p> : null}
       <div className="shared-dtsi-fields">
         <label>资源名称<Input aria-label="资源名称" value={form.name} maxLength={160} readOnly={!canWrite} disabled={pending} onChange={event => { edits.current+=1; setForm({ ...form, name: event.target.value }); setSaved(null); }} /></label>
         {!form.archive?<label>文件路径<Input aria-label="文件路径" value={form.sourceName} maxLength={240} readOnly={!canWrite} disabled={pending} onChange={event => { edits.current+=1;
           setForm({ ...form, sourceName: event.target.value,...(form.members?{members:form.members.map((member,index)=>index===memberIndex?{...member,sourceName:event.target.value}:member)}:{}) }); setSaved(null); }} /></label>:null}
-        {canWrite ? <><input ref={upload} type="file" accept=".dtsi,.h,.hpp,.zip" multiple hidden onChange={event => { void importFiles(event.target.files); event.target.value = ""; }} />
+        {canWrite ? <><input ref={upload} type="file" accept=".dts,.dtsi,.h,.hpp,.zip" multiple hidden onChange={event => { void importFiles(event.target.files); event.target.value = ""; }} />
           <input ref={directoryUpload} type="file" multiple hidden {...{webkitdirectory:""}} onChange={event=>{void importFiles(event.target.files);event.target.value="";}} />
           <Button variant="outline" disabled={pending} onClick={() => upload.current?.click()}>选择源码或 ZIP</Button>
           <Button variant="outline" disabled={pending} onClick={() => directoryUpload.current?.click()}>选择目录</Button></> : null}
       </div>
       {canWrite?<SharedDtsiDependencies client={client} value={form.dependencies??[]} resourceId={draft?.resourceId} disabled={pending}
+        sourceHref={(resourceId,versionId)=>path(resourceId,{version:versionId,tab:"source"})}
         onChange={dependencies=>{edits.current+=1;setForm(current=>({...current,dependencies}));setPreview(null);setSaved(null);}} />:null}
       <label className="shared-dtsi-change-description">变更说明<Textarea aria-label="变更说明" value={form.changeDescription} maxLength={1000} rows={2}
         placeholder="说明此共享版本的变更" readOnly={!canWrite} disabled={pending} onChange={event=>{edits.current+=1;setForm({...form,changeDescription:event.target.value});setSaved(null);}} /></label>

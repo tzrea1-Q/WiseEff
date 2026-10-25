@@ -541,7 +541,7 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
   });
 
   it("accepts incomplete draft text but rejects unsafe paths and undeclared fields", async () => {
-    for (const sourceName of ["../battery.dtsi", "/battery.dtsi", "inc\\battery.dtsi", "battery.dts"]) {
+    for (const sourceName of ["../battery.dtsi", "/battery.dtsi", "inc\\battery.dtsi", "battery.json"]) {
       expect((await call("", "POST", { name: "Invalid path", sourceName, content: source })).status).toBe(400);
     }
     expect((await call("", "POST", { name: "Forged scope", sourceName: "battery.dtsi", content: source, organizationId: "org-other-dtsi" })).status).toBe(400);
