@@ -2,7 +2,7 @@ import type { Database } from "../../shared/database/client";
 import type { AuthContext } from "../auth/types";
 import { ApiError } from "../../shared/http/errors";
 import { getAuthContext } from "../auth/repository";
-import { createUserInvocation } from "../auth/trustedInvocation";
+import { assertTrustedInvocationContext, assertTrustedInvocationMatchesScope } from "../auth/trustedInvocation";
 import { resolveOperatingContext } from "../auth/operatingContext";
 import type { ProposalCommand } from "../parameter-governance/proposals/command";
 import { sharedDtsiRecognitionReferenceSchema } from "../contracts/dtoSchemas/sharedDtsi";
@@ -12,15 +12,14 @@ import { DriverCompatible } from "../catalog-kernel/interface";
 import { captureModuleRecognitionCatalog, loadOrganizationCatalogSnapshot } from "../parameter-modules/recognitionSettings";
 import { parameterOrganizationId, withParameterAccess } from "../parameters/operatingScope";
 import { closureMembers, composeDtsBuildInputs, loadSharedDtsiClosure, mountedSharedPath } from "./dependencies";
-import { completePublicationSource, getSharedDtsiVersion } from "./publication";
+import { preparePublishedSharedDtsiSource, getSharedDtsiVersion } from "./publication";
 
 /** Read immutable source evidence without creating a project or a Catalog observation. */
 export async function readSharedDtsiCompatibleEvidence(db: Database, auth: AuthContext, resourceId: string, versionId: string) {
   const version = await getSharedDtsiVersion(db, auth, resourceId, versionId);
   const resources = await loadSharedDtsiClosure(db, auth, version.manifest.dependencies ?? [], resourceId);
   const declared={includeSearchPaths:version.manifest.buildInputs.includeSearchPaths,defines:version.manifest.buildInputs.defines??{}};
-  const prepared=await completePublicationSource(db,auth,{id:version.id,resourceId,name:version.name,revision:version.version,updatedAt:version.createdAt,
-    changeDescription:version.changeDescription,members:version.members,dependencies:version.manifest.dependencies,buildInputs:declared});
+  const prepared=await preparePublishedSharedDtsiSource(db,auth,version);
   const members = [...version.members, ...closureMembers(resources)];
   const files = new Map(members.map(member => [member.sourceName, {fileVersionId: member.id, content: member.content}]));
   const included = new Set(prepared.manifest.includeGraph.map(edge => edge.target));
@@ -74,6 +73,9 @@ export async function bindSharedDtsiProposalEvidence(db:Database,command:Proposa
   const parsed=sharedDtsiRecognitionReferenceSchema.safeParse(command.payload.sourceReference);
   if(!parsed.success || command.payload.sourceEvidence!==undefined || !["create-subject","source-recognition"].includes(String(command.payload.kind)))
     throw new ApiError("VALIDATION_FAILED","共享来源引用无效，请从固定版本重新识别。");
+  if(!command.context.invocation)throw new ApiError("FORBIDDEN","来源识别提案需要原始用户操作。");
+  const invocation=assertTrustedInvocationContext(command.context.invocation);
+  if(invocation.initiator!=="user")throw new ApiError("FORBIDDEN","来源识别提案需要用户操作。");
   const ref=parsed.data;
   const changeSet=command.payload.changeSet;
   if(command.payload.kind==="create-subject") {
@@ -85,7 +87,8 @@ export async function bindSharedDtsiProposalEvidence(db:Database,command:Proposa
     throw new ApiError("VALIDATION_FAILED","主体 compatible 标识与固定来源不一致。");
   }
   const principal=await getAuthContext(db,command.context.principalId);
-  const auth=withParameterAccess(principal,await resolveOperatingContext(db,createUserInvocation(principal),command.organizationId));
+  assertTrustedInvocationMatchesScope(principal,invocation,command.organizationId,"shared source recognition proposal");
+  const auth=withParameterAccess(principal,await resolveOperatingContext(db,invocation,command.organizationId));
   const result=await recognizeSharedDtsiVersion(db,auth,ref.resourceId,ref.versionId);
   if(result.catalogReleaseId!==command.currentRelease.id)throw new ApiError("CONFLICT","目录发布已变化，请重新核对来源。",{reason:"release-drift"});
   const item=result.items.find(item=>item.nodeLocator===ref.nodeLocator && item.compatibles.some(entry=>entry.compatible===ref.compatible));

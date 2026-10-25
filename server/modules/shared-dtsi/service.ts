@@ -45,7 +45,7 @@ export async function getSharedDtsiDraft(db: Database, auth: AuthContext, resour
 export async function listSharedDtsiResources(db: Database, auth: AuthContext, input: { q: string; offset: number; limit: number }) {
   requireRead(auth);
   if (input.q) {
-    const {getSharedDtsiVersion,completePublicationSource} = await import("./publication");
+    const {getSharedDtsiVersion,preparePublishedSharedDtsiSource} = await import("./publication");
     const matches: SharedDtsiResourceSummary[] = [];
     // ponytail: linear metadata scan; frozen selectors avoid recompiling current resources, add a SQL index when library size warrants it.
     for (let offset=0;;offset+=100) {
@@ -66,11 +66,7 @@ export async function listSharedDtsiResources(db: Database, auth: AuthContext, i
           let selectors=manifest.compatibleSelectors??cache.get(key);
           if(!selectors) {
             const version=await getSharedDtsiVersion(db,auth,row.resourceId,row.currentVersion.id);
-            selectors=(await completePublicationSource(db,auth,{
-              id:version.id,resourceId:version.resourceId,name:version.name,revision:version.version,updatedAt:version.createdAt,
-              members:version.members,changeDescription:version.changeDescription,dependencies:version.manifest.dependencies,
-              buildInputs:{includeSearchPaths:manifest.buildInputs.includeSearchPaths,defines:manifest.buildInputs.defines??{}}
-            })).manifest.compatibleSelectors??[];
+            selectors=(await preparePublishedSharedDtsiSource(db,auth,version)).manifest.compatibleSelectors??[];
             if(selectors.reduce((bytes,value)=>bytes+Buffer.byteLength(value),0)<=262_144){if(cache.size>=32)cache.delete(cache.keys().next().value!);cache.set(key,selectors);}
           }
           if(selectors.some(compatible=>compatible.toLowerCase().includes(needle))){matches.push(row);continue;}
