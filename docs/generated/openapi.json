@@ -75918,6 +75918,22 @@
           "fileId": {
             "type": "string"
           },
+          "sharedReference": {
+            "type": "object",
+            "properties": {
+              "resourceId": {
+                "type": "string"
+              },
+              "versionId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "resourceId",
+              "versionId"
+            ],
+            "additionalProperties": false
+          },
           "setAsRoot": {
             "type": "boolean",
             "enum": [
@@ -76002,6 +76018,62 @@
                   "dts",
                   "json"
                 ]
+              },
+              "sharedReference": {
+                "type": "object",
+                "properties": {
+                  "resourceId": {
+                    "type": "string"
+                  },
+                  "versionId": {
+                    "type": "string"
+                  },
+                  "memberId": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "number"
+                  },
+                  "digest": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "resourceId",
+                  "versionId",
+                  "memberId",
+                  "version",
+                  "digest"
+                ],
+                "additionalProperties": false
+              },
+              "rootEdit": {
+                "type": "object",
+                "properties": {
+                  "fileId": {
+                    "type": "string"
+                  },
+                  "baseFileVersionId": {
+                    "type": "string"
+                  },
+                  "sourceName": {
+                    "type": "string"
+                  },
+                  "before": {
+                    "type": "string"
+                  },
+                  "after": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "fileId",
+                  "baseFileVersionId",
+                  "sourceName",
+                  "before",
+                  "after"
+                ],
+                "additionalProperties": false
               },
               "members": {
                 "type": "array",
@@ -76156,6 +76228,22 @@
           },
           "fileId": {
             "type": "string"
+          },
+          "sharedReference": {
+            "type": "object",
+            "properties": {
+              "resourceId": {
+                "type": "string"
+              },
+              "versionId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "resourceId",
+              "versionId"
+            ],
+            "additionalProperties": false
           },
           "setAsRoot": {
             "type": "boolean",

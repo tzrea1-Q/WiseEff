@@ -9,6 +9,7 @@
 .workbench-member-addition-dialog__columns { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
 .workbench-member-addition-dialog section { margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--border); overflow-wrap: anywhere; }
 .workbench-member-addition-dialog section > button { margin-top: var(--space-4); }
+.workbench-member-addition-dialog pre { max-height: 16rem; overflow: auto; white-space: pre; padding: var(--space-3); background: var(--surface); }
 .workbench-member-addition-dialog [role="alert"] { color: var(--danger); overflow-wrap: anywhere; }
 .workbench-member-addition-dialog__registration { display: grid; gap: var(--space-4); margin-top: var(--space-4); }
 .workbench-member-addition-dialog__registration [data-slot="select-trigger"] { width: 100%; min-width: 0; }

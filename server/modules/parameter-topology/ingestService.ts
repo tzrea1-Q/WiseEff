@@ -795,6 +795,19 @@ async function ingestConfigRevisionTx(
       overlayOrder: normalized.manifest.overlayOrder,
       files,
     });
+    const referenced = (await tx.query<{ fileId: string; fileVersionId: string; sourceName: string; checksum: string }>(
+      `select snapshot.file_id as "fileId",snapshot.file_version_id as "fileVersionId",upstream.source_name as "sourceName",upstream.checksum
+       from public.project_shared_dtsi_references reference join public.project_shared_dtsi_snapshots snapshot on snapshot.reference_id=reference.id
+       join public.shared_dtsi_revision_members upstream on upstream.revision_id=snapshot.revision_id and upstream.member_id=snapshot.member_id
+       where reference.organization_id=$1 and reference.project_id=$2 and reference.config_set_id=$3`,
+      [manifest.organizationId, manifest.projectId, manifest.configSetId])).rows;
+    for (const reference of referenced) {
+      const member = dtsMembers.find(row => row.fileId === reference.fileId && row.fileVersionId === reference.fileVersionId && row.fileName === reference.sourceName);
+      if (!member || !resolved.sourceFiles.includes(reference.sourceName)
+        || createHash("sha256").update(member.content).digest("hex") !== reference.checksum.replace(/^sha256:/, "")) {
+        throw new ApiError("CONFLICT", "固定共享引用必须完整保留且由项目入口实际引用；请通过配置组成变更引用。", { reason: "shared-reference-closure-required" });
+      }
+    }
   } catch (error) {
     const { defaultMetricsRegistry } =
       await import("../../observability/metrics");

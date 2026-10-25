@@ -9,6 +9,37 @@ import { jsonLeafPaths } from "@/application/project-configuration/jsonRegistrat
 
 afterEach(cleanup);
 
+it("requires an explicit published version and clears its proof when the version changes", async () => {
+  const user = userEvent.setup(), resourceId = "11111111-1111-4111-8111-111111111111", versionId = "22222222-2222-4222-8222-222222222222";
+  const summary = { id: versionId, resourceId, version: 1, name: "Shared limits", changeDescription: "Initial limits", digest: "sha256:fixed", createdAt: "2026-10-24", createdByUserId: "author" };
+  const sharedClient = {
+    list: vi.fn(async () => ({ items: [{ resourceId, name: "Shared limits", updatedAt: "2026-10-24", sourceName: "limits.dtsi", draftRevision: null, currentVersion: summary }], total: 1 })),
+    versions: vi.fn(async () => ({ items: [summary, { ...summary, id: "33333333-3333-4333-8333-333333333333", version: 2 }], total: 2 }))
+  };
+  const bodies: Array<Record<string, unknown>> = [];
+  const client = createCanonicalMemberAdditionClient(createApiClient({ baseUrl: "", fetchImpl: async (_input, init) => {
+    bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    return new Response(JSON.stringify({ item: { proofToken: "a".repeat(64), configSetId: "set", fileName: "limits.dtsi", format: "dts", members: [],
+      entryFile: "board.dts", includeSearchPaths: ["."], overlayOrder: [], diagnostics: [],
+      sharedReference: { resourceId, versionId, memberId: "member", version: 1, digest: "sha256:fixed" },
+      rootEdit: { fileId: "root", baseFileVersionId: "root-v1", sourceName: "board.dts", before: "/dts-v1/; / {};", after: '/dts-v1/;\n/include/ "limits.dtsi"\n/ {};' },
+      impact: { parameterChanges: 0, nodeAdditions: 1, nodeRemovals: 0, retainedBindings: 0, sourceReplacements: 0 } } }));
+  } }));
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{ id: "set", name: "默认配置" }]} initialConfigSetId="set" availableFiles={[]}
+    client={client} sharedClient={sharedClient} onDismiss={vi.fn()} onApplied={vi.fn()} />);
+  await user.click(screen.getByRole("combobox", { name: "文件来源" })); await user.click(screen.getByRole("option", { name: "引用共享 DTSI 固定版本" }));
+  await user.click(await screen.findByRole("combobox", { name: "共享资源" })); await user.click(await screen.findByRole("option", { name: "Shared limits" }));
+  expect(screen.getByRole("button", { name: "预览加入配置" })).toBeDisabled();
+  await user.click(await screen.findByRole("combobox", { name: "固定版本" })); await user.click(await screen.findByRole("option", { name: "版本 1 · Initial limits" }));
+  await user.click(screen.getByRole("button", { name: "预览加入配置" }));
+  expect(await screen.findByText("此项目的当前配置引用共享版本 1；来源成员只读，其他项目不受影响。")).toBeInTheDocument();
+  expect(bodies.at(-1)).toMatchObject({ sharedReference: { resourceId, versionId }, role: "misc" });
+  await user.click(screen.getByText("项目根文件 include 变更：board.dts"));
+  expect(screen.getByLabelText("确认后根文件源码")).toHaveTextContent('/include/ "limits.dtsi"');
+  await user.click(screen.getByRole("combobox", { name: "固定版本" })); await user.click(screen.getByRole("option", { name: "版本 2 · Initial limits" }));
+  expect(screen.queryByRole("button", { name: "确认加入配置" })).not.toBeInTheDocument();
+});
+
 function jsonDialog(options: { definitionFailure?: boolean } = {}) {
   const subject: CatalogSubjectListResponse["items"][number] = { id: "spec-internal", type: "configuration-schema", canonicalName: "电源配置",
     aliases: [], membership: { status: "active", catalogReleaseId: "release" }, registration: { status: "active", id: "registered" },

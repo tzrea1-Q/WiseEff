@@ -16,6 +16,7 @@ type Member = {
   sourceName: string; role: string; sortOrder: number;
 };
 type SourceVersion = Member & {
+  sharedReference?: import("./types").ConfigSetMemberFileDto["sharedReference"];
   organizationId: string; projectId: string; configSetId: string; format: "dts" | "json";
   checksum: string; sizeBytes: number; storageKey: string; versionNumber: number;
 };
@@ -30,6 +31,9 @@ function conflict(message: string): never { throw new ApiError("CONFLICT", messa
 function limit(): never { throw new ApiError("CONFLICT", "Exact source proof exceeds its bounded capacity.", { reason: "source-proof-limit" }); }
 /** Callers must roll back their entire transaction; no reads may follow this refusal. */
 export function rethrowSourceTransactionError(error: unknown): never {
+  if ((error as { code?: string })?.code === "55000" && /Shared reference/.test((error as Error).message)) {
+    throw new ApiError("CONFLICT", "共享引用源码只读，请通过引用变更或恢复流程操作。", { reason: "shared-reference-readonly" });
+  }
   if (["55P03", "40001"].includes((error as { code?: string } | null)?.code ?? "")) {
     throw new ApiError("CONFLICT", "Source is being changed; retry the exact proof.", { reason: "source-proof-busy" });
   }
@@ -107,7 +111,7 @@ export async function loadExactSourceRevisionForProof(tx: Queryable, objectStore
   const { entryFile,includeSearchPaths,overlayOrder } = rawRevision;
   const rows = (await tx.query<SourceVersion>(
     `select member.id,member.config_revision_id as "configRevisionId",member.file_id as "fileId",
-      member.file_version_id as "fileVersionId",member.source_name as "sourceName",member.role,member.sort_order as "sortOrder",
+      member.file_version_id as "fileVersionId",member.source_name as "sourceName",member.role,member.sort_order as "sortOrder",member.shared_reference as "sharedReference",
       file.organization_id as "organizationId",file.project_id as "projectId",file.config_set_id as "configSetId",file.format,
       version.checksum,version.size_bytes::float8 as "sizeBytes",version.storage_key as "storageKey",version.version_number as "versionNumber"
      from dts_config_revision_members member
@@ -181,8 +185,8 @@ export async function loadExactSourceRevisionForProof(tx: Queryable, objectStore
     let content: string;
     try { content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes!); }
     catch { conflict("Exact source object is not UTF-8."); }
-    const { storageKey: _storageKey, ...metadata } = row;
-    result.push({ ...metadata, bytes: bytes!, content: content! });
+    const { storageKey: _storageKey, sharedReference, ...metadata } = row;
+    result.push({ ...metadata, ...(sharedReference ? { sharedReference } : {}), bytes: bytes!, content: content! });
   }
   return { revision: rawRevision, members: result };
 }

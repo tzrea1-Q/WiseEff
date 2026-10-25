@@ -1640,10 +1640,10 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&inspector=config-set`
       );
       await dismissXiaozeHint(page);
-      const files = page.getByRole("dialog", { name: "文件管理", exact: true });
+      const files = page.getByRole("dialog", { name: "配置组成", exact: true });
       await expect(files).toBeVisible();
       await expect(files.getByRole("table", { name: "配置文件", exact: true })).toBeVisible();
-      await expect(files.getByRole("button", { name: "关闭文件管理" })).toBeVisible();
+      await expect(files.getByRole("button", { name: "关闭配置组成" })).toBeVisible();
       const fileActions = await openWorkbenchFileActions(page, looseFileName);
       await fileActions.getByRole("menuitem", { name: "从配置移除", exact: true }).click();
       const removeMemberDialog = page.getByRole("dialog", { name: "从配置移除文件" });
@@ -1657,7 +1657,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await removeMemberDialog.getByRole("button", { name: "确认移除" }).click();
       const removeMemberResponse = await removeMemberResponsePromise;
       expect(removeMemberResponse.ok()).toBe(true);
-      await files.getByRole("button", { name: "关闭文件管理", exact: true }).click();
+      await files.getByRole("button", { name: "关闭配置组成", exact: true }).click();
       await expect(ungrouped).toContainText(looseFileName);
 
       await openWorkbenchPanel(page, "file");
@@ -3048,6 +3048,71 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const after = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),{ headers: adminHeaders() });
     expect((await after.json()).items.find((row: { id: string }) => row.id===binding.bindingId)).toMatchObject({ rawValue: '"RestoreV1", "keep"' });
     await expect(await openWorkbenchPanel(page,"config-set")).toContainText("retained-");
+  });
+
+  test("administrator references a fixed shared DTSI version through configuration composition", async ({ page, request }, testInfo) => {
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
+    const sample = '/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "FixedProject", "keep"; }; };';
+    const binding = await seedIsolatedBinding(request, { propertyKey: "rx_fod_cond", dts: sample,
+      rawValuePattern: '"FixedProject", "keep"', nodeLocatorPattern: "board", reason: "#1416 fixed shared reference", timeoutMs: 60_000 });
+    const file = await lookupParameterFileVersion({ fileName: binding.fileName });
+    const name = `Fixed shared ${randomUUID()}`, sourceName = `fixed-${randomUUID()}.dtsi`;
+    const source = '/ { common { status = "okay"; }; board { rx_fod_cond = "SharedDefault", "keep"; }; };';
+    const draftResponse = await request.post(apiRoute("/api/v2/shared-dtsi"), { headers: adminHeaders(), data: {
+      name, sourceName, content: source, changeDescription: "Initial fixed shared source" } });
+    expect(draftResponse.status(), await draftResponse.text()).toBe(201);
+    const draft = (await draftResponse.json()).item as { resourceId: string; revision: number };
+    const previewResponse = await request.post(apiRoute(`/api/v2/shared-dtsi/${draft.resourceId}/publication-preview`), {
+      headers: adminHeaders(), data: { expectedRevision: draft.revision } });
+    expect(previewResponse.status(), await previewResponse.text()).toBe(201);
+    const publishedResponse = await request.post(apiRoute(`/api/v2/shared-dtsi/${draft.resourceId}/publications`), {
+      headers: adminHeaders(), data: { previewId: (await previewResponse.json()).item.id, idempotencyKey: `fixed-${randomUUID()}` } });
+    expect(publishedResponse.status(), await publishedResponse.text()).toBe(201);
+    const versionId = (await publishedResponse.json()).item.id as string;
+    const route = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({ configSet: binding.configSetId, file: file.fileId })}`;
+    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, route)); await dismissXiaozeHint(page);
+    const composition = await openWorkbenchPanel(page, "config-set");
+    await expect(composition).toHaveAccessibleName("配置组成");
+    await composition.getByRole("button", { name: "添加配置文件", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "加入配置文件", exact: true });
+    await selectControlOption(dialog.getByRole("combobox", { name: "文件来源", exact: true }), "shared");
+    await dialog.getByRole("searchbox", { name: "搜索共享资源", exact: true }).fill(name);
+    await selectControlOption(dialog.getByRole("combobox", { name: "共享资源", exact: true }), draft.resourceId);
+    await expect(dialog.getByRole("button", { name: "预览加入配置", exact: true })).toBeDisabled();
+    await selectControlOption(dialog.getByRole("combobox", { name: "固定版本", exact: true }), versionId);
+    const previewing = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/member-addition/preview"), { timeout: 60_000 });
+    await dialog.getByRole("button", { name: "预览加入配置", exact: true }).click();
+    const preview = await previewing; expect(preview.status(), await preview.text()).toBe(200);
+    expect(preview.request().postDataJSON()).toMatchObject({ sharedReference: { resourceId: draft.resourceId, versionId }, role: "misc" });
+    await expect(dialog.getByRole("region", { name: "加入配置预览" })).toContainText(sourceName);
+    await dialog.getByText(`项目根文件 include 变更：${binding.fileName}`, { exact: true }).click();
+    await expect(dialog.getByLabel("确认后根文件源码", { exact: true })).toContainText(`/include/ "${sourceName}"`);
+    await expect(dialog.getByLabel("确认后根文件源码", { exact: true })).toContainText('"FixedProject"');
+    await dialog.getByLabel("加入原因", { exact: true }).fill("#1416 reviewed exact fixed version and private-root include change");
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
+      await page.setViewportSize(viewport);
+      const path = testInfo.outputPath(`fixed-shared-reference-${viewport.width}.png`);
+      await page.screenshot({ path }); await testInfo.attach(`Fixed shared reference ${viewport.width}`, { path, contentType: "image/png" });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    }
+    const applying = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/member-addition/apply"), { timeout: 60_000 });
+    await dialog.getByRole("button", { name: "确认加入配置", exact: true }).focus(); await page.keyboard.press("Enter");
+    const applied = await applying; expect(applied.status(), await applied.text()).toBe(200);
+    const receipt = (await applied.json()).item as { fileId: string; fileVersionId: string };
+    await expect(dialog).toHaveCount(0); await page.reload();
+    const after = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), { headers: adminHeaders() });
+    expect((await after.json()).items.find((item: { id: string }) => item.id === binding.bindingId)).toMatchObject({ rawValue: '"FixedProject", "keep"' });
+    const files = await openWorkbenchPanel(page, "config-set");
+    const row = files.getByRole("row").filter({ hasText: sourceName });
+    await expect(row).toContainText("共享引用 · 版本 1 · 只读");
+    await expect(row.getByRole("button", { name: "更新文件", exact: true })).toHaveCount(0);
+    await row.getByRole("button", { name: "查看源码", exact: true }).click();
+    await expect(page.getByRole("region", { name: "DTS 源码", exact: true })).toContainText('status = "okay"');
+    await expect(page.getByRole("radio", { name: "编辑", exact: true })).toHaveCount(0);
+    const exact = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${receipt.fileId}/versions/${receipt.fileVersionId}/content`), { headers: adminHeaders() });
+    expect(await exact.text()).toBe(source);
   });
 
   test("administrator adds a staged overlay to a Canonical configuration through preview and keyboard confirmation", async ({ page, request }, testInfo) => {
