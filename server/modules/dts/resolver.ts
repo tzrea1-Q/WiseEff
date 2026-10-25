@@ -1,6 +1,6 @@
 import { parseDts } from "./parser";
 import { lexDts } from "./lexer";
-import { dtsReferencePath } from "../../../src/domain/dts/reference";
+import { dtsActualPathTarget,dtsReferencePath } from "../../../src/domain/dts/reference";
 import type { DtsDocument, DtsNodeCst, DtsPropertyCst, DtsValueType } from "./types";
 
 export interface ResolvedPhandleRef {
@@ -73,7 +73,7 @@ class Resolver {
     }
     for(const node of this.byPath.values())for(const ref of node.phandleRefs) {
       const path=dtsReferencePath(ref.targetLabel);
-      if(path!==null && !this.byPath.has(path.slice(1)))throw new Error(`Unresolved DTS node-path reference &${ref.targetLabel}`);
+      if(path!==null && !dtsActualPathTarget(this.byPath,path.slice(1)))throw new Error(`Unresolved DTS node-path reference &${ref.targetLabel}`);
     }
     return { nodes: this.flatten() };
   }
@@ -83,7 +83,7 @@ class Resolver {
 
     if (cst.refTarget) {
       const path=dtsReferencePath(cst.refTarget);
-      const existing = path!==null?this.byPath.get(path.slice(1)):this.byLabel.get(cst.refTarget);
+      const existing = path!==null?dtsActualPathTarget(this.byPath,path.slice(1)):this.byLabel.get(cst.refTarget);
       if(path!==null && !existing)throw new Error(`Unresolved DTS node-path reference &${cst.refTarget}`);
       if (existing) {
         node = existing;

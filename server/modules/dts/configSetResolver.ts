@@ -3,7 +3,7 @@ import posixPath from "node:path/posix";
 import { parseDts } from "./parser";
 import { stripDtsComments } from "./preprocess";
 import { lexDts } from "./lexer";
-import { dtsReferencePath,DtsPathReferenceError } from "../../../src/domain/dts/reference";
+import { dtsActualPathTarget,dtsReferencePath,DtsPathReferenceError } from "../../../src/domain/dts/reference";
 import type { DtsDeleteNodeCst, DtsDeletePropertyCst, DtsNodeCst, DtsPropertyCst, DtsValue, DtsValueType } from "./types";
 
 /**
@@ -116,6 +116,7 @@ interface MutableNode {
   unitAddress?: string;
   labels: Set<string>;
   deleted: boolean;
+  isLabelStub: boolean;
   properties: Map<string, MutableProperty>;
   sourceChain: DtsNodeSourceChainEntry[];
 }
@@ -299,9 +300,9 @@ function resolveSegment(segments: readonly Segment[], offset: number): string {
   return segments.length > 0 ? segments[segments.length - 1].fileName : "";
 }
 
-function ensureNode(ctx: WalkContext, locator: string, name: string, unitAddress: string | undefined, fileName: string): MutableNode {
+function ensureNode(ctx: WalkContext, locator: string, name: string, unitAddress: string | undefined, fileName: string,isLabelStub=false): MutableNode {
   const existing = ctx.byLocator.get(locator);
-  if (existing) return existing;
+  if (existing) {if(!isLabelStub)existing.isLabelStub=false;return existing;}
   ctx.retainMetadata(locator, name, fileName);
   const node: MutableNode = {
     locator,
@@ -309,6 +310,7 @@ function ensureNode(ctx: WalkContext, locator: string, name: string, unitAddress
     unitAddress,
     labels: new Set(),
     deleted: false,
+    isLabelStub,
     properties: new Map(),
     sourceChain: [{ fileName, nodeLocator: displayLocator(locator), effect: "create" }],
   };
@@ -415,7 +417,7 @@ function walkNode(ctx: WalkContext, cst: DtsNodeCst, parentLocator: string): voi
 
   if (cst.refTarget) {
     const path=dtsReferencePath(cst.refTarget);
-    const target = path!==null?ctx.byLocator.get(path.slice(1)):ctx.byLabel.get(cst.refTarget);
+    const target = path!==null?dtsActualPathTarget(ctx.byLocator,path.slice(1)):ctx.byLabel.get(cst.refTarget);
     if(path!==null && (!target || target.deleted)) {
       ctx.diagnostics.push({code:"target-unresolved",severity:"error",fileName,
         message:`Overlay target "&${cst.refTarget}" is not defined in the uploaded file set`});
@@ -435,7 +437,7 @@ function walkNode(ctx: WalkContext, cst: DtsNodeCst, parentLocator: string): voi
         fileName,
         message: `Overlay target "&${cst.refTarget}" is not defined in the uploaded file set; its properties are attached to a synthetic anchor node so parameters stay manageable (full-tree resolution unavailable until the definition is provided)`,
       });
-      node = ensureNode(ctx, cst.refTarget, cst.refTarget, undefined, fileName);
+      node = ensureNode(ctx, cst.refTarget, cst.refTarget, undefined, fileName,true);
       registerLabel(ctx, cst.refTarget, node, fileName);
     } else {
       node = target;
@@ -572,7 +574,7 @@ export function resolveDtsConfigSet(input: DtsConfigSetInput): DtsConfigSetResul
     for(const node of byLocator.values())for(const property of node.properties.values()) {
       if(node.deleted || property.deleted)continue;
       for(const token of lexDts(property.rawText))if(token.kind==="path-ref") {
-        const target=byLocator.get(dtsReferencePath(token.value)!.slice(1));
+        const target=dtsActualPathTarget(byLocator,dtsReferencePath(token.value)!.slice(1));
         if(!target || target.deleted)diagnostics.push({code:"target-unresolved",severity:"error",fileName:property.sourceChain.at(-1)!.fileName,
           message:`Property reference "&${token.value}" is not defined in the uploaded file set`});
       }

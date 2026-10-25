@@ -2,6 +2,35 @@ import { describe,expect,it } from "vitest";
 import { lexDts,parseDts,parseDtsValue,renderDtsValue,resolveDts,resolveDtsConfigSet,serializeDts } from "./index";
 
 describe("native absolute node-path references",()=>{
+  it.each([
+    '/ {}; &ghost { status = "disabled"; }; &{/ghost} { status = "okay"; };',
+    '/ { consumer { clocks = <&{/ghost}>; }; }; &ghost {};',
+    '/ {}; &ghost { child {}; }; &{/ghost/child} { status = "okay"; };',
+    '/ { consumer { clocks = <&{/ghost/child}>; }; }; &ghost { child {}; };'
+  ])("refuses synthetic label anchors and their descendants as absolute targets",content=>{
+    const result=resolveDtsConfigSet({entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],requireExactOrigins:true,
+      files:new Map([["board.dts",{fileVersionId:"v1",content}]])});
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({code:"target-unresolved",severity:"error"}));
+    expect(()=>resolveDts(content)).toThrow(/ghost/u);
+  });
+
+  it("retains legacy fragments and accepts their descendants after an actual source declaration adopts the anchor",()=>{
+    const fragment='/ {}; &ghost { child { rate = <7>; }; };';
+    expect(resolveDts(fragment).nodes.find(node=>node.nodePath==="ghost/child")?.properties[0]?.rawText).toBe("<7>");
+    const content=fragment+'/ { ghost: ghost {}; }; &{/ghost/child} { status = "okay"; }; / { consumer { clocks = <&{/ghost/child}>; }; };';
+    const result=resolveDtsConfigSet({entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],requireExactOrigins:true,
+      files:new Map([["board.dts",{fileVersionId:"v1",content}]])});
+    expect(result.diagnostics.filter(diagnostic=>diagnostic.severity==="error")).toEqual([]);
+    expect(result.effective.nodesByLocator.get("/ghost/child")?.properties.get("status")?.rawText).toBe('"okay"');
+    expect(resolveDts(content).nodes.find(node=>node.nodePath==="ghost/child")?.status).toBe("okay");
+  });
+
+  it("keeps single-file forward-label adoption when the real declaration changes its absolute parent path",()=>{
+    const content='/ {}; &ghost { child {}; }; / { ghost: soc {}; }; &{/soc/child} { status = "okay"; };';
+    const result=resolveDts(content);
+    expect(result.nodes.find(node=>node.nodePath==="soc/child")?.status).toBe("okay");
+    expect(result.nodes.some(node=>node.nodePath.startsWith("ghost"))).toBe(false);
+  });
   it("parses overlay and cell paths and retains their exact source spans and layout",()=>{
     const source='/ { soc { clock@0 {}; }; };\r\n&{/soc} { clocks = <&{/soc/clock@0} 1>; };\r\n';
     const document=parseDts(source),overlay=document.topLevel[1]!;
