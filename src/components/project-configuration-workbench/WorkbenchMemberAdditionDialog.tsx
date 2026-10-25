@@ -173,7 +173,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
                 file={source === "upload" ? file : null} existingFile={source === "existing" ? availableFiles.find((item) => item.id === fileId) : undefined}
                 catalog={catalogRepository} files={fileRepository} value={registration} onChange={(value) => { setRegistration(value); invalidate(); }} /> : null}
             </details> : null}
-            <Button type="submit" disabled={busy || !configSetId || (source === "shared" ? !resourceId || !versionId || sharedLoading || Boolean(sharedError) : source === "existing" ? !fileId : !file && !candidate)}>{busy ? "正在核对…" : switchReference?"预览版本切换":"预览加入配置"}</Button>
+            <Button type="submit" disabled={busy || !configSetId || (source === "shared" ? !resourceId || !versionId || sharedLoading || Boolean(sharedError) : source === "existing" ? !fileId : !file && !candidate)}>{busy ? "正在核对…" : conversionSource?"预览共享转换":switchReference?"预览版本切换":"预览加入配置"}</Button>
           </fieldset>
         </form></details>
         {error ? <p role="alert">{switchReference&&switchConflicts.length?"版本切换未通过。":error}</p> : null}

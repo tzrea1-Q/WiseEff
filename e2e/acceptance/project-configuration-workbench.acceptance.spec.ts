@@ -3768,6 +3768,65 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await expect(retained.getByRole("row").filter({hasText:binding.fileName})).toContainText("项目私有源码");
   });
 
+  test("administrator explicitly converts a published private source with unchanged identity and recoverable confirmation",async({page,request},testInfo)=>{
+    await seedAcceptanceRoleMatrix();await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
+    const sample='/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "PrivateConversion", "keep"; }; };';
+    const binding=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:sample,rawValuePattern:'"PrivateConversion", "keep"',nodeLocatorPattern:"board",reason:"#1429 explicit private conversion",timeoutMs:60_000});
+    const file=await lookupParameterFileVersion({fileName:binding.fileName}),membersPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`;
+    const before=(await(await request.get(apiRoute(membersPath),{headers:adminHeaders()})).json()).items;
+    const route=`/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({configSet:binding.configSetId,file:file.fileId})}`;
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,route));await dismissXiaozeHint(page);
+    let composition=await openWorkbenchPanel(page,"config-set");await composition.getByRole("button",{name:`${binding.fileName} 更多`,exact:true}).click();
+    await page.getByRole("menuitem",{name:"创建共享资源",exact:true}).focus();await page.keyboard.press("Enter");
+    await expect(page.getByRole("region",{name:"共享 DTSI 草稿",exact:true})).toBeVisible();
+    const resourceId=new URL(page.url()).searchParams.get("resource")!,name=`Conversion source ${randomUUID()}`;
+    await page.getByLabel("资源名称",{exact:true}).fill(name);await page.getByLabel("变更说明",{exact:true}).fill("#1429 publish the original source without converting it");
+    await page.getByRole("button",{name:"预览发布",exact:true}).click();await page.getByRole("button",{name:"发布版本",exact:true}).focus();await page.keyboard.press("Enter");
+    await expect(page.getByText("v1 · 已发布，只读",{exact:true})).toBeVisible();
+    const detail=(await(await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/detail`),{headers:adminHeaders()})).json()).item;
+    const versionId=detail.currentVersion.id as string;
+    expect((await(await request.get(apiRoute(membersPath),{headers:adminHeaders()})).json()).items).toEqual(before);
+    await page.goto(disposablePageUrl(disposableRuntime,route));composition=await openWorkbenchPanel(page,"config-set");
+    await composition.getByRole("button",{name:`${binding.fileName} 更多`,exact:true}).click();await page.getByRole("menuitem",{name:"转换为共享引用",exact:true}).focus();await page.keyboard.press("Enter");
+    const dialog=page.getByRole("dialog",{name:"转换为共享引用",exact:true});await expect(dialog).toBeVisible();
+    await dialog.getByRole("searchbox",{name:"搜索共享资源",exact:true}).fill(`${name} no-match`);await expect(dialog.getByText("没有匹配的共享资源。请先创建并发布资源，或调整搜索。",{exact:true})).toBeVisible();
+    const empty=testInfo.outputPath("private-conversion-empty-1440.png");await page.screenshot({path:empty});
+    await dialog.getByRole("searchbox",{name:"搜索共享资源",exact:true}).fill(name);
+    let releaseVersions:()=>void=()=>{};const versionsGate=new Promise<void>(resolve=>{releaseVersions=resolve;});
+    const versionsPattern=`**/api/v2/shared-dtsi/${resourceId}/versions?*`;
+    await page.route(versionsPattern,async intercepted=>{await versionsGate;await intercepted.continue();});
+    await selectControlOption(dialog.getByRole("combobox",{name:"共享资源",exact:true}),resourceId);
+    try{await expect(dialog.getByText("正在读取共享版本…",{exact:true})).toBeVisible();await expect(dialog.getByRole("button",{name:"预览共享转换",exact:true})).toBeDisabled();const loading=testInfo.outputPath("private-conversion-loading-1440.png");await page.screenshot({path:loading});}
+    finally{releaseVersions();}
+    await selectControlOption(dialog.getByRole("combobox",{name:"固定版本",exact:true}),versionId);await page.unroute(versionsPattern);
+    const previewPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition/preview`;
+    const previewing=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===previewPath);
+    await dialog.getByRole("button",{name:"预览共享转换",exact:true}).focus();await page.keyboard.press("Enter");const preview=await previewing;expect(preview.status(),await preview.text()).toBe(200);
+    const proof=(await preview.json()).item;expect(proof).toMatchObject({sharedConversion:{semanticEqual:true,identitiesRetained:true},impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0}});
+    expect(proof.sharedConversion.files).toContainEqual(expect.objectContaining({fileId:file.fileId,fileVersionId:file.versionId,sourceName:binding.fileName}));
+    await dialog.getByRole("textbox",{name:"变更说明",exact:true}).fill("Keep original source, values and history");
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){await page.setViewportSize(viewport);await expect(dialog.getByRole("button",{name:"确认转换引用",exact:true})).toBeInViewport({ratio:1});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);const path=testInfo.outputPath(`private-conversion-preview-${viewport.width}.png`);await page.screenshot({path});}
+    await dialog.getByRole("button",{name:"取消本次预览",exact:true}).click();expect((await(await request.get(apiRoute(membersPath),{headers:adminHeaders()})).json()).items).toEqual(before);
+    await dialog.getByRole("button",{name:"预览共享转换",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue("Keep original source, values and history");
+    const retired=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/lifecycle`),{headers:adminHeaders(),data:{state:"retired",expectedLifecycleRevision:detail.lifecycleRevision,idempotencyKey:`conversion-retire-${randomUUID()}`}});expect(retired.status(),await retired.text()).toBe(200);
+    const failure={method:"POST",path:previewPath.replace(/preview$/u,"apply"),status:409};expectedBrowserApiFailures.push(failure);
+    try{await dialog.getByRole("button",{name:"确认转换引用",exact:true}).click();await expect(dialog.getByRole("alert")).toContainText("资源已停用");await expect(dialog.getByRole("button",{name:"确认转换引用",exact:true})).toHaveCount(0);const path=testInfo.outputPath("private-conversion-error-1280.png");await page.screenshot({path});}
+    finally{expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(failure),1);}
+    expect((await(await request.get(apiRoute(membersPath),{headers:adminHeaders()})).json()).items).toEqual(before);
+    const restored=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/lifecycle`),{headers:adminHeaders(),data:{state:"active",expectedLifecycleRevision:(await retired.json()).item.lifecycleRevision,idempotencyKey:`conversion-reactivate-${randomUUID()}`}});expect(restored.status(),await restored.text()).toBe(200);
+    await dialog.getByRole("button",{name:"预览共享转换",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue("Keep original source, values and history");
+    await page.evaluate(()=>document.documentElement.classList.add("dark"));await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveCSS("color","rgb(232, 236, 244)");const dark=testInfo.outputPath("private-conversion-dark-1280.png");await page.screenshot({path:dark});await page.evaluate(()=>document.documentElement.classList.remove("dark"));
+    const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===failure.path);
+    await dialog.getByRole("button",{name:"确认转换引用",exact:true}).focus();await page.keyboard.press("Enter");const applied=await applying;expect(applied.status(),await applied.text()).toBe(200);await expect(dialog).toHaveCount(0);
+    const after=(await(await request.get(apiRoute(membersPath),{headers:adminHeaders()})).json()).items;
+    expect(after.map((member:{fileId:string;currentVersionId:string})=>[member.fileId,member.currentVersionId])).toEqual(before.map((member:{fileId:string;currentVersionId:string})=>[member.fileId,member.currentVersionId]));
+    expect(after).toContainEqual(expect.objectContaining({fileId:file.fileId,sharedReference:expect.objectContaining({resourceId,versionId,readOnly:true})}));
+    const values=await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),{headers:adminHeaders()});expect((await values.json()).items).toContainEqual(expect.objectContaining({id:binding.bindingId,rawValue:'"PrivateConversion", "keep"'}));
+    await expect(page.getByRole("region",{name:"DTS 源码",exact:true})).toContainText("PrivateConversion");await expect(page.getByRole("radio",{name:"编辑",exact:true})).toHaveCount(0);
+    const readonly=testInfo.outputPath("private-conversion-readonly-1280.png");await page.screenshot({path:readonly});
+    await recordOperationEvidence({operationId:"PROJ-CONFIG-PRIVATE-SHARED-001",title:"Explicit private source conversion",status:"passed",role:"Admin",route,page,testInfo,assertions:["ui","api","screenshot"],artifacts:[empty,dark,readonly],api:[summarizeApiResponse(preview,{method:"POST",path:previewPath}),summarizeApiResponse(applied,{method:"POST",path:failure.path})],notes:"Real promotion/publication, independent conversion preview/cancel, current retirement refusal and recovery, original file/version and Binding preservation, read-only source; private snapshot restoration and adversarial provenance are separately covered by the native HTTP suite."});
+  });
+
   test("administrator references a fixed shared DTSI version through configuration composition", async ({ page, request }, testInfo) => {
     test.setTimeout(240_000);
     await seedAcceptanceRoleMatrix();

@@ -9,6 +9,32 @@ import { jsonLeafPaths } from "@/application/project-configuration/jsonRegistrat
 
 afterEach(cleanup);
 
+it("converts an explicitly selected private source through the shared chooser and retains selection and reason after cancellation or failure",async()=>{
+  const user=userEvent.setup(),resourceId="11111111-1111-4111-8111-111111111111",versionId="22222222-2222-4222-8222-222222222222";
+  const file={fileId:"private",fileVersionId:"private-v1",sourceName:"parts/power.dtsi",resourceId,versionId,memberId:"upstream",role:"include",sortOrder:1};
+  const preview={proofToken:"a".repeat(64),configSetId:"set",fileName:file.sourceName,format:"dts" as const,members:[{...file,format:"dts" as const,checksum:"fixed",sizeBytes:10}],entryFile:"board.dts",includeSearchPaths:["."],overlayOrder:[],diagnostics:[],
+    sharedReference:{resourceId,versionId,memberId:"upstream",version:1,digest:"fixed"},sharedConversion:{semanticEqual:true as const,identitiesRetained:true as const,sourceEvidence:"opaque",files:[file],origins:[]},
+    impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:1,sourceReplacements:0}};
+  const client={upload:vi.fn(),preview:vi.fn(async()=>preview),apply:vi.fn().mockRejectedValue(new Error("来源已变化"))};
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"}]} initialConfigSetId="set" availableFiles={[]}
+    conversionSource={{configRevisionId:"original",fileId:"private",fileVersionId:"private-v1",sourceName:file.sourceName}}
+    client={client} sharedClient={{list:vi.fn(async()=>({items:[{resourceId,name:"Power",sourceName:file.sourceName,draftRevision:null,state:"active" as const,lifecycleRevision:1,updatedAt:"today",currentVersion:{id:versionId,resourceId,version:1,name:"Power",changeDescription:"Private source",digest:"fixed",createdAt:"today",createdByUserId:"admin"}}],total:1})),versions:vi.fn(async()=>({items:[{id:versionId,resourceId,version:1,name:"Power",changeDescription:"Private source",digest:"fixed",createdAt:"today",createdByUserId:"admin"}],total:1}))}}
+    onDismiss={vi.fn()} onApplied={vi.fn()}/>);
+  expect(screen.getByRole("dialog")).toHaveAccessibleName("转换为共享引用");
+  expect(screen.queryByRole("combobox",{name:"文件来源"})).not.toBeInTheDocument();
+  await user.click(await screen.findByRole("combobox",{name:"共享资源"}));await user.click(await screen.findByRole("option",{name:"Power"}));
+  await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 1 · Private source"}));
+  await user.click(screen.getByRole("button",{name:"预览共享转换"}));
+  expect(client.preview).toHaveBeenCalledWith("project","set",{sharedReference:{resourceId,versionId,convertPrivate:{configRevisionId:"original",fileId:"private",fileVersionId:"private-v1"}},role:"misc",sortOrder:0});
+  expect(await screen.findByText("完整生效配置与构建校验通过，文件、节点及参数关联身份保留。")).toBeVisible();
+  await user.type(screen.getByRole("textbox",{name:"变更说明"}),"Keep private history");
+  await user.click(screen.getByRole("button",{name:"取消本次预览"}));expect(client.apply).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button",{name:"预览共享转换"}));expect(await screen.findByRole("textbox",{name:"变更说明"})).toHaveValue("Keep private history");
+  await user.click(screen.getByRole("button",{name:"确认转换引用"}));expect(await screen.findByRole("alert")).toHaveTextContent("来源已变化");
+  expect(screen.queryByRole("button",{name:"确认转换引用"})).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button",{name:"预览共享转换"}));expect(await screen.findByRole("textbox",{name:"变更说明"})).toHaveValue("Keep private history");
+});
+
 it("locates a blocked project override and retains the task input across correction without retaining its proof", async () => {
   const user=userEvent.setup(), recover=vi.fn(), resourceId="11111111-1111-4111-8111-111111111111",old="22222222-2222-4222-8222-222222222222",target="33333333-3333-4333-8333-333333333333";
   const client={upload:vi.fn(),apply:vi.fn(),preview:vi.fn().mockRejectedValue(new WiseEffApiError("VALIDATION_FAILED","项目覆盖不满足目标约束",{switchConflicts:[{message:"iin_max 超出约束",sourceName:"board.dts",fileId:"root",fileVersionId:"root-v1",line:9,node:"/charger",property:"iin_max"}]},"request"))};
@@ -71,7 +97,7 @@ it("requires an explicit published version and clears its proof when the version
   const user = userEvent.setup(), resourceId = "11111111-1111-4111-8111-111111111111", versionId = "22222222-2222-4222-8222-222222222222";
   const summary = { id: versionId, resourceId, version: 1, name: "Shared limits", changeDescription: "Initial limits", digest: "sha256:fixed", createdAt: "2026-10-24", createdByUserId: "author" };
   const sharedClient = {
-    list: vi.fn(async () => ({ items: [{ resourceId, name: "Shared limits", updatedAt: "2026-10-24", sourceName: "limits.dtsi", draftRevision: null, currentVersion: summary }], total: 1 })),
+    list: vi.fn(async () => ({ items: [{ resourceId, name: "Shared limits", updatedAt: "2026-10-24", sourceName: "limits.dtsi", draftRevision: null, currentVersion: summary,state:"active" as const,lifecycleRevision:1 }], total: 1 })),
     versions: vi.fn(async () => ({ items: [summary, { ...summary, id: "33333333-3333-4333-8333-333333333333", version: 2 }], total: 2 }))
   };
   const bodies: Array<Record<string, unknown>> = [];

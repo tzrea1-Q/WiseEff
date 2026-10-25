@@ -95,6 +95,7 @@
 - `PARAM-INIT-REJECT-001`：Admin 带原因驳回后创建者可修订再提交（reducer + 服务端）。
 - `PARAM-INIT-LOCK-001`：未 `initialized` 的项目不能提交常规 typed binding 变更轮次。自动化见 `e2e/acceptance/parameter-initialization-lock.acceptance.spec.ts`（`ParametersPage` 锁 + `assertProjectAllowsParameterSubmit`）。
 - `PROJ-OPS-001`：已被 `PROJ-CONFIG-CUTOVER-001` 取代——PC 1440×900 下旧深链重定向到等价配置工作台上下文；未知项目 ID 仍显示 not-found（`e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`；页面/cutover 单测）。
+- `PROJ-CONFIG-PRIVATE-SHARED-001`：Admin 独立发布私有源码，再显式预览、取消、确认精确共享引用转换；当前资源停用会拒绝应用并保留输入，转换保留文件版本及 Binding 身份，并在 1440×900、1280×800 检查只读共享来源。见 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` 与 `sharedConversionHttp.integration.test.ts`。
 - `PROJ-OPS-002`：已被 `PROJ-CONFIG-READ-001` / `PROJ-CONFIG-CUTOVER-001` 取代——PC 1440×900 工作台布局无截断、无页面级横向溢出。
 - `PROJ-OPS-003`：已被 `PROJ-CONFIG-BASELINE-001` / `PROJ-CONFIG-OPS-001` / `PROJ-CONFIG-CONFLICT-001` 取代——PC 1440×900 下基线、成员与冲突确认均在工作台源码上下文中完成。
 - `PROJ-CONFIG-READ-001`：PC 1440×900 下，Admin 从项目清单进入规范项目配置路由，优先恢复有效 URL 配置集、否则确定性选择默认配置集；树区分成员/未编组文件并展示角色与活跃版本身份，经 API ports 读取选中活跃 DTS 源码；源码主导的树、检查器与任务 sheet 以及空/加载/失败恢复状态均可用（`e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`；组件/端口/服务端测试；证据见 `work/ui-checks/project-configuration-workbench-readonly/`）。

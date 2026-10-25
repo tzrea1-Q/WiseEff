@@ -215,7 +215,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     : existing ? { fileId: existing.id, fileVersionId: existing.fileVersionId,
       sourceName: input.setAsRoot ? members.find((row) => row.fileId === existing.id)!.sourceName : existing.fileName,
       format: existing.format, storageKey: existing.storageKey, checksum: existing.checksum, sizeBytes: existing.sizeBytes }
-    : sharedTargets[0]??null;
+    : (converting?sharedTargets.find(member=>member.fileId===converting.fileId):sharedTargets[0])??null;
   if (!target || !["dts", "json"].includes(target.format)) throw new ApiError("VALIDATION_FAILED", "请选择 DTS/JSON 候选或已有文件。");
   const retainedMembers=members.filter(member=>!beforeSources.some(source=>source.fileId===member.fileId));
   if (normalizeManifestLogicalPath(target.sourceName) !== target.sourceName || !conversion && retainedMembers.some((row) => row.sourceName === target.sourceName && (!input.setAsRoot || row.fileId !== target.fileId))) {
@@ -487,7 +487,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     ...(sharedConversion?{sharedConversion}:{}),
     ...(input.setAsRoot ? { setAsRoot: true } : {}),
     ...(replacing?{sharedSwitch:{beforeReferences:currentReferences,beforeSources,beforeFiles:[...beforeSources,...retainedSources.filter(source=>sharedTargets.some(target=>target.fileId===source.fileId))].map(({fileId,fileVersionId})=>({fileId,fileVersionId}))}}:{}),
-    ...(shared ? { sharedReference: { resourceId: shared.resourceId, versionId: shared.id, version: shared.version, memberId: shared.members[0]!.id, digest: shared.digest },
+    ...(shared ? { sharedReference: { resourceId: shared.resourceId, versionId: shared.id, version: shared.version, memberId: sharedTargets.find(member=>member.fileId===target.fileId)!.memberId, digest: shared.digest },
       sharedClosure:closureManifest(sharedResources),sharedComposition:sharedResources.filter(resource=>!reused.has(resource.resourceId)).map(({item:_item,...resource})=>({...resource,sources:sharedTargets.filter(member=>member.resourceId===resource.resourceId)
         .map(({memberId,fileId,fileVersionId,sourceName})=>({memberId,fileId,fileVersionId,sourceName}))})),...(rootEdit?{rootEdit}:{}) } : {}),
     candidateId: candidate?.id ?? null, fileId: target.fileId, baseConfigRevisionId: revision.id,

@@ -331,6 +331,10 @@ export async function applyCanonicalBaselineRestore(db: Database, storage: Objec
         if (member.format === "dts" && !/\.(h|hpp)$/u.test(member.sourceName)) await ingestDtsFileVersion(tx,versionId,contents!.get(`${member.fileId}:${member.fileVersionId}`)!, inspected.preprocessing?.originalDocuments.get(member.sourceName), inspected.configNodePaths);
         versionIds.set(member.fileId,versionId);
         continue;
+      } else if(proof.sharedSwitch && (await tx.query("select 1 from public.dts_config_revision_members where file_id=$1 and shared_reference is not null limit 1",[member.fileId])).rowCount){
+        versionId=(await tx.query<{id:string}>("select public.restore_private_shared_dtsi_source($1,$2) as id",[requestId,member.fileId])).rows[0]!.id;
+        versionIds.set(member.fileId,versionId);
+        continue;
       } else if (member.currentVersionId !== member.fileVersionId) {
         const version = await insertFileVersion(tx,{ id: randomUUID(),fileId: member.fileId,versionNumber: 0,
           storageKey: member.storageKey,checksum: member.checksum,sizeBytes: member.sizeBytes,parsedIndex: member.parsedIndex,
