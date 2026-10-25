@@ -25,7 +25,7 @@ import {
 } from "./canonicalSource";
 import { insertConfigSet, setFileConfigSetMembership } from "./configSetRepository";
 import { insertFileVersion, insertProjectParameterFile, setCurrentVersion } from "./repository";
-import { sanitizeFileName, type ObjectStore } from "../logs/objectStore";
+import type { ObjectStore } from "../logs/objectStore";
 import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
 import type { ConfigRevisionManifest, ConfigRevisionManifestMember, ConfigRevisionMemberRole } from "../parameter-topology/types";
 import type { InitializationSnapshotItemDto } from "../parameters/initializationTypes";
@@ -82,8 +82,7 @@ function roleForRevision(role: string): ConfigRevisionMemberRole {
 }
 
 function targetFileName(configSetId: string, sourceName: string): string {
-  const safe = sanitizeFileName(sourceName.replaceAll("/", "__"));
-  return `initialization-${configSetId}-${safe}`;
+  return `initialization-${configSetId}-${sourceName.replaceAll("/", "__")}`;
 }
 
 /** Delete only objects confirmed as created by this approval attempt. */
@@ -273,7 +272,7 @@ async function cloneSourceGroup(
     const fileName = group.name && collision?.rows.length === 0 ? member.sourceName : targetFileName(targetConfigSetId, member.sourceName);
     const stored = await objectStore.put({
       organizationId: parameterOrganizationId(auth),
-      fileName,
+      fileName: `${randomUUID()}.${member.format}`,
       contentType: member.format === "json" ? "application/json" : "text/plain",
       bytes,
     });
@@ -312,7 +311,7 @@ async function cloneSourceGroup(
     targetMembers.push({
       fileId,
       fileVersionId,
-      fileName: stored.fileName,
+      fileName,
       sourceName: member.sourceName,
       role: roleForRevision(member.role),
       sortOrder: member.sortOrder,

@@ -26,10 +26,10 @@ const JSON_SOURCE = '{ "untouched": [1,2], "raw": true }\r\n';
 type Preview = { items: InitializationSnapshotItemDto[]; configSnapshots: InitializationConfigSnapshot[] };
 type Export = { manifest: { declaredBuildInputs: unknown; preprocessing: unknown }; files: Array<{ name: string; content: string }> };
 let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>>, db: ReturnType<typeof createPostgresDatabase>, runtime: ReturnType<typeof createPostgresDatabase>;
-let directory: string, storage: ReturnType<typeof createLocalObjectStore>, server: ReturnType<typeof createWiseEffServer>, configSetId: string;
+let directory: string, storage: ReturnType<typeof createLocalObjectStore>, configSetId: string;
 const tokens: string[] = [], runtimeToken = `init_complete_${process.pid}`;
 function api<T>(actor: number, path: string, body?: unknown, method = "POST") {
-  return requestJson<T>(server, path, { headers: { Authorization: `Bearer ${tokens[actor]}` },
+  return requestJson<T>(createWiseEffServer({ db: runtime, objectStore: storage, auth: { mode: "production" }, localAuthService: createLocalAuthService(runtime) }), path, { headers: { Authorization: `Bearer ${tokens[actor]}` },
     ...(body === undefined ? {} : { method, body: JSON.stringify(body) }) });
 }
 const sourcePath = () => `/api/v1/projects/${SOURCE}/config-sets/${configSetId}`;
@@ -90,9 +90,8 @@ beforeAll(async () => {
     { organizationId: ORG, projectId: SOURCE, configSetId, configRevisionId: revision.id }));
   runtime = createPostgresDatabase((await provisionPublicationRuntimeLogins(database.url, { mode: "lab", runToken: runtimeToken })).apiUrl);
   expect((await runtime.query("select rolsuper,rolinherit from pg_roles where rolname=current_user")).rows[0]).toEqual({ rolsuper: false, rolinherit: false });
-  server = createWiseEffServer({ db: runtime, objectStore: storage, auth: { mode: "production" }, localAuthService: createLocalAuthService(runtime) });
   for (const username of [AUTHOR, REVIEWER]) {
-    const login = await requestJson<{ token: string }>(server, "/api/v1/auth/login", { method: "POST", body: JSON.stringify({ username, password }) });
+    const login = await requestJson<{ token: string }>(createWiseEffServer({ db: runtime, objectStore: storage, auth: { mode: "production" }, localAuthService: createLocalAuthService(runtime) }), "/api/v1/auth/login", { method: "POST", body: JSON.stringify({ username, password }) });
     expect(login.status).toBe(200); tokens.push(login.body.token);
   }
 }, 60_000);
