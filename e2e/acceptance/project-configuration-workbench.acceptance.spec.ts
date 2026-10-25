@@ -3081,9 +3081,9 @@ test.describe("project configuration workbench post-cutover semantic identity", 
       const versionControl=dialog.getByRole("combobox",{name:"固定版本",exact:true});await selectControlOption(versionControl,target);
       await expect(page.getByRole("listbox")).toBeHidden();await expect(versionControl).toBeFocused();
       const previewButton=dialog.getByRole("button",{name:"预览版本切换",exact:true});await previewButton.focus();await expect(previewButton).toBeFocused();await page.keyboard.press("Enter");
-      const preview=dialog.getByRole("region",{name:"版本切换预览",exact:true});await expect(preview).toContainText("真实发布构建与参数约束校验通过");
+      const preview=dialog.getByRole("region",{name:"版本切换预览",exact:true});await expect(preview).toContainText("构建与参数约束校验通过");
       await expect(preview).toContainText("保留本地覆盖");await expect(preview).toContainText('"PrivateChoice", "keep"');await expect(preview).toContainText("status");
-      await dialog.getByRole("textbox",{name:"切换原因",exact:true}).fill("#1422 preserve the project decision");
+      await dialog.getByRole("textbox",{name:"变更说明",exact:true}).fill("#1422 preserve the project decision");
       if(index===0) {
         for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
           await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -3091,7 +3091,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
           const path=testInfo.outputPath(`shared-switch-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`Shared switch ${viewport.width}`,{path,contentType:"image/png"});
         }
         await dialog.getByRole("button",{name:"取消本次预览",exact:true}).click();await expect(dialog.getByRole("button",{name:"确认切换版本",exact:true})).toHaveCount(0);
-        await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"切换原因",exact:true})).toHaveValue("#1422 preserve the project decision");
+        await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue("#1422 preserve the project decision");
         const files=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`),{headers:adminHeaders()});
         const root=((await files.json()).items as {fileId:string;fileName:string;role:string;currentVersionId:string}[]).find(file=>file.role==="base")!;
         const original=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${root.fileId}/versions/${root.currentVersionId}/content`),{headers:adminHeaders()});
@@ -3107,7 +3107,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
           await expect(dialog.getByRole("alert")).toContainText("预览");await expect(dialog.getByRole("button",{name:"确认切换版本",exact:true})).toHaveCount(0);
           await page.setViewportSize({width:1440,height:900});const errorPath=testInfo.outputPath("shared-switch-stale-1440.png");await page.screenshot({path:errorPath});await testInfo.attach("Shared switch stale source",{path:errorPath,contentType:"image/png"});
         } finally {expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(expectedFailure),1);}
-        await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"切换原因",exact:true})).toHaveValue("#1422 preserve the project decision");
+        await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue("#1422 preserve the project decision");
       }
       const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/member-addition/apply"));
       await dialog.getByRole("button",{name:"确认切换版本",exact:true}).focus();await page.keyboard.press("Enter");

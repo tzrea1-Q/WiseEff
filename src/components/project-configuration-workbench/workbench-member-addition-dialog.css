@@ -18,3 +18,14 @@
 .workbench-member-addition-dialog [role="alert"] { color: var(--danger); overflow-wrap: anywhere; }
 .workbench-member-addition-dialog__registration { display: grid; gap: var(--space-4); margin-top: var(--space-4); }
 .workbench-member-addition-dialog__registration [data-slot="select-trigger"] { width: 100%; min-width: 0; }
+.workbench-member-addition-dialog__switch-preview h3 { margin-bottom: var(--space-2); }
+.workbench-member-addition-dialog__switch-status { color: var(--text-muted); margin-block: 0; }
+.workbench-member-addition-dialog__switch-effects { display: grid; gap: var(--space-3); margin-block: var(--space-4); }
+.workbench-member-addition-dialog__switch-effects h4 { margin: 0; font-size: var(--text-sm); color: var(--text-muted); }
+.workbench-member-addition-dialog__switch-change { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.workbench-member-addition-dialog__switch-key { color: var(--text-muted); font-size: var(--text-sm); font-weight: 500; }
+.workbench-member-addition-dialog__switch-value { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); margin-top: var(--space-1); }
+.workbench-member-addition-dialog__switch-flag { font-size: var(--text-sm); font-weight: 400; color: var(--text-muted); }
+.workbench-member-addition-dialog__switch-change dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-2) var(--space-4); margin: var(--space-3) 0 0; }
+.workbench-member-addition-dialog__switch-change dd { margin: 0; }
+.workbench-member-addition-dialog__switch-metadata { display: grid; gap: var(--space-3); padding-block: var(--space-3); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }

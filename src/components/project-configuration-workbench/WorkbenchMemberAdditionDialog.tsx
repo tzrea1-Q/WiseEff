@@ -166,30 +166,39 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
         </form></details>
         {error ? <p role="alert">{error}</p> : null}
         {errorDiagnostics.length ? <ul aria-label="来源校验诊断">{errorDiagnostics.map((message, index) => <li key={index}>{message}</li>)}</ul> : null}
-        {preview ? <section aria-label={switchReference?"版本切换预览":"加入配置预览"}>
-          <h3>{configSets.find(set => set.id === configSetId)?.name === "default" ? "默认配置" : configSets.find(set => set.id === configSetId)?.name} · 确认后的文件组成</h3>
+        {preview ? <section aria-label={switchReference?"版本切换预览":"加入配置预览"} className={preview.sharedSwitch?"workbench-member-addition-dialog__switch-preview":undefined}>
+          <h3>{configSets.find(set => set.id === configSetId)?.name === "default" ? "默认配置" : configSets.find(set => set.id === configSetId)?.name} · {preview.sharedSwitch?`版本 ${preview.sharedSwitch.beforeVersion} → 版本 ${preview.sharedSwitch.afterVersion}（确认后生效）`:"确认后的文件组成"}</h3>
           {preview.sharedSwitch?<>
-            <h4>版本 {preview.sharedSwitch.beforeVersion} → 版本 {preview.sharedSwitch.afterVersion}</h4>
-            <p>真实发布构建与参数约束校验通过。保留可证明连续的节点、参数关联和历史；应用后创建新配置修订。</p>
+            <p role="status" className="workbench-member-addition-dialog__switch-status">构建与参数约束校验通过。</p>
+            <div className="workbench-member-addition-dialog__switch-effects">
+            <h4>最终值、节点状态与来源变化</h4>
+            {preview.sharedSwitch.effective.length?preview.sharedSwitch.effective.map(item=><details className="workbench-member-addition-dialog__switch-change" key={`${item.node}:${item.property}`}>
+              <summary><span className="workbench-member-addition-dialog__switch-key">{item.node} · {item.property}</span>
+                <span className="workbench-member-addition-dialog__switch-value">{item.localOverride&&item.before===item.after?item.after??"不存在":`${item.before??"不存在"} → ${item.after??"不存在"}`}
+                  {item.localOverride?<span className="workbench-member-addition-dialog__switch-flag">保留本地覆盖</span>:null}</span></summary>
+              <dl><dt>旧共享声明</dt><dd>{item.oldShared??"不存在"}</dd><dt>目标共享声明</dt><dd>{item.targetShared??"不存在"}</dd>
+                <dt>{item.before===item.after?"项目最终值":"当前项目 → 应用后"}</dt><dd>{item.before===item.after?item.after??"不存在":`${item.before??"不存在"} → ${item.after??"不存在"}`}</dd>
+                <dt>当前来源 → 应用后来源</dt><dd>{item.originBefore??"隐式状态"} → {item.originAfter??"隐式状态"}</dd></dl>
+            </details>):<p>最终值、节点状态和来源无变化。</p>}
+            </div>
+            <div className="workbench-member-addition-dialog__switch-metadata">
             <details><summary>旧依赖与目标依赖</summary>
               <p>旧依赖：{preview.sharedSwitch.dependencies.before.map(item=>`${item.name} · 版本 ${item.version}${item.mountPath?` · ${item.mountPath}`:""}`).join("；")}</p>
               <p>目标依赖：{preview.sharedSwitch.dependencies.after.map(item=>`${item.name} · 版本 ${item.version}${item.mountPath?` · ${item.mountPath}`:""}`).join("；")}</p>
             </details>
-            <h4>最终值、节点状态与来源变化</h4>
-            {preview.sharedSwitch.effective.length?preview.sharedSwitch.effective.map(item=><details key={`${item.node}:${item.property}`}>
-              <summary>{item.node} · {item.property}：{item.before??"不存在"} → {item.after??"不存在"}{item.localOverride?" · 保留本地覆盖":""}</summary>
-              <dl><dt>旧共享声明</dt><dd>{item.oldShared??"不存在"}</dd><dt>目标共享声明</dt><dd>{item.targetShared??"不存在"}</dd>
-                <dt>当前项目 → 应用后</dt><dd>{item.before??"不存在"} → {item.after??"不存在"}</dd>
-                <dt>当前来源 → 应用后来源</dt><dd>{item.originBefore??"隐式状态"} → {item.originAfter??"隐式状态"}</dd></dl>
-            </details>):<p>最终值、节点状态和来源无变化。</p>}
             <details><summary>完整原始源码与项目差异</summary>
               {preview.sharedSwitch.sources.map(item=><details key={item.sourceName}><summary>{item.sourceName} · {item.projectOwned?"项目自有":"共享来源"}{item.before===item.after?" · 保留原文":" · 源码变化"}</summary>
                 <h4>当前源码</h4><pre>{item.before??"不存在"}</pre><h4>应用后源码</h4><pre>{item.after??"不存在"}</pre>
               </details>)}
             </details>
-            <details><summary>已验证构建设置与引用</summary><p>include 路径：{preview.sharedSwitch.build.includeSearchPaths.join("、")}</p>
-              <pre>{JSON.stringify(preview.sharedSwitch.build.defines,null,2)}</pre><p>完整 include、节点引用、宏来源及发布工具链均已校验。</p></details>
+            <details><summary>配置组成与构建设置</summary><p>入口：{preview.entryFile}</p><p>include 路径：{preview.sharedSwitch.build.includeSearchPaths.join("、")}</p>
+              {preview.overlayOrder.length?<p>覆盖顺序：{preview.overlayOrder.join(" → ")}</p>:null}
+              {preview.sharedComposition?.map(resource=><p key={resource.resourceId}>{resource.name} · {resource.direct?"直接引用":"间接依赖"}</p>)}
+              <ul className="workbench-member-addition-dialog__members">{preview.members.map(member=><li key={member.fileId}>{member.sourceName} · {roleLabels[member.role as keyof typeof roleLabels]??member.role} · 顺序 {member.sortOrder}</li>)}</ul>
+              <pre>{JSON.stringify(preview.sharedSwitch.build.defines,null,2)}</pre></details>
+            </div>
           </>:null}
+          {!preview.sharedSwitch?<>
           {preview.sharedComposition?.length?<>
             {preview.sharedComposition.map(resource=><div key={resource.resourceId}><p>{resource.name} · 版本 {resource.version} · {resource.direct?"直接引用":"间接依赖"}</p>
               <ul className="workbench-member-addition-dialog__members">{resource.sources.map(source=><li key={source.fileId}>{source.sourceName}</li>)}</ul></div>)}
@@ -201,6 +210,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
           {preview.entryFile && !preview.rootEdit ? <p>入口：{preview.entryFile}</p> : null}
           {preview.includeSearchPaths.length && !preview.rootEdit ? <p>include 路径：{preview.includeSearchPaths.join("、")}</p> : null}
           {preview.overlayOrder.length ? <p>覆盖顺序：{preview.overlayOrder.join(" → ")}</p> : null}
+          </>:null}
           <p>{[
             preview.impact.parameterChanges && `参数变化 ${preview.impact.parameterChanges} 项`,
             preview.impact.nodeAdditions && `新增节点 ${preview.impact.nodeAdditions} 个`,
@@ -213,7 +223,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
         </section> : null}
       </div>
       {preview ? <footer role="group" aria-label={switchReference?"版本切换确认":"加入配置确认"}>
-        <label>{switchReference?"切换原因":"加入原因"}<Input aria-label={switchReference?"切换原因":"加入原因"} value={reason} disabled={busy} maxLength={2000} onChange={(event) => setReason(event.target.value)} /></label>
+        <label>{switchReference?"变更说明":"加入原因"}<Input aria-label={switchReference?"变更说明":"加入原因"} value={reason} disabled={busy} maxLength={2000} onChange={(event) => setReason(event.target.value)} /></label>
         <div><Button type="button" variant="outline" disabled={busy} onClick={invalidate}>取消本次预览</Button>
         <Button type="button" disabled={busy || !reason.trim()} onClick={() => void apply()}>{busy ? "正在应用…" : switchReference?"确认切换版本":"确认加入配置"}</Button></div>
       </footer> : null}
