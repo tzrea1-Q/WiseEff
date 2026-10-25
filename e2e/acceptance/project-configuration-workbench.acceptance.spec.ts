@@ -3050,6 +3050,93 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await expect(await openWorkbenchPanel(page,"config-set")).toContainText("retained-");
   });
 
+  test("shared successor comparison and authorized usage retain the exact project pin", async ({ page, request }, testInfo) => {
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
+    const sample='/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "ProjectLocal", "keep"; }; };';
+    const binding=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:sample,rawValuePattern:'"ProjectLocal", "keep"',nodeLocatorPattern:"board",reason:"#1421 fixed usage",timeoutMs:60_000});
+    const publish=async(resource:string,revision:number)=>{
+      const preview=await request.post(apiRoute(`/api/v2/shared-dtsi/${resource}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:revision}});
+      expect(preview.status(),await preview.text()).toBe(201);
+      const response=await request.post(apiRoute(`/api/v2/shared-dtsi/${resource}/publications`),{headers:adminHeaders(),data:{previewId:(await preview.json()).item.id,idempotencyKey:`t10-${randomUUID()}`}});
+      expect(response.status(),await response.text()).toBe(201);return (await response.json()).item as import("../../server/modules/contracts/dtoSchemas/sharedDtsi").SharedDtsiVersion;
+    };
+    const dependency=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:`Shared dependency ${randomUUID()}`,sourceName:"leaf.dtsi",content:'/ { dependency { status = "okay"; }; };',changeDescription:"Exact dependency"}});
+    expect(dependency.status(),await dependency.text()).toBe(201);
+    const leaf=await publish((await dependency.json()).item.resourceId,1);
+    const content='/include/ "parts/common.dtsi"\n/include/ "vendor/leaf.dtsi"\n/ { board { rx_fod_cond = "SharedOriginal", "keep"; }; };\n';
+    const resource=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:`Shared comparison ${randomUUID()}`,members:[{sourceName:"main.dtsi",content},
+      {sourceName:"parts/common.dtsi",content:'/ { common { status = "okay"; }; };\n'}],dependencies:[{resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"vendor"}],changeDescription:"Original published source"}});
+    expect(resource.status(),await resource.text()).toBe(201);
+    const resourceId=(await resource.json()).item.resourceId as string,first=await publish(resourceId,1);
+    const addition={sharedReference:{resourceId,versionId:first.id},role:"misc",sortOrder:1};
+    const composition=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition`;
+    const preview=await request.post(apiRoute(`${composition}/preview`),{headers:adminHeaders(),data:addition});expect(preview.status(),await preview.text()).toBe(200);
+    const applied=await request.post(apiRoute(`${composition}/apply`),{headers:adminHeaders(),data:{...addition,proofToken:(await preview.json()).item.proofToken,reason:"#1421 immutable pin",clientMutationId:`t10-pin-${randomUUID()}`}});
+    expect(applied.status(),await applied.text()).toBe(200);
+    const route=`/parameter-admin/sources?${new URLSearchParams({organization:organizationId,resource:resourceId})}`;
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,route));await dismissXiaozeHint(page);
+    await expect(page.getByText("v1 · 已发布，只读",{exact:true})).toBeVisible();
+    await page.getByRole("tab",{name:"版本",exact:true}).click();
+    await expect(page.getByRole("button",{name:"v1",exact:true})).toBeVisible();
+    await expect(page.getByRole("button",{name:"比较所选版本",exact:true})).toHaveCount(0);
+    await page.getByRole("button",{name:"创建新版本",exact:true}).click();
+    await expect(page.getByLabel("变更说明",{exact:true})).toHaveValue("");
+    const draftResponse=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}`),{headers:adminHeaders()});
+    const draft=(await draftResponse.json()).item as import("../../server/modules/contracts/dtoSchemas/sharedDtsi").SharedDtsiDraft;
+    expect(draft.members.map(({id,sourceName,content:source})=>({id,sourceName,content:source}))).toEqual(first.members.map(({id,sourceName,content:source})=>({id,sourceName,content:source})));
+    expect(draft.dependencies).toEqual(first.manifest.dependencies);
+    const changed=content.replace("SharedOriginal","SharedSuccessor");
+    await page.getByLabel("DTSI 源码",{exact:true}).fill(changed);
+    await page.getByLabel("变更说明",{exact:true}).fill("Shared successor; projects remain pinned");
+    await page.getByRole("button",{name:"预览发布",exact:true}).click();
+    await expect(page.getByText("发布共享版本，不会自动更新项目配置。",{exact:true})).toBeVisible();
+    await page.getByRole("button",{name:"发布版本",exact:true}).focus();await page.keyboard.press("Enter");
+    await expect(page.getByText("v2 · 已发布，只读",{exact:true})).toBeVisible();
+    const current=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/detail`),{headers:adminHeaders()});const secondId=(await current.json()).item.currentVersion.id as string;
+    const secondResponse=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/versions/${secondId}`),{headers:adminHeaders()});const second=(await secondResponse.json()).item as typeof first;
+    expect(second.members.map(member=>member.id)).toEqual(first.members.map(member=>member.id));expect(second.manifest.dependencyClosure).toEqual(first.manifest.dependencyClosure);
+    expect(second.members.find(member=>member.sourceName==="main.dtsi")!.content).toBe(changed);
+    const sourceScreenshot=testInfo.outputPath("shared-successor-source-1440.png");await page.screenshot({path:sourceScreenshot});await testInfo.attach("Shared successor source 1440",{path:sourceScreenshot,contentType:"image/png"});
+    await page.getByRole("tab",{name:"版本",exact:true}).click();
+    await page.getByRole("checkbox",{name:"选择版本 v1",exact:true}).check();await page.getByRole("checkbox",{name:"选择版本 v2",exact:true}).check();
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+      await page.setViewportSize(viewport);const screenshot=testInfo.outputPath(`shared-history-${viewport.width}.png`);await page.screenshot({path:screenshot});await testInfo.attach(`Shared history ${viewport.width}`,{path:screenshot,contentType:"image/png"});
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    }
+    await page.getByRole("button",{name:"比较所选版本",exact:true}).focus();await page.keyboard.press("Enter");
+    await expect(page.getByRole("region",{name:"共享原始源码修改片段",exact:true})).toContainText("SharedSuccessor");
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+      await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      const fullSource=page.getByText("查看完整源文件",{exact:true});await fullSource.focus();await page.keyboard.press("Enter");
+      await expect(page.getByLabel("共享原始源码变更前",{exact:true})).toHaveText(content);await expect(page.getByLabel("共享原始源码变更后",{exact:true})).toHaveText(changed);
+      await fullSource.focus();await page.keyboard.press("Enter");
+      const screenshot=testInfo.outputPath(`shared-comparison-${viewport.width}.png`);await page.screenshot({path:screenshot});await testInfo.attach(`Shared comparison ${viewport.width}`,{path:screenshot,contentType:"image/png"});
+    }
+    await page.getByRole("radio",{name:"语义声明",exact:true}).click();
+    await expect(page.getByRole("region",{name:"有序语义声明修改片段",exact:true})).toContainText('"SharedSuccessor"');
+    await page.setViewportSize({width:1440,height:900});await page.evaluate(()=>document.documentElement.classList.add("dark"));
+    const semanticScreenshot=testInfo.outputPath("shared-semantic-dark-1440.png");await page.screenshot({path:semanticScreenshot,animations:"disabled"});await testInfo.attach("Shared semantic dark 1440",{path:semanticScreenshot,contentType:"image/png"});
+    await page.evaluate(()=>document.documentElement.classList.remove("dark"));
+    await page.getByRole("tab",{name:"使用情况",exact:true}).click();
+    await expect(page.getByText("有新版本 · 未评估",{exact:true})).toBeVisible();
+    const configLink=page.locator(`a[href*="configSet=${binding.configSetId}"]`);await expect(configLink).toBeVisible();
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+      await page.setViewportSize(viewport);const screenshot=testInfo.outputPath(`shared-usages-${viewport.width}.png`);await page.screenshot({path:screenshot});await testInfo.attach(`Shared usages ${viewport.width}`,{path:screenshot,contentType:"image/png"});
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    }
+    await page.getByRole("button",{name:"v1",exact:true}).click();await expect(page.getByText("v1 · 历史版本，只读",{exact:true})).toBeVisible();
+    await expect(page.getByLabel("已发布 DTSI 源码",{exact:true})).toContainText("SharedOriginal");
+    await page.getByRole("tab",{name:"使用情况",exact:true}).click();await configLink.click();
+    expect(new URL(page.url()).searchParams.get("configSet")).toBe(binding.configSetId);
+    await expect(page.getByRole("tab",{name:"生效配置",exact:true})).toHaveAttribute("aria-selected","true");
+    await page.getByRole("treeitem",{name:"节点 /board",exact:true}).click();await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"ProjectLocal", "keep"');
+    const usages=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/usages`),{headers:adminHeaders()});
+    expect((await usages.json()).items).toContainEqual(expect.objectContaining({projectId,configSetId:binding.configSetId,versionId:first.id,version:1,direct:true,upgradeAvailable:true,evaluation:"not-evaluated"}));
+    const old=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/versions/${first.id}`),{headers:adminHeaders()});expect((await old.json()).item.members).toEqual(first.members);
+  });
+
   test("effective configuration preserves ordered origins and exact historical source links", async ({ page, request }, testInfo) => {
     test.setTimeout(240_000);
     await seedAcceptanceRoleMatrix();

@@ -15,7 +15,8 @@ const digest = (value: unknown) => `sha256:${createHash("sha256").update(JSON.st
 const actorFingerprint = (auth: AuthContext) => digest({ userId:auth.user.id,organizationId:parameterOrganizationId(auth),active:auth.user.isActive,
   roles:[...auth.roles].sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))),permissions:[...auth.permissions].sort() });
 const summaryColumns = `id,resource_id as "resourceId",version,name,change_description as "changeDescription",digest,
-  created_at as "createdAt",created_by_user_id as "createdByUserId"`;
+  created_at as "createdAt",created_by_user_id as "createdByUserId",
+  coalesce((select actor.name from public.users actor where actor.id=created_by_user_id),created_by_user_id) as "createdByName"`;
 type VersionRow = Omit<SharedDtsiVersionSummary,"createdAt"> & {createdAt:Date};
 const summary = (row: VersionRow): SharedDtsiVersionSummary => ({...row,createdAt:row.createdAt.toISOString()});
 const conflict = (message="草稿或共享版本已变化，请重新生成发布预览。") => new ApiError("CONFLICT",message,{reason:"shared-source-preview-stale"});
