@@ -122,6 +122,7 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
       role: member.role as ConfigRevisionMemberRole, sortOrder: member.sortOrder, content });
   }
   const revision = await ingestConfigRevisionInTransaction(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId,
+    preprocessing: frozen.preprocessing, declaredBuildInputs: frozen.declaredBuildInputs,
     configSetId: frozen.configSetId, entryFile: frozen.entryFile, includeSearchPaths: frozen.includeSearchPaths,
     overlayOrder: frozen.overlayOrder, members }, auth, { createdByUserId: attribution.userId, domain: attribution },
     { reviewedSource: frozen.continuity });

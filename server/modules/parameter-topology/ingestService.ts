@@ -775,6 +775,7 @@ async function ingestConfigRevisionTx(
     entryFile: normalized.manifest.entryFile,
     includeSearchPaths: normalized.manifest.includeSearchPaths,
     overlayOrder: normalized.manifest.overlayOrder,
+    declaredBuildInputs: manifest.declaredBuildInputs ?? { includeSearchPaths: normalized.manifest.includeSearchPaths, defines: manifest.defines ?? manifest.preprocessing?.defines ?? {} },
   });
 
   await insertConfigRevisionMembers(tx, revision.id, manifest.members);
@@ -792,6 +793,7 @@ async function ingestConfigRevisionTx(
   try {
     resolved = await resolveDtsConfigSetAsync({
       preprocessing: manifest.preprocessing,
+      defines: manifest.defines ?? manifest.preprocessing?.defines,
       entryFile: normalized.manifest.entryFile,
       includeSearchPaths: normalized.manifest.includeSearchPaths,
       overlayOrder: normalized.manifest.overlayOrder,

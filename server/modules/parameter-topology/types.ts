@@ -35,6 +35,8 @@ export type ConfigRevisionManifestMember = {
  */
 export type ConfigRevisionManifest = {
   preprocessing?: import("../dts/cppSources").DtsPreprocessingReceipt;
+  defines?: Record<string, string>;
+  declaredBuildInputs?: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
   organizationId: string;
   projectId: string;
   configSetId: string;
@@ -55,6 +57,7 @@ export type DtsConfigRevisionDto = {
   includeSearchPaths?: string[];
   overlayOrder?: string[];
   preprocessing?: import("../dts/cppSources").DtsPreprocessingReceipt | null;
+  declaredBuildInputs?: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
   manifestState?: ConfigRevisionManifestState;
   createdByUserId?: string;
   createdAt: string;

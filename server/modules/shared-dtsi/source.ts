@@ -10,24 +10,25 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
   if (!draft.changeDescription.trim()) throw new ApiError("VALIDATION_FAILED","请填写变更说明后再预览发布。");
   const byName = new Map(draft.members.map(member=>[member.sourceName,member]));
   const files = new Map(draft.members.map(member=>[member.sourceName,{content:member.content,fileVersionId:member.id}]));
+  const includeSearchPaths = draft.buildInputs?.includeSearchPaths ?? [], defines = draft.buildInputs?.defines ?? {};
   const reject=(sourceName:string,offset:number,message:string,code?:string):never=>{
     const location=offsetToLineColumn(byName.get(sourceName)!.content,offset);
     throw new ApiError("VALIDATION_FAILED",`${sourceName}:${location.line}:${location.column}：${message}`,
       {diagnostics:[{sourceName,...location,message,...(code ? { code } : {})}]});
   };
   const graph: SharedDtsiManifest["includeGraph"] = [], included = new Set<string>();
-  const cpp = requiresDtsPreprocessing(files);
+  const cpp = requiresDtsPreprocessing(files, defines);
   if (cpp) {
     try {
-      graph.push(...inspectDtsCppIncludes({ entryFile: draft.members.find(member => member.sourceName.endsWith(".dtsi"))!.sourceName,
-        files, includeSearchPaths: [], overlayOrder: [] }));
+      graph.push(...inspectDtsCppIncludes({ entryFile: draft.members.find(member => /\.dtsi?$/u.test(member.sourceName))!.sourceName,
+        files, includeSearchPaths, defines, overlayOrder: [] }));
       for (const edge of graph) included.add(edge.target);
     } catch (error) {
       if (error instanceof DtsPreprocessingError) reject(error.fileName, error.offset, error.message);
       throw error;
     }
   }
-  for (const member of draft.members.filter(value=>value.sourceName.endsWith(".dtsi"))) {
+  for (const member of draft.members.filter(value=>/\.dtsi?$/u.test(value.sourceName))) {
     if (cpp) continue;
     let tokens;
     try { tokens=lexDts(member.content); }
@@ -40,10 +41,10 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
       if (token.kind!=="directive") continue;
       if (token.value==="/include/") {
         if (next?.kind!=="string") reject(member.sourceName,token.span.start,"include 需要双引号中的相对路径。");
-        const requested=next!.value.slice(1,-1), target=resolveIncludeTarget(member.sourceName,requested,[],files);
+        const requested=next!.value.slice(1,-1), target=resolveIncludeTarget(member.sourceName,requested,includeSearchPaths,files);
         if (!target.ok) reject(member.sourceName,token.span.start,target.code==="path-escape"?`依赖路径 ${requested} 逃逸资源目录。`:`缺少依赖文件 ${requested}。`);
         if (!target.ok) continue;
-        if (!target.fileName.endsWith(".dtsi")) reject(member.sourceName,token.span.start,`头文件 ${target.fileName} 需要 C 预处理，不能作为普通 DTSI 解析。`);
+        if (!/\.dtsi?$/u.test(target.fileName)) reject(member.sourceName,token.span.start,`头文件 ${target.fileName} 需要 C 预处理，不能作为普通 DTSI 解析。`);
         graph.push({sourceName:member.sourceName,target:target.fileName,...offsetToLineColumn(member.content,token.span.start)});
         included.add(target.fileName);
       } else if (!["/dts-v1/","/delete-node/","/delete-property/","/bits/","/omit-if-no-ref/"].includes(token.value))
@@ -68,9 +69,9 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
   };
   for (const member of draft.members) visitGraph(member.sourceName,[member.sourceName]);
   const labels=new Set<string>(),references=new Set<string>(),paths=new Set<string>();
-  const roots=draft.members.filter(member=>member.sourceName.endsWith(".dtsi") && !included.has(member.sourceName));
+  const roots=draft.members.filter(member=>/\.dtsi?$/u.test(member.sourceName) && !included.has(member.sourceName));
   let preprocessing: Awaited<ReturnType<typeof prepareDtsSources>>;
-  try { preprocessing = cpp ? await prepareDtsSources({ entryFile: roots[0]!.sourceName, overlayOrder: roots.slice(1).map(member => member.sourceName), files, includeSearchPaths: [] }) : null; }
+  try { preprocessing = cpp ? await prepareDtsSources({ entryFile: roots[0]!.sourceName, overlayOrder: roots.slice(1).map(member => member.sourceName), files, includeSearchPaths, defines }) : null; }
   catch (error) {
     if (error instanceof DtsPreprocessingError) {
       if (error.code === "preprocess-busy") throw new ApiError("CONFLICT", error.message, { reason: error.code });
@@ -86,7 +87,7 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
       expanded = prepared ? { text: prepared.text, diagnostics: [], originAt: (offset: number) => {
         const origin = prepared.originForSpan({ start: offset, end: offset });
         return { fileName: origin?.sourceName ?? root.sourceName, offset: origin?.start ?? 0 };
-      } } : expandDtsIncludes({entryFile:root.sourceName,files,includeSearchPaths:[]});
+      } } : expandDtsIncludes({entryFile:root.sourceName,files,includeSearchPaths});
     }
     catch {return reject(root.sourceName,0,"include 展开源码超过 32 MiB 安全上限。");}
     const fail=(offset:number,message:string):never=>{const origin=expanded.originAt(offset);return reject(origin.fileName,origin.offset,message);};
@@ -126,8 +127,8 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
   }
   if(!declarations)reject(roots[0]?.sourceName??draft.members[0]!.sourceName,0,"源码中没有可发布的设备树声明。");
   const members=draft.members.map(member=>({...member,checksum:`sha256:${createHash("sha256").update(member.content).digest("hex")}`,sizeBytes:Buffer.byteLength(member.content)}));
-  const manifest:SharedDtsiManifest={schemaVersion:"shared-dtsi/v1",members:members.map(({content:_,...member})=>({...member,role:member.sourceName.endsWith(".dtsi")?"include":"header"})),
-    includeGraph:graph,buildInputs:{includeSearchPaths:[], ...(preprocessing ? { preprocessing: preprocessing.receipt } : {})},externalReferences:[...references].filter(reference=>reference.startsWith("&{")
+  const manifest:SharedDtsiManifest={schemaVersion:"shared-dtsi/v1",members:members.map(({content:_,...member})=>({...member,role:/\.dtsi?$/u.test(member.sourceName)?"include":"header"})),
+    includeGraph:graph,buildInputs:{includeSearchPaths, ...(preprocessing?.receipt.defines ? { defines: preprocessing.receipt.defines } : {}), ...(preprocessing ? { preprocessing: preprocessing.receipt } : {})},externalReferences:[...references].filter(reference=>reference.startsWith("&{")
       ?!paths.has(dtsReferencePath(reference.slice(1))!):!labels.has(reference)).sort()};
   return {members,manifest,preprocessing,digest:`sha256:${createHash("sha256").update(JSON.stringify({name:draft.name,manifest,changeDescription:draft.changeDescription})).digest("hex")}`};
 }

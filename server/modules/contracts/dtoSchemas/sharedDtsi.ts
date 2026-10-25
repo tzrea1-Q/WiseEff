@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { itemEnvelopeSchema, okEnvelopeSchema } from "./envelopes";
-import { dtsPreprocessingReceiptSchema } from "./dtsPreprocessing";
+import { dtsBuildInputsSchema, dtsDefinesSchema, dtsPreprocessingReceiptSchema } from "./dtsPreprocessing";
 
 const id = z.string().uuid();
 const changeDescription = z.string().trim().max(1000).regex(/^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]*$/u);
@@ -15,6 +15,7 @@ export const sharedDtsiDraftInputSchema = z.object({
   name: z.string().trim().min(1, "请输入资源名称。").max(160).regex(/^[^\u0000-\u001f\u007f]+$/u, "资源名称不能包含控制字符。"), sourceName: sourceName.default("common.dtsi"),
   content: content.default(""),
   members: z.array(inputMember).min(1).max(128).optional(),
+  buildInputs: dtsBuildInputsSchema.optional(),
   archive: z.object({name:z.string().max(240).regex(/\.zip$/u),contentBase64:z.string().max(11_184_812).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u)}).strict().optional(),
   changeDescription: changeDescription.default("")
 }).strict();
@@ -22,6 +23,7 @@ export const sharedDtsiDraftUpdateSchema = sharedDtsiDraftInputSchema.extend({ e
 export const sharedDtsiDraftDiscardSchema = z.object({ expectedRevision: z.number().int().positive() }).strict();
 export const sharedDtsiDraftSchema = z.object({
   id, resourceId: id, name: z.string(), revision: z.number().int().positive(), updatedAt: z.string(), changeDescription: changeDescription.default(""),
+  buildInputs: dtsBuildInputsSchema.optional(),
   members: z.array(z.object({ id, sourceName: z.string(), content: z.string() }).strict()).min(1)
 }).strict();
 export const sharedDtsiVersionSummarySchema = z.object({
@@ -33,7 +35,7 @@ export const sharedDtsiManifestSchema = z.object({
   members: z.array(z.object({ id, sourceName: z.string(), checksum: z.string(), sizeBytes: z.number().int().nonnegative(), role: z.enum(["include", "header"]) }).strict()).min(1),
   externalReferences: z.array(z.string()),
   includeGraph: z.array(z.object({ sourceName: z.string(), target: z.string(), line: z.number().int().positive(), column: z.number().int().positive() }).strict()).default([]),
-  buildInputs: z.object({ includeSearchPaths: z.array(z.string()), preprocessing: dtsPreprocessingReceiptSchema.optional() }).strict().default({ includeSearchPaths: [] })
+  buildInputs: z.object({ includeSearchPaths: z.array(z.string()), defines: dtsDefinesSchema.optional(), preprocessing: dtsPreprocessingReceiptSchema.optional() }).strict().default({ includeSearchPaths: [] })
 }).strict();
 export const sharedDtsiVersionSchema = sharedDtsiVersionSummarySchema.extend({ manifest: sharedDtsiManifestSchema,
   members: z.array(z.object({ id, sourceName: z.string(), content: z.string(), checksum: z.string(), sizeBytes: z.number().int().nonnegative() }).strict()).min(1) });

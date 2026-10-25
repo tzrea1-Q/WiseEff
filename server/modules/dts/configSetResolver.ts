@@ -25,6 +25,7 @@ export type DtsConfigSetFile = {
 export type DtsConfigSetInput = {
   entryFile: string;
   includeSearchPaths: string[];
+  defines?: Readonly<Record<string, string>>;
   overlayOrder: string[];
   files: ReadonlyMap<string, DtsConfigSetFile>;
   /** Strict, bounded provenance entry used for canonical source proofs. */
@@ -582,7 +583,7 @@ export function resolveDtsConfigSet(input: DtsConfigSetInput): DtsConfigSetResul
 
   try {
     const preprocessing = input.preparedSources;
-    if (requiresDtsPreprocessing(input.files) && !preprocessing) throw new DtsPreprocessingError("preprocess-unavailable", "原始工程需要通过受控异步预处理入口解析。", input.entryFile);
+    if (requiresDtsPreprocessing(input.files, input.defines ?? input.preprocessing?.defines) && !preprocessing) throw new DtsPreprocessingError("preprocess-unavailable", "原始工程需要通过受控异步预处理入口解析。", input.entryFile);
     if (preprocessing && preprocessing.receipt.inputDigest !== dtsPreprocessingInputDigest(input)) throw new DtsPreprocessingError("preprocess-stale", "预处理证明不属于当前冻结输入，请重新预览。", input.entryFile);
     if (input.preprocessing && !isDeepStrictEqual(input.preprocessing, preprocessing?.receipt)) {
       throw new DtsPreprocessingError("preprocess-stale", "冻结的预处理输入或工具身份已经变化，请重新预览。", input.entryFile);

@@ -559,7 +559,7 @@ async function createCandidateInScope(
           [sourceRevisionContext.baseConfigRevisionId, fileId])).rows[0]?.sourceName;
         if (!name || !snapshot.entryFile) throw new ApiError("CONFLICT", "完整原始工程来源已变化，请重新打开源码编辑器。");
         const files = new Map([...snapshot.toolchainFiles].map(([key, file]) => [key, { ...file, fileVersionId: key }]));
-        const manifest = { entryFile: snapshot.entryFile, includeSearchPaths: snapshot.includeSearchPaths, overlayOrder: snapshot.overlayOrder, files };
+        const manifest = { entryFile: snapshot.entryFile, includeSearchPaths: snapshot.includeSearchPaths, overlayOrder: snapshot.overlayOrder, files, defines: snapshot.preprocessing?.defines };
         const before = await prepareDtsSources(manifest);
         const semanticText = (prepared: Awaited<ReturnType<typeof prepareDtsSources>>) => [manifest.entryFile, ...manifest.overlayOrder]
           .map(entry => prepared?.documents.get(entry)!.text ?? expandDtsIncludes({ ...manifest, entryFile: entry }).text).join("\n");

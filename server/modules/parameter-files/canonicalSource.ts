@@ -34,6 +34,7 @@ export type { CanonicalSourceBindingPin } from "../parameter-bindings/values";
 
 export type CanonicalSourceManifest = CanonicalValueSourcePin & {
   preprocessing?: import("../dts/cppSources").DtsPreprocessingReceipt;
+  declaredBuildInputs?: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
   members: Array<{
     memberId: string; fileId: string; fileVersionId: string; sourceName: string;
     format: "dts" | "json"; role: string; sortOrder: number; checksum: string; sizeBytes: number;
@@ -174,7 +175,9 @@ export async function loadCanonicalSourceSnapshot(
   if (!pin) throw new ApiError("CONFLICT", "Project value is missing an exact owned source pin.");
   const source = await loadExactSourceRevisionForProof(db, objectStore, pin);
   const files: Array<{ name: string; format: "dts" | "json"; versionNumber: number; content: string }> = [];
-  const manifest: CanonicalSourceManifest = { ...pin, ...(source.revision.preprocessing ? { preprocessing: source.revision.preprocessing } : {}), members: [] };
+  const declared = source.revision.declaredBuildInputs;
+  const manifest: CanonicalSourceManifest = { ...pin, ...(source.revision.preprocessing ? { preprocessing: source.revision.preprocessing } : {}),
+    ...(Object.keys(declared.defines).length || JSON.stringify(declared.includeSearchPaths) !== JSON.stringify(source.revision.includeSearchPaths) ? { declaredBuildInputs: declared } : {}), members: [] };
   for (const member of source.members) {
     if (member.format === "json") parseJsonSource(member.bytes);
     files.push({ name: member.sourceName, format: member.format, versionNumber: member.versionNumber, content: member.content });

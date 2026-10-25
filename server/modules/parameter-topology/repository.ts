@@ -34,6 +34,7 @@ type RevisionRow = TrustedInvocationDomainAttributionRow & {
   include_search_paths: unknown;
   overlay_order: unknown;
   preprocessing: import("../dts/cppSources").DtsPreprocessingReceipt | null;
+  declared_build_inputs: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
   manifest_state: ConfigRevisionManifestState;
   created_by_user_id: string | null;
   created_at: string | Date;
@@ -70,6 +71,8 @@ function toRevisionDto(row: RevisionRow): DtsConfigRevisionDto {
     includeSearchPaths: parseStringArray(row.include_search_paths),
     overlayOrder: parseStringArray(row.overlay_order),
     ...(row.preprocessing ? { preprocessing: row.preprocessing } : {}),
+    ...(row.preprocessing || row.declared_build_inputs?.includeSearchPaths.some(path => path !== ".") || Object.keys(row.declared_build_inputs?.defines ?? {}).length
+      ? { declaredBuildInputs: row.declared_build_inputs } : {}),
     manifestState: row.manifest_state ?? "complete",
     createdByUserId: row.created_by_user_id ?? undefined,
     createdAt: dateTimeToIso(row.created_at),
@@ -102,6 +105,7 @@ export async function insertConfigRevision(
     entryFile?: string;
     includeSearchPaths?: string[];
     overlayOrder?: string[];
+    declaredBuildInputs?: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
     attribution?: TrustedInvocationDomainAttribution;
   },
 ): Promise<DtsConfigRevisionDto> {
@@ -111,8 +115,8 @@ export async function insertConfigRevision(
       id, organization_id, project_id, config_set_id, revision_number, status, created_by_user_id,
       initiator_type, initiator_system_kind, initiator_system_name,
       initiator_session_id, initiator_tool_call_id, initiator_approval_id,
-      entry_file, include_search_paths, overlay_order, manifest_state
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, 'complete')
+      entry_file, include_search_paths, overlay_order, declared_build_inputs, manifest_state
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, $17::jsonb, 'complete')
     returning *
     `,
     [
@@ -132,6 +136,7 @@ export async function insertConfigRevision(
       input.entryFile ?? null,
       JSON.stringify(input.includeSearchPaths ?? []),
       JSON.stringify(input.overlayOrder ?? []),
+      JSON.stringify(input.declaredBuildInputs ?? { includeSearchPaths: input.includeSearchPaths ?? [], defines: {} }),
     ],
   );
   return toRevisionDto(result.rows[0]);

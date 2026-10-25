@@ -1098,6 +1098,7 @@ export async function validateConfigRevision(
 
   const toolchainResult = await toolchain.validate(
     {
+      defines: revision.preprocessing?.defines,
       entryFile,
       includeSearchPaths,
       overlayOrder,

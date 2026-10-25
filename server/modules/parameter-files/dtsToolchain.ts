@@ -68,6 +68,7 @@ export type DtsToolchainFile = {
 };
 
 export type DtsToolchainConfigSet = {
+  defines?: Readonly<Record<string, string>>;
   entryFile: string;
   includeSearchPaths?: string[];
   overlayOrder: string[];
@@ -485,6 +486,7 @@ function inputManifestHash(configSet: DtsToolchainConfigSet): string {
       entryFile: configSet.entryFile,
       overlayOrder: configSet.overlayOrder,
       includeSearchPaths: configSet.includeSearchPaths ?? [],
+      ...(configSet.defines && Object.keys(configSet.defines).length ? { defines: Object.fromEntries(Object.entries(configSet.defines).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) } : {}),
       ...(configSet.formerRootOverlayFiles?.length ? { formerRootOverlayFiles: [...configSet.formerRootOverlayFiles].sort() } : {}),
       files: entries
     })

@@ -96,10 +96,11 @@ describe("exact DTS source value proof before pin creation", () => {
   it("proves expanded macro values against original occurrences and refuses a stale compiler receipt", async () => {
     const cppSet = "set-native-cpp-proof";
     await db.query("insert into dts_config_set(id,organization_id,project_id,name) values($1,$2,$3,'Native CPP')", [cppSet, organizationId, projectId]);
-    const manifest: ConfigRevisionManifest = { organizationId, projectId, configSetId: cppSet, entryFile: "cpp-board.dts", includeSearchPaths: [], overlayOrder: [], members: [] };
+    const manifest: ConfigRevisionManifest = { organizationId, projectId, configSetId: cppSet, entryFile: "cpp-board.dts", includeSearchPaths: [], overlayOrder: [], members: [],
+      defines: { ENABLED: "1" }, declaredBuildInputs: { includeSearchPaths: [], defines: { ENABLED: "1" } } };
     const source = '\uFEFF// 🧪 exact source\r\n#include "cpp-defs.h"\r\n/dts-v1/;\r\n/ { target {\r\n#if ENABLED\r\n limit = <BIT(3)>;\r\n#else\r\n limit = <0>;\r\n#endif\r\n}; };\r\n';
     for (const [index, file] of [{ name: "cpp-board.dts", content: source, role: "base" as const },
-      { name: "cpp-defs.h", content: "#define ENABLED 1\n#define BIT(x) (1U << (x))\n", role: "include" as const }].entries()) {
+      { name: "cpp-defs.h", content: "#define BIT(x) (1U << (x))\n", role: "include" as const }].entries()) {
       const fileId = `cpp-file-${index}`, fileVersionId = `cpp-version-${index}`;
       const object = await storage.put({ organizationId, fileName: file.name, contentType: "text/plain", bytes: Buffer.from(file.content) });
       await db.query("insert into project_parameter_files(id,organization_id,project_id,file_name,format,config_set_id,config_set_role,config_set_sort_order) values($1,$2,$3,$4,'dts',$5,$6,$7)",
@@ -111,7 +112,8 @@ describe("exact DTS source value proof before pin creation", () => {
     }
     const revision = await ingestConfigRevision(db, manifest, makeTestAuthContext({ userId, organizationId }));
     expect(revision.status).toBe("resolved");
-    expect(revision.preprocessing).toMatchObject({ schemaVersion: "dts-cpp/v1", compilerVersion: "14.2.0" });
+    expect(revision.preprocessing).toMatchObject({ schemaVersion: "dts-cpp/v1", compilerVersion: "14.2.0", defines: { ENABLED: "1" } });
+    expect(revision.declaredBuildInputs).toEqual(manifest.declaredBuildInputs);
     const row = (await db.query<{ logicalNodeId: string; nodeOccurrenceId: string; propertyOccurrenceId: string }>(
       `select logical.logical_node_id as "logicalNodeId",effect.node_occurrence_id as "nodeOccurrenceId",effect.property_occurrence_id as "propertyOccurrenceId"
        from dts_occurrence_effects effect join dts_logical_node_revisions logical on logical.id=effect.logical_node_revision_id

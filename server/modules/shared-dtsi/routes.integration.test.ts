@@ -86,6 +86,33 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     expect((await publicationCall<{ item: unknown }>(`/${draft.resourceId}/versions/${published.body.item.id}`)).body.item).toEqual(published.body.item);
   });
 
+  it("freezes declared include roots and external defines without flattening original header directories", async () => {
+    const members = [{ sourceName: "lib/common.dtsi", content: '#include <dt-bindings/power.h>\n/ { battery {\n#if ENABLED\n limit = <POWER_LIMIT>;\n#else\n limit = <99>;\n#endif\n}; };\n' },
+      { sourceName: "include/dt-bindings/power.h", content: "#define POWER_LIMIT 37\n" }];
+    const buildInputs = { includeSearchPaths: ["include"], defines: { ENABLED: "1" } };
+    const created = await call("", "POST", { name: "Declared CPP inputs", members, buildInputs, changeDescription: "保留原始构建输入" });
+    expect(created.status, created.bodyText).toBe(201);
+    expect(created.body.item).toMatchObject({ buildInputs });
+    const draft = created.body.item;
+    const preview = await publicationCall<{ item: import("../contracts/dtoSchemas/sharedDtsi").SharedDtsiPublicationPreview }>(`/${draft.resourceId}/publication-preview`, "POST", { expectedRevision: 1 });
+    expect(preview.status, preview.bodyText).toBe(201);
+    expect(preview.body.item.manifest.buildInputs).toMatchObject(buildInputs);
+    expect(preview.body.item.manifest.buildInputs.preprocessing).toMatchObject({ defines: buildInputs.defines });
+    const updated = await call(`/${draft.resourceId}/draft`, "PUT", { name: draft.name, members: draft.members, changeDescription: "改变条件输入", expectedRevision: 1,
+      buildInputs: { ...buildInputs, defines: { ENABLED: "0" } } });
+    expect(updated.status, updated.bodyText).toBe(200);
+    expect((await publicationCall(`/${draft.resourceId}/publications`, "POST", { previewId: preview.body.item.id, idempotencyKey: "stale-build-inputs" })).status).toBe(409);
+    const next = await publicationCall<{ item: import("../contracts/dtoSchemas/sharedDtsi").SharedDtsiPublicationPreview }>(`/${draft.resourceId}/publication-preview`, "POST", { expectedRevision: 2 });
+    expect(next.status, next.bodyText).toBe(201);
+    expect(next.body.item.digest).not.toBe(preview.body.item.digest);
+    const published = await publicationCall<{ item: import("../contracts/dtoSchemas/sharedDtsi").SharedDtsiVersion }>(`/${draft.resourceId}/publications`, "POST", { previewId: next.body.item.id, idempotencyKey: "declared-build-inputs" });
+    expect(published.status, published.bodyText).toBe(201);
+    expect(published.body.item.members).toEqual(expect.arrayContaining(members.map(member => expect.objectContaining(member))));
+    const reopened = await call(`/${draft.resourceId}/draft`, "POST", { baseVersionId: published.body.item.id });
+    expect(reopened.status, reopened.bodyText).toBe(201);
+    expect(reopened.body.item).toMatchObject({ buildInputs: { ...buildInputs, defines: { ENABLED: "0" } } });
+  });
+
   it("keeps real health responsive and refuses concurrent CPP work while a bounded native expansion runs", async () => {
     const header = ['#define G0 1', ...Array.from({ length: 28 }, (_, index) => `#define G${index + 1} G${index} G${index}`)].join("\n");
     const slowDraft = (await call("", "POST", { name: "Bounded CPP", changeDescription: "限制验证", members: [

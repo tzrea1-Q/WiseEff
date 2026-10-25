@@ -17,6 +17,7 @@ function setup(options: { writable?: boolean; saveError?: boolean } = {}) {
     if (method === "POST") {
       const input = JSON.parse(init!.body as string);
       item = { id: "11111111-1111-4111-8111-111111111111", resourceId, name: input.name, revision: 1, updatedAt: "2026-10-25T00:00:00Z",
+        ...(input.buildInputs ? { buildInputs: input.buildInputs } : {}),
         members: [{ id: "22222222-2222-4222-8222-222222222222", sourceName: input.sourceName, content: input.content }] };
       return new Response(JSON.stringify({ item }), { status: 201 });
     }
@@ -36,6 +37,26 @@ function setup(options: { writable?: boolean; saveError?: boolean } = {}) {
 }
 
 describe("shared DTSI draft authoring", () => {
+  it("retains declared search roots and external macros and guards settings-only unsaved changes", async () => {
+    const user = userEvent.setup();
+    const { fetchImpl } = setup();
+    await user.click(await screen.findByRole("button", { name: "导入资源" }));
+    await user.type(await screen.findByLabelText("资源名称"), "Original engineering");
+    await user.click(screen.getByText("构建设置", { exact: true }));
+    await user.type(screen.getByLabelText("Include 搜索目录"), "include");
+    await user.type(screen.getByLabelText("构建宏"), "ENABLED=1");
+    await user.click(screen.getByRole("button", { name: "保存草稿", exact: true }));
+    await screen.findByText("草稿已保存", { exact: true });
+    const post = fetchImpl.mock.calls.find(([, init]) => init?.method === "POST")!;
+    expect(JSON.parse(post[1]!.body as string)).toMatchObject({ buildInputs: { includeSearchPaths: ["include"], defines: { ENABLED: "1" } } });
+    expect(screen.getByLabelText("构建宏")).toHaveValue("ENABLED=1");
+    await user.clear(screen.getByLabelText("构建宏"));
+    await user.type(screen.getByLabelText("构建宏"), "ENABLED=0");
+    expect(screen.getByRole("button", { name: "保存草稿", exact: true })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "返回资源列表" }));
+    expect(await screen.findByRole("dialog")).toBeVisible();
+  });
+
   it("keeps relative file paths and unsaved editor content while switching source members",async()=>{
     const user=userEvent.setup();
     const {fetchImpl}=setup();

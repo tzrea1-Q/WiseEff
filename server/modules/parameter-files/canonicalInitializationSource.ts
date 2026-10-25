@@ -251,6 +251,7 @@ async function cloneSourceGroup(
 ): Promise<TargetGroup> {
   const dts = group.manifest.members.filter(member => member.format === "dts");
   const prepared = dts.length && group.manifest.entryFile ? await prepareDtsSources({ entryFile: group.manifest.entryFile,
+    defines: group.manifest.preprocessing?.defines,
     includeSearchPaths: group.manifest.includeSearchPaths, overlayOrder: group.manifest.overlayOrder,
     files: new Map(dts.map(member => [member.sourceName, { fileVersionId: member.fileVersionId,
       content: group.files.find(file => file.name === member.sourceName)!.content }])) }) : null;

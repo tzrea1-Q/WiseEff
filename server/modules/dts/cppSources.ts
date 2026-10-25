@@ -9,6 +9,7 @@ import type { DtsConfigSetInput } from "./configSetResolver";
 import { parseDts } from "./parser";
 import { parseDtsValue } from "./valueAst";
 import type { DtsDocument, DtsNodeCst, DtsPropertyCst } from "./types";
+import { dtsDefinesSchema } from "../contracts/dtoSchemas/dtsPreprocessing";
 
 const PREFIX = "__wiseeff_dts_hash_property__";
 const MAX_BYTES = 16 * 1024 * 1024;
@@ -35,6 +36,7 @@ export type DtsPreprocessingReceipt = {
   language: "c17";
   encoding: "UTF-8";
   locale: "C";
+  defines?: Record<string, string>;
   inputDigest: string;
   outputDigest: string;
 };
@@ -95,6 +97,12 @@ function checkedInputs(input: DtsConfigSetInput) {
   const edges = new Map<string, string[]>();
   const includeGraph: Array<{ sourceName: string; target: string; line: number; column: number }> = [];
   let total = 0;
+  const defines = normalizeDtsDefines(input.defines ?? input.preprocessing?.defines, input.entryFile);
+  for (const [name, value] of Object.entries(defines)) {
+    const tokens = stripCppComments(value).replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/gu, "");
+    if (/\b__(?:DATE|TIME|TIMESTAMP|FILE|BASE_FILE|COUNTER|INCLUDE_LEVEL)__\b|\b__has_(?:include|embed|builtin|feature|extension|attribute)\b|\b_Pragma\b/u.test(tokens))
+      throw new DtsPreprocessingError("preprocess-input", `构建宏 ${name} 包含未冻结时间、环境探测或编译器指令；请修改构建设置。`, input.entryFile);
+  }
   const fail = (name: string, line: number, message: string): never => {
     const offset = input.files.get(name)!.content.split("\n").slice(0, line - 1).reduce((size, value) => size + value.length + 1, 0);
     throw new DtsPreprocessingError("preprocess-input", `${name}:${line}：${message} 请在原始源码中修正后重新预览。`, name, offset);
@@ -131,7 +139,10 @@ function checkedInputs(input: DtsConfigSetInput) {
         const target = include![1] ?? include![2]!;
         if (target.startsWith("/") || /[:\\\u0000-\u001f\u007f]/u.test(target)) fail(name, first + 1, "include 不能读取绝对路径或宿主文件。");
         const roots = include![1] ? [posix.dirname(name), ...input.includeSearchPaths, "."] : [...input.includeSearchPaths, "."];
-        const found = roots.map(root => posix.join(root, target)).find(candidate => safePath(candidate) && input.files.has(candidate));
+        const matches = [...new Set(roots.map(root => posix.join(root, target)).filter(candidate => safePath(candidate) && input.files.has(candidate)))];
+        const local = include![1] ? posix.join(posix.dirname(name), target) : null;
+        if (matches.length > 1 && !matches.includes(local ?? "")) fail(name, first + 1, `依赖 ${target} 同时匹配多个搜索目录；请使用明确的相对路径或调整构建设置。`);
+        const found = local && matches.includes(local) ? local : matches[0];
         if (!found) fail(name, first + 1, `缺少冻结依赖 ${target}。`);
         dependencies.push(found!);
         includeGraph.push({ sourceName: name, target: found!, line: first + 1, column: line.indexOf("#") + 1 });
@@ -163,23 +174,31 @@ function checkedInputs(input: DtsConfigSetInput) {
     depths.set(name, depth); return depth;
   };
   for (const name of input.files.keys()) visit(name, []);
-  return { transformed, directiveLines, edges, includeGraph };
+  return { transformed, directiveLines, edges, includeGraph, defines };
 }
 
-export function requiresDtsPreprocessing(files: DtsConfigSetInput["files"]) {
-  return [...files].some(([name, file]) => !/\.(h|hpp)$/u.test(name) && stripCppComments(file.content).split("\n")
+export function normalizeDtsDefines(value: unknown, entryFile: string): Record<string, string> {
+  const parsed = dtsDefinesSchema.safeParse(value ?? {});
+  if (!parsed.success) throw new DtsPreprocessingError("preprocess-input", "构建宏必须是最多 32 个 NAME=value；名称不能覆盖保留宏，值不能含控制字符或超过 256 字符。", entryFile);
+  return Object.fromEntries(Object.entries(parsed.data).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
+}
+
+export function requiresDtsPreprocessing(files: DtsConfigSetInput["files"], defines?: Readonly<Record<string, string>>) {
+  return Boolean(defines && Object.keys(defines).length) || [...files].some(([name, file]) => !/\.(h|hpp)$/u.test(name) && stripCppComments(file.content).split("\n")
     .some(line => /^\s*#/u.test(line) && !/^\s*#[\w-]+\s*=/u.test(line)));
 }
 
 export function inspectDtsCppIncludes(input: DtsConfigSetInput) { return checkedInputs(input).includeGraph; }
 
 export function dtsPreprocessingInputDigest(input: DtsConfigSetInput) {
+  const defines = normalizeDtsDefines(input.defines ?? input.preprocessing?.defines, input.entryFile);
   return sha(JSON.stringify({ entryFile: input.entryFile, overlayOrder: input.overlayOrder, includeSearchPaths: input.includeSearchPaths,
+    ...(Object.keys(defines).length ? { defines } : {}),
     files: [...input.files].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([name, file]) => [name, sha(file.content)]) }));
 }
 
 /** Run only the pinned Linux image with a read-only, operation-owned manifest mount. */
-async function runCpp(root: string, entry: string, roots: string[], directivesOnly: boolean, deadline: number): Promise<string> {
+async function runCpp(root: string, entry: string, roots: string[], defines: Record<string, string>, directivesOnly: boolean, deadline: number): Promise<string> {
   const remaining = deadline - Date.now();
   if (remaining <= 0) throw new DtsPreprocessingError("preprocess-limit", "完整工程预处理超过 30 秒上限。", entry);
   const pin = pinnedDtsPreprocessor(), name = `wiseeff-cpp-${randomUUID()}`;
@@ -187,7 +206,8 @@ async function runCpp(root: string, entry: string, roots: string[], directivesOn
     "--network=none", "--read-only", "--log-driver=none", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--pids-limit=8", "--memory=512m", "--memory-swap=512m",
     `--user=${process.getuid?.() || 65534}:${process.getgid?.() || 65534}`, "--ulimit=cpu=5:5", "--ulimit=fsize=33554432:33554432", "--workdir=/source", "--env=LC_ALL=C", "--env=LANG=C",
     "--mount", `type=bind,source=${root},target=/source,readonly`, "--entrypoint=/usr/bin/timeout", pin.image,
-    "--signal=KILL", "5s", "/usr/local/bin/gcc", "-E", "-x", "c", "-std=c17", "-nostdinc", "-undef", "-D__DTS__=1", "-finput-charset=UTF-8", "-fexec-charset=UTF-8",
+    "--signal=KILL", "5s", "/usr/local/bin/gcc", "-E", "-x", "c", "-std=c17", "-nostdinc", "-undef", "-Werror", "-D__DTS__=1", "-finput-charset=UTF-8", "-fexec-charset=UTF-8",
+    ...Object.entries(defines).flatMap(([name, value]) => ["-D", `${name}=${value}`]),
     "-fmax-include-depth=16", "-ftrack-macro-expansion=0", ...roots.flatMap(path => ["-I", path]), "-I", ".",
     ...(directivesOnly ? ["-fdirectives-only"] : []), `./${entry}`], Math.min(10_000, remaining), MAX_OUTPUT);
   if (result.error || result.limited || result.status !== 0) {
@@ -203,7 +223,7 @@ async function runCpp(root: string, entry: string, roots: string[], directivesOn
 
 let activeOperation = false;
 export async function prepareDtsSources(input: DtsConfigSetInput): Promise<PreparedDtsSources | null> {
-  if (!requiresDtsPreprocessing(input.files)) return null;
+  if (!requiresDtsPreprocessing(input.files, input.defines ?? input.preprocessing?.defines)) return null;
   if (activeOperation) throw new DtsPreprocessingError("preprocess-busy", "当前有工程正在预处理；请保留输入并稍后重新预览。", input.entryFile);
   activeOperation = true;
   try { return await prepareOriginalSources(input); }
@@ -212,7 +232,7 @@ export async function prepareDtsSources(input: DtsConfigSetInput): Promise<Prepa
 
 async function prepareOriginalSources(input: DtsConfigSetInput): Promise<PreparedDtsSources> {
   const deadline = Date.now() + 30_000;
-  const { transformed, directiveLines } = checkedInputs(input);
+  const { transformed, directiveLines, defines } = checkedInputs(input);
   const probe = await probeDtsPreprocessor();
   if (!probe.available) throw new DtsPreprocessingError("preprocess-unavailable", probe.reason!, input.entryFile);
   const pin = pinnedDtsPreprocessor(), root = mkdtempSync(join(tmpdir(), "wiseeff-cpp-"));
@@ -275,8 +295,8 @@ async function prepareOriginalSources(input: DtsConfigSetInput): Promise<Prepare
       const path = join(root, name); mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, content, { mode: 0o444 });
     }
     for (const entry of [input.entryFile, ...input.overlayOrder]) {
-      const active = outputText(await runCpp(root, entry, input.includeSearchPaths, true, deadline), true);
-      const expanded = outputText(await runCpp(root, entry, input.includeSearchPaths, false, deadline), false);
+      const active = outputText(await runCpp(root, entry, input.includeSearchPaths, defines, true, deadline), true);
+      const expanded = outputText(await runCpp(root, entry, input.includeSearchPaths, defines, false, deadline), false);
       totalOriginalBytes += Buffer.byteLength(active.text); totalExpandedBytes += Buffer.byteLength(expanded.text);
       if (totalOriginalBytes > MAX_OUTPUT || totalExpandedBytes > MAX_OUTPUT) throw new DtsPreprocessingError("preprocess-limit", "完整配置展开超过 32 MiB 上限。", entry);
       let document: DtsDocument, originalDocument: DtsDocument;
@@ -338,7 +358,7 @@ async function prepareOriginalSources(input: DtsConfigSetInput): Promise<Prepare
       catch { fail(name, "原始成员不能作为完整语法声明定位；请保留节点和属性声明，宏仅用于值。"); }
     }
     const receipt: DtsPreprocessingReceipt = { schemaVersion: "dts-cpp/v1", image: pin.image, platform: pin.platform, compilerVersion: pin.version,
-      language: "c17", encoding: "UTF-8", locale: "C", inputDigest: dtsPreprocessingInputDigest(input),
+      language: "c17", encoding: "UTF-8", locale: "C", ...(Object.keys(defines).length ? { defines } : {}), inputDigest: dtsPreprocessingInputDigest(input),
       outputDigest: sha(JSON.stringify([...documents].map(([entry, document]) => [entry, document.text]))) };
     if (Date.now() > deadline) throw new DtsPreprocessingError("preprocess-limit", "完整工程预处理超过 30 秒上限。", input.entryFile);
     return { receipt, documents, originalDocuments, sourceFiles: [...sourceFiles] };

@@ -117,7 +117,8 @@ export async function createSharedDtsiVersionDraft(db:Database,auth:AuthContext,
     if ((await tx.query("select 1 from public.shared_dtsi_drafts where resource_id=$1 and organization_id=$2",[resourceId,organizationId])).rows.length)
       throw conflict("此资源已有草稿，请继续编辑现有草稿。");
     const version=await getSharedDtsiVersion(tx,auth,resourceId,baseVersionId),draftId=randomUUID();
-    await tx.query("insert into public.shared_dtsi_drafts(id,resource_id,organization_id,created_by_user_id,updated_by_user_id) values ($1,$2,$3,$4,$4)",[draftId,resourceId,organizationId,auth.user.id]);
+    const buildInputs = {includeSearchPaths:version.manifest.buildInputs.includeSearchPaths,defines:version.manifest.buildInputs.defines ?? {}};
+    await tx.query("insert into public.shared_dtsi_drafts(id,resource_id,organization_id,created_by_user_id,updated_by_user_id,build_inputs) values ($1,$2,$3,$4,$4,$5::jsonb)",[draftId,resourceId,organizationId,auth.user.id,JSON.stringify(buildInputs)]);
     for (const member of version.members) await tx.query(`insert into public.shared_dtsi_draft_members(draft_id,member_id,resource_id,organization_id,source_name,content)
       values ($1,$2,$3,$4,$5,$6)`,[draftId,member.id,resourceId,organizationId,member.sourceName,member.content]);
     await writeAuditEventInTx(asAuditTx(tx),invocation,{requestId:context.requestId},{app:"parameters",kind:"shared-dtsi-draft",action:"create-version",severity:"Medium",
