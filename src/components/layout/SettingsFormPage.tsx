@@ -20,7 +20,7 @@ type SettingsFormPageProps = {
   children: ReactNode;
 };
 
-export function SettingsLeaveGuard({ dirty, saving = false }: { dirty: boolean; saving?: boolean }) {
+export function SettingsLeaveGuard({ dirty, saving = false, description = "离开将放弃本页未保存的更改。已保存的设置不会受到影响。" }: { dirty: boolean; saving?: boolean; description?: string }) {
   const [leaveOpen, setLeaveOpen] = useState(false);
   const leaveDecision = useRef<{ promise: Promise<boolean>; resolve: (allowed: boolean) => void } | null>(null);
   const finishLeave = (allowed: boolean) => {
@@ -53,7 +53,7 @@ export function SettingsLeaveGuard({ dirty, saving = false }: { dirty: boolean; 
     };
   }, [dirty, saving]);
   return <ConfirmDialog open={leaveOpen && dirty && !saving} title="放弃未保存的更改？"
-    description="离开将放弃本页未保存的更改。已保存的设置不会受到影响。"
+    description={description}
     confirmLabel="放弃并离开" cancelLabel="继续编辑" tone="danger"
     onConfirm={() => finishLeave(true)} onCancel={() => finishLeave(false)} />;
 }
