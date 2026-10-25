@@ -30,6 +30,7 @@ type DraftRow = {
   selected_risks: unknown;
   selected_source_binding_ids: unknown;
   binding_snapshots: unknown;
+  source_config_snapshots?: InitializationDraftDto["sourceConfigSnapshots"] | null;
   empty_library: boolean;
   notes: string;
   created_by_user_id: string | null;
@@ -87,6 +88,7 @@ function toDraftDto(row: DraftRow): InitializationDraftDto {
     selectedRisks: asRiskArray(row.selected_risks),
     selectedSourceBindingIds: asStringArray(row.selected_source_binding_ids),
     bindingSnapshots: asSnapshots(row.binding_snapshots),
+    ...(row.source_config_snapshots ? { sourceConfigSnapshots: row.source_config_snapshots } : {}),
     emptyLibrary: row.empty_library,
     notes: row.notes ?? "",
     createdByUserId: row.created_by_user_id,
@@ -205,12 +207,12 @@ export async function upsertDraft(
       id, organization_id, project_id, project_name, project_code, owner_user_id,
       source_project_ids, primary_source_project_id, supplement_source_project_ids,
       selected_module_ids, selected_risks, selected_source_binding_ids, binding_snapshots,
-      empty_library, notes, created_by_user_id
+      empty_library, notes, created_by_user_id, source_config_snapshots
     ) values (
       $1, $2, $3, $4, $5, $6,
       $7::jsonb, $8, $9::jsonb,
       $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb,
-      $14, $15, $16
+      $14, $15, $16, $17::jsonb
     )
     on conflict (organization_id, project_id) do update set
       project_name = excluded.project_name,
@@ -223,6 +225,7 @@ export async function upsertDraft(
       selected_risks = excluded.selected_risks,
       selected_source_binding_ids = excluded.selected_source_binding_ids,
       binding_snapshots = excluded.binding_snapshots,
+      source_config_snapshots = excluded.source_config_snapshots,
       empty_library = excluded.empty_library,
       notes = excluded.notes,
       updated_at = now()
@@ -244,7 +247,8 @@ export async function upsertDraft(
       serializePostgresJsonb(input.draft.bindingSnapshots, "array"),
       input.draft.emptyLibrary,
       input.draft.notes,
-      input.createdByUserId
+      input.createdByUserId,
+      input.draft.sourceConfigSnapshots ? serializePostgresJsonb(input.draft.sourceConfigSnapshots, "array") : null
     ]
   );
   return toDraftDto(result.rows[0]);

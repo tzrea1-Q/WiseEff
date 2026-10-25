@@ -596,7 +596,8 @@ function AppShell({
   const submitParameterInitializationViaApi = useCallback(
     async (
       action: Extract<AppAction, { type: "SUBMIT_PARAMETER_INITIALIZATION" }>,
-      expectedSnapshots?: Awaited<ReturnType<ParameterInitializationRepository["previewSnapshot"]>>
+      expectedSnapshots?: Awaited<ReturnType<ParameterInitializationRepository["previewSnapshot"]>>,
+      sourceConfigSnapshots?: import("@/domain/parameters/initializationTypes").InitializationConfigSnapshot[]
     ) => {
       const projectCode = action.draft.projectCode.trim().toUpperCase();
       const projectId = action.draft.projectCode
@@ -610,11 +611,15 @@ function AppShell({
       try {
         const adminClient = appRuntime.parameterAdminClient ?? createParameterAdminClient();
         if (!initializationCreatedProjectIds.current.has(projectId)) {
-          await adminClient.createProject({
-            id: projectId,
-            name: action.draft.projectName.trim(),
-            code: projectCode
-          });
+          try {
+            await adminClient.createProject({ id: projectId, name: action.draft.projectName.trim(), code: projectCode });
+          } catch (creationError) {
+            if (!sourceConfigSnapshots || (creationError as { code?: string }).code !== "CONFLICT") throw creationError;
+            const existing = await parameterInitializationRepositoryClient.getInitialization(projectId);
+            if (!existing.draft || !["initialization_draft", "initialization_rejected"].includes(existing.status)
+              || existing.draft.createdByUserId !== stateRef.current.currentUserId
+              || existing.draft.projectName !== action.draft.projectName.trim() || existing.draft.projectCode !== projectCode) throw creationError;
+          }
           initializationCreatedProjectIds.current.add(projectId);
         }
         const emptyLibrary =
@@ -644,6 +649,7 @@ function AppShell({
           selectedRisks: action.draft.selectedRisks,
           selectedSourceBindingIds: bindingSnapshots.map((item) => item.sourceProjectParameterBindingId),
           bindingSnapshots,
+          ...(sourceConfigSnapshots ? { sourceConfigSnapshots } : {}),
           emptyLibrary,
           notes: action.draft.notes
         });
@@ -1360,6 +1366,7 @@ function AppShell({
             dispatch={handleInitializationWizardDispatch}
             onClose={() => setProjectInitOpen(false)}
             onPreview={runtimeMode === "api" ? previewParameterInitializationViaApi : undefined}
+            onCompletePreview={runtimeMode === "api" ? parameterInitializationRepositoryClient.previewCompleteCopy : undefined}
             onSubmit={runtimeMode === "api" ? submitParameterInitializationViaApi : undefined}
           />
         ) : null}

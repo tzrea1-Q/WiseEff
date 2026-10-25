@@ -13,6 +13,18 @@ export type ProjectInitializationStatus =
 
 export type InitializationRiskLevel = "High" | "Medium" | "Low";
 
+/** Server-derived, immutable preview of an independent private source copy. No source permissions or approvals. */
+export type InitializationConfigSnapshot = {
+  sourceProjectId: string;
+  sourceConfigSetId: string;
+  sourceConfigRevisionId: string | null;
+  name: string;
+  ownership: "private";
+  digest: string;
+  catalogReleaseId: string;
+  members: Array<{ fileId: string; fileVersionId: string; checksum: string; sourceName: string; format: "dts" | "json"; sharedVersion: string | null }>;
+};
+
 /** Semantic binding snapshot item used by Port / HTTP client. */
 export type SemanticInitializationSnapshotItem = {
   /** Stable id within the draft (not the target binding id). */
@@ -49,6 +61,7 @@ export type SemanticInitializationSnapshotItem = {
 export type InitializationSnapshotItemDto = SemanticInitializationSnapshotItem;
 
 export type InitializationDraftDto = {
+  sourceConfigSnapshots?: InitializationConfigSnapshot[];
   id: string;
   organizationId: string;
   projectId: string;
@@ -85,6 +98,7 @@ export type InitializationReviewDto = {
 };
 
 export type UpsertInitializationDraftInput = {
+  sourceConfigSnapshots?: InitializationConfigSnapshot[];
   projectId: string;
   projectName: string;
   projectCode: string;

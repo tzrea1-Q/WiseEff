@@ -23,9 +23,11 @@ import {
   canonicalSourceConfigSetRole,
   canonicalSourceMemberMatchesCurrentFile,
 } from "./canonicalSource";
-import { insertConfigSet, setFileConfigSetMembership } from "./configSetRepository";
+import { getConfigSetByProjectAndName, insertConfigSet, listConfigSetsByProject, setFileConfigSetMembership } from "./configSetRepository";
+import { ensureDefaultConfigSetInTx } from "./configSetService";
+import { asAuditTx } from "../audit/auditedWrite";
 import { insertFileVersion, insertProjectParameterFile, setCurrentVersion } from "./repository";
-import { sanitizeFileName, type ObjectStore } from "../logs/objectStore";
+import type { ObjectStore } from "../logs/objectStore";
 import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
 import type { ConfigRevisionManifest, ConfigRevisionManifestMember, ConfigRevisionMemberRole } from "../parameter-topology/types";
 import type { InitializationSnapshotItemDto } from "../parameters/initializationTypes";
@@ -33,6 +35,9 @@ import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import { loadOwnedProjectValueSourcePin, loadSourceBindingCohort } from "../parameter-bindings/values";
 import { canAdminParameters } from "../parameter-kernel/policy";
 import { prepareDtsSources } from "../dts/cppSources";
+import { loadInitializationCopySources, type InitializationCopyGroup } from "./initializationCopySource";
+import type { InitializationConfigSnapshot } from "../parameters/initializationTypes";
+import { rethrowSourceTransactionError } from "./sourceVersion";
 
 export type InitializationSourceContext = {
   requestId: string;
@@ -59,14 +64,8 @@ type TargetMember = ConfigRevisionManifestMember & {
   sourceFileVersionId: string;
 };
 
-type SourceGroup = {
-  key: string;
-  sourceProjectId: string;
-  sourceConfigSetId: string;
-  sourceConfigRevisionId: string;
+type SourceGroup = InitializationCopyGroup & {
   sources: LoadedSource[];
-  manifest: LoadedSource["source"]["manifest"];
-  files: LoadedSource["source"]["files"];
 };
 
 type TargetGroup = SourceGroup & {
@@ -86,8 +85,7 @@ function roleForRevision(role: string): ConfigRevisionMemberRole {
 }
 
 function targetFileName(configSetId: string, sourceName: string): string {
-  const safe = sanitizeFileName(sourceName.replaceAll("/", "__"));
-  return `initialization-${configSetId}-${safe}`;
+  return `initialization-${configSetId}-${sourceName}`;
 }
 
 /** Delete only objects confirmed as created by this approval attempt. */
@@ -248,6 +246,7 @@ async function cloneSourceGroup(
   group: SourceGroup,
   targetProjectId: string,
   createdStorageKeys: string[],
+  existingTargetConfigSetId?: string,
 ): Promise<TargetGroup> {
   const dts = group.manifest.members.filter(member => member.format === "dts");
   const prepared = dts.length && group.manifest.entryFile ? await prepareDtsSources({ entryFile: group.manifest.entryFile,
@@ -256,15 +255,18 @@ async function cloneSourceGroup(
     files: new Map(dts.map(member => [member.sourceName, { fileVersionId: member.fileVersionId,
       content: group.files.find(file => file.name === member.sourceName)!.content }])) }) : null;
   if (group.manifest.preprocessing && !isDeepStrictEqual(group.manifest.preprocessing, prepared?.receipt)) throw new ApiError("CONFLICT", "原始工程的冻结预处理工具或输入已变化，不能复制为另一种语义。");
-  const targetConfigSetId = randomUUID();
-  await insertConfigSet(db, {
-    id: targetConfigSetId,
-    organizationId: parameterOrganizationId(auth),
-    projectId: targetProjectId,
-    name: `initialization-${targetConfigSetId.slice(0, 8)}`,
-    description: `Canonical initialization copy of ${group.sourceConfigSetId}`,
-    derivedFromId: undefined,
-  });
+  const targetConfigSetId = existingTargetConfigSetId ?? randomUUID();
+  if (!existingTargetConfigSetId) {
+    const sameName = group.name ? await getConfigSetByProjectAndName(db, { organizationId: parameterOrganizationId(auth), projectId: targetProjectId, name: group.name }) : null;
+    await insertConfigSet(db, {
+      id: targetConfigSetId,
+      organizationId: parameterOrganizationId(auth),
+      projectId: targetProjectId,
+      name: group.name ? sameName ? `${group.name}（复制 ${targetConfigSetId.slice(0, 8)}）` : group.name : `initialization-${targetConfigSetId.slice(0, 8)}`,
+      description: `Canonical initialization copy of ${group.sourceConfigSetId}`,
+      derivedFromId: undefined,
+    });
+  }
 
   const targetFileBySourceFileId = new Map<string, { fileId: string; fileVersionId: string }>();
   const targetMembers: TargetMember[] = [];
@@ -272,10 +274,12 @@ async function cloneSourceGroup(
     const file = group.files.find((candidate) => candidate.name === member.sourceName);
     if (!file) throw new ApiError("CONFLICT", "Canonical source manifest member content is missing.");
     const bytes = Buffer.from(file.content, "utf8");
-    const fileName = targetFileName(targetConfigSetId, member.sourceName);
+    const collision = group.name ? await db.query("select id from public.project_parameter_files where organization_id=$1 and project_id=$2 and file_name=$3 limit 1",
+      [parameterOrganizationId(auth), targetProjectId, member.sourceName]) : null;
+    const fileName = group.name && collision?.rows.length === 0 ? member.sourceName : targetFileName(targetConfigSetId, member.sourceName);
     const stored = await objectStore.put({
       organizationId: parameterOrganizationId(auth),
-      fileName,
+      fileName: `${randomUUID()}.${member.format}`,
       contentType: member.format === "json" ? "application/json" : "text/plain",
       bytes,
     });
@@ -314,7 +318,7 @@ async function cloneSourceGroup(
     targetMembers.push({
       fileId,
       fileVersionId,
-      fileName: stored.fileName,
+      fileName,
       sourceName: member.sourceName,
       role: roleForRevision(member.role),
       sortOrder: member.sortOrder,
@@ -337,6 +341,7 @@ async function cloneSourceGroup(
       projectId: targetProjectId,
       configSetId: targetConfigSetId,
       entryFile: group.manifest.entryFile,
+      declaredBuildInputs: { includeSearchPaths: group.manifest.includeSearchPaths, defines: group.manifest.preprocessing?.defines ?? {} },
       includeSearchPaths: group.manifest.includeSearchPaths,
       overlayOrder: group.manifest.overlayOrder,
       members: targetMembers,
@@ -476,10 +481,10 @@ export async function cloneCanonicalInitializationSource(
   db: Queryable,
   objectStore: ObjectStore,
   auth: AuthContext,
-  input: { targetProjectId: string; snapshots: InitializationSnapshotItemDto[] },
+  input: { targetProjectId: string; snapshots: InitializationSnapshotItemDto[]; sourceConfigSnapshots?: InitializationConfigSnapshot[]; sourceProjectIds?: string[]; primarySourceProjectId?: string | null },
   context: InitializationSourceContext,
-): Promise<{ configSetIds: string[]; configRevisionIds: string[]; bindingCount: number }> {
-  if (input.snapshots.length === 0) return { configSetIds: [], configRevisionIds: [], bindingCount: 0 };
+): Promise<{ configSetIds: string[]; configRevisionIds: string[]; bindingCount: number; sourceOverlayCopies?: Array<{ configSetId: string; fileIds: string[] }> }> {
+  if (input.snapshots.length === 0 && !input.sourceConfigSnapshots) return { configSetIds: [], configRevisionIds: [], bindingCount: 0 };
   const operation = {
     projectId: input.targetProjectId,
     operation: "canonical initialization approval",
@@ -529,10 +534,31 @@ export async function cloneCanonicalInitializationSource(
         });
       }
     }
-    const groups = groupSources(sources);
+    let groups = groupSources(sources);
+    let primaryGroup: SourceGroup | undefined, targetDefaultId: string | undefined;
+    if (input.sourceConfigSnapshots) {
+      const complete = await loadInitializationCopySources(db, objectStore, parameterOrganizationId(auth),
+        input.sourceProjectIds ?? [], String(context.catalogSnapshot.release.id));
+      if (!isDeepStrictEqual(complete.snapshots, input.sourceConfigSnapshots)) {
+        throw new ApiError("CONFLICT", "完整配置来源或登记已变化，请打回后由创建人重新预览并提交。");
+      }
+      groups = complete.groups.map(group => ({ ...group, sources: sources.filter(source =>
+        source.item.sourceProjectId === group.sourceProjectId && source.item.sourceConfigSetId === group.sourceConfigSetId) }));
+      const primaryId = input.primarySourceProjectId ?? input.sourceProjectIds?.[0];
+      if (!primaryId) throw new ApiError("CONFLICT", "完整复制缺少主来源项目，请重新预览。");
+      const ordered = await listConfigSetsByProject(db, { organizationId: parameterOrganizationId(auth), projectId: primaryId });
+      primaryGroup = groups.find(group => group.sourceProjectId === primaryId && group.name === "default")
+        ?? ordered.map(set => groups.find(group => group.sourceConfigSetId === set.id)).find(group => group !== undefined);
+      if (!primaryGroup) throw new ApiError("CONFLICT", "主来源项目没有可复制的完整配置，请选择其他主来源。");
+      targetDefaultId = (await ensureDefaultConfigSetInTx(asAuditTx(db), auth, input.targetProjectId, context)).id;
+      await db.query("select id from public.dts_config_set where id=$1 for update nowait", [targetDefaultId]);
+      if ((await db.query("select id from public.project_parameter_files where config_set_id=$1 limit 1", [targetDefaultId])).rows.length)
+        throw new ApiError("CONFLICT", "目标默认配置已有源码，不能覆盖初始化配置。");
+    }
     const targets: TargetGroup[] = [];
     for (const group of groups) {
-      targets.push(await cloneSourceGroup(db, objectStore, auth, context, group, input.targetProjectId, createdStorageKeys));
+      targets.push(await cloneSourceGroup(db, objectStore, auth, context, group, input.targetProjectId, createdStorageKeys,
+        group === primaryGroup ? targetDefaultId : undefined));
     }
     for (const target of targets) {
       await materializeDts(db, context, auth, input.targetProjectId, target);
@@ -542,9 +568,11 @@ export async function cloneCanonicalInitializationSource(
       configSetIds: targets.map((target) => target.targetConfigSetId),
       configRevisionIds: targets.map((target) => target.targetRevisionId).filter(Boolean),
       bindingCount: input.snapshots.length,
+      sourceOverlayCopies: targets.map(target => ({ configSetId: target.targetConfigSetId,
+        fileIds: target.targetMembers.filter(member => target.formerRootOverlayFiles?.includes(member.sourceName!)).map(member => member.fileId) })),
     };
   } catch (error) {
     if (ownsCleanup) await cleanupCanonicalInitializationObjects(objectStore, createdStorageKeys, error);
-    throw error;
+    rethrowSourceTransactionError(error);
   }
 }

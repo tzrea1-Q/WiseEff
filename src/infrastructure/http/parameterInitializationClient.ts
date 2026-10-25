@@ -24,6 +24,10 @@ export function createHttpParameterInitializationRepository(
   apiClient: ApiClient = createDefaultApiClient()
 ): ParameterInitializationRepository {
   return {
+    async previewCompleteCopy(input) {
+      const { projectId, ...body } = input;
+      return apiClient.post(projectPath(projectId, "/copy-preview"), body);
+    },
     async getInitialization(projectId) {
       return apiClient.get<{ status: ProjectInitializationStatus; draft: InitializationDraftDto | null }>(
         projectPath(projectId)

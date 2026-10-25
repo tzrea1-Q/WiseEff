@@ -1,4 +1,5 @@
-import type { ZodTypeAny } from "zod";
+import { z, type ZodTypeAny } from "zod";
+import { initializationConfigSnapshotSchema, initializationSnapshotItemSchema, previewInitializationSnapshotBodySchema, upsertInitializationDraftBodySchema } from "../../parameters/schemas";
 import { organizationDeletionDtoSchemaCatalog, organizationDeletionRoutes } from "./organizationDeletion";
 export * from "./organizationDeletion";
 import { accountTransferDtoSchemaCatalog, accountTransferRoutes } from "./accountTransfer";
@@ -57,10 +58,14 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ...sourceRevisionDtoSchemaCatalog,
   ...parameterDefinitionDeletionDtoSchemaCatalog,
   StructuralReadResponse: structuralReadResponseSchema,
-  DtsSearchResponse: dtsSearchResponseSchema
+  DtsSearchResponse: dtsSearchResponseSchema,
+  PreviewProjectInitializationSnapshotRequest: previewInitializationSnapshotBodySchema,
+  UpsertProjectInitializationDraftRequest: upsertInitializationDraftBodySchema,
+  ProjectInitializationCompleteCopyPreviewResponse: z.object({ items: z.array(initializationSnapshotItemSchema), configSnapshots: z.array(initializationConfigSnapshotSchema) })
 };
 
 export const dtoSchemaCoveredRouteIds = [
+  "parameters.initialization.completeCopyPreview",
   ...sharedDtsiRoutes.map(route => route.id),
   ...organizationDeletionRoutes.map(route => route.id),
   ...accountTransferRoutes.map(route => route.id),

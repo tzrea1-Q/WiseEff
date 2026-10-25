@@ -6,6 +6,8 @@ export type ProjectInitializationStatus =
   | "initialized";
 
 export type InitializationRiskLevel = "High" | "Medium" | "Low";
+export type { InitializationConfigSnapshot } from "../../../src/domain/parameters/initializationTypes";
+import type { InitializationConfigSnapshot } from "../../../src/domain/parameters/initializationTypes";
 
 export type InitializationSnapshotItemDto = {
   /** Stable id within the draft (not the target binding id). */
@@ -39,6 +41,7 @@ export type InitializationSnapshotItemDto = {
 };
 
 export type InitializationDraftDto = {
+  sourceConfigSnapshots?: InitializationConfigSnapshot[];
   id: string;
   organizationId: string;
   projectId: string;
@@ -75,6 +78,7 @@ export type InitializationReviewDto = {
 };
 
 export type UpsertInitializationDraftInput = {
+  sourceConfigSnapshots?: InitializationConfigSnapshot[];
   projectId: string;
   projectName: string;
   projectCode: string;
