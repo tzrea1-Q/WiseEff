@@ -2,6 +2,8 @@ import posixPath from "node:path/posix";
 
 import { parseDts } from "./parser";
 import { stripDtsComments } from "./preprocess";
+import { lexDts } from "./lexer";
+import { dtsActualPathTarget,dtsReferencePath,DtsPathReferenceError } from "../../../src/domain/dts/reference";
 import type { DtsDeleteNodeCst, DtsDeletePropertyCst, DtsNodeCst, DtsPropertyCst, DtsValue, DtsValueType } from "./types";
 
 /**
@@ -43,6 +45,7 @@ export type DtsResolutionDiagnostic = {
   severity: "error" | "warning";
   fileName: string;
   message: string;
+  offset?: number;
 };
 
 export type DtsSourceEffect = "set" | "override" | "delete";
@@ -115,6 +118,7 @@ interface MutableNode {
   unitAddress?: string;
   labels: Set<string>;
   deleted: boolean;
+  isLabelStub: boolean;
   properties: Map<string, MutableProperty>;
   sourceChain: DtsNodeSourceChainEntry[];
 }
@@ -166,12 +170,13 @@ function isEscaping(normalized: string): boolean {
 type IncludeResolution = { ok: true; fileName: string } | { ok: false; code: "include-missing" | "path-escape" };
 
 /** Resolve an `/include/ "path"` request against the including file, then declared search roots. */
-function resolveIncludeTarget(
+export function resolveIncludeTarget(
   includingFile: string,
   requestedPath: string,
   includeSearchPaths: readonly string[],
   files: ReadonlyMap<string, DtsConfigSetFile>,
 ): IncludeResolution {
+  if (posixPath.isAbsolute(requestedPath) || /[:\\\u0000-\u001f\u007f]/u.test(requestedPath)) return {ok:false,code:"path-escape"};
   const candidates = [
     posixPath.normalize(posixPath.join(posixPath.dirname(includingFile), requestedPath)),
     ...includeSearchPaths.map((root) => posixPath.normalize(posixPath.join(root, requestedPath))),
@@ -251,12 +256,16 @@ function expandFile(
   // `stripDtsComments` preserves length (comments → spaces), so spans stay aligned with
   // the original file while the combined document remains parseable.
   const cleaned = stripDtsComments(file.content);
-  const includeRe = /\/include\/\s*"([^"]*)"\s*;?/g;
   let cursor = 0;
-  for (const match of cleaned.matchAll(includeRe)) {
-    const matchIndex = match.index ?? 0;
+  let tokens:ReturnType<typeof lexDts>;
+  try {tokens=lexDts(cleaned);}catch(error){if(error instanceof DtsPathReferenceError)error.sourceName=fileName;throw error;}
+  for (let i=0;i<tokens.length;i++) {
+    const token=tokens[i]!;
+    if (token.kind!=="directive" || token.value!=="/include/" || tokens[i+1]?.kind!=="string") continue;
+    const argument=tokens[i+1]!;
+    const matchIndex = token.span.start;
     appendText(builder, cleaned.slice(cursor, matchIndex), fileName, cursor);
-    const requestedPath = match[1];
+    const requestedPath = argument.value.slice(1,-1);
     const resolution = resolveIncludeTarget(fileName, requestedPath, includeSearchPaths, files);
     if (resolution.ok) {
       expandFile(resolution.fileName, nextStack, files, includeSearchPaths, diagnostics, builder, requireExactOrigins);
@@ -265,15 +274,27 @@ function expandFile(
         code: resolution.code,
         severity: "error",
         fileName,
+        offset: matchIndex,
         message:
           resolution.code === "path-escape"
             ? `Include path "${requestedPath}" in "${fileName}" resolves outside the config set`
             : `Include target "${requestedPath}" referenced from "${fileName}" was not found`,
       });
     }
-    cursor = matchIndex + match[0].length;
+    cursor = tokens[i+2]?.kind==="semi" ? tokens[i+2]!.span.end : argument.span.end;
   }
   appendText(builder, cleaned.slice(cursor), fileName, cursor);
+}
+
+/** Bounded native include expansion with original source spans, also usable by reusable libraries. */
+export function expandDtsIncludes(input: Pick<DtsConfigSetInput,"entryFile"|"files"|"includeSearchPaths">) {
+  const builder: Builder = {text:"",segments:[],sourceFiles:new Set(),proofBudget:{expandedBytes:0,entries:0,metadataBytes:0}};
+  const diagnostics: DtsResolutionDiagnostic[] = [];
+  expandFile(input.entryFile,[],input.files,input.includeSearchPaths,diagnostics,builder,true);
+  return {text:builder.text,diagnostics,originAt(offset:number) {
+    const segment=builder.segments.find(value=>offset>=value.start && offset<value.end) ?? builder.segments.at(-1);
+    return segment ? {fileName:segment.fileName,offset:segment.sourceStart+Math.max(0,offset-segment.start)} : {fileName:input.entryFile,offset:0};
+  }};
 }
 
 function resolveSegment(segments: readonly Segment[], offset: number): string {
@@ -283,9 +304,9 @@ function resolveSegment(segments: readonly Segment[], offset: number): string {
   return segments.length > 0 ? segments[segments.length - 1].fileName : "";
 }
 
-function ensureNode(ctx: WalkContext, locator: string, name: string, unitAddress: string | undefined, fileName: string): MutableNode {
+function ensureNode(ctx: WalkContext, locator: string, name: string, unitAddress: string | undefined, fileName: string,isLabelStub=false): MutableNode {
   const existing = ctx.byLocator.get(locator);
-  if (existing) return existing;
+  if (existing) {if(!isLabelStub)existing.isLabelStub=false;return existing;}
   ctx.retainMetadata(locator, name, fileName);
   const node: MutableNode = {
     locator,
@@ -293,6 +314,7 @@ function ensureNode(ctx: WalkContext, locator: string, name: string, unitAddress
     unitAddress,
     labels: new Set(),
     deleted: false,
+    isLabelStub,
     properties: new Map(),
     sourceChain: [{ fileName, nodeLocator: displayLocator(locator), effect: "create" }],
   };
@@ -398,7 +420,13 @@ function walkNode(ctx: WalkContext, cst: DtsNodeCst, parentLocator: string): voi
   let node: MutableNode;
 
   if (cst.refTarget) {
-    const target = ctx.byLabel.get(cst.refTarget);
+    const path=dtsReferencePath(cst.refTarget);
+    const target = path!==null?dtsActualPathTarget(ctx.byLocator,path.slice(1)):ctx.byLabel.get(cst.refTarget);
+    if(path!==null && (!target || target.deleted)) {
+      ctx.diagnostics.push({code:"target-unresolved",severity:"error",fileName,
+        message:`Overlay target "&${cst.refTarget}" is not defined in the uploaded file set`});
+      return;
+    }
     if (!target) {
       // Self-anchoring overlay: the referenced label is not defined anywhere in the
       // uploaded file set. Dropping the fragment would silently lose its business
@@ -413,7 +441,7 @@ function walkNode(ctx: WalkContext, cst: DtsNodeCst, parentLocator: string): voi
         fileName,
         message: `Overlay target "&${cst.refTarget}" is not defined in the uploaded file set; its properties are attached to a synthetic anchor node so parameters stay manageable (full-tree resolution unavailable until the definition is provided)`,
       });
-      node = ensureNode(ctx, cst.refTarget, cst.refTarget, undefined, fileName);
+      node = ensureNode(ctx, cst.refTarget, cst.refTarget, undefined, fileName,true);
       registerLabel(ctx, cst.refTarget, node, fileName);
     } else {
       node = target;
@@ -451,12 +479,14 @@ function ingestDocument(
   proofBudget?: Builder["proofBudget"],
 ): void {
   const builder: Builder = { text: "", segments: [], sourceFiles, proofBudget };
-  expandFile(fileName, [], input.files, input.includeSearchPaths, diagnostics, builder, input.requireExactOrigins);
 
   let topLevel: DtsNodeCst[];
   try {
+    expandFile(fileName, [], input.files, input.includeSearchPaths, diagnostics, builder, input.requireExactOrigins);
     topLevel = parseDts(builder.text).topLevel;
-  } catch {
+  } catch (error) {
+    if (error instanceof SourceProofLimit) throw error;
+    if(error instanceof DtsPathReferenceError)diagnostics.push({code:"target-unresolved",severity:"error",fileName:error.sourceName??fileName,offset:error.offset,message:error.message});
     // A malformed member is reported structurally elsewhere (parser safety); the config-set
     // resolver only owns include/overlay provenance diagnostics.
     return;
@@ -547,6 +577,14 @@ export function resolveDtsConfigSet(input: DtsConfigSetInput): DtsConfigSetResul
       ingestDocument(overlayFile, input, diagnostics, byLocator, byLabel, sourceFiles, proofBudget);
     }
 
+    for(const node of byLocator.values())for(const property of node.properties.values()) {
+      if(node.deleted || property.deleted)continue;
+      for(const token of lexDts(property.rawText))if(token.kind==="path-ref") {
+        const target=dtsActualPathTarget(byLocator,dtsReferencePath(token.value)!.slice(1));
+        if(!target || target.deleted)diagnostics.push({code:"target-unresolved",severity:"error",fileName:property.sourceChain.at(-1)!.fileName,
+          message:`Property reference "&${token.value}" is not defined in the uploaded file set`});
+      }
+    }
     return { effective: { nodesByLocator: finalize(byLocator) }, diagnostics, sourceFiles: [...sourceFiles] };
   } catch (error) {
     if (!(error instanceof SourceProofLimit)) throw error;

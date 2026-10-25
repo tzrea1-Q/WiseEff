@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { classifyDtsValue, decodeDtsString, encodeDtsString, formatByteLiteral, formatStringList, parseBytesValue, parseStringListValues, validateDtsValue } from "./dtsValueClient";
 
 describe("classifyDtsValue", () => {
+  it("accepts native node-path cells while refusing relative or escaping paths",()=>{
+    expect(validateDtsValue("<&{/soc/clock}>","clocks","phandle-list")).toMatchObject({valid:true,normalizedValue:"<&{/soc/clock}>"});
+    for(const path of ["relative","/soc/../clock","/soc//clock"])expect(validateDtsValue(`<&{${path}}>`,"clocks","phandle-list").valid).toBe(false);
+  });
   it("normalizes hex case and whitespace for u32-array", () => {
     const a = classifyDtsValue("<0xB 0x4b>", "reg");
     const b = classifyDtsValue("<0xb 0x4B>", "reg");

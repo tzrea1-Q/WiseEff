@@ -438,6 +438,8 @@ export const LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES =
 export const LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES = 16 * 1024 * 1024;
 
 export function resolveRouteBodyLimit({ method, path, contentType }: { method: string; path: string; contentType?: string }) {
+  // Allow JSON escaping of the bounded 16 MiB set plus the selected legacy member alias.
+  if (["POST","PUT"].includes(method) && /^\/+api\/+v2\/+shared-dtsi(?:\/+[^/]+\/+draft)?\/*$/u.test(path)) return 112 * 1024 * 1024;
   if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+recommend\/*$/.test(path)) {
     return LOG_RECOMMENDATION_HTTP_BODY_LIMIT_BYTES;
   }
