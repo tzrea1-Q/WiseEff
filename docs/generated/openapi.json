@@ -5,6 +5,223 @@
     "version": "m5"
   },
   "paths": {
+    "/api/v2/shared-dtsi": {
+      "get": {
+        "operationId": "sharedDtsi.list",
+        "summary": "List Organization shared DTSI resources",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedDtsiListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "post": {
+        "operationId": "sharedDtsi.create",
+        "summary": "Create a shared DTSI resource draft",
+        "tags": [
+          "parameter-files"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SharedDtsiDraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedDtsiDraftResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/shared-dtsi/{resourceId}": {
+      "get": {
+        "operationId": "sharedDtsi.get",
+        "summary": "Read the current shared DTSI draft",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "resourceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedDtsiDraftResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/shared-dtsi/{resourceId}/draft": {
+      "put": {
+        "operationId": "sharedDtsi.save",
+        "summary": "Save a shared DTSI draft with revision comparison",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "resourceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SharedDtsiDraftUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedDtsiDraftResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "sharedDtsi.discard",
+        "summary": "Discard a never-published shared DTSI draft",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "resourceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SharedDtsiDraftDiscardRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedDtsiDiscardResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/platform/organization-deletions": {
       "get": {
         "operationId": "organizationErasures.list",
@@ -27581,6 +27798,192 @@
             }
           }
         }
+      },
+      "SharedDtsiListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "resourceId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": "number"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "sourceName": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "resourceId",
+                "name",
+                "revision",
+                "updatedAt",
+                "sourceName"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SharedDtsiListResponse"
+      },
+      "SharedDtsiDraftRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "sourceName": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "sourceName",
+          "content"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SharedDtsiDraftRequest"
+      },
+      "SharedDtsiDraftResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "number"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "members": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sourceName": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceName",
+                    "content"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "resourceId",
+              "name",
+              "revision",
+              "updatedAt",
+              "members"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SharedDtsiDraftResponse"
+      },
+      "SharedDtsiDraftUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "sourceName": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "expectedRevision": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "sourceName",
+          "content",
+          "expectedRevision"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SharedDtsiDraftUpdateRequest"
+      },
+      "SharedDtsiDraftDiscardRequest": {
+        "type": "object",
+        "properties": {
+          "expectedRevision": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "expectedRevision"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SharedDtsiDraftDiscardRequest"
+      },
+      "SharedDtsiDiscardResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SharedDtsiDiscardResponse"
       },
       "OrganizationErasureListResponse": {
         "type": "object",

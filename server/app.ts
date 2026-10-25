@@ -47,6 +47,7 @@ import { registerParameterDashboardRoutes } from "./modules/parameters/dashboard
 import { registerParameterSpecRoutes } from "./modules/parameter-specs/routes";
 import { isRetiredCatalogWriteRoute, registerCatalogLegacyRetirementRoutes } from "./modules/parameter-catalog-api/legacy/routes";
 import { registerParameterModuleRoutes } from "./modules/parameter-modules/routes";
+import { registerSharedDtsiRoutes } from "./modules/shared-dtsi/routes";
 import { registerParameterTopologyRoutes } from "./modules/parameter-topology/routes";
 import { registerCatalogProjectValueConsumerRoutes } from "./modules/parameter-bindings/catalogProjectValueRoutes";
 import { registerDtsReloadRoutes } from "./modules/dts-reload/routes";
@@ -254,6 +255,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     db: options.db,
     getCurrentAuthContext: authResolver
   });
+  registerSharedDtsiRoutes(router, { db: options.db, getCurrentAuthContext: authResolver });
   registerParameterTopologyRoutes(router, {
     db: options.db,
     objectStore: parameterObjectStore,

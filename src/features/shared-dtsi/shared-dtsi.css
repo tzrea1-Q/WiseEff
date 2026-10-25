@@ -1,0 +1,13 @@
+.shared-dtsi-page { min-width: 0; padding: var(--space-4); }
+.shared-dtsi-page h1 { margin: 0; color: var(--text); font-size: var(--text-xl); font-weight: 600; }
+.shared-dtsi-page--editor { display: flex; flex-direction: column; gap: var(--space-4); min-height: 0; height: 100%; }
+.shared-dtsi-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); min-width: 0; }
+.shared-dtsi-header > div { min-width: 0; }
+.shared-dtsi-header h1 { overflow-wrap: anywhere; }
+.shared-dtsi-actions, .shared-dtsi-pagination { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+.shared-dtsi-fields { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-3); }
+.shared-dtsi-fields label { display: grid; flex: 1; min-width: 0; gap: var(--space-2); color: var(--text-secondary); font-size: var(--text-base); }
+.shared-dtsi-source { display: flex; flex: 1; min-width: 0; height: calc(var(--space-10) * 10); min-height: calc(var(--space-10) * 8); overflow: hidden; border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); }
+.shared-dtsi-error { color: var(--danger); }
+.shared-dtsi-error p { margin: 0 0 var(--space-2); }
+.shared-dtsi-pagination { justify-content: end; padding-block: var(--space-3); color: var(--text-secondary); }
