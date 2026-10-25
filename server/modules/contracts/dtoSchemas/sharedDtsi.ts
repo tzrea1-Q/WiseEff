@@ -55,10 +55,13 @@ export const sharedDtsiVersionsSchema = z.object({items:z.array(sharedDtsiVersio
 export const sharedDtsiUsagesSchema=z.object({items:z.array(z.object({projectId:z.string(),projectName:z.string(),configSetId:z.string(),configSetName:z.string(),versionId:id,version:z.number(),direct:z.boolean()}).strict()),total:z.number().int().nonnegative(),visibility:z.enum(["organization","authorized-projects"])}).strict();
 export const sharedDtsiRecognitionSchema = z.object({resourceId:id,versionId:id,catalogReleaseId:z.string().nullable(),items:z.array(z.object({
   nodeLocator:z.string(),unresolved:z.boolean(),labels:z.array(z.string()),
+  candidate:z.object({status:z.enum(["recognized","unknown","ambiguous","retired","unavailable"]),subjectIds:z.array(z.string())}).strict(),
   source:z.object({resourceId:id,versionId:id,memberId:id,sourceName:z.string(),version:z.number().int().positive(),line:z.number().int().positive()}).strict(),
   compatibles:z.array(z.object({compatible:z.string(),status:z.enum(["recognized","unknown","ambiguous","retired","unavailable"]),subjectIds:z.array(z.string())}).strict())
 }).strict())}).strict();
 export type SharedDtsiRecognition = z.infer<typeof sharedDtsiRecognitionSchema>;
+export const sharedDtsiRecognitionReferenceSchema=z.object({resourceId:id,versionId:id,nodeLocator:z.string().min(1).max(1024),compatible:z.string().min(1).max(256)}).strict();
+export type SharedDtsiRecognitionReference=z.infer<typeof sharedDtsiRecognitionReferenceSchema>;
 export const sharedDtsiPreviewSchema = z.object({ id, resourceId: id, draftRevision: z.number().int().positive(), name: z.string(),
   changeDescription, manifest: sharedDtsiManifestSchema, digest: z.string(), createdAt: z.string(), baseVersionId: id.nullable() }).strict();
 export const sharedDtsiPreviewRequestSchema = z.object({ expectedRevision: z.number().int().positive() }).strict();

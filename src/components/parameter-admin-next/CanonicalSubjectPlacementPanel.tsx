@@ -155,6 +155,8 @@ export function CanonicalSubjectPlacementPanel({
   const publicationAdvisory = publicationSurface ? publicationSurfaceAdvisory(publicationSurface) : null;
   const closeSubjectCreation = () => {
     setCreateSubjectOpen(false);
+    const sourceReturn=params.get("sourceReturn");
+    if(params.has("sourceResource") && sourceReturn?.startsWith("/parameter-admin/sources?") && onNavigate){onNavigate(sourceReturn);return;}
     if (params.has("createSubject")) updateQuery({ createSubject: null, returnTo: null });
   };
   const search = params.get("subjectQ") ?? "";
@@ -799,7 +801,7 @@ export function CanonicalSubjectPlacementPanel({
         ) : null}
       </section>
 
-      {subjectCreationRequested && canAuthorSubject && catalogReleaseId ? <SharedDtsiSubjectCreation apiClient={apiClient}
+      {subjectCreationRequested && (params.get("sourceProposal")==="1" ? catalogActionsForSession({actor,permissions:sessionPermissions}).some(action=>action==="create-proposal"||action==="accept-proposal") : canAuthorSubject) && catalogReleaseId ? <SharedDtsiSubjectCreation apiClient={apiClient}
         sourceQuery={params.has("sourceResource") ? params.toString() : null} publicationProps={{
         open: true, intent:"create-subject", actor, sessionPermissions,
         domainState, catalog, governance, organizationId,

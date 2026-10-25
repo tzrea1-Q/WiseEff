@@ -8,7 +8,8 @@ import { requestJson } from "../../test/testClient";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { registerSharedDtsiRoutes } from "./routes";
 import JSZip from "jszip";
-import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
+import { installPublishedCatalogMatchChain } from "../catalog-kernel/runtime/catalogChain.fixture";
+import { createWiseEffServer } from "../../app";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { registerOperationsRoutes } from "../operations/routes";
@@ -67,7 +68,7 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
   });
 
   it("reads compatible evidence from the exact authorized shared closure without inventing project observations", async () => {
-    await installDriverSourceFixture(db,auth,{subjectId:"csub_acme_power",compatible:"acme,power",businessName:"Recognition power",driverName:"Recognition driver",idempotencyKey:"t21-driver",reason:"T21 native recognition"});
+    await installPublishedCatalogMatchChain((await import("../../shared/database/client")).getRootPostgresPool(db)!);
     const publish = async (name: string, sourceName: string, content: string, dependencies: unknown[] = []) => {
       const created = await call("", "POST", { name, sourceName, content, dependencies, changeDescription: "Recognition evidence" });
       expect(created.status, created.bodyText).toBe(201);
@@ -78,20 +79,60 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
       expect(result.status, result.bodyText).toBe(201);
       return result.body.item;
     };
-    const leaf = await publish("Recognition leaf", "instances.dtsi", '// compatible = "vendor,comment-only";\n/ { first: unit@1 { compatible = "vendor,shared-evidence", "acme,power"; }; second: unit@2 { compatible = "vendor,shared-evidence"; }; };');
+    const leaf = await publish("Recognition leaf", "instances.dtsi", '// compatible = "vendor,comment-only";\n/ { first: unit@1 { compatible = "acme,sensor", "acme,power"; }; second: unit@2 { compatible = "vendor,shared-evidence"; }; third: unit@3 { compatible = "vendor,shared-evidence"; }; };');
     const root = await publish("Recognition wrapper", "wrapper.dtsi", '/include/ "vendor/instances.dtsi"\n', [{resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"vendor"}]);
     const before = (await db.query("select count(*) from parameter_catalog.parameter_observations")).rows;
     const response = await publicationCall<{items:{nodeLocator:string;labels:string[];compatibles:{compatible:string}[];source:{resourceId:string;versionId:string;memberId:string;sourceName:string;line:number}}[]}>(`/${root.resourceId}/versions/${root.id}/recognition`);
     expect(response.status, response.bodyText).toBe(200);
     expect(response.body.items).toEqual([
-      expect.objectContaining({nodeLocator:"/unit@1",labels:["first"],compatibles:[expect.objectContaining({compatible:"vendor,shared-evidence",status:"unknown",subjectIds:[]}),expect.objectContaining({compatible:"acme,power",status:"recognized",subjectIds:["csub_acme_power"]})],source:expect.objectContaining({resourceId:leaf.resourceId,versionId:leaf.id,memberId:leaf.members[0]!.id,sourceName:"instances.dtsi",line:2})}),
-      expect.objectContaining({nodeLocator:"/unit@2",labels:["second"],compatibles:[expect.objectContaining({compatible:"vendor,shared-evidence"})]})
+      expect.objectContaining({nodeLocator:"/unit@1",labels:["first"],candidate:{status:"ambiguous",subjectIds:expect.arrayContaining(["csub_acme_sensor","csub_acme_power"])},compatibles:[expect.objectContaining({compatible:"acme,sensor",status:"recognized",subjectIds:["csub_acme_sensor"]}),expect.objectContaining({compatible:"acme,power",status:"retired",subjectIds:["csub_acme_power"]})],source:expect.objectContaining({resourceId:leaf.resourceId,versionId:leaf.id,memberId:leaf.members[0]!.id,sourceName:"instances.dtsi",line:2})}),
+      expect.objectContaining({nodeLocator:"/unit@2",labels:["second"],compatibles:[expect.objectContaining({compatible:"vendor,shared-evidence"})]}),
+      expect.objectContaining({nodeLocator:"/unit@3",labels:["third"],compatibles:[expect.objectContaining({compatible:"vendor,shared-evidence"})]})
     ]);
     expect((await call("?q=vendor%2Cshared-evidence")).body.items).toEqual(expect.arrayContaining([expect.objectContaining({resourceId:root.resourceId}),expect.objectContaining({resourceId:leaf.resourceId})]));
     expect((await call("?q=vendor%2Ccomment-only")).body.items).toEqual([]);
     expect((await publicationCall(`/${root.resourceId}/versions/${leaf.id}/recognition`)).status).toBe(404);
     expect((await publicationCall(`/${root.resourceId}/versions/${root.id}/recognition`,"GET",undefined,makeTestAuthContext({organizationId:"org-other-dtsi"}))).status).toBe(404);
     expect((await db.query("select count(*) from parameter_catalog.parameter_observations")).rows).toEqual(before);
+    const catalogApp=createWiseEffServer({db:api,auth:{mode:"production",verifier:{verify:async()=>auth}}});
+    const catalogReleaseId=(await import("../catalog-publication/runtime")).captureCurrentCatalogPin;
+    const pin=await catalogReleaseId((await import("../../shared/database/client")).getRootPostgresPool(api)!);
+    const propose=(compatible:string,sourceNode="/unit@2",kind="create-subject")=>requestJson<{item:{requestedChange:Record<string,unknown>}}>(catalogApp,"/api/v2/catalog/definition-proposals",{
+      method:"POST",headers:{authorization:"Bearer native-t21","X-WiseEff-Catalog-Release":pin!.id,"Idempotency-Key":`source-${compatible}-${sourceNode}`},
+      body:JSON.stringify({base:{catalogReleaseId:pin!.id},reason:"Review exact shared declaration",requestedChange:{kind,sourceReference:{resourceId:root.resourceId,versionId:root.id,nodeLocator:sourceNode,compatible},...(kind==="create-subject"?{changeSet:[{op:"create-subject",kind:"driver",canonicalKey:`driver:${compatible}`,nature:"physical-device",cardinality:"multiple",selector:{kind:"driver-compatible",value:compatible}}]}:{})}})});
+    expect((await propose("vendor,forged")).status).toBe(400);
+    const proposal=await propose("vendor,shared-evidence");
+    expect(proposal.status,proposal.bodyText).toBe(201);
+    expect(proposal.body.item.requestedChange).toMatchObject({sourceEvidence:{resourceId:leaf.resourceId,versionId:leaf.id,memberId:leaf.members[0]!.id,sourceName:"instances.dtsi",line:2,nodeLocator:"/unit@2",compatible:"vendor,shared-evidence"}});
+    const ambiguous=await propose("acme,sensor","/unit@1","source-recognition");
+    expect(ambiguous.status,ambiguous.bodyText).toBe(201);
+    expect(ambiguous.body.item.requestedChange).toMatchObject({kind:"source-recognition",sourceEvidence:{nodeLocator:"/unit@1",candidate:{status:"ambiguous"}}});
+  });
+
+  it("indexes only the current validated draft and reads macro-compatible evidence at its original source location",async()=>{
+    const members=[{sourceName:"macro.dtsi",content:'#include <identity.h>\n/ { component { compatible = DRIVER_ID; count = <LIMIT>; }; };\n'},
+      {sourceName:"include/identity.h",content:'#define DRIVER_ID "t21,cpp-index-v1"\n#define LIMIT 42\n'}];
+    const created=await call("","POST",{name:"Indexed macro source",members,buildInputs:{includeSearchPaths:["include"],defines:{}},changeDescription:"Exact CPP recognition"});
+    expect(created.status,created.bodyText).toBe(201);const draft=created.body.item;
+    expect((await call("?q=t21%2Ccpp-index-v1")).body.items).not.toContainEqual(expect.objectContaining({resourceId:draft.resourceId}));
+    const preview=await publicationCall<{item:{id:string;manifest:{compatibleSelectors:string[]}}}>(`/${draft.resourceId}/publication-preview`,"POST",{expectedRevision:1});
+    expect(preview.status,preview.bodyText).toBe(201);
+    expect(preview.body.item.manifest.compatibleSelectors).toEqual(["t21,cpp-index-v1"]);
+    expect((await call("?q=t21%2Ccpp-index-v1")).body.items).toContainEqual(expect.objectContaining({resourceId:draft.resourceId}));
+    const changed=draft.members.map(member=>({...member,content:member.content.replace("cpp-index-v1","cpp-index-v2")}));
+    const saved=await call(`/${draft.resourceId}/draft`,"PUT",{name:draft.name,members:changed,buildInputs:{includeSearchPaths:["include"],defines:{}},changeDescription:"New selector",expectedRevision:1});
+    expect(saved.status,saved.bodyText).toBe(200);
+    expect((await call("?q=t21%2Ccpp-index-v1")).body.items).not.toContainEqual(expect.objectContaining({resourceId:draft.resourceId}));
+    expect((await call("?q=t21%2Ccpp-index-v2")).body.items).not.toContainEqual(expect.objectContaining({resourceId:draft.resourceId}));
+    const second=await publicationCall<{item:{id:string}}>(`/${draft.resourceId}/publication-preview`,"POST",{expectedRevision:2});
+    expect(second.status,second.bodyText).toBe(201);
+    const published=await publicationCall<{item:{id:string;members:Draft["members"]}}>(`/${draft.resourceId}/publications`,"POST",{previewId:second.body.item.id,idempotencyKey:"t21-cpp-index"});
+    expect(published.status,published.bodyText).toBe(201);
+    const evidence=await publicationCall<{items:unknown[]}>(`/${draft.resourceId}/versions/${published.body.item.id}/recognition`);
+    expect(evidence.status,evidence.bodyText).toBe(200);
+    expect(evidence.body.items).toEqual([expect.objectContaining({nodeLocator:"/component",compatibles:[expect.objectContaining({compatible:"t21,cpp-index-v2"})],source:expect.objectContaining({sourceName:"macro.dtsi",line:2})})]);
+    expect(published.body.item.members).toEqual(expect.arrayContaining(changed.map(member=>expect.objectContaining(member))));
+    expect((await call("?q=t21%2Ccpp-index-v2")).body.items).toContainEqual(expect.objectContaining({resourceId:draft.resourceId}));
   });
   it("publishes real headers, value/function macros and conditional source with frozen original bytes", async () => {
     const members = [{ sourceName: "common.dtsi", content: '\uFEFF// 🧪 original\r\n#include "defs.h"\r\n/ { battery: battery { compatible = "test,battery";\r\n#if ENABLED\r\n flags = <BIT(3)>;\r\n#else\r\n flags = <0>;\r\n#endif\r\n}; };\r\n' },
@@ -170,6 +211,8 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     const health = await requestJson(server(), "/health/live");
     const elapsed = performance.now() - healthStarted;
     expect(health.status, `${elapsed.toFixed(1)}ms`).toBe(200);
+    const search=await call("?q=t21%2Ccpp-index-v2");
+    expect(search.status,search.bodyText).toBe(200);
     console.info(`Native CPP health response: ${elapsed.toFixed(1)}ms`);
     expect(elapsed).toBeLessThan(1000); expect(settled).toBe(false);
     const busy = await publicationCall<{ error: { details: { reason: string } } }>(`/${other.resourceId}/publication-preview`, "POST", { expectedRevision: 1 });

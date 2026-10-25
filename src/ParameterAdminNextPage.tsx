@@ -261,6 +261,8 @@ export function ParameterAdminNextPage({
         ) : organizationView ? (
           <>
             {organizationView === "sources" ? <SharedDtsiPage key={catalogOrganizationId ?? "home"} apiClient={runtime?.parameterApiClient}
+              canCreateSubject={Boolean(sessionPermissions?.includes("catalog:author"))}
+              canProposeSource={Boolean(sessionRoles?.some(role=>role.roleId==="admin"&&role.projectId===null) && !sessionRoles?.some(role=>role.roleId==="platform-admin"&&role.projectId===null))}
               canWrite={Boolean(sessionPermissions?.includes("admin:access"))} organizationId={catalogOrganizationId} search={search} onNavigate={onNavigate} /> : null}
             {organizationView === "specs" ? <OrganizationBulkImportPanel
               apiClient={runtime?.parameterApiClient}

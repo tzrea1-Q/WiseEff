@@ -1,0 +1,106 @@
+import "./helpers/loadAcceptanceEnvironment";
+import { expect } from "playwright/test";
+import { test, catalogAppUrl } from "./helpers/catalogFixtureRuntime";
+import { catalogJson, catalogScreenshot, signInCatalogActor, dismissXiaozeHint, confirmGovernanceDialog, assertNoPageOverflow } from "./helpers/catalogBrowser";
+import { selectControlOption } from "./helpers/selectControl";
+import { acceptanceCast } from "./helpers/cast";
+import { createPostgresDatabase, getRootPostgresPool } from "../../server/shared/database/client";
+import { getAuthContext } from "../../server/modules/auth/repository";
+import { createUserInvocation } from "../../server/modules/auth/trustedInvocation";
+import { adoptPreexistingCatalog } from "../../server/modules/catalog-publication/runtime/adoption";
+import { retiredPowerSubjectSuccessorBundle } from "../../server/modules/catalog-kernel/runtime/catalogChain.fixture";
+import { collectPublicationPolicyInstanceSnapshot } from "../../server/modules/catalog-publication/authorization/instanceSnapshot";
+import { revisePublicationPolicy } from "../../server/modules/catalog-publication/authorization/policy";
+import { MANAGED_INSTANCE_POLICY_CONFIRMATION } from "../../server/modules/catalog-publication/authorization/types";
+import { CATALOG_CAPABILITY_CONTRACT_REVISION } from "../../server/modules/catalog-publication/builder/types";
+import { runPublicationManagerOnce } from "../../server/modules/catalog-publication/jobs/manager";
+import { createCatalogInstaller } from "../../server/modules/catalog-kernel/install/installer";
+
+test.use({catalogRuntimeScope:import.meta.url,catalogRuntimeDatabaseUrl:process.env.TEST_DATABASE_URL});
+
+test("#1431 recognizes frozen source instances, submits an ambiguity proposal and creates a declaration-only subject",async({page,catalogAcceptanceRuntime},testInfo)=>{
+  test.setTimeout(180_000);
+  const {runtime,fixture}=catalogAcceptanceRuntime;
+  const db=createPostgresDatabase(runtime.databaseUrl),pool=getRootPostgresPool(db)!;
+  const errors:string[]=[],serverErrors:string[]=[];
+  page.on("pageerror",error=>errors.push(error.message));
+  page.on("response",response=>{if(response.status()>=500)serverErrors.push(`${response.status()} ${new URL(response.url()).pathname}`);});
+  try {
+    const actorId=acceptanceCast.acceptanceAdmin.userId;
+    const actor=createUserInvocation(await getAuthContext(db,actorId));
+    const materialization=(await pool.query<{compiled_fingerprint:string}>("select compiled_fingerprint from parameter_catalog.catalog_materializations where release_id=$1",[fixture.chain.pinF.id])).rows[0]!;
+    const adoption=await adoptPreexistingCatalog(pool,{expectedCurrent:fixture.chain.pinF,actorPrincipalId:actorId,sourceBytes:Buffer.from(JSON.stringify(retiredPowerSubjectSuccessorBundle())),artifactDigest:fixture.chain.pinF.digest,
+      evidenceKind:"synthetic-fixture",adoptionEvidence:{source_bundle_digest:fixture.chain.pinF.digest,verification_digest:materialization.compiled_fingerprint,data_mode:"fresh",collected_at:new Date().toISOString(),approved_by:actorId}});
+    expect(adoption.ok).toBe(true);
+    const snapshot=await collectPublicationPolicyInstanceSnapshot(db);
+    const policy=await revisePublicationPolicy(db,{trustedActor:actor,publicationEnabled:true,lowRiskSingleActorPublish:false,capabilityContractRevision:CATALOG_CAPABILITY_CONTRACT_REVISION,mode:"execute",managedInstance:{confirmation:MANAGED_INSTANCE_POLICY_CONFIRMATION,
+      expectedDatabaseOid:snapshot.databaseOid,expectedCurrentId:fixture.chain.pinF.id,expectedCurrentDigest:fixture.chain.pinF.digest,expectedPolicyRevision:snapshot.policyRevision,expectedFrozen:snapshot.frozen,expectedAdopted:snapshot.adopted}});
+    expect(policy.ok).toBe(true);
+    await page.setViewportSize({width:1440,height:900});
+    await signInCatalogActor(page,"org-admin","/parameter-admin/sources");await dismissXiaozeHint(page);
+    const compatible=`wiseeff,recognized-source-${Date.now().toString(36)}`;
+    const original=`/ { first: device@1 { compatible = "acme,sensor", "acme,power"; }; second: device@2 { compatible = "${compatible}"; status = "disabled"; }; third: device@3 { compatible = "${compatible}"; }; };\n`;
+    const created=await catalogJson(page.request,"POST","/api/v2/shared-dtsi",{data:{name:"精确来源识别",sourceName:"library/boards/long-hardware-identity-source.dtsi",content:original,changeDescription:"#1431 immutable recognition source"}});
+    expect(created.status).toBe(201);const resource=(created.body as {item:{resourceId:string}}).item.resourceId;
+    const preview=await catalogJson(page.request,"POST",`/api/v2/shared-dtsi/${resource}/publication-preview`,{data:{expectedRevision:1}});
+    expect(preview.status).toBe(201);
+    const publication=await catalogJson(page.request,"POST",`/api/v2/shared-dtsi/${resource}/publications`,{data:{previewId:(preview.body as {item:{id:string}}).item.id,idempotencyKey:"t21-browser-source"}});
+    expect(publication.status).toBe(201);const version=(publication.body as {item:{id:string}}).item.id;
+    const sourcePath=`/parameter-admin/sources?resource=${resource}&version=${version}&tab=recognition`;
+    await page.goto(catalogAppUrl(sourcePath));
+    const recognition=page.getByRole("region",{name:"固定版本来源识别"});
+    await expect(recognition.getByText("/device@1",{exact:true})).toBeVisible();
+    await expect(recognition.getByText("/device@2",{exact:true})).toBeVisible();
+    await expect(recognition.getByText("/device@3",{exact:true})).toBeVisible();
+    await expect(recognition.getByRole("link",{name:"记录识别修订",exact:true})).toHaveCount(1);
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
+      await page.setViewportSize(viewport);await assertNoPageOverflow(page);
+      await catalogScreenshot(page,testInfo,`shared-recognition-${viewport.width}`);
+    }
+    await recognition.getByRole("link",{name:"记录识别修订",exact:true}).focus();await page.keyboard.press("Enter");
+    const proposal=page.getByRole("dialog",{name:"来源识别修订",exact:true});
+    await proposal.getByLabel("变更说明",{exact:true}).fill("核对 device@1 的两个正式候选，按项目实际硬件确认身份；不绑定全局实例。");
+    await proposal.getByRole("button",{name:"继续确认",exact:true}).click();
+    const creating=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname==="/api/v2/catalog/definition-proposals");
+    await confirmGovernanceDialog(page,"确认提出修订");
+    const createdProposal=await creating;expect(createdProposal.status()).toBe(201);
+    const payload=(await createdProposal.json()).item;
+    expect(payload.requestedChange).toMatchObject({kind:"source-recognition",sourceEvidence:{nodeLocator:"/device@1",candidate:{status:"ambiguous"}}});
+    await expect(proposal.getByText("草稿",{exact:true})).toBeVisible();
+    await proposal.getByRole("button",{name:"提交修订",exact:true}).click();await confirmGovernanceDialog(page,"确认提交");
+    await expect(proposal.getByText("已提交",{exact:true})).toBeVisible();
+    await catalogScreenshot(page,testInfo,"shared-source-proposal-1280");
+    await page.keyboard.press("Escape");
+    await expect(page).toHaveURL(catalogAppUrl(sourcePath));
+    await recognition.getByRole("link",{name:"识别并创建主体",exact:true}).first().click();
+    const subject=page.getByRole("dialog",{name:"新增主体",exact:true});
+    await expect(subject.getByLabel("compatible 标识",{exact:true})).toHaveValue(compatible);
+    await expect(subject.getByLabel("属性键",{exact:true})).toHaveCount(0);
+    await expect(subject.getByRole("combobox",{name:"驱动性质",exact:true})).toHaveText(/选择/);
+    await selectControlOption(subject.getByRole("combobox",{name:"驱动性质",exact:true}),"physical-device");
+    await selectControlOption(subject.getByRole("combobox",{name:"实例基数",exact:true}),"multiple");
+    await subject.getByLabel("变更说明",{exact:true}).fill("仅根据已验证来源创建声明主体，参数定义后续独立编写。");
+    await catalogScreenshot(page,testInfo,"shared-source-subject-1280");
+    const candidateResponse=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname==="/api/v2/catalog/publication-candidates");
+    await subject.getByRole("button",{name:"预览发布",exact:true}).click();await confirmGovernanceDialog(page,"确认预览");
+    const candidate=(await (await candidateResponse).json()).item;
+    expect(candidate.impactSummary).toMatchObject({addedDefinitionCount:0,addedSubjectCount:1});
+    await subject.getByRole("button",{name:"发布到目录",exact:true}).click();await confirmGovernanceDialog(page,"确认发布");
+    expect(await runPublicationManagerOnce({db,pool,installer:createCatalogInstaller(pool),resolvePublisherActor:async principal=>createUserInvocation(await getAuthContext(db,principal)),ownerId:"t21-browser-manager"})).toBe("claimed");
+    await expect(subject.getByText(/目录发布已生效/)).toBeVisible();
+    const newSubject=await catalogJson(page.request,"GET",`/api/v2/catalog/subjects/${candidate.impactSummary.addedSubjectIds[0]}`);
+    expect(newSubject.body).toMatchObject({item:{definitionCounts:{active:0,deprecated:0,retired:0}}});
+    await page.keyboard.press("Escape");await expect(page).toHaveURL(catalogAppUrl(sourcePath));
+    await signInCatalogActor(page,"guest",sourcePath);await dismissXiaozeHint(page);
+    await expect(recognition.getByRole("link",{name:"识别并创建主体",exact:true})).toHaveCount(0);
+    await expect(page.getByRole("button",{name:"创建新版本",exact:true})).toHaveCount(0);
+    await recognition.getByRole("link",{name:"查看主体与定义",exact:true}).first().click();
+    await expect(page).toHaveURL(/\/parameters\/definitions\?/);
+    await expect(page.getByRole("button",{name:"新增定义",exact:true})).toHaveCount(0);
+    await page.getByRole("link",{name:"返回来源识别",exact:true}).click();
+    await expect(page).toHaveURL(catalogAppUrl(sourcePath));
+    await page.evaluate(()=>document.documentElement.classList.add("dark"));
+    await assertNoPageOverflow(page);await catalogScreenshot(page,testInfo,"shared-recognition-guest-dark-1280");
+    expect(errors).toEqual([]);expect(serverErrors).toEqual([]);
+  } finally {await db.close();}
+});
