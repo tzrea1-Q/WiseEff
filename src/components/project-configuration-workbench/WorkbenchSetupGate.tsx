@@ -5,6 +5,7 @@ export type WorkbenchSetupGateProps = {
   selectedConfigSet: { id: string } | null;
   canAdmin: boolean;
   onCreateConfigSet?: () => void;
+  onImportPackage?: () => void;
 };
 
 export function WorkbenchSetupGate({
@@ -13,7 +14,8 @@ export function WorkbenchSetupGate({
   onConfigSetsRetry,
   selectedConfigSet,
   canAdmin,
-  onCreateConfigSet
+  onCreateConfigSet,
+  onImportPackage
 }: WorkbenchSetupGateProps) {
   if (configSetsLoading) {
     return (
@@ -43,6 +45,7 @@ export function WorkbenchSetupGate({
           <>
             <p>先创建配置，再添加需要管理的文件。</p>
             {onCreateConfigSet ? <button className="button primary" type="button" onClick={onCreateConfigSet}>新建配置</button> : <p>在「配置」菜单中选择「新建配置…」。</p>}
+            {onImportPackage ? <button className="button subtle" type="button" onClick={onImportPackage}>导入完整配置…</button> : null}
           </>
         ) : (
           <p>请联系项目管理员创建配置并添加文件。</p>
