@@ -11,7 +11,7 @@ import { lexDts, resolveDtsConfigSet, resolveDtsConfigSetAsync } from "../dts";
 import { resolveIncludeTarget } from "../dts/configSetResolver";
 import { closureManifest, composeDtsBuildInputs, loadSharedDtsiClosure, mountedSharedPath } from "../shared-dtsi/dependencies";
 import type { DtsBuildInputs } from "../contracts/dtoSchemas/dtsPreprocessing";
-import type { DtsPreprocessingReceipt } from "../dts/cppSources";
+import { inspectDtsCppIncludes, type DtsPreprocessingReceipt } from "../dts/cppSources";
 import type { SharedReferenceSwitchPreview } from "../contracts/dtoSchemas/canonicalMemberAddition";
 import type { ObjectStore } from "../logs/objectStore";
 import { asValueClient, listObservedProperties, lockSourceCatalogGovernance, parseCompatibles, rawTextToPayload,
@@ -249,6 +249,27 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       const existingFiles=new Map(members.map(member=>[member.sourceName,{content:beforeContents.get(member.fileId)!,fileVersionId:member.fileVersionId}]));
       const oldNames=new Set(beforeSources.map(source=>source.sourceName));
       const oldTokens=lexDts(before), edits:Array<{start:number;end:number;text:string}>=[];
+      if(revision.preprocessing)for(const edge of inspectDtsCppIncludes({entryFile:root.sourceName,includeSearchPaths:revision.include_search_paths,
+        overlayOrder:revision.overlay_order,preprocessing:revision.preprocessing,
+        files:new Map(members.filter(member=>member.format==="dts").map(member=>[member.sourceName,existingFiles.get(member.sourceName)!]))})) {
+        if(edge.sourceName!==root.sourceName||!oldNames.has(edge.target))continue;
+        const lines=before.split("\n"),offset=lines.slice(0,edge.line-1).reduce((size,line)=>size+line.length+1,0)+edge.column-1;
+        if(before[offset]!=="#")continue;
+        const original=beforeSources.find(source=>source.sourceName===edge.target)!;
+        const resourceId=currentReferences.find(reference=>reference.id===original.referenceId)!.resourceId;
+        const next=sharedTargets.find(target=>target.resourceId===resourceId&&target.memberId===original.memberId);
+        if(next)retainedIncludes.add(next.sourceName);
+        if(next?.sourceName===edge.target)continue;
+        const marker=oldTokens.findIndex(token=>token.span.start===offset),prefix=oldTokens[marker];
+        const argument=oldTokens[marker+(prefix?.value==="#include"?1:prefix?.value==="#"&&oldTokens[marker+1]?.value==="include"?2:0)];
+        const lineEnd=offset+lines[edge.line-1]!.length-edge.column+1;
+        if(argument?.kind!=="string"||argument.span.end>lineEnd) {
+          const message=`${root.sourceName}:${edge.line}:${edge.column}：此 CPP include 需更换入口路径，但原始指令不是可精确改写的单行带引号形式；请在目标版本保留兼容入口后重新预览。`;
+          throw new ApiError("CONFLICT",message,{reason:"shared-cpp-include-retarget",diagnostics:[{severity:"error",code:"shared-cpp-include-retarget",message}]});
+        }
+        edits.push(next?{...argument.span,text:JSON.stringify(posixPath.relative(posixPath.dirname(root.sourceName),next.sourceName))}
+          :{start:offset,end:argument.span.end,text:""});
+      }
       for(let at=0;at<oldTokens.length;at++) if(oldTokens[at]?.value==="/include/"&&oldTokens[at+1]?.kind==="string") {
         const found=resolveIncludeTarget(root.sourceName,oldTokens[at+1]!.value.slice(1,-1),revision.include_search_paths,existingFiles);
         if(!found.ok||!oldNames.has(found.fileName))continue;
@@ -260,7 +281,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
           if(next.sourceName!==found.fileName)edits.push({...oldTokens[at+1]!.span,text:JSON.stringify(posixPath.relative(posixPath.dirname(root.sourceName),next.sourceName))});
         } else edits.push({start:oldTokens[at]!.span.start,end:oldTokens[at+1]!.span.end,text:""});
       }
-      for(const edit of edits.reverse())rootSource=rootSource.slice(0,edit.start)+edit.text+rootSource.slice(edit.end);
+      for(const edit of edits.sort((a,b)=>b.start-a.start))rootSource=rootSource.slice(0,edit.start)+edit.text+rootSource.slice(edit.end);
     }
     const tokens = lexDts(rootSource), directive = tokens.findIndex(token => token.value === "/dts-v1/");
     if (directive < 0 || tokens[directive + 1]?.value !== ";") throw new ApiError("VALIDATION_FAILED", "项目根文件需要明确的 /dts-v1/; 声明，未修改配置。");
@@ -607,9 +628,10 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
           fileVersionId: afterFileVersionId, propertyName: entry.propertyName };
       const sourcePinId = randomUUID();
       const baseMember = proof.members.find((member) => member.fileId === entry.fileId);
+      if(deleted&&!baseMember)conflict("删除参数缺少精确的原始来源成员，所有变更已回滚。");
       const deletionProof = deleted ? { kind: "dts-source-absence-v1", scannerVersion: "dts-config-v1",
         beforeValueDigest: old.value.valueDigest.startsWith("sha256:") ? old.value.valueDigest : `sha256:${old.value.valueDigest}`,
-        beforeSourceDigest: `sha256:${baseMember?.checksum.replace(/^sha256:/, "")}`, afterSourceDigest: `sha256:${baseMember?.checksum.replace(/^sha256:/, "")}` } : null;
+        beforeSourceDigest: `sha256:${baseMember!.checksum.replace(/^sha256:/, "")}`, afterSourceDigest: `sha256:${baseMember!.checksum.replace(/^sha256:/, "")}` } : null;
       await tx.query(`insert into parameter_catalog.project_value_source_pins
         (id,project_value_id,binding_id,definition_id,organization_id,project_id,source_occurrence_id,config_revision_id,file_id,file_version_id,
          format,property_occurrence_id,locator,locator_digest,value_state,base_source_pin_id,delete_request_id,delete_proof)

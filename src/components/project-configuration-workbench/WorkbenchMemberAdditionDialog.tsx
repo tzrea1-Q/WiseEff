@@ -196,7 +196,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
             <details><summary>项目自有及已有来源</summary><ul className="workbench-member-addition-dialog__members">{preview.members.filter(member=>!preview.sharedComposition!.some(resource=>resource.sources.some(source=>source.fileId===member.fileId))).map(member=><li key={member.fileId}>{member.sourceName} · {roleLabels[member.role as keyof typeof roleLabels]??member.role}</li>)}</ul></details>
           </>:<ul className="workbench-member-addition-dialog__members">{preview.members.map((member) => <li key={member.fileId}><span>{member.sourceName}</span><span>{roleLabels[member.role as keyof typeof roleLabels] ?? member.role} · 顺序 {member.sortOrder}</span></li>)}</ul>}
           {preview.sharedReference ? <p>此项目的当前配置引用共享版本 {preview.sharedReference.version}；来源成员只读，其他项目不受影响。</p> : null}
-          {preview.rootEdit ? <details><summary>项目根文件 include 变更：{preview.rootEdit.sourceName}</summary>
+          {preview.rootEdit && preview.rootEdit.before!==preview.rootEdit.after ? <details><summary>项目根文件 include 变更：{preview.rootEdit.sourceName}</summary>
             <h4>当前源码</h4><pre aria-label="当前根文件源码">{preview.rootEdit.before}</pre><h4>确认后源码</h4><pre aria-label="确认后根文件源码">{preview.rootEdit.after}</pre></details> : null}
           {preview.entryFile && !preview.rootEdit ? <p>入口：{preview.entryFile}</p> : null}
           {preview.includeSearchPaths.length && !preview.rootEdit ? <p>include 路径：{preview.includeSearchPaths.join("、")}</p> : null}
@@ -212,7 +212,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
           {preview.diagnostics.map((item, index) => <p key={`${item.code}-${index}`}>{item.message}</p>)}
         </section> : null}
       </div>
-      {preview ? <footer role="group" aria-label="加入配置确认">
+      {preview ? <footer role="group" aria-label={switchReference?"版本切换确认":"加入配置确认"}>
         <label>{switchReference?"切换原因":"加入原因"}<Input aria-label={switchReference?"切换原因":"加入原因"} value={reason} disabled={busy} maxLength={2000} onChange={(event) => setReason(event.target.value)} /></label>
         <div><Button type="button" variant="outline" disabled={busy} onClick={invalidate}>取消本次预览</Button>
         <Button type="button" disabled={busy || !reason.trim()} onClick={() => void apply()}>{busy ? "正在应用…" : switchReference?"确认切换版本":"确认加入配置"}</Button></div>

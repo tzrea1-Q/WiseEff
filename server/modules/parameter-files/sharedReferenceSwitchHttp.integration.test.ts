@@ -229,4 +229,48 @@ describe("shared reference version switches through the real API role", () => {
       expect((await requestJson(server(),`/api/v1/projects/${A}/config-sets/${sets[A]}/files`)).body).toEqual(original);
     }
   },120_000);
+
+  it("preserves literal CPP root inputs through both version directions and edits quoted entry rename or removal in place",async()=>{
+    const created=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name:"Literal CPP entry",members:[
+      {sourceName:"literal.dtsi",content:'/ { literal { compatible = "acme,power"; iin_max = <41>; }; };'},
+      {sourceName:"literal-support.dtsi",content:'/ { literal_support { status = "okay"; }; };'}],changeDescription:"Fixed literal CPP inputs"});expect(created.status,created.bodyText).toBe(201);
+    const resource=created.body.item.resourceId;
+    const publish=async(revision:number)=>{
+      const preview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resource}/publication-preview`,{expectedRevision:revision});expect(preview.status,preview.bodyText).toBe(201);
+      const result=await post<{item:SharedDtsiVersion}>(`/api/v2/shared-dtsi/${resource}/publications`,{previewId:preview.body.item.id,idempotencyKey:preview.body.item.id});expect(result.status,result.bodyText).toBe(201);return result.body.item;
+    };
+    const first=await publish(1),initial={sharedReference:{resourceId:resource,versionId:first.id},role:"misc",sortOrder:1};
+    const preview=await post<Preview>(`${path(A)}/preview`,initial);expect(preview.status,preview.bodyText).toBe(200);
+    const added=await post<Applied>(`${path(A)}/apply`,{...initial,proofToken:preview.body.item.proofToken,reason:"Literal CPP root",clientMutationId:"literal-initial"});expect(added.status,added.bodyText).toBe(200);
+    const files=(await requestJson<{items:{fileId:string;fileName:string;role:string;currentVersionId:string}[]}>(server(),`/api/v1/projects/${A}/config-sets/${sets[A]}/files`)).body.items;
+    const root=files.find(file=>file.role==="base")!,original=await requestJson(server(),`/api/v1/projects/${A}/parameter-files/${root.fileId}/versions/${root.currentVersionId}/content`);
+    const cppRoot=original.bodyText.replace('/include/ "literal.dtsi"','#include "literal.dtsi"').replace('/include/ "literal-support.dtsi"','#include "literal-support.dtsi"');expect(cppRoot).not.toBe(original.bodyText);
+    const candidate=await post<{item:{id:string}}>(`/api/v1/projects/${A}/parameter-file-candidates`,{fileId:root.fileId,fileName:root.fileName,intent:"source_revision",contentBase64:Buffer.from(cppRoot).toString("base64"),
+      expectedCurrentVersionId:root.currentVersionId,expectedConfigRevisionId:added.body.item.configRevisionId,clientMutationId:"literal-root-edit"});expect(candidate.status,candidate.bodyText).toBe(201);
+    const sourcePreview=await requestJson<{item:SourceRevisionPreview}>(server(),`/api/v1/projects/${A}/parameter-file-candidates/${candidate.body.item.id}/source-preview`);expect(sourcePreview.status,sourcePreview.bodyText).toBe(200);
+    const edited=await post<Applied>(`/api/v1/projects/${A}/parameter-file-candidates/${candidate.body.item.id}/source-apply`,{expectedCurrentVersionId:root.currentVersionId,expectedProofToken:sourcePreview.body.item.proofToken,reason:"Literal project include spelling",clientMutationId:"literal-root-edit-apply"});expect(edited.status,edited.bodyText).toBe(200);
+    const successor=async(base:SharedDtsiVersion,members:{id:string;sourceName:string;content:string}[])=>{
+      const clone=await post<{item:{revision:number}}>(`/api/v2/shared-dtsi/${resource}/draft`,{baseVersionId:base.id});expect(clone.status,clone.bodyText).toBe(201);
+      const saved=await requestJson<{item:{revision:number}}>(server(),`/api/v2/shared-dtsi/${resource}/draft`,{method:"PUT",body:JSON.stringify({expectedRevision:clone.body.item.revision,name:"Literal CPP entry",members,changeDescription:"Selected exact literal entry version"})});expect(saved.status,saved.bodyText).toBe(200);return publish(saved.body.item.revision);
+    };
+    const second=await successor(first,first.members.map(({id,sourceName,content})=>({id,sourceName,content:content.replace("<41>","<43>")})));
+    for(const [index,target] of [second,first].entries()) {
+      const body={sharedReference:{resourceId:resource,versionId:target.id,replaceVersionId:index===0?first.id:second.id},role:"misc",sortOrder:1};
+      const checked=await post<Preview>(`${path(A)}/preview`,body);expect(checked.status,checked.bodyText).toBe(200);
+      expect(checked.body.item.rootEdit?.before).toBe(cppRoot);expect(checked.body.item.rootEdit?.after).toBe(cppRoot);
+      const applied=await post<Applied>(`${path(A)}/apply`,{...body,proofToken:checked.body.item.proofToken,reason:"Retain literal CPP root input",clientMutationId:`literal-switch-${index}`});expect(applied.status,applied.bodyText).toBe(200);
+      expect((await listCatalogBindingRowsForProject(api,admin,{projectId:A})).some(row=>row.rawValue===(index===0?"<43>":"<41>"))).toBe(true);
+    }
+    const renamed=await successor(second,second.members.map(({id,sourceName,content})=>({id,sourceName:sourceName==="literal.dtsi"?"literal-renamed.dtsi":sourceName,content})));
+    const removed=await successor(renamed,renamed.members.filter(member=>member.sourceName!=="literal-support.dtsi").map(({id,sourceName,content})=>({id,sourceName,content})));
+    let beforeRoot=cppRoot;
+    for(const [index,target] of [renamed,removed].entries()) {
+      const body={sharedReference:{resourceId:resource,versionId:target.id,replaceVersionId:index===0?first.id:renamed.id},role:"misc",sortOrder:1};
+      const checked=await post<Preview>(`${path(A)}/preview`,body);expect(checked.status,checked.bodyText).toBe(200);
+      const afterRoot=index===0?cppRoot.replace('#include "literal.dtsi"','#include "literal-renamed.dtsi"'):beforeRoot.replace('#include "literal-support.dtsi"',"");
+      expect(checked.body.item.rootEdit?.before).toBe(beforeRoot);expect(checked.body.item.rootEdit?.after).toBe(afterRoot);
+      const applied=await post<Applied>(`${path(A)}/apply`,{...body,proofToken:checked.body.item.proofToken,reason:"Exact quoted CPP include change",clientMutationId:`literal-retarget-${index}`});expect(applied.status,applied.bodyText).toBe(200);
+      beforeRoot=afterRoot;
+    }
+  },120_000);
 });
