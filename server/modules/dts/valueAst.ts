@@ -169,6 +169,7 @@ function joinTopLevelItems(previousRawText: string, patchedItems: string[]): str
   const semantic = stripDtsComments(previousRawText);
   const ranges: Array<{ start: number; end: number }> = [];
   let depth = 0;
+  let parentheses = 0;
   let inString = false;
   let start = 0;
 
@@ -186,11 +187,13 @@ function joinTopLevelItems(previousRawText: string, patchedItems: string[]): str
       inString = true;
       continue;
     }
-    if (ch === "<") {
+    if (ch === "(") parentheses += 1;
+    if (ch === ")") parentheses -= 1;
+    if (ch === "<" && parentheses === 0) {
       depth += 1;
       continue;
     }
-    if (ch === ">") {
+    if (ch === ">" && parentheses === 0) {
       depth -= 1;
       continue;
     }
@@ -235,19 +238,20 @@ function patchCellsGroupItem(itemRaw: string, bits: CellWidth, cells: DtsCell[])
     }
   }
 
-  const matches = [...semantic.slice(angleStart + 1, angleEnd).matchAll(CELL_TOKEN_RE)];
+  const matches = scanCellTokens(semantic.slice(angleStart + 1, angleEnd));
   if (matches.length !== cells.length) return null;
 
   let out = "";
   let cursor = 0;
   for (let i = 0; i < matches.length; i += 1) {
     const match = matches[i]!;
-    const start = match.index ?? 0;
+    const start = match.start;
     out += inner.slice(cursor, start);
-    const cell=cells[i]!,previous=parseCellToken(match[0],bits);
-    out += cell.kind==="phandle" && previous.kind==="phandle" && cell.label===previous.label
-      ?inner.slice(start,start+match[0].length):renderCell(cell);
-    cursor = start + match[0].length;
+    const cell=cells[i]!,previous=parseCellToken(match.raw,bits);
+    out += (cell.kind==="phandle" && previous.kind==="phandle" && cell.label===previous.label)
+      || (cell.kind==="integer" && previous.kind==="integer" && previous.raw.startsWith("(") && cell.raw===previous.raw && cell.value===previous.value)
+      ?inner.slice(start,start+match.raw.length):renderCell(cell);
+    cursor = start + match.raw.length;
   }
   out += inner.slice(cursor);
   return `${prefix}${out}${suffix}`;
@@ -266,7 +270,7 @@ function renderCellsValue(bits: CellWidth, groups: DtsCell[][]): string {
 function renderCell(cell: DtsCell): string {
   if (cell.kind === "phandle") return `&${cell.label}`;
   // dtc 1.8+ rejects bare `<-1>` cell forms; emit the parenthesized spelling.
-  const raw = cell.raw.startsWith("(") && cell.raw.endsWith(")") ? cell.raw.slice(1, -1) : cell.raw;
+  const raw = /^\(-(?:0[xX][0-9A-Fa-f]+|\d+)\)$/u.test(cell.raw) ? cell.raw.slice(1, -1) : cell.raw;
   return raw.startsWith("-") ? `(${raw})` : raw;
 }
 
@@ -292,6 +296,7 @@ function splitTopLevelItems(rawText: string): string[] {
   const semantic = stripDtsComments(rawText);
   const items: string[] = [];
   let depth = 0;
+  let parentheses = 0;
   let inString = false;
   let start = 0;
 
@@ -309,12 +314,15 @@ function splitTopLevelItems(rawText: string): string[] {
       inString = true;
       continue;
     }
-    if (ch === "<") {
+    if (ch === "(") parentheses += 1;
+    if (ch === ")") parentheses -= 1;
+    if (parentheses < 0) throw new SyntaxError("Unexpected closing DTS expression parenthesis");
+    if (ch === "<" && parentheses === 0) {
       depth += 1;
       if (depth > 1) throw new SyntaxError("Nested DTS cell groups are not supported");
       continue;
     }
-    if (ch === ">") {
+    if (ch === ">" && parentheses === 0) {
       depth -= 1;
       if (depth < 0) throw new SyntaxError("Unexpected closing DTS cell bracket");
       continue;
@@ -325,13 +333,14 @@ function splitTopLevelItems(rawText: string): string[] {
     }
   }
   if (inString) throw new SyntaxError("Unterminated DTS string");
+  if (parentheses !== 0) throw new SyntaxError("Unterminated DTS expression");
   if (depth !== 0) throw new SyntaxError("Unterminated DTS cell group");
   items.push(rawText.slice(start));
   return items;
 }
 
 const STRING_RE = /^"((?:\\.|[^"\\])*)"$/;
-const BITS_GROUP_RE = /^\/bits\/\s+(\d+)\s+<([^>]*)>$/;
+const BITS_GROUP_RE = /^\/bits\/\s+(\d+)\s+<([\s\S]*)>$/;
 
 function parseTopLevelItem(itemRawWithWhitespace: string): ParsedItem {
   const trimmed = stripDtsComments(itemRawWithWhitespace).trim();
@@ -351,30 +360,43 @@ function parseTopLevelItem(itemRawWithWhitespace: string): ParsedItem {
     return { type: "cells", bits, cells: parseCellsGroup(bitsMatch[2], bits) };
   }
 
-  if (/^<[^<>]*>$/.test(trimmed)) {
+  if (trimmed.startsWith("<") && trimmed.endsWith(">")) {
     return { type: "cells", bits: 32, cells: parseCellsGroup(trimmed.slice(1, -1), 32) };
   }
 
   throw new Error(`Unrecognized DTS value token: "${trimmed}"`);
 }
 
-const CELL_TOKEN_RE = /&\s*\{[^{}]*\}|&[A-Za-z_][A-Za-z0-9_]*|\(-(?:0[xX][0-9A-Fa-f]+|\d+)\)|-?0[xX][0-9A-Fa-f]+|-?\d+/g;
+function scanCellTokens(inner: string): Array<{ start: number; raw: string }> {
+  const tokens: Array<{ start: number; raw: string }> = [];
+  const literal = /&\s*\{[^{}]*\}|&[A-Za-z_][A-Za-z0-9_]*|-?(?:0[xX][0-9A-Fa-f]+|\d+)(?:[uU](?:[lL]{1,2})?|[lL]{1,2}[uU]?)?/uy;
+  let cursor = 0;
+  while (cursor < inner.length) {
+    if (/\s/u.test(inner[cursor]!)) { cursor += 1; continue; }
+    const start = cursor;
+    if (inner[cursor] === "(") {
+      let depth = 0;
+      do {
+        if (inner[cursor] === "(") depth += 1;
+        if (inner[cursor] === ")") depth -= 1;
+        if (depth > 64 || cursor - start >= 4096) throw new RangeError("DTS integer expression exceeds its bounded capacity");
+        cursor += 1;
+      } while (cursor < inner.length && depth > 0);
+      if (depth !== 0) throw new SyntaxError("Unterminated DTS integer expression");
+    } else {
+      literal.lastIndex = cursor;
+      const match = literal.exec(inner);
+      if (!match) throw new SyntaxError(`Invalid DTS cell token at position ${cursor + 1}`);
+      cursor += match[0].length;
+    }
+    if (cursor < inner.length && !/\s/u.test(inner[cursor]!)) throw new SyntaxError(`Invalid DTS cell token at position ${cursor + 1}`);
+    tokens.push({ start, raw: inner.slice(start, cursor) });
+  }
+  return tokens;
+}
 
 function parseCellsGroup(inner: string, width: CellWidth): DtsCell[] {
-  const cells: DtsCell[] = [];
-  let cursor = 0;
-  for (const match of inner.matchAll(CELL_TOKEN_RE)) {
-    const start = match.index!;
-    if (inner.slice(cursor, start).trim() !== "" || (cursor > 0 && start === cursor)) {
-      throw new SyntaxError(`Invalid DTS cell token at position ${cursor + 1}`);
-    }
-    cells.push(parseCellToken(match[0], width));
-    cursor = start + match[0].length;
-  }
-  if (inner.slice(cursor).trim() !== "") {
-    throw new SyntaxError(`Invalid DTS cell token at position ${cursor + 1}`);
-  }
-  return cells;
+  return scanCellTokens(inner).map(token => parseCellToken(token.raw, width));
 }
 
 function parseCellToken(token: string, width: CellWidth): DtsCell {
@@ -384,20 +406,90 @@ function parseCellToken(token: string, width: CellWidth): DtsCell {
     return { kind: "phandle", label };
   }
 
-  const bare = token.startsWith("(") && token.endsWith(")") ? token.slice(1, -1) : token;
+  const bare = /^\(-(?:0[xX][0-9A-Fa-f]+|\d+)\)$/u.test(token) ? token.slice(1, -1) : token;
   const negative = bare.startsWith("-");
   const magnitudeText = negative ? bare.slice(1) : bare;
-  const magnitude = BigInt(magnitudeText);
+  const magnitude = bare.startsWith("(") ? evaluateIntegerExpression(bare) : integerLiteral(magnitudeText);
   const signedValue = negative ? -magnitude : magnitude;
 
   const maxUnsigned = (1n << BigInt(width)) - 1n;
   const minSigned = -(1n << BigInt(width - 1));
-  if (signedValue > maxUnsigned || signedValue < minSigned) {
+  // Native dtc expressions evaluate as uint64_t and accept sign extension into smaller cells.
+  const value = bare.startsWith("(") && signedValue > maxUnsigned && BigInt.asIntN(64, signedValue) >= minSigned
+    ? BigInt.asIntN(64, signedValue) : signedValue;
+  if (value > maxUnsigned || value < minSigned) {
     throw new RangeError(`Integer literal "${token}" overflows a ${width}-bit cell`);
   }
 
   // Canonical raw keeps the signed literal without required parentheses; renderCell adds them.
-  return { kind: "integer", raw: bare, value: signedValue.toString() };
+  return { kind: "integer", raw: bare, value: value.toString() };
+}
+
+function integerLiteral(raw: string): bigint {
+  const literal = raw.replace(/(?:[uU](?:[lL]{1,2})?|[lL]{1,2}[uU]?)$/u, "");
+  if (literal.length > 64) throw new RangeError("DTS integer literal exceeds its bounded capacity");
+  if (/^0\d*[89]/u.test(literal)) throw new SyntaxError("Invalid octal DTS integer literal");
+  const value = BigInt(/^0[0-7]+$/u.test(literal) ? `0o${literal.slice(1)}` : literal);
+  if (value > 0xffff_ffff_ffff_ffffn) throw new RangeError("DTS integer literal exceeds 64 bits");
+  return value;
+}
+
+const INTEGER_PRECEDENCE: Readonly<Record<string, number>> = {
+  "||": 1, "&&": 2, "|": 3, "^": 4, "&": 5, "==": 6, "!=": 6,
+  "<": 7, "<=": 7, ">": 7, ">=": 7, "<<": 8, ">>": 8, "+": 9, "-": 9, "*": 10, "/": 10, "%": 10,
+};
+
+/** Native DTS uint64_t arithmetic; bounded tokens/depth keep untrusted expressions cheap. */
+function evaluateIntegerExpression(raw: string): bigint {
+  const tokens = raw.match(/0[xX][0-9A-Fa-f]+(?:[uU](?:[lL]{1,2})?|[lL]{1,2}[uU]?)?|\d+(?:[uU](?:[lL]{1,2})?|[lL]{1,2}[uU]?)?|<<|>>|<=|>=|==|!=|&&|\|\||[()+\-*/%~!<>&^|]/gu) ?? [];
+  if (tokens.length > 1024 || tokens.join("") !== raw.replace(/\s/gu, "")) throw new SyntaxError("Unsupported or excessive DTS integer expression");
+  let cursor = 0;
+  const expression = (minimum = 0, depth = 0): bigint => {
+    if (depth > 64) throw new RangeError("DTS integer expression exceeds its bounded capacity");
+    const token = tokens[cursor++];
+    let value: bigint;
+    if (token === "(") {
+      value = expression(0, depth + 1);
+      if (tokens[cursor++] !== ")") throw new SyntaxError("Unclosed DTS integer expression");
+    } else if (token === "-" || token === "~" || token === "!") {
+      const operand = expression(11, depth + 1);
+      value = token === "-" ? -operand : token === "~" ? ~operand : BigInt(operand === 0n);
+    } else if (token && /^\d/u.test(token)) value = integerLiteral(token);
+    else throw new SyntaxError("Expected a DTS integer expression operand");
+    value = BigInt.asUintN(64, value);
+    while (cursor < tokens.length) {
+      const operator = tokens[cursor]!, precedence = INTEGER_PRECEDENCE[operator];
+      if (precedence === undefined || precedence < minimum) break;
+      cursor += 1;
+      const right = expression(precedence + 1, depth + 1);
+      if ((operator === "<<" || operator === ">>") && right >= 64n) throw new RangeError("DTS integer shifts require a count from 0 to 63");
+      switch (operator) {
+        case "+": value += right; break;
+        case "-": value -= right; break;
+        case "*": value *= right; break;
+        case "/": value /= right; break;
+        case "%": value %= right; break;
+        case "<<": value <<= right; break;
+        case ">>": value >>= right; break;
+        case "&": value &= right; break;
+        case "|": value |= right; break;
+        case "^": value ^= right; break;
+        case "==": value = BigInt(value === right); break;
+        case "!=": value = BigInt(value !== right); break;
+        case "<": value = BigInt(value < right); break;
+        case "<=": value = BigInt(value <= right); break;
+        case ">": value = BigInt(value > right); break;
+        case ">=": value = BigInt(value >= right); break;
+        case "&&": value = BigInt(value !== 0n && right !== 0n); break;
+        case "||": value = BigInt(value !== 0n || right !== 0n); break;
+      }
+      value = BigInt.asUintN(64, value);
+    }
+    return value;
+  };
+  const value = expression();
+  if (cursor !== tokens.length) throw new SyntaxError("Unsupported DTS integer expression tail");
+  return value;
 }
 
 function combineItems(items: ParsedItem[]): DtsValue {

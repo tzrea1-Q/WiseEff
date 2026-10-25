@@ -5,6 +5,56 @@ import { catalogJson, catalogScreenshot, dismissXiaozeHint, signInCatalogActor }
 
 test.use({catalogRuntimeScope:import.meta.url});
 
+test("publishes original header macros and recovers an unfrozen-input diagnostic", async ({ page, catalogAcceptanceRuntime }, testInfo) => {
+  void catalogAcceptanceRuntime;
+  const failures: string[] = [];
+  page.on("pageerror", error => failures.push(error.message));
+  page.on("response", response => { if (response.status() >= 500) failures.push(`${new URL(response.url()).pathname} ${response.status()}`); });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await signInCatalogActor(page, "org-admin", "/parameter-admin/sources");
+  await dismissXiaozeHint(page);
+  await page.getByRole("button", { name: "导入资源", exact: true }).click();
+  const source = '\uFEFF// 原始源码 🧪\r\n#include "defs.h"\r\n/ { battery { compatible = "test,cpp-battery"; flags = <BIT(3)>; }; };\r\n';
+  const header = '#define BIT(x) (1U << (x))\n';
+  await page.locator('input[type="file"]').first().setInputFiles([
+    { name: "cpp-common.dtsi", mimeType: "text/plain", buffer: Buffer.from(source) },
+    { name: "defs.h", mimeType: "text/plain", buffer: Buffer.from(`${header}#define VOLATILE __TIME__\n`) }
+  ]);
+  await page.getByLabel("变更说明", { exact: true }).fill("固定原始头文件与宏输入。");
+  await page.getByRole("button", { name: "保存草稿", exact: true }).click();
+  await expect(page.getByText("草稿已保存", { exact: true })).toBeVisible();
+  const resourceId = new URL(page.url()).searchParams.get("resource")!;
+  await page.getByRole("button", { name: "预览发布", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("冻结");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await catalogScreenshot(page, testInfo, "shared-dtsi-cpp-diagnostic-1280");
+  await page.getByRole("button", { name: "defs.h", exact: true }).click();
+  await page.getByLabel("DTSI 源码", { exact: true }).click();
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.insertText(header);
+  await page.getByRole("button", { name: "保存草稿", exact: true }).click();
+  await expect(page.getByText("草稿已保存", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "预览发布", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "发布 cpp-common", exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await catalogScreenshot(page, testInfo, "shared-dtsi-cpp-preview-1440");
+  await page.getByRole("button", { name: "发布版本", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("v1 · 已发布，只读", { exact: true })).toBeVisible();
+  const detail = await catalogJson(page.request, "GET", `/api/v2/shared-dtsi/${resourceId}/detail`);
+  const versionId = (detail.body as { item: { currentVersion: { id: string } } }).item.currentVersion.id;
+  const published = await catalogJson(page.request, "GET", `/api/v2/shared-dtsi/${resourceId}/versions/${versionId}`);
+  const item = (published.body as { item: { members: { sourceName: string; content: string }[]; manifest: { buildInputs: { preprocessing: { schemaVersion: string } } } } }).item;
+  expect(item.members).toEqual(expect.arrayContaining([{ sourceName: "cpp-common.dtsi", content: source }, { sourceName: "defs.h", content: header }].map(member => expect.objectContaining(member))));
+  expect(item.manifest.buildInputs.preprocessing.schemaVersion).toBe("dts-cpp/v1");
+  await page.getByRole("button", { name: "defs.h", exact: true }).click();
+  await expect(page.getByLabel("已发布 DTSI 源码", { exact: true })).toHaveAttribute("aria-readonly", "true");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await catalogScreenshot(page, testInfo, "shared-dtsi-cpp-header-readonly-1280");
+  expect(failures).toEqual([]);
+});
+
 test("publishes a source-only shared version and retains its history after discarding the next draft",async({page,catalogAcceptanceRuntime},testInfo)=>{
   void catalogAcceptanceRuntime;
   await page.setViewportSize({width:1440,height:900});

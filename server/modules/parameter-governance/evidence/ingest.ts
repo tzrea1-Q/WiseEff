@@ -5,7 +5,7 @@ import type { Queryable } from "../../../shared/database/client";
 import { ApiError } from "../../../shared/http/errors";
 import type { ObjectStore } from "../../logs/objectStore";
 import { loadExactSourceRevisionForProof } from "../../parameter-files/sourceVersion";
-import { resolveDtsConfigSet } from "../../dts";
+import { resolveDtsConfigSetAsync } from "../../dts";
 import { listRevisionDiagnostics } from "../../parameter-topology/repository";
 import { subjectMatcherRevision } from "../../catalog-kernel/runtime/subjectMatch";
 
@@ -690,7 +690,8 @@ export async function ingestSourceBoundEvidenceInTransaction(
     const source = await loadExactSourceRevisionForProof(tx, input.objectStore, { ...sourceRevision, ...member! });
     const dtsMembers = source.members.filter((entry) => entry.format === "dts");
     if (!source.revision.entryFile || !dtsMembers.length) refuse();
-    const resolved = resolveDtsConfigSet({ entryFile: source.revision.entryFile!,
+    const resolved = await resolveDtsConfigSetAsync({ entryFile: source.revision.entryFile!,
+      preprocessing: source.revision.preprocessing,
       includeSearchPaths: source.revision.includeSearchPaths, overlayOrder: source.revision.overlayOrder,
       files: new Map(dtsMembers.map((entry) => [entry.sourceName, { fileVersionId: entry.fileVersionId, content: entry.content }])),
       requireExactOrigins: true });

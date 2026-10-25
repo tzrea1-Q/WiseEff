@@ -2,6 +2,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import type { DtcProbeResult } from "./check-dtc";
+import { probeDtsPreprocessor } from "../server/modules/dts/cppSources";
 import {
   checkPinnedToolchainVersions,
   extractSemverLike,
@@ -89,7 +90,8 @@ export async function probeDtsToolchain(): Promise<ToolchainProbeResult> {
 async function main() {
   const required = process.argv.includes("--required");
   const result = await probeDtsToolchain();
-  console.log(JSON.stringify(result, null, 2));
+  const preprocessing = await probeDtsPreprocessor();
+  console.log(JSON.stringify({ ...result, preprocessing }, null, 2));
 
   if (required && !result.ok) {
     const missing: string[] = [];
@@ -110,6 +112,10 @@ async function main() {
         `  - the API runtime and this check share .wiseeff-tools/dts-toolchain; no personal PATH export is required\n` +
         `  - optional controlled overrides: WISEEFF_DTC_PATH, WISEEFF_FDTOVERLAY_PATH, WISEEFF_DT_VALIDATE_PATH`
     );
+    process.exitCode = 1;
+  }
+  if (required && !preprocessing.available) {
+    console.error("Pinned DTS preprocessing sandbox is unavailable. Run npm run dts:toolchain:bootstrap.");
     process.exitCode = 1;
   }
 }

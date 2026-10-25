@@ -11,6 +11,7 @@ import { parameterUsageProjectScope } from "../parameter-kernel/policy";
 import { parameterInvocation, parameterOrganizationId, withParameterAccess } from "../parameters/operatingScope";
 import { loadExactSourceRevisionForProof } from "../parameter-files/sourceVersion";
 import { resolveDtsConfigSet } from "../dts/configSetResolver";
+import { DtsPreprocessingError, inspectDtsCppIncludes, requiresDtsPreprocessing } from "../dts/cppSources";
 import { sharedDtsiDraftInputSchema, type SharedDtsiDraft } from "../contracts/dtoSchemas/sharedDtsi";
 import { createSharedDtsiDraft, getSharedDtsiDraft, requireWrite, type WriteContext } from "./service";
 import { sharedDtsiPublicationSource } from "./source";
@@ -32,11 +33,28 @@ export async function importPrivateProjectSource(db: Database, objectStore: Obje
       throw new ApiError("VALIDATION_FAILED", "请选择项目私有的 .dts 或 .dtsi 源码。");
     const files = new Map(exact.members.filter(member => member.format === "dts").map(member =>
       [member.sourceName, { content: member.content, fileVersionId: member.fileVersionId }]));
-    const resolved = resolveDtsConfigSet({ entryFile: selected.sourceName, includeSearchPaths: exact.revision.includeSearchPaths,
-      overlayOrder: [], files });
-    const diagnostics = resolved.diagnostics.filter(item => item.severity === "error" && !["target-unresolved", "dangling-reference"].includes(item.code));
-    if(diagnostics.length) throw new ApiError("VALIDATION_FAILED", "所选源码依赖不完整，项目配置已保留。", {diagnostics});
-    const reachable = exact.members.filter(member => resolved.sourceFiles.includes(member.sourceName));
+    const buildInputs = {includeSearchPaths:exact.revision.includeSearchPaths,
+      defines:exact.revision.preprocessing?.defines ?? exact.revision.declaredBuildInputs.defines};
+    const sourceFiles = new Set<string>();
+    try {
+      const source = {entryFile:selected.sourceName,includeSearchPaths:buildInputs.includeSearchPaths,defines:buildInputs.defines,overlayOrder:[],files};
+      if(requiresDtsPreprocessing(files,buildInputs.defines)) {
+        const graph = inspectDtsCppIncludes(source);
+        const visit = (name:string) => { if(sourceFiles.has(name)) return;sourceFiles.add(name);for(const edge of graph.filter(value=>value.sourceName===name))visit(edge.target); };
+        visit(selected.sourceName);
+      } else {
+        const resolved = resolveDtsConfigSet(source);
+        const diagnostics = resolved.diagnostics.filter(item => item.severity === "error" && !["target-unresolved", "dangling-reference"].includes(item.code));
+        if(diagnostics.length) throw new ApiError("VALIDATION_FAILED", "所选源码依赖不完整，项目配置已保留。", {diagnostics});
+        resolved.sourceFiles.forEach(name=>sourceFiles.add(name));
+      }
+    } catch(error) {
+      if(error instanceof ApiError)throw error;
+      throw new ApiError("VALIDATION_FAILED", "所选源码或依赖无效，项目配置已保留。", {diagnostics:[{
+        sourceName:error instanceof DtsPreprocessingError?error.fileName:selected.sourceName,
+        message:error instanceof Error?error.message:"设备树语法无效。"}]});
+    }
+    const reachable = exact.members.filter(member => sourceFiles.has(member.sourceName));
     const own = reachable.filter(member => !member.sharedReference);
     const dependencies: NonNullable<SharedDtsiDraft["dependencies"]> = [];
     for(const member of reachable.filter(member => member.sharedReference)) {
@@ -49,7 +67,7 @@ export async function importPrivateProjectSource(db: Database, objectStore: Obje
       dependencies.push({resourceId:pin.resourceId,versionId:pin.versionId,mountPath:reference.mountPath});
     }
     const parsed = sharedDtsiDraftInputSchema.safeParse({ name:input.name,
-      members:own.map(member => ({sourceName:member.sourceName,content:member.content})), dependencies,
+      members:own.map(member => ({sourceName:member.sourceName,content:member.content})), dependencies,buildInputs,
       changeDescription:"" });
     if(!parsed.success) throw new ApiError("VALIDATION_FAILED", "源码路径或大小不符合共享资源边界，项目配置已保留。", {issues:parsed.error.issues});
     // Validate the selected closure through the same owner as publication; external project labels remain explicit requirements.
@@ -57,7 +75,7 @@ export async function importPrivateProjectSource(db: Database, objectStore: Obje
       members:reachable.map(member => ({id:member.fileVersionId,sourceName:member.sourceName,content:member.content})) });
     const origin = { organizationId:identity.organizationId, projectId:input.projectId, configSetId:input.configSetId,
       configRevisionId:input.configRevisionId, fileId:input.fileId, fileVersionId:input.fileVersionId,
-      members:own.map(member => ({fileId:member.fileId,fileVersionId:member.fileVersionId,sourceName:member.sourceName,checksum:member.checksum})), dependencies };
+      members:own.map(member => ({fileId:member.fileId,fileVersionId:member.fileVersionId,sourceName:member.sourceName,checksum:member.checksum})), dependencies,buildInputs };
     const evidence = { digest:`sha256:${createHash("sha256").update(JSON.stringify(origin)).digest("hex")}` };
     const draft = await createSharedDtsiDraft(tx, authorized, parsed.data, security);
     await tx.query("update public.shared_dtsi_drafts set source_origin=$2::jsonb where id=$1", [draft.id, JSON.stringify({evidence,...origin})]);

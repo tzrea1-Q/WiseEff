@@ -7,7 +7,7 @@ import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import { trustedDomainAttribution } from "../auth/trustedInvocation";
 import { NormalizedConfigurationSchemaId, PropertyKey, type CatalogSnapshot } from "../catalog-kernel/interface";
-import { lexDts, resolveDtsConfigSet } from "../dts";
+import { lexDts, resolveDtsConfigSet, resolveDtsConfigSetAsync } from "../dts";
 import { resolveIncludeTarget } from "../dts/configSetResolver";
 import { closureManifest, loadSharedDtsiClosure, mountedSharedPath } from "../shared-dtsi/dependencies";
 import type { ObjectStore } from "../logs/objectStore";
@@ -249,7 +249,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     if (!entryFile || dts.filter((row) => row.role === "base").length !== 1
       || !dts.some((row) => row.sourceName === entryFile && row.role === "base")) conflict("DTS 配置需要唯一可用的基础入口，请检查文件用途。");
     const files = new Map(dts.map((row) => [row.sourceName, { content: contents.get(row.fileId)!, fileVersionId: row.fileVersionId }]));
-    resolved = resolveDtsConfigSet({ entryFile, includeSearchPaths, overlayOrder, requireExactOrigins: true, files });
+    resolved = await resolveDtsConfigSetAsync({ entryFile, includeSearchPaths, overlayOrder, requireExactOrigins: true, files });
     diagnostics.push(...resolved.diagnostics.map(({ severity, code, message, fileName }) => ({ severity, code,
       message: input.setAsRoot ? rootDiagnosticMessage(code, message, fileName) : message })));
     if (diagnostics.some((row) => row.severity === "error" || /dangling|unresolved/.test(row.code))) {

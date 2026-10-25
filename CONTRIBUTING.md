@@ -37,6 +37,8 @@ For the full DTS toolchain (dtc + fdtoverlay + dt-validate) used by fail-closed 
 npm run dts:toolchain:check
 ```
 
+Original DTS/header macro inputs use the pinned isolated [preprocessing contract](docs/developer/dts-preprocessing.md). Bootstrap installs its fixed compiler image; requests never fetch tools or host dependencies.
+
 Semantic parameter-identity cutover rehearsal commands (`parameter-identities:migrate` / `cutover` / `check`) are operator-only. Follow [docs/runbooks/parameter-identity-cutover.md](docs/runbooks/parameter-identity-cutover.md); never continue after a failed `--apply`.
 
 For isolated browser tests, `WISEEFF_ACCEPTANCE_NESTED_API_PORT` and `WISEEFF_ACCEPTANCE_NESTED_FRONTEND_PORT` fix the nested API/frontend listeners, including the canonical DTS reload spec. Set `WISEEFF_ACCEPTANCE_NO_START_RUNTIME=true` and use `--no-deps` to avoid a parent runtime occupying those ports. Controlled-device loopback sockets remain test-owned and ephemeral. CI leaves the overrides unset.

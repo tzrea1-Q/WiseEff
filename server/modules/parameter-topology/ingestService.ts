@@ -6,7 +6,7 @@ import type { AuthContext } from "../auth/types";
 import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
 import {
   parseDts,
-  resolveDtsConfigSet,
+  resolveDtsConfigSetAsync,
   type DtsConfigSetFile,
   type DtsEffectiveNode,
   type DtsNodeCst,
@@ -234,8 +234,9 @@ type CollectedOccurrences = {
 function collectFileOccurrences(
   fileVersionId: string,
   content: string,
+  preparedDocument?: ReturnType<typeof parseDts>,
 ): CollectedOccurrences {
-  const doc = parseDts(content);
+  const doc = preparedDocument ?? parseDts(content);
   const nodes: PersistedNodeOccurrence[] = [];
   const properties: PersistedPropertyOccurrence[] = [];
   const byOrigin = new Map<string, SourceOccurrence>();
@@ -774,6 +775,7 @@ async function ingestConfigRevisionTx(
     entryFile: normalized.manifest.entryFile,
     includeSearchPaths: normalized.manifest.includeSearchPaths,
     overlayOrder: normalized.manifest.overlayOrder,
+    declaredBuildInputs: manifest.declaredBuildInputs ?? { includeSearchPaths: normalized.manifest.includeSearchPaths, defines: manifest.defines ?? manifest.preprocessing?.defines ?? {} },
   });
 
   await insertConfigRevisionMembers(tx, revision.id, manifest.members);
@@ -789,7 +791,9 @@ async function ingestConfigRevisionTx(
   const parseStartedAt = Date.now();
   let resolved;
   try {
-    resolved = resolveDtsConfigSet({
+    resolved = await resolveDtsConfigSetAsync({
+      preprocessing: manifest.preprocessing,
+      defines: manifest.defines ?? manifest.preprocessing?.defines,
       entryFile: normalized.manifest.entryFile,
       includeSearchPaths: normalized.manifest.includeSearchPaths,
       overlayOrder: normalized.manifest.overlayOrder,
@@ -869,10 +873,17 @@ async function ingestConfigRevisionTx(
 
   const occurrencesByOrigin = new Map<string, SourceOccurrence | null>();
 
+  if (resolved.preprocessing) {
+    await tx.query("update public.dts_config_revisions set preprocessing=$2::jsonb where id=$1", [revision.id, JSON.stringify(resolved.preprocessing.receipt)]);
+    revision = { ...revision, preprocessing: resolved.preprocessing.receipt };
+  }
+
   for (const member of dtsMembers) {
+    if (resolved.preprocessing && /\.(h|hpp)$/u.test(member.fileName)) continue;
     const collected = collectFileOccurrences(
       member.fileVersionId,
       member.content,
+      resolved.preprocessing?.originalDocuments.get(member.fileName),
     );
     for (const node of collected.nodes) {
       await insertNodeOccurrence(tx, revision.id, node);

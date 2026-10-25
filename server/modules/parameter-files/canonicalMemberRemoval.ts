@@ -24,7 +24,7 @@ import { hasCurrentCanonicalReviewRole } from "../parameters/reviewWorkflowRepos
 import { insertConfigRevision, insertConfigRevisionMembers, nextConfigRevisionNumber } from "../parameter-topology/repository";
 import type { ConfigRevisionMemberRole } from "../parameter-topology/types";
 import { ingestConfigRevisionInTransaction, prepareReviewedSourceContinuity, type ReviewedSourceContinuity } from "../parameter-topology/ingestService";
-import { resolveDtsConfigSet } from "../dts";
+import { resolveDtsConfigSet, resolveDtsConfigSetAsync } from "../dts";
 import { stripDtsComments } from "../dts/preprocess";
 import { canonicalizeLogicalNodeCompatible } from "../parameter-topology/writeLock";
 import { assertTrustedSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
@@ -63,7 +63,9 @@ export type CanonicalMemberRemovalProof = Readonly<{
     locator: Record<string, ContractJsonValue>; valueDigest: string;
   }>[];
   proofDigest: string;
-  configuration?: { entryFile: string; includeSearchPaths: string[]; overlayOrder: string[]; continuity?: ReviewedSourceContinuity };
+  configuration?: { entryFile: string; includeSearchPaths: string[]; overlayOrder: string[]; continuity?: ReviewedSourceContinuity;
+    defines?: Record<string, string>; preprocessing?: import("../dts/cppSources").DtsPreprocessingReceipt;
+    declaredBuildInputs?: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs };
   newProperties?: SourceRevisionNewProperty[];
   restorations?: SourceRestoration[];
   originTransfers?: Array<{ bindingId: string; oldValueId: string; sourcePinId: string; fromFileId: string; toFileId: string }>;
@@ -184,8 +186,9 @@ async function inspectAdministratorMemberRemoval(tx: Database, storage: ObjectSt
   const current = (await tx.query<MemberFile>(`select id,current_version_id,config_set_role,config_set_sort_order,format
     from public.project_parameter_files where organization_id=$1 and project_id=$2 and config_set_id=$3 order by id for update nowait`, scope)).rows;
   if (!current.some((file) => file.id === input.fileId)) throw new ApiError("NOT_FOUND", "该文件已不在配置中，请刷新文件管理。");
-  const revision = (await tx.query<{ id: string; entry_file: string; include_search_paths: string[]; overlay_order: string[] }>(`
-    select id,entry_file,include_search_paths,overlay_order from public.dts_config_revisions
+  const revision = (await tx.query<{ id: string; entry_file: string; include_search_paths: string[]; overlay_order: string[];
+    preprocessing: import("../dts/cppSources").DtsPreprocessingReceipt | null; declared_build_inputs: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs }>(`
+    select id,entry_file,include_search_paths,overlay_order,preprocessing,declared_build_inputs from public.dts_config_revisions
     where organization_id=$1 and project_id=$2 and config_set_id=$3 and status in ('resolved','validated','compiled','pending_approval')
     order by revision_number desc limit 1`, scope)).rows[0];
   if (!revision) conflict("配置缺少可用来源版本，请先在配置工作台解析当前文件。");
@@ -214,7 +217,8 @@ async function inspectAdministratorMemberRemoval(tx: Database, storage: ObjectSt
   const removed = members.find((member) => member.fileId === input.fileId)!;
   const overlayOrder = revision.overlay_order.filter((name) => name !== removed.sourceName);
   const configuration: NonNullable<CanonicalMemberRemovalProof["configuration"]> = {
-    entryFile: revision.entry_file, includeSearchPaths: revision.include_search_paths, overlayOrder
+    entryFile: revision.entry_file, includeSearchPaths: revision.include_search_paths, overlayOrder,
+    ...(revision.preprocessing?.defines ? { defines: revision.preprocessing.defines } : {}), declaredBuildInputs: revision.declared_build_inputs
   };
   const dependencies: Array<{ file: string; kind: "include" | "overlay"; target: string }> = [];
   for (const member of members.filter((row) => row.format === "dts")) {
@@ -234,7 +238,8 @@ async function inspectAdministratorMemberRemoval(tx: Database, storage: ObjectSt
     if (!survivors.some((row) => row.format === "dts" && row.role === "base" && row.sourceName === revision.entry_file)) {
       throw new ApiError("VALIDATION_FAILED", "不能移除当前 DTS 根文件。请先将其他 DTS 文件设为根文件。", { reason: "missing-base" });
     }
-    const resolved = resolveDtsConfigSet({ ...configuration, files: sourceFiles, requireExactOrigins: true });
+    const resolved = await resolveDtsConfigSetAsync({ ...configuration, files: sourceFiles, requireExactOrigins: true });
+    if (resolved.preprocessing) configuration.preprocessing = resolved.preprocessing.receipt;
     effective = resolved.effective;
     const errors = resolved.diagnostics.filter((row) => row.severity === "error" || /dangling|unresolved/.test(row.code));
     if (errors.length) throw new ApiError("VALIDATION_FAILED", `移除后存在未解决的 include 或节点引用：${errors.map((row) => `${row.fileName ?? "配置"}：${row.message}`).join("；")}。请先更新引用文件，再重新预览。`, { reason: "unresolved-source-dependency", diagnostics: errors });

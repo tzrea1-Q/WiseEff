@@ -16,7 +16,7 @@ import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createAgentInvocation, createSystemInvocation } from "../auth/trustedInvocation";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { createLocalObjectStore } from "../logs/objectStore";
-import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
+import { asValueClient, exportCanonicalBindingSource, verifyCanonicalSourceReimport, listCatalogBindingRowsForProject, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { registerParameterTopologyRoutes } from "../parameter-topology/routes";
 import { addConfigSetFile, createConfigSet } from "./configSetService";
@@ -488,6 +488,24 @@ describe("whole-source HTTP through the real API database role", () => {
     versionId = applied.body.item.appliedSourceResult!.fileVersionId;
     revisionId = applied.body.item.appliedSourceResult!.configRevisionId;
   });
+
+  it("reviews and applies a real CPP original source, retaining Binding identity and reproducible export", async () => {
+    const text = `#define CPP_LIMIT (1U << (3))\n${source.replace("<36>", "<CPP_LIMIT>")}`;
+    const pending = await stage(text, "http-native-cpp");
+    const approved = await post<{ item: SourceRevisionRequestDto }>(`${path}/${pending.id}/review`, { decision: "approve", proofDigest: pending.proofDigest }, reviewer);
+    expect(approved.status, approved.bodyText).toBe(200);
+    const receipt = approved.body.item.appliedSourceResult!;
+    versionId = receipt.fileVersionId; revisionId = receipt.configRevisionId;
+    const bindings = await listCatalogBindingRowsForProject(api, author, { projectId: PROJECT });
+    expect(bindings).toHaveLength(1);
+    expect(bindings[0]).toMatchObject({ id: bindingId, rawValue: "<8>" });
+    const exported = await exportCanonicalBindingSource(api, storage, author, { projectId: PROJECT, bindingId });
+    expect(exported!.files).toContainEqual(expect.objectContaining({ name: "board.dts", content: text }));
+    expect(exported!.manifest.preprocessing).toMatchObject({ schemaVersion: "dts-cpp/v1", compilerVersion: "14.2.0" });
+    expect(await verifyCanonicalSourceReimport(api, storage, author, { projectId: PROJECT, bindingId, source: exported! })).toEqual(exported);
+    const version = (await db.query<{ storage_key: string }>("select storage_key from project_parameter_file_versions where id=$1", [versionId])).rows[0]!;
+    expect((await storage.get(version.storage_key)).toString("utf8")).toBe(text);
+  }, 120_000);
 
   it("retains source review, version and binding-history authors after rename and account deletion", async () => {
     const pending = await stage(`${source}\n/* attribution */\n`, "http-history-attribution");

@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { ObjectStore } from "../logs/objectStore";
 import { loadExactSourceRevisionForProof, type ExactSourceRevisionIdentity } from "../parameter-files/sourceVersion";
-import { parseDts, parseDtsValue, resolveDtsConfigSet, type DtsNodeCst, type DtsValue } from "../dts";
+import { parseDts, parseDtsValue, resolveDtsConfigSetAsync, type DtsNodeCst, type DtsValue } from "../dts";
 import { normalizePersistedManifest } from "./configRevisionManifest";
 import type { ConfigRevisionMemberRole } from "./types";
 
@@ -21,6 +22,7 @@ type Effect = {
   propertyName: string | null; rawText: string | null; start: number | null; end: number | null;
   nodeStart: number | null; nodeEnd: number | null; nodeName: string | null;
   refTarget: string | null; unitAddress: string | null;
+  astJson: unknown;
 };
 function refuse(message: string): never { throw new ApiError("CONFLICT", message, { reason: "source-proof-invalid" }); }
 const digest = (value: unknown) => `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
@@ -51,11 +53,14 @@ export async function proveExactDtsProperty(tx: Queryable, objectStore: ObjectSt
     [input.configRevisionId,input.logicalNodeId,input.organizationId,input.projectId,input.configSetId],
   )).rows;
   if (logical.length !== 1) refuse("Logical source ownership is missing or ambiguous.");
-  const resolved = resolveDtsConfigSet({
+  const resolved = await resolveDtsConfigSetAsync({
     ...normalized.manifest,
     requireExactOrigins: true,
+    preprocessing: source.revision.preprocessing,
     files: new Map(dtsMembers.map((member) => [member.sourceName, { fileVersionId: member.fileVersionId, content: member.content }])),
   });
+  const busy = resolved.diagnostics.find(diagnostic => diagnostic.code === "preprocess-busy");
+  if (busy) throw new ApiError("CONFLICT", busy.message, { reason: busy.code });
   if (resolved.diagnostics.some((diagnostic) => diagnostic.code === "source-proof-limit")) {
     throw new ApiError("CONFLICT", "Exact source proof exceeds its bounded capacity.", { reason: "source-proof-limit" });
   }
@@ -73,6 +78,7 @@ export async function proveExactDtsProperty(tx: Queryable, objectStore: ObjectSt
       node.file_version_id as "fileVersionId",property.file_version_id as "propertyFileVersionId",
       property.node_occurrence_id as "propertyNodeId",property.property_name as "propertyName",
       property.raw_text as "rawText",property.start_offset as start,property.end_offset as end,
+      property.ast_json as "astJson",
       node.start_offset as "nodeStart",node.end_offset as "nodeEnd",node.name as "nodeName",
       node.ref_target as "refTarget",node.unit_address as "unitAddress"
      from dts_occurrence_effects effect
@@ -84,7 +90,8 @@ export async function proveExactDtsProperty(tx: Queryable, objectStore: ObjectSt
   if (effects.length !== property.sourceChain.length) refuse("Stored DTS effect chain does not match the exact source.");
   const parsed = new Map<string, ReturnType<typeof parseDts>>();
   for (const member of dtsMembers) {
-    try { parsed.set(member.fileVersionId, parseDts(member.content)); }
+    if (resolved.preprocessing && /\.(h|hpp)$/u.test(member.sourceName)) continue;
+    try { parsed.set(member.fileVersionId, resolved.preprocessing?.originalDocuments.get(member.sourceName) ?? parseDts(member.content)); }
     catch { refuse("DTS source member cannot be parsed exactly."); }
   }
   let targetValue: DtsValue | undefined;
@@ -120,8 +127,18 @@ export async function proveExactDtsProperty(tx: Queryable, objectStore: ObjectSt
       || effect.rawText !== exact.rawText) refuse("DTS property occurrence disagrees with source bytes.");
     let value: DtsValue;
     try {
-      value = parseDtsValue(input.propertyName, exact.rawText).value;
-      if (JSON.stringify(value) !== JSON.stringify(parseDtsValue(input.propertyName, originEntry.rawText).value)) refuse("DTS resolution changed the lossless source value.");
+      if (origin.mode === "expanded-v1") {
+        // The adapter reruns the frozen compiler and proves the active original CST first.
+        // A macro invocation is not equal to its expanded RHS under the legacy proof.
+        if (!source.revision.preprocessing || !resolved.preprocessing
+          || !isDeepStrictEqual(source.revision.preprocessing, resolved.preprocessing.receipt)) refuse("Expanded DTS evidence is stale or missing.");
+        value = parseDtsValue(input.propertyName, originEntry.rawText).value;
+        if (!isDeepStrictEqual(effect.astJson, value)) refuse("Expanded DTS semantic evidence differs from its frozen original source.");
+      } else {
+        if (resolved.preprocessing) refuse("Expanded DTS source cannot use legacy provenance.");
+        value = parseDtsValue(input.propertyName, exact.rawText).value;
+        if (JSON.stringify(value) !== JSON.stringify(parseDtsValue(input.propertyName, originEntry.rawText).value)) refuse("DTS resolution changed the lossless source value.");
+      }
     } catch { refuse("DTS property does not have a lossless supported value."); }
     if (index === effects.length - 1) {
       if (effect.propertyId !== input.propertyOccurrenceId || effect.nodeId !== input.nodeOccurrenceId || member!.fileVersionId !== input.fileVersionId) refuse("Final DTS source identity differs from the requested occurrence.");
