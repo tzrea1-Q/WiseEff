@@ -203,7 +203,8 @@ describe("#897 source-owned DTS compatible currentness without Binding pins", ()
          from pg_roles role where role.rolname=current_user`)).rows[0];
       expect(role).toEqual({ sessionUser: runtime.apiRole,currentUser: runtime.apiRole,
         superuser: false,inherit: false,filesSelect: true,filesUpdate: true,
-        revisionsSelect: true,observationsSelect: true,migrationFilesUpdate: false });
+        // 0304 grants the migration owner the exact-receipt shared derivation seam.
+        revisionsSelect: true,observationsSelect: true,migrationFilesUpdate: true });
       const current = await readCurrentDtsCompatibleSource(api,storage,viewer,first.input);
       expect(current).toMatchObject({ status: "current",
         compatibles: ["vendor,device","acme,backup"] });

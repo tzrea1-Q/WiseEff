@@ -69,6 +69,8 @@ import { sourceDraftKey } from "@/application/project-configuration/sourceDraftS
 import type { WorkbenchDtsEditorSessions } from "./WorkbenchDtsEditor";
 import { WorkbenchSourceTree } from "./WorkbenchSourceTree";
 import { WorkbenchSetupGate } from "./WorkbenchSetupGate";
+import { WorkbenchPackageImportDialog } from "./WorkbenchPackageImportDialog";
+import { createConfigSetPackageClient } from "@/infrastructure/http/configSetPackageClient";
 import { resolveParamAdminProjectsReturnPath } from "@/hooks/useParamAdminProjectsSearch";
 import { WorkbenchConflictArbitrationDock } from "./WorkbenchConflictArbitrationDock";
 import { WorkbenchTaskDock } from "./WorkbenchTaskDock";
@@ -176,6 +178,8 @@ export function ProjectConfigurationWorkbench({
   const conflictClient = useMemo(() => createCanonicalConflictClient(apiClient), [apiClient]);
   const additionClient = useMemo(() => createCanonicalMemberAdditionClient(apiClient), [apiClient]);
   const sharedDtsiClient = useMemo(() => apiClient ? createSharedDtsiClient(apiClient) : undefined, [apiClient]);
+  const packageClient = useMemo(() => createConfigSetPackageClient(apiClient), [apiClient]);
+  const [packageImportOpen, setPackageImportOpen] = useState(false);
   const sharedImportScope = useMemo(() => ({currentUserId, organizationId, projectId:project.id, search, sharedDtsiClient}), [currentUserId, organizationId, project.id, search, sharedDtsiClient]);
   const currentSharedImport = useRef<object | null>(sharedImportScope);
   currentSharedImport.current = sharedImportScope;
@@ -749,13 +753,14 @@ export function ProjectConfigurationWorkbench({
   }, [projectFiles, sourceWorkflowsByFileId]);
   const [memberAdditionOpen, setMemberAdditionOpen] = useState(false);
   const [switchSharedMember,setSwitchSharedMember]=useState<DtsConfigSetMemberFile|null>(null);
+  const [conversionSource,setConversionSource]=useState<{configRevisionId:string;fileId:string;fileVersionId:string;sourceName:string}|undefined>();
   const resolvedOrganizationId = organizationId ?? selectedConfigSet?.organizationId ?? null;
   const switchTaskKey=`wiseeff.shared-switch:${currentUserId}:${resolvedOrganizationId}:${project.id}:${selectedConfigSet?.id}`;
   type SwitchTask={scope:string;operation?:"remove";reference:{resourceId:string;versionId:string;version:number};draft:{versionId:string;reason:string}};
   const [switchTask,setSwitchTask]=useState<SwitchTask|null>(null);
   const activeSwitchTask=switchTask?.scope===switchTaskKey?switchTask:null;
   useEffect(()=>{
-    setMemberAdditionOpen(false);setSwitchSharedMember(null);
+    setMemberAdditionOpen(false);setConversionSource(undefined);setSwitchSharedMember(null);
     try {
       const saved=JSON.parse(sessionStorage.getItem(switchTaskKey)??"null") as SwitchTask|null;
       if(saved?.scope===switchTaskKey && typeof saved.reference?.resourceId==="string" && typeof saved.reference.versionId==="string"
@@ -771,7 +776,7 @@ export function ProjectConfigurationWorkbench({
       const next={...current,draft};try{sessionStorage.setItem(switchTaskKey,JSON.stringify(next));}catch{/* Keep the in-page task when browser storage is unavailable. */}return next;
     });
   },[switchTaskKey]);
-  const dismissSwitchTask=()=>{setMemberAdditionOpen(false);setSwitchSharedMember(null);setSwitchTask(null);try{sessionStorage.removeItem(switchTaskKey);}catch{/* Cancellation remains available when browser storage is unavailable. */}};
+  const dismissSwitchTask=()=>{setMemberAdditionOpen(false);setConversionSource(undefined);setSwitchSharedMember(null);setSwitchTask(null);try{sessionStorage.removeItem(switchTaskKey);}catch{/* Cancellation remains available when browser storage is unavailable. */}};
   const resumedSwitch=useRef("");
   useEffect(()=>{
     if(queryValue(search,"sharedSwitch")==="resume" && activeSwitchTask && canAdmin && resumedSwitch.current!==switchTaskKey){
@@ -2007,6 +2012,7 @@ export function ProjectConfigurationWorkbench({
         pendingAction={pendingAction}
         onOpenActivity={openActivityInspector}
         onExportConfigSet={() => void runAction("export-config-set", exportSelectedConfigSet)}
+        onImportPackage={apiMode && !filesLoading && !filesError && !configSetsLoading && !configSetsError && !projectFiles.length ? () => setPackageImportOpen(true) : undefined}
         onCreateConfigSet={submitCreateConfigSet}
       />
           {showContentTabs ? <div className="configuration-workbench__viewbar"><ViewSwitch variant="tabs" ariaLabel="项目配置内容" value={contentTab}
@@ -2036,6 +2042,7 @@ export function ProjectConfigurationWorkbench({
         selectedConfigSet={selectedConfigSet ?? null}
         canAdmin={canAdmin}
         onCreateConfigSet={() => setCreateConfigSetOpen(true)}
+        onImportPackage={apiMode && !filesLoading && !filesError && !configSetsLoading && !configSetsError && !projectFiles.length ? () => setPackageImportOpen(true) : undefined}
       />
         </>}
         navigator={<>
@@ -2229,6 +2236,7 @@ export function ProjectConfigurationWorkbench({
         onSwitchSharedVersion={apiMode?member=>{setSwitchSharedMember(member);if(member.sharedReference){const task={scope:switchTaskKey,reference:member.sharedReference,draft:{versionId:"",reason:""}};try{saveSwitchTask(task);}catch{setSwitchTask(task);}}setMemberAdditionOpen(true);}:undefined}
         onRemoveSharedReference={apiMode?member=>{if(member.sharedReference){const task:SwitchTask={scope:switchTaskKey,operation:"remove",reference:member.sharedReference,draft:{versionId:"",reason:""}};try{saveSwitchTask(task);}catch{setSwitchTask(task);}setMemberAdditionOpen(true);}}:undefined}
         onSetRoot={apiMode ? setSetRootTarget : undefined}
+        onConvertShared={apiMode&&sharedImportRevisionId?member=>{if(!member.currentVersionId)return;dismissSwitchTask();setConversionSource({configRevisionId:sharedImportRevisionId,fileId:member.fileId,fileVersionId:member.currentVersionId,sourceName:member.fileName});setMemberAdditionOpen(true);}:undefined}
         onCreateShared={apiMode && sharedDtsiClient && sharedImportRevisionId ? member => {
           void runAction("create-shared",async () => {
             if(!member.currentVersionId) throw new Error("请先重新核对配置修订与文件版本。");
@@ -2247,6 +2255,7 @@ export function ProjectConfigurationWorkbench({
         client={additionClient} sharedClient={sharedDtsiClient}
         switchReference={activeSwitchTask?.operation==="remove"?undefined:activeSwitchTask?.reference??switchSharedMember?.sharedReference}
         removeReference={activeSwitchTask?.operation==="remove"?activeSwitchTask.reference:undefined}
+        conversionSource={conversionSource}
         switchDraft={activeSwitchTask?.draft} onSwitchDraftChange={updateSwitchDraft} onRecoverSwitch={recoverSwitch}
         projectRoot={selectedMembers.find(member=>member.role==="base")?{fileId:selectedMembers.find(member=>member.role==="base")!.fileId,sourceName:selectedMembers.find(member=>member.role==="base")!.fileName}:undefined}
         catalogRepository={memberRemovalRepository} fileRepository={fileRepository}
@@ -2258,6 +2267,16 @@ export function ProjectConfigurationWorkbench({
           if (topologyRepository) void revisionGate.session.load(project.id, configSetId, topologyRepository);
           onNavigate(formatWorkbenchPath(project.id, canvasSearch, { configSet: configSetId, file: fileId, inspector: null,
             sourceMode: null, version: null, candidate: null, baseline: null, node: null, property: null }));
+        }} /> : null}
+
+      {packageImportOpen && apiMode && canAdmin ? <WorkbenchPackageImportDialog key={`${resolvedOrganizationId}:${project.id}`} projectId={project.id} client={packageClient}
+        onDismiss={() => setPackageImportOpen(false)} onApplied={async result => {
+          workspaceLoadSession.setConfigSets(await dtsRepository.listConfigSets(project.id));
+          setPackageImportOpen(false); workspaceLoadSession.retryConfigSets(); workspaceLoadSession.retryFiles(); workspaceLoadSession.retryMembers();
+          workspaceLoadSession.retrySource(); workspaceLoadSession.retryStructure();
+          if (topologyRepository) void revisionGate.session.load(project.id, result.configSetId, topologyRepository);
+          onNavigate(formatWorkbenchPath(project.id, canvasSearch, { configSet: result.configSetId, file: result.fileIds[0]??null,
+            inspector: null, sourceMode: null, version: null, candidate: null, baseline: null, node: null, property: null }));
         }} /> : null}
 
       <WorkbenchCandidateActivateDialog

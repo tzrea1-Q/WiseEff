@@ -26532,6 +26532,136 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/config-set-import/preview": {
+      "post": {
+        "operationId": "parameterFiles.previewConfigSetImport",
+        "summary": "Preview complete original sources and exact authorized shared pins for an empty project",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigSetImportPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigSetImportPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/config-set-import/apply": {
+      "post": {
+        "operationId": "parameterFiles.applyConfigSetImport",
+        "summary": "Import a confirmed complete configuration with fresh project source identities",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigSetImportApplyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigSetImportApplyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/config-sets/{configSetId}/files/{fileId}": {
       "delete": {
         "operationId": "parameterFiles.removeConfigSetFile",
@@ -77922,6 +78052,26 @@
               },
               "replaceVersionId": {
                 "type": "string"
+              },
+              "convertPrivate": {
+                "type": "object",
+                "properties": {
+                  "configRevisionId": {
+                    "type": "string"
+                  },
+                  "fileId": {
+                    "type": "string"
+                  },
+                  "fileVersionId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "configRevisionId",
+                  "fileId",
+                  "fileVersionId"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [
@@ -78272,6 +78422,113 @@
                 ],
                 "additionalProperties": false
               },
+              "sharedConversion": {
+                "type": "object",
+                "properties": {
+                  "semanticEqual": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  },
+                  "identitiesRetained": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  },
+                  "sourceEvidence": {
+                    "type": "string"
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "fileId": {
+                          "type": "string"
+                        },
+                        "fileVersionId": {
+                          "type": "string"
+                        },
+                        "sourceName": {
+                          "type": "string"
+                        },
+                        "resourceId": {
+                          "type": "string"
+                        },
+                        "versionId": {
+                          "type": "string"
+                        },
+                        "memberId": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "sortOrder": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "fileId",
+                        "fileVersionId",
+                        "sourceName",
+                        "resourceId",
+                        "versionId",
+                        "memberId",
+                        "role",
+                        "sortOrder"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "origins": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "bindingId": {
+                          "type": "string"
+                        },
+                        "sourcePinId": {
+                          "type": "string"
+                        },
+                        "fileId": {
+                          "type": "string"
+                        },
+                        "fileVersionId": {
+                          "type": "string"
+                        },
+                        "propertyName": {
+                          "type": "string"
+                        },
+                        "locator": {
+                          "type": "object",
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "bindingId",
+                        "sourcePinId",
+                        "fileId",
+                        "fileVersionId",
+                        "propertyName",
+                        "locator"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "semanticEqual",
+                  "identitiesRetained",
+                  "sourceEvidence",
+                  "files",
+                  "origins"
+                ],
+                "additionalProperties": false
+              },
               "sharedRemoval": {
                 "type": "object",
                 "properties": {
@@ -78559,6 +78816,26 @@
               },
               "replaceVersionId": {
                 "type": "string"
+              },
+              "convertPrivate": {
+                "type": "object",
+                "properties": {
+                  "configRevisionId": {
+                    "type": "string"
+                  },
+                  "fileId": {
+                    "type": "string"
+                  },
+                  "fileVersionId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "configRevisionId",
+                  "fileId",
+                  "fileVersionId"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [
@@ -78750,6 +79027,260 @@
       "ConfigSetExportResponse": {
         "type": "object",
         "x-wiseeff-schema": "ConfigSetExportResponse"
+      },
+      "ConfigSetImportPreviewRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "ownership": {
+            "type": "string",
+            "enum": [
+              "reuse",
+              "private"
+            ]
+          },
+          "archive": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "contentBase64": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "contentBase64"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "name",
+          "ownership",
+          "archive"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ConfigSetImportPreviewRequest"
+      },
+      "ConfigSetImportPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "proofToken": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "ownership": {
+                "type": "string",
+                "enum": [
+                  "reuse",
+                  "private"
+                ]
+              },
+              "entryFile": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "members": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sourceName": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "type": "string",
+                      "enum": [
+                        "dts",
+                        "json"
+                      ]
+                    },
+                    "ownership": {
+                      "type": "string",
+                      "enum": [
+                        "shared",
+                        "private"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sourceName",
+                    "format",
+                    "ownership"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "sharedVersions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "number"
+                    },
+                    "mountPath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "version",
+                    "mountPath"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "nodeCount": {
+                "type": "number"
+              },
+              "diagnostics": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "severity": {
+                      "type": "string",
+                      "enum": [
+                        "warning",
+                        "error"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "severity",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "proofToken",
+              "name",
+              "ownership",
+              "entryFile",
+              "members",
+              "sharedVersions",
+              "nodeCount",
+              "diagnostics"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ConfigSetImportPreviewResponse"
+      },
+      "ConfigSetImportApplyRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "ownership": {
+            "type": "string",
+            "enum": [
+              "reuse",
+              "private"
+            ]
+          },
+          "archive": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "contentBase64": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "contentBase64"
+            ],
+            "additionalProperties": false
+          },
+          "proofToken": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "clientMutationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "ownership",
+          "archive",
+          "proofToken",
+          "reason",
+          "clientMutationId"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ConfigSetImportApplyRequest"
+      },
+      "ConfigSetImportApplyResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "configSetId": {
+                "type": "string"
+              },
+              "configRevisionId": {
+                "type": "string"
+              },
+              "fileIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "ownership": {
+                "type": "string",
+                "enum": [
+                  "reuse",
+                  "private"
+                ]
+              }
+            },
+            "required": [
+              "configSetId",
+              "configRevisionId",
+              "fileIds",
+              "ownership"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ConfigSetImportApplyResponse"
       },
       "ReleaseBaselineListResponse": {
         "type": "object",

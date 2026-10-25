@@ -88,6 +88,7 @@ import { parameterDashboardSummaryResponseSchema } from "./parameterDashboard";
 import { administratorMemberRemovalApplyRequestSchema, administratorMemberRemovalPreviewResponseSchema, administratorMemberRemovalApplyResponseSchema } from "./memberRemoval";
 import { logDeletionPreviewResponseSchema, logDeletionStatusResponseSchema, logDeletionStatusListResponseSchema } from "./logs";
 import { memberAdditionBodySchema, memberAdditionApplyBodySchema, memberAdditionPreviewResponseSchema, memberAdditionApplyResponseSchema } from "./canonicalMemberAddition";
+import { configSetImportPreviewBodySchema, configSetImportApplyBodySchema, configSetImportPreviewResponseSchema, configSetImportApplyResponseSchema } from "./configSetPackage";
 import { skillDeletionRequestSchema, skillDeletionPreviewResponseSchema, skillDeletionStatusResponseSchema, skillDeletionListResponseSchema } from "./skillDeletion";
 import { releaseBaselineRestoreRequestSchema, releaseBaselineRestorePreviewResponseSchema, releaseBaselineRollbackResponseSchema } from "./canonicalConfigurationRestore";
 
@@ -143,6 +144,10 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ReleaseBaselineRestorePreviewResponse: releaseBaselineRestorePreviewResponseSchema,
   ReleaseBaselineRollbackResponse: releaseBaselineRollbackResponseSchema,
   CanonicalMemberAdditionPreviewRequest: memberAdditionBodySchema,
+  ConfigSetImportPreviewRequest: configSetImportPreviewBodySchema,
+  ConfigSetImportApplyRequest: configSetImportApplyBodySchema,
+  ConfigSetImportPreviewResponse: configSetImportPreviewResponseSchema,
+  ConfigSetImportApplyResponse: configSetImportApplyResponseSchema,
   CanonicalMemberAdditionApplyRequest: memberAdditionApplyBodySchema,
   CanonicalMemberAdditionPreviewResponse: memberAdditionPreviewResponseSchema,
   CanonicalMemberAdditionApplyResponse: memberAdditionApplyResponseSchema,
