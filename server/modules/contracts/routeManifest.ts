@@ -361,6 +361,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameters.initialization.completeCopyPreview",
+    method: "POST",
+    path: "/api/v1/parameters/projects/:projectId/initialization/copy-preview",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
     id: "parameters.initialization.submit",
     method: "POST",
     path: "/api/v1/parameters/projects/:projectId/initialization/submit",

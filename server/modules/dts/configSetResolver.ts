@@ -451,9 +451,10 @@ function walkNode(ctx: WalkContext, cst: DtsNodeCst, parentLocator: string): voi
 
   if (cst.refTarget) {
     const path=dtsReferencePath(cst.refTarget);
+    const offset = ctx.originForSpan({ start: cst.span.start, end: cst.span.start })?.start;
     const target = path!==null?dtsActualPathTarget(ctx.byLocator,path.slice(1)):ctx.byLabel.get(cst.refTarget);
     if(path!==null && (!target || target.deleted)) {
-      ctx.diagnostics.push({code:"target-unresolved",severity:"error",fileName,
+      ctx.diagnostics.push({code:"target-unresolved",severity:"error",fileName,offset,
         message:`Overlay target "&${cst.refTarget}" is not defined in the uploaded file set`});
       return;
     }
@@ -469,7 +470,7 @@ function walkNode(ctx: WalkContext, cst: DtsNodeCst, parentLocator: string): voi
         code: "dangling-reference",
         severity: "warning",
         fileName,
-        offset: ctx.originForSpan(cst.span)?.start,
+        offset,
         message: `Overlay target "&${cst.refTarget}" is not defined in the uploaded file set; its properties are attached to a synthetic anchor node so parameters stay manageable (full-tree resolution unavailable until the definition is provided)`,
       });
       node = ensureNode(ctx, cst.refTarget, cst.refTarget, undefined, fileName,true);
@@ -545,7 +546,7 @@ function ingestDocument(
         const file = origin && input.files.get(origin.sourceName);
         return origin && file ? { fileVersionId: file.fileVersionId, start: origin.start, end: origin.end, mode: "expanded-v1" } : null;
       }
-      const segment = builder.segments.find((entry) => span.start >= entry.start && span.end <= entry.end);
+      const segment = builder.segments.find((entry) => span.start >= entry.start && span.start < entry.end && span.end <= entry.end);
       const file = segment && input.files.get(segment.fileName);
       return segment && file ? {
         fileVersionId: file.fileVersionId,

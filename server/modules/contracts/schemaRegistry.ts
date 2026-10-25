@@ -585,6 +585,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     requestBody: "PreviewProjectInitializationSnapshotRequest",
     responseBody: "ProjectInitializationSnapshotPreviewResponse"
   },
+  "parameters.initialization.completeCopyPreview": {
+    summary: "Preview exact complete project configurations as independent private copies",
+    tags: ["parameters"],
+    requestBody: "PreviewProjectInitializationSnapshotRequest",
+    responseBody: "ProjectInitializationCompleteCopyPreviewResponse"
+  },
   "parameters.initialization.submit": {
     summary: "Submit project parameter initialization for review",
     tags: ["parameters"],

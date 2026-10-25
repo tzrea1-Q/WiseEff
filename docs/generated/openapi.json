@@ -7663,6 +7663,68 @@
         }
       }
     },
+    "/api/v1/parameters/projects/{projectId}/initialization/copy-preview": {
+      "post": {
+        "operationId": "parameters.initialization.completeCopyPreview",
+        "summary": "Preview exact complete project configurations as independent private copies",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewProjectInitializationSnapshotRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectInitializationCompleteCopyPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/parameters/projects/{projectId}/initialization/submit": {
       "post": {
         "operationId": "parameters.initialization.submit",
@@ -36101,6 +36163,288 @@
       },
       "UpsertProjectInitializationDraftRequest": {
         "type": "object",
+        "properties": {
+          "sourceConfigSnapshots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sourceProjectId": {
+                  "type": "string"
+                },
+                "sourceConfigSetId": {
+                  "type": "string"
+                },
+                "sourceConfigRevisionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "ownership": {
+                  "type": "string",
+                  "enum": [
+                    "private"
+                  ]
+                },
+                "digest": {
+                  "type": "string"
+                },
+                "catalogReleaseId": {
+                  "type": "string"
+                },
+                "members": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string"
+                      },
+                      "fileVersionId": {
+                        "type": "string"
+                      },
+                      "checksum": {
+                        "type": "string"
+                      },
+                      "sourceName": {
+                        "type": "string"
+                      },
+                      "format": {
+                        "type": "string",
+                        "enum": [
+                          "dts",
+                          "json"
+                        ]
+                      },
+                      "sharedVersion": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "fileId",
+                      "fileVersionId",
+                      "checksum",
+                      "sourceName",
+                      "format",
+                      "sharedVersion"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "sourceProjectId",
+                "sourceConfigSetId",
+                "sourceConfigRevisionId",
+                "name",
+                "ownership",
+                "digest",
+                "catalogReleaseId",
+                "members"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "projectName": {
+            "type": "string"
+          },
+          "projectCode": {
+            "type": "string"
+          },
+          "ownerUserId": {
+            "type": "string"
+          },
+          "sourceProjectIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "primarySourceProjectId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "supplementSourceProjectIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "selectedModuleIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "selectedRisks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "High",
+                "Medium",
+                "Low"
+              ]
+            }
+          },
+          "selectedSourceBindingIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bindingSnapshots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "sourceProjectId": {
+                  "type": "string"
+                },
+                "sourceProjectParameterBindingId": {
+                  "type": "string"
+                },
+                "sourceProjectValueId": {
+                  "type": "string"
+                },
+                "sourceRole": {
+                  "type": "string",
+                  "enum": [
+                    "primary",
+                    "supplement"
+                  ]
+                },
+                "parameterSpecId": {
+                  "type": "string"
+                },
+                "parameterSpecVersionId": {
+                  "type": "string"
+                },
+                "propertyKey": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "moduleId": {
+                  "type": "string"
+                },
+                "risk": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "High",
+                    "Medium",
+                    "Low"
+                  ]
+                },
+                "effectiveValue": {},
+                "rawValue": {
+                  "type": "string"
+                },
+                "currentValueState": {
+                  "type": "string",
+                  "enum": [
+                    "pending_project_confirmation"
+                  ]
+                },
+                "alternativeSourceBindingIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "alternativeSourceValueIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "sourceConfigSetId": {
+                  "type": "string"
+                },
+                "sourceConfigRevisionId": {
+                  "type": "string"
+                },
+                "sourceOccurrenceId": {
+                  "type": "string"
+                },
+                "sourceFormat": {
+                  "type": "string",
+                  "enum": [
+                    "dts",
+                    "json"
+                  ]
+                },
+                "sourceName": {
+                  "type": "string"
+                },
+                "sourceLocatorLabel": {
+                  "type": "string"
+                },
+                "needsEffectiveValueConfirmation": {
+                  "type": "boolean"
+                },
+                "notes": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "sourceProjectId",
+                "sourceProjectParameterBindingId",
+                "sourceProjectValueId",
+                "sourceRole",
+                "parameterSpecId",
+                "parameterSpecVersionId",
+                "propertyKey",
+                "moduleId",
+                "risk",
+                "effectiveValue",
+                "rawValue",
+                "currentValueState",
+                "alternativeSourceBindingIds",
+                "needsEffectiveValueConfirmation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "emptyLibrary": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectName",
+          "projectCode",
+          "ownerUserId",
+          "sourceProjectIds",
+          "primarySourceProjectId",
+          "supplementSourceProjectIds",
+          "selectedModuleIds",
+          "selectedRisks",
+          "selectedSourceBindingIds",
+          "bindingSnapshots",
+          "emptyLibrary",
+          "notes"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "UpsertProjectInitializationDraftRequest"
       },
       "ProjectInitializationDraftResponse": {
@@ -36109,11 +36453,272 @@
       },
       "PreviewProjectInitializationSnapshotRequest": {
         "type": "object",
+        "properties": {
+          "primarySourceProjectId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "supplementSourceProjectIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "selectedSourceBindingIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "selectedModuleIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "selectedRisks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "High",
+                "Medium",
+                "Low"
+              ]
+            }
+          }
+        },
+        "required": [
+          "primarySourceProjectId"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "PreviewProjectInitializationSnapshotRequest"
       },
       "ProjectInitializationSnapshotPreviewResponse": {
         "type": "object",
         "x-wiseeff-schema": "ProjectInitializationSnapshotPreviewResponse"
+      },
+      "ProjectInitializationCompleteCopyPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "sourceProjectId": {
+                  "type": "string"
+                },
+                "sourceProjectParameterBindingId": {
+                  "type": "string"
+                },
+                "sourceProjectValueId": {
+                  "type": "string"
+                },
+                "sourceRole": {
+                  "type": "string",
+                  "enum": [
+                    "primary",
+                    "supplement"
+                  ]
+                },
+                "parameterSpecId": {
+                  "type": "string"
+                },
+                "parameterSpecVersionId": {
+                  "type": "string"
+                },
+                "propertyKey": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "moduleId": {
+                  "type": "string"
+                },
+                "risk": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "High",
+                    "Medium",
+                    "Low"
+                  ]
+                },
+                "effectiveValue": {},
+                "rawValue": {
+                  "type": "string"
+                },
+                "currentValueState": {
+                  "type": "string",
+                  "enum": [
+                    "pending_project_confirmation"
+                  ]
+                },
+                "alternativeSourceBindingIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "alternativeSourceValueIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "sourceConfigSetId": {
+                  "type": "string"
+                },
+                "sourceConfigRevisionId": {
+                  "type": "string"
+                },
+                "sourceOccurrenceId": {
+                  "type": "string"
+                },
+                "sourceFormat": {
+                  "type": "string",
+                  "enum": [
+                    "dts",
+                    "json"
+                  ]
+                },
+                "sourceName": {
+                  "type": "string"
+                },
+                "sourceLocatorLabel": {
+                  "type": "string"
+                },
+                "needsEffectiveValueConfirmation": {
+                  "type": "boolean"
+                },
+                "notes": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "sourceProjectId",
+                "sourceProjectParameterBindingId",
+                "sourceProjectValueId",
+                "sourceRole",
+                "parameterSpecId",
+                "parameterSpecVersionId",
+                "propertyKey",
+                "moduleId",
+                "risk",
+                "effectiveValue",
+                "rawValue",
+                "currentValueState",
+                "alternativeSourceBindingIds",
+                "needsEffectiveValueConfirmation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "configSnapshots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sourceProjectId": {
+                  "type": "string"
+                },
+                "sourceConfigSetId": {
+                  "type": "string"
+                },
+                "sourceConfigRevisionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "ownership": {
+                  "type": "string",
+                  "enum": [
+                    "private"
+                  ]
+                },
+                "digest": {
+                  "type": "string"
+                },
+                "catalogReleaseId": {
+                  "type": "string"
+                },
+                "members": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string"
+                      },
+                      "fileVersionId": {
+                        "type": "string"
+                      },
+                      "checksum": {
+                        "type": "string"
+                      },
+                      "sourceName": {
+                        "type": "string"
+                      },
+                      "format": {
+                        "type": "string",
+                        "enum": [
+                          "dts",
+                          "json"
+                        ]
+                      },
+                      "sharedVersion": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "fileId",
+                      "fileVersionId",
+                      "checksum",
+                      "sourceName",
+                      "format",
+                      "sharedVersion"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "sourceProjectId",
+                "sourceConfigSetId",
+                "sourceConfigRevisionId",
+                "name",
+                "ownership",
+                "digest",
+                "catalogReleaseId",
+                "members"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items",
+          "configSnapshots"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProjectInitializationCompleteCopyPreviewResponse"
       },
       "ProjectInitializationReviewResponse": {
         "type": "object",

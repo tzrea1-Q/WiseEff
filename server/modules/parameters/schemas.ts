@@ -296,7 +296,15 @@ export const initializationSnapshotItemSchema = z.object({
   notes: z.string().optional()
 });
 
+export const initializationConfigSnapshotSchema = z.object({
+  sourceProjectId: nonEmptyString, sourceConfigSetId: nonEmptyString, sourceConfigRevisionId: nonEmptyString.nullable(),
+  name: nonEmptyString, ownership: z.literal("private"), digest: z.string().regex(/^[a-f0-9]{64}$/), catalogReleaseId: nonEmptyString,
+  members: z.array(z.object({ fileId: nonEmptyString, fileVersionId: nonEmptyString, checksum: nonEmptyString,
+    sourceName: nonEmptyString, format: z.enum(["dts", "json"]), sharedVersion: z.string().nullable() })).max(128)
+});
+
 export const upsertInitializationDraftBodySchema = z.object({
+  sourceConfigSnapshots: z.array(initializationConfigSnapshotSchema).min(1).max(32).optional(),
   projectName: nonEmptyString,
   projectCode: nonEmptyString.max(16),
   ownerUserId: nonEmptyString,

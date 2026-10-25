@@ -30,6 +30,16 @@ describe("controlled original DTS preprocessing", () => {
 });
 
 describe("native pinned CPP original-source proof", () => {
+  it.each(["missing_target", "{/missing}"])("locates unresolved overlay &%s in its original included source", async target => {
+    const source = `// 🧪 exact original location\r\n\r\n&${target} { value = <LIMIT>; };\r\n`;
+    const manifest = input('#include "defs.h"\n/dts-v1/;\n/include/ "parts/requirements.dtsi"\n/ {};\n', "#define LIMIT 7\n");
+    manifest.files.set("parts/requirements.dtsi", { fileVersionId: "requirements-v1", content: source });
+    const result = await resolveDtsConfigSet({ ...manifest, requireExactOrigins: true });
+    expect(result.diagnostics).toEqual([expect.objectContaining({
+      code: target === "missing_target" ? "dangling-reference" : "target-unresolved",
+      fileName: "parts/requirements.dtsi", offset: source.indexOf("&"),
+    })]);
+  });
   it.each([["LF", "\n", ""], ["BOM/CRLF", "\r\n", "\uFEFF"]])("keeps UTF-16 spans after an inactive astral comment (%s)", async (_name, newline, prefix) => {
     const content = prefix + ['#define V 1', '#if 0', '// 😀', '#endif', '// 🧪 active', '/ { node { value = <V>; }; };', ''].join(newline!);
     const result = await resolveDtsConfigSet({ ...input(content), requireExactOrigins: true });
