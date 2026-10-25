@@ -9,6 +9,18 @@ alter table parameter_catalog.project_value_source_pins add constraint project_v
   references public.dts_config_revision_members(config_revision_id,file_id,file_version_id) on delete restrict;
 
 do $$ declare installed text; changed text; begin
+  select pg_get_expr(conbin,conrelid) into strict installed from pg_constraint
+    where conrelid='public.project_parameter_value_change_requests'::regclass and conname='project_parameter_value_change_requests_outcome_ck';
+  alter table public.project_parameter_value_change_requests drop constraint project_parameter_value_change_requests_outcome_ck;
+  execute format($sql$alter table public.project_parameter_value_change_requests add constraint project_parameter_value_change_requests_outcome_ck check (
+    (%s) or (request_kind='member_addition' and source_revision_context ? 'sharedRemoval'
+      and source_revision_context ? 'sharedSwitch' and source_revision_context ? 'sharedComposition'
+      and status='approved' and apply_outcome='committed' and applied_at is not null and applied_audit_ref is not null
+      and applied_value_id is null and applied_history_event_id is null
+      and applied_source_result->>'rootFileVersionId'=applied_source_result->>'fileVersionId'
+      and source_revision_context->'rootEdit'->>'fileId'=applied_source_result->>'fileId'
+      and jsonb_array_length(applied_file_version_ids)=jsonb_array_length(applied_source_result->'derivedSources')+1
+      and applied_file_version_ids @> jsonb_build_array(applied_source_result->>'rootFileVersionId')) is true)$sql$,installed);
   select pg_get_functiondef('parameter_catalog.valid_source_revision_absence_pin(text)'::regprocedure) into strict installed;
   changed:=replace(installed,'join public.dts_config_revision_members member on member.config_revision_id=pin.config_revision_id',
     'left join public.dts_config_revision_members member on member.config_revision_id=pin.config_revision_id');

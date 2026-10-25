@@ -380,5 +380,16 @@ describe("shared reference version switches through the real API role", () => {
     const readd=await post<Preview>(`${path(B)}/preview`,body);expect(readd.status,readd.bodyText).toBe(200);
     const restored=await post<Applied>(`${path(B)}/apply`,{...body,proofToken:readd.body.item.proofToken,reason:"Restore the same exact published source",clientMutationId:"remove-readd"});expect(restored.status,restored.bodyText).toBe(200);
     expect((await listCatalogBindingRowsForProject(api,admin,{projectId:B})).find(row=>row.rawValue==="<26>")?.id).toBe(removed.id);
+    const root=(await requestJson<{items:{fileId:string;fileName:string;currentVersionId:string;role:string}[]}>(server(),`/api/v1/projects/${B}/config-sets/${sets[B]}/files`)).body.items.find(file=>file.role==="base")!;
+    const original=await requestJson(server(),`/api/v1/projects/${B}/parameter-files/${root.fileId}/versions/${root.currentVersionId}/content`);
+    const currentRemoval=await post<Preview>(`${path(B)}/preview`,remove);expect(currentRemoval.status,currentRemoval.bodyText).toBe(200);
+    const candidate=await post<{item:{id:string}}>(`/api/v1/projects/${B}/parameter-file-candidates`,{fileId:root.fileId,fileName:root.fileName,intent:"source_revision",contentBase64:Buffer.from(original.bodyText+'\n/ { removable { compatible = "acme,power"; iin_max = <27>; }; };\n').toString("base64"),expectedCurrentVersionId:root.currentVersionId,expectedConfigRevisionId:restored.body.item.configRevisionId,clientMutationId:"removal-private-continuation"});expect(candidate.status,candidate.bodyText).toBe(201);
+    const privatePreview=await requestJson<{item:SourceRevisionPreview}>(server(),`/api/v1/projects/${B}/parameter-file-candidates/${candidate.body.item.id}/source-preview`);expect(privatePreview.status,privatePreview.bodyText).toBe(200);
+    const privateApplied=await post<Applied>(`/api/v1/projects/${B}/parameter-file-candidates/${candidate.body.item.id}/source-apply`,{expectedCurrentVersionId:root.currentVersionId,expectedProofToken:privatePreview.body.item.proofToken,reason:"Retain this value in project source",clientMutationId:"removal-private-continuation-apply"});expect(privateApplied.status,privateApplied.bodyText).toBe(200);
+    expect((await post(`${path(B)}/apply`,{...remove,proofToken:currentRemoval.body.item.proofToken,reason:"Old absence proof must not delete a still-present property",clientMutationId:"removal-stale-absence"})).status).toBe(409);
+    const retainedPreview=await post<Preview>(`${path(B)}/preview`,remove);expect(retainedPreview.status,retainedPreview.bodyText).toBe(200);
+    expect(retainedPreview.body.item.sharedSwitch?.effective).toContainEqual(expect.objectContaining({node:"/removable",property:"iin_max",before:"<27>",after:"<27>",originAfter:"board.dts"}));
+    const retainedApplied=await post<Applied>(`${path(B)}/apply`,{...remove,proofToken:retainedPreview.body.item.proofToken,reason:"Retain the project-owned value and original Binding",clientMutationId:"removal-retained-origin"});expect(retainedApplied.status,retainedApplied.bodyText).toBe(200);
+    expect((await listCatalogBindingRowsForProject(api,admin,{projectId:B})).find(row=>row.rawValue==="<27>")?.id).toBe(removed.id);
   },120_000);
 });
