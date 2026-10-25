@@ -3231,7 +3231,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const bindings=async(id:string)=>(await call<{items:Binding[]}>("GET",`/api/v2/projects/${id}/parameter-bindings`)).items;
     async function graph(id:string) {
       const revisions=await call<{items:{id:string}[]}>("GET",`/api/v2/projects/${id}/config-sets/${sets[id]}/revisions`);
-      const result=await call<{item:TopologyTree}>("GET",`/api/v2/projects/${id}/config-sets/${sets[id]}/revisions/${revisions.items[0]!.id}/topology`);
+      const result:{item:TopologyTree}=await call("GET",`/api/v2/projects/${id}/config-sets/${sets[id]}/revisions/${revisions.items[0]!.id}/topology`);
       if(result.item.view!=="effective")throw new Error("Expected actual effective configuration");
       return result.item;
     }
