@@ -306,13 +306,16 @@ class Parser {
 
     const startTok = this.peek();
     let depth = 0;
+    let parentheses = 0;
     let end = startTok.span.end;
 
     while (!this.check("eof")) {
       if (this.check("semi") && depth === 0) break;
       const tok = this.advance();
-      if (tok.kind === "lt") depth += 1;
-      if (tok.kind === "gt") depth -= 1;
+      if (tok.kind === "lparen") parentheses += 1;
+      if (tok.kind === "rparen") parentheses -= 1;
+      if (tok.kind === "lt" && parentheses === 0) depth += 1;
+      if (tok.kind === "gt" && parentheses === 0) depth -= 1;
       end = tok.span.end;
     }
 

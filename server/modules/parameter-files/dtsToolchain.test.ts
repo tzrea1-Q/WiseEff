@@ -600,6 +600,22 @@ describe("ephemeral overlay fragment wrap", () => {
 });
 
 describe("real dts toolchain (optional)", () => {
+  it("compiles frozen header/BIT inputs to the same native DTB as their literal value", async () => {
+    const literal = happyConfigSet();
+    const content = literal.files.get(literal.entryFile)!.content.replace('model = "toolchain-fixture";', 'model = "toolchain-fixture"; flags = <8>;');
+    const cpp = { ...literal, files: new Map(literal.files) };
+    cpp.files.set(literal.entryFile, { content: `#include "cpp-defs.h"\n${content.replace("flags = <8>", "flags = <BIT(3)>")}` });
+    cpp.files.set("cpp-defs.h", { content: "#define BIT(x) (1U << (x))\n" });
+    const runner = createDtsToolchainRunner();
+    const expanded = await runner.validate(cpp, { mode: "release" });
+    expect(expanded.artifacts.preprocessing).toMatchObject({ schemaVersion: "dts-cpp/v1", compilerVersion: "14.2.0" });
+    expect(expanded.artifacts.baseDtbSha256, JSON.stringify(expanded.diagnostics)).toMatch(/^[a-f0-9]{64}$/u);
+    const reference = await runner.validate({ ...literal, files: new Map(literal.files).set(literal.entryFile, { content }) }, { mode: "release" });
+    expect(expanded.artifacts.baseDtbSha256).toBe(reference.artifacts.baseDtbSha256);
+    expect(expanded.artifacts.effectiveDtbSha256).toBe(reference.artifacts.effectiveDtbSha256);
+    expect(cpp.files.get(literal.entryFile)!.content).toContain("<BIT(3)>");
+  }, 30_000);
+
   it(
     "validates a tiny base+overlay set when host tools are present",
     async () => {

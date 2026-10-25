@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
-import { resolveDtsConfigSet } from "../dts";
+import { resolveDtsConfigSetAsync } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import {
   createDtsToolchainRunner,
@@ -1056,10 +1056,11 @@ export async function validateConfigRevision(
   const overlayOrder = normalized.manifest.overlayOrder;
   const includeSearchPaths = normalized.manifest.includeSearchPaths;
 
-  const resolved = resolveDtsConfigSet({
+  const resolved = await resolveDtsConfigSetAsync({
     entryFile,
     includeSearchPaths,
     overlayOrder,
+    preprocessing: revision.preprocessing,
     files
   });
   const resolveErrors = resolved.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
@@ -1097,6 +1098,7 @@ export async function validateConfigRevision(
 
   const toolchainResult = await toolchain.validate(
     {
+      defines: revision.preprocessing?.defines,
       entryFile,
       includeSearchPaths,
       overlayOrder,

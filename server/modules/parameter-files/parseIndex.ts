@@ -41,7 +41,7 @@ export function derivedParsedIndexFromResolved(resolved: ResolvedDts): ParsedInd
 }
 
 /** Derive a flat path→normalizedValue index from the merged DTS node model. */
-export function buildDtsParsedIndex(source: string): ParsedIndex {
-  const resolved = resolveDts(parseDts(source));
+export function buildDtsParsedIndex(source: string, preparedDocument?: ReturnType<typeof parseDts>): ParsedIndex {
+  const resolved = resolveDts(preparedDocument ?? parseDts(source));
   return derivedParsedIndexFromResolved(resolved);
 }

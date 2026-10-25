@@ -4,12 +4,32 @@ import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import type { SharedDtsiDraft, SharedDtsiManifest, SharedDtsiVersion } from "../contracts/dtoSchemas/sharedDtsi";
 import { sharedDtsiDependencySchema } from "../contracts/dtoSchemas/sharedDtsi";
+import { dtsBuildInputsSchema, type DtsBuildInputs } from "../contracts/dtoSchemas/dtsPreprocessing";
 import { getSharedDtsiVersion } from "./publication";
 
 type Pin=NonNullable<SharedDtsiManifest["dependencies"]>[number];
 export type SharedDtsiClosureResource=NonNullable<SharedDtsiManifest["dependencyClosure"]>[number] & {item:SharedDtsiVersion;direct:boolean};
 export const mountedSharedPath=(mountPath:string,sourceName:string)=>mountPath?`${mountPath}/${sourceName}`:sourceName;
 const invalid=(message:string):never=>{throw new ApiError("VALIDATION_FAILED",message,{reason:"shared-dependency-conflict"});};
+
+/** Keep each declaration with its resource; only the compiler receives the merged inputs. */
+export function composeDtsBuildInputs(local: DtsBuildInputs, resources: Array<{ name: string; mountPath: string; item: { manifest: Pick<SharedDtsiManifest, "buildInputs"> } }>): DtsBuildInputs {
+  const own = dtsBuildInputsSchema.parse(local), includeSearchPaths = [...own.includeSearchPaths], defines = { ...own.defines };
+  for (const resource of resources) {
+    const inputs = resource.item.manifest.buildInputs;
+    for (const path of inputs.includeSearchPaths) {
+      const mounted = path === "." ? resource.mountPath || "." : mountedSharedPath(resource.mountPath, path);
+      if (!includeSearchPaths.includes(mounted)) includeSearchPaths.push(mounted);
+    }
+    for (const [name, value] of Object.entries(inputs.defines ?? {})) {
+      if (Object.hasOwn(defines, name) && defines[name] !== value) invalid(`${resource.name}：构建宏 ${name} 与当前配置或其他固定依赖冲突，请在原始资源中修正后重新预览。`);
+      defines[name] = value;
+    }
+  }
+  // The complete source owner still enforces its 128-member / 16-MiB and include ambiguity bounds.
+  if (includeSearchPaths.length > 128 || Object.keys(defines).length > 32) invalid("完整配置的构建目录或宏超过受控上限。");
+  return { includeSearchPaths, defines: Object.fromEntries(Object.entries(defines).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) };
+}
 
 /** Resolve only exact organization-authorized immutable revisions, in declared dependency order. */
 export async function loadSharedDtsiClosure(db:Database,auth:AuthContext,pins:Pin[],ownerResourceId?:string) {

@@ -13,6 +13,8 @@
 .shared-dtsi-pagination { justify-content: end; padding-block: var(--space-3); color: var(--text-secondary); }
 .shared-dtsi-change-description { display: grid; gap: var(--space-2); color: var(--text-secondary); font-size: var(--text-base); }
 .shared-dtsi-change-description textarea { resize: vertical; }
+.shared-dtsi-build-inputs summary { cursor: pointer; color: var(--text-secondary); }
+.shared-dtsi-build-inputs[open] summary { margin-block-end: var(--space-3); }
 .shared-dtsi-metadata { display: grid; gap: var(--space-3); margin: 0; }
 .shared-dtsi-metadata > div { display: grid; grid-template-columns: minmax(0, calc(var(--space-8) * 3)) minmax(0, 1fr); gap: var(--space-3); }
 .shared-dtsi-metadata dt { color: var(--text-secondary); }

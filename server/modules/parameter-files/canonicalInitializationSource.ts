@@ -1,5 +1,6 @@
 import { parameterOrganizationId } from "../parameters/operatingScope";
 import { createHash, randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -31,6 +32,7 @@ import type { InitializationSnapshotItemDto } from "../parameters/initialization
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import { loadOwnedProjectValueSourcePin, loadSourceBindingCohort } from "../parameter-bindings/values";
 import { canAdminParameters } from "../parameter-kernel/policy";
+import { prepareDtsSources } from "../dts/cppSources";
 
 export type InitializationSourceContext = {
   requestId: string;
@@ -247,6 +249,13 @@ async function cloneSourceGroup(
   targetProjectId: string,
   createdStorageKeys: string[],
 ): Promise<TargetGroup> {
+  const dts = group.manifest.members.filter(member => member.format === "dts");
+  const prepared = dts.length && group.manifest.entryFile ? await prepareDtsSources({ entryFile: group.manifest.entryFile,
+    defines: group.manifest.preprocessing?.defines,
+    includeSearchPaths: group.manifest.includeSearchPaths, overlayOrder: group.manifest.overlayOrder,
+    files: new Map(dts.map(member => [member.sourceName, { fileVersionId: member.fileVersionId,
+      content: group.files.find(file => file.name === member.sourceName)!.content }])) }) : null;
+  if (group.manifest.preprocessing && !isDeepStrictEqual(group.manifest.preprocessing, prepared?.receipt)) throw new ApiError("CONFLICT", "原始工程的冻结预处理工具或输入已变化，不能复制为另一种语义。");
   const targetConfigSetId = randomUUID();
   await insertConfigSet(db, {
     id: targetConfigSetId,
@@ -288,7 +297,8 @@ async function cloneSourceGroup(
       storageKey: stored.storageKey,
       checksum: stored.checksumSha256,
       sizeBytes: stored.fileSizeBytes,
-      parsedIndex: member.format === "json" ? buildJsonParsedIndex(bytes) : buildDtsParsedIndex(file.content),
+      parsedIndex: member.format === "json" ? buildJsonParsedIndex(bytes) : /\.(h|hpp)$/u.test(member.sourceName) ? {}
+        : buildDtsParsedIndex(file.content, prepared?.originalDocuments.get(member.sourceName)),
       origin: "upload",
       createdByUserId: auth.user.id,
       attribution: trustedDomainAttribution(context.invocation),
@@ -322,6 +332,7 @@ async function cloneSourceGroup(
       throw new ApiError("CONFLICT", "DTS initialization source has no immutable entry file.");
     }
     const manifest: ConfigRevisionManifest = {
+      ...(group.manifest.preprocessing ? { preprocessing: group.manifest.preprocessing } : {}),
       organizationId: parameterOrganizationId(auth),
       projectId: targetProjectId,
       configSetId: targetConfigSetId,

@@ -9,7 +9,7 @@ import type { SharedDtsiDraft, SharedDtsiManifest, SharedDtsiPublicationPreview,
   SharedDtsiVersion, SharedDtsiVersionSummary } from "../contracts/dtoSchemas/sharedDtsi";
 import { sharedDtsiManifestSchema } from "../contracts/dtoSchemas/sharedDtsi";
 import { getSharedDtsiDraft, lockDraft, requireRead, requireWrite, type WriteContext } from "./service";
-import { closureManifest, closureMembers, loadSharedDtsiClosure } from "./dependencies";
+import { closureManifest, closureMembers, composeDtsBuildInputs, loadSharedDtsiClosure } from "./dependencies";
 
 const digest = (value: unknown) => `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
 const actorFingerprint = (auth: AuthContext) => digest({ userId:auth.user.id,organizationId:parameterOrganizationId(auth),active:auth.user.isActive,
@@ -31,11 +31,14 @@ export async function completePublicationSource(db:Database,auth:AuthContext,dra
     if(paths.has(path))throw new ApiError("VALIDATION_FAILED",`${path}：本资源与依赖的挂载路径冲突。`);
     paths.add(path);
   }
-  const source=await publicationSource({...draft,members});
+  const declared = draft.buildInputs ?? { includeSearchPaths: [], defines: {} };
+  const source=await publicationSource({...draft,members,buildInputs:composeDtsBuildInputs(declared,resources)});
   if(!resources.length && !draft.dependencies?.length)return source;
   const own=new Set(draft.members.map(member=>member.id));
   source.members=source.members.filter(member=>own.has(member.id));
   source.manifest={...source.manifest,members:source.manifest.members.filter(member=>own.has(member.id)),
+    buildInputs:{includeSearchPaths:declared.includeSearchPaths,...(Object.keys(declared.defines).length?{defines:declared.defines}:{}),
+      ...(source.preprocessing?{preprocessing:source.preprocessing.receipt}:{})},
     dependencies:draft.dependencies??[],dependencyClosure:closureManifest(resources)};
   source.digest=digest({name:draft.name,manifest:source.manifest,changeDescription:draft.changeDescription});
   return source;
@@ -139,7 +142,8 @@ export async function createSharedDtsiVersionDraft(db:Database,auth:AuthContext,
     if ((await tx.query("select 1 from public.shared_dtsi_drafts where resource_id=$1 and organization_id=$2",[resourceId,organizationId])).rows.length)
       throw conflict("此资源已有草稿，请继续编辑现有草稿。");
     const version=await getSharedDtsiVersion(tx,auth,resourceId,baseVersionId),draftId=randomUUID();
-    await tx.query("insert into public.shared_dtsi_drafts(id,resource_id,organization_id,created_by_user_id,updated_by_user_id) values ($1,$2,$3,$4,$4)",[draftId,resourceId,organizationId,auth.user.id]);
+    const buildInputs = {includeSearchPaths:version.manifest.buildInputs.includeSearchPaths,defines:version.manifest.buildInputs.defines ?? {}};
+    await tx.query("insert into public.shared_dtsi_drafts(id,resource_id,organization_id,created_by_user_id,updated_by_user_id,build_inputs) values ($1,$2,$3,$4,$4,$5::jsonb)",[draftId,resourceId,organizationId,auth.user.id,JSON.stringify(buildInputs)]);
     await tx.query("update public.shared_dtsi_drafts set dependencies=$2::jsonb where id=$1",[draftId,JSON.stringify(version.manifest.dependencies??[])]);
     for (const member of version.members) await tx.query(`insert into public.shared_dtsi_draft_members(draft_id,member_id,resource_id,organization_id,source_name,content)
       values ($1,$2,$3,$4,$5,$6)`,[draftId,member.id,resourceId,organizationId,member.sourceName,member.content]);

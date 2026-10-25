@@ -37,6 +37,8 @@ export type ConfigSetSnapshotSkipped = {
 };
 
 export type ConfigSetSnapshot = {
+  preprocessing?: import("../dts/cppSources").DtsPreprocessingReceipt;
+  declaredBuildInputs?: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
   configSetId: string;
   /** Members with a current version, in config-set order, contents loaded. */
   members: ConfigSetSnapshotMember[];
@@ -119,10 +121,12 @@ export async function loadConfigSetSnapshot(
   // Canonical revisions already persist exact parser inputs. Reusing them
   // avoids compiling include-only members as overlays from legacy role names.
   const manifest = (await db.query<{ entry_file: string | null; include_search_paths: string[]; overlay_order: string[];
-    members: Array<{ fileId: string; sourceName: string }> }>(`select revision.entry_file,revision.include_search_paths,revision.overlay_order,
+    preprocessing: import("../dts/cppSources").DtsPreprocessingReceipt | null;
+    declared_build_inputs: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
+    members: Array<{ fileId: string; sourceName: string }> }>(`select revision.entry_file,revision.include_search_paths,revision.overlay_order,revision.preprocessing,revision.declared_build_inputs,
       (select jsonb_agg(jsonb_build_object('fileId',member.file_id,'sourceName',member.source_name))
         from dts_config_revision_members member where member.config_revision_id=revision.id) as members
-    from dts_config_revisions revision where revision.config_set_id=$1 and revision.status='resolved'
+    from dts_config_revisions revision where revision.config_set_id=$1 and revision.status in ('resolved','validated','compiled','pending_approval')
       and (select count(*) from dts_config_revision_members member where member.config_revision_id=revision.id)=$2
       and not exists(select 1 from dts_config_revision_members member
         left join project_parameter_files file on file.id=member.file_id and file.config_set_id=revision.config_set_id
@@ -135,6 +139,8 @@ export async function loadConfigSetSnapshot(
   const overlayOrder = exactManifest?.overlay_order ?? overlays.map((overlay) => overlay.name);
 
   return {
+    ...(exactManifest?.preprocessing ? { preprocessing: exactManifest.preprocessing } : {}),
+    ...(exactManifest ? { declaredBuildInputs: exactManifest.declared_build_inputs } : {}),
     configSetId,
     members,
     skipped,

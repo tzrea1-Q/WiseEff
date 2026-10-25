@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { dtsBuildInputsSchema, dtsPreprocessingReceiptSchema } from "./dtsPreprocessing";
 
 import {
   catalogSubjectKinds,
@@ -1059,6 +1060,8 @@ export const canonicalSourceManifestSchema = catalogObject({
   logicalNodeId: z.string().nullable(), configurationInstanceId: z.string().nullable(),
   configurationSchemaSubjectId: z.string().nullable(), rootPointer: z.string().nullable(),
   entryFile: z.string().nullable(), includeSearchPaths: z.array(z.string()), overlayOrder: z.array(z.string()),
+  preprocessing: dtsPreprocessingReceiptSchema.optional(),
+  declaredBuildInputs: dtsBuildInputsSchema.optional(),
   locator: z.union([
     catalogObject({ kind: z.literal("json-pointer"), pointer: z.string() }),
     catalogObject({ kind: z.literal("dts-property"), propertyOccurrenceId: z.string(), nodeOccurrenceId: z.string(),

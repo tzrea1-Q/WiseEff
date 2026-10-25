@@ -1,8 +1,10 @@
 import posixPath from "node:path/posix";
+import { isDeepStrictEqual } from "node:util";
 
 import { parseDts } from "./parser";
 import { stripDtsComments } from "./preprocess";
 import { lexDts } from "./lexer";
+import { DtsPreprocessingError, dtsPreprocessingInputDigest, prepareDtsSources, requiresDtsPreprocessing, type PreparedDtsSources, type DtsPreprocessingReceipt, type DtsPreprocessingFailureCode } from "./cppSources";
 import { dtsActualPathTarget,dtsReferencePath,DtsPathReferenceError } from "../../../src/domain/dts/reference";
 import type { DtsDeleteNodeCst, DtsDeletePropertyCst, DtsNodeCst, DtsPropertyCst, DtsValue, DtsValueType } from "./types";
 
@@ -23,10 +25,14 @@ export type DtsConfigSetFile = {
 export type DtsConfigSetInput = {
   entryFile: string;
   includeSearchPaths: string[];
+  defines?: Readonly<Record<string, string>>;
   overlayOrder: string[];
   files: ReadonlyMap<string, DtsConfigSetFile>;
   /** Strict, bounded provenance entry used for canonical source proofs. */
   requireExactOrigins?: boolean;
+  preprocessing?: DtsPreprocessingReceipt | null;
+  /** Server-owned result prepared asynchronously from these exact frozen inputs. */
+  preparedSources?: PreparedDtsSources;
 };
 
 export type DtsResolutionDiagnosticCode =
@@ -36,7 +42,7 @@ export type DtsResolutionDiagnosticCode =
   | "target-unresolved"
   | "dangling-reference"
   | "label-duplicate"
-  | "source-proof-limit";
+  | "source-proof-limit" | "source-syntax" | DtsPreprocessingFailureCode;
 
 class SourceProofLimit extends Error {}
 
@@ -57,7 +63,7 @@ export interface DtsSourceChainEntry {
   effect: DtsSourceEffect;
   rawText: string;
   /** Original UTF-16 property span; null when expansion crosses source segments. */
-  origin: { fileVersionId: string; start: number; end: number } | null;
+  origin: { fileVersionId: string; start: number; end: number; mode?: "expanded-v1" } | null;
 }
 
 export type DtsNodeEffect = "create" | "delete";
@@ -101,6 +107,7 @@ export interface DtsConfigSetResult {
   diagnostics: DtsResolutionDiagnostic[];
   /** Actual files expanded from the real entry and ordered overlays. */
   sourceFiles: string[];
+  preprocessing?: PreparedDtsSources;
 }
 
 interface MutableProperty {
@@ -479,23 +486,31 @@ function ingestDocument(
   byLabel: Map<string, MutableNode>,
   sourceFiles: Set<string>,
   proofBudget?: Builder["proofBudget"],
+  preprocessing?: PreparedDtsSources,
 ): void {
   const builder: Builder = { text: "", segments: [], sourceFiles, proofBudget };
 
   let topLevel: DtsNodeCst[];
   try {
-    expandFile(fileName, [], input.files, input.includeSearchPaths, diagnostics, builder, input.requireExactOrigins);
-    topLevel = parseDts(builder.text).topLevel;
+    if (preprocessing) {
+      topLevel = preprocessing.documents.get(fileName)!.document.topLevel;
+      for (const source of preprocessing.sourceFiles) sourceFiles.add(source);
+    } else {
+      expandFile(fileName, [], input.files, input.includeSearchPaths, diagnostics, builder, input.requireExactOrigins);
+      topLevel = parseDts(builder.text).topLevel;
+    }
   } catch (error) {
     if (error instanceof SourceProofLimit) throw error;
     if(error instanceof DtsPathReferenceError)diagnostics.push({code:"target-unresolved",severity:"error",fileName:error.sourceName??fileName,offset:error.offset,message:error.message});
-    // A malformed member is reported structurally elsewhere (parser safety); the config-set
-    // resolver only owns include/overlay provenance diagnostics.
+    else diagnostics.push({ code: "source-syntax", severity: "error", fileName,
+      message: error instanceof Error ? error.message : "设备树源码语法不受支持，请在原始源码中修正。" });
     return;
   }
 
   const ctx: WalkContext = {
-    fileForOffset: (offset) => resolveSegment(builder.segments, offset),
+    fileForOffset: (offset) => preprocessing
+      ? preprocessing.documents.get(fileName)!.originForSpan({ start: offset, end: offset })?.sourceName ?? fileName
+      : resolveSegment(builder.segments, offset),
     visitEntry: () => { if (proofBudget && ++proofBudget.entries > 100_000) throw new SourceProofLimit(); },
     retainMetadata: (...fields) => {
       if (!proofBudget) return;
@@ -503,6 +518,11 @@ function ingestDocument(
       if (proofBudget.metadataBytes > 8 * 1024 * 1024) throw new SourceProofLimit();
     },
     originForSpan: (span) => {
+      if (preprocessing) {
+        const origin = preprocessing.documents.get(fileName)!.originForSpan(span);
+        const file = origin && input.files.get(origin.sourceName);
+        return origin && file ? { fileVersionId: file.fileVersionId, start: origin.start, end: origin.end, mode: "expanded-v1" } : null;
+      }
       const segment = builder.segments.find((entry) => span.start >= entry.start && span.end <= entry.end);
       const file = segment && input.files.get(segment.fileName);
       return segment && file ? {
@@ -565,7 +585,13 @@ export function resolveDtsConfigSet(input: DtsConfigSetInput): DtsConfigSetResul
   }
 
   try {
-    ingestDocument(input.entryFile, input, diagnostics, byLocator, byLabel, sourceFiles, proofBudget);
+    const preprocessing = input.preparedSources;
+    if (requiresDtsPreprocessing(input.files, input.defines ?? input.preprocessing?.defines) && !preprocessing) throw new DtsPreprocessingError("preprocess-unavailable", "原始工程需要通过受控异步预处理入口解析。", input.entryFile);
+    if (preprocessing && preprocessing.receipt.inputDigest !== dtsPreprocessingInputDigest(input)) throw new DtsPreprocessingError("preprocess-stale", "预处理证明不属于当前冻结输入，请重新预览。", input.entryFile);
+    if (input.preprocessing && !isDeepStrictEqual(input.preprocessing, preprocessing?.receipt)) {
+      throw new DtsPreprocessingError("preprocess-stale", "冻结的预处理输入或工具身份已经变化，请重新预览。", input.entryFile);
+    }
+    ingestDocument(input.entryFile, input, diagnostics, byLocator, byLabel, sourceFiles, proofBudget, preprocessing);
 
     for (const overlayFile of input.overlayOrder) {
       if (!input.files.has(overlayFile)) {
@@ -577,7 +603,7 @@ export function resolveDtsConfigSet(input: DtsConfigSetInput): DtsConfigSetResul
         });
         continue;
       }
-      ingestDocument(overlayFile, input, diagnostics, byLocator, byLabel, sourceFiles, proofBudget);
+      ingestDocument(overlayFile, input, diagnostics, byLocator, byLabel, sourceFiles, proofBudget, preprocessing);
     }
 
     for(const node of byLocator.values())for(const property of node.properties.values()) {
@@ -588,11 +614,26 @@ export function resolveDtsConfigSet(input: DtsConfigSetInput): DtsConfigSetResul
           message:`Property reference "&${token.value}" is not defined in the uploaded file set`});
       }
     }
-    return { effective: { nodesByLocator: finalize(byLocator) }, diagnostics, sourceFiles: [...sourceFiles] };
+    return { effective: { nodesByLocator: finalize(byLocator) }, diagnostics, sourceFiles: [...sourceFiles], ...(preprocessing ? { preprocessing } : {}) };
   } catch (error) {
+    if (error instanceof DtsPreprocessingError) return { effective: { nodesByLocator: new Map() }, sourceFiles: [], diagnostics: [{
+      code: error.code, severity: "error", fileName: error.fileName, offset: error.offset, message: error.message,
+    }] };
     if (!(error instanceof SourceProofLimit)) throw error;
     return { effective: { nodesByLocator: new Map() }, sourceFiles: [], diagnostics: [{
       code: "source-proof-limit",severity: "error",fileName: input.entryFile,message: "Exact source proof exceeds its bounded capacity.",
     }] };
+  }
+}
+
+/** The API source owner awaits native work; the existing pure resolver stays synchronous. */
+export async function resolveDtsConfigSetAsync(input: DtsConfigSetInput): Promise<DtsConfigSetResult> {
+  try {
+    const preparedSources = input.preparedSources ?? await prepareDtsSources(input) ?? undefined;
+    return resolveDtsConfigSet({ ...input, preparedSources });
+  } catch (error) {
+    if (!(error instanceof DtsPreprocessingError)) throw error;
+    return { effective: { nodesByLocator: new Map() }, sourceFiles: [], diagnostics: [{ code: error.code, severity: "error",
+      fileName: error.fileName, offset: error.offset, message: error.message }] };
   }
 }

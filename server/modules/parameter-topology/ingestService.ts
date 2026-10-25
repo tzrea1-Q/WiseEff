@@ -1,12 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
+import { dtsBuildInputsSchema, type DtsBuildInputs } from "../contracts/dtoSchemas/dtsPreprocessing";
+import type { SharedDtsiManifest } from "../contracts/dtoSchemas/sharedDtsi";
+import { composeDtsBuildInputs } from "../shared-dtsi/dependencies";
 
 import type { AuthContext } from "../auth/types";
 import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
 import {
   parseDts,
-  resolveDtsConfigSet,
+  resolveDtsConfigSetAsync,
   type DtsConfigSetFile,
   type DtsEffectiveNode,
   type DtsNodeCst,
@@ -46,7 +50,7 @@ import {
   countSingletonCardinalityConflicts,
   type ContinuityAmbiguous,
 } from "./bindingService";
-import { normalizeManifestLogicalPath, normalizePersistedManifest } from "./configRevisionManifest";
+import { normalizeIncludeSearchPaths, normalizeManifestLogicalPath, normalizePersistedManifest } from "./configRevisionManifest";
 import {
   insertConfigRevision,
   insertConfigRevisionMembers,
@@ -234,8 +238,9 @@ type CollectedOccurrences = {
 function collectFileOccurrences(
   fileVersionId: string,
   content: string,
+  preparedDocument?: ReturnType<typeof parseDts>,
 ): CollectedOccurrences {
-  const doc = parseDts(content);
+  const doc = preparedDocument ?? parseDts(content);
   const nodes: PersistedNodeOccurrence[] = [];
   const properties: PersistedPropertyOccurrence[] = [];
   const byOrigin = new Map<string, SourceOccurrence>();
@@ -757,6 +762,26 @@ async function ingestConfigRevisionTx(
     });
   }
 
+  const sharedInputs = (await tx.query<{name:string;mountPath:string;manifest:SharedDtsiManifest}>(`select upstream.name,reference.mount_path as "mountPath",upstream.manifest
+    from public.project_shared_dtsi_references reference join public.shared_dtsi_revisions upstream on upstream.id=reference.revision_id and upstream.organization_id=reference.organization_id
+    where reference.organization_id=$1 and reference.project_id=$2 and reference.config_set_id=$3 order by reference.created_at,reference.id`,
+    [manifest.organizationId,manifest.projectId,manifest.configSetId])).rows;
+  let declaredBuildInputs = manifest.declaredBuildInputs;
+  if (!declaredBuildInputs && sharedInputs.length) {
+    // Reuse the persisted local declaration; merged compiler inputs cannot establish ownership.
+    declaredBuildInputs = (await tx.query<{inputs:DtsBuildInputs}>(`select declared_build_inputs as inputs from public.dts_config_revisions
+      where organization_id=$1 and project_id=$2 and config_set_id=$3 and status in ('resolved','validated','compiled','pending_approval') order by revision_number desc limit 1`,
+      [manifest.organizationId,manifest.projectId,manifest.configSetId])).rows[0]?.inputs;
+    if (!declaredBuildInputs) throw new ApiError("CONFLICT","缺少项目本地构建声明，请恢复完整来源后重新预览。",{reason:"shared-build-inputs-required"});
+  }
+  const declared = dtsBuildInputsSchema.safeParse(declaredBuildInputs ?? {includeSearchPaths:normalized.manifest.includeSearchPaths,defines:manifest.defines??manifest.preprocessing?.defines??{}});
+  if (!declared.success) throw new ApiError("CONFLICT","本地构建声明无效，请修正搜索目录或构建宏后重试。",{reason:"shared-build-inputs-required"});
+  declaredBuildInputs = declared.data;
+  const effectiveInputs = composeDtsBuildInputs(declaredBuildInputs,sharedInputs.map(row=>({...row,item:{manifest:row.manifest}})));
+  if (!isDeepStrictEqual(normalizeIncludeSearchPaths(effectiveInputs.includeSearchPaths),normalized.manifest.includeSearchPaths)
+    || !isDeepStrictEqual(effectiveInputs.defines,manifest.defines??manifest.preprocessing?.defines??{}))
+    throw new ApiError("CONFLICT","完整构建输入与本地声明及固定共享版本不一致，请重新生成配置预览。",{reason:"shared-build-inputs-stale"});
+
   await lockOrganizationModuleRecognition(tx, manifest.organizationId);
   const revisionNumber = await nextConfigRevisionNumber(
     tx,
@@ -774,6 +799,7 @@ async function ingestConfigRevisionTx(
     entryFile: normalized.manifest.entryFile,
     includeSearchPaths: normalized.manifest.includeSearchPaths,
     overlayOrder: normalized.manifest.overlayOrder,
+    declaredBuildInputs,
   });
 
   await insertConfigRevisionMembers(tx, revision.id, manifest.members);
@@ -789,7 +815,9 @@ async function ingestConfigRevisionTx(
   const parseStartedAt = Date.now();
   let resolved;
   try {
-    resolved = resolveDtsConfigSet({
+    resolved = await resolveDtsConfigSetAsync({
+      preprocessing: manifest.preprocessing,
+      defines: manifest.defines ?? manifest.preprocessing?.defines,
       entryFile: normalized.manifest.entryFile,
       includeSearchPaths: normalized.manifest.includeSearchPaths,
       overlayOrder: normalized.manifest.overlayOrder,
@@ -804,7 +832,7 @@ async function ingestConfigRevisionTx(
       [manifest.organizationId, manifest.projectId, manifest.configSetId])).rows;
     for (const reference of referenced) {
       const member = dtsMembers.find(row => row.fileId === reference.fileId && row.fileVersionId === reference.fileVersionId && row.fileName === reference.sourceName);
-      if (!member || !resolved.sourceFiles.includes(reference.sourceName)
+      if (!member || !(resolved.preprocessing?.declaredSourceFiles ?? resolved.sourceFiles).includes(reference.sourceName)
         || createHash("sha256").update(member.content).digest("hex") !== reference.checksum.replace(/^sha256:/, "")) {
         throw new ApiError("CONFLICT", "固定共享引用必须完整保留且由项目入口实际引用；请通过配置组成变更引用。", { reason: "shared-reference-closure-required" });
       }
@@ -869,10 +897,17 @@ async function ingestConfigRevisionTx(
 
   const occurrencesByOrigin = new Map<string, SourceOccurrence | null>();
 
+  if (resolved.preprocessing) {
+    await tx.query("update public.dts_config_revisions set preprocessing=$2::jsonb where id=$1", [revision.id, JSON.stringify(resolved.preprocessing.receipt)]);
+    revision = { ...revision, preprocessing: resolved.preprocessing.receipt };
+  }
+
   for (const member of dtsMembers) {
+    if (resolved.preprocessing && /\.(h|hpp)$/u.test(member.fileName)) continue;
     const collected = collectFileOccurrences(
       member.fileVersionId,
       member.content,
+      resolved.preprocessing?.originalDocuments.get(member.fileName),
     );
     for (const node of collected.nodes) {
       await insertNodeOccurrence(tx, revision.id, node);
