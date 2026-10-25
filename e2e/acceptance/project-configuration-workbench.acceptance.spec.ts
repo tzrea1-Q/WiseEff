@@ -1,6 +1,6 @@
 import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import JSZip from "jszip";
 import { expect, test, type APIResponse, type Page, type Response } from "playwright/test";
@@ -11,6 +11,10 @@ import { asValueClient, loadPublishedCatalog, syncPublishedCatalogProjectValuesI
 import { makeTestAuthContext } from "../../server/testing/authContext";
 import { setParameterIdentityMode } from "../../server/modules/parameter-kernel/parameterIdentityMode";
 import { ingestConfigRevision } from "../../server/modules/parameter-topology/ingestService";
+import type { TopologyTree } from "../../src/domain/parameter-topology/types";
+import type { ExportConfigSetResult } from "../../server/modules/parameter-files/exportService";
+import { configSetPackageManifestName, type ConfigSetImportResult } from "../../server/modules/contracts/dtoSchemas/configSetPackage";
+import type { RestorePreviewResult } from "../../server/modules/parameter-files/baselineService";
 
 import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole, signInBrowserAsUser } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
@@ -3172,6 +3176,152 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await page.getByRole("tab",{name:"生效配置",exact:true}).click();await page.getByRole("treeitem",{name:"节点 /inherited",exact:true}).click();await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"SnapshotShared", "keep"');
     const files=await openWorkbenchPanel(page,"config-set"),sharedRow=files.getByRole("row").filter({hasText:sourceName});await expect(sharedRow).toContainText("共享引用 · 版本 1 · 只读");
     await sharedRow.getByRole("button",{name:"查看源码",exact:true}).click();await expect(page.getByRole("region",{name:"DTS 源码",exact:true})).toContainText("SnapshotShared");await expect(page.getByRole("radio",{name:"编辑",exact:true})).toHaveCount(0);
+  });
+
+  test("two projects retain independent shared pins through local decisions, version changes, snapshot recovery and package reimport", async ({page,request},testInfo)=>{
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
+    const call=async<T,>(method:"GET"|"POST"|"PUT",path:string,data?:unknown):Promise<T>=>{
+      const response=await request.fetch(apiRoute(path),{method,headers:adminHeaders(),...(data===undefined?{}:{data})});
+      expect(response.ok(),`${method} ${path}: ${await response.text()}`).toBe(true);
+      return response.json() as Promise<T>;
+    };
+    const prefix=`parent-${randomUUID()}`,a=`${prefix}-a`,b=`${prefix}-b`,target=`${prefix}-import`;
+    const sets:Record<string,string>={};
+    async function createEmptyProject(id:string,code:string) {
+      await call("POST","/api/v1/parameters/admin/projects",{id,name:code,code});
+      await call("PUT",`/api/v1/parameters/projects/${id}/initialization/draft`,{projectName:code,projectCode:code,ownerUserId:acceptanceCast.xuYun.userId,
+        sourceProjectIds:[],primarySourceProjectId:null,supplementSourceProjectIds:[],selectedModuleIds:[],selectedRisks:[],selectedSourceBindingIds:[],bindingSnapshots:[],emptyLibrary:true,notes:"#1410 approved empty project"});
+      const review=await call<{item:{id:string}}>("POST",`/api/v1/parameters/projects/${id}/initialization/submit`,{});
+      await call("POST",`/api/v1/parameters/admin/initialization-reviews/${review.item.id}/approve`,{});
+    }
+    const originalRoot='/dts-v1/;\r\n// Original private project entry\r\n/ { };\r\n',rootName="boards/product/board.dts";
+    const privateJson='{\r\n  "projectOwned": true\r\n}\r\n',jsonName="software/private.json";
+    const seed=new JSZip();seed.file(rootName,originalRoot,{createFolders:false});seed.file(jsonName,privateJson,{createFolders:false});
+    seed.file(configSetPackageManifestName,JSON.stringify({sourcePackage:{schemaVersion:"wiseeff-config-set/v1",entryFile:rootName,
+      includeSearchPaths:["."],overlayOrder:[],declaredBuildInputs:{includeSearchPaths:["."],defines:{}},resolvedBuildInputs:{includeSearchPaths:["."],defines:{}},sharedClosure:[],jsonSources:[],
+      members:[{sourceName:rootName,format:"dts",role:"base",sortOrder:0,checksum:`sha256:${createHash("sha256").update(originalRoot).digest("hex")}`},
+        {sourceName:jsonName,format:"json",role:"thermal",sortOrder:2,checksum:`sha256:${createHash("sha256").update(privateJson).digest("hex")}`}]}}));
+    const archive={name:"initial-project.zip",contentBase64:await seed.generateAsync({type:"base64"})};
+    for(const [id,code] of [[a,"PARENTA"],[b,"PARENTB"],[target,"PARENTIMPORT"]] as const) {
+      await createEmptyProject(id,code);
+      if(id===target)continue;
+      const input={name:"Independent product configuration",ownership:"private",archive};
+      const preview=await call<{item:{proofToken:string}}>("POST",`/api/v1/projects/${id}/config-set-import/preview`,input);
+      const receipt=await call<{item:ConfigSetImportResult}>("POST",`/api/v1/projects/${id}/config-set-import/apply`,{...input,proofToken:preview.item.proofToken,reason:"#1410 import original private inputs",clientMutationId:randomUUID()});
+      sets[id]=receipt.item.configSetId;
+    }
+    const sourceName="hardware/battery.dtsi",sharedV1='/ { battery { compatible = "mt,mt5788"; rx_fod_cond = "SharedV1", "keep"; status = "okay"; }; };\n';
+    const draft=await call<{item:{resourceId:string}}>("POST","/api/v2/shared-dtsi",{name:"Two-project immutable battery defaults",sourceName,content:sharedV1,changeDescription:"#1410 immutable defaults v1"});
+    const resourceId=draft.item.resourceId;
+    async function publish(revision:number) {
+      const preview=await call<{item:{id:string}}>("POST",`/api/v2/shared-dtsi/${resourceId}/publication-preview`,{expectedRevision:revision});
+      return (await call<{item:{id:string}}>("POST",`/api/v2/shared-dtsi/${resourceId}/publications`,{previewId:preview.item.id,idempotencyKey:randomUUID()})).item.id;
+    }
+    async function pin(id:string,versionId:string,replaceVersionId?:string) {
+      const path=`/api/v1/projects/${id}/config-sets/${sets[id]}/member-addition`;
+      const input={role:"misc",sortOrder:1,sharedReference:{resourceId,versionId,mountPath:"shared",...(replaceVersionId?{replaceVersionId}:{})}};
+      const preview=await call<{item:{proofToken:string}}>("POST",`${path}/preview`,input);
+      return (await call<{item:{configRevisionId:string}}>("POST",`${path}/apply`,{...input,proofToken:preview.item.proofToken,reason:"#1410 explicitly select this project version",clientMutationId:randomUUID()})).item.configRevisionId;
+    }
+    const v1=await publish(1),initialA=await pin(a,v1),initialB=await pin(b,v1);
+    const exportProject=(id:string)=>call<ExportConfigSetResult>("GET",`/api/v1/projects/${id}/config-sets/${sets[id]}/export`);
+    type Binding={id:string;sourceOccurrenceId:string;logicalNodeId:string;currentValueId:string;rawValue:string};
+    const bindings=async(id:string)=>(await call<{items:Binding[]}>("GET",`/api/v2/projects/${id}/parameter-bindings`)).items;
+    async function graph(id:string) {
+      const revisions=await call<{items:{id:string}[]}>("GET",`/api/v2/projects/${id}/config-sets/${sets[id]}/revisions`);
+      const result=await call<{item:TopologyTree}>("GET",`/api/v2/projects/${id}/config-sets/${sets[id]}/revisions/${revisions.items[0]!.id}/topology`);
+      if(result.item.view!=="effective")throw new Error("Expected actual effective configuration");
+      return result.item;
+    }
+    const originalA=(await bindings(a))[0]!,beforeB=await exportProject(b),bindingsB=await bindings(b);
+    expect(originalA.rawValue).toBe('"SharedV1", "keep"');expect(bindingsB[0]!.rawValue).toBe('"SharedV1", "keep"');
+    expect(originalA.id).not.toBe(bindingsB[0]!.id);expect(originalA.sourceOccurrenceId).not.toBe(bindingsB[0]!.sourceOccurrenceId);
+    async function applySource(file:{fileId:string;fileName:string;baseVersionId:string;configRevisionId:string;after:string;localOverride?:unknown}) {
+      const candidate=await call<{item:{id:string}}>("POST",`/api/v1/projects/${a}/parameter-file-candidates`,{fileId:file.fileId,fileName:file.fileName,intent:"source_revision",
+        expectedCurrentVersionId:file.baseVersionId,expectedConfigRevisionId:file.configRevisionId,contentBase64:Buffer.from(file.after).toString("base64"),clientMutationId:randomUUID(),...(file.localOverride?{localOverride:file.localOverride}:{})});
+      const preview=await call<{item:{proofToken:string}}>("GET",`/api/v1/projects/${a}/parameter-file-candidates/${candidate.item.id}/source-preview`);
+      return (await call<{item:{configRevisionId:string}}>("POST",`/api/v1/projects/${a}/parameter-file-candidates/${candidate.item.id}/source-apply`,{expectedCurrentVersionId:file.baseVersionId,expectedProofToken:preview.item.proofToken,reason:"#1410 project-owned source decision",clientMutationId:randomUUID()})).item.configRevisionId;
+    }
+    for(const [action,propertyName,rawText] of [["set","rx_fod_cond",'"ProjectA", "keep"'],["disable-node","status",undefined]] as const) {
+      const current=await graph(a),node=current.nodes.find(row=>row.locator==="/battery")!;
+      const prepared=await call<{item:Parameters<typeof applySource>[0]}>("POST",`/api/v1/projects/${a}/config-sets/${sets[a]}/local-override/prepare`,{
+        expectedConfigRevisionId:current.revisionId,logicalNodeId:node.logicalNodeId,propertyName,action,...(rawText?{rawText}:{})});
+      await applySource(prepared.item);
+    }
+    expect((await bindings(a))[0]).toMatchObject({id:originalA.id,sourceOccurrenceId:originalA.sourceOccurrenceId,rawValue:'"ProjectA", "keep"'});
+    expect((await graph(a)).nodes.find(row=>row.locator==="/battery")!.enablement).toMatchObject({selfEnabled:false,rawToken:"disabled"});
+    const beforePublication=await exportProject(a);
+    const nextDraft=await call<{item:{revision:number}}>("POST",`/api/v2/shared-dtsi/${resourceId}/draft`,{baseVersionId:v1});
+    const saved=await call<{item:{revision:number}}>("PUT",`/api/v2/shared-dtsi/${resourceId}/draft`,{expectedRevision:nextDraft.item.revision,name:"Two-project immutable battery defaults",sourceName,
+      content:sharedV1.replace("SharedV1","SharedV2"),changeDescription:"#1410 successor does not upgrade projects"});
+    const v2=await publish(saved.item.revision);
+    expect((await exportProject(a)).files).toEqual(beforePublication.files);expect((await exportProject(b)).files).toEqual(beforeB.files);
+    const upgradedA=await pin(a,v2,v1),downgradedA=await pin(a,v1,v2);
+    expect(new Set([initialA,upgradedA,downgradedA]).size).toBe(3);
+    expect((await bindings(a))[0]).toMatchObject({id:originalA.id,rawValue:'"ProjectA", "keep"'});
+    expect((await graph(a)).nodes.find(row=>row.locator==="/battery")!.enablement).toMatchObject({selfEnabled:false});
+    expect((await exportProject(b)).manifest.sourcePackage).toEqual(beforeB.manifest.sourcePackage);expect(await bindings(b)).toEqual(bindingsB);expect((await graph(b)).revisionId).toBe(initialB);
+    const readiness=(await call<{item:DtsReleaseReadiness}>("GET",`/api/v1/projects/${a}/config-sets/${sets[a]}/release-readiness`)).item;
+    expect(readiness.canCreateBaseline,JSON.stringify(readiness)).toBe(true);
+    const baseline=await call<{item:{id:string}}>("POST",`/api/v1/projects/${a}/config-sets/${sets[a]}/baselines`,{name:"Complete shared and project decisions",gateToken:readiness.gateToken,acknowledgedWarningIds:readiness.warnings.filter(row=>row.acknowledgementRequired).map(row=>row.id)});
+    const frozen=await exportProject(a),root=frozen.manifest.members.find(row=>row.role==="base")!;
+    const currentFiles=await call<{items:{fileId:string;fileName:string;currentVersionId:string}[]}>("GET",`/api/v1/projects/${a}/config-sets/${sets[a]}/files`);
+    const currentRoot=currentFiles.items.find(row=>row.fileId===root.fileId)!;
+    await applySource({fileId:root.fileId,fileName:currentRoot.fileName,baseVersionId:currentRoot.currentVersionId,configRevisionId:downgradedA,
+      after:frozen.files.find(row=>row.name===rootName)!.content.replace('"ProjectA"','"ChangedAfterSnapshot"')});
+    expect((await bindings(a))[0]!.rawValue).toBe('"ChangedAfterSnapshot", "keep"');
+    const restore=(await call<{item:RestorePreviewResult}>("GET",`/api/v1/projects/${a}/baselines/${baseline.item.id}/restore-preview`)).item;
+    expect(restore.canonical?.canRestore,JSON.stringify(restore)).toBe(true);
+    const recovered=await call<{item:{configRevisionId:string}}>("POST",`/api/v1/projects/${a}/baselines/${baseline.item.id}/rollback`,{
+      proofToken:restore.canonical!.proofToken,sourceConfigRevisionId:downgradedA,confirmCompositionChanges:true,reason:"#1410 recover complete historical project decisions",clientMutationId:randomUUID()});
+    expect(recovered.item.configRevisionId).not.toBe(downgradedA);expect((await exportProject(a)).files).toEqual(frozen.files);
+    expect((await bindings(a))[0]).toMatchObject({id:originalA.id,rawValue:'"ProjectA", "keep"'});
+    const history=await call<{items:{successAuditRef:string}[]}>("GET",`/api/v2/projects/${a}/parameter-bindings/${originalA.id}/change-history`);
+    expect(history.items.length).toBeGreaterThanOrEqual(5);expect(history.items.every(row=>Boolean(row.successAuditRef))).toBe(true);
+    const route=(id:string)=>disposablePageUrl(disposableRuntime,`/parameter-admin/projects/${id}/configuration?${new URLSearchParams({configSet:sets[id]!,tab:"effective",node:"/battery"})}`);
+    await signInBrowserAsRole(page,"admin",route(a));await dismissXiaozeHint(page);
+    await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"ProjectA", "keep"');
+    await expect(page.getByText("节点未启用（disabled） · 不可达",{exact:true})).toBeVisible();
+    const screenshot=async(name:string)=>{const path=testInfo.outputPath(name);await page.screenshot({path});await testInfo.attach(name,{path,contentType:"image/png"});};
+    await screenshot("parent-effective-a-1440.png");
+    await page.getByRole("button",{name:"配置",exact:true}).click();const downloading=page.waitForEvent("download");await page.getByRole("menuitem",{name:"导出当前配置",exact:true}).click();
+    const download=await downloading,downloadPath=await download.path();expect(downloadPath).not.toBeNull();const bytes=await readFile(downloadPath!);
+    const downloaded=await JSZip.loadAsync(bytes,{checkCRC32:true});
+    for(const file of frozen.files)expect(await downloaded.file(file.name)!.async("string")).toBe(file.content);
+    expect(JSON.parse(await downloaded.file(configSetPackageManifestName)!.async("string"))).toMatchObject({sourcePackage:frozen.manifest.sourcePackage});
+    await page.goto(disposablePageUrl(disposableRuntime,`/parameter-admin/projects/${target}/configuration`));
+    await page.getByRole("button",{name:"配置",exact:true}).click();await page.getByRole("menuitem",{name:"导入完整配置…",exact:true}).click();
+    const dialog=page.getByRole("dialog",{name:"导入完整配置",exact:true});
+    await dialog.getByLabel("配置包",{exact:true}).setInputFiles({name:download.suggestedFilename(),mimeType:"application/zip",buffer:bytes});
+    await dialog.getByRole("textbox",{name:"配置名称",exact:true}).fill("Reimported complete product configuration");
+    await dialog.getByRole("button",{name:"预览导入",exact:true}).click();await expect(dialog.getByLabel("配置导入预览")).toContainText("共享只读");
+    await dialog.getByRole("textbox",{name:"导入原因",exact:true}).fill("#1410 reproduce exact original closure with new project identities");
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
+      await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      await expect(dialog.getByRole("button",{name:"确认导入",exact:true})).toBeInViewport({ratio:1});await screenshot(`parent-reimport-preview-${viewport.width}.png`);
+    }
+    const importing=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===`/api/v1/projects/${target}/config-set-import/apply`);
+    await dialog.getByRole("button",{name:"确认导入",exact:true}).focus();await page.keyboard.press("Enter");
+    const imported=await importing;expect(imported.status(),await imported.text()).toBe(200);sets[target]=((await imported.json()).item as ConfigSetImportResult).configSetId;
+    await expect(dialog).toHaveCount(0);await page.reload();
+    const reimported=await exportProject(target);expect(reimported.files).toEqual(frozen.files);expect(reimported.manifest.sourcePackage).toEqual(frozen.manifest.sourcePackage);
+    const importedBinding=(await bindings(target))[0]!;
+    expect(importedBinding).toMatchObject({rawValue:'"ProjectA", "keep"'});
+    expect(importedBinding.id).not.toBe(originalA.id);expect(importedBinding.sourceOccurrenceId).not.toBe(originalA.sourceOccurrenceId);expect(importedBinding.logicalNodeId).not.toBe(originalA.logicalNodeId);
+    expect(reimported.manifest.members.every(row=>frozen.manifest.members.every(old=>old.fileId!==row.fileId))).toBe(true);
+    const importedGraph=await graph(target),node=importedGraph.nodes.find(row=>row.locator==="/battery")!;
+    expect(node.enablement).toMatchObject({selfEnabled:false});
+    const origins=node.effects.filter(row=>row.propertyName==="rx_fod_cond");
+    expect(origins.map(row=>row.rawText)).toEqual(['"SharedV1", "keep"','"ProjectA", "keep"']);
+    expect(origins[0]!.source).toMatchObject({sourceName:`shared/${sourceName}`,sharedReference:{resourceId,versionId:v1,readOnly:true}});
+    expect(origins[1]!.source).toMatchObject({sourceName:rootName});
+    await page.goto(route(target));await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"ProjectA", "keep"');await screenshot("parent-reimport-effective-1280.png");
+    const sharedFile=reimported.manifest.members.find(row=>row.sharedReference)!;
+    await page.goto(disposablePageUrl(disposableRuntime,`/parameter-admin/projects/${target}/configuration?${new URLSearchParams({configSet:sets[target]!,file:sharedFile.fileId})}`));
+    await expect(page.getByRole("region",{name:"DTS 源码",exact:true})).toContainText("SharedV1");await expect(page.getByRole("radio",{name:"编辑",exact:true})).toHaveCount(0);await screenshot("parent-reimport-shared-readonly-1280.png");
+    expect((await exportProject(b)).files).toEqual(beforeB.files);expect(await bindings(b)).toEqual(bindingsB);expect((await graph(b)).revisionId).toBe(initialB);
   });
 
   test("shared version switch preserves private overrides and creates new revisions in both directions", async ({page,request},testInfo)=>{
