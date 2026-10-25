@@ -22,11 +22,11 @@ describe("ProjectParameterInitializationWizard", () => {
     await screen.findByRole("table", { name: "完整配置复制预览" });
     expect(screen.getByText(/board.dts/)).toBeInTheDocument();
     expect(screen.getByText(/固定私有副本/)).toBeInTheDocument();
-    const sourceLink = screen.getByRole("link", { name: "board.dts", exact: true });
+    const sourceLink = screen.getByRole("link", { name: "board.dts" });
     expect(sourceLink).toHaveAttribute("href", expect.stringContaining("revision=rev-a"));
     expect(sourceLink).toHaveAttribute("href", expect.stringContaining("organizationId=operating-org"));
     expect(sourceLink).toHaveAttribute("href", expect.stringContaining("version=version-a"));
-    expect(screen.queryByRole("columnheader", { name: "固定版本", exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "固定版本" })).not.toBeInTheDocument();
     expect(screen.queryByText("rev-a", { exact: true })).not.toBeInTheDocument();
     expect(screen.getByText("（共享来源 → 项目私有）", { exact: true })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
