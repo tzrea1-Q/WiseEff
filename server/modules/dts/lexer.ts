@@ -19,6 +19,7 @@ export type DtsTokenKind =
   | "semi"
   | "comma"
   | "eq"
+  | "operator"
   | "directive"
   | "slash"
   | "eof";
@@ -57,6 +58,7 @@ export function lexDts(source: string): DtsToken[] {
   const text = stripDtsComments(source);
   const tokens: DtsToken[] = [];
   let i = 0;
+  let parentheses = 0;
 
   const push = (kind: DtsTokenKind, start: number, end: number, value = text.slice(start, end)) => {
     tokens.push({ kind, value, span: { start, end } });
@@ -187,9 +189,21 @@ export function lexDts(source: string): DtsToken[] {
       ";": "semi",
       ",": "comma",
       "=": "eq",
+      "+": "operator",
+      "-": "operator",
+      "*": "operator",
+      "%": "operator",
+      "|": "operator",
+      "^": "operator",
+      "~": "operator",
+      "!": "operator",
+      "?": "operator",
     };
 
     if (ch in single) {
+      if (single[ch] === "operator" && parentheses === 0) throw new Error(`Unexpected character '${ch}' at offset ${i}`);
+      if (ch === "(") parentheses += 1;
+      if (ch === ")") parentheses -= 1;
       push(single[ch], i, i + 1, ch);
       i += 1;
       continue;
