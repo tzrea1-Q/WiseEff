@@ -3166,6 +3166,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
         const path=testInfo.outputPath(`switch-conflict-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`Switch conflict ${viewport.width}`,{path,contentType:"image/png"});
       }
       await page.evaluate(()=>document.documentElement.classList.add("dark"));
+      await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveCSS("color","rgb(232, 236, 244)");
       const darkPath=testInfo.outputPath("switch-conflict-dark-1280.png");await page.screenshot({path:darkPath});await testInfo.attach("Switch conflict dark 1280",{path:darkPath,contentType:"image/png"});
       await page.evaluate(()=>document.documentElement.classList.remove("dark"));
       await dialog.getByRole("button",{name:"编辑项目根文件",exact:true}).focus();await page.keyboard.press("Enter");
