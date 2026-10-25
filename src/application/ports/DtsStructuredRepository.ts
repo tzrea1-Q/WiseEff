@@ -101,7 +101,7 @@ export type DtsConfigSetFile = {
 };
 
 export type DtsConfigSetMemberFile = DtsConfigSetFile & {
-  sharedReference?: { referenceId: string; resourceId: string; versionId: string; version: number; memberId: string; digest: string; readOnly: true };
+  sharedReference?: { referenceId: string; resourceId: string; versionId: string; version: number; memberId: string; digest: string; readOnly: true; direct?:boolean };
   fileName: string;
   format: "dts" | "json";
   currentVersionId?: string;

@@ -45,13 +45,14 @@ export type WorkbenchConfigurationFilesDialogProps = {
   onAddSourceFile: () => void;
   onCanonicalAdd?: () => void;
   onSetRoot?: (member: DtsConfigSetMemberFile) => void;
+  onSwitchSharedVersion?: (member:DtsConfigSetMemberFile)=>void;
 };
 
 export function WorkbenchConfigurationFilesDialog({
   open, onClose, configSet, members, canAdmin, pendingAction, loading, error, operationError = "", ready, canonical, onRetry,
   availableFiles, addErrors, memberFileId, memberRole, memberSortOrder, onMemberFileIdChange,
   onMemberRoleChange, onMemberSortOrderChange, onAddMember, onRemoveMember, canRequestReviewedMemberRemoval,
-  onOpenFile, onUpdateFile, onOpenVersions, onAddSourceFile, onCanonicalAdd, onReviewedMemberRemoval, onSetRoot
+  onOpenFile, onUpdateFile, onOpenVersions, onAddSourceFile, onCanonicalAdd, onReviewedMemberRemoval, onSetRoot,onSwitchSharedVersion
 }: WorkbenchConfigurationFilesDialogProps) {
   const addErrorId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -105,6 +106,9 @@ export function WorkbenchConfigurationFilesDialog({
               <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => member.sharedReference ? onOpenFile(member.fileId) : onUpdateFile(member.fileId)}>{member.sharedReference ? "查看源码" : canAdmin ? "更新文件" : "更新记录"}</Button>
               <RowActionMenu label={`${member.fileName} 文件操作`} triggerLabel={`${member.fileName} 更多`} items={[
                 { id: "versions", label: "版本历史与下载", disabled: busy, onSelect: () => onOpenVersions(member.fileId) },
+                ...(canAdmin&&checked&&member.sharedReference?.direct&&onSwitchSharedVersion
+                  && members.find(item=>item.sharedReference?.resourceId===member.sharedReference!.resourceId)?.fileId===member.fileId
+                  ?[{id:"switch-shared",label:"切换共享版本",disabled:busy,onSelect:()=>onSwitchSharedVersion(member)}]:[]),
                 ...(canAdmin && checked && !member.sharedReference && member.format === "dts" && member.role !== "base" && onSetRoot
                   ? [{ id: "set-root", label: "设为根文件", disabled: busy, onSelect: () => onSetRoot(member) }] : []),
                 ...(canRemove(member) ? [{ id: "remove", label: canonical ? "预览移除影响" : "从配置移除", destructive: true as const,

@@ -731,6 +731,7 @@ export function ProjectConfigurationWorkbench({
     return result;
   }, [projectFiles, sourceWorkflowsByFileId]);
   const [memberAdditionOpen, setMemberAdditionOpen] = useState(false);
+  const [switchSharedMember,setSwitchSharedMember]=useState<DtsConfigSetMemberFile|null>(null);
   const sourceWorkflowSetCanonical = selectedMembers.some(
     (member) => sourceWorkflowsByFileId[member.fileId]?.canonical === true
   );
@@ -2154,11 +2155,13 @@ export function ProjectConfigurationWorkbench({
         onUpdateFile={(fileId) => openInspector("candidates", fileId)}
         onOpenVersions={(fileId) => openInspector("versions", fileId)}
         onAddSourceFile={() => openInspector("candidates")}
-        onCanonicalAdd={apiMode ? () => setMemberAdditionOpen(true) : undefined}
+        onCanonicalAdd={apiMode ? () => {setSwitchSharedMember(null);setMemberAdditionOpen(true);} : undefined}
+        onSwitchSharedVersion={apiMode?member=>{setSwitchSharedMember(member);setMemberAdditionOpen(true);}:undefined}
         onSetRoot={apiMode ? setSetRootTarget : undefined}
       /> : null}
       {memberAdditionOpen && canAdmin && selectedConfigSet ? <WorkbenchMemberAdditionDialog key={`${resolvedOrganizationId}:${project.id}:${selectedConfigSet.id}`} projectId={project.id} configSets={configSets}
         client={additionClient} sharedClient={sharedDtsiClient}
+        switchReference={switchSharedMember?.sharedReference}
         catalogRepository={memberRemovalRepository} fileRepository={fileRepository}
         initialConfigSetId={selectedConfigSet.id} availableFiles={ungroupedFiles} onDismiss={() => setMemberAdditionOpen(false)}
         onApplied={(configSetId, fileId) => {

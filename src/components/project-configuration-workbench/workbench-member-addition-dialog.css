@@ -14,6 +14,7 @@
 .workbench-member-addition-dialog__members li > span:last-child { color: var(--text-muted); }
 .workbench-member-addition-dialog pre { max-width: 100%; max-height: calc(var(--space-16) * 3); overflow: auto; white-space: pre; padding: var(--space-3); background: var(--surface); font-family: var(--font-code); font-size: var(--text-sm); }
 .workbench-member-addition-dialog footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--space-4); padding: var(--space-4) var(--space-5); border-top: 1px solid var(--border); }
+.workbench-member-addition-dialog footer > div { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .workbench-member-addition-dialog [role="alert"] { color: var(--danger); overflow-wrap: anywhere; }
 .workbench-member-addition-dialog__registration { display: grid; gap: var(--space-4); margin-top: var(--space-4); }
 .workbench-member-addition-dialog__registration [data-slot="select-trigger"] { width: 100%; min-width: 0; }

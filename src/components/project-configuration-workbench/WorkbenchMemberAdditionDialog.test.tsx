@@ -9,6 +9,31 @@ import { jsonLeafPaths } from "@/application/project-configuration/jsonRegistrat
 
 afterEach(cleanup);
 
+it("switches an existing reference through the same preview owner and cancels proof without losing the selected version or reason", async () => {
+  const user=userEvent.setup(), resourceId="11111111-1111-4111-8111-111111111111",old="22222222-2222-4222-8222-222222222222",next="33333333-3333-4333-8333-333333333333";
+  const versions=[old,next].map((id,index)=>({id,resourceId,version:index+1,name:"Limits",changeDescription:`Defaults ${index+1}`,digest:"sha256:fixed",createdAt:"2026-10-25",createdByUserId:"author"}));
+  const preview=vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"set",fileName:"limits.dtsi",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:["."],overlayOrder:[],diagnostics:[],impact:{parameterChanges:1,nodeAdditions:0,nodeRemovals:0,retainedBindings:2,sourceReplacements:0}}));
+  const client={upload:vi.fn(),preview,apply:vi.fn().mockRejectedValue(new Error("Preview changed; prepare again"))};
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"}]} initialConfigSetId="set" availableFiles={[]}
+    switchReference={{resourceId,versionId:old,version:1}} client={client} sharedClient={{list:vi.fn(),versions:vi.fn(async()=>({items:versions,total:2}))}} onDismiss={vi.fn()} onApplied={vi.fn()} />);
+  expect(screen.getByRole("dialog")).toHaveAccessibleName("切换共享版本");
+  await user.click(await screen.findByRole("combobox",{name:"固定版本"}));
+  expect(screen.getByRole("option",{name:"版本 1 · Defaults 1"})).toHaveAttribute("aria-disabled","true");
+  await user.click(screen.getByRole("option",{name:"版本 2 · Defaults 2"}));
+  await user.click(screen.getByRole("button",{name:"预览版本切换"}));
+  expect(preview).toHaveBeenCalledWith("project","set",{sharedReference:{resourceId,versionId:next,replaceVersionId:old},role:"misc",sortOrder:0});
+  await user.type(screen.getByRole("textbox",{name:"切换原因"}),"Preserve private limits");
+  await user.click(screen.getByRole("button",{name:"取消本次预览"}));
+  expect(screen.queryByRole("button",{name:"确认切换版本"})).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button",{name:"预览版本切换"}));
+  expect(await screen.findByRole("textbox",{name:"切换原因"})).toHaveValue("Preserve private limits");
+  await user.click(screen.getByRole("button",{name:"确认切换版本"}));
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  expect(screen.queryByRole("button",{name:"确认切换版本"})).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button",{name:"预览版本切换"}));
+  expect(await screen.findByRole("textbox",{name:"切换原因"})).toHaveValue("Preserve private limits");
+});
+
 it("requires an explicit published version and clears its proof when the version changes", async () => {
   const user = userEvent.setup(), resourceId = "11111111-1111-4111-8111-111111111111", versionId = "22222222-2222-4222-8222-222222222222";
   const summary = { id: versionId, resourceId, version: 1, name: "Shared limits", changeDescription: "Initial limits", digest: "sha256:fixed", createdAt: "2026-10-24", createdByUserId: "author" };
