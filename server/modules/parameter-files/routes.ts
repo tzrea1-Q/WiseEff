@@ -403,7 +403,7 @@ export function registerParameterFileRoutes(
         fileName: file.fileName,
         bytes: decodeContentBase64(body.contentBase64)
       },
-      { requestId: request.requestId },
+      { requestId: request.requestId, targetFileId: params.fileId },
       db
     );
 

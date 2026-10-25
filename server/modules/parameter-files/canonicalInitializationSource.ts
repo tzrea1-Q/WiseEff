@@ -26,7 +26,7 @@ import {
 import { getConfigSetByProjectAndName, insertConfigSet, listConfigSetsByProject, setFileConfigSetMembership } from "./configSetRepository";
 import { ensureDefaultConfigSetInTx } from "./configSetService";
 import { asAuditTx } from "../audit/auditedWrite";
-import { insertFileVersion, insertProjectParameterFile, setCurrentVersion } from "./repository";
+import { configurationSourceFileName, insertFileVersion, insertProjectParameterFile, setCurrentVersion } from "./repository";
 import type { ObjectStore } from "../logs/objectStore";
 import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
 import type { ConfigRevisionManifest, ConfigRevisionManifestMember, ConfigRevisionMemberRole } from "../parameter-topology/types";
@@ -82,10 +82,6 @@ function roleForMembership(role: string): "base" | "overlay" | "charging" | "the
 function roleForRevision(role: string): ConfigRevisionMemberRole {
   if (role === "include") return role;
   return roleForMembership(role);
-}
-
-function targetFileName(configSetId: string, sourceName: string): string {
-  return `initialization-${configSetId}-${sourceName}`;
 }
 
 /** Delete only objects confirmed as created by this approval attempt. */
@@ -276,7 +272,7 @@ async function cloneSourceGroup(
     const bytes = Buffer.from(file.content, "utf8");
     const collision = group.name ? await db.query("select id from public.project_parameter_files where organization_id=$1 and project_id=$2 and file_name=$3 limit 1",
       [parameterOrganizationId(auth), targetProjectId, member.sourceName]) : null;
-    const fileName = group.name && collision?.rows.length === 0 ? member.sourceName : targetFileName(targetConfigSetId, member.sourceName);
+    const fileName = group.name && collision?.rows.length === 0 ? member.sourceName : configurationSourceFileName(targetConfigSetId, member.sourceName);
     const stored = await objectStore.put({
       organizationId: parameterOrganizationId(auth),
       fileName: `${randomUUID()}.${member.format}`,

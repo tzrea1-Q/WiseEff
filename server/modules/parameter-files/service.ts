@@ -348,7 +348,7 @@ export async function uploadProjectParameterFile(
   objectStore: ObjectStore,
   auth: AuthContext,
   input: UploadProjectParameterFileInput,
-  context: ParameterFileServiceContext = {},
+  context: ParameterFileServiceContext & { targetFileId?: string } = {},
   producerRoot?: Database,
 ): Promise<{
   file: ProjectParameterFileDto;
@@ -374,11 +374,16 @@ export async function uploadProjectParameterFile(
   const parsedIndex = buildParsedIndex(format, normalized.bytes);
 
   const runUpload = async (tx: Database, uploadStore: ObjectStore) => {
-    const existing = await getProjectParameterFileByName(tx, {
+    const existing = context.targetFileId ? await getProjectParameterFileById(tx, {
+      organizationId: parameterOrganizationId(auth), fileId: context.targetFileId,
+    }) : await getProjectParameterFileByName(tx, {
       organizationId: parameterOrganizationId(auth),
       projectId: normalized.projectId,
       fileName: normalized.fileName,
     });
+    if (context.targetFileId && (!existing || existing.projectId !== normalized.projectId)) {
+      throw new ApiError("NOT_FOUND", "Project parameter file not found.");
+    }
     if (existing) await assertLegacySourceMutationAllowed(tx,existing.id);
     const stored = await uploadStore.put({
       organizationId: parameterOrganizationId(auth),

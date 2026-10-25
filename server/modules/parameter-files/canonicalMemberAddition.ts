@@ -38,7 +38,7 @@ import { requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } f
 import { createDtsToolchainRunner, type DtsToolchainRunner } from "./dtsToolchain";
 import { loadFormerRootOverlayFiles } from "./configSetSnapshot";
 import { MAX_PARAMETER_SOURCE_BYTES, parseJsonSource, readJsonSourceValue } from "./jsonSource";
-import { assertProjectSourceWritable, insertFileVersion, insertProjectParameterFile, setCurrentVersion } from "./repository";
+import { assertProjectSourceWritable, configurationSourceFileName, insertFileVersion, insertProjectParameterFile, setCurrentVersion } from "./repository";
 import { freezeSourceRevisionRequest, loadSnapshot, loadSourceRevisionCatalogSnapshots, requireCurrentSourceAdministrator,
   sameSourceRevision, sourceRevisionDigest, type SourceRevisionTarget, type SourceRevisionNewProperty } from "./sourceRevisionService";
 import { applySourceRestoration, matchingDeletedSourceAnchors, prepareSourceRestorations, sourceRestorationNodes, type SourceRestoration } from "./sourceRestoration";
@@ -174,9 +174,10 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     || input.sharedReference?.mountPath!==undefined && input.sharedReference.mountPath!==replaced.mountPath)) conflict("当前固定引用已变化；请选择直接引用的另一版本并重新预览。");
   const beforeSources=recomposing?(await tx.query<{fileId:string;fileVersionId:string;referenceId:string;memberId:string;sourceName:string}>(
     `select snapshot.file_id as "fileId",snapshot.file_version_id as "fileVersionId",snapshot.reference_id as "referenceId",
-      snapshot.member_id as "memberId",file.file_name as "sourceName" from public.project_shared_dtsi_snapshots snapshot
+      snapshot.member_id as "memberId",case when ref.mount_path='' then member.source_name else ref.mount_path||'/'||member.source_name end as "sourceName" from public.project_shared_dtsi_snapshots snapshot
       join public.project_shared_dtsi_references ref on ref.id=snapshot.reference_id
-      join public.project_parameter_files file on file.id=snapshot.file_id where ref.config_set_id=$1 order by file.id`,[input.configSetId])).rows:[];
+      join public.shared_dtsi_revision_members member on member.revision_id=snapshot.revision_id and member.member_id=snapshot.member_id
+      join public.project_parameter_files pf on pf.id=snapshot.file_id where ref.config_set_id=$1 order by pf.id`,[input.configSetId])).rows:[];
   const pins=removing?currentReferences.filter(row=>row.direct&&row.resourceId!==removing.resourceId).map(({resourceId,versionId,mountPath})=>({resourceId,versionId,mountPath})):input.sharedReference ? [{resourceId:input.sharedReference.resourceId,versionId:input.sharedReference.versionId,mountPath:replaced?.mountPath??input.sharedReference.mountPath??""},
     ...(recomposing?currentReferences.filter(row=>row.direct&&row.resourceId!==input.sharedReference!.resourceId).map(({resourceId,versionId,mountPath})=>({resourceId,versionId,mountPath})):[])] : [];
   const sharedResources=await loadSharedDtsiClosure(tx,auth,pins);
@@ -216,10 +217,10 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     sourceName:mountedSharedPath(resource.mountPath,member.sourceName),format:"dts" as const,storageKey:"",checksum:member.checksum,sizeBytes:member.sizeBytes,
     content:member.content,memberId:member.id,resourceId:resource.resourceId
   })));
-  if(recomposing)for(const target of sharedTargets) {
-    const collision=(await tx.query<{id:string}>("select id from public.project_parameter_files where organization_id=$1 and project_id=$2 and file_name=$3 and id<>$4",[parameterOrganizationId(auth),input.projectId,target.sourceName,target.fileId])).rows[0];
-    if(collision)conflict(`${target.sourceName}：目标共享成员与既有文件身份不同，请先核对身份或修改挂载目录。`);
-  }
+  const physicalCollisions=sharedTargets.length ? (await tx.query<{id:string;fileName:string}>(`select id,file_name as "fileName" from public.project_parameter_files
+    where organization_id=$1 and project_id=$2 and file_name=any($3::text[])`,[parameterOrganizationId(auth),input.projectId,sharedTargets.map(target=>configurationSourceFileName(input.configSetId,target.sourceName))])).rows:[];
+  for(const collision of physicalCollisions)if(!sharedTargets.some(target=>target.fileId===collision.id && configurationSourceFileName(input.configSetId,target.sourceName)===collision.fileName))
+    conflict("共享源码的目标位置已有文件，请调整挂载目录后重试；当前配置未改变。");
   if (input.setAsRoot) {
     if (input.candidateId || input.json || input.role !== "base" || existing?.format !== "dts"
       || existing.configSetId !== input.configSetId || !members.some((row) => row.fileId === existing.id && row.sourceName !== revision.entry_file)) {
@@ -596,7 +597,7 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
     const derived=proof.sharedComposition?.flatMap(resource=>resource.sources.map(source=>proof.members.find(member=>member.fileId===source.fileId)!))??[];
     if (candidate || proof.sharedReference && !proof.sharedConversion) {
       for(const source of derived.length?derived:[target])if(!proof.sharedSwitch?.beforeFiles.some(before=>before.fileId===source.fileId))await insertProjectParameterFile(tx, { id: source.fileId, organizationId: parameterOrganizationId(auth), projectId: input.projectId,
-        fileName: source.sourceName, format: source.format, enabled: true });
+        fileName: proof.sharedReference ? configurationSourceFileName(input.configSetId,source.sourceName) : source.sourceName, format: source.format, enabled: true });
       if (candidate) await tx.query("update public.project_parameter_file_candidates set file_id=$2 where id=$1 and status='ready' and file_id is null", [candidate.id, target.fileId]);
     }
     const requestId = await freezeSourceRevisionRequest(tx, auth, proof, { projectId: input.projectId, reason: input.reason,

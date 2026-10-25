@@ -10,6 +10,7 @@ import { requestJson } from "../../test/testClient";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
 import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
+import { captureConfigurationSourceState } from "../../testing/parameterCatalog/configurationSource";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { createLocalObjectStore, type ObjectStore } from "../logs/objectStore";
@@ -548,6 +549,91 @@ describe("fixed shared references through the real API role", () => {
     expect(siblingApplied.status,siblingApplied.bodyText).toBe(200);appliedA.configRevisionId=siblingApplied.body.item.configRevisionId;
     const leafUsages=await requestJson<{total:number}>(server(),`/api/v2/shared-dtsi/${leaf.resourceId}/usages`);expect(leafUsages.body.total).toBe(2);
   });
+
+  it("isolates identical shared logical paths in two configurations of one project",async()=>{
+    const projectId="shared-same-project";
+    await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,$1,$1,'initialized')",[projectId,ORG]);
+    const publish=async(name:string,members:{sourceName:string;content:string}[],dependencies:unknown[]=[])=>{
+      const draft=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name,members,dependencies,changeDescription:"Independent configuration sources"});
+      expect(draft.status,draft.bodyText).toBe(201);
+      const preview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${draft.body.item.resourceId}/publication-preview`,{expectedRevision:1});
+      expect(preview.status,preview.bodyText).toBe(201);
+      const version=await post<{item:{id:string;resourceId:string}}>(`/api/v2/shared-dtsi/${draft.body.item.resourceId}/publications`,{previewId:preview.body.item.id,idempotencyKey:draft.body.item.resourceId});
+      expect(version.status,version.bodyText).toBe(201);return version.body.item;
+    };
+    const leafSource='/ { same_leaf: same-leaf { status = "okay"; }; };';
+    const leaf=await publish("Same-project dependency",[{sourceName:"leaf.dtsi",content:leafSource}]);
+    const mainSource='/include/ "parts/common.dtsi"\n/include/ "vendor/leaf.dtsi"\n';
+    const commonSource='/ { common { status = "okay"; }; };';
+    const shared=await publish("Same-project library",[{sourceName:"main.dtsi",content:mainSource},{sourceName:"parts/common.dtsi",content:commonSource}],
+      [{resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"vendor"}]);
+    const sharedIds:string[][]=[];
+    const exports:Array<{manifest:{members:{fileId:string;fileVersionId:string;fileName:string;sharedReference?:unknown}[]};files:{name:string;content:string}[]}>=[];
+    const configIds:string[]=[];
+    for(const name of ["first","second"]){
+      const configSetId=(await createConfigSet(db,admin,{projectId,name})).id;configIds.push(configSetId);
+      const rootName=`${name}-root.dts`,rootSource='/dts-v1/; / { model = "Independent configuration"; };';
+      const root=await uploadProjectParameterFile(db,storage,admin,{projectId,fileName:rootName,bytes:Buffer.from(rootSource)});
+      await addConfigSetFile(db,admin,{configSetId,fileId:root.file.id,role:"base",sortOrder:0});
+      await ingestConfigRevision(db,{organizationId:ORG,projectId,configSetId,entryFile:rootName,includeSearchPaths:["."],overlayOrder:[],
+        members:[{fileId:root.file.id,fileVersionId:root.version.id,fileName:rootName,role:"base",sortOrder:0,content:rootSource}]},admin);
+      const path=`/api/v1/projects/${projectId}/config-sets/${configSetId}`;
+      const body={sharedReference:{resourceId:shared.resourceId,versionId:shared.id},role:"misc",sortOrder:1};
+      const preview=await post<Preview>(`${path}/member-addition/preview`,body);expect(preview.status,preview.bodyText).toBe(200);
+      const applied=await post<Applied>(`${path}/member-addition/apply`,{...body,proofToken:preview.body.item.proofToken,reason:"Keep exact paths in each configuration",clientMutationId:name});
+      expect(applied.status,applied.bodyText).toBe(200);
+      const exported=await requestJson<(typeof exports)[number]>(server(),`${path}/export`);expect(exported.status,exported.bodyText).toBe(200);
+      expect(exported.body.files).toEqual(expect.arrayContaining([{name:"main.dtsi",format:"dts",content:mainSource},{name:"parts/common.dtsi",format:"dts",content:commonSource},{name:"vendor/leaf.dtsi",format:"dts",content:leafSource}]));
+      const sharedMembers=exported.body.manifest.members.filter(member=>member.sharedReference);
+      expect(sharedMembers).toHaveLength(3);sharedIds.push(sharedMembers.map(member=>member.fileId));exports.push(exported.body);
+      const files=await requestJson<{items:{fileId:string;fileName:string;sharedReference?:{readOnly:boolean}}[]}>(server(),`${path}/files`);
+      expect(files.status,files.bodyText).toBe(200);
+      expect(files.body.items.filter(member=>member.sharedReference).map(member=>member.fileName).sort()).toEqual(["main.dtsi","parts/common.dtsi","vendor/leaf.dtsi"]);
+      expect(files.body.items.filter(member=>member.sharedReference).every(member=>member.sharedReference!.readOnly)).toBe(true);
+      const duplicate=await post(`${path}/member-addition/preview`,body);expect(duplicate.status,duplicate.bodyText).toBe(409);
+    }
+    expect(sharedIds[0]!.every(id=>!sharedIds[1]!.includes(id))).toBe(true);
+    const nextDraft=await post<{item:{revision:number;members:{id:string;sourceName:string;content:string}[]}}>(`/api/v2/shared-dtsi/${shared.resourceId}/draft`,{baseVersionId:shared.id});
+    expect(nextDraft.status,nextDraft.bodyText).toBe(201);
+    const saved=await requestJson(server(),`/api/v2/shared-dtsi/${shared.resourceId}/draft`,{method:"PUT",body:JSON.stringify({name:"Same-project library",members:nextDraft.body.item.members.map(member=>({...member,content:member.content.replace('status = "okay"','status = "disabled"')})),dependencies:[{resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"vendor"}],expectedRevision:nextDraft.body.item.revision,changeDescription:"Switch one configuration only"})});
+    expect(saved.status,saved.bodyText).toBe(200);
+    const nextPreview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${shared.resourceId}/publication-preview`,{expectedRevision:2});expect(nextPreview.status,nextPreview.bodyText).toBe(201);
+    const next=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${shared.resourceId}/publications`,{previewId:nextPreview.body.item.id,idempotencyKey:"same-project-successor"});expect(next.status,next.bodyText).toBe(201);
+    const secondPath=`/api/v1/projects/${projectId}/config-sets/${configIds[1]}`;
+    const switching={sharedReference:{resourceId:shared.resourceId,versionId:next.body.item.id,replaceVersionId:shared.id},role:"misc",sortOrder:1};
+    const switchPreview=await post<Preview>(`${secondPath}/member-addition/preview`,switching);expect(switchPreview.status,switchPreview.bodyText).toBe(200);
+    const switched=await post<Applied>(`${secondPath}/member-addition/apply`,{...switching,proofToken:switchPreview.body.item.proofToken,reason:"Keep independent fixed versions",clientMutationId:"same-project-switch"});expect(switched.status,switched.bodyText).toBe(200);
+    const secondExport=await requestJson<(typeof exports)[number]>(server(),`${secondPath}/export`);expect(secondExport.status,secondExport.bodyText).toBe(200);
+    expect(secondExport.body.files).toContainEqual({name:"parts/common.dtsi",format:"dts",content:commonSource.replace('"okay"','"disabled"')});
+    const oldCommon=exports[1]!.manifest.members.find(member=>member.fileName==="parts/common.dtsi")!;
+    const historical=await requestJson(server(),`/api/v1/projects/${projectId}/parameter-files/${oldCommon.fileId}/versions/${oldCommon.fileVersionId}/content`);
+    expect(historical.status,historical.bodyText).toBe(200);expect(historical.bodyText).toBe(commonSource);
+    const logical=await requestJson<{items:{id:string;fileName:string}[]}>(server(),`/api/v1/projects/${projectId}/parameter-files`);
+    expect(logical.status,logical.bodyText).toBe(200);expect(logical.body.items.find(file=>file.id===oldCommon.fileId)?.fileName).toBe("parts/common.dtsi");
+    const back={...switching,sharedReference:{resourceId:shared.resourceId,versionId:shared.id,replaceVersionId:next.body.item.id}};
+    const backPreview=await post<Preview>(`${secondPath}/member-addition/preview`,back);expect(backPreview.status,backPreview.bodyText).toBe(200);
+    const returned=await post<Applied>(`${secondPath}/member-addition/apply`,{...back,proofToken:backPreview.body.item.proofToken,reason:"Restore only this configuration's fixed version",clientMutationId:"same-project-switch-back"});expect(returned.status,returned.bodyText).toBe(200);
+    expect((await requestJson<(typeof exports)[number]>(server(),`${secondPath}/export`)).body.files).toEqual(exports[1]!.files);
+    const unchanged=await requestJson<(typeof exports)[number]>(server(),`/api/v1/projects/${projectId}/config-sets/${configIds[0]}/export`);
+    expect(unchanged.body.files).toEqual(exports[0]!.files);
+    expect(unchanged.body.manifest.members).toEqual(exports[0]!.manifest.members);
+    const occupiedSet=(await createConfigSet(db,admin,{projectId,name:"Occupied physical namespace"})).id;
+    const occupiedRoot='/dts-v1/; / { model = "Reserved identity"; };';
+    const root=await uploadProjectParameterFile(db,storage,admin,{projectId,fileName:"occupied-root.dts",bytes:Buffer.from(occupiedRoot)});
+    await addConfigSetFile(db,admin,{configSetId:occupiedSet,fileId:root.file.id,role:"base",sortOrder:0});
+    await ingestConfigRevision(db,{organizationId:ORG,projectId,configSetId:occupiedSet,entryFile:"occupied-root.dts",includeSearchPaths:["."],overlayOrder:[],
+      members:[{fileId:root.file.id,fileVersionId:root.version.id,fileName:"occupied-root.dts",role:"base",sortOrder:0,content:occupiedRoot}]},admin);
+    const occupiedPath=`/api/v1/projects/${projectId}/config-sets/${occupiedSet}/member-addition`;
+    const body={sharedReference:{resourceId:shared.resourceId,versionId:shared.id},role:"misc",sortOrder:1};
+    const beforeOccupation=await post<Preview>(`${occupiedPath}/preview`,body);expect(beforeOccupation.status,beforeOccupation.bodyText).toBe(200);
+    await uploadProjectParameterFile(db,storage,admin,{projectId,fileName:`initialization-${occupiedSet}-main.dtsi`,bytes:Buffer.from('/ { private {}; };')});
+    const before=await captureConfigurationSourceState(db,{organizationId:ORG,projectId}),objects=await readdir(directory,{recursive:true});
+    expect((await post(`${occupiedPath}/preview`,body)).status).toBe(409);
+    const refused=await post(`${occupiedPath}/apply`,{...body,proofToken:beforeOccupation.body.item.proofToken,reason:"Preserve the private file identity",clientMutationId:"occupied-namespace"});
+    expect(refused.status,refused.bodyText).toBe(409);expect(refused.body).toMatchObject({error:{code:"CONFLICT"}});
+    expect(await captureConfigurationSourceState(db,{organizationId:ORG,projectId})).toEqual(before);
+    expect(await readdir(directory,{recursive:true})).toEqual(objects);
+  },120_000);
 
   it("reauthorizes usage scope after a Home transfer to another Organization administrator",async()=>{
     const otherHome="shared-usage-other-home",transferredUser="shared-usage-transferred-user";

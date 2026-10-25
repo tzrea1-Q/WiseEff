@@ -201,8 +201,10 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   })) conflict("历史共享闭包与固定发布版本不一致，无法恢复。");
   const beforeReferences = (await tx.query<{id:string;resourceId:string;versionId:string;mountPath:string;direct:boolean}>(`select id,resource_id as "resourceId",revision_id as "versionId",mount_path as "mountPath",is_direct as direct
     from public.project_shared_dtsi_references where organization_id=$1 and project_id=$2 and config_set_id=$3 order by id`,[parameterOrganizationId(auth),input.projectId,configSetId])).rows;
-  const beforeSources = (await tx.query<{fileId:string;fileVersionId:string;referenceId:string;memberId:string;sourceName:string}>(`select source.file_id as "fileId",source.file_version_id as "fileVersionId",source.reference_id as "referenceId",source.member_id as "memberId",file.file_name as "sourceName"
-    from public.project_shared_dtsi_snapshots source join public.project_parameter_files file on file.id=source.file_id
+  const beforeSources = (await tx.query<{fileId:string;fileVersionId:string;referenceId:string;memberId:string;sourceName:string}>(`select source.file_id as "fileId",source.file_version_id as "fileVersionId",source.reference_id as "referenceId",source.member_id as "memberId",case when reference.mount_path='' then member.source_name else reference.mount_path||'/'||member.source_name end as "sourceName"
+    from public.project_shared_dtsi_snapshots source join public.project_parameter_files pf on pf.id=source.file_id
+    join public.project_shared_dtsi_references reference on reference.id=source.reference_id
+    join public.shared_dtsi_revision_members member on member.revision_id=source.revision_id and member.member_id=source.member_id
     where source.reference_id=any($1::text[]) order by source.file_id`,[beforeReferences.map((row) => row.id)])).rows;
   if (sharedComposition.length) preview.sharedDependencies = sharedComposition.map((resource) => ({ resourceId: resource.resourceId,name: resource.name,
     beforeVersion: currentMembers.find((member) => member.sharedReference?.resourceId === resource.resourceId)?.sharedReference?.version ?? null,
