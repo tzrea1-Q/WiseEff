@@ -27,7 +27,8 @@ import type { SharedDtsiVersion } from "../contracts/dtoSchemas/sharedDtsi";
 const ORG = "org-shared-ref", ADMIN = "user-shared-ref", A = "shared-project-a", B = "shared-project-b";
 const admin = makeTestAuthContext({ organizationId: ORG, userId: ADMIN, roles: [{ roleId: "admin", projectId: null }] });
 const editor = makeTestAuthContext({ organizationId: ORG, userId: "shared-ref-editor", roles: [{ roleId: "hardware-user", projectId: A }] });
-const source = '/dts-v1/; / { compatible = "test,board"; model = "shared reference"; charger: charger { compatible = "acme,power"; iin_max = <36>; }; };';
+const source = '/dts-v1/;\n/include/ "private.dtsi"\n/ { compatible = "test,board"; model = "shared reference"; charger: charger { compatible = "acme,power"; iin_max = <36>; }; };';
+const privateSource='/ { common { status = "disabled"; }; };';
 const shared = '/ { common: common { status = "okay"; }; charger { iin_max = <42>; }; secondary { compatible = "acme,power"; iin_max = <25>; }; };';
 type Preview = { item: MemberAdditionPreview };
 type Applied = { item: { fileId: string; fileVersionId: string; configRevisionId: string } };
@@ -63,10 +64,13 @@ describe("shared reference version switches through the real API role", () => {
       const configSetId = sets[projectId] = (await createConfigSet(db, admin, { projectId, name: "Shared reference" })).id;
       const uploaded = await uploadProjectParameterFile(db, storage, admin, { projectId, fileName: "board.dts", bytes: Buffer.from(source) });
       await addConfigSetFile(db, admin, { configSetId, fileId: uploaded.file.id, role: "base", sortOrder: 0 });
+      const privateFile=await uploadProjectParameterFile(db,storage,admin,{projectId,fileName:"private.dtsi",bytes:Buffer.from(privateSource)});
+      await addConfigSetFile(db,admin,{configSetId,fileId:privateFile.file.id,role:"misc",sortOrder:1});
       const json = await uploadProjectParameterFile(db, storage, admin, { projectId, fileName: "private.json", bytes: Buffer.from('{"local":true}') });
       await addConfigSetFile(db, admin, { configSetId, fileId: json.file.id, role: "thermal", sortOrder: 2 });
       const revision = await ingestConfigRevision(db, { organizationId: ORG, projectId, configSetId, entryFile: "board.dts", includeSearchPaths: ["."], overlayOrder: [],
         members: [{ fileId: uploaded.file.id, fileVersionId: uploaded.version.id, fileName: "board.dts", role: "base", sortOrder: 0, content: source },
+          {fileId:privateFile.file.id,fileVersionId:privateFile.version.id,fileName:"private.dtsi",role:"include",sortOrder:1,content:privateSource},
           { fileId: json.file.id, fileVersionId: json.version.id, fileName: "private.json", role: "thermal", sortOrder: 2, format: "json", content: '{"local":true}' }] }, admin);
       const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
       if (!snapshot) throw new Error("Missing Catalog fixture");
@@ -97,6 +101,14 @@ describe("shared reference version switches through the real API role", () => {
       expect(applied.status,applied.bodyText).toBe(200);
       if(project===A)appliedA=applied.body.item;
     }
+    const files=(await requestJson<{items:{fileId:string;fileName:string;currentVersionId:string;role:string}[]}>(server(),`/api/v1/projects/${A}/config-sets/${sets[A]}/files`)).body.items;
+    const root=files.find(file=>file.role==="base")!;
+    const rootContent=await requestJson(server(),`/api/v1/projects/${A}/parameter-files/${root.fileId}/versions/${root.currentVersionId}/content`);
+    const reordered=rootContent.bodyText.replace('/include/ "limits.dtsi"',"").replace('/include/ "private.dtsi"','/include/ "private.dtsi"\n/include/ "limits.dtsi"');
+    const sourceCandidate=await post<{item:{id:string}}>(`/api/v1/projects/${A}/parameter-file-candidates`,{fileId:root.fileId,fileName:root.fileName,intent:"source_revision",contentBase64:Buffer.from(reordered).toString("base64"),expectedCurrentVersionId:root.currentVersionId,expectedConfigRevisionId:appliedA.configRevisionId,clientMutationId:"explicit-include-order"});expect(sourceCandidate.status,sourceCandidate.bodyText).toBe(201);
+    const sourcePreview=await requestJson<{item:SourceRevisionPreview}>(server(),`/api/v1/projects/${A}/parameter-file-candidates/${sourceCandidate.body.item.id}/source-preview`);expect(sourcePreview.status,sourcePreview.bodyText).toBe(200);
+    const reorderedResult=await post<Applied>(`/api/v1/projects/${A}/parameter-file-candidates/${sourceCandidate.body.item.id}/source-apply`,{expectedCurrentVersionId:root.currentVersionId,expectedProofToken:sourcePreview.body.item.proofToken,reason:"Keep this explicit project include precedence",clientMutationId:"explicit-include-order-apply"});expect(reorderedResult.status,reorderedResult.bodyText).toBe(200);
+    appliedA.configRevisionId=reorderedResult.body.item.configRevisionId;
     const before=await listCatalogBindingRowsForProject(api,admin,{projectId:A});
     const originalB=await requestJson<{manifest:Record<string,unknown>;files:unknown[]}>(server(),`/api/v1/projects/${B}/config-sets/${sets[B]}/export`);
     const clone=await post<{item:{revision:number}}>(`/api/v2/shared-dtsi/${resourceId}/draft`,{baseVersionId:versionId});
@@ -107,6 +119,7 @@ describe("shared reference version switches through the real API role", () => {
       const body={sharedReference:{resourceId,versionId:targetVersionId,replaceVersionId:key==="upgrade"?versionId:next},role:"misc",sortOrder:1};
       const preview=await post<Preview>(`${path(A)}/preview`,body);
       expect(preview.status,preview.bodyText).toBe(200);
+      expect(preview.body.item.rootEdit?.after).toBe(preview.body.item.rootEdit?.before);
       expect(preview.body.item.sharedSwitch?.build).toMatchObject({mode:"release",passed:true});
       expect(preview.body.item.sharedSwitch?.effective).toContainEqual(expect.objectContaining({node:"/charger",property:"iin_max",before:"<36>",after:"<36>",oldShared:key==="upgrade"?"<42>":"<44>",targetShared:key==="upgrade"?"<44>":"<42>",localOverride:true}));
       expect((await post(`${path(A)}/preview`,body,editor)).status).toBe(403);

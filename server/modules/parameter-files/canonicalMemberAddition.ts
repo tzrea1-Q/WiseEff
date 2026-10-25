@@ -244,21 +244,29 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     await assertProjectSourceWritable(tx, root.fileId);
     const before = contents.get(root.fileId)!;
     let rootSource=before;
+    const retainedIncludes=new Set<string>();
     if(replacing) {
       const existingFiles=new Map(members.map(member=>[member.sourceName,{content:beforeContents.get(member.fileId)!,fileVersionId:member.fileVersionId}]));
       const oldNames=new Set(beforeSources.map(source=>source.sourceName));
-      const oldTokens=lexDts(before), removals:Array<{start:number;end:number}>=[];
+      const oldTokens=lexDts(before), edits:Array<{start:number;end:number;text:string}>=[];
       for(let at=0;at<oldTokens.length;at++) if(oldTokens[at]?.value==="/include/"&&oldTokens[at+1]?.kind==="string") {
         const found=resolveIncludeTarget(root.sourceName,oldTokens[at+1]!.value.slice(1,-1),revision.include_search_paths,existingFiles);
-        if(found.ok&&oldNames.has(found.fileName))removals.push({start:oldTokens[at]!.span.start,end:oldTokens[at+1]!.span.end});
+        if(!found.ok||!oldNames.has(found.fileName))continue;
+        const original=beforeSources.find(source=>source.sourceName===found.fileName)!;
+        const resourceId=currentReferences.find(reference=>reference.id===original.referenceId)!.resourceId;
+        const next=sharedTargets.find(target=>target.resourceId===resourceId&&target.memberId===original.memberId);
+        if(next) {
+          retainedIncludes.add(next.sourceName);
+          if(next.sourceName!==found.fileName)edits.push({...oldTokens[at+1]!.span,text:JSON.stringify(posixPath.relative(posixPath.dirname(root.sourceName),next.sourceName))});
+        } else edits.push({start:oldTokens[at]!.span.start,end:oldTokens[at+1]!.span.end,text:""});
       }
-      for(const range of removals.reverse())rootSource=rootSource.slice(0,range.start)+rootSource.slice(range.end);
+      for(const edit of edits.reverse())rootSource=rootSource.slice(0,edit.start)+edit.text+rootSource.slice(edit.end);
     }
     const tokens = lexDts(rootSource), directive = tokens.findIndex(token => token.value === "/dts-v1/");
     if (directive < 0 || tokens[directive + 1]?.value !== ";") throw new ApiError("VALIDATION_FAILED", "项目根文件需要明确的 /dts-v1/; 声明，未修改配置。");
     const included=new Set(sharedResources.flatMap(resource=>resource.item.manifest.includeGraph.map(edge=>mountedSharedPath(resource.mountPath,edge.target))));
     const roots=[...sharedResources].reverse().flatMap(resource=>sharedTargets.filter(member=>member.resourceId===resource.resourceId && /\.dtsi?$/u.test(member.sourceName) && !included.has(member.sourceName)));
-    const includes=roots.map(member=>`/include/ ${JSON.stringify(posixPath.relative(posixPath.dirname(root.sourceName),member.sourceName))}`).join("\n");
+    const includes=roots.filter(member=>!retainedIncludes.has(member.sourceName)).map(member=>`/include/ ${JSON.stringify(posixPath.relative(posixPath.dirname(root.sourceName),member.sourceName))}`).join("\n");
     const existingSharedNames=new Set((await tx.query<{sourceName:string}>(`select source_name as "sourceName" from public.dts_config_revision_members
       where config_revision_id=$1 and shared_reference is not null`,[revision.id])).rows.map(member=>member.sourceName));
     const existingFiles=new Map(members.map(member=>[member.sourceName,{content:contents.get(member.fileId)!,fileVersionId:member.fileVersionId}]));
@@ -268,7 +276,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       if(!current.ok || !existingSharedNames.has(current.fileName))break;
       offset=tokens[at+1]!.span.end;
     }
-    const after = `${rootSource.slice(0, offset)}\n${includes}\n${rootSource.slice(offset)}`;
+    const after = includes?`${rootSource.slice(0, offset)}\n${includes}\n${rootSource.slice(offset)}`:rootSource;
     if (Buffer.byteLength(after) > MAX_PARAMETER_SOURCE_BYTES) throw new ApiError("VALIDATION_FAILED", "项目根文件加入引用后超过源码容量。");
     rootEdit = { fileId: root.fileId, baseFileVersionId: root.fileVersionId, sourceName: root.sourceName, before, after };
     contents.set(root.fileId, after);
