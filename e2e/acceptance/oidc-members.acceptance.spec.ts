@@ -7,6 +7,9 @@ import { withPgClient } from "./helpers/database";
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { apiRoute } from "./helpers/runtime";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { prepareInteractionSurface } from "./helpers/interactionSurface";
+import { LOCAL_DEMO_SHARED_PASSWORD } from "../../server/modules/auth/seedLocalDemoCredentials";
+import { registerGate0GeneratedSecrets } from "../../scripts/gate0-secret-registry";
 
 const oidc = process.env.AUTH_PROVIDER === "oidc", pair = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const adminSubject = "controlled-existing-administrator";
@@ -36,13 +39,29 @@ test.afterAll(async () => { if (jwks) await new Promise<void>((resolve,reject) =
 
 test("member provisioning follows the actual provider; controlled OIDC binds a stable member without local credentials", async ({ page },testInfo) => {
   if (!oidc) {
-    await signInBrowserAsRole(page,"admin","/organization/members");
+    const configuration = await page.request.get(apiRoute("/api/v1/auth/local-config"));
+    expect(configuration.status()).toBe(200);
+    const { provider } = await configuration.json() as { provider: string };
+    expect(["local","hmac"]).toContain(provider);
+    let headers = authHeadersForRole("admin");
+    if (provider === "local") {
+      await registerGate0GeneratedSecrets([LOCAL_DEMO_SHARED_PASSWORD]);
+      const login = await page.request.post(apiRoute("/api/v1/auth/login"),{ data: { username: "xu.yun",password: LOCAL_DEMO_SHARED_PASSWORD } });
+      expect(login.status()).toBe(200);
+      const { token } = await login.json() as { token: string };
+      await registerGate0GeneratedSecrets([token,`Bearer ${token}`]);
+      headers = { Authorization: `Bearer ${token}` };
+      await page.addInitScript(value => window.localStorage.setItem("wiseeff.localAuthToken",value),token);
+      await page.goto("/organization/members"); await prepareInteractionSurface(page);
+    } else await signInBrowserAsRole(page,"admin","/organization/members");
     await page.getByRole("button",{ name: "添加成员",exact: true }).click();
-    await page.getByRole("button",{ name: "直接创建账号",exact: true }).click();
+    const directCreation = page.getByRole("button",{ name: "直接创建账号",exact: true });
+    if (provider === "local") await directCreation.click();
+    else await expect(directCreation).toHaveCount(0);
     const dialog = page.getByRole("dialog",{ name: "添加成员" });
     await expect(dialog.getByLabel("初始密码",{ exact: true })).toBeVisible();
     await expect(dialog.getByLabel("Subject",{ exact: true })).toHaveCount(0);
-    const rejected = await page.request.post(apiRoute("/api/v1/users"),{ headers: authHeadersForRole("admin"),data: { authentication: "oidc",issuer: "https://unconfigured.example",subject: "unconfigured",name: "Unconfigured member",roles: [{ roleId: "hardware-user" }] } });
+    const rejected = await page.request.post(apiRoute("/api/v1/users"),{ headers,data: { authentication: "oidc",issuer: "https://unconfigured.example",subject: "unconfigured",name: "Unconfigured member",roles: [{ roleId: "hardware-user" }] } });
     expect(rejected.status()).toBe(400);
     await dialog.getByRole("button",{ name: "取消",exact: true }).focus(); await page.keyboard.press("Enter");
     await expect(dialog).toHaveCount(0);

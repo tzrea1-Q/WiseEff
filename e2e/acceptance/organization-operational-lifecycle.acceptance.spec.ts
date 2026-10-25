@@ -201,8 +201,11 @@ test("operates one Organization from invitation and handover through transfer, s
   expect((await page.request.get(apiRoute(scope(`/api/v1/knowledge/entries/${movedDraft.id}`)), { headers: { Authorization: `Bearer ${moved.token}` } })).status()).toBe(403);
   await call("GET", scope(`/api/v1/knowledge/entries/${movedDraft.id}`), undefined, admin);
   await page.goto("/platform/organizations"); await prepareInteractionSurface(page);
+  const searched = page.waitForResponse(response => response.request().method() === "GET" && new URL(response.url()).pathname === "/api/v1/platform/organizations" && new URL(response.url()).searchParams.get("q") === org && response.ok());
   await page.getByRole("searchbox", { name: "搜索组织", exact: true }).fill(org);
+  await searched;
   const directoryRow = page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: name });
+  await expect(directoryRow).toBeVisible();
   await directoryRow.getByRole("button", { name: /更多$/ }).click();
   await page.getByRole("menuitem", { name: "查看资料", exact: true }).click();
   let details = page.getByRole("dialog", { name: "组织资料", exact: true });

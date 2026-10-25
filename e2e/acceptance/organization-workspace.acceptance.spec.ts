@@ -48,8 +48,11 @@ test.describe("fixed-target member and settings workspace", () => {
     const projectId = `workspace-project-${suffix}`, projectName = `目标项目-${suffix}`;
     await withPgClient((client) => client.query("insert into projects(id,organization_id,name,code,status) values($1,$2,$3,$4,'initialized')", [projectId, target.id, projectName, `W${suffix}`]));
     await page.goto("/platform/organizations"); await prepareInteractionSurface(page);
+    const searched = page.waitForResponse(response => response.request().method() === "GET" && new URL(response.url()).pathname === "/api/v1/platform/organizations" && new URL(response.url()).searchParams.get("q") === target.id && response.ok());
     await page.getByRole("searchbox", { name: "搜索组织", exact: true }).fill(target.id);
+    await searched;
     const row = page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: organizationName });
+    await expect(row).toBeVisible();
     await row.getByRole("button", { name: "进入组织", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`organizationId=${target.id}`));
     await expect(page.getByRole("region", { name: "当前操作组织" })).toContainText(organizationName);
