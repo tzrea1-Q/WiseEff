@@ -83,6 +83,24 @@ function missingRuntimeGrants(sql: string): string[] {
         && /table_schema\s*=\s*'public'\s+and\s+table_name\s*=\s*'parameter_modules'/i.test(block[2])
         && /privilege_type\s+in\s*\(\s*'SELECT'\s*,\s*'INSERT'\s*,\s*'UPDATE'\s*,\s*'DELETE'\s*\)/i.test(block[2])
         && new RegExp(`execute\\s+format\\(\\s*'grant %s on public\\.${table} to %I'\\s*,\\s*(\\w+)\\.privilege_type\\s*,\\s*\\1\\.grantee\\s*\\)`, "i").test(block[2]);
+      // Shared sources mirror existing source privileges individually. Immutable
+      // versions and project snapshots deliberately receive no UPDATE/DELETE.
+      const draftSources = ["shared_dtsi_resources", "shared_dtsi_members", "shared_dtsi_drafts", "shared_dtsi_draft_members"];
+      const publishedSources = ["shared_dtsi_revisions", "shared_dtsi_revision_members", "shared_dtsi_publication_previews"];
+      const projectSnapshots = ["project_shared_dtsi_references", "project_shared_dtsi_snapshots"];
+      const sourceGroup = [draftSources, publishedSources, projectSnapshots].find(tables => tables.includes(table));
+      let projectSourcePrivileges = false;
+      if (sourceGroup) {
+        const targets = sourceGroup === publishedSources ? sourceGroup.slice(0, -1) : sourceGroup;
+        const privileges = sourceGroup === draftSources ? "'select','insert','update','delete'"
+          : sourceGroup === publishedSources ? "'select','insert','update'" : "'select','insert'";
+        const grantMembers = `foreachtargetinarrayarray['${targets.join("','")}']loopexecuteformat('grant%sonpublic.%ito%i',source_grant.privilege_type,target,source_grant.grantee);endloop;`;
+        const body = sourceGroup === publishedSources
+          ? `ifsource_grant.privilege_typein('select','insert')then${grantMembers}endif;executeformat('grant%sonpublic.shared_dtsi_publication_previewsto%i',source_grant.privilege_type,source_grant.grantee);`
+          : grantMembers;
+        const loop = `forsource_grantinselectgrantee,privilege_typefrominformation_schema.role_table_grantswheretable_schema='public'andtable_name='project_parameter_files'andprivilege_typein(${privileges})andgrantee<>'public'loop${body}endloop;`;
+        projectSourcePrivileges = compact.startsWith("declaresource_grantrecord;targettext;begin") && compact.includes(loop);
+      }
       // Identity reads mirror credentials, but writes also require coordinator membership.
       const identityPrivileges = table === "user_oidc_identities"
         && /table_schema\s*=\s*'public'\s+and\s+table_name\s*=\s*'user_password_credentials'/i.test(block[2])
@@ -106,7 +124,7 @@ function missingRuntimeGrants(sql: string): string[] {
         && /has_table_privilege\s*\(\s*oid\s*,\s*'public\.log_domains'\s*,\s*'INSERT'\s*\)/i.test(block[2])
         && /rolname\s*<>\s*'PUBLIC'/i.test(block[2])
         && /for\s+(\w+)\s+in[\s\S]*?\bloop\s+execute\s+format\(\s*'grant select, update on public\.public_experience_registration to %I'\s*,\s*\1\s*\)\s*;\s*end\s+loop/i.test(block[2]);
-      return runtimeDml || feedbackPrivileges || modulePrivileges || identityPrivileges || memberPrivileges || registrationPrivileges;
+      return runtimeDml || feedbackPrivileges || modulePrivileges || projectSourcePrivileges || identityPrivileges || memberPrivileges || registrationPrivileges;
     });
     if (!hasGrant) missing.push(table);
   }
@@ -155,6 +173,31 @@ describe("public table runtime grants (0185 onward)", () => {
       expect(missingRuntimeGrants(`${create}\n${invalid}`)).toEqual(["example"]);
     }
     expect(missingRuntimeGrants(`${block}\n${create}`)).toEqual(["example"]);
+  });
+
+  it("recognizes exact project-source mirrors while keeping shared revisions immutable and readers read-only", () => {
+    for (const [file, tables] of [
+      ["0292_shared_dtsi_drafts.sql", ["shared_dtsi_resources", "shared_dtsi_members", "shared_dtsi_drafts", "shared_dtsi_draft_members"]],
+      ["0293_shared_dtsi_publications.sql", ["shared_dtsi_revisions", "shared_dtsi_revision_members", "shared_dtsi_publication_previews"]],
+      ["0295_project_shared_dtsi_references.sql", ["project_shared_dtsi_references", "project_shared_dtsi_snapshots"]]
+    ] as const) {
+      const sql = readFileSync(new URL(file, migrationsDir), "utf8");
+      expect(missingRuntimeGrants(sql), file).toEqual([]);
+      for (const invalid of [
+        sql.replace("table_schema='public'", "table_schema='other_schema'"),
+        sql.replace("table_name='project_parameter_files'", "table_name='unrelated'"),
+        sql.replace("grantee<>'PUBLIC'", "true"),
+        sql.replaceAll("source_grant.privilege_type,", "'ALL',"),
+        sql.replaceAll("source_grant.grantee", "another_role.grantee"),
+        sql.replace("('SELECT','INSERT')", "('SELECT','INSERT','UPDATE')"),
+        sql.replace("('SELECT','INSERT','UPDATE','DELETE')", "('SELECT','INSERT','UPDATE')")
+      ]) {
+        if (invalid !== sql) expect(missingRuntimeGrants(invalid), file).toEqual([...tables]);
+      }
+      for (const table of tables) {
+        expect(missingRuntimeGrants(sql.replaceAll(table, "unrelated")), file).toContain("unrelated");
+      }
+    }
   });
 
   it("recognizes only exact feedback companion grants from existing attachment writers", () => {
