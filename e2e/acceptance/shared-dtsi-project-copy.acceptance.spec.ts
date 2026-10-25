@@ -25,7 +25,9 @@ type Binding = { id: string; rawValue: string };
 test.beforeAll(async ({ request }) => {
   test.setTimeout(180_000);
   if (!environment.databaseUrl) throw new Error("Explicit isolated database is required");
-  runtime = await startDisposablePostCutoverRuntime(environment.databaseUrl, { catalog: "fixture-owned", label: "shared_project_copy", apiEnv: { LOG_ANALYSIS_DETERMINISTIC: "true" } });
+  runtime = await startDisposablePostCutoverRuntime(environment.databaseUrl, { catalog: "fixture-owned", label: "shared_project_copy",
+    apiEnv: { LOG_ANALYSIS_DETERMINISTIC: "true", ...Object.fromEntries(["WISEEFF_DTS_TOOLCHAIN_DIR", "WISEEFF_DTC_PATH", "WISEEFF_FDTOVERLAY_PATH", "WISEEFF_DT_VALIDATE_PATH"]
+      .map(key => [key, process.env[key]]).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length > 0)) } });
   applyDisposableRuntimeEnv(runtime); await seedAcceptanceRoleMatrix();
   const headers = authHeadersForRole("admin"), db = createPostgresDatabase(runtime.databaseUrl);
   const auth = makeTestAuthContext({ userId: acceptanceCast.xuYun.userId, organizationId, roles: [{ roleId: "admin", projectId: null }] });
