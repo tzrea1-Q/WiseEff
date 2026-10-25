@@ -7,6 +7,7 @@ import { loadExactSourceRevisionForProof, lockExactSourceRevisionsForProof, reth
 import { loadFormerRootOverlayFiles } from "./configSetSnapshot";
 import type { CanonicalSourceManifest } from "./canonicalSource";
 import { dtsBuildInputsSchema } from "../contracts/dtoSchemas/dtsPreprocessing";
+import { loadActiveOrganizationSourceRegistrations } from "../parameter-bindings/catalogProjectValueSync";
 
 export type InitializationCopyGroup = {
   key: string; sourceProjectId: string; sourceConfigSetId: string; sourceConfigRevisionId: string;
@@ -48,6 +49,7 @@ export async function loadInitializationCopySources(db: Queryable, storage: Obje
     conflict("来源文件尚未加入完整配置或缺少当前版本，请先完成来源配置。");
   const groups: InitializationCopyGroup[] = [];
   const snapshots: InitializationConfigSnapshot[] = [];
+  const registrations = await loadActiveOrganizationSourceRegistrations(db, { organizationId });
   for (const set of sets) {
     const current = inventory.filter(row => row.configSetId === set.id);
     if (!current.length) continue;
@@ -100,7 +102,7 @@ export async function loadInitializationCopySources(db: Queryable, storage: Obje
       from public.project_shared_dtsi_references reference join public.shared_dtsi_revisions upstream on upstream.id=reference.revision_id
       where reference.organization_id=$1 and reference.project_id=$2 and reference.config_set_id=$3 order by reference.id`,
     [organizationId, set.projectId, set.id])).rows;
-    const digest = createHash("sha256").update(JSON.stringify({ group, closure, catalogReleaseId, configurationInventory: sets })).digest("hex");
+    const digest = createHash("sha256").update(JSON.stringify({ group, closure, catalogReleaseId, registrations, configurationInventory: sets })).digest("hex");
     snapshots.push({ sourceProjectId: set.projectId, sourceConfigSetId: set.id, sourceConfigRevisionId: revision?.id ?? null,
       name: set.name, ownership: "private", digest, catalogReleaseId,
       members: group.manifest.members.map(row => ({ fileId: row.fileId, fileVersionId: row.fileVersionId, checksum: row.checksum,

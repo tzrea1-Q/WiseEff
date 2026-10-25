@@ -201,6 +201,37 @@ it("copies a complete governed JSON configuration with a new exact source occurr
     expect(copied.manifest[field]).not.toBe(original.manifest[field]);
 });
 
+it("requires a new whole-source preview when current registration admission changes even with zero Bindings", async () => {
+  const sourceId = "source-init-admission", projectId = "target-init-admission", path = `/api/v1/parameters/projects/${projectId}/initialization`;
+  const auth = makeTestAuthContext({ userId: AUTHOR, organizationId: ORG, roles: [{ roleId: "admin", projectId: null }] });
+  await db.query("insert into projects(id,organization_id,name,code,status,initialization_status) values ($1,$2,$1,'ADMISSION','initialized','initialized')", [sourceId, ORG]);
+  const config = await createConfigSet(db, auth, { projectId: sourceId, name: "Private zero Binding" });
+  const source = await uploadProjectParameterFile(db, storage, auth, { projectId: sourceId, fileName: "private.json", bytes: Buffer.from('{"private":true}\n') });
+  await addConfigSetFile(db, auth, { configSetId: config.id, fileId: source.file.id, role: "base", sortOrder: 0 });
+  const preview = await api<{ items: InitializationSnapshotItemDto[]; configSnapshots: Array<{ catalogReleaseId: string }> }>(0, `${path}/copy-preview`, { primarySourceProjectId: sourceId, supplementSourceProjectIds: [] });
+  expect(preview.status, preview.bodyText).toBe(200); expect(preview.body.items).toEqual([]);
+  expect((await api(0, "/api/v1/parameters/admin/projects", { id: projectId, name: projectId, code: "ADMISSION" })).status).toBe(201);
+  const saved = await api(0, `${path}/draft`, { projectName: projectId, projectCode: "ADMISSION", ownerUserId: AUTHOR,
+    sourceProjectIds: [sourceId], primarySourceProjectId: sourceId, supplementSourceProjectIds: [], selectedModuleIds: [], selectedRisks: [], selectedSourceBindingIds: [],
+    bindingSnapshots: [], sourceConfigSnapshots: preview.body.configSnapshots, emptyLibrary: false, notes: "Current admission proof" }, "PUT"); expect(saved.status, saved.bodyText).toBe(200);
+  const submitted = await api<{ item: { id: string } }>(0, `${path}/submit`, {}); expect(submitted.status).toBe(201);
+  const registrations = await api<{ items: Array<{ id: string }> }>(0, `/api/v2/organizations/${ORG}/subject-registrations`);
+  expect(registrations.status, registrations.bodyText).toBe(200); const registrationPath = `/api/v2/organizations/${ORG}/subject-registrations/${registrations.body.items[0]!.id}`;
+  const registration = await api(0, registrationPath);
+  const changed = await requestJson(server, `${registrationPath}/retire`, { method: "POST", headers: { Authorization: `Bearer ${tokens[0]}`,
+    "X-WiseEff-Catalog-Release": preview.body.configSnapshots[0]!.catalogReleaseId, "If-Match": registration.headers.get("ETag")!, "Idempotency-Key": "initialization-admission-retire" }, body: JSON.stringify({ reason: "Revalidate current source admission" }) });
+  expect(changed.status, changed.bodyText).toBe(200);
+  try {
+    const approved = await api(1, `/api/v1/parameters/admin/initialization-reviews/${submitted.body.item.id}/approve`, {});
+    expect(approved.status, approved.bodyText).toBe(409);
+    const files = await api<{ items: unknown[] }>(0, `/api/v1/projects/${projectId}/parameter-files`); expect(files.body.items).toEqual([]);
+  } finally {
+    const restored = await requestJson(server, `${registrationPath}/restore`, { method: "POST", headers: { Authorization: `Bearer ${tokens[0]}`,
+      "X-WiseEff-Catalog-Release": preview.body.configSnapshots[0]!.catalogReleaseId, "If-Match": changed.headers.get("ETag")!, "Idempotency-Key": "initialization-admission-restore" }, body: JSON.stringify({ reason: "Restore fixture admission" }) });
+    expect(restored.status, restored.bodyText).toBe(200);
+  }
+});
+
 it("rolls back a failed source copy and retries the same approved initialization exactly once", async () => {
   const projectId = "target-init-retry";
   const pending = await pendingInitialization(projectId);

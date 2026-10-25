@@ -533,7 +533,7 @@ export async function cloneCanonicalInitializationSource(
       const complete = await loadInitializationCopySources(db, objectStore, parameterOrganizationId(auth),
         input.sourceProjectIds ?? [], String(context.catalogSnapshot.release.id));
       if (!isDeepStrictEqual(complete.snapshots, input.sourceConfigSnapshots)) {
-        throw new ApiError("CONFLICT", "完整配置来源已变化，请返回来源项目重新预览后提交。");
+        throw new ApiError("CONFLICT", "完整配置来源或登记已变化，请打回后由创建人重新预览并提交。");
       }
       groups = complete.groups.map(group => ({ ...group, sources: sources.filter(source =>
         source.item.sourceProjectId === group.sourceProjectId && source.item.sourceConfigSetId === group.sourceConfigSetId) }));

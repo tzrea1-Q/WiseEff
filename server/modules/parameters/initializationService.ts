@@ -503,6 +503,9 @@ export async function approveReview(
         const catalog = await lockSourceCatalogGovernance(tx, parameterOrganizationId(auth));
         if (!catalog) throw new ApiError("CONFLICT", "当前已发布规范目录不可用，请重新预览。");
         if (String(canonical.catalogSnapshot.release.id) !== String(catalog.id)) throw new ApiError("CONFLICT", "规范目录已变化，请重新预览。");
+        requirePreviewSnapshotMatch(draft.bindingSnapshots, await previewSnapshot(tx, auth, {
+          projectId: review.projectId, primarySourceProjectId: draft.primarySourceProjectId,
+          supplementSourceProjectIds: draft.supplementSourceProjectIds }));
         const files = await tx.query("select id from public.project_parameter_files where organization_id=$1 and project_id=$2 limit 1",
           [parameterOrganizationId(auth), review.projectId]);
         if (files.rows.length) throw new ApiError("CONFLICT", "目标项目已有源码，不能覆盖初始化配置。");

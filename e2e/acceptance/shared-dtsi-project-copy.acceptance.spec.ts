@@ -82,6 +82,9 @@ test("chooses the source project, previews a private full copy, submits for inde
   await wizard.getByLabel("项目名称", { exact: true }).fill(TARGET_NAME); await wizard.getByLabel("项目代号", { exact: true }).fill(TARGET.toUpperCase());
   await wizard.getByRole("button", { name: "下一步", exact: true }).click();
   await wizard.getByLabel("完整配置独立复制", { exact: true }).focus(); await page.keyboard.press("Space");
+  await wizard.getByRole("button", { name: "下一步", exact: true }).click();
+  await expect(wizard).toContainText("请选择至少一个来源项目，或选择从零开始。");
+  await page.screenshot({ path: info.outputPath("copy-no-source-1440.png"), fullPage: true });
   await wizard.getByLabel(SOURCE_NAME, { exact: true }).check();
   const copyPath = `/api/v1/parameters/projects/${TARGET}/initialization/copy-preview`;
   failures.push({ method: "POST", path: copyPath, status: 409 });
