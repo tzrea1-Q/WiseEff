@@ -129,7 +129,7 @@ export const publicationCopy = {
   reviseDocumentation: "文档修订",
   reviseSemantic: "语义修订",
   catalogNotAdopted: "目录有新版本并不等于项目已采用。既有绑定与项目值仍钉在旧修订上。",
-  fallbackImpact: "新驱动可能改变节点类型回退匹配，必须由另一位高风险复核人批准。",
+  fallbackImpact: "新驱动可能改变节点类型回退匹配。",
   neverLowCreate: "新增主体不能按低风险发布。",
   registerFollowup: "登记到本组织",
   registerFollowupHint: "如需在本组织使用，请单独登记主体。",
