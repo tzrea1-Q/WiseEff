@@ -122,8 +122,10 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
 
     // Existing platform-admin users may still be *labeled* 平台超级管理员 in the table/filter.
     // The grant surface is create-user + role assignment for non-platform-admin users.
-    await page.getByRole("button", { name: "添加用户" }).click();
-    const addUserDialog = page.getByRole("dialog", { name: "添加用户" });
+    await page.getByRole("button", { name: "添加成员" }).click();
+    const directCreation = page.getByRole("button", { name: "直接创建账号", exact: true });
+    if (await directCreation.isVisible()) await directCreation.click();
+    const addUserDialog = page.getByRole("dialog", { name: "添加成员" });
     await expect(addUserDialog).toBeVisible();
     expect(await readSelectControlOptions(addUserDialog.getByLabel("初始角色")))
       .not.toEqual(expect.arrayContaining([expect.objectContaining({ value: "platform-admin" })]));
@@ -142,6 +144,7 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
     const member = page.getByRole("table", { name: "平台用户", exact: true }).getByRole("row").filter({ hasText: identifier });
     await member.getByRole("button", { name: `查看 ${target!.name} 的成员资料` }).click();
     const memberDialog = page.getByRole("dialog", { name: `${target!.name} · 成员资料` });
+    await memberDialog.getByRole("tab", { name: "访问权限", exact: true }).click();
     const assignableRoles = memberDialog.getByRole("group", { name: "组织角色选择" });
     await expect(assignableRoles).toBeVisible();
     await expect(assignableRoles.getByRole("checkbox", { name: "平台超级管理员" })).toHaveCount(0);

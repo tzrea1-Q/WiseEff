@@ -1,8 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { OrganizationDeletionPreviewDialog } from "./OrganizationDeletionPreviewDialog";
 import type { OrganizationDeletionPreview } from "@/infrastructure/http/platformOrganizationsClient";
+
+afterEach(() => vi.restoreAllMocks());
 
 it("keeps a failed read retryable, shows the fixed target and offers no destructive action", async () => {
   const preview: OrganizationDeletionPreview = { organizationId: "target", organizationName: "目标组织", status: "active", generatedAt: "2026-10-23", stateDigest: "a".repeat(64),
@@ -37,4 +39,33 @@ it.each([true, false])("uses the server's populated-domain execution signal (%s)
     await userEvent.click(screen.getByRole("button", { name: "开始彻底删除" }));
     expect(requestDelete).toHaveBeenCalledWith(preview);
   } else expect(screen.queryByRole("button", { name: "开始彻底删除" })).not.toBeInTheDocument();
+});
+
+it("shows the actual blocker and prioritizes populated impact while keeping zero counts collapsed", async () => {
+  const consoleError = vi.spyOn(console, "error");
+  const preview: OrganizationDeletionPreview = { organizationId: "target", organizationName: "目标组织", status: "active", generatedAt: "2026-10-23", stateDigest: "c".repeat(64),
+    inventory: [{ key: "public.users", category: "accounts", count: 4 }, { key: "public.knowledge_entries", category: "knowledge", count: 0 }, { key: "public.projects", category: "projects", count: 0 }], platformAccounts: [], survivingPlatformAdministrators: 1,
+    experienceRegistration: { isTarget: true, enabled: true }, producers: [{ key: "agent", label: "后台工作", count: 0 }, { key: "knowledge", label: "知识后台工作", count: 0 }], storage: { exclusiveObjects: 1, sharedObjects: 0 },
+    blockers: [{ code: "experience-registration", message: "请先更换体验注册组织。" }], admissionAvailable: false, executionAvailable: false, notes: [] };
+  const registration = vi.fn();
+  render(<OrganizationDeletionPreviewDialog organizationId="target" client={{ previewDeletion: vi.fn().mockResolvedValue(preview) }}
+    onClose={vi.fn()} onNavigate={vi.fn()} onRequestDelete={vi.fn()} onOpenRegistrationSettings={registration} />);
+  await screen.findByText("请先更换体验注册组织。");
+  expect(screen.getByRole("status")).toHaveTextContent("请先更换体验注册组织。");
+  expect(screen.queryByText("当前预览未允许执行删除，请核对影响明细。")).not.toBeInTheDocument();
+  expect(within(screen.getByLabelText("组织删除影响数量")).getByText("4 条")).toBeVisible();
+  expect(screen.getByText("项目、配置、参数值与历史")).not.toBeVisible();
+  const zeroDetails = screen.getByText(/查看零值明细/).closest("details");
+  expect(zeroDetails).not.toHaveAttribute("open");
+  expect(screen.getByText("后台工作")).not.toBeVisible();
+  expect(screen.getByText("知识后台工作")).not.toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "调整体验注册设置" }));
+  expect(registration).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("button", { name: "开始彻底删除" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "关闭预览" }).closest(".platform-organizations__footer")).toBeInTheDocument();
+  await userEvent.click(within(zeroDetails as HTMLElement).getByText(/查看零值明细/));
+  expect(screen.getByText("项目、配置、参数值与历史")).toBeVisible();
+  expect(screen.getByText("后台工作")).toBeVisible();
+  expect(screen.getByText("知识后台工作")).toBeVisible();
+  expect(consoleError).not.toHaveBeenCalled();
 });

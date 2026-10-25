@@ -81,7 +81,7 @@ test("operates one Organization from invitation and handover through transfer, s
   await page.getByRole("dialog", { name: "组织资料", exact: true }).getByRole("button", { name: "进入组织", exact: true }).click();
   const scope = (route: string) => `${route}${route.includes("?") ? "&" : "?"}organizationId=${org}`;
   const workspace = page.getByRole("navigation", { name: "组织管理范围" });
-  for (const entry of ["概览", "成员与权限", "团队", "项目参与", "资源", "设置"]) await expect(workspace.getByRole("button", { name: entry, exact: true })).toBeVisible();
+  for (const entry of ["概览", "成员与权限", "邀请", "团队", "项目参与", "业务交接", "资源", "组织资料"]) await expect(workspace.getByRole("button", { name: entry, exact: true })).toBeVisible();
   const home = await page.context().newPage(), homeDiagnostics = installBrowserDiagnostics(home, testInfo);
   await home.goto("/organization"); await prepareInteractionSurface(home);
   await expect(home.getByRole("region", { name: "当前操作组织" })).toContainText(platform.auth.organization.name);
@@ -104,19 +104,19 @@ test("operates one Organization from invitation and handover through transfer, s
       const body = await response.json() as { token?: string }; if (body.token) registerSecret(body.token);
     } await route.fulfill({ response });
   });
-  await page.getByRole("button", { name: "管理邀请", exact: true }).click();
-  await page.getByRole("group", { name: "成员邀请操作", exact: true }).getByRole("button", { name: "创建邀请", exact: true }).click();
+  await page.getByRole("button", { name: "邀请", exact: true }).click();
+  await page.getByRole("button", { name: "创建邀请", exact: true }).click();
   const invitation = page.getByRole("dialog", { name: "创建邀请", exact: true });
   await invitation.getByLabel("邀请备注", { exact: true }).fill("闭环接任者");
   await invitation.getByRole("button", { name: /^组织角色/ }).click();
-  await invitation.getByRole("checkbox", { name: "Hardware User", exact: true }).uncheck();
-  await invitation.getByRole("checkbox", { name: "Software User", exact: true }).check(); await page.keyboard.press("Escape");
+  await page.getByRole("checkbox", { name: "硬件开发", exact: true }).uncheck();
+  await page.getByRole("checkbox", { name: "软件开发", exact: true }).check(); await page.keyboard.press("Escape");
   await invitation.getByRole("button", { name: "预设团队", exact: true }).click();
-  await invitation.getByRole("checkbox", { name: "闭环研发团队", exact: true }).check(); await page.keyboard.press("Escape");
+  await page.getByRole("checkbox", { name: "闭环研发团队", exact: true }).check(); await page.keyboard.press("Escape");
   await invitation.getByRole("button", { name: "预设项目", exact: true }).click();
-  await invitation.getByRole("checkbox", { name: "闭环项目", exact: true }).check(); await page.keyboard.press("Escape");
+  await page.getByRole("checkbox", { name: "闭环项目", exact: true }).check(); await page.keyboard.press("Escape");
   await page.screenshot({ path: artifact("operations-invitation-1440.png"), animations: "disabled" });
-  await invitation.getByRole("button", { name: "保存", exact: true }).click();
+  await invitation.getByRole("button", { name: "生成邀请链接", exact: true }).click();
   const linkDialog = page.getByRole("dialog", { name: "邀请链接已生成", exact: true });
   const link = await linkDialog.getByLabel("一次性邀请链接", { exact: true }).inputValue();
   await linkDialog.getByRole("button", { name: "关闭", exact: true }).click();
@@ -124,7 +124,7 @@ test("operates one Organization from invitation and handover through transfer, s
   const successorDiagnostics = installBrowserDiagnostics(successorPage, testInfo, { expectedApiFailures });
   await successorPage.goto(`/invite${new URL(link).hash}`);
   await expect(successorPage.getByText("闭环研发团队", { exact: true })).toBeVisible();
-  await expect(successorPage.getByText(/闭环项目.*Software User/)).toBeVisible();
+  await expect(successorPage.getByText(/闭环项目.*软件开发/)).toBeVisible();
   await successorPage.getByLabel("姓名", { exact: true }).fill("受邀接任者");
   await successorPage.getByLabel("用户名", { exact: true }).fill(successorUsername);
   await successorPage.getByLabel("设置密码", { exact: true }).fill(LOCAL_DEMO_SHARED_PASSWORD);
@@ -148,7 +148,7 @@ test("operates one Organization from invitation and handover through transfer, s
   const grants = page.getByRole("dialog", { name: "批量授予项目角色", exact: true });
   await grants.getByRole("combobox", { name: "选择来源团队" }).click(); await page.getByRole("option", { name: "闭环研发团队", exact: true }).click();
   await grants.getByRole("button", { name: "授予项目编辑角色", exact: true }).click();
-  await grants.getByRole("checkbox", { name: "软件开发", exact: true }).check(); await page.keyboard.press("Escape");
+  await page.getByRole("checkbox", { name: "软件开发", exact: true }).check(); await page.keyboard.press("Escape");
   await grants.getByRole("button", { name: "预览授权", exact: true }).click();
   await expect(grants.getByRole("table", { name: "批量项目授权结果" })).toContainText("未参与工程师");
   await grants.getByRole("button", { name: /确认授予/ }).click();
@@ -201,9 +201,13 @@ test("operates one Organization from invitation and handover through transfer, s
   expect((await page.request.get(apiRoute(scope(`/api/v1/knowledge/entries/${movedDraft.id}`)), { headers: { Authorization: `Bearer ${moved.token}` } })).status()).toBe(403);
   await call("GET", scope(`/api/v1/knowledge/entries/${movedDraft.id}`), undefined, admin);
   await page.goto("/platform/organizations"); await prepareInteractionSurface(page);
+  const searched = page.waitForResponse(response => response.request().method() === "GET" && new URL(response.url()).pathname === "/api/v1/platform/organizations" && new URL(response.url()).searchParams.get("q") === org && response.ok());
   await page.getByRole("searchbox", { name: "搜索组织", exact: true }).fill(org);
+  await searched;
   const directoryRow = page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: name });
-  await directoryRow.getByRole("button", { name: "查看", exact: true }).click();
+  await expect(directoryRow).toBeVisible();
+  await directoryRow.getByRole("button", { name: /更多$/ }).click();
+  await page.getByRole("menuitem", { name: "查看资料", exact: true }).click();
   let details = page.getByRole("dialog", { name: "组织资料", exact: true });
   await details.getByRole("button", { name: "停用组织", exact: true }).click();
   await page.getByRole("dialog", { name: "停用组织", exact: true }).getByRole("button", { name: "确认停用组织", exact: true }).press("Enter");
@@ -237,7 +241,7 @@ test("operates one Organization from invitation and handover through transfer, s
   for (const key of keys) expect((await readFile(path.resolve(process.env.OBJECT_STORE_ROOT!, key))).length).toBeGreaterThan(0);
   let failed: { id: string; status: string; domains: Record<string, { status: string; attempts: number }> } | undefined;
   for (let attempt = 0; attempt < 2 && !failed; attempt++) {
-    if (attempt) await directoryRow.getByRole("button", { name: "查看", exact: true }).click();
+    if (attempt) { await directoryRow.getByRole("button", { name: /更多$/ }).click(); await page.getByRole("menuitem", { name: "查看资料", exact: true }).click(); }
     await details.getByRole("button", { name: "删除影响", exact: true }).click();
     const preview = page.getByRole("dialog", { name: "组织删除影响预览", exact: true });
     await preview.getByRole("button", { name: "开始彻底删除", exact: true }).scrollIntoViewIfNeeded(); await preview.getByRole("button", { name: "开始彻底删除", exact: true }).press("Enter");
@@ -260,7 +264,8 @@ test("operates one Organization from invitation and handover through transfer, s
   await page.screenshot({ path: artifact("operations-deletion-failed-1440.png"), animations: "disabled" });
   await withPgClient(client => client.query("drop trigger test_operational_erasure_ack on parameter_catalog.organization_log_erasure_objects; drop function test_operational_erasure_ack()"));
   await page.reload(); await prepareInteractionSurface(page);
-  await page.getByRole("button", { name: "清理记录", exact: true }).click();
+  await page.getByRole("button", { name: "组织目录：更多", exact: true }).click();
+  await page.getByRole("menuitem", { name: "清理记录", exact: true }).click();
   await cleanup.getByRole("button", { name: "继续清理", exact: true }).press("Enter"); await expect(cleanup).toContainText("已删除");
   await expect(cleanup.getByLabel("领域清理进度")).toHaveCount(0);
   const final = await call<{ item: { status: string; domains: object; attempts: number } }>("GET", `/api/v1/platform/organization-deletions/${failed.id}`);

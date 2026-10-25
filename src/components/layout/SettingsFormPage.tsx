@@ -13,6 +13,7 @@ type SettingsFormPageProps = {
   dirty: boolean;
   saving?: boolean;
   saveDisabled?: boolean;
+  saveLabel?: string;
   error?: string;
   onSave: () => void;
   onDiscard: () => void;
@@ -57,7 +58,7 @@ export function SettingsLeaveGuard({ dirty, saving = false }: { dirty: boolean; 
     onConfirm={() => finishLeave(true)} onCancel={() => finishLeave(false)} />;
 }
 
-export function SettingsFormPage({ label, dirty, saving = false, saveDisabled = false, error, onSave, onDiscard, children }: SettingsFormPageProps) {
+export function SettingsFormPage({ label, dirty, saving = false, saveDisabled = false, saveLabel = "保存", error, onSave, onDiscard, children }: SettingsFormPageProps) {
   return <><form className="settings-form-page" aria-label={label} aria-busy={saving} data-settings-dirty={dirty} noValidate
     onSubmit={(event) => { event.preventDefault(); if (dirty && !saving && !saveDisabled) onSave(); }}>
     {error ? <div className="settings-form-page__error" role="alert" aria-label="保存错误摘要"><strong>保存失败</strong><p>{error}</p></div> : null}
@@ -65,13 +66,13 @@ export function SettingsFormPage({ label, dirty, saving = false, saveDisabled = 
     {dirty ? <div className="settings-form-page__save-bar" role="group" aria-label="未保存的更改">
       <span>有未保存的更改</span>
       <Button type="button" variant="outline" disabled={saving} onClick={onDiscard}>放弃</Button>
-      <Button type="submit" disabled={saving || saveDisabled}>{saving ? "保存中…" : "保存"}</Button>
+      <Button type="submit" disabled={saving || saveDisabled}>{saving ? "保存中…" : saveLabel}</Button>
     </div> : null}
   </form><SettingsLeaveGuard dirty={dirty} saving={saving} /></>;
 }
 
-export function SettingsFormSection({ title, help, children }: { title: string; help: string; children: ReactNode }) {
+export function SettingsFormSection({ title, help, children }: { title: string; help?: string; children: ReactNode }) {
   return <section className="settings-form-page__section" aria-label={title}>
-    <header><h2>{title}</h2><p>{help}</p></header>{children}
+    <header><h2>{title}</h2>{help ? <p>{help}</p> : null}</header>{children}
   </section>;
 }

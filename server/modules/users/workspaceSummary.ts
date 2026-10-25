@@ -3,8 +3,12 @@ import { ApiError } from "../../shared/http/errors";
 import { canOperateInOrganization } from "../auth/policy";
 import { assertTrustedInvocationContext, type UserInvocationContext } from "../auth/trustedInvocation";
 import type { OrganizationWorkspaceSummary } from "../contracts/dtoSchemas/organizationWorkspace";
+import { listKnowledgeHandovers } from "../knowledge/handover";
+import { withKnowledgeInvocation } from "../knowledge/scope";
 import { listProjectHandovers } from "../parameters/handover";
 import { withParameterAccess } from "../parameters/operatingScope";
+import { listFeedbackHandovers } from "../product-feedback/handover";
+import { withProductFeedbackInvocation } from "../product-feedback/scope";
 
 export async function getOrganizationWorkspaceSummary(db: Database, invocation: UserInvocationContext, localInvitationsEnabled: boolean): Promise<OrganizationWorkspaceSummary> {
   assertTrustedInvocationContext(invocation);
@@ -23,7 +27,11 @@ export async function getOrganizationWorkspaceSummary(db: Database, invocation: 
     (select count(*)::int from user_oidc_identities i join users u on u.id=i.user_id and u.organization_id=i.organization_id
       where i.organization_id=$1 and i.transfer_pending_since is not null and i.transfer_verified_at is null) as "pendingIdentitySync"`, [organizationId])).rows[0];
   // Reuse the domain's current responsibility/eligibility rules, including transferred and disabled owners.
-  const handovers = await listProjectHandovers(db, withParameterAccess(auth, invocation));
+  const handovers = await Promise.all([
+    listProjectHandovers(db, withParameterAccess(auth, invocation)),
+    listKnowledgeHandovers(db, withKnowledgeInvocation(auth, invocation)),
+    listFeedbackHandovers(db, withProductFeedbackInvocation(auth, invocation))
+  ]);
   return { organization, counts, administration: { ...pending, pendingInvitations: localInvitationsEnabled ? pending.pendingInvitations : null,
-    pendingHandovers: handovers.items.filter(item => item.pending).length } };
+    pendingHandovers: handovers.reduce((count, handover) => count + handover.items.filter(item => item.pending).length, 0) } };
 }

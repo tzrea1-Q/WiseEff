@@ -34,8 +34,8 @@ const routes: QualityRoute[] = [
   { path: "/logs", heading: "日志智能分析" },
   { path: "/debugging", heading: "页面暂时不可用" },
   { path: "/node-debugging", heading: "节点调试平台" },
-  { path: "/organization", heading: "组织管理", headingScope: ".topbar-title" },
-  { path: "/organization/members", heading: "组织管理", headingScope: ".topbar-title" },
+  { path: "/organization", heading: "组织概览", headingScope: ".topbar-title" },
+  { path: "/organization/members", heading: "成员与权限", headingScope: ".topbar-title" },
   // FA-25 expansion routes.
   { path: "/parameter-home", heading: "我的工作台", headingScope: ".topbar-title" },
   { path: "/parameter-admin/projects/aurora/configuration", heading: "参数管理后台" },
@@ -151,15 +151,18 @@ test.describe("M5.11 responsive quality gate", () => {
     await test.step("quality:navigation", () => page.goto("/organization/members"));
     await test.step("quality:readiness", () => expectUsablePage(page));
     await test.step("quality:readiness", () => prepareInteractionSurface(page));
-    await page.getByRole("button", { name: "添加用户" }).click();
+    await page.getByRole("button", { name: "添加成员", exact: true }).click();
+    const directCreate = page.getByRole("button", { name: "直接创建账号", exact: true });
+    if (await directCreate.count()) await directCreate.click();
 
-    const userDialog = page.getByRole("dialog", { name: "添加用户" });
+    const userDialog = page.getByRole("dialog", { name: "添加成员", exact: true });
     await expect(userDialog).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await userDialog.getByRole("button", { name: "取消", exact: true }).click();
 
     await page.getByRole("button", { name: /^查看 .+ 的成员资料$/ }).first().click();
     const memberDialog = page.getByRole("dialog", { name: / · 成员资料$/ });
+    await memberDialog.getByRole("tab", { name: "访问权限", exact: true }).click();
     const roleSelector = memberDialog.getByRole("group", { name: "组织角色选择" });
     await expect(roleSelector).toBeVisible();
     const { roleBounds, containerBounds } = await roleSelector.evaluate((element) => {

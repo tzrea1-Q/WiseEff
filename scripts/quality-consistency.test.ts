@@ -129,6 +129,13 @@ describe("settings form layout contract", () => {
     expect(() => requireSettingsFormPresentation([form], "/organization")).not.toThrow();
     expect(() => requireSettingsFormPresentation([{ ...form, dirty: true, saveBars: [bar] }], "/organization")).not.toThrow();
   });
+  it("requires the specific organization name action without relaxing save-bar structure", () => {
+    const named = { ...bar, saveLabel: "保存组织名称" };
+    expect(() => requireSettingsFormPresentation([{ ...form, dirty: true, saveBars: [named] }], "/organization/settings")).not.toThrow();
+    for (const invalid of [bar, { ...named, primaryCount: 2 }, { ...named, discardLabel: "" }]) {
+      expect(() => requireSettingsFormPresentation([{ ...form, dirty: true, saveBars: [invalid] }], "/organization/settings")).toThrow(/save/);
+    }
+  });
   it("requires a disabled clean save entry only on reload settings and keeps dirty discard actions", () => {
     const idleBar = { ...bar, discardLabel: "", buttonCount: 1, saveDisabled: true };
     expect(() => requireSettingsFormPresentation([{ ...form, saveBars: [idleBar] }], "/debugging-admin")).not.toThrow();

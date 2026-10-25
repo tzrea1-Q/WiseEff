@@ -40,8 +40,13 @@ test("erases runtime feedback bytes and foreign-Home projections with visible du
       create trigger test_runtime_erasure_ack before delete on organization_runtime_erasure_objects for each row execute function test_runtime_erasure_ack()`);
   });
   await signInBrowserAsRole(page, "platform-admin", "/platform/organizations");
+  const searched = page.waitForResponse(response => response.request().method() === "GET" && new URL(response.url()).pathname === "/api/v1/platform/organizations" && new URL(response.url()).searchParams.get("q") === org && response.ok());
   await page.getByRole("searchbox", { name: "搜索组织", exact: true }).fill(org);
-  await page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: name }).getByRole("button", { name: "查看", exact: true }).press("Enter");
+  await searched;
+  const directoryRow = page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: name });
+  await expect(directoryRow).toBeVisible();
+  await directoryRow.getByRole("button", { name: /更多$/ }).press("Enter");
+  await page.getByRole("menuitem", { name: "查看资料", exact: true }).click();
   await page.getByRole("dialog", { name: "组织资料", exact: true }).getByRole("button", { name: "删除影响", exact: true }).press("Enter");
   const preview = page.getByRole("dialog", { name: "组织删除影响预览", exact: true });
   await expect(preview).toContainText("反馈、通知与跨组织通知副本");

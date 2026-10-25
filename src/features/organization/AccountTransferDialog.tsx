@@ -4,12 +4,14 @@ import { SelectControl } from "@/components/common/SelectControl";
 import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { Button } from "@/components/ui/button";
 import { presentError } from "@/infrastructure/http/presentError";
+import { SettingsLeaveGuard } from "@/components/layout/SettingsFormPage";
+import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 import type { AccountTransferClient, AccountTransferInput, AccountTransferPreview } from "@/infrastructure/http/accountTransferClient";
 
 const roles = [{ id: "guest", label: "访客" }, { id: "hardware-user", label: "硬件开发" }, { id: "software-user", label: "软件开发" },
   { id: "hardware-committer", label: "硬件MDE" }, { id: "software-committer", label: "软件MDE" }, { id: "admin", label: "组织管理员" }] as const;
-export function AccountTransferDialog({ user, client, onClose, onTransferred }: {
-  user: { id: string; name: string }; client: AccountTransferClient; onClose(): void; onTransferred(): void | Promise<void>;
+export function AccountTransferDialog({ user, client, onClose, onTransferred, onOpenOrganizations }: {
+  user: { id: string; name: string }; client: AccountTransferClient; onClose(): void; onTransferred(target: { id: string; name: string }): void | Promise<void>; onOpenOrganizations?: () => void;
 }) {
   const [targets, setTargets] = useState<Array<{ id: string; name: string }> | null>(null), [attempt, setAttempt] = useState(0);
   const [target, setTarget] = useState(""), [targetRoles, setTargetRoles] = useState<AccountTransferInput["targetRoles"]>(["guest"]);
@@ -20,19 +22,20 @@ export function AccountTransferDialog({ user, client, onClose, onTransferred }: 
     return () => { cancelled = true; };
   }, [client, attempt]);
   async function inspect() {
+    if (pending || !target || !targetRoles.length) return;
     setPending(true); setError(""); setPreview(null);
     try { setPreview(await client.preview(user.id, target)); }
     catch (failure) { setError(presentError(failure, "调动影响加载失败，请重试。")); }
     finally { setPending(false); }
   }
   async function transfer() {
-    if (!preview || pending) return;
+    if (!preview?.supported || pending) return;
     setPending(true); setError("");
-    try { await client.transfer(user.id, { targetOrganizationId: target, targetRoles, expectedVersion: preview.version }); await onTransferred(); }
+    try { await client.transfer(user.id, { targetOrganizationId: target, targetRoles, expectedVersion: preview.version }); await onTransferred(preview.target); }
     catch (failure) { setError(presentError(failure, "账号调动失败，请重新预览后重试。")); setPreview(null); }
     finally { setPending(false); }
   }
-  return <ModalDialog open className="user-permissions-modal-card member-details-card modal-card--md" onDismiss={() => { if (!pending) onClose(); }}>
+  return <ModalDialog open className="user-permissions-modal-card member-details-card modal-card--md" onDismiss={() => { void (async () => { if (!pending && await requestSettingsLeave()) onClose(); })(); }}>
     {({ titleId }) => <>
       <h2 id={titleId}>调动 {user.name}</h2>
       <div className="member-details modal-body">
@@ -46,7 +49,7 @@ export function AccountTransferDialog({ user, client, onClose, onTransferred }: 
               setTargetRoles(current => event.target.checked ? [...current, role.id] : current.filter(value => value !== role.id)); setPreview(null); setError("");
             }} /> <span>{role.label}</span></label>)}
           </fieldset>
-          {!targets.length ? <p>暂无其他组织，请先在组织目录创建目标组织。</p> : null}
+          {!targets.length ? <><p>暂无可接收成员的正常组织，请先创建或恢复目标组织。</p>{onOpenOrganizations ? <Button variant="outline" onClick={onOpenOrganizations}>打开组织目录</Button> : null}</> : null}
           {preview ? <section className="member-details__section" aria-label="调动影响">
             <h3>{preview.source.name} → {preview.target.name}</h3>
             <p>账号 {preview.user.username ?? preview.user.id}{preview.oidcIdentity ? "及显式身份绑定保留" : "及密码保留"}。账号当前{preview.user.isActive ? "启用" : "停用"}，调动后保持该状态。</p>
@@ -63,6 +66,7 @@ export function AccountTransferDialog({ user, client, onClose, onTransferred }: 
           {error ? <p role="alert" className="organization-profile__error">{error}</p> : null}
         </> : null}
       </div>
+      <SettingsLeaveGuard dirty={Boolean(target) || targetRoles.join() !== "guest"} saving={pending} />
       <div className="user-permissions-modal-actions"><Button variant="outline" disabled={pending} onClick={onClose}>取消</Button>
         {preview?.supported ? <Button disabled={pending || !targetRoles.length} onClick={() => void transfer()}>{pending ? "正在调动…" : "确认调动"}</Button>
           : <Button disabled={pending || !target || !targetRoles.length || !targets} onClick={() => void inspect()}>{pending ? "正在预览…" : "预览影响"}</Button>}

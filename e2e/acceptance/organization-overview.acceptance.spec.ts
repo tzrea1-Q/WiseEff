@@ -11,7 +11,7 @@ import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 test.use({ viewport: { width: 1440, height: 900 } });
 useBrowserDiagnostics(test, { expectedApiFailures: [{ method: "GET", path: "/api/v1/organization/workspace-summary", status: 503 }] });
 
-test("organization overview and six entries retain scope, real counts and ordinary read-only access", async ({ page }, testInfo) => {
+test("organization overview entries retain scope, real counts and ordinary read-only access", async ({ page }, testInfo) => {
   await seedAcceptanceRoleMatrix();
   const suffix = randomUUID().slice(0, 8), org = `overview-${suffix}`, empty = `overview-empty-${suffix}`, admin = `overview-admin-${suffix}`, member = `overview-member-${suffix}`;
   const name = `协作验收组织-${suffix}`, scope = `?organizationId=${org}`;
@@ -38,7 +38,7 @@ test("organization overview and six entries retain scope, real counts and ordina
     await expect(page.getByRole("button", { name: "项目 2", exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("organization-overview-ready-1440.png"), animations: "disabled" });
     const nav = page.getByRole("navigation", { name: "组织管理范围", exact: true });
-    for (const [label, path] of [["成员与权限", "members"], ["团队", "teams"], ["项目参与", "projects"], ["资源", "resources"], ["设置", "settings"], ["概览", ""]]) {
+    for (const [label, path] of [["成员与权限", "members"], ["邀请", "invitations"], ["团队", "teams"], ["项目参与", "projects"], ["业务交接", "handovers"], ["资源", "resources"], ["组织资料", "settings"], ["概览", ""]]) {
       await nav.getByRole("button", { name: label, exact: true }).click();
       await expect(page).toHaveURL(new RegExp(`/organization${path ? `/${path}` : ""}\\?organizationId=${org}$`));
       await expect(page.getByRole("region", { name: "当前操作组织", exact: true })).toContainText(name);
@@ -47,13 +47,14 @@ test("organization overview and six entries retain scope, real counts and ordina
       if (path === "projects") await expect(page.getByRole("combobox", { name: "选择项目", exact: true })).toBeVisible();
     }
     await nav.getByRole("button", { name: "资源", exact: true }).click();
-    for (const title of ["参数资源", "知识库", "日志分析", "设备代理", "集成凭据"]) await expect(page.getByRole("region", { name: "组织资源", exact: true }).getByRole("button", { name: title, exact: true })).toBeVisible();
+    for (const title of ["设备代理", "集成凭据"]) await expect(page.getByRole("region", { name: "组织资源", exact: true }).getByRole("button", { name: title, exact: true })).toBeVisible();
+    for (const title of ["参数资源", "知识库", "日志分析"]) await expect(page.getByRole("region", { name: "组织资源", exact: true }).getByRole("button", { name: title, exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "设备代理", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/organization/bridges\\?organizationId=${org}$`));
     await page.getByRole("button", { name: "集成凭据", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/organization/integrations\\?organizationId=${org}$`));
     await nav.getByRole("button", { name: "资源", exact: true }).click();
-    for (const [title, destination] of [["参数资源", "/parameter-admin"], ["知识库", "/knowledge"], ["日志分析", "/logs"]]) {
+    for (const [title, destination] of [["设备代理", "/organization/bridges"], ["集成凭据", "/organization/integrations"]]) {
       await page.getByRole("region", { name: "组织资源", exact: true }).getByRole("button", { name: title, exact: true }).click();
       await expect(page).toHaveURL(url => url.pathname === destination && url.searchParams.get("organizationId") === org);
       await prepareInteractionSurface(page);
@@ -79,7 +80,8 @@ test("organization overview and six entries retain scope, real counts and ordina
     await expect(page.getByRole("button", { name: "成员 0", exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("organization-overview-empty-1440.png"), animations: "disabled" });
     await page.getByRole("button", { name: "项目 0", exact: true }).click();
-    await expect(page.getByText("创建项目后可在此查看参与名单。", { exact: false })).toBeVisible();
+    await expect(page.getByText("创建项目后可在此管理项目编辑角色。", { exact: false })).toBeVisible();
+    await expect(page.getByRole("button", { name: "前往项目管理", exact: true })).toBeVisible();
     await page.goto(`/parameters?organizationId=${empty}`);
     await prepareInteractionSurface(page);
     await expect(page.getByText("请先选择项目，或由管理员创建项目。", { exact: true })).toBeVisible();
@@ -98,11 +100,12 @@ test("organization overview and six entries retain scope, real counts and ordina
     await expect(page.getByRole("region", { name: "当前操作组织", exact: true })).toContainText("已停用 · 仅可查看");
     await expect(page.getByRole("region", { name: "组织待办", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "项目 2", exact: true })).toBeVisible();
-    for (const label of ["成员与权限", "团队", "项目参与"]) {
-      await nav.getByRole("button", { name: label, exact: true }).click();
-      await expect(page.getByText("此区域由组织管理员维护", { exact: true })).toBeVisible();
+    for (const label of ["成员与权限", "邀请", "团队", "项目参与", "业务交接"]) {
+      await expect(nav.getByRole("button", { name: label, exact: true })).toHaveCount(0);
     }
-    await nav.getByRole("button", { name: "设置", exact: true }).click();
+    await nav.getByRole("button", { name: "资源", exact: true }).click();
+    for (const title of ["参数资源", "知识库", "日志分析"]) await expect(page.getByRole("region", { name: "组织资源", exact: true }).getByRole("button", { name: title, exact: true })).toBeVisible();
+    await nav.getByRole("button", { name: "组织资料", exact: true }).click();
     await expect(page.getByLabel("显示名称", { exact: true })).toHaveValue(name);
     await expect(page.getByLabel("显示名称", { exact: true })).toBeDisabled();
     await page.screenshot({ path: testInfo.outputPath("organization-member-readonly-1440.png"), animations: "disabled" });
@@ -111,7 +114,7 @@ test("organization overview and six entries retain scope, real counts and ordina
     await expect(page).toHaveURL(url => url.pathname === "/parameters" && url.searchParams.get("organizationId") === org);
     await prepareInteractionSurface(page);
     await page.goto("/user-permissions"); await prepareInteractionSurface(page);
-    await expect(page.getByText("此区域由组织管理员维护", { exact: true })).toBeVisible();
+    await expect(page.getByText("此区域由组织管理员维护。", { exact: true })).toBeVisible();
     expect(adminRequests).toEqual([]);
     await signInBrowserAsRole(page, "platform-admin", `/parameters${scope}`); await prepareInteractionSurface(page);
     await expect(page.getByRole("region", { name: "当前操作组织", exact: true })).toContainText("所属组织：");

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createDefaultApiClient } from "@/infrastructure/http/defaultApiClient";
 import { createHttpKnowledgeRepository } from "@/infrastructure/http/knowledgeClient";
 import { createHttpProductFeedbackRepository } from "@/infrastructure/http/productFeedbackClient";
@@ -31,22 +31,32 @@ export function OrganizationAssetHandoverPanel({ organizationId, enabled, curren
   const client = useMemo(() => createDefaultApiClient({ organizationId }), [organizationId]);
   const knowledge = useMemo(() => createHttpKnowledgeRepository({ organizationId }), [organizationId]);
   const feedback = useMemo(() => createHttpProductFeedbackRepository({ apiClient: client, baseUrl: resolveWiseEffApiBaseUrl() }), [client]);
-  const [lists, setLists] = useState<{ knowledge: List; feedback: List } | null>(null), [error, setError] = useState("");
+  const [lists, setLists] = useState<{ knowledge: List | null; feedback: List | null }>({ knowledge: null, feedback: null }), [error, setError] = useState("");
+  const [listErrors, setListErrors] = useState({ knowledge: "", feedback: "" });
+  const [loading, setLoading] = useState({ knowledge: true, feedback: true });
+  const [projectCount, setProjectCount] = useState<number | null>(null);
   const [attempt, setAttempt] = useState(0), [pendingOnly, setPendingOnly] = useState(true);
   const [assignment, setAssignment] = useState<Item | null>(null), [successor, setSuccessor] = useState("");
   const [saving, setSaving] = useState(false), [assignmentError, setAssignmentError] = useState("");
   const [entry, setEntry] = useState<KnowledgeEntry | null>(null), [batchId, setBatchId] = useState<string | null>(null);
   const [feedbackDraft, setFeedbackDraft] = useState<ProductFeedback | null>(null), [feedbackWork, setFeedbackWork] = useState<ProductFeedback | null>(null);
-  const generation = useRef(0);
+  const generation = useRef({ knowledge: 0, feedback: 0 });
+  const loadGroup = useCallback(async (group: "knowledge" | "feedback") => {
+    const current = ++generation.current[group];
+    setListErrors(value => ({ ...value, [group]: "" })); setLoading(value => ({ ...value, [group]: true }));
+    try {
+      const list = await client.get<List>(group === "knowledge" ? "/api/v1/knowledge/handovers" : "/api/v1/product-feedback/handovers");
+      if (generation.current[group] === current) setLists(value => ({ ...value, [group]: list }));
+    } catch (failure) {
+      if (generation.current[group] === current) setListErrors(value => ({ ...value, [group]: presentError(failure, `${group === "knowledge" ? "知识" : "反馈"}交接清单加载失败。`) }));
+    } finally { if (generation.current[group] === current) setLoading(value => ({ ...value, [group]: false })); }
+  }, [client]);
   useEffect(() => {
     if (!enabled) return;
-    const current = ++generation.current; setError("");
-    void Promise.all([client.get<List>("/api/v1/knowledge/handovers"), client.get<List>("/api/v1/product-feedback/handovers")])
-      .then(([knowledgeList, feedbackList]) => { if (generation.current === current) setLists({ knowledge: knowledgeList, feedback: feedbackList }); })
-      .catch((failure: unknown) => { if (generation.current === current) setError(presentError(failure, "业务交接清单加载失败。")); });
-    return () => { generation.current++; };
-  }, [enabled, client, attempt]);
-  const reload = () => setAttempt(value => value + 1);
+    void loadGroup("knowledge"); void loadGroup("feedback");
+    return () => { generation.current.knowledge++; generation.current.feedback++; };
+  }, [enabled, loadGroup]);
+  const reload = () => { setError(""); void loadGroup("knowledge"); void loadGroup("feedback"); setAttempt(value => value + 1); };
   const closeAssignment = async () => { if (await requestSettingsLeave()) setAssignment(null); };
   const assign = async () => {
     if (!assignment) return;
@@ -72,22 +82,25 @@ export function OrganizationAssetHandoverPanel({ organizationId, enabled, curren
     await knowledge.update(entry.id, { ...input, expectedHeadRevisionNumber: entry.headRevisionNumber }); reload();
   };
   if (!enabled) return <SectionEmpty message="业务交接需要连接真实 API。" />;
-  if (!lists) return error ? <SectionError message={error} onRetry={reload} /> : <SectionSkeleton label="正在加载业务交接" />;
-  const candidates = assignment?.kind.startsWith("feedback-") ? lists.feedback.candidates.filter(candidate => assignment.kind !== "feedback-work" || candidate.canTriage) : lists.knowledge.candidates;
-  const table = (group: "knowledge" | "feedback", label: string) => <AdminListPage label={label} headerContent={label} headerActions={null} filterBar={null}
-    table={{ ariaLabel: label, rows: lists[group].items.filter(item => !pendingOnly || item.pending), rowKey: item => item.id, columns: [
+  const candidates = assignment?.kind.startsWith("feedback-") ? lists.feedback?.candidates.filter(candidate => assignment.kind !== "feedback-work" || candidate.canTriage) ?? [] : lists.knowledge?.candidates ?? [];
+  const visibleItems = (group: "knowledge" | "feedback") => lists[group]?.items.filter(item => !pendingOnly || item.pending) ?? [];
+  const allEmpty = projectCount === 0 && !loading.knowledge && !loading.feedback && !listErrors.knowledge && !listErrors.feedback && !visibleItems("knowledge").length && !visibleItems("feedback").length;
+  const table = (group: "knowledge" | "feedback", label: string) => listErrors[group] ? <section aria-label={label}><h3>{label}</h3><SectionError message={listErrors[group]} onRetry={() => void loadGroup(group)} /></section>
+    : !lists[group] ? <SectionSkeleton label={`正在加载${label}`} /> : !visibleItems(group).length ? null : <AdminListPage label={label} headerContent={label} headerActions={null} filterBar={null}
+    table={{ ariaLabel: label, rows: visibleItems(group), rowKey: item => item.id, columns: [
       { key: "title", header: "业务", render: item => <div><p className="font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{labels[item.kind]}</p></div> },
       { key: "responsible", header: "当前责任人", render: item => item.responsibleUserName ?? "未指定" },
       { key: "state", header: "交接状态", render: item => <Badge variant={item.pending ? "outline" : "secondary"}>{item.pending ? "待交接" : "已分配"}</Badge> }
     ] }} rowActions={item => ({ label: item.title, primaryAction: { id: "continue", label: "继续处理", onSelect: () => continueWork(item) }, items: [{ id: "assign", label: "指定接任者", onSelect: () => { setAssignment(item); setSuccessor(item.pending ? "" : item.responsibleUserId ?? ""); setAssignmentError(""); } }] })}
     emptyState={{ title: "暂无待交接事项", message: pendingOnly ? "当前没有无人负责的未完成业务。可取消筛选查看全部未完成业务。" : "当前没有未完成业务。" }} />;
   return <section className="flex flex-col gap-5" aria-label="组织业务交接">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-base font-semibold">业务交接</h2><p className="text-sm text-muted-foreground">草稿与历史留在原组织。未指定接任者时，管理员仍可继续处理。</p></div><Button variant="outline" onClick={reload}>刷新交接清单</Button></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-base font-semibold">业务交接</h2><Button variant="outline" disabled={loading.knowledge || loading.feedback} onClick={reload}>{loading.knowledge || loading.feedback ? "正在刷新…" : "刷新交接清单"}</Button></div>
     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={pendingOnly} onChange={event => setPendingOnly(event.target.checked)} />仅显示待交接</label>
     {error ? <SectionError message={error} onRetry={reload} /> : null}
-    <OrganizationProjectHandoverPanel organizationId={organizationId} currentUserId={currentUserId} pendingOnly={pendingOnly} onNavigate={onNavigate} refreshSignal={attempt} />
+    <OrganizationProjectHandoverPanel organizationId={organizationId} currentUserId={currentUserId} pendingOnly={pendingOnly} onNavigate={onNavigate} refreshSignal={attempt} hideEmpty onVisibleCountChange={setProjectCount} />
     {table("knowledge", "知识业务交接")}{table("feedback", "反馈业务交接")}
-    <p className="text-xs text-muted-foreground">组织机器凭据独立保留。个人密码、会话、Agent 私人对话和设备配对不参与交接；分析技能草稿由组织管理员在技能管理中直接维护。</p>
+    {allEmpty ? <SectionEmpty title={pendingOnly ? "暂无待交接事项" : "暂无未完成业务"} message={pendingOnly ? "取消筛选可查看已有责任人的未完成业务。" : "当前组织没有需要继续处理的业务。"} /> : null}
+    <details className="text-sm text-muted-foreground"><summary>交接规则</summary><p>草稿与历史留在原组织。未指定接任者时，管理员仍可继续处理。交接只调整当前责任，不改写历史或自动授予审核、合入权限。</p><p>组织机器凭据独立保留。个人密码、会话、Agent 私人对话和设备配对不参与交接；分析技能草稿在技能管理中维护。</p></details>
     <SettingsLeaveGuard dirty={Boolean(assignment && successor !== (assignment.pending ? "" : assignment.responsibleUserId ?? ""))} saving={saving} />
     <ModalDialog open={Boolean(assignment)} onDismiss={() => void closeAssignment()} describedBy className="submission-dialog modal-card--sm flex flex-col gap-4">
       {({ titleId, descriptionId }) => <><h2 id={titleId}>指定接任者</h2><p id={descriptionId} className="text-sm text-muted-foreground">{assignment?.title} · 只调整当前责任，保留创建人和历史署名。</p>

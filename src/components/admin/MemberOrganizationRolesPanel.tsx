@@ -11,12 +11,13 @@ type Props = {
   options: Array<{ id: PlatformRoleId; label: string; description: string }>;
   disabledReason?: string;
   isSelf?: boolean;
+  readOnly?: boolean;
   onSave: (roles: PlatformRoleId[], expectedRoles: PlatformRoleId[]) => Promise<UserAccount>;
   onReload: () => Promise<UserAccount>;
   onSaved?: (user: UserAccount) => Promise<void>;
 };
 
-export function MemberOrganizationRolesPanel({ user, options, disabledReason, isSelf = false, onSave, onReload, onSaved }: Props) {
+export function MemberOrganizationRolesPanel({ user, options, disabledReason, isSelf = false, readOnly = false, onSave, onReload, onSaved }: Props) {
   // Keep the original role set while editing, even if the directory refreshes.
   // The server compares that set with its current bindings before writing.
   const [savedRoles, setSavedRoles] = useState(() => organizationRoleIds(user));
@@ -30,7 +31,7 @@ export function MemberOrganizationRolesPanel({ user, options, disabledReason, is
   const dirty = [...roles].sort().join() !== [...savedRoles].sort().join();
 
   async function save() {
-    if (pending || conflictRoles !== null) return;
+    if (pending || conflictRoles !== null || readOnly || disabledReason) return;
     setPending(true); setError("");
     try {
       const updated = await onSave(roles, savedRoles);
@@ -59,8 +60,9 @@ export function MemberOrganizationRolesPanel({ user, options, disabledReason, is
     } finally { setPending(false); }
   }
 
+  if (readOnly || disabledReason) return <><p>{label(organizationRoleIds(user))}</p>{disabledReason ? <p className="member-details__hint">{disabledReason}</p> : null}</>;
   return <>
-    <SettingsFormPage label="组织角色设置" dirty={dirty} saving={pending} saveDisabled={Boolean(disabledReason) || conflictRoles !== null}
+    <SettingsFormPage label="组织角色设置" saveLabel="保存组织角色" dirty={dirty} saving={pending} saveDisabled={conflictRoles !== null}
       onSave={() => { setError(""); setConfirm(true); }} onDiscard={() => { setRoles(savedRoles); setError(""); setSaved(false); }}>
       <fieldset className="member-organization-roles" aria-label="组织角色选择" disabled={pending || Boolean(disabledReason)}>
         {options.map((option) => <label key={option.id} className="member-organization-roles__option">

@@ -36,7 +36,7 @@ describe("permission-aware routing", () => {
     expect(sidebar.textContent?.includes("知识库")).toBe(canAccessPage(roleId, "knowledge"));
   });
 
-  it.each([false, true])("lets Guest enter the organization workspace without admin controls with compact height %s", (compactHeight) => {
+  it.each([false, true])("lets Guest enter the organization workspace without admin controls with compact height %s", async (compactHeight) => {
     vi.stubGlobal("matchMedia", (query: string) => ({
       matches: compactHeight && query === "(max-height: 820px)", media: query,
       addEventListener: vi.fn(), removeEventListener: vi.fn()
@@ -56,8 +56,8 @@ describe("permission-aware routing", () => {
     fireEvent.click(management.getByRole("link", { name: "组织管理" }));
     expect(window.location.pathname).toBe("/organization");
     fireEvent.click(within(screen.getByRole("navigation", { name: "组织管理范围" })).getByRole("button", { name: "资源" }));
+    expect(await screen.findByRole("button", { name: "参数资源" })).toBeInTheDocument();
     const resources = within(screen.getByRole("region", { name: "组织资源" }));
-    expect(resources.getByRole("button", { name: "参数资源" })).toBeInTheDocument();
     expect(resources.getByRole("button", { name: "知识库" })).toBeInTheDocument();
     expect(resources.queryByRole("button", { name: "设备代理" })).not.toBeInTheDocument();
     expect(resources.queryByRole("button", { name: "集成凭据" })).not.toBeInTheDocument();
@@ -72,10 +72,10 @@ describe("permission-aware routing", () => {
     };
     render(<App initialAppState={{ ...initialState, activeRoleId }} userGovernanceActions={userGovernanceActions} />);
 
-    expect(screen.getByText("此区域由组织管理员维护")).toBeInTheDocument();
+    expect(screen.getByText("此区域由组织管理员维护。")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "用户权限" })).not.toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "平台用户" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "添加用户" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加成员" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "管理邀请" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "业务交接" })).not.toBeInTheDocument();
     for (const action of Object.values(userGovernanceActions)) expect(action).not.toHaveBeenCalled();
@@ -100,7 +100,7 @@ describe("permission-aware routing", () => {
     fireEvent.click(settingsEntry);
 
     await waitFor(() => {
-      expect(document.querySelector(".topbar-title")).toHaveTextContent("组织管理");
+      expect(document.querySelector(".topbar-title")).toHaveTextContent("组织概览");
     });
   });
 

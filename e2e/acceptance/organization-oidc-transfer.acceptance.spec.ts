@@ -80,6 +80,7 @@ test("keeps OIDC transfer pending until a real signed target login and retries a
   const targetRow = page.getByRole("row").filter({ hasText: memberName });
   await expect(targetRow).toContainText("OIDC · 等待身份系统同步");
   await targetRow.getByRole("button", { name: `查看 ${memberName} 的成员资料`, exact: true }).click();
+  await page.getByRole("dialog", { name: `${memberName} · 成员资料`, exact: true }).getByRole("tab", { name: "访问权限", exact: true }).click();
   const details = page.getByRole("dialog", { name: `${memberName} · 成员资料`, exact: true }), status = details.getByRole("status", { name: "外部身份同步结果" });
   await expect(status).toContainText("等待身份系统同步"); await expect(status).toContainText(target);
   await status.scrollIntoViewIfNeeded();

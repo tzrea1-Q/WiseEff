@@ -10,7 +10,7 @@ afterEach(cleanup);
 const skill = mockSkillWorkspace("skill-charging")!;
 const credential: IntegrationCredential = { id: "credential-1", organizationId: "org-1", name: "Factory", skillId: skill.id, skillName: skill.name,
   status: "active", createdBy: "user-1", createdAt: "2026-10-19T12:00:00Z", rotatedAt: null, revokedAt: null, lastUsedAt: null };
-function setup(items: IntegrationCredential[] = [], options: { canEdit?: boolean; apiMode?: boolean } = {}) {
+function setup(items: IntegrationCredential[] = [], options: { canEdit?: boolean; canView?: boolean; apiMode?: boolean } = {}) {
   const repository = { listIntegrationCredentials: vi.fn().mockResolvedValue(items),
     issueIntegrationCredential: vi.fn().mockResolvedValue({ item: credential, token: "wie_credential-1_one-time-secret" }),
     rotateIntegrationCredential: vi.fn().mockResolvedValue({ item: { ...credential, rotatedAt: "2026-10-19T13:00:00Z" }, token: "wie_credential-1_rotated-secret" }),
@@ -134,5 +134,30 @@ describe("integration credentials", () => {
     const { repository } = setup([], { canEdit: false });
     expect(repository.listIntegrationCredentials).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "签发凭据" })).not.toBeInTheDocument();
+  });
+
+  it("keeps a read-only credential inventory searchable without exposing write actions", async () => {
+    const { repository, user } = setup([credential, { ...credential, id: "old", name: "Old pipeline", status: "revoked" }], { canView: true, canEdit: false });
+    expect(await screen.findByText("Factory")).toBeInTheDocument();
+    expect(repository.listIntegrationCredentials).toHaveBeenCalledOnce();
+    expect(screen.getByText("当前仅可查看集成凭据。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "签发凭据" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /凭据 Factory/ })).not.toBeInTheDocument();
+    await user.type(screen.getByRole("searchbox", { name: "搜索集成凭据" }), "Old");
+    expect(screen.queryByText("Factory")).not.toBeInTheDocument();
+    expect(screen.getByText("Old pipeline")).toBeInTheDocument();
+    await user.click(screen.getByRole("combobox", { name: "筛选凭据状态" }));
+    await user.click(screen.getByRole("option", { name: "有效" }));
+    expect(screen.getByText("没有符合筛选条件的集成凭据。")).toBeInTheDocument();
+  });
+
+  it("keeps a specific credential refusal beside the unchanged form", async () => {
+    const { user, repository } = setup();
+    repository.issueIntegrationCredential.mockRejectedValueOnce(new Error("组织已停用，请恢复后签发。"));
+    await user.click(await screen.findByRole("button", { name: "签发凭据" }));
+    await user.type(screen.getByLabelText("凭据名称"), "Production");
+    await user.click(screen.getByRole("button", { name: "签发" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("组织已停用，请恢复后签发。");
+    expect(screen.getByLabelText("凭据名称")).toHaveValue("Production");
   });
 });

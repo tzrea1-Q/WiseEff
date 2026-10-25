@@ -203,8 +203,10 @@ test.describe("M5.11 accessibility quality gate", () => {
 
     await test.step("quality:navigation", () => page.goto("/organization/members"));
     await test.step("quality:readiness", () => prepareInteractionSurface(page));
-    await page.getByRole("button", { name: "添加用户" }).click();
-    await expect(page.getByRole("dialog", { name: "添加用户" })).toBeVisible();
+    await page.getByRole("button", { name: "添加成员", exact: true }).click();
+    const directCreate = page.getByRole("button", { name: "直接创建账号", exact: true });
+    if (await directCreate.count()) await directCreate.click();
+    await expect(page.getByRole("dialog", { name: "添加成员", exact: true })).toBeVisible();
     await scan(page, testInfo, "user-add-dialog");
   });
 });

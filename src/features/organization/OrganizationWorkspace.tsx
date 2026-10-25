@@ -49,8 +49,8 @@ function ResolvedOrganizationWorkspace({ requestedId, workspaceClient, ...props 
   if (!scope || !client) return <SectionSkeleton label="正在进入组织" />;
   return <div>
     <section className="organization-operating-scope" aria-label="当前操作组织">
-      <div><span className="organization-operating-scope__label">当前操作组织</span><strong>{scope.organization.name}</strong><Badge variant="secondary">{scope.organization.status === "suspended" ? "已停用 · 仅可查看" : "正常"}</Badge>
-        <code>{scope.organization.id}</code>{foreign ? <span>所属组织：{scope.actor.organization.name}</span> : null}</div>
+      <div><strong>{scope.organization.name}</strong>{scope.organization.status === "suspended" ? <Badge variant="secondary">已停用 · 仅可查看</Badge> : null}
+        {foreign ? <span>所属组织：{scope.actor.organization.name}</span> : null}</div>
       {platform ? <div className="organization-operating-scope__actions"><Button variant="outline" onClick={() => props.onNavigate("/platform/organizations")}>组织目录</Button>
         {foreign ? <Button variant="outline" onClick={() => props.onNavigate("/organization")}>返回所属组织</Button> : null}</div> : null}
     </section>

@@ -43,7 +43,7 @@ async function preview() {
   await userEvent.click(await within(dialog).findByRole("combobox", { name: "选择来源团队" }));
   await userEvent.click(screen.getByRole("option", { name: "Engineering" }));
   await userEvent.click(within(dialog).getByRole("button", { name: "授予项目编辑角色" }));
-  await userEvent.click(within(dialog).getByRole("checkbox", { name: "软件开发" }));
+  await userEvent.click(await screen.findByRole("checkbox", { name: "软件开发" }));
   await userEvent.keyboard("{Escape}");
   await userEvent.click(within(dialog).getByRole("button", { name: "预览授权" }));
   return dialog;
@@ -54,10 +54,10 @@ it("previews concrete team members and adds roles without replacing existing par
   const table = within(dialog).getByRole("table", { name: "批量项目授权结果" });
   expect(table).toHaveTextContent("Target project");
   expect(within(table).getByRole("row", { name: /Alice/ })).toHaveTextContent("硬件开发、软件开发");
-  expect(within(table).getByRole("row", { name: /Inactive/ })).toHaveTextContent("账号已停用");
+  expect(within(table).getByRole("row", { name: /Inactive/ })).toHaveTextContent("已跳过：账号已停用");
   expect(within(table).getByRole("row", { name: /Gone/ })).toHaveTextContent("成员已不存在或不属于当前组织");
   await userEvent.click(within(dialog).getByRole("button", { name: "确认授予 2 人" }));
-  expect(await within(dialog).findByText("已生效 2 人，待处理 2 人")).toBeInTheDocument();
+  expect(await within(dialog).findByText("已生效 2 人，需重试 0 人，已跳过 2 人")).toBeInTheDocument();
   expect(bodies).toEqual([
     { roles: ["hardware-user", "software-user"], expectedRoles: ["hardware-user"] },
     { roles: ["software-user"], expectedRoles: [] }
@@ -67,12 +67,12 @@ it("retains mixed results and reconciles conflict and uncertain writes before re
   const { bodies } = setup("retry");
   const dialog = await preview();
   await userEvent.click(within(dialog).getByRole("button", { name: "确认授予 2 人" }));
-  expect(await within(dialog).findByText("已生效 0 人，待处理 4 人")).toBeInTheDocument();
+  expect(await within(dialog).findByText("已生效 0 人，需重试 2 人，已跳过 2 人")).toBeInTheDocument();
   expect(within(dialog).queryByRole("button", { name: "确认授予 2 人" })).not.toBeInTheDocument();
-  await userEvent.click(within(dialog).getByRole("button", { name: "重新核对未完成项" }));
+  await userEvent.click(within(dialog).getByRole("button", { name: "重新核对可重试项" }));
   expect(await within(dialog).findByText("已核实生效")).toBeInTheDocument();
   await userEvent.click(within(dialog).getByRole("button", { name: "确认授予 1 人" }));
-  expect(await within(dialog).findByText("已生效 2 人，待处理 2 人")).toBeInTheDocument();
+  expect(await within(dialog).findByText("已生效 2 人，需重试 0 人，已跳过 2 人")).toBeInTheDocument();
   expect(bodies).toHaveLength(3);
   expect(bodies[2]).toEqual({ roles: ["hardware-user", "hardware-committer", "software-user"], expectedRoles: ["hardware-user", "hardware-committer"] });
 });

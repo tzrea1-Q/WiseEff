@@ -215,11 +215,11 @@ test.describe("M5.11 interaction-state visual gate", () => {
     annotateFailureRoute(testInfo, VISUAL_INTERACTION_FAILURE_ROUTE);
     await openUserPermissions(page);
 
-    const addUser = page.getByRole("button", { name: "添加用户" });
+    const addUser = page.getByRole("button", { name: "添加成员", exact: true });
     await addUser.hover();
 
     const toolbar = page.locator(".user-permissions-toolbar");
-    await expect(toolbar.getByRole("button", { name: "添加用户" })).toBeVisible();
+    await expect(toolbar.getByRole("button", { name: "添加成员", exact: true })).toBeVisible();
     await test.step("quality:capture", async () => expect(toolbar).toHaveScreenshot("state-button-primary-hover.png", {
       mask: await stableMasks(page)
     }));
@@ -229,11 +229,11 @@ test.describe("M5.11 interaction-state visual gate", () => {
     annotateFailureRoute(testInfo, VISUAL_INTERACTION_FAILURE_ROUTE);
     await openUserPermissions(page);
 
-    const addUser = page.getByRole("button", { name: "添加用户" });
+    const addUser = page.getByRole("button", { name: "添加成员", exact: true });
     await focusViaKeyboard(page, addUser);
 
     const toolbar = page.locator(".user-permissions-toolbar");
-    await expect(toolbar.getByRole("button", { name: "添加用户" })).toBeFocused();
+    await expect(toolbar.getByRole("button", { name: "添加成员", exact: true })).toBeFocused();
     await test.step("quality:capture", async () => expect(toolbar).toHaveScreenshot("state-button-primary-focus-visible.png", {
       mask: await stableMasks(page)
     }));
@@ -243,8 +243,10 @@ test.describe("M5.11 interaction-state visual gate", () => {
     annotateFailureRoute(testInfo, VISUAL_INTERACTION_FAILURE_ROUTE);
     await openUserPermissions(page);
 
-    await page.getByRole("button", { name: "添加用户" }).click();
-    await expect(page.getByRole("dialog", { name: "添加用户" })).toBeVisible();
+    await page.getByRole("button", { name: "添加成员", exact: true }).click();
+    const directCreate = page.getByRole("button", { name: "直接创建账号", exact: true });
+    if (await directCreate.count()) await directCreate.click();
+    await expect(page.getByRole("dialog", { name: "添加成员", exact: true })).toBeVisible();
     await expect(page.locator(".modal-backdrop")).toBeVisible();
     // Full-page shot includes sidebar/title chrome; wait out the API sync banner
     // (not aria-live, so stableMasks will not cover it) and CJK font swap.

@@ -85,9 +85,13 @@ test(`${local ? "local signup" : "existing request under HMAC"}: enables an appl
   const response = await completed; expect(response.status()).toBe(200); expect((await response.json() as { item: RegistrationRoleRequestDto }).item).toMatchObject({ decisionOutcome: "basic-enabled", decisionCanLogin: true, decisionRoleIds: ["software-user"] });
   await expect(dialog).toHaveCount(0); await expect(row).toHaveCount(0);
   await page.getByRole("radio", { name: "处理历史", exact: true }).focus(); await page.keyboard.press("Space");
-  const history = page.locator("article").filter({ has: page.getByText(target.name, { exact: true }) });
-  await expect(history.getByText("已按软件开发启用", { exact: true })).toBeVisible(); await expect(history.getByText("决定时：可登录 · 软件开发", { exact: true })).toBeVisible();
-  await page.reload(); await expect(history.getByText("已按软件开发启用", { exact: true })).toBeVisible();
+  await page.getByRole("searchbox", { name: "搜索处理历史", exact: true }).fill(target.name);
+  const history = page.getByRole("table", { name: "注册申请历史", exact: true }).getByRole("row").filter({ has: page.getByText(target.name, { exact: true }) });
+  const enabledResult = history.getByRole("cell", { name: "已按软件开发启用 决定时：可登录 · 软件开发", exact: true });
+  await expect(enabledResult).toBeVisible(); await expect(history.getByText("决定时：可登录 · 软件开发", { exact: true })).toBeVisible();
+  await page.reload();
+  await page.getByRole("searchbox", { name: "搜索处理历史", exact: true }).fill(target.name);
+  await expect(enabledResult).toBeVisible();
   const readyImage = testInfo.outputPath("registration-basic-history-1440.png"); await page.screenshot({ path: readyImage, animations: "disabled" }); await testInfo.attach("registration-basic-history-1440", { path: readyImage, contentType: "image/png" });
   const user = await login(); expect(user.status).toBe(200);
   expect(user.auth.roles).toEqual([{ projectId: null, roleId: "software-user" }]); expect(user.auth.permissions).not.toContain("parameter:review");
@@ -109,8 +113,9 @@ test(`${local ? "local signup" : "existing request under HMAC"}: closes an obsol
   const dialog = page.getByRole("dialog", { name: "拒绝注册申请？", exact: true }); await expect(dialog).toContainText("保留最新设置");
   await dialog.getByRole("button", { name: "确认拒绝", exact: true }).focus(); await page.keyboard.press("Enter"); await expect(dialog).toHaveCount(0);
   await page.getByRole("radio", { name: "处理历史", exact: true }).click();
-  const history = page.locator("article").filter({ has: page.getByText(target.name, { exact: true }) });
-  await expect(history.getByText("已拒绝提升，保留账号设置", { exact: true })).toBeVisible(); await expect(history.getByText("决定时：可登录 · 硬件开发", { exact: true })).toBeVisible();
+  await page.getByRole("searchbox", { name: "搜索处理历史", exact: true }).fill(target.name);
+  const history = page.getByRole("table", { name: "注册申请历史", exact: true }).getByRole("row").filter({ has: page.getByText(target.name, { exact: true }) });
+  await expect(history.getByRole("cell", { name: "已拒绝提升，保留账号设置 决定时：可登录 · 硬件开发", exact: true })).toBeVisible(); await expect(history.getByText("决定时：可登录 · 硬件开发", { exact: true })).toBeVisible();
   const preservedImage = testInfo.outputPath("registration-preserved-history-1440.png"); await page.screenshot({ path: preservedImage, animations: "disabled" }); await testInfo.attach("registration-preserved-history-1440", { path: preservedImage, contentType: "image/png" });
   const login = await authenticate(request, target); expect(login.status).toBe(200);
   expect(login.auth.roles).toEqual([{ projectId: null, roleId: "hardware-user" }]);

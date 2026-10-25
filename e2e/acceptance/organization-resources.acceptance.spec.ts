@@ -126,6 +126,19 @@ test.describe("fixed-target device and integration governance", () => {
       const current = await page.request.get(apiRoute("/api/v1/me"), { headers }); expect((await current.json() as Session["auth"]).organization).toEqual(platform.auth.organization);
       const all = await page.request.get(apiRoute(`/api/v1/log-integration-credentials${scope}`), { headers });
       expect((await all.json() as { items: Credential[] }).items).toContainEqual(expect.objectContaining({ name: `技能界面签发-${suffix}`, skillId: skill.id }));
+      const lifecycle = apiRoute(`/api/v1/platform/organizations/${target.id}/lifecycle`);
+      expect((await page.request.patch(lifecycle, { headers, data: { status: "suspended", expectedStatus: "active" } })).status()).toBe(200);
+      try {
+        await page.goto(`/organization/integrations${scope}`); await prepareInteractionSurface(page);
+        await expect(page.getByRole("region", { name: "当前操作组织", exact: true })).toContainText("已停用 · 仅可查看");
+        await expect(table).toContainText(boundName);
+        await expect(table).toContainText(`技能界面签发-${suffix}`);
+        await expect(page.getByRole("button", { name: "签发凭据", exact: true })).toHaveCount(0);
+        await expect(table.getByRole("button", { name: /凭据 .*：更多/ })).toHaveCount(0);
+        await page.screenshot({ path: testInfo.outputPath("target-credentials-suspended-readonly-1440.png"), animations: "disabled" });
+      } finally {
+        expect((await page.request.patch(lifecycle, { headers, data: { status: "active", expectedStatus: "suspended" } })).status()).toBe(200);
+      }
     } finally { socket.terminate(); }
   });
 });

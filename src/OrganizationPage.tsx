@@ -13,13 +13,15 @@ import { IntegrationCredentials } from "@/features/log-skills/IntegrationCredent
 import { OrganizationProjectsPanel, type ProjectMembershipClient } from "@/features/organization/OrganizationProjectsPanel";
 import { OrganizationTeamsPage } from "@/features/organization/OrganizationTeamsPage";
 import { OrganizationAssetHandoverPanel } from "@/features/organization/OrganizationAssetHandoverPanel";
-import { Button } from "@/components/ui/button";
 import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { OrganizationInvitationsPage } from "@/features/organization/OrganizationInvitationsPage";
 import type { OrganizationInvitationsClient } from "@/infrastructure/http/organizationInvitationsClient";
 import type { ComponentProps } from "react";
 import { OrganizationOverviewPanel, OrganizationResourcesPanel } from "@/features/organization/OrganizationOverviewPanel";
 import type { OrganizationWorkspaceSummary } from "@/infrastructure/http/userGovernanceClient";
+import { VISIBLE_WORKFLOWS, type WorkflowId } from "@/domain/workflowDiscovery";
+import { ViewSwitch } from "@/components/ui/view-switch";
+import type { WorkflowPublicationView } from "@/application/workflow-publication/useWorkflowPublication";
 import "./organization-page.css";
 
 export type OrganizationRecord = {
@@ -44,6 +46,8 @@ export type OrganizationPageProps = UserPermissionsPageProps & {
   credentialRepository?: ComponentProps<typeof IntegrationCredentials>["repository"];
   invitationActions?: OrganizationInvitationsClient;
   projectMembershipClient?: ProjectMembershipClient;
+  visibleWorkflows?: readonly WorkflowId[];
+  publication?: WorkflowPublicationView;
 };
 
 export function OrganizationPage({
@@ -56,6 +60,8 @@ export function OrganizationPage({
   credentialRepository,
   invitationActions,
   projectMembershipClient,
+  visibleWorkflows = VISIBLE_WORKFLOWS,
+  publication,
   ...memberProps
 }: OrganizationPageProps) {
   const [organization, setOrganization] = useState<OrganizationRecord | null>(null);
@@ -129,23 +135,32 @@ export function OrganizationPage({
 
   return (
     <div className="organization-page">
-      <OrganizationAdminScopeNav active={area === "handovers" ? "members" : area} organizationId={memberProps.directoryScope} onNavigate={memberProps.onNavigate} />
-      {administrator && (area === "bridges" || area === "integrations") ? <nav className="organization-operating-scope__actions" aria-label="组织资源控制台"><Button variant="outline" onClick={() => memberProps.onNavigate(withOrganizationScope("/organization/bridges", memberProps.directoryScope))}>设备代理</Button><Button variant="outline" onClick={() => memberProps.onNavigate(withOrganizationScope("/organization/integrations", memberProps.directoryScope))}>集成凭据</Button></nav> : null}
-      {area === "overview" ? <OrganizationOverviewPanel load={organizationActions?.getWorkspaceSummary} organizationId={memberProps.directoryScope} onNavigate={memberProps.onNavigate} /> : area === "resources" ? <OrganizationResourcesPanel administrator={administrator} roleId={memberProps.state.activeRoleId} organizationId={memberProps.directoryScope} onNavigate={memberProps.onNavigate} /> : !administrator && area !== "profile" ? <SectionEmpty title="此区域由组织管理员维护" message="你仍可查看本组织的项目和业务资源；如需调整成员、团队、项目权限或访问凭据，请联系组织管理员。" actionLabel="查看组织资源" onAction={() => memberProps.onNavigate(withOrganizationScope("/organization/resources", memberProps.directoryScope))} /> : area === "handovers" ? <OrganizationAssetHandoverPanel organizationId={memberProps.directoryScope} enabled={apiMode} currentUserId={memberProps.state.currentUserId} onNavigate={memberProps.onNavigate} /> : area === "invitations" ? <OrganizationInvitationsPage client={invitationActions} canGrantPlatformAdmin={memberProps.state.activeRoleId === "platform-admin"} onBack={() => memberProps.onNavigate(withOrganizationScope("/organization/members", memberProps.directoryScope))} /> : area === "teams" ? <OrganizationTeamsPage client={memberProps.teamActions} /> : area === "bridges" ? <OrganizationBridgePanel enabled={apiMode && canPerform(memberProps.state.activeRoleId, "users.manage")} actions={bridgeActions} /> : area === "integrations" ? (
-        <div className="skill-section"><IntegrationCredentials repository={credentialRepository} apiMode={apiMode} canEdit={!readOnly && canPerform(memberProps.state.activeRoleId, "logs.admin-domains")} disabled={false} /></div>
-      ) : area === "projects" ? <OrganizationProjectsPanel client={projectMembershipClient} /> : area === "members" ? (
-        <><div className="organization-operating-scope__actions">{invitationActions ? <Button variant="outline" onClick={() => memberProps.onNavigate(withOrganizationScope("/organization/invitations", memberProps.directoryScope))}>管理邀请</Button> : null}<Button variant="outline" onClick={() => memberProps.onNavigate(withOrganizationScope("/organization/handovers", memberProps.directoryScope))}>业务交接</Button></div><UserPermissionsPage {...memberProps} /></>
-      ) : (
+      <OrganizationAdminScopeNav active={area} administrator={administrator} organizationId={memberProps.directoryScope} onNavigate={memberProps.onNavigate} />
+      {administrator && (area === "bridges" || area === "integrations") ? <ViewSwitch variant="section" ariaLabel="组织资源控制台" value={area}
+        onValueChange={(value) => memberProps.onNavigate(withOrganizationScope(`/organization/${value}`, memberProps.directoryScope))}
+        items={[{ value: "resources", label: "全部资源" }, { value: "bridges", label: "设备代理" }, { value: "integrations", label: "集成凭据" }]} /> : null}
+      {area === "overview" ? <OrganizationOverviewPanel load={organizationActions?.getWorkspaceSummary} visibleWorkflows={visibleWorkflows} organizationId={memberProps.directoryScope} onNavigate={memberProps.onNavigate} />
+        : area === "resources" ? <OrganizationResourcesPanel administrator={administrator} roleId={memberProps.state.activeRoleId} visibleWorkflows={visibleWorkflows} publication={publication} organizationId={memberProps.directoryScope} onNavigate={memberProps.onNavigate} />
+        : !administrator && area !== "profile" ? <SectionEmpty message="此区域由组织管理员维护。" actionLabel="查看组织资源" onAction={() => memberProps.onNavigate(withOrganizationScope("/organization/resources", memberProps.directoryScope))} />
+        : area === "handovers" ? <OrganizationAssetHandoverPanel organizationId={memberProps.directoryScope} enabled={apiMode} currentUserId={memberProps.state.currentUserId} onNavigate={memberProps.onNavigate} />
+        : area === "invitations" ? <OrganizationInvitationsPage client={invitationActions} readOnly={readOnly} search={memberProps.search} canGrantPlatformAdmin={memberProps.state.activeRoleId === "platform-admin"}
+          onViewMember={(id) => memberProps.onNavigate(withOrganizationScope(`/organization/members?memberId=${encodeURIComponent(id)}`, memberProps.directoryScope))}
+          onBack={() => memberProps.onNavigate(withOrganizationScope("/organization/members", memberProps.directoryScope))} />
+        : area === "teams" ? <OrganizationTeamsPage client={memberProps.teamActions} readOnly={readOnly} search={memberProps.search} />
+        : area === "bridges" ? <OrganizationBridgePanel enabled={apiMode && administrator} readOnly={readOnly} onNavigate={memberProps.onNavigate} actions={bridgeActions} />
+        : area === "integrations" ? <div className="skill-section"><IntegrationCredentials repository={credentialRepository} apiMode={apiMode} canView={administrator && canPerform(memberProps.state.activeRoleId, "logs.admin-domains")} canEdit={!readOnly && canPerform(memberProps.state.activeRoleId, "logs.admin-domains")} disabled={false} /></div>
+        : area === "projects" ? <OrganizationProjectsPanel client={projectMembershipClient} readOnly={readOnly} search={memberProps.search} onNavigate={memberProps.onNavigate} organizationId={memberProps.directoryScope} />
+        : area === "members" ? <UserPermissionsPage {...memberProps} readOnly={readOnly} onInvite={invitationActions ? () => memberProps.onNavigate(withOrganizationScope("/organization/invitations?create=1", memberProps.directoryScope)) : undefined} /> : (
         <section className="organization-profile" aria-label="组织档案">
-          {!administrator ? <p>组织设置仅供查看，显示名称由组织管理员维护。</p> : null}
+          {!administrator ? <p>显示名称由组织管理员维护。</p> : null}
           {status === "loading" ? <SectionSkeleton label="正在加载组织档案" /> : null}
           {status === "error" ? <SectionError message={error} onRetry={() => void loadOrganization()} /> : null}
           {status === "ready" && organizationActions && organization ? (
-            <SettingsFormPage label="组织设置" dirty={dirty} saving={saving} error={saveError}
+            <SettingsFormPage label="组织资料" saveLabel="保存组织名称" dirty={dirty} saving={saving} error={saveError}
               onSave={() => void submitRename()} onDiscard={() => {
                 setDisplayName(organization.name); setSaveError(""); setFieldError(""); setSaved(false);
               }}>
-              <SettingsFormSection title="基本信息" help="组织名称用于工作台展示，便于成员识别所属组织。">
+              <SettingsFormSection title="基本信息" help="更名会更新成员看到的组织名称，组织编号保持固定。">
                 <div className="organization-profile__field">
                   <label className="organization-profile__label" htmlFor="organization-display-name">显示名称</label>
                   <input
@@ -172,10 +187,10 @@ export function OrganizationPage({
                   ) : null}
                 </div>
                 <dl className="organization-profile__meta">
-                  {!memberProps.directoryScope ? <div>
+                  <div>
                     <dt className="organization-profile__label">组织编号</dt>
                     <dd><code className="organization-profile__id">{organization.id}</code></dd>
-                  </div> : null}
+                  </div>
                   <div>
                     <dt className="organization-profile__label">创建时间</dt>
                     <dd>

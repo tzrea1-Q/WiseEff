@@ -103,7 +103,7 @@ it("restores the settings URL after cancelling Back across a history entry creat
   renderApp({ initialAppState: adminState });
   fireEvent.click(await screen.findByRole("button", { name: "成员与权限" }));
   window.history.pushState(null, "", "/organization/members?search=member");
-  fireEvent.click(within(screen.getByRole("navigation", { name: "组织管理范围" })).getByRole("button", { name: "设置" }));
+  fireEvent.click(within(screen.getByRole("navigation", { name: "组织管理范围" })).getByRole("button", { name: "组织资料" }));
   await screen.findByRole("region", { name: "组织档案" });
   render(<SettingsFormPage label="未保存设置" dirty onSave={vi.fn()} onDiscard={vi.fn()}>保留未保存的草稿</SettingsFormPage>);
 
@@ -122,7 +122,7 @@ it("lets a newer browser Back supersede shell navigation waiting on the same lea
   renderApp({ initialAppState: adminState });
   fireEvent.click(await screen.findByRole("button", { name: "成员与权限" }));
   const dirtyForm = render(<SettingsFormPage label="未保存设置" dirty onSave={vi.fn()} onDiscard={vi.fn()}>未保存的草稿</SettingsFormPage>);
-  fireEvent.click(within(screen.getByRole("navigation", { name: "组织管理范围" })).getByRole("button", { name: "设置" }));
+  fireEvent.click(within(screen.getByRole("navigation", { name: "组织管理范围" })).getByRole("button", { name: "组织资料" }));
   const dialog = screen.getByRole("dialog", { name: "放弃未保存的更改？" });
 
   window.history.back();
@@ -1016,9 +1016,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const row = await screen.findByText("Liu Min").then((cell) => cell.closest("tr")!);
     fireEvent.click(within(row).getByRole("button", { name: "查看 Liu Min 的成员资料" }));
     const memberDialog = await screen.findByRole("dialog", { name: "Liu Min · 成员资料" });
+    await userEvent.click(within(memberDialog).getByRole("tab", { name: "访问权限" }));
     await userEvent.click(within(memberDialog).getByRole("checkbox", { name: "软件开发" }));
     await userEvent.click(within(memberDialog).getByRole("checkbox", { name: "软件MDE" }));
-    fireEvent.click(within(within(memberDialog).getByRole("form", { name: "组织角色设置" })).getByRole("button", { name: "保存" }));
+    fireEvent.click(within(within(memberDialog).getByRole("form", { name: "组织角色设置" })).getByRole("button", { name: "保存组织角色" }));
     const confirmDialog = await screen.findByRole("dialog", { name: "确认调整用户角色" });
     fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认调整" }));
     await waitFor(() => expect(userGovernanceActions.updateOrganizationRoles).toHaveBeenCalledWith("u-liu-min", {

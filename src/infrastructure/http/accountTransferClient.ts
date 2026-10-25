@@ -14,7 +14,7 @@ export type AccountTransferClient = {
 export function createAccountTransferClient(sourceOrganizationId: string, api = createDefaultApiClient()): AccountTransferClient {
   const path = (userId: string) => `/api/v1/platform/organizations/${encodeURIComponent(sourceOrganizationId)}/members/${encodeURIComponent(userId)}/transfer`;
   return {
-    async listTargets() { return (await createPlatformOrganizationsClient(api).list()).filter(org => org.id !== sourceOrganizationId); },
+    async listTargets() { return (await createPlatformOrganizationsClient(api).list()).filter(org => org.id !== sourceOrganizationId && org.status === "active"); },
     async preview(userId, targetOrganizationId) {
       const result = await api.post<{ item: unknown }>(`${path(userId)}-preview`, { targetOrganizationId });
       return parseContractDto(accountTransferPreviewSchema, result.item, "AccountTransferPreview");

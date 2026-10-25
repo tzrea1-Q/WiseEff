@@ -19,6 +19,7 @@ export function OrganizationErasureDialog({ preview, client, onClose, onUpdated 
   const [items, setItems] = useState<OrganizationErasure[]>([]), [confirmation, setConfirmation] = useState("");
   const [started, setStarted] = useState(false), [pending, setPending] = useState(false), [loading, setLoading] = useState(!preview);
   const [error, setError] = useState(""), [attempt, setAttempt] = useState(0);
+  const [itemErrors, setItemErrors] = useState<Record<string, string>>({}), [pendingId, setPendingId] = useState<string | null>(null);
   const confirming = Boolean(preview && !started);
   useEffect(() => {
     if (confirming) return;
@@ -56,11 +57,12 @@ export function OrganizationErasureDialog({ preview, client, onClose, onUpdated 
           {Object.entries(item.domains).length ? <dl aria-label="领域清理进度" className="platform-organizations__details">{Object.entries(item.domains).map(([domain, progress]) =>
             <div key={domain}><dt>{domainNames[domain as keyof typeof domainNames]}</dt><dd>{domainStates[progress.status]} · 已执行 {progress.attempts} 次</dd></div>)}</dl> : null}
           {item.status === "failed" ? <p role="status">此阶段未完成。修复故障后重试会从持久进度继续。</p> : null}
-          {item.status !== "deleted" ? <Button disabled={pending} onClick={() => {
-            setPending(true); setError("");
+          {itemErrors[item.id] ? <p role="alert">{itemErrors[item.id]}</p> : null}
+          {item.status === "queued" || item.status === "failed" ? <Button disabled={pending} onClick={() => {
+            setPending(true); setPendingId(item.id); setItemErrors(value => ({ ...value, [item.id]: "" }));
             void client.retryErasure(item.id).then(updated => { setItems(rows => rows.map(row => row.id === updated.id ? updated : row)); onUpdated(); })
-              .catch((failure: unknown) => setError(presentError(failure, "继续清理失败，请刷新后重试。"))).finally(() => setPending(false));
-          }}>{pending ? "正在处理…" : "继续清理"}</Button> : null}
+              .catch((failure: unknown) => setItemErrors(value => ({ ...value, [item.id]: presentError(failure, "继续清理失败，请刷新后重试。") }))).finally(() => { setPending(false); setPendingId(null); });
+          }}>{pendingId === item.id ? "正在处理…" : "继续清理"}</Button> : null}
         </section>)}
         <div className="platform-organizations__actions"><Button variant="outline" disabled={loading || pending} onClick={() => setAttempt(value => value + 1)}>刷新记录</Button><Button disabled={pending} onClick={onClose}>关闭记录</Button></div>
       </>}

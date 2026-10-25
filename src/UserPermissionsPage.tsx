@@ -31,6 +31,8 @@ import {
 import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { formatLastActive, normalizeTimestampInput } from "@/domain/format/formatLastActive";
 import { presentError } from "@/infrastructure/http/presentError";
+import { requestSettingsLeave } from "@/application/settingsFormNavigation";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { migrateLegacyRoleId, organizationRoleIds, pickPrimaryPlatformRoleId, platformRoles, type PlatformRoleId } from "@/domain/users/types";
 import type { CreateGovernedUserInput, UpdateOrganizationRolesInput, OrganizationTeamsClient, OrganizationTeamDto } from "@/infrastructure/http/userGovernanceClient";
 import type { LocalAuthPublicConfigDto } from "@/infrastructure/http/authClient";
@@ -41,6 +43,8 @@ import "./user-permissions-page.css";
 type UserDirectoryStatus = "loading" | "ready" | "error";
 
 export type UserPermissionsPageProps = {
+  readOnly?: boolean;
+  onInvite?: () => void;
   state: PrototypeState;
   dispatch: Dispatch<AppAction>;
   onNavigate: (path: string) => void;
@@ -212,9 +216,20 @@ function userAccountIdentifier(user: User) {
   return user.username ?? user.email ?? "无账号标识";
 }
 
+function registrationOutcomeOf(request: RegistrationRoleRequest) {
+  return request.decisionOutcome === "basic-enabled" ? `已按${roleLabelOf(request.currentRoleId)}启用`
+    : request.decisionOutcome === "requested-role-enabled" ? "已批准申请角色并启用"
+      : request.decisionOutcome === "rejected-disabled" ? "已拒绝提升，保持停用"
+        : request.decisionOutcome === "rejected-preserved" ? "已拒绝提升，保留账号设置"
+          : request.status === "approved" ? "已通过" : "已拒绝提升（未记录账号结果）";
+}
+
 export function UserPermissionsPage({
   state,
   dispatch,
+  onNavigate,
+  onInvite,
+  readOnly = false,
   search,
   userGovernanceActions,
   teamActions,
@@ -229,7 +244,7 @@ export function UserPermissionsPage({
 }: UserPermissionsPageProps) {
   const [scopedUsers, setScopedUsers] = useState<User[]>([]);
   const [transferringUser, setTransferringUser] = useState<User | null>(null);
-  const [transferMessage, setTransferMessage] = useState("");
+  const [transferResult, setTransferResult] = useState<{ name: string; userId: string; target: { id: string; name: string } } | null>(null);
   const users = directoryScope ? scopedUsers : state.users;
   const projects = projectCandidates ?? state.configDraft.projects;
   // Governed rows hydrate when the page mounts (the governance client only
@@ -290,10 +305,12 @@ export function UserPermissionsPage({
     onUserDirectoryRetry ?? (() => setDirectoryReloadToken((token) => token + 1));
 
   const [query, setQuery] = useState(() => new URLSearchParams(search).get("q") ?? "");
+  const [pendingIdentityOnly, setPendingIdentityOnly] = useState(() => new URLSearchParams(search).get("identity") === "pending");
   const [columnFilters, setColumnFilters] = useState<HeaderFilterState>(() => readColumnFilters(search));
   const [page, setPage] = useState(() => readPage(search));
   const [sort, setSort] = useState<DataTableSort>(() => readSort(search));
   const [addUserOpen, setAddUserOpen] = useState(false);
+  const [addMemberChoiceOpen, setAddMemberChoiceOpen] = useState(false);
   const [oidcSubject, setOidcSubject] = useState("");
   const [oidcEmail, setOidcEmail] = useState("");
   const [name, setName] = useState("");
@@ -313,7 +330,7 @@ export function UserPermissionsPage({
   const [requestStatus, setRequestStatus] = useState<UserDirectoryStatus>("loading");
   const [requestReloadToken, setRequestReloadToken] = useState(0);
   const [pendingRequestDecision, setPendingRequestDecision] = useState<{ request: RegistrationRoleRequest; decision: "approve" | "reject" | "enable-basic" } | null>(null);
-  const [memberId, setMemberId] = useState<string | null>(null);
+  const [memberId, setMemberId] = useState<string | null>(() => new URLSearchParams(search).get("memberId"));
   const selectedMember = users.find((user) => user.id === memberId);
   const inactiveWorkspace = workspace === "accounts" ? "approvals" : "accounts";
   const [pendingGovernance, setPendingGovernance] = useState<PendingGovernanceAction | null>(null);
@@ -326,15 +343,19 @@ export function UserPermissionsPage({
   const [resetPasswordPending, setResetPasswordPending] = useState(false);
 
   const approvalWorkflowEnabled = Boolean(userGovernanceActions?.listRegistrationRoleRequests);
-  const pendingApprovalCount = registrationRoleRequests.filter((request) => request.status === "pending").length;
+  const [pendingApprovalCount, setPendingApprovalCount] = useState<number | null>(null);
+  const [historyQuery, setHistoryQuery] = useState("");
+  const [historyPage, setHistoryPage] = useState(1);
 
   useEffect(() => {
     const restore = (value: string) => {
       const params = new URLSearchParams(value);
       setQuery(params.get("q") ?? ""); setColumnFilters(readColumnFilters(value));
+      setPendingIdentityOnly(params.get("identity") === "pending");
       setWorkspace(params.get("tab") === "approvals" ? "approvals" : "accounts");
       setApprovalView(params.get("requests") === "decided" ? "decided" : "pending");
       setPage(readPage(value)); setSort(readSort(value));
+      setMemberId(params.get("memberId"));
     };
     restore(search);
     // Scoped views follow the shell only after its unsaved-work guard approves Back/Forward.
@@ -352,23 +373,24 @@ export function UserPermissionsPage({
       roles: (columnFilters.role ?? []).map((label) => platformRoles.find((role) => roleLabelOf(role.id) === label)?.id).filter(Boolean).join(","),
       statuses: (columnFilters.status ?? []).map((label) => label === "启用" ? "active" : "disabled").join(","),
       page: page > 1 ? String(page) : "", sort: sort.key === "user" && sort.direction === "asc" ? "" : sort.key,
-      dir: sort.direction === "desc" ? "desc" : ""
+      dir: sort.direction === "desc" ? "desc" : "", memberId: memberId ?? "", identity: pendingIdentityOnly ? "pending" : ""
     };
     Object.entries(values).forEach(([key, value]) => { if (value) url.searchParams.set(key, value); else url.searchParams.delete(key); });
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
-  }, [query, columnFilters, workspace, approvalView, page, sort]);
+  }, [query, columnFilters, workspace, approvalView, page, sort, memberId, pendingIdentityOnly]);
 
   function applyUpdatedUser(user: User) {
     if (directoryScope) setScopedUsers((current) => current.map((item) => item.id === user.id ? user : item));
     else dispatch({ type: "HYDRATE_USERS", users: state.users.map((current) => current.id === user.id ? user : current) });
   }
 
-  function clearFilters() { setQuery(""); setColumnFilters({}); setPage(1); }
+  function clearFilters() { setQuery(""); setColumnFilters({}); setPage(1); setPendingIdentityOnly(false); }
 
   const filteredUsers = useMemo(
     () => {
       const searched = filterItems(users, query, userAccountSearchProfile);
       return searched.filter((user) => {
+        if (pendingIdentityOnly && user.oidcTransfer?.status !== "pending") return false;
         const matchesColumnFilters = (["user", "title", "role", "status", "lastActive"] as UserColumnFilterKey[]).every((key) => {
           const selectedValues = columnFilters[key] ?? [];
           if (key === "role") return selectedValues.length === 0 || selectedValues.some((value) => organizationRoleLabels(user).includes(value));
@@ -378,7 +400,7 @@ export function UserPermissionsPage({
         return matchesColumnFilters;
       });
     },
-    [columnFilters, query, users]
+    [columnFilters, query, users, pendingIdentityOnly]
   );
 
   function toggleColumnFilter(key: UserColumnFilterKey, value: string) {
@@ -425,6 +447,10 @@ export function UserPermissionsPage({
       .then((items) => {
         if (!cancelled) {
           setRegistrationRoleRequests(items);
+          if (approvalView === "pending") setPendingApprovalCount(items.filter((item) => item.status === "pending").length);
+          else void userGovernanceActions.listRegistrationRoleRequests!("pending")
+            .then((pendingItems) => { if (!cancelled) setPendingApprovalCount(pendingItems.filter((item) => item.status === "pending").length); })
+            .catch(() => { if (!cancelled) setPendingApprovalCount(null); });
           setRequestStatus("ready");
           setRegistrationRoleRequestError("");
         }
@@ -442,7 +468,7 @@ export function UserPermissionsPage({
   }, [userGovernanceActions, approvalView, requestReloadToken]);
 
   async function decideRegistrationRoleRequest(request: RegistrationRoleRequest, decision: "approve" | "reject" | "enable-basic") {
-    if (decidingRequestId) return;
+    if (decidingRequestId || readOnly) return;
     setRegistrationRoleRequestError("");
     setDecidingRequestId(request.id);
 
@@ -471,6 +497,7 @@ export function UserPermissionsPage({
         result = await userGovernanceActions.rejectRegistrationRoleRequest(request.id);
       }
       setRegistrationRoleRequests((items) => items.filter((item) => item.id !== request.id));
+      setPendingApprovalCount((count) => count === null ? null : Math.max(0, count - 1));
       setPendingRequestDecision(null);
       const access = result?.decisionCanLogin === undefined || result.decisionCanLogin === null ? ""
         : `；${result.decisionCanLogin ? "可登录" : "不可登录"} · ${result.decisionRoleIds?.map(roleLabelOf).join("、") || "未分配组织角色"}`;
@@ -486,7 +513,7 @@ export function UserPermissionsPage({
   // Role and activation changes are irreversible-in-effect governance actions:
   // both go through a light confirm dialog and an awaited, error-projected call.
   async function confirmGovernanceAction() {
-    if (!pendingGovernance || governancePending) return;
+    if (!pendingGovernance || governancePending || readOnly) return;
     setGovernancePending(true);
     setGovernanceError(null);
     try {
@@ -527,7 +554,7 @@ export function UserPermissionsPage({
 
   async function handleAddUserSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (addUserSubmitting.current) return;
+    if (addUserSubmitting.current || readOnly) return;
     const trimmedName = name.trim();
     const trimmedUsername = username.trim();
     const trimmedTitle = title.trim();
@@ -566,7 +593,7 @@ export function UserPermissionsPage({
         roleId: createdUser?.roleId ?? initialRoleId
       });
     } catch (error) {
-      setAddUserError(presentError(error, "创建用户失败，请稍后重试。"));
+      setAddUserError(presentError(error, "创建账号失败，请稍后重试。"));
       return;
     } finally {
       addUserSubmitting.current = false;
@@ -589,8 +616,12 @@ export function UserPermissionsPage({
     if (addUserSubmitting.current) return;
     setAddUserOpen(false); setName(""); setUsername(""); setTitle(""); setPassword(""); setConfirmPassword(""); setOidcSubject(""); setOidcEmail(""); setAddUserError(""); setInitialRoleId("hardware-user");
   }
+  async function dismissAddUserUnexpectedly() {
+    if (!addUserSubmitting.current && await requestSettingsLeave()) dismissAddUser();
+  }
 
   function openResetPassword(user: User) {
+    if (readOnly || isPlatformAdminLocked(state, user) || !user.username) return;
     setResetPasswordUser(user);
     setResetPassword("");
     setResetConfirmPassword("");
@@ -601,10 +632,13 @@ export function UserPermissionsPage({
     if (resetPasswordPending) return;
     setResetPasswordUser(null); setResetPassword(""); setResetConfirmPassword(""); setResetPasswordError("");
   }
+  async function dismissResetPasswordUnexpectedly() {
+    if (!resetPasswordPending && await requestSettingsLeave()) dismissResetPassword();
+  }
 
   async function handleResetPasswordSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!resetPasswordUser || !userGovernanceActions?.resetUserPassword || resetPasswordPending) {
+    if (!resetPasswordUser || !userGovernanceActions?.resetUserPassword || resetPasswordPending || readOnly) {
       return;
     }
     if (resetPassword.length < 8) {
@@ -620,15 +654,23 @@ export function UserPermissionsPage({
     try {
       await userGovernanceActions.resetUserPassword(resetPasswordUser.id, resetPassword);
       dispatch({ type: "ADD_NOTIFICATION", message: `已重置 ${resetPasswordUser.name} 的密码，其全部会话已退出` });
+      const self = resetPasswordUser.id === state.currentUserId;
       setResetPasswordUser(null);
       setResetPassword("");
       setResetConfirmPassword("");
+      if (self) await onCurrentAccountChanged?.(true);
     } catch (error) {
       setResetPasswordError(presentError(error, "重置密码失败，请稍后重试。"));
     } finally {
       setResetPasswordPending(false);
     }
   }
+
+  const decidedBy = (request: RegistrationRoleRequest) => users.find((user) => user.id === request.decidedByUserId)?.name ?? request.decidedByUserId ?? "未记录";
+  const historyNeedle = historyQuery.trim().toLocaleLowerCase();
+  const historyRows = registrationRoleRequests.filter((request) => [request.userName, request.username ?? "", roleLabelOf(request.requestedRoleId), registrationOutcomeOf(request), decidedBy(request)]
+    .some((value) => value.toLocaleLowerCase().includes(historyNeedle)))
+    .sort((a, b) => Date.parse(b.decidedAt ?? b.createdAt) - Date.parse(a.decidedAt ?? a.createdAt));
 
   const accountColumns: Array<Column<User>> = [
     {
@@ -693,6 +735,10 @@ export function UserPermissionsPage({
 
   return (
     <section className="user-permissions-page" aria-label="用户权限">
+      {transferResult ? <section aria-label="账号调动结果"><p role="status">{transferResult.name} 已调动至 {transferResult.target.name}。</p>
+        <Button variant="outline" onClick={() => onNavigate(`/organization/members?${new URLSearchParams({ organizationId: transferResult.target.id, memberId: transferResult.userId })}`)}>查看目标成员</Button>
+        <Button variant="outline" onClick={() => onNavigate(withOrganizationScope("/organization/handovers", directoryScope))}>处理原组织交接</Button>
+      </section> : null}
       <AdminListPageHeader label="平台用户" className="user-permissions-toolbar" content={
         approvalWorkflowEnabled ? (
           <ViewSwitch
@@ -704,7 +750,7 @@ export function UserPermissionsPage({
               { value: "accounts", label: "成员列表", id: "user-permissions-workspace-accounts", panelId: "user-permissions-workspace-accounts-panel" },
               {
                 value: "approvals",
-                label: <><span>注册申请</span>{approvalView === "pending" && requestStatus === "ready" && pendingApprovalCount > 0 ? <span className="user-permissions-workspace-tab-count">{pendingApprovalCount}</span> : null}</>,
+                label: <><span>注册申请</span>{(pendingApprovalCount ?? 0) > 0 ? <span className="user-permissions-workspace-tab-count">{pendingApprovalCount}</span> : null}</>,
                 id: "user-permissions-workspace-approvals",
                 panelId: "user-permissions-workspace-approvals-panel"
               }
@@ -715,11 +761,11 @@ export function UserPermissionsPage({
             <span className="eyebrow">用户治理</span>
             <h2>成员列表</h2>
           </div>
-        )} actions={workspace === "accounts" ? <button className="button primary user-permissions-primary-action" type="button" disabled={["pending","unavailable"].includes(authentication.provider)} onClick={() => setAddUserOpen(true)}>
-          <UserPlus size={16} aria-hidden="true" /><span>添加用户</span>
+        )} actions={workspace === "accounts" && !readOnly ? <button className="button primary user-permissions-primary-action" type="button" disabled={["pending","unavailable"].includes(authentication.provider)} onClick={() => { if (onInvite && authentication.provider === "local") setAddMemberChoiceOpen(true); else setAddUserOpen(true); }}>
+          <UserPlus size={16} aria-hidden="true" /><span>添加成员</span>
         </button> : null} />
 
-      {approvalWorkflowEnabled && workspace === "accounts" && approvalView === "pending" && requestStatus === "ready" && pendingApprovalCount > 0 ? (
+      {approvalWorkflowEnabled && workspace === "accounts" && (pendingApprovalCount ?? 0) > 0 ? (
         <p className="user-permissions-pending-hint">
           当前有 <strong>{pendingApprovalCount}</strong> 条注册角色申请待处理。
           <button type="button" className="user-permissions-pending-hint__action" onClick={() => setWorkspace("approvals")}>
@@ -745,15 +791,16 @@ export function UserPermissionsPage({
                     <SearchField value={query} onValueChange={(value) => { setQuery(value); setPage(1); }} placeholder="搜索姓名、账号或职务" ariaLabel="搜索用户" />
                   </label>
                   <span className="member-list-meta" role="status">{filteredUsers.length === users.length ? `共 ${users.length} 位成员` : `找到 ${filteredUsers.length} / ${users.length} 位成员`}</span>
-                  {filteredUsers.length > 0 && (query || Object.values(columnFilters).some((values) => values.length)) ? <Button type="button" size="sm" variant="ghost" onClick={clearFilters}>清除筛选条件</Button> : null}
+                  {pendingIdentityOnly || users.some((user) => user.oidcTransfer?.status === "pending") ? <label><input type="checkbox" checked={pendingIdentityOnly} onChange={(event) => { setPendingIdentityOnly(event.target.checked); setPage(1); }} />等待身份系统同步</label> : null}
+                  {filteredUsers.length > 0 && (query || pendingIdentityOnly || Object.values(columnFilters).some((values) => values.length)) ? <Button type="button" size="sm" variant="ghost" onClick={clearFilters}>清除筛选条件</Button> : null}
                 </div>}
               tableState={userDirectoryStatus === "loading" ? <SectionSkeleton label="正在加载用户名录" />
                 : userDirectoryStatus === "error" ? <SectionError message={userDirectoryError || "无法加载用户名录，请稍后重试。"} onRetry={handleUserDirectoryRetry} /> : undefined}
               table={{ ariaLabel: "平台用户", rows: filteredUsers, rowKey: (user) => user.id, columns: accountColumns,
                 page, onPageChange: setPage, sort, onSort: (key) => { setSort({ key, direction: sort.key === key && sort.direction === "asc" ? "desc" : "asc" }); setPage(1); } }}
-              emptyState={{ message: users.length === 0 ? "还没有任何用户，点击右上角「添加用户」创建第一个账号。" : "没有符合筛选条件的用户，请调整搜索或筛选条件。",
-                actionLabel: users.length === 0 ? "添加用户" : "清除筛选条件", onAction: () => {
-                  if (users.length === 0) setAddUserOpen(true);
+              emptyState={{ message: users.length === 0 ? "暂无组织成员。" : "没有符合筛选条件的用户，请调整搜索或筛选条件。",
+                actionLabel: users.length === 0 ? (readOnly ? undefined : "添加成员") : "清除筛选条件", onAction: () => {
+                  if (users.length === 0 && !readOnly) { if (onInvite && authentication.provider === "local") setAddMemberChoiceOpen(true); else setAddUserOpen(true); }
                   else clearFilters();
                 } }}
               rowActions={(user) => {
@@ -762,9 +809,9 @@ export function UserPermissionsPage({
                 return {
                   label: `${user.name} 操作`,
                   primaryAction: { id: "details", label: "查看", ariaLabel: `查看 ${user.name} 的成员资料`, onSelect: () => setMemberId(user.id) },
-                  items: [
-                    ...(accountTransferClient ? [{ id: "transfer", label: "调动组织", ariaLabel: `调动 ${user.name} 到其他组织`, onSelect: () => { setTransferMessage(""); setTransferringUser(user); } }] : []),
-                    ...(authentication.provider !== "oidc" && userGovernanceActions?.resetUserPassword ? [{ id: "password", label: "重置密码", ariaLabel: `重置 ${user.name} 的密码`, onSelect: () => openResetPassword(user) }] : []),
+                  items: readOnly ? [] : [
+                    ...(accountTransferClient ? [{ id: "transfer", label: "调动组织", ariaLabel: `调动 ${user.name} 到其他组织`, onSelect: () => { setTransferResult(null); setTransferringUser(user); } }] : []),
+                    ...(authentication.provider === "local" && user.username && !locked && userGovernanceActions?.resetUserPassword ? [{ id: "password", label: "重置密码", ariaLabel: `重置 ${user.name} 的密码`, onSelect: () => openResetPassword(user) }] : []),
                     { id: "active", label: user.isActive ? "停用" : "启用", disabled: locked,
                       description: locked ? "只有平台超级管理员可以停用平台超级管理员。" : undefined,
                       onSelect: () => { setGovernanceError(null); setPendingGovernance({ kind: "active", user, nextActive: !user.isActive }); } },
@@ -790,7 +837,7 @@ export function UserPermissionsPage({
         >
           <div className="user-permissions-approval-queue__header">
             <div>
-              <p className="user-permissions-approval-queue__hint">核对申请人的组织与角色，选择授予申请角色、按普通成员启用或拒绝并保持停用。</p>
+              {approvalView === "pending" && !readOnly ? <p className="user-permissions-approval-queue__hint">选择授予申请角色、按普通成员启用，或拒绝提升并保留账号当前设置。</p> : null}
             </div>
             <Button type="button" size="sm" variant="outline" disabled={requestStatus === "loading" || Boolean(decidingRequestId)} onClick={() => setRequestReloadToken((value) => value + 1)}><RefreshCw size={16} aria-hidden="true" />刷新申请</Button>
           </div>
@@ -799,6 +846,15 @@ export function UserPermissionsPage({
           ]} />
           {requestStatus === "loading" ? <SectionSkeleton label="正在加载注册申请" />
             : requestStatus === "error" ? <SectionError message={registrationRoleRequestError} onRetry={() => setRequestReloadToken((value) => value + 1)} />
+            : approvalView === "decided" ? <AdminListPage label="注册申请历史" headerActions={null}
+              filterBar={registrationRoleRequests.length ? <SearchField value={historyQuery} onValueChange={(value) => { setHistoryQuery(value); setHistoryPage(1); }} ariaLabel="搜索处理历史" placeholder="搜索成员、角色、处理结果或处理人" /> : null}
+              table={{ ariaLabel: "注册申请历史", rows: historyRows, rowKey: (request) => request.id, page: historyPage, onPageChange: setHistoryPage, columns: [
+                { key: "member", header: "成员", render: (request) => <><strong>{request.userName}</strong><div className="member-list-meta">{request.username ?? request.userId}</div></> },
+                { key: "role", header: "申请角色", render: (request) => roleLabelOf(request.requestedRoleId) },
+                { key: "result", header: "处理结果", render: (request) => <>{registrationOutcomeOf(request)}{request.decisionCanLogin != null ? <div className="member-list-meta">决定时：{request.decisionCanLogin ? "可登录" : "不可登录"} · {request.decisionRoleIds?.map(roleLabelOf).join("、") || "未分配组织角色"}</div> : null}</> },
+                { key: "actor", header: "处理人", render: decidedBy },
+                { key: "time", header: "处理时间", render: (request) => request.decidedAt ? formatAbsolute(request.decidedAt) : "未记录" }
+              ] }} emptyState={{ message: historyQuery ? "没有匹配的处理记录。" : "暂无已处理的注册申请。", actionLabel: historyQuery ? "清除搜索" : undefined, onAction: () => setHistoryQuery("") }} />
             : registrationRoleRequests.length > 0 ? (
             <div className="user-permissions-approval-list">
               {registrationRoleRequests.map((request) => (
@@ -816,7 +872,7 @@ export function UserPermissionsPage({
                     <span>{roleLabelOf(request.requestedRoleId)}</span>
                   </div>
                   <div className="user-permissions-approval-actions">
-                    {request.status === "pending" ? <>
+                    {request.status === "pending" && !readOnly ? <>
                     <button
                       className="button primary"
                       type="button"
@@ -836,11 +892,7 @@ export function UserPermissionsPage({
                       {request.accountChanged ? "关闭申请，保留现状" : "拒绝并保持停用"}
                     </button>
                     {request.accountChanged ? <p className="member-approval-item-meta">账号已有后续管理调整。关闭此申请将保留当前角色与启停状态。</p> : null}
-                    </> : <div><Badge variant={request.status === "approved" ? "secondary" : "outline"}>{request.decisionOutcome === "basic-enabled" ? `已按${roleLabelOf(request.currentRoleId)}启用`
-                      : request.decisionOutcome === "requested-role-enabled" ? "已批准申请角色并启用"
-                      : request.decisionOutcome === "rejected-disabled" ? "已拒绝提升，保持停用"
-                      : request.decisionOutcome === "rejected-preserved" ? "已拒绝提升，保留账号设置"
-                      : request.status === "approved" ? "已通过" : "已拒绝提升（未记录账号结果）"}</Badge>
+                    </> : <div><Badge variant={request.status === "approved" ? "secondary" : "outline"}>{request.status === "pending" ? "待处理" : registrationOutcomeOf(request)}</Badge>
                       {request.decisionCanLogin !== undefined && request.decisionCanLogin !== null ? <p className="member-approval-item-meta">决定时：{request.decisionCanLogin ? "可登录" : "不可登录"} · {request.decisionRoleIds?.map(roleLabelOf).join("、") || "未分配组织角色"}</p> : null}
                       {request.decidedAt ? <p className="member-approval-item-meta">{formatAbsolute(request.decidedAt)}</p> : null}</div>}
                   </div>
@@ -859,17 +911,18 @@ export function UserPermissionsPage({
           aria-labelledby={`user-permissions-workspace-${inactiveWorkspace}`} />
       ) : null}
 
-      {transferMessage ? <p role="status">{transferMessage}</p> : null}
-      {transferringUser && accountTransferClient ? <AccountTransferDialog user={transferringUser} client={accountTransferClient} onClose={() => setTransferringUser(null)} onTransferred={async () => {
+      {transferringUser && accountTransferClient ? <AccountTransferDialog user={transferringUser} client={accountTransferClient} onClose={() => setTransferringUser(null)} onOpenOrganizations={() => onNavigate("/platform/organizations")} onTransferred={async (target) => {
         const self = transferringUser.id === state.currentUserId;
-        setTransferMessage(`${transferringUser.name} 已调动，源组织业务可在业务交接中继续处理。`); setTransferringUser(null); setDirectoryReloadToken(value => value + 1);
+        setTransferResult({ name: transferringUser.name, userId: transferringUser.id, target }); setTransferringUser(null); setDirectoryReloadToken(value => value + 1);
         if (self) await onCurrentAccountChanged?.(true);
       }} /> : null}
-      {selectedMember ? <MemberDetailsDialog key={selectedMember.id} user={selectedMember} state={state} actions={userGovernanceActions} projects={projects} reviewRolesClient={reviewRolesClient}
+      {memberId && !selectedMember && userDirectoryStatus === "ready" ? <SectionEmpty message="该成员已不存在或已调离当前组织。" actionLabel="返回成员列表" onAction={() => setMemberId(null)} /> : null}
+      {selectedMember ? <MemberDetailsDialog key={selectedMember.id} user={selectedMember} state={state} actions={userGovernanceActions} projects={projects} reviewRolesClient={reviewRolesClient} readOnly={readOnly}
+        onManageTeams={!readOnly && teamActions ? () => onNavigate(`/organization/teams?${new URLSearchParams({ ...(directoryScope ? { organizationId: directoryScope } : {}), memberId: selectedMember.id })}`) : undefined}
         teamMembership={teamActions ? <section className="member-details__section" aria-label="团队归属"><h3>团队</h3><p>{teamError || (teams ? teamNames(selectedMember.id) : "正在加载团队归属")}</p></section> : undefined}
         oidcIssuer={authentication.provider === "oidc" ? authentication.oidcIssuer : undefined}
         onUpdated={applyUpdatedUser} onClose={() => { setMemberId(null); setDirectoryReloadToken((value) => value + 1); }} roleLabel={roleLabelOf}
-        roleEditor={<MemberOrganizationRolesPanel user={selectedMember}
+        roleEditor={<MemberOrganizationRolesPanel user={selectedMember} readOnly={readOnly}
           options={assignableRolesForUser(state, organizationRoleOf(selectedMember)).map((role) => ({ id: role.id, label: roleLabelOf(role.id), description: roleCapabilityDescriptions[role.id] }))}
           isSelf={selectedMember.id === state.currentUserId}
           disabledReason={isPlatformAdminLocked(state, selectedMember) ? "只有平台超级管理员可以调整此账号的角色。" : undefined}
@@ -954,17 +1007,23 @@ export function UserPermissionsPage({
         onConfirm={() => void confirmGovernanceAction()}
       />
 
+      <ModalDialog open={addMemberChoiceOpen && !readOnly} onDismiss={() => setAddMemberChoiceOpen(false)} className="user-permissions-modal-card modal-card--sm">{({ titleId }) => <>
+        <h3 id={titleId}>添加成员</h3><div className="modal-body">
+          <Button onClick={() => { setAddMemberChoiceOpen(false); onInvite?.(); }}>邀请加入</Button><p className="member-details__hint">成员通过邀请链接自行设置登录账号和密码。</p>
+          <Button variant="outline" onClick={() => { setAddMemberChoiceOpen(false); setAddUserOpen(true); }}>直接创建账号</Button><p className="member-details__hint">由管理员设置初始密码，创建后立即启用。</p>
+        </div><div className="user-permissions-modal-actions"><Button variant="outline" onClick={() => setAddMemberChoiceOpen(false)}>取消</Button></div>
+      </>}</ModalDialog>
       {addUserOpen && (
         <ModalDialog
           open
-          onDismiss={addUserPending ? undefined : dismissAddUser}
+          onDismiss={addUserPending ? undefined : () => void dismissAddUserUnexpectedly()}
           className="user-permissions-modal-card modal-card--sm"
           backdropClassName="user-permissions-modal"
         >
           {({ titleId }) => (
           <form className="modal-form-contents" onSubmit={handleAddUserSubmit} aria-busy={addUserPending}>
-            <h3 id={titleId}>添加用户</h3>
-            <fieldset className="user-permissions-modal-fields" disabled={addUserPending}>
+            <h3 id={titleId}>添加成员</h3>
+            <fieldset className="user-permissions-modal-fields" disabled={addUserPending || readOnly}>
               <p className="member-details__hint">{authentication.provider === "oidc" ? "预配本组织的 OIDC 成员并绑定外部 Subject，不创建本地密码。请核对身份提供方中的标识。" : "创建本组织的本地账号，创建后立即启用。职务选填，其余为必填项。"}</p>
               <label className="user-permissions-modal-field">
                 <span>姓名</span>
@@ -995,10 +1054,11 @@ export function UserPermissionsPage({
                   aria-label="用户名"
                   minLength={3}
                   maxLength={64}
+                  pattern="[a-zA-Z0-9._\-]+"
                   aria-describedby="member-username-hint"
                   required
                 />
-                <span id="member-username-hint" className="member-details__hint">3–64 个字符，用于登录。</span>
+                <span id="member-username-hint" className="member-details__hint">3–64 个字母、数字、点、下划线或连字符，用于登录。</span>
               </label>}
               <label className="user-permissions-modal-field">
                 <span>职务</span>
@@ -1059,8 +1119,8 @@ export function UserPermissionsPage({
               >
                 取消
               </button>
-              <button className="button primary user-permissions-modal-action user-permissions-modal-action--primary" type="submit" disabled={addUserPending}>
-                {addUserPending ? "创建中…" : "创建用户"}
+              <button className="button primary user-permissions-modal-action user-permissions-modal-action--primary" type="submit" disabled={addUserPending || readOnly}>
+                {addUserPending ? "创建中…" : "创建账号"}
               </button>
             </div>
           </form>
@@ -1071,17 +1131,17 @@ export function UserPermissionsPage({
       {resetPasswordUser && userGovernanceActions?.resetUserPassword ? (
         <ModalDialog
           open
-          onDismiss={resetPasswordPending ? undefined : dismissResetPassword}
+          onDismiss={resetPasswordPending ? undefined : () => void dismissResetPasswordUnexpectedly()}
           className="user-permissions-modal-card modal-card--sm"
           backdropClassName="user-permissions-modal"
         >
           {({ titleId }) => (
             <form className="modal-form-contents" onSubmit={handleResetPasswordSubmit}>
               <h3 id={titleId}>重置密码</h3>
-              <div className="user-permissions-modal-fields">
+              <fieldset className="user-permissions-modal-fields" disabled={resetPasswordPending || readOnly}>
                 <p className="user-permissions-reset-hint">
                   将为 <strong>{resetPasswordUser.name}</strong>（{userAccountIdentifier(resetPasswordUser)}
-                  ）设置新密码，并退出该账号的全部会话。
+                  ）设置新密码，并退出该账号的全部会话。{resetPasswordUser.id === state.currentUserId ? "这是当前账号，成功后需要使用新密码重新登录。" : ""}
                 </p>
                 <label className="user-permissions-modal-field">
                   <span>新密码</span>
@@ -1114,7 +1174,7 @@ export function UserPermissionsPage({
                   />
                 </label>
                 {resetPasswordError ? <p role="alert" className="user-permissions-modal-error">{resetPasswordError}</p> : null}
-              </div>
+              </fieldset>
               <div className="user-permissions-modal-actions">
                 <button
                   className="button user-permissions-modal-action user-permissions-modal-action--secondary"
@@ -1127,7 +1187,7 @@ export function UserPermissionsPage({
                 <button
                   className="button primary user-permissions-modal-action user-permissions-modal-action--primary"
                   type="submit"
-                  disabled={resetPasswordPending}
+                  disabled={resetPasswordPending || readOnly}
                 >
                   {resetPasswordPending ? "提交中…" : "确认重置"}
                 </button>

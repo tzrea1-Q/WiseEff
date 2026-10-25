@@ -434,6 +434,9 @@ export async function resetUserPassword(
     if (!current) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
+    if (rolesIncludePlatformAdmin(current.roles) && !callerHasPlatformAdmin(actor)) {
+      throw new ApiError("FORBIDDEN", "Only a platform super admin may reset a platform-admin password.");
+    }
     const updated = await updatePasswordCredential(tx, {
       userId,
       passwordHash

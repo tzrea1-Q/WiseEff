@@ -8,16 +8,19 @@ import { SelectControl } from "@/components/common/SelectControl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { SearchField } from "@/components/common/SearchField";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
+import { presentError } from "@/infrastructure/http/presentError";
 import type { SectionProps } from "./SkillWorkspace";
 import type { IntegrationCredential, IntegrationCredentialSecret } from "./types";
 import "./skill-workspace.css";
 
 const ignoreBusyChange = (_busy: boolean) => {};
-export function IntegrationCredentials({ skill, repository, apiMode, canEdit, disabled, onBusyChange = ignoreBusyChange }: Pick<SectionProps, "repository" | "apiMode" | "canEdit" | "disabled"> & Partial<Pick<SectionProps, "skill" | "onBusyChange">>) {
+export function IntegrationCredentials({ skill, repository, apiMode, canEdit, canView = canEdit, disabled, onBusyChange = ignoreBusyChange }: Pick<SectionProps, "repository" | "apiMode" | "canEdit" | "disabled"> & Partial<Pick<SectionProps, "skill" | "onBusyChange">> & { canView?: boolean }) {
   const [items, setItems] = useState<IntegrationCredential[]>([]);
-  const [loading, setLoading] = useState(apiMode && canEdit);
-  const [loadError, setLoadError] = useState(false);
+  const [loading, setLoading] = useState(apiMode && canView);
+  const [loadError, setLoadError] = useState("");
+  const [query, setQuery] = useState(""), [statusFilter, setStatusFilter] = useState("all");
   const [reload, setReload] = useState(0);
   const [issuing, setIssuing] = useState(false);
   const [name, setName] = useState("");
@@ -34,17 +37,18 @@ export function IntegrationCredentials({ skill, repository, apiMode, canEdit, di
     onBusyChange(pending || !!reveal);
     return () => onBusyChange(false);
   }, [onBusyChange, pending, reveal]);
+  useEffect(() => { if (!canEdit || disabled) { setIssuing(false); setAction(null); } }, [canEdit, disabled]);
   useEffect(() => {
-    if (!apiMode || !canEdit || !repository?.listIntegrationCredentials) { setLoading(false); return; }
+    if (!apiMode || !canView || !repository?.listIntegrationCredentials) { setLoading(false); return; }
     let active = true;
-    setLoading(true); setLoadError(false);
+    setLoading(true); setLoadError("");
     void repository.listIntegrationCredentials().then((next) => {
       if (active) { setItems(next); setLoading(false); }
-    }).catch(() => { if (active) { setLoadError(true); setLoading(false); } });
+    }).catch((failure: unknown) => { if (active) { setLoadError(presentError(failure, "无法加载集成凭据，请重试。")); setLoading(false); } });
     return () => { active = false; };
-  }, [apiMode, canEdit, repository, reload]);
+  }, [apiMode, canView, repository, reload]);
   const save = async () => {
-    if (pending) return;
+    if (pending || !canEdit || disabled) return;
     setPending(true); setError("");
     try {
       if (action?.kind === "revoke") {
@@ -57,40 +61,45 @@ export function IntegrationCredentials({ skill, repository, apiMode, canEdit, di
         setCopyStatus(""); setReveal(result);
       }
       setAction(null); setIssuing(false);
-    } catch { setError("操作失败，请重试。"); }
+    } catch (failure) { setError(presentError(failure, "操作失败，请重试。")); }
     finally { setPending(false); }
   };
   const supported = !!repository?.listIntegrationCredentials && !!repository.issueIntegrationCredential && !!repository.rotateIntegrationCredential && !!repository.revokeIntegrationCredential;
   return <section aria-label="集成凭据">
     <div className="skill-credential-toolbar"><h3>集成凭据</h3>
-      {!skill && apiMode && canEdit && supported ? <SelectControl ariaLabel="筛选绑定技能" value={skillFilter} onValueChange={setSkillFilter} disabled={pending || loading} options={[
+      {!skill && apiMode && canView && repository?.listIntegrationCredentials ? <SelectControl ariaLabel="筛选绑定技能" value={skillFilter} onValueChange={setSkillFilter} disabled={pending || loading} options={[
         { value: "all", label: "全部技能" }, { value: "unbound", label: "未绑定技能" },
         ...Array.from(new Map(items.filter(item => item.skillId).map(item => [item.skillId!, { value: item.skillId!, label: item.skillName ?? item.skillId! }])).values())
       ]} /> : null}
-      {apiMode && canEdit && supported ? <Button disabled={disabled || loading || loadError} onClick={() => { setName(""); setBound(Boolean(skill)); setError(""); setIssuing(true); }}>签发凭据</Button> : null}
+      {apiMode && canEdit && supported ? <Button disabled={disabled || loading || Boolean(loadError)} onClick={() => { setName(""); setBound(Boolean(skill)); setError(""); setIssuing(true); }}>签发凭据</Button> : null}
     </div>
     <p>凭据仅能上传日志及读取自身创建的记录、报告和文件。{skill ? "默认绑定当前技能；归档技能会撤销绑定的凭据。" : "此处签发未绑定技能的组织凭据；绑定凭据可在相应技能的集成页签发。"}</p>
-    {!apiMode || !canEdit ? <p>{apiMode ? "管理集成凭据需要技能管理权限。" : "请在 API 模式下管理集成凭据。"}</p>
-      : !supported ? <p>当前无法管理集成凭据。</p> : <>
-        {loading ? <SectionSkeleton label="正在加载集成凭据" /> : loadError ? <SectionError message="无法加载集成凭据" onRetry={() => setReload((value) => value + 1)} />
-          : <DataTable fluid ariaLabel="集成凭据列表" rows={items.filter((item) => skill ? !item.skillId || item.skillId === skill.id : skillFilter === "all" || (skillFilter === "unbound" ? !item.skillId : item.skillId === skillFilter))
+    {!apiMode || !canView ? <p>{apiMode ? "查看集成凭据需要技能管理权限。" : "请在 API 模式下管理集成凭据。"}</p>
+      : !repository?.listIntegrationCredentials ? <p>当前无法查看集成凭据。</p> : <>
+        {!canEdit ? <p>当前仅可查看集成凭据。</p> : null}
+        <div className="skill-credential-toolbar"><SearchField ariaLabel="搜索集成凭据" placeholder="搜索凭据名称或技能" value={query} onValueChange={setQuery} />
+          <SelectControl ariaLabel="筛选凭据状态" value={statusFilter} onValueChange={setStatusFilter} options={[{ value: "all", label: "全部状态" }, { value: "active", label: "有效" }, { value: "revoked", label: "已撤销" }]} />
+        </div>
+        {loading ? <SectionSkeleton label="正在加载集成凭据" /> : loadError ? <SectionError message={loadError} onRetry={() => setReload((value) => value + 1)} />
+          : <DataTable fluid ariaLabel="集成凭据列表" rows={items.filter((item) => (skill ? !item.skillId || item.skillId === skill.id : skillFilter === "all" || (skillFilter === "unbound" ? !item.skillId : item.skillId === skillFilter))
+            && (statusFilter === "all" || item.status === statusFilter) && `${item.name} ${item.skillName ?? ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
             .sort((a, b) => Number(b.status === "active") - Number(a.status === "active") || Date.parse(b.createdAt) - Date.parse(a.createdAt))}
-            rowKey={(item) => item.id} tableClassName="table-fixed" emptyMessage="尚无集成凭据。" columns={[
+            rowKey={(item) => item.id} tableClassName="table-fixed" emptyMessage={query || statusFilter !== "all" || skillFilter !== "all" ? "没有符合筛选条件的集成凭据。" : "尚无集成凭据。"} columns={[
             { key: "name", header: "名称", className: "px-2", render: (item) => <><span className="block truncate" title={item.name}>{item.name}</span>
               <span className="block break-words text-xs text-muted-foreground">{item.skillId ? `绑定：${item.skillName ?? skill?.name ?? item.skillId}` : "未绑定"} · <time className="whitespace-nowrap" title={formatAbsolute(item.createdAt).slice(0, 16).replaceAll("-", "/")}>创建于 {formatAbsolute(item.createdAt).slice(0, 16).replaceAll("-", "/")}</time></span></> },
             { key: "status", header: "状态", widthClass: "w-20", className: "px-2", render: (item) => <Badge variant="outline" className={item.status === "active" ? "text-[var(--success)] bg-[var(--success-soft)]" : "text-muted-foreground bg-muted"}>{item.status === "active" ? "有效" : "已撤销"}</Badge> },
             { key: "used", header: "最近使用", widthClass: "w-36", className: "px-2 whitespace-nowrap", render: (item) => item.lastUsedAt ? <time title={formatAbsolute(item.lastUsedAt).slice(0, 16).replaceAll("-", "/")}>{formatAbsolute(item.lastUsedAt).slice(0, 16).replaceAll("-", "/")}</time> : "尚未使用" },
-            { key: "actions", header: "操作", widthClass: "w-24", className: "px-2", render: (item) => item.status === "active" ? <RowActionMenu label={`凭据 ${item.name}`} items={(["rotate", "revoke"] as const).map((kind) => ({ id: kind, label: kind === "rotate" ? "轮换" : "撤销", destructive: true, disabled, onRequestConfirmation: () => { setError(""); setAction({ kind, item }); } }))} /> : <span className="text-muted-foreground">—</span> }
+            { key: "actions", header: "操作", widthClass: "w-24", className: "px-2", render: (item) => canEdit && supported && item.status === "active" ? <RowActionMenu label={`凭据 ${item.name}`} items={(["rotate", "revoke"] as const).map((kind) => ({ id: kind, label: kind === "rotate" ? "轮换" : "撤销", destructive: true, disabled, onRequestConfirmation: () => { setError(""); setAction({ kind, item }); } }))} /> : <span className="text-muted-foreground">—</span> }
           ]} />}
       </>}
-    <ModalDialog open={issuing} initialFocusRef={nameRef} onDismiss={pending ? undefined : () => setIssuing(false)} className="skill-publish-dialog">
+    <ModalDialog open={issuing && canEdit && !disabled} initialFocusRef={nameRef} onDismiss={pending ? undefined : () => setIssuing(false)} className="skill-publish-dialog">
       {({ titleId }) => <><h2 id={titleId}>签发集成凭据</h2><label>凭据名称<Input ref={nameRef} value={name} maxLength={120} disabled={pending} onChange={(event) => setName(event.target.value)} /></label>
         {skill ? <label className="skill-credential-checkbox"><input type="checkbox" checked={bound} disabled={pending} onChange={(event) => setBound(event.target.checked)} />绑定到当前技能</label> : null}
         {!bound ? <p>未绑定凭据可向本组织的其他技能上传日志。</p> : null}
         {error ? <p role="alert" className="skill-field-error">{error}</p> : null}
         <div className="dialog-actions"><Button variant="outline" disabled={pending} onClick={() => setIssuing(false)}>取消</Button><Button disabled={pending || !name.trim()} onClick={() => void save()}>签发</Button></div></>}
     </ModalDialog>
-    <ConfirmDialog open={!!action} title={action?.kind === "rotate" ? "轮换集成凭据" : "撤销集成凭据"}
+    <ConfirmDialog open={!!action && canEdit && !disabled} title={action?.kind === "rotate" ? "轮换集成凭据" : "撤销集成凭据"}
       description={action?.kind === "rotate" ? `轮换「${action.item.name}」后，旧密钥立即失效。请更新调用方。` : `撤销「${action?.item.name ?? ""}」后，该凭据立即失效且无法恢复。`}
       confirmLabel={action?.kind === "rotate" ? "轮换凭据" : "撤销凭据"} tone="danger" pending={pending} error={error}
       onConfirm={() => void save()} onCancel={() => setAction(null)} />

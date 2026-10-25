@@ -43,10 +43,11 @@ async function signOut(page: Page) {
 async function requestSelfDemotion(page: Page, name: string, userId: string) {
   await page.getByRole("button", { name: `查看 ${name} 的成员资料`, exact: true }).click();
   const details = page.getByRole("dialog", { name: `${name} · 成员资料`, exact: true });
+  await details.getByRole("tab", { name: "访问权限", exact: true }).click();
   const form = details.getByRole("form", { name: "组织角色设置", exact: true });
   await form.getByRole("checkbox", { name: "软件开发", exact: true }).check();
   await form.getByRole("checkbox", { name: "管理员", exact: true }).uncheck();
-  await form.getByRole("button", { name: "保存", exact: true }).click();
+  await form.getByRole("button", { name: "保存组织角色", exact: true }).click();
   const confirmation = page.getByRole("dialog", { name: "确认调整用户角色", exact: true });
   const saving = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/users/${userId}/organization-roles` && response.request().method() === "PUT");
   await confirmation.getByRole("button", { name: "确认调整", exact: true }).focus(); await page.keyboard.press("Enter");
@@ -91,9 +92,11 @@ test.describe("organization administrator succession with actual local login", (
     await page.getByRole("searchbox", { name: "搜索组织", exact: true }).fill(organization.id);
     expect((await searching).status()).toBe(200);
     const row = page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: organization.name });
-    await row.getByRole("button", { name: "查看", exact: true }).click();
+    await row.getByRole("button", { name: /更多$/ }).click();
+    await page.getByRole("menuitem", { name: "管理管理员", exact: true }).click();
     const details = page.getByRole("dialog", { name: "组织资料", exact: true });
     await expect(details).toContainText("当前有 1 位可登录的组织管理员");
+    await details.getByText("紧急操作", { exact: true }).click();
     await details.getByRole("button", { name: "紧急停用管理员", exact: true }).click();
     await selectControlOption(details.getByRole("combobox", { name: "紧急停用的管理员", exact: true }), firstId);
     await details.getByLabel("紧急停用原因", { exact: true }).fill("管理员离职，先停用再指定接任者");
@@ -111,18 +114,18 @@ test.describe("organization administrator succession with actual local login", (
     await details.getByLabel("新管理员初始密码", { exact: true }).fill(LOCAL_DEMO_SHARED_PASSWORD);
     const recovered = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith(`/${organization.id}/administrator-recovery`) && response.request().method() === "POST");
     const recoveredDirectory = directoryRefresh();
-    await details.getByRole("button", { name: "确认指定管理员", exact: true }).focus(); await page.keyboard.press("Enter");
+    await details.getByRole("button", { name: "创建管理员", exact: true }).focus(); await page.keyboard.press("Enter");
     const recoveryResponse = await recovered; expect(recoveryResponse.status()).toBe(200);
     expect((await recoveredDirectory).status()).toBe(200);
     const successorId = (await recoveryResponse.json() as { item: Organization }).item.administrators.find((admin) => admin.name === nextName)!.id;
     await expect(details).toContainText("当前有 1 位可登录的组织管理员");
     await expect(details).toContainText(nextName);
     await page.screenshot({ path: testInfo.outputPath("organization-administrator-recovered-1440.png"), animations: "disabled" });
-    await details.getByRole("button", { name: "指定现有成员", exact: true }).click();
-    await selectControlOption(details.getByRole("combobox", { name: "接任成员", exact: true }), firstId);
+    await details.getByRole("button", { name: "增授管理员角色", exact: true }).click();
+    await selectControlOption(details.getByRole("combobox", { name: "增授管理员角色的成员", exact: true }), firstId);
     const appointing = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith(`/${organization.id}/administrator-recovery`) && response.request().method() === "POST");
     const appointedDirectory = directoryRefresh();
-    await details.getByRole("button", { name: "确认指定管理员", exact: true }).click();
+    await details.getByRole("button", { name: "确认增授管理员角色", exact: true }).click();
     expect((await appointing).status()).toBe(200);
     expect((await appointedDirectory).status()).toBe(200);
     await expect(details).toContainText("当前有 2 位可登录的组织管理员");
@@ -143,9 +146,14 @@ test.describe("organization administrator succession with actual local login", (
     await expect(page).toHaveURL(/\/parameter-home$/);
     await prepareInteractionSurface(page);
     await page.getByRole("link", { name: "组织管理", exact: true }).click();
-    await page.getByRole("navigation", { name: "组织管理范围" }).getByRole("button", { name: "成员与权限", exact: true }).click();
-    await expect(page.getByText("此区域由组织管理员维护", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "添加用户", exact: true })).toHaveCount(0);
+    const navigation = page.getByRole("navigation", { name: "组织管理范围" });
+    for (const name of ["成员与权限", "邀请", "团队", "项目参与", "业务交接"]) {
+      await expect(navigation.getByRole("button", { name, exact: true })).toHaveCount(0);
+    }
+    await page.goto("/organization/members");
+    await prepareInteractionSurface(page);
+    await expect(page.getByText("此区域由组织管理员维护。", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "添加成员", exact: true })).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath("administrator-self-handover-permissions-refreshed-1440.png"), animations: "disabled" });
   });
 });

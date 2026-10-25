@@ -28,8 +28,11 @@ test("permanently erases a management-only Organization and keeps independent re
       create trigger test_empty_erasure_receipt before update on organization_erasures for each row execute function test_empty_erasure_receipt()`);
   });
   await signInBrowserAsRole(page, "platform-admin", "/platform/organizations"); await prepareInteractionSurface(page);
+  const searched = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/platform/organizations" && new URL(response.url()).searchParams.get("q") === org && response.ok());
   await page.getByRole("searchbox", { name: "搜索组织", exact: true }).fill(org);
-  await page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: name }).getByRole("button", { name: "查看", exact: true }).click();
+  await searched;
+  await page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: name }).getByRole("button", { name: /更多$/ }).click();
+  await page.getByRole("menuitem", { name: "查看资料", exact: true }).click();
   await page.getByRole("dialog", { name: "组织资料", exact: true }).getByRole("button", { name: "删除影响", exact: true }).click();
   const preview = page.getByRole("dialog", { name: "组织删除影响预览", exact: true });
   await preview.getByRole("button", { name: "开始彻底删除", exact: true }).scrollIntoViewIfNeeded();
@@ -57,7 +60,8 @@ test("permanently erases a management-only Organization and keeps independent re
   await page.route(url => url.pathname === "/api/v1/platform/organization-deletions", async route => {
     if (unavailable) await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "INTERNAL_ERROR", message: "清理记录暂不可用，请重试。" } }) }); else await route.continue();
   });
-  await page.getByRole("button", { name: "清理记录", exact: true }).press("Enter");
+  await page.getByRole("button", { name: "组织目录：更多", exact: true }).click();
+  await page.getByRole("menuitem", { name: "清理记录", exact: true }).press("Enter");
   await expect(records.getByRole("alert")).toContainText("清理记录暂不可用");
   await page.screenshot({ path: testInfo.outputPath("organization-empty-erasure-retry-1440.png"), animations: "disabled" });
   unavailable = false;

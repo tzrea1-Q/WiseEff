@@ -7,6 +7,7 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { RowActionMenu } from "@/components/common/RowActionMenu";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
 import type { WiseEffAuthClient } from "@/app/appRuntime";
 import type { LocalAuthPublicConfigDto } from "@/infrastructure/http/authClient";
@@ -22,6 +23,8 @@ export function PlatformOrganizationsPage({ client, authClient, onNavigate }: { 
   const [items, setItems] = useState<PlatformOrganization[]>([]), [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true), [error, setError] = useState(""), [attempt, setAttempt] = useState(0);
   const [authentication, setAuthentication] = useState<LocalAuthPublicConfigDto | null>(null);
+  const [authenticationError, setAuthenticationError] = useState(""), [authenticationAttempt, setAuthenticationAttempt] = useState(0);
+  const [administratorOpen, setAdministratorOpen] = useState(false);
   const [creating, setCreating] = useState(false), [saving, setSaving] = useState(false), [saveError, setSaveError] = useState("");
   const [selected, setSelected] = useState<PlatformOrganization | null>(null), [notice, setNotice] = useState("");
   const [administratorPending, setAdministratorPending] = useState(false);
@@ -35,15 +38,26 @@ export function PlatformOrganizationsPage({ client, authClient, onNavigate }: { 
     let cancelled = false;
     const timer = window.setTimeout(() => {
       setLoading(true); setError("");
-      void Promise.all([client.list(query), authClient.getLocalAuthConfig?.()]).then(([rows, config]) => {
+      void client.list(query).then(rows => {
         if (cancelled) return;
-        if (!config) throw new Error("Authentication configuration unavailable");
-        setItems(rows); setAuthentication(config);
+        setItems(rows);
       }).catch((failure: unknown) => { if (!cancelled) setError(presentError(failure, "无法加载组织目录，请重试。")); })
         .finally(() => { if (!cancelled) setLoading(false); });
     }, 200);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [client, authClient, query, attempt]);
+  }, [client, query, attempt]);
+  useEffect(() => {
+    let cancelled = false;
+    setAuthentication(null); setAuthenticationError("");
+    if (!authClient.getLocalAuthConfig) {
+      setAuthenticationError("当前连接无法读取登录配置，暂不能创建组织或管理员。");
+      return;
+    }
+    void authClient.getLocalAuthConfig().then(config => {
+      if (!cancelled) setAuthentication(config);
+    }).catch((failure: unknown) => { if (!cancelled) setAuthenticationError(presentError(failure, "无法加载登录配置，暂不能创建组织或管理员。")); });
+    return () => { cancelled = true; };
+  }, [authClient, authenticationAttempt]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -53,29 +67,29 @@ export function PlatformOrganizationsPage({ client, authClient, onNavigate }: { 
       const item = await client.create({ name: name.trim(), initialAdministrator: authentication.provider === "oidc"
         ? { authentication: "oidc", name: administratorName.trim(), issuer: authentication.oidcIssuer ?? "", subject }
         : { name: administratorName.trim(), username: username.trim(), password } });
-      setPassword(""); setCreating(false); setSelected(item); setQuery(""); setAttempt((value) => value + 1);
+      setPassword(""); setCreating(false); setSelected(item); setAdministratorOpen(false); setQuery(""); setAttempt((value) => value + 1);
       setNotice("组织及初始管理员已创建。");
     } catch (failure: unknown) { setSaveError(presentError(failure, "组织创建失败，请检查初始管理员的登录信息后重试。")); }
     finally { setSaving(false); }
   }
 
   return <>
-    <AdminListPage label="组织目录" headerContent={<span>共 {items.length} 个组织</span>}
-      headerActions={<><Button variant="ghost" onClick={() => onNavigate("/organization")}>所属组织</Button><Button variant="outline" onClick={() => setErasure("records")}>清理记录</Button><Button variant="outline" disabled={!authentication} onClick={() => setRegistrationSettingsOpen(true)}>体验注册设置</Button><Button disabled={loading || Boolean(error) || !authentication} onClick={() => {
+    <AdminListPage label="组织目录" headerContent={<span>{loading ? "组织目录" : query ? `找到 ${items.length} 个组织` : `共 ${items.length} 个组织`}</span>}
+      headerActions={<><Button variant="ghost" onClick={() => onNavigate("/organization")}>所属组织</Button><RowActionMenu label="组织目录" items={[{ id: "erasures", label: "清理记录", onSelect: () => setErasure("records") }, { id: "registration", label: "体验注册设置", disabled: !authentication, onSelect: () => setRegistrationSettingsOpen(true) }]} /><Button disabled={loading || Boolean(error) || !authentication} onClick={() => {
         setName(""); setAdministratorName(""); setUsername(""); setPassword(""); setSubject(""); setSaveError(""); setCreating(true);
       }}>创建组织</Button></>}
       filterBar={<SearchField value={query} onValueChange={setQuery} ariaLabel="搜索组织" placeholder="搜索组织名称或编号" loading={loading} maxLength={200} />}
-      notice={notice ? <p role="status">{notice}</p> : undefined}
+      notice={<>{notice ? <p role="status">{notice}</p> : null}{authenticationError ? <SectionError message={authenticationError} onRetry={() => setAuthenticationAttempt(value => value + 1)} /> : null}</>}
       tableState={loading ? <SectionSkeleton label="正在加载组织目录" /> : error ? <SectionError message={error} onRetry={() => setAttempt((value) => value + 1)} /> : undefined}
       table={{ rows: items, rowKey: (row) => row.id, ariaLabel: "平台组织目录", columns: [
         { key: "name", header: "组织", render: (row) => <div><strong>{row.name}</strong><div className="platform-organizations__id">{row.id}</div></div> },
         { key: "status", header: "状态", render: row => <Badge variant="secondary">{row.status === "deleting" ? "清理中" : row.status === "suspended" ? "已停用" : "正常"}</Badge> },
         { key: "administrators", header: "管理员", render: (row) => row.administrators.map((admin) => `${admin.name}${!admin.isActive ? "（已停用）" : !admin.canLogin ? "（未配置登录身份）" : ""}`).join("、") || "暂无管理员" },
         { key: "createdAt", header: "创建时间", render: (row) => formatAbsolute(row.createdAt) }
-      ] }} rowActions={(row) => ({ label: `${row.name}操作`, items: [], primaryAction: { id: "view", label: "查看", onSelect: () => { setSelected(row); setNotice(""); } } })}
+      ] }} rowActions={(row) => ({ label: `${row.name}操作`, items: [{ id: "details", label: "查看资料", onSelect: () => { setSelected(row); setAdministratorOpen(false); setNotice(""); } }, ...(row.status !== "deleting" ? [{ id: "administrators", label: "管理管理员", onSelect: () => { setSelected(row); setAdministratorOpen(true); setNotice(""); } }] : [])], primaryAction: { id: "enter", label: row.status === "deleting" ? "查看清理进度" : "进入组织", onSelect: () => row.status === "deleting" ? setErasure("records") : onNavigate(`/organization?organizationId=${encodeURIComponent(row.id)}`) } })}
       emptyState={{ title: query ? "未找到匹配的组织" : "暂无组织", message: query ? "调整名称或编号后重试。" : "创建组织并指定初始管理员。" }} />
     {registrationSettingsOpen ? <ExperienceRegistrationSettings client={client} local={authentication?.provider === "local"} onClose={() => setRegistrationSettingsOpen(false)} /> : null}
-    {deletionPreview ? <OrganizationDeletionPreviewDialog key={deletionPreview} organizationId={deletionPreview} client={client} onClose={() => setDeletionPreview(null)} onNavigate={onNavigate} onRequestDelete={preview => { setDeletionPreview(null); setErasure(preview); }} /> : null}
+    {deletionPreview ? <OrganizationDeletionPreviewDialog key={deletionPreview} organizationId={deletionPreview} client={client} onClose={() => setDeletionPreview(null)} onNavigate={onNavigate} onOpenRegistrationSettings={() => { setDeletionPreview(null); setRegistrationSettingsOpen(true); }} onRequestDelete={preview => { setDeletionPreview(null); setErasure(preview); }} /> : null}
     {erasure ? <OrganizationErasureDialog preview={erasure === "records" ? undefined : erasure} client={client} onClose={() => setErasure(null)} onUpdated={() => setAttempt(value => value + 1)} /> : null}
     <ModalDialog open={creating} onDismiss={saving ? undefined : () => { setCreating(false); setPassword(""); }} className="platform-organizations__dialog modal-card--sm">
       {({ titleId }) => <form className="modal-form-contents" onSubmit={(event) => void submit(event)} aria-busy={saving}>
@@ -101,7 +115,8 @@ export function PlatformOrganizationsPage({ client, authClient, onNavigate }: { 
       {({ titleId }) => <><h3 id={titleId}>组织资料</h3>{selected ? <dl className="platform-organizations__details">
         <dt>名称</dt><dd>{selected.name}</dd><dt>组织编号</dt><dd>{selected.id}</dd><dt>状态</dt><dd>{selected.status === "deleting" ? "清理中" : selected.status === "suspended" ? "已停用" : "正常"}</dd>
         <dt>创建时间</dt><dd>{formatAbsolute(selected.createdAt)}</dd><dt>管理员</dt><dd>{selected.administrators.map((admin) => `${admin.name}${!admin.isActive ? "（已停用）" : !admin.canLogin ? "（未配置登录身份）" : ""}`).join("、") || "暂无管理员"}</dd>
-      </dl> : null}{selected && selected.status !== "deleting" ? <OrganizationAdministratorControls key={selected.id} organization={selected} authentication={authentication} client={client} onPendingChange={setAdministratorPending}
+      </dl> : null}{selected && selected.status !== "deleting" ? <Button variant="outline" disabled={administratorPending} onClick={() => setAdministratorOpen(value => !value)} aria-expanded={administratorOpen}>管理管理员</Button> : null}
+      {selected && selected.status !== "deleting" && administratorOpen ? <OrganizationAdministratorControls key={selected.id} organization={selected} authentication={authentication} client={client} onPendingChange={setAdministratorPending}
         onUpdated={(item) => { setSelected(item); setAttempt((value) => value + 1); setNotice("组织管理员已调整。"); }} /> : null}
       <div className="platform-organizations__actions"><Button variant="outline" disabled={administratorPending} onClick={() => setSelected(null)}>关闭</Button>
         {selected ? <Button variant="outline" disabled={administratorPending} onClick={() => { setDeletionPreview(selected.id); setSelected(null); }}>删除影响</Button> : null}

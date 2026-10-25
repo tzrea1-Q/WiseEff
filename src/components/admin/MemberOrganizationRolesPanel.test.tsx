@@ -16,7 +16,7 @@ describe("own organization roles", () => {
     expect(admin).toBeEnabled();
     await user.click(screen.getByRole("checkbox", { name: "software-user" }));
     await user.click(admin);
-    await user.click(screen.getByRole("button", { name: "保存" }));
+    await user.click(screen.getByRole("button", { name: "保存组织角色" }));
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认调整" }));
     expect(onSave).toHaveBeenCalledWith(["software-user"], ["admin"]);
     expect(await screen.findByRole("status")).toHaveTextContent("组织角色已保存");
