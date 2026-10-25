@@ -89,11 +89,24 @@ function toVersionDto(row: ProjectParameterFileVersionRow): ProjectParameterFile
   };
 }
 
+/** Project-global storage identity; original paths belong to immutable revision members. */
+export function configurationSourceFileName(configSetId: string, sourceName: string): string {
+  return `initialization-${configSetId}-${sourceName}`;
+}
+
+/** Use the existing pf alias; exact current bytes keep their logical source path. */
+const currentSourceNameSql = `coalesce((select member.source_name from public.dts_config_revision_members member
+    join public.dts_config_revisions revision on revision.id=member.config_revision_id
+    where member.file_id=pf.id and member.file_version_id=pf.current_version_id
+      and revision.organization_id=pf.organization_id and revision.project_id=pf.project_id
+      and (pf.config_set_id is null or revision.config_set_id=pf.config_set_id)
+    order by revision.revision_number desc limit 1),pf.file_name)`;
+
 const fileSelectColumns = `
   pf.id,
   pf.organization_id,
   pf.project_id,
-  pf.file_name,
+  ${currentSourceNameSql} as file_name,
   pf.format,
   pf.module_hint,
   pf.current_version_id,

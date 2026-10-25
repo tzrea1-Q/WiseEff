@@ -32,6 +32,10 @@ function conflict(message: string): never { throw new ApiError("CONFLICT", messa
 function limit(): never { throw new ApiError("CONFLICT", "Exact source proof exceeds its bounded capacity.", { reason: "source-proof-limit" }); }
 /** Callers must roll back their entire transaction; no reads may follow this refusal. */
 export function rethrowSourceTransactionError(error: unknown): never {
+  if ((error as { code?: string; constraint?: string })?.code === "23505"
+    && (error as { constraint?: string }).constraint === "project_parameter_files_project_id_file_name_key") {
+    throw new ApiError("CONFLICT", "配置来源的物理文件标识已被其他文件占用，所有变更已回滚。", { reason: "source-file-name-conflict" });
+  }
   if ((error as { code?: string })?.code === "55000" && /Shared reference/.test((error as Error).message)) {
     throw new ApiError("CONFLICT", "共享引用源码只读，请通过引用变更或恢复流程操作。", { reason: "shared-reference-readonly" });
   }
