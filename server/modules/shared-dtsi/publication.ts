@@ -7,6 +7,7 @@ import { parameterOrganizationId } from "../parameters/operatingScope";
 import { sharedDtsiPublicationSource as publicationSource } from "./source";
 import type { SharedDtsiDraft, SharedDtsiManifest, SharedDtsiPublicationPreview, SharedDtsiResourceDetail,
   SharedDtsiVersion, SharedDtsiVersionSummary } from "../contracts/dtoSchemas/sharedDtsi";
+import { sharedDtsiManifestSchema } from "../contracts/dtoSchemas/sharedDtsi";
 import { getSharedDtsiDraft, lockDraft, requireRead, requireWrite, type WriteContext } from "./service";
 
 const digest = (value: unknown) => `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
@@ -46,7 +47,7 @@ export async function getSharedDtsiVersion(db: Database,auth: AuthContext,resour
   if (!row) throw new ApiError("NOT_FOUND","共享 DTSI 版本不存在。");
   const members=(await db.query<SharedDtsiVersion["members"][number]>(`select member_id as id,source_name as "sourceName",content,checksum,size_bytes as "sizeBytes"
     from public.shared_dtsi_revision_members where revision_id=$1 and organization_id=$2 order by source_name,member_id`,[versionId,parameterOrganizationId(auth)])).rows;
-  return {...summary(row),manifest:row.manifest,members};
+  return {...summary(row),manifest:sharedDtsiManifestSchema.parse(row.manifest),members};
 }
 
 type PreviewRow={id:string;resourceId:string;draftId:string;draftRevision:number;baseVersionId:string|null;actorUserId:string;actorFingerprint:string;

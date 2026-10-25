@@ -152,6 +152,20 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     }
   });
 
+  it("reads a pre-multifile immutable manifest with additive defaults",async()=>{
+    const draft=(await call("","POST",{name:"Existing published library",sourceName:"legacy.dtsi",content:source})).body.item;
+    const versionId="77777777-7777-4777-8777-777777777777",member=draft.members[0]!;
+    // A persisted T02 revision is a compatibility fixture, not a write through the new publisher.
+    const manifest={schemaVersion:"shared-dtsi/v1",members:[{id:member.id,sourceName:member.sourceName,checksum:"sha256:legacy",sizeBytes:Buffer.byteLength(source),role:"include"}],externalReferences:[]};
+    await db.query(`insert into public.shared_dtsi_revisions(id,resource_id,organization_id,version,name,draft_revision,change_description,manifest,digest,created_by_user_id)
+      values ($1,$2,$3,1,$4,1,'Legacy source',$5::jsonb,'sha256:legacy-version',$6)`,[versionId,draft.resourceId,auth.organization.id,draft.name,JSON.stringify(manifest),auth.user.id]);
+    await db.query(`insert into public.shared_dtsi_revision_members(revision_id,member_id,resource_id,organization_id,source_name,content,checksum,size_bytes)
+      values($1,$2,$3,$4,$5,$6,'sha256:legacy',$7)`,[versionId,member.id,draft.resourceId,auth.organization.id,member.sourceName,member.content,Buffer.byteLength(source)]);
+    const result=await publicationCall<{item:{manifest:unknown;digest:string}}>(`/${draft.resourceId}/versions/${versionId}`);
+    expect(result.status,result.bodyText).toBe(200);
+    expect(result.body.item).toMatchObject({digest:"sha256:legacy-version",manifest:{...manifest,includeGraph:[],buildInputs:{includeSearchPaths:[]}}});
+  });
+
   it("publishes a frozen source version, reads history without a draft, and replays the same request", async () => {
     const created = await call("", "POST", { name: "Published battery", sourceName: "battery.dtsi", content: source,
       changeDescription: "首次发布电池公共声明" });
