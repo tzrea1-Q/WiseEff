@@ -3231,7 +3231,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const bindings=async(id:string)=>(await call<{items:Binding[]}>("GET",`/api/v2/projects/${id}/parameter-bindings`)).items;
     async function graph(id:string) {
       const revisions=await call<{items:{id:string}[]}>("GET",`/api/v2/projects/${id}/config-sets/${sets[id]}/revisions`);
-      const result=await call<{item:TopologyTree}>("GET",`/api/v2/projects/${id}/config-sets/${sets[id]}/revisions/${revisions.items[0]!.id}/topology`);
+      const result:{item:TopologyTree}=await call("GET",`/api/v2/projects/${id}/config-sets/${sets[id]}/revisions/${revisions.items[0]!.id}/topology`);
       if(result.item.view!=="effective")throw new Error("Expected actual effective configuration");
       return result.item;
     }
@@ -3955,7 +3955,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
       const path=testInfo.outputPath(`private-shared-draft-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`Private shared draft ${viewport.width}`,{path,contentType:"image/png"});
     }
     await page.getByRole("button",{name:"预览发布",exact:true}).click();
-    await expect(page.getByLabel("待发布 DTSI 源码",{exact:true})).toContainText("PrivateShared");
+    await expect(page.getByRole("region",{name:"共享原始源码修改片段",exact:true})).toContainText("PrivateShared");
     await page.getByRole("button",{name:"发布版本",exact:true}).focus();await page.keyboard.press("Enter");
     await expect(page.getByText("v1 · 已发布，只读",{exact:true})).toBeVisible();
     const detail=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/detail`),{headers:adminHeaders()});

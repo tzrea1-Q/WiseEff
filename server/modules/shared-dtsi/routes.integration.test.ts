@@ -12,6 +12,7 @@ import { installPublishedCatalogMatchChain } from "../catalog-kernel/runtime/cat
 import { createWiseEffServer } from "../../app";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { createHash } from "node:crypto";
 import { registerOperationsRoutes } from "../operations/routes";
 
 const source = '/ { battery: battery { compatible = "test,battery"; status = "disabled"; }; };\n';
@@ -65,6 +66,26 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
       members: [{ id: draft.members[0]!.id, sourceName: "inc/battery.dtsi", content }] });
     expect((await call(`/${draft.resourceId}/draft`, "DELETE", { expectedRevision: 2 })).status).toBe(200);
     expect((await call(`/${draft.resourceId}`)).status).toBe(404);
+  });
+
+  it("compares the exact published base with pending original files and ordered semantic changes before publication",async()=>{
+    type Preview=import("../contracts/dtoSchemas/sharedDtsi").SharedDtsiPublicationPreview;
+    const created=await call("","POST",{name:"Pending changes",members:[{sourceName:"battery.dtsi",content:source},{sourceName:"removed.dtsi",content:"/ { removed {}; };"}],changeDescription:"Initial declarations"});expect(created.status,created.bodyText).toBe(201);
+    const id=created.body.item.resourceId;
+    const first=await publicationCall<{item:Preview}>(`/${id}/publication-preview`,"POST",{expectedRevision:1});expect(first.status,first.bodyText).toBe(201);
+    expect(first.body.item.comparison.before).toBeNull();expect(first.body.item.comparison.sources).toHaveLength(2);expect(first.body.item.comparison.sources.every(row=>row.before===null)).toBe(true);
+    const published=await publicationCall<{item:{id:string;version:number}}>(`/${id}/publications`,"POST",{previewId:first.body.item.id,idempotencyKey:"pending-before"});expect(published.status,published.bodyText).toBe(201);
+    const draft=await call(`/${id}/draft`,"POST",{baseVersionId:published.body.item.id});expect(draft.status,draft.bodyText).toBe(201);
+    const member=draft.body.item.members.find(row=>row.sourceName==="battery.dtsi")!;
+    const saved=await call(`/${id}/draft`,"PUT",{name:"Pending changes",members:[{...member,content:source.replace('"disabled"','"okay"').replace('status =','limit = <42>; status =')},{sourceName:"added.dtsi",content:"/ { added {}; };"}],expectedRevision:1,changeDescription:"Review before release"});expect(saved.status,saved.bodyText).toBe(200);
+    const pending=await publicationCall<{item:Preview}>(`/${id}/publication-preview`,"POST",{expectedRevision:2});expect(pending.status,pending.bodyText).toBe(201);
+    const delta=pending.body.item.comparison;
+    expect(delta.before?.id).toBe(published.body.item.id);expect(delta.sources).toEqual(expect.arrayContaining([expect.objectContaining({before:null,after:{sourceName:"added.dtsi",content:"/ { added {}; };"}}),expect.objectContaining({before:{sourceName:"removed.dtsi",content:"/ { removed {}; };"},after:null})]));
+    expect(delta.semantic.before).toContain('status = "disabled"');expect(delta.semantic.after).toContain('status = "okay"');expect(delta.semantic.after).toContain("limit = <42>");
+    expect((await publicationCall(`/${id}/detail`)).body).toMatchObject({item:{currentVersion:{id:published.body.item.id,version:1},draftRevision:2}});
+    // Leaving preview has no publication side effect; the same frozen intent can
+    // subsequently be explicitly published while project references stay fixed.
+    const released=await publicationCall<{item:{version:number}}>(`/${id}/publications`,"POST",{previewId:pending.body.item.id,idempotencyKey:"pending-after"});expect(released.status,released.bodyText).toBe(201);expect(released.body.item.version).toBe(2);
   });
 
   it("retires and restores the same resource with CAS, exact retry and immutable history", async () => {
@@ -168,6 +189,21 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     const ambiguous=await propose("acme,sensor","/unit@1","source-recognition");
     expect(ambiguous.status,ambiguous.bodyText).toBe(201);
     expect(ambiguous.body.item.requestedChange).toMatchObject({kind:"source-recognition",sourceEvidence:{nodeLocator:"/unit@1",candidate:{status:"ambiguous"}}});
+  });
+
+  it("recognizes compatible evidence beneath an unresolved native path while project resolution stays strict",async()=>{
+    if(!await (await import("../parameter-modules/recognitionSettings")).captureModuleRecognitionCatalog(db))
+      await installPublishedCatalogMatchChain((await import("../../shared/database/client")).getRootPostgresPool(db)!);
+    const content='// immutable external context\n&{/soc} { battery: battery { compatible = "acme,sensor"; }; };\n';
+    const created=await call("","POST",{name:"Native external context",sourceName:"native.dtsi",content,changeDescription:"Original path context"});expect(created.status,created.bodyText).toBe(201);
+    const id=created.body.item.resourceId;
+    const preview=await publicationCall<{item:{id:string;manifest:{externalReferences:string[]}}}>(`/${id}/publication-preview`,"POST",{expectedRevision:1});expect(preview.status,preview.bodyText).toBe(201);expect(preview.body.item.manifest.externalReferences).toContain("&{/soc}");
+    const published=await publicationCall<{item:{id:string;members:Draft["members"]}}>(`/${id}/publications`,"POST",{previewId:preview.body.item.id,idempotencyKey:"native-external-recognition"});expect(published.status,published.bodyText).toBe(201);
+    const recognition=await publicationCall<{items:unknown[]}>(`/${id}/versions/${published.body.item.id}/recognition`);
+    expect(recognition.status,recognition.bodyText).toBe(200);expect(recognition.body.items).toEqual([expect.objectContaining({nodeLocator:"&{/soc}/battery",unresolved:true,labels:["battery"],candidate:{status:"recognized",subjectIds:["csub_acme_sensor"]},source:{resourceId:id,versionId:published.body.item.id,memberId:published.body.item.members[0]!.id,sourceName:"native.dtsi",version:1,line:2}})]);
+    const {resolveDtsConfigSet}=await import("../dts");
+    const files=new Map([["native.dtsi",{content,fileVersionId:"native-immutable"}]]);
+    expect(resolveDtsConfigSet({entryFile:"native.dtsi",overlayOrder:[],includeSearchPaths:[],files}).diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({code:"target-unresolved",severity:"error"})]));
   });
 
   it("indexes only the current validated draft and reads macro-compatible evidence at its original source location",async()=>{
@@ -399,27 +435,29 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     const successorPreview=await publicationCall<{item:{id:string}}>(`/${leaf.resourceId}/publication-preview`,"POST",{expectedRevision:2});
     const successor=await publicationCall<{item:{id:string}}>(`/${leaf.resourceId}/publications`,"POST",{previewId:successorPreview.body.item.id,idempotencyKey:"diagnostic-leaf-v2"});
     expect(successor.status,successor.bodyText).toBe(201);
-    for(const [dependencies,content,match] of [
-      [[pin,{...pin,mountPath:"different"}],'/ { root {}; };',"版本或挂载路径冲突"],
-      [[pin,{...pin,versionId:successor.body.item.id}],'/ { root {}; };',"版本或挂载路径冲突"],
-      [[pin,{resourceId:other.resourceId,versionId:other.id,mountPath:"vendor"}],'/ { root {}; };',"挂载路径重复"],
-      [[pin],'/ { duplicate: local {}; };',"标签"],
-      [[{...pin,resourceId:"99999999-9999-4999-8999-999999999999"}],'/ { root {}; };',"不存在"],
-      [[pin],'/include/ "vendor/missing.dtsi"\n',"缺少依赖文件"]
+    for(const [dependencies,content,match,early] of [
+      [[pin,{...pin,mountPath:"different"}],'/ { root {}; };',"版本或挂载路径冲突",true],
+      [[pin,{...pin,versionId:successor.body.item.id}],'/ { root {}; };',"版本或挂载路径冲突",true],
+      [[pin,{resourceId:other.resourceId,versionId:other.id,mountPath:"vendor"}],'/ { root {}; };',"挂载路径重复",true],
+      [[pin],'/ { duplicate: local {}; };',"标签",false],
+      [[{...pin,resourceId:"99999999-9999-4999-8999-999999999999"}],'/ { root {}; };',"不存在",true],
+      [[pin],'/include/ "vendor/missing.dtsi"\n',"缺少依赖文件",false]
     ] as const) {
-      const draft=await call("","POST",{name:"Incomplete dependency",sourceName:"root.dtsi",content,dependencies,changeDescription:"Retain incomplete input"});
+      const draft=await call("","POST",{name:"Incomplete dependency",sourceName:"root.dtsi",content,changeDescription:"Retain incomplete input"});
       expect(draft.status,draft.bodyText).toBe(201);
-      const preview=await publicationCall<{error:{message:string}}>(`/${draft.body.item.resourceId}/publication-preview`,"POST",{expectedRevision:1});
+      const saved=await publicationCall<{item:Draft;error:{message:string}}>(`/${draft.body.item.resourceId}/draft`,"PUT",{name:"Incomplete dependency",members:draft.body.item.members,dependencies,expectedRevision:1,changeDescription:"Retain incomplete input"});
+      if(early){expect([400,404]).toContain(saved.status);expect(saved.body.error.message).toContain(match);expect((await call(`/${draft.body.item.resourceId}`)).body.item).toEqual(draft.body.item);continue;}
+      expect(saved.status,saved.bodyText).toBe(200);
+      const preview=await publicationCall<{error:{message:string}}>(`/${draft.body.item.resourceId}/publication-preview`,"POST",{expectedRevision:2});
       expect([400,404]).toContain(preview.status);expect(preview.body.error.message).toContain(match);
-      expect((await call(`/${draft.body.item.resourceId}`)).body.item).toEqual(draft.body.item);
+      expect((await call(`/${draft.body.item.resourceId}`)).body.item).toEqual(saved.body.item);
       expect((await publicationCall<{items:unknown[]}>(`/${draft.body.item.resourceId}/versions`)).body.items).toEqual([]);
     }
     const editable=await call(`/${leaf.resourceId}/draft`,"POST",{baseVersionId:successor.body.item.id});
     const saved=await call(`/${leaf.resourceId}/draft`,"PUT",{name:"Diagnostic leaf",members:editable.body.item.members,expectedRevision:1,
       dependencies:[{...pin,mountPath:"self"}],changeDescription:"Cycle diagnostic"});
-    expect(saved.status,saved.bodyText).toBe(200);
-    const cycle=await publicationCall<{error:{message:string}}>(`/${leaf.resourceId}/publication-preview`,"POST",{expectedRevision:2});
-    expect(cycle.status).toBe(400);expect(cycle.body.error.message).toContain("循环");
+    expect(saved.status,saved.bodyText).toBe(400);expect(saved.bodyText).toContain("循环");
+    expect((await call(`/${leaf.resourceId}`)).body.item).toEqual(editable.body.item);
   });
 
   it("bounds the complete resource dependency depth before publishing a partial closure",async()=>{
@@ -427,10 +465,9 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     for(let depth=0;depth<17;depth++) {
       const created=await call("","POST",{name:`Bounded resource ${depth}`,sourceName:`depth-${depth}.dtsi`,content:`/ { depth_${depth} {}; };`,
         changeDescription:"Bounded closure",dependencies:previous?[previous]:[]});
+      if(depth===16){expect(created.status,created.bodyText).toBe(400);expect(created.bodyText).toContain("16 层");expect((await call("?q=Bounded%20resource%2016")).body.items).toEqual([]);break;}
       expect(created.status,created.bodyText).toBe(201);
       const preview=await publicationCall<{item:{id:string};error:{message:string}}>(`/${created.body.item.resourceId}/publication-preview`,"POST",{expectedRevision:1});
-      if(depth===16) {expect(preview.status,preview.bodyText).toBe(400);expect(preview.body.error.message).toContain("16 层");
-        expect((await call(`/${created.body.item.resourceId}`)).body.item).toEqual(created.body.item);break;}
       expect(preview.status,preview.bodyText).toBe(201);
       const published=await publicationCall<{item:{id:string}}>(`/${created.body.item.resourceId}/publications`,"POST",{previewId:preview.body.item.id,idempotencyKey:`depth-${depth}`});
       expect(published.status,published.bodyText).toBe(201);previous={resourceId:created.body.item.resourceId,versionId:published.body.item.id,mountPath:""};
@@ -518,11 +555,12 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     const draft=(await call("","POST",{name:"Existing published library",sourceName:"legacy.dtsi",content:source})).body.item;
     const versionId="77777777-7777-4777-8777-777777777777",member=draft.members[0]!;
     // A persisted T02 revision is a compatibility fixture, not a write through the new publisher.
-    const manifest={schemaVersion:"shared-dtsi/v1",members:[{id:member.id,sourceName:member.sourceName,checksum:"sha256:legacy",sizeBytes:Buffer.byteLength(source),role:"include"}],externalReferences:[]};
+    const checksum=`sha256:${createHash("sha256").update(source).digest("hex")}`;
+    const manifest={schemaVersion:"shared-dtsi/v1",members:[{id:member.id,sourceName:member.sourceName,checksum,sizeBytes:Buffer.byteLength(source),role:"include"}],externalReferences:[]};
     await db.query(`insert into public.shared_dtsi_revisions(id,resource_id,organization_id,version,name,draft_revision,change_description,manifest,digest,created_by_user_id)
       values ($1,$2,$3,1,$4,1,'Legacy source',$5::jsonb,'sha256:legacy-version',$6)`,[versionId,draft.resourceId,auth.organization.id,draft.name,JSON.stringify(manifest),auth.user.id]);
     await db.query(`insert into public.shared_dtsi_revision_members(revision_id,member_id,resource_id,organization_id,source_name,content,checksum,size_bytes)
-      values($1,$2,$3,$4,$5,$6,'sha256:legacy',$7)`,[versionId,member.id,draft.resourceId,auth.organization.id,member.sourceName,member.content,Buffer.byteLength(source)]);
+      values($1,$2,$3,$4,$5,$6,$7,$8)`,[versionId,member.id,draft.resourceId,auth.organization.id,member.sourceName,member.content,checksum,Buffer.byteLength(source)]);
     const result=await publicationCall<{item:{manifest:unknown;digest:string}}>(`/${draft.resourceId}/versions/${versionId}`);
     expect(result.status,result.bodyText).toBe(200);
     expect(result.body.item).toMatchObject({digest:"sha256:legacy-version",manifest:{...manifest,includeGraph:[],buildInputs:{includeSearchPaths:[]}}});

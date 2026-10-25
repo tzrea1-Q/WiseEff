@@ -39,7 +39,7 @@ test("#1431 recognizes frozen source instances, submits an ambiguity proposal an
     await page.setViewportSize({width:1440,height:900});
     await signInCatalogActor(page,"org-admin","/parameter-admin/sources");await dismissXiaozeHint(page);
     const compatible=`wiseeff,recognized-source-${Date.now().toString(36)}`;
-    const original=`/ { first: device@1 { compatible = "acme,sensor", "acme,power"; }; second: device@2 { compatible = "${compatible}"; status = "disabled"; }; third: device@3 { compatible = "${compatible}"; }; };\n`;
+    const original=`&{/soc} { first: device@1 { compatible = "acme,sensor", "acme,power"; }; second: device@2 { compatible = "${compatible}"; status = "disabled"; }; third: device@3 { compatible = "${compatible}"; }; };\n`;
     const created=await catalogJson(page.request,"POST","/api/v2/shared-dtsi",{data:{name:"精确来源识别",sourceName:"library/boards/long-hardware-identity-source.dtsi",content:original,changeDescription:"#1431 immutable recognition source"}});
     expect(created.status).toBe(201);const resource=(created.body as {item:{resourceId:string}}).item.resourceId;
     const preview=await catalogJson(page.request,"POST",`/api/v2/shared-dtsi/${resource}/publication-preview`,{data:{expectedRevision:1}});
@@ -49,9 +49,9 @@ test("#1431 recognizes frozen source instances, submits an ambiguity proposal an
     const sourcePath=`/parameter-admin/sources?resource=${resource}&version=${version}&tab=recognition`;
     await page.goto(catalogAppUrl(sourcePath));
     const recognition=page.getByRole("region",{name:"固定版本来源识别"});
-    await expect(recognition.getByText("/device@1",{exact:true})).toBeVisible();
-    await expect(recognition.getByText("/device@2",{exact:true})).toBeVisible();
-    await expect(recognition.getByText("/device@3",{exact:true})).toBeVisible();
+    await expect(recognition.getByText("&{/soc}/device@1",{exact:true})).toBeVisible();
+    await expect(recognition.getByText("&{/soc}/device@2",{exact:true})).toBeVisible();
+    await expect(recognition.getByText("&{/soc}/device@3",{exact:true})).toBeVisible();
     await expect(recognition.getByRole("link",{name:"记录识别修订",exact:true})).toHaveCount(1);
     for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
       await page.setViewportSize(viewport);await assertNoPageOverflow(page);
@@ -65,7 +65,7 @@ test("#1431 recognizes frozen source instances, submits an ambiguity proposal an
     await confirmGovernanceDialog(page,"确认提出修订");
     const createdProposal=await creating;expect(createdProposal.status()).toBe(201);
     const payload=(await createdProposal.json()).item;
-    expect(payload.requestedChange).toMatchObject({kind:"source-recognition",sourceEvidence:{nodeLocator:"/device@1",candidate:{status:"ambiguous"}}});
+    expect(payload.requestedChange).toMatchObject({kind:"source-recognition",sourceEvidence:{nodeLocator:"&{/soc}/device@1",unresolved:true,candidate:{status:"ambiguous"}}});
     await expect(proposal.getByText("草稿",{exact:true})).toBeVisible();
     await proposal.getByRole("button",{name:"提交修订",exact:true}).click();await confirmGovernanceDialog(page,"确认提交");
     await expect(proposal.getByText("已提交",{exact:true})).toBeVisible();
@@ -117,7 +117,7 @@ test("#1431 recognizes frozen source instances, submits an ambiguity proposal an
     await expect(page.getByRole("button",{name:"新增定义",exact:true})).toHaveCount(0);
     await page.getByRole("link",{name:"返回来源识别",exact:true}).click();
     await expect(page).toHaveURL(catalogAppUrl(sourcePath));
-    await expect(recognition.getByText("/device@2",{exact:true})).toBeVisible();
+    await expect(recognition.getByText("&{/soc}/device@2",{exact:true})).toBeVisible();
     await page.evaluate(()=>document.documentElement.classList.add("dark"));
     await expect(page.getByRole("button",{name:"返回资源列表",exact:true})).toHaveCSS("color","rgb(183, 193, 212)");
     await assertNoPageOverflow(page);await catalogScreenshot(page,testInfo,"shared-recognition-guest-dark-1280");

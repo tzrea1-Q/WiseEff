@@ -3,7 +3,7 @@ import { expect } from "playwright/test";
 import { test } from "./helpers/catalogFixtureRuntime";
 import { catalogJson, catalogScreenshot, dismissXiaozeHint, signInCatalogActor } from "./helpers/catalogBrowser";
 
-test.use({ catalogRuntimeScope: import.meta.url });
+test.use({ catalogRuntimeScope: import.meta.url, catalogRuntimeDatabaseUrl: process.env.TEST_DATABASE_URL });
 
 test("imports and edits a shared DTSI draft, keeps stale input, and discards with the keyboard", async ({ page, catalogAcceptanceRuntime }, testInfo) => {
   void catalogAcceptanceRuntime;

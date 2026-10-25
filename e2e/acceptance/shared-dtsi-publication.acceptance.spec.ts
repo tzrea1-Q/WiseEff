@@ -4,6 +4,7 @@ import JSZip from "jszip";
 import { test, catalogAppUrl } from "./helpers/catalogFixtureRuntime";
 import { createPostgresDatabase } from "../../server/shared/database/client";
 import { catalogJson, catalogScreenshot, dismissXiaozeHint, signInCatalogActor } from "./helpers/catalogBrowser";
+import { acceptanceCast } from "./helpers/cast";
 
 test.use({catalogRuntimeScope:import.meta.url,catalogRuntimeDatabaseUrl:process.env.TEST_DATABASE_URL});
 
@@ -134,17 +135,19 @@ test("publishes a source-only shared version and retains its history after disca
   await page.setViewportSize({width:1440,height:900});
   await signInCatalogActor(page,"org-admin","/parameter-admin/sources");
   await dismissXiaozeHint(page);
+  await expect(page.getByText("尚无共享 DTSI",{exact:true})).toBeVisible();await catalogScreenshot(page,testInfo,"shared-list-empty-1440");
   await page.getByRole("button",{name:"导入资源",exact:true}).click();
   const source='/ { battery: battery { compatible = "test,published-battery"; status = "disabled"; }; };\n';
   await page.locator('input[type="file"]').first().setInputFiles({name:"battery-common.dtsi",mimeType:"text/plain",buffer:Buffer.from(source)});
   await page.getByLabel("变更说明",{exact:true}).fill("首次发布电池公共声明，项目按需引用。");
   await page.getByRole("button",{name:"保存草稿",exact:true}).click();
   await expect(page.getByText("草稿已保存",{exact:true})).toBeVisible();
+  await catalogScreenshot(page,testInfo,"shared-source-draft-1440");
   const resourceId=new URL(page.url()).searchParams.get("resource")!;
   await page.getByRole("button",{name:"预览发布",exact:true}).click();
   await expect(page.getByRole("heading",{name:"发布 battery-common",exact:true})).toBeVisible();
-  await expect(page.getByText("发布共享版本，不会自动更新项目配置。",{exact:true})).toBeVisible();
-  await expect(page.getByLabel("待发布 DTSI 源码",{exact:true})).toHaveAttribute("aria-readonly","true");
+  await expect(page.getByText("本组织有查看权限的用户可读取完整源码；发布不会自动更新项目配置。",{exact:true})).toBeVisible();
+  await expect(page.getByRole("region",{name:"首次发布 → 待发布版本",exact:true})).toBeVisible();
   await catalogScreenshot(page,testInfo,"shared-dtsi-publication-preview-1440");
   await page.getByRole("button",{name:"发布版本",exact:true}).focus();
   await page.keyboard.press("Enter");
@@ -156,6 +159,16 @@ test("publishes a source-only shared version and retains its history after disca
   expect(metadata.draftRevision).toBeNull();
   expect(metadata.currentVersion.version).toBe(1);
   const versionId=metadata.currentVersion.id;
+  const post=async(path:string,data:unknown)=>{const result=await catalogJson(page.request,"POST",path,{data});expect(result.status,JSON.stringify(result.body)).toBeGreaterThanOrEqual(200);expect(result.status,JSON.stringify(result.body)).toBeLessThan(300);return result.body as {item:Record<string,string>};};
+  const project=`pending-pin-${Date.now().toString(36)}`,code="PENDINGPIN";
+  await post("/api/v1/parameters/admin/projects",{id:project,name:code,code});
+  expect((await catalogJson(page.request,"PUT",`/api/v1/parameters/projects/${project}/initialization/draft`,{data:{projectName:code,projectCode:code,ownerUserId:acceptanceCast.acceptanceAdmin.userId,sourceProjectIds:[],primarySourceProjectId:null,supplementSourceProjectIds:[],selectedModuleIds:[],selectedRisks:[],selectedSourceBindingIds:[],bindingSnapshots:[],emptyLibrary:true,notes:"Publication never upgrades a project implicitly"}})).status).toBe(200);
+  const review=await post(`/api/v1/parameters/projects/${project}/initialization/submit`,{});await post(`/api/v1/parameters/admin/initialization-reviews/${review.item.id}/approve`,{});
+  const zip=new JSZip();zip.file("board.dts",'/dts-v1/; / { model = "Pinned project"; compatible = "unknown,pending"; };');
+  const input={name:"Pinned project",ownership:"private",archive:{name:"project.zip",contentBase64:await zip.generateAsync({type:"base64"})},sourceConfiguration:{entryFile:"board.dts",overlayOrder:[],buildInputs:{includeSearchPaths:[],defines:{}}}};
+  const checked=await post(`/api/v1/projects/${project}/config-set-import/preview`,input);const config=await post(`/api/v1/projects/${project}/config-set-import/apply`,{...input,proofToken:checked.item.proofToken,reason:"Pin before successor publication",clientMutationId:"pending-initial"});
+  const memberPath=`/api/v1/projects/${project}/config-sets/${config.item.configSetId}/member-addition`,reference={sharedReference:{resourceId,versionId,mountPath:"shared"},role:"misc",sortOrder:1};
+  const referencePreview=await post(`${memberPath}/preview`,reference);await post(`${memberPath}/apply`,{...reference,proofToken:referencePreview.item.proofToken,reason:"Exact initial source pin",clientMutationId:"pending-pin"});
   const published=await catalogJson(page.request,"GET",`/api/v2/shared-dtsi/${resourceId}/versions/${versionId}`);
   expect(published.status).toBe(200);
   expect((published.body as {item:{members:{content:string}[]}}).item.members[0]!.content).toBe(source);
@@ -171,13 +184,25 @@ test("publishes a source-only shared version and retains its history after disca
   await page.getByRole("button",{name:"v1",exact:true}).click();
   await page.getByRole("button",{name:"创建新版本",exact:true}).click();
   await expect(page.getByLabel("变更说明",{exact:true})).toHaveValue("");
+  await page.getByLabel("DTSI 源码",{exact:true}).click();await page.keyboard.press("ControlOrMeta+A");await page.keyboard.insertText(source.replace("disabled","okay").replace('status =','limit = <42>; status ='));
+  await page.getByLabel("变更说明",{exact:true}).fill("发布前核对原始源码与有序语义差异");await page.getByRole("button",{name:"预览发布",exact:true}).click();
+  await expect(page.getByRole("region",{name:"v1 → 待发布版本",exact:true})).toBeVisible();
+  for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await catalogScreenshot(page,testInfo,`shared-pending-source-${viewport.width}`);}
+  await page.getByRole("radio",{name:"语义声明",exact:true}).focus();await page.keyboard.press("Space");await expect(page.getByRole("region",{name:"有序语义声明修改片段",exact:true})).toContainText("42");await catalogScreenshot(page,testInfo,"shared-pending-semantic-1280");
+  await page.getByRole("button",{name:"返回编辑",exact:true}).click();await expect(page.getByLabel("DTSI 源码",{exact:true})).toContainText("42");
+  expect((await catalogJson(page.request,"GET",`/api/v2/shared-dtsi/${resourceId}/detail`)).body).toMatchObject({item:{currentVersion:{id:versionId,version:1}}});
+  await page.getByRole("button",{name:"预览发布",exact:true}).click();await page.getByRole("button",{name:"发布版本",exact:true}).click();await expect(page.getByText("v2 · 已发布，只读",{exact:true})).toBeVisible();
+  const db=createPostgresDatabase(catalogAcceptanceRuntime.runtime.databaseUrl);try{expect((await db.query<{revision_id:string}>("select revision_id from project_shared_dtsi_references where project_id=$1",[project])).rows).toEqual([{revision_id:versionId}]);}finally{await db.close();}
+  await page.getByRole("button",{name:"创建新版本",exact:true}).click();
   await page.getByRole("button",{name:"丢弃草稿",exact:true}).click();
   const discard=page.getByRole("dialog",{name:"丢弃共享 DTSI 草稿？",exact:true});
   await expect(discard).toContainText("已发布版本和历史会保留");
   await discard.getByRole("button",{name:"丢弃草稿",exact:true}).focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByText("v1 · 已发布，只读",{exact:true})).toBeVisible();
+  await expect(page.getByText("v2 · 已发布，只读",{exact:true})).toBeVisible();
   expect((await catalogJson(page.request,"GET",`/api/v2/shared-dtsi/${resourceId}/versions/${versionId}`)).body).toEqual(published.body);
   const history=await catalogJson(page.request,"GET",`/api/v2/shared-dtsi/${resourceId}/versions`);
-  expect((history.body as {items:{id:string}[]}).items.map(version=>version.id)).toEqual([versionId]);
+  expect((history.body as {items:{id:string}[]}).items.map(version=>version.id)).toHaveLength(2);expect((history.body as {items:{id:string}[]}).items[1]!.id).toBe(versionId);
+  await page.goto(catalogAppUrl("/parameter-admin/sources"));await expect(page.getByRole("button",{name:"battery-common",exact:true})).toBeVisible();await catalogScreenshot(page,testInfo,"shared-list-populated-1280");
+  await page.getByRole("searchbox",{name:"搜索共享 DTSI",exact:true}).fill("absent-resource");await expect(page.getByText("没有匹配的资源",{exact:true})).toBeVisible();await catalogScreenshot(page,testInfo,"shared-list-filtered-empty-1280");
 });

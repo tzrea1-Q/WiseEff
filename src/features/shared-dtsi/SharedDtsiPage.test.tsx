@@ -205,7 +205,8 @@ describe("shared DTSI draft authoring", () => {
       if (method==="GET" && path.endsWith("/detail")) response={item:{resourceId,name:summary.name,updatedAt:summary.createdAt,draftRevision:hasDraft?1:null,currentVersion:published?summary:null}};
       else if (method==="GET" && path.endsWith("/versions")) response={items:published?[summary]:[],total:published?1:0};
       else if (method==="GET" && path.endsWith(`/versions/${versionId}`)) response={item:version};
-      else if (method==="POST" && path.endsWith("/publication-preview")) response={item:{id:"55555555-5555-4555-8555-555555555555",resourceId,draftRevision:1,name:summary.name,changeDescription:summary.changeDescription,manifest,digest:summary.digest,createdAt:summary.createdAt,baseVersionId:null}};
+      else if (method==="POST" && path.endsWith("/publication-preview")) response={item:{id:"55555555-5555-4555-8555-555555555555",resourceId,draftRevision:1,name:summary.name,changeDescription:summary.changeDescription,manifest,digest:summary.digest,createdAt:summary.createdAt,baseVersionId:null,
+        comparison:{before:null,sources:[{resourceId,resourceName:summary.name,memberId:member.id,before:null,after:{sourceName:member.sourceName,content:member.content}}],buildInputs:{before:{includeSearchPaths:[],defines:{}},after:{includeSearchPaths:[],defines:{}}},dependencies:{before:[],after:[]},semantic:{scope:"ordered-fragment-declarations",before:"",after:member.content,externalReferences:[]}}}};
       else if (method==="POST" && path.endsWith("/publications")) {published=true;hasDraft=false;response={item:version};}
       else if (method==="POST" && path.endsWith("/draft")) {hasDraft=true;response={item:{id:"66666666-6666-4666-8666-666666666666",resourceId,name:summary.name,revision:1,updatedAt:summary.createdAt,changeDescription:"",members:[{id:member.id,sourceName:member.sourceName,content:member.content}]}};}
       else if (method==="DELETE" && path.endsWith("/draft")) {hasDraft=false;response={ok:true};}
@@ -216,7 +217,9 @@ describe("shared DTSI draft authoring", () => {
     render(<Harness/>);
     await user.click(await screen.findByRole("button",{name:"预览发布"}));
     expect(screen.getByText("本组织有查看权限的用户可读取完整源码；发布不会自动更新项目配置。")).toBeVisible();
-    expect(screen.getByLabelText("待发布 DTSI 源码")).toHaveAttribute("aria-readonly","true");
+    expect(screen.getByLabelText("首次发布 → 待发布版本")).toBeVisible();
+    await user.click(screen.getByRole("radio",{name:"语义声明"}));
+    expect(screen.getByLabelText("有序语义声明变更后")).toHaveTextContent("battery");
     await user.click(screen.getByRole("button",{name:"发布版本"}));
     await screen.findByText("v1 · 已发布，只读");
     expect(screen.getByLabelText("已发布 DTSI 源码")).toHaveAttribute("aria-readonly","true");

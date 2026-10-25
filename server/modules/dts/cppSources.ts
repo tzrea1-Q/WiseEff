@@ -231,9 +231,12 @@ async function runCpp(root: string, entry: string, roots: string[], defines: Rec
 }
 
 let activeOperation = false;
+export function assertDtsPreprocessingAvailable(entryFile:string) {
+  if (activeOperation) throw new DtsPreprocessingError("preprocess-busy", "当前有工程正在预处理；请保留输入并稍后重新预览。", entryFile);
+}
 export async function prepareDtsSources(input: DtsConfigSetInput): Promise<PreparedDtsSources | null> {
   if (!requiresDtsPreprocessing(input.files, input.defines ?? input.preprocessing?.defines)) return null;
-  if (activeOperation) throw new DtsPreprocessingError("preprocess-busy", "当前有工程正在预处理；请保留输入并稍后重新预览。", input.entryFile);
+  assertDtsPreprocessingAvailable(input.entryFile);
   activeOperation = true;
   try { return await prepareOriginalSources(input); }
   finally { activeOperation = false; }

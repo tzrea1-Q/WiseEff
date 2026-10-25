@@ -30625,6 +30625,284 @@
                   "string",
                   "null"
                 ]
+              },
+              "comparison": {
+                "type": "object",
+                "properties": {
+                  "buildInputs": {
+                    "type": "object",
+                    "properties": {
+                      "before": {
+                        "type": "object",
+                        "properties": {
+                          "includeSearchPaths": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "defines": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "after": {
+                        "type": "object",
+                        "properties": {
+                          "includeSearchPaths": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "defines": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "before",
+                      "after"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "sources": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "resourceId": {
+                          "type": "string"
+                        },
+                        "resourceName": {
+                          "type": "string"
+                        },
+                        "memberId": {
+                          "type": "string"
+                        },
+                        "before": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "sourceName": {
+                              "type": "string"
+                            },
+                            "content": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "sourceName",
+                            "content"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "after": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "sourceName": {
+                              "type": "string"
+                            },
+                            "content": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "sourceName",
+                            "content"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "resourceId",
+                        "resourceName",
+                        "memberId",
+                        "before",
+                        "after"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "dependencies": {
+                    "type": "object",
+                    "properties": {
+                      "before": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "resourceId": {
+                              "type": "string"
+                            },
+                            "versionId": {
+                              "type": "string"
+                            },
+                            "mountPath": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "version": {
+                              "type": "number"
+                            },
+                            "digest": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "resourceId",
+                            "versionId",
+                            "mountPath",
+                            "name",
+                            "version",
+                            "digest"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "after": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "resourceId": {
+                              "type": "string"
+                            },
+                            "versionId": {
+                              "type": "string"
+                            },
+                            "mountPath": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "version": {
+                              "type": "number"
+                            },
+                            "digest": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "resourceId",
+                            "versionId",
+                            "mountPath",
+                            "name",
+                            "version",
+                            "digest"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "before",
+                      "after"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "semantic": {
+                    "type": "object",
+                    "properties": {
+                      "scope": {
+                        "type": "string",
+                        "enum": [
+                          "ordered-fragment-declarations"
+                        ]
+                      },
+                      "before": {
+                        "type": "string"
+                      },
+                      "after": {
+                        "type": "string"
+                      },
+                      "externalReferences": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "scope",
+                      "before",
+                      "after",
+                      "externalReferences"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "before": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "resourceId": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "number"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "changeDescription": {
+                        "type": "string"
+                      },
+                      "digest": {
+                        "type": "string"
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "createdByUserId": {
+                        "type": "string"
+                      },
+                      "createdByName": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "resourceId",
+                      "version",
+                      "name",
+                      "changeDescription",
+                      "digest",
+                      "createdAt",
+                      "createdByUserId"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "buildInputs",
+                  "sources",
+                  "dependencies",
+                  "semantic",
+                  "before"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [
@@ -30636,7 +30914,8 @@
               "manifest",
               "digest",
               "createdAt",
-              "baseVersionId"
+              "baseVersionId",
+              "comparison"
             ],
             "additionalProperties": false
           }
@@ -79646,6 +79925,47 @@
               "private"
             ]
           },
+          "sourceConfiguration": {
+            "type": "object",
+            "properties": {
+              "entryFile": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "overlayOrder": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "buildInputs": {
+                "type": "object",
+                "properties": {
+                  "includeSearchPaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "defines": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "entryFile",
+              "overlayOrder",
+              "buildInputs"
+            ],
+            "additionalProperties": false
+          },
           "archive": {
             "type": "object",
             "properties": {
@@ -79675,119 +79995,162 @@
         "type": "object",
         "properties": {
           "item": {
-            "type": "object",
-            "properties": {
-              "proofToken": {
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              },
-              "ownership": {
-                "type": "string",
-                "enum": [
-                  "reuse",
-                  "private"
-                ]
-              },
-              "entryFile": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "members": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "sourceName": {
-                      "type": "string"
-                    },
-                    "format": {
-                      "type": "string",
-                      "enum": [
-                        "dts",
-                        "json"
-                      ]
-                    },
-                    "ownership": {
-                      "type": "string",
-                      "enum": [
-                        "shared",
-                        "private"
-                      ]
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "proofToken": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "ownership": {
+                    "type": "string",
+                    "enum": [
+                      "reuse",
+                      "private"
+                    ]
+                  },
+                  "entryFile": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "members": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "sourceName": {
+                          "type": "string"
+                        },
+                        "format": {
+                          "type": "string",
+                          "enum": [
+                            "dts",
+                            "json"
+                          ]
+                        },
+                        "ownership": {
+                          "type": "string",
+                          "enum": [
+                            "shared",
+                            "private"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "sourceName",
+                        "format",
+                        "ownership"
+                      ],
+                      "additionalProperties": false
                     }
                   },
-                  "required": [
-                    "sourceName",
-                    "format",
-                    "ownership"
-                  ],
-                  "additionalProperties": false
-                }
-              },
-              "sharedVersions": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "name": {
-                      "type": "string"
-                    },
-                    "version": {
-                      "type": "number"
-                    },
-                    "mountPath": {
-                      "type": "string"
+                  "sharedVersions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "number"
+                        },
+                        "mountPath": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "version",
+                        "mountPath"
+                      ],
+                      "additionalProperties": false
                     }
                   },
-                  "required": [
-                    "name",
-                    "version",
-                    "mountPath"
-                  ],
-                  "additionalProperties": false
-                }
-              },
-              "nodeCount": {
-                "type": "number"
-              },
-              "diagnostics": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "severity": {
-                      "type": "string",
-                      "enum": [
-                        "warning",
-                        "error"
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    }
+                  "nodeCount": {
+                    "type": "number"
                   },
-                  "required": [
-                    "severity",
-                    "message"
-                  ],
-                  "additionalProperties": false
-                }
+                  "diagnostics": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "severity": {
+                          "type": "string",
+                          "enum": [
+                            "warning",
+                            "error"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "severity",
+                        "message"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "proofToken",
+                  "name",
+                  "ownership",
+                  "entryFile",
+                  "members",
+                  "sharedVersions",
+                  "nodeCount",
+                  "diagnostics"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "source-selection"
+                    ]
+                  },
+                  "members": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "sourceName": {
+                          "type": "string"
+                        },
+                        "format": {
+                          "type": "string",
+                          "enum": [
+                            "dts",
+                            "json"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "sourceName",
+                        "format"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "kind",
+                  "members"
+                ],
+                "additionalProperties": false
               }
-            },
-            "required": [
-              "proofToken",
-              "name",
-              "ownership",
-              "entryFile",
-              "members",
-              "sharedVersions",
-              "nodeCount",
-              "diagnostics"
-            ],
-            "additionalProperties": false
+            ]
           }
         },
         "required": [
@@ -79808,6 +80171,47 @@
               "reuse",
               "private"
             ]
+          },
+          "sourceConfiguration": {
+            "type": "object",
+            "properties": {
+              "entryFile": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "overlayOrder": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "buildInputs": {
+                "type": "object",
+                "properties": {
+                  "includeSearchPaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "defines": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "entryFile",
+              "overlayOrder",
+              "buildInputs"
+            ],
+            "additionalProperties": false
           },
           "archive": {
             "type": "object",
