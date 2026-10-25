@@ -86,6 +86,20 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     expect((await publicationCall<{ item: unknown }>(`/${draft.resourceId}/versions/${published.body.item.id}`)).body.item).toEqual(published.body.item);
   });
 
+  it("formats each CPP diagnostic location once while retaining the exact header line", async () => {
+    const sourceName="include/dt-bindings/power.h";
+    const draft=(await call("","POST",{name:"Located CPP error",changeDescription:"Repair original header",members:[
+      {sourceName:"main.dtsi",content:`#include "${sourceName}"\n/ { value = <VALUE>; };\n`},
+      {sourceName,content:"// Original header\n#define VALUE __TIME__\n"}]})).body.item;
+    const preview=await publicationCall<{error:{message:string;details:{diagnostics:{sourceName:string;line:number;column:number;message:string}[]}}}>(`/${draft.resourceId}/publication-preview`,"POST",{expectedRevision:1});
+    expect(preview.status,preview.bodyText).toBe(400);
+    expect(preview.body.error.message.startsWith(`${sourceName}:2:1：`)).toBe(true);
+    expect(preview.body.error.message.split(sourceName)).toHaveLength(2);
+    expect(preview.body.error.details.diagnostics).toEqual([expect.objectContaining({sourceName,line:2,column:1,message:expect.stringContaining("冻结")})]);
+    expect(preview.body.error.details.diagnostics[0]!.message).not.toContain(sourceName);
+    expect((await call(`/${draft.resourceId}`)).body.item).toEqual(draft);
+  });
+
   it("freezes declared include roots and external defines without flattening original header directories", async () => {
     const members = [{ sourceName: "lib/common.dtsi", content: '#include <dt-bindings/power.h>\n/ { battery {\n#if ENABLED\n limit = <POWER_LIMIT>;\n#else\n limit = <99>;\n#endif\n}; };\n' },
       { sourceName: "include/dt-bindings/power.h", content: "#define POWER_LIMIT 37\n" }];
