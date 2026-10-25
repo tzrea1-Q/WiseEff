@@ -23,6 +23,7 @@ import { normalizeIncludeSearchPaths } from "../parameter-topology/configRevisio
 import { parameterOrganizationId } from "../parameters/operatingScope";
 import { composeDtsBuildInputs, loadSharedDtsiClosure, mountedSharedPath } from "../shared-dtsi/dependencies";
 import { preparePublishedSharedDtsiSource } from "../shared-dtsi/publication";
+import { assertSharedDtsiNewReferences, lockSharedDtsiReferences } from "../shared-dtsi/lifecycle";
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
 import { requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "./canonicalSource";
 import { withCanonicalSourceAttemptTransaction } from "./canonicalSourceAttemptTransaction";
@@ -87,6 +88,7 @@ export async function readConfigSetPackage(input: ConfigSetImportBody["archive"]
 
 async function inspect(tx: Database, auth: AuthContext, projectId: string, input: ConfigSetImportBody, catalog:CatalogSnapshot|null) {
   const organizationId = parameterOrganizationId(auth);
+  if (input.ownership === "reuse") await lockSharedDtsiReferences(tx,auth);
   const project = (await tx.query<{ status: string; initialization_status:string }>("select status,initialization_status from projects where id=$1 and organization_id=$2 for update nowait", [projectId, organizationId])).rows[0];
   if (!project) throw new ApiError("NOT_FOUND", "目标项目不存在。");
   if (project.initialization_status !== "initialized") conflict("请先通过现有项目初始化审核，再导入完整配置包。");
@@ -101,6 +103,7 @@ async function inspect(tx: Database, auth: AuthContext, projectId: string, input
   const resources = input.ownership === "reuse" ? await loadSharedDtsiClosure(tx, auth, manifest.sharedClosure.filter(row => row.direct)
     .map(({ resourceId, versionId, mountPath }) => ({ resourceId, versionId, mountPath }))) : [];
   if (input.ownership === "reuse") {
+    await assertSharedDtsiNewReferences(tx,auth,resources,[]);
     if (resources.length !== manifest.sharedClosure.length) conflict("共享固定闭包不一致；可明确选择作为项目私有源码导入。");
     for (const resource of resources) {
       const frozen = manifest.sharedClosure.find(row => row.resourceId === resource.resourceId);
@@ -228,14 +231,15 @@ export async function applyConfigSetImport(db: Database, storage: ObjectStore, a
       const binding=registered.bindings[0];
       if (!binding) conflict("JSON 来源没有生成可验证的新项目参数。");
       const pin=await loadOwnedProjectValueSourcePin(tx,{organizationId,projectId,bindingId:binding.id,projectValueId:binding.currentValueId});
-      if (!pin || revisionId && revisionId!==pin.configRevisionId) conflict("JSON 来源与完整配置修订不一致，所有变更已回滚。");
+      if (!pin || revisionId && revisionId!==pin.configRevisionId) return conflict("JSON 来源与完整配置修订不一致，所有变更已回滚。");
       revisionId=pin.configRevisionId;
     }
     if (!revisionId) return conflict("配置缺少完整的来源修订，所有变更已回滚。");
     const result: ConfigSetImportResult = { configSetId: operationId, configRevisionId: revisionId, fileIds: members.map(row => row.fileId), ownership: input.ownership };
     await writeTrustedAuditEventInTx(asAuditTx(tx), { invocation: security.invocation, app: "parameters", kind: "config-set", action: "imported", severity: "Medium",
       projectId, targetType: "dts-config-set", targetId: operationId, traceId: security.requestId,
-      metadata: { mutationDigest, reason: input.reason, ownership: input.ownership, proofDigest: plan.preview.proofToken, result } });
+      metadata: { mutationDigest, reason: input.reason, ownership: input.ownership, proofDigest: plan.preview.proofToken, result,
+        sourceOverlayFileIds:members.filter(member=>plan.manifest.formerRootOverlayFiles.includes(member.fileName)).map(member=>member.fileId) } });
     return result;
   }); } catch (error) { rethrowSourceTransactionError(error); }
 }

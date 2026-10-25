@@ -9,7 +9,7 @@ import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { presentError } from "@/infrastructure/http/presentError";
 
 export function WorkbenchPackageImportDialog({ projectId, onDismiss, onApplied, client: supplied }: {
-  projectId: string; onDismiss: () => void; onApplied: (result: ConfigSetImportResult) => void;
+  projectId: string; onDismiss: () => void; onApplied: (result: ConfigSetImportResult) => void | Promise<void>;
   client?: ReturnType<typeof createConfigSetPackageClient>;
 }) {
   const client = useMemo(() => supplied ?? createConfigSetPackageClient(), [supplied]);
@@ -50,7 +50,7 @@ export function WorkbenchPackageImportDialog({ projectId, onDismiss, onApplied, 
     if (!archive || !preview || !reason.trim() || pending) return;
     setPending("apply"); setError("");
     mutation.current ??= { proofToken: preview.proofToken, reason: reason.trim(), clientMutationId: crypto.randomUUID() };
-    try { onApplied(await client.apply(projectId, { name: name.trim(), ownership, archive, ...mutation.current })); }
+    try { await onApplied(await client.apply(projectId, { name: name.trim(), ownership, archive, ...mutation.current })); }
     catch (cause) {
       if (cause instanceof WiseEffApiError && ["CONFLICT", "VALIDATION_FAILED", "FORBIDDEN", "NOT_FOUND"].includes(cause.code)) { mutation.current = null; setPreview(null); }
       showError(cause);
@@ -72,7 +72,7 @@ export function WorkbenchPackageImportDialog({ projectId, onDismiss, onApplied, 
         {pending ? <p role="status">{pending === "file" ? "正在读取配置包…" : pending === "preview" ? "正在验证原始源码、版本与构建…" : "正在导入配置…"}</p> : null}
         {preview ? <section aria-label="配置导入预览">
           <p className="configuration-workbench__package-path">入口：{preview.entryFile ?? "JSON 配置"} · {preview.nodeCount} 个节点</p>
-          {preview.sharedVersions.length ? <ul aria-label="固定共享版本">{preview.sharedVersions.map((row, index) => <li key={index}>{row.name} · 版本 {row.version}<span className="configuration-workbench__package-path">{row.mountPath}</span></li>)}</ul> : null}
+          {preview.sharedVersions.length ? <ul aria-label="固定共享版本">{preview.sharedVersions.map((row, index) => <li key={index}>{row.name} · 版本 {row.version}<span className="configuration-workbench__package-path"> · 目录：{row.mountPath || "根目录"}</span></li>)}</ul> : null}
           <ul aria-label="配置包文件">{preview.members.map(row => <li key={row.sourceName}><span className="configuration-workbench__package-path">{row.sourceName}</span> · {row.ownership === "shared" ? "共享只读" : "项目私有"}</li>)}</ul>
           {preview.diagnostics.map((row, index) => <p key={index}>{row.message}</p>)}
           <label>导入原因<Input value={reason} maxLength={2000} disabled={locked} onChange={event => setReason(event.target.value)} /></label>

@@ -43,7 +43,7 @@ describe("complete configuration package through the actual API role",()=>{
     return createHttpServer(router);}
   const post=<T,>(path:string,body:unknown,principal=auth,objects:ObjectStore=storage)=>requestJson<T>(server(principal,objects),path,{method:"POST",body:JSON.stringify(body)});
   const importPath=(projectId:string)=>`/api/v1/projects/${projectId}/config-set-import`;
-  async function packageArchive(value:ExportConfigSetResult) {const zip=new JSZip();zip.file(configSetPackageManifestName,JSON.stringify(value.manifest));
+  async function packageArchive(value:{manifest:unknown;files:ExportConfigSetResult["files"]}) {const zip=new JSZip();zip.file(configSetPackageManifestName,JSON.stringify(value.manifest));
     for(const file of value.files)zip.file(file.name,file.content,{createFolders:false});return {name:"complete-export.zip",contentBase64:await zip.generateAsync({type:"base64"})};}
   beforeAll(async()=>{
     lane=await createEphemeralTestDatabase("config-package");db=createPostgresDatabase(lane.url);
@@ -54,7 +54,7 @@ describe("complete configuration package through the actual API role",()=>{
     await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Foreign admin','Admin',true)",[foreign.user.id,foreign.organization.id]);
     await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('package-foreign-admin',$1,$2,'admin')",[foreign.user.id,foreign.organization.id]);
     await db.query("insert into projects(id,organization_id,name,code,status) values ('package-foreign-project',$1,'Foreign','T16FOREIGN','initialized')",[foreign.organization.id]);
-    for(const id of [SOURCE,PRIVATE,FAILED])await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,$1,$1,'initialized')",[id,ORG]);
+    for(const id of [SOURCE,PRIVATE,FAILED,"package-retired","package-roots-a","package-roots-b"])await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,$1,$1,'initialized')",[id,ORG]);
     await installDriverSourceFixture(db,auth,{subjectId:"csub_acme_power",compatible:"acme,power",businessName:"Package",driverName:"Power",idempotencyKey:"package-register",reason:"Package acceptance"});
     setId=(await createConfigSet(db,auth,{projectId:SOURCE,name:"Original complete configuration"})).id;
     const members=[];
@@ -80,9 +80,13 @@ describe("complete configuration package through the actual API role",()=>{
   afterAll(async()=>{await api?.close();if(lane)await dropLabRuntimeLogins(lane.url,token);await db?.close();await lane?.drop();if(directory)await rm(directory,{recursive:true,force:true});},120_000);
 
   it("exports original upgraded shared closure, local overrides/status and mixed JSON then reimports fresh owned identities",async()=>{
+    const leaf=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name:"Pinned declaration dependency",sourceName:"nested/dependency.dtsi",content:'/ { frozen_dependency { status = "okay"; }; };',changeDescription:"Publish fixed dependency"});expect(leaf.status,leaf.bodyText).toBe(201);
+    const leafPreview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${leaf.body.item.resourceId}/publication-preview`,{expectedRevision:1});expect(leafPreview.status,leafPreview.bodyText).toBe(201);
+    const leafPublished=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${leaf.body.item.resourceId}/publications`,{previewId:leafPreview.body.item.id,idempotencyKey:"package-leaf"});expect(leafPublished.status,leafPublished.bodyText).toBe(201);
+    const dependencies=[{resourceId:leaf.body.item.resourceId,versionId:leafPublished.body.item.id,mountPath:"vendor"}];
     const created=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name:"Power original library",changeDescription:"Publish original library inputs",members:[
-      {sourceName:"lib/power.dtsi",content:'#include "../include/limits.h"\n/ { charger { iin_max = <DEFAULT_INPUT>; status = "okay"; }; };\n'},
-      {sourceName:"include/limits.h",content:"\uFEFF// exact original header\r\n#define DEFAULT_INPUT 28\r\n"}]});
+      {sourceName:"lib/power.dtsi",content:'#include "../include/limits.h"\n#include "../vendor/nested/dependency.dtsi"\n/ { charger { iin_max = <DEFAULT_INPUT>; status = "okay"; }; };\n'},
+      {sourceName:"include/limits.h",content:"\uFEFF// exact original header\r\n#define DEFAULT_INPUT 28\r\n"}],dependencies});
     expect(created.status,created.bodyText).toBe(201);resourceId=created.body.item.resourceId;
     async function publish(revision:number,key:string) {const preview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publication-preview`,{expectedRevision:revision});
       expect(preview.status,preview.bodyText).toBe(201);const published=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publications`,{previewId:preview.body.item.id,idempotencyKey:key});expect(published.status,published.bodyText).toBe(201);return published.body.item.id;}
@@ -92,7 +96,7 @@ describe("complete configuration package through the actual API role",()=>{
     const preview=await post<{item:{proofToken:string}}>(`${memberPath}/preview`,body);expect(preview.status,preview.bodyText).toBe(200);
     const attached=await post(`${memberPath}/apply`,{...body,proofToken:preview.body.item.proofToken,reason:"Attach exact shared version",clientMutationId:"package-reference"});expect(attached.status,attached.bodyText).toBe(200);
     const draft=await post<{item:{members:{id:string;sourceName:string;content:string}[]}}>(`/api/v2/shared-dtsi/${resourceId}/draft`,{baseVersionId:first});expect(draft.status,draft.bodyText).toBe(201);
-    const saved=await requestJson(server(),`/api/v2/shared-dtsi/${resourceId}/draft`,{method:"PUT",body:JSON.stringify({name:"Power original library",members:draft.body.item.members.map(row=>({...row,content:row.content.replace("28","30")})),expectedRevision:1,changeDescription:"New defaults"})});expect(saved.status,saved.bodyText).toBe(200);
+    const saved=await requestJson(server(),`/api/v2/shared-dtsi/${resourceId}/draft`,{method:"PUT",body:JSON.stringify({name:"Power original library",members:draft.body.item.members.map(row=>({...row,content:row.content.replace("28","30")})),dependencies,expectedRevision:1,changeDescription:"New defaults"})});expect(saved.status,saved.bodyText).toBe(200);
     versionId=await publish(2,"package-v2");
     const upgrade={...body,sharedReference:{...body.sharedReference,versionId,replaceVersionId:first}};
     const upgradedPreview=await post<{item:{proofToken:string}}>(`${memberPath}/preview`,upgrade);expect(upgradedPreview.status,upgradedPreview.bodyText).toBe(200);
@@ -105,7 +109,7 @@ describe("complete configuration package through the actual API role",()=>{
     expect(exported.manifest.sourcePackage?.preprocessing).toBeDefined();archive=await packageArchive(exported);
     const input={name:"Reimported",ownership:"reuse",archive};
     const checked=await post<{item:ConfigSetImportPreview}>(`${importPath(TARGET)}/preview`,input);expect(checked.status,checked.bodyText).toBe(200);
-    expect(checked.body.item.sharedVersions).toEqual([expect.objectContaining({version:2,mountPath:"shared/power"})]);
+    expect(checked.body.item.sharedVersions).toEqual([expect.objectContaining({version:2,mountPath:"shared/power"}),expect.objectContaining({version:1,mountPath:"shared/power/vendor"})]);
     const apply={...input,proofToken:checked.body.item.proofToken,reason:"Reproduce exported original inputs",clientMutationId:"package-import"};
     const imported=await post<{item:ConfigSetImportResult}>(`${importPath(TARGET)}/apply`,apply);expect(imported.status,imported.bodyText).toBe(200);
     expect((await post(`${importPath(TARGET)}/apply`,apply)).body).toEqual(imported.body);
@@ -162,6 +166,36 @@ describe("complete configuration package through the actual API role",()=>{
     expect(results.map(row=>row.status).sort()).toEqual([200,409]);
     const sets=await requestJson<{items:unknown[]}>(server(),`/api/v1/projects/${FAILED}/config-sets`);expect(sets.status).toBe(200);expect(sets.body.items).toHaveLength(1);
   },120_000);
+
+  it("refuses new exact references after retirement while retaining historical export and explicit private import",async()=>{
+    const projectId="package-retired",input={name:"Retired original inputs",ownership:"reuse",archive};
+    const preview=await post<{item:ConfigSetImportPreview}>(`${importPath(projectId)}/preview`,input);expect(preview.status,preview.bodyText).toBe(200);
+    const retired=await post(`/api/v2/shared-dtsi/${resourceId}/lifecycle`,{state:"retired",expectedLifecycleRevision:1,idempotencyKey:"package-retire"});expect(retired.status,retired.bodyText).toBe(200);
+    const refused=await post(`${importPath(projectId)}/apply`,{...input,proofToken:preview.body.item.proofToken,reason:"Cannot create new retired references",clientMutationId:"package-retired"});expect(refused.status,refused.bodyText).toBe(409);expect(refused.bodyText).toContain("shared-resource-retired");
+    const retained=await requestJson<ExportConfigSetResult>(server(),`/api/v1/projects/${SOURCE}/config-sets/${setId}/export`);expect(retained.status,retained.bodyText).toBe(200);expect(retained.body.files).toEqual(exported.files);
+    const privateInput={...input,ownership:"private"};
+    const privatePreview=await post<{item:ConfigSetImportPreview}>(`${importPath(projectId)}/preview`,privateInput);expect(privatePreview.status,privatePreview.bodyText).toBe(200);
+    const imported=await post<{item:ConfigSetImportResult}>(`${importPath(projectId)}/apply`,{...privateInput,proofToken:privatePreview.body.item.proofToken,reason:"Explicitly retain originals as project private",clientMutationId:"package-retired-private"});expect(imported.status,imported.bodyText).toBe(200);
+    const readback=await requestJson<ExportConfigSetResult>(server(),`/api/v1/projects/${projectId}/config-sets/${imported.body.item.configSetId}/export`);expect(readback.status,readback.bodyText).toBe(200);expect(readback.body.files).toEqual(exported.files);expect(readback.body.manifest.sourcePackage?.sharedClosure).toEqual([]);
+  },120_000);
+
+  it("retains an explicitly validated complete-source overlay build input through repeated new-project export and import",async()=>{
+    const files=[{name:"roots/current.dts",format:"dts" as const,content:'/dts-v1/; / { model = "Current root"; compatible = "test,board"; };',role:"base"},
+      {name:"roots/original.dts",format:"dts" as const,content:'/dts-v1/; / { model = "Original root"; compatible = "test,board"; old { retained = <1>; }; };',role:"overlay"}];
+    const sourcePackage={schemaVersion:"wiseeff-config-set/v1",entryFile:files[0]!.name,includeSearchPaths:["."],overlayOrder:[files[1]!.name],formerRootOverlayFiles:[files[1]!.name],
+      declaredBuildInputs:{includeSearchPaths:["."],defines:{}},resolvedBuildInputs:{includeSearchPaths:["."],defines:{}},sharedClosure:[],jsonSources:[],
+      members:files.map((file,index)=>({sourceName:file.name,format:file.format,role:file.role,sortOrder:index,checksum:`sha256:${createHash("sha256").update(file.content).digest("hex")}`}))};
+    let archive=await packageArchive({manifest:{sourcePackage},files});
+    for(const projectId of ["package-roots-a","package-roots-b"]) {
+      const input={name:"Original root composition",ownership:"private",archive};
+      const preview=await post<{item:ConfigSetImportPreview}>(`${importPath(projectId)}/preview`,input);expect(preview.status,preview.bodyText).toBe(200);
+      const applied=await post<{item:ConfigSetImportResult}>(`${importPath(projectId)}/apply`,{...input,proofToken:preview.body.item.proofToken,reason:"Retain original complete-source compile inputs",clientMutationId:"original-roots-package"});expect(applied.status,applied.bodyText).toBe(200);
+      const exported=await requestJson<ExportConfigSetResult>(server(),`/api/v1/projects/${projectId}/config-sets/${applied.body.item.configSetId}/export`);expect(exported.status,exported.bodyText).toBe(200);
+      expect(exported.body.manifest.validation?.ok).toBe(true);expect(exported.body.files).toEqual(files.map(({name,format,content})=>({name,format,content})));
+      expect(exported.body.manifest.sourcePackage?.formerRootOverlayFiles).toEqual(["roots/original.dts"]);
+      archive=await packageArchive(exported.body);
+    }
+  });
 });
 
 describe("JSON source identities in complete configuration packages",()=>{

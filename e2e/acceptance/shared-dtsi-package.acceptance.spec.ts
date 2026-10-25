@@ -8,6 +8,7 @@ import { catalogJson, signInCatalogActor, dismissXiaozeHint, assertNoPageOverflo
 import { acceptanceCast } from "./helpers/cast";
 import { configSetPackageManifestName, type ConfigSetImportResult } from "../../server/modules/contracts/dtoSchemas/configSetPackage";
 import type { ExportConfigSetResult } from "../../server/modules/parameter-files/exportService";
+import type { ThemePreference } from "../../src/application/theme/themeController";
 
 test.use({catalogRuntimeScope:import.meta.url,catalogRuntimeDatabaseUrl:process.env.TEST_DATABASE_URL});
 
@@ -80,7 +81,10 @@ test("#1427 exports original complete sources and imports them into a normally a
     await expect(dialog.getByRole("button",{name:"确认导入",exact:true})).toBeInViewport({ratio:1});
     await page.screenshot({path:testInfo.outputPath(`package-preview-${viewport.width}.png`)});
   }
-  await page.evaluate(()=>document.documentElement.classList.add("dark"));await page.screenshot({path:testInfo.outputPath("package-preview-dark-1280.png")});
+  await page.evaluate((theme:ThemePreference)=>{if(!window.__wiseeffSetTheme)throw new Error("Theme controller is unavailable");window.__wiseeffSetTheme(theme);},"dark" as ThemePreference);
+  await expect(page.locator("html")).toHaveCSS("color-scheme","dark");
+  await expect(dialog.getByRole("textbox",{name:"配置名称",exact:true})).not.toHaveCSS("color","rgb(0, 0, 0)");
+  await page.screenshot({path:testInfo.outputPath("package-preview-dark-1280.png")});
   const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===`/api/v1/projects/${target}/config-set-import/apply`);
   await dialog.getByRole("button",{name:"确认导入",exact:true}).focus();await page.keyboard.press("Enter");
   const applied=await applying;expect(applied.status(),await applied.text()).toBe(200);const receipt=(await applied.json()).item as ConfigSetImportResult;

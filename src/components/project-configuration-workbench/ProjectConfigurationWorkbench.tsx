@@ -2264,7 +2264,8 @@ export function ProjectConfigurationWorkbench({
         }} /> : null}
 
       {packageImportOpen && apiMode && canAdmin ? <WorkbenchPackageImportDialog key={`${resolvedOrganizationId}:${project.id}`} projectId={project.id} client={packageClient}
-        onDismiss={() => setPackageImportOpen(false)} onApplied={result => {
+        onDismiss={() => setPackageImportOpen(false)} onApplied={async result => {
+          workspaceLoadSession.setConfigSets(await dtsRepository.listConfigSets(project.id));
           setPackageImportOpen(false); workspaceLoadSession.retryConfigSets(); workspaceLoadSession.retryFiles(); workspaceLoadSession.retryMembers();
           workspaceLoadSession.retrySource(); workspaceLoadSession.retryStructure();
           if (topologyRepository) void revisionGate.session.load(project.id, result.configSetId, topologyRepository);

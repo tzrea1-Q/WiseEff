@@ -2030,6 +2030,7 @@
 .configuration-workbench__package-import .review-dialog__body {
   display: grid;
   gap: var(--space-3);
+  overflow-wrap: anywhere;
 }
 
 .configuration-workbench__package-import label {

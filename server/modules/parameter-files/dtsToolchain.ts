@@ -518,7 +518,8 @@ function writeLogicalTree(rootDir: string, configSet: DtsToolchainConfigSet): Dt
       continue;
     }
     mkdirSync(dirname(abs), { recursive: true });
-    writeFileSync(abs, file.content, "utf8");
+    // Mask the encoding marker only in ephemeral compiler input, retaining source offsets.
+    writeFileSync(abs, file.content.replace(/^\uFEFF/u, " "), "utf8");
   }
   return diagnostics;
 }
