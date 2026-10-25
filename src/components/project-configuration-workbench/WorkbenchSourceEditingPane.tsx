@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
-import type { ApplyParameterFileSourceInput, ParameterFileCandidate, ParameterFileCandidateDiagnostic, ParameterFileRepository, ParameterFileSourcePreview, SubmitParameterFileSourceReviewInput } from "@/application/ports/ParameterFileRepository";
+import type { ApplyParameterFileSourceInput, ParameterFileCandidate, ParameterFileCandidateDiagnostic, ParameterFileRepository, ParameterFileSourcePreview, SubmitParameterFileSourceReviewInput, ProjectLocalOverrideInput } from "@/application/ports/ParameterFileRepository";
 import type { SourceEditSaveSnapshot, SourceEditSession } from "@/application/project-configuration/sourceEditSession";
 import { sourceDraftKey, type SourceDraftScope } from "@/application/project-configuration/sourceDraftStorage";
 import { fileToContentBase64 } from "@/application/project-configuration/candidateVersionFlow";
@@ -24,10 +24,14 @@ type Props = {
   baseVersionId: string;
   configRevisionId: string | null;
   source: string;
+  changeSummary?: string;
   session: SourceEditSession;
   editorSessions: WorkbenchDtsEditorSessions;
   repository: ParameterFileRepository;
   canEdit: boolean;
+  canEditSource?: boolean;
+  canDirectApply?: boolean;
+  localOverrideIntent?: ProjectLocalOverrideInput;
   visible: boolean;
   legacyDraftsDirty: boolean;
   onOpenLegacyDrafts: () => void;
@@ -44,8 +48,8 @@ type Props = {
 type Attempt = { saved: SourceEditSaveSnapshot; mutationId: string; candidate?: ParameterFileCandidate; preview?: ParameterFileSourcePreview;
   submission?: SubmitParameterFileSourceReviewInput; directApplication?: ApplyParameterFileSourceInput };
 
-export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVersionId, configRevisionId, source,
-  session, editorSessions, repository, canEdit, visible, legacyDraftsDirty, onOpenLegacyDrafts, onDirtyChange,
+export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVersionId, configRevisionId, source, changeSummary,
+  session, editorSessions, repository, canEdit, canEditSource = canEdit, canDirectApply = canEdit, localOverrideIntent, visible, legacyDraftsDirty, onOpenLegacyDrafts, onDirtyChange,
   onRefresh, focusSpan, focusLine, findQuery, findNextToken, onVisibleLineChange, flushRef }: Props) {
   const scope = useMemo(() => ({ userId: inputScope.userId, organizationId: inputScope.organizationId, projectId: inputScope.projectId,
     configSetId: inputScope.configSetId, fileId: inputScope.fileId }), [inputScope.userId, inputScope.organizationId, inputScope.projectId, inputScope.configSetId, inputScope.fileId]);
@@ -127,7 +131,7 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
       setAttempt({ ...next }); setSaveOpen(true); setBusy(true);
       if (!next.candidate) next.candidate = await repository.createCandidate(scope.projectId, {
         fileName, fileId: scope.fileId, contentBase64: await fileToContentBase64(new File([saved.sourceText], fileName, { type: "text/plain" })),
-        intent: "source_revision", expectedCurrentVersionId: saved.base.fileVersionId,
+        intent: "source_revision", ...(localOverrideIntent ? { localOverride: localOverrideIntent } : {}), expectedCurrentVersionId: saved.base.fileVersionId,
         expectedConfigRevisionId: saved.base.configRevisionId, clientMutationId: next.mutationId
       });
       if (next.candidate.status === "failed") {
@@ -152,7 +156,7 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
         }
       }
     } finally { if (latestScope.current === key && operationEpoch.current === epoch) setBusy(false); }
-  }, [busy, canEdit, change, configRevisionId, fileName, key, legacyDraftsDirty, repository, scope, session]);
+  }, [busy, canEdit, change, configRevisionId, fileName, key, legacyDraftsDirty, localOverrideIntent, repository, scope, session]);
 
   const submit = async () => {
     if (!attempt?.candidate || attempt.directApplication || !attempt.preview?.canSubmit || !attempt.preview.proofToken || !reason.trim() || !reviewerId || busy) return;
@@ -177,7 +181,7 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
   };
 
   const applyDirectly = async () => {
-    if (!canEdit || !repository.applyCandidateSourceRevision || !attempt?.candidate || attempt.submission
+    if (!canDirectApply || !repository.applyCandidateSourceRevision || !attempt?.candidate || attempt.submission
       || !attempt.preview?.canSubmit || !attempt.preview.proofToken || !reason.trim() || busy) return;
     const captured = attempt;
     const epoch = ++operationEpoch.current;
@@ -285,7 +289,7 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
   return <section className="workbench-source-editing" hidden={!visible} aria-label="DTS 编辑工作区">
     <div className="workbench-source-editing__toolbar">
       <ViewSwitch variant="toggle" ariaLabel="DTS 查看模式" value={isEditing ? "edit" : "preview"}
-        items={[{ value: "preview", label: "预览" }, { value: "edit", label: "编辑", disabled: !canEdit || !ready }]}
+        items={[{ value: "preview", label: "预览" }, { value: "edit", label: "编辑", disabled: !canEdit || !canEditSource || !ready }]}
         onValueChange={(value) => setEditingKeys((current) => { const next = new Set(current); if (value === "edit") next.add(key); else next.delete(key); return next; })} />
       <span role="status">{!ready ? "正在准备源码…" : requestId ? "已提交审核 · 工作配置尚未更新" : dirty ? "未保存修改" : "当前工作配置"}</span>
       <div className="workbench-source-editing__actions">
@@ -293,7 +297,9 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
         <Button variant="ghost" size="sm" disabled={!dirty || busy} onClick={() => setDiscardOpen(true)}>放弃修改</Button>
       </div>
     </div>
-    {!canEdit ? <p className="workbench-source-editing__notice">当前为只读预览，需要项目文件修改权限才能编辑。</p> : null}
+    {changeSummary && dirty ? <p className="workbench-source-editing__notice" role="status">{changeSummary}</p> : null}
+    {!canEdit ? <p className="workbench-source-editing__notice">当前为只读预览，需要项目文件修改权限才能编辑。</p>
+      : !canEditSource ? <p className="workbench-source-editing__notice">本项目覆盖仅保存已证明的属性差异；源码编辑另需文件管理权限。</p> : null}
     {!configRevisionId ? <p className="workbench-source-editing__notice" role="status">配置修订尚未就绪，当前可预览源码。</p> : null}
     {mixedEndings && dirty ? <p className="workbench-source-editing__notice" role="note">原文件混用了换行形式，编辑后可能统一为 LF，请在保存差异中核对。</p> : null}
     {stale ? <p className="workbench-source-editing__notice" role="alert">文件或配置版本已更新，旧草稿仍保留。请核对最新版本后继续。<Button size="sm" variant="outline" disabled={!canEdit || busy || file?.mergeConflicts} onClick={() => void rebase()}>基于最新版本继续编辑</Button><Button size="sm" variant="ghost" onClick={() => setCompareOpen(true)}>对照最新来源</Button><Button size="sm" variant="ghost" onClick={() => download()}>下载草稿</Button><Button size="sm" variant="ghost" onClick={onRefresh}>刷新来源</Button></p> : null}
@@ -307,7 +313,7 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
     <Suspense fallback={<p role="status">正在加载 DTS 编辑器…</p>}>
       <DtsEditor ref={editor} sessions={editorSessions} sessionKey={key} text={file?.sourceText ?? source} baseText={source}
         initialSelection={file ? { anchor: file.position.anchor, head: file.position.head } : undefined} initialVisibleLine={file?.position.firstVisibleLine}
-        resetKey={`${file?.base.fileVersionId ?? baseVersionId}:${Boolean(file && !file.loading)}:${resetKeys[key] ?? 0}`} readOnly={!canEdit || !isEditing || !ready || discardPending}
+        resetKey={`${file?.base.fileVersionId ?? baseVersionId}:${Boolean(file && !file.loading)}:${resetKeys[key] ?? 0}`} readOnly={!canEdit || !canEditSource || !isEditing || !ready || discardPending}
         focusSpan={focusSpan} focusLine={focusLine} findQuery={findQuery} findNextToken={findNextToken}
         onVisibleLineChange={onVisibleLineChange} onChange={change} onDirtyChange={(meta) => { if (meta.sessionKey === key) { setBufferDirty(meta.dirty); onDirtyChange(meta.dirty); } }}
         onSave={(value) => { void beginSave(value); }} />
@@ -337,7 +343,7 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
     <ModalDialog open={saveOpen} className="workbench-source-save-dialog" backdropClassName="param-admin-modal-backdrop"
       onDismiss={busy ? undefined : () => setSaveOpen(false)} describedBy>
       {({ titleId, descriptionId }) => <>
-        <header><h2 id={titleId}>保存 DTS 修改</h2><p id={descriptionId}>{fileName} · 管理员可核对差异后直接应用，也可提交独立审核</p></header>
+        <header><h2 id={titleId}>保存 DTS 修改</h2><p id={descriptionId}>{fileName} · {canDirectApply ? "管理员可核对差异后直接应用，也可提交独立审核" : "核对本项目属性差异后提交独立审核"}</p></header>
         {busy ? <p role="status">正在处理来源修改…</p> : null}
         {error ? <p role="alert">{error}</p> : null}
         {mixedEndings ? <p role="note">原文件混用了换行形式，编辑后可能统一为 LF，请在差异中核对。</p> : null}
@@ -356,11 +362,11 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
         <label>修改原因<textarea aria-label="DTS 修改原因" rows={2} value={reason} maxLength={2000} disabled={busy || Boolean(attempt?.submission || attempt?.directApplication)} onChange={(event) => setReason(event.target.value)} /></label>
         <label>软件审核人（仅提交审核时需要）<SelectControl ariaLabel="DTS 软件审核人" value={reviewerId} onValueChange={setReviewerId} disabled={busy || Boolean(attempt?.submission || attempt?.directApplication)}
           placeholder="选择审核人" options={reviewers.map(({ userId, name }) => ({ value: userId, label: name }))} /></label>
-        {attempt?.preview && !reviewers.length ? <p role="status">当前没有其他可选软件审核人。管理员可核对差异后直接应用；如需独立审核，请在项目审核角色中配置。</p> : null}
+        {attempt?.preview && !reviewers.length ? <p role="status">当前没有其他可选软件审核人。{canDirectApply ? "管理员可核对差异后直接应用；如需独立审核，请在项目审核角色中配置。" : "请在项目审核角色中配置软件审核人。"}</p> : null}
         <footer className="dialog-actions"><Button variant="outline" disabled={busy} onClick={() => setSaveOpen(false)}>返回编辑</Button>
           {!attempt?.preview || error ? <Button variant="outline" disabled={busy} onClick={() => void beginSave()}>重新校验</Button> : null}
           <Button variant="outline" disabled={busy || Boolean(attempt?.directApplication) || !attempt?.preview?.canSubmit || !reviewerId || !reason.trim()} onClick={() => void submit()}>{attempt?.submission ? "重试同一提交" : "提交审核"}</Button>
-          {canEdit && repository.applyCandidateSourceRevision ? <Button disabled={busy || Boolean(attempt?.submission) || !attempt?.preview?.canSubmit || !reason.trim()}
+          {canDirectApply && repository.applyCandidateSourceRevision ? <Button disabled={busy || Boolean(attempt?.submission) || !attempt?.preview?.canSubmit || !reason.trim()}
             onClick={() => void applyDirectly()}>{attempt?.directApplication ? "重试同一应用" : "直接应用修改"}</Button> : null}</footer>
       </>}
     </ModalDialog>

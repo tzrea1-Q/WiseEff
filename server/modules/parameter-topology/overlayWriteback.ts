@@ -325,12 +325,13 @@ export function ensureOverlayProperty(
   input: {
     propertyKey: string;
     rawText: string | null;
-    action: BindingEditAction;
+    action: BindingEditAction | "remove-override";
     targetRef: string;
     expectedChecksum: string;
     occurrenceSpan?: { start: number; end: number };
     expectedRawText?: string | null;
     nodeSpan?: { start: number; end: number };
+    preparedDocument?: ReturnType<typeof parseDts>;
   },
 ): string {
   const { propertyKey, rawText, action, targetRef } = input;
@@ -358,7 +359,7 @@ export function ensureOverlayProperty(
     );
   }
 
-  const doc = parseDts(content);
+  const doc = input.preparedDocument ? { ...input.preparedDocument, source: content } : parseDts(content);
 
   if (input.occurrenceSpan) {
     const slice = content.slice(
@@ -390,7 +391,7 @@ export function ensureOverlayProperty(
       );
     }
 
-    if (action === "delete") {
+    if (action === "delete" || action === "remove-override") {
       const statement = propertyStatementSpan(
         content,
         located.property,
@@ -399,7 +400,7 @@ export function ensureOverlayProperty(
       );
       return (
         content.slice(0, statement.start) +
-        `/delete-property/ ${propertyKey};` +
+        (action === "delete" ? `/delete-property/ ${propertyKey};` : "") +
         content.slice(statement.end)
       );
     }
@@ -414,6 +415,7 @@ export function ensureOverlayProperty(
   }
 
   // Base-only / no overlay occurrence: insert into the precise overlay node (by node span).
+  if (action === "remove-override") throw new ApiError("CONFLICT", "撤销覆盖需要精确的本项目属性声明，请打开原始源码修正。", { reason: "override-origin-ambiguous" });
   const target = resolveInsertTargetNode(doc.topLevel, {
     targetRef,
     nodeSpan: input.nodeSpan,
@@ -435,7 +437,7 @@ export function ensureOverlayProperty(
     return `${content.trimEnd()}\n&${targetRef} {\n\t/delete-property/ ${propertyKey};\n};\n`;
   }
 
-  const assignment = `\t${propertyKey} = ${rawText};`;
+  const assignment = rawText === "" ? `\t${propertyKey};` : `\t${propertyKey} = ${rawText};`;
   if (target) {
     const existing = target.children.find(
       (child): child is DtsPropertyCst =>

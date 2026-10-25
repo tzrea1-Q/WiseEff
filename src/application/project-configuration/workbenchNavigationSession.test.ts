@@ -220,6 +220,14 @@ describe("WorkbenchNavigationSession", () => {
     ).toBe("/parameter-admin/projects/proj/configuration?configSet=cs-a&file=f2");
   });
 
+  it("retains a complete effective-node selection while assigning the default source member", () => {
+    const session=createWorkbenchNavigationSession();
+    const path=session.applyFileUrl({projectId:"proj",search:"?configSet=c&tab=effective&node=%2Finherited&property=limit",membersLoading:false,filesLoading:false,
+      selectedConfigSet:{...configSets[0]!,id:"c"},selectedMemberFileId:"private",selectedMembers:[],projectFiles:[]});
+    expect(new URL(path!,"https://example.test").searchParams.get("node")).toBe("/inherited");
+    expect(new URL(path!,"https://example.test").searchParams.get("property")).toBe("limit");
+  });
+
   it("retains a pinned location during URL normalization and clears it when explicitly returning to current source", () => {
     const session = createWorkbenchNavigationSession();
     const search = "?configSet=cs-a&revision=rev-a&line=12&tab=effective";

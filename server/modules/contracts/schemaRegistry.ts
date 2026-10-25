@@ -61,6 +61,8 @@ function retireLegacySurface(
 }
 
 export const schemaRegistry: Record<string, ContractSchemaRef> = {
+  "parameterFiles.prepareProjectLocalOverride": { summary: "Prepare a project-owned source draft for setting or removing one local override", tags: ["parameter-files"],
+    requestBody: "ProjectLocalOverrideRequest", responseBody: "ProjectLocalOverrideResponse", additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" } },
   ...sharedDtsiSchemaRegistry,
   ...organizationDeletionSchemaRegistry,
   ...accountTransferSchemaRegistry,

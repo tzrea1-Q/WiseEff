@@ -5,6 +5,8 @@ import {
   canonicalBatchRollbackSubmitRequestSchema
 } from "../contracts/dtoSchemas/canonicalBatchRollback";
 import { canonicalManualSyncPrepareRequestSchema } from "../contracts/dtoSchemas/canonicalManualSync";
+import { projectLocalOverrideRequestSchema } from "../contracts/dtoSchemas/sourceRevision";
+import { prepareProjectLocalOverride } from "./projectLocalOverride";
 
 import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
@@ -143,6 +145,7 @@ const createCandidateBodySchema = z.object({
   contentBase64: z.string().min(1),
   fileId: z.string().min(1).optional(),
   intent: z.literal("source_revision").optional(),
+  localOverride: projectLocalOverrideRequestSchema.optional(),
   expectedCurrentVersionId: z.string().min(1).optional(),
   expectedConfigRevisionId: z.string().min(1).optional(),
   clientMutationId: z.string().min(1).max(200).optional()
@@ -303,6 +306,18 @@ export function registerParameterFileRoutes(
       ? createTrustedRefusalAuditSink(options.db)
       : undefined;
   registerMemberRemovalRoutes(router, { ...options, refusalAuditSink });
+
+  router.post("/api/v1/projects/:projectId/config-sets/:configSetId/local-override/prepare", async request => {
+    if (!options.db || !options.objectStore || !refusalAuditSink) throw new ApiError("INTERNAL_ERROR", "Project source storage and refusal auditing are required.");
+    const params = z.object({ projectId: z.string().min(1), configSetId: z.string().min(1) }).parse(request.params);
+    const body = projectLocalOverrideRequestSchema.safeParse(request.body);
+    if (!body.success) throw new ApiError("VALIDATION_FAILED", "项目覆盖请求不完整。", { issues: body.error.issues });
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
+    const { binding, ...draft } = await prepareProjectLocalOverride(options.db, options.objectStore, auth, { ...params, ...body.data },
+      { invocation: parameterInvocation(auth) ?? createUserInvocation(auth), requestId: request.requestId, refusalSink: refusalAuditSink });
+    const item = { ...draft, ...(binding ? { localOverride: body.data } : {}) };
+    return { status: 200, body: { item } };
+  });
 
   function requireSubmissionRefusalSink() {
     if (!refusalAuditSink) {
@@ -893,9 +908,9 @@ export function registerParameterFileRoutes(
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
     const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
-    requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const body = parseWithSchema(createCandidateBodySchema, request.body, "Invalid candidate upload payload.");
+    if (!(body.intent === "source_revision" && body.localOverride)) requireCanAdmin(auth);
     const item = await createCandidate(
       db,
       objectStore,
@@ -906,6 +921,7 @@ export function registerParameterFileRoutes(
         bytes: decodeContentBase64(body.contentBase64),
         fileId: body.fileId,
         intent: body.intent,
+        localOverride: body.intent === "source_revision" ? body.localOverride : undefined,
         expectedCurrentVersionId: body.expectedCurrentVersionId,
         expectedConfigRevisionId: body.expectedConfigRevisionId,
         clientMutationId: body.clientMutationId
@@ -1119,10 +1135,10 @@ export function registerParameterFileRoutes(
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
     const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
-    requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
     const body = parseWithSchema(canonicalSourceSubmitBodySchema, request.body, "Invalid canonical source submit payload.");
     const candidate = await getCandidate(db, auth, params);
+    if (!candidate.sourceRevisionContext?.localOverride) requireCanAdmin(auth);
     if (candidate.sourceRevisionContext) {
       if (!body.assignedToUserId || !body.clientMutationId) throw new ApiError("VALIDATION_FAILED", "A source reviewer and mutation key are required.");
       const item = await submitSourceRevisionCandidate(db, objectStore, auth, {

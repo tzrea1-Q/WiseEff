@@ -16,6 +16,7 @@ import type {
   RollbackParameterFileSourceReviewInput,
   RollbackParameterFileVersionResult,
   ParameterFileRepository,
+  ProjectLocalOverrideDraft,
   ParameterFileSyncConflict,
   PreviewBulkConflictResolutionInput,
   ProjectParameterFile,
@@ -290,6 +291,10 @@ export function createParameterFileClient(client: ApiClient = createDefaultApiCl
         routeCandidateSourcePreview(projectId, candidateId)
       );
       return response.item;
+    },
+    async prepareProjectLocalOverride(projectId, configSetId, input) {
+      return (await client.post<ItemEnvelope<ProjectLocalOverrideDraft>>(
+        `/api/v1/projects/${encodeURIComponent(projectId)}/config-sets/${encodeURIComponent(configSetId)}/local-override/prepare`, input)).item;
     },
     async submitCandidateSourceReview(
       projectId: string,

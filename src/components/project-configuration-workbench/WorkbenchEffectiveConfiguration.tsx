@@ -1,8 +1,14 @@
-import type { MouseEvent } from "react";
+import { useState, type MouseEvent } from "react";
+import type { ProjectLocalOverrideInput } from "@/application/ports/ParameterFileRepository";
 import type { DtsStructuralNode } from "@/application/ports/DtsStructuredRepository";
 import type { EffectiveTopologyEffect, EffectiveTopologyNode } from "@/domain/parameter-topology/types";
 import { SectionEmpty } from "@/components/common/SectionState";
 import { formatDtsValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
+import { isStructuralPropertyKey } from "@/domain/parameter-topology/parameterSurface";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { SelectControl } from "@/components/common/SelectControl";
+import { presentError } from "@/infrastructure/http/presentError";
 
 const finalValue = (effect: EffectiveTopologyEffect) => formatDtsValueForUi(effect.valueText ?? effect.rawText, effect.value,
   effect.effectKind === "delete" ? "deleted" : "present");
@@ -37,10 +43,26 @@ type Props = {
   search: string;
   blockingAncestorPath?: string;
   onNavigate?: (path: string) => void;
+  overrideTargets?: Array<{ fileId: string; fileName: string }>;
+  onPrepareOverride?: (input: ProjectLocalOverrideInput) => Promise<void>;
 };
 
-export function WorkbenchEffectiveConfiguration({ node, projectId, configSetId, revisionId, search, blockingAncestorPath, onNavigate }: Props) {
+export function WorkbenchEffectiveConfiguration({ node, projectId, configSetId, revisionId, search, blockingAncestorPath, onNavigate, overrideTargets = [], onPrepareOverride }: Props) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [rawText, setRawText] = useState("");
+  const [targetFileId, setTargetFileId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<{ name: string; message: string } | null>(null);
   if (!node) return <SectionEmpty message="选择设备树节点以查看最终值和来源。" />;
+  const prepare = async (name: string, final: EffectiveTopologyEffect, action: ProjectLocalOverrideInput["action"]) => {
+    if (!onPrepareOverride || busy) return;
+    setBusy(true); setError(null);
+    try { await onPrepareOverride({ expectedConfigRevisionId: revisionId, logicalNodeId: node.logicalNodeId, propertyName: name,
+      ...(final.propertyOccurrenceId ? { propertyOccurrenceId: final.propertyOccurrenceId } : {}), action,
+      ...(action === "set" ? { rawText, ...(targetFileId ? { targetFileId } : {}) } : {}) }); }
+    catch (cause) { setError({ name, message: presentError(cause, "项目覆盖草稿准备失败，请重试。") }); }
+    finally { setBusy(false); }
+  };
   const sourcePath = (effect: EffectiveTopologyEffect) => {
     const params = new URLSearchParams(search);
     params.set("configSet", configSetId); params.set("revision", revisionId); params.set("tab", "source");
@@ -80,7 +102,7 @@ export function WorkbenchEffectiveConfiguration({ node, projectId, configSetId, 
       <small>生效配置只读 · 查看源码可追溯到此配置修订的固定文件版本</small>
     </header>
     {chains.size === 0 ? <SectionEmpty message="此节点没有参数属性。" /> : <dl className="configuration-workbench__effective-properties">
-      {[...chains].map(([name, chain]) => {
+      {[...chains].filter(([name]) => !editing || name === editing).map(([name, chain]) => {
         const final = chain.at(-1)!;
         return <div key={name} data-effective-property={name}>
           <dt><code>{name}</code></dt>
@@ -93,6 +115,24 @@ export function WorkbenchEffectiveConfiguration({ node, projectId, configSetId, 
                 <div className="configuration-workbench__effective-origin">{sourceLink(effect)}{sharedLink(effect)}</div>
               </li>)}</ol>
             </details> : null}
+            {onPrepareOverride && final.effectKind !== "delete" && !isStructuralPropertyKey(name) ? <div className="configuration-workbench__override-actions">
+              {editing !== name ? <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => {
+                setEditing(name); setRawText(final.valueText ?? final.rawText ?? ""); setError(null);
+                setTargetFileId(overrideTargets.find(target => target.fileId === final.source?.fileId)?.fileId ?? "");
+              }}>在本项目覆盖</Button> : null}
+              {editing !== name && final.source && !final.source.sharedReference ? <Button type="button" variant="outline" size="sm" disabled={busy}
+                onClick={() => void prepare(name, final, "remove-override")}>撤销本项目覆盖</Button> : null}
+              {editing === name ? <form aria-label={`${name} 本项目覆盖`} onSubmit={event => { event.preventDefault(); void prepare(name, final, "set"); }}>
+                <label htmlFor={`override-value-${name}`}>本项目值（DTS）</label>
+                <Textarea id={`override-value-${name}`} aria-label={`${name} 本项目值`} value={rawText} disabled={busy} onChange={event => setRawText(event.target.value)} />
+                {overrideTargets.length > 1 ? <label>项目源码成员<SelectControl ariaLabel={`${name} 项目源码成员`} value={targetFileId} disabled={busy}
+                  onValueChange={setTargetFileId} options={[{ value: "", label: "按覆盖顺序选择项目成员" }, ...overrideTargets.map(target => ({ value: target.fileId, label: target.fileName }))]} /></label> : null}
+                <p>在项目源码中查看差异，再按当前权限提交审阅或确认应用。</p>
+                <Button type="submit" size="sm" disabled={busy || (!rawText.trim() && final.value?.kind !== "boolean")}>查看源码差异</Button>
+                <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => { setEditing(null); setError(null); }}>取消</Button>
+              </form> : null}
+              {error?.name === name ? <p role="alert">{error.message}</p> : null}
+            </div> : null}
           </dd>
         </div>;
       })}

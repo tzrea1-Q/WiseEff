@@ -435,7 +435,7 @@ function AppShell({
   const currentWorkflow = workflowForGroup(page.group);
   const canEnterPublishedPage = currentWorkflow === null || isPublicationAdministrator ||
     publication.status === "ready" && publication.publication?.workflows[currentWorkflow] === true;
-  const canAccessCurrentPage = (canAccessPage(currentRoleId, page.key) || runtimeMode === "api" && page.key === "parameter-submissions" && Boolean(apiProjectMemberships?.length)) && canEnterPublishedPage &&
+  const canAccessCurrentPage = (canAccessPage(currentRoleId, page.key, { path: page.path, runtimeMode, permissions: apiAuthPermissions, roles: apiAuthRoles, projectMemberships: apiProjectMemberships }) || runtimeMode === "api" && page.key === "parameter-submissions" && Boolean(apiProjectMemberships?.length)) && canEnterPublishedPage &&
     ((page.key !== "workflow-publication" && page.key !== "platform-organizations") || canManagePublication);
   const [dashboardState, dashboardDispatch] = useReducer(dashboardReducer, initialDashboardState);
   const dashboardRepositoryRef = useRef(dashboardRepository);

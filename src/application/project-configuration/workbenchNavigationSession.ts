@@ -333,11 +333,12 @@ export function createWorkbenchNavigationSession(): WorkbenchNavigationSession {
         if (knownMember || knownProjectFile) return null;
       }
       if (requested === selectedMemberFileId) return null;
+      const effective = queryValue(search, "tab") === "effective";
       return formatWorkbenchPath(projectId, search, {
         configSet: selectedConfigSet.id,
         file: selectedMemberFileId,
-        node: null,
-        property: null
+        node: effective ? queryValue(search, "node") : null,
+        property: effective ? queryValue(search, "property") : null
       });
     },
     selectConfigSet(projectId, search, configSetId) {
