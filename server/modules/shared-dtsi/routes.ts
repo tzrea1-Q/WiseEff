@@ -44,8 +44,8 @@ export function registerSharedDtsiRoutes(router: WiseEffRouter, options: {
   router.put("/api/v2/shared-dtsi/:resourceId/draft", async request => {
     const { db, auth, context } = await access(request);
     requireWrite(auth,context);
-    const input=parse(sharedDtsiDraftUpdateSchema, request.body);
-    return { status: 200, body: { item: await saveSharedDtsiDraft(db, auth, resourceId(request), {...await importSharedDtsiInput(input),expectedRevision:input.expectedRevision}, context) } };
+    const {expectedRevision,...input}=parse(sharedDtsiDraftUpdateSchema, request.body);
+    return { status: 200, body: { item: await saveSharedDtsiDraft(db, auth, resourceId(request), {...await importSharedDtsiInput(input),expectedRevision}, context) } };
   });
   router.delete("/api/v2/shared-dtsi/:resourceId/draft", async request => {
     const { db, auth, context } = await access(request);

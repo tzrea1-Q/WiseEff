@@ -107,6 +107,38 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     expect((await call("?q=Unsafe%20ZIP")).body.items).toEqual([]);
   });
 
+  it("replaces an existing draft from ZIP with CAS and matching member identity",async()=>{
+    const draft=(await call("","POST",{name:"ZIP replacement",sourceName:"main.dtsi",content:source})).body.item;
+    const zip=new JSZip();zip.file("main.dtsi",source.replace("disabled","okay"));zip.file("include/constants.h","#define V 42\n");
+    const input={name:draft.name,archive:{name:"source.zip",contentBase64:await zip.generateAsync({type:"base64"})},expectedRevision:1};
+    const saved=await call(`/${draft.resourceId}/draft`,"PUT",input);
+    expect(saved.status,saved.bodyText).toBe(200);
+    expect(saved.body.item).toMatchObject({revision:2,members:expect.arrayContaining([expect.objectContaining({id:draft.members[0]!.id,sourceName:"main.dtsi",content:source.replace("disabled","okay")})])});
+    expect((await call(`/${draft.resourceId}/draft`,"PUT",input)).status).toBe(409);
+    expect((await call(`/${draft.resourceId}`)).body.item).toEqual(saved.body.item);
+  });
+
+  it("publishes native external node-path requirements and distinguishes locally provided targets",async()=>{
+    for(const [content,externalReferences] of [
+      ['&{/soc} { clocks = <&{/soc/clock}>; status = "okay"; };',["&{/soc/clock}","&{/soc}"]],
+      ['/ { soc { clock {}; }; };\n&{/soc} { clocks = <&{/soc/clock}>; };',[]]
+    ] as const) {
+      const draft=(await call("","POST",{name:"Native paths",sourceName:"paths.dtsi",content,changeDescription:"原生节点路径"})).body.item;
+      const preview=await publicationCall<{item:{id:string;manifest:{externalReferences:string[]}}}>(`/${draft.resourceId}/publication-preview`,"POST",{expectedRevision:1});
+      expect(preview.status,preview.bodyText).toBe(201);
+      expect(preview.body.item.manifest.externalReferences).toEqual(externalReferences);
+      const version=await publicationCall<{item:{members:{content:string}[]}}>(`/${draft.resourceId}/publications`,"POST",{
+        previewId:preview.body.item.id,idempotencyKey:`path-${draft.resourceId}`});
+      expect(version.status,version.bodyText).toBe(201);
+      expect(version.body.item.members[0]!.content).toBe(content);
+    }
+    const draft=(await call("","POST",{name:"Invalid path",sourceName:"paths.dtsi",content:'// invalid\n&{/soc/../clock} { status = "okay"; };',changeDescription:"拒绝无效路径"})).body.item;
+    const preview=await publicationCall<{error:{details:{diagnostics:{line:number;sourceName:string}[]}}}>(`/${draft.resourceId}/publication-preview`,"POST",{expectedRevision:1});
+    expect(preview.status,preview.bodyText).toBe(400);
+    expect(preview.body.error.details.diagnostics).toContainEqual(expect.objectContaining({sourceName:"paths.dtsi",line:2}));
+    expect((await call(`/${draft.resourceId}`)).body.item).toEqual(draft);
+  });
+
   it("locates dependency failures without discarding the editable library draft", async () => {
     const cases=[
       {members:[{sourceName:"lib.dtsi",content:'// original comment\n/include/ "missing.dtsi"\n'}],file:"lib.dtsi",line:2,match:"missing.dtsi"},

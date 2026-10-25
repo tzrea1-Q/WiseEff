@@ -119,6 +119,8 @@ Use **Versions** to open exact historical source. **Create new version** copies 
 
 Reopen a resource from the list to continue editing. If another administrator saved first, your input stays on screen and saving is blocked until you reload and check the current draft. Leaving with unsaved edits asks for confirmation. **Discard draft** removes the never-published resource and its draft after confirmation. Readers cannot create, save or discard drafts.
 
+Native node-path references such as `&{/soc}` and `<&{/soc/clock}>` retain their original source positions. Library publication lists required paths that the library does not declare; project composition must resolve them to actual nodes and refuses missing targets. These paths are locators and do not establish logical-node identity by themselves.
+
 ## Initialize or import project parameters
 
 As an Organization Admin, open "Parameter admin" (`/parameter-admin`) and its "Project list" (`/parameter-admin/projects`). Start the project initialization wizard and fill in the project identity and owner. Select source projects, choosing a primary source if you use several, then select candidate parameters and submit the snapshot for review. You can also explicitly choose to start from an empty library. The project then waits for review. An Admin approves or rejects initialization in "Change review" (`/parameter-review`); approval creates the selected bindings, while rejection lets the creator revise the setup. Ordinary parameter changes can be submitted only after initialization succeeds.

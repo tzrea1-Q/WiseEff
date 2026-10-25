@@ -83,4 +83,18 @@ describe.skipIf(!databaseAvailable)("readDtsStructuralModel", () => {
     expect(viaService.nodes).toEqual(nodes);
     expect(viaService.nodes.some((n) => n.name === "/" && n.nodePath === "")).toBe(true);
   });
+
+  it("resolves native path phandles to the actual structural node and retains original property spans",async()=>{
+    const versionId=randomUUID(),source='/ { soc { clock@0 {}; consumer { clocks = <&{/soc/clock@0}>; }; }; };\n&{/soc/consumer} { status = "okay"; };\n';
+    await db!.query(`insert into project_parameter_file_versions(id,file_id,version_number,storage_key,checksum,size_bytes,parsed_index,origin)
+      values($1,'file-struct-read',1,'k','c',$2,'{}'::jsonb,'upload')`,[versionId,Buffer.byteLength(source)]);
+    await ingestDtsFileVersion(db!,versionId,source);
+    const result=await getParameterFileVersionStructure(db!,versionId);
+    const consumer=result.nodes.find(node=>node.nodePath==="soc/consumer")!;
+    expect(consumer.status).toBe("okay");
+    expect(consumer.phandleRefs).toEqual([expect.objectContaining({targetLabel:"{/soc/clock@0}",resolvedTargetPath:"soc/clock@0"})]);
+    const span=consumer.properties.find(property=>property.name==="clocks")!.source!;
+    expect(source.slice(span.startOffset,span.endOffset)).toBe("<&{/soc/clock@0}>");
+    expect(result.nodes.some(node=>node.nodePath.includes("{"))).toBe(false);
+  });
 });

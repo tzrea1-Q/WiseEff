@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { ApiError } from "../../shared/http/errors";
 import { lexDts, offsetToLineColumn, parseDts, parseDtsValue, type DtsNodeCst } from "../dts";
 import { expandDtsIncludes, resolveIncludeTarget } from "../dts/configSetResolver";
+import { dtsReferencePath } from "../../../src/domain/dts/reference";
 import type { SharedDtsiDraft, SharedDtsiManifest } from "../contracts/dtoSchemas/sharedDtsi";
 
 export function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
@@ -53,7 +54,7 @@ export function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
     depths.set(sourceName,depth);return depth;
   };
   for (const member of draft.members) visitGraph(member.sourceName,[member.sourceName]);
-  const labels=new Set<string>(),references=new Set<string>();
+  const labels=new Set<string>(),references=new Set<string>(),paths=new Set<string>();
   const roots=draft.members.filter(member=>member.sourceName.endsWith(".dtsi") && !included.has(member.sourceName));
   let declarations=0,expandedBytes=0;
   for (const root of roots) {
@@ -67,28 +68,28 @@ export function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
       const tokens=lexDts(expanded.text);
       for (const token of tokens.entries()) {
         const [index,value]=token;
+        if(value.kind==="path-ref")references.add(`&${value.value}`);
         if (value.kind==="amp") {
           const next=tokens[index+1];
           if (next?.kind==="ident") references.add(next.value);
-          else if (next?.kind==="lbrace") {
-            const tail=expanded.text.slice(next.span.end),end=tail.indexOf("}");
-            if (end>=0) references.add(`&{${tail.slice(0,end)}}`);
-          }
         }
       }
       const document=parseDts(expanded.text);
       declarations+=document.topLevel.length;
-      const visit=(node:DtsNodeCst)=>{
+      const visit=(node:DtsNodeCst,parentPath:string|null="")=>{
+        const path=node.refTarget?dtsReferencePath(node.refTarget):node.isOverlayRoot?"/":parentPath===null?null
+          :`${parentPath==="/"?"":parentPath}/${node.name}${node.unitAddress!==undefined?`@${node.unitAddress}`:""}`;
+        if(path!==null && !node.refTarget)paths.add(path);
         for (const label of node.labels) {if(labels.has(label))fail(node.span.start,`节点标签 ${label} 重复。`);labels.add(label);}
         for (const child of node.children) {
-          if (child.kind==="node")visit(child);
+          if (child.kind==="node")visit(child,path);
           else if(child.kind==="property") {
             try {parseDtsValue(child.name,child.rawText);}
             catch {fail(child.span.start,`属性 ${child.name} 的值需要补充依赖或使用当前支持的 DTS 值语法。`);}
           }
         }
       };
-      document.topLevel.forEach(visit);
+      document.topLevel.forEach(node=>visit(node));
     } catch(error) {
       if(error instanceof ApiError)throw error;
       const message=error instanceof Error?error.message:"设备树语法无效。";
@@ -98,6 +99,7 @@ export function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
   if(!declarations)reject(roots[0]?.sourceName??draft.members[0]!.sourceName,0,"源码中没有可发布的设备树声明。");
   const members=draft.members.map(member=>({...member,checksum:`sha256:${createHash("sha256").update(member.content).digest("hex")}`,sizeBytes:Buffer.byteLength(member.content)}));
   const manifest:SharedDtsiManifest={schemaVersion:"shared-dtsi/v1",members:members.map(({content:_,...member})=>({...member,role:member.sourceName.endsWith(".dtsi")?"include":"header"})),
-    includeGraph:graph,buildInputs:{includeSearchPaths:[]},externalReferences:[...references].filter(label=>!labels.has(label)).sort()};
+    includeGraph:graph,buildInputs:{includeSearchPaths:[]},externalReferences:[...references].filter(reference=>reference.startsWith("&{")
+      ?!paths.has(dtsReferencePath(reference.slice(1))!):!labels.has(reference)).sort()};
   return {members,manifest,digest:`sha256:${createHash("sha256").update(JSON.stringify({name:draft.name,manifest,changeDescription:draft.changeDescription})).digest("hex")}`};
 }

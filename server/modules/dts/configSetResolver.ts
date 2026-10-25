@@ -3,6 +3,7 @@ import posixPath from "node:path/posix";
 import { parseDts } from "./parser";
 import { stripDtsComments } from "./preprocess";
 import { lexDts } from "./lexer";
+import { dtsReferencePath,DtsPathReferenceError } from "../../../src/domain/dts/reference";
 import type { DtsDeleteNodeCst, DtsDeletePropertyCst, DtsNodeCst, DtsPropertyCst, DtsValue, DtsValueType } from "./types";
 
 /**
@@ -251,7 +252,8 @@ function expandFile(
   // the original file while the combined document remains parseable.
   const cleaned = stripDtsComments(file.content);
   let cursor = 0;
-  const tokens = lexDts(cleaned);
+  let tokens:ReturnType<typeof lexDts>;
+  try {tokens=lexDts(cleaned);}catch(error){if(error instanceof DtsPathReferenceError)error.sourceName=fileName;throw error;}
   for (let i=0;i<tokens.length;i++) {
     const token=tokens[i]!;
     if (token.kind!=="directive" || token.value!=="/include/" || tokens[i+1]?.kind!=="string") continue;
@@ -412,7 +414,13 @@ function walkNode(ctx: WalkContext, cst: DtsNodeCst, parentLocator: string): voi
   let node: MutableNode;
 
   if (cst.refTarget) {
-    const target = ctx.byLabel.get(cst.refTarget);
+    const path=dtsReferencePath(cst.refTarget);
+    const target = path!==null?ctx.byLocator.get(path.slice(1)):ctx.byLabel.get(cst.refTarget);
+    if(path!==null && (!target || target.deleted)) {
+      ctx.diagnostics.push({code:"target-unresolved",severity:"error",fileName,
+        message:`Overlay target "&${cst.refTarget}" is not defined in the uploaded file set`});
+      return;
+    }
     if (!target) {
       // Self-anchoring overlay: the referenced label is not defined anywhere in the
       // uploaded file set. Dropping the fragment would silently lose its business
@@ -471,6 +479,7 @@ function ingestDocument(
     topLevel = parseDts(builder.text).topLevel;
   } catch (error) {
     if (error instanceof SourceProofLimit) throw error;
+    if(error instanceof DtsPathReferenceError)diagnostics.push({code:"target-unresolved",severity:"error",fileName:error.sourceName??fileName,offset:error.offset,message:error.message});
     // A malformed member is reported structurally elsewhere (parser safety); the config-set
     // resolver only owns include/overlay provenance diagnostics.
     return;
@@ -560,6 +569,14 @@ export function resolveDtsConfigSet(input: DtsConfigSetInput): DtsConfigSetResul
       ingestDocument(overlayFile, input, diagnostics, byLocator, byLabel, proofBudget);
     }
 
+    for(const node of byLocator.values())for(const property of node.properties.values()) {
+      if(node.deleted || property.deleted)continue;
+      for(const token of lexDts(property.rawText))if(token.kind==="path-ref") {
+        const target=byLocator.get(dtsReferencePath(token.value)!.slice(1));
+        if(!target || target.deleted)diagnostics.push({code:"target-unresolved",severity:"error",fileName:property.sourceChain.at(-1)!.fileName,
+          message:`Property reference "&${token.value}" is not defined in the uploaded file set`});
+      }
+    }
     return { effective: { nodesByLocator: finalize(byLocator) }, diagnostics };
   } catch (error) {
     if (!(error instanceof SourceProofLimit)) throw error;
