@@ -518,7 +518,8 @@ export function ProjectConfigurationWorkbench({
     : requestedTab === "effective" ? "effective"
     : requestedTab === "source" || requestedTab === "structure" ? "source"
     : queryValue(search, "tasks") === "conflicts" || queryValue(search, "dock") === "conflicts" ? "conflicts"
-    : apiMode && topologyRepository && !queryValue(search, "file") ? "effective" : "source";
+    : apiMode && topologyRepository && !queryValue(search, "file") && !queryValue(search, "sourceMode")
+      && !["file", "versions", "candidates"].includes(queryValue(search, "inspector") ?? "") ? "effective" : "source";
   const showContentTabs = Boolean(topologyRepository) || contentTab === "conflicts" || syncConflicts.length > 0 || Boolean(conflictsError);
   const effectiveRevision = queryValue(search, "revision") ?? "current";
   const effectiveKey = `${project.id}/${selectedConfigSet?.id}/${effectiveRevision}`;
