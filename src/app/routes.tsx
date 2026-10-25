@@ -296,7 +296,7 @@ export function PageRouter({
     try { workspaceSkillId = decodeURIComponent(workspaceSkillId); } catch { /* The API returns not-found for a malformed id. */ }
   }
   const canManagePublication = currentRoleId === "platform-admin" && (!sessionRoles || sessionRoles.some((role) => role.roleId === "platform-admin" && role.projectId === null));
-  if ((!canAccessPage(currentRoleId, page.key) && !(runtimeMode === "api" && page.key === "parameter-submissions" && projectMemberships?.length) && !(skillWorkspaceMatch && sessionPermissions?.includes("logs:view"))) ||
+  if ((!canAccessPage(currentRoleId, page.key, { path: page.path, runtimeMode: runtimeMode ?? "mock", permissions: sessionPermissions, roles: sessionRoles, projectMemberships }) && !(runtimeMode === "api" && page.key === "parameter-submissions" && projectMemberships?.length) && !(skillWorkspaceMatch && sessionPermissions?.includes("logs:view"))) ||
     ((page.key === "workflow-publication" || page.key === "platform-organizations") && !canManagePublication)) {
     const requiredRole = getRequiredRoleForPage(page.key);
     return (
@@ -424,6 +424,7 @@ export function PageRouter({
           catalogOrganizationId={runtime?.operatingOrganizationId ?? organizationId}
           sessionPermissions={sessionPermissions}
           sessionRoles={sessionRoles}
+          projectMemberships={projectMemberships}
         />
       );
     }

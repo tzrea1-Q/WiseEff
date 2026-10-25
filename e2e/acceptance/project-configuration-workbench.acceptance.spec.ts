@@ -3050,6 +3050,132 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await expect(await openWorkbenchPanel(page,"config-set")).toContainText("retained-");
   });
 
+  for(const actor of ["admin","hardware-user","guest"] as const) test(`project local override and removal preserve inherited values through the source workflow (${actor})`, async ({ page, request }, testInfo) => {
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
+    const binding = await seedIsolatedBinding(request, { propertyKey:"rx_fod_cond",
+      dts:'/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "Private", "keep"; }; };',
+      rawValuePattern:'"Private", "keep"',nodeLocatorPattern:"board",reason:"#1419 local override",timeoutMs:60_000 });
+    const sourceName=`local-${randomUUID()}.dtsi`;
+    const source='/ { inherited { compatible = "mt,mt5788"; rx_fod_cond = "SharedDefault", "keep"; }; };';
+    const draft=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:`Local override ${randomUUID()}`,sourceName,content:source,changeDescription:"Shared default"}});
+    expect(draft.status(),await draft.text()).toBe(201);const resourceId=(await draft.json()).item.resourceId as string;
+    const pubPreview=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:1}});
+    expect(pubPreview.status(),await pubPreview.text()).toBe(201);
+    const publication=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`),{headers:adminHeaders(),data:{previewId:(await pubPreview.json()).item.id,idempotencyKey:`local-${randomUUID()}`}});
+    expect(publication.status(),await publication.text()).toBe(201);const versionId=(await publication.json()).item.id as string;
+    const composition=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition`;
+    const addition={sharedReference:{resourceId,versionId},role:"misc",sortOrder:1};
+    const preview=await request.post(apiRoute(`${composition}/preview`),{headers:adminHeaders(),data:addition});
+    expect(preview.status(),await preview.text()).toBe(200);
+    const added=await request.post(apiRoute(`${composition}/apply`),{headers:adminHeaders(),data:{...addition,proofToken:(await preview.json()).item.proofToken,reason:"#1419 pin shared source",clientMutationId:`local-${randomUUID()}`}});
+    expect(added.status(),await added.text()).toBe(200);const sharedFileId=(await added.json()).item.fileId as string;
+    const bindingsPath=`/api/v2/projects/${projectId}/parameter-bindings`;
+    const before=(await (await request.get(apiRoute(bindingsPath),{headers:adminHeaders()})).json()).items as {id:string;sourceNodePath:string;rawValue:string;sourceFileId:string}[];
+    const inherited=before.find(row=>row.sourceFileId===sharedFileId && (row.sourceNodePath==="/inherited" || row.sourceNodePath==="inherited"))!;
+    expect(inherited.rawValue).toBe('"SharedDefault", "keep"');
+    const route=`/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({organization:organizationId,configSet:binding.configSetId,tab:"effective",node:"/inherited"})}`;
+    await signInBrowserAsRole(page,actor,disposablePageUrl(disposableRuntime,route));await dismissXiaozeHint(page);
+    const property=page.locator('[data-effective-property="rx_fod_cond"]');
+    await expect(property.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"SharedDefault", "keep"');
+    await expect(property.getByRole("button",{name:"撤销本项目覆盖",exact:true})).toHaveCount(0);
+    if(actor==="guest") {
+      const nextDraft=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`),{headers:adminHeaders(),data:{baseVersionId:versionId}});
+      expect(nextDraft.status(),await nextDraft.text()).toBe(201);
+      const nextSave=await request.put(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`),{headers:adminHeaders(),data:{expectedRevision:(await nextDraft.json()).item.revision,
+        name:"Reader successor",sourceName,content:source.replace("SharedDefault","SharedSuccessor"),changeDescription:"New published version leaves project v1 fixed"}});
+      expect(nextSave.status(),await nextSave.text()).toBe(200);
+      const nextPreview=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:(await nextSave.json()).item.revision}});
+      expect(nextPreview.status(),await nextPreview.text()).toBe(201);
+      const nextPublished=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`),{headers:adminHeaders(),data:{previewId:(await nextPreview.json()).item.id,idempotencyKey:`reader-${randomUUID()}`}});
+      expect(nextPublished.status(),await nextPublished.text()).toBe(201);
+      await expect(property.getByRole("button",{name:"在本项目覆盖",exact:true})).toHaveCount(0);
+      await property.getByRole("link",{name:"共享资源 v1",exact:true}).click();
+      await expect(page.getByText("v1 · 历史版本，只读",{exact:true})).toBeVisible();
+      await expect(page.getByRole("textbox",{name:"已发布 DTSI 源码",exact:true})).toContainText("SharedDefault");
+      await expect(page.getByRole("textbox",{name:"已发布 DTSI 源码",exact:true})).toHaveAttribute("aria-readonly","true");
+      await expect(page.getByRole("button",{name:"保存草稿",exact:true})).toHaveCount(0);
+      await expect(page.getByRole("navigation",{name:"组织配置子视图"})).toHaveCount(0);
+      for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
+        await page.setViewportSize(viewport);const path=testInfo.outputPath(`reader-source-${viewport.width}.png`);await page.screenshot({path});
+        await testInfo.attach(`Reader source ${viewport.width}`,{path,contentType:"image/png"});
+      }
+      await page.getByRole("link",{name:"返回项目节点",exact:true}).click();
+      await expect(page.getByRole("region",{name:"DTS 源码",exact:true})).toContainText("SharedDefault");
+      expect(new URL(page.url()).searchParams.get("version")).toBeTruthy();
+      await expect(page.getByRole("radio",{name:"编辑",exact:true})).toHaveCount(0);
+      await page.getByRole("tab",{name:"生效配置",exact:true}).click();
+      await page.getByRole("treeitem",{name:"节点 /board",exact:true}).click();
+      await property.getByRole("link").first().click();
+      await expect(page.getByRole("region",{name:"DTS 源码",exact:true})).toContainText("Private");
+      await expect(page.getByRole("radio",{name:"编辑",exact:true})).toHaveCount(0);
+      await page.getByRole("button",{name:"项目参数",exact:true}).click();
+      await expect(page).toHaveURL(/\/parameters\?project=aurora/);return;
+    }
+    await property.getByRole("button",{name:"在本项目覆盖",exact:true}).focus();await page.keyboard.press("Enter");
+    await property.getByRole("textbox",{name:"rx_fod_cond 本项目值",exact:true}).fill('"ProjectLocal", "keep"');
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
+      await page.setViewportSize(viewport);await expect(property.getByRole("button",{name:"查看源码差异",exact:true})).toBeInViewport({ratio:1});
+      const path=testInfo.outputPath(`local-override-${viewport.width}.png`);
+      await page.screenshot({path});await testInfo.attach(`Local override ${viewport.width}`,{path,contentType:"image/png"});
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true);
+    }
+    async function savePrepared(action: "set" | "remove-override") {
+      const preparedResponse=page.waitForResponse(response=>response.request().method()==="POST" && new URL(response.url()).pathname.endsWith("/local-override/prepare"),{timeout:60_000});
+      if(action==="set")await property.getByRole("button",{name:"查看源码差异",exact:true}).click();
+      else {const remove=property.getByRole("button",{name:"撤销本项目覆盖",exact:true});await expect(remove).toBeEnabled();await remove.focus();await expect(remove).toBeFocused();await page.keyboard.press("Enter");}
+      const prepared=await preparedResponse;expect(prepared.status(),await prepared.text()).toBe(200);
+      const item=(await prepared.json()).item as {before:string;after:string;afterValue:string};
+      await expect(page.getByRole("textbox",{name:"DTS 源码",exact:true})).toContainText(action === "set" ? "ProjectLocal" : "/dts-v1/");
+      if(action==="remove-override") {
+        expect(item.afterValue).toBe('"SharedDefault", "keep"');expect(item.after).not.toContain("/delete-property/ rx_fod_cond");
+        await expect(page.getByText(/撤销本项目覆盖后/)).toContainText("SharedDefault");
+      }
+      await expect(page.getByRole("radio",{name:"编辑",exact:true})).toBeDisabled();
+      if(action==="set") {await page.reload();await expect(page.getByRole("textbox",{name:"DTS 源码",exact:true})).toContainText("ProjectLocal");
+        await expect(page.getByRole("radio",{name:"编辑",exact:true})).toBeDisabled();}
+      const sourceCandidate=page.waitForResponse(response=>response.request().method()==="POST" && new URL(response.url()).pathname.endsWith("/parameter-file-candidates"),{timeout:60_000});
+      const sourcePreview=page.waitForResponse(response=>response.request().method()==="GET" && new URL(response.url()).pathname.endsWith("/source-preview"),{timeout:60_000});
+      await expect(page.getByRole("button",{name:"保存修改",exact:true})).toBeEnabled();
+      await page.getByRole("button",{name:"保存修改",exact:true}).focus();await page.keyboard.press("Enter");
+      const candidate=await sourceCandidate;expect(candidate.status(),await candidate.text()).toBe(201);
+      expect(Buffer.from(candidate.request().postDataJSON().contentBase64,"base64").toString("utf8")).toBe(item.after);
+      expect(candidate.request().postDataJSON().localOverride.action).toBe(action);
+      const checked=await sourcePreview;expect(checked.status(),await checked.text()).toBe(200);expect((await checked.json()).item.after).toBe(item.after);
+      const saved={dialog:page.getByRole("dialog",{name:"保存 DTS 修改",exact:true})};
+      await saved.dialog.getByRole("textbox",{name:"DTS 修改原因",exact:true}).fill(`#1419 ${action} only in this project`);
+      if(actor==="admin") {
+        const applying=page.waitForResponse(response=>response.request().method()==="POST" && new URL(response.url()).pathname.endsWith("/source-apply"));
+        await saved.dialog.getByRole("button",{name:"直接应用修改",exact:true}).focus();await page.keyboard.press("Enter");
+        const applied=await applying;expect(applied.status(),await applied.text()).toBe(200);
+      } else {
+        await expect(saved.dialog.getByRole("button",{name:"直接应用修改",exact:true})).toHaveCount(0);
+        const sourcePreview=(await checked.json()).item as ParameterFileSourcePreview;
+        const reviewer=sourcePreview.reviewers?.find(person=>person.userId===acceptanceCast.acceptanceAdmin.userId) ?? sourcePreview.reviewers?.[0];expect(reviewer).toBeDefined();
+        await selectControlOption(saved.dialog.getByRole("combobox",{name:"DTS 软件审核人"}),reviewer!.userId);
+        const submission=page.waitForResponse(response=>response.request().method()==="POST" && new URL(response.url()).pathname.endsWith("/source-submit"));
+        await saved.dialog.getByRole("button",{name:"提交审核",exact:true}).focus();await page.keyboard.press("Enter");
+        const submitted=await submission;expect(submitted.status(),await submitted.text()).toBe(200);
+        const requestId=(await submitted.json()).item.requestId as string;
+        await expect(page.getByText("已提交审核 · 工作配置尚未更新",{exact:true})).toBeVisible();
+        const approval=await request.post(apiRoute(`/api/v2/projects/${projectId}/source-revision-requests/${requestId}/review`),{headers:authHeadersForUser(reviewer!.userId,Object.values(acceptanceCast).find(person=>person.userId===reviewer!.userId)!.email,reviewer!.name),
+          data:{decision:"approve",proofDigest:sourcePreview.proofToken}});
+        expect(approval.status(),await approval.text()).toBe(200);
+        expect((await approval.json()).item).toMatchObject({applicationMode:"separate_review",reviewerUserId:reviewer!.userId});
+        await page.getByRole("button",{name:"检查审核结果",exact:true}).click();await expect(page.getByText("当前工作配置",{exact:true})).toBeVisible();
+      }
+      await expect(saved.dialog).toHaveCount(0);
+      await page.getByRole("tab",{name:"生效配置",exact:true}).click();
+    }
+    await savePrepared("set");await expect(property.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"ProjectLocal", "keep"');
+    await savePrepared("remove-override");await expect(property.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"SharedDefault", "keep"');
+    const final=(await (await request.get(apiRoute(bindingsPath),{headers:adminHeaders()})).json()).items as {id:string;rawValue:string}[];
+    expect(final.find(row=>row.id===inherited.id)?.rawValue).toBe('"SharedDefault", "keep"');
+    const sharedRead=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/versions/${versionId}`),{headers:adminHeaders()});
+    expect(sharedRead.status(),await sharedRead.text()).toBe(200);expect(JSON.stringify(await sharedRead.json())).toContain("SharedDefault");
+  });
+
   test("effective configuration preserves ordered origins and exact historical source links", async ({ page, request }, testInfo) => {
     test.setTimeout(240_000);
     await seedAcceptanceRoleMatrix();

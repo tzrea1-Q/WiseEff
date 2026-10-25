@@ -9,6 +9,18 @@ import {
 } from "./permissions";
 
 describe("app permission policy", () => {
+  it("admits a current project editor only to that project's configuration, keeping administration restricted", () => {
+    const scope={path:"/parameter-admin/projects/project-a/configuration",runtimeMode:"api",permissions:["parameter:view","parameter:edit"],
+      projectMemberships:[{projectId:"project-a",roles:["hardware-user"]}]};
+    expect(canAccessPage("hardware-user","parameter-admin",scope)).toBe(true);
+    expect(canAccessPage("hardware-user","parameter-admin",{...scope,permissions:["parameter:view"]})).toBe(true);
+    expect(canAccessPage("guest","parameter-admin",{...scope,path:"/parameter-admin/projects/project-b/configuration",permissions:["parameter:view"],projectMemberships:[],roles:[{projectId:null}]})).toBe(true);
+    expect(canAccessPage("guest","parameter-admin",{...scope,path:"/parameter-admin/sources",permissions:["parameter:view"],projectMemberships:[]})).toBe(true);
+    for(const changed of [{...scope,path:"/parameter-admin"},{...scope,path:"/parameter-admin/projects/project-b/configuration"},
+      {...scope,permissions:[]},{...scope,projectMemberships:[]},{...scope,runtimeMode:"mock"}]) {
+      expect(canAccessPage("hardware-user","parameter-admin",changed)).toBe(false);
+    }
+  });
   it("allows Guest to view parameter pages and blocks operational pages", () => {
     expect(canAccessPage("guest", "parameter-home")).toBe(true);
     expect(canAccessPage("guest", "parameters")).toBe(true);
