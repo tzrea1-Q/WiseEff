@@ -342,6 +342,29 @@ describe("fixed shared references through the real API role", () => {
     for(const member of originals)expect(exported.body.files).toContainEqual({name:`vendor/power/${member.sourceName}`,format:"dts",content:member.content});
     expect(exported.body.manifest.preprocessing).toEqual(revision.preprocessing);
     expect(exported.body.manifest.declaredBuildInputs).toEqual(revision.declared_build_inputs);
+     const compositionFiles=await requestJson<{items:{fileId:string;currentVersionId:string}[]}>(server(),`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`);
+     const promoted=await post<{item:{resourceId:string;members:{id:string;sourceName:string;content:string}[];buildInputs:unknown;dependencies:unknown[]}}>(
+       `/api/v2/projects/${projectId}/config-sets/${configSetId}/shared-dtsi`,{name:"Private root with owned CPP dependency",configRevisionId:applied.body.item.configRevisionId,
+         fileId:root.file.id,fileVersionId:compositionFiles.body.items.find(file=>file.fileId===root.file.id)!.currentVersionId});
+     expect(promoted.status,promoted.bodyText).toBe(201);
+     expect(promoted.body.item.buildInputs).toEqual({includeSearchPaths:["."],defines:{}});
+     expect(promoted.body.item.dependencies).toEqual([{resourceId:fixed.resourceId,versionId:fixed.id,mountPath:"vendor/power"}]);
+     expect(promoted.body.item.members.map(member=>member.sourceName)).toEqual(["cpp-board.dts"]);
+     const savedPromotion=await requestJson(server(),`/api/v2/shared-dtsi/${promoted.body.item.resourceId}/draft`,{method:"PUT",body:JSON.stringify({
+       name:"Private root with owned CPP dependency",members:promoted.body.item.members,dependencies:promoted.body.item.dependencies,
+       buildInputs:promoted.body.item.buildInputs,changeDescription:"Preserve each original build setting owner",expectedRevision:1})});
+     expect(savedPromotion.status,savedPromotion.bodyText).toBe(200);
+     const promotionPreview=await post<{item:{id:string;manifest:{buildInputs:unknown}}}>(`/api/v2/shared-dtsi/${promoted.body.item.resourceId}/publication-preview`,{expectedRevision:2});
+     expect(promotionPreview.status,promotionPreview.bodyText).toBe(201);
+     expect(promotionPreview.body.item.manifest.buildInputs).toMatchObject({includeSearchPaths:["."],preprocessing:{defines:{FLAG:"1"}}});
+     expect(promotionPreview.body.item.manifest.buildInputs).not.toHaveProperty("defines");
+     const promotedVersion=await post<{item:{members:{sourceName:string;content:string}[];manifest:{dependencies:unknown[];buildInputs:unknown}}}>(
+       `/api/v2/shared-dtsi/${promoted.body.item.resourceId}/publications`,{previewId:promotionPreview.body.item.id,idempotencyKey:"private-cpp-owned-inputs-publication"});
+     expect(promotedVersion.status,promotedVersion.bodyText).toBe(201);
+     expect(promotedVersion.body.item.members).toEqual(promoted.body.item.members.map(({id:_id,...member})=>expect.objectContaining(member)));
+     expect(promotedVersion.body.item.manifest.dependencies).toEqual(promoted.body.item.dependencies);
+     expect(promotedVersion.body.item.manifest.buildInputs).not.toHaveProperty("defines");
+     expect((await listCatalogBindingRowsForProject(api,admin,{projectId})).map(row=>row.rawValue)).toEqual(["<8>"]);
     const before=(await requestJson(server(),`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`)).body;
     const incompatible=await publish("Conflicting build macro",[{sourceName:"conflict.dtsi",content:'/ { conflict {}; };'}],{FLAG:"0"},[]);
     const conflict=await post(`${path(projectId)}/preview`,{sharedReference:{resourceId:incompatible.resourceId,versionId:incompatible.id,mountPath:"conflict"},role:"misc",sortOrder:10});

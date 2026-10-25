@@ -3154,7 +3154,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
     const sample='/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "PrivateShared", "keep"; }; };';
     const binding=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:sample,rawValuePattern:'"PrivateShared", "keep"',
-      nodeLocatorPattern:"board",reason:"#1426 private shared publication",timeoutMs:60_000});
+      nodeLocatorPattern:"board",reason:"#1428 private shared publication",timeoutMs:60_000});
     const file=await lookupParameterFileVersion({fileName:binding.fileName});
     const membersPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`;
     const before=(await (await request.get(apiRoute(membersPath),{headers:adminHeaders()})).json()).items;
@@ -3169,7 +3169,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await expect(page.getByText("已复制所选私有源码及依赖。本组织有查看权限的用户可读取草稿与发布版本；来源项目配置保持不变。",{exact:true})).toBeVisible();
     await expect(page.getByLabel("DTSI 源码",{exact:true})).toContainText("PrivateShared");
     await page.getByLabel("资源名称",{exact:true}).fill(`Private board ${randomUUID()}`);
-    await page.getByLabel("变更说明",{exact:true}).fill("#1426 publish an independent frozen private source");
+    await page.getByLabel("变更说明",{exact:true}).fill("#1428 publish an independent frozen private source");
     for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
       await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
       await expect(page.getByRole("button",{name:"预览发布",exact:true})).toBeInViewport({ratio:1});
