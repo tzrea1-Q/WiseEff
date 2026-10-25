@@ -20,10 +20,10 @@ test("retires and restores a shared resource through keyboard confirmation with 
   const published=await catalogJson(page.request,"POST",`/api/v2/shared-dtsi/${resourceId}/publications`,{data:{previewId:(preview.body as {item:{id:string}}).item.id,idempotencyKey:"lifecycle-browser-publish"}});expect(published.status).toBe(201);
   const versionId=(published.body as {item:{id:string}}).item.id;
   let release!:()=>void,fetched!:()=>void;const held=new Promise<void>(resolve=>{release=resolve;}),realResponse=new Promise<void>(resolve=>{fetched=resolve;});
-  await page.route(`**/api/v2/shared-dtsi/${resourceId}/detail*`,async route=>{const response=await route.fetch();fetched();await held;await route.fulfill({response});},{times:1});
+  await page.route(`**/api/v2/shared-dtsi/${resourceId}/detail*`,async route=>{const response=await route.fetch();fetched();await held;await route.fulfill({response});});
   await page.goto(catalogAppUrl(`/parameter-admin/sources?resource=${resourceId}`));
   await realResponse;
-  await expect(page.getByText("正在加载共享 DTSI",{exact:true})).toBeVisible();
+  await expect(page.getByRole("status",{name:"正在加载共享 DTSI",exact:true})).toBeVisible();
   await expect(page.getByRole("button",{name:"停用资源",exact:true})).toHaveCount(0);
   await page.screenshot({path:testInfo.outputPath("shared-lifecycle-loading-1440.png"),fullPage:true,animations:"disabled"});release();
   const retire=page.getByRole("button",{name:"停用资源",exact:true});await expect(retire).toBeVisible();
