@@ -6,7 +6,7 @@ import type { AuthContext } from "../auth/types";
 import { trustedDomainAttribution } from "../auth/trustedInvocation";
 import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import type { CatalogSnapshot } from "../catalog-kernel/interface";
-import { resolveDtsConfigSet } from "../dts";
+import { resolveDtsConfigSet, resolveDtsConfigSetAsync } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import { asValueClient, listObservedProperties, lockSourceCatalogGovernance, parseCompatibles, rawTextToPayload, resolveObservedSubject } from "../parameter-bindings/catalogProjectValueSync";
 import { appendProjectValue, loadConfigurationRestoreCohort, loadOwnedProjectValueSourcePin, lockSourceConfigurationBindings, readOwnedCurrentBinding, readOwnedProjectValueIdentity } from "../parameter-bindings/values";
@@ -34,7 +34,8 @@ type Member = { fileId: string; fileVersionId: string; sourceName: string; forma
   role: ConfigRevisionMemberRole; sortOrder: number; checksum: string; sizeBytes: number; storageKey: string;
   versionNumber: number; parsedIndex: ParsedIndex; currentVersionId: string | null; currentConfigSetId: string | null;
   currentRole: string | null; currentOrder: number };
-type Revision = { id: string; revision_number: number; entry_file: string | null; include_search_paths: string[]; overlay_order: string[] };
+type Revision = { id: string; revision_number: number; entry_file: string | null; include_search_paths: string[]; overlay_order: string[];
+  preprocessing: import("../dts/cppSources").DtsPreprocessingReceipt | null; declared_build_inputs: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs };
 export type CanonicalRestorePreview = {
   canRestore: boolean; proofToken?: string; sourceConfigRevisionId?: string;
   missingInformation: string[]; historicalRevisions: Array<{ id: string; revisionNumber: number }>;
@@ -154,16 +155,18 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   const dts = members.filter((row) => row.format === "dts");
   const entryFile = targetRevision.entry_file ?? (dts.length ? current.entry_file : null);
   const includeSearchPaths = targetRevision.entry_file ? targetRevision.include_search_paths : current.include_search_paths;
+  const defines = (targetRevision.entry_file ? targetRevision.preprocessing : current.preprocessing)?.defines;
+  const declaredBuildInputs = targetRevision.entry_file ? targetRevision.declared_build_inputs : current.declared_build_inputs;
   const overlayOrder = [...targetRevision.overlay_order,...current.overlay_order.filter((name) => extras.some((row) => row.sourceName === name))];
   let continuity: ReviewedSourceContinuity | null = null;
   let resolved: ReturnType<typeof resolveDtsConfigSet> | null = null;
   if (dts.length) {
     if (!entryFile) conflict("历史修订缺少 DTS 入口；请在配置编辑器补齐来源并另存完整快照。");
     const files = new Map(dts.map((row) => [row.sourceName,{ content: contents.get(`${row.fileId}:${row.fileVersionId}`)!,fileVersionId: row.fileVersionId }]));
-    resolved = resolveDtsConfigSet({ entryFile,includeSearchPaths,overlayOrder,files,requireExactOrigins: true });
+    resolved = await resolveDtsConfigSetAsync({ entryFile,includeSearchPaths,overlayOrder,files,defines,requireExactOrigins: true });
     if (resolved.diagnostics.some((row) => row.severity === "error" || /dangling|unresolved/.test(row.code))) throw new ApiError("VALIDATION_FAILED","恢复组合包含未解决的 include/overlay 引用。",{ diagnostics: resolved.diagnostics });
     const formerRootOverlayFiles = await loadFormerRootOverlayFiles(tx, configSetId, members, overlayOrder);
-    const validated = await createDtsToolchainRunner().validate({ entryFile,includeSearchPaths,overlayOrder,files,formerRootOverlayFiles },{ mode: "release" });
+    const validated = await createDtsToolchainRunner().validate({ entryFile,includeSearchPaths,overlayOrder,files,defines,formerRootOverlayFiles },{ mode: "release" });
     if (!validated.ok || validated.mode !== "release") throw new ApiError("VALIDATION_FAILED","恢复组合未通过 DTS 工具链；当前配置未改变。",{ diagnostics: validated.diagnostics });
     continuity = await prepareReviewedSourceContinuity(tx,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,
       configSetId,baseConfigRevisionId: current.id,restorationBaseConfigRevisionId: targetRevision.id,
@@ -212,20 +215,21 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       action: retained ? "retain-added" : member.currentConfigSetId !== configSetId ? "reattach" : member.currentVersionId !== member.fileVersionId || compositionChanged ? "restore" : "unchanged" };
   });
   preview.requiresCompositionConfirmation = preview.members.some((row) => row.compositionChanged)
-    || entryFile !== current.entry_file || !sameSourceRevision(includeSearchPaths,current.include_search_paths) || !sameSourceRevision(overlayOrder,current.overlay_order);
+    || entryFile !== current.entry_file || !sameSourceRevision(includeSearchPaths,current.include_search_paths) || !sameSourceRevision(overlayOrder,current.overlay_order)
+    || !sameSourceRevision(declaredBuildInputs,current.declared_build_inputs);
   preview.entryFile = entryFile; preview.includeSearchPaths = includeSearchPaths; preview.overlayOrder = overlayOrder;
   preview.impact = { parameterChanges: planned.filter((row) => row.changed).length,retainedBindings: planned.length,
     restoredBindings: planned.filter((row) => !row.active).length,sourceReplacements: planned.filter((row) => row.fileId !== row.sourceFileId).length };
   const facts = { kind: "configuration_restore" as const,organizationId: parameterOrganizationId(auth),projectId: input.projectId,baselineId: input.baselineId,
     candidateId: null,configSetId,baseConfigRevisionId: current.id,snapshotConfigRevisionId: targetRevision.id,
     baseDigest: sourceRevisionDigest(currentMembers),proposedDigest: sourceRevisionDigest(members),members,cohort: planned,continuity,
-    entryFile,includeSearchPaths,overlayOrder,catalogRelease: snapshot ? { id: snapshot.release.id,digest: snapshot.release.digest } : null,
+    entryFile,includeSearchPaths,overlayOrder,declaredBuildInputs, ...(resolved?.preprocessing ? { preprocessing: resolved.preprocessing.receipt } : {}), catalogRelease: snapshot ? { id: snapshot.release.id,digest: snapshot.release.digest } : null,
     targets: planned.filter((row) => row.changed).map((row) => ({ bindingId: row.bindingId,action: "set" as const,payload: row.payload,afterFileId: row.fileId,propertyName: row.propertyName })),
     originTransfers: planned.filter((row) => row.fileId !== row.sourceFileId).map((row) => ({ bindingId: row.bindingId,oldValueId: row.oldValueId,
       sourcePinId: row.sourcePinId,fromFileId: row.sourceFileId,toFileId: row.fileId })) };
   const proof = { ...facts,proofDigest: sourceRevisionDigest(facts) };
   preview.canRestore = true; preview.proofToken = proof.proofDigest; preview.sourceConfigRevisionId = targetRevision.id;
-  return { preview,proof,contents,configSetId };
+  return { preview,proof,contents,configSetId,preprocessing:resolved?.preprocessing };
 }
 
 export async function previewCanonicalBaselineRestore(db: Database, storage: ObjectStore, auth: AuthContext,
@@ -280,7 +284,7 @@ export async function applyCanonicalBaselineRestore(db: Database, storage: Objec
           storageKey: member.storageKey,checksum: member.checksum,sizeBytes: member.sizeBytes,parsedIndex: member.parsedIndex,
           origin: "rollback",attribution });
         versionId = version.id;
-        if (member.format === "dts") await ingestDtsFileVersion(tx,versionId,contents!.get(`${member.fileId}:${member.fileVersionId}`)!);
+        if (member.format === "dts" && !/\.(h|hpp)$/u.test(member.sourceName)) await ingestDtsFileVersion(tx,versionId,contents!.get(`${member.fileId}:${member.fileVersionId}`)!, inspected.preprocessing?.originalDocuments.get(member.sourceName));
       }
       const moved = await tx.query(`update public.project_parameter_files set current_version_id=$2,config_set_id=$3,
         config_set_role=$4,config_set_sort_order=$5,updated_at=now() where id=$1 and organization_id=$6 and project_id=$7
@@ -295,7 +299,7 @@ export async function applyCanonicalBaselineRestore(db: Database, storage: Objec
     let revisionId: string;
     if (proof.entryFile && proof.continuity) {
       const revision = await ingestConfigRevisionInTransaction(tx,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,configSetId,
-        entryFile: proof.entryFile,includeSearchPaths: proof.includeSearchPaths,overlayOrder: proof.overlayOrder,members },auth,
+        entryFile: proof.entryFile,includeSearchPaths: proof.includeSearchPaths,overlayOrder: proof.overlayOrder,preprocessing:proof.preprocessing,declaredBuildInputs:proof.declaredBuildInputs,members },auth,
         { createdByUserId: auth.user.id,domain: attribution },{ reviewedSource: proof.continuity });
       if (revision.status !== "resolved") conflict("恢复配置构建失败，整次恢复已回滚。");
       revisionId = revision.id;

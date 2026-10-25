@@ -7,9 +7,11 @@ import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import { trustedDomainAttribution } from "../auth/trustedInvocation";
 import { NormalizedConfigurationSchemaId, PropertyKey, type CatalogSnapshot } from "../catalog-kernel/interface";
-import { lexDts, resolveDtsConfigSet } from "../dts";
+import { lexDts, resolveDtsConfigSet, resolveDtsConfigSetAsync } from "../dts";
 import { resolveIncludeTarget } from "../dts/configSetResolver";
-import { closureManifest, loadSharedDtsiClosure, mountedSharedPath } from "../shared-dtsi/dependencies";
+import { closureManifest, composeDtsBuildInputs, loadSharedDtsiClosure, mountedSharedPath } from "../shared-dtsi/dependencies";
+import type { DtsBuildInputs } from "../contracts/dtoSchemas/dtsPreprocessing";
+import type { DtsPreprocessingReceipt } from "../dts/cppSources";
 import type { ObjectStore } from "../logs/objectStore";
 import { asValueClient, listObservedProperties, lockSourceCatalogGovernance, parseCompatibles, rawTextToPayload,
   resolveObservedSubject, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
@@ -61,6 +63,7 @@ type Proof = {
   kind: "member_addition"; organizationId: string; projectId: string; configSetId: string; setAsRoot?: boolean;
   candidateId: string | null; fileId: string; baseConfigRevisionId: string; baseDigest: string; proposedDigest: string;
   entryFile: string | null; includeSearchPaths: string[]; overlayOrder: string[];
+  declaredBuildInputs: DtsBuildInputs; preprocessing?: DtsPreprocessingReceipt;
   members: Member[]; cohort: Cohort[]; continuity: ReviewedSourceContinuity | null;
   targets: SourceRevisionTarget[]; newProperties: NewProperty[]; json: MemberAdditionInput["json"] | null;
   restorations?: SourceRestoration[];
@@ -103,8 +106,8 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   if (!set) throw new ApiError("NOT_FOUND", "目标配置不存在或不属于当前项目。");
   await tx.query("select id from public.project_parameter_files where organization_id=$1 and project_id=$2 and (config_set_id=$3 or id=$4) order by id for update nowait",
     [parameterOrganizationId(auth), input.projectId, input.configSetId, input.fileId ?? null]);
-  const revision = (await tx.query<{ id: string; entry_file: string | null; include_search_paths: string[]; overlay_order: string[] }>(
-    `select id,entry_file,include_search_paths,overlay_order from public.dts_config_revisions
+  const revision = (await tx.query<{ id: string; entry_file: string | null; include_search_paths: string[]; overlay_order: string[]; declared_build_inputs: DtsBuildInputs }>(
+    `select id,entry_file,include_search_paths,overlay_order,declared_build_inputs from public.dts_config_revisions
      where organization_id=$1 and project_id=$2 and config_set_id=$3 and status='resolved' order by revision_number desc limit 1 for update nowait`,
     [parameterOrganizationId(auth), input.projectId, input.configSetId])).rows[0];
   if (!revision) conflict("配置尚无可构建的当前来源版本，请先完成配置初始化。");
@@ -205,7 +208,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     const tokens = lexDts(before), directive = tokens.findIndex(token => token.value === "/dts-v1/");
     if (directive < 0 || tokens[directive + 1]?.value !== ";") throw new ApiError("VALIDATION_FAILED", "项目根文件需要明确的 /dts-v1/; 声明，未修改配置。");
     const included=new Set(sharedResources.flatMap(resource=>resource.item.manifest.includeGraph.map(edge=>mountedSharedPath(resource.mountPath,edge.target))));
-    const roots=[...sharedResources].reverse().flatMap(resource=>sharedTargets.filter(member=>member.resourceId===resource.resourceId && member.sourceName.endsWith(".dtsi") && !included.has(member.sourceName)));
+    const roots=[...sharedResources].reverse().flatMap(resource=>sharedTargets.filter(member=>member.resourceId===resource.resourceId && /\.dtsi?$/u.test(member.sourceName) && !included.has(member.sourceName)));
     const includes=roots.map(member=>`/include/ ${JSON.stringify(posixPath.relative(posixPath.dirname(root.sourceName),member.sourceName))}`).join("\n");
     const existingSharedNames=new Set((await tx.query<{sourceName:string}>(`select source_name as "sourceName" from public.dts_config_revision_members
       where config_revision_id=$1 and shared_reference is not null`,[revision.id])).rows.map(member=>member.sourceName));
@@ -235,7 +238,13 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   }
   const dts = afterMembers.filter((row) => row.format === "dts");
   const entryFile = input.setAsRoot ? target.sourceName : revision.entry_file ?? dts.find((row) => row.role === "base")?.sourceName ?? null;
-  const includeSearchPaths = revision.include_search_paths?.length ? revision.include_search_paths : ["."];
+  const currentPins = (await tx.query<{resourceId:string;versionId:string;mountPath:string}>(`select resource_id as "resourceId",revision_id as "versionId",mount_path as "mountPath"
+    from public.project_shared_dtsi_references where organization_id=$1 and project_id=$2 and config_set_id=$3 order by created_at,id`,
+    [parameterOrganizationId(auth),input.projectId,input.configSetId])).rows;
+  const currentResources = await loadSharedDtsiClosure(tx,auth,currentPins);
+  const completeResources = [...currentResources,...sharedResources.filter(resource=>!currentResources.some(existing=>existing.resourceId===resource.resourceId))];
+  const declaredBuildInputs = revision.declared_build_inputs;
+  const {includeSearchPaths,defines} = composeDtsBuildInputs(declaredBuildInputs,completeResources);
   const overlayNames=afterMembers.filter((row)=>row.format==="dts"&&row.role==="overlay").map(row=>row.sourceName);
   const overlayOrder=input.setAsRoot?overlayNames:[...revision.overlay_order,...overlayNames.filter(name=>!revision.overlay_order.includes(name))];
   let continuity: ReviewedSourceContinuity | null = null;
@@ -249,14 +258,14 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     if (!entryFile || dts.filter((row) => row.role === "base").length !== 1
       || !dts.some((row) => row.sourceName === entryFile && row.role === "base")) conflict("DTS 配置需要唯一可用的基础入口，请检查文件用途。");
     const files = new Map(dts.map((row) => [row.sourceName, { content: contents.get(row.fileId)!, fileVersionId: row.fileVersionId }]));
-    resolved = resolveDtsConfigSet({ entryFile, includeSearchPaths, overlayOrder, requireExactOrigins: true, files });
+    resolved = await resolveDtsConfigSetAsync({ entryFile, includeSearchPaths, defines, overlayOrder, requireExactOrigins: true, files });
     diagnostics.push(...resolved.diagnostics.map(({ severity, code, message, fileName }) => ({ severity, code,
       message: input.setAsRoot ? rootDiagnosticMessage(code, message, fileName) : message })));
     if (diagnostics.some((row) => row.severity === "error" || /dangling|unresolved/.test(row.code))) {
       throw new ApiError("VALIDATION_FAILED", "配置包含未解决的 include/overlay 引用，请修正候选后重试。", { diagnostics });
     }
     const formerRootOverlayFiles = await loadFormerRootOverlayFiles(tx, input.configSetId, afterMembers, overlayOrder);
-    const validated = await (toolchain ?? createDtsToolchainRunner()).validate({ entryFile, includeSearchPaths, overlayOrder, files, formerRootOverlayFiles }, { mode: "release" });
+    const validated = await (toolchain ?? createDtsToolchainRunner()).validate({ entryFile, includeSearchPaths, defines, overlayOrder, files, formerRootOverlayFiles }, { mode: "release" });
     diagnostics.push(...validated.diagnostics.map((row) => ({ severity: row.severity, code: row.code ?? "toolchain",
       message: input.setAsRoot ? rootDiagnosticMessage(row.code ?? "toolchain", row.message,
         `${row.file}${row.line ? `，第 ${row.line} 行` : ""}`) : row.message })));
@@ -342,7 +351,8 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
         .map(({memberId,fileId,fileVersionId,sourceName})=>({memberId,fileId,fileVersionId,sourceName}))})),rootEdit } : {}),
     candidateId: candidate?.id ?? null, fileId: target.fileId, baseConfigRevisionId: revision.id,
     baseDigest: sourceRevisionDigest(members.map(({ storageKey: _storage, currentVersionId: _version, currentRole: _role, currentOrder: _order, ...row }) => row)),
-    proposedDigest: target.checksum.replace(/^sha256:/, ""), entryFile, includeSearchPaths, overlayOrder,
+    proposedDigest: target.checksum.replace(/^sha256:/, ""), entryFile, includeSearchPaths, overlayOrder, declaredBuildInputs,
+    ...(resolved?.preprocessing?{preprocessing:resolved.preprocessing.receipt}:{}),
     members: afterMembers, cohort, continuity, targets, newProperties, ...(restorations.length ? { restorations } : {}), originTransfers, json: input.json ?? null,
     catalogRelease: snapshot ? { id: snapshot.release.id, digest: snapshot.release.digest } : null };
   const proof: Proof = { ...facts, proofDigest: sourceRevisionDigest(facts) };
@@ -412,7 +422,8 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
       if(source.fileId===target.fileId)fileVersionId = version.id;
       versionIds.set(source.fileId, version.id);
       await setCurrentVersion(tx, { fileId: source.fileId, versionId: version.id });
-      if (source.format === "dts" && !/\.(h|hpp)$/u.test(source.sourceName)) await ingestDtsFileVersion(tx, version.id, contents.get(source.fileId)!);
+      if (source.format === "dts" && !/\.(h|hpp)$/u.test(source.sourceName)) await ingestDtsFileVersion(tx, version.id, contents.get(source.fileId)!, inspected.resolved?.preprocessing?.originalDocuments.get(source.sourceName),
+        new Set(proof.continuity?.nodes.map(node => node.nodeLocator)));
     }
     if (proof.rootEdit) {
       const root = proof.members.find(member => member.fileId === proof.rootEdit!.fileId)!;
@@ -421,7 +432,8 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
       if (sourceRevisionDigest(await attempt.objectStore.getBounded!(stored.storageKey, MAX_PARAMETER_SOURCE_BYTES)) !== root.checksum.replace(/^sha256:/, "")) conflict("项目根文件写入校验失败，配置未改变。");
       const version = await insertFileVersion(tx, { id: randomUUID(), fileId: root.fileId, versionNumber: 1,
         storageKey: stored.storageKey, checksum: root.checksum, sizeBytes: root.sizeBytes, origin: "writeback", attribution });
-      await ingestDtsFileVersion(tx, version.id, proof.rootEdit.after);
+      await ingestDtsFileVersion(tx, version.id, proof.rootEdit.after, inspected.resolved?.preprocessing?.originalDocuments.get(root.sourceName),
+        new Set(proof.continuity?.nodes.map(node => node.nodeLocator)));
       const updated = await tx.query("update public.project_parameter_files set current_version_id=$2,updated_at=now() where id=$1 and current_version_id=$3", [root.fileId, version.id, proof.rootEdit.baseFileVersionId]);
       if (updated.rowCount !== 1) conflict("项目根文件已变化，请重新预览。");
       versionIds.set(root.fileId, version.id);
@@ -456,7 +468,7 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
     if (proof.entryFile && proof.continuity) {
       const revision = await ingestConfigRevisionInTransaction(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId,
         configSetId: input.configSetId, entryFile: proof.entryFile, includeSearchPaths: proof.includeSearchPaths,
-        overlayOrder: proof.overlayOrder, members }, auth, { createdByUserId: auth.user.id, domain: attribution }, { reviewedSource: proof.continuity });
+        overlayOrder: proof.overlayOrder, preprocessing:proof.preprocessing, declaredBuildInputs:proof.declaredBuildInputs, members }, auth, { createdByUserId: auth.user.id, domain: attribution }, { reviewedSource: proof.continuity });
       if (revision.status !== "resolved") conflict("文件组成无法构建，所有变更已回滚。");
       revisionId = revision.id;
     } else {

@@ -2,7 +2,7 @@ import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
-import { parseDts, resolveDtsConfigSet } from "../dts";
+import { parseDts, resolveDtsConfigSetAsync } from "../dts";
 import { ensureOverlayProperty } from "../parameter-topology/overlayWriteback";
 import { isStructuralPropertyKey } from "../parameter-topology/parameterSurface";
 import { parameterOrganizationId } from "../parameters/operatingScope";
@@ -53,9 +53,10 @@ export async function prepareProjectLocalOverride(db: Database, storage: ObjectS
     const { revision, members } = exact;
     if (!revision.entryFile) throw new ApiError("CONFLICT", "配置缺少真实项目入口。");
     const files = new Map(members.filter(member => member.format === "dts").map(member => [member.sourceName, { content: member.content, fileVersionId: member.fileVersionId }]));
-    const resolve = () => resolveDtsConfigSet({ entryFile: revision.entryFile!, includeSearchPaths: revision.includeSearchPaths,
+    const resolve = () => resolveDtsConfigSetAsync({ entryFile: revision.entryFile!, includeSearchPaths: revision.includeSearchPaths,
+      defines: revision.preprocessing?.defines,
       overlayOrder: revision.overlayOrder, requireExactOrigins: true, files });
-    const beforeGraph = resolve();
+    const beforeGraph = await resolve();
     if (beforeGraph.diagnostics.some(row => row.severity === "error")) throw new ApiError("CONFLICT", "配置来源无法精确解析，请打开项目原始源码修正。", { reason: "override-origin-ambiguous" });
     const property = beforeGraph.effective.nodesByLocator.get(node.node_locator)?.properties.get(input.propertyName);
     if (security) await assertTrustedSensitiveNodeWriteAllowed(tx, auth, { organizationId, projectId: input.projectId,
@@ -98,10 +99,11 @@ export async function prepareProjectLocalOverride(db: Database, storage: ObjectS
     const before = target.content;
     const patch = { propertyKey: input.propertyName, rawText, action: input.action, targetRef: `{${node.node_locator}}` };
     const after = sameOrigin ? ensureOverlayProperty(before, { ...patch, expectedChecksum: sourceRevisionDigest(Buffer.from(before)),
-      occurrenceSpan: origin!.origin!, expectedRawText: origin!.rawText })
+      occurrenceSpan: origin!.origin!, expectedRawText: origin!.rawText,
+      preparedDocument: beforeGraph.preprocessing?.originalDocuments.get(target.sourceName) })
       : before + ensureOverlayProperty("", { ...patch, expectedChecksum: sourceRevisionDigest("") });
     files.set(target.sourceName, { content: after, fileVersionId: target.fileVersionId });
-    const afterGraph = resolve();
+    const afterGraph = await resolve();
     const afterProperty = afterGraph.effective.nodesByLocator.get(node.node_locator)?.properties.get(input.propertyName);
     if (afterGraph.diagnostics.some(row => row.severity === "error") || (input.action === "set" && (!afterProperty || afterProperty.deleted
       || afterProperty.sourceChain.at(-1)?.fileName !== target.sourceName || afterProperty.rawText.trim() !== rawText.trim()))) {

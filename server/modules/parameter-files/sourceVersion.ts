@@ -5,6 +5,7 @@ import type { ObjectStore } from "../logs/objectStore";
 import { normalizeManifestLogicalPath, normalizePersistedManifest } from "../parameter-topology/configRevisionManifest";
 import type { ConfigRevisionMemberRole } from "../parameter-topology/types";
 import { MAX_PARAMETER_SOURCE_BYTES } from "./jsonSource";
+import { dtsBuildInputsSchema } from "../contracts/dtoSchemas/dtsPreprocessing";
 
 export type ExactSourceRevisionIdentity = {
   organizationId: string; projectId: string; configSetId: string; configRevisionId: string;
@@ -94,14 +95,16 @@ export async function lockExactSourceRevisionsForProof(tx: Queryable, inputs: re
 /** Pre-pin read: storage metadata is always resolved server-side, never accepted from a command. */
 export async function loadExactSourceRevisionForProof(tx: Queryable, objectStore: ObjectStore, input: ExactSourceRevisionIdentity) {
   if (!objectStore?.getBounded) conflict("Exact source proof requires bounded source storage.");
-  const revisions = await tx.query<{ entryFile: string | null; includeSearchPaths: string[]; overlayOrder: string[]; status: string; manifestState: string }>(
+  const revisions = await tx.query<{ entryFile: string | null; includeSearchPaths: string[]; overlayOrder: string[]; status: string; manifestState: string; preprocessing: import("../dts/cppSources").DtsPreprocessingReceipt | null;
+    declaredBuildInputs: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs }>(
     `select entry_file as "entryFile",include_search_paths as "includeSearchPaths",overlay_order as "overlayOrder",
-      status,manifest_state as "manifestState" from dts_config_revisions
+      status,manifest_state as "manifestState",preprocessing,declared_build_inputs as "declaredBuildInputs" from dts_config_revisions
      where id=$1 and organization_id=$2 and project_id=$3 and config_set_id=$4`,
     [input.configRevisionId,input.organizationId,input.projectId,input.configSetId],
   );
   const rawRevision = revisions.rows[0];
   if (revisions.rows.length !== 1 || !rawRevision || rawRevision.manifestState !== "complete") conflict("Source revision is not an exact complete manifest.");
+  if (!dtsBuildInputsSchema.safeParse(rawRevision.declaredBuildInputs).success) conflict("Declared original-source build inputs are malformed.");
   if (Buffer.byteLength(JSON.stringify(rawRevision)) > MAX_MANIFEST_METADATA_BYTES) limit();
   if ((rawRevision.entryFile !== null && typeof rawRevision.entryFile !== "string")
     || !Array.isArray(rawRevision.includeSearchPaths) || !rawRevision.includeSearchPaths.every((path) => typeof path === "string" && !/[\u0000-\u001f\u007f]/.test(path))

@@ -239,4 +239,50 @@ describe("project local overrides through the real API role", () => {
     expect((await listCatalogBindingRowsForProject(api,admin,{projectId:A})).find(row=>row.id===inherited.id)?.rawValue).toBe("<25>");
   });
 
+  it("overrides and removes one inherited macro value without rewriting its header or sibling instance", async()=>{
+    const macroSource='#include "limits.h"\n/ { cppFirst { compatible = "acme,power"; iin_max = <SHARED_CAP>; }; cppSecond { compatible = "acme,power"; iin_max = <SHARED_CAP>; }; };';
+    const header='#define SHARED_CAP 25\n';
+    const draft=await post<{item:{resourceId:string;revision:number}}>("/api/v2/shared-dtsi",{name:"CPP override",members:[{sourceName:"cpp-defaults.dtsi",content:macroSource},{sourceName:"limits.h",content:header}],changeDescription:"Original macro source"});
+    expect(draft.status,draft.bodyText).toBe(201);const resourceId=draft.body.item.resourceId;
+    const publication=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publication-preview`,{expectedRevision:draft.body.item.revision});
+    expect(publication.status,publication.bodyText).toBe(201);
+    const version=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publications`,{previewId:publication.body.item.id,idempotencyKey:"cpp-override-v1"});
+    expect(version.status,version.bodyText).toBe(201);
+    const addition={sharedReference:{resourceId,versionId:version.body.item.id},role:"misc",sortOrder:10};
+    const composed=await post<Preview>(`${path(A)}/preview`,addition);expect(composed.status,composed.bodyText).toBe(200);
+    const added=await post<Applied>(`${path(A)}/apply`,{...addition,proofToken:composed.body.item.proofToken,reason:"CPP in complete project",clientMutationId:"cpp-project"});
+    expect(added.status,added.bodyText).toBe(200);
+    const before=await listCatalogBindingRowsForProject(api,admin,{projectId:A});
+    const first=before.find(row=>row.sourceNodePath==="cppFirst" || row.sourceNodePath==="/cppFirst")!;
+    const second=before.find(row=>row.sourceNodePath==="cppSecond" || row.sourceNodePath==="/cppSecond")!;
+    expect(first.rawValue).toBe("<25>");expect(second.rawValue).toBe("<25>");expect(first.id).not.toBe(second.id);
+    const membersBefore=(await requestJson<{items:Array<{fileId:string;currentVersionId:string;sharedReference?:unknown}>}>(server(),`/api/v1/projects/${A}/config-sets/${sets[A]}/files`)).body.items.filter(member=>member.sharedReference);
+    async function change(action:"set"|"remove-override") {
+      const revision=(await api.query<{id:string}>("select id from dts_config_revisions where config_set_id=$1 order by revision_number desc limit 1",[sets[A]])).rows[0]!.id;
+      const input={expectedConfigRevisionId:revision,logicalNodeId:first.logicalNodeId,propertyName:"iin_max",action,...(action==="set"?{rawText:"<31>"}:{})};
+      const prepared=await post<{item:{fileId:string;fileName:string;baseVersionId:string;before:string;after:string;afterValue:string}}>(`/api/v1/projects/${A}/config-sets/${sets[A]}/local-override/prepare`,input);
+      expect(prepared.status,prepared.bodyText).toBe(200);expect(prepared.body.item.afterValue).toBe(action==="set"?"<31>":"<25>");
+      const candidate=await post<{item:{id:string}}>(`/api/v1/projects/${A}/parameter-file-candidates`,{fileId:prepared.body.item.fileId,fileName:prepared.body.item.fileName,
+        intent:"source_revision",localOverride:input,contentBase64:Buffer.from(prepared.body.item.after).toString("base64"),expectedCurrentVersionId:prepared.body.item.baseVersionId,expectedConfigRevisionId:revision,clientMutationId:`cpp-${action}`});
+      expect(candidate.status,candidate.bodyText).toBe(201);
+      const preview=await requestJson<{item:SourceRevisionPreview}>(server(),`/api/v1/projects/${A}/parameter-file-candidates/${candidate.body.item.id}/source-preview`);
+      expect(preview.status,preview.bodyText).toBe(200);
+      const applied=await post(`/api/v1/projects/${A}/parameter-file-candidates/${candidate.body.item.id}/source-apply`,{expectedCurrentVersionId:prepared.body.item.baseVersionId,
+        expectedProofToken:preview.body.item.proofToken,reason:"One original project override",clientMutationId:`cpp-${action}-apply`});
+      expect(applied.status,applied.bodyText).toBe(200);
+    }
+    await change("set");
+    let values=await listCatalogBindingRowsForProject(api,admin,{projectId:A});
+    expect(values.find(row=>row.id===first.id)?.rawValue).toBe("<31>");expect(values.find(row=>row.id===second.id)?.rawValue).toBe("<25>");
+    await change("remove-override");
+    values=await listCatalogBindingRowsForProject(api,admin,{projectId:A});
+    expect(values.find(row=>row.id===first.id)).toMatchObject({rawValue:"<25>",sourceOccurrenceId:first.sourceOccurrenceId});
+    expect(values.find(row=>row.id===second.id)?.rawValue).toBe("<25>");
+    const membersAfter=(await requestJson<{items:Array<{fileId:string;currentVersionId:string;sharedReference?:unknown}>}>(server(),`/api/v1/projects/${A}/config-sets/${sets[A]}/files`)).body.items.filter(member=>member.sharedReference);
+    expect(membersAfter).toEqual(membersBefore);
+    const exported=await requestJson<{files:Array<{name:string;content:string}>}>(server(),`/api/v1/projects/${A}/config-sets/${sets[A]}/export`);
+    expect(exported.body.files.find(file=>file.name==="limits.h")?.content).toBe(header);
+    expect(exported.body.files.find(file=>file.name==="cpp-defaults.dtsi")?.content).toBe(macroSource);
+  },120_000);
+
 });

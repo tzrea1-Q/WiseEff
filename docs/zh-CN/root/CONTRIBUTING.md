@@ -23,6 +23,8 @@ WiseEff 的变更应保持产品可用、可测试、可审计。先读智能体
 
 生产发布失败关闭依赖完整工具链：`npm run dts:toolchain:check`。参数语义身份切换仅在维护窗口执行，见 `docs/runbooks/parameter-identity-cutover.md`；`--apply` 失败后禁止部分继续。
 
+原始 DTS/头文件宏输入使用固定版本、隔离运行的[预处理合约](../developer/dts-preprocessing.md)。Bootstrap 安装固定编译器镜像，请求不会拉取工具或宿主依赖。
+
 保留演示和测试所用模拟运行时。生产业务必须使用 API、服务端授权和校验、事务写入与审计。本地跳过或模拟通过不能支持目标环境、试点或发布就绪声明。
 
 ## 计划与文档

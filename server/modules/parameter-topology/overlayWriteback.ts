@@ -331,6 +331,7 @@ export function ensureOverlayProperty(
     occurrenceSpan?: { start: number; end: number };
     expectedRawText?: string | null;
     nodeSpan?: { start: number; end: number };
+    preparedDocument?: ReturnType<typeof parseDts>;
   },
 ): string {
   const { propertyKey, rawText, action, targetRef } = input;
@@ -358,7 +359,7 @@ export function ensureOverlayProperty(
     );
   }
 
-  const doc = parseDts(content);
+  const doc = input.preparedDocument ? { ...input.preparedDocument, source: content } : parseDts(content);
 
   if (input.occurrenceSpan) {
     const slice = content.slice(

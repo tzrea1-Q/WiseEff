@@ -22,7 +22,7 @@ function normalizeCellToken(token: string): string {
 }
 
 function normalizeCells(cells: readonly DtsCell[]): string {
-  return cells.map((cell) => cell.kind === "phandle" ? `&${cell.label}` : normalizeCellToken(cell.raw)).join(" ");
+  return cells.map((cell) => cell.kind === "phandle" ? `&${cell.label}` : /^\(|[uUlL]$/u.test(cell.raw) ? cell.value : normalizeCellToken(cell.raw)).join(" ");
 }
 
 function classifyParsedValue(value: DtsValue, rawText: string): ClassifiedDtsValue {

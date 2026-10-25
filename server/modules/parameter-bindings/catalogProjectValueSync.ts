@@ -374,7 +374,7 @@ export async function listObservedProperties(
   session: ValueClient,
   configRevisionId: string,
 ): Promise<ObservedProperty[]> {
-  const result = await session.query<ObservedProperty>(
+  const result = await session.query<ObservedProperty & { expanded: boolean; expandedValue: unknown }>(
     `
     select
       lnr.logical_node_id as "logicalNodeId",
@@ -383,12 +383,14 @@ export async function listObservedProperties(
       lnr.compatible,
       oe.property_name as "propertyKey",
       po.raw_text as "rawText",
+      revision.preprocessing is not null as expanded, po.ast_json as "expandedValue",
       member.source_name as "fileName",
       file.id as "fileId", po.file_version_id as "fileVersionId",
       po.id as "propertyOccurrenceId", po.node_occurrence_id as "nodeOccurrenceId",
       file.organization_id as "organizationId", file.project_id as "projectId",
       file.config_set_id as "configSetId", file.current_version_id as "currentFileVersionId"
     from dts_occurrence_effects oe
+    inner join dts_config_revisions revision on revision.id=oe.config_revision_id
     inner join dts_logical_node_revisions lnr on lnr.id = oe.logical_node_revision_id
     inner join dts_property_occurrences po on po.id = oe.property_occurrence_id
     inner join project_parameter_file_versions version on version.id = po.file_version_id
@@ -407,7 +409,12 @@ export async function listObservedProperties(
     `,
     [configRevisionId],
   );
-  return result.rows;
+  return result.rows.map(({ expanded, expandedValue, ...row }) => {
+    if (!expanded) return row;
+    const value = dtsValueSchema.safeParse(expandedValue);
+    if (!value.success) throw new ApiError("CONFLICT", "Expanded DTS observation has invalid semantic evidence.");
+    return { ...row, rawText: renderDtsValue(value.data) };
+  });
 }
 
 async function activeRegistrationId(
@@ -1595,7 +1602,13 @@ export async function verifyCanonicalSourceReimport(
     if (typeof manifest.locator.pointer !== "string" || manifest.rootPointer === null) throw new ApiError("CONFLICT", "JSON source has no exact locator.");
     payload = { kind: "json",value: readJsonSourceValue(file.content,manifest.locator.pointer,manifest.rootPointer) as ContractJsonValue };
   } else {
-    payload = dtsValueToPayload(await validatePinnedDtsSourceChange(db,manifest,file.content,file.content));
+    if (manifest.preprocessing) {
+      if (!manifest.logicalNodeId || manifest.locator.kind !== "dts-property" || typeof manifest.locator.propertyOccurrenceId !== "string"
+        || typeof manifest.locator.nodeOccurrenceId !== "string" || typeof manifest.locator.propertyName !== "string") throw new ApiError("CONFLICT", "Expanded DTS export has no exact source identity.");
+      const { proveExactDtsProperty } = await import("../parameter-topology/sourcePropertyProof");
+      payload = dtsValueToPayload((await proveExactDtsProperty(db, storage, { ...manifest, logicalNodeId: manifest.logicalNodeId,
+        propertyOccurrenceId: manifest.locator.propertyOccurrenceId, nodeOccurrenceId: manifest.locator.nodeOccurrenceId, propertyName: manifest.locator.propertyName })).value);
+    } else payload = dtsValueToPayload(await validatePinnedDtsSourceChange(db,manifest,file.content,file.content));
   }
   const value = (await db.query<{ value_kind: string; value: ContractJsonValue }>(
     `select value_kind,value from parameter_catalog.${VALUES_RELATION} where id=$1 and binding_id=$2`, [source.currentValueId,source.bindingId])).rows[0];

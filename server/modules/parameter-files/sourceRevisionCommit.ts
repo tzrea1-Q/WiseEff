@@ -106,7 +106,9 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
   const version = await insertFileVersion(tx, { id: randomUUID(), fileId: frozen.fileId, versionNumber: 0,
     storageKey: candidate.storageKey, checksum: candidate.checksum, sizeBytes: candidateBytes.length,
     parsedIndex: candidate.parsedIndex, origin: "writeback", attribution });
-  await ingestDtsFileVersion(tx, version.id, inspected.after, new Set(frozen.continuity.nodes.map(node => node.nodeLocator)));
+  await ingestDtsFileVersion(tx, version.id, inspected.after,
+    inspected.preprocessing?.originalDocuments.get(frozen.members.find(member => member.fileId === frozen.fileId)!.sourceName),
+    new Set(frozen.continuity.nodes.map(node => node.nodeLocator)));
   const members = [];
   for (const member of frozen.members) {
     let content = inspected.after;
@@ -121,6 +123,7 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
       role: member.role as ConfigRevisionMemberRole, sortOrder: member.sortOrder, content });
   }
   const revision = await ingestConfigRevisionInTransaction(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId,
+    preprocessing: frozen.preprocessing, declaredBuildInputs: frozen.declaredBuildInputs,
     configSetId: frozen.configSetId, entryFile: frozen.entryFile, includeSearchPaths: frozen.includeSearchPaths,
     overlayOrder: frozen.overlayOrder, members }, auth, { createdByUserId: attribution.userId, domain: attribution },
     { reviewedSource: frozen.continuity });
