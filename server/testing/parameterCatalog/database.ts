@@ -201,7 +201,12 @@ export const S2_SCH_0304_FINGERPRINT =
 export const S2_SCH_0308_FINGERPRINT =
   "49903364f8405e6c24211f3885457ca81e065d51eedec89b5de6a47c8573f840";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0308_FINGERPRINT;
+/** Fresh PostgreSQL through 0310 adds the exact unchanged private-conversion
+ * receipt; the 0308 absence projection and all earlier pins remain unchanged. */
+export const S2_SCH_0310_FINGERPRINT =
+  "89c7e52fa5772733741c7bfdc184d5c372cd78b0208fc04ccc77c2403fbf515f";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0310_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

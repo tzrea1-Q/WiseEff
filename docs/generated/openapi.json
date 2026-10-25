@@ -78052,6 +78052,26 @@
               },
               "replaceVersionId": {
                 "type": "string"
+              },
+              "convertPrivate": {
+                "type": "object",
+                "properties": {
+                  "configRevisionId": {
+                    "type": "string"
+                  },
+                  "fileId": {
+                    "type": "string"
+                  },
+                  "fileVersionId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "configRevisionId",
+                  "fileId",
+                  "fileVersionId"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [
@@ -78402,6 +78422,113 @@
                 ],
                 "additionalProperties": false
               },
+              "sharedConversion": {
+                "type": "object",
+                "properties": {
+                  "semanticEqual": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  },
+                  "identitiesRetained": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  },
+                  "sourceEvidence": {
+                    "type": "string"
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "fileId": {
+                          "type": "string"
+                        },
+                        "fileVersionId": {
+                          "type": "string"
+                        },
+                        "sourceName": {
+                          "type": "string"
+                        },
+                        "resourceId": {
+                          "type": "string"
+                        },
+                        "versionId": {
+                          "type": "string"
+                        },
+                        "memberId": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "sortOrder": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "fileId",
+                        "fileVersionId",
+                        "sourceName",
+                        "resourceId",
+                        "versionId",
+                        "memberId",
+                        "role",
+                        "sortOrder"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "origins": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "bindingId": {
+                          "type": "string"
+                        },
+                        "sourcePinId": {
+                          "type": "string"
+                        },
+                        "fileId": {
+                          "type": "string"
+                        },
+                        "fileVersionId": {
+                          "type": "string"
+                        },
+                        "propertyName": {
+                          "type": "string"
+                        },
+                        "locator": {
+                          "type": "object",
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "bindingId",
+                        "sourcePinId",
+                        "fileId",
+                        "fileVersionId",
+                        "propertyName",
+                        "locator"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "semanticEqual",
+                  "identitiesRetained",
+                  "sourceEvidence",
+                  "files",
+                  "origins"
+                ],
+                "additionalProperties": false
+              },
               "sharedRemoval": {
                 "type": "object",
                 "properties": {
@@ -78689,6 +78816,26 @@
               },
               "replaceVersionId": {
                 "type": "string"
+              },
+              "convertPrivate": {
+                "type": "object",
+                "properties": {
+                  "configRevisionId": {
+                    "type": "string"
+                  },
+                  "fileId": {
+                    "type": "string"
+                  },
+                  "fileVersionId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "configRevisionId",
+                  "fileId",
+                  "fileVersionId"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [

@@ -26,6 +26,15 @@ function props(overrides: Partial<WorkbenchConfigurationFilesDialogProps> = {}):
 }
 
 describe("WorkbenchConfigurationFilesDialog", () => {
+  it("offers explicit conversion only for a checked administrator's private DTS source",async()=>{
+    const user=userEvent.setup(),onConvertShared=vi.fn(),values=props();
+    const view=render(<WorkbenchConfigurationFilesDialog {...values} onConvertShared={onConvertShared}/>);
+    await user.click(screen.getByRole("button",{name:"主板.dts 更多"}));
+    await user.click(screen.getByRole("menuitem",{name:"转换为共享引用"}));expect(onConvertShared).toHaveBeenCalledWith(values.members[0]);
+    view.rerender(<WorkbenchConfigurationFilesDialog {...values} canAdmin={false} onConvertShared={onConvertShared}/>);
+    await user.click(screen.getByRole("button",{name:"主板.dts 更多"}));expect(screen.queryByRole("menuitem",{name:"转换为共享引用"})).not.toBeInTheDocument();
+});
+
   it("offers reference removal only once per direct resource and hides it from readers and dependencies",async()=>{
     const user=userEvent.setup(),onRemoveSharedReference=vi.fn(),values=props({canonical:true,onRemoveSharedReference});
     const sharedReference={referenceId:"ref",resourceId:"resource",versionId:"version",version:1,memberId:"member",digest:"fixed",readOnly:true as const,direct:true};
