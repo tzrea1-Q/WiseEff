@@ -6,7 +6,7 @@ import type { ConfigSetRole, ParameterFileFormat, ConfigSetMemberFileDto } from 
 /** Roles applied over the base when assembling/compiling a config set. */
 const OVERLAY_ROLES = new Set<ConfigSetRole>(["overlay", "charging", "thermal", "misc"]);
 
-/** A normal DTS becomes a compile overlay only after it actually served as this set's root. */
+/** Retain actual prior roots and complete-source overlay inputs validated on package import. */
 export async function loadFormerRootOverlayFiles(db: Queryable, configSetId: string,
   members: ReadonlyArray<{ fileId: string; sourceName: string }>, overlayOrder: string[]) {
   const roots = (await db.query<{ file_id: string }>(`select distinct member.file_id
@@ -23,7 +23,15 @@ export async function loadFormerRootOverlayFiles(db: Queryable, configSetId: str
         and source.organization_id=configuration.organization_id and source.project_id=configuration.project_id
       where configuration.id=$1 and event.app='parameter-admin' and event.kind='project-initialization-approved'
         and event.action='approve' and event.target_type='project-parameter-initialization-review'
-        and source.id=any($2::text[])`, [configSetId, members.map((row) => row.fileId)])).rows;
+        and source.id=any($2::text[])
+    union select admission.file_id from public.audit_events event
+      join public.dts_config_set configuration on configuration.id=event.target_id
+        and configuration.organization_id=event.organization_id and configuration.project_id=event.project_id
+      cross join lateral jsonb_array_elements_text(coalesce(event.metadata->'sourceOverlayFileIds','[]'::jsonb)) admission(file_id)
+      join public.project_parameter_files source on source.id=admission.file_id
+        and source.organization_id=configuration.organization_id and source.project_id=configuration.project_id
+      where configuration.id=$1 and event.app='parameters' and event.kind='config-set' and event.action='imported'
+        and event.target_type='dts-config-set' and admission.file_id=any($2::text[])`, [configSetId, members.map((row) => row.fileId)])).rows;
   return members.filter((row) => overlayOrder.includes(row.sourceName) && roots.some((root) => root.file_id === row.fileId))
     .map((row) => row.sourceName);
 }
@@ -47,6 +55,7 @@ export type ConfigSetSnapshotSkipped = {
 };
 
 export type ConfigSetSnapshot = {
+  sourceMembers?: Array<{ fileId: string; sourceName: string; role: import("../parameter-topology/types").ConfigRevisionMemberRole }>;
   preprocessing?: import("../dts/cppSources").DtsPreprocessingReceipt;
   declaredBuildInputs?: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
   configSetId: string;
@@ -133,8 +142,8 @@ export async function loadConfigSetSnapshot(
   const manifest = (await db.query<{ entry_file: string | null; include_search_paths: string[]; overlay_order: string[];
     preprocessing: import("../dts/cppSources").DtsPreprocessingReceipt | null;
     declared_build_inputs: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
-    members: Array<{ fileId: string; sourceName: string }> }>(`select revision.entry_file,revision.include_search_paths,revision.overlay_order,revision.preprocessing,revision.declared_build_inputs,
-      (select jsonb_agg(jsonb_build_object('fileId',member.file_id,'sourceName',member.source_name))
+    members: Array<{ fileId: string; sourceName: string; role: import("../parameter-topology/types").ConfigRevisionMemberRole }> }>(`select revision.entry_file,revision.include_search_paths,revision.overlay_order,revision.preprocessing,revision.declared_build_inputs,
+      (select jsonb_agg(jsonb_build_object('fileId',member.file_id,'sourceName',member.source_name,'role',member.role))
         from dts_config_revision_members member where member.config_revision_id=revision.id) as members
     from dts_config_revisions revision where revision.config_set_id=$1 and revision.status in ('resolved','validated','compiled','pending_approval')
       and (select count(*) from dts_config_revision_members member where member.config_revision_id=revision.id)=$2
@@ -149,6 +158,7 @@ export async function loadConfigSetSnapshot(
   const overlayOrder = exactManifest?.overlay_order ?? overlays.map((overlay) => overlay.name);
 
   return {
+    ...(exactManifest ? { sourceMembers: exactManifest.members } : {}),
     ...(exactManifest?.preprocessing ? { preprocessing: exactManifest.preprocessing } : {}),
     ...(exactManifest ? { declaredBuildInputs: exactManifest.declared_build_inputs } : {}),
     configSetId,

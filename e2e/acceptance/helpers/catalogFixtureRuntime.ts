@@ -69,6 +69,8 @@ export const catalogRuntimeTest = base.extend<{}, CatalogFixtureRuntimeWorker>({
       label: "catalog-acceptance",
       markerPurpose: "catalog-acceptance",
       catalog: "fixture-owned",
+      apiEnv: Object.fromEntries(["WISEEFF_DTS_TOOLCHAIN_DIR", "WISEEFF_DTC_PATH", "WISEEFF_FDTOVERLAY_PATH", "WISEEFF_DT_VALIDATE_PATH"]
+        .map(key => [key, process.env[key]]).filter((entry): entry is [string,string] => typeof entry[1] === "string" && entry[1].length > 0)),
     });
     try {
       applyDisposableRuntimeEnv(runtime);

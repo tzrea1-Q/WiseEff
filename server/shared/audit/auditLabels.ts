@@ -280,6 +280,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   submit: "提交变更",
   apply: "应用导入",
   import: "导入",
+  imported: "已导入",
   export: "导出",
   create: "创建",
   created: "创建",

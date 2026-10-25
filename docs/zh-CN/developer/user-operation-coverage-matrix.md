@@ -70,6 +70,7 @@
 - `PARAM-INIT-REJECT-001`：Admin 带原因驳回后创建者可修订再提交（reducer + 服务端）；专用浏览器 e2e 待补。
 - `PARAM-INIT-LOCK-001`：未 `initialized` 项目不能提交常规 typed binding 变更轮次；`coverage: automated`，见 `e2e/acceptance/parameter-initialization-lock.acceptance.spec.ts`。
 - `PROJ-OPS-001`：已被 `PROJ-CONFIG-CUTOVER-001` 取代：PC 1440×900 下旧深链重定向到配置工作台等价上下文；未知项目 ID 仍显示 not-found；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
+- `PROJ-CONFIG-PRIVATE-SHARED-001`：Admin 在项目配置工作台独立发布私有源码，显式预览、取消、确认精确共享闭包转换；当前资源停用失败后保留输入并可重试，文件版本和参数关联保持身份，转换来源只读。`coverage: automated`；断言 `ui, api, screenshot`；见 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-OPS-002`：已被 `PROJ-CONFIG-READ-001` / `PROJ-CONFIG-CUTOVER-001` 取代：PC 1440×900 工作台布局证据，无截断或页面级横向溢出。
 - `PROJ-OPS-003`：已被 `PROJ-CONFIG-BASELINE-001` / `PROJ-CONFIG-OPS-001` / `PROJ-CONFIG-CONFLICT-001` 取代：PC 1440×900 下基线/成员/冲突确认在工作台源码上下文。
 - `PROJ-CONFIG-READ-001`：PC 1440×900 下，Admin 在 API mode 从项目清单进入 `/parameter-admin/projects/:projectId/configuration`，验证配置集解析、成员/未编组树、活跃 DTS 源码、发布身份、恢复状态和树/检查器/任务 sheet 布局；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。

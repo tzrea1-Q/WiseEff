@@ -105,6 +105,7 @@ export * from "./canonicalManualSync";
 export * from "./productFeedback";
 export * from "./sourceRevision";
 export * from "./canonicalMemberAddition";
+export * from "./configSetPackage";
 export * from "./parameterDefinitionDeletion";
 export { projectBindingDtoSchema } from "../../parameter-topology/schemas";
 export { logSkillSpecSchema } from "../../logs/skillSpec";

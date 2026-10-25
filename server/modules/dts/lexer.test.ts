@@ -10,6 +10,14 @@ function values(tokens: DtsToken[]): string[] {
 }
 
 describe("lexDts", () => {
+  it("accepts a leading UTF-8 BOM without shifting original CRLF source spans", () => {
+    const original='\uFEFF/dts-v1/;\r\n/ { limit = <31>; };\r\n';
+    const tokens=lexDts(original);
+    expect(tokens[0]).toEqual({kind:"directive",value:"/dts-v1/",span:{start:1,end:9}});
+    const limit=tokens.find(token=>token.value==="limit")!;
+    expect(original.slice(limit.span.start,limit.span.end)).toBe("limit");
+    expect(()=>lexDts('/ { \uFEFFlimit = <31>; };')).toThrow();
+  });
   it("tokenizes identifiers including hyphen and vendor comma names", () => {
     const tokens = lexDts("vendor,led-type = <1>;");
     expect(values(tokens)).toEqual(["vendor,led-type", "=", "<", "1", ">", ";"]);

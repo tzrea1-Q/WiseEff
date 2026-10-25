@@ -2112,6 +2112,16 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ConfigSetExportResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterFiles.previewConfigSetImport": {
+    summary: "Preview complete original sources and exact authorized shared pins for an empty project",
+    tags: ["parameter-files"], requestBody: "ConfigSetImportPreviewRequest", responseBody: "ConfigSetImportPreviewResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.applyConfigSetImport": {
+    summary: "Import a confirmed complete configuration with fresh project source identities",
+    tags: ["parameter-files"], requestBody: "ConfigSetImportApplyRequest", responseBody: "ConfigSetImportApplyResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameterFiles.listConfigSetBaselines": {
     summary: "List release baselines of a config set",
     tags: ["parameter-files"],

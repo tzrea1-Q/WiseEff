@@ -1313,6 +1313,8 @@ export const routeManifest = [
   { id: "parameterFiles.previewAdministratorMemberRemoval", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId/removal-preview", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.applyAdministratorMemberRemoval", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId/removal-apply", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.createConfigSet", method: "POST", path: "/api/v1/projects/:projectId/config-sets", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.previewConfigSetImport", method: "POST", path: "/api/v1/projects/:projectId/config-set-import/preview", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.applyConfigSetImport", method: "POST", path: "/api/v1/projects/:projectId/config-set-import/apply", module: "parameter-files", stability: "mvp" },
   {
     id: "parameterFiles.addConfigSetFile",
     method: "POST",
