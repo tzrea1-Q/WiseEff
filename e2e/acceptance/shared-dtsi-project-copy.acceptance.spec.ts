@@ -149,8 +149,11 @@ test("chooses the source project, previews a private full copy, submits for inde
   const files = (await targetFiles.json()).items; expect(files.every((row: { sharedReference?: unknown }) => !row.sharedReference)).toBe(true);
   const targetRoot = files.find((row: { fileName: string }) => row.fileName === "board.dts"); expect(targetRoot.fileId).not.toBe(rootPin.fileId);
   await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/projects/${TARGET}/configuration?configSet=${manifest.configSetId}&file=${targetRoot.fileId}`);
-  await expect(page.getByRole("region", { name: "DTS 源码", exact: true })).toContainText("Copied original");
+  const targetEditor = page.getByRole("textbox", { name: "DTS 源码", exact: true });
+  await expect(targetEditor).toContainText("Copied original");
   await expect(page.getByRole("radio", { name: "编辑", exact: true })).toBeEnabled();
+  await page.getByRole("radio", { name: "编辑", exact: true }).click();
+  await expect(targetEditor).toHaveAttribute("aria-readonly", "false");
   await page.setViewportSize({ width: 1440, height: 900 }); await page.screenshot({ path: info.outputPath("copy-target-source-1440.png"), fullPage: true });
   await page.goto(`${runtime.frontendUrl}/parameters?project=${TARGET}`, { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("row").filter({ hasText: "iin_max" })).toContainText("42");
