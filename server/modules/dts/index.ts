@@ -11,7 +11,7 @@ export { serializeDts } from "./serialize";
 export { parseDtsValue, renderDtsValue, type DtsValueParseResult } from "./valueAst";
 export { indentDtsRawValueForWriteback } from "./rawValueWriteback";
 export { classifyDtsValue, type ClassifiedDtsValue } from "./valueTyping";
-export { resolveDtsConfigSet } from "./configSetResolver";
+export { resolveDtsConfigSet, resolveDtsConfigSetAsync } from "./configSetResolver";
 export {
   synthesizeDanglingAnchorStub,
   danglingAnchorLabels,

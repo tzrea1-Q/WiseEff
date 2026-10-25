@@ -33,6 +33,7 @@ import { parameterDefinitionDeletionDtoSchemaCatalog, parameterDefinitionDeletio
 import { workflowPublicationDtoSchemaCatalog, workflowPublicationCoveredRouteIds } from "./workflowPublication";
 import { sharedDtsiDtoSchemaCatalog, sharedDtsiRoutes } from "./sharedDtsi";
 export * from "./sharedDtsi";
+export * from "./dtsPreprocessing";
 export { workflowPublicationAdminStateSchema, workflowPublicationStateSchema } from "./workflowPublication";
 
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {

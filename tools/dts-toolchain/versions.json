@@ -1,4 +1,9 @@
 {
   "dtc": { "version": "1.8.1", "commit": "8f48565e5cfedc74d3f7512f1e0188e9d85dc1de" },
-  "dtschema": "2026.6"
+  "dtschema": "2026.6",
+  "preprocessing": {
+    "image": "gcc@sha256:82549aa8f90ada3236a8be70c74543132a76662ef33f0c3271ed802b81584a82",
+    "version": "14.2.0",
+    "platform": "linux/amd64"
+  }
 }
