@@ -333,6 +333,17 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         await navigation;
         await dismissXiaozeHint(page);
         await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
+        await expect(page.getByRole("tab", { name: "生效配置", exact: true })).toHaveAttribute("aria-selected", "true");
+        await expect(page.getByText("此配置尚无已解析的修订。请在源码中同步来源文件。", { exact: true })).toBeVisible();
+        for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
+          await page.setViewportSize(viewport);
+          const path = testInfo.outputPath(`unresolved-effective-${viewport.width}.png`);
+          await page.screenshot({ path });
+          await testInfo.attach(`Unresolved effective ${viewport.width}`, { path, contentType: "image/png" });
+          expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+        }
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.getByRole("tab", { name: "源码", exact: true }).click();
         await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible({ timeout: 30_000 });
         await expect(page.getByRole("treeitem", { name: new RegExp(primaryFileName) })).toBeVisible();
         await expect(page.getByRole("group", { name: "待分配项目文件" })).toContainText(looseFileName);
@@ -1365,6 +1376,13 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(page.getByRole("alert").filter({ hasText: "文件或配置版本已更新" })).toBeVisible();
       await expect(editor).toContainText("DraftV2");
       await expect(page.getByRole("button", { name: "保存修改", exact: true })).toBeDisabled();
+      for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
+        await page.setViewportSize(viewport);
+        const path = testInfo.outputPath(`stale-source-recovery-${viewport.width}.png`);
+        await page.screenshot({ path });
+        await testInfo.attach(`Stale source recovery ${viewport.width}`, { path, contentType: "image/png" });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+      }
       const downloadPromise = page.waitForEvent("download");
       await page.getByRole("button", { name: "下载草稿", exact: true }).click();
       const download = await downloadPromise;
@@ -1662,6 +1680,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       const removeMemberResponse = await removeMemberResponsePromise;
       expect(removeMemberResponse.ok()).toBe(true);
       await files.getByRole("button", { name: "关闭配置组成", exact: true }).click();
+      await page.getByRole("tab", { name: "源码", exact: true }).click();
       await expect(ungrouped).toContainText(looseFileName);
 
       await openWorkbenchPanel(page, "file");
@@ -3509,7 +3528,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await page.getByLabel("DTSI 源码",{exact:true}).fill(changed);
     await page.getByLabel("变更说明",{exact:true}).fill("Shared successor; projects remain pinned");
     await page.getByRole("button",{name:"预览发布",exact:true}).click();
-    await expect(page.getByText("发布共享版本，不会自动更新项目配置。",{exact:true})).toBeVisible();
+    await expect(page.getByText("本组织有查看权限的用户可读取完整源码；发布不会自动更新项目配置。",{exact:true})).toBeVisible();
     await page.getByRole("button",{name:"发布版本",exact:true}).focus();await page.keyboard.press("Enter");
     await expect(page.getByText("v2 · 已发布，只读",{exact:true})).toBeVisible();
     const current=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/detail`),{headers:adminHeaders()});const secondId=(await current.json()).item.currentVersion.id as string;
@@ -3769,7 +3788,29 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await property.getByRole("button",{name:"在本项目覆盖",exact:true}).focus();await page.keyboard.press("Enter");
     await property.getByRole("textbox",{name:"rx_fod_cond 本项目值",exact:true}).fill('"ProjectLocal", "keep"');
     for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
-      await page.setViewportSize(viewport);await expect(property.getByRole("button",{name:"查看源码差异",exact:true})).toBeInViewport({ratio:1});
+      await page.setViewportSize(viewport);
+      const input = property.getByRole("textbox",{name:"rx_fod_cond 本项目值",exact:true});
+      const difference = property.getByRole("button",{name:"查看源码差异",exact:true});
+      await input.focus();
+      const before = await input.evaluate(element => {
+        const task = element.closest(".navigator-workbench__task")!;
+        return { scrollTop: task.scrollTop, documentTop: document.documentElement.scrollTop };
+      });
+      await page.keyboard.press("Tab");
+      await expect(difference).toBeFocused();
+      await expect(difference).toBeInViewport({ratio:1});
+      await difference.click({trial:true});
+      const after = await difference.evaluate(element => {
+        const task = element.closest(".navigator-workbench__task")!;
+        return { scrollTop: task.scrollTop, scrollHeight: task.scrollHeight, clientHeight: task.clientHeight,
+          overflowY: getComputedStyle(task).overflowY, documentTop: document.documentElement.scrollTop };
+      });
+      expect(after.documentTop).toBe(before.documentTop);
+      if(viewport.width===1280) {
+        expect(after.overflowY).toBe("auto");
+        expect(after.scrollHeight).toBeGreaterThan(after.clientHeight);
+        expect(after.scrollTop).toBeGreaterThan(before.scrollTop);
+      }
       const path=testInfo.outputPath(`local-override-${viewport.width}.png`);
       await page.screenshot({path});await testInfo.attach(`Local override ${viewport.width}`,{path,contentType:"image/png"});
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true);

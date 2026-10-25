@@ -73,7 +73,8 @@ test("selects a fixed cross-resource dependency in the full resource editor and 
   const preview=await catalogJson(page.request,"POST",`/api/v2/shared-dtsi/${leaf.resourceId}/publication-preview`,{data:{expectedRevision:1}});
   expect(preview.status).toBe(201);
   const published=await catalogJson(page.request,"POST",`/api/v2/shared-dtsi/${leaf.resourceId}/publications`,{data:{previewId:(preview.body as {item:{id:string}}).item.id,idempotencyKey:`clock-${Date.now()}`}});
-  expect(published.status).toBe(201);const versionId=(published.body as {item:{id:string}}).item.id;
+  expect(published.status).toBe(201);const publishedVersion=(published.body as {item:{id:string;digest:string;version:number}}).item,versionId=publishedVersion.id;
+  expect(publishedVersion.digest).toMatch(/^sha256:[a-f0-9]{64}$/u);
   await page.getByRole("button",{name:"导入资源",exact:true}).click();
   const source='/include/ "vendor/clocks.dtsi"\n&fixed_clock { frequency = <24000000>; };';
   await page.locator('input[type="file"]').first().setInputFiles({name:"platform.dtsi",mimeType:"text/plain",buffer:Buffer.from(source)});
@@ -96,11 +97,15 @@ test("selects a fixed cross-resource dependency in the full resource editor and 
   }
   await page.getByRole("button",{name:"预览发布",exact:true}).click();
   await page.getByText("完整固定依赖（1）",{exact:true}).click();
-  await expect(page.getByText(`${name} · 版本 1 · vendor`,{exact:true})).toBeVisible();
+  const closure=page.locator("details").filter({has:page.getByText("完整固定依赖（1）",{exact:true})});
+  const pin=closure.getByRole("listitem").filter({hasText:name});
+  await expect(pin).toHaveText(`${name} · 版本 1 · vendor 查看源码`);
+  const sourceLink=new URL((await pin.getByRole("link",{name:"查看源码",exact:true}).getAttribute("href"))!,page.url());
+  expect(sourceLink.searchParams.get("resource")).toBe(leaf.resourceId);expect(sourceLink.searchParams.get("version")).toBe(versionId);
   await page.getByRole("button",{name:"发布版本",exact:true}).focus();await page.keyboard.press("Enter");
   await expect(page.getByText("v1 · 已发布，只读",{exact:true})).toBeVisible();
   const detail=await catalogJson(page.request,"GET",`/api/v2/shared-dtsi/${resourceId}/detail`);
   const exact=await catalogJson(page.request,"GET",`/api/v2/shared-dtsi/${resourceId}/versions/${(detail.body as {item:{currentVersion:{id:string}}}).item.currentVersion.id}`);
-  expect((exact.body as {item:{members:unknown[];manifest:{dependencyClosure:unknown[]}}}).item).toMatchObject({members:[expect.objectContaining({sourceName:"platform.dtsi",content:source})],manifest:{dependencyClosure:[expect.objectContaining({resourceId:leaf.resourceId,versionId,mountPath:"vendor"})]}});
+  expect((exact.body as {item:{members:unknown[];manifest:{dependencyClosure:unknown[]}}}).item).toMatchObject({members:[expect.objectContaining({sourceName:"platform.dtsi",content:source})],manifest:{dependencyClosure:[expect.objectContaining({resourceId:leaf.resourceId,versionId,mountPath:"vendor",name,version:publishedVersion.version,digest:publishedVersion.digest})]}});
   expect(pageErrors).toEqual([]);expect(serverErrors).toEqual([]);
 });

@@ -29,6 +29,7 @@ import { previewProjectDeletion } from "../projects/deletionPreview";
 import { purgeProject } from "../projects/purge";
 import { insertReleaseBaseline, insertReleaseBaselineMember, listConfigSetMemberFiles } from "./baselineRepository";
 import { registerUserRoutes } from "../users/routes";
+import type { CatalogSnapshot } from "../catalog-kernel/interface";
 
 const ORG = "org-baseline-restore", PROJECT = "project-baseline-restore", USER = "user-baseline-restore";
 const auth = makeTestAuthContext({ organizationId: ORG, userId: USER, roles: [{ roleId: "admin", projectId: null }] });
@@ -40,9 +41,9 @@ describe("Canonical snapshot restore through the real API role", { timeout: 120_
   let configSetId: string, fileId: string, baselineId: string, bindingId: string;
   const token = `baseline_restore_${process.pid}`;
   const target = async () => (await listCatalogBindingRowsForProject(api,auth,{ projectId: PROJECT })).find((row) => row.id === bindingId)!;
-  function route(principal = auth, runtime: Database = api) {
+  function route(principal = auth, runtime: Database = api, catalogSnapshot?: CatalogSnapshot) {
     const router = createRouter();
-    registerParameterFileRoutes(router, { db: runtime, objectStore: storage, getCurrentAuthContext: () => principal,
+    registerParameterFileRoutes(router, { db: runtime, objectStore: storage, catalogSnapshot, getCurrentAuthContext: () => principal,
       refusalAuditSink: createTrustedRefusalAuditSink(db) });
     registerDefinitionDeletionRoutes(router,{ db: runtime,objectStore: storage,resolveAuth: () => principal });
     registerUserRoutes(router, { db: runtime, getCurrentAuthContext: () => principal });
@@ -231,6 +232,8 @@ describe("Canonical snapshot restore through the real API role", { timeout: 120_
       from project_parameter_value_change_requests where organization_id=$1 and project_id=$2 order by id`;
     const before = (await api.query<{ id: string; request_kind: string }>(receipts,[ORG,PROJECT])).rows;
     expect(before.map(row => row.request_kind)).toEqual(expect.arrayContaining(["member_addition","member-removal","configuration_restore"]));
+    const catalog = await loadPublishedCatalog(getRootPostgresPool(api)!);
+    if (!catalog) throw new Error("Published fixture is unavailable");
     await expect(api.transaction(async (tx) => {
       const deleted = await requestJson(route(next,tx),`/api/v1/users/${USER}`,{ method: "DELETE" });
       expect(deleted.status,deleted.bodyText).toBe(204);
@@ -241,7 +244,7 @@ describe("Canonical snapshot restore through the real API role", { timeout: 120_
       await expect(tx.transaction(async (inner) => {
         await inner.query("update project_parameter_value_change_requests set applied_source_result='{}'::jsonb where id=$1", [before.find(row => row.request_kind === "configuration_restore")!.id]);
       })).rejects.toMatchObject({ code: "55000" });
-      const exported = await requestJson<{ files: Array<{ name: string; content: string }> }>(route(next,tx),`/api/v1/projects/${PROJECT}/config-sets/${configSetId}/export`);
+      const exported = await requestJson<{ files: Array<{ name: string; content: string }> }>(route(next,tx,catalog),`/api/v1/projects/${PROJECT}/config-sets/${configSetId}/export`);
       expect(exported.status,exported.bodyText).toBe(200);
       expect(exported.body.files).toContainEqual(expect.objectContaining({ name: "settings.json",content: '{"limit":10,"retained":7}' }));
       throw new Error("rollback-account-deletion-probe");

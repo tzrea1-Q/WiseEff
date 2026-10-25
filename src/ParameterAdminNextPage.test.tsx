@@ -1007,7 +1007,7 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
     });
     await waitFor(() =>
       expect(configSets.onNavigate).toHaveBeenCalledWith(
-        `/parameter-admin/projects/${projectId}/configuration?configSet=cs-default&inspector=config-set`
+        `/parameter-admin/projects/${projectId}/configuration?configSet=cs-default&inspector=config-set&tab=source`
       )
     );
     cleanup();

@@ -9,6 +9,7 @@ import { rethrowSourceTransactionError } from "./sourceVersion";
 import { loadCanonicalSourceSnapshot } from "./canonicalSource";
 import { loadSnapshot } from "./sourceRevisionService";
 import { CatalogSubjectId } from "../parameter-catalog-contract";
+import type { CatalogSnapshot } from "../catalog-kernel/interface";
 
 import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { withAuditedWrite } from "../audit/auditedWrite";
@@ -90,6 +91,8 @@ export type ExportFileDeps = {
 export type ExportConfigSetDeps = {
   objectStore: ObjectStore;
   validator?: DtcValidator;
+  /** Server-owned Catalog pin when the caller supplies a transaction handle. */
+  snapshot?: CatalogSnapshot;
 };
 
 function requireParameterFileAdmin(auth: AuthContext) {
@@ -285,7 +288,7 @@ export async function exportConfigSet(
   for (const binding of bindings) {
     const pin = await loadOwnedProjectValueSourcePin(db,{organizationId:parameterOrganizationId(auth),projectId:configSet.projectId,bindingId:binding.bindingId,projectValueId:binding.oldValueId});
     if (pin?.format !== "json") continue;
-    catalog ??= await loadSnapshot(db);
+    catalog ??= await loadSnapshot(db,deps.snapshot);
     const {manifest} = await loadCanonicalSourceSnapshot(db,deps.objectStore,{organizationId:parameterOrganizationId(auth),projectId:configSet.projectId,
       bindingId:binding.bindingId,projectValueId:binding.oldValueId});
     if (manifest.format !== "json") continue;

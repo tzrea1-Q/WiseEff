@@ -85,11 +85,7 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
     void Promise.resolve().then(() => crypto.subtle.digest("SHA-256", new TextEncoder().encode(source))).then(async (bytes) => {
       if (cancelled) return;
       const sourceDigest = Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
-      const buffered = mergeEditor.current?.flush() ?? editor.current?.flush();
-      if (buffered?.sessionKey === key) {
-        const current = session.getFile(scope);
-        if (current && !current.loading) session.change(scope, buffered.text, { ...current.position, ...buffered.selection, firstVisibleLine: buffered.firstVisibleLine });
-      }
+      if (mergeEditor.current) mergeEditor.current.flush(); else editor.current?.flush();
       await session.open({ scope, base: { fileVersionId: baseVersionId, configRevisionId, sourceDigest }, sourceText: source });
     }).catch((cause) => { if (!cancelled) setError(presentError(cause, "读取 DTS 草稿失败。")); });
     return () => { cancelled = true; };
@@ -105,6 +101,8 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
     if (discarding.current) return;
     const target = session.getSnapshot().files[value.sessionKey];
     if (!target || target.loading) return;
+    // Recovery can finish before the initial readonly editor receives its reset.
+    if (value.generation === 0 && !value.dirty && value.text !== target.sourceText) return;
     session.change(target.scope, value.text, { ...target.position, ...value.selection, firstVisibleLine: value.firstVisibleLine });
   }, [session]);
   useLayoutEffect(() => {
