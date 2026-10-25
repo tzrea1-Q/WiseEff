@@ -6,6 +6,7 @@ import { expect } from "playwright/test";
 import { test, catalogAppUrl } from "./helpers/catalogFixtureRuntime";
 import { catalogJson, signInCatalogActor, dismissXiaozeHint, assertNoPageOverflow } from "./helpers/catalogBrowser";
 import { acceptanceCast } from "./helpers/cast";
+import { selectControlOption } from "./helpers/selectControl";
 import { configSetPackageManifestName, type ConfigSetImportResult } from "../../server/modules/contracts/dtoSchemas/configSetPackage";
 import type { ExportConfigSetResult } from "../../server/modules/parameter-files/exportService";
 import type { ThemePreference } from "../../src/application/theme/themeController";
@@ -82,13 +83,35 @@ test("#1427 exports original complete sources and imports them into a normally a
     await expect(dialog.getByRole("button",{name:"确认导入",exact:true})).toBeInViewport({ratio:1});
     await page.screenshot({path:testInfo.outputPath(`package-preview-${viewport.width}.png`)});
   }
+  await selectControlOption(dialog.getByRole("combobox",{name:"源码归属",exact:true}),"private");
+  await expect(dialog.getByRole("button",{name:"确认导入",exact:true})).toHaveCount(0);
+  await dialog.getByRole("button",{name:"预览导入",exact:true}).click();
+  await expect(dialog.getByLabel("配置导入预览")).not.toContainText("共享只读");
+  await expect(dialog.getByRole("textbox",{name:"导入原因",exact:true})).toHaveValue("Reproduce original source bytes and exact shared version");
+  await expect(dialog.getByText("保留全部原始源码及构建输入，不创建共享资源或共享引用。",{exact:true})).toBeVisible();
+  await page.screenshot({path:testInfo.outputPath("package-private-preview-1280.png")});
+  await selectControlOption(dialog.getByRole("combobox",{name:"源码归属",exact:true}),"reuse");
+  await dialog.getByRole("button",{name:"预览导入",exact:true}).click();
+  await expect(dialog.getByLabel("配置导入预览")).toContainText("共享只读");
   await page.evaluate((theme:ThemePreference)=>{if(!window.__wiseeffSetTheme)throw new Error("Theme controller is unavailable");window.__wiseeffSetTheme(theme);},"dark" as ThemePreference);
   await expect(page.locator("html")).toHaveCSS("color-scheme","dark");
-  await expect(dialog.getByRole("textbox",{name:"配置名称",exact:true})).not.toHaveCSS("color","rgb(0, 0, 0)");
+  const settledTextColor=await page.evaluate(()=>{const sample=document.createElement("span");sample.style.color="var(--text)";document.body.append(sample);const color=getComputedStyle(sample).color;sample.remove();return color;});
+  await expect(dialog.getByRole("textbox",{name:"配置名称",exact:true})).toHaveCSS("color",settledTextColor);
   await page.screenshot({path:testInfo.outputPath("package-preview-dark-1280.png")});
-  const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===`/api/v1/projects/${target}/config-set-import/apply`);
+  let committed:ConfigSetImportResult|undefined;
+  await page.route(`**/api/v1/projects/${target}/config-set-import/apply`,async route=>{
+    const response=await route.fetch();
+    if(response.status()!==200){await route.fulfill({response});return;}
+    committed=(await response.json()).item as ConfigSetImportResult;
+    await route.abort("failed");
+  },{times:1});
   await dialog.getByRole("button",{name:"确认导入",exact:true}).focus();await page.keyboard.press("Enter");
+  await expect(dialog.getByRole("alert")).toContainText("未能确认导入结果");expect(committed).toBeDefined();
+  await page.screenshot({path:testInfo.outputPath("package-unknown-result-dark-1280.png")});
+  const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===`/api/v1/projects/${target}/config-set-import/apply`);
+  await dialog.getByRole("button",{name:"重试同一操作",exact:true}).focus();await page.keyboard.press("Enter");
   const applied=await applying;expect(applied.status(),await applied.text()).toBe(200);const receipt=(await applied.json()).item as ConfigSetImportResult;
+  expect(receipt).toEqual(committed);
   await expect(dialog).toHaveCount(0);await page.reload();
   const actualResponse=await catalogJson(page.request,"GET",`/api/v1/projects/${target}/config-sets/${receipt.configSetId}/export`);expect(actualResponse.status).toBe(200);
   const actual=actualResponse.body as ExportConfigSetResult;expect(actual.files).toEqual(expected.files);expect(actual.manifest.sourcePackage).toEqual(expected.manifest.sourcePackage);
@@ -99,6 +122,8 @@ test("#1427 exports original complete sources and imports them into a normally a
   const shared=actual.manifest.members.find(row=>row.sharedReference)!;
   await page.goto(catalogAppUrl(`/parameter-admin/projects/${target}/configuration?${new URLSearchParams({configSet:receipt.configSetId,file:shared.fileId})}`));
   await expect(page.getByRole("region",{name:"DTS 源码",exact:true})).toContainText("shared_only");
-  await expect(page.getByRole("radio",{name:"编辑",exact:true})).toHaveCount(0);await page.screenshot({path:testInfo.outputPath("package-shared-readonly-1280.png")});
+  await expect(page.getByRole("radio",{name:"编辑",exact:true})).toHaveCount(0);
+  await expect(page.getByRole("button",{name:/配置版本.*检查通过/})).toBeVisible();
+  await page.screenshot({path:testInfo.outputPath("package-shared-readonly-1280.png")});
   expect(errors).toEqual([]);expect(serverErrors).toEqual([]);
 });

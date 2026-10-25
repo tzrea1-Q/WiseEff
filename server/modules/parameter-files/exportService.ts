@@ -1,9 +1,11 @@
 import { parameterOrganizationId, parameterInvocation } from "../parameters/operatingScope";
 import { randomUUID } from "node:crypto";
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { type ConfigSetSourcePackage } from "../contracts/dtoSchemas/configSetPackage";
 import { loadSharedDtsiClosure, composeDtsBuildInputs } from "../shared-dtsi/dependencies";
-import { loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
+import { loadSourceBindingCohort, loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
+import { rethrowSourceTransactionError } from "./sourceVersion";
 import { loadCanonicalSourceSnapshot } from "./canonicalSource";
 import { loadSnapshot } from "./sourceRevisionService";
 import { CatalogSubjectId } from "../parameter-catalog-contract";
@@ -270,14 +272,17 @@ export async function exportConfigSet(
     : await validator.validate(dtsFilesForValidation, { mode });
   const requiresConfirmation = computeRequiresConfirmation(validation);
 
-  const references = (await db.query<{ resourceId: string; versionId: string; mountPath: string }>(`select resource_id as "resourceId",revision_id as "versionId",mount_path as "mountPath"
+  const loadReferences = async (reader: Queryable) => (await reader.query<{ resourceId: string; versionId: string; mountPath: string }>(`select resource_id as "resourceId",revision_id as "versionId",mount_path as "mountPath"
     from public.project_shared_dtsi_references where organization_id=$1 and project_id=$2 and config_set_id=$3 and is_direct order by created_at,id`,
     [parameterOrganizationId(auth),configSet.projectId,configSetId])).rows;
+  const references = await loadReferences(db);
   const resources = await loadSharedDtsiClosure(db as Database, auth, references);
   const declaredBuildInputs = snapshot.declaredBuildInputs ?? {includeSearchPaths:snapshot.includeSearchPaths,defines:snapshot.preprocessing?.defines??{}};
   const jsonSources: ConfigSetSourcePackage["jsonSources"] = [];
   let catalog: Awaited<ReturnType<typeof loadSnapshot>> | undefined;
-  for (const binding of await loadSourceBindingCohortReadOnly(db, {organizationId:parameterOrganizationId(auth),projectId:configSet.projectId,configSetId})) {
+  const scope = {organizationId:parameterOrganizationId(auth),projectId:configSet.projectId,configSetId};
+  const bindings = await loadSourceBindingCohortReadOnly(db, scope);
+  for (const binding of bindings) {
     const pin = await loadOwnedProjectValueSourcePin(db,{organizationId:parameterOrganizationId(auth),projectId:configSet.projectId,bindingId:binding.bindingId,projectValueId:binding.oldValueId});
     if (pin?.format !== "json") continue;
     catalog ??= await loadSnapshot(db);
@@ -319,6 +324,20 @@ export async function exportConfigSet(
     },
     members: manifestMembers
   };
+
+  // Object reads and compilation await outside the source locks. Refuse a
+  // package if its original bytes, build inputs, references or JSON pins moved.
+  try { await db.transaction(async tx => {
+    await tx.query(`select id from public.dts_config_set where organization_id=$1 and project_id=$2 and id=$3 for share nowait`,
+      [scope.organizationId,scope.projectId,configSetId]);
+    await tx.query(`select id from public.project_parameter_files where organization_id=$1 and project_id=$2 and config_set_id=$3 order by id for share nowait`,
+      [scope.organizationId,scope.projectId,configSetId]);
+    const currentBindings = await loadSourceBindingCohort(tx,scope);
+    if (!isDeepStrictEqual(snapshot,await loadConfigSetSnapshot(tx,deps.objectStore,configSetId))
+      || !isDeepStrictEqual(references,await loadReferences(tx)) || !isDeepStrictEqual(bindings,currentBindings)) {
+      throw new ApiError("CONFLICT","配置来源在导出期间已变化，请重新导出。",{reason:"configuration-export-stale"});
+    }
+  }); } catch (error) { rethrowSourceTransactionError(error); }
 
   await writeExportAudit(
     db,

@@ -20,8 +20,9 @@ export function WorkbenchPackageImportDialog({ projectId, onDismiss, onApplied, 
   const first = useRef<HTMLInputElement>(null), generation = useRef(0);
   const mutation = useRef<{ proofToken: string; reason: string; clientMutationId: string } | null>(null);
   function invalidate() { generation.current += 1; setPending(null); setPreview(null); setError(""); setDiagnostics([]); mutation.current = null; }
-  function showError(cause: unknown) {
-    setError(presentError(cause, "配置导入失败，文件和输入已保留。"));
+  function showError(cause: unknown, unknownResult = false) {
+    const message = presentError(cause, unknownResult ? "文件和输入已保留。" : "配置预览失败，文件和输入已保留。");
+    setError(unknownResult ? `未能确认导入结果，请重试同一操作。${message}` : message);
     const rows = cause instanceof WiseEffApiError ? cause.details.diagnostics : null;
     setDiagnostics(Array.isArray(rows) ? rows.flatMap(row => row && typeof row === "object" && "message" in row && typeof row.message === "string" ? [row.message] : []) : []);
   }
@@ -53,7 +54,7 @@ export function WorkbenchPackageImportDialog({ projectId, onDismiss, onApplied, 
     try { await onApplied(await client.apply(projectId, { name: name.trim(), ownership, archive, ...mutation.current })); }
     catch (cause) {
       if (cause instanceof WiseEffApiError && ["CONFLICT", "VALIDATION_FAILED", "FORBIDDEN", "NOT_FOUND"].includes(cause.code)) { mutation.current = null; setPreview(null); }
-      showError(cause);
+      showError(cause, Boolean(mutation.current));
     } finally { setPending(null); }
   }
   const locked = pending === "apply" || Boolean(mutation.current);

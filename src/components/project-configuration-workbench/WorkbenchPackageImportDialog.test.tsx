@@ -16,13 +16,13 @@ async function selectFile(user:ReturnType<typeof userEvent.setup>) {
 
 it("uses one preview/confirm flow and preserves inputs on a recoverable failure",async()=>{
   const user=userEvent.setup(),onApplied=vi.fn();
-  const client={preview:vi.fn().mockResolvedValue(result),apply:vi.fn().mockRejectedValueOnce(new Error("Storage unavailable")).mockResolvedValue({configSetId:"new",configRevisionId:"revision",fileIds:["fresh"],ownership:"reuse" as const})};
+  const client={preview:vi.fn().mockResolvedValue(result),apply:vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValue({configSetId:"new",configRevisionId:"revision",fileIds:["fresh"],ownership:"reuse" as const})};
   render(<WorkbenchPackageImportDialog projectId="project" client={client} onDismiss={vi.fn()} onApplied={onApplied}/>);
   await selectFile(user);await user.click(screen.getByRole("button",{name:"预览导入"}));
   expect(await screen.findByLabelText("配置导入预览")).toHaveTextContent("boards/original/board.dts");
   await user.type(screen.getByRole("textbox",{name:"导入原因"}),"Reproduce original sources");
   await user.click(screen.getByRole("button",{name:"确认导入"}));
-  expect(await screen.findByRole("alert")).toHaveTextContent("配置导入失败，文件和输入已保留。");
+  expect(await screen.findByRole("alert")).toHaveTextContent("未能确认导入结果，请重试同一操作");
   expect(screen.getByRole("textbox",{name:"导入原因"})).toHaveValue("Reproduce original sources");
   await user.click(screen.getByRole("button",{name:"重试同一操作"}));
   await waitFor(()=>expect(onApplied).toHaveBeenCalledOnce());
@@ -50,6 +50,7 @@ it("retries the committed operation when refreshing the new configuration fails"
   await user.type(await screen.findByRole("textbox",{name:"导入原因"}),"Preserve exact source inputs");
   await user.click(screen.getByRole("button",{name:"确认导入"}));
   expect(await screen.findByRole("alert")).toHaveTextContent("输入已保留");
+  expect(screen.getByRole("alert")).toHaveTextContent("未能确认导入结果");
   await user.click(screen.getByRole("button",{name:"重试同一操作"}));
   await waitFor(()=>expect(onApplied).toHaveBeenCalledTimes(2));
   expect(client.apply.mock.calls[0]).toEqual(client.apply.mock.calls[1]);

@@ -17,6 +17,7 @@ import { createLocalObjectStore, type ObjectStore } from "../logs/objectStore";
 import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
 import { registerCatalogProjectValueConsumerRoutes } from "../parameter-bindings/catalogProjectValueRoutes";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
+import { registerParameterTopologyRoutes } from "../parameter-topology/routes";
 import { registerParameterRoutes } from "../parameters/routes";
 import { registerSharedDtsiRoutes } from "../shared-dtsi/routes";
 import { addConfigSetFile, createConfigSet } from "./configSetService";
@@ -39,7 +40,7 @@ describe("complete configuration package through the actual API role",()=>{
   const token=`package_${process.pid}`;
   function server(principal=auth,objects:ObjectStore=storage) {const router=createRouter();
     const options={db:api,objectStore:objects,getCurrentAuthContext:()=>principal,refusalAuditSink:createTrustedRefusalAuditSink(db)};
-    registerParameterFileRoutes(router,options);registerSharedDtsiRoutes(router,options);registerCatalogProjectValueConsumerRoutes(router,options);registerParameterRoutes(router,options);
+    registerParameterFileRoutes(router,options);registerSharedDtsiRoutes(router,options);registerCatalogProjectValueConsumerRoutes(router,options);registerParameterRoutes(router,options);registerParameterTopologyRoutes(router,options);
     return createHttpServer(router);}
   const post=<T,>(path:string,body:unknown,principal=auth,objects:ObjectStore=storage)=>requestJson<T>(server(principal,objects),path,{method:"POST",body:JSON.stringify(body)});
   const importPath=(projectId:string)=>`/api/v1/projects/${projectId}/config-set-import`;
@@ -196,6 +197,31 @@ describe("complete configuration package through the actual API role",()=>{
       archive=await packageArchive(exported.body);
     }
   });
+
+  it("refuses a torn export when an actual source revision commits while its original object read is held",async()=>{
+    const exportPath=`/api/v1/projects/${SOURCE}/config-sets/${setId}/export`;
+    const current=await requestJson<ExportConfigSetResult>(server(),exportPath);expect(current.status,current.bodyText).toBe(200);
+    const entry=current.body.manifest.sourcePackage!.entryFile!,root=current.body.manifest.members.find(row=>row.role==="base" && row.format==="dts")!;
+    const files=await requestJson<{items:Array<{fileId:string;currentVersionId:string}>}>(server(),`/api/v1/projects/${SOURCE}/config-sets/${setId}/files`);expect(files.status,files.bodyText).toBe(200);
+    const versionId=files.body.items.find(row=>row.fileId===root.fileId)!.currentVersionId;
+    const revisions=await requestJson<{items:Array<{id:string}>}>(server(),`/api/v2/projects/${SOURCE}/config-sets/${setId}/revisions`);expect(revisions.status,revisions.bodyText).toBe(200);
+    const after=current.body.files.find(row=>row.name===entry)!.content.replace("<31>","<32>");
+    const candidate=await post<{item:{id:string}}>(`/api/v1/projects/${SOURCE}/parameter-file-candidates`,{fileId:root.fileId,fileName:root.fileName,
+      contentBase64:Buffer.from(after).toString("base64"),intent:"source_revision",expectedCurrentVersionId:versionId,expectedConfigRevisionId:revisions.body.items[0]!.id,clientMutationId:"export-currentness-candidate"});expect(candidate.status,candidate.bodyText).toBe(201);
+    const preview=await requestJson<{item:{proofToken:string}}>(server(),`/api/v1/projects/${SOURCE}/parameter-file-candidates/${candidate.body.item.id}/source-preview`);expect(preview.status,preview.bodyText).toBe(200);
+    let entered!:()=>void,release!:()=>void,held=false;
+    const started=new Promise<void>(resolve=>{entered=resolve;}),blocked=new Promise<void>(resolve=>{release=resolve;});
+    const slow:ObjectStore={...storage,async get(key){const bytes=await storage.get(key);if(!held){held=true;entered();await blocked;}return bytes;}};
+    const exporting=requestJson<ExportConfigSetResult>(server(auth,slow),exportPath);
+    try {
+      await started;
+      const applied=await post(`/api/v1/projects/${SOURCE}/parameter-file-candidates/${candidate.body.item.id}/source-apply`,{expectedCurrentVersionId:versionId,
+        expectedProofToken:preview.body.item.proofToken,reason:"Change real source during held original export read",clientMutationId:"export-currentness-apply"});expect(applied.status,applied.bodyText).toBe(200);
+    } finally {release();}
+    const stale=await exporting;expect(stale.status,stale.bodyText).toBe(409);expect(stale.bodyText).not.toContain('"manifest"');
+    const fresh=await requestJson<ExportConfigSetResult>(server(),exportPath);expect(fresh.status,fresh.bodyText).toBe(200);
+    expect(fresh.body.files.find(row=>row.name===entry)!.content).toBe(after);expect(fresh.body.manifest.validation?.ok).toBe(true);
+  },120_000);
 });
 
 describe("JSON source identities in complete configuration packages",()=>{
