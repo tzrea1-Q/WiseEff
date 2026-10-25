@@ -33,6 +33,17 @@ describe("WorkbenchConfigurationFilesDialog", () => {
     await user.click(screen.getByRole("menuitem",{name:"转换为共享引用"}));expect(onConvertShared).toHaveBeenCalledWith(values.members[0]);
     view.rerender(<WorkbenchConfigurationFilesDialog {...values} canAdmin={false} onConvertShared={onConvertShared}/>);
     await user.click(screen.getByRole("button",{name:"主板.dts 更多"}));expect(screen.queryByRole("menuitem",{name:"转换为共享引用"})).not.toBeInTheDocument();
+});
+
+  it("offers reference removal only once per direct resource and hides it from readers and dependencies",async()=>{
+    const user=userEvent.setup(),onRemoveSharedReference=vi.fn(),values=props({canonical:true,onRemoveSharedReference});
+    const sharedReference={referenceId:"ref",resourceId:"resource",versionId:"version",version:1,memberId:"member",digest:"fixed",readOnly:true as const,direct:true};
+    values.members=[{...values.members[0]!,fileName:"direct.dtsi",sharedReference},{...values.members[0]!,fileId:"second",fileName:"second.dtsi",sharedReference:{...sharedReference,memberId:"second"}},{...values.members[0]!,fileId:"child",fileName:"child.dtsi",sharedReference:{...sharedReference,resourceId:"child",direct:false}}];
+    const view=render(<WorkbenchConfigurationFilesDialog {...values}/>);
+    await user.click(screen.getByRole("button",{name:"direct.dtsi 更多"}));await user.click(screen.getByRole("menuitem",{name:"移除引用"}));expect(onRemoveSharedReference).toHaveBeenCalledWith(values.members[0]);
+    for(const name of ["second.dtsi","child.dtsi"]){await user.click(screen.getByRole("button",{name:`${name} 更多`}));expect(screen.queryByRole("menuitem",{name:"移除引用"})).not.toBeInTheDocument();await user.keyboard("{Escape}");}
+    view.rerender(<WorkbenchConfigurationFilesDialog {...values} canAdmin={false}/>);
+    await user.click(screen.getByRole("button",{name:"direct.dtsi 更多"}));expect(screen.queryByRole("menuitem",{name:"移除引用"})).not.toBeInTheDocument();
   });
   it("creates shared resources from checked private DTS sources and keeps JSON and fixed shared members out", async () => {
     const user = userEvent.setup(), onCreateShared = vi.fn(), values = props();

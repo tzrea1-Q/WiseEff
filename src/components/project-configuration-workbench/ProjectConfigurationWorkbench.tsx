@@ -751,7 +751,7 @@ export function ProjectConfigurationWorkbench({
   const [conversionSource,setConversionSource]=useState<{configRevisionId:string;fileId:string;fileVersionId:string;sourceName:string}|undefined>();
   const resolvedOrganizationId = organizationId ?? selectedConfigSet?.organizationId ?? null;
   const switchTaskKey=`wiseeff.shared-switch:${currentUserId}:${resolvedOrganizationId}:${project.id}:${selectedConfigSet?.id}`;
-  type SwitchTask={scope:string;reference:{resourceId:string;versionId:string;version:number};draft:{versionId:string;reason:string}};
+  type SwitchTask={scope:string;operation?:"remove";reference:{resourceId:string;versionId:string;version:number};draft:{versionId:string;reason:string}};
   const [switchTask,setSwitchTask]=useState<SwitchTask|null>(null);
   const activeSwitchTask=switchTask?.scope===switchTaskKey?switchTask:null;
   useEffect(()=>{
@@ -781,7 +781,7 @@ export function ProjectConfigurationWorkbench({
   const recoverSwitch=(location:SharedSwitchConflict,draft:SwitchTask["draft"])=>{
     const reference=activeSwitchTask?.reference??switchSharedMember?.sharedReference;
     if(!reference || !selectedConfigSet)return;
-    try{saveSwitchTask({scope:switchTaskKey,reference,draft});}catch{toast({tone:"danger",message:"无法保存版本切换任务，请检查浏览器存储后重试。"});return;}
+    try{saveSwitchTask({scope:switchTaskKey,...(activeSwitchTask?.operation?{operation:activeSwitchTask.operation}:{}),reference,draft});}catch{toast({tone:"danger",message:"无法保存引用变更任务，请检查浏览器存储后重试。"});return;}
     setMemberAdditionOpen(false);resumedSwitch.current="";
     const params=new URLSearchParams({organizationId:resolvedOrganizationId??"",configSet:selectedConfigSet.id,tab:"source",sourceMode:"working",sharedSwitch:"paused"});
     if(location.fileId&&!location.resourceId)params.set("file",location.fileId);
@@ -1968,9 +1968,9 @@ export function ProjectConfigurationWorkbench({
   return (
     <section className="configuration-workbench" aria-label="项目配置工作台" ref={workbenchBodyRef}>
       {activeSwitchTask && !memberAdditionOpen && canAdmin?<div role="group" aria-label="待重新预览的版本切换">
-        <Button type="button" variant="outline" onClick={()=>setMemberAdditionOpen(true)}>返回版本切换</Button>
-        <Button type="button" variant="outline" onClick={dismissSwitchTask}>取消版本切换</Button>
-        <span>目标版本与变更说明已保留；修正生效后重新预览。</span>
+        <Button type="button" variant="outline" onClick={()=>setMemberAdditionOpen(true)}>{activeSwitchTask.operation==="remove"?"返回移除引用":"返回版本切换"}</Button>
+        <Button type="button" variant="outline" onClick={dismissSwitchTask}>{activeSwitchTask.operation==="remove"?"取消移除引用":"取消版本切换"}</Button>
+        <span>{activeSwitchTask.operation==="remove"?"待移除引用与变更说明已保留；修正生效后重新预览。":"目标版本与变更说明已保留；修正生效后重新预览。"}</span>
       </div>:null}
       <NavigatorWorkbench
         pageKey={`project-configuration:${project.id}`}
@@ -2227,6 +2227,7 @@ export function ProjectConfigurationWorkbench({
         onAddSourceFile={() => openInspector("candidates")}
         onCanonicalAdd={apiMode ? () => {dismissSwitchTask();setMemberAdditionOpen(true);} : undefined}
         onSwitchSharedVersion={apiMode?member=>{setSwitchSharedMember(member);if(member.sharedReference){const task={scope:switchTaskKey,reference:member.sharedReference,draft:{versionId:"",reason:""}};try{saveSwitchTask(task);}catch{setSwitchTask(task);}}setMemberAdditionOpen(true);}:undefined}
+        onRemoveSharedReference={apiMode?member=>{if(member.sharedReference){const task:SwitchTask={scope:switchTaskKey,operation:"remove",reference:member.sharedReference,draft:{versionId:"",reason:""}};try{saveSwitchTask(task);}catch{setSwitchTask(task);}setMemberAdditionOpen(true);}}:undefined}
         onSetRoot={apiMode ? setSetRootTarget : undefined}
         onConvertShared={apiMode&&sharedImportRevisionId?member=>{if(!member.currentVersionId)return;dismissSwitchTask();setConversionSource({configRevisionId:sharedImportRevisionId,fileId:member.fileId,fileVersionId:member.currentVersionId,sourceName:member.fileName});setMemberAdditionOpen(true);}:undefined}
         onCreateShared={apiMode && sharedDtsiClient && sharedImportRevisionId ? member => {
@@ -2245,12 +2246,13 @@ export function ProjectConfigurationWorkbench({
       /> : null}
       {memberAdditionOpen && canAdmin && selectedConfigSet ? <WorkbenchMemberAdditionDialog key={`${resolvedOrganizationId}:${project.id}:${selectedConfigSet.id}`} projectId={project.id} configSets={configSets}
         client={additionClient} sharedClient={sharedDtsiClient}
-        switchReference={activeSwitchTask?.reference??switchSharedMember?.sharedReference}
+        switchReference={activeSwitchTask?.operation==="remove"?undefined:activeSwitchTask?.reference??switchSharedMember?.sharedReference}
+        removeReference={activeSwitchTask?.operation==="remove"?activeSwitchTask.reference:undefined}
         conversionSource={conversionSource}
         switchDraft={activeSwitchTask?.draft} onSwitchDraftChange={updateSwitchDraft} onRecoverSwitch={recoverSwitch}
         projectRoot={selectedMembers.find(member=>member.role==="base")?{fileId:selectedMembers.find(member=>member.role==="base")!.fileId,sourceName:selectedMembers.find(member=>member.role==="base")!.fileName}:undefined}
         catalogRepository={memberRemovalRepository} fileRepository={fileRepository}
-        initialConfigSetId={selectedConfigSet.id} availableFiles={ungroupedFiles} onDismiss={dismissSwitchTask}
+        initialConfigSetId={selectedConfigSet.id} availableFiles={ungroupedFiles} onDismiss={()=>{if(activeSwitchTask?.operation==="remove"){workspaceLoadSession.retryFiles();workspaceLoadSession.retryMembers();}dismissSwitchTask();}}
         onApplied={(configSetId, fileId) => {
           dismissSwitchTask(); setInspectorOpen(false); workspaceLoadSession.retryFiles(); workspaceLoadSession.retryMembers();
           workspaceLoadSession.retrySource(); workspaceLoadSession.retryStructure(); setSourceWorkflowReloadToken((value) => value + 1);
