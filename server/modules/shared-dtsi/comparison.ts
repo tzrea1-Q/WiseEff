@@ -1,7 +1,7 @@
 import type { Database } from "../../shared/database/client";
 import type { AuthContext } from "../auth/types";
 import type { SharedDtsiComparison, SharedDtsiVersion } from "../contracts/dtoSchemas/sharedDtsi";
-import { parseDts, parseDtsValue, renderDtsValue, type DtsNodeCst, type DtsValue } from "../dts";
+import { parseDts, parseDtsValue, renderDtsValue, type DtsDocument, type DtsValue } from "../dts";
 import { expandDtsIncludes } from "../dts/configSetResolver";
 import { closureMembers, loadSharedDtsiClosure } from "./dependencies";
 import { getSharedDtsiVersion } from "./publication";
@@ -16,11 +16,17 @@ function semanticValue(value:DtsValue):DtsValue {
     default:return value;
   }
 }
-export function sharedDtsiDeclarationSemantics(nodes:DtsNodeCst[],indent=""):string {
-  return nodes.map(node=>`${indent}${node.labels.map(label=>`${label}: `).join("")}${node.refTarget?`&${node.refTarget}`:node.isOverlayRoot?"/":`${node.name}${node.unitAddress===undefined?"":`@${node.unitAddress}`}`} {\n${
-    node.children.map(child=>child.kind==="node"?sharedDtsiDeclarationSemantics([child],`${indent}  `)
-      :child.kind==="property"?`${indent}  ${child.name}${child.rawText.trim()?` = ${renderDtsValue(semanticValue(child.value??parseDtsValue(child.name,child.rawText).value))}`:""};`
-        :`${indent}  /${child.kind}/ ${child.name}${child.kind==="delete-node"&&child.unitAddress!==undefined?`@${child.unitAddress}`:""};`).join("\n")}\n${indent}};`).join("\n");
+export function sharedDtsiDeclarationSemantics(document:DtsDocument):string {
+  type Statement=DtsDocument["topLevel"][number]|DtsDocument["topLevel"][number]["children"][number]|DtsDocument["directives"][number];
+  const print=(statement:Statement,indent=""):string=>{
+    if(statement.kind==="directive")return `${indent}${statement.name}${statement.arg?` ${JSON.stringify(statement.arg)}`:""}${document.source[statement.span.end-1]===";"?";":""}`;
+    if(statement.kind==="property")return `${indent}${statement.name}${statement.rawText.trim()?` = ${renderDtsValue(semanticValue(statement.value??parseDtsValue(statement.name,statement.rawText).value))}`:""};`;
+    if(statement.kind!=="node")return `${indent}/${statement.kind}/ ${statement.name}${statement.kind==="delete-node"&&statement.unitAddress!==undefined?`@${statement.unitAddress}`:""};`;
+    return `${indent}${statement.labels.map(label=>`${label}: `).join("")}${statement.refTarget?`&${statement.refTarget}`:statement.isOverlayRoot?"/":`${statement.name}${statement.unitAddress===undefined?"":`@${statement.unitAddress}`}`} {\n${statement.children.map(child=>print(child,`${indent}  `)).join("\n")}\n${indent}};`;
+  };
+  // The parser groups fragment properties under a synthetic root; their spans retain the real interleaving.
+  const statements:Statement[]=[...document.directives,...document.topLevel.flatMap<Statement>(node=>node.isOverlayRoot&&node.children[0]?.span.start===node.span.start?node.children:[node])];
+  return statements.sort((a,b)=>a.span.start-b.span.start).map(statement=>print(statement)).join("\n");
 }
 
 export async function compareSharedDtsiVersions(db:Database,auth:AuthContext,resourceId:string,beforeId:string,afterId:string):Promise<SharedDtsiComparison> {
@@ -35,7 +41,7 @@ export async function compareSharedDtsiVersions(db:Database,auth:AuthContext,res
     const included=new Set(version.manifest.includeGraph.map(edge=>edge.target));
     const roots=members.filter(member=>member.sourceName.endsWith(".dtsi")&&!included.has(member.sourceName));
     const declarations=roots.map(root=>`// ${root.sourceName}\n${sharedDtsiDeclarationSemantics(parseDts(expandDtsIncludes({entryFile:root.sourceName,files,
-      includeSearchPaths:version.manifest.buildInputs.includeSearchPaths}).text).topLevel)}`);
+      includeSearchPaths:version.manifest.buildInputs.includeSearchPaths}).text))}`);
     return {sources,semantics:declarations.join("\n\n")};
   };
   const left=await prepare(before),right=await prepare(after);
