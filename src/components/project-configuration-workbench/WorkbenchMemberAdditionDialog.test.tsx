@@ -21,6 +21,7 @@ it("converts an explicitly selected private source through the shared chooser an
     client={client} sharedClient={{list:vi.fn(async()=>({items:[{resourceId,name:"Power",sourceName:file.sourceName,draftRevision:null,state:"active" as const,lifecycleRevision:1,updatedAt:"today",currentVersion:{id:versionId,resourceId,version:1,name:"Power",changeDescription:"Private source",digest:"fixed",createdAt:"today",createdByUserId:"admin"}}],total:1})),versions:vi.fn(async()=>({items:[{id:versionId,resourceId,version:1,name:"Power",changeDescription:"Private source",digest:"fixed",createdAt:"today",createdByUserId:"admin"}],total:1}))}}
     onDismiss={vi.fn()} onApplied={vi.fn()}/>);
   expect(screen.getByRole("dialog")).toHaveAccessibleName("转换为共享引用");
+  expect(screen.getByText("文件用途、顺序和项目根入口保持原样。")).toBeVisible();
   expect(screen.queryByRole("combobox",{name:"文件来源"})).not.toBeInTheDocument();
   await user.click(await screen.findByRole("combobox",{name:"共享资源"}));await user.click(await screen.findByRole("option",{name:"Power"}));
   await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 1 · Private source"}));

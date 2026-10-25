@@ -169,7 +169,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
             {!removeReference?<div className="workbench-member-addition-dialog__columns">
               {source !== "shared" ? <label>文件用途<SelectControl ariaLabel="文件用途" value={role} disabled={busy}
                 onValueChange={(value) => { setRole(value); invalidate(); }}
-                options={(Object.keys(roleLabels) as Array<MemberAdditionBody["role"]>).map((value) => ({ value, label: roleLabels[value] }))} /></label> : <p>用途：共享 include（项目根入口保持不变）</p>}
+                options={(Object.keys(roleLabels) as Array<MemberAdditionBody["role"]>).map((value) => ({ value, label: roleLabels[value] }))} /></label> : <p>{conversionSource?"文件用途、顺序和项目根入口保持原样。":"用途：共享 include（项目根入口保持不变）"}</p>}
               {source!=="shared"?<label>文件顺序<Input aria-label="文件顺序" type="number" required min="0" max="100000" step="1" value={sortOrder}
                 onChange={(event) => { setSortOrder(event.target.value); invalidate(); }} /></label>:null}
             </div>:null}
