@@ -23,6 +23,7 @@ import { uploadProjectParameterFile } from "./service";
 import { previewProjectDeletion } from "../projects/deletionPreview";
 import { purgeProject } from "../projects/purge";
 import { createUserInvocation } from "../auth/trustedInvocation";
+import { getAuthContext } from "../auth/repository";
 import type { SourceRevisionPreview } from "./sourceRevisionService";
 
 const ORG = "org-shared-ref", ADMIN = "user-shared-ref", A = "shared-project-a", B = "shared-project-b";
@@ -187,6 +188,42 @@ describe("fixed shared references through the real API role", () => {
     const siblingApplied=await post<Applied>(`${path(A)}/apply`,{...siblingBody,proofToken:siblingPreview.body.item.proofToken,reason:"Reuse the same exact fixed dependency",clientMutationId:"reused-dependency"});
     expect(siblingApplied.status,siblingApplied.bodyText).toBe(200);appliedA.configRevisionId=siblingApplied.body.item.configRevisionId;
     const leafUsages=await requestJson<{total:number}>(server(),`/api/v2/shared-dtsi/${leaf.resourceId}/usages`);expect(leafUsages.body.total).toBe(2);
+  });
+
+  it("reauthorizes usage scope after a Home transfer to another Organization administrator",async()=>{
+    const otherHome="shared-usage-other-home",transferredUser="shared-usage-transferred-user";
+    await db.query("insert into organizations(id,name) values ($1,'Other usage Home')",[otherHome]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Transferred reader','Engineer',true)",[transferredUser,ORG]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('shared-usage-old-project-role',$1,$2,$3,'hardware-user')",[transferredUser,ORG,A]);
+    const staleTransfer=await getAuthContext(api,transferredUser);
+    await db.transaction(async tx=>{
+      await tx.query("delete from user_role_bindings where user_id=$1",[transferredUser]);
+      await tx.query("delete from project_members where user_id=$1",[transferredUser]);
+      await tx.query("delete from user_oidc_identities where user_id=$1",[transferredUser]);
+      await tx.query("update users set organization_id=$1 where id=$2",[otherHome,transferredUser]);
+      await tx.query("insert into user_oidc_identities(user_id,organization_id) values ($1,$2)",[transferredUser,otherHome]);
+      await tx.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('shared-usage-transferred-admin',$1,$2,'admin')",[transferredUser,otherHome]);
+    });
+    const transferred=await requestJson(server(staleTransfer),`/api/v2/shared-dtsi/${resourceId}/usages`);
+    expect(transferred.status,transferred.bodyText).toBe(403);
+    expect(transferred.bodyText).not.toContain(A);expect(transferred.bodyText).not.toContain(B);
+  });
+
+  it("rechecks carried operating-target access after the platform role is revoked",async()=>{
+    const otherHome="shared-usage-platform-home",platformUser="shared-usage-platform-user";
+    await db.query("insert into organizations(id,name) values ($1,'Platform usage Home')",[otherHome]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Operating administrator','Admin',true)",[platformUser,otherHome]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('shared-usage-platform-role',$1,$2,'platform-admin')",[platformUser,otherHome]);
+    const stalePlatform=await getAuthContext(api,platformUser);
+    const endpoint=`/api/v2/shared-dtsi/${resourceId}/usages?organizationId=${ORG}`;
+    const authorized=await requestJson<{items:{projectId:string}[];total:number;visibility:string}>(server(stalePlatform),endpoint);
+    expect(authorized.status,authorized.bodyText).toBe(200);
+    expect(authorized.body).toMatchObject({total:2,visibility:"organization"});
+    expect(authorized.body.items.map(row=>row.projectId).sort()).toEqual([A,B]);
+    await db.query("update user_role_bindings set role_id='admin' where id='shared-usage-platform-role'");
+    const revoked=await requestJson(server(stalePlatform),endpoint);
+    expect(revoked.status,revoked.bodyText).toBe(403);
+    expect(revoked.bodyText).not.toContain(A);expect(revoked.bodyText).not.toContain(B);
   });
 
   it("rejects legacy and canonical direct writes to the shared snapshot", async () => {

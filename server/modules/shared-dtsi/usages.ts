@@ -2,17 +2,22 @@ import type { Database } from "../../shared/database/client";
 import type { AuthContext } from "../auth/types";
 import { parameterUsageProjectScope } from "../parameter-kernel/policy";
 import { getAuthContext } from "../auth/repository";
+import { resolveOperatingContext } from "../auth/operatingContext";
+import { createUserInvocation } from "../auth/trustedInvocation";
 import { ApiError } from "../../shared/http/errors";
 import { requireRead } from "./service";
-import { parameterOrganizationId } from "../parameters/operatingScope";
+import { parameterOrganizationId, withParameterAccess } from "../parameters/operatingScope";
 import { getSharedDtsiResourceDetail } from "./publication";
 
 export async function listSharedDtsiUsages(db:Database,auth:AuthContext,resourceId:string,input:{offset:number;limit:number}) {
-  await getSharedDtsiResourceDetail(db,auth,resourceId);
-  const current=await getAuthContext(db,auth.user.id);requireRead(current);
-  const scope=parameterUsageProjectScope(current);
+  const requestedOrganizationId=parameterOrganizationId(auth),current=await getAuthContext(db,auth.user.id);
+  if(current.organization.id!==auth.organization.id)throw new ApiError("FORBIDDEN","账户所属组织已变化，请重新登录后访问共享资源。",{reason:"authentication-scope-changed"});
+  requireRead(current);
+  const authorized=withParameterAccess(current,await resolveOperatingContext(db,createUserInvocation(current),requestedOrganizationId));
+  await getSharedDtsiResourceDetail(db,authorized,resourceId);
+  const scope=parameterUsageProjectScope(authorized);
   if(!scope)throw new ApiError("FORBIDDEN","当前项目使用范围不可用。");
-  const values=[parameterOrganizationId(auth),resourceId,scope.kind==="all"?null:scope.ids];
+  const values=[parameterOrganizationId(authorized),resourceId,scope.kind==="all"?null:scope.ids];
   const from=`from public.project_shared_dtsi_references ref
     join public.projects project on project.id=ref.project_id and project.organization_id=ref.organization_id
     join public.dts_config_set config on config.id=ref.config_set_id and config.project_id=project.id

@@ -31,7 +31,7 @@ async function completePublicationSource(db:Database,auth:AuthContext,draft:Shar
     if(paths.has(path))throw new ApiError("VALIDATION_FAILED",`${path}：本资源与依赖的挂载路径冲突。`);
     paths.add(path);
   }
-  const source=publicationSource({...draft,members});
+  const source=await publicationSource({...draft,members});
   if(!resources.length && !draft.dependencies?.length)return source;
   const own=new Set(draft.members.map(member=>member.id));
   source.members=source.members.filter(member=>own.has(member.id));
