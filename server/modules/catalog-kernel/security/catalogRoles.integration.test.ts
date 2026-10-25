@@ -1472,14 +1472,87 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
         "select parameter_catalog.definition_purge_allows_change('parameter_catalog','parameter_definitions','{}'::jsonb,'DELETE')"), p01Gate());
       assertSqlstate42501(await captureRoleStatementError(client, role,
         "select * from parameter_catalog.definition_purge_rows"), p01Gate());
+      assertSqlstate42501(await captureRoleStatementError(client, role,
+        "select parameter_catalog.definition_purge_mark('public.shared_dtsi_revisions','[]'::jsonb,'DELETE')"), p01Gate());
     }
-    const branches = await client.query<{ guarded: boolean }>(`select bool_and(pg_get_functiondef(p.oid) like
-      '%if TG_OP in (''UPDATE'',''DELETE'') and current_user=''catalog_migration_owner'' then%'
-      or (p.proname='protect_erased_source_pin_provenance' and p.prosecdef and pg_get_userbyid(p.proowner)='catalog_migration_owner')) as guarded
+    const branches = await client.query<{ identity: string; owner: string; security_definer: boolean;
+      source: string; runtime_execute: boolean; migration_executor_owner: boolean; settings: string[] }>(`select p.oid::regprocedure::text as identity,
+      pg_get_userbyid(p.proowner) as owner,p.prosecdef as security_definer,p.prosrc as source,p.proconfig as settings,
+      pg_get_userbyid(p.proowner)=session_user as migration_executor_owner,
+      exists(select 1 from unnest($1::text[]) role where has_function_privilege(role,p.oid,'execute')) as runtime_execute
       from pg_proc p join pg_namespace n on n.oid=p.pronamespace
       where n.nspname in ('public','parameter_catalog','catalog_publication') and p.prorettype='trigger'::regtype
-      and pg_get_functiondef(p.oid) like '%definition_purge_allows_change%'`);
-    expect(branches.rows).toEqual([{ guarded: true }]);
+      and pg_get_functiondef(p.oid) like '%definition_purge_allows_change%'`, [roles]);
+    expect(branches.rows.length).toBeGreaterThan(0);
+    for (const branch of branches.rows) {
+      const explicitOwner = branch.source.includes("if TG_OP in ('UPDATE','DELETE') and current_user='catalog_migration_owner' then")
+        || branch.source.includes("if current_user='catalog_migration_owner' and parameter_catalog.definition_purge_allows_change(TG_TABLE_SCHEMA,TG_TABLE_NAME,to_jsonb(OLD),TG_OP) then");
+      // An invoker cannot enter the private probe without its EXECUTE grant. This
+      // exact single DELETE branch admits only that row's transaction capability.
+      const privateInvoker = !branch.security_definer && branch.migration_executor_owner && /^\s*begin\s+if TG_OP='DELETE' and parameter_catalog\.definition_purge_allows_change\(TG_TABLE_SCHEMA,TG_TABLE_NAME,to_jsonb\(OLD\),'DELETE'\) then return OLD; end if;\s+raise exception using errcode='55000',message='Published shared DTSI source is immutable';\s*end\s*$/u.test(branch.source);
+      // The lifecycle guard runs as the migration executor. Its private probe is
+      // nested inside this exact deleting-owner/live-domain-lease block.
+      const leasedPrivateProbe = branch.security_definer && branch.migration_executor_owner && !branch.runtime_execute
+        && branch.source.includes(`if state='deleting' or (state is null and tg_table_schema='public' and tg_table_name='knowledge_attachment_writes') then`)
+        && branch.source.includes(`if exists(select 1 from public.organization_erasures e where e.target_organization_id=org and e.status='running'
+        and e.stage='domains' and e.id=current_setting('wiseeff.organization_erasure_id',true)
+        and e.lease_owner=current_setting('wiseeff.organization_erasure_lease',true) and e.lease_expires_at>clock_timestamp()) then
+        if tg_op='DELETE' and tg_table_schema='public'
+          and tg_table_name=any(array['shared_dtsi_resources','shared_dtsi_members','shared_dtsi_drafts','shared_dtsi_draft_members',
+            'shared_dtsi_revisions','shared_dtsi_revision_members','shared_dtsi_publication_previews','project_shared_dtsi_references'])
+          and parameter_catalog.definition_purge_allows_change(TG_TABLE_SCHEMA,TG_TABLE_NAME,old_value,'DELETE') then return old; end if;`);
+      const privatePinOwner = branch.security_definer && branch.owner === CATALOG_MIGRATION_OWNER && !branch.runtime_execute
+        && branch.source.includes("if new.erased_request_audit_id is not null and (TG_OP='INSERT' or new.erased_request_audit_id is distinct from old.erased_request_audit_id)\n    and not (TG_OP='UPDATE' and parameter_catalog.definition_purge_allows_change(TG_TABLE_SCHEMA,TG_TABLE_NAME,to_jsonb(old),'UPDATE')) then");
+      expect(explicitOwner || privateInvoker || leasedPrivateProbe || privatePinOwner, branch.identity).toBe(true);
+      if (privateInvoker || leasedPrivateProbe) expect(branch.settings, branch.identity).toEqual(["search_path=pg_catalog, public"]);
+      if (branch.security_definer && explicitOwner) {
+        expect(branch.owner, branch.identity).toBe(CATALOG_MIGRATION_OWNER);
+        expect(branch.runtime_execute, branch.identity).toBe(false);
+      }
+    }
+  });
+
+  it("requires exact private row capabilities and a live organization lease for shared erasure", async () => {
+    await client.query("begin");
+    try {
+      await client.query("insert into public.organizations(id,name) values ('private-shared-org','Private shared guard')");
+      await client.query("insert into public.shared_dtsi_resources(id,organization_id,name) values ('private-shared-resource','private-shared-org','Published'),('private-lease-resource','private-shared-org','Lease'),('private-unmarked-resource','private-shared-org','Unmarked')");
+      await client.query(`insert into public.shared_dtsi_revisions(id,resource_id,organization_id,version,name,draft_revision,change_description,manifest,digest,created_by_user_id)
+        values ('private-shared-version','private-shared-resource','private-shared-org',1,'Published',1,'Guard proof','{}','sha256:private','private-actor')`);
+      await client.query("insert into public.projects(id,organization_id,name,code) values ('private-shared-project','private-shared-org','Project','PRIVATE')");
+      await client.query("insert into public.dts_config_set(id,organization_id,project_id,name) values ('private-shared-set','private-shared-org','private-shared-project','Set')");
+      await client.query(`insert into public.project_shared_dtsi_references(id,organization_id,project_id,config_set_id,resource_id,revision_id,created_by_user_id)
+        values ('private-shared-ref','private-shared-org','private-shared-project','private-shared-set','private-shared-resource','private-shared-version','private-actor')`);
+      await client.query("grant select,delete on public.shared_dtsi_revisions,public.project_shared_dtsi_references to parameter_governance_writer_role");
+      const refuses = async (sql: string, code: string) => {
+        await client.query("savepoint private_shared_guard");
+        try { expect(await captureDatabaseError(client.query(sql))).toMatchObject({ code }); }
+        finally { await client.query("rollback to savepoint private_shared_guard"); }
+      };
+      await client.query("set local role parameter_governance_writer_role");
+      await refuses("delete from public.shared_dtsi_revisions where id='private-shared-version'", "42501");
+      await refuses("delete from public.project_shared_dtsi_references where id='private-shared-ref'", "55000");
+      await client.query("reset role");
+      await client.query("set local role catalog_migration_owner");
+      await refuses("delete from public.shared_dtsi_revisions where id='private-shared-version'", "55000");
+      await client.query("select parameter_catalog.definition_purge_mark('public.shared_dtsi_resources','[{\"id\":\"private-lease-resource\"}]'::jsonb,'DELETE')");
+      await client.query("reset role");
+      await client.query("update public.organizations set status='deleting' where id='private-shared-org'");
+      await client.query(`insert into public.organization_erasures(id,target_organization_id,actor_user_id,status,stage,counts,lease_owner,lease_expires_at)
+        values ('private-shared-erasure','private-shared-org','private-actor','running','domains','{}','private-lease',clock_timestamp()-interval '1 hour')`);
+      await refuses("delete from public.shared_dtsi_resources where id='private-lease-resource'", "55000");
+      await client.query("select set_config('wiseeff.organization_erasure_id','private-shared-erasure',true),set_config('wiseeff.organization_erasure_lease','private-lease',true)");
+      await refuses("delete from public.shared_dtsi_resources where id='private-lease-resource'", "55000");
+      await client.query("update public.organization_erasures set lease_expires_at=clock_timestamp()+interval '1 hour' where id='private-shared-erasure'");
+      await client.query("select set_config('wiseeff.organization_erasure_lease','wrong-lease',true)");
+      await refuses("delete from public.shared_dtsi_resources where id='private-lease-resource'", "55000");
+      await client.query("select set_config('wiseeff.organization_erasure_lease','private-lease',true)");
+      await refuses("delete from public.shared_dtsi_resources where id='private-unmarked-resource'", "55000");
+      expect((await client.query("delete from public.shared_dtsi_resources where id='private-lease-resource' returning id")).rows)
+        .toEqual([{ id: "private-lease-resource" }]);
+      expect((await client.query("select id from public.shared_dtsi_revisions where id='private-shared-version'")).rows)
+        .toEqual([{ id: "private-shared-version" }]);
+    } finally { await client.query("rollback"); }
   });
 
   it("T12: governance writer cannot create a SECURITY DEFINER writer function", async () => {
@@ -1622,7 +1695,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
   });
 
   it("DEFINER owner extractor retains SELECT on public source tables after ownership transfer", async () => {
-    const missing = await client.query<{
+    const missingSourcePrivileges = () => client.query<{
       function_name: string;
       table_name: string;
     }>(`
@@ -1654,13 +1727,13 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
           procedure.oid as function_oid,
           procedure.proname as function_name,
           pg_catalog.pg_get_userbyid(procedure.proowner) as function_owner,
-          match[1] as table_name
+          match[1] as relation_prefix,match[2] as table_name,match[3] as call_suffix
         from pg_catalog.pg_proc procedure
         join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
         cross join lateral pg_catalog.regexp_matches(
           pg_catalog.pg_get_functiondef(procedure.oid),
-          'public\\.([a-z_][a-z0-9_]*)',
-          'g'
+          '(insert[[:space:]]+into[[:space:]]+(?:only[[:space:]]+)?|update[[:space:]]+(?:only[[:space:]]+)?|delete[[:space:]]+from[[:space:]]+(?:only[[:space:]]+)?|table[[:space:]]+|references[[:space:]]+)?public\\.([a-z_][a-z0-9_]*)([[:space:]]*\\()?',
+          'gi'
         ) as match
         where namespace.nspname = 'parameter_catalog'
           and procedure.prosecdef
@@ -1670,6 +1743,15 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       -- Historical cutover archives are optional on a fresh installation.
       -- Existing archives and every other referenced relation still require SELECT.
       where case
+        -- A registered function invocation needs EXECUTE, not table SELECT.
+        -- Existing relations and DML target column lists remain table checks;
+        -- unknown calls/relations still fail closed, including same-name objects.
+        when relation_prefix is null and call_suffix is not null
+          and pg_catalog.to_regclass(format('public.%I', table_name)) is null then not coalesce((
+            select bool_and(pg_catalog.has_function_privilege(refs.function_owner,callee.oid,'execute'))
+            from pg_catalog.pg_proc callee join pg_catalog.pg_namespace callee_namespace on callee_namespace.oid=callee.pronamespace
+            where callee_namespace.nspname='public' and callee.proname=refs.table_name
+          ),false)
         when table_name in ('legacy_parameter_definitions', 'legacy_project_parameter_values')
           and pg_catalog.to_regclass(format('public.%I', table_name)) is null then false
         else not coalesce(pg_catalog.has_table_privilege(
@@ -1702,7 +1784,32 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       )
       order by function_name, table_name
     `);
-    expect(missing.rows).toEqual([]);
+    expect((await missingSourcePrivileges()).rows).toEqual([]);
+    await client.query("begin");
+    try {
+      await client.query("create function public.source_privilege_callable() returns integer language sql as $$ select 1 $$");
+      await client.query("revoke all on function public.source_privilege_callable() from public");
+      await client.query("grant execute on function public.source_privilege_callable() to catalog_migration_owner");
+      await client.query(`create function parameter_catalog.source_privilege_probe() returns integer language plpgsql security definer
+        set search_path=pg_catalog as $$ begin return public.source_privilege_callable(); end $$`);
+      await client.query("alter function parameter_catalog.source_privilege_probe() owner to catalog_migration_owner");
+      expect((await missingSourcePrivileges()).rows).toEqual([]);
+      await client.query("revoke execute on function public.source_privilege_callable() from catalog_migration_owner");
+      const denied = [{ function_name: "source_privilege_probe", table_name: "source_privilege_callable" }];
+      expect((await missingSourcePrivileges()).rows).toEqual(denied);
+      await client.query("grant execute on function public.source_privilege_callable() to catalog_migration_owner");
+      await client.query("create table public.source_privilege_callable(id integer)");
+      expect((await missingSourcePrivileges()).rows).toEqual(denied);
+      await client.query("grant select on public.source_privilege_callable to catalog_migration_owner");
+      expect((await missingSourcePrivileges()).rows).toEqual([]);
+      await client.query("drop table public.source_privilege_callable");
+      await client.query(`create or replace function parameter_catalog.source_privilege_probe() returns integer language plpgsql security definer
+        set search_path=pg_catalog as $$ declare result integer; begin select count(*) into result from public.source_privilege_callable; return result; end $$`);
+      expect((await missingSourcePrivileges()).rows).toEqual(denied);
+      await client.query(`create or replace function parameter_catalog.source_privilege_probe() returns integer language plpgsql security definer
+        set search_path=pg_catalog as $$ begin insert into public.source_privilege_callable(id) values(1); return 1; end $$`);
+      expect((await missingSourcePrivileges()).rows).toEqual(denied);
+    } finally { await client.query("rollback"); }
 
     await client.query(`
       insert into public.organizations (id, name)
