@@ -132,6 +132,7 @@ describe("fresh database fixture policy", () => {
       "server/modules/parameter-kernel/parameterIdentityMode.integration.test.ts": ["test_t1080ci2_identity:false"],
       "server/modules/parameter-specs/specReviewTenantEvidence.integration.test.ts": ["mig0055:false"],
       "server/modules/parameter-topology/manifestBackfillMigration.test.ts": ["mig0054:false"],
+      "server/modules/parameter-topology/declaredBuildInputsUpgrade.integration.test.ts": ["cppinputupgrade:false"],
       "server/modules/parameter-topology/migration.test.ts": ["mig14-provenance-matrix:false", "mig14-red-constraints:false", "mig14-upgrade:false"],
       "server/modules/parameter-topology/schemaMigration.test.ts": ["schema_mig:false"],
       "server/modules/parameters/moduleParentRepairMigration.test.ts": ["mig0109:false"],
@@ -139,6 +140,7 @@ describe("fresh database fixture policy", () => {
       "server/modules/projects/members.authorization.integration.test.ts": ["membercutover:false"],
       "server/modules/projects/members.migration.integration.test.ts": ["projectmembers:false"],
       "server/modules/release-verification/core/migration.integration.test.ts": ["s10per:false"],
+      "server/modules/shared-dtsi/organizationErasure.integration.test.ts": ["orgdtsiupgrade:false"],
       // Replay existing API LOGIN grants before the durable cleanup boundary exists.
       "server/modules/users/organizationErasure.integration.test.ts": ["erasureupgrade:false"],
       "server/modules/users/organizationLifecycle.integration.test.ts": ["lifecycleupgrade:false"],
