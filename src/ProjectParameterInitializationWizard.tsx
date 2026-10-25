@@ -20,15 +20,19 @@ import type { PrototypeState } from "@/domain/prototype/types";
 import type { ParameterBindingValue } from "@/domain/parameter-topology/types";
 import { formatDtsValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
 import "./project-parameter-initialization.css";
+import type { InitializationConfigSnapshot } from "@/domain/parameters/initializationTypes";
+import { InitializationCopySummary } from "./components/InitializationCopySummary";
 
 type Props = {
   state: PrototypeState;
   dispatch: Dispatch<AppAction>;
   onClose: () => void;
   onPreview?: ParameterInitializationRepository["previewSnapshot"];
+  onCompletePreview?: ParameterInitializationRepository["previewCompleteCopy"];
   onSubmit?: (
     action: Extract<AppAction, { type: "SUBMIT_PARAMETER_INITIALIZATION" }>,
-    snapshots: SemanticInitializationSnapshotItem[]
+    snapshots: SemanticInitializationSnapshotItem[],
+    configSnapshots?: InitializationConfigSnapshot[]
   ) => Promise<void>;
 };
 
@@ -54,7 +58,7 @@ const wizardSteps = [
   },
   {
     label: "来源项目",
-    title: "选择要继承的项目",
+    title: "选择来源项目",
     description: "选择一个或多个已有项目。多来源时需要指定主来源，差异参数会保留独立来源并逐项确认。"
   },
   {
@@ -69,7 +73,9 @@ const wizardSteps = [
   }
 ] as const;
 
-export function ProjectParameterInitializationWizard({ state, dispatch, onClose, onPreview, onSubmit }: Props) {
+export function ProjectParameterInitializationWizard({ state, dispatch, onClose, onPreview, onCompletePreview, onSubmit }: Props) {
+  const [completeCopy, setCompleteCopy] = useState(false);
+  const [configSnapshots, setConfigSnapshots] = useState<InitializationConfigSnapshot[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [projectName, setProjectName] = useState("");
   const [projectCode, setProjectCode] = useState("");
@@ -279,6 +285,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
   }
 
   function validateParameterStep() {
+    if (completeCopy && !isEmptyInitialization) return configSnapshots.length > 0;
     if (isEmptyInitialization) {
       return true;
     }
@@ -368,6 +375,16 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
       setCanonicalSnapshots([]);
       setSelectedParameterIds([]);
       try {
+        if (completeCopy && !isEmptyInitialization && onCompletePreview) {
+          setConfigSnapshots([]);
+          const result = await onCompletePreview({ projectId: prospectiveProjectId,
+            primarySourceProjectId, supplementSourceProjectIds });
+          setConfigSnapshots(result.configSnapshots);
+          setCanonicalSnapshots(validateCanonicalSnapshots(result.items));
+          setSelectedParameterIds(result.items.map(item => item.sourceProjectParameterBindingId));
+          setCurrentStepIndex(2);
+          return;
+        }
         const snapshots = validateCanonicalSnapshots(await onPreview({
           projectId: prospectiveProjectId,
           primarySourceProjectId: isEmptyInitialization ? null : primarySourceProjectId,
@@ -432,7 +449,8 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
         const selectedSnapshots = canonicalSnapshots.filter((item) =>
           selectedAvailableParameterIds.includes(item.sourceProjectParameterBindingId)
         );
-        await onSubmit(action, selectedSnapshots);
+        if (completeCopy && !isEmptyInitialization) await onSubmit(action, selectedSnapshots, configSnapshots);
+        else await onSubmit(action, selectedSnapshots);
         onClose();
       } catch (submitError: unknown) {
         setError(submitError instanceof Error ? submitError.message : "参数初始化提交失败，请稍后重试。");
@@ -519,6 +537,10 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
                 </span>
               </label>
             </div>
+            {onCompletePreview ? <label className="project-init-source-empty-toggle"><input type="checkbox" aria-label="完整配置独立复制"
+              checked={completeCopy} disabled={startFromEmpty || previewingCanonicalSnapshots || submittingApiInitialization}
+              onChange={event => { setCompleteCopy(event.target.checked); setConfigSnapshots([]); setCanonicalSnapshots([]); setSelectedParameterIds([]); setSelectedModules([]); setSelectedRisks([]); }} />
+              <span><strong>完整配置独立复制</strong><small>复制全部配置及其固定源码，共享来源转为私有副本</small></span></label> : null}
             <div className="project-init-source-toolbar">
               <SearchField
                 className="project-init-source-search"
@@ -752,6 +774,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
   }
 
   function renderParameterStep() {
+    if (completeCopy && !isEmptyInitialization) return <InitializationCopySummary snapshots={configSnapshots} />;
     const emptyCandidateMessage = scopePool.length > 0
       ? "没有匹配的参数，请调整搜索或清除筛选。"
       : isApiMode
@@ -1006,6 +1029,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
             </div>
           </dl>
         </div>
+        {completeCopy && !isEmptyInitialization ? <InitializationCopySummary snapshots={configSnapshots} /> : null}
         {selectedAvailableParameterIds.length ? <div className="project-init-review-parameters">
           <h4>核对所选参数</h4>
           <p>以下来源与值将一并固定在初始化快照中。</p>
@@ -1018,7 +1042,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
               </tr>)}</tbody>
             </table>
           </HorizontalDragScroll>
-        </div> : <p className="project-init-empty-hint">将创建空项目，审核通过后再导入配置来源。</p>}
+        </div> : !completeCopy || isEmptyInitialization ? <p className="project-init-empty-hint">将创建空项目，审核通过后再导入配置来源。</p> : null}
         <label className="project-init-notes">
           <span>备注</span>
           <textarea
@@ -1071,7 +1095,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
           <div>
             <span className="eyebrow">项目初始化</span>
             <h2 id={titleId}>新项目参数初始化</h2>
-            <p>{isApiMode ? "从来源项目选择纳入本项目的参数，复制其配置来源并提交初始化审阅。" : "从参数库选择纳入本项目的参数，生成初始化快照并提交审阅。"}</p>
+            <p>{isApiMode ? "选择来源项目和复制范围，预览固定来源后提交初始化审阅。" : "从参数库选择纳入本项目的参数，生成初始化快照并提交审阅。"}</p>
           </div>
           <button
             className="button subtle"
@@ -1092,7 +1116,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
               key={step.label}
             >
               <small>{index + 1}</small>
-              {step.label}
+              {index === 2 && completeCopy ? "配置范围" : step.label}
             </span>
           ))}
         </div>

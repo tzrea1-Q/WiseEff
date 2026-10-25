@@ -54,6 +54,7 @@ function toLegacySnapshot(item: SemanticInitializationSnapshotItem): ProjectPara
 /** Map semantic Port draft into legacy UI/reducer draft shape. */
 export function toLegacyInitializationDraft(draft: InitializationDraftDto): ProjectParameterInitializationDraft {
   return {
+    ...(draft.sourceConfigSnapshots ? { sourceConfigSnapshots: draft.sourceConfigSnapshots } : {}),
     id: draft.id,
     projectId: draft.projectId,
     projectName: draft.projectName,

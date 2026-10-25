@@ -33,6 +33,8 @@ import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import { loadOwnedProjectValueSourcePin, loadSourceBindingCohort } from "../parameter-bindings/values";
 import { canAdminParameters } from "../parameter-kernel/policy";
 import { prepareDtsSources } from "../dts/cppSources";
+import { loadInitializationCopySources, type InitializationCopyGroup } from "./initializationCopySource";
+import type { InitializationConfigSnapshot } from "../parameters/initializationTypes";
 
 export type InitializationSourceContext = {
   requestId: string;
@@ -59,14 +61,8 @@ type TargetMember = ConfigRevisionManifestMember & {
   sourceFileVersionId: string;
 };
 
-type SourceGroup = {
-  key: string;
-  sourceProjectId: string;
-  sourceConfigSetId: string;
-  sourceConfigRevisionId: string;
+type SourceGroup = InitializationCopyGroup & {
   sources: LoadedSource[];
-  manifest: LoadedSource["source"]["manifest"];
-  files: LoadedSource["source"]["files"];
 };
 
 type TargetGroup = SourceGroup & {
@@ -261,7 +257,7 @@ async function cloneSourceGroup(
     id: targetConfigSetId,
     organizationId: parameterOrganizationId(auth),
     projectId: targetProjectId,
-    name: `initialization-${targetConfigSetId.slice(0, 8)}`,
+    name: group.name ? `${group.name}（复制 ${targetConfigSetId.slice(0, 8)}）` : `initialization-${targetConfigSetId.slice(0, 8)}`,
     description: `Canonical initialization copy of ${group.sourceConfigSetId}`,
     derivedFromId: undefined,
   });
@@ -272,7 +268,9 @@ async function cloneSourceGroup(
     const file = group.files.find((candidate) => candidate.name === member.sourceName);
     if (!file) throw new ApiError("CONFLICT", "Canonical source manifest member content is missing.");
     const bytes = Buffer.from(file.content, "utf8");
-    const fileName = targetFileName(targetConfigSetId, member.sourceName);
+    const collision = group.name ? await db.query("select id from public.project_parameter_files where organization_id=$1 and project_id=$2 and file_name=$3 limit 1",
+      [parameterOrganizationId(auth), targetProjectId, member.sourceName]) : null;
+    const fileName = group.name && collision?.rows.length === 0 ? member.sourceName : targetFileName(targetConfigSetId, member.sourceName);
     const stored = await objectStore.put({
       organizationId: parameterOrganizationId(auth),
       fileName,
@@ -337,6 +335,7 @@ async function cloneSourceGroup(
       projectId: targetProjectId,
       configSetId: targetConfigSetId,
       entryFile: group.manifest.entryFile,
+      declaredBuildInputs: { includeSearchPaths: group.manifest.includeSearchPaths, defines: group.manifest.preprocessing?.defines ?? {} },
       includeSearchPaths: group.manifest.includeSearchPaths,
       overlayOrder: group.manifest.overlayOrder,
       members: targetMembers,
@@ -476,10 +475,10 @@ export async function cloneCanonicalInitializationSource(
   db: Queryable,
   objectStore: ObjectStore,
   auth: AuthContext,
-  input: { targetProjectId: string; snapshots: InitializationSnapshotItemDto[] },
+  input: { targetProjectId: string; snapshots: InitializationSnapshotItemDto[]; sourceConfigSnapshots?: InitializationConfigSnapshot[]; sourceProjectIds?: string[] },
   context: InitializationSourceContext,
-): Promise<{ configSetIds: string[]; configRevisionIds: string[]; bindingCount: number }> {
-  if (input.snapshots.length === 0) return { configSetIds: [], configRevisionIds: [], bindingCount: 0 };
+): Promise<{ configSetIds: string[]; configRevisionIds: string[]; bindingCount: number; sourceOverlayCopies?: Array<{ configSetId: string; fileIds: string[] }> }> {
+  if (input.snapshots.length === 0 && !input.sourceConfigSnapshots) return { configSetIds: [], configRevisionIds: [], bindingCount: 0 };
   const operation = {
     projectId: input.targetProjectId,
     operation: "canonical initialization approval",
@@ -529,7 +528,16 @@ export async function cloneCanonicalInitializationSource(
         });
       }
     }
-    const groups = groupSources(sources);
+    let groups = groupSources(sources);
+    if (input.sourceConfigSnapshots) {
+      const complete = await loadInitializationCopySources(db, objectStore, parameterOrganizationId(auth),
+        input.sourceProjectIds ?? [], String(context.catalogSnapshot.release.id));
+      if (!isDeepStrictEqual(complete.snapshots, input.sourceConfigSnapshots)) {
+        throw new ApiError("CONFLICT", "完整配置来源已变化，请返回来源项目重新预览后提交。");
+      }
+      groups = complete.groups.map(group => ({ ...group, sources: sources.filter(source =>
+        source.item.sourceProjectId === group.sourceProjectId && source.item.sourceConfigSetId === group.sourceConfigSetId) }));
+    }
     const targets: TargetGroup[] = [];
     for (const group of groups) {
       targets.push(await cloneSourceGroup(db, objectStore, auth, context, group, input.targetProjectId, createdStorageKeys));
@@ -542,6 +550,8 @@ export async function cloneCanonicalInitializationSource(
       configSetIds: targets.map((target) => target.targetConfigSetId),
       configRevisionIds: targets.map((target) => target.targetRevisionId).filter(Boolean),
       bindingCount: input.snapshots.length,
+      sourceOverlayCopies: targets.map(target => ({ configSetId: target.targetConfigSetId,
+        fileIds: target.targetMembers.filter(member => target.formerRootOverlayFiles?.includes(member.sourceName!)).map(member => member.fileId) })),
     };
   } catch (error) {
     if (ownsCleanup) await cleanupCanonicalInitializationObjects(objectStore, createdStorageKeys, error);

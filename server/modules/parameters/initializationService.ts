@@ -37,6 +37,10 @@ import type { ObjectStore } from "../logs/objectStore";
 import type { CatalogSnapshot } from "../catalog-kernel/interface";
 import { cloneCanonicalInitializationSource } from "../parameter-files/canonicalInitializationSource";
 import { withCanonicalSourceAttemptTransaction } from "../parameter-files/canonicalSourceAttemptTransaction";
+import { loadInitializationCopySources } from "../parameter-files/initializationCopySource";
+import { requireCurrentSourceAdministrator } from "../parameter-files/sourceRevisionService";
+import { lockSourceCatalogGovernance } from "../parameter-bindings/catalogProjectValueSync";
+import { isDeepStrictEqual } from "node:util";
 
 export type InitializationServiceContext = AuditCorrelationContext & {
   invocation?: TrustedInvocationContext;
@@ -67,6 +71,14 @@ function requireCanAdmin(auth: AuthContext) {
 }
 
 function validateDraftShape(input: UpsertInitializationDraftInput) {
+  if (input.sourceConfigSnapshots && (new Set(input.sourceProjectIds).size !== input.sourceProjectIds.length
+    || input.sourceProjectIds.includes(input.projectId)
+    || !isDeepStrictEqual([...input.sourceProjectIds].sort(), [input.primarySourceProjectId, ...input.supplementSourceProjectIds].sort()))) {
+    throw new ApiError("VALIDATION_FAILED", "完整配置来源选择不一致，请重新选择来源项目。");
+  }
+  if (input.sourceConfigSnapshots && (input.emptyLibrary || input.selectedModuleIds.length || input.selectedRisks.length)) {
+    throw new ApiError("VALIDATION_FAILED", "完整配置复制不能同时选择空项目或参数筛选。");
+  }
   if (input.emptyLibrary) {
     if (input.sourceProjectIds.length > 0 || input.selectedSourceBindingIds.length > 0) {
       throw new ApiError(
@@ -101,7 +113,7 @@ function validateSubmitDraft(draft: InitializationDraftDto) {
     return;
   }
 
-  if (draft.bindingSnapshots.length === 0) {
+  if (draft.bindingSnapshots.length === 0 && !draft.sourceConfigSnapshots?.length) {
     throw new ApiError(
       "VALIDATION_FAILED",
       "Select at least one binding before submitting initialization for review."
@@ -221,6 +233,16 @@ export async function upsertDraft(
 
     let persistedInput = input;
     if (!input.emptyLibrary) {
+      if (input.sourceConfigSnapshots) {
+        auth = await requireCurrentSourceAdministrator(tx, auth, input.projectId);
+        const catalog = await lockSourceCatalogGovernance(tx, parameterOrganizationId(auth));
+        if (!catalog) throw new ApiError("CONFLICT", "完整配置复制需要当前已发布规范目录。");
+        if (!context.objectStore) throw new ApiError("CONFLICT", "完整配置复制需要来源存储。");
+        const complete = await loadInitializationCopySources(tx, context.objectStore, parameterOrganizationId(auth), input.sourceProjectIds, String(catalog.id));
+        if (!isDeepStrictEqual(complete.snapshots, input.sourceConfigSnapshots)) {
+          throw new ApiError("CONFLICT", "完整配置预览已过期，请返回来源项目重新预览。");
+        }
+      }
       await assertSourceProjectsOwned(tx, {
         organizationId: parameterOrganizationId(auth),
         projectIds: input.sourceProjectIds,
@@ -229,7 +251,7 @@ export async function upsertDraft(
         projectId: input.projectId,
         primarySourceProjectId: input.primarySourceProjectId,
         supplementSourceProjectIds: input.supplementSourceProjectIds,
-        selectedSourceBindingIds: input.selectedSourceBindingIds,
+        selectedSourceBindingIds: input.sourceConfigSnapshots ? undefined : input.selectedSourceBindingIds,
         selectedModuleIds: input.selectedModuleIds,
         selectedRisks: input.selectedRisks,
       });
@@ -311,6 +333,23 @@ export async function previewSnapshot(
     }
   }
   return snapshots;
+}
+
+export async function previewCompleteProjectCopy(db: Database, storage: ObjectStore, auth: AuthContext,
+  input: PreviewInitializationSnapshotInput) {
+  requireCanEdit(auth, input.projectId);
+  if (!input.primarySourceProjectId) throw new ApiError("VALIDATION_FAILED", "请选择来源项目。");
+  const projectIds = [input.primarySourceProjectId, ...input.supplementSourceProjectIds];
+  if (new Set(projectIds).size !== projectIds.length || projectIds.includes(input.projectId))
+    throw new ApiError("VALIDATION_FAILED", "来源项目必须不同于目标项目且不能重复。");
+  return db.transaction(async tx => {
+    await assertSourceProjectsOwned(tx, { organizationId: parameterOrganizationId(auth), projectIds });
+    const catalog = await lockSourceCatalogGovernance(tx, parameterOrganizationId(auth));
+    if (!catalog) throw new ApiError("CONFLICT", "完整配置复制需要当前已发布规范目录。");
+    const complete = await loadInitializationCopySources(tx, storage, parameterOrganizationId(auth), projectIds, String(catalog.id));
+    return { items: await previewSnapshot(tx, auth, { ...input, selectedSourceBindingIds: undefined,
+      selectedModuleIds: undefined, selectedRisks: undefined }), configSnapshots: complete.snapshots };
+  });
 }
 
 export async function submitDraft(
@@ -454,11 +493,25 @@ export async function approveReview(
       });
     }
 
+    let copiedSources: Awaited<ReturnType<typeof cloneCanonicalInitializationSource>> | undefined;
     if (!draft.emptyLibrary) {
       const canonical = requireCanonicalApprovalContext(context);
-      await cloneCanonicalInitializationSource(tx, objectStore ?? canonical.objectStore, auth, {
+      if (draft.sourceConfigSnapshots) {
+        if (review.submittedByUserId === auth.user.id) throw new ApiError("FORBIDDEN", "完整配置复制须由另一位管理员审阅。");
+        auth = await requireCurrentSourceAdministrator(tx, auth, review.projectId);
+        await assertSourceProjectsOwned(tx, { organizationId: parameterOrganizationId(auth), projectIds: draft.sourceProjectIds });
+        const catalog = await lockSourceCatalogGovernance(tx, parameterOrganizationId(auth));
+        if (!catalog) throw new ApiError("CONFLICT", "当前已发布规范目录不可用，请重新预览。");
+        if (String(canonical.catalogSnapshot.release.id) !== String(catalog.id)) throw new ApiError("CONFLICT", "规范目录已变化，请重新预览。");
+        const files = await tx.query("select id from public.project_parameter_files where organization_id=$1 and project_id=$2 limit 1",
+          [parameterOrganizationId(auth), review.projectId]);
+        if (files.rows.length) throw new ApiError("CONFLICT", "目标项目已有源码，不能覆盖初始化配置。");
+      }
+      copiedSources = await cloneCanonicalInitializationSource(tx, objectStore ?? canonical.objectStore, auth, {
         targetProjectId: review.projectId,
         snapshots: draft.bindingSnapshots,
+        sourceConfigSnapshots: draft.sourceConfigSnapshots,
+        sourceProjectIds: draft.sourceProjectIds,
       }, { ...canonical, createdStorageKeys: [] });
     }
 
@@ -493,7 +546,9 @@ export async function approveReview(
         reviewId: approved.id,
         projectId: review.projectId,
         emptyLibrary: draft.emptyLibrary,
-        bindingCount: draft.bindingSnapshots.length
+        bindingCount: draft.bindingSnapshots.length,
+        ...(copiedSources ? { configSetIds: copiedSources.configSetIds, configRevisionIds: copiedSources.configRevisionIds,
+          sourceOverlayCopies: copiedSources.sourceOverlayCopies, sourceConfigSnapshots: draft.sourceConfigSnapshots } : {})
       }
     });
 

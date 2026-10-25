@@ -13,7 +13,17 @@ export async function loadFormerRootOverlayFiles(db: Queryable, configSetId: str
     from public.dts_config_revision_members member
     join public.dts_config_revisions revision on revision.id=member.config_revision_id
     where revision.config_set_id=$1 and revision.status='resolved' and member.role='base' and revision.entry_file=member.source_name
-      and member.file_id=any($2::text[])`, [configSetId, members.map((row) => row.fileId)])).rows;
+      and member.file_id=any($2::text[])
+    union select source.id from public.audit_events event
+      cross join lateral jsonb_array_elements(coalesce(event.metadata->'sourceOverlayCopies','[]'::jsonb)) copied
+      cross join lateral jsonb_array_elements_text(copied->'fileIds') admission(file_id)
+      join public.dts_config_set configuration on configuration.id=copied->>'configSetId'
+        and configuration.organization_id=event.organization_id and configuration.project_id=event.project_id
+      join public.project_parameter_files source on source.id=admission.file_id and source.config_set_id=configuration.id
+        and source.organization_id=configuration.organization_id and source.project_id=configuration.project_id
+      where configuration.id=$1 and event.app='parameter-admin' and event.kind='project-initialization-approved'
+        and event.action='approve' and event.target_type='project-parameter-initialization-review'
+        and source.id=any($2::text[])`, [configSetId, members.map((row) => row.fileId)])).rows;
   return members.filter((row) => overlayOrder.includes(row.sourceName) && roots.some((root) => root.file_id === row.fileId))
     .map((row) => row.sourceName);
 }

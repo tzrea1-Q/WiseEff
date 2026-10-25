@@ -22,6 +22,7 @@ import { loadPublishedCatalog } from "../parameter-bindings/catalogProjectValueS
 import { catalogBindingExportResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
 import type { InitializationSnapshotItemDto } from "./initializationTypes";
 import { approveReview } from "./initializationService";
+import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 
 const ORG = "org-init-http";
 const SOURCE = "source-init-http";
@@ -37,6 +38,8 @@ let server: ReturnType<typeof createWiseEffServer>;
 const tokens: string[] = [];
 let sourceBindingId: string;
 let storage: ReturnType<typeof createLocalObjectStore>;
+let runtimeDb: ReturnType<typeof createPostgresDatabase>;
+const runtimeToken = `init_t19_${process.pid}`;
 
 function api<T>(actor: number, path: string, body?: unknown, method = "POST") {
   return requestJson<T>(server, path, {
@@ -102,7 +105,9 @@ beforeAll(async () => {
     invocation: createUserInvocation(auth), requestId: "init902-source", refusalSink: createTrustedRefusalAuditSink(db)
   }));
   sourceBindingId = registered.bindings[0]!.id;
-  server = createWiseEffServer({ db, objectStore: storage, auth: { mode: "production" }, localAuthService: createLocalAuthService(db) });
+  runtimeDb = createPostgresDatabase((await provisionPublicationRuntimeLogins(database.url, { mode: "lab", runToken: runtimeToken })).apiUrl);
+  expect((await runtimeDb.query("select rolsuper,rolinherit from pg_roles where rolname=current_user")).rows[0]).toEqual({ rolsuper: false, rolinherit: false });
+  server = createWiseEffServer({ db: runtimeDb, objectStore: storage, auth: { mode: "production" }, localAuthService: createLocalAuthService(runtimeDb) });
   for (const username of [AUTHOR, REVIEWER, GUEST]) {
     const login = await requestJson<{ token: string }>(server, "/api/v1/auth/login", { method: "POST", body: JSON.stringify({ username, password }) });
     expect(login.status).toBe(200);
@@ -141,6 +146,38 @@ async function expectNoMaterializedTarget(projectId: string, pending: Awaited<Re
   expect(counts.rows[0]).toEqual({ bindings: 0, files: 0, review: "pending", project: "initialization_pending_review" });
   expect((await queryable.query("select id from dts_config_set where organization_id=$1 and project_id=$2 order by id", [ORG, projectId])).rows).toEqual(pending.initialSets);
 }
+
+it("previews and independently approves a complete private configuration copy without requiring a Binding", async () => {
+  const sourceId = "source-init-zero-binding";
+  const targetId = "target-init-full-copy";
+  const auth = makeTestAuthContext({ userId: AUTHOR, organizationId: ORG, roles: [{ roleId: "admin", projectId: null }] });
+  await db.query("insert into projects(id,organization_id,name,code,status,initialization_status) values ($1,$2,$1,'ZERO','initialized','initialized')", [sourceId, ORG]);
+  const config = await createConfigSet(db, auth, { projectId: sourceId, name: "Raw settings" });
+  const source = await uploadProjectParameterFile(db, storage, auth, { projectId: sourceId, fileName: "raw.json", bytes: Buffer.from('{"unmanaged":17}\n') });
+  await addConfigSetFile(db, auth, { configSetId: config.id, fileId: source.file.id, role: "base", sortOrder: 0 });
+  const preview = await api<{ items: InitializationSnapshotItemDto[]; configSnapshots: Array<{ sourceConfigSetId: string; digest: string }> }>(0,
+    `/api/v1/parameters/projects/${targetId}/initialization/copy-preview`, { primarySourceProjectId: sourceId, supplementSourceProjectIds: [] });
+  expect(preview.status, JSON.stringify(preview.body)).toBe(200);
+  expect(preview.body.items).toEqual([]);
+  expect(preview.body.configSnapshots).toEqual([expect.objectContaining({ sourceConfigSetId: config.id, digest: expect.any(String) })]);
+  expect((await api(0, "/api/v1/parameters/admin/projects", { id: targetId, name: targetId, code: "FULLCOPY" })).status).toBe(201);
+  const path = `/api/v1/parameters/projects/${targetId}/initialization`;
+  expect((await api(0, `${path}/draft`, { projectName: targetId, projectCode: "FULLCOPY", ownerUserId: AUTHOR,
+    sourceProjectIds: [sourceId], primarySourceProjectId: sourceId, supplementSourceProjectIds: [], selectedModuleIds: [], selectedRisks: [], selectedSourceBindingIds: [],
+    bindingSnapshots: [], sourceConfigSnapshots: preview.body.configSnapshots, emptyLibrary: false, notes: "Complete independent copy" }, "PUT")).status).toBe(200);
+  const submitted = await api<{ item: { id: string } }>(0, `${path}/submit`, {});
+  expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+  const approve = `/api/v1/parameters/admin/initialization-reviews/${submitted.body.item.id}/approve`;
+  expect((await api(0, approve, {})).status).toBe(403);
+  expect((await api(1, approve, {})).status).toBe(200);
+  const files = await api<{ items: Array<{ id: string; currentVersionId: string }> }>(0, `/api/v1/projects/${targetId}/parameter-files`);
+  expect(files.status, JSON.stringify(files.body)).toBe(200);
+  expect(files.body.items).toHaveLength(1);
+  expect(files.body.items[0]!.id).not.toBe(source.file.id);
+  const exported = await api<{ content: string }>(0, `/api/v1/projects/${targetId}/parameter-files/${files.body.items[0]!.id}/versions/${files.body.items[0]!.currentVersionId}/content`);
+  expect(exported.status, JSON.stringify(exported.body)).toBe(200);
+  expect(exported.bodyText).toBe('{"unmanaged":17}\n');
+}, 60_000);
 
 it("rolls back a failed source copy and retries the same approved initialization exactly once", async () => {
   const projectId = "target-init-retry";
@@ -332,6 +369,8 @@ it.each(["missing-value", "missing-pin"] as const)("refuses approval when the se
 }, 60_000);
 
 afterAll(async () => {
+  await runtimeDb?.close();
+  if (database) await dropLabRuntimeLogins(database.url, runtimeToken);
   await db?.close();
   await database?.drop();
   if (directory) await rm(directory, { recursive: true, force: true });

@@ -1,4 +1,5 @@
 import { canPerform } from "@/app/permissions";
+import { InitializationCopySummary } from "@/components/InitializationCopySummary";
 import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
 import { type PageProps } from "@/app/routes";
 import { toLegacyInitializationReview } from "@/application/parameters/initializationUiMappers";
@@ -673,6 +674,7 @@ export function ParameterReviewPage({
               </p>
               {selectedInitialization.draft.notes.trim() ? <p>{selectedInitialization.draft.notes}</p> : null}
             </div>
+            {selectedInitialization.draft.sourceConfigSnapshots ? <InitializationCopySummary snapshots={selectedInitialization.draft.sourceConfigSnapshots} /> : null}
             <section className="review-legacy-section" aria-label="将建立的参数">
               <h3>将建立的参数（{selectedInitialization.draft.parameterSnapshots.length} 项）</h3>
               <p>主来源 {selectedInitializationPrimarySource?.name || "来源名称未记录"}
@@ -729,12 +731,13 @@ export function ParameterReviewPage({
                 <p className="review-action-description">通过后完成该项目的参数初始化。</p>
                 <Button
                   type="button"
-                  disabled={actionPending}
+                  disabled={actionPending || Boolean(selectedInitialization.draft.sourceConfigSnapshots && selectedInitialization.review.submittedBy === state.currentUserId)}
                   onClick={() => openDecision("advance")}
                 >
                   <CheckCircle2 size={17} />
                   通过初始化
                 </Button>
+                {selectedInitialization.draft.sourceConfigSnapshots && selectedInitialization.review.submittedBy === state.currentUserId ? <p>完整配置复制须由另一位管理员审阅。</p> : null}
                 <Button type="button" variant="destructive" disabled={actionPending} onClick={() => openDecision("reject")}>
                   <CircleOff size={17} />
                   驳回初始化
@@ -885,7 +888,7 @@ export function ParameterReviewPage({
         open={advanceConfirmOpen && actionTarget !== null && actionScopeKey === currentActionScopeKey}
         title={actionTarget?.kind === "initialization" ? "确认通过初始化" : actionTarget?.kind === "change" && actionTarget.request.status === "软件User合入" ? "确认合入" : "确认通过检视"}
         description={actionTarget?.kind === "initialization"
-          ? <p>将为 {actionTarget.draft.projectName} 建立 {actionTarget.draft.parameterSnapshots.length} 项初始化参数，并完成项目初始化。请确认参数和来源快照无误。</p>
+          ? <p>将为 {actionTarget.draft.projectName} {actionTarget.draft.sourceConfigSnapshots ? `复制 ${actionTarget.draft.sourceConfigSnapshots.length} 个完整配置，所有共享来源转为固定私有副本，并建立 ${actionTarget.draft.parameterSnapshots.length} 项初始化参数` : `建立 ${actionTarget.draft.parameterSnapshots.length} 项初始化参数`}，并完成项目初始化。请确认参数和来源快照无误。</p>
           : <><p>仅处理“{actionTarget?.request.title}”这一条变更（{actionTarget?.kind === "change" ? formatWorkflowDisplayText(actionTarget.request.status) : ""}）。</p>
             {actionTarget?.kind === "change" && !shouldSummarizeReviewChange(actionTarget.request) ? <p><code>{actionTarget.request.currentValue}</code> → <code>{actionTarget.request.targetValue}</code></p> : null}
             <p>{actionTarget?.kind === "change" && actionTarget.request.status === "软件User合入" ? `将记为已合入，合入链接：${actionMergeLink}` : "通过当前检视后，请求交给下一阶段处理。"}</p></>}
