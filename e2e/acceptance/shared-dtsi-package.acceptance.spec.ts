@@ -14,7 +14,8 @@ test.use({catalogRuntimeScope:import.meta.url,catalogRuntimeDatabaseUrl:process.
 
 test("#1427 exports original complete sources and imports them into a normally approved empty project",async({page,catalogAcceptanceRuntime},testInfo)=>{
   test.setTimeout(180_000);void catalogAcceptanceRuntime;
-  const errors:string[]=[];page.on("pageerror",error=>errors.push(error.message));
+  const errors:string[]=[],serverErrors:string[]=[];page.on("pageerror",error=>errors.push(error.message));
+  page.on("response",response=>{if(response.status()>=500)serverErrors.push(`${response.status()} ${new URL(response.url()).pathname}`);});
   const sourceName="boards/vendor/long-hardware-product-original-sources/board.dts";
   const source='\uFEFF/dts-v1/;\r\n// preserved original project override\r\n/ { model = "Package browser"; compatible = "test,board"; battery { limit = <31>; status = "disabled"; }; };\r\n';
   const json='{\r\n  "feature": true, "nested": {"mode":"production"}\r\n}\r\n';
@@ -99,5 +100,5 @@ test("#1427 exports original complete sources and imports them into a normally a
   await page.goto(catalogAppUrl(`/parameter-admin/projects/${target}/configuration?${new URLSearchParams({configSet:receipt.configSetId,file:shared.fileId})}`));
   await expect(page.getByRole("region",{name:"DTS 源码",exact:true})).toContainText("shared_only");
   await expect(page.getByRole("radio",{name:"编辑",exact:true})).toHaveCount(0);await page.screenshot({path:testInfo.outputPath("package-shared-readonly-1280.png")});
-  expect(errors).toEqual([]);
+  expect(errors).toEqual([]);expect(serverErrors).toEqual([]);
 });
