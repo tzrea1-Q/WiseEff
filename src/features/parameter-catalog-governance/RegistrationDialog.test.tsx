@@ -120,6 +120,23 @@ describe("RegistrationDialog", () => {
     return user;
   }
 
+  it("separates the source destination from replacement impact and uses a bounded multiline reason field", async () => {
+    const fixture = replacementFixture();
+    renderDialog(fixture.options);
+    await selectControlOption(screen.getByLabelText("目标模块"), "target");
+    const source = screen.getByRole("status", { name: "当前主体与去向" });
+    expect(source).toHaveTextContent("5 个参数绑定");
+    expect(within(source).getByText("调整至").nextElementSibling).toHaveTextContent("目标模块");
+    const target = screen.getByRole("region", { name: "替换归属影响" });
+    expect(within(target).getByRole("heading", { name: "目标模块已有归属" })).toBeVisible();
+    await waitFor(() => expect(target).toHaveTextContent("7 个参数绑定、3 个项目"));
+    const reason = screen.getByRole("textbox", { name: "替换原因" });
+    expect(reason).toHaveAttribute("data-slot", "textarea");
+    expect(reason).toHaveAttribute("rows", "3");
+    expect(reason).toHaveAttribute("maxlength", "1000");
+    expect(reason).toBeRequired();
+  });
+
   it("requires a dual-subject preview, replacement choice, reason and a second confirmation before one write", async () => {
     const fixture = replacementFixture();
     const { updatePlacement } = renderDialog(fixture.options);

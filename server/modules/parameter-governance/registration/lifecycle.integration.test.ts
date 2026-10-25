@@ -8,7 +8,7 @@ import { refreshSuccessorSource } from "../../catalog-publication/builder/bundle
 import { createCatalogKernel, jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
 import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../../catalog-publication/runtime/provisionRuntimeLogins";
-import { CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId, type CatalogReleasePin } from "../../parameter-catalog-contract/index";
+import { CatalogReleaseDigest, CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId, type CatalogReleasePin } from "../../parameter-catalog-contract/index";
 import { createGovernanceCatalogQueries } from "../queries/index";
 import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../../../testing/testDatabase";
 import { createRegistrationService } from "./service";
@@ -32,6 +32,7 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
   let registration: RegistrationResult;
   const targetSubject = CatalogSubjectId("csub_replacement_target");
   const thirdSubject = CatalogSubjectId("csub_replacement_third");
+  const emptySubject = CatalogSubjectId("csub_removal_without_definitions");
   const context = { actorKind: "org-admin" as const, principalId: "lifecycle-admin" };
   const version = (result: RegistrationResult) => `${result.registrationStatus}:${result.registrationVersion}`;
   const lifecycle = (kind: "retire" | "restore", result = registration) => ({
@@ -101,14 +102,14 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     const alias = initial.documents.find((document) => document.kind === "alias");
     const definition = initial.documents.find((document) => document.kind === "definition");
     if (subject?.kind !== "subject" || alias?.kind !== "alias" || definition?.kind !== "definition") throw new Error("replacement fixture requires its Subject, alias and Definition");
-    const extra = [targetSubject, thirdSubject].flatMap((id) => {
-      const selector = id === targetSubject ? "acme,replacement-target" : "acme,replacement-third";
+    const extra = [targetSubject, thirdSubject, emptySubject].flatMap((id) => {
+      const selector = id === targetSubject ? "acme,replacement-target" : id === thirdSubject ? "acme,replacement-third" : "acme,without-definitions";
       return [
         { ...structuredClone(subject), content: { ...structuredClone(subject.content), id, canonicalKey: `driver:${selector}`,
           selector: { ...structuredClone(subject.content.selector), value: selector } } },
         { ...structuredClone(alias), content: { ...structuredClone(alias.content), id: `alias-${id}`, subjectId: id, normalizedSelector: `${selector}-v1` } },
-        { ...structuredClone(definition), content: { ...structuredClone(definition.content), id: `pdef_${id}_iin_max`, subjectId: id,
-          revision: { ...structuredClone(definition.content.revision), id: `drev_${id}_iin_max_1` } } },
+        ...(id === emptySubject ? [] : [{ ...structuredClone(definition), content: { ...structuredClone(definition.content), id: `pdef_${id}_iin_max`, subjectId: id,
+          revision: { ...structuredClone(definition.content.revision), id: `drev_${id}_iin_max_1` } } }]),
       ];
     });
     const release = refreshSuccessorSource({ ...initial, documents: [...initial.documents, ...extra] }, initial.sources[0]!.path);
@@ -147,6 +148,83 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     if (token && database) expect((await dropLabRuntimeLogins(database.url, token)).failed).toEqual([]);
     await admin?.end();
     await database?.drop();
+  });
+
+  it.each([targetSubject, emptySubject])("removes an unregistered subject locally regardless of definition count (%s)", async (subjectId) => {
+    const catalogBefore = (await admin.query("select id,current_revision_id from parameter_catalog.parameter_definitions order by id")).rows;
+    const modulesBefore = (await admin.query("select id from public.parameter_modules where organization_id=$1 order by id", [organizationId])).rows;
+    const service = createRegistrationService(api);
+    const actor = await auditedContext(`unregistered-removal-${subjectId}`);
+    const command = { kind: "retire-unregistered" as const, organizationId, subjectId, expectedRelease: pin,
+      idempotencyKey: randomUUID(), context: actor, reason: "This organization does not use this subject" };
+    const written = await service.execute(command);
+    if (!written.ok) throw new Error(JSON.stringify(written.error));
+    expect(written.value).toMatchObject({ registrationStatus: "retired", previousRegistrationStatus: "unregistered",
+      moduleId: null, subjectId, organizationId, registrationMethod: "explicit" });
+    const firstId = written.value.registrationId;
+    expect((await service.execute(command))).toMatchObject({ ok: true, value: { outcome: "replayed", registrationId: firstId, registrationStatus: "retired", moduleId: null } });
+    expect((await admin.query("select id,current_revision_id from parameter_catalog.parameter_definitions order by id")).rows).toEqual(catalogBefore);
+    expect((await admin.query("select id from public.parameter_modules where organization_id=$1 order by id", [organizationId])).rows).toEqual(modulesBefore);
+    expect((await api.query("select action,metadata from public.audit_events where trace_id=$1", [actor.requestId])).rows)
+      .toEqual([{ action: "registration-retire", metadata: expect.objectContaining({ reason: command.reason, beforeStatus: "unregistered", afterStatus: "retired" }) }]);
+    const restored = await service.execute(lifecycle("restore", written.value));
+    if (!restored.ok) throw new Error(JSON.stringify(restored.error));
+    expect(restored.value).toMatchObject({ registrationId: firstId, registrationStatus: "active", moduleId: null });
+    const afterRestore = await placements();
+    expect(await service.execute(command)).toMatchObject({ ok: true, value: { registrationId: firstId, registrationStatus: "active" } });
+    expect(await placements()).toEqual(afterRestore);
+    expect(await service.execute({ ...command, idempotencyKey: randomUUID() })).toMatchObject({ ok: false, error: { kind: "registration-conflict" } });
+  });
+
+  it("keeps other organizations independent, rejects stale releases, and never auto-restores a removed subject", async () => {
+    const service = createRegistrationService(api);
+    const target = await registerTarget();
+    const otherOrganization = `other-${randomUUID()}`;
+    await admin.query("insert into public.organizations(id,name) values($1,'Other organization')", [otherOrganization]);
+    const command = { kind: "retire-unregistered" as const, organizationId: otherOrganization, subjectId: targetSubject,
+      expectedRelease: pin, context, idempotencyKey: randomUUID(), reason: "Not used here" };
+    expect(await service.execute({ ...command, expectedRelease: { ...pin, digest: CatalogReleaseDigest(`sha256:${"0".repeat(64)}`) } })).toMatchObject({ ok: false, error: { kind: "release-drift" } });
+    expect((await api.query("select id from parameter_catalog.organization_subject_registrations where organization_id=$1", [otherOrganization])).rows).toEqual([]);
+    expect(await service.execute(command)).toMatchObject({ ok: true, value: { registrationStatus: "retired", moduleId: null } });
+    expect((await api.query("select status from parameter_catalog.organization_subject_registrations where id=$1", [target.registrationId])).rows).toEqual([{ status: "active" }]);
+    const otherModule = await createModule("Other", otherOrganization);
+    expect(await service.execute({ kind: "register", organizationId: otherOrganization, subjectId: targetSubject, subjectKind: "driver",
+      expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId: otherModule, method: "automatic", proof: {},
+      idempotencyKey: randomUUID(), context: { actorKind: "trusted-system", principalId: "ingest" } }))
+      .toMatchObject({ ok: false, error: { kind: "auto-restore-forbidden" } });
+  });
+
+  it("serializes concurrent registration and first removal without stopping the winning registration", async () => {
+    const service = createRegistrationService(api);
+    const emptyOrganizationId = `racing-${randomUUID()}`;
+    await admin.query("insert into public.organizations(id,name) values($1,'Empty organization')", [emptyOrganizationId]);
+    const destinationModuleId = await createModule("Racing", emptyOrganizationId);
+    const outcomes = await Promise.all([
+      service.execute({ kind: "register", organizationId: emptyOrganizationId, subjectId: targetSubject, subjectKind: "driver", expectedRelease: pin,
+        placement: { mode: "use-default" }, destinationModuleId, method: "explicit", proof: {}, idempotencyKey: randomUUID(), context }),
+      service.execute({ kind: "retire-unregistered", organizationId: emptyOrganizationId, subjectId: targetSubject, expectedRelease: pin,
+        idempotencyKey: randomUUID(), context, reason: "Not used here" }),
+    ]);
+    expect(outcomes.filter(result => result.ok)).toHaveLength(1);
+    expect(outcomes.filter(result => !result.ok)).toHaveLength(1);
+    const winner = outcomes.find(result => result.ok)!;
+    if (!winner.ok) throw new Error("No winner");
+    expect((await api.query("select id,status from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [emptyOrganizationId, targetSubject])).rows)
+      .toEqual([{ id: winner.value.registrationId, status: winner.value.registrationStatus }]);
+  });
+
+  it("rolls back the initial inactive registration, unset placement and idempotency reservation together", async () => {
+    const idempotencyKey = randomUUID();
+    const before = await placements();
+    await expect(withRegistrationUnitOfWork(api, async (client) => {
+      const result = await writeGuardedRegistration(client, { kind: "retire-unregistered", organizationId,
+        subjectId: targetSubject, expectedRelease: pin, idempotencyKey, context, reason: "Not used here" });
+      expect(result.ok).toBe(true);
+      throw new Error("abort unregistered removal before commit");
+    })).rejects.toThrow("abort unregistered removal before commit");
+    expect(await placements()).toEqual(before);
+    expect((await api.query("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [organizationId, targetSubject])).rows).toEqual([]);
+    expect((await api.query("select state from parameter_catalog.governance_command_idempotency where organization_id=$1 and idempotency_key=$2", [organizationId, idempotencyKey])).rows).toEqual([]);
   });
 
   it("refuses occupied moves, then atomically replaces the explicitly reviewed occupant without swapping or deleting identities", async () => {

@@ -243,6 +243,40 @@ const writeHeaders = {
 };
 
 describe("S8-GOV one-command HTTP mapping", () => {
+  it("creates an initially retired organization registration without resolving a module", async () => {
+    const { ports, commands } = createHarness();
+    const response = await handleCatalogGovernance({ ...ports, resolveDestinationModuleId: async () => {
+      throw new Error("A removed unregistered subject must not claim a module");
+    } }, request("POST", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations`, {
+      headers: writeHeaders, body: { subjectId: "csub_acme_power", placement: { mode: "use-default" }, status: "retired", reason: " Not used here " },
+    }));
+    expect(response.status).toBe(201);
+    expect(commands).toEqual([{ kind: "retire-unregistered", organizationId: orgAdmin.organizationId,
+      subjectId: "csub_acme_power", expectedRelease: pin, reason: "Not used here", idempotencyKey: "idem-s8-gov",
+      context: { actorKind: "org-admin", principalId: orgAdmin.principalId } }]);
+  });
+
+  it("rejects malformed unregistered removals and preserves organization authorization", async () => {
+    for (const extra of [{ reason: " " }, { reason: "x".repeat(1001) }, { destinationModuleId: "module-exact" },
+      { newDestination: { parentModuleId: "business-parent", name: "Driver" } },
+      { placement: { mode: "choose-parent", parentPlacementId: "parent", displayName: "Driver" } }]) {
+      const { ports, commands } = createHarness();
+      const response = await handleCatalogGovernance(ports, request("POST", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations`, {
+        headers: writeHeaders, body: { subjectId: "csub_acme_power", placement: { mode: "use-default" }, status: "retired", reason: "Not used here", ...extra },
+      }));
+      expect(response.status).toBe(400);
+      expect(commands).toEqual([]);
+    }
+    for (const scope of [agent, { ...orgAdmin, organizationId: "foreign" }, { ...orgAdmin, canMutateOrganization: false }]) {
+      const { ports, commands } = createHarness({ scope });
+      const response = await handleCatalogGovernance(ports, request("POST", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations`, {
+        headers: writeHeaders, body: { subjectId: "csub_acme_power", placement: { mode: "use-default" }, status: "retired", reason: "Not used here" },
+      }));
+      expect(response.status).toBe(403);
+      expect(commands).toEqual([]);
+    }
+  });
+
   it("forwards registration page inputs and preserves whole count and the public cursor", async () => {
     const { ports } = createHarness();
     const fingerprint = fingerprintCatalogQuery({ route: "catalog.listRegistrations", organizationId: orgAdmin.organizationId, principalId: orgAdmin.principalId });

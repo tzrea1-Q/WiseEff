@@ -719,12 +719,13 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
         if (store.registration && store.registration.subjectId === parsed.subjectId) {
           throw catalogApiFailure("placement-conflict");
         }
-        const created = {
+        const created: typeof catalogRegistration = {
           ...catalogRegistration,
           organizationId,
           subjectId: parsed.subjectId,
           id: CATALOG_REGISTRATION_ID,
-          placement: placementFromIntent(parsed.placement),
+          status: parsed.status ?? "active",
+          placement: parsed.status === "retired" ? { ...placementFromIntent(parsed.placement), moduleId: undefined } : placementFromIntent(parsed.placement),
           catalogReleaseId: write.catalogReleaseId
         };
         store.registration = created;
@@ -737,6 +738,7 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
             placement: created.placement
           }
         };
+        store.definition = { ...store.definition, registration: store.subject.registration };
         return { item: created };
       });
     },

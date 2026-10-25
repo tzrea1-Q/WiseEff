@@ -22,7 +22,7 @@ export type RegistrationResult = {
   readonly registrationMethod: RegistrationMethod;
   readonly registrationVersion?: string;
   /** Locked lifecycle state before a committed retire/restore, for its transaction audit. */
-  readonly previousRegistrationStatus?: RegistrationStatus;
+  readonly previousRegistrationStatus?: RegistrationStatus | "unregistered";
   readonly placementOrigin: PlacementOrigin;
   readonly moduleId: string | null;
   /** Current Placement version for conditional move callers. */

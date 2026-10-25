@@ -148,7 +148,7 @@ export function CanonicalSubjectPlacementPanel({
   const readGeneration = useRef(0);
   const placementGeneration = useRef(0);
   const [openingSubjectId, setOpeningSubjectId] = useState<string | null>(null);
-  const [lifecycleDialog, setLifecycleDialog] = useState<{ intent: "retire-registration" | "restore-registration"; subject: SubjectRow; registrationId: string } | null>(null);
+  const [lifecycleDialog, setLifecycleDialog] = useState<{ intent: "retire-registration" | "restore-registration"; subject: SubjectRow; registrationId?: string } | null>(null);
   const [lifecycleNotice, setLifecycleNotice] = useState("");
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [definitionRefresh, setDefinitionRefresh] = useState(0);
@@ -626,7 +626,7 @@ export function CanonicalSubjectPlacementPanel({
                     isCatalogActionEnabled(actor, "update-placement", domainState, sessionPermissions);
                   const registrationStatus = registration?.status ?? subject.registration.status;
                   const lifecycleIntent = registrationStatus === "retired" ? "restore-registration" : "retire-registration";
-                  const lifecycleAllowed = canAdmin && Boolean(registrationId) && registrationStatus !== "unregistered" &&
+                  const lifecycleAllowed = canAdmin && (registrationStatus === "unregistered" ? subject.membership.status === "active" : Boolean(registrationId)) &&
                     isCatalogActionEnabled(actor, lifecycleIntent, domainState, sessionPermissions);
                   const subjectLabel = subjectTypeLabel(subject.type);
                   return (
@@ -697,7 +697,7 @@ export function CanonicalSubjectPlacementPanel({
                           aria-label={`${registrationStatus === "retired" ? "恢复" : "移除"}${subjectLabel}：${subject.canonicalName}`}
                           disabled={!inventoryComplete || (registrationStatus === "retired" && subject.membership.status !== "active")}
                           title={registrationStatus === "retired" && subject.membership.status !== "active" ? "平台主体已退役，当前无法恢复登记" : undefined}
-                          onClick={() => setLifecycleDialog({ intent: lifecycleIntent, subject, registrationId: registrationId! })}>
+                          onClick={() => setLifecycleDialog({ intent: lifecycleIntent, subject, registrationId })}>
                           {registrationStatus === "retired" ? `恢复${subjectLabel}` : `移除${subjectLabel}`}
                         </button> : null}
                       </div>

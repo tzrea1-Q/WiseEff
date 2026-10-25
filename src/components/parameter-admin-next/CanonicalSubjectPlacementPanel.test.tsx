@@ -298,6 +298,18 @@ describe("CanonicalSubjectPlacementPanel", () => {
     expect(screen.queryByRole("button", { name: "移除驱动：vendor,driver" })).toBe(canAdmin ? screen.getByRole("button", { name: "移除驱动：vendor,driver" }) : null);
   });
 
+  it.each([0, 2])("offers removal for an unregistered driver with %s definitions without requiring a destination module", async (count) => {
+    const ports = createPorts();
+    ports.listSubjects.mockResolvedValue({ items: [{ ...subject({ id: unregisteredSubject.id, canonicalName: "arm,gic-v3", type: "driver" }),
+      definitionCounts: { active: count, deprecated: 0, retired: 0 } }],
+    totalCount: 1, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+    ports.listRegistrations.mockResolvedValue({ items: [], totalCount: 0, hasMore: false, nextCursor: null,
+      catalogReleaseId: CATALOG_RELEASE_ID });
+    render(<CanonicalSubjectPlacementPanel {...ports} modules={[]} organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin />);
+    const remove = await screen.findByRole("button", { name: "移除驱动：arm,gic-v3" });
+    await waitFor(() => expect(remove).toBeEnabled());
+  });
+
   it("keeps a failed partial inventory readable and retries the complete inventory before enabling writes", async () => {
     const ports = createPorts();
     const original = ports.listSubjects.getMockImplementation()!;

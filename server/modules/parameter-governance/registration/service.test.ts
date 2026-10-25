@@ -89,6 +89,20 @@ const databaseError = (code: string, detail: string): pg.DatabaseError => {
 };
 
 describe("S4-REG public command contract", () => {
+  it("limits first removal to human administrators with an exact subject and bounded reason", () => {
+    const command = { kind: "retire-unregistered" as const, organizationId: "org-s4-reg",
+      subjectId: CatalogSubjectId("csub_acme_power"), expectedRelease: pin, idempotencyKey: "remove-unregistered",
+      context: { actorKind: "org-admin" as const, principalId: "human" }, reason: "Not used here" };
+    expect(validateRegistrationCommand(command)).toMatchObject({ ok: true });
+    for (const reason of ["", " ", "x".repeat(1001), "line\nbreak"]) {
+      expect(validateRegistrationCommand({ ...command, reason })).toMatchObject({ ok: false, error: { kind: "invalid-command" } });
+    }
+    for (const actorKind of ["trusted-system", "review-coordinator"] as const) {
+      expect(validateRegistrationCommand({ ...command, context: { actorKind, principalId: "system" } }))
+        .toMatchObject({ ok: false, error: { kind: "permission-denied" } });
+    }
+  });
+
   it("requires both reviewed occupants, exact versions, a reason and a human-admin actor for replacement", () => {
     const command: MovePlacementCommand = {
       kind: "move-placement", organizationId: "org-s4-reg", registrationId: "sreg-source" as never,

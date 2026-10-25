@@ -406,6 +406,7 @@ export const catalogRegistrationDtoSchema = catalogObject({
 
 export const catalogRegisterSubjectRequestSchema = catalogObject({
   subjectId: z.string(),
+  status: z.literal("retired").optional(),
   placement: catalogPlacementIntentSchema,
   destinationModuleId: z.string().min(1).optional(),
   newDestination: catalogObject({
@@ -414,6 +415,10 @@ export const catalogRegisterSubjectRequestSchema = catalogObject({
   }).optional(),
   reason: z.string().optional()
 }).superRefine((value, context) => {
+  if (value.status === "retired" && (value.placement.mode !== "use-default" || value.destinationModuleId || value.newDestination ||
+      !value.reason?.trim() || value.reason.trim().length > 1000 || /[\u0000-\u001f\u007f-\u009f]/u.test(value.reason))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Retiring an unregistered subject requires a reason and no module destination." });
+  }
   if (value.newDestination && (value.destinationModuleId || value.placement.mode !== "use-default")) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "A new destination requires an explicit business parent and no existing destination." });
   }

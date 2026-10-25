@@ -15,17 +15,67 @@ function setup(restoring = false) {
   const getSubject = vi.fn(async () => ({ item: registeredSubject }));
   const retireRegistration = vi.fn<ParameterCatalogGovernanceRepository["retireRegistration"]>(async () => ({ item: { ...catalogRegistration, status: "retired" as const } }));
   const restoreRegistration = vi.fn<ParameterCatalogGovernanceRepository["restoreRegistration"]>(async () => ({ item: catalogRegistration }));
+  const createRegistration = vi.fn<ParameterCatalogGovernanceRepository["createRegistration"]>(async () => ({ item: { ...catalogRegistration,
+    status: "retired", placement: { ...catalogRegistration.placement, moduleId: undefined } } }));
   const onCompleted = vi.fn();
   const onClose = vi.fn();
   const props = { intent: restoring ? "restore-registration" as const : "retire-registration" as const,
     subject: registeredSubject, registrationId: catalogRegistration.id, actor: "org-admin" as const,
     catalog: { getCatalog: vi.fn(async () => readyCatalogDocument), getSubject } as unknown as ParameterCatalogRepository,
-    governance: { getRegistration, retireRegistration, restoreRegistration } as unknown as ParameterCatalogGovernanceRepository,
+    governance: { getRegistration, retireRegistration, restoreRegistration, createRegistration } as unknown as ParameterCatalogGovernanceRepository,
     organizationId: CATALOG_ORGANIZATION_ID, modules: [], onCompleted, onClose };
-  return { props, getRegistration, getSubject, retireRegistration, restoreRegistration, onCompleted, onClose };
+  return { props, getRegistration, getSubject, retireRegistration, restoreRegistration, createRegistration, onCompleted, onClose };
 }
 
 describe("RegistrationLifecycleDialog", () => {
+  it.each([0, 3])("removes an unregistered subject with %s definitions only after organization-scoped confirmation", async (count) => {
+    const ports = setup();
+    ports.getSubject.mockResolvedValue({ item: { ...registeredSubject, registration: { status: "unregistered" },
+      definitionCounts: { active: count, deprecated: 0, retired: 0 } } });
+    render(<RegistrationLifecycleDialog {...ports.props} registrationId={undefined} />);
+    await screen.findByText(`本组织尚未登记此主体，目录中有 ${count} 个有效定义。`);
+    expect(screen.getByText(/平台共享定义及其他组织的登记不受影响/)).toBeVisible();
+    expect(ports.getRegistration).not.toHaveBeenCalled();
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("textbox", { name: "操作原因" }), "本组织不再使用");
+    expect(screen.getByRole("button", { name: "确认移除" })).toBeDisabled();
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "确认移除" }));
+    await waitFor(() => expect(ports.onCompleted).toHaveBeenCalledOnce());
+    expect(ports.createRegistration).toHaveBeenCalledExactlyOnceWith(CATALOG_ORGANIZATION_ID,
+      { subjectId: registeredSubject.id, status: "retired", placement: { mode: "use-default" }, reason: "本组织不再使用" },
+      { catalogReleaseId: CATALOG_RELEASE_ID, idempotencyKey: expect.any(String) });
+    expect(ports.retireRegistration).not.toHaveBeenCalled();
+  });
+
+  it("refuses a newly registered subject instead of retiring it from an unregistered preview", async () => {
+    const ports = setup();
+    render(<RegistrationLifecycleDialog {...ports.props} registrationId={undefined} />);
+    await screen.findByRole("alert");
+    expect(screen.getByRole("button", { name: "确认移除" })).toBeDisabled();
+    expect(ports.createRegistration).not.toHaveBeenCalled();
+    expect(ports.retireRegistration).not.toHaveBeenCalled();
+  });
+
+  it("preserves an unregistered removal reason after a conflict and refuses a concurrent registration on refresh", async () => {
+    const ports = setup();
+    ports.getSubject.mockResolvedValueOnce({ item: { ...registeredSubject, registration: { status: "unregistered" } } });
+    ports.createRegistration.mockRejectedValueOnce(catalogApiFailure("revision-conflict"));
+    render(<RegistrationLifecycleDialog {...ports.props} registrationId={undefined} />);
+    await screen.findByText(/本组织尚未登记此主体/);
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("textbox", { name: "操作原因" }), "保留移除原因");
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "确认移除" }));
+    await screen.findByRole("alert");
+    await user.click(screen.getByRole("button", { name: "刷新影响数据" }));
+    await screen.findByText("登记或目录状态已变化，请关闭弹窗并刷新列表。");
+    expect(screen.getByRole("textbox", { name: "操作原因" })).toHaveValue("保留移除原因");
+    expect(screen.getByRole("button", { name: "确认移除" })).toBeDisabled();
+    expect(ports.createRegistration).toHaveBeenCalledOnce();
+    expect(ports.retireRegistration).not.toHaveBeenCalled();
+  });
+
   it("requires current impact, a reason and acknowledgement before a conditional organization removal", async () => {
     const ports = setup();
     const user = userEvent.setup();

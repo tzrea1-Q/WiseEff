@@ -64,6 +64,16 @@ export type RetireRegistrationCommand = {
   readonly reason: string;
 };
 
+export type RetireUnregisteredSubjectCommand = {
+  readonly kind: "retire-unregistered";
+  readonly organizationId: string;
+  readonly subjectId: CatalogSubjectId;
+  readonly expectedRelease: CatalogReleasePin;
+  readonly idempotencyKey: string;
+  readonly context: TrustedInvocationContext;
+  readonly reason: string;
+};
+
 export type RestoreRegistrationCommand = {
   readonly kind: "restore";
   readonly organizationId: string;
@@ -98,6 +108,7 @@ export type MovePlacementCommand = {
 export type RegistrationCommand =
   | RegisterSubjectCommand
   | RetireRegistrationCommand
+  | RetireUnregisteredSubjectCommand
   | RestoreRegistrationCommand
   | MovePlacementCommand;
 
@@ -159,6 +170,14 @@ export const validateRegistrationCommand = (
     return { ok: true, value: command };
   }
 
+  if (command.kind === "retire-unregistered") {
+    if (command.context.actorKind !== "org-admin" && command.context.actorKind !== "platform-admin") {
+      return permissionDenied(command.context.actorKind, command.kind);
+    }
+    if (!controlFree(command.subjectId) || !controlFree(command.reason) || command.reason.length > 1000) return invalid("reason");
+    return { ok: true, value: command };
+  }
+
   if (command.context.actorKind === "trusted-system") {
     return permissionDenied(command.context.actorKind, command.kind);
   }
@@ -216,6 +235,9 @@ const commandFingerprintModel = (command: RegistrationCommand): ContractJsonValu
     principalId: command.context.principalId,
   };
   switch (command.kind) {
+    case "retire-unregistered":
+      return { kind: command.kind, organizationId: command.organizationId, subjectId: command.subjectId,
+        expectedRelease: release, reason: command.reason, context: actor };
     case "register":
       return {
         kind: command.kind,
