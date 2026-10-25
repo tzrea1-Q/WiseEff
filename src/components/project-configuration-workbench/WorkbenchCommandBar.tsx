@@ -63,7 +63,7 @@ export function WorkbenchCommandBar({
   const openDetails = (level: InspectorLevel) => onOpenInspector ? onOpenInspector(level) : onInspectorToggle();
   return <>
     <header className="configuration-workbench__command" aria-label="配置命令栏">
-      <Button type="button" variant="ghost" size="sm" onClick={onLeave}><ChevronLeft aria-hidden="true" />项目清单</Button>
+      <Button type="button" variant="ghost" size="sm" onClick={onLeave}><ChevronLeft aria-hidden="true" />{canAdmin ? "项目清单" : "项目参数"}</Button>
       <strong className="configuration-workbench__project" title={project.name}>{project.name}</strong>
       <div className="configuration-workbench__config-select">
         <DropdownMenu.Root modal={false}>

@@ -18,6 +18,7 @@ export type UseWorkbenchBaselineOrchestrationParams = {
   search: string;
   onNavigate: (path: string) => void;
   canAdmin: boolean;
+  apiMode?: boolean;
   dtsRepository: DtsStructuredRepository;
   releaseBaselineSession: ReleaseBaselineSession;
   workspaceLoadSession: WorkbenchWorkspaceLoadSession;
@@ -43,6 +44,7 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
     search,
     onNavigate,
     canAdmin,
+    apiMode = false,
     dtsRepository,
     releaseBaselineSession,
     workspaceLoadSession,
@@ -91,10 +93,10 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
   useEffect(() => {
     void releaseBaselineSession.loadBaselines(
       projectId,
-      selectedConfigSet?.id ?? null,
+      canAdmin || !apiMode ? selectedConfigSet?.id ?? null : null,
       dtsRepository
     );
-  }, [baselinesRetry, dtsRepository, projectId, releaseBaselineSession, selectedConfigSet]);
+  }, [apiMode, baselinesRetry, canAdmin, dtsRepository, projectId, releaseBaselineSession, selectedConfigSet]);
 
   useEffect(() => {
     void releaseBaselineSession.refreshReadiness(

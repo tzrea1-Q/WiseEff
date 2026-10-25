@@ -49,6 +49,7 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
   }, 120_000);
   afterAll(async () => { await api?.close(); if (lane) await dropLabRuntimeLogins(lane.url, token); await db?.close(); await lane?.drop(); });
 
+
   it("creates, reopens, updates and discards an exact source draft with stable member identity", async () => {
     const created = await call("", "POST", { name: "Battery common", sourceName: "battery.dtsi", content: source });
     expect(created.status, created.bodyText).toBe(201);
@@ -553,4 +554,103 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     } finally { await db.query("update organizations set status='active' where id='org-shared-dtsi'"); }
     await call(`/${draft.resourceId}/draft`, "DELETE", { expectedRevision: 1 });
   });
+  it("compares two chosen immutable versions using original files and ordered parsed semantics", async () => {
+    const original='/ { same_a: first { compatible = "test,same"; value = <0x2a>; }; second { compatible = "test,same"; value = <7>; }; };\n';
+    const created=await call("","POST",{name:"Compared source",members:[{sourceName:"lib/common.dtsi",content:original}],changeDescription:"Original"});
+    const resourceId=created.body.item.resourceId;
+    const publish=async(revision:number,key:string)=>{
+      const preview=await publicationCall<{item:{id:string}}>(`/${resourceId}/publication-preview`,"POST",{expectedRevision:revision});
+      expect(preview.status,preview.bodyText).toBe(201);
+      const result=await publicationCall<{item:{id:string;members:Draft["members"]}}>(`/${resourceId}/publications`,"POST",{previewId:preview.body.item.id,idempotencyKey:key});
+      expect(result.status,result.bodyText).toBe(201);return result.body.item;
+    };
+    const first=await publish(1,"compare-first");
+    const next=await call(`/${resourceId}/draft`,"POST",{baseVersionId:first.id});
+    expect(next.body.item.members).toEqual(first.members.map(({id,sourceName,content})=>({id,sourceName,content})));
+    const changed=original.replace("<0x2a>","<43>").replace('value = <7>;','value = <8>; /delete-property/ value; value = <9>;');
+    const saved=await call(`/${resourceId}/draft`,"PUT",{name:"Compared source",members:next.body.item.members.map(member=>({...member,content:changed})),changeDescription:"Two actual nodes",expectedRevision:1});
+    expect(saved.status,saved.bodyText).toBe(200);
+    const second=await publish(2,"compare-second");
+    const compared=await publicationCall<{item:{before:{id:string;createdByName:string};after:{id:string};sources:{memberId:string;before:{sourceName:string;content:string};after:{content:string}}[];semantic:{before:string;after:string;scope:string}}}>(`/${resourceId}/comparison?before=${first.id}&after=${second.id}`);
+    expect(compared.status,compared.bodyText).toBe(200);
+    expect(compared.body.item.before).toMatchObject({id:first.id,createdByName:"Source author"});
+    expect(compared.body.item.after.id).toBe(second.id);
+    expect(compared.body.item.sources).toEqual([expect.objectContaining({memberId:first.members[0]!.id,before:{sourceName:"lib/common.dtsi",content:original},after:{sourceName:"lib/common.dtsi",content:changed}})]);
+    expect(compared.body.item.semantic.scope).toBe("ordered-fragment-declarations");
+    expect(compared.body.item.semantic.before).toContain('value = <42>');
+    expect(compared.body.item.semantic.after).toContain('/delete-property/ value;');
+    expect(compared.body.item.semantic.after.indexOf('/delete-property/ value;')).toBeLessThan(compared.body.item.semantic.after.indexOf('value = <9>'));
+    expect((await publicationCall(`/${resourceId}/comparison?before=${first.id}&after=${first.id}`)).status).toBe(400);
+    expect((await publicationCall(`/${resourceId}/comparison?before=${first.id}&after=${second.id}`,"GET",undefined,makeTestAuthContext({organizationId:"org-other-dtsi"}))).status).toBe(404);
+    expect((await publicationCall<{item:{members:Draft["members"]}}>(`/${resourceId}/versions/${first.id}`)).body.item.members[0]!.content).toBe(original);
+  });
+  it("compares the exact frozen dependency versions rather than their current resource pointers",async()=>{
+    type Version={id:string;resourceId:string;members:Draft["members"]};
+    const publish=async(resource:string,revision:number)=>{
+      const preview=await publicationCall<{item:{id:string}}>(`/${resource}/publication-preview`,"POST",{expectedRevision:revision});expect(preview.status,preview.bodyText).toBe(201);
+      const result=await publicationCall<{item:Version}>(`/${resource}/publications`,"POST",{previewId:preview.body.item.id,idempotencyKey:`frozen-${resource}-${revision}`});expect(result.status,result.bodyText).toBe(201);return result.body.item;
+    };
+    const buildInputs={includeSearchPaths:["include"],defines:{}};
+    const created=await call("","POST",{name:"Frozen leaf",members:[{sourceName:"leaf.dtsi",content:'/include/ "node.dtsi"\n'},
+      {sourceName:"include/node.dtsi",content:'/ { clock { value = <42>; }; };'}],buildInputs,changeDescription:"Leaf one"});
+    const leaf1=await publish(created.body.item.resourceId,1),pin={resourceId:leaf1.resourceId,versionId:leaf1.id,mountPath:"vendor"};
+    const rootDraft=await call("","POST",{name:"Frozen owner",sourceName:"main.dtsi",content:'/include/ "vendor/leaf.dtsi"\n',dependencies:[pin],changeDescription:"Owner one"});
+    const root1=await publish(rootDraft.body.item.resourceId,1);
+    const leafDraft=await call(`/${leaf1.resourceId}/draft`,"POST",{baseVersionId:leaf1.id});
+    await call(`/${leaf1.resourceId}/draft`,"PUT",{name:"Frozen leaf",members:leafDraft.body.item.members.map(member=>({...member,content:member.content.replace("42","43")})),buildInputs,changeDescription:"Leaf two",expectedRevision:1});
+    const leaf2=await publish(leaf1.resourceId,2);
+    const ownerDraft=await call(`/${root1.resourceId}/draft`,"POST",{baseVersionId:root1.id});
+    expect(ownerDraft.body.item).toHaveProperty("dependencies",[pin]);
+    await call(`/${root1.resourceId}/draft`,"PUT",{name:"Frozen owner",members:ownerDraft.body.item.members,dependencies:[{...pin,versionId:leaf2.id}],changeDescription:"Use exact leaf two",expectedRevision:1});
+    const root2=await publish(root1.resourceId,2);
+    const result=await publicationCall<{item:{sources:{resourceId:string;memberId:string;before:{sourceName:string;content:string};after:{content:string}}[];dependencies:{before:{versionId:string}[];after:{versionId:string}[]};semantic:{before:string;after:string}}}>(`/${root1.resourceId}/comparison?before=${root1.id}&after=${root2.id}`);
+    expect(result.status,result.bodyText).toBe(200);
+    expect(result.body.item.sources).toEqual([expect.objectContaining({resourceId:leaf1.resourceId,memberId:leaf1.members.find(member=>member.sourceName==="include/node.dtsi")!.id,before:{sourceName:"vendor/include/node.dtsi",content:'/ { clock { value = <42>; }; };'},after:{sourceName:"vendor/include/node.dtsi",content:'/ { clock { value = <43>; }; };'}})]);
+    expect(result.body.item.dependencies.before[0]!.versionId).toBe(leaf1.id);expect(result.body.item.dependencies.after[0]!.versionId).toBe(leaf2.id);
+    expect(result.body.item.semantic.before).toContain("value = <42>");expect(result.body.item.semantic.after).toContain("value = <43>");
+  });
+  it("compares frozen CPP originals with their actual expanded dependency and declared-build semantics",async()=>{
+    type Version=import("../contracts/dtoSchemas/sharedDtsi").SharedDtsiVersion;
+    type Comparison=import("../contracts/dtoSchemas/sharedDtsi").SharedDtsiComparison;
+    const publish=async(resource:string,revision:number)=>{
+      const preview=await publicationCall<{item:{id:string}}>(`/${resource}/publication-preview`,"POST",{expectedRevision:revision});expect(preview.status,preview.bodyText).toBe(201);
+      const result=await publicationCall<{item:Version}>(`/${resource}/publications`,"POST",{previewId:preview.body.item.id,idempotencyKey:`cpp-compare-${preview.body.item.id}`});expect(result.status,result.bodyText).toBe(201);return result.body.item;
+    };
+    const members=[{sourceName:"lib/common.dtsi",content:'#include <dt-bindings/power.h>\n/ { battery {\n#if ENABLED\n limit = <POWER_LIMIT>;\n#else\n limit = <99>;\n#endif\n}; };\n'},
+      {sourceName:"include/dt-bindings/power.h",content:"#define POWER_LIMIT 37\n"}];
+    const leafDraft=await call("","POST",{name:"Compared CPP dependency",members,buildInputs:{includeSearchPaths:["include"],defines:{ENABLED:"1"}},changeDescription:"Original CPP dependency"});
+    expect(leafDraft.status,leafDraft.bodyText).toBe(201);const leaf1=await publish(leafDraft.body.item.resourceId,1);
+    const ownBuildInputs={includeSearchPaths:["headers"],defines:{ROOT_FLAG:"1"}};
+    const original='#include <local.h>\n#include "vendor/lib/common.dtsi"\n/ { context { id = <ROOT_ID>; flag = <ROOT_FLAG>; }; };\n';
+    const rootDraft=await call("","POST",{name:"Compared CPP owner",members:[{sourceName:"main.dtsi",content:original},{sourceName:"headers/local.h",content:"#define ROOT_ID 7\n"}],
+      dependencies:[{resourceId:leaf1.resourceId,versionId:leaf1.id,mountPath:"vendor"}],buildInputs:ownBuildInputs,changeDescription:"Original owning inputs"});
+    expect(rootDraft.status,rootDraft.bodyText).toBe(201);const first=await publish(rootDraft.body.item.resourceId,1);
+    expect(first.manifest.buildInputs).toMatchObject(ownBuildInputs);
+    expect(first.manifest.buildInputs.preprocessing?.defines).toEqual({ENABLED:"1",ROOT_FLAG:"1"});
+    const leafNext=await call(`/${leaf1.resourceId}/draft`,"POST",{baseVersionId:leaf1.id});
+    const leafSave=await call(`/${leaf1.resourceId}/draft`,"PUT",{name:leafNext.body.item.name,members:leafNext.body.item.members.map(member=>({...member,content:member.content.replace("37","43")})),
+      buildInputs:{includeSearchPaths:["include"],defines:{ENABLED:"1"}},changeDescription:"Header macro changes",expectedRevision:1});expect(leafSave.status,leafSave.bodyText).toBe(200);
+    const leaf2=await publish(leaf1.resourceId,2);
+    const next=await call(`/${first.resourceId}/draft`,"POST",{baseVersionId:first.id});expect(next.body.item).toMatchObject({buildInputs:ownBuildInputs});
+    const saved=await call(`/${first.resourceId}/draft`,"PUT",{name:next.body.item.name,members:next.body.item.members,buildInputs:ownBuildInputs,
+      dependencies:[{resourceId:leaf2.resourceId,versionId:leaf2.id,mountPath:"vendor"}],changeDescription:"Exact successor dependency",expectedRevision:1});expect(saved.status,saved.bodyText).toBe(200);
+    const second=await publish(first.resourceId,2);
+    const compare=await publicationCall<{item:Comparison}>(`/${first.resourceId}/comparison?before=${first.id}&after=${second.id}`);
+    expect(compare.status,compare.bodyText).toBe(200);
+    expect(compare.body.item.sources).toEqual([expect.objectContaining({resourceId:leaf1.resourceId,memberId:leaf1.members.find(member=>member.sourceName.endsWith("power.h"))!.id,
+      before:{sourceName:"vendor/include/dt-bindings/power.h",content:"#define POWER_LIMIT 37\n"},after:{sourceName:"vendor/include/dt-bindings/power.h",content:"#define POWER_LIMIT 43\n"}})]);
+    expect(compare.body.item.semantic.before).toContain("limit = <37>");expect(compare.body.item.semantic.after).toContain("limit = <43>");
+    expect(compare.body.item.semantic.before).toContain("flag = <1>");expect(compare.body.item.semantic.before).not.toContain("limit = <99>");
+    const lastDraft=await call(`/${first.resourceId}/draft`,"POST",{baseVersionId:second.id});
+    const changedInputs={...ownBuildInputs,defines:{ROOT_FLAG:"2"}};
+    await call(`/${first.resourceId}/draft`,"PUT",{name:lastDraft.body.item.name,members:lastDraft.body.item.members,buildInputs:changedInputs,
+      dependencies:[{resourceId:leaf2.resourceId,versionId:leaf2.id,mountPath:"vendor"}],changeDescription:"Only owning macro changes",expectedRevision:1});
+    const third=await publish(first.resourceId,2);
+    const inputDiff=await publicationCall<{item:Comparison}>(`/${first.resourceId}/comparison?before=${second.id}&after=${third.id}`);
+    expect(inputDiff.status,inputDiff.bodyText).toBe(200);expect(inputDiff.body.item.sources).toEqual([]);
+    expect(inputDiff.body.item.buildInputs).toEqual({before:ownBuildInputs,after:changedInputs});
+    expect(inputDiff.body.item.semantic.before).toContain("flag = <1>");expect(inputDiff.body.item.semantic.after).toContain("flag = <2>");
+    expect((await publicationCall<{item:Version}>(`/${first.resourceId}/versions/${first.id}`)).body.item).toEqual(first);
+    expect((await publicationCall<{item:Version}>(`/${first.resourceId}/versions/${second.id}`)).body.item.members.find(member=>member.sourceName==="main.dtsi")!.content).toBe(original);
+  },120_000);
 });

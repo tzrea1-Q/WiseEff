@@ -43,8 +43,8 @@ function contextualLines(before: string, after: string): Array<TextDiffLine | nu
 }
 
 /** Keep original frozen source available, while the default view focuses on changed lines. */
-export function ReviewSourceDiff({ before, after, label = "固定源", uploadAfter, virtualized = false }: {
-  before: string; after: string; label?: string; uploadAfter?: string; virtualized?: boolean;
+export function ReviewSourceDiff({ before, after, label = "固定源", uploadAfter, virtualized = false, unchangedMessage = "源文件内容没有变化。" }: {
+  before: string; after: string; label?: string; uploadAfter?: string; virtualized?: boolean; unchangedMessage?: string;
 }) {
   const largeDiff = virtualized && before.length + after.length > 100_000;
   const diff = useMemo(() => largeDiff ? buildUnifiedDiff(before, after, "变更前", "变更后") : "", [after, before, largeDiff]);
@@ -63,7 +63,7 @@ export function ReviewSourceDiff({ before, after, label = "固定源", uploadAft
         <span className="submission-preview-diff-row__line-number">{line.rightLineNumber ?? ""}</span>
         <code>{line.value || " "}</code>
       </div> : <p className="review-source-diff__gap" key={index}><span aria-hidden="true">⋯</span><span className="sr-only">未变更内容已折叠</span></p>)}
-    </div> : <p role="note">源文件内容没有变化。</p>}
+    </div> : <p role="note">{unchangedMessage}</p>}
     <details className="review-source-diff__full">
       <summary>查看完整源文件</summary>
       <div className="canonical-project-value-review__diff">
