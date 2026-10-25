@@ -582,6 +582,17 @@ describe("ProjectConfigurationWorkbench", () => {
     }
     expect(storage.removeItem).toHaveBeenCalledWith(scope);expect(screen.queryByRole("dialog",{name:"切换共享版本"})).not.toBeInTheDocument();
   });
+  it.each([
+    ["?configSet=cs-default&inspector=file", "源码"],
+    ["?configSet=cs-default&inspector=versions", "源码"],
+    ["?configSet=cs-default&inspector=candidates", "源码"],
+    ["?configSet=cs-default&sourceMode=history", "源码"],
+    ["?configSet=cs-default&sourceMode=working", "源码"],
+    ["?configSet=cs-default&sourceMode=history&tab=effective", "生效配置"]
+  ])("preserves the requested content tab for source deep link %s", async (search, tab) => {
+    renderWorkbench({ apiMode: true, topologyRepository: createTopologyRepository(), search });
+    await waitFor(() => expect(screen.getByRole("tab", { name: tab })).toHaveAttribute("aria-selected", "true"));
+  });
   it("defaults to the complete effective tree, keeps compatible instances separate, and retries a failed read", async () => {
     const getTopology = vi.fn<ParameterTopologyRepository["getTopology"]>()
       .mockRejectedValueOnce(new Error("读取失败"))

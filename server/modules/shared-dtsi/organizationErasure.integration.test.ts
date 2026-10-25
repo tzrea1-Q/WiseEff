@@ -220,7 +220,10 @@ describe("Shared DTSI organization erasure through HTTP and a PostgreSQL API log
         const target = "/api/v1/platform/organizations/upgrade-dtsi-target";
         expect(await applyMigrations(legacy, migrationsDir)).toContain("0296_shared_dtsi_organization_erasure.sql");
         expect((await upgradedApi.query("select to_jsonb(revision) as value from shared_dtsi_revisions revision where id=$1",[versionId])).rows).toEqual(beforeRows.rows);
-        expect((await upgradedApi.query("select to_jsonb(draft)-'dependencies' as value from shared_dtsi_drafts draft where id=$1",[draftId])).rows).toEqual(beforeDraft.rows);
+        const upgradedDraft=(await upgradedApi.query<{value:Record<string,unknown>}>("select to_jsonb(draft) as value from shared_dtsi_drafts draft where id=$1",[draftId])).rows[0]!.value;
+        const { dependencies,build_inputs,source_origin,...originalDraft }=upgradedDraft;
+        expect([{value:originalDraft}]).toEqual(beforeDraft.rows);
+        expect({dependencies,build_inputs,source_origin}).toEqual({dependencies:[],build_inputs:{includeSearchPaths:[],defines:{}},source_origin:null});
         const exact=await call<{item:{members:{content:string}[]}}>(`${resource}/versions/${versionId}`);
         expect(exact.status,exact.bodyText).toBe(200);expect(exact.body.item.members).toEqual([expect.objectContaining({id:memberId,sourceName:"battery.dtsi",content:source,checksum,sizeBytes})]);
         const reopened=await call<{item:{dependencies:unknown[];members:{content:string}[]}}>(resource);
