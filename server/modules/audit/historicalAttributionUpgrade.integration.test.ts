@@ -2,18 +2,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
+import { createPostgresDatabase } from "../../shared/database/client";
 import { applyMigrations } from "../../shared/database/migrations";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
 import { migrationsDir, withTempDatabase } from "../../testing/tempDatabase";
 import { createLocalObjectStore } from "../logs/objectStore";
-import { asValueClient, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
-import { addConfigSetFile, createConfigSet } from "../parameter-files/configSetService";
+import { seedHistoricalPinnedSourceFixture } from "../../testing/parameterCatalog/historicalSource";
 import { listFileVersions } from "../parameter-files/repository";
-import { uploadProjectParameterFile } from "../parameter-files/service";
-import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { createAuditEvent, listAuditEvents } from "./repository";
 
 describe("populated historical-attribution upgrade", () => {
@@ -30,18 +27,10 @@ describe("populated historical-attribution upgrade", () => {
         const storage = createLocalObjectStore(directory);
         await installDriverSourceFixture(db, auth, { subjectId: "csub_acme_power", compatible: "acme,power", businessName: "History upgrade",
           driverName: "Acme power", idempotencyKey: "history-upgrade-registration", reason: "Historical attribution upgrade" });
-        const configSetId = (await createConfigSet(db, auth, { projectId, name: "Upgrade source" })).id;
-        const source = '/dts-v1/; / { compatible = "test,board"; model = "history"; charger { compatible = "acme,power"; iin_max = <36>; }; };';
-        const uploaded = await uploadProjectParameterFile(db, storage, auth, { projectId, fileName: "board.dts", bytes: Buffer.from(source) });
-        const fileId = uploaded.file.id;
-        await addConfigSetFile(db, auth, { configSetId, fileId, role: "base", sortOrder: 0 });
-        const revision = await ingestConfigRevision(db, { organizationId, projectId, configSetId, entryFile: "board.dts",
-          includeSearchPaths: ["."], overlayOrder: [], members: [{ fileId, fileVersionId: uploaded.version.id, fileName: "board.dts",
-            sourceName: "board.dts", role: "base", sortOrder: 0, content: source }] }, auth);
-        const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
-        if (!catalog) throw new Error("Catalog fixture unavailable");
-        await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), catalog, {
-          organizationId, projectId, configSetId, configRevisionId: revision.id }));
+        const source = '/dts-v1/; / { charger { compatible = "acme,power"; iin_max = <36>; }; };';
+        const { fileId, fileVersionId } = await seedHistoricalPinnedSourceFixture(db, storage, {
+          organizationId, projectId, source, createdByUserId: userId,
+        });
         for (const actorUserId of [userId, "history-missing"]) await createAuditEvent(db, {
           id: actorUserId, organizationId, projectId, actorUserId, actorType: "user", app: "parameters", kind: "parameter-review",
           action: "approve", severity: "Low", targetType: null, targetId: null, metadata: {}, traceId: actorUserId
@@ -61,7 +50,7 @@ describe("populated historical-attribution upgrade", () => {
         expect((await listAuditEvents(db, { organizationId, eventId: "history-missing" })).items[0]).toMatchObject({ actorName: null,
           historicalAttribution: { actors: { actor_user_id: { id: null, name: null, source: "unknown" } } } });
         expect((await listFileVersions(db, { fileId }))[0]).toMatchObject({ createdByDisplayName: "Name at migration（迁移时名称）" });
-        await expect(db.transaction((tx) => tx.query("update project_parameter_file_versions set checksum='changed' where id=$1", [uploaded.version.id])))
+        await expect(db.transaction((tx) => tx.query("update project_parameter_file_versions set checksum='changed' where id=$1", [fileVersionId])))
           .rejects.toMatchObject({ code: "55000" });
       } finally { await db.close(); await rm(directory, { recursive: true, force: true }); }
     });
