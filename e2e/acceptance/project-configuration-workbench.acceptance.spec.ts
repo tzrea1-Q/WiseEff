@@ -3087,12 +3087,20 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const preview = await previewing; expect(preview.status(), await preview.text()).toBe(200);
     expect(preview.request().postDataJSON()).toMatchObject({ sharedReference: { resourceId: draft.resourceId, versionId }, role: "misc" });
     await expect(dialog.getByRole("region", { name: "加入配置预览" })).toContainText(sourceName);
+    await expect(dialog).toHaveAccessibleDescription("选择共享资源及固定版本，预览配置变化后确认引用。");
+    await expect(dialog.getByLabel("确认后根文件源码", { exact: true })).toBeHidden();
     await dialog.getByText(`项目根文件 include 变更：${binding.fileName}`, { exact: true }).click();
+    await expect(dialog.getByLabel("当前根文件源码", { exact: true })).toHaveText(sample);
     await expect(dialog.getByLabel("确认后根文件源码", { exact: true })).toContainText(`/include/ "${sourceName}"`);
     await expect(dialog.getByLabel("确认后根文件源码", { exact: true })).toContainText('"FixedProject"');
+    await dialog.getByText(`项目根文件 include 变更：${binding.fileName}`, { exact: true }).click();
     await dialog.getByLabel("加入原因", { exact: true }).fill("#1416 reviewed exact fixed version and private-root include change");
     for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
       await page.setViewportSize(viewport);
+      const confirmation = dialog.getByRole("button", { name: "确认加入配置", exact: true });
+      await expect(confirmation).toBeEnabled();
+      await expect(confirmation).toBeInViewport({ ratio: 1 });
+      await expect(dialog.getByLabel("加入原因", { exact: true })).toBeInViewport({ ratio: 1 });
       const path = testInfo.outputPath(`fixed-shared-reference-${viewport.width}.png`);
       await page.screenshot({ path }); await testInfo.attach(`Fixed shared reference ${viewport.width}`, { path, contentType: "image/png" });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
