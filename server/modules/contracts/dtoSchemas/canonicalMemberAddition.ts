@@ -1,9 +1,18 @@
 import { z } from "zod";
 import { sharedDtsiDependencySchema } from "./sharedDtsi";
 
+export const sharedReferenceSwitchPreviewSchema=z.object({
+  beforeVersion:z.number(),afterVersion:z.number(),
+  dependencies:z.object({before:z.array(z.object({name:z.string(),version:z.number(),mountPath:z.string()})),after:z.array(z.object({name:z.string(),version:z.number(),mountPath:z.string()}))}),
+  sources:z.array(z.object({sourceName:z.string(),before:z.string().nullable(),after:z.string().nullable(),projectOwned:z.boolean()})),
+  effective:z.array(z.object({node:z.string(),property:z.string(),oldShared:z.string().nullable(),targetShared:z.string().nullable(),before:z.string().nullable(),after:z.string().nullable(),originBefore:z.string().nullable(),originAfter:z.string().nullable(),localOverride:z.boolean()})),
+  build:z.object({mode:z.literal("release"),passed:z.literal(true),includeSearchPaths:z.array(z.string()),defines:z.record(z.string())})
+});
+export type SharedReferenceSwitchPreview=z.infer<typeof sharedReferenceSwitchPreviewSchema>;
+
 const additionFields = {
   candidateId: z.string().min(1).optional(), fileId: z.string().min(1).optional(),
-  sharedReference: sharedDtsiDependencySchema.extend({mountPath:sharedDtsiDependencySchema.shape.mountPath.optional()}).strict().optional(),
+  sharedReference: sharedDtsiDependencySchema.extend({mountPath:sharedDtsiDependencySchema.shape.mountPath.optional(), replaceVersionId:z.string().uuid().optional()}).strict().optional(),
   setAsRoot: z.literal(true).optional(),
   role: z.enum(["base", "overlay", "charging", "thermal", "misc"]), sortOrder: z.number().int().min(0).max(100000),
   json: z.object({ configurationSchemaId: z.string().trim().min(1), rootPointer: z.string(),
@@ -16,6 +25,7 @@ export const memberAdditionApplyBodySchema = z.object({ ...additionFields, proof
 export const memberAdditionPreviewResponseSchema = z.object({ item: z.object({
   proofToken: z.string().regex(/^[0-9a-f]{64}$/), configSetId: z.string(), fileName: z.string(), format: z.enum(["dts", "json"]),
   sharedReference: z.object({ resourceId: z.string(), versionId: z.string(), memberId: z.string(), version: z.number(), digest: z.string() }).optional(),
+  sharedSwitch:sharedReferenceSwitchPreviewSchema.optional(),
   sharedComposition:z.array(z.object({resourceId:z.string(),versionId:z.string(),name:z.string(),version:z.number(),digest:z.string(),mountPath:z.string(),direct:z.boolean(),
     sources:z.array(z.object({memberId:z.string(),fileId:z.string(),fileVersionId:z.string(),sourceName:z.string()}))})).optional(),
   rootEdit: z.object({ fileId: z.string(), baseFileVersionId: z.string(), sourceName: z.string(), before: z.string(), after: z.string() }).optional(),

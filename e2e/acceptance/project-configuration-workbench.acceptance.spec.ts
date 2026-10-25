@@ -3050,6 +3050,77 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await expect(await openWorkbenchPanel(page,"config-set")).toContainText("retained-");
   });
 
+  test("shared version switch preserves private overrides and creates new revisions in both directions", async ({page,request},testInfo)=>{
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
+    const binding=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:'/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "PrivateChoice", "keep"; }; };',rawValuePattern:'"PrivateChoice", "keep"',nodeLocatorPattern:"board",reason:"#1422 private decision",timeoutMs:60_000});
+    const sourceName=`switch-${randomUUID()}.dtsi`,content='/ { board { rx_fod_cond = "SharedOld", "keep"; }; inherited { compatible = "mt,mt5788"; rx_fod_cond = "SharedOld", "keep"; status = "okay"; }; };';
+    const created=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:`Switch ${randomUUID()}`,sourceName,content,changeDescription:"Original defaults"}});
+    expect(created.status(),await created.text()).toBe(201);const resourceId=(await created.json()).item.resourceId as string;
+    const publish=async(revision:number)=>{
+      const preview=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:revision}});expect(preview.status(),await preview.text()).toBe(201);
+      const result=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`),{headers:adminHeaders(),data:{previewId:(await preview.json()).item.id,idempotencyKey:`switch-${randomUUID()}`}});expect(result.status(),await result.text()).toBe(201);return (await result.json()).item.id as string;
+    };
+    const v1=await publish(1),compositionPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition`;
+    const addition={sharedReference:{resourceId,versionId:v1},role:"misc",sortOrder:1};
+    const initialPreview=await request.post(apiRoute(`${compositionPath}/preview`),{headers:adminHeaders(),data:addition});expect(initialPreview.status(),await initialPreview.text()).toBe(200);
+    const initial=await request.post(apiRoute(`${compositionPath}/apply`),{headers:adminHeaders(),data:{...addition,proofToken:(await initialPreview.json()).item.proofToken,reason:"#1422 initial dependency",clientMutationId:`switch-${randomUUID()}`}});expect(initial.status(),await initial.text()).toBe(200);
+    const initialRevision=(await initial.json()).item.configRevisionId as string;
+    const draft=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`),{headers:adminHeaders(),data:{baseVersionId:v1}});expect(draft.status(),await draft.text()).toBe(201);
+    const saved=await request.put(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`),{headers:adminHeaders(),data:{expectedRevision:(await draft.json()).item.revision,name:"Changed defaults",sourceName,content:content.replaceAll("SharedOld","SharedNew").replace('status = "okay"','status = "disabled"'),changeDescription:"New defaults and node status"}});expect(saved.status(),await saved.text()).toBe(200);
+    const v2=await publish((await saved.json()).item.revision);
+    const route=`/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({organization:organizationId,configSet:binding.configSetId,tab:"effective",node:"/board"})}`;
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,route));await dismissXiaozeHint(page);
+    const revisions:string[]=[];
+    for(const [index,target] of [v2,v1].entries()) {
+      const composition=await openWorkbenchPanel(page,"config-set");
+      await composition.getByRole("button",{name:`${sourceName} 更多`,exact:true}).click();
+      await page.getByRole("menuitem",{name:"切换共享版本",exact:true}).click();
+      const dialog=page.getByRole("dialog",{name:"切换共享版本",exact:true});
+      const versionControl=dialog.getByRole("combobox",{name:"固定版本",exact:true});await selectControlOption(versionControl,target);
+      await expect(page.getByRole("listbox")).toBeHidden();await expect(versionControl).toBeFocused();
+      const previewButton=dialog.getByRole("button",{name:"预览版本切换",exact:true});await previewButton.focus();await expect(previewButton).toBeFocused();await page.keyboard.press("Enter");
+      const preview=dialog.getByRole("region",{name:"版本切换预览",exact:true});await expect(preview).toContainText("构建与参数约束校验通过");
+      await expect(preview).toContainText("保留本地覆盖");await expect(preview).toContainText('"PrivateChoice", "keep"');await expect(preview).toContainText("status");
+      await dialog.getByRole("textbox",{name:"变更说明",exact:true}).fill("#1422 preserve the project decision");
+      if(index===0) {
+        for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
+          await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+          await expect(dialog.getByRole("button",{name:"确认切换版本",exact:true})).toBeInViewport();
+          const path=testInfo.outputPath(`shared-switch-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`Shared switch ${viewport.width}`,{path,contentType:"image/png"});
+        }
+        await dialog.getByRole("button",{name:"取消本次预览",exact:true}).click();await expect(dialog.getByRole("button",{name:"确认切换版本",exact:true})).toHaveCount(0);
+        await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue("#1422 preserve the project decision");
+        const files=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`),{headers:adminHeaders()});
+        const root=((await files.json()).items as {fileId:string;fileName:string;role:string;currentVersionId:string}[]).find(file=>file.role==="base")!;
+        const original=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${root.fileId}/versions/${root.currentVersionId}/content`),{headers:adminHeaders()});
+        const candidate=await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),{headers:adminHeaders(),data:{fileId:root.fileId,fileName:root.fileName,intent:"source_revision",
+          contentBase64:Buffer.from((await original.text())+'\n// Concurrent project note retained by switching\n').toString("base64"),expectedCurrentVersionId:root.currentVersionId,expectedConfigRevisionId:initialRevision,clientMutationId:`switch-drift-${randomUUID()}`}});expect(candidate.status(),await candidate.text()).toBe(201);
+        const candidateId=(await candidate.json()).item.id as string;
+        const sourcePreview=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-preview`),{headers:adminHeaders()});expect(sourcePreview.status(),await sourcePreview.text()).toBe(200);
+        const drift=await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-apply`),{headers:adminHeaders(),data:{expectedCurrentVersionId:root.currentVersionId,expectedProofToken:(await sourcePreview.json()).item.proofToken,reason:"Concurrent project note",clientMutationId:`switch-drift-apply-${randomUUID()}`}});expect(drift.status(),await drift.text()).toBe(200);
+        const expectedFailure={method:"POST",path:`${compositionPath}/apply`,status:409};expectedBrowserApiFailures.push(expectedFailure);
+        try {
+          const stale=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/member-addition/apply"));
+          await dialog.getByRole("button",{name:"确认切换版本",exact:true}).click();const refused=await stale;expect(refused.status(),await refused.text()).toBe(409);
+          await expect(dialog.getByRole("alert")).toContainText("预览");await expect(dialog.getByRole("button",{name:"确认切换版本",exact:true})).toHaveCount(0);
+          await page.setViewportSize({width:1440,height:900});const errorPath=testInfo.outputPath("shared-switch-stale-1440.png");await page.screenshot({path:errorPath});await testInfo.attach("Shared switch stale source",{path:errorPath,contentType:"image/png"});
+        } finally {expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(expectedFailure),1);}
+        await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue("#1422 preserve the project decision");
+      }
+      const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/member-addition/apply"));
+      await dialog.getByRole("button",{name:"确认切换版本",exact:true}).focus();await page.keyboard.press("Enter");
+      const applied=await applying;expect(applied.status(),await applied.text()).toBe(200);revisions.push((await applied.json()).item.configRevisionId);
+      await expect(dialog).toHaveCount(0);await page.getByRole("tab",{name:"生效配置",exact:true}).click();
+      await page.getByRole("treeitem",{name:"节点 /board",exact:true}).click();await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"PrivateChoice", "keep"');
+      await page.getByRole("treeitem",{name:"节点 /inherited",exact:true}).click();await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText(index===0?'"SharedNew", "keep"':'"SharedOld", "keep"');
+      await page.reload();await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText(index===0?'"SharedNew", "keep"':'"SharedOld", "keep"');
+    }
+    expect(new Set([initialRevision,...revisions]).size).toBe(3);
+    const values=await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),{headers:adminHeaders()});expect((await values.json()).items).toContainEqual(expect.objectContaining({id:binding.bindingId,rawValue:'"PrivateChoice", "keep"'}));
+  });
+
   test("shared successor comparison and authorized usage retain the exact project pin", async ({ page, request }, testInfo) => {
     test.setTimeout(240_000);
     await seedAcceptanceRoleMatrix();

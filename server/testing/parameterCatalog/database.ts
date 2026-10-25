@@ -191,7 +191,12 @@ export const S2_SCH_0291_FINGERPRINT =
 export const S2_SCH_0298_NATIVE_FINGERPRINT =
   "aefc22641fbdc54e2c21366e675deeb973b267fb9cb0c9b8c5d0aff8a0576397";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0298_NATIVE_FINGERPRINT;
+/** Fresh PostgreSQL through 0304 includes the exact frozen shared-reference
+ * switch exception in the pinned-file guard. Earlier literal pins stay fixed. */
+export const S2_SCH_0304_FINGERPRINT =
+  "6df59e65136c9b369f6b7906c43718dddff41f1022d545f1fee023fe9413ca5a";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0304_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

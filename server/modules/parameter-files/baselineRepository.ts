@@ -211,7 +211,7 @@ export async function listConfigSetMemberFiles(
       v.version_number as version_number,
       v.storage_key as storage_key,
       (select jsonb_build_object('referenceId',r.id,'resourceId',r.resource_id,'versionId',r.revision_id,
-        'version',upstream.version,'memberId',s.member_id,'digest',upstream.digest,'readOnly',true)
+        'version',upstream.version,'memberId',s.member_id,'digest',upstream.digest,'readOnly',true,'direct',r.is_direct)
         from public.project_shared_dtsi_snapshots s join public.project_shared_dtsi_references r on r.id=s.reference_id
         join public.shared_dtsi_revisions upstream on upstream.id=r.revision_id where s.file_id=ppf.id) as shared_reference
     from project_parameter_files ppf
