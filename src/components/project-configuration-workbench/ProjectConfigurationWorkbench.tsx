@@ -770,7 +770,7 @@ export function ProjectConfigurationWorkbench({
       const next={...current,draft};try{sessionStorage.setItem(switchTaskKey,JSON.stringify(next));}catch{/* Keep the in-page task when browser storage is unavailable. */}return next;
     });
   },[switchTaskKey]);
-  const dismissSwitchTask=()=>{setMemberAdditionOpen(false);setSwitchSharedMember(null);setSwitchTask(null);sessionStorage.removeItem(switchTaskKey);};
+  const dismissSwitchTask=()=>{setMemberAdditionOpen(false);setSwitchSharedMember(null);setSwitchTask(null);try{sessionStorage.removeItem(switchTaskKey);}catch{/* Cancellation remains available when browser storage is unavailable. */}};
   const resumedSwitch=useRef("");
   useEffect(()=>{
     if(queryValue(search,"sharedSwitch")==="resume" && activeSwitchTask && canAdmin && resumedSwitch.current!==switchTaskKey){

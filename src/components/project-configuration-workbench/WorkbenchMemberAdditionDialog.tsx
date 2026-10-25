@@ -34,6 +34,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   const client = useMemo(() => suppliedClient ?? createCanonicalMemberAdditionClient(), [suppliedClient]);
   const sharedClient = useMemo(() => suppliedSharedClient ?? createSharedDtsiClient(createDefaultApiClient()), [suppliedSharedClient]);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const selectionRef=useRef<HTMLDetailsElement>(null);
   const [configSetId, setConfigSetId] = useState(initialConfigSetId), [source, setSource] = useState(switchReference?"shared":"upload");
   const [file, setFile] = useState<File | null>(null), [fileId, setFileId] = useState(availableFiles[0]?.id ?? "");
   const [candidate, setCandidate] = useState<{ id: string; fileName: string; format: "dts" | "json" } | null>(null);
@@ -119,7 +120,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
         : source === "upload" ? "上传仅保存候选；预览并确认后，文件组成及参数状态一起生效。" : "选择项目文件，预览配置变化后确认加入。"}</p></div>
         <Button ref={closeRef} type="button" variant="outline" disabled={busy} onClick={onDismiss}>关闭</Button></header>
       <div className="workbench-member-addition-dialog__body" aria-busy={busy}>
-        <details open={!preview} className="workbench-member-addition-dialog__selection"><summary>文件与目标配置</summary>
+        <details ref={selectionRef} open={!preview} className="workbench-member-addition-dialog__selection"><summary>文件与目标配置</summary>
         <form onSubmit={(event) => { event.preventDefault(); void prepare(); }}>
           <fieldset disabled={busy} aria-label="文件与目标配置">
             <label>目标配置<SelectControl ariaLabel="目标配置" value={configSetId} disabled={busy||Boolean(switchReference)}
@@ -183,7 +184,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
               {item.resourceId?"核对共享来源":"修正项目源码"}</Button>:null}
             {onRecoverSwitch && item.resourceId && item.projectCorrection && projectRoot?<Button type="button" variant="outline" onClick={()=>{invalidate();onRecoverSwitch({message:item.message,...projectRoot,node:item.node,property:item.property},{versionId,reason});}}>编辑项目根文件</Button>:null}
           </li>)}</ul>:<p>当前配置未改变；请重新预览，或选择其他目标版本。</p>}
-          <Button type="button" variant="outline" onClick={()=>{invalidate();closeRef.current?.closest("[role=dialog]")?.querySelector<HTMLDetailsElement>("details")?.setAttribute("open","");}}>重选目标版本</Button>
+          <Button type="button" variant="outline" onClick={()=>{invalidate();if(selectionRef.current){selectionRef.current.open=true;selectionRef.current.querySelector<HTMLButtonElement>('[aria-label="固定版本"]')?.focus();}}}>重选目标版本</Button>
           <Button type="button" variant="outline" onClick={onDismiss}>取消版本切换</Button>
         </section>:null}
         {!switchConflicts.length && errorDiagnostics.length ? <ul aria-label="来源校验诊断">{errorDiagnostics.map((message, index) => <li key={index}>{message}</li>)}</ul> : null}

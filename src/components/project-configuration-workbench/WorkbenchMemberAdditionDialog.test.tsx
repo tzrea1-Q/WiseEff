@@ -18,6 +18,9 @@ it("locates a blocked project override and retains the task input across correct
   const view=render(<WorkbenchMemberAdditionDialog {...props}/>);
   await user.click(await screen.findByRole("button",{name:"预览版本切换"}));
   expect(await screen.findByText("board.dts:9 · /charger · iin_max")).toBeVisible();
+  await user.click(screen.getByRole("button",{name:"重选目标版本"}));
+  expect(screen.getByRole("combobox",{name:"固定版本"})).toHaveFocus();
+  await user.click(screen.getByRole("button",{name:"预览版本切换"}));
   await user.click(screen.getByRole("button",{name:"修正项目源码"}));
   expect(recover).toHaveBeenCalledWith(expect.objectContaining({fileId:"root",line:9}),{versionId:target,reason:"Keep local decision"});
   view.unmount();render(<WorkbenchMemberAdditionDialog {...props}/>);
