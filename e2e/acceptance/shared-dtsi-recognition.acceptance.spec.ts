@@ -95,15 +95,18 @@ test("#1431 recognizes frozen source instances, submits an ambiguity proposal an
     await page.keyboard.press("Escape");await expect(page).toHaveURL(catalogAppUrl(sourcePath));
     await page.goto(catalogAppUrl("/parameter-admin/modules"));
     const placementTrigger=page.getByRole("button",{name:"调整归属：charger",exact:true});
-    await placementTrigger.click();
+    await placementTrigger.focus();await page.keyboard.press("Enter");
     const placement=page.getByRole("dialog",{name:/调整/}).first();
-    await expect(placement.getByLabel("原因",{exact:true})).toBeVisible();
+    await expect(placement.getByRole("combobox",{name:"目标模块",exact:true})).toBeVisible();
+    await expect(placement.getByRole("status",{name:"当前主体与去向",exact:true})).toBeVisible();
     await assertNoPageOverflow(page);await catalogScreenshot(page,testInfo,"shared-related-placement-1280");
     await page.keyboard.press("Escape");await expect(placementTrigger).toBeFocused();
     const retireTrigger=page.getByRole("button",{name:"移除节点类型：charger",exact:true});
     await retireTrigger.click();
     const retirement=page.getByRole("dialog",{name:"移除节点类型",exact:true});
     await expect(retirement.getByLabel("操作原因",{exact:true})).toBeVisible();
+    await expect(retirement.getByText("正在读取登记与引用影响…",{exact:true})).toHaveCount(0);
+    await expect(retirement).toContainText("当前归属：");
     await catalogScreenshot(page,testInfo,"shared-related-retire-1280");
     await page.keyboard.press("Escape");await expect(retireTrigger).toBeFocused();
     await signInCatalogActor(page,"guest",sourcePath);await dismissXiaozeHint(page);
@@ -116,6 +119,7 @@ test("#1431 recognizes frozen source instances, submits an ambiguity proposal an
     await expect(page).toHaveURL(catalogAppUrl(sourcePath));
     await expect(recognition.getByText("/device@2",{exact:true})).toBeVisible();
     await page.evaluate(()=>document.documentElement.classList.add("dark"));
+    await expect(page.getByRole("button",{name:"返回资源列表",exact:true})).toHaveCSS("color","rgb(183, 193, 212)");
     await assertNoPageOverflow(page);await catalogScreenshot(page,testInfo,"shared-recognition-guest-dark-1280");
     expect(errors).toEqual([]);expect(serverErrors).toEqual([]);
   } finally {await db.close();}
@@ -134,7 +138,7 @@ test("#1431 retains source recognition loading, retry and empty states and a scr
   const recognitionUrl=`**/api/v2/shared-dtsi/${resource}/versions/${version}/recognition*`;
   let release!:()=>void,entered!:()=>void;
   const gate=new Promise<void>(resolve=>{release=resolve;}),started=new Promise<void>(resolve=>{entered=resolve;});
-  await page.route(recognitionUrl,async route=>{entered();await gate;await route.continue();},{times:1});
+  await page.route(recognitionUrl,async route=>{entered();await gate;await route.continue();});
   await page.goto(catalogAppUrl(path));await started;
   await expect(page.getByRole("status",{name:"正在读取固定版本的来源识别",exact:true})).toBeVisible();
   await catalogScreenshot(page,testInfo,"shared-recognition-loading-1440");release();

@@ -435,7 +435,7 @@ export function CanonicalSubjectPlacementPanel({
   };
 
   const openPlacement = async (subject: SubjectRow, registrationId: string) => {
-    if (!inventoryComplete) return;
+    if (!inventoryComplete || openingSubjectId === subject.id) return;
     const generation = ++placementGeneration.current;
     setOpeningSubjectId(subject.id);
     setRowErrors((current) => ({ ...current, [subject.id]: "" }));
@@ -724,7 +724,9 @@ export function CanonicalSubjectPlacementPanel({
                             type="button"
                             className="button subtle"
                             aria-label={`调整归属：${subject.canonicalName}`}
-                            disabled={!inventoryComplete || openingSubjectId === subject.id}
+                            disabled={!inventoryComplete}
+                            aria-disabled={openingSubjectId === subject.id}
+                            aria-busy={openingSubjectId === subject.id}
                             onClick={() =>
                               void openPlacement(subject, registrationId ?? "")
                             }

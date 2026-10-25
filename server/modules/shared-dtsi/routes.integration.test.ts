@@ -80,15 +80,16 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
       expect(result.status, result.bodyText).toBe(201);
       return result.body.item;
     };
-    const leaf = await publish("Recognition leaf", "instances.dtsi", '// compatible = "vendor,comment-only";\n/ { first: unit@1 { compatible = "acme,sensor", "acme,power"; }; second: unit@2 { compatible = "vendor,shared-evidence"; }; third: unit@3 { compatible = "vendor,shared-evidence"; }; };');
-    const root = await publish("Recognition wrapper", "wrapper.dtsi", '/include/ "vendor/instances.dtsi"\n', [{resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"vendor"}]);
+    const leaf = await publish("Recognition leaf", "instances.dts", '// compatible = "vendor,comment-only";\n/ { first: unit@1 { compatible = "acme,sensor", "acme,power"; }; second: unit@2 { compatible = "vendor,shared-evidence"; }; third: unit@3 { compatible = "vendor,shared-evidence"; }; };');
+    const root = await publish("Recognition wrapper", "wrapper.dtsi", '/include/ "vendor/instances.dts"\n', [{resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"vendor"}]);
+    expect((await publicationCall(`/${leaf.resourceId}/versions/${leaf.id}/recognition`)).status).toBe(200);
     const catalogApp=createWiseEffServer({db:api,auth:{mode:"production",verifier:{verify:async()=>auth}}});
     const observations=()=>requestJson(catalogApp,`/api/v2/organizations/${auth.organization.id}/parameter-observations`,{headers:{authorization:"Bearer native-t21"}});
     const before=await observations();expect(before.status,before.bodyText).toBe(200);
     const response = await publicationCall<{items:{nodeLocator:string;labels:string[];compatibles:{compatible:string}[];source:{resourceId:string;versionId:string;memberId:string;sourceName:string;line:number}}[]}>(`/${root.resourceId}/versions/${root.id}/recognition`);
     expect(response.status, response.bodyText).toBe(200);
     expect(response.body.items).toEqual([
-      expect.objectContaining({nodeLocator:"/unit@1",labels:["first"],candidate:{status:"ambiguous",subjectIds:expect.arrayContaining(["csub_acme_sensor","csub_acme_power"])},compatibles:[expect.objectContaining({compatible:"acme,sensor",status:"recognized",subjectIds:["csub_acme_sensor"]}),expect.objectContaining({compatible:"acme,power",status:"retired",subjectIds:["csub_acme_power"]})],source:expect.objectContaining({resourceId:leaf.resourceId,versionId:leaf.id,memberId:leaf.members[0]!.id,sourceName:"instances.dtsi",line:2})}),
+      expect.objectContaining({nodeLocator:"/unit@1",labels:["first"],candidate:{status:"ambiguous",subjectIds:expect.arrayContaining(["csub_acme_sensor","csub_acme_power"])},compatibles:[expect.objectContaining({compatible:"acme,sensor",status:"recognized",subjectIds:["csub_acme_sensor"]}),expect.objectContaining({compatible:"acme,power",status:"retired",subjectIds:["csub_acme_power"]})],source:expect.objectContaining({resourceId:leaf.resourceId,versionId:leaf.id,memberId:leaf.members[0]!.id,sourceName:"instances.dts",line:2})}),
       expect.objectContaining({nodeLocator:"/unit@2",labels:["second"],compatibles:[expect.objectContaining({compatible:"vendor,shared-evidence"})]}),
       expect.objectContaining({nodeLocator:"/unit@3",labels:["third"],compatibles:[expect.objectContaining({compatible:"vendor,shared-evidence"})]})
     ]);
@@ -107,7 +108,7 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     expect((await propose("acme,sensor","/unit@1")).status).toBe(409);
     const proposal=await propose("vendor,shared-evidence");
     expect(proposal.status,proposal.bodyText).toBe(201);
-    expect(proposal.body.item.requestedChange).toMatchObject({sourceEvidence:{resourceId:leaf.resourceId,versionId:leaf.id,memberId:leaf.members[0]!.id,sourceName:"instances.dtsi",line:2,nodeLocator:"/unit@2",compatible:"vendor,shared-evidence"}});
+    expect(proposal.body.item.requestedChange).toMatchObject({sourceEvidence:{resourceId:leaf.resourceId,versionId:leaf.id,memberId:leaf.members[0]!.id,sourceName:"instances.dts",line:2,nodeLocator:"/unit@2",compatible:"vendor,shared-evidence"}});
     expect((await propose("vendor,shared-evidence")).body.item.id).toBe(proposal.body.item.id);
     const ambiguous=await propose("acme,sensor","/unit@1","source-recognition");
     expect(ambiguous.status,ambiguous.bodyText).toBe(201);
@@ -123,7 +124,11 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     const preview=await publicationCall<{item:{id:string;manifest:{compatibleSelectors:string[]}}}>(`/${draft.resourceId}/publication-preview`,"POST",{expectedRevision:1});
     expect(preview.status,preview.bodyText).toBe(201);
     expect(preview.body.item.manifest.compatibleSelectors).toEqual(["t21,cpp-index-v1"]);
-    expect((await call("?q=t21%2Ccpp-index-v1")).body.items).toContainEqual(expect.objectContaining({resourceId:draft.resourceId}));
+    const preparation=vi.spyOn(await import("../dts/cppSources"),"prepareDtsSources");
+    try {
+      for(let query=0;query<2;query++)expect((await call("?q=t21%2Ccpp-index-v1")).body.items).toContainEqual(expect.objectContaining({resourceId:draft.resourceId}));
+      expect(preparation).not.toHaveBeenCalled();
+    } finally {preparation.mockRestore();}
     const changed=draft.members.map(member=>({...member,content:member.content.replace("cpp-index-v1","cpp-index-v2")}));
     const saved=await call(`/${draft.resourceId}/draft`,"PUT",{name:draft.name,members:changed,buildInputs:{includeSearchPaths:["include"],defines:{}},changeDescription:"New selector",expectedRevision:1});
     expect(saved.status,saved.bodyText).toBe(200);
