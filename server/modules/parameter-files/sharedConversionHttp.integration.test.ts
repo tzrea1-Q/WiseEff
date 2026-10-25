@@ -214,4 +214,24 @@ describe("explicit private source conversion through the real API role",{timeout
     expect(after.map(member=>({fileId:member.fileId,currentVersionId:member.currentVersionId}))).toEqual((before as Array<{fileId:string;currentVersionId:string}>).map(member=>({fileId:member.fileId,currentVersionId:member.currentVersionId})));
     expect(await readdir(directory,{recursive:true})).toEqual(objects);
   });
+  it("restores private ownership immediately when every original version is identical and only the canonical restore receipt distinguishes current history",async()=>{
+    const configSetId=(await createConfigSet(db,admin,{projectId:A,name:"Unchanged whole-source private restore"})).id;
+    const content='/dts-v1/; / { compatible = "test,board"; model = "Private ownership restore"; charger: charger { compatible = "acme,power"; iin_max = <36>; }; };';
+    const uploaded=await uploadProjectParameterFile(db,storage,admin,{projectId:A,fileName:"immediate-private.dts",bytes:Buffer.from(content)});
+    await addConfigSetFile(db,admin,{configSetId,fileId:uploaded.file.id,role:"base",sortOrder:0});
+    const revision=await ingestConfigRevision(db,{organizationId:ORG,projectId:A,configSetId,entryFile:"immediate-private.dts",includeSearchPaths:["."],overlayOrder:[],members:[{fileId:uploaded.file.id,fileVersionId:uploaded.version.id,fileName:"immediate-private.dts",role:"base",sortOrder:0,content}]},admin);
+    const catalog=await loadPublishedCatalog(getRootPostgresPool(db)!);await db.transaction(tx=>syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx),catalog!,{organizationId:ORG,projectId:A,configSetId,configRevisionId:revision.id}));
+    const gate=await evaluateReleaseReadiness(api,admin,{configSetId},{objectStore:storage});expect(gate.canCreateBaseline,JSON.stringify(gate)).toBe(true);
+    const baseline=await createBaseline(api,admin,{configSetId,name:"All original private versions",gateToken:gate.gateToken,acknowledgedWarningIds:gate.warnings.filter(row=>row.acknowledgementRequired).map(row=>row.id)},{},{objectStore:storage});
+    const selected={configRevisionId:revision.id,fileId:uploaded.file.id,fileVersionId:uploaded.version.id};
+    const imported=await post<{item:{resourceId:string}}>(`/api/v2/projects/${A}/config-sets/${configSetId}/shared-dtsi`,{...selected,name:"Immediate private restoration"});expect(imported.status,imported.bodyText).toBe(201);
+    const version=await publish(imported.body.item.resourceId,1,"immediate-private-publication");
+    const endpoint=`/api/v1/projects/${A}/config-sets/${configSetId}/member-addition`,input={sharedReference:{resourceId:version.resourceId,versionId:version.id,convertPrivate:selected},role:"misc",sortOrder:0};
+    const preview=await post<{item:MemberAdditionPreview}>(`${endpoint}/preview`,input);expect(preview.status,preview.bodyText).toBe(200);
+    expect((await post(`${endpoint}/apply`,{...input,proofToken:preview.body.item.proofToken,reason:"Explicitly convert unchanged root",clientMutationId:"immediate-private-conversion"})).status).toBe(200);
+    const restore=await requestJson<{item:RestorePreviewResult}>(server(),`/api/v1/projects/${A}/baselines/${baseline.id}/restore-preview`);expect(restore.status,restore.bodyText).toBe(200);
+    const restored=await post(`/api/v1/projects/${A}/baselines/${baseline.id}/rollback`,{proofToken:restore.body.item.canonical!.proofToken,sourceConfigRevisionId:revision.id,reason:"Restore exact private ownership without changing any source bytes",confirmCompositionChanges:true,clientMutationId:"immediate-private-restore"});expect(restored.status,restored.bodyText).toBe(200);
+    const files=await requestJson<{items:Array<{fileId:string;currentVersionId:string;sharedReference?:unknown}>}>(server(),`/api/v1/projects/${A}/config-sets/${configSetId}/files`);expect(files.body.items).toEqual([expect.objectContaining({fileId:uploaded.file.id,currentVersionId:uploaded.version.id})]);expect(files.body.items[0]!.sharedReference).toBeUndefined();
+    expect((await api.query<{restored:boolean}>("select public.shared_dtsi_private_source_is_restored($1) as restored",[uploaded.file.id])).rows[0]!.restored).toBe(true);
+  });
 });
