@@ -174,18 +174,20 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
             <Button type="submit" disabled={busy || !configSetId || (source === "shared" ? !resourceId || !versionId || sharedLoading || Boolean(sharedError) : source === "existing" ? !fileId : !file && !candidate)}>{busy ? "正在核对…" : switchReference?"预览版本切换":"预览加入配置"}</Button>
           </fieldset>
         </form></details>
-        {error ? <p role="alert">{error}</p> : null}
+        {error ? <p role="alert">{switchReference&&switchConflicts.length?"版本切换未通过。":error}</p> : null}
         {switchReference && error ? <section aria-label="版本冲突处理">
           {switchConflicts.length?<ul>{switchConflicts.map((item,index)=><li key={index}>
             <p>{item.sourceName}{item.line?`:${item.line}`:""}{item.node?` · ${item.node}`:""}{item.property?` · ${item.property}`:""}</p>
             <p>{item.message}</p>
-            {item.identity?<p>节点连续性尚未证明；请核对原始声明，或选择兼容版本。</p>:null}
-            {onRecoverSwitch && (item.fileId||item.resourceId)?<Button type="button" variant="outline" onClick={()=>{invalidate();onRecoverSwitch(item,{versionId,reason});}}>
-              {item.resourceId?"核对共享来源":"修正项目源码"}</Button>:null}
-            {onRecoverSwitch && item.resourceId && item.projectCorrection && projectRoot?<Button type="button" variant="outline" onClick={()=>{invalidate();onRecoverSwitch({message:item.message,...projectRoot,node:item.node,property:item.property},{versionId,reason});}}>编辑项目根文件</Button>:null}
+            {onRecoverSwitch && (item.fileId||item.resourceId)?<div className="workbench-member-addition-dialog__conflict-actions">
+              <Button type="button" variant="outline" onClick={()=>{invalidate();onRecoverSwitch(item,{versionId,reason});}}>{item.resourceId?"核对共享来源":"修正项目源码"}</Button>
+              {item.resourceId && item.projectCorrection && projectRoot?<Button type="button" variant="outline" onClick={()=>{invalidate();onRecoverSwitch({message:item.message,...projectRoot,node:item.node,property:item.property},{versionId,reason});}}>编辑项目根文件</Button>:null}
+            </div>:null}
           </li>)}</ul>:<p>当前配置未改变；请重新预览，或选择其他目标版本。</p>}
-          <Button type="button" variant="outline" onClick={()=>{invalidate();if(selectionRef.current){selectionRef.current.open=true;selectionRef.current.querySelector<HTMLButtonElement>('[aria-label="固定版本"]')?.focus();}}}>重选目标版本</Button>
-          <Button type="button" variant="outline" onClick={onDismiss}>取消版本切换</Button>
+          <div className="workbench-member-addition-dialog__conflict-actions">
+            <Button type="button" variant="outline" onClick={()=>{invalidate();if(selectionRef.current){selectionRef.current.open=true;selectionRef.current.querySelector<HTMLButtonElement>('[aria-label="固定版本"]')?.focus();}}}>重选目标版本</Button>
+            <Button type="button" variant="outline" onClick={onDismiss}>取消版本切换</Button>
+          </div>
         </section>:null}
         {!switchConflicts.length && errorDiagnostics.length ? <ul aria-label="来源校验诊断">{errorDiagnostics.map((message, index) => <li key={index}>{message}</li>)}</ul> : null}
         {preview ? <section aria-label={switchReference?"版本切换预览":"加入配置预览"} className={preview.sharedSwitch?"workbench-member-addition-dialog__switch-preview":undefined}>
