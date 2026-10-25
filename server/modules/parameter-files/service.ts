@@ -13,6 +13,7 @@ import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters } from "../parameter-kernel/policy";
 import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
+import { normalizeManifestLogicalPath } from "../parameter-topology/configRevisionManifest";
 import { produceDtsReviewEvidenceInTransaction } from "../parameter-catalog-api/productionEvidence";
 import type {
   ConfigRevisionManifest,
@@ -139,6 +140,9 @@ export function refuseDeferredProjectSourceFormat(fileName: string): void {
 }
 
 export function detectFormat(fileName: string): ParameterFileFormat {
+  if (normalizeManifestLogicalPath(fileName) !== fileName || /[:\\]/u.test(fileName)) {
+    throw new ApiError("VALIDATION_FAILED", "Source file name must be an exact relative logical path.");
+  }
   const extension = projectSourceExtension(fileName);
   if (extension === ".json") return "json";
   if (extension === ".dts" || extension === ".dtsi") return "dts";
@@ -378,7 +382,7 @@ export async function uploadProjectParameterFile(
     if (existing) await assertLegacySourceMutationAllowed(tx,existing.id);
     const stored = await uploadStore.put({
       organizationId: parameterOrganizationId(auth),
-      fileName: `parameter-upload-${randomUUID()}-${normalized.fileName}`,
+      fileName: `parameter-upload-${randomUUID()}.${format}`,
       contentType: contentTypeForFormat(format),
       bytes: normalized.bytes,
     });

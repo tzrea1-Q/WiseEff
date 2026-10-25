@@ -31,7 +31,7 @@ describe("canonical source attempt objects", () => {
     const attempt = createCanonicalSourceAttempt(baseStore);
     const input = {
       organizationId: "org-attempt-test",
-      fileName: "settings.json",
+      fileName: "boards/nested/settings.json",
       contentType: "application/json",
       bytes,
     };
@@ -41,8 +41,9 @@ describe("canonical source attempt objects", () => {
 
     expect(first.storageKey).not.toBe(second.storageKey);
     expect(first.fileName).toMatch(
-      /^canonical-source-attempt-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-settings\.json$/,
+      /^canonical-source-attempt-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
+    expect(input.fileName).toBe("boards/nested/settings.json");
     expect(attempt.cleanupDescriptor.storageKeys).toEqual([
       first.storageKey,
       second.storageKey,

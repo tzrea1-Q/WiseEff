@@ -504,9 +504,10 @@ async function createCandidateInScope(
     if (!file?.config_set_id) throw new ApiError("NOT_FOUND", "Project override target was not found.");
     await db.transaction(tx => verifyLocalOverride(tx, file.config_set_id));
   }
+  const storageFileName = `candidate-${candidateId}.${format}`;
   const stored = await objectStore.put({
     organizationId: parameterOrganizationId(auth),
-    fileName: `candidate-${candidateId}-${fileName}`,
+    fileName: storageFileName,
     contentType: contentTypeForFormat(format),
     bytes: input.bytes
   });
@@ -665,7 +666,7 @@ async function createCandidateInScope(
   try { return await (callerOwnsTransaction ? persist(db) : db.transaction(persist)); }
   catch (error) {
     if (error instanceof DtsPreprocessingError && error.code === "preprocess-busy") {
-      const ownedKey = objectStore.planKey?.({ organizationId: parameterOrganizationId(auth), fileName: `candidate-${candidateId}-${fileName}`,
+      const ownedKey = objectStore.planKey?.({ organizationId: parameterOrganizationId(auth), fileName: storageFileName,
         contentType: contentTypeForFormat(format), bytes: input.bytes });
       if (!callerOwnsTransaction && ownedKey === stored.storageKey) await objectStore.delete?.(ownedKey).catch(() => undefined);
       throw new ApiError("CONFLICT", error.message, { reason: error.code });

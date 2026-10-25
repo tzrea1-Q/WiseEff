@@ -528,7 +528,7 @@ export async function commitPinnedNodeEnablementSourceChange(
   const { source, member, after, cohort, invocation, attribution } = prepared;
   const bytes = Buffer.from(after);
   const checksum = createHash("sha256").update(bytes).digest("hex");
-  const stored = await objectStore.put({ organizationId: parameterOrganizationId(auth), fileName: `canonical-source-${randomUUID()}-${member.sourceName}`, contentType: "text/plain", bytes });
+  const stored = await objectStore.put({ organizationId: parameterOrganizationId(auth), fileName: `canonical-source-${randomUUID()}.dts`, contentType: "text/plain", bytes });
   if (stored.checksumSha256 !== checksum || stored.fileSizeBytes !== bytes.length) throw new ApiError("CONFLICT", "Prepared object metadata disagrees with the source.");
   const version = await insertFileVersion(db, { id: randomUUID(), fileId: member.fileId, versionNumber: 0, storageKey: stored.storageKey,
     checksum, sizeBytes: bytes.length, parsedIndex: buildDtsParsedIndex(after), origin: "writeback", attribution });
@@ -779,7 +779,7 @@ export async function preparePinnedSourceChange(
   const proposedDigest = createHash("sha256").update(patched).digest("hex");
   const diff = { before: source.content, after: patched.toString(), sourcePinId: manifest.sourcePinId, bindings };
   const diffDigest = createHash("sha256").update(serializeContract(diff)).digest("hex");
-  const stored = await objectStore.put({ organizationId: parameterOrganizationId(auth), fileName: `canonical-source-${randomUUID()}-${source.name}`, contentType: manifest.format === "json" ? "application/json" : "text/plain", bytes: patched });
+  const stored = await objectStore.put({ organizationId: parameterOrganizationId(auth), fileName: `canonical-source-${randomUUID()}.${manifest.format}`, contentType: manifest.format === "json" ? "application/json" : "text/plain", bytes: patched });
   if (stored.checksumSha256 !== proposedDigest || stored.fileSizeBytes !== patched.length) throw new ApiError("CONFLICT", "Prepared object metadata disagrees with the source.");
   const candidate = await insertParameterFileCandidate(db, {
     id: randomUUID(), organizationId: parameterOrganizationId(auth), projectId: input.projectId,
