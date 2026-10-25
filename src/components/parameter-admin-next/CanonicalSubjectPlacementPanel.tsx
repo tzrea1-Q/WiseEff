@@ -20,7 +20,8 @@ import {
   type RegistrationSubjectImpact
 } from "@/features/parameter-catalog-governance/RegistrationDialog";
 import { RegistrationLifecycleDialog } from "@/features/parameter-catalog-governance/RegistrationLifecycleDialog";
-import { PublicationDialog } from "@/features/parameter-catalog-governance/PublicationDialog";
+import { SharedDtsiSubjectCreation } from "@/features/shared-dtsi/SharedDtsiSubjectCreation";
+import type { ApiClient } from "@/infrastructure/http/apiClient";
 import { publicationSurfaceAdvisory, type PublicationSurfaceItem } from "@/features/parameter-catalog-governance/publicationSurface";
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -78,6 +79,7 @@ type DefinitionState =
   | { status: "error"; message: string };
 
 export type CanonicalSubjectPlacementPanelProps = {
+  apiClient?: ApiClient;
   currentPersonId?: string;
   catalog: ParameterCatalogRepository;
   governance: ParameterCatalogGovernanceRepository;
@@ -102,6 +104,7 @@ export type CanonicalSubjectPlacementPanelProps = {
  * this panel never uses the legacy driver registry as a subject identity.
  */
 export function CanonicalSubjectPlacementPanel({
+  apiClient,
   currentPersonId = "",
   catalog,
   governance,
@@ -796,16 +799,17 @@ export function CanonicalSubjectPlacementPanel({
         ) : null}
       </section>
 
-      {subjectCreationRequested && canAuthorSubject && catalogReleaseId ? <PublicationDialog
-        open intent="create-subject" actor={actor} sessionPermissions={sessionPermissions}
-        domainState={domainState} catalog={catalog} governance={governance} organizationId={organizationId}
-        currentPersonId={currentPersonId} catalogReleaseId={catalogReleaseId} publicationSurface={publicationSurface}
-        onCompleted={() => void handleCompleted()} onRefreshEvidence={async () => { await loadCanonical(); }}
-        onOpenChange={(open) => { if (!open) closeSubjectCreation(); }}
-        onAddDefinition={onNavigate ? (subjectId) => {
+      {subjectCreationRequested && canAuthorSubject && catalogReleaseId ? <SharedDtsiSubjectCreation apiClient={apiClient}
+        sourceQuery={params.has("sourceResource") ? params.toString() : null} publicationProps={{
+        open: true, intent:"create-subject", actor, sessionPermissions,
+        domainState, catalog, governance, organizationId,
+        currentPersonId, catalogReleaseId, publicationSurface,
+        onCompleted: () => void handleCompleted(), onRefreshEvidence: async () => { await loadCanonical(); },
+        onOpenChange: (open) => { if (!open) closeSubjectCreation(); },
+        onAddDefinition: onNavigate ? (subjectId) => {
           closeSubjectCreation();
           onNavigate(`${buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, subjectId })}&createDefinition=1`);
-        } : undefined} /> : null}
+        } : undefined }} /> : null}
       {placementDialog && catalogReleaseId ? (
         <RegistrationDialog
           open

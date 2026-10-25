@@ -144,7 +144,8 @@ export function CanonicalDriverDiscovery({ governance, catalog, projects = [], o
   };
 
   const navigate = (anchor: { subjectId?: string; reviewItemId?: string }) => {
-    onNavigate?.(buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, ...anchor }));
+    const href=buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, ...anchor,catalogReleaseId:page?.catalogRelease.id??null });
+    onNavigate?.(`${href}&organizationId=${encodeURIComponent(organizationId)}`);
   };
   const visibleItems = items.filter((item) => {
     if (sourceFilter !== "all" && item.source.status !== sourceFilter) return false;
@@ -157,7 +158,7 @@ export function CanonicalDriverDiscovery({ governance, catalog, projects = [], o
 
   return <section className="canonical-driver-discovery" aria-label="来源识别结果">
     <div className="canonical-driver-discovery__head">
-      <div><h4>来源识别</h4><p className="muted">查看项目来源中的驱动兼容标识及识别结果，跟进未识别、存在歧义或主体已停用的记录。</p></div>
+      <div><h4>来源识别</h4><p className="muted">按项目节点查看 compatible 标识及正式主体匹配。</p></div>
       {!managedRefresh ? <button type="button" className="button subtle" disabled={loading} onClick={() => setRefresh((value) => value + 1)}>刷新发现</button> : null}
     </div>
     <p className="muted">需要复核的记录可打开对应待处理项；已识别的记录可查看主体下的定义。{" "}
@@ -184,7 +185,8 @@ export function CanonicalDriverDiscovery({ governance, catalog, projects = [], o
       </div> : null}
       <ul className="canonical-driver-discovery__list">
         {visibleItems.map((item) => <li key={item.observationId} className="canonical-driver-discovery__item">
-          <p><strong>{projects.find((project) => project.id === item.projectId)?.name ?? item.projectId}</strong> · 节点 <code>{item.logicalNodeId}</code></p>
+          <p><strong>{projects.find((project) => project.id === item.projectId)?.name ?? item.projectId}</strong> · 节点 <code>{item.source.status==="current"&&item.source.location?item.source.location.nodeLocator:item.logicalNodeId}</code></p>
+          {item.source.status==="current" && item.source.location ? <a href={`/parameter-admin/projects/${encodeURIComponent(item.projectId)}/configuration?${new URLSearchParams({organizationId,configSet:item.source.configSetId,revision:item.configRevisionId,node:item.source.location.nodeLocator,tab:"source",sourceMode:"history",file:item.source.location.fileId,version:item.source.fileVersionId,line:String(item.source.location.line)})}`}>查看固定项目来源</a>:null}
           {item.source.status === "current" ? <p><strong>当前来源：{item.source.sourceName}</strong></p>
             : item.source.status === "historical" ? <p>历史来源。历史兼容标识：{item.source.historicalCompatibles.join("；") || "无"}。不可按当前发现操作。</p>
               : <p>来源不可用，暂不能处理此记录。</p>}

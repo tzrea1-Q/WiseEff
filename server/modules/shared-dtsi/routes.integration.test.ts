@@ -8,6 +8,7 @@ import { requestJson } from "../../test/testClient";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { registerSharedDtsiRoutes } from "./routes";
 import JSZip from "jszip";
+import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
 
 const source = '/ { battery: battery { compatible = "test,battery"; status = "disabled"; }; };\n';
 const auth = makeTestAuthContext({ organizationId: "org-shared-dtsi", userId: "user-shared-dtsi" });
@@ -59,6 +60,34 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
       members: [{ id: draft.members[0]!.id, sourceName: "inc/battery.dtsi", content }] });
     expect((await call(`/${draft.resourceId}/draft`, "DELETE", { expectedRevision: 2 })).status).toBe(200);
     expect((await call(`/${draft.resourceId}`)).status).toBe(404);
+  });
+
+  it("reads compatible evidence from the exact authorized shared closure without inventing project observations", async () => {
+    await installDriverSourceFixture(db,auth,{subjectId:"csub_acme_power",compatible:"acme,power",businessName:"Recognition power",driverName:"Recognition driver",idempotencyKey:"t21-driver",reason:"T21 native recognition"});
+    const publish = async (name: string, sourceName: string, content: string, dependencies: unknown[] = []) => {
+      const created = await call("", "POST", { name, sourceName, content, dependencies, changeDescription: "Recognition evidence" });
+      expect(created.status, created.bodyText).toBe(201);
+      const draft = created.body.item;
+      const preview = await publicationCall<{item:{id:string}}>(`/${draft.resourceId}/publication-preview`, "POST", {expectedRevision:1});
+      expect(preview.status, preview.bodyText).toBe(201);
+      const result = await publicationCall<{item:{id:string;resourceId:string;members:Draft["members"]}}>(`/${draft.resourceId}/publications`, "POST", {previewId:preview.body.item.id,idempotencyKey:`recognition-${draft.resourceId}`});
+      expect(result.status, result.bodyText).toBe(201);
+      return result.body.item;
+    };
+    const leaf = await publish("Recognition leaf", "instances.dtsi", '// compatible = "vendor,comment-only";\n/ { first: unit@1 { compatible = "vendor,shared-evidence", "acme,power"; }; second: unit@2 { compatible = "vendor,shared-evidence"; }; };');
+    const root = await publish("Recognition wrapper", "wrapper.dtsi", '/include/ "vendor/instances.dtsi"\n', [{resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"vendor"}]);
+    const before = (await db.query("select count(*) from parameter_catalog.parameter_observations")).rows;
+    const response = await publicationCall<{items:{nodeLocator:string;labels:string[];compatibles:{compatible:string}[];source:{resourceId:string;versionId:string;memberId:string;sourceName:string;line:number}}[]}>(`/${root.resourceId}/versions/${root.id}/recognition`);
+    expect(response.status, response.bodyText).toBe(200);
+    expect(response.body.items).toEqual([
+      expect.objectContaining({nodeLocator:"/unit@1",labels:["first"],compatibles:[expect.objectContaining({compatible:"vendor,shared-evidence",status:"unknown",subjectIds:[]}),expect.objectContaining({compatible:"acme,power",status:"recognized",subjectIds:["csub_acme_power"]})],source:expect.objectContaining({resourceId:leaf.resourceId,versionId:leaf.id,memberId:leaf.members[0]!.id,sourceName:"instances.dtsi",line:2})}),
+      expect.objectContaining({nodeLocator:"/unit@2",labels:["second"],compatibles:[expect.objectContaining({compatible:"vendor,shared-evidence"})]})
+    ]);
+    expect((await call("?q=vendor%2Cshared-evidence")).body.items).toEqual(expect.arrayContaining([expect.objectContaining({resourceId:root.resourceId}),expect.objectContaining({resourceId:leaf.resourceId})]));
+    expect((await call("?q=vendor%2Ccomment-only")).body.items).toEqual([]);
+    expect((await publicationCall(`/${root.resourceId}/versions/${leaf.id}/recognition`)).status).toBe(404);
+    expect((await publicationCall(`/${root.resourceId}/versions/${root.id}/recognition`,"GET",undefined,makeTestAuthContext({organizationId:"org-other-dtsi"}))).status).toBe(404);
+    expect((await db.query("select count(*) from parameter_catalog.parameter_observations")).rows).toEqual(before);
   });
 
   it("imports a complete relative file set, publishes its closure and retains member identity on rename", async () => {
@@ -447,7 +476,9 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
       create trigger reject_shared_dtsi_audit before insert on public.audit_events for each row execute function public.reject_shared_dtsi_audit()`);
     try {
       expect((await call("", "POST", { name: "Rollback probe", sourceName: "battery.dtsi", content: source })).status).toBe(500);
-      expect((await call("?q=Rollback")).body.items).toEqual([]);
+      const search=await call("?q=Rollback");
+      expect(search.status,search.bodyText).toBe(200);
+      expect(search.body.items).toEqual([]);
     } finally {
       await db.query("drop trigger reject_shared_dtsi_audit on public.audit_events; drop function public.reject_shared_dtsi_audit()");
     }

@@ -20,7 +20,7 @@ type VersionRow = Omit<SharedDtsiVersionSummary,"createdAt"> & {createdAt:Date};
 const summary = (row: VersionRow): SharedDtsiVersionSummary => ({...row,createdAt:row.createdAt.toISOString()});
 const conflict = (message="草稿或共享版本已变化，请重新生成发布预览。") => new ApiError("CONFLICT",message,{reason:"shared-source-preview-stale"});
 
-async function completePublicationSource(db:Database,auth:AuthContext,draft:SharedDtsiDraft) {
+export async function completePublicationSource(db:Database,auth:AuthContext,draft:SharedDtsiDraft) {
   const resources=await loadSharedDtsiClosure(db,auth,draft.dependencies??[],draft.resourceId);
   const members=[...draft.members,...closureMembers(resources)];
   if(members.length>128 || members.reduce((size,member)=>size+Buffer.byteLength(member.content),0)>16_777_216)

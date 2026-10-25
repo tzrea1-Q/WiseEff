@@ -3,6 +3,7 @@ import { ApiError } from "../../shared/http/errors";
 import { lexDts, offsetToLineColumn, parseDts, parseDtsValue, type DtsNodeCst } from "../dts";
 import { expandDtsIncludes, resolveIncludeTarget } from "../dts/configSetResolver";
 import { dtsReferencePath } from "../../../src/domain/dts/reference";
+import { parseCanonicalCompatibleSelector } from "../parameter-catalog-contract";
 import type { SharedDtsiDraft, SharedDtsiManifest } from "../contracts/dtoSchemas/sharedDtsi";
 
 export function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
@@ -57,6 +58,7 @@ export function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
   const labels=new Set<string>(),references=new Set<string>(),paths=new Set<string>();
   const roots=draft.members.filter(member=>member.sourceName.endsWith(".dtsi") && !included.has(member.sourceName));
   let declarations=0,expandedBytes=0;
+  const compatibleSelectors=new Set<string>();
   for (const root of roots) {
     let expanded:ReturnType<typeof expandDtsIncludes>;
     try {expanded=expandDtsIncludes({entryFile:root.sourceName,files,includeSearchPaths:[]});}
@@ -84,7 +86,11 @@ export function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
         for (const child of node.children) {
           if (child.kind==="node")visit(child,path);
           else if(child.kind==="property") {
-            try {parseDtsValue(child.name,child.rawText);}
+            try {
+              const parsed=parseDtsValue(child.name,child.rawText).value;
+              if(child.name==="compatible" && parsed.kind==="strings")for(const value of parsed.values)
+                if(parseCanonicalCompatibleSelector(value).ok)compatibleSelectors.add(value);
+            }
             catch {fail(child.span.start,`属性 ${child.name} 的值需要补充依赖或使用当前支持的 DTS 值语法。`);}
           }
         }
@@ -99,7 +105,7 @@ export function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
   if(!declarations)reject(roots[0]?.sourceName??draft.members[0]!.sourceName,0,"源码中没有可发布的设备树声明。");
   const members=draft.members.map(member=>({...member,checksum:`sha256:${createHash("sha256").update(member.content).digest("hex")}`,sizeBytes:Buffer.byteLength(member.content)}));
   const manifest:SharedDtsiManifest={schemaVersion:"shared-dtsi/v1",members:members.map(({content:_,...member})=>({...member,role:member.sourceName.endsWith(".dtsi")?"include":"header"})),
-    includeGraph:graph,buildInputs:{includeSearchPaths:[]},externalReferences:[...references].filter(reference=>reference.startsWith("&{")
+    compatibleSelectors:[...compatibleSelectors].sort(),includeGraph:graph,buildInputs:{includeSearchPaths:[]},externalReferences:[...references].filter(reference=>reference.startsWith("&{")
       ?!paths.has(dtsReferencePath(reference.slice(1))!):!labels.has(reference)).sort()};
   return {members,manifest,digest:`sha256:${createHash("sha256").update(JSON.stringify({name:draft.name,manifest,changeDescription:draft.changeDescription})).digest("hex")}`};
 }

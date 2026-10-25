@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
-import { parseDtsValue } from "../dts";
+import { offsetToLineColumn, parseDtsValue } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import { parseCanonicalCompatibleSelector } from "../parameter-catalog-contract";
 import { canonicalSourceConfigSetRole } from "../parameter-files/canonicalSource";
@@ -33,6 +33,7 @@ export type CurrentDtsCompatibleSourceResult =
       members: Array<{ fileId: string; fileVersionId: string; sourceName: string;
         format: "dts" | "json"; role: string; sortOrder: number; checksum: string; sizeBytes: number }>;
       compatibles: string[]; observationProof: ExactDtsSourceProof; compatibleProof: ExactDtsSourceProof;
+      compatibleLine: number;
     };
 
 type CompatibleEffect = {
@@ -149,6 +150,7 @@ export async function readCurrentDtsCompatibleSource(
         members: source.members.map(({ fileId,fileVersionId,sourceName,format,role,sortOrder,checksum,sizeBytes }) =>
           ({ fileId,fileVersionId,sourceName,format,role,sortOrder,checksum,sizeBytes })),
         compatibles: parsed.values, observationProof, compatibleProof,
+        compatibleLine:offsetToLineColumn(source.members.find(member=>member.fileId===compatibleProof.fileId)!.content,compatibleProof.sourceSpan.start).line,
       };
     });
   } catch (error) {

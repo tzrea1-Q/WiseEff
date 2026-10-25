@@ -40,6 +40,42 @@ export async function getSharedDtsiDraft(db: Database, auth: AuthContext, resour
 }
 export async function listSharedDtsiResources(db: Database, auth: AuthContext, input: { q: string; offset: number; limit: number }) {
   requireRead(auth);
+  if (input.q) {
+    const {getSharedDtsiVersion,completePublicationSource} = await import("./publication");
+    const matches: SharedDtsiResourceSummary[] = [];
+    // ponytail: linear semantic search over this Organization; index frozen selectors when library size warrants it.
+    for (let offset=0;;offset+=100) {
+      const page = await listSharedDtsiResources(db,auth,{q:"",offset,limit:100});
+      for (const row of page.items) {
+        const needle=input.q.toLowerCase();
+        if ([row.name,row.sourceName].some(value=>value.toLowerCase().includes(needle))) { matches.push(row);continue; }
+        const paths = await db.query<{sourceName:string}>(`select source_name as "sourceName" from public.shared_dtsi_draft_members
+          where resource_id=$1 and organization_id=$2 union select source_name from public.shared_dtsi_revision_members where revision_id=$3 and organization_id=$2`,
+          [row.resourceId,parameterOrganizationId(auth),row.currentVersion?.id??null]);
+        if (paths.rows.some(value=>value.sourceName.toLowerCase().includes(needle))) {matches.push(row);continue;}
+        if (row.currentVersion) {
+          const version=await getSharedDtsiVersion(db,auth,row.resourceId,row.currentVersion.id);
+          const selectors=version.manifest.compatibleSelectors??(await completePublicationSource(db,auth,{
+            id:version.id,resourceId:version.resourceId,name:version.name,revision:version.version,updatedAt:version.createdAt,
+            members:version.members,changeDescription:version.changeDescription,dependencies:version.manifest.dependencies
+          })).manifest.compatibleSelectors??[];
+          if(selectors.some(compatible=>compatible.toLowerCase().includes(needle))){matches.push(row);continue;}
+        }
+        if(row.draftRevision) {
+          try {
+            const draft=await getSharedDtsiDraft(db,auth,row.resourceId);
+            const source=await completePublicationSource(db,auth,{...draft,changeDescription:draft.changeDescription||"来源搜索"});
+            if(source.manifest.compatibleSelectors?.some(compatible=>compatible.toLowerCase().includes(needle)))matches.push(row);
+          } catch(error) {
+            // Incomplete drafts retain name/path search; unavailable dependencies are not selector evidence.
+            if(!(error instanceof ApiError) || !["VALIDATION_FAILED","NOT_FOUND"].includes(error.code))throw error;
+          }
+        }
+      }
+      if(offset+page.items.length>=page.total)break;
+    }
+    return {items:matches.slice(input.offset,input.offset+input.limit),total:matches.length};
+  }
   const values = [parameterOrganizationId(auth), input.q];
   const tables = `from public.shared_dtsi_resources r left join public.shared_dtsi_drafts d on d.resource_id=r.id and d.organization_id=r.organization_id
     left join lateral (select id,resource_id,version,name,change_description,digest,created_at,created_by_user_id

@@ -129,6 +129,10 @@ describe("#897 C2 production Driver compatible discovery HTTP", () => {
     if (allPage.status !== "ready") throw new Error("Discovery unavailable");
     expect(allPage.items).toHaveLength(2);
     expect(allPage.items.every((item) => item.source.status === "current")).toBe(true);
+    expect(allPage.items.map(item=>item.source)).toEqual(expect.arrayContaining([
+      expect.objectContaining({location:expect.objectContaining({fileId,nodeLocator:"/charger",line:2})}),
+      expect.objectContaining({location:expect.objectContaining({fileId,nodeLocator:"/peer",line:2})})
+    ]));
     expect(allPage.items.every((item) => item.projectId === PROJECT &&
       item.observationId.length > 0 && item.logicalNodeId.length > 0 &&
       item.configRevisionId.length > 0 && item.observedCatalogReleaseId.length > 0 &&

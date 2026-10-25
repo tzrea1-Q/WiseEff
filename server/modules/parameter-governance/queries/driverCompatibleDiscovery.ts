@@ -48,7 +48,8 @@ export type DriverCompatibleDiscoveryItem = {
         readonly historicalCompatibles: readonly string[] }
     | { readonly status: "current"; readonly configSetId: string;
         readonly sourceName: string; readonly fileVersionId: string;
-        readonly sourceDigest: string; readonly revisionDigest: string };
+        readonly sourceDigest: string; readonly revisionDigest: string;
+        readonly location?: { readonly fileId: string; readonly nodeLocator: string; readonly line: number } };
   /** One entry per complete selector from the source-owned parser. Historical/unavailable sources have none. */
   readonly compatibles: readonly {
     readonly compatible: string;
@@ -214,7 +215,8 @@ export async function listDriverCompatibleDiscovery(input: {
       const proof = source.compatibleProof;
       items.push({ ...identity,source: { status: "current",configSetId: source.configSetId,
         sourceName: proof.sourceName,fileVersionId: proof.fileVersionId,
-        sourceDigest: proof.sourceDigest,revisionDigest: proof.revisionDigest },
+        sourceDigest: proof.sourceDigest,revisionDigest: proof.revisionDigest,
+        location:{fileId:proof.fileId,nodeLocator:proof.nodeLocator,line:source.compatibleLine} },
         compatibles: [...new Set(source.compatibles)].map((compatible) => {
           const matched = snapshot.resolveSubject({
             driverCompatibles: [DriverCompatible(compatible)], nodeTypeFallback: { kind: "absent" },

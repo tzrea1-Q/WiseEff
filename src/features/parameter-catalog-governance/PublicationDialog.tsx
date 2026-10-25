@@ -65,6 +65,7 @@ export type PublicationDialogProps = {
   open: boolean;
   intent?: "create-definition" | "create-subject";
   initialSubjectId?: string;
+  sourcePrefill?: { compatible: string; label: string; href: string };
   onCreateSubject?: () => void;
   onAddDefinition?: (subjectId: string) => void;
   actor: CatalogActorKind;
@@ -86,6 +87,7 @@ export function PublicationDialog({
   open,
   intent = "create-definition",
   initialSubjectId = "",
+  sourcePrefill,
   onCreateSubject,
   onAddDefinition,
   actor,
@@ -122,7 +124,7 @@ export function PublicationDialog({
   const completedRef = useRef(false);
   const formId = useId();
   const initialDraft = (): PublicationDraft => ({ ...emptyPublicationDraft(), mode: intent, subjectId: initialSubjectId,
-    ...(intent === "create-subject" ? { nature: "", cardinality: "" } : {}) });
+    ...(intent === "create-subject" ? { nature: "", cardinality: "", selectorValue: sourcePrefill?.compatible ?? "" } : {}) });
   const [draft, setDraft] = useState<PublicationDraft>(initialDraft);
   const leaveAction = useRef<(() => void) | null>(null);
   const [subjects, setSubjects] = useState<SubjectItem[]>([]);
@@ -285,7 +287,7 @@ export function PublicationDialog({
       setIdempotencyKey(null);
     }
     return stopPolling;
-  }, [open, catalog, currentPersonId, organizationId, intent, initialSubjectId]);
+  }, [open, catalog, currentPersonId, organizationId, intent, initialSubjectId, sourcePrefill]);
 
   useEffect(() => {
     if (!open) return;
@@ -606,6 +608,7 @@ export function PublicationDialog({
                   <div className="parameter-catalog-publication-dialog__form">
                     {draft.mode === "create-subject" ? (
                       <>
+                        {sourcePrefill ? <p>来源：<a href={sourcePrefill.href} target="_blank" rel="noreferrer">{sourcePrefill.label}</a>。仅预填 compatible 标识；主体性质与实例数量须单独确认。</p> : null}
                         <label>
                           {publicationCopy.subjectKindPick}
                           <SelectControl

@@ -36,6 +36,8 @@ export const sharedDtsiManifestSchema = z.object({
   schemaVersion: z.literal("shared-dtsi/v1"),
   members: z.array(z.object({ id, sourceName: z.string(), checksum: z.string(), sizeBytes: z.number().int().nonnegative(), role: z.enum(["include", "header"]) }).strict()).min(1),
   externalReferences: z.array(z.string()),
+  /** Source-declared selectors, compiled from active syntax; never formal Catalog identities. */
+  compatibleSelectors:z.array(z.string()).optional(),
   dependencies:z.array(sharedDtsiDependencySchema).max(32).optional(),
   dependencyClosure:z.array(sharedDtsiClosureSchema).max(64).optional(),
   includeGraph: z.array(z.object({ sourceName: z.string(), target: z.string(), line: z.number().int().positive(), column: z.number().int().positive() }).strict()).default([]),
@@ -48,6 +50,12 @@ export const sharedDtsiResourceSummarySchema = z.object({ resourceId: id, name: 
 export const sharedDtsiResourceDetailSchema = sharedDtsiResourceSummarySchema.omit({ sourceName: true });
 export const sharedDtsiVersionsSchema = z.object({items:z.array(sharedDtsiVersionSummarySchema),total:z.number().int().nonnegative()}).strict();
 export const sharedDtsiUsagesSchema=z.object({items:z.array(z.object({projectId:z.string(),projectName:z.string(),configSetId:z.string(),configSetName:z.string(),versionId:id,version:z.number(),direct:z.boolean()}).strict()),total:z.number().int().nonnegative(),visibility:z.enum(["organization","authorized-projects"])}).strict();
+export const sharedDtsiRecognitionSchema = z.object({resourceId:id,versionId:id,catalogReleaseId:z.string().nullable(),items:z.array(z.object({
+  nodeLocator:z.string(),unresolved:z.boolean(),labels:z.array(z.string()),
+  source:z.object({resourceId:id,versionId:id,memberId:id,sourceName:z.string(),version:z.number().int().positive(),line:z.number().int().positive()}).strict(),
+  compatibles:z.array(z.object({compatible:z.string(),status:z.enum(["recognized","unknown","ambiguous","retired","unavailable"]),subjectIds:z.array(z.string())}).strict())
+}).strict())}).strict();
+export type SharedDtsiRecognition = z.infer<typeof sharedDtsiRecognitionSchema>;
 export const sharedDtsiPreviewSchema = z.object({ id, resourceId: id, draftRevision: z.number().int().positive(), name: z.string(),
   changeDescription, manifest: sharedDtsiManifestSchema, digest: z.string(), createdAt: z.string(), baseVersionId: id.nullable() }).strict();
 export const sharedDtsiPreviewRequestSchema = z.object({ expectedRevision: z.number().int().positive() }).strict();
@@ -75,6 +83,7 @@ export const sharedDtsiDtoSchemaCatalog = {
   SharedDtsiVersionResponse: itemEnvelopeSchema(sharedDtsiVersionSchema),
   SharedDtsiVersionsResponse: sharedDtsiVersionsSchema,
   SharedDtsiUsagesResponse:sharedDtsiUsagesSchema,
+  SharedDtsiRecognitionResponse:sharedDtsiRecognitionSchema,
   SharedDtsiPreviewRequest: sharedDtsiPreviewRequestSchema,
   SharedDtsiPreviewResponse: itemEnvelopeSchema(sharedDtsiPreviewSchema),
   SharedDtsiPublishRequest: sharedDtsiPublishRequestSchema,
@@ -90,6 +99,7 @@ export const sharedDtsiRoutes = [
   {id:"sharedDtsi.usages",method:"GET",path:"/api/v2/shared-dtsi/:resourceId/usages",module:"parameter-files",stability:"commercial-readiness"},
   { id: "sharedDtsi.versions", method: "GET", path: "/api/v2/shared-dtsi/:resourceId/versions", module: "parameter-files", stability: "commercial-readiness" },
   { id: "sharedDtsi.version", method: "GET", path: "/api/v2/shared-dtsi/:resourceId/versions/:versionId", module: "parameter-files", stability: "commercial-readiness" },
+  { id: "sharedDtsi.recognition", method: "GET", path: "/api/v2/shared-dtsi/:resourceId/versions/:versionId/recognition", module: "parameter-files", stability: "commercial-readiness" },
   { id: "sharedDtsi.preview", method: "POST", path: "/api/v2/shared-dtsi/:resourceId/publication-preview", module: "parameter-files", stability: "commercial-readiness" },
   { id: "sharedDtsi.publish", method: "POST", path: "/api/v2/shared-dtsi/:resourceId/publications", module: "parameter-files", stability: "commercial-readiness" },
   { id: "sharedDtsi.newVersionDraft", method: "POST", path: "/api/v2/shared-dtsi/:resourceId/draft", module: "parameter-files", stability: "commercial-readiness" }
@@ -108,6 +118,7 @@ export const sharedDtsiSchemaRegistry = {
   "sharedDtsi.versions": { summary: "List immutable source versions", tags, responseBody: "SharedDtsiVersionsResponse",
     requestParameters:[{name:"offset",in:"query" as const},{name:"limit",in:"query" as const}] },
   "sharedDtsi.version": { summary: "Read exact published source", tags, responseBody: "SharedDtsiVersionResponse" },
+  "sharedDtsi.recognition": { summary: "Recognize compatible selectors from an authorized immutable source closure", tags, responseBody: "SharedDtsiRecognitionResponse" },
   "sharedDtsi.preview": { summary: "Freeze shared publication preview", tags, requestBody: "SharedDtsiPreviewRequest", responseBody: "SharedDtsiPreviewResponse", successStatus: 201 as const },
   "sharedDtsi.publish": { summary: "Publish an exact shared preview", tags, requestBody: "SharedDtsiPublishRequest", responseBody: "SharedDtsiVersionResponse", successStatus: 201 as const },
   "sharedDtsi.newVersionDraft": { summary: "Create a draft from the current shared version", tags, requestBody: "SharedDtsiNewVersionDraftRequest", responseBody: "SharedDtsiDraftResponse", successStatus: 201 as const }

@@ -93,7 +93,7 @@ describe("CanonicalDriverDiscovery", () => {
     expect(await screen.findByText("vendor,second")).toBeInTheDocument();
     expect(list).toHaveBeenNthCalledWith(2, "org_one", { cursor: "obs_one", limit: 50 }, pin);
     fireEvent.click(screen.getAllByRole("button", { name: "查看复核项 2" })[0]!);
-    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/specs?reviewItemId=review_two");
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/specs?catalogReleaseId=crel_one&reviewItemId=review_two&organizationId=org_one");
   });
 
   it("does not merge a drifted page and refreshes from the first page", async () => {

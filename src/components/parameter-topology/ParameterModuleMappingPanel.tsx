@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle } from "lucide-react";
 
 import { presentError } from "@/infrastructure/http/presentError";
+import type { ApiClient } from "@/infrastructure/http/apiClient";
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -46,6 +47,7 @@ const moduleTabs = [
 ] as const;
 
 export type ParameterModuleMappingPanelProps = {
+  apiClient?:ApiClient;
   currentPersonId?: string;
   canAdmin?: boolean;
   canManageTaxonomy?: boolean;
@@ -68,6 +70,7 @@ export type ParameterModuleMappingPanelProps = {
  */
 export function ParameterModuleMappingPanel({
   currentPersonId,
+  apiClient,
   canAdmin = false,
   canManageTaxonomy = canAdmin,
   repository,
@@ -388,6 +391,7 @@ export function ParameterModuleMappingPanel({
       navigator={!registryLoaded ? <SectionSkeleton label="正在加载模块注册表…" /> : moduleTree}
       taskState={!registryLoaded ? { kind: "loading", message: "正在加载模块注册表…" } : undefined}>
       {canonicalAvailable && canonicalCatalog && canonicalGovernance && canonicalOrganizationId ? <CanonicalSubjectPlacementPanel
+        apiClient={apiClient}
         currentPersonId={currentPersonId}
         catalog={canonicalCatalog} governance={canonicalGovernance} organizationId={canonicalOrganizationId}
         actor={canonicalActor} sessionPermissions={canonicalSessionPermissions} canAdmin={canAdmin} modules={registry.modules}
