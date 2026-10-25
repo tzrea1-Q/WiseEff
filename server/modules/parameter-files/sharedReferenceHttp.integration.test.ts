@@ -647,7 +647,8 @@ describe("fixed shared references through the real API role", () => {
     expect(removed.status, removed.bodyText).toBe(409);
     expect((await requestJson(server(), membersPath)).body).toEqual(members.body);
     expect(await listCatalogBindingRowsForProject(api, admin, { projectId: A })).toEqual(values);
-    const privateEdit = await edit(before.bodyText.replace("<36>", "<37>").replace('model = "shared reference";', '/delete-property/ model;'), "private-root-override");
+    const privateSource = before.bodyText.replace("<36>", "<37>").replace('model = "shared reference";', '/delete-property/ model;');
+    const privateEdit = await edit(privateSource, "private-root-override");
     expect(privateEdit.status, privateEdit.bodyText).toBe(200);
     const historical = await requestJson<{ item: TopologyTree }>(server(), `/api/v2/projects/${A}/config-sets/${sets[A]}/revisions/${appliedA.configRevisionId}/topology`);
     if (historical.body.item.view !== "effective") throw new Error("Expected historical effective topology");
@@ -663,7 +664,8 @@ describe("fixed shared references through the real API role", () => {
     const deletion = current.body.item.nodes.find(node => node.locator === "/")!.effects.find(effect => effect.propertyName === "model")!;
     expect(deletion.effectKind).toBe("delete");
     expect(deletion.source).toMatchObject({ fileId: root.fileId });
-    expect(deletion.source?.startLine).toBeUndefined();
+    expect(deletion.source?.startLine).toBe(privateSource.slice(0, privateSource.indexOf("/delete-property/ model;")).split("\n").length);
+    expect(deletion.rawText).toBe("/delete-property/ model;");
     expect((await listCatalogBindingRowsForProject(api, admin, { projectId: A })).map(value => value.rawValue).sort()).toEqual(["<25>", "<37>"]);
     expect((await listCatalogBindingRowsForProject(api, admin, { projectId: B })).map(value => value.rawValue).sort()).toEqual(["<25>", "<36>"]);
   });
