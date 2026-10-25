@@ -14,6 +14,7 @@ test("retires and restores a shared resource through keyboard confirmation with 
   page.on("response",response=>{if(response.status()>=500)failures.push(`${new URL(response.url()).pathname} ${response.status()}`);});
   await page.setViewportSize({width:1440,height:900});
   await signInCatalogActor(page,"org-admin","/parameter-admin/sources");await dismissXiaozeHint(page);
+  await expect(page.getByText("尚无共享 DTSI",{exact:true})).toBeVisible();await catalogScreenshot(page,testInfo,"shared-list-empty-1440");
   const name="共享资源生命周期 · 长路径与固定历史";
   const created=await catalogJson(page.request,"POST","/api/v2/shared-dtsi",{data:{name,sourceName:"platform/long-source-path/lifecycle-common.dtsi",content:'/ { lifecycle: lifecycle { compatible = "test,lifecycle"; status = "okay"; }; };',changeDescription:"Lifecycle browser evidence"}});
   expect(created.status).toBe(201);const resourceId=(created.body as {item:{resourceId:string}}).item.resourceId;
@@ -135,7 +136,6 @@ test("publishes a source-only shared version and retains its history after disca
   await page.setViewportSize({width:1440,height:900});
   await signInCatalogActor(page,"org-admin","/parameter-admin/sources");
   await dismissXiaozeHint(page);
-  await expect(page.getByText("尚无共享 DTSI",{exact:true})).toBeVisible();await catalogScreenshot(page,testInfo,"shared-list-empty-1440");
   await page.getByRole("button",{name:"导入资源",exact:true}).click();
   const source='/ { battery: battery { compatible = "test,published-battery"; status = "disabled"; }; };\n';
   await page.locator('input[type="file"]').first().setInputFiles({name:"battery-common.dtsi",mimeType:"text/plain",buffer:Buffer.from(source)});

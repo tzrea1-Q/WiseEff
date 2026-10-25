@@ -523,20 +523,23 @@ export function ProjectConfigurationWorkbench({
   const showContentTabs = Boolean(topologyRepository) || contentTab === "conflicts" || syncConflicts.length > 0 || Boolean(conflictsError);
   const effectiveRevision = queryValue(search, "revision") ?? "current";
   const currentEffective = ["current", "latest", "head"].includes(effectiveRevision);
-  const effectiveKey = `${project.id}/${selectedConfigSet?.id}/${effectiveRevision}`;
+  const currentEffectiveRevisionId = revisionGate.revisions.filter(revision => revision.configSetId === selectedConfigSet?.id && revision.status !== "resolving")
+    .sort((left, right) => right.revisionNumber - left.revisionNumber)[0]?.id ?? null;
+  const effectiveKey = `${project.id}/${selectedConfigSet?.id}/${effectiveRevision}/${currentEffective ? currentEffectiveRevisionId : ""}`;
   const [effectiveRetry, setEffectiveRetry] = useState(0);
   const [effectiveResult, setEffectiveResult] = useState<{ key: string; tree?: Extract<TopologyTree, { view: "effective" }>; error?: string } | null>(null);
   useEffect(() => {
     if (contentTab !== "effective" || !selectedConfigSet || !topologyRepository) return;
     setEffectiveResult(null);
-    if (currentEffective && (membersListLoading || membersError || selectedMembers.length === 0)) return;
+    if (currentEffective && (membersListLoading || membersError || selectedMembers.length === 0
+      || revisionGate.loading || revisionGate.error || !currentEffectiveRevisionId)) return;
     let cancelled = false;
     void topologyRepository.getTopology(project.id, selectedConfigSet.id, effectiveRevision, "effective").then(tree => {
       if (tree.view !== "effective") throw new Error("生效配置返回了错误的视图，请重试。");
       if (!cancelled) setEffectiveResult({ key: effectiveKey, tree });
     }).catch(error => { if (!cancelled) setEffectiveResult({ key: effectiveKey, error: presentError(error, "生效配置加载失败。") }); });
     return () => { cancelled = true; };
-  }, [contentTab, currentEffective, effectiveKey, effectiveRetry, effectiveRevision, membersError, membersListLoading, project.id, selectedConfigSet, selectedMembers.length, topologyRepository]);
+  }, [contentTab, currentEffective, currentEffectiveRevisionId, effectiveKey, effectiveRetry, effectiveRevision, membersError, membersListLoading, project.id, revisionGate.error, revisionGate.loading, selectedConfigSet, selectedMembers.length, topologyRepository]);
   const effectiveTree = effectiveResult?.key === effectiveKey ? effectiveResult.tree : undefined;
   const effectiveError = effectiveResult?.key === effectiveKey ? effectiveResult.error : undefined;
   const effectiveNodes = useMemo(() => effectiveStructureNodes(effectiveTree?.nodes ?? []), [effectiveTree]);
@@ -2105,6 +2108,9 @@ export function ProjectConfigurationWorkbench({
           : currentEffective && membersError ? <SectionError message={membersError} onRetry={() => workspaceLoadSession.retryMembers()} />
           : currentEffective && membersListLoading ? <SectionSkeleton label="正在加载生效配置…" />
           : currentEffective && selectedMembers.length === 0 ? <SectionEmpty message={canAdmin ? "此配置尚无来源文件。请通过「配置」菜单添加来源或导入完整配置。" : "此配置尚无来源文件，请联系项目管理员。"} />
+          : currentEffective && revisionGate.error ? <SectionError message={revisionGate.error} onRetry={() => void revisionGate.session.load(project.id, selectedConfigSet.id, topologyRepository)} />
+          : currentEffective && revisionGate.loading ? <SectionSkeleton label="正在加载生效配置…" />
+          : currentEffective && !currentEffectiveRevisionId ? <SectionEmpty message={canAdmin ? "此配置尚无已解析的修订。请在源码中同步来源文件。" : "此配置尚无已解析的修订，请联系项目管理员。"} />
           : effectiveError ? <SectionError message={effectiveError} onRetry={() => setEffectiveRetry(value => value + 1)} />
           : !effectiveTree ? <SectionSkeleton label="正在加载生效配置…" />
           : effectiveTree.nodes.length === 0 ? <SectionEmpty message="当前配置修订没有生效设备树节点。" />

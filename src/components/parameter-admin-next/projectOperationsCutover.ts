@@ -70,6 +70,7 @@ export function buildCanonicalConfigurationPath(
       break;
     case "config-sets":
       params.set("inspector", "config-set");
+      params.set("tab", "source");
       break;
     case "structure":
       params.set("tab", "structure");

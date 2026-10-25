@@ -393,6 +393,7 @@ test(`#906 B previews canonical member actions for ${format} without mutation`, 
         await expect(page.getByRole("dialog", { name: "申请从配置移除文件" })).toHaveCount(0);
       }
       await filePanel.getByRole("button", { name: "关闭配置组成", exact: true }).click();
+      await page.getByRole("tab", { name: "源码", exact: true }).click();
       const treeAssign = page.getByRole("button", { name: `加入 ${ungrouped.name}` });
       await expect(treeAssign).toBeDisabled();
       const treeReasonId = await treeAssign.getAttribute("aria-describedby");
