@@ -76,8 +76,8 @@ test.describe("catalog M1 publication operator loop", () => {
     const propertyKey = `cp08_iin_${Date.now().toString(36).slice(-6)}`;
     await dialog.getByLabel("属性键").fill(propertyKey);
     await dialog.getByLabel("显示名称").fill("CP08 保持电流");
-    await dialog.getByLabel("说明").fill("隔离验收新增的保持电流定义。");
-    await dialog.getByLabel("草稿原因").fill("CP-08 隔离运营闭环");
+    await dialog.getByLabel("说明", { exact: true }).fill("隔离验收新增的保持电流定义。");
+    await dialog.getByLabel("变更说明", { exact: true }).fill("CP-08 隔离运营闭环");
     await dialog.getByRole("button", { name: "保存草稿" }).click();
     await expect(dialog.getByText("草稿已保存")).toBeVisible({ timeout: 30_000 });
     await dialog.getByRole("button", { name: "预览发布" }).click();

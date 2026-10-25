@@ -80560,6 +80560,12 @@
           "subjectId": {
             "type": "string"
           },
+          "status": {
+            "type": "string",
+            "enum": [
+              "retired"
+            ]
+          },
           "placement": {
             "anyOf": [
               {

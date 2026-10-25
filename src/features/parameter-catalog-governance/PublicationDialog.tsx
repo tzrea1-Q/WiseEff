@@ -612,9 +612,9 @@ export function PublicationDialog({
                           />
                         </label>
                         <label>
-                          {publicationCopy.selectorValue}
+                          {publicationCopy.selectorValue[draft.subjectKind]}
                           <input
-                            aria-label={publicationCopy.selectorValue}
+                            aria-label={publicationCopy.selectorValue[draft.subjectKind]}
                             value={draft.selectorValue}
                             onChange={(event) => patchDraft({ selectorValue: event.target.value })}
                           />
@@ -677,7 +677,7 @@ export function PublicationDialog({
                           <dd>{catalogSubjectTypeLabel(selectedSubject.type)}</dd>
                         </div>
                         <div>
-                          <dt>{publicationCopy.subjectSelector}</dt>
+                          <dt>{publicationCopy.selectorValue[selectedSubject.type]}</dt>
                           <dd>{selectedSubject.canonicalName}</dd>
                         </div>
                         <div>
