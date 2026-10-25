@@ -326,7 +326,7 @@ export type InsertReleaseBaselineMemberInput = {
 };
 
 export type ConfigSetMemberFileDto = {
-  sharedReference?: { referenceId: string; resourceId: string; versionId: string; version: number; memberId: string; digest: string; readOnly: true };
+  sharedReference?: { referenceId: string; resourceId: string; versionId: string; version: number; memberId: string; digest: string; readOnly: true; direct?:boolean };
   configSetId: string;
   fileId: string;
   fileName: string;

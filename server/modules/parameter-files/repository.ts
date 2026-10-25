@@ -280,7 +280,8 @@ export async function assertLegacySourceMutationAllowed(db: Queryable, fileId: s
 
 /** Shared snapshot bytes and identity can only be derived by an explicit reference operation. */
 export async function assertProjectSourceWritable(db: Queryable, fileId: string): Promise<void> {
-  if ((await db.query("select 1 from public.project_shared_dtsi_snapshots where file_id=$1", [fileId])).rows.length) {
+  if ((await db.query(`select 1 from public.project_shared_dtsi_snapshots where file_id=$1
+    union all select 1 from public.dts_config_revision_members where file_id=$1 and shared_reference is not null limit 1`, [fileId])).rows.length) {
     throw new ApiError("CONFLICT", "共享引用源码只读，请修改项目覆盖或变更固定引用版本。", { reason: "shared-reference-readonly" });
   }
 }

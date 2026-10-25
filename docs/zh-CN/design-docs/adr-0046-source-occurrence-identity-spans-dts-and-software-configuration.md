@@ -37,6 +37,8 @@
 
    混合配置中的完整 DTS 源码修改，会把未改动的 JSON 成员带入同一个新配置修订。JSON 文件的精确字节、当前版本、JSON Pointer、登记和已钉住的 Definition 仍须与当前值一致。JSON Binding 保持身份，并与 DTS 修改原子生成派生值及来源 pin；DTS 编辑器不能修改 JSON 参数值。
 
+   显式共享依赖换版（#1422）复用管理员确认的配置组成回执。服务端冻结旧引用及成员版本、完整目标依赖、保留的项目自有源码和声明构建输入、完整编译图、已审阅的逻辑节点连续性及 Binding/source pins。共同存在的稳定上游成员保留项目文件锚点；仅有 compatible 相同不能证明连续性。只有这份准确的待应用回执可授权派生已发布字节并切换当前共享快照；历史配置 manifest、文件版本及 source pins 保持不可变，已移出组成的共享文件也保持只读。升级和切回旧版都原子追加新 ConfigRevision 与 ProjectValues。身份无法证明、移除已关联参数、约束不兼容或缺失依赖会阻止整次换版；逐项冲突修正和完整快照恢复继续由各自既有 owner 负责。
+
    完整配置快照恢复（#1306）可通过明确确认，沿用真实历史 occurrence 与 Binding，恢复已移出成员或已删除的来源值。身份依据是所保存的完整来源修订及精确历史 pin；当前与历史 DTS 连续性基线同时包含同一节点时，身份必须一致。恢复生成新版本、pin 和管理员回执，保留后来新增成员，不重建已彻底删除的 Definition，也不改写原快照。Definition 彻底删除会移除受影响的共享恢复请求；仍存活的已恢复成员，只有在精确恢复 pin 已验证后，才能沿用既有的不可变删除回执保持归属。
 2. **Binding 唯一性跟随出现位置。** `project_parameter_bindings` 增加 `source_occurrence_id`，项目范围内唯一性收敛为 `(project_id, source_occurrence_id, definition_id)`。由于出现位置本身已区分 config-set 与实例，共享同一 Definition 的两个实例永不塌缩为一个 Binding。
 3. **不采用可空平铺的 DTS 列。** 不把 `logical_node_id` 简单改为可空、再平铺一组 JSON 专用可空列；那会让 Binding 永久背负 DTS/JSON 的 XOR，并把未来格式继续塞进同一张表。既有 DTS Binding 原地 backfill、保留现有 Binding ID，其身份永不被重新派生；只有新的 JSON Binding 从出现位置派生身份。
