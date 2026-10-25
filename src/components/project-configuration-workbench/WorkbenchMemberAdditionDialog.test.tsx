@@ -28,14 +28,18 @@ it("requires an explicit published version and clears its proof when the version
   render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{ id: "set", name: "默认配置" }]} initialConfigSetId="set" availableFiles={[]}
     client={client} sharedClient={sharedClient} onDismiss={vi.fn()} onApplied={vi.fn()} />);
   await user.click(screen.getByRole("combobox", { name: "文件来源" })); await user.click(screen.getByRole("option", { name: "引用共享 DTSI 固定版本" }));
+  expect(screen.getByRole("dialog")).toHaveAccessibleDescription("选择共享资源及固定版本，预览配置变化后确认引用。");
   await user.click(await screen.findByRole("combobox", { name: "共享资源" })); await user.click(await screen.findByRole("option", { name: "Shared limits" }));
   expect(screen.getByRole("button", { name: "预览加入配置" })).toBeDisabled();
   await user.click(await screen.findByRole("combobox", { name: "固定版本" })); await user.click(await screen.findByRole("option", { name: "版本 1 · Initial limits" }));
   await user.click(screen.getByRole("button", { name: "预览加入配置" }));
   expect(await screen.findByText("此项目的当前配置引用共享版本 1；来源成员只读，其他项目不受影响。")).toBeInTheDocument();
   expect(bodies.at(-1)).toMatchObject({ sharedReference: { resourceId, versionId }, role: "misc" });
+  expect(screen.getByLabelText("确认后根文件源码")).not.toBeVisible();
+  expect(screen.getByRole("group", { name: "加入配置确认" })).toContainElement(screen.getByRole("button", { name: "确认加入配置" }));
   await user.click(screen.getByText("项目根文件 include 变更：board.dts"));
   expect(screen.getByLabelText("确认后根文件源码")).toHaveTextContent('/include/ "limits.dtsi"');
+  await user.click(screen.getByText("文件与目标配置"));
   await user.click(screen.getByRole("combobox", { name: "固定版本" })); await user.click(screen.getByRole("option", { name: "版本 2 · Initial limits" }));
   expect(screen.queryByRole("button", { name: "确认加入配置" })).not.toBeInTheDocument();
 });
@@ -155,7 +159,7 @@ it("retains choices on a refused preview and confirms the complete preview with 
   expect(await screen.findByRole("alert")).toHaveTextContent("来源已变化");
   expect(screen.getByRole("combobox", { name: "文件用途" })).toHaveAttribute("data-value", "overlay");
   await user.click(screen.getByRole("button", { name: "预览加入配置" }));
-  expect(await screen.findByText("参数变化：1；新增节点：0；移除节点：0。")).toBeInTheDocument();
+  expect(await screen.findByText("参数变化 1 项。")).toBeInTheDocument();
   await user.type(screen.getByLabelText("加入原因"), "Add reviewed overlay");
   screen.getByRole("button", { name: "确认加入配置" }).focus(); await user.keyboard("{Enter}");
   expect(submitted).toHaveBeenCalledOnce();

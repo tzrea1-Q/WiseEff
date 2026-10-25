@@ -800,7 +800,8 @@ async function ingestConfigRevisionTx(
       files,
     });
     const referenced = (await tx.query<{ fileId: string; fileVersionId: string; sourceName: string; checksum: string }>(
-      `select snapshot.file_id as "fileId",snapshot.file_version_id as "fileVersionId",upstream.source_name as "sourceName",upstream.checksum
+      `select snapshot.file_id as "fileId",snapshot.file_version_id as "fileVersionId",
+         case when reference.mount_path='' then upstream.source_name else reference.mount_path||'/'||upstream.source_name end as "sourceName",upstream.checksum
        from public.project_shared_dtsi_references reference join public.project_shared_dtsi_snapshots snapshot on snapshot.reference_id=reference.id
        join public.shared_dtsi_revision_members upstream on upstream.revision_id=snapshot.revision_id and upstream.member_id=snapshot.member_id
        where reference.organization_id=$1 and reference.project_id=$2 and reference.config_set_id=$3`,

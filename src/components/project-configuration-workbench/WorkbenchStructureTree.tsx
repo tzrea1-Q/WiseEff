@@ -29,6 +29,7 @@ export type WorkbenchStructureTreeProps = {
   defaultExpandDepth?: number;
   showValues?: boolean;
   emptyMessage?: string;
+  includeRoot?: boolean;
 };
 
 export function WorkbenchStructureTree({
@@ -42,9 +43,10 @@ export function WorkbenchStructureTree({
   ariaLabel,
   defaultExpandDepth = 2,
   showValues = false,
+  includeRoot = false,
   emptyMessage = "没有可展示的结构节点。"
 }: WorkbenchStructureTreeProps) {
-  const roots = useMemo(() => buildWorkbenchStructureTree(nodes), [nodes]);
+  const roots = useMemo(() => buildWorkbenchStructureTree(nodes, includeRoot), [nodes, includeRoot]);
   const { byId } = useMemo(() => workbenchStructureTreeIndex(roots), [roots]);
   const treeRef = useRef<HTMLUListElement>(null);
   const [focusedKey, setFocusedKey] = useState<string | null>(null);

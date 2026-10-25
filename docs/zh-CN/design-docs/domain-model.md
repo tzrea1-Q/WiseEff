@@ -103,7 +103,7 @@
 
 配置组成冻结完整成员、解析路径、真实项目入口和覆盖顺序。加入共享来源时，预览会显示在项目声明之前插入的原生 include，因此项目值覆盖共享默认值。应用在同一事务创建本地快照、私有根文件新版本、完整配置修订及既有受治理的值与来源凭据。普通文件、候选、参数值、成员和状态写入不能改变共享快照字节或身份；整文件编辑也不能静默断开仍生效的固定引用。后续引用变更与恢复必须依照对应操作的校验证明，从精确已发布版本派生字节。
 
-共享源码发布与 Catalog 发布不同：[ADR-0040](adr-0040-canonical-parameter-catalog-relational-model.md) 与 [ADR-0043](adr-0043-catalog-authoring-and-online-publication.md) 的唯一 Catalog 同步器保持不变；[ADR-0046](adr-0046-source-occurrence-identity-spans-dts-and-software-configuration.md) 的来源身份与原点转移证明保持不变。初始引用操作仅接受独立的单文件原生 DTSI；跨资源闭包、头文件及预处理输入须交由完整闭包操作支持，在此之前明确拒绝。既有私有 DTS/JSON 成员保留归属、版本和历史。
+共享源码发布与 Catalog 发布不同：[ADR-0040](adr-0040-canonical-parameter-catalog-relational-model.md) 与 [ADR-0043](adr-0043-catalog-authoring-and-online-publication.md) 的唯一 Catalog 同步器保持不变；[ADR-0046](adr-0046-source-occurrence-identity-spans-dts-and-software-configuration.md) 的来源身份与原点转移证明保持不变。[ADR-0052](adr-0052-shared-source-versions-pin-project-dependency-closures.md) 固定精确资源依赖、相对挂载目录及有界完整闭包。项目组成拒绝版本、路径和标签冲突，保留 include 与 overlay 顺序，在一份原子凭据下派生全部必需来源。头文件保留为原始构建输入，交由确定性预处理解释。既有私有 DTS/JSON 成员保留归属、版本和历史。
 
 #### 文件同步与回写
 

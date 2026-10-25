@@ -9,6 +9,7 @@ import type { SharedDtsiDraft, SharedDtsiManifest, SharedDtsiPublicationPreview,
   SharedDtsiVersion, SharedDtsiVersionSummary } from "../contracts/dtoSchemas/sharedDtsi";
 import { sharedDtsiManifestSchema } from "../contracts/dtoSchemas/sharedDtsi";
 import { getSharedDtsiDraft, lockDraft, requireRead, requireWrite, type WriteContext } from "./service";
+import { closureManifest, closureMembers, loadSharedDtsiClosure } from "./dependencies";
 
 const digest = (value: unknown) => `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
 const actorFingerprint = (auth: AuthContext) => digest({ userId:auth.user.id,organizationId:parameterOrganizationId(auth),active:auth.user.isActive,
@@ -18,6 +19,27 @@ const summaryColumns = `id,resource_id as "resourceId",version,name,change_descr
 type VersionRow = Omit<SharedDtsiVersionSummary,"createdAt"> & {createdAt:Date};
 const summary = (row: VersionRow): SharedDtsiVersionSummary => ({...row,createdAt:row.createdAt.toISOString()});
 const conflict = (message="草稿或共享版本已变化，请重新生成发布预览。") => new ApiError("CONFLICT",message,{reason:"shared-source-preview-stale"});
+
+async function completePublicationSource(db:Database,auth:AuthContext,draft:SharedDtsiDraft) {
+  const resources=await loadSharedDtsiClosure(db,auth,draft.dependencies??[],draft.resourceId);
+  const members=[...draft.members,...closureMembers(resources)];
+  if(members.length>128 || members.reduce((size,member)=>size+Buffer.byteLength(member.content),0)>16_777_216)
+    throw new ApiError("VALIDATION_FAILED","完整依赖超过 128 个文件或 16 MiB。");
+  const paths=new Set<string>();
+  for(const member of members) {
+    const path=member.sourceName.normalize("NFC");
+    if(paths.has(path))throw new ApiError("VALIDATION_FAILED",`${path}：本资源与依赖的挂载路径冲突。`);
+    paths.add(path);
+  }
+  const source=await publicationSource({...draft,members});
+  if(!resources.length && !draft.dependencies?.length)return source;
+  const own=new Set(draft.members.map(member=>member.id));
+  source.members=source.members.filter(member=>own.has(member.id));
+  source.manifest={...source.manifest,members:source.manifest.members.filter(member=>own.has(member.id)),
+    dependencies:draft.dependencies??[],dependencyClosure:closureManifest(resources)};
+  source.digest=digest({name:draft.name,manifest:source.manifest,changeDescription:draft.changeDescription});
+  return source;
+}
 
 async function currentVersion(db: Database,auth: AuthContext,resourceId: string) {
   const row=(await db.query<VersionRow>(`select ${summaryColumns} from public.shared_dtsi_revisions
@@ -62,7 +84,7 @@ export async function previewSharedDtsiPublication(db:Database,auth:AuthContext,
   requireWrite(auth,context);
   return db.transaction(async tx=>{
     await lockDraft(tx,auth,resourceId,expectedRevision);
-    const draft=await getSharedDtsiDraft(tx,auth,resourceId),source=await publicationSource(draft),base=await currentVersion(tx,auth,resourceId);
+    const draft=await getSharedDtsiDraft(tx,auth,resourceId),source=await completePublicationSource(tx,auth,draft),base=await currentVersion(tx,auth,resourceId);
     const row=(await tx.query<PreviewRow>(`insert into public.shared_dtsi_publication_previews
       (id,resource_id,organization_id,draft_id,draft_revision,base_revision_id,actor_user_id,actor_fingerprint,name,change_description,manifest,members,digest)
       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13) returning ${previewColumns}`,
@@ -91,7 +113,7 @@ export async function publishSharedDtsi(db:Database,auth:AuthContext,resourceId:
     try { await lockDraft(tx,auth,resourceId,frozen.draftRevision); draft=await getSharedDtsiDraft(tx,auth,resourceId); }
     catch (error) { if (error instanceof ApiError && ["NOT_FOUND","CONFLICT"].includes(error.code)) throw conflict(); throw error; }
     const current=await currentVersion(tx,auth,resourceId);
-    if (draft.id!==frozen.draftId || (current?.id??null)!==frozen.baseVersionId || (await publicationSource(draft)).digest!==frozen.digest) throw conflict();
+    if (draft.id!==frozen.draftId || (current?.id??null)!==frozen.baseVersionId || (await completePublicationSource(tx,auth,draft)).digest!==frozen.digest) throw conflict();
     const revisionId=randomUUID(),version=(current?.version??0)+1;
     await tx.query(`insert into public.shared_dtsi_revisions(id,resource_id,organization_id,version,name,draft_revision,change_description,manifest,digest,created_by_user_id)
       values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10)`,[revisionId,resourceId,organizationId,version,frozen.name,frozen.draftRevision,
@@ -119,6 +141,7 @@ export async function createSharedDtsiVersionDraft(db:Database,auth:AuthContext,
     const version=await getSharedDtsiVersion(tx,auth,resourceId,baseVersionId),draftId=randomUUID();
     const buildInputs = {includeSearchPaths:version.manifest.buildInputs.includeSearchPaths,defines:version.manifest.buildInputs.defines ?? {}};
     await tx.query("insert into public.shared_dtsi_drafts(id,resource_id,organization_id,created_by_user_id,updated_by_user_id,build_inputs) values ($1,$2,$3,$4,$4,$5::jsonb)",[draftId,resourceId,organizationId,auth.user.id,JSON.stringify(buildInputs)]);
+    await tx.query("update public.shared_dtsi_drafts set dependencies=$2::jsonb where id=$1",[draftId,JSON.stringify(version.manifest.dependencies??[])]);
     for (const member of version.members) await tx.query(`insert into public.shared_dtsi_draft_members(draft_id,member_id,resource_id,organization_id,source_name,content)
       values ($1,$2,$3,$4,$5,$6)`,[draftId,member.id,resourceId,organizationId,member.sourceName,member.content]);
     await writeAuditEventInTx(asAuditTx(tx),invocation,{requestId:context.requestId},{app:"parameters",kind:"shared-dtsi-draft",action:"create-version",severity:"Medium",

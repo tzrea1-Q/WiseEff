@@ -9,7 +9,7 @@ export type WorkbenchStructureTreeNode = {
 };
 
 function leafLabel(nodePath: string): string {
-  if (!nodePath) return "/";
+  if (!nodePath || nodePath === "/") return "/";
   const slash = nodePath.lastIndexOf("/");
   return slash >= 0 ? nodePath.slice(slash + 1) : nodePath;
 }
@@ -41,7 +41,7 @@ export function selectWorkbenchNavigationNodes(
 }
 
 /** Build a true parent/child tree from flat DTS structure nodes keyed by nodePath. */
-export function buildWorkbenchStructureTree(nodes: DtsStructuralNode[]): WorkbenchStructureTreeNode[] {
+export function buildWorkbenchStructureTree(nodes: DtsStructuralNode[], includeRoot = false): WorkbenchStructureTreeNode[] {
   const sorted = [...nodes].sort((left, right) => left.nodePath.localeCompare(right.nodePath));
   const byPath = new Map<string, WorkbenchStructureTreeNode>();
 
@@ -78,6 +78,10 @@ export function buildWorkbenchStructureTree(nodes: DtsStructuralNode[]): Workben
       if (synthetic.children.includes(root)) continue;
       root.parentId = synthetic.id;
       synthetic.children.push(root);
+    }
+    if (includeRoot) {
+      for (const child of synthetic.children) child.parentId = synthetic.id;
+      return [synthetic];
     }
     for (const child of synthetic.children) child.parentId = null;
     return synthetic.children;
