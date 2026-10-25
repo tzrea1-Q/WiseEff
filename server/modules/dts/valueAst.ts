@@ -1,5 +1,6 @@
 import type { DtsCell, DtsValue, DtsValueSegment } from "./types";
 import { stripDtsComments } from "./preprocess";
+import { dtsReferencePath } from "../../../src/domain/dts/reference";
 
 export interface DtsValueParseResult {
   value: DtsValue;
@@ -243,7 +244,9 @@ function patchCellsGroupItem(itemRaw: string, bits: CellWidth, cells: DtsCell[])
     const match = matches[i]!;
     const start = match.index ?? 0;
     out += inner.slice(cursor, start);
-    out += renderCell(cells[i]!);
+    const cell=cells[i]!,previous=parseCellToken(match[0],bits);
+    out += cell.kind==="phandle" && previous.kind==="phandle" && cell.label===previous.label
+      ?inner.slice(start,start+match[0].length):renderCell(cell);
     cursor = start + match[0].length;
   }
   out += inner.slice(cursor);
@@ -355,7 +358,7 @@ function parseTopLevelItem(itemRawWithWhitespace: string): ParsedItem {
   throw new Error(`Unrecognized DTS value token: "${trimmed}"`);
 }
 
-const CELL_TOKEN_RE = /&[A-Za-z_][A-Za-z0-9_]*|\(-(?:0[xX][0-9A-Fa-f]+|\d+)\)|-?0[xX][0-9A-Fa-f]+|-?\d+/g;
+const CELL_TOKEN_RE = /&\s*\{[^{}]*\}|&[A-Za-z_][A-Za-z0-9_]*|\(-(?:0[xX][0-9A-Fa-f]+|\d+)\)|-?0[xX][0-9A-Fa-f]+|-?\d+/g;
 
 function parseCellsGroup(inner: string, width: CellWidth): DtsCell[] {
   const cells: DtsCell[] = [];
@@ -376,7 +379,9 @@ function parseCellsGroup(inner: string, width: CellWidth): DtsCell[] {
 
 function parseCellToken(token: string, width: CellWidth): DtsCell {
   if (token.startsWith("&")) {
-    return { kind: "phandle", label: token.slice(1) };
+    const raw=token.slice(1).trim(),label=raw.startsWith("{")?`{${raw.slice(1,-1).trim()}}`:raw;
+    dtsReferencePath(label);
+    return { kind: "phandle", label };
   }
 
   const bare = token.startsWith("(") && token.endsWith(")") ? token.slice(1, -1) : token;

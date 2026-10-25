@@ -7,6 +7,7 @@ import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
 import { parameterOrganizationId, parameterScopeInvocation } from "../parameters/operatingScope";
 import type { SharedDtsiDraft, SharedDtsiDraftInput, SharedDtsiResourceSummary } from "../contracts/dtoSchemas/sharedDtsi";
+import { sharedDtsiImportLimits } from "../contracts/dtoSchemas/sharedDtsi";
 
 export type WriteContext = { invocation: TrustedInvocationContext; requestId: string };
 type DraftRow = Omit<SharedDtsiDraft, "members" | "updatedAt"> & { updatedAt: Date };
@@ -57,15 +58,34 @@ export async function listSharedDtsiResources(db: Database, auth: AuthContext, i
 }
 export async function createSharedDtsiDraft(db: Database, auth: AuthContext, input: SharedDtsiDraftInput, context: WriteContext) {
   requireWrite(auth, context);
+  const members = inputMembers(input);
   return db.transaction(async tx => {
-    const organizationId = parameterOrganizationId(auth), resourceId = randomUUID(), draftId = randomUUID(), memberId = randomUUID();
+    const organizationId = parameterOrganizationId(auth), resourceId = randomUUID(), draftId = randomUUID();
     await tx.query("insert into public.shared_dtsi_resources(id,organization_id,name) values ($1,$2,$3)", [resourceId, organizationId, input.name]);
-    await tx.query("insert into public.shared_dtsi_members(id,resource_id,organization_id) values ($1,$2,$3)", [memberId, resourceId, organizationId]);
     await tx.query("insert into public.shared_dtsi_drafts(id,resource_id,organization_id,created_by_user_id,updated_by_user_id,change_description) values ($1,$2,$3,$4,$4,$5)", [draftId, resourceId, organizationId, auth.user.id,input.changeDescription]);
-    await tx.query("insert into public.shared_dtsi_draft_members(draft_id,member_id,resource_id,organization_id,source_name,content) values ($1,$2,$3,$4,$5,$6)", [draftId, memberId, resourceId, organizationId, input.sourceName, input.content]);
+    for (const member of members) {
+      if (member.id) throw new ApiError("VALIDATION_FAILED", "新资源不能指定已有成员身份。");
+      const memberId = randomUUID();
+      await tx.query("insert into public.shared_dtsi_members(id,resource_id,organization_id) values ($1,$2,$3)", [memberId, resourceId, organizationId]);
+      await tx.query("insert into public.shared_dtsi_draft_members(draft_id,member_id,resource_id,organization_id,source_name,content) values ($1,$2,$3,$4,$5,$6)", [draftId, memberId, resourceId, organizationId, member.sourceName, member.content]);
+    }
     await audit(tx, auth, context, resourceId, "create", 1);
     return getSharedDtsiDraft(tx, auth, resourceId);
   });
+}
+function inputMembers(input: SharedDtsiDraftInput) {
+  const members = input.members ?? [{sourceName:input.sourceName,content:input.content,id:undefined}];
+  const paths = new Set<string>(), ids = new Set<string>();
+  let bytes = 0;
+  for (const member of members) {
+    const path = member.sourceName.normalize("NFC");
+    if (paths.has(path) || member.id && ids.has(member.id)) throw new ApiError("VALIDATION_FAILED", `${member.sourceName}：文件路径或成员身份重复。`);
+    paths.add(path); if (member.id) ids.add(member.id);
+    bytes += Buffer.byteLength(member.content);
+  }
+  if (bytes > sharedDtsiImportLimits.maxTotalBytes) throw new ApiError("VALIDATION_FAILED", "资源源码总量不能超过 16 MiB。");
+  if (!members.some(member=>member.sourceName.endsWith(".dtsi"))) throw new ApiError("VALIDATION_FAILED", "资源至少需要一个 .dtsi 源码成员；头文件单独保存为依赖。");
+  return members;
 }
 export async function lockDraft(db: Database, auth: AuthContext, resourceId: string, expectedRevision: number) {
   const row = (await db.query<{ id: string; revision: number }>(`select d.id,d.revision from public.shared_dtsi_drafts d
@@ -76,10 +96,22 @@ export async function lockDraft(db: Database, auth: AuthContext, resourceId: str
 }
 export async function saveSharedDtsiDraft(db: Database, auth: AuthContext, resourceId: string, input: SharedDtsiDraftInput & { expectedRevision: number }, context: WriteContext) {
   requireWrite(auth, context);
+  const members = inputMembers(input);
   return db.transaction(async tx => {
     const draft = await lockDraft(tx, auth, resourceId, input.expectedRevision), organizationId = parameterOrganizationId(auth);
     await tx.query("update public.shared_dtsi_resources set name=$3,updated_at=now() where id=$1 and organization_id=$2", [resourceId, organizationId, input.name]);
-    await tx.query("update public.shared_dtsi_draft_members set source_name=$3,content=$4 where draft_id=$1 and organization_id=$2", [draft.id, organizationId, input.sourceName, input.content]);
+    const previous = await getSharedDtsiDraft(tx,auth,resourceId);
+    if (!input.members && previous.members.length !== 1) throw new ApiError("VALIDATION_FAILED", "多文件资源必须提交完整成员集合，不能用单文件保存覆盖。");
+    const assigned = members.map(member=>({...member,id:member.id ?? previous.members.find(old=>old.sourceName===member.sourceName)?.id
+      ?? (!input.members ? previous.members[0]!.id : randomUUID())}));
+    if (new Set(assigned.map(member=>member.id)).size!==assigned.length) throw new ApiError("VALIDATION_FAILED","成员重命名与原路径匹配发生身份冲突，请明确每个成员身份后重试。");
+    const known = new Set(previous.members.map(member=>member.id));
+    for (const member of assigned) {
+      if (members.find(value=>value.id===member.id) && !known.has(member.id)) throw new ApiError("VALIDATION_FAILED", `${member.sourceName}：成员身份不属于当前草稿。`);
+      if (!known.has(member.id)) await tx.query("insert into public.shared_dtsi_members(id,resource_id,organization_id) values ($1,$2,$3)",[member.id,resourceId,organizationId]);
+    }
+    await tx.query("delete from public.shared_dtsi_draft_members where draft_id=$1 and organization_id=$2",[draft.id,organizationId]);
+    for (const member of assigned) await tx.query("insert into public.shared_dtsi_draft_members(draft_id,member_id,resource_id,organization_id,source_name,content) values ($1,$2,$3,$4,$5,$6)",[draft.id,member.id,resourceId,organizationId,member.sourceName,member.content]);
     await tx.query("update public.shared_dtsi_drafts set revision=revision+1,updated_by_user_id=$3,updated_at=now(),change_description=$4 where id=$1 and organization_id=$2", [draft.id, organizationId, auth.user.id,input.changeDescription]);
     await audit(tx, auth, context, resourceId, "save", draft.revision + 1);
     return getSharedDtsiDraft(tx, auth, resourceId);

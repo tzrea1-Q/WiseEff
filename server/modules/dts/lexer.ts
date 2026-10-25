@@ -1,4 +1,5 @@
 import { stripDtsComments } from "./preprocess";
+import { dtsReferencePath,DtsPathReferenceError } from "../../../src/domain/dts/reference";
 
 export type DtsTokenKind =
   | "ident"
@@ -7,6 +8,7 @@ export type DtsTokenKind =
   | "bytes"
   | "at"
   | "amp"
+  | "path-ref"
   | "colon"
   | "lt"
   | "gt"
@@ -66,6 +68,17 @@ export function lexDts(source: string): DtsToken[] {
     if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") {
       i += 1;
       continue;
+    }
+
+    if(ch==="&") {
+      let brace=i+1;while(/\s/u.test(text[brace]??"") && brace<text.length)brace++;
+      if(text[brace]==="{") {
+        const end=text.indexOf("}",brace+1);
+        if(end<0)throw new DtsPathReferenceError(`Unterminated DTS node-path reference at offset ${i}`,i);
+        const reference=`{${text.slice(brace+1,end).trim()}}`;
+        try {dtsReferencePath(reference);}catch {throw new DtsPathReferenceError(`Invalid DTS node-path reference at offset ${i}`,i);}
+        push("path-ref",i,end+1,reference);i=end+1;continue;
+      }
     }
 
     if (ch === "/") {

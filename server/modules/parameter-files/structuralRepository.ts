@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import { offsetToLineColumn } from "../dts/offsetToLineColumn";
 import type { ResolvedDts, ResolvedNode } from "../dts/resolver";
+import { dtsReferencePath } from "../../../src/domain/dts/reference";
 
 export type StructuralInsertCounts = {
   nodes: number;
@@ -133,7 +134,8 @@ function findLabelNodeId(
   pathToId: Map<string, string>,
   label: string,
 ): string | null {
-  const hit = nodes.find((n) => n.labels.includes(label) || n.nodePath === label || n.name === label);
+  const path=dtsReferencePath(label);
+  const hit = nodes.find((n) => path!==null?n.nodePath===path.slice(1):n.labels.includes(label) || n.nodePath === label || n.name === label);
   if (!hit) return null;
   return pathToId.get(hit.nodePath) ?? null;
 }

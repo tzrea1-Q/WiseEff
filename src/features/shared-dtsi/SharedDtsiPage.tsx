@@ -18,13 +18,19 @@ import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 import { WiseEffApiError, type ApiClient } from "@/infrastructure/http/apiClient";
 import { createSharedDtsiClient } from "@/infrastructure/http/sharedDtsiClient";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
+import { sharedDtsiImportLimits } from "@wiseeff/dto-schemas";
 import "./shared-dtsi.css";
 
 type Props = { apiClient?: ApiClient; canWrite: boolean; search: string; organizationId?: string; onNavigate: (path: string) => void };
 type Scope = { key: string; client: ReturnType<typeof createSharedDtsiClient> | null; pending: boolean };
 const empty: SharedDtsiDraftInput = { name: "", sourceName: "common.dtsi", content: "", changeDescription: "" };
 const draftInput = (draft: SharedDtsiDraft): SharedDtsiDraftInput => ({ name: draft.name,
-  sourceName: draft.members[0]!.sourceName, content: draft.members[0]!.content, changeDescription: draft.changeDescription });
+  sourceName: draft.members[0]!.sourceName, content: draft.members[0]!.content, changeDescription: draft.changeDescription,
+  ...(draft.members.length>1?{members:draft.members}:{} ) });
+const sourceMembers = (input:SharedDtsiDraftInput) => input.members ?? [{sourceName:input.sourceName,content:input.content}];
+const withContent = (input:SharedDtsiDraftInput,index:number,content:string):SharedDtsiDraftInput => ({...input,content,
+  ...(input.members?{members:input.members.map((member,at)=>at===index?{...member,content}:member)}:{})});
+const comparable = (input:SharedDtsiDraftInput) => JSON.stringify({name:input.name,changeDescription:input.changeDescription,members:sourceMembers(input),archive:input.archive});
 const message = (error: unknown) => error instanceof WiseEffApiError ? error.message : "请求失败，请重试。";
 
 export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, onNavigate }: Props) {
@@ -53,6 +59,7 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
   useEffect(()=>setHistoryPage(1),[selected]);
   const [preview, setPreview] = useState<{ scope: Scope; data: SharedDtsiPublicationPreview; key: string } | null>(null);
   const [form, setForm] = useState(empty);
+  const [memberIndex,setMemberIndex]=useState(0);
   const [editorDirty, setEditorDirty] = useState(false);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
@@ -65,13 +72,14 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
   const [reload, setReload] = useState(0);
   const editor = useRef<WorkbenchDtsEditorHandle>(null);
   const upload = useRef<HTMLInputElement>(null);
+  const directoryUpload = useRef<HTMLInputElement>(null);
   const edits = useRef(0);
   const importSequence = useRef(0);
   const base = draft ? draftInput(draft) : empty;
-  const dirty = Boolean(selected) && canWrite && !published && tab === "source" && (editorDirty || JSON.stringify(form) !== JSON.stringify(base));
+  const dirty = Boolean(selected) && canWrite && !published && tab === "source" && (editorDirty || comparable(form) !== comparable(base));
   const busyLoading = loading || loadedScope !== scope;
   const currentPreview = preview?.scope === scope ? preview : null;
-  const sessionKey = `shared-dtsi/${selected}/${draft?.revision ?? "new"}`;
+  const sessionKey = `shared-dtsi/${selected}/${draft?.revision ?? "new"}/${memberIndex}`;
   const path = useCallback((resourceId: string, options?: { version?: string; tab?: string }) => {
     const params = new URLSearchParams(search);
     if (resourceId !== selected) { params.delete("version"); params.delete("tab"); }
@@ -85,7 +93,7 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
 
   useEffect(() => {
     let cancelled = false;
-    setError(""); setConflict(false); setEditorDirty(false); setDraft(null); setPublished(null); setDetail(null); setPreview(null); setLeaving(false); setPending(false);
+    setError(""); setConflict(false); setEditorDirty(false); setDraft(null); setPublished(null); setDetail(null); setPreview(null); setLeaving(false); setPending(false); setMemberIndex(0);
     if (!client) { setLoading(false); setLoadedScope(scope); return; }
     if (selected === "new") { setForm(empty); setLoading(false); setLoadedScope(scope); return; }
     setLoading(true);
@@ -111,10 +119,10 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
 
   const persist = async (operation: Scope) => {
     if (!client) throw new Error("API 不可用。");
-    const input = { ...form, content: editor.current?.flush()?.text ?? form.content };
+    const input = withContent(form,memberIndex,editor.current?.flush()?.text ?? form.content);
     setForm(input);
     const result = draft ? await client.save(draft.resourceId, { ...input, expectedRevision: draft.revision }) : await client.create(input);
-    if (isCurrent(operation)) { setDraft(result); setForm(draftInput(result)); setEditorDirty(false); setSaved(result.resourceId); }
+    if (isCurrent(operation)) { setDraft(result); setForm(draftInput(result)); setMemberIndex(0); setEditorDirty(false); setSaved(result.resourceId); }
     return result;
   };
   const save = async () => {
@@ -161,19 +169,43 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
     } catch (cause) { if (isCurrent(scope)) setError(message(cause)); }
     finally { scope.pending = false; if (isCurrent(scope)) setPending(false); }
   };
-  const importFile = async (file?: File) => {
-    if (!file || scope.pending || published || busyLoading || !canWrite) return;
+  const importFiles = async (selectedFiles?: FileList | null) => {
+    const files=Array.from(selectedFiles??[]);
+    if (!files.length || scope.pending || published || busyLoading || !canWrite) return;
     const request = ++importSequence.current, edit = edits.current;
     try {
-      if (!file.name.endsWith(".dtsi") || file.size > 2_097_152) { setError("请选择不超过 2 MiB 的 .dtsi 文件。"); return; }
-      const content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await file.arrayBuffer());
+      const file=files[0]!;
+      const isArchive=files.length===1 && file.name.endsWith(".zip");
+      if (files.length>sharedDtsiImportLimits.maxFiles || files.reduce((size,value)=>size+value.size,0)>sharedDtsiImportLimits.maxTotalBytes
+        || files.some(value=>value.size>(isArchive?sharedDtsiImportLimits.maxArchiveBytes:sharedDtsiImportLimits.maxFileBytes))) {
+        setError("最多 128 个文件，单文件 2 MiB、源码共 16 MiB；ZIP 最大 8 MiB。");return;
+      }
+      const members=isArchive?undefined:await Promise.all(files.map(async value=>({sourceName:value.webkitRelativePath||value.name,
+        content:new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await value.arrayBuffer())})));
+      let archive:SharedDtsiDraftInput["archive"];
+      if(isArchive) {
+        const bytes=new Uint8Array(await file.arrayBuffer());let binary="";
+        for(let start=0;start<bytes.length;start+=8192)binary+=String.fromCharCode(...bytes.subarray(start,start+8192));
+        archive={name:file.name,contentBase64:btoa(binary)};
+      }
       if (!isCurrent(scope) || request !== importSequence.current || edit !== edits.current || scope.pending) return;
       edits.current += 1;
-      setForm(current => ({ ...current, name: current.name || file.name.replace(/\.dtsi$/, ""), sourceName: file.name, content }));
+      setForm(current => ({ ...current, name: current.name || file.name.replace(/\.(dtsi|zip)$/, ""),
+        sourceName:members?.[0]?.sourceName??"common.dtsi",content:members?.[0]?.content??"",archive,
+        members:members?.map(member=>({...member,...(current.members?.find(old=>old.sourceName===member.sourceName)?.id?{id:current.members.find(old=>old.sourceName===member.sourceName)!.id}:{})})) }));
+      setMemberIndex(0);
       setEditorDirty(true); setSaved(null); setError(""); setReloadEditor(value => value + 1);
-    } catch { if (isCurrent(scope) && request === importSequence.current && edit === edits.current && !scope.pending) setError("无法读取文件，请选择 UTF-8 编码的 DTSI 源码。"); }
+    } catch { if (isCurrent(scope) && request === importSequence.current && edit === edits.current && !scope.pending) setError("无法读取文件，请选择 UTF-8 编码的源码或 ZIP 归档。"); }
   };
   const [reloadEditor, setReloadEditor] = useState(0);
+  const selectMember=(index:number)=>{
+    if(scope.pending)return;
+    const current=withContent(form,memberIndex,editor.current?.flush()?.text??form.content),member=sourceMembers(current)[index]!;
+    setForm({...current,sourceName:member.sourceName,content:member.content});setMemberIndex(index);setEditorDirty(false);setReloadEditor(value=>value+1);
+  };
+  const memberNavigation=(members:{sourceName:string}[],select:(index:number)=>void)=>members.length>1?<nav aria-label="资源文件" className="shared-dtsi-members"><ul>
+    {members.map((member,index)=><li key={index}><Button variant={index===memberIndex?"secondary":"ghost"} aria-current={index===memberIndex?"true":undefined}
+      disabled={pending} onClick={()=>select(index)}>{member.sourceName}</Button></li>)}</ul></nav>:null;
 
   if (!client) return <section className="shared-dtsi-page"><h1>共享 DTSI</h1><p role="status">共享 DTSI 需要 API 模式和有效登录。</p></section>;
   if (!selected) return <div className="shared-dtsi-page"><AdminListPage label="共享 DTSI" headerContent={<h1>共享 DTSI</h1>}
@@ -199,11 +231,12 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
       <h1>发布 {currentPreview.data.name}</h1></div><Button disabled={pending} onClick={() => void publish()}>{pending ? "正在发布…" : "发布版本"}</Button></header>
     {error ? <p role="alert" className="shared-dtsi-error">{error}</p> : null}
     <p>发布共享版本，不会自动更新项目配置。</p>
-    <dl className="shared-dtsi-metadata"><div><dt>文件路径</dt><dd>{currentPreview.data.manifest.members[0]?.sourceName}</dd></div>
+    <dl className="shared-dtsi-metadata"><div><dt>文件</dt><dd>{currentPreview.data.manifest.members.length} 个 · 共享源码库</dd></div>
       <div><dt>变更说明</dt><dd>{currentPreview.data.changeDescription}</dd></div>
       {currentPreview.data.manifest.externalReferences.length ? <div><dt>项目需提供的引用</dt><dd>{currentPreview.data.manifest.externalReferences.join("、")}</dd></div> : null}</dl>
-    <div className="shared-dtsi-source"><WorkbenchDtsEditor sessionKey={`shared-dtsi-preview/${currentPreview.data.id}`} text={form.content}
-      readOnly ariaLabel="待发布 DTSI 源码" /></div>
+    <div className="shared-dtsi-workspace">{memberNavigation(sourceMembers(form),selectMember)}
+      <div className="shared-dtsi-source"><WorkbenchDtsEditor sessionKey={`shared-dtsi-preview/${currentPreview.data.id}/${memberIndex}`} text={form.content}
+      readOnly ariaLabel="待发布 DTSI 源码" /></div></div>
   </section>;
 
   if (published || tab === "versions") return <section className="shared-dtsi-page shared-dtsi-page--editor" aria-label="共享 DTSI 版本" aria-busy={pending}>
@@ -218,11 +251,12 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
         {value:"versions",label:"版本",id:"shared-versions-tab",panelId:"shared-versions-panel"}]} />
     <TabPanel id="shared-source-panel" aria-labelledby="shared-source-tab" hidden={tab!=="source"} className="shared-dtsi-published-panel">
       {tab==="source" && published ? <><p role="status">v{published.version} · {published.id===detail?.currentVersion?.id?"已发布":"历史版本"}，只读</p>
-        <dl className="shared-dtsi-metadata"><div><dt>文件路径</dt><dd>{published.members[0]?.sourceName}</dd></div>
+        <dl className="shared-dtsi-metadata"><div><dt>文件路径</dt><dd>{published.members[memberIndex]?.sourceName}</dd></div>
           <div><dt>发布时间</dt><dd>{formatAbsolute(published.createdAt)}</dd></div>
           <div><dt>变更说明</dt><dd>{published.changeDescription}</dd></div></dl>
-        <div className="shared-dtsi-source"><WorkbenchDtsEditor sessionKey={`shared-dtsi-version/${published.id}`} text={published.members[0]?.content ?? ""}
-          readOnly ariaLabel="已发布 DTSI 源码" /></div></> : null}
+        <div className="shared-dtsi-workspace">{memberNavigation(published.members,setMemberIndex)}
+          <div className="shared-dtsi-source"><WorkbenchDtsEditor sessionKey={`shared-dtsi-version/${published.id}/${memberIndex}`} text={published.members[memberIndex]?.content ?? ""}
+          readOnly ariaLabel="已发布 DTSI 源码" /></div></div></> : null}
     </TabPanel>
     <TabPanel id="shared-versions-panel" aria-labelledby="shared-versions-tab" hidden={tab!=="versions"}>
       {tab==="versions" ? <DataTable rows={versions} rowKey={row=>row.id} fluid pageSize={20} columns={[
@@ -249,16 +283,20 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
       {saved === selected ? <p role="status">草稿已保存</p> : null}
       <div className="shared-dtsi-fields">
         <label>资源名称<Input aria-label="资源名称" value={form.name} maxLength={160} readOnly={!canWrite} disabled={pending} onChange={event => { edits.current+=1; setForm({ ...form, name: event.target.value }); setSaved(null); }} /></label>
-        <label>文件路径<Input aria-label="文件路径" value={form.sourceName} maxLength={240} readOnly={!canWrite} disabled={pending} onChange={event => { edits.current+=1; setForm({ ...form, sourceName: event.target.value }); setSaved(null); }} /></label>
-        {canWrite ? <><input ref={upload} type="file" accept=".dtsi" hidden onChange={event => { void importFile(event.target.files?.[0]); event.target.value = ""; }} />
-          <Button variant="outline" disabled={pending} onClick={() => upload.current?.click()}>选择 DTSI 文件</Button></> : null}
+        {!form.archive?<label>文件路径<Input aria-label="文件路径" value={form.sourceName} maxLength={240} readOnly={!canWrite} disabled={pending} onChange={event => { edits.current+=1;
+          setForm({ ...form, sourceName: event.target.value,...(form.members?{members:form.members.map((member,index)=>index===memberIndex?{...member,sourceName:event.target.value}:member)}:{}) }); setSaved(null); }} /></label>:null}
+        {canWrite ? <><input ref={upload} type="file" accept=".dtsi,.h,.hpp,.zip" multiple hidden onChange={event => { void importFiles(event.target.files); event.target.value = ""; }} />
+          <input ref={directoryUpload} type="file" multiple hidden {...{webkitdirectory:""}} onChange={event=>{void importFiles(event.target.files);event.target.value="";}} />
+          <Button variant="outline" disabled={pending} onClick={() => upload.current?.click()}>选择源码或 ZIP</Button>
+          <Button variant="outline" disabled={pending} onClick={() => directoryUpload.current?.click()}>选择目录</Button></> : null}
       </div>
       <label className="shared-dtsi-change-description">变更说明<Textarea aria-label="变更说明" value={form.changeDescription} maxLength={1000} rows={2}
         placeholder="说明此共享版本的变更" readOnly={!canWrite} disabled={pending} onChange={event=>{edits.current+=1;setForm({...form,changeDescription:event.target.value});setSaved(null);}} /></label>
       {draft && canWrite && !form.changeDescription.trim() ? <p id="shared-publication-hint" className="shared-dtsi-hint">发布前请填写变更说明。</p> : null}
-      <div className="shared-dtsi-source"><WorkbenchDtsEditor ref={editor} sessionKey={sessionKey} text={form.content} baseText={base.content} resetKey={reloadEditor}
+      {form.archive?<p role="status">{form.archive.name} · 保存草稿后展开文件并检查路径。</p>:<div className="shared-dtsi-workspace">{memberNavigation(sourceMembers(form),selectMember)}
+      <div className="shared-dtsi-source"><WorkbenchDtsEditor ref={editor} sessionKey={sessionKey} text={form.content} baseText={draft?.members[memberIndex]?.content??""} resetKey={reloadEditor}
         ariaLabel="DTSI 源码" readOnly={!canWrite || pending} onDirtyChange={meta => { if (meta.sessionKey === sessionKey && isCurrent(scope)) { if(meta.generation>0) edits.current+=1; setEditorDirty(meta.dirty); if (meta.dirty) setSaved(null); } }}
-        onChange={snapshot => { if (snapshot.sessionKey === sessionKey && isCurrent(scope)) setForm(current => ({ ...current, content: snapshot.text })); }} onSave={() => void save()} /></div>
+        onChange={snapshot => { if (snapshot.sessionKey === sessionKey && isCurrent(scope)) setForm(current => withContent(current,memberIndex,snapshot.text)); }} onSave={() => void save()} /></div></div>}
     </>}
     <SettingsLeaveGuard dirty={dirty && !leaving} saving={pending} description="离开将放弃本页未保存的源码和名称，已保存的草稿不会受到影响。" />
     <ConfirmDialog open={reloadOpen} title="重新载入草稿？" description="本地未保存的修改将被当前服务端草稿替换。"

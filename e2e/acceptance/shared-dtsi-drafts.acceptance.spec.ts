@@ -12,7 +12,7 @@ test("imports and edits a shared DTSI draft, keeps stale input, and discards wit
   await dismissXiaozeHint(page);
   await page.getByRole("button", { name: "导入资源" }).click();
   const source = '/ { battery: battery { compatible = "test,shared-battery"; status = "disabled"; }; };\n';
-  await page.locator('input[type="file"]').setInputFiles({ name: "common-battery.dtsi", mimeType: "text/plain", buffer: Buffer.from(source) });
+  await page.locator('input[type="file"]').first().setInputFiles({ name: "common-battery.dtsi", mimeType: "text/plain", buffer: Buffer.from(source) });
   await expect(page.getByLabel("资源名称")).toHaveValue("common-battery");
   await page.getByRole("button", { name: "保存草稿" }).click();
   await expect(page.getByText("草稿已保存", { exact: true })).toBeVisible();

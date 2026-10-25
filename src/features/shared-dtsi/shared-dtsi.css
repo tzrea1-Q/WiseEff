@@ -21,3 +21,7 @@
 .shared-dtsi-description { white-space: pre-wrap; overflow-wrap: anywhere; }
 .shared-dtsi-draft-label { margin-inline-start: var(--space-2); color: var(--text-secondary); font-size: var(--text-base); font-weight: 400; }
 .shared-dtsi-hint { margin: 0; color: var(--text-secondary); font-size: var(--text-base); }
+.shared-dtsi-workspace { display: flex; flex: 1; min-width: 0; min-height: 0; gap: var(--space-3); }
+.shared-dtsi-members { flex: 0 0 min(30%, calc(var(--space-10) * 6)); min-width: 0; max-height: calc(var(--space-10) * 10); overflow: auto; border-inline-end: var(--stroke-hairline) solid var(--border); }
+.shared-dtsi-members ul { list-style: none; padding: 0; margin: 0; }
+.shared-dtsi-members button { width: 100%; height: auto; min-height: var(--space-10); justify-content: start; white-space: normal; text-align: start; overflow-wrap: anywhere; }
