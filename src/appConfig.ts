@@ -230,8 +230,8 @@ export function getPageByPath(path: string): PageConfig {
       label: "组织管理",
       group: "平台总览",
       icon: Building2,
-      title: "组织管理",
-      subtitle: area === "overview" ? ORGANIZATION_ADMIN_UI.overviewSubtitle : area === "resources" ? ORGANIZATION_ADMIN_UI.resourcesSubtitle : area === "invitations" ? "管理一次性邀请及加入状态" : area === "projects" ? ORGANIZATION_ADMIN_UI.projectsSubtitle : area === "teams" ? ORGANIZATION_ADMIN_UI.teamsSubtitle : area === "integrations" ? ORGANIZATION_ADMIN_UI.integrationsSubtitle : area === "bridges" ? ORGANIZATION_ADMIN_UI.bridgesSubtitle : area === "members" ? ORGANIZATION_ADMIN_UI.membersSubtitle : ORGANIZATION_ADMIN_UI.profileSubtitle
+      title: ({ overview: "组织概览", resources: "组织资源", members: "成员与权限", invitations: "成员邀请", teams: "团队管理", projects: "项目参与", handovers: "业务交接", bridges: "设备代理", integrations: "集成凭据", profile: "组织资料" })[area],
+      subtitle: area === "overview" ? ORGANIZATION_ADMIN_UI.overviewSubtitle : area === "resources" ? ORGANIZATION_ADMIN_UI.resourcesSubtitle : area === "invitations" ? "管理一次性邀请及加入状态" : area === "handovers" ? "指派并接收项目、知识和反馈的待交接事项" : area === "projects" ? ORGANIZATION_ADMIN_UI.projectsSubtitle : area === "teams" ? ORGANIZATION_ADMIN_UI.teamsSubtitle : area === "integrations" ? ORGANIZATION_ADMIN_UI.integrationsSubtitle : area === "bridges" ? ORGANIZATION_ADMIN_UI.bridgesSubtitle : area === "members" ? ORGANIZATION_ADMIN_UI.membersSubtitle : ORGANIZATION_ADMIN_UI.profileSubtitle
     };
   }
 

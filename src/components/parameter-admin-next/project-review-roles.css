@@ -13,3 +13,5 @@
 .project-review-roles__table th { color: var(--text-muted); white-space: nowrap; }
 .project-review-roles__table small { display: block; color: var(--text-muted); font-size: var(--text-sm); line-height: var(--leading-sm); }
 .project-review-roles__table tr[data-modified="true"] { background: var(--accent-soft); }
+.project-review-roles__single fieldset { display: grid; gap: var(--space-3); border: 0; padding: 0; margin: 0; }
+.project-review-roles__single label { display: flex; align-items: center; gap: var(--space-2); }

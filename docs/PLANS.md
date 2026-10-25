@@ -18,6 +18,7 @@ WiseEff is PC-first. The [UI quality checklist](developer/ui-quality-checklist.m
 
 ## Current Active Plan
 
+- [Organization management remediation](exec-plans/active/2026-10-24-organization-management-remediation.md): repair all 40 audited interface, workflow and authorization findings; implementation and candidate verification in progress.
 - [Shared UI contracts and verification feedback](exec-plans/active/2026-10-15-ui-contract-verification.md): #1187/#1188 freezes remaining consumers, current-main failure, provisional CI cohorts and one cumulative latency/compute budget; implementation and measured outcomes remain pending.
 - [Unified SearchField and fuzzy search](exec-plans/active/2026-09-16-unified-fuzzy-search.md): one SearchField primitive, a repo-native multi-field fuzzy core, explicit Search Profiles, and migration of every search input without replacing provider-backed or literal-find engines.
 - [Local Device Bridge multi-account rebind](exec-plans/active/2026-09-16-bridge-multi-account-repair.md): keep `/device-bridges/mine` user+organization scoped, rebind the same machine with a new pairing code, rebuild Bridge 0.1.1 artifacts, and stop classifying foreign-account health as an expired token.

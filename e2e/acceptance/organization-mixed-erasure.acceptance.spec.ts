@@ -46,7 +46,8 @@ test("converges a populated four-domain Organization after actual file failure t
     create trigger test_mixed_erasure_ack before delete on parameter_catalog.organization_log_erasure_objects for each row execute function test_mixed_erasure_ack()`));
   await signInBrowserAsRole(page, "platform-admin", "/platform/organizations");
   await page.getByRole("searchbox", { name: "搜索组织", exact: true }).fill(org);
-  await page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: name }).getByRole("button", { name: "查看", exact: true }).press("Enter");
+  await page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: name }).getByRole("button", { name: /更多$/ }).press("Enter");
+  await page.getByRole("menuitem", { name: "查看资料", exact: true }).click();
   await page.getByRole("dialog", { name: "组织资料", exact: true }).getByRole("button", { name: "删除影响", exact: true }).press("Enter");
   const preview = page.getByRole("dialog", { name: "组织删除影响预览", exact: true });
   await preview.getByRole("button", { name: "开始彻底删除", exact: true }).scrollIntoViewIfNeeded(); await preview.getByRole("button", { name: "开始彻底删除", exact: true }).press("Enter");

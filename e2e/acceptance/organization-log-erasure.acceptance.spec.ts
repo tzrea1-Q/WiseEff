@@ -42,7 +42,8 @@ test("erases real log files and analysis through Organization confirmation and d
   try {
     await signInBrowserAsRole(page, "platform-admin", "/platform/organizations"); await prepareInteractionSurface(page);
     await page.getByRole("searchbox", { name: "搜索组织", exact: true }).fill(org);
-    await page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: name }).getByRole("button", { name: "查看", exact: true }).click();
+    await page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: name }).getByRole("button", { name: /更多$/ }).click();
+    await page.getByRole("menuitem", { name: "查看资料", exact: true }).click();
     await page.getByRole("dialog", { name: "组织资料", exact: true }).getByRole("button", { name: "删除影响", exact: true }).click();
     const preview = page.getByRole("dialog", { name: "组织删除影响预览", exact: true });
     await expect(preview).toContainText("log_records");

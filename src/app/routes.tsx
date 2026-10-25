@@ -581,6 +581,8 @@ export function PageRouter({
           onNavigate={onNavigate}
           search={search}
           area={parseOrganizationAdminArea(page.path) ?? "overview"}
+          visibleWorkflows={visibleWorkflows}
+          publication={publication}
           apiMode={runtimeMode === "api"}
           userGovernanceActions={userGovernanceActions}
           onCurrentAccountChanged={async (accessEnded) => {

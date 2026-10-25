@@ -139,11 +139,11 @@ export function ProjectReviewRolesPanel({ projectId, projectName = projectId, us
       <Button type="button" variant="outline" onClick={onBack} disabled={busy}><ArrowLeft aria-hidden="true" />{backLabel}</Button>
       <Button type="button" variant="outline" disabled={busy} onClick={async () => { if (await requestSettingsLeave()) void loadData(); }}><RefreshCw aria-hidden="true" />刷新</Button>
     </div>
-    <SettingsFormPage label="项目审核角色设置" dirty={dirty} saving={busy} error={error ?? undefined}
+    <SettingsFormPage label="项目审核角色设置" saveLabel={userId ? "保存审核职责" : "保存"} dirty={dirty} saving={busy} error={error ?? undefined}
       onSave={() => setConfirmDialog(changes)} onDiscard={() => {
         setDraftRoles(Object.fromEntries(currentRolesMap)); setError(null); setFailedUserId(null); setSaveSuccessMessage(null);
       }}>
-      <SettingsFormSection title={`${projectName} 项目审核角色配置`} help="配置参数检视流转所需的硬件 MDE、软件 MDE、软件开发职责；组织角色和其他项目绑定保持不变。">
+      {!userId ? <SettingsFormSection title={`${projectName} 项目审核角色配置`} help="配置参数检视流转所需的硬件 MDE、软件 MDE、软件开发职责；组织角色和其他项目绑定保持不变。">
         {missingRoles.length ? <div className="project-review-roles__warning" role="alert"><strong>审核职责未就绪</strong>
           <p>当前项目缺失以下审核角色：<strong>{missingRoles.map((role) => ROLE_LABELS[role]).join("、")}</strong>。在补齐全部三类角色前，普通参数变更提交将被门禁拦截。</p>
         </div> : <p className="project-review-roles__success" role="status">审核职责已就绪</p>}
@@ -152,10 +152,19 @@ export function ProjectReviewRolesPanel({ projectId, projectName = projectId, us
           <p>{pool.help}</p><p>{pool.members.length ? pool.members.map((member) => member.name).join("、") : "暂无配置可用成员"}</p>
         </article>)}</div>
         {saveSuccessMessage ? <p className="project-review-roles__success" role="status">{saveSuccessMessage}</p> : null}
-      </SettingsFormSection>
-      <SettingsFormSection title="组织成员职责授权" help="勾选成员的项目职责后统一保存；已停用成员只能移除现有角色。">
+      </SettingsFormSection> : null}
+      <SettingsFormSection title={userId ? `${projectName} · 审核职责` : "组织成员职责授权"} help="勾选项目职责后保存；已停用成员只能移除现有角色。">
+        {userId && saveSuccessMessage ? <p className="project-review-roles__success" role="status">{saveSuccessMessage}</p> : null}
         {!userId ? <Input type="search" aria-label="搜索成员" placeholder="搜索姓名、用户名、邮箱或职务" value={searchQuery} disabled={busy} onChange={(event) => setSearchQuery(event.target.value)} /> : null}
-        <div className="project-review-roles__table-scroll">
+        {userId ? <div className="project-review-roles__single">{filteredUsers.length ? filteredUsers.map(user => {
+          const current = currentRolesMap.get(user.id) ?? [], draft = draftRoles[user.id] ?? current;
+          return <fieldset key={user.id} disabled={busy}><legend>{user.name}</legend>
+            {!user.isActive ? <p>成员已停用，仅可移除现有职责。</p> : null}
+            {ALL_WORKFLOW_ROLES.map(role => <label key={role}><input type="checkbox" checked={draft.includes(role)}
+              disabled={!user.isActive && !current.includes(role) && !draft.includes(role)}
+              onChange={() => toggleUserRole(user.id, role)} aria-label={`为 ${user.name} 配置 ${ROLE_LABELS[role]}`} />{ROLE_LABELS[role]}</label>)}
+          </fieldset>;
+        }) : <p>该成员已不在当前组织。</p>}</div> : <div className="project-review-roles__table-scroll">
           <table className="project-review-roles__table" aria-label="组织成员职责授权">
             <thead><tr><th scope="col">成员</th><th scope="col">职务</th><th scope="col">状态</th>{ALL_WORKFLOW_ROLES.map((role) => <th scope="col" key={role}>{ROLE_LABELS[role]}</th>)}</tr></thead>
             <tbody>{filteredUsers.length ? filteredUsers.map((user) => {
@@ -174,7 +183,7 @@ export function ProjectReviewRolesPanel({ projectId, projectName = projectId, us
               </tr>;
             }) : <tr><td colSpan={6}>暂无匹配成员</td></tr>}</tbody>
           </table>
-        </div>
+        </div>}
       </SettingsFormSection>
     </SettingsFormPage>
     {confirmDialog ? <ConfirmDialog open title="确认更新项目审核角色" tone="primary" confirmLabel="确认保存" cancelLabel="取消"

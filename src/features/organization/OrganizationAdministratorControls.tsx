@@ -26,11 +26,11 @@ export function OrganizationAdministratorControls({ organization, authentication
   function choose(next: typeof mode) { setMode(next); setUserId(""); setReason(""); setError(""); setName(""); setUsername(""); setSubject(""); setPassword(""); }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending || !authentication) return;
+    if (pending || mode !== "disable" && !authentication) return;
     setPending(true); onPendingChange(true); setError("");
     try {
       const updated = mode === "disable" ? await client.emergencyDisableAdministrator(organization.id, userId, reason.trim())
-        : await client.recoverAdministrator(organization.id, mode === "existing" ? { userId } : { administrator: authentication.provider === "oidc"
+        : await client.recoverAdministrator(organization.id, mode === "existing" ? { userId } : { administrator: authentication?.provider === "oidc"
           ? { authentication: "oidc", name: name.trim(), issuer: authentication.oidcIssuer ?? "", subject }
           : { name: name.trim(), username: username.trim(), password } });
       setPassword(""); setMode(""); setAttempt((value) => value + 1); onUpdated(updated);
@@ -40,13 +40,13 @@ export function OrganizationAdministratorControls({ organization, authentication
 
   if (loadError) return <SectionError message={loadError} onRetry={() => setAttempt((value) => value + 1)} />;
   if (!recovery) return <SectionSkeleton label="正在核对有效管理员" />;
-  return <section aria-label="管理员交接与恢复" className="platform-organizations__administration">
-    <h4>管理员交接与恢复</h4>
+  return <section aria-label="管理员管理" className="platform-organizations__administration">
+    <h4>管理员管理</h4>
     <p>{recovery.usableAdministratorIds.length ? `当前有 ${recovery.usableAdministratorIds.length} 位可登录的组织管理员。` : "当前没有可登录的组织管理员，请指定负责人。"}</p>
     {!mode ? <div className="platform-organizations__actions">
-      <Button variant="outline" disabled={!authentication || !recovery.members.length} onClick={() => choose("existing")}>指定现有成员</Button>
+      <Button variant="outline" disabled={!authentication || !recovery.members.length} onClick={() => choose("existing")}>增授管理员角色</Button>
       <Button variant="outline" disabled={!authentication} onClick={() => choose("new")}>新建管理员</Button>
-      <Button variant="destructive" disabled={!organization.administrators.some((admin) => admin.isActive)} onClick={() => choose("disable")}>紧急停用管理员</Button>
+      <details className="platform-organizations__emergency"><summary>紧急操作</summary><Button variant="destructive" disabled={!organization.administrators.some((admin) => admin.isActive)} onClick={() => choose("disable")}>紧急停用管理员</Button></details>
     </div> : <form onSubmit={(event) => void submit(event)}>
       <fieldset className="platform-organizations__fields" disabled={pending}>
         {mode === "new" ? <>
@@ -59,7 +59,7 @@ export function OrganizationAdministratorControls({ organization, authentication
             <label>新管理员用户名<Input value={username} minLength={3} maxLength={64} pattern={"[a-zA-Z0-9._\\-]+"} autoComplete="off" onChange={(event) => setUsername(event.target.value)} required /></label>
             <label>新管理员初始密码<Input type="password" value={password} minLength={8} autoComplete="new-password" onChange={(event) => setPassword(event.target.value)} required /></label>
           </>}
-        </> : <SelectControl value={userId} onValueChange={setUserId} ariaLabel={mode === "disable" ? "紧急停用的管理员" : "接任成员"} placeholder="选择成员"
+        </> : <SelectControl value={userId} onValueChange={setUserId} ariaLabel={mode === "disable" ? "紧急停用的管理员" : "增授管理员角色的成员"} placeholder="选择成员"
           options={(mode === "disable" ? organization.administrators.filter((admin) => admin.isActive) : recovery.members).map((member) => ({ value: member.id, label: `${member.name}${member.isActive ? "" : "（将重新启用）"}` }))} disabled={pending} />}
         {mode === "disable" ? <>
           <label>紧急停用原因<Input value={reason} maxLength={1000} onChange={(event) => setReason(event.target.value)} required /></label>
@@ -68,7 +68,7 @@ export function OrganizationAdministratorControls({ organization, authentication
       </fieldset>
       {error ? <p role="alert">{error}</p> : null}
       <div className="platform-organizations__actions"><Button type="button" variant="ghost" disabled={pending} onClick={() => choose("")}>取消调整</Button>
-        <Button type="submit" variant={mode === "disable" ? "destructive" : "default"} disabled={pending || (mode !== "new" && !userId)}>{pending ? "正在保存…" : mode === "disable" ? "确认紧急停用" : "确认指定管理员"}</Button></div>
+        <Button type="submit" variant={mode === "disable" ? "destructive" : "default"} disabled={pending || (mode !== "new" && !userId)}>{pending ? "正在保存…" : mode === "disable" ? "确认紧急停用" : mode === "existing" ? "确认增授管理员角色" : "创建管理员"}</Button></div>
     </form>}
   </section>;
 }

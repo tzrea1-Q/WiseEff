@@ -39,10 +39,10 @@ export function OrganizationProjectBulkGrants({ client, projectId, projectName, 
       if (!alive.current) return;
       const grants = userIds.map((userId): Grant => {
         const old = rows?.find((row) => row.userId === userId);
-        if (reconcile && old?.state === "saved") return old;
+        if (reconcile && old && (old.state === "saved" || old.state === "blocked")) return old;
         const person = users.find((user) => user.id === userId), previous = roster.members.find((member) => member.userId === userId)?.roles ?? [];
         const next = [...new Set([...previous, ...roles])];
-        const blocked = !person ? "成员已不存在或不属于当前组织" : !person.isActive ? "账号已停用，未授予角色" : "";
+        const blocked = !person ? "已跳过：成员已不存在或不属于当前组织" : !person.isActive ? "已跳过：账号已停用" : "";
         const satisfied = roles.every((role) => previous.includes(role));
         const known = person ?? data?.users.find((user) => user.id === userId);
         return { userId, name: known ? `${known.name}${known.username ? ` · ${known.username}` : ""}` : old?.name ?? userId, previous, next, state: blocked ? "blocked" : satisfied ? "saved" : "ready",
@@ -73,20 +73,22 @@ export function OrganizationProjectBulkGrants({ client, projectId, projectName, 
   }
   const readyCount = rows?.filter((row) => row.state === "ready").length ?? 0;
   const savedCount = rows?.filter((row) => row.state === "saved").length ?? 0;
+  const retryCount = rows?.filter(row => row.state === "review").length ?? 0;
+  const skippedCount = rows?.filter(row => row.state === "blocked").length ?? 0;
   return <ModalDialog open className="user-permissions-modal-card member-details-card modal-card--lg" onDismiss={() => { if (!pending) onClose(); }}>{({ titleId }) => <>
     <h2 id={titleId}>批量授予项目角色</h2>
     <div className="member-details">
       <p>项目：{projectName}</p>
-      <p className="member-details__hint">从团队选择具体人员，添加角色并保留已有角色。后续团队增减不影响本次个人授权；审核与合入职责另行配置。</p>
+      <p className="member-details__hint">选择成员并增加项目编辑角色，保留已有角色。可按团队选择人员；审核与合入职责另行配置。</p>
       {error && <SectionError message={error} onRetry={() => { if (data) void preview(Boolean(rows)); else setAttempt((value) => value + 1); }} />}
       {!data && !error ? <SectionSkeleton label="正在加载团队与成员" /> : data && !rows ? <div className="member-details__section" inert={pending}>
-        <SelectControl ariaLabel="选择来源团队" value={teamId} options={data.teams.map((team) => ({ value: team.id, label: team.name }))} onValueChange={(id) => { setTeamId(id); setUserIds(data.teams.find((team) => team.id === id)?.memberIds ?? []); }} />
-        <MultiSelectDropdown label="选择实际授权成员" value={userIds} options={[...new Set([...(data.teams.find((team) => team.id === teamId)?.memberIds ?? []), ...userIds])].map((id) => {
+        <SelectControl ariaLabel="选择来源团队" value={teamId} options={[{ value: "", label: "全部组织成员" }, ...data.teams.map((team) => ({ value: team.id, label: team.name }))]} onValueChange={(id) => { setTeamId(id); setUserIds(data.teams.find((team) => team.id === id)?.memberIds ?? []); }} />
+        <MultiSelectDropdown label="选择实际授权成员" searchable disabled={pending} value={userIds} options={[...new Set([...(teamId ? data.teams.find((team) => team.id === teamId)?.memberIds ?? [] : data.users.map(user => user.id)), ...userIds])].map((id) => {
           const user = data.users.find((item) => item.id === id);
           return { value: id, label: user ? `${user.name} · ${user.username ?? user.id}${user.isActive ? "" : "（已停用）"}` : `${id}（成员不可用）` };
         })} onChange={setUserIds} />
-        <MultiSelectDropdown label="授予项目编辑角色" value={roles} options={roleOptions} onChange={(values) => setRoles(values as ProjectMemberRoleId[])} />
-        <p className="member-details__hint">已选择 {userIds.length} 人。停用或不属于当前组织的成员会在预览中标明，不能提交。</p>
+        <MultiSelectDropdown label="授予项目编辑角色" value={roles} options={roleOptions} disabled={pending} onChange={(values) => setRoles(values as ProjectMemberRoleId[])} />
+        <p className="member-details__hint">已选择 {userIds.length} 人。停用或不属于当前组织的成员会跳过，不授予角色。</p>
       </div> : null}
       {rows && <>
         <DataTable fluid ariaLabel="批量项目授权结果" rows={rows} rowKey={(row) => row.userId} columns={[
@@ -96,13 +98,13 @@ export function OrganizationProjectBulkGrants({ client, projectId, projectName, 
           { key: "next", header: "拟授予后角色", render: (row) => labels(row.next) },
           { key: "result", header: "结果", render: (row) => row.message }
         ]} />
-        {submitted && <p role="status">已生效 {savedCount} 人，待处理 {rows.length - savedCount} 人</p>}
+        {submitted && <p role="status">已生效 {savedCount} 人，需重试 {retryCount} 人，已跳过 {skippedCount} 人{readyCount ? `，待授予 ${readyCount} 人` : ""}</p>}
       </>}
     </div>
     <div className="user-permissions-modal-actions">
       {!rows ? <Button disabled={pending || !data || !userIds.length || !roles.length} onClick={() => void preview()}>预览授权</Button> : <>
         <Button variant="outline" disabled={pending} onClick={() => { setRows(null); setSubmitted(false); setError(""); }}>重新选择</Button>
-        {rows.some((row) => row.state === "review" || row.state === "blocked") && <Button variant="outline" disabled={pending} onClick={() => void preview(true)}>重新核对未完成项</Button>}
+        {retryCount > 0 && <Button variant="outline" disabled={pending} onClick={() => void preview(true)}>重新核对可重试项</Button>}
         {readyCount > 0 && <Button disabled={pending} onClick={() => void grant()}>{pending ? "正在授予" : `确认授予 ${readyCount} 人`}</Button>}
       </>}
       <Button variant="outline" disabled={pending} onClick={onClose}>关闭</Button>

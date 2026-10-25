@@ -20,11 +20,13 @@ type Kind = keyof typeof labels;
 type Work = { id: string; kind: Kind; projectId: string; projectName: string; title: string; responsibleUserId: string | null; responsibleUserName: string | null; pending: boolean; version: string; historicalAttribution: HistoricalAttribution; candidates: Array<{ id: string; name: string }> };
 const originalAuthor = (item: Work) => historicalIdentityLabel(item.historicalAttribution.actors[item.kind === "source-draft" || item.kind === "initialization-draft" ? "created_by_user_id" : item.kind.endsWith("draft") ? "user_id" : "submitter_user_id"]);
 
-export function OrganizationProjectHandoverPanel({ organizationId, currentUserId, pendingOnly, onNavigate, refreshSignal }: {
+export function OrganizationProjectHandoverPanel({ organizationId, currentUserId, pendingOnly, onNavigate, refreshSignal, hideEmpty = false, onVisibleCountChange }: {
   organizationId?: string; currentUserId: string; pendingOnly: boolean; onNavigate: (path: string) => void; refreshSignal: number;
+  hideEmpty?: boolean; onVisibleCountChange?: (count: number | null) => void;
 }) {
   const client = useMemo(() => createDefaultApiClient({ organizationId }), [organizationId]);
   const [items, setItems] = useState<Work[] | null>(null), [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
   const [attempt, setAttempt] = useState(0), [assignment, setAssignment] = useState<Work | null>(null), [successor, setSuccessor] = useState("");
   const [continueAfter, setContinueAfter] = useState(false), [saving, setSaving] = useState(false), [assignmentError, setAssignmentError] = useState("");
   const [continuation, setContinuation] = useState<Work | null>(null);
@@ -33,9 +35,10 @@ export function OrganizationProjectHandoverPanel({ organizationId, currentUserId
   const generation = useRef(0);
   const reload = () => setAttempt(value => value + 1);
   useEffect(() => {
-    const current = ++generation.current; setError("");
+    const current = ++generation.current; setError(""); setLoading(true);
     void client.get<{ items: Work[] }>("/api/v1/organization/project-handovers").then(result => { if (generation.current === current) setItems(result.items); })
-      .catch((failure: unknown) => { if (generation.current === current) setError(presentError(failure, "项目交接清单加载失败。")); });
+      .catch((failure: unknown) => { if (generation.current === current) setError(presentError(failure, "项目交接清单加载失败。")); })
+      .finally(() => { if (generation.current === current) setLoading(false); });
     return () => { generation.current++; };
   }, [client, attempt, refreshSignal]);
   const navigate = useCallback(async (item: Work) => {
@@ -84,11 +87,15 @@ export function OrganizationProjectHandoverPanel({ organizationId, currentUserId
     } catch (failure) { setAssignmentError(presentError(failure, "项目交接失败，请刷新后重试。")); }
     finally { setSaving(false); }
   };
-  if (!items) return error ? <SectionError message={error} onRetry={reload} /> : <SectionSkeleton label="正在加载项目交接" />;
+  const visibleItems = items?.filter(item => !pendingOnly || item.pending);
+  const visibleCount = !visibleItems || error || loading ? null : visibleItems.length;
+  useEffect(() => { onVisibleCountChange?.(visibleCount); }, [visibleCount, onVisibleCountChange]);
+  if (!items) return error ? <section aria-label="项目业务交接"><h3>项目业务交接</h3><SectionError message={error} onRetry={reload} /></section> : <SectionSkeleton label="正在加载项目交接" />;
+  if (hideEmpty && !error && !visibleItems?.length) return null;
   return <section aria-label="项目业务交接" className="flex flex-col gap-3">
     {error ? <SectionError message={error} onRetry={reload} /> : null}
     <AdminListPage label="项目业务交接" headerContent="项目业务交接" headerActions={null} filterBar={null}
-      table={{ ariaLabel: "项目业务交接", rows: items.filter(item => !pendingOnly || item.pending), rowKey: item => `${item.kind}:${item.id}`, columns: [
+      table={{ ariaLabel: "项目业务交接", rows: visibleItems ?? [], rowKey: item => `${item.kind}:${item.id}`, columns: [
         { key: "project", header: "项目", render: item => item.projectName },
         { key: "work", header: "待办与职责", render: item => <div><p className="font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{labels[item.kind]} · 原作者：{originalAuthor(item)}</p></div> },
         { key: "responsible", header: "当前责任人", render: item => item.responsibleUserName ?? "未指定" },
@@ -96,9 +103,8 @@ export function OrganizationProjectHandoverPanel({ organizationId, currentUserId
       ] }} rowActions={item => ({ label: item.title, primaryAction: item.kind.endsWith("draft")
         ? { id: "continue", label: item.responsibleUserId === currentUserId ? "继续处理" : "接管并继续", onSelect: () => item.responsibleUserId === currentUserId ? navigate(item) : openAssignment(item, true) }
         : { id: "assign", label: "指派处理人", onSelect: () => openAssignment(item) },
-        items: [{ id: "assign", label: "指定接任者", onSelect: () => openAssignment(item) }, { id: "open", label: "打开项目业务", onSelect: () => navigate(item) }] })}
+        items: [...(item.kind.endsWith("draft") ? [{ id: "assign", label: "指定接任者", onSelect: () => openAssignment(item) }] : []), { id: "open", label: "打开项目业务", onSelect: () => navigate(item) }] })}
       emptyState={{ title: "暂无待交接项目业务", message: pendingOnly ? "取消待交接筛选，可查看已分配的草稿及审核、合入职责。" : "当前没有未完成的项目业务。" }} />
-    <p className="text-xs text-muted-foreground">交接只调整当前责任人，不改写历史，也不自动授予审核或合入权限。接任者须已具备相应项目资格；未指定时持续显示为待交接。</p>
     <SettingsLeaveGuard dirty={Boolean(assignment && successor !== (assignment.responsibleUserId ?? "")) || Boolean(initialDraft && notes !== initialDraft.notes)} saving={saving} />
     <ModalDialog open={Boolean(assignment)} onDismiss={async () => { if (!saving && await requestSettingsLeave()) setAssignment(null); }} describedBy className="submission-dialog modal-card--sm flex flex-col gap-4">
       {({ titleId, descriptionId }) => <><h2 id={titleId}>{continueAfter ? "接管项目草稿" : "指定项目接任者"}</h2><p id={descriptionId} className="text-sm text-muted-foreground">{assignment?.projectName} · {assignment?.title}。原始作者和历史署名保留；已有同一参数草稿时不会覆盖。</p>

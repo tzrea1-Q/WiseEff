@@ -78,11 +78,12 @@ export function requireSettingsFormPresentation(forms: ConsistencyMeasurements["
     throw new Error(`${routePath}: settings form must use the max-width token and a single column of titled, explained sections`);
   }
   const persistentSaveEntry = routePath === "/debugging-admin";
+  const saveLabel = routePath === "/organization/settings" ? "保存组织名称" : "保存";
   if (form.saveBars.length !== (form.dirty || persistentSaveEntry ? 1 : 0)) throw new Error(`${routePath}: settings form save bar visibility must match its dirty state and page contract`);
   for (const bar of form.saveBars) {
     if (bar.position !== "sticky" || !Number.isFinite(bar.bottom) || bar.bottom < 0 || bar.primaryCount !== 1
       || (form.dirty
-        ? !["保存", "保存中…"].includes(bar.saveLabel) || bar.discardLabel !== "放弃" || bar.buttonCount !== 2
+        ? ![saveLabel, "保存中…"].includes(bar.saveLabel) || bar.discardLabel !== "放弃" || bar.buttonCount !== 2
         : bar.saveLabel !== "保存" || !bar.saveDisabled || bar.discardLabel !== "" || bar.buttonCount !== 1)) {
       throw new Error(`${routePath}: settings form requires one sticky primary save, dirty discard actions and a disabled clean save entry`);
     }

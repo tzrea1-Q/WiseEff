@@ -5002,7 +5002,7 @@ td small {
   padding: var(--space-2) 14px;
   color: var(--text-secondary);
   font-size: var(--text-base);
-  background: #f8fafc;
+  background: var(--surface);
   border: 1px solid var(--shell-sidebar-border);
   border-radius: 10px;
 }

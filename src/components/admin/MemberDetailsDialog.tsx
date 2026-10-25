@@ -9,6 +9,8 @@ import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 import { presentError } from "@/infrastructure/http/presentError";
 import { MemberOidcIdentityPanel } from "./MemberOidcIdentityPanel";
 import { organizationRoleIds } from "@/domain/users/types";
+import { ViewSwitch } from "@/components/ui/view-switch";
+import { SectionEmpty } from "@/components/common/SectionState";
 
 type Props = {
   user: User;
@@ -22,15 +24,18 @@ type Props = {
   oidcIssuer?: string;
   projects?: Array<{ id: string; name: string }>;
   reviewRolesClient?: ProjectReviewRolesPanelProps["userGovernanceClient"];
+  readOnly?: boolean;
+  onManageTeams?: () => void;
 };
 
-export function MemberDetailsDialog({ user, state, actions, roleEditor, teamMembership, roleLabel, onUpdated, onClose, oidcIssuer, projects = state.configDraft.projects, reviewRolesClient }: Props) {
+export function MemberDetailsDialog({ user, state, actions, roleEditor, teamMembership, roleLabel, onUpdated, onClose, oidcIssuer, projects = state.configDraft.projects, reviewRolesClient, readOnly = false, onManageTeams }: Props) {
   const [name, setName] = useState(user.name);
   const [title, setTitle] = useState(user.title);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [area, setArea] = useState("profile");
   const dirty = name !== user.name || title !== user.title;
   const caller = state.users.find((member) => member.id === state.currentUserId);
   const identityDisabledReason = organizationRoleIds(user).includes("platform-admin") && !(caller && organizationRoleIds(caller).includes("platform-admin"))
@@ -42,7 +47,7 @@ export function MemberDetailsDialog({ user, state, actions, roleEditor, teamMemb
   }
 
   async function save() {
-    if (pending || !actions?.updateUserProfile) return;
+    if (pending || !actions?.updateUserProfile || readOnly) return;
     if (!name.trim()) { setError("姓名不能为空。"); return; }
     setPending(true); setError(""); setSaved(false);
     try {
@@ -64,7 +69,13 @@ export function MemberDetailsDialog({ user, state, actions, roleEditor, teamMemb
               try { const updated = (await actions?.listUsers())?.find((item) => item.id === user.id); if (updated) onUpdated(updated); }
               catch (failure) { setError(presentError(failure, "成员职责刷新失败，请关闭后刷新成员列表。")); }
             } })(); }} /> : <>
-            <SettingsFormPage label="成员基本资料" dirty={dirty} saving={pending} error={error} onSave={() => void save()}
+            <ViewSwitch variant="tabs" ariaLabel="成员资料分区" value={area} onValueChange={setArea} items={[
+              { value: "profile", label: "基本资料", id: "member-details-profile", panelId: "member-details-profile-panel" },
+              { value: "access", label: "访问权限", id: "member-details-access", panelId: "member-details-access-panel" },
+              { value: "projects", label: "项目职责", id: "member-details-projects", panelId: "member-details-projects-panel" }
+            ]} />
+            <div hidden={area !== "profile"} role="tabpanel" id="member-details-profile-panel" aria-labelledby="member-details-profile">
+            {readOnly ? <dl><dt>姓名</dt><dd>{user.name}</dd><dt>账号</dt><dd>{user.username ?? user.email ?? user.id}</dd><dt>职务</dt><dd>{user.title || "未填写"}</dd></dl> : <SettingsFormPage label="成员基本资料" saveLabel="保存基本资料" dirty={dirty} saving={pending} error={error} onSave={() => void save()}
               onDiscard={() => { setName(user.name); setTitle(user.title); setError(""); setSaved(false); }}>
               <div className="member-details__section">
               <h3>基本资料</h3>
@@ -79,21 +90,28 @@ export function MemberDetailsDialog({ user, state, actions, roleEditor, teamMemb
               </label>
               {saved ? <p role="status" className="member-details__hint">成员资料已保存。</p> : null}
               </div>
-            </SettingsFormPage>
-            {oidcIssuer ? <MemberOidcIdentityPanel user={user} issuer={oidcIssuer} actions={actions} onUpdated={onUpdated} disabledReason={identityDisabledReason} /> : null}
+            </SettingsFormPage>}
             {teamMembership}
-            <section className="member-details__section" aria-label="组织角色与权限"><h3>组织角色</h3>{roleEditor}</section>
+            {onManageTeams && !readOnly ? <Button type="button" size="sm" variant="outline" onClick={onManageTeams}>管理团队归属</Button> : null}
+            </div>
+            <div hidden={area !== "access"} role="tabpanel" id="member-details-access-panel" aria-labelledby="member-details-access">
+            {oidcIssuer ? <MemberOidcIdentityPanel user={user} issuer={oidcIssuer} actions={actions} onUpdated={onUpdated} disabledReason={identityDisabledReason} readOnly={readOnly} /> : null}
+            <section className="member-details__section" aria-label="组织角色与权限"><h3>组织角色与工具权限</h3>{roleEditor}</section>
+            </div>
+            <div hidden={area !== "projects"} role="tabpanel" id="member-details-projects-panel" aria-labelledby="member-details-projects">
+            {projects.length ?
             <section className="member-details__section" aria-label="项目职责"><h3>项目职责</h3>
-              <p className="member-details__hint">项目职责独立于组织角色，调整一个项目不会修改其他项目的授权。</p>
+              <p className="member-details__hint">审核与合入职责按项目配置，独立于组织工具权限及项目编辑角色。</p>
               <div className="member-details__projects">{projects.map((project) => {
                 const roles = (user.roles ?? []).filter((role) => role.projectId === project.id && !role.roleId.startsWith("catalog-capability-"));
                 return <div className="member-details__project" key={project.id}><div><strong>{project.name}</strong>
                   <span className="member-details__hint">{roles.length ? roles.map((role) => roleLabel(role.roleId)).join("、") : "未分配审核职责"}</span></div>
-                  {actions ? <Button type="button" variant="outline" size="sm" aria-label={`配置 ${user.name} 在 ${project.name} 的职责`}
-                    onClick={() => { if (dirty) setError("请先保存基本资料，再配置项目职责。"); else void (async () => { if (await requestSettingsLeave()) setProjectId(project.id); })(); }}>配置</Button> : null}
+                  {actions && !readOnly ? <Button type="button" variant="outline" size="sm" aria-label={`配置 ${user.name} 在 ${project.name} 的职责`}
+                    onClick={() => { void (async () => { if (await requestSettingsLeave()) { setName(user.name); setTitle(user.title); setError(""); setProjectId(project.id); } })(); }}>配置</Button> : null}
                 </div>;
               })}</div>
-            </section>
+            </section> : <SectionEmpty message="本组织暂无可配置的项目。" />}
+            </div>
           </>}
         </div>
         <div className="user-permissions-modal-actions"><Button type="button" variant="outline" disabled={pending} onClick={() => void dismiss()}>关闭</Button></div>

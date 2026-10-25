@@ -45,13 +45,20 @@ test("configures one experience target, preserves failed edits for retry, and cl
   await expect(page.getByRole("tab", { name: "注册", exact: true })).toHaveCount(0);
   await page.getByLabel("用户名", { exact: true }).fill("experience.operator"); await page.getByLabel("密码", { exact: true }).fill(LOCAL_DEMO_SHARED_PASSWORD);
   await page.getByRole("button", { name: "登录", exact: true }).click(); await prepareInteractionSurface(page);
-  await page.getByRole("button", { name: "体验注册设置", exact: true }).focus(); await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "组织目录：更多", exact: true }).focus(); await page.keyboard.press("Enter");
+  await page.getByRole("menuitem", { name: "体验注册设置", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "公开体验注册", exact: true });
   await expect(dialog.getByText(/当前入口：已关闭/)).toBeVisible();
   await dialog.getByLabel("开启公开体验注册", { exact: true }).check();
   await expect(dialog.getByRole("button", { name: "保存设置", exact: true })).toBeDisabled();
   await dialog.getByRole("combobox", { name: "体验目标组织", exact: true }).click();
-  await page.getByRole("option", { name: `${targetName}（${target}）`, exact: true }).click();
+  await page.getByRole("option", { name: targetName, exact: true }).click();
+  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+  const leave = page.getByRole("dialog", { name: "放弃未保存的更改？", exact: true });
+  await expect(leave).toBeVisible();
+  await leave.getByRole("button", { name: "继续编辑", exact: true }).click();
+  await expect(dialog.getByLabel("开启公开体验注册", { exact: true })).toBeChecked();
+  await expect(dialog.getByRole("combobox", { name: "体验目标组织", exact: true })).toHaveText(targetName);
   let fail = true;
   await page.route((url) => url.pathname === "/api/v1/platform/experience-registration", async (route) => {
     if (fail && route.request().method() === "PATCH") { fail = false; await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "TEMPORARILY_UNAVAILABLE", message: "体验注册设置暂不可用，请重试。" } }) }); }
@@ -62,6 +69,7 @@ test("configures one experience target, preserves failed edits for retry, and cl
   await expect(dialog.getByLabel("开启公开体验注册", { exact: true })).toBeChecked();
   await dialog.getByRole("button", { name: "保存设置", exact: true }).focus(); await page.keyboard.press("Enter");
   await expect(dialog.getByText("体验注册设置已保存。", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "保存设置", exact: true })).toBeDisabled();
   await expect(dialog.getByText(/配置来源：平台设置/)).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("experience-registration-settings-1440.png"), animations: "disabled" });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } }), applicant = await context.newPage();
@@ -85,5 +93,7 @@ test("configures one experience target, preserves failed edits for retry, and cl
   const pending = await withPgClient((client) => client.query("select requests.status,users.is_active from local_registration_role_requests requests join users on users.id=requests.user_id join user_password_credentials credentials on credentials.user_id=users.id where credentials.username=$1 and users.organization_id=$2", [username, target]));
   expect(pending.rows).toEqual([{ status: "pending", is_active: false }]);
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "放弃未保存的更改？", exact: true })).toHaveCount(0);
   expect((await page.request.post(apiRoute("/api/v1/auth/register"), { data: { name: "Closed", username: `closed.${suffix}`, password: LOCAL_DEMO_SHARED_PASSWORD } })).status()).toBe(403);
 });

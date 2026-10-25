@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createWiseEffServer } from "../../app";
 import { requestJson } from "../../test/testClient";
@@ -47,6 +48,42 @@ describe("organization workspace summary through HTTP and PostgreSQL", () => {
     expect((await request("/api/v1/users", "summary-member")).status).toBe(403);
     expect((await request("/api/v1/organization/invitations", "summary-member")).status).toBe(403);
     expect((await request(`${path}?organizationId=summary-home`, "summary-member")).status).toBe(403);
+  });
+  it("counts unowned knowledge and feedback work with the same eligibility and organization scope as the handover lists", async () => {
+    await db.query("delete from project_parameter_initialization_drafts where id='summary-handover'");
+    const knowledgeIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+    await db.query(`insert into knowledge_entries(id,organization_id,title,content_form,status,created_by_user_id,responsible_user_id) values
+      ($1,'summary-target','Unowned draft','markdown','draft','summary-admin','summary-admin'),
+      ($2,'summary-target','Assigned draft','markdown','draft','summary-member','summary-member'),
+      ($3,'summary-target','Published entry','markdown','published','summary-admin','summary-admin'),
+      ($4,'summary-home','Foreign draft','markdown','draft','summary-platform','summary-platform')`, knowledgeIds);
+    await db.query("update knowledge_entries set responsible_user_id=null where id=any($1::uuid[])", [[knowledgeIds[0], knowledgeIds[2], knowledgeIds[3]]]);
+    const feedbackIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+    await db.query(`insert into product_feedback(id,organization_id,submitter_user_id,page_path,page_title,feedback_type,description,status,submitted_at,assignee_user_id) values
+      ($1,'summary-target','summary-admin','/organization','Unowned draft','experience','Draft','open',null,null),
+      ($2,'summary-target','summary-admin','/organization','Unassigned work','experience','Work','open',now(),null),
+      ($3,'summary-target','summary-member','/organization','Assigned draft','experience','Draft','open',null,null),
+      ($4,'summary-target','summary-admin','/organization','Resolved work','experience','Work','resolved',now(),null),
+      ($5,'summary-home','summary-platform','/organization','Foreign work','experience','Work','open',now(),null)`, feedbackIds);
+    await db.query("update product_feedback set draft_owner_user_id=null where id=$1", [feedbackIds[0]]);
+    const handoverPaths = ["/api/v1/organization/project-handovers", "/api/v1/knowledge/handovers", "/api/v1/product-feedback/handovers"];
+    const pendingCount = async () => {
+      const lists = await Promise.all(handoverPaths.map(route => request<{ items: Array<{ pending: boolean }> }>(`${route}?organizationId=summary-target`)));
+      for (const list of lists) expect(list.status, list.bodyText).toBe(200);
+      return lists.reduce((count, list) => count + list.body.items.filter(item => item.pending).length, 0);
+    };
+    const readSummary = async () => {
+      const result = await request<{ item: OrganizationWorkspaceSummary }>(`${path}?organizationId=summary-target`);
+      expect(result.status, result.bodyText).toBe(200);
+      return result.body.item;
+    };
+    expect(await pendingCount()).toBe(3);
+    expect((await readSummary()).administration?.pendingHandovers).toBe(3);
+    await db.query("update users set is_active=false where id='summary-member'");
+    expect(await pendingCount()).toBe(5);
+    expect((await readSummary()).administration?.pendingHandovers).toBe(5);
+    const administrator = await request<{ item: OrganizationWorkspaceSummary }>(path, "summary-admin");
+    expect(administrator.body.item.administration?.pendingHandovers).toBe(5);
   });
   it("keeps zero counts honest and remains readable for a suspended organization", async () => {
     await db.query("insert into organizations(id,name) values('summary-empty','Empty')");

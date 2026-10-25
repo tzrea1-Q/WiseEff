@@ -39,7 +39,8 @@ test("suspends and restores a fixed Organization, preserves readonly member acce
     await signInBrowserAsRole(page, "platform-admin", "/platform/organizations"); await prepareInteractionSurface(page);
     await page.getByRole("searchbox", { name: "搜索组织", exact: true }).fill(org);
     const row = page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: name });
-    await row.getByRole("button", { name: "查看", exact: true }).click();
+    await row.getByRole("button", { name: /更多$/ }).click();
+    await page.getByRole("menuitem", { name: "查看资料", exact: true }).click();
     let details = page.getByRole("dialog", { name: "组织资料", exact: true });
     await details.getByRole("button", { name: "停用组织", exact: true }).click();
     const confirmation = page.getByRole("dialog", { name: "停用组织", exact: true });
@@ -65,7 +66,8 @@ test("suspends and restores a fixed Organization, preserves readonly member acce
     await memberContext.close();
     await page.getByRole("button", { name: "组织目录", exact: true }).click(); await prepareInteractionSurface(page);
     await page.getByRole("searchbox", { name: "搜索组织", exact: true }).fill(org);
-    await page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: name }).getByRole("button", { name: "查看", exact: true }).click();
+    await page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: name }).getByRole("button", { name: /更多$/ }).click();
+    await page.getByRole("menuitem", { name: "查看资料", exact: true }).click();
     details = page.getByRole("dialog", { name: "组织资料", exact: true });
     await details.getByRole("button", { name: "恢复组织", exact: true }).click();
     await page.getByRole("dialog", { name: "恢复组织", exact: true }).getByRole("button", { name: "确认恢复组织", exact: true }).press("Enter");

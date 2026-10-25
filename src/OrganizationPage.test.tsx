@@ -47,7 +47,7 @@ describe("OrganizationPage", () => {
     renderOrganizationPage(organizationActions);
     const name = await screen.findByLabelText("显示名称");
     const original = (name as HTMLInputElement).value;
-    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存组织名称" })).not.toBeInTheDocument();
     fireEvent.change(name, { target: { value: "未保存名称" } });
     fireEvent.click(screen.getByRole("button", { name: "放弃" }));
     expect(name).toHaveValue(original);
@@ -57,7 +57,7 @@ describe("OrganizationPage", () => {
     renderOrganizationPage(createOrganizationActions());
 
     const scopeNav = screen.getByRole("navigation", { name: "组织管理范围" });
-    expect(within(scopeNav).getByRole("button", { name: "设置" })).toHaveAttribute("aria-current", "page");
+    expect(within(scopeNav).getByRole("button", { name: "组织资料" })).toHaveAttribute("aria-current", "page");
     expect(await screen.findByRole("region", { name: "组织档案" })).toBeInTheDocument();
     expect(screen.getByLabelText("显示名称")).toHaveValue("ChargeLab");
     expect(screen.getByText("org-chargelab")).toBeInTheDocument();
@@ -112,7 +112,7 @@ describe("OrganizationPage", () => {
 
     const nameInput = await screen.findByLabelText("显示名称");
     fireEvent.change(nameInput, { target: { value: "雷泽能源" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存组织名称" }));
 
     await waitFor(() =>
       expect(organizationActions.updateOrganization).toHaveBeenCalledWith({ name: "雷泽能源" })
@@ -124,7 +124,7 @@ describe("OrganizationPage", () => {
     });
     expect(screen.getByText("org-chargelab")).toBeInTheDocument();
     expect(await screen.findByRole("status")).toHaveTextContent("组织名称已保存。");
-    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存组织名称" })).not.toBeInTheDocument();
     fireEvent.change(nameInput, { target: { value: "新的草稿" } });
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
@@ -152,7 +152,7 @@ describe("OrganizationPage", () => {
     );
 
     fireEvent.change(await screen.findByLabelText("显示名称"), { target: { value: "雷泽能源" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存组织名称" }));
 
     await waitFor(() => expect(organizationActions.updateOrganization).toHaveBeenCalled());
     expect(screen.getByLabelText("显示名称")).toHaveValue("雷泽能源");
@@ -166,7 +166,7 @@ describe("OrganizationPage", () => {
 
     const nameInput = await screen.findByLabelText("显示名称");
     fireEvent.change(nameInput, { target: { value: "   " } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存组织名称" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("显示名称不能为空。");
     expect(nameInput).toHaveAttribute("aria-invalid", "true");
@@ -182,15 +182,15 @@ describe("OrganizationPage", () => {
     renderOrganizationPage(organizationActions);
     const nameInput = await screen.findByLabelText("显示名称");
     fireEvent.change(nameInput, { target: { value: "未保存的组织名称" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存组织名称" }));
 
     expect(await screen.findByRole("alert", { name: "保存错误摘要" })).toHaveTextContent("网络不可用");
     expect(nameInput).toHaveValue("未保存的组织名称");
-    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "保存组织名称" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "放弃" }));
     expect(nameInput).toHaveValue("ChargeLab");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存组织名称" })).not.toBeInTheDocument();
     expect(organizationActions.updateOrganization).toHaveBeenCalledExactlyOnceWith({ name: "未保存的组织名称" });
   });
 

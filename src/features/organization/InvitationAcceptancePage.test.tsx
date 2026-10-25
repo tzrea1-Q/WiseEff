@@ -14,7 +14,7 @@ it("shows the fixed organization and roles, removes the secret from the URL and 
   expect(await screen.findByText("Target organization", { exact: true })).toBeVisible();
   expect(window.location.hash).toBe("");
   expect(screen.getByText("研发团队", { exact: true })).toBeVisible();
-  expect(screen.getByText(/电源项目.*Software Committer/)).toBeVisible();
+  expect(screen.getByText(/电源项目.*软件MDE/)).toBeVisible();
   const user = userEvent.setup();
   await user.type(screen.getByLabelText("姓名", { exact: true }), "New member");
   await user.type(screen.getByLabelText("用户名", { exact: true }), "new-member");

@@ -84,17 +84,18 @@ describe("ProjectReviewRolesPanel", () => {
     });
     const onBack = vi.fn();
     render(<ProjectReviewRolesPanel projectId="aurora" userId="u-1" backLabel="返回成员资料" onBack={onBack} userGovernanceClient={client as any} />);
-    const table = await screen.findByRole("table", { name: "组织成员职责授权" });
-    expect(within(table).getByText("User One")).toBeVisible();
-    expect(within(table).queryByText("User Two")).not.toBeInTheDocument();
+    const member = await screen.findByRole("group", { name: "User One" });
+    expect(member).toBeVisible();
+    expect(screen.queryByText("User Two")).not.toBeInTheDocument();
     expect(screen.queryByRole("searchbox", { name: "搜索成员" })).not.toBeInTheDocument();
-    expect(within(screen.getByRole("group", { name: "审核职责候选池" })).getAllByText("User Two")).toHaveLength(2);
-    await userEvent.click(within(table).getByRole("checkbox", { name: "为 User One 配置 软件 MDE" }));
-    await userEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+    expect(screen.queryByRole("group", { name: "审核职责候选池" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    await userEvent.click(within(member).getByRole("checkbox", { name: "为 User One 配置 软件 MDE" }));
+    await userEvent.click(screen.getByRole("button", { name: "保存审核职责" }));
     const confirmation = screen.getByRole("dialog", { name: "确认更新项目审核角色" });
     expect(within(confirmation).queryByText("User Two")).not.toBeInTheDocument();
     await userEvent.click(within(confirmation).getByRole("button", { name: "确认保存" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "保存", exact: true })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "保存审核职责" })).not.toBeInTheDocument());
     expect(client.updateProjectWorkflowRoleBindings).toHaveBeenCalledExactlyOnceWith("aurora", "u-1", {
       roles: ["hardware-committer", "software-committer"], expectedRoles: ["hardware-committer"]
     });
@@ -120,7 +121,7 @@ describe("ProjectReviewRolesPanel", () => {
     await userEvent.type(search, "User One");
     expect(screen.queryByRole("checkbox", { name: "为 User Two 配置 硬件 MDE" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("checkbox", { name: "为 User One 配置 硬件 MDE" }));
-    await userEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
     expect(screen.getByRole("dialog", { name: "确认更新项目审核角色" })).toBeVisible();
     expect(client.updateProjectWorkflowRoleBindings).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole("button", { name: "确认保存" }));
@@ -143,7 +144,7 @@ describe("ProjectReviewRolesPanel", () => {
     render(<ProjectReviewRolesPanel projectId="aurora" onBack={vi.fn()} userGovernanceClient={client as any} />);
     await userEvent.click(await screen.findByRole("checkbox", { name: "为 User One 配置 软件 MDE" }));
     await userEvent.click(screen.getByRole("checkbox", { name: "为 User Two 配置 硬件 MDE" }));
-    await userEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认保存" }));
     await waitFor(() => expect(client.getProjectWorkflowRoleBindings).toHaveBeenCalledTimes(2));
     expect(requestSettingsLeave()).toBe(false);
@@ -162,7 +163,7 @@ describe("ProjectReviewRolesPanel", () => {
     render(<ProjectReviewRolesPanel projectId="aurora" onBack={vi.fn()} userGovernanceClient={client as any} />);
     await userEvent.click(await screen.findByRole("checkbox", { name: "为 User One 配置 软件 MDE" }));
     await userEvent.click(screen.getByRole("checkbox", { name: "为 User Two 配置 硬件 MDE" }));
-    await userEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认保存" }));
     await screen.findByRole("alert", { name: "保存错误摘要" });
     expect(screen.getByRole("status")).toHaveTextContent("审核职责已就绪");
@@ -183,7 +184,7 @@ describe("ProjectReviewRolesPanel", () => {
     render(<ProjectReviewRolesPanel projectId="aurora" onBack={vi.fn()} userGovernanceClient={client as any} />);
     await userEvent.click(await screen.findByRole("checkbox", { name: "为 User One 配置 软件 MDE" }));
     await userEvent.click(screen.getByRole("checkbox", { name: "为 User Two 配置 硬件 MDE" }));
-    await userEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认保存" }));
     const summary = await screen.findByRole("alert", { name: "保存错误摘要" });
     expect(summary).toHaveTextContent(/更新冲突.*User One/);
@@ -192,7 +193,7 @@ describe("ProjectReviewRolesPanel", () => {
     expect(summary).not.toHaveTextContent("已刷新最新数据");
     expect(screen.getByRole("checkbox", { name: "为 User One 配置 软件 MDE" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "为 User Two 配置 硬件 MDE" })).toBeChecked();
-    expect(screen.getByRole("button", { name: "保存", exact: true })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
     expect(client.updateProjectWorkflowRoleBindings).toHaveBeenCalledTimes(1);
   });
 
@@ -209,12 +210,12 @@ describe("ProjectReviewRolesPanel", () => {
     });
     render(<ProjectReviewRolesPanel projectId="aurora" onBack={vi.fn()} userGovernanceClient={client as any} />);
     await userEvent.click(await screen.findByRole("checkbox", { name: "为 User One 配置 软件 MDE" }));
-    await userEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认保存" }));
     await screen.findByRole("alert", { name: "保存错误摘要" });
     expect(screen.getByRole("checkbox", { name: "为 User Two 配置 软件 MDE" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "为 User Two 配置 软件开发" })).not.toBeChecked();
-    expect(screen.queryByRole("button", { name: "保存", exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
     expect(client.updateProjectWorkflowRoleBindings).toHaveBeenCalledTimes(1);
   });
 
@@ -226,7 +227,7 @@ describe("ProjectReviewRolesPanel", () => {
     render(<ProjectReviewRolesPanel projectId="aurora" onBack={vi.fn()} userGovernanceClient={client as any} />);
     await userEvent.click(await screen.findByRole("checkbox", { name: "为 User One 配置 软件 MDE" }));
     await userEvent.click(screen.getByRole("checkbox", { name: "为 User Two 配置 硬件 MDE" }));
-    await userEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认保存" }));
     await screen.findByRole("alert", { name: "保存错误摘要" });
     expect(screen.getByRole("checkbox", { name: "为 User One 配置 软件 MDE" })).not.toBeChecked();
@@ -246,7 +247,7 @@ describe("ProjectReviewRolesPanel", () => {
     await userEvent.click(await screen.findByRole("checkbox", { name: "为 User One 配置 软件 MDE" }));
     await userEvent.click(screen.getByRole("checkbox", { name: "为 User Two 配置 硬件 MDE" }));
     await userEvent.click(screen.getByRole("checkbox", { name: "为 User Three 配置 软件开发" }));
-    await userEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认保存" }));
     await screen.findByRole("alert", { name: "保存错误摘要" });
     const pendingGrant = screen.getByRole("checkbox", { name: "为 User Two 配置 硬件 MDE" });
@@ -269,14 +270,14 @@ describe("ProjectReviewRolesPanel", () => {
         if (userId === "u-2" && failSecondMember) { failSecondMember = false; throw new Error("网络中断"); }
         const user = mockUsers.find((item) => item.id === userId)!;
         savedBindings = [...savedBindings.filter((item) => item.userId !== userId), { userId, name: user.name,
-          username: user.username, email: user.email, title: user.title, isActive: true, roles: input.roles }];
+          username: user.username ?? null, email: user.email ?? null, title: user.title, isActive: true, roles: input.roles }];
         return { item: { projectId: "aurora", userId, roles: input.roles } };
       })
     });
     render(<ProjectReviewRolesPanel projectId="aurora" onBack={vi.fn()} userGovernanceClient={client as any} />);
     await userEvent.click(await screen.findByRole("checkbox", { name: "为 User One 配置 软件 MDE" }));
     await userEvent.click(screen.getByRole("checkbox", { name: "为 User Two 配置 硬件 MDE" }));
-    await userEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
     const confirmation = screen.getByRole("dialog");
     expect(within(confirmation).getByText("User One")).toBeInTheDocument();
     expect(within(confirmation).getByText("User Two")).toBeInTheDocument();
@@ -285,10 +286,10 @@ describe("ProjectReviewRolesPanel", () => {
     expect(client.updateProjectWorkflowRoleBindings).toHaveBeenNthCalledWith(1, "aurora", "u-1", {
       roles: ["hardware-committer", "software-committer"], expectedRoles: ["hardware-committer"]
     });
-    await userEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
     expect(within(screen.getByRole("dialog")).queryByText("User One")).not.toBeInTheDocument();
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认保存" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "保存", exact: true })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument());
     expect(client.updateProjectWorkflowRoleBindings).toHaveBeenNthCalledWith(3, "aurora", "u-2", { roles: ["hardware-committer"], expectedRoles: [] });
     expect(client.updateProjectWorkflowRoleBindings).toHaveBeenCalledTimes(3);
   });

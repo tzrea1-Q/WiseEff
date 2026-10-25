@@ -45,7 +45,8 @@ test("previews the selected Organization's full erasure impact, retries a failed
   });
   await signInBrowserAsRole(page, "platform-admin", "/platform/organizations"); await prepareInteractionSurface(page);
   await page.getByRole("searchbox", { name: "搜索组织", exact: true }).fill(org);
-  await page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: name }).getByRole("button", { name: "查看", exact: true }).click();
+  await page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: name }).getByRole("button", { name: /更多$/ }).click();
+  await page.getByRole("menuitem", { name: "查看资料", exact: true }).click();
   const failure = page.waitForResponse(response => new URL(response.url()).pathname === path && response.status() === 503);
   await page.getByRole("dialog", { name: "组织资料", exact: true }).getByRole("button", { name: "删除影响", exact: true }).click();
   expect((await failure).status()).toBe(503);
@@ -71,7 +72,8 @@ test("previews the selected Organization's full erasure impact, retries a failed
   await expect(dialog.getByRole("region", { name: "删除边界" })).toContainText("平台级参数定义删除回执和未完成的全局清理任务保留");
   await page.screenshot({ path: testInfo.outputPath("organization-deletion-preview-boundary-1440.png"), animations: "disabled" });
   await dialog.getByRole("button", { name: "关闭预览", exact: true }).press("Enter"); await expect(dialog).toHaveCount(0);
-  await page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: name }).getByRole("button", { name: "查看", exact: true }).press("Enter");
+  await page.getByRole("table", { name: "平台组织目录" }).getByRole("row").filter({ hasText: name }).getByRole("button", { name: /更多$/ }).press("Enter");
+  await page.getByRole("menuitem", { name: "查看资料", exact: true }).click();
   await page.getByRole("dialog", { name: "组织资料", exact: true }).getByRole("button", { name: "删除影响", exact: true }).press("Enter");
   const begin = dialog.getByRole("button", { name: "开始彻底删除", exact: true });
   await begin.scrollIntoViewIfNeeded(); await expect(begin).toBeVisible(); await begin.press("Enter");

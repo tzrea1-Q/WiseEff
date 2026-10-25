@@ -12,6 +12,7 @@ WiseEff 主要用于 PC。[界面质量检查清单](developer/ui-quality-checkl
 
 ## 使用方式
 
+- [组织管理整改](exec-plans/active/2026-10-24-organization-management-remediation.md)：修复 40 项界面、流程与授权审查问题；实施及当前候选验证进行中。
 - [共享 UI 契约与开发验证闭环](exec-plans/active/2026-10-15-ui-contract-verification.md)：#1187/#1188 冻结剩余消费者、当前 main 失败、暂定 CI 分组及统一累计时间/计算预算；实施与效果指标仍待验收。
 - [统一 SearchField 与模糊搜索](exec-plans/active/2026-09-16-unified-fuzzy-search.md)：单一 SearchField 原语、仓库自研多字段模糊内核、明确的 Search Profile，并迁移全部搜索输入；不得替换服务端检索或原文查找引擎。
 - [本地 Device Bridge 多账号重新绑定](exec-plans/active/2026-09-16-bridge-multi-account-repair.md)：保持 `/device-bridges/mine` 的用户 + 组织隔离，用新配对码把同一台机器重新绑定到当前账号，重建 Bridge 0.1.1 制品，并停止把“本机属于其他账号”写成令牌过期。
