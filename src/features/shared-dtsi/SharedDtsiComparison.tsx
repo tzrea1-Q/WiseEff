@@ -20,7 +20,15 @@ export function SharedDtsiComparison({client,resourceId,before,after}:{client:Re
   if(error)return <SectionError message={error} onRetry={()=>setRetry(value=>value+1)} />;
   if(!result)return <SectionSkeleton label="正在比较所选版本" />;
   const source=result.sources[Number(file)];
+  const buildInputsChanged=JSON.stringify(result.buildInputs.before.includeSearchPaths)!==JSON.stringify(result.buildInputs.after.includeSearchPaths)
+    || Object.keys({...result.buildInputs.before.defines,...result.buildInputs.after.defines}).some(name=>result.buildInputs.before.defines[name]!==result.buildInputs.after.defines[name]);
   return <section className="shared-dtsi-comparison" aria-label={`比较 v${result.before.version} 与 v${result.after.version}`}>
+    {buildInputsChanged?<details><summary>构建设置变化</summary>
+      {(["before","after"] as const).map(side=><div key={side}><h3>v{result[side].version}</h3><dl className="shared-dtsi-metadata">
+        <div><dt>搜索目录</dt><dd>{result.buildInputs[side].includeSearchPaths.join("、")||"资源目录"}</dd></div>
+        <div><dt>构建宏</dt><dd>{Object.entries(result.buildInputs[side].defines).map(([name,value])=>`${name}=${value}`).join("\n")||"未声明"}</dd></div>
+      </dl></div>)}
+    </details>:null}
     {JSON.stringify(result.dependencies.before)!==JSON.stringify(result.dependencies.after)?<details><summary>固定依赖变化</summary>
       {(["before","after"] as const).map(side=><div key={side}><h3>{side==="before"?`v${result.before.version}`:`v${result.after.version}`}</h3>
         {result.dependencies[side].length?<ul>{result.dependencies[side].map(pin=><li key={pin.resourceId}>{pin.name} · v{pin.version} · {pin.mountPath||"资源根目录"}</li>)}</ul>:<p>没有固定资源依赖。</p>}</div>)}

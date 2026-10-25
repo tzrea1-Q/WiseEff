@@ -28863,6 +28863,52 @@
                 ],
                 "additionalProperties": false
               },
+              "buildInputs": {
+                "type": "object",
+                "properties": {
+                  "before": {
+                    "type": "object",
+                    "properties": {
+                      "includeSearchPaths": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "defines": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "after": {
+                    "type": "object",
+                    "properties": {
+                      "includeSearchPaths": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "defines": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "before",
+                  "after"
+                ],
+                "additionalProperties": false
+              },
               "sources": {
                 "type": "array",
                 "items": {
@@ -29040,6 +29086,7 @@
             "required": [
               "before",
               "after",
+              "buildInputs",
               "sources",
               "dependencies",
               "semantic"

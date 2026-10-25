@@ -54,6 +54,7 @@ export const sharedDtsiUsagesSchema=z.object({items:z.array(z.object({projectId:
   upgradeAvailable:z.boolean(),evaluation:z.literal("not-evaluated")}).strict()),total:z.number().int().nonnegative(),visibility:z.enum(["organization","authorized-projects"])}).strict();
 const comparisonSource=z.object({sourceName:z.string(),content:z.string()}).strict();
 export const sharedDtsiComparisonSchema=z.object({before:sharedDtsiVersionSummarySchema,after:sharedDtsiVersionSummarySchema,
+  buildInputs:z.object({before:dtsBuildInputsSchema,after:dtsBuildInputsSchema}).strict(),
   sources:z.array(z.object({resourceId:id,resourceName:z.string(),memberId:id,before:comparisonSource.nullable(),after:comparisonSource.nullable()}).strict()),
   dependencies:z.object({before:z.array(sharedDtsiClosureSchema),after:z.array(sharedDtsiClosureSchema)}).strict(),
   semantic:z.object({scope:z.literal("ordered-fragment-declarations"),before:z.string(),after:z.string(),externalReferences:z.array(z.string())}).strict()
