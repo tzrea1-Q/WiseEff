@@ -49,6 +49,7 @@ import type { ConfigSetRole } from "./types";
 export type MemberAdditionInput = {
   projectId: string; configSetId: string; candidateId?: string; fileId?: string;
   sharedReference?: { resourceId: string; versionId: string; mountPath?: string; replaceVersionId?: string };
+  removeSharedReference?: {resourceId:string;versionId:string};
   role: ConfigSetRole; sortOrder: number;
   setAsRoot?: boolean;
   json?: { configurationSchemaId: string; rootPointer: string; mappings: Array<{ definitionId: string; pointer: string }> };
@@ -76,9 +77,10 @@ type Proof = {
   sharedComposition?: Array<{resourceId:string;versionId:string;version:number;name:string;digest:string;mountPath:string;direct:boolean;
     sources:Array<{memberId:string;fileId:string;fileVersionId:string;sourceName:string}>}>;
   sharedClosure?:ReturnType<typeof closureManifest>;
+  sharedRemoval?: {resourceId:string;versionId:string;name:string;version:number};
   sharedSwitch?: { beforeReferences: Array<{id:string;resourceId:string;versionId:string;mountPath:string;direct:boolean}>;
     beforeSources: Array<{fileId:string;fileVersionId:string;referenceId:string;memberId:string;sourceName:string}>;
-    beforeFiles:Array<{fileId:string;fileVersionId:string}> };
+    beforeFiles:Array<{fileId:string;fileVersionId:string}>; beforeMembers:Member[] };
   rootEdit?: { fileId: string; baseFileVersionId: string; sourceName: string; before: string; after: string };
 };
 export type MemberAdditionPreview = {
@@ -87,6 +89,7 @@ export type MemberAdditionPreview = {
   sharedReference?: Proof["sharedReference"];
   sharedComposition?: Proof["sharedComposition"];
   sharedSwitch?:SharedReferenceSwitchPreview;
+  sharedRemoval?:Proof["sharedRemoval"];
   rootEdit?: Proof["rootEdit"];
   diagnostics: Array<{ severity: "error" | "warning"; code: string; message: string }>;
   impact: { parameterChanges: number; nodeAdditions: number; nodeRemovals: number; retainedBindings: number; sourceReplacements: number; restoredParameters?: number };
@@ -150,19 +153,32 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
      from public.project_shared_dtsi_references where organization_id=$1 and project_id=$2 and config_set_id=$3 order by created_at,id`,
     [parameterOrganizationId(auth),input.projectId,input.configSetId])).rows;
   const replacing=input.sharedReference?.replaceVersionId;
-  const replaced=currentReferences.find(row=>row.resourceId===input.sharedReference?.resourceId);
+  const removing=input.removeSharedReference;
+  if(removing&&(input.role!=="misc"||input.setAsRoot||input.json))throw new ApiError("VALIDATION_FAILED","移除共享引用不能同时更换根文件、用途或 JSON 登记。");
+  const recovering=Boolean(input.sharedReference&&(await tx.query(`select 1 from public.project_parameter_files file
+    join public.dts_config_revision_members member on member.file_id=file.id
+    join public.dts_config_revisions revision on revision.id=member.config_revision_id
+    where file.organization_id=$1 and file.project_id=$2 and file.config_set_id is null and revision.config_set_id=$3
+      and member.shared_reference->>'resourceId'=$4 limit 1`,[parameterOrganizationId(auth),input.projectId,input.configSetId,input.sharedReference.resourceId])).rowCount);
+  const recomposing=Boolean(replacing||removing||recovering);
+  const replaced=currentReferences.find(row=>row.resourceId===(removing??input.sharedReference)?.resourceId);
+  if(removing&&(!replaced||replaced.versionId!==removing.versionId))conflict("当前固定引用已变化，请重新核对配置组成后预览。");
+  if(removing&&!replaced?.direct)
+    throw new ApiError("CONFLICT","此引用是必要的间接依赖；请先处理直接引用，再重新预览。",{reason:"shared-removal-dependency"});
   if(replacing && (!replaced?.direct || replaced.versionId!==replacing || replacing===input.sharedReference?.versionId
     || input.sharedReference?.mountPath!==undefined && input.sharedReference.mountPath!==replaced.mountPath)) conflict("当前固定引用已变化；请选择直接引用的另一版本并重新预览。");
-  const beforeSources=replacing?(await tx.query<{fileId:string;fileVersionId:string;referenceId:string;memberId:string;sourceName:string}>(
+  const beforeSources=recomposing?(await tx.query<{fileId:string;fileVersionId:string;referenceId:string;memberId:string;sourceName:string}>(
     `select snapshot.file_id as "fileId",snapshot.file_version_id as "fileVersionId",snapshot.reference_id as "referenceId",
       snapshot.member_id as "memberId",file.file_name as "sourceName" from public.project_shared_dtsi_snapshots snapshot
       join public.project_shared_dtsi_references ref on ref.id=snapshot.reference_id
       join public.project_parameter_files file on file.id=snapshot.file_id where ref.config_set_id=$1 order by file.id`,[input.configSetId])).rows:[];
-  const pins=input.sharedReference ? [{resourceId:input.sharedReference.resourceId,versionId:input.sharedReference.versionId,mountPath:replaced?.mountPath??input.sharedReference.mountPath??""},
-    ...(replacing?currentReferences.filter(row=>row.direct&&row.resourceId!==input.sharedReference!.resourceId).map(({resourceId,versionId,mountPath})=>({resourceId,versionId,mountPath})):[])] : [];
+  const pins=removing?currentReferences.filter(row=>row.direct&&row.resourceId!==removing.resourceId).map(({resourceId,versionId,mountPath})=>({resourceId,versionId,mountPath})):input.sharedReference ? [{resourceId:input.sharedReference.resourceId,versionId:input.sharedReference.versionId,mountPath:replaced?.mountPath??input.sharedReference.mountPath??""},
+    ...(recomposing?currentReferences.filter(row=>row.direct&&row.resourceId!==input.sharedReference!.resourceId).map(({resourceId,versionId,mountPath})=>({resourceId,versionId,mountPath})):[])] : [];
   const sharedResources=await loadSharedDtsiClosure(tx,auth,pins);
   await assertSharedDtsiNewReferences(tx,auth,sharedResources,currentReferences);
-  const retainedSources=replacing?(await tx.query<{fileId:string;fileVersionId:string;resourceId:string;memberId:string}>(
+  if(removing&&sharedResources.some(resource=>resource.resourceId===removing.resourceId))
+    throw new ApiError("CONFLICT","其他直接引用仍依赖此资源；请先移除或变更这些直接引用。",{reason:"shared-removal-dependency"});
+  const retainedSources=recomposing?(await tx.query<{fileId:string;fileVersionId:string;resourceId:string;memberId:string}>(
     `select distinct file.id as "fileId",file.current_version_id as "fileVersionId",member.shared_reference->>'resourceId' as "resourceId",
        member.shared_reference->>'memberId' as "memberId" from public.project_parameter_files file
      join public.dts_config_revision_members member on member.file_id=file.id and member.shared_reference is not null
@@ -179,7 +195,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   for(const resource of sharedResources) {
     const current=(await tx.query<{versionId:string;mountPath:string}>("select revision_id as \"versionId\",mount_path as \"mountPath\" from public.project_shared_dtsi_references where config_set_id=$1 and resource_id=$2",[input.configSetId,resource.resourceId])).rows[0];
     if(!current)continue;
-    if(replacing)continue;
+    if(recomposing)continue;
     if(resource.direct || current.versionId!==resource.versionId || current.mountPath!==resource.mountPath)
       conflict(`${resource.name}：此配置已引用该资源，请通过引用版本变更处理重复版本或挂载。`);
     reused.add(resource.resourceId);
@@ -191,7 +207,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     sourceName:mountedSharedPath(resource.mountPath,member.sourceName),format:"dts" as const,storageKey:"",checksum:member.checksum,sizeBytes:member.sizeBytes,
     content:member.content,memberId:member.id,resourceId:resource.resourceId
   })));
-  if(replacing)for(const target of sharedTargets) {
+  if(recomposing)for(const target of sharedTargets) {
     const collision=(await tx.query<{id:string}>("select id from public.project_parameter_files where organization_id=$1 and project_id=$2 and file_name=$3 and id<>$4",[parameterOrganizationId(auth),input.projectId,target.sourceName,target.fileId])).rows[0];
     if(collision)conflict(`${target.sourceName}：目标共享成员与既有文件身份不同，请先核对身份或修改挂载目录。`);
   }
@@ -201,7 +217,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       throw new ApiError("VALIDATION_FAILED", "请选择当前配置中尚未作为根文件的 DTS 文件。");
     }
   } else if (existing?.configSetId) conflict("该文件已属于一个配置，请先从原配置移除后再加入。");
-  const target = candidate ? { fileId: `member_${candidate.id}`, fileVersionId: candidate.id, sourceName: candidate.fileName,
+  const target = removing ? members.find(member=>member.sourceName===revision.entry_file&&member.role==="base"&&member.format==="dts")??null : candidate ? { fileId: `member_${candidate.id}`, fileVersionId: candidate.id, sourceName: candidate.fileName,
     format: candidate.format, storageKey: candidate.storageKey!, checksum: candidate.checksum!, sizeBytes: candidate.sizeBytes! }
     : existing ? { fileId: existing.id, fileVersionId: existing.fileVersionId,
       sourceName: input.setAsRoot ? members.find((row) => row.fileId === existing.id)!.sourceName : existing.fileName,
@@ -209,7 +225,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     : sharedTargets[0]??null;
   if (!target || !["dts", "json"].includes(target.format)) throw new ApiError("VALIDATION_FAILED", "请选择 DTS/JSON 候选或已有文件。");
   const retainedMembers=members.filter(member=>!beforeSources.some(source=>source.fileId===member.fileId));
-  if (normalizeManifestLogicalPath(target.sourceName) !== target.sourceName || retainedMembers.some((row) => row.sourceName === target.sourceName && (!input.setAsRoot || row.fileId !== target.fileId))) {
+  if (normalizeManifestLogicalPath(target.sourceName) !== target.sourceName || retainedMembers.some((row) => row.sourceName === target.sourceName && (!(input.setAsRoot||removing) || row.fileId !== target.fileId))) {
     conflict("文件来源名称不合法或与已有成员重名，请使用不同文件名重新上传。");
   }
   if(sharedTargets.length) {
@@ -239,17 +255,17 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   }
   let afterMembers: Member[] = [...retainedMembers.map(({ fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes }) =>
     ({ fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes })),
-  ...(!input.setAsRoot ? (shared?sharedTargets:[target]).map((row,index)=>({ fileId: row.fileId, fileVersionId: row.fileVersionId, sourceName: row.sourceName, format: row.format,
+  ...(!input.setAsRoot ? (removing||shared?sharedTargets:[target]).map((row,index)=>({ fileId: row.fileId, fileVersionId: row.fileVersionId, sourceName: row.sourceName, format: row.format,
     role: shared ? "include" : input.role, sortOrder: additionSortOrder+index, checksum: row.checksum, sizeBytes: row.sizeBytes })) : [])].sort((a, b) => a.sortOrder - b.sortOrder || a.fileId.localeCompare(b.fileId));
   let rootEdit: Proof["rootEdit"];
-  if (shared) {
+  if (shared||removing) {
     const root = members.find(member => member.sourceName === revision.entry_file && member.role === "base" && member.format === "dts");
     if (!root) throw new ApiError("VALIDATION_FAILED", "请先提供真实项目根文件并解析配置，再添加共享引用。");
     await assertProjectSourceWritable(tx, root.fileId);
     const before = contents.get(root.fileId)!;
     let rootSource=before;
     const retainedIncludes=new Set<string>();
-    if(replacing) {
+    if(recomposing) {
       const existingFiles=new Map(members.map(member=>[member.sourceName,{content:beforeContents.get(member.fileId)!,fileVersionId:member.fileVersionId}]));
       const oldNames=new Set(beforeSources.map(source=>source.sourceName));
       const oldTokens=lexDts(before), edits:Array<{start:number;end:number;text:string}>=[];
@@ -306,7 +322,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     rootEdit = { fileId: root.fileId, baseFileVersionId: root.fileVersionId, sourceName: root.sourceName, before, after };
     contents.set(root.fileId, after);
     afterMembers = afterMembers.map(member => member.fileId === root.fileId ? { ...member,
-      fileVersionId: `shared_root_${sourceRevisionDigest([root.fileVersionId, shared.id])}`, checksum: `sha256:${sourceRevisionDigest(Buffer.from(after))}`, sizeBytes: Buffer.byteLength(after) } : member);
+      fileVersionId: `shared_root_${sourceRevisionDigest([root.fileVersionId, shared?.id??removing])}`, checksum: `sha256:${sourceRevisionDigest(Buffer.from(after))}`, sizeBytes: Buffer.byteLength(after) } : member);
   }
   if (input.setAsRoot) {
     const oldRoot = afterMembers.find((row) => row.format === "dts" && row.role === "base" && row.sourceName === revision.entry_file);
@@ -324,7 +340,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     from public.project_shared_dtsi_references where organization_id=$1 and project_id=$2 and config_set_id=$3 order by created_at,id`,
     [parameterOrganizationId(auth),input.projectId,input.configSetId])).rows;
   const currentResources = await loadSharedDtsiClosure(tx,auth,currentPins);
-  const completeResources = replacing?sharedResources:[...currentResources,...sharedResources.filter(resource=>!currentResources.some(existing=>existing.resourceId===resource.resourceId))];
+  const completeResources = recomposing?sharedResources:[...currentResources,...sharedResources.filter(resource=>!currentResources.some(existing=>existing.resourceId===resource.resourceId))];
   const declaredBuildInputs = revision.declared_build_inputs;
   const {includeSearchPaths,defines} = composeDtsBuildInputs(declaredBuildInputs,completeResources);
   const overlayNames=afterMembers.filter((row)=>row.format==="dts"&&row.role==="overlay").map(row=>row.sourceName);
@@ -343,7 +359,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
         :member?{fileId:member.fileId,fileVersionId:member.fileVersionId}:{})};
   };
   const refuseSwitch=(error:unknown,locations:SharedSwitchConflict[]):never=>{
-    if(replacing && error instanceof ApiError)throw new ApiError(error.code,error.message,{...error.details,switchConflicts:locations});
+    if(recomposing && error instanceof ApiError)throw new ApiError(error.code,error.message,{...error.details,switchConflicts:locations});
     throw error;
   };
   const nodeSource=(message:string,nodeLocator:string,propertyName?:string,identity=false)=>{
@@ -363,10 +379,10 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     const files = new Map(dts.map((row) => [row.sourceName, { content: contents.get(row.fileId)!, fileVersionId: row.fileVersionId }]));
     resolved = await resolveDtsConfigSetAsync({ entryFile, includeSearchPaths, defines, overlayOrder, requireExactOrigins: true, files });
     diagnostics.push(...resolved.diagnostics.map(({ severity, code, message, fileName }) => ({ severity, code,
-      message: input.setAsRoot ? rootDiagnosticMessage(code, message, fileName) : message })));
+      message: input.setAsRoot||removing ? rootDiagnosticMessage(code, message, fileName) : message })));
     if (diagnostics.some((row) => row.severity === "error" || /dangling|unresolved/.test(row.code))) {
-      refuseSwitch(new ApiError("VALIDATION_FAILED", "配置包含未解决的 include/overlay 引用，请修正来源后重试。", { diagnostics }),
-        resolved.diagnostics.filter(row=>row.severity==="error"||/dangling|unresolved/.test(row.code)).map(row=>switchSource(row.message,row.fileName,row.offset)));
+      refuseSwitch(new ApiError("VALIDATION_FAILED", removing?"移除后仍有项目 include/overlay 使用该来源，请修正项目源码，再返回移除任务重新预览。":"配置包含未解决的 include/overlay 引用，请修正来源后重试。", { diagnostics }),
+        resolved.diagnostics.filter(row=>row.severity==="error"||/dangling|unresolved/.test(row.code)).map(row=>switchSource(removing?rootDiagnosticMessage(row.code,row.message).replace(/^配置：/,""):row.message,row.fileName,row.offset)));
     }
     anchors = await matchingDeletedSourceAnchors(tx, restorationScope, resolved.effective.nodesByLocator, afterMembers);
     try { continuity = await prepareReviewedSourceContinuity(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId,
@@ -464,20 +480,21 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   }
   const facts = { kind: "member_addition" as const, organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId,
     ...(input.setAsRoot ? { setAsRoot: true } : {}),
-    ...(replacing?{sharedSwitch:{beforeReferences:currentReferences,beforeSources,beforeFiles:[...beforeSources,...retainedSources.filter(source=>sharedTargets.some(target=>target.fileId===source.fileId))].map(({fileId,fileVersionId})=>({fileId,fileVersionId}))}}:{}),
-    ...(shared ? { sharedReference: { resourceId: shared.resourceId, versionId: shared.id, version: shared.version, memberId: shared.members[0]!.id, digest: shared.digest },
+    ...(recomposing?{sharedSwitch:{beforeReferences:currentReferences,beforeSources,beforeMembers:members.map(({storageKey:_key,currentVersionId:_current,currentRole:_role,currentOrder:_order,...member})=>member),beforeFiles:[...beforeSources,...retainedSources.filter(source=>sharedTargets.some(target=>target.fileId===source.fileId))].map(({fileId,fileVersionId})=>({fileId,fileVersionId}))}}:{}),
+    ...(removing?{sharedRemoval:{...removing,name:currentResources.find(resource=>resource.resourceId===removing.resourceId)!.name,version:currentResources.find(resource=>resource.resourceId===removing.resourceId)!.version},sharedClosure:closureManifest(sharedResources),sharedComposition:sharedResources.map(({item:_item,...resource})=>({...resource,sources:sharedTargets.filter(member=>member.resourceId===resource.resourceId).map(({memberId,fileId,fileVersionId,sourceName})=>({memberId,fileId,fileVersionId,sourceName}))})),rootEdit}:{}),
+    ...(shared&&!removing ? { sharedReference: { resourceId: shared.resourceId, versionId: shared.id, version: shared.version, memberId: shared.members[0]!.id, digest: shared.digest },
       sharedClosure:closureManifest(sharedResources),sharedComposition:sharedResources.filter(resource=>!reused.has(resource.resourceId)).map(({item:_item,...resource})=>({...resource,sources:sharedTargets.filter(member=>member.resourceId===resource.resourceId)
         .map(({memberId,fileId,fileVersionId,sourceName})=>({memberId,fileId,fileVersionId,sourceName}))})),rootEdit } : {}),
     candidateId: candidate?.id ?? null, fileId: target.fileId, baseConfigRevisionId: revision.id,
     baseDigest: sourceRevisionDigest(members.map(({ storageKey: _storage, currentVersionId: _version, currentRole: _role, currentOrder: _order, ...row }) => row)),
-    proposedDigest: target.checksum.replace(/^sha256:/, ""), entryFile, includeSearchPaths, overlayOrder, declaredBuildInputs,
+    proposedDigest: (removing?afterMembers.find(member=>member.fileId===target.fileId)!.checksum:target.checksum).replace(/^sha256:/, ""), entryFile, includeSearchPaths, overlayOrder, declaredBuildInputs,
     ...(resolved?.preprocessing?{preprocessing:resolved.preprocessing.receipt}:{}),
     members: afterMembers, cohort, continuity, targets, newProperties, ...(restorations.length ? { restorations } : {}), originTransfers, json: input.json ?? null,
     catalogRelease: snapshot ? { id: snapshot.release.id, digest: snapshot.release.digest } : null };
   const proof: Proof = { ...facts, proofDigest: sourceRevisionDigest(facts) };
   const beforeNodes = (await tx.query<{ id: string }>("select logical_node_id as id from public.dts_logical_node_revisions where config_revision_id=$1", [revision.id])).rows;
   let switchPreview:SharedReferenceSwitchPreview|undefined;
-  if(replacing&&resolved&&entryFile) {
+  if((replacing||removing)&&resolved&&entryFile) {
     const before=await resolveDtsConfigSetAsync({entryFile:revision.entry_file!,includeSearchPaths:revision.include_search_paths,overlayOrder:revision.overlay_order,
       preprocessing:revision.preprocessing??undefined,defines:composeDtsBuildInputs(declaredBuildInputs,currentResources).defines,requireExactOrigins:true,
       files:new Map(members.filter(member=>member.format==="dts").map(member=>[member.sourceName,{content:beforeContents.get(member.fileId)!,fileVersionId:member.fileVersionId}]))});
@@ -498,7 +515,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
             before:oldValue,after:nextValue,originBefore,originAfter,localOverride});
       }
     }
-    switchPreview={beforeVersion:currentResources.find(resource=>resource.resourceId===shared!.resourceId)!.version,afterVersion:shared!.version,
+    switchPreview={beforeVersion:currentResources.find(resource=>resource.resourceId===(removing??shared)!.resourceId)!.version,afterVersion:removing?null:shared!.version,
       dependencies:{before:currentResources.map(({name,version,mountPath})=>({name,version,mountPath})),after:sharedResources.map(({name,version,mountPath})=>({name,version,mountPath}))},
       sources:[...new Set([...members.map(member=>member.sourceName),...afterMembers.map(member=>member.sourceName)])].map(sourceName=>({sourceName,
         before:beforeContents.get(members.find(member=>member.sourceName===sourceName)?.fileId??"")??null,
@@ -508,6 +525,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   const preview: MemberAdditionPreview = { proofToken: proof.proofDigest, configSetId: input.configSetId, fileName: target.sourceName, format: target.format,
     ...(shared ? { sharedReference: proof.sharedReference,sharedComposition:proof.sharedComposition, rootEdit } : {}),
     ...(switchPreview?{sharedSwitch:switchPreview}:{}),
+    ...(removing?{sharedRemoval:proof.sharedRemoval,sharedComposition:proof.sharedComposition,rootEdit}:{}),
     members: afterMembers, entryFile, includeSearchPaths, overlayOrder, diagnostics,
     impact: { parameterChanges: targets.length + newProperties.length + (input.json?.mappings.length ?? 0),
       nodeAdditions: continuity?.nodes.filter((node) => !beforeNodes.some((row) => row.id === node.logicalNodeId)).length ?? 0,
@@ -563,7 +581,7 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
     let fileVersionId = target.fileVersionId;
     const versionIds = new Map<string, string>();
     for(const source of derived.length?derived:candidate?[target]:[]) {
-      const stored = proof.sharedReference ? await attempt.objectStore.put({ organizationId: parameterOrganizationId(auth),
+      const stored = proof.sharedComposition ? await attempt.objectStore.put({ organizationId: parameterOrganizationId(auth),
         fileName: `${randomUUID()}.dtsi`, contentType: "text/plain", bytes: Buffer.from(contents.get(source.fileId)!) }) : null;
       if (stored && sourceRevisionDigest(await attempt.objectStore.getBounded!(stored.storageKey, MAX_PARAMETER_SOURCE_BYTES)) !== source.checksum.replace(/^sha256:/, "")) conflict("共享来源快照写入校验失败，配置未改变。");
       const version = proof.sharedSwitch
@@ -588,6 +606,7 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
       const updated = await tx.query("update public.project_parameter_files set current_version_id=$2,updated_at=now() where id=$1 and current_version_id=$3", [root.fileId, version.id, proof.rootEdit.baseFileVersionId]);
       if (updated.rowCount !== 1) conflict("项目根文件已变化，请重新预览。");
       versionIds.set(root.fileId, version.id);
+      if(proof.sharedRemoval)fileVersionId=version.id;
     }
     if(proof.sharedSwitch) {
       await tx.query("select public.apply_shared_dtsi_switch($1,$2::jsonb)",[requestId,JSON.stringify(derived.map(source=>({fileId:source.fileId,fileVersionId:versionIds.get(source.fileId)!})))]);
@@ -652,7 +671,8 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
       if (!old || currentBinding.status !== "current" || currentBinding.binding.currentValueId !== entry.oldValueId || !pinned) conflict("参数当前值已变化，所有变更已回滚。");
       const change = proof.targets.find((row) => row.bindingId === entry.bindingId), deleted = change?.action === "delete";
       const afterFileId = change?.afterFileId ?? entry.fileId;
-      const afterFileVersionId = versionIds.get(afterFileId) ?? proof.members.find((member) => member.fileId === afterFileId)!.fileVersionId;
+      const afterFileVersionId = versionIds.get(afterFileId) ?? proof.members.find((member) => member.fileId === afterFileId)?.fileVersionId ?? (deleted&&proof.sharedRemoval?entry.fileVersionId:undefined);
+      if(!afterFileVersionId)conflict("参数来源缺少精确的文件版本，所有变更已回滚。");
       const property = entry.format === "dts" && !deleted ? observed.find((row) => row.fileId === afterFileId && row.logicalNodeId === entry.logicalNodeId && row.propertyKey === entry.propertyName) : null;
       if (entry.format === "dts" && !deleted && !property) conflict("参数来源未完整生成，所有变更已回滚。");
       const payload = change?.payload ?? old.value.payload;
@@ -667,7 +687,7 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
         : { kind: "dts-property", propertyOccurrenceId: property!.propertyOccurrenceId, nodeOccurrenceId: property!.nodeOccurrenceId,
           fileVersionId: afterFileVersionId, propertyName: entry.propertyName };
       const sourcePinId = randomUUID();
-      const baseMember = proof.members.find((member) => member.fileId === entry.fileId);
+      const baseMember = proof.members.find((member) => member.fileId === entry.fileId) ?? (proof.sharedRemoval?proof.sharedSwitch?.beforeMembers.find(member=>member.fileId===entry.fileId&&member.fileVersionId===entry.fileVersionId):undefined);
       if(deleted&&!baseMember)conflict("删除参数缺少精确的原始来源成员，所有变更已回滚。");
       const deletionProof = deleted ? { kind: "dts-source-absence-v1", scannerVersion: "dts-config-v1",
         beforeValueDigest: old.value.valueDigest.startsWith("sha256:") ? old.value.valueDigest : `sha256:${old.value.valueDigest}`,
@@ -698,11 +718,11 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
       configSetId: input.configSetId, fileId: target.fileId, fileVersionId, ...proof.json,
       invocation: security.invocation, requestId: security.requestId, refusalSink: security.refusalSink });
     const receipt = { requestId, configRevisionId: revisionId, fileId: target.fileId, fileVersionId,
-      ...(derived.length?{derivedSources:derived.map(source=>({fileId:source.fileId,fileVersionId:versionIds.get(source.fileId)!}))}:{}),
+      ...(proof.sharedComposition?{derivedSources:derived.map(source=>({fileId:source.fileId,fileVersionId:versionIds.get(source.fileId)!}))}:{}),
       ...(proof.rootEdit ? { rootFileVersionId: versionIds.get(proof.rootEdit.fileId) } : {}), sourceRevisionProofDigest: proof.proofDigest, results };
     await writeTrustedAuditEventInTx(asAuditTx(tx), { id: auditRef, invocation: security.invocation, app: "parameters", kind: "parameter-topology-governance",
       action: "value-change-applied", severity: "Medium", projectId: input.projectId, targetType: "project-parameter-value-change-request", targetId: requestId,
-      metadata: { applicationMode: "administrator_direct", appliedByUserId: auth.user.id, requestKind: "member_addition", operation: proof.sharedSwitch?"switch_shared_version":input.setAsRoot ? "set_root" : "add_member",
+      metadata: { applicationMode: "administrator_direct", appliedByUserId: auth.user.id, requestKind: "member_addition", operation: proof.sharedRemoval?"remove_shared_reference":proof.sharedSwitch?"switch_shared_version":input.setAsRoot ? "set_root" : "add_member",
         restoredParameters: proof.restorations?.length ?? 0, configSetId: input.configSetId, result: receipt }, traceId: security.requestId });
     if (candidate) await tx.query("update public.project_parameter_file_candidates set status='active',activated_at=now(),activated_by_user_id=$2,activated_version_id=$3 where id=$1 and status='ready'",
       [candidate.id, auth.user.id, fileVersionId]);
