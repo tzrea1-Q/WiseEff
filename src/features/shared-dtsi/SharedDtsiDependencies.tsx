@@ -42,7 +42,7 @@ export function SharedDtsiDependencies({client,value,onChange,resourceId,disable
     <div className="shared-dtsi-fields">
       <label>搜索依赖资源<Input aria-label="搜索依赖资源" value={query} disabled={disabled} onChange={event=>{setQuery(event.target.value);setSelected("");setVersionId("");setOffset(0);}} /></label>
       <label>依赖资源<SelectControl ariaLabel="依赖资源" value={selected} disabled={disabled||busy} placeholder="选择已发布资源"
-        options={resources.filter(item=>item.resourceId!==resourceId).map(item=>({value:item.resourceId,label:item.name,disabled:!item.currentVersion||value.some(pin=>pin.resourceId===item.resourceId)}))}
+        options={resources.filter(item=>item.resourceId!==resourceId).map(item=>({value:item.resourceId,label:`${item.name}${item.state==="retired"?" · 已停用":""}`,disabled:item.state==="retired"||!item.currentVersion||value.some(pin=>pin.resourceId===item.resourceId)}))}
         onValueChange={id=>{setSelected(id);setVersionId("");setVersionOffset(0);}} /></label>
       {selected?<label>依赖固定版本<SelectControl ariaLabel="依赖固定版本" value={versionId} disabled={disabled||busy} placeholder="明确选择版本"
         options={versions.map(item=>({value:item.id,label:`版本 ${item.version} · ${item.changeDescription}`}))} onValueChange={setVersionId} /></label>:null}

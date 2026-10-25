@@ -11,6 +11,7 @@ import type { SharedDtsiDraft, SharedDtsiManifest, SharedDtsiPublicationPreview,
 import { sharedDtsiManifestSchema } from "../contracts/dtoSchemas/sharedDtsi";
 import { getSharedDtsiDraft, lockDraft, requireRead, requireWrite, type WriteContext } from "./service";
 import { closureManifest, closureMembers, composeDtsBuildInputs, loadSharedDtsiClosure } from "./dependencies";
+import { assertSharedDtsiNewReferences, lockSharedDtsiReferences } from "./lifecycle";
 
 const digest = (value: unknown) => `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
 const actorFingerprint = (auth: AuthContext) => digest({ userId:auth.user.id,organizationId:parameterOrganizationId(auth),active:auth.user.isActive,
@@ -66,8 +67,8 @@ async function currentVersion(db: Database,auth: AuthContext,resourceId: string)
 }
 export async function getSharedDtsiResourceDetail(db: Database,auth: AuthContext,resourceId: string): Promise<SharedDtsiResourceDetail> {
   requireRead(auth);
-  const row=(await db.query<{resourceId:string;name:string;updatedAt:Date;draftRevision:number|null}>(
-    `select r.id as "resourceId",r.name,r.updated_at as "updatedAt",d.revision as "draftRevision" from public.shared_dtsi_resources r
+  const row=(await db.query<{resourceId:string;name:string;state:"active"|"retired";lifecycleRevision:number;updatedAt:Date;draftRevision:number|null}>(
+    `select r.id as "resourceId",r.name,r.state,r.lifecycle_revision as "lifecycleRevision",r.updated_at as "updatedAt",d.revision as "draftRevision" from public.shared_dtsi_resources r
      left join public.shared_dtsi_drafts d on d.resource_id=r.id and d.organization_id=r.organization_id
      where r.id=$1 and r.organization_id=$2`,[resourceId,parameterOrganizationId(auth)])).rows[0];
   if (!row) throw new ApiError("NOT_FOUND","共享 DTSI 资源不存在。");
@@ -103,6 +104,7 @@ export async function previewSharedDtsiPublication(db:Database,auth:AuthContext,
   return db.transaction(async tx=>{
     await lockDraft(tx,auth,resourceId,expectedRevision);
     const draft=await getSharedDtsiDraft(tx,auth,resourceId),source=await completePublicationSource(tx,auth,draft),base=await currentVersion(tx,auth,resourceId);
+    await assertSharedDtsiNewReferences(tx,auth,[{resourceId,versionId:"",mountPath:""},...(source.manifest.dependencyClosure??[])]);
     const row=(await tx.query<PreviewRow>(`insert into public.shared_dtsi_publication_previews
       (id,resource_id,organization_id,draft_id,draft_revision,base_revision_id,actor_user_id,actor_fingerprint,name,change_description,manifest,members,digest)
       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13) returning ${previewColumns}`,
@@ -131,6 +133,7 @@ export async function publishSharedDtsi(db:Database,auth:AuthContext,resourceId:
     try { await lockDraft(tx,auth,resourceId,frozen.draftRevision); draft=await getSharedDtsiDraft(tx,auth,resourceId); }
     catch (error) { if (error instanceof ApiError && ["NOT_FOUND","CONFLICT"].includes(error.code)) throw conflict(); throw error; }
     const current=await currentVersion(tx,auth,resourceId);
+    await assertSharedDtsiNewReferences(tx,auth,[{resourceId,versionId:"",mountPath:""},...(frozen.manifest.dependencyClosure??[])]);
     if (draft.id!==frozen.draftId || (current?.id??null)!==frozen.baseVersionId || (await completePublicationSource(tx,auth,draft)).digest!==frozen.digest) throw conflict();
     const revisionId=randomUUID(),version=(current?.version??0)+1;
     await tx.query(`insert into public.shared_dtsi_revisions(id,resource_id,organization_id,version,name,draft_revision,change_description,manifest,digest,created_by_user_id)
@@ -150,6 +153,7 @@ export async function publishSharedDtsi(db:Database,auth:AuthContext,resourceId:
 export async function createSharedDtsiVersionDraft(db:Database,auth:AuthContext,resourceId:string,baseVersionId:string,context:WriteContext) {
   const invocation=requireWrite(auth,context),organizationId=parameterOrganizationId(auth);
   return db.transaction(async tx=>{
+    await lockSharedDtsiReferences(tx,auth);
     const resource=(await tx.query("select id from public.shared_dtsi_resources where id=$1 and organization_id=$2 for update",[resourceId,organizationId])).rows[0];
     if (!resource) throw new ApiError("NOT_FOUND","共享 DTSI 资源不存在。");
     const current=await currentVersion(tx,auth,resourceId);

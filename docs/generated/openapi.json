@@ -5,6 +5,53 @@
     "version": "m5"
   },
   "paths": {
+    "/api/v2/shared-dtsi/{resourceId}/lifecycle": {
+      "post": {
+        "operationId": "sharedDtsi.lifecycle",
+        "summary": "Retire or restore a shared resource with state comparison",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "resourceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SharedDtsiLifecycleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedDtsiDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/projects/{projectId}/config-sets/{configSetId}/shared-dtsi": {
       "post": {
         "operationId": "sharedDtsi.projectImport",
@@ -28506,6 +28553,125 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "ProjectLocalOverrideResponse"
       },
+      "SharedDtsiLifecycleRequest": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "retired"
+            ]
+          },
+          "expectedLifecycleRevision": {
+            "type": "number"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "expectedLifecycleRevision",
+          "idempotencyKey"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SharedDtsiLifecycleRequest"
+      },
+      "SharedDtsiDetailResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "resourceId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "retired"
+                ]
+              },
+              "lifecycleRevision": {
+                "type": "number"
+              },
+              "draftRevision": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "currentVersion": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "resourceId": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "number"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "changeDescription": {
+                    "type": "string"
+                  },
+                  "digest": {
+                    "type": "string"
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "createdByUserId": {
+                    "type": "string"
+                  },
+                  "createdByName": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "resourceId",
+                  "version",
+                  "name",
+                  "changeDescription",
+                  "digest",
+                  "createdAt",
+                  "createdByUserId"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "resourceId",
+              "name",
+              "updatedAt",
+              "draftRevision",
+              "currentVersion"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SharedDtsiDetailResponse"
+      },
       "SharedDtsiProjectImportRequest": {
         "type": "object",
         "properties": {
@@ -28668,6 +28834,16 @@
                 },
                 "updatedAt": {
                   "type": "string"
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "retired"
+                  ]
+                },
+                "lifecycleRevision": {
+                  "type": "number"
                 },
                 "sourceName": {
                   "type": "string"
@@ -28981,90 +29157,6 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "SharedDtsiDiscardResponse"
-      },
-      "SharedDtsiDetailResponse": {
-        "type": "object",
-        "properties": {
-          "item": {
-            "type": "object",
-            "properties": {
-              "resourceId": {
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              },
-              "updatedAt": {
-                "type": "string"
-              },
-              "draftRevision": {
-                "type": [
-                  "number",
-                  "null"
-                ]
-              },
-              "currentVersion": {
-                "type": [
-                  "object",
-                  "null"
-                ],
-                "properties": {
-                  "id": {
-                    "type": "string"
-                  },
-                  "resourceId": {
-                    "type": "string"
-                  },
-                  "version": {
-                    "type": "number"
-                  },
-                  "name": {
-                    "type": "string"
-                  },
-                  "changeDescription": {
-                    "type": "string"
-                  },
-                  "digest": {
-                    "type": "string"
-                  },
-                  "createdAt": {
-                    "type": "string"
-                  },
-                  "createdByUserId": {
-                    "type": "string"
-                  },
-                  "createdByName": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "id",
-                  "resourceId",
-                  "version",
-                  "name",
-                  "changeDescription",
-                  "digest",
-                  "createdAt",
-                  "createdByUserId"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "required": [
-              "resourceId",
-              "name",
-              "updatedAt",
-              "draftRevision",
-              "currentVersion"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "required": [
-          "item"
-        ],
-        "additionalProperties": false,
-        "x-wiseeff-schema": "SharedDtsiDetailResponse"
       },
       "SharedDtsiUsagesResponse": {
         "type": "object",

@@ -54,6 +54,7 @@ export const sharedDtsiManifestSchema = z.object({
 export const sharedDtsiVersionSchema = sharedDtsiVersionSummarySchema.extend({ manifest: sharedDtsiManifestSchema,
   members: z.array(z.object({ id, sourceName: z.string(), content: z.string(), checksum: z.string(), sizeBytes: z.number().int().nonnegative() }).strict()).min(1) });
 export const sharedDtsiResourceSummarySchema = z.object({ resourceId: id, name: z.string(), updatedAt: z.string(),
+  state:z.enum(["active","retired"]).default("active"), lifecycleRevision:z.number().int().positive().default(1),
   sourceName: z.string(), draftRevision: z.number().int().positive().nullable(), currentVersion: sharedDtsiVersionSummarySchema.nullable() }).strict();
 export const sharedDtsiResourceDetailSchema = sharedDtsiResourceSummarySchema.omit({ sourceName: true });
 export const sharedDtsiVersionsSchema = z.object({items:z.array(sharedDtsiVersionSummarySchema),total:z.number().int().nonnegative()}).strict();
@@ -92,8 +93,12 @@ export type SharedDtsiManifest = z.infer<typeof sharedDtsiManifestSchema>;
 export type SharedDtsiVersionSummary = z.infer<typeof sharedDtsiVersionSummarySchema>;
 export type SharedDtsiVersion = z.infer<typeof sharedDtsiVersionSchema>;
 export type SharedDtsiPublicationPreview = z.infer<typeof sharedDtsiPreviewSchema>;
+export const sharedDtsiLifecycleSchema=z.object({state:z.enum(["active","retired"]),expectedLifecycleRevision:z.number().int().positive(),
+  idempotencyKey:z.string().min(1).max(160).regex(/^[A-Za-z0-9._:-]+$/u)}).strict();
+export type SharedDtsiLifecycleInput=z.infer<typeof sharedDtsiLifecycleSchema>;
 
 export const sharedDtsiDtoSchemaCatalog = {
+  SharedDtsiLifecycleRequest:sharedDtsiLifecycleSchema,
   SharedDtsiDraftRequest: sharedDtsiDraftInputSchema,
   SharedDtsiProjectImportRequest: sharedDtsiProjectImportSchema,
   SharedDtsiDraftUpdateRequest: sharedDtsiDraftUpdateSchema,
@@ -113,6 +118,7 @@ export const sharedDtsiDtoSchemaCatalog = {
   SharedDtsiNewVersionDraftRequest: sharedDtsiNewVersionDraftSchema
 };
 export const sharedDtsiRoutes = [
+  { id:"sharedDtsi.lifecycle",method:"POST",path:"/api/v2/shared-dtsi/:resourceId/lifecycle",module:"parameter-files",stability:"commercial-readiness" },
   { id: "sharedDtsi.projectImport", method: "POST", path: "/api/v2/projects/:projectId/config-sets/:configSetId/shared-dtsi", module: "parameter-files", stability: "commercial-readiness" },
   { id: "sharedDtsi.list", method: "GET", path: "/api/v2/shared-dtsi", module: "parameter-files", stability: "commercial-readiness" },
   { id: "sharedDtsi.create", method: "POST", path: "/api/v2/shared-dtsi", module: "parameter-files", stability: "commercial-readiness" },
@@ -131,6 +137,7 @@ export const sharedDtsiRoutes = [
 ] as const;
 const tags = ["parameter-files" as const];
 export const sharedDtsiSchemaRegistry = {
+  "sharedDtsi.lifecycle":{summary:"Retire or restore a shared resource with state comparison",tags,requestBody:"SharedDtsiLifecycleRequest",responseBody:"SharedDtsiDetailResponse"},
   "sharedDtsi.projectImport": { summary: "Create a shared draft from an authorized exact private source revision", tags, requestBody: "SharedDtsiProjectImportRequest", responseBody: "SharedDtsiDraftResponse", successStatus: 201 as const },
   "sharedDtsi.list": { summary: "List Organization shared DTSI resources", tags, responseBody: "SharedDtsiListResponse",
     requestParameters: [{ name: "q", in: "query" as const }, { name: "offset", in: "query" as const }, { name: "limit", in: "query" as const }] },
