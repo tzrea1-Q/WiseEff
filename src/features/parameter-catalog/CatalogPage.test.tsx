@@ -718,6 +718,40 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect(await screen.findByRole("button", { name: /^Maintained category\s*0$/ })).toBeVisible();
   });
 
+  it.each(["module_inventory_1", "module_inventory_100"])("replaces module scope %s when selecting a driver leaf", async (moduleNodeId) => {
+    const user = userEvent.setup();
+    const inventory = pagedInventory();
+    const listSubjectDefinitions = vi.mocked(inventory.repository.listSubjectDefinitions);
+    listSubjectDefinitions.mockImplementation(async (_subjectId, query) => ({
+      ...await inventory.listDefinitions(),
+      ...(query?.placementModuleId && query.placementModuleId !== "module_inventory_0" &&
+        query.placementModuleId !== inventory.last.registration.placement.moduleId
+        ? { items: [], totalCount: 0, emptyReason: "no-filter-match" as const } : {})
+    }));
+    const { onHref } = renderCatalog({
+      ...inventory,
+      search: `?catalogReleaseId=${CATALOG_RELEASE_ID}&moduleNodeId=${moduleNodeId}&lifecycle=active&pageSize=20&cursor=old-page`
+    });
+    await screen.findByRole("button", { name: /^Inventory module 100\s*1$/ });
+    if (moduleNodeId !== "module_inventory_100") {
+      await user.click(screen.getByRole("button", { name: "展开 Inventory module 100" }));
+    }
+    await user.click(screen.getByRole("button", { name: "选择主体 inventory-subject-100" }));
+    await waitFor(() => expect(listSubjectDefinitions).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryAllByText(catalogEmptyMessages["no-filter-match"])).toHaveLength(0));
+    expect(within(screen.getByRole("table", { name: "参数定义列表" })).getByText("gpio-int")).toBeVisible();
+    const anchor = parseCatalogUrlAnchor(onHref.mock.calls.at(-1)![0].split("?")[1]);
+    expect(anchor).toMatchObject({ subjectId: inventory.last.id, moduleNodeId: null, cursor: null, lifecycle: "active", pageSize: 20 });
+    const query = listSubjectDefinitions.mock.calls.at(-1)![1];
+    expect(query).not.toHaveProperty("placementModuleId");
+    expect(query).not.toHaveProperty("cursor");
+    await user.click(screen.getByRole("button", { name: "后退" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: new RegExp(`^Inventory module ${moduleNodeId.split("_").at(-1)}\\s*1$`) })).toHaveAttribute("aria-pressed", "true"));
+    await user.click(screen.getByRole("button", { name: "前进" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "选择主体 inventory-subject-100" })).toHaveAttribute("aria-pressed", "true"));
+    expect(within(screen.getByRole("table", { name: "参数定义列表" })).getByText("gpio-int")).toBeVisible();
+  });
+
   it("restores the module scope from its URL and clears it when the active module is reselected", async () => {
     const user = userEvent.setup();
     const inventory = pagedInventory();
@@ -779,7 +813,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect(onHref).toHaveBeenCalledWith(expect.stringContaining(`subjectId=${inventory.last.id}`), "push");
     await user.keyboard("{Enter}");
     await waitFor(() => expect(parseCatalogUrlAnchor(onHref.mock.calls.at(-1)![0].split("?")[1])).toMatchObject({
-      subjectId: null, moduleNodeId: "module_inventory_100"
+      subjectId: null, moduleNodeId: null
     }));
   }, 15_000);
 
