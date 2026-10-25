@@ -3116,6 +3116,8 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await dialog.getByRole("button",{name:"确认恢复",exact:true}).focus();await page.keyboard.press("Enter");const restored=await applying;expect(restored.status(),await restored.text()).toBe(200);
     expect([initial,switched]).not.toContain((await restored.json()).item.configRevisionId);await expect(dialog).toHaveCount(0);await page.reload();
     const values=await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),{headers:adminHeaders()});expect((await values.json()).items).toContainEqual(expect.objectContaining({id:binding.bindingId,rawValue:'"SnapshotLocal", "keep"'}));
+    await page.getByRole("button",{name:"关闭配置版本",exact:true}).click();
+    await expect(versions).toHaveCount(0);
     await page.getByRole("tab",{name:"生效配置",exact:true}).click();await page.getByRole("treeitem",{name:"节点 /inherited",exact:true}).click();await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"SnapshotShared", "keep"');
     const files=await openWorkbenchPanel(page,"config-set"),sharedRow=files.getByRole("row").filter({hasText:sourceName});await expect(sharedRow).toContainText("共享引用 · 版本 1 · 只读");
     await sharedRow.getByRole("button",{name:"查看源码",exact:true}).click();await expect(page.getByRole("region",{name:"DTS 源码",exact:true})).toContainText("SnapshotShared");await expect(page.getByRole("radio",{name:"编辑",exact:true})).toHaveCount(0);
