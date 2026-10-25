@@ -175,6 +175,13 @@ export function ProjectConfigurationWorkbench({
   const conflictClient = useMemo(() => createCanonicalConflictClient(apiClient), [apiClient]);
   const additionClient = useMemo(() => createCanonicalMemberAdditionClient(apiClient), [apiClient]);
   const sharedDtsiClient = useMemo(() => apiClient ? createSharedDtsiClient(apiClient) : undefined, [apiClient]);
+  const sharedImportScope = useMemo(() => ({currentUserId, organizationId, projectId:project.id, search, sharedDtsiClient}), [currentUserId, organizationId, project.id, search, sharedDtsiClient]);
+  const currentSharedImport = useRef<object | null>(sharedImportScope);
+  currentSharedImport.current = sharedImportScope;
+  useEffect(() => {
+    currentSharedImport.current = sharedImportScope;
+    return () => { if(currentSharedImport.current === sharedImportScope) currentSharedImport.current = null; };
+  },[sharedImportScope]);
   const removalClient = useMemo(() => createAdministratorMemberRemovalClient(apiClient), [apiClient]);
   const { toast } = useToast();
   const [memberRemovalTarget, setMemberRemovalTarget] = useState<DtsConfigSetMemberFile | null>(null);
@@ -427,6 +434,9 @@ export function ProjectConfigurationWorkbench({
     () => navigationSession.resolveSelectedConfigSet({ search, configSets }),
     [configSets, navigationSession, search]
   );
+  const sharedImportRevisionId = revisionGate.loading || revisionGate.error ? null : revisionGate.revisions
+    .filter(revision => revision.configSetId === selectedConfigSet?.id && ["resolved","validated","compiled","pending_approval"].includes(revision.status))
+    .sort((left,right) => right.revisionNumber-left.revisionNumber)[0]?.id ?? null;
   const configBaselines = useMemo(
     () => baselines.filter((item) => item.configSetId === selectedConfigSet?.id),
     [baselines, selectedConfigSet?.id]
@@ -2158,6 +2168,19 @@ export function ProjectConfigurationWorkbench({
         onCanonicalAdd={apiMode ? () => {setSwitchSharedMember(null);setMemberAdditionOpen(true);} : undefined}
         onSwitchSharedVersion={apiMode?member=>{setSwitchSharedMember(member);setMemberAdditionOpen(true);}:undefined}
         onSetRoot={apiMode ? setSetRootTarget : undefined}
+        onCreateShared={apiMode && sharedDtsiClient && sharedImportRevisionId ? member => {
+          void runAction("create-shared",async () => {
+            if(!member.currentVersionId) throw new Error("请先重新核对配置修订与文件版本。");
+            let draft;
+            try { draft = await sharedDtsiClient.importProject(project.id,selectedConfigSet.id,{name:member.fileName,
+              configRevisionId:sharedImportRevisionId,fileId:member.fileId,fileVersionId:member.currentVersionId}); }
+            catch(error) { if(currentSharedImport.current === sharedImportScope) throw error;return; }
+            if(currentSharedImport.current !== sharedImportScope) return;
+            const params = new URLSearchParams({resource:draft.resourceId,version:"draft"});
+            if(resolvedOrganizationId) params.set("organization",resolvedOrganizationId);
+            onNavigate(`/parameter-admin/sources?${params}`);
+          });
+        } : undefined}
       /> : null}
       {memberAdditionOpen && canAdmin && selectedConfigSet ? <WorkbenchMemberAdditionDialog key={`${resolvedOrganizationId}:${project.id}:${selectedConfigSet.id}`} projectId={project.id} configSets={configSets}
         client={additionClient} sharedClient={sharedDtsiClient}

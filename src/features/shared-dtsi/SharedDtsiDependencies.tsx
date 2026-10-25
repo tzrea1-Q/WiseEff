@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { presentError } from "@/infrastructure/http/presentError";
 
-export function SharedDtsiDependencies({client,value,onChange,resourceId,disabled}:{client:ReturnType<typeof createSharedDtsiClient>;
-  value:NonNullable<SharedDtsiDraftInput["dependencies"]>;onChange:(value:NonNullable<SharedDtsiDraftInput["dependencies"]>)=>void;resourceId?:string;disabled:boolean}) {
+export function SharedDtsiDependencies({client,value,onChange,resourceId,disabled,sourceHref}:{client:ReturnType<typeof createSharedDtsiClient>;
+  value:NonNullable<SharedDtsiDraftInput["dependencies"]>;onChange:(value:NonNullable<SharedDtsiDraftInput["dependencies"]>)=>void;resourceId?:string;disabled:boolean;
+  sourceHref?:(resourceId:string,versionId:string)=>string}) {
   const [open,setOpen]=useState(value.length>0),[query,setQuery]=useState(""),[offset,setOffset]=useState(0),[total,setTotal]=useState(0);
   const [resources,setResources]=useState<SharedDtsiResourceSummary[]>([]),[versions,setVersions]=useState<SharedDtsiVersionSummary[]>([]);
   const [selected,setSelected]=useState(""),[versionId,setVersionId]=useState(""),[mountPath,setMountPath]=useState("");
@@ -36,6 +37,7 @@ export function SharedDtsiDependencies({client,value,onChange,resourceId,disable
   return <details open={open} onToggle={event=>setOpen(event.currentTarget.open)} className="shared-dtsi-dependencies"><summary>固定资源依赖{value.length?`（${value.length}）`:"（按需）"}</summary>
     <p>仅选择明确发布的版本。挂载目录中的路径可由本资源 include；预览会检查完整传递依赖。</p>
     {value.length?<ul>{value.map((pin,index)=><li key={pin.resourceId}><span>{labels[pin.versionId]??labels[pin.resourceId]??`固定依赖 ${index+1}`} · {pin.mountPath||"资源根目录"}</span>
+      {sourceHref?<a href={sourceHref(pin.resourceId,pin.versionId)} target="_blank" rel="noreferrer" aria-label={`查看固定依赖 ${index+1} 源码`}>查看源码</a>:null}
       <Button variant="ghost" disabled={disabled} onClick={()=>onChange(value.filter((_,at)=>at!==index))}>移除依赖 {index+1}</Button></li>)}</ul>:<p>尚未选择固定资源依赖。</p>}
     <div className="shared-dtsi-fields">
       <label>搜索依赖资源<Input aria-label="搜索依赖资源" value={query} disabled={disabled} onChange={event=>{setQuery(event.target.value);setSelected("");setVersionId("");setOffset(0);}} /></label>

@@ -37,7 +37,7 @@ export async function compareSharedDtsiVersions(db:Database,auth:AuthContext,res
   const before=await getSharedDtsiVersion(db,auth,resourceId,beforeId),after=await getSharedDtsiVersion(db,auth,resourceId,afterId);
   const prepare=async(version:SharedDtsiVersion)=>{
     const source=await completePublicationSource(db,auth,{id:version.id,resourceId:version.resourceId,name:version.name,revision:1,updatedAt:version.createdAt,
-      changeDescription:version.changeDescription,members:version.members,dependencies:version.manifest.dependencies,buildInputs:declaredInputs(version)});
+      changeDescription:version.changeDescription,members:version.members,dependencies:version.manifest.dependencies,buildInputs:declaredInputs(version),sourceEvidence:version.manifest.sourceEvidence});
     if(!isDeepStrictEqual(source.manifest,version.manifest))throw new ApiError("CONFLICT","固定版本的源码或预处理证明不匹配，请联系管理员检查工具链。",{reason:"shared-source-comparison-stale"});
     const closure=await loadSharedDtsiClosure(db,auth,version.manifest.dependencies??[],resourceId);
     const sources=[...version.members.map(member=>({...member,resourceId,resourceName:version.name})),

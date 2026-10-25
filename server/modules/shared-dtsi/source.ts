@@ -13,8 +13,10 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
   const includeSearchPaths = draft.buildInputs?.includeSearchPaths ?? [], defines = draft.buildInputs?.defines ?? {};
   const reject=(sourceName:string,offset:number,message:string,code?:string):never=>{
     const location=offsetToLineColumn(byName.get(sourceName)!.content,offset);
-    throw new ApiError("VALIDATION_FAILED",`${sourceName}:${location.line}:${location.column}：${message}`,
-      {diagnostics:[{sourceName,...location,message,...(code ? { code } : {})}]});
+    const prefix=[`${sourceName}：`,`${sourceName}:`].find(value=>message.startsWith(value));
+    const detail=prefix?message.slice(prefix.length).replace(/^\d+(?::\d+)?[：:]\s*/u,"").trimStart():message;
+    throw new ApiError("VALIDATION_FAILED",`${sourceName}:${location.line}:${location.column}：${detail}`,
+      {diagnostics:[{sourceName,...location,message:detail,...(code ? { code } : {})}]});
   };
   const graph: SharedDtsiManifest["includeGraph"] = [], included = new Set<string>();
   const cpp = requiresDtsPreprocessing(files, defines);
@@ -127,7 +129,7 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
   }
   if(!declarations)reject(roots[0]?.sourceName??draft.members[0]!.sourceName,0,"源码中没有可发布的设备树声明。");
   const members=draft.members.map(member=>({...member,checksum:`sha256:${createHash("sha256").update(member.content).digest("hex")}`,sizeBytes:Buffer.byteLength(member.content)}));
-  const manifest:SharedDtsiManifest={schemaVersion:"shared-dtsi/v1",members:members.map(({content:_,...member})=>({...member,role:/\.dtsi?$/u.test(member.sourceName)?"include":"header"})),
+  const manifest:SharedDtsiManifest={schemaVersion:"shared-dtsi/v1",...(draft.sourceEvidence ? {sourceEvidence:draft.sourceEvidence}:{}),members:members.map(({content:_,...member})=>({...member,role:/\.dtsi?$/u.test(member.sourceName)?"include":"header"})),
     includeGraph:graph,buildInputs:{includeSearchPaths, ...(preprocessing?.receipt.defines ? { defines: preprocessing.receipt.defines } : {}), ...(preprocessing ? { preprocessing: preprocessing.receipt } : {})},externalReferences:[...references].filter(reference=>reference.startsWith("&{")
       ?!paths.has(dtsReferencePath(reference.slice(1))!):!labels.has(reference)).sort()};
   return {members,manifest,preprocessing,digest:`sha256:${createHash("sha256").update(JSON.stringify({name:draft.name,manifest,changeDescription:draft.changeDescription})).digest("hex")}`};

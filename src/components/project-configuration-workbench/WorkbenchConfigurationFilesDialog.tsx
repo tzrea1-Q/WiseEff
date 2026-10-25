@@ -46,17 +46,18 @@ export type WorkbenchConfigurationFilesDialogProps = {
   onCanonicalAdd?: () => void;
   onSetRoot?: (member: DtsConfigSetMemberFile) => void;
   onSwitchSharedVersion?: (member:DtsConfigSetMemberFile)=>void;
+  onCreateShared?: (member: DtsConfigSetMemberFile) => void;
 };
 
 export function WorkbenchConfigurationFilesDialog({
   open, onClose, configSet, members, canAdmin, pendingAction, loading, error, operationError = "", ready, canonical, onRetry,
   availableFiles, addErrors, memberFileId, memberRole, memberSortOrder, onMemberFileIdChange,
   onMemberRoleChange, onMemberSortOrderChange, onAddMember, onRemoveMember, canRequestReviewedMemberRemoval,
-  onOpenFile, onUpdateFile, onOpenVersions, onAddSourceFile, onCanonicalAdd, onReviewedMemberRemoval, onSetRoot,onSwitchSharedVersion
+  onOpenFile, onUpdateFile, onOpenVersions, onAddSourceFile, onCanonicalAdd, onReviewedMemberRemoval, onSetRoot,onSwitchSharedVersion,onCreateShared
 }: WorkbenchConfigurationFilesDialogProps) {
   const addErrorId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
-  const busy = pendingAction === "add-member" || pendingAction === "remove-member" || Boolean(pendingAction?.startsWith("remove-member-"));
+  const busy = pendingAction === "create-shared" || pendingAction === "add-member" || pendingAction === "remove-member" || Boolean(pendingAction?.startsWith("remove-member-"));
   const checked = ready && !loading && !error;
   const canAdd = canAdmin && checked && !canonical && !onCanonicalAdd;
   const canRemove = (member: DtsConfigSetMemberFile) => !member.sharedReference && canAdmin && checked
@@ -78,9 +79,10 @@ export function WorkbenchConfigurationFilesDialog({
       </header>
       <div className="workbench-configuration-files-dialog__body" aria-busy={loading || busy}>
         {canonical ? <p className="workbench-configuration-files-dialog__note">此配置已登记来源。添加或移除文件均需预览并确认，项目文件及历史会保留。</p> : null}
+        {canAdmin && checked && onCreateShared ? <p className="workbench-configuration-files-dialog__note">创建共享资源会把所选私有源码及依赖复制到本组织共享草稿；原项目配置保留。</p> : null}
         {canAdmin && checked && onCanonicalAdd ? <Button type="button" disabled={busy} onClick={onCanonicalAdd}>添加配置文件</Button> : null}
         {loading ? <p role="status">正在核对配置文件…</p> : null}
-        {busy && pendingAction !== "add-member" ? <p role="status">正在移除文件…</p> : null}
+        {busy && pendingAction !== "add-member" ? <p role="status">{pendingAction === "create-shared" ? "正在读取冻结源码及依赖…" : "正在移除文件…"}</p> : null}
         {operationError ? <p className="workbench-configuration-files-dialog__operation-error" role="alert">{operationError}</p> : null}
         {error ? <div className="workbench-configuration-files-dialog__error" role="alert">
           <p>{error}</p><Button type="button" variant="outline" size="sm" disabled={loading || busy} onClick={onRetry}>重新核对</Button>
@@ -109,6 +111,8 @@ export function WorkbenchConfigurationFilesDialog({
                 ...(canAdmin&&checked&&member.sharedReference?.direct&&onSwitchSharedVersion
                   && members.find(item=>item.sharedReference?.resourceId===member.sharedReference!.resourceId)?.fileId===member.fileId
                   ?[{id:"switch-shared",label:"切换共享版本",disabled:busy,onSelect:()=>onSwitchSharedVersion(member)}]:[]),
+                ...(canAdmin && checked && !member.sharedReference && member.format === "dts" && /\.dtsi?$/u.test(member.fileName) && onCreateShared
+                  ? [{id:"create-shared",label:"创建共享资源",disabled:busy,onSelect:()=>onCreateShared(member)}] : []),
                 ...(canAdmin && checked && !member.sharedReference && member.format === "dts" && member.role !== "base" && onSetRoot
                   ? [{ id: "set-root", label: "设为根文件", disabled: busy, onSelect: () => onSetRoot(member) }] : []),
                 ...(canRemove(member) ? [{ id: "remove", label: canonical ? "预览移除影响" : "从配置移除", destructive: true as const,
