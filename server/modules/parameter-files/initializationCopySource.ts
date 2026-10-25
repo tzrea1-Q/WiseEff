@@ -71,7 +71,9 @@ export async function loadInitializationCopySources(db: Queryable, storage: Obje
         defines: exact.revision.preprocessing?.defines ?? {} }).success) conflict("固定私有副本最多声明 16 个搜索目录和 32 个构建宏，请先整理来源构建输入。");
       group = { key: `${set.projectId}:${set.id}:${revision.id}`, sourceProjectId: set.projectId, sourceConfigSetId: set.id,
         sourceConfigRevisionId: revision.id, name: set.name,
-        manifest: { organizationId, projectId: set.projectId, configSetId: set.id, ...exact.revision,
+        manifest: { organizationId, projectId: set.projectId, configSetId: set.id,
+          entryFile: exact.revision.entryFile, includeSearchPaths: exact.revision.includeSearchPaths,
+          overlayOrder: exact.revision.overlayOrder, declaredBuildInputs: exact.revision.declaredBuildInputs,
           preprocessing: exact.revision.preprocessing ?? undefined,
           members: exact.members.map(row => ({ memberId: row.id, fileId: row.fileId, fileVersionId: row.fileVersionId,
             sourceName: row.sourceName, format: row.format, role: row.role, sortOrder: row.sortOrder,

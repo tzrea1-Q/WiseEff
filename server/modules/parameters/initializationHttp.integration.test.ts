@@ -179,6 +179,28 @@ it("previews and independently approves a complete private configuration copy wi
   expect(exported.bodyText).toBe('{"unmanaged":17}\n');
 }, 60_000);
 
+it("copies a complete governed JSON configuration with a new exact source occurrence and Binding", async () => {
+  const projectId = "target-init-full-json", path = `/api/v1/parameters/projects/${projectId}/initialization`;
+  const original = await exportBinding(SOURCE, sourceBindingId);
+  const preview = await api<{ items: InitializationSnapshotItemDto[]; configSnapshots: unknown[] }>(0, `${path}/copy-preview`, {
+    primarySourceProjectId: SOURCE, supplementSourceProjectIds: [] });
+  expect(preview.status, preview.bodyText).toBe(200); expect(preview.body.items).toHaveLength(1);
+  expect((await api(0, "/api/v1/parameters/admin/projects", { id: projectId, name: projectId, code: "FULLJSON" })).status).toBe(201);
+  const saved = await api(0, `${path}/draft`, { projectName: projectId, projectCode: "FULLJSON", ownerUserId: AUTHOR,
+    sourceProjectIds: [SOURCE], primarySourceProjectId: SOURCE, supplementSourceProjectIds: [], selectedModuleIds: [], selectedRisks: [],
+    selectedSourceBindingIds: [sourceBindingId], bindingSnapshots: preview.body.items, sourceConfigSnapshots: preview.body.configSnapshots,
+    emptyLibrary: false, notes: "Complete governed JSON" }, "PUT"); expect(saved.status, saved.bodyText).toBe(200);
+  const submitted = await api<{ item: { id: string } }>(0, `${path}/submit`, {}); expect(submitted.status).toBe(201);
+  const approved = await api(1, `/api/v1/parameters/admin/initialization-reviews/${submitted.body.item.id}/approve`, {});
+  expect(approved.status, approved.bodyText).toBe(200);
+  const values = await api<{ items: Array<{ id: string }> }>(0, `/api/v2/projects/${projectId}/parameter-bindings`);
+  expect(values.status).toBe(200); expect(values.body.items).toHaveLength(1); expect(values.body.items[0]!.id).not.toBe(sourceBindingId);
+  const copied = await exportBinding(projectId, values.body.items[0]!.id);
+  expect(copied.files).toEqual(original.files);
+  for (const field of ["configSetId", "configRevisionId", "fileId", "fileVersionId", "sourceOccurrenceId"] as const)
+    expect(copied.manifest[field]).not.toBe(original.manifest[field]);
+});
+
 it("rolls back a failed source copy and retries the same approved initialization exactly once", async () => {
   const projectId = "target-init-retry";
   const pending = await pendingInitialization(projectId);

@@ -200,6 +200,8 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
       return;
     }
     setError("");
+    setCompleteCopy(false);
+    setConfigSnapshots([]);
     setCanonicalSnapshots([]);
     setSelectedParameterIds([]);
     setStartFromEmpty((current) => {
@@ -217,6 +219,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
       return;
     }
     setError("");
+    setConfigSnapshots([]);
     setCanonicalSnapshots([]);
     setSelectedParameterIds([]);
     setStartFromEmpty(false);
@@ -611,6 +614,9 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
                                     return;
                                   }
                                   setError("");
+                                  setConfigSnapshots([]);
+                                  setCanonicalSnapshots([]);
+                                  setSelectedParameterIds([]);
                                   setPrimarySourceProjectId(project.id);
                                 }}
                               />
