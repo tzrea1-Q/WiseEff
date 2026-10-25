@@ -46,6 +46,7 @@ export type WorkbenchConfigurationFilesDialogProps = {
   onCanonicalAdd?: () => void;
   onSetRoot?: (member: DtsConfigSetMemberFile) => void;
   onSwitchSharedVersion?: (member:DtsConfigSetMemberFile)=>void;
+  onRemoveSharedReference?: (member:DtsConfigSetMemberFile)=>void;
   onCreateShared?: (member: DtsConfigSetMemberFile) => void;
 };
 
@@ -53,7 +54,7 @@ export function WorkbenchConfigurationFilesDialog({
   open, onClose, configSet, members, canAdmin, pendingAction, loading, error, operationError = "", ready, canonical, onRetry,
   availableFiles, addErrors, memberFileId, memberRole, memberSortOrder, onMemberFileIdChange,
   onMemberRoleChange, onMemberSortOrderChange, onAddMember, onRemoveMember, canRequestReviewedMemberRemoval,
-  onOpenFile, onUpdateFile, onOpenVersions, onAddSourceFile, onCanonicalAdd, onReviewedMemberRemoval, onSetRoot,onSwitchSharedVersion,onCreateShared
+  onOpenFile, onUpdateFile, onOpenVersions, onAddSourceFile, onCanonicalAdd, onReviewedMemberRemoval, onSetRoot,onSwitchSharedVersion,onRemoveSharedReference,onCreateShared
 }: WorkbenchConfigurationFilesDialogProps) {
   const addErrorId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -111,6 +112,9 @@ export function WorkbenchConfigurationFilesDialog({
                 ...(canAdmin&&checked&&member.sharedReference?.direct&&onSwitchSharedVersion
                   && members.find(item=>item.sharedReference?.resourceId===member.sharedReference!.resourceId)?.fileId===member.fileId
                   ?[{id:"switch-shared",label:"切换共享版本",disabled:busy,onSelect:()=>onSwitchSharedVersion(member)}]:[]),
+                ...(canAdmin&&checked&&member.sharedReference?.direct&&onRemoveSharedReference
+                  && members.find(item=>item.sharedReference?.resourceId===member.sharedReference!.resourceId)?.fileId===member.fileId
+                  ?[{id:"remove-shared",label:"移除引用",destructive:true as const,disabled:busy,onRequestConfirmation:()=>onRemoveSharedReference(member)}]:[]),
                 ...(canAdmin && checked && !member.sharedReference && member.format === "dts" && /\.dtsi?$/u.test(member.fileName) && onCreateShared
                   ? [{id:"create-shared",label:"创建共享资源",disabled:busy,onSelect:()=>onCreateShared(member)}] : []),
                 ...(canAdmin && checked && !member.sharedReference && member.format === "dts" && member.role !== "base" && onSetRoot

@@ -196,7 +196,12 @@ export const S2_SCH_0298_NATIVE_FINGERPRINT =
 export const S2_SCH_0304_FINGERPRINT =
   "6df59e65136c9b369f6b7906c43718dddff41f1022d545f1fee023fe9413ca5a";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0304_FINGERPRINT;
+/** Fresh PostgreSQL through 0309 includes 0308's exact absence-member FK
+ * projection. All earlier measured schema fingerprints remain immutable. */
+export const S2_SCH_0308_FINGERPRINT =
+  "49903364f8405e6c24211f3885457ca81e065d51eedec89b5de6a47c8573f840";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0308_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

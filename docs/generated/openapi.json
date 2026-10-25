@@ -78060,6 +78060,22 @@
             ],
             "additionalProperties": false
           },
+          "removeSharedReference": {
+            "type": "object",
+            "properties": {
+              "resourceId": {
+                "type": "string"
+              },
+              "versionId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "resourceId",
+              "versionId"
+            ],
+            "additionalProperties": false
+          },
           "setAsRoot": {
             "type": "boolean",
             "enum": [
@@ -78180,7 +78196,10 @@
                     "type": "number"
                   },
                   "afterVersion": {
-                    "type": "number"
+                    "type": [
+                      "number",
+                      "null"
+                    ]
                   },
                   "dependencies": {
                     "type": "object",
@@ -78380,6 +78399,30 @@
                   "sources",
                   "effective",
                   "build"
+                ],
+                "additionalProperties": false
+              },
+              "sharedRemoval": {
+                "type": "object",
+                "properties": {
+                  "resourceId": {
+                    "type": "string"
+                  },
+                  "versionId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "resourceId",
+                  "versionId",
+                  "name",
+                  "version"
                 ],
                 "additionalProperties": false
               },
@@ -78645,6 +78688,22 @@
                 "type": "string"
               },
               "replaceVersionId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "resourceId",
+              "versionId"
+            ],
+            "additionalProperties": false
+          },
+          "removeSharedReference": {
+            "type": "object",
+            "properties": {
+              "resourceId": {
+                "type": "string"
+              },
+              "versionId": {
                 "type": "string"
               }
             },
