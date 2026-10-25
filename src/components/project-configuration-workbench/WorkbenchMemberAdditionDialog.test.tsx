@@ -30,6 +30,14 @@ it("previews removal without browsing versions, cancels and retries with the sam
   expect(sharedClient.versions).not.toHaveBeenCalled();
 });
 
+it("returns a required dependency to composition instead of offering an ineffective root-source edit",async()=>{
+  const user=userEvent.setup(),dismiss=vi.fn(),client={upload:vi.fn(),apply:vi.fn(),preview:vi.fn().mockRejectedValue(new WiseEffApiError("CONFLICT","其他直接引用仍依赖此资源",{reason:"shared-removal-dependency"},"request"))};
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"}]} initialConfigSetId="set" availableFiles={[]} removeReference={{resourceId:"resource",versionId:"version",version:1}} projectRoot={{fileId:"root",sourceName:"board.dts"}} onRecoverSwitch={vi.fn()} client={client} onDismiss={dismiss} onApplied={vi.fn()}/>);
+  await user.click(screen.getByRole("button",{name:"预览移除引用"}));await screen.findByRole("alert");
+  expect(screen.queryByRole("button",{name:"编辑项目根文件"})).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button",{name:"返回配置组成"}));expect(dismiss).toHaveBeenCalledOnce();
+});
+
 it("locates a blocked project override and retains the task input across correction without retaining its proof", async () => {
   const user=userEvent.setup(), recover=vi.fn(), resourceId="11111111-1111-4111-8111-111111111111",old="22222222-2222-4222-8222-222222222222",target="33333333-3333-4333-8333-333333333333";
   const client={upload:vi.fn(),apply:vi.fn(),preview:vi.fn().mockRejectedValue(new WiseEffApiError("VALIDATION_FAILED","项目覆盖不满足目标约束",{switchConflicts:[{message:"iin_max 超出约束",sourceName:"board.dts",fileId:"root",fileVersionId:"root-v1",line:9,node:"/charger",property:"iin_max"}]},"request"))};

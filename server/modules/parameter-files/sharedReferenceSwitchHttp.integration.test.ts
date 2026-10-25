@@ -298,6 +298,29 @@ describe("shared reference version switches through the real API role", () => {
       beforeRoot=afterRoot;
     }
   },120_000);
+  it("keeps necessary transitive references and retains an independently declared shared dependency",async()=>{
+    const publish=async(name:string,sourceName:string,dependencies:unknown[]=[])=>{
+      const draft=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name,sourceName,content:`/ { ${name} { status = "okay"; }; };`,dependencies,changeDescription:"Required closure"});expect(draft.status,draft.bodyText).toBe(201);
+      const resourceId=draft.body.item.resourceId,p=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publication-preview`,{expectedRevision:1});expect(p.status,p.bodyText).toBe(201);
+      const v=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publications`,{previewId:p.body.item.id,idempotencyKey:name});expect(v.status,v.bodyText).toBe(201);return{resourceId,versionId:v.body.item.id};
+    };
+    const leaf=await publish("removal_leaf","removal-leaf.dtsi"),parent=await publish("removal_parent","removal-parent.dtsi",[{...leaf,mountPath:""}]);
+    const add=async(reference:typeof leaf,key:string)=>{
+      const body={sharedReference:reference,role:"misc",sortOrder:3},p=await post<Preview>(`${path(A)}/preview`,body);expect(p.status,p.bodyText).toBe(200);
+      const result=await post<Applied>(`${path(A)}/apply`,{...body,proofToken:p.body.item.proofToken,reason:"Declared fixed dependency",clientMutationId:key});expect(result.status,result.bodyText).toBe(200);
+    };
+    const remove=async(reference:typeof leaf,key:string)=>{
+      const body={removeSharedReference:reference,role:"misc",sortOrder:0},p=await post<Preview>(`${path(A)}/preview`,body);expect(p.status,p.bodyText).toBe(200);
+      const result=await post<Applied>(`${path(A)}/apply`,{...body,proofToken:p.body.item.proofToken,reason:"Remove only this direct reference",clientMutationId:key});expect(result.status,result.bodyText).toBe(200);return p.body.item;
+    };
+    await add(leaf,"removal-direct-leaf");await add(parent,"removal-direct-parent");
+    const required=await post(`${path(A)}/preview`,{removeSharedReference:leaf,role:"misc",sortOrder:0});expect(required.status,required.bodyText).toBe(409);
+    const retained=await remove(parent,"removal-parent-keep-leaf");expect(retained.sharedComposition).toContainEqual(expect.objectContaining({...leaf,direct:true}));
+    await remove(leaf,"removal-last-leaf");await add(parent,"removal-parent-readd");
+    const transitive=await post(`${path(A)}/preview`,{removeSharedReference:leaf,role:"misc",sortOrder:0});expect(transitive.status,transitive.bodyText).toBe(409);
+    expect((await remove(parent,"removal-parent-with-closure")).sharedComposition?.some(item=>item.resourceId===leaf.resourceId)).toBe(false);
+  },120_000);
+
   it("removes a direct shared reference atomically, retaining private JSON, deleted Binding history and the other project", async () => {
     const draft=await post<{item:{resourceId:string;revision:number}}>("/api/v2/shared-dtsi",{name:"Removable limits",sourceName:"removable.dtsi",content:'/ { removable { compatible = "acme,power"; iin_max = <26>; }; };',changeDescription:"Removal fixture"});
     expect(draft.status,draft.bodyText).toBe(201);
@@ -318,15 +341,44 @@ describe("shared reference version switches through the real API role", () => {
     expect(preview.body.item.members.some(member=>member.sourceName==="removable.dtsi")).toBe(false);
     expect((await post(`${path(B)}/preview`,remove,editor)).status).toBe(403);
     const confirm={...remove,proofToken:preview.body.item.proofToken,reason:"Remove this project reference",clientMutationId:"remove-reference"};
-    const applied=await post<Applied>(`${path(B)}/apply`,confirm);expect(applied.status,applied.bodyText).toBe(200);
-    expect((await post(`${path(B)}/apply`,confirm)).body).toEqual(applied.body);
+    await db.query("delete from user_role_bindings where id='shared-ref-role'");
+    try{expect((await post(`${path(B)}/apply`,confirm)).status).toBe(403);}
+    finally{await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('shared-ref-role',$1,$2,'admin')",[ADMIN,ORG]);}
+    const filesBefore=(await requestJson(server(),`/api/v1/projects/${B}/config-sets/${sets[B]}/files`)).body,objectsBefore=await readdir(directory,{recursive:true});
+    expect((await post(`${path(B)}/apply`,confirm,admin,{...storage,put:async()=>{throw new Error("Injected removal storage failure");}})).status).toBe(500);
+    for(const [label,mutation] of [
+      ["present-member",`if new.value_state='present' then select file_id,file_version_id into new.file_id,new.file_version_id from public.dts_config_revision_members where shared_reference->>'versionId'='${versionId}' limit 1; end if;`],
+      ["wrong-before",`if new.locator->>'kind'='dts-source-absence' then new.locator=jsonb_set(new.locator,'{baseFileVersionId}','"forged-before"'); new.locator_digest=parameter_catalog.canonical_source_absence_locator_digest(new.locator); end if;`],
+      ["forged-absence",`if new.locator->>'kind'='dts-source-absence' then new.delete_proof=jsonb_set(new.delete_proof,'{beforeSourceDigest}','"sha256:${"0".repeat(64)}"'); end if;`]
+    ]) {
+      await db.query(`create function reject_bad_removal_pin() returns trigger language plpgsql security definer set search_path=pg_catalog,public,parameter_catalog as $$begin ${mutation} return new; end $$`);
+      await db.query("create trigger reject_bad_removal_pin before insert on parameter_catalog.project_value_source_pins for each row execute function reject_bad_removal_pin()");
+      try {expect((await post(`${path(B)}/apply`,{...confirm,clientMutationId:label})).status,label).toBe(500);}
+      finally {await db.query("drop trigger reject_bad_removal_pin on parameter_catalog.project_value_source_pins");await db.query("drop function reject_bad_removal_pin()");}
+      expect((await requestJson(server(),`/api/v1/projects/${B}/config-sets/${sets[B]}/files`)).body).toEqual(filesBefore);
+      expect(await readdir(directory,{recursive:true})).toEqual(objectsBefore);
+    }
+    await db.query(`create function reject_removal_audit() returns trigger language plpgsql as $$begin if new.metadata->>'operation'='remove_shared_reference' then raise exception 'Injected removal audit failure'; end if; return new; end $$`);
+    await db.query("create trigger reject_removal_audit before insert on public.audit_events for each row execute function reject_removal_audit()");
+    try {expect((await post(`${path(B)}/apply`,confirm)).status).toBe(500);}
+    finally{await db.query("drop trigger reject_removal_audit on public.audit_events");await db.query("drop function reject_removal_audit()");}
+    expect((await requestJson(server(),`/api/v1/projects/${B}/config-sets/${sets[B]}/files`)).body).toEqual(filesBefore);
+    expect(await readdir(directory,{recursive:true})).toEqual(objectsBefore);
+    const competing={...confirm,clientMutationId:"remove-reference-concurrent"},attempts=await Promise.all([post<Applied>(`${path(B)}/apply`,confirm),post<Applied>(`${path(B)}/apply`,competing)]);
+    expect(attempts.map(result=>result.status).sort()).toEqual([200,409]);const applied=attempts.find(result=>result.status===200)!;
+    expect((await post(`${path(B)}/apply`,attempts[0]!.status===200?confirm:competing)).body).toEqual(applied.body);
     expect((await post(`${path(B)}/apply`,{...confirm,clientMutationId:"remove-stale"})).status).toBe(409);
     expect((await requestJson(server(),`/api/v1/projects/${A}/config-sets/${sets[A]}/files`)).body).toEqual(otherBefore.body);
     const after=await listCatalogBindingRowsForProject(api,admin,{projectId:B});
     const removed=before.find(row=>row.rawValue==="<26>")!;expect(removed).toBeDefined();
-    expect(after.find(row=>row.id===removed.id)?.valueState).toBe("deleted");
+    expect(after.find(row=>row.id===removed.id)).toBeUndefined();
+    const history=await requestJson<{items:{valueState:string}[]}>(server(),`/api/v2/projects/${B}/parameter-bindings/${removed.id}/change-history`);
+    expect(history.status,history.bodyText).toBe(200);expect(history.body.items.some(row=>row.valueState==="deleted")).toBe(true);
     const files=await requestJson<{items:{fileName:string}[]}>(server(),`/api/v1/projects/${B}/config-sets/${sets[B]}/files`);
     expect(files.body.items.map(row=>row.fileName)).toContain("private.json");
     expect(files.body.items.map(row=>row.fileName)).not.toContain("removable.dtsi");
+    const readd=await post<Preview>(`${path(B)}/preview`,body);expect(readd.status,readd.bodyText).toBe(200);
+    const restored=await post<Applied>(`${path(B)}/apply`,{...body,proofToken:readd.body.item.proofToken,reason:"Restore the same exact published source",clientMutationId:"remove-readd"});expect(restored.status,restored.bodyText).toBe(200);
+    expect((await listCatalogBindingRowsForProject(api,admin,{projectId:B})).find(row=>row.rawValue==="<26>")?.id).toBe(removed.id);
   },120_000);
 });
