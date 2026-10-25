@@ -115,6 +115,8 @@ To publish, enter a **Change description** and choose **Preview publication**. T
 
 Use **Versions** to open exact historical source. **Create new version** copies the current published source into a draft with the same member identity. Discarding that draft retains the published version and history. If another administrator changes the draft after preview, regenerate the preview from current source; a failed request retains input for retry.
 
+Permanent Organization deletion by a platform administrator includes that Organization's shared DTSI drafts, previews and published history in its impact preview and cleanup. Ordinary resource operations retain published history; other Organizations' source and the platform Catalog remain intact.
+
 Reopen a resource from the list to continue editing. If another administrator saved first, your input stays on screen and saving is blocked until you reload and check the current draft. Leaving with unsaved edits asks for confirmation. **Discard draft** removes the never-published resource and its draft after confirmation. Readers cannot create, save or discard drafts.
 
 ## Initialize or import project parameters
