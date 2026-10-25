@@ -72,6 +72,9 @@ export interface DtsNodeSourceChainEntry {
   fileName: string;
   nodeLocator: string;
   effect: DtsNodeEffect;
+  /** Exact original delete directive, never a synthetic property occurrence. */
+  origin?: DtsSourceChainEntry["origin"];
+  deletedNodeLocator?: string;
 }
 
 export interface DtsEffectiveProperty {
@@ -315,7 +318,18 @@ function resolveSegment(segments: readonly Segment[], offset: number): string {
 
 function ensureNode(ctx: WalkContext, locator: string, name: string, unitAddress: string | undefined, fileName: string,isLabelStub=false): MutableNode {
   const existing = ctx.byLocator.get(locator);
-  if (existing) {if(!isLabelStub)existing.isLabelStub=false;return existing;}
+  if (existing) {
+    if (!isLabelStub) {
+      existing.isLabelStub = false;
+      if (existing.deleted) {
+        existing.deleted = false;
+        existing.properties.clear();
+        existing.labels.clear();
+        existing.sourceChain.push({ fileName, nodeLocator: displayLocator(locator), effect: "create" });
+      }
+    }
+    return existing;
+  }
   ctx.retainMetadata(locator, name, fileName);
   const node: MutableNode = {
     locator,
@@ -419,8 +433,15 @@ function walkDeleteNode(ctx: WalkContext, parent: MutableNode, cst: DtsDeleteNod
     });
     return;
   }
-  target.deleted = true;
-  target.sourceChain.push({ fileName, nodeLocator: displayLocator(target.locator), effect: "delete" });
+  const deletedNodeLocator = displayLocator(target.locator);
+  for (const node of ctx.byLocator.values()) {
+    if (node.locator !== target.locator && !node.locator.startsWith(`${target.locator}/`)) continue;
+    node.deleted = true;
+    for (const label of node.labels) if (ctx.byLabel.get(label) === node) ctx.byLabel.delete(label);
+    node.labels.clear();
+    node.sourceChain.push({ fileName, nodeLocator: displayLocator(node.locator), effect: "delete",
+      origin: ctx.originForSpan(cst.span), deletedNodeLocator });
+  }
 }
 
 function walkNode(ctx: WalkContext, cst: DtsNodeCst, parentLocator: string): void {

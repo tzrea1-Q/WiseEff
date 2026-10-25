@@ -5,6 +5,21 @@ import type { EffectiveTopologyNode } from "@/domain/parameter-topology/types";
 import { WorkbenchEffectiveConfiguration } from "./WorkbenchEffectiveConfiguration";
 
 describe("effective project configuration", () => {
+  it("prepares formal node actions without a parameter Binding and distinguishes explicit deletion from removing an override", async () => {
+    const prepare = vi.fn().mockResolvedValue(undefined);
+    const node: EffectiveTopologyNode = { id: "n", logicalNodeId: "logical", locator: "/device", name: "device", parentLogicalNodeId: null,
+      effects: [{ id: "p", propertyName: "limit", effectKind: "set", nodeOccurrenceId: "o", propertyOccurrenceId: "p1", sourceOrder: 0,
+        rawText: "<25>", source: { fileId: "local", fileVersionId: "v1", sourceName: "board.dts" } }] };
+    render(<WorkbenchEffectiveConfiguration node={node} projectId="project" configSetId="config" revisionId="revision" search="" onPrepareOverride={prepare} />);
+    await userEvent.click(screen.getByRole("combobox", { name: "节点操作" }));
+    await userEvent.click(screen.getByRole("option", { name: "在本项目禁用" }));
+    await userEvent.click(screen.getByRole("button", { name: "查看节点差异" }));
+    expect(prepare).toHaveBeenLastCalledWith({ expectedConfigRevisionId: "revision", logicalNodeId: "logical", propertyName: "status", action: "disable-node" });
+    await userEvent.click(screen.getByRole("button", { name: "删除此属性" }));
+    expect(prepare).toHaveBeenLastCalledWith({ expectedConfigRevisionId: "revision", logicalNodeId: "logical", propertyName: "limit", propertyOccurrenceId: "p1", action: "delete-property" });
+    await userEvent.click(screen.getByRole("button", { name: "撤销本项目覆盖" }));
+    expect(prepare).toHaveBeenLastCalledWith(expect.objectContaining({ action: "remove-override" }));
+  });
   it("prepares a local source draft with exact property identity, retaining failed input", async () => {
     const prepare = vi.fn().mockRejectedValueOnce(new Error("配置已变化")).mockResolvedValueOnce(undefined);
     const node: EffectiveTopologyNode = { id:"n",logicalNodeId:"logical",locator:"/device",name:"device",parentLogicalNodeId:null,compatible:"acme,power", effects:[

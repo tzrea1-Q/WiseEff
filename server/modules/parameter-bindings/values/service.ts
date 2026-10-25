@@ -41,6 +41,7 @@ import {
   loadDeletedSourceAnchors as queryDeletedSourceAnchors,
   loadSourceBindingCohort as querySourceBindingCohort,
   loadSourceBindingCohortReadOnly as querySourceBindingCohortReadOnly,
+  findCurrentSourceBindingId as queryCurrentSourceBindingId,
   loadConfigurationRestoreCohort as queryConfigurationRestoreCohort,
   loadProjectBindingCatalogReleaseIds as queryProjectBindingCatalogReleaseIds,
   hasDeletedSourceBinding as queryDeletedSourceBinding,
@@ -121,6 +122,12 @@ export async function loadSourceBindingCohort(tx: Queryable, input: { organizati
   assertSourceReadScope(input);
   if (!controlFree(input.configSetId)) throw new ApiError("CONFLICT", "Source configuration identity is invalid.");
   return querySourceBindingCohort(tx,input);
+}
+
+export async function findCurrentSourceBindingId(tx: Queryable, input: {
+  organizationId: string; projectId: string; configSetId: string; logicalNodeId: string; propertyName: string;
+}) {
+  return queryCurrentSourceBindingId(tx, input);
 }
 
 export async function loadSourceBindingCohortReadOnly(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {

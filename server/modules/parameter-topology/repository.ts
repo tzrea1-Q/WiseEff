@@ -338,8 +338,8 @@ export async function insertOccurrenceEffect(
     `
     insert into dts_occurrence_effects (
       id, config_revision_id, logical_node_revision_id, property_name, effect_kind,
-      node_occurrence_id, property_occurrence_id, source_order
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8)
+      node_occurrence_id, property_occurrence_id, source_order, source_directive
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
     `,
     [
       effect.id,
@@ -350,6 +350,7 @@ export async function insertOccurrenceEffect(
       effect.nodeOccurrenceId,
       effect.propertyOccurrenceId,
       effect.sourceOrder,
+      effect.sourceDirective ? JSON.stringify(effect.sourceDirective) : null,
     ],
   );
 }
@@ -751,6 +752,7 @@ type EffectiveNodeRow = {
 };
 
 type EffectRow = {
+  source_directive: PersistedOccurrenceEffect["sourceDirective"] | null;
   id: string;
   logical_node_revision_id: string;
   property_name: string | null;
@@ -808,12 +810,17 @@ export async function listEffectiveTopology(
       `
       select e.id, e.logical_node_revision_id, e.property_name, e.effect_kind,
              e.node_occurrence_id, e.property_occurrence_id, e.source_order,
-             p.raw_text, p.ast_json, m.file_id, m.file_version_id, m.source_name, m.shared_reference,
-             p.start_line, p.start_column, p.end_line, p.end_column
+             coalesce(e.source_directive->>'rawText',p.raw_text) as raw_text, p.ast_json,
+             m.file_id, m.file_version_id, m.source_name, m.shared_reference,
+             coalesce((e.source_directive->>'startLine')::int,p.start_line) as start_line,
+             coalesce((e.source_directive->>'startColumn')::int,p.start_column) as start_column,
+             coalesce((e.source_directive->>'endLine')::int,p.end_line) as end_line,
+             coalesce((e.source_directive->>'endColumn')::int,p.end_column) as end_column,
+             e.source_directive
       from dts_occurrence_effects e
       left join dts_property_occurrences p on p.id = e.property_occurrence_id and p.config_revision_id = e.config_revision_id
       left join dts_node_occurrences n on n.id = e.node_occurrence_id and n.config_revision_id = e.config_revision_id
-      left join dts_config_revision_members m on m.file_version_id = coalesce(p.file_version_id, n.file_version_id) and m.config_revision_id = e.config_revision_id
+      left join dts_config_revision_members m on m.file_version_id = coalesce(e.source_directive->>'fileVersionId',p.file_version_id, n.file_version_id) and m.config_revision_id = e.config_revision_id
       where e.config_revision_id = $1
       order by e.source_order asc, e.id asc
       `,
@@ -865,6 +872,8 @@ export async function listEffectiveTopology(
       nodeOccurrenceId: effect.node_occurrence_id,
       propertyOccurrenceId: effect.property_occurrence_id,
       sourceOrder: Number(effect.source_order),
+      ...(effect.source_directive ? { directive: { kind: effect.source_directive.kind, targetNodeLocator: effect.source_directive.targetNodeLocator,
+        ...(effect.source_directive.redeclared ? { redeclared: true as const } : {}) } } : {}),
       ...(effect.raw_text != null ? { rawText: effect.raw_text } : {}),
       ...(effect.ast_json && ["boolean", "empty", "strings", "bytes", "cells", "mixed"].includes(effect.ast_json.kind)
         ? { value: effect.ast_json, valueText: renderDtsValue(effect.ast_json) } : {}),

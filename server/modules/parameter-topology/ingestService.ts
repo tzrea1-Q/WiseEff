@@ -966,7 +966,30 @@ async function ingestConfigRevisionTx(
   }
 
   let effectOrder = 0;
+  const sourceDirective = (kind: "delete-property" | "delete-node", targetNodeLocator: string,
+    origin: { fileVersionId: string; start: number; end: number } | null | undefined) => {
+    if (!origin) return undefined;
+    const member = dtsMembers.find(row => row.fileVersionId === origin.fileVersionId);
+    if (!member || origin.start < 0 || origin.end > member.content.length || origin.end <= origin.start) return undefined;
+    const rawText = member.content.slice(origin.start, origin.end);
+    if (!rawText.startsWith(`/${kind}/`)) return undefined;
+    const start = offsetToLineColumn(member.content, origin.start), end = offsetToLineColumn(member.content, origin.end);
+    return { kind, targetNodeLocator, fileVersionId: origin.fileVersionId, rawText,
+      startOffset: origin.start, endOffset: origin.end, startLine: start.line, startColumn: start.column, endLine: end.line, endColumn: end.column };
+  };
   for (const node of resolved.effective.nodesByLocator.values()) {
+    const lastCreation = node.sourceChain.map(entry => entry.effect).lastIndexOf("create");
+    for (const [index, deletion] of node.sourceChain.entries()) {
+      // Retain real directives even if a later declaration recreates this node.
+      if (deletion.effect === "delete" && deletion.deletedNodeLocator === node.nodeLocator) {
+        const parent = continuity.revisionByLocator.get(parentLocator(node.nodeLocator) ?? "/");
+        const directive = sourceDirective("delete-node", node.nodeLocator, deletion.origin);
+        if (parent && directive) await insertOccurrenceEffect(tx, revision.id, { id: randomUUID(), logicalNodeRevisionId: parent.id,
+          propertyName: null, effectKind: "delete", nodeOccurrenceId: null, propertyOccurrenceId: null,
+          sourceOrder: effectOrder++, sourceDirective: { ...directive, ...(index < lastCreation ? { redeclared: true as const } : {}) } });
+      }
+    }
+    if (node.deleted) continue;
     const logicalRevision = continuity.revisionByLocator.get(node.nodeLocator);
     if (!logicalRevision) continue;
 
@@ -987,6 +1010,7 @@ async function ingestConfigRevisionTx(
           nodeOccurrenceId,
           propertyOccurrenceId,
           sourceOrder: effectOrder,
+          ...(entry.effect === "delete" ? { sourceDirective: sourceDirective("delete-property", node.nodeLocator, entry.origin) } : {}),
         });
         effectOrder += 1;
       }

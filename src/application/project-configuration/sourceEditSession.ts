@@ -217,7 +217,8 @@ export function createSourceEditSession(options: {
           file.storedGeneration = stored.generation;
           if (stored.draft) {
             const draft = stored.draft;
-            file.base = { ...draft.base };
+            file.base = { ...(sameSourceDraftBase(draft.base, input.base) && !draft.rebased && draft.sourceText === input.sourceText
+              ? input.base : draft.base) };
             file.sourceText = draft.sourceText;
             file.baseSourceText = draft.baseSourceText ?? (sameSourceDraftBase(draft.base, input.base) ? input.sourceText : undefined);
             file.originalDraft = draft.originalDraft;

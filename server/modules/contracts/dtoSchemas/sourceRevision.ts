@@ -8,13 +8,13 @@ const reason = z.string().trim().min(1).max(2000);
 
 export const projectLocalOverrideRequestSchema = z.object({
   expectedConfigRevisionId: id, logicalNodeId: id, propertyName: id.max(240),
-  action: z.enum(["set", "remove-override"]), rawText: z.string().max(1024 * 1024).optional(),
+  action: z.enum(["set", "remove-override", "delete-property", "enable-node", "disable-node", "remove-status-override", "delete-node"]), rawText: z.string().max(1024 * 1024).optional(),
   propertyOccurrenceId: id.optional(), targetFileId: id.optional()
 }).strict();
 export const projectLocalOverrideResponseSchema = z.object({ item: z.object({
   fileId: id, fileName: id, baseVersionId: id, configRevisionId: id,
   before: z.string(), after: z.string(), beforeValue: z.string().nullable(), afterValue: z.string().nullable(),
-  action: z.enum(["set", "remove-override"]), localOverride: projectLocalOverrideRequestSchema.optional()
+  action: projectLocalOverrideRequestSchema.shape.action, localOverride: projectLocalOverrideRequestSchema.optional()
 }).strict() }).strict();
 
 export const sourceRevisionImpactSchema = z.object({

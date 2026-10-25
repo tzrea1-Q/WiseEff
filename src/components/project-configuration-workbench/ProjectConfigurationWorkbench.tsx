@@ -537,6 +537,11 @@ export function ProjectConfigurationWorkbench({
   const [localOverrideDraft, setLocalOverrideDraft] = useState<(ProjectLocalOverrideDraft & { input: ProjectLocalOverrideInput }) | null>(null);
   const selectedSourceOverride = Object.values(sourceEditSnapshot.files).find(file => file.scope.projectId === project.id
     && file.scope.configSetId === selectedConfigSet?.id && file.scope.fileId === selectedMember?.fileId)?.base.localOverride;
+  const describeLocalChange = (action: ProjectLocalOverrideInput["action"], value: string | null) => {
+    const label = { set: "本项目覆盖后", "remove-override": "撤销本项目覆盖后", "delete-property": "显式删除属性后",
+      "enable-node": "在本项目启用后", "disable-node": "在本项目禁用后", "remove-status-override": "撤销本项目状态覆盖后", "delete-node": "显式删除节点后" }[action];
+    return `${label}：${action === "delete-node" ? "节点及子节点不存在" : value ?? (action === "delete-property" ? "属性缺失，继承值不生效" : "属性缺失")}。保存时将重新验证完整配置。`;
+  };
   const overrideContext = useRef("");
   overrideContext.current = `${effectiveKey}/${effectiveTree?.revisionId ?? ""}/${contentTab}/${effectiveNodePath}`;
   const prepareLocalOverride = async (input: ProjectLocalOverrideInput) => {
@@ -2055,9 +2060,9 @@ export function ProjectConfigurationWorkbench({
               canEditSource={apiMode && canEdit && canAdmin && !selectedSourceOverride} canDirectApply={apiMode && canEdit && canAdmin}
               localOverrideIntent={selectedSourceOverride?.input}
               changeSummary={selectedSourceOverride
-                ? `${selectedSourceOverride.input.action === "remove-override" ? "撤销本项目覆盖后" : "本项目覆盖后"}：${selectedSourceOverride.afterValue ?? "属性缺失"}。保存时将重新验证完整配置。`
+                ? describeLocalChange(selectedSourceOverride.input.action, selectedSourceOverride.afterValue)
                 : localOverrideDraft?.fileId === selectedMember.fileId && localOverrideDraft.baseVersionId === selectedMember.currentVersionId
-                  ? `${localOverrideDraft.action === "remove-override" ? "撤销本项目覆盖后" : "本项目覆盖后"}：${localOverrideDraft.afterValue ?? "属性缺失"}。保存时将重新验证完整配置。` : undefined}
+                  ? describeLocalChange(localOverrideDraft.action, localOverrideDraft.afterValue) : undefined}
               visible={canvasMode === "working"} legacyDraftsDirty={sessionDraftsDirty} onOpenLegacyDrafts={() => setTasksOpen(true)}
               onDirtyChange={setSourceBufferDirty} onRefresh={() => {
                 setLocalOverrideDraft(null);

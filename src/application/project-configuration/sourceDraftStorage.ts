@@ -79,7 +79,7 @@ function readStoredDraft(value: unknown, scope: SourceDraftScope): StoredSourceD
     || (draft.base.localOverride !== undefined && (!draft.base.localOverride || !draft.base.localOverride.input
       || ![draft.base.localOverride.input.expectedConfigRevisionId, draft.base.localOverride.input.logicalNodeId, draft.base.localOverride.input.propertyName]
         .every(item => typeof item === "string" && item.length > 0)
-      || !["set", "remove-override"].includes(draft.base.localOverride.input.action)
+      || !["set", "remove-override", "delete-property", "enable-node", "disable-node", "remove-status-override", "delete-node"].includes(draft.base.localOverride.input.action)
       || (draft.base.localOverride.input.rawText !== undefined && typeof draft.base.localOverride.input.rawText !== "string")
       || (draft.base.localOverride.afterValue !== null && typeof draft.base.localOverride.afterValue !== "string")))
     || (draft.baseSourceText !== undefined && typeof draft.baseSourceText !== "string")

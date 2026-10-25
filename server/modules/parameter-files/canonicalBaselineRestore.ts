@@ -229,7 +229,8 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       sourcePinId: row.sourcePinId,fromFileId: row.sourceFileId,toFileId: row.fileId })) };
   const proof = { ...facts,proofDigest: sourceRevisionDigest(facts) };
   preview.canRestore = true; preview.proofToken = proof.proofDigest; preview.sourceConfigRevisionId = targetRevision.id;
-  return { preview,proof,contents,configSetId,preprocessing:resolved?.preprocessing };
+  return { preview,proof,contents,configSetId,preprocessing:resolved?.preprocessing,
+    configNodePaths: resolved ? new Set(resolved.effective.nodesByLocator.keys()) : undefined };
 }
 
 export async function previewCanonicalBaselineRestore(db: Database, storage: ObjectStore, auth: AuthContext,
@@ -284,7 +285,7 @@ export async function applyCanonicalBaselineRestore(db: Database, storage: Objec
           storageKey: member.storageKey,checksum: member.checksum,sizeBytes: member.sizeBytes,parsedIndex: member.parsedIndex,
           origin: "rollback",attribution });
         versionId = version.id;
-        if (member.format === "dts" && !/\.(h|hpp)$/u.test(member.sourceName)) await ingestDtsFileVersion(tx,versionId,contents!.get(`${member.fileId}:${member.fileVersionId}`)!, inspected.preprocessing?.originalDocuments.get(member.sourceName));
+        if (member.format === "dts" && !/\.(h|hpp)$/u.test(member.sourceName)) await ingestDtsFileVersion(tx,versionId,contents!.get(`${member.fileId}:${member.fileVersionId}`)!, inspected.preprocessing?.originalDocuments.get(member.sourceName), inspected.configNodePaths);
       }
       const moved = await tx.query(`update public.project_parameter_files set current_version_id=$2,config_set_id=$3,
         config_set_role=$4,config_set_sort_order=$5,updated_at=now() where id=$1 and organization_id=$6 and project_id=$7
