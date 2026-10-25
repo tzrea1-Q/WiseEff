@@ -255,7 +255,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     db: options.db,
     getCurrentAuthContext: authResolver
   });
-  registerSharedDtsiRoutes(router, { db: options.db, getCurrentAuthContext: authResolver });
+  registerSharedDtsiRoutes(router, { db: options.db, objectStore: options.objectStore, getCurrentAuthContext: authResolver });
   registerParameterTopologyRoutes(router, {
     db: options.db,
     objectStore: parameterObjectStore,
