@@ -472,6 +472,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       assertCanonicalValueConstraints(definition.definition.selectedRevision, { kind: "json", value: readJsonSourceValue(contents.get(target.fileId)!, mapping.pointer, input.json.rootPointer) as ContractJsonValue });
     }
   }
+  const beforeNodes = (await tx.query<{ id: string }>("select logical_node_id as id from public.dts_logical_node_revisions where config_revision_id=$1", [revision.id])).rows;
   let sharedConversion:Proof["sharedConversion"];
   if(conversion){
     const before=await resolveDtsConfigSetAsync({entryFile:revision.entry_file!,includeSearchPaths:revision.include_search_paths,
@@ -479,6 +480,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       requireExactOrigins:true,files:new Map(members.filter(member=>member.format==="dts").map(member=>[member.sourceName,{content:beforeContents.get(member.fileId)!,fileVersionId:member.fileVersionId}]))});
     if(!resolved || before.diagnostics.some(row=>row.severity==="error") || !isDeepStrictEqual(before.effective,resolved.effective)
       || !sameSourceRevision(includeSearchPaths,revision.include_search_paths) || !sameSourceRevision(resolved.preprocessing?.receipt??null,revision.preprocessing??null)
+      || !continuity || continuity.nodes.length!==beforeNodes.length || beforeNodes.some(node=>!continuity.nodes.some(after=>after.logicalNodeId===node.id))
       || targets.length || newProperties.length || restorations.length)conflict("完整生效配置、原始来源或参数关联不同，转换已整批阻断。");
     sharedConversion={...conversion,semanticEqual:true,identitiesRetained:true,origins:cohort.map(pin=>({bindingId:pin.bindingId,sourcePinId:pin.sourcePinId,
       fileId:pin.fileId,fileVersionId:pin.fileVersionId,propertyName:pin.propertyName,locator:pin.locator}))};
@@ -497,7 +499,6 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     members: afterMembers, cohort, continuity, targets, newProperties, ...(restorations.length ? { restorations } : {}), originTransfers, json: input.json ?? null,
     catalogRelease: snapshot ? { id: snapshot.release.id, digest: snapshot.release.digest } : null };
   const proof: Proof = { ...facts, proofDigest: sourceRevisionDigest(facts) };
-  const beforeNodes = (await tx.query<{ id: string }>("select logical_node_id as id from public.dts_logical_node_revisions where config_revision_id=$1", [revision.id])).rows;
   let switchPreview:SharedReferenceSwitchPreview|undefined;
   if(replacing&&resolved&&entryFile) {
     const before=await resolveDtsConfigSetAsync({entryFile:revision.entry_file!,includeSearchPaths:revision.include_search_paths,overlayOrder:revision.overlay_order,
