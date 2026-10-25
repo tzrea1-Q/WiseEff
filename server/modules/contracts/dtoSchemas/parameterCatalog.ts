@@ -754,7 +754,12 @@ export const catalogReviseDefinitionChangeSchema = catalogObject({
 
 export const catalogCreateSubjectChangeSchema = catalogObject({
   op: z.literal("create-subject"),
-  ...catalogSubjectCreationFields
+  ...catalogSubjectCreationFields,
+  kind: z.enum(["driver", "node-type", "configuration-schema"]),
+  selector: catalogObject({
+    kind: z.enum(["driver-compatible", "node-type-name", "configuration-schema-id"]),
+    value: z.string()
+  })
 });
 
 export const catalogCreateDefinitionChangeSchema = catalogObject({

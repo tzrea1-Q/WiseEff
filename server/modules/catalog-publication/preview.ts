@@ -93,11 +93,13 @@ const asSupportedContent = (value: unknown): SupportedDefinitionContent | null =
 
 const parseSelector = (
   value: unknown,
+  configurationSchema = false,
 ): CreateSubjectWithDefinitionsChange["selector"] | null => {
   if (!isRecord(value) || typeof value.value !== "string") {
     return null;
   }
-  if (value.kind !== "driver-compatible" && value.kind !== "node-type-name") {
+  if (value.kind !== "driver-compatible" && value.kind !== "node-type-name"
+    && !(configurationSchema && value.kind === "configuration-schema-id")) {
     return null;
   }
   return { kind: value.kind, value: value.value };
@@ -164,9 +166,9 @@ export function parsePublicationChangeSet(
       continue;
     }
     if (entry.op === "create-subject-with-definitions" || entry.op === "create-subject") {
-      const selector = parseSelector(entry.selector);
+      const selector = parseSelector(entry.selector, entry.op === "create-subject");
       if (
-        (entry.kind !== "driver" && entry.kind !== "node-type") ||
+        (entry.kind !== "driver" && entry.kind !== "node-type" && !(entry.op === "create-subject" && entry.kind === "configuration-schema")) ||
         typeof entry.canonicalKey !== "string" ||
         selector === null ||
         (entry.op === "create-subject" ? "definitions" in entry : !Array.isArray(entry.definitions))

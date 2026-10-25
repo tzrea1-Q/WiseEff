@@ -82385,6 +82385,70 @@
                     "op": {
                       "type": "string",
                       "enum": [
+                        "create-subject"
+                      ]
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "driver",
+                        "node-type",
+                        "configuration-schema"
+                      ]
+                    },
+                    "canonicalKey": {
+                      "type": "string"
+                    },
+                    "selector": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "driver-compatible",
+                            "node-type-name",
+                            "configuration-schema-id"
+                          ]
+                        },
+                        "value": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "nature": {
+                      "type": "string",
+                      "enum": [
+                        "physical-device",
+                        "logical-service"
+                      ]
+                    },
+                    "cardinality": {
+                      "type": "string",
+                      "enum": [
+                        "multiple",
+                        "singleton-per-project"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "kind",
+                    "canonicalKey",
+                    "selector"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "op": {
+                      "type": "string",
+                      "enum": [
                         "create-definition"
                       ]
                     },

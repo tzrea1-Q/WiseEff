@@ -32,8 +32,8 @@ export const CATALOG_CAPABILITY_V3_CONSUMER_REVISIONS: ReadonlySet<string> = new
 ]);
 
 /**
- * Historical revisions stay admitted so previously published releases keep their
- * original interpretation; the current revision adds nested value schemas.
+ * Frozen v4 consumer retains nested value schemas but cannot activate the
+ * standalone-subject authoring contract.
  */
 export const CATALOG_CAPABILITY_V4_CONSUMER_REVISIONS: ReadonlySet<string> = new Set([
   ...CATALOG_CAPABILITY_V3_CONSUMER_REVISIONS,

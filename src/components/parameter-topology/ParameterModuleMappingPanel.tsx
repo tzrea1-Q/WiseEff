@@ -46,6 +46,7 @@ const moduleTabs = [
 ] as const;
 
 export type ParameterModuleMappingPanelProps = {
+  currentPersonId?: string;
   canAdmin?: boolean;
   canManageTaxonomy?: boolean;
   repository?: ParameterModuleRegistryRepository;
@@ -66,6 +67,7 @@ export type ParameterModuleMappingPanelProps = {
  * Organization business taxonomy with read-only historical driver attribution.
  */
 export function ParameterModuleMappingPanel({
+  currentPersonId,
   canAdmin = false,
   canManageTaxonomy = canAdmin,
   repository,
@@ -386,6 +388,7 @@ export function ParameterModuleMappingPanel({
       navigator={!registryLoaded ? <SectionSkeleton label="正在加载模块注册表…" /> : moduleTree}
       taskState={!registryLoaded ? { kind: "loading", message: "正在加载模块注册表…" } : undefined}>
       {canonicalAvailable && canonicalCatalog && canonicalGovernance && canonicalOrganizationId ? <CanonicalSubjectPlacementPanel
+        currentPersonId={currentPersonId}
         catalog={canonicalCatalog} governance={canonicalGovernance} organizationId={canonicalOrganizationId}
         actor={canonicalActor} sessionPermissions={canonicalSessionPermissions} canAdmin={canAdmin} modules={registry.modules}
         onChanged={refreshAfterCanonicalChange} selectedModuleId={selectedModuleId} visibleModuleIds={visibleModuleScope}

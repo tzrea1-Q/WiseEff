@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { integerContent } from "./builder/predecessorHarness";
-import type { CatalogImpactReport } from "./builder/types";
+import { CATALOG_CAPABILITY_CONTRACT_REVISION, type CatalogImpactReport } from "./builder/types";
 import { parsePublicationChangeSet, publicationImpactFacts } from "./preview";
 
 const emptyImpact = (overrides: Partial<CatalogImpactReport> = {}): CatalogImpactReport => ({
@@ -18,7 +18,7 @@ const emptyImpact = (overrides: Partial<CatalogImpactReport> = {}): CatalogImpac
     newMatchableProperties: [],
   },
   existingContractsTighten: false,
-  capabilityContractRevision: "catalog-capability/v1",
+  capabilityContractRevision: CATALOG_CAPABILITY_CONTRACT_REVISION,
   ...overrides,
 });
 

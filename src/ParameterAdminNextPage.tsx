@@ -182,6 +182,7 @@ export function ParameterAdminNextPage({
         onAnchorChange={handleCatalogAnchorChange}
         organizationId={catalogOrganizationId}
         currentPersonId={state?.currentUserId ?? ""}
+        onCreateSubject={() => onNavigate("/parameter-admin/modules?createSubject=1&returnTo=definitions")}
         projects={projects}
         moduleRegistry={moduleRegistry}
         relatedKnowledge={definitionRelatedKnowledge}
@@ -286,6 +287,7 @@ export function ParameterAdminNextPage({
             ) : null}
             {organizationView === "modules" ? (
               <OrganizationModuleGovernancePanel
+                currentPersonId={state?.currentUserId ?? ""}
                 apiClient={runtime?.parameterApiClient}
                 projects={projects}
                 pathname={pathname}

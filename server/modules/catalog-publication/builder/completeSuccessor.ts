@@ -35,6 +35,7 @@ import type {
 import {
   CATALOG_CAPABILITY_ALLOW_LIST,
   CATALOG_CAPABILITY_CONTRACT_REVISION,
+  CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION,
   validateSupportedDefinitionContent,
 } from "./capabilities";
 import {
@@ -66,7 +67,6 @@ import type {
 } from "./types";
 
 const SHA256_DIGEST = /^sha256:[0-9a-f]{64}$/;
-const STANDALONE_SUBJECT_CAPABILITY_REVISION = "catalog-capability/v5" as const;
 const CREATE_DEFINITION_KEYS = new Set(["op", "subjectId", "propertyKey", "content"]);
 const CREATE_SUBJECT_KEYS = new Set([
   "op",
@@ -142,7 +142,7 @@ export function impactSummaryFromReport(impact: CatalogImpactReport): {
 const capabilityContract = (changeSet: readonly CatalogChange[]): CapabilityContract => {
   const identity = CATALOG_CAPABILITY_ALLOW_LIST;
   const revision = changeSet.some((change) => change.op === "create-subject")
-    ? STANDALONE_SUBJECT_CAPABILITY_REVISION : CATALOG_CAPABILITY_CONTRACT_REVISION;
+    ? CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION : CATALOG_CAPABILITY_CONTRACT_REVISION;
   return {
     revision,
     allowListId: identity.id,

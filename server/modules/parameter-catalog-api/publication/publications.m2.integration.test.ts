@@ -169,12 +169,14 @@ describe("CP-10 M2 publication HTTP", () => {
     expect((created.body as { item: { riskClass: string } }).item.riskClass).toBe("low");
   });
 
-  it("previews a standalone driver as high risk without a fabricated parameter", async () => {
+  it.each([
+    ["driver", "driver:acme,standalone-http", { kind: "driver-compatible", value: "acme,standalone-http" }, { nature: "physical-device", cardinality: "multiple" }],
+    ["node-type", "node-type:standalone-http", { kind: "node-type-name", value: "standalone-http" }, {}],
+    ["configuration-schema", "configuration-schema:wiseeff.standalone", { kind: "configuration-schema-id", value: "wiseeff.standalone" }, {}],
+  ] as const)("previews a standalone %s as high risk without a fabricated parameter", async (kind, canonicalKey, selector, driverFacts) => {
     authenticateAs(scopeFor(AUTHOR, [...authorPermissions]));
     const standalone = {
-      op: "create-subject", kind: "driver", canonicalKey: "driver:acme,standalone-http",
-      selector: { kind: "driver-compatible", value: "acme,standalone-http" },
-      nature: "physical-device", cardinality: "multiple",
+      op: "create-subject", kind, canonicalKey, selector, ...driverFacts,
     };
     const created = await request("POST", "/api/v2/catalog/publication-candidates", {
       headers: { [CATALOG_RELEASE_HEADER]: pinId }, body: { changeSet: [standalone] },

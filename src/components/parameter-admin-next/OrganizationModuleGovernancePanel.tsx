@@ -17,6 +17,7 @@ import type { ApiClient } from "@/infrastructure/http/apiClient";
  * Organization-scoped module tree + driver mapping, composed over the admin facade.
  */
 export function OrganizationModuleGovernancePanel({
+  currentPersonId,
   apiClient,
   pathname = "/parameter-admin/modules",
   search = "",
@@ -29,6 +30,7 @@ export function OrganizationModuleGovernancePanel({
   canonicalEnabled = false,
   projects = []
 }: {
+  currentPersonId?: string;
   apiClient?: ApiClient;
   pathname?: string;
   search?: string;
@@ -78,6 +80,7 @@ export function OrganizationModuleGovernancePanel({
 
   return (
     <ParameterModuleMappingPanel
+      currentPersonId={currentPersonId}
       projects={projects}
       canAdmin={!canonicalEnabled || actor === "org-admin" || actor === "platform-admin"}
       canManageTaxonomy={canManageTaxonomy}

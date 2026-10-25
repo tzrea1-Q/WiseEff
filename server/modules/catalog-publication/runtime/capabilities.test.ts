@@ -9,11 +9,12 @@ import {
 import { CATALOG_CAPABILITY_CONTRACT_REVISION } from "../builder/types";
 
 describe("catalog consumer capability admission", () => {
-  it("admits historical v1/v2/v3 and current v4 by exact membership", () => {
+  it("admits historical v1/v2/v3/v4 and standalone-subject v5 by exact membership", () => {
     expect(catalogConsumerSupportsRevision("catalog-capability/v1")).toBe(true);
     expect(catalogConsumerSupportsRevision("catalog-capability/v2")).toBe(true);
     expect(catalogConsumerSupportsRevision("catalog-capability/v3")).toBe(true);
     expect(catalogConsumerSupportsRevision(CATALOG_CAPABILITY_CONTRACT_REVISION)).toBe(true);
+    expect(catalogConsumerSupportsRevision("catalog-capability/v5")).toBe(true);
   });
 
   it("fail-closes prefix and unknown revisions", () => {
@@ -21,7 +22,6 @@ describe("catalog consumer capability admission", () => {
     expect(catalogConsumerSupportsRevision("catalog-capability/v")).toBe(false);
     expect(catalogConsumerSupportsRevision("catalog-capability/v10")).toBe(false);
     expect(catalogConsumerSupportsRevision("")).toBe(false);
-    expect(catalogConsumerSupportsRevision("catalog-capability/v5")).toBe(true);
   });
 
   it("lets a frozen v3 consumer refuse v4 before install", () => {

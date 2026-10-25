@@ -62,6 +62,8 @@ M2 增加新 Driver/NodeType、定义修订，以及与页面增量共存的 ven
 
 ## 4. ChangeSet 合同
 
+独立创建主体使用新增的 `create-subject` 操作，只包含正式身份、选择器，以及驱动适用时明确填写的性质和实例基数。零定义主体仍由同一 builder、授权与同步器发布。这类候选要求 `catalog-capability/v5`，冻结的 v4 消费者必须在安装前拒绝；既有编写操作保留 v4 合同，HTTP `create-subject-with-definitions` 仍要求至少一个定义。主体登记页持有唯一创建表单，定义编写选择已有主体，并可从该创建流程返回继续操作。
+
 封闭 tagged union。未知标签失败关闭。
 
 ### M1 开放

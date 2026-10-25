@@ -47,6 +47,10 @@ import { createDatabase } from "../../shared/database/client";
 import { runPublicationManagerOnce } from "./jobs/manager";
 import { getJob, getReceiptByJobId } from "./persistence/store";
 import { createRegistrationService } from "../parameter-governance/registration/index";
+import { installPublishedReleaseForTests } from "../catalog-kernel/install/installer";
+import { domainSnapshot } from "../catalog-kernel/install/publicationTestHarness";
+import { CATALOG_CAPABILITY_V4_CONSUMER_REVISIONS, provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "./runtime";
+import { CATALOG_CAPABILITY_ALLOW_LIST } from "./builder/capabilities";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
@@ -324,6 +328,7 @@ describe("CP-10 definition revision and new-subject PG", () => {
     readonly publisherPermissions: readonly string[];
     readonly publisherRoleId?: "admin" | "hardware-user" | "hardware-committer";
     readonly token: string;
+    readonly beforeActivation?: (command: Parameters<typeof installPublishedReleaseForTests>[1]) => Promise<void>;
   }) {
     const pointer = await client.query<{ id: string; digest: string }>(
       `select state.current_catalog_release_id as id, release.release_digest as digest
@@ -480,6 +485,12 @@ describe("CP-10 definition revision and new-subject PG", () => {
     if (!job.ok) {
       throw new Error(`createJob failed: ${JSON.stringify(job.error)}`);
     }
+    await input.beforeActivation?.({ mode: "online-publication", jobId: job.value.id,
+      candidateId: successor.candidate.id, authorizationId: authorized.value.authorization.id,
+      expectedCurrent: { id: successor.candidate.expectedBaseReleaseId, digest: successor.candidate.expectedBaseReleaseDigest },
+      fencingToken: job.value.fencingToken,
+      trustedActor: userActor(input.publisherUserId, input.publisherPermissions as never), impactFacts: facts,
+    });
     const claimed = await runPublicationManagerOnce({
       db,
       pool,
@@ -669,7 +680,7 @@ describe("CP-10 definition revision and new-subject PG", () => {
     );
   }, 60_000);
 
-  it("activates a zero-definition driver through the manager and retains the activation receipt", async () => {
+  it("refuses v5 on a frozen v4 consumer, then activates a zero-definition driver with reversible registration", async () => {
     const token = uniqueToken("standalone");
     const result = await activateChangeSet({
       changeSet: [{
@@ -679,6 +690,14 @@ describe("CP-10 definition revision and new-subject PG", () => {
       }],
       authorPrincipalId: AUTHOR, publisherUserId: REVIEWER,
       publisherPermissions: [...reviewerPermissions], token,
+      beforeActivation: async (command) => {
+        const before = await domainSnapshot(client);
+        const refused = await installPublishedReleaseForTests(pool, command, {
+          consumerCapability: { revisions: CATALOG_CAPABILITY_V4_CONSUMER_REVISIONS, allowList: CATALOG_CAPABILITY_ALLOW_LIST },
+        });
+        expect(refused).toMatchObject({ ok: false, error: { kind: "publication-not-authorized", reason: "unsupported-consumer-capability-revision" } });
+        expect(await domainSnapshot(client)).toEqual(before);
+      },
     });
     expect(result.built.impact.subjects.added).toEqual([`csub_${token}`]);
     expect(result.built.impact.definitions.added).toEqual([]);
@@ -687,6 +706,37 @@ describe("CP-10 definition revision and new-subject PG", () => {
     expect(receipt.ok).toBe(true);
     const definitions = await client.query("select id from parameter_catalog.parameter_definitions where subject_id=$1", [`csub_${token}`]);
     expect(definitions.rows).toEqual([]);
+    const runtimeToken = `t20${token.replace(/[^a-z0-9]/gi, "").slice(-12)}`;
+    const runtime = await provisionPublicationRuntimeLogins(database.url, { mode: "lab", runToken: runtimeToken });
+    const api = new pg.Pool({ connectionString: runtime.apiUrl });
+    try {
+      expect((await api.query("select rolsuper,rolinherit from pg_roles where rolname=current_user")).rows)
+        .toEqual([{ rolsuper: false, rolinherit: false }]);
+      const organizationId = `org-${token}`;
+      const moduleId = `module-${token}`;
+      await client.query("insert into public.organizations(id,name) values ($1,'Standalone')", [organizationId]);
+      await client.query(`insert into public.attribution_subjects(id,organization_id,subject_kind,display_name,origin,source_key)
+        values ($1,$2,'driver-registration','Standalone','curated',$1)`, [`attr-${token}`, organizationId]);
+      await client.query(`insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
+        values ($1,$2,'Standalone',$1,1,'driver-group','curated',$3)`, [moduleId, organizationId, `attr-${token}`]);
+      const service = createRegistrationService(api);
+      const expectedRelease = { id: result.built.artifact.targetReleaseId, digest: result.built.artifact.targetReleaseDigest };
+      const context = { actorKind: "org-admin" as const, principalId: REVIEWER };
+      const registered = await service.execute({ kind: "register", organizationId, subjectId: CatalogSubjectId(`csub_${token}`),
+        subjectKind: "driver", expectedRelease, placement: { mode: "use-default" }, destinationModuleId: moduleId,
+        method: "explicit", proof: {}, idempotencyKey: `${token}-register`, context });
+      expect(registered.ok).toBe(true);
+      if (!registered.ok) throw new Error(JSON.stringify(registered.error));
+      const retired = await service.execute({ kind: "retire", organizationId, registrationId: registered.value.registrationId,
+        expectedRelease, context, reason: "暂不使用", idempotencyKey: `${token}-retire` });
+      expect(retired.ok).toBe(true);
+      const restored = await service.execute({ kind: "restore", organizationId, registrationId: registered.value.registrationId,
+        expectedRelease, context, reason: "重新使用", idempotencyKey: `${token}-restore` });
+      expect(restored).toMatchObject({ ok: true, value: { registrationId: registered.value.registrationId, registrationStatus: "active" } });
+    } finally {
+      await api.end();
+      expect((await dropLabRuntimeLogins(database.url, runtimeToken)).failed).toEqual([]);
+    }
   }, 60_000);
 
   it("T21 catalog success plus registration failure keeps Catalog/Receipt", async () => {
