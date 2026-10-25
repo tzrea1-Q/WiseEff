@@ -33,6 +33,7 @@ export type WorkbenchCommandBarProps = {
   pendingAction: string | null;
   onOpenActivity: () => void;
   onExportConfigSet: () => void;
+  onImportPackage?: () => void;
   onSyncFile: () => void;
   syncLabel: string;
   syncBlocked: boolean;
@@ -45,7 +46,7 @@ export function WorkbenchCommandBar({
   primaryAction, project, onLeave, configSets, selectedConfigSet, configSetsLoading,
   configSetsError, onSelectConfigSet, canAdmin, canSyncFile, onInspectorToggle,
   onOpenInspector, candidateFileInputRef, onCandidateFileChange,
-  pendingAction, onOpenActivity, onExportConfigSet,
+  pendingAction, onOpenActivity, onExportConfigSet, onImportPackage,
   onCreateConfigSet, onSyncFile, syncLabel, syncBlocked,
   createConfigSetOpen: controlledCreateOpen, onCreateConfigSetOpenChange
 }: WorkbenchCommandBarProps) {
@@ -94,6 +95,8 @@ export function WorkbenchCommandBar({
               {canAdmin ? <DropdownMenu.Item className="row-action-menu__item button-size-sm"
                 disabled={pendingAction !== null}
                 onSelect={() => { schemeTriggerRef.current?.focus(); setNameError(""); setCreateOpen(true); }}><Plus aria-hidden="true" />新建配置…</DropdownMenu.Item> : null}
+              {canAdmin && onImportPackage ? <DropdownMenu.Item className="row-action-menu__item button-size-sm" disabled={pendingAction !== null}
+                onSelect={() => { schemeTriggerRef.current?.focus(); onImportPackage(); }}>导入完整配置…</DropdownMenu.Item> : null}
               {selectedConfigSet ? <DropdownMenu.Item className="row-action-menu__item button-size-sm"
                 onSelect={() => { schemeTriggerRef.current?.focus(); openDetails("config-set"); }}><FolderOpen aria-hidden="true" />{canAdmin ? "配置组成" : "查看文件"}</DropdownMenu.Item> : null}
               {canAdmin && selectedConfigSet ? <DropdownMenu.Item className="row-action-menu__item button-size-sm"

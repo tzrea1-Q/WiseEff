@@ -75,6 +75,7 @@ import {
 import { searchProjectDts } from "./dtsSearchService";
 import { registerSourceRevisionRoutes } from "./sourceRevisionRoutes";
 import { registerCanonicalMemberAdditionRoutes } from "./canonicalMemberAdditionRoutes";
+import { registerConfigSetPackageRoutes } from "./configSetPackageRoutes";
 import { registerMemberRemovalRoutes } from "./memberRemovalRoutes";
 import { previewSourceRevisionCandidate, submitSourceRevisionCandidate } from "./sourceRevisionService";
 import { getParameterFileVersionStructure } from "./structuralReadService";
@@ -300,6 +301,7 @@ export function registerParameterFileRoutes(
 ) {
   registerSourceRevisionRoutes(router, options);
   registerCanonicalMemberAdditionRoutes(router, options);
+  registerConfigSetPackageRoutes(router, options);
   const refusalAuditSink = options.refusalAuditSink
     ? (assertTrustedRefusalAuditSink(options.refusalAuditSink), options.refusalAuditSink)
     : options.db && isRootDatabase(options.db)

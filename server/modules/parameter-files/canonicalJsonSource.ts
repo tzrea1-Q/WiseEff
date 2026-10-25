@@ -83,7 +83,8 @@ export async function registerCanonicalJsonSource(
         and not exists(select 1 from project_parameter_files file
           left join dts_config_revision_members member on member.config_revision_id=revision.id and member.file_id=file.id
           where file.config_set_id=$3 and (member.id is null or member.file_version_id<>file.current_version_id
-            or member.role<>file.config_set_role or member.sort_order<>file.config_set_sort_order or member.source_name is null))`,
+            or (case when member.role='include' then 'misc' else member.role end)<>file.config_set_role
+            or member.sort_order<>file.config_set_sort_order or member.source_name is null))`,
     [parameterOrganizationId(auth),input.projectId,input.configSetId,members.rows.length]);
     if (revisions.rows.length !== 1) throw new ApiError("CONFLICT", "Mixed source registration requires one exact resolved DTS member revision.");
     revisionId = revisions.rows[0]!.id;

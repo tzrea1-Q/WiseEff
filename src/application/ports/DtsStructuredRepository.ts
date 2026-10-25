@@ -286,6 +286,7 @@ export type DtsExportConfigSetManifestMember = {
 };
 
 export type DtsExportConfigSetManifest = {
+  sourcePackage?: import("@wiseeff/dto-schemas").ConfigSetSourcePackage;
   configSetId: string;
   name: string;
   projectId: string;

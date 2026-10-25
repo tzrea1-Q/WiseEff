@@ -67,7 +67,7 @@ export function lexDts(source: string): DtsToken[] {
   while (i < text.length) {
     const ch = text[i];
 
-    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") {
+    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r" || i === 0 && ch === "\uFEFF") {
       i += 1;
       continue;
     }
