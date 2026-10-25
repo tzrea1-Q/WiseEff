@@ -298,6 +298,7 @@ export function getPageByPath(path: string): PageConfig {
     path === "/parameter-admin/specs" ||
     path === "/parameter-admin/spec-review" ||
     path === "/parameter-admin/modules" ||
+    path === "/parameter-admin/sources" ||
     path === "/parameter-admin/identity-mapping" ||
     path.startsWith("/parameter-admin/specs/") ||
     path.startsWith("/parameter-admin/spec-review/") ||

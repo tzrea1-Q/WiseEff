@@ -38,6 +38,7 @@ import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology
 import type { AuthContextDto } from "@/infrastructure/http/authClient";
 import { createHttpParameterModuleRegistryRepository } from "@/infrastructure/http/parameterModuleRegistryClient";
 import { createDtsStructuredClient } from "@/infrastructure/http/dtsStructuredClient";
+import { SharedDtsiPage } from "@/features/shared-dtsi/SharedDtsiPage";
 
 function buildParameterAuditCenterPath(projectId: string) {
   const params = new URLSearchParams({ app: "parameter" });
@@ -259,6 +260,8 @@ export function ParameterAdminNextPage({
           )
         ) : organizationView ? (
           <>
+            {organizationView === "sources" ? <SharedDtsiPage key={catalogOrganizationId ?? "home"} apiClient={runtime?.parameterApiClient}
+              canWrite={Boolean(sessionPermissions?.includes("admin:access"))} search={search} onNavigate={onNavigate} /> : null}
             {organizationView === "specs" ? <OrganizationBulkImportPanel
               apiClient={runtime?.parameterApiClient}
               projects={projects}

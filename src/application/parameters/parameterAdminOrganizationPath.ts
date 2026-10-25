@@ -1,7 +1,7 @@
 import { PARAMETER_ADMIN_UI } from "./parameterAdminUiCopy";
 
 /** Organization-scoped peer areas under `/parameter-admin` (ADR-0015). */
-export type ParameterAdminOrganizationView = "specs" | "modules";
+export type ParameterAdminOrganizationView = "specs" | "modules" | "sources";
 
 /** Nested peer under `/parameter-admin/specs` — library is default; identity mapping is optional. */
 export type ParameterAdminSpecsSubView = "library" | "identity-mapping";
@@ -11,7 +11,8 @@ export type ParameterAdminModulesSubView = "tree" | "queue" | "registry";
 
 export const PARAMETER_ADMIN_ORGANIZATION_VIEWS: readonly ParameterAdminOrganizationView[] = [
   "specs",
-  "modules"
+  "modules",
+  "sources"
 ] as const;
 
 export const PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS: Record<
@@ -19,7 +20,8 @@ export const PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS: Record<
   string
 > = {
   specs: PARAMETER_ADMIN_UI.specDefinitionManagement,
-  modules: PARAMETER_ADMIN_UI.moduleManagement
+  modules: PARAMETER_ADMIN_UI.moduleManagement,
+  sources: "共享 DTSI"
 };
 
 /**
@@ -33,12 +35,13 @@ export const PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS: Record<
 export function parseParameterAdminOrganizationPath(
   pathname: string
 ): ParameterAdminOrganizationView | null {
-  const match = pathname.match(/^\/parameter-admin\/(specs|modules)(?:\/([a-z-]+))?\/?$/);
+  const match = pathname.match(/^\/parameter-admin\/(specs|modules|sources)(?:\/([a-z-]+))?\/?$/);
   if (!match?.[1]) {
     return null;
   }
   const view = match[1] as ParameterAdminOrganizationView;
   const nested = match[2];
+  if (view === "sources") return nested ? null : "sources";
   if (view === "specs") {
     if (nested && nested !== "identity-mapping") {
       return null;

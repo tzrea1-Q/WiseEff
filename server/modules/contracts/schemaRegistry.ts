@@ -1,4 +1,5 @@
 import type { RouteManifestEntry } from "./routeManifest";
+import { sharedDtsiSchemaRegistry } from "./dtoSchemas/sharedDtsi";
 import { organizationDeletionSchemaRegistry } from "./dtoSchemas/organizationDeletion";
 import { accountTransferSchemaRegistry } from "./dtoSchemas/accountTransfer";
 import { parameterCatalogSchemaRegistry } from "./dtoSchemas/parameterCatalog";
@@ -60,6 +61,7 @@ function retireLegacySurface(
 }
 
 export const schemaRegistry: Record<string, ContractSchemaRef> = {
+  ...sharedDtsiSchemaRegistry,
   ...organizationDeletionSchemaRegistry,
   ...accountTransferSchemaRegistry,
   ...assetHandoverSchemaRegistry,
