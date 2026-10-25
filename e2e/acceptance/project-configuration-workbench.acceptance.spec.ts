@@ -3050,6 +3050,105 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await expect(await openWorkbenchPanel(page,"config-set")).toContainText("retained-");
   });
 
+  test("effective configuration preserves ordered origins and exact historical source links", async ({ page, request }, testInfo) => {
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
+    const sample = '/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "ProjectFinal", "keep"; }; second { compatible = "mt,mt5788"; rx_fod_cond = "SecondInstance", "keep"; }; };';
+    const binding = await seedIsolatedBinding(request, { propertyKey: "rx_fod_cond", dts: sample,
+      rawValuePattern: '"ProjectFinal", "keep"', nodeLocatorPattern: "board", reason: "#1418 effective configuration", timeoutMs: 60_000 });
+    const file = await lookupParameterFileVersion({ fileName: binding.fileName });
+    const sourceName = `origins-${randomUUID()}.dtsi`;
+    const source = '/ {\n bus { status = "disabled"; leaf { status = "okay"; }; };\n board { rx_fod_cond = "SharedDefault", "keep"; };\n};';
+    const draft = await request.post(apiRoute("/api/v2/shared-dtsi"), { headers: adminHeaders(), data: {
+      name: `Origins ${randomUUID()}`, sourceName, content: source, changeDescription: "Original shared source" } });
+    expect(draft.status(), await draft.text()).toBe(201);
+    const resourceId = (await draft.json()).item.resourceId as string;
+    const publicationPreview = await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`), { headers: adminHeaders(), data: { expectedRevision: 1 } });
+    expect(publicationPreview.status(), await publicationPreview.text()).toBe(201);
+    const published = await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`), { headers: adminHeaders(),
+      data: { previewId: (await publicationPreview.json()).item.id, idempotencyKey: `origins-${randomUUID()}` } });
+    expect(published.status(), await published.text()).toBe(201);
+    const versionId = (await published.json()).item.id as string;
+    const compositionPath = `/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition`;
+    const addition = { sharedReference: { resourceId, versionId }, role: "misc", sortOrder: 1 };
+    const preview = await request.post(apiRoute(`${compositionPath}/preview`), { headers: adminHeaders(), data: addition });
+    expect(preview.status(), await preview.text()).toBe(200);
+    const applied = await request.post(apiRoute(`${compositionPath}/apply`), { headers: adminHeaders(), data: {
+      ...addition, proofToken: (await preview.json()).item.proofToken, reason: "#1418 fixed origins", clientMutationId: `origins-${randomUUID()}` } });
+    expect(applied.status(), await applied.text()).toBe(200);
+    const revisionId = (await applied.json()).item.configRevisionId as string;
+    const topologyResponse = await request.get(apiRoute(`/api/v2/projects/${projectId}/config-sets/${binding.configSetId}/revisions/${revisionId}/topology`), { headers: adminHeaders() });
+    expect(topologyResponse.status(), await topologyResponse.text()).toBe(200);
+    const topology = (await topologyResponse.json()).item as Extract<import("../../src/domain/parameter-topology/types").TopologyTree, { view: "effective" }>;
+    const chain = topology.nodes.find(node => node.locator === "/board")!.effects.filter(effect => effect.propertyName === "rx_fod_cond");
+    expect(chain.map(effect => effect.rawText)).toEqual(['"SharedDefault", "keep"', '"ProjectFinal", "keep"']);
+    expect(chain[0]!.source).toMatchObject({ sourceName, startLine: 3, sharedReference: { versionId } });
+    const root = chain.at(-1)!.source!;
+    const exactRoot = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${root.fileId}/versions/${root.fileVersionId}/content`), { headers: adminHeaders() });
+    const originalRoot = await exactRoot.text();
+    const candidate = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`), { headers: adminHeaders(), data: {
+      fileId: root.fileId, fileName: binding.fileName, contentBase64: Buffer.from(originalRoot.replace("ProjectFinal", "NewCurrent")).toString("base64"),
+      intent: "source_revision", expectedCurrentVersionId: root.fileVersionId, expectedConfigRevisionId: revisionId, clientMutationId: `new-root-${randomUUID()}` } });
+    expect(candidate.status(), await candidate.text()).toBe(201);
+    const candidateId = (await candidate.json()).item.id as string;
+    const sourcePreview = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-preview`), { headers: adminHeaders() });
+    expect(sourcePreview.status(), await sourcePreview.text()).toBe(200);
+    const current = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-apply`), { headers: adminHeaders(), data: {
+      expectedCurrentVersionId: root.fileVersionId, expectedProofToken: (await sourcePreview.json()).item.proofToken,
+      reason: "Advance current source while retaining history", clientMutationId: `new-root-apply-${randomUUID()}` } });
+    expect(current.status(), await current.text()).toBe(200);
+    const nextDraft = await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`), { headers: adminHeaders(), data: { baseVersionId: versionId } });
+    expect(nextDraft.status(), await nextDraft.text()).toBe(201);
+    const nextSave = await request.put(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`), { headers: adminHeaders(), data: {
+      expectedRevision: (await nextDraft.json()).item.revision, name: "Successor source", sourceName, content: source.replace("SharedDefault", "Successor"), changeDescription: "Successor" } });
+    expect(nextSave.status(), await nextSave.text()).toBe(200);
+    const nextPreview = await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`), { headers: adminHeaders(), data: { expectedRevision: (await nextSave.json()).item.revision } });
+    const nextPublication = await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`), { headers: adminHeaders(), data: { previewId: (await nextPreview.json()).item.id, idempotencyKey: `next-${randomUUID()}` } });
+    expect(nextPublication.status(), await nextPublication.text()).toBe(201);
+    const route = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({ organization: organizationId,
+      configSet: binding.configSetId, revision: revisionId, tab: "effective", node: "/board" })}`;
+    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, route)); await dismissXiaozeHint(page);
+    await expect(page.getByLabel("rx_fod_cond 最终值", { exact: true })).toHaveText('"ProjectFinal", "keep"');
+    await expect(page.getByRole("treeitem", { name: "节点 /", exact: true })).toBeVisible();
+    await expect(page.getByRole("treeitem", { name: "节点 /second", exact: true })).toBeVisible();
+    await page.getByRole("treeitem", { name: "节点 /second", exact: true }).click();
+    await expect(page.getByLabel("rx_fod_cond 最终值", { exact: true })).toHaveText('"SecondInstance", "keep"');
+    await page.getByRole("treeitem", { name: "节点 /bus/leaf", exact: true }).click();
+    await expect(page.getByText("节点已启用 · 祖先 /bus 阻断", { exact: true })).toBeVisible();
+    await page.getByRole("treeitem", { name: "节点 /board", exact: true }).click();
+    await expect(page.getByRole("list", { name: "rx_fod_cond 来源链" })).toBeHidden();
+    await page.getByText("继承与覆盖（2）", { exact: true }).focus(); await page.keyboard.press("Enter");
+    const origins = page.getByRole("list", { name: "rx_fod_cond 来源链" });
+    await expect(origins.getByRole("listitem")).toHaveCount(2);
+    await expect(origins.getByRole("listitem").first()).toContainText('"SharedDefault", "keep"');
+    await expect(page.getByRole("button", { name: /配置版本/ })).not.toContainText("检查中");
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
+      await page.setViewportSize(viewport);
+      const screenshot = testInfo.outputPath(`effective-origins-${viewport.width}.png`);
+      await page.screenshot({ path: screenshot }); await testInfo.attach(`Effective origins ${viewport.width}`, { path: screenshot, contentType: "image/png" });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    }
+    await origins.getByRole("link", { name: "共享资源 v1", exact: true }).click();
+    await expect(page.getByText("v1 · 历史版本，只读", { exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "已发布 DTSI 源码", exact: true })).toContainText("SharedDefault");
+    await expect(page.getByRole("textbox", { name: "已发布 DTSI 源码", exact: true })).toHaveAttribute("aria-readonly", "true");
+    expect(new URL(page.url()).searchParams.get("line")).toBe("3");
+    await page.getByRole("link", { name: "返回项目节点", exact: true }).click();
+    await expect(page.getByRole("region", { name: "DTS 源码", exact: true })).toContainText("SharedDefault");
+    await expect(page.getByRole("radio", { name: "编辑", exact: true })).toHaveCount(0);
+    await page.getByRole("tab", { name: "生效配置", exact: true }).click();
+    await expect(page.getByLabel("rx_fod_cond 最终值", { exact: true })).toHaveText('"ProjectFinal", "keep"');
+    await page.getByRole("link", { name: `${binding.fileName}:${root.startLine}`, exact: true }).first().click();
+    await expect(page.getByRole("region", { name: "DTS 源码", exact: true })).toContainText("ProjectFinal");
+    await expect(page.getByRole("region", { name: "DTS 源码", exact: true })).not.toContainText("NewCurrent");
+    expect(new URL(page.url()).searchParams.get("version")).toBe(root.fileVersionId);
+    expect(new URL(page.url()).searchParams.get("revision")).toBe(revisionId);
+    expect(new URL(page.url()).searchParams.get("organization")).toBe(organizationId);
+    await expect(page.getByRole("radio", { name: "编辑", exact: true })).toHaveCount(0);
+    expect(file.fileId).toBe(root.fileId);
+  });
+
   test("administrator references a fixed shared DTSI version through configuration composition", async ({ page, request }, testInfo) => {
     test.setTimeout(240_000);
     await seedAcceptanceRoleMatrix();

@@ -33,6 +33,14 @@ export type WorkbenchPathPatch = {
 
 export function formatWorkbenchPath(projectId: string, search: string, patch: WorkbenchPathPatch) {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const configurationChanged = params.has("configSet") && params.get("configSet") !== patch.configSet;
+  const fileChanged = patch.file !== undefined && params.has("file") && params.get("file") !== patch.file;
+  const versionChanged = patch.version !== undefined && (patch.version === null || params.get("version") !== patch.version);
+  // Explicit context switches invalidate frozen locations; adding a default file to a deep link does not.
+  if (configurationChanged || fileChanged || versionChanged) {
+    params.delete("revision");
+    params.delete("line");
+  }
   params.set("configSet", patch.configSet);
   const setOrDelete = (key: string, value: string | null | undefined) => {
     if (value === undefined) return;

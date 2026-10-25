@@ -25,6 +25,7 @@ import { purgeProject } from "../projects/purge";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { getAuthContext } from "../auth/repository";
 import type { SourceRevisionPreview } from "./sourceRevisionService";
+import type { TopologyTree } from "../../../src/domain/parameter-topology/types";
 
 const ORG = "org-shared-ref", ADMIN = "user-shared-ref", A = "shared-project-a", B = "shared-project-b";
 const admin = makeTestAuthContext({ organizationId: ORG, userId: ADMIN, roles: [{ roleId: "admin", projectId: null }] });
@@ -77,6 +78,8 @@ describe("fixed shared references through the real API role", () => {
       await db.transaction(tx => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), snapshot, { organizationId: ORG, projectId, configSetId, configRevisionId: revision.id }));
     }
     api = createPostgresDatabase((await provisionPublicationRuntimeLogins(lane.url, { mode: "lab", runToken: token })).apiUrl);
+    expect((await api.query<{ rolsuper: boolean; rolinherit: boolean }>("select rolsuper,rolinherit from pg_roles where rolname=current_user")).rows[0])
+      .toEqual({ rolsuper: false, rolinherit: false });
     await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('shared-ref-editor-role','shared-ref-editor',$1,$2,'hardware-user')", [ORG, A]);
   }, 120_000);
   afterAll(async () => { await api?.close(); if (lane) await dropLabRuntimeLogins(lane.url, token); await db?.close(); await lane?.drop(); if (directory) await rm(directory, { recursive: true, force: true }); }, 120_000);
@@ -102,9 +105,23 @@ describe("fixed shared references through the real API role", () => {
     expect(other.body.items).toHaveLength(2);
     const values = await listCatalogBindingRowsForProject(api, admin, { projectId: A });
     expect(values.map(value => value.rawValue).sort()).toEqual(["<25>", "<36>"]);
-    const topology = await requestJson<{ item: { nodes: Array<{ nodeLocator: string }> } }>(server(), `/api/v2/projects/${A}/config-sets/${sets[A]}/revisions/${appliedA.configRevisionId}/topology`);
+    const topology = await requestJson<{ item: TopologyTree }>(server(), `/api/v2/projects/${A}/config-sets/${sets[A]}/revisions/${appliedA.configRevisionId}/topology`);
     expect(topology.status, topology.bodyText).toBe(200);
     expect(topology.bodyText).toContain("/common");
+    if (topology.body.item.view !== "effective") throw new Error("Expected effective topology");
+    const charger = topology.body.item.nodes.find(node => node.locator === "/charger")!;
+    const chain = charger.effects.filter(effect => effect.propertyName === "iin_max");
+    expect(chain.map(effect => effect.rawText)).toEqual(["<42>", "<36>"]);
+    expect(chain.map(effect => effect.valueText)).toEqual(["<42>", "<36>"]);
+    expect(chain.map(effect => effect.effectKind)).toEqual(["set", "override"]);
+    expect(chain[0]?.source).toMatchObject({ fileId: appliedA.fileId, fileVersionId: appliedA.fileVersionId,
+      sourceName: "limits.dtsi", startLine: 1, sharedReference: { resourceId, versionId, readOnly: true } });
+    expect(chain[1]?.source).toMatchObject({ sourceName: "board.dts" });
+    expect(chain[1]?.source?.sharedReference).toBeUndefined();
+    const secondary = topology.body.item.nodes.find(node => node.locator === "/secondary")!;
+    expect(secondary.compatible).toBe(charger.compatible);
+    expect(secondary.logicalNodeId).not.toBe(charger.logicalNodeId);
+    expect(secondary.effects.find(effect => effect.propertyName === "iin_max")?.rawText).toBe("<25>");
     const exported = await requestJson<{ manifest: { members: Array<{ sharedReference?: { versionId: string } }> }; files: Array<{ name: string; content: string }> }>(server(), `/api/v1/projects/${A}/config-sets/${sets[A]}/export`);
     expect(exported.status, exported.bodyText).toBe(200);
     expect(exported.body.files.find(file => file.name === "limits.dtsi")?.content).toBe(shared);
@@ -288,9 +305,23 @@ describe("fixed shared references through the real API role", () => {
     expect(removed.status, removed.bodyText).toBe(409);
     expect((await requestJson(server(), membersPath)).body).toEqual(members.body);
     expect(await listCatalogBindingRowsForProject(api, admin, { projectId: A })).toEqual(values);
-    const privateEdit = await edit(before.bodyText.replace("<36>", "<37>"), "private-root-override");
+    const privateEdit = await edit(before.bodyText.replace("<36>", "<37>").replace('model = "shared reference";', '/delete-property/ model;'), "private-root-override");
     expect(privateEdit.status, privateEdit.bodyText).toBe(200);
-    appliedA.configRevisionId = privateEdit.body.item.configRevisionId;
+    const historical = await requestJson<{ item: TopologyTree }>(server(), `/api/v2/projects/${A}/config-sets/${sets[A]}/revisions/${appliedA.configRevisionId}/topology`);
+    if (historical.body.item.view !== "effective") throw new Error("Expected historical effective topology");
+    const oldSource = historical.body.item.nodes.find(node => node.locator === "/charger")!.effects.filter(effect => effect.propertyName === "iin_max").at(-1)!;
+    expect(oldSource.rawText).toBe("<36>");
+    expect(oldSource.source?.fileVersionId).toBe(root.currentVersionId);
+    const original = await requestJson(server(), `${rootPath}/versions/${oldSource.source!.fileVersionId}/content`);
+    expect(original.bodyText).toBe(before.bodyText);
+    const current = await requestJson<{ item: TopologyTree }>(server(), `/api/v2/projects/${A}/config-sets/${sets[A]}/revisions/current/topology`);
+    expect(current.status, current.bodyText).toBe(200);
+    if (current.body.item.view !== "effective") throw new Error("Expected current effective topology");
+    appliedA.configRevisionId = current.body.item.revisionId;
+    const deletion = current.body.item.nodes.find(node => node.locator === "/")!.effects.find(effect => effect.propertyName === "model")!;
+    expect(deletion.effectKind).toBe("delete");
+    expect(deletion.source).toMatchObject({ fileId: root.fileId });
+    expect(deletion.source?.startLine).toBeUndefined();
     expect((await listCatalogBindingRowsForProject(api, admin, { projectId: A })).map(value => value.rawValue).sort()).toEqual(["<25>", "<37>"]);
     expect((await listCatalogBindingRowsForProject(api, admin, { projectId: B })).map(value => value.rawValue).sort()).toEqual(["<25>", "<36>"]);
   });

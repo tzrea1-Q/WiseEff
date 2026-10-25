@@ -38,6 +38,10 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
   const client = useMemo(() => apiClient ? createSharedDtsiClient(apiClient) : null, [apiClient]);
   const selected = new URLSearchParams(search).get("resource") ?? "";
   const selectedVersion = new URLSearchParams(search).get("version") ?? "";
+  const selectedMember = new URLSearchParams(search).get("member");
+  const requestedLine = new URLSearchParams(search).get("line") ?? "";
+  const projectContext = new URLSearchParams(search).get("projectContext") ?? "";
+  const projectReturnPath = /^\/parameter-admin\/projects\/[^/?#]+\/configuration\?/.test(projectContext) ? projectContext : null;
   const tab = new URLSearchParams(search).get("tab") === "versions" ? "versions" : "source";
   const scopeKey = `${organizationId ?? ""}:${search}:${canWrite}`;
   const active = useRef<Scope>({ key: scopeKey, client, pending: false });
@@ -109,7 +113,10 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
         if (!cancelled && isCurrent(scope)) { setDraft(result); setForm(draftInput(result)); }
       } else if (metadata.currentVersion) {
         const result = await client.version(selected, selectedVersion && selectedVersion !== "draft" ? selectedVersion : metadata.currentVersion.id);
-        if (!cancelled && isCurrent(scope)) setPublished(result);
+        if (!cancelled && isCurrent(scope)) {
+          setMemberIndex(Math.max(0, result.members.findIndex(member => member.id === selectedMember)));
+          setPublished(result);
+        }
       } else throw new Error("资源没有可读取的源码。");
     }) : client.list({ q: query, offset: (page - 1) * 20, limit: 20 }).then(result => {
       if (!cancelled && isCurrent(scope)) { setRows(result.items); setTotal(result.total); }
@@ -244,6 +251,7 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
 
   if (published || tab === "versions") return <section className="shared-dtsi-page shared-dtsi-page--editor" aria-label="共享 DTSI 版本" aria-busy={pending}>
     <header className="shared-dtsi-header"><div><Button variant="ghost" onClick={() => void navigate("")} disabled={pending}>返回资源列表</Button>
+      {projectReturnPath ? <a href={projectReturnPath} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(projectReturnPath); } }}>返回项目节点</a> : null}
       <h1>{published?.name ?? detail?.name ?? "共享 DTSI"}</h1></div>
       {canWrite && detail?.currentVersion ? <Button disabled={pending} onClick={() => detail.draftRevision ? void navigate(selected,{version:"draft",tab:"source"})
         : published && published.id!==detail.currentVersion!.id ? void navigate(selected,{version:detail.currentVersion!.id,tab:"source"}) : void createVersionDraft()}>
@@ -261,7 +269,8 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
           <ul>{published.manifest.dependencyClosure.map(pin=><li key={pin.resourceId}>{pin.name} · 版本 {pin.version} · {pin.mountPath||"资源根目录"}</li>)}</ul></details>:null}
         <div className="shared-dtsi-workspace">{memberNavigation(published.members,setMemberIndex)}
           <div className="shared-dtsi-source"><WorkbenchDtsEditor sessionKey={`shared-dtsi-version/${published.id}/${memberIndex}`} text={published.members[memberIndex]?.content ?? ""}
-          readOnly ariaLabel="已发布 DTSI 源码" /></div></div></> : null}
+          readOnly focusLine={published.members[memberIndex]?.id === selectedMember && /^[1-9]\d*$/.test(requestedLine) ? Number(requestedLine) : null}
+          ariaLabel="已发布 DTSI 源码" /></div></div></> : null}
     </TabPanel>
     <TabPanel id="shared-versions-panel" aria-labelledby="shared-versions-tab" hidden={tab!=="versions"}>
       {tab==="versions" ? <DataTable rows={versions} rowKey={row=>row.id} fluid pageSize={20} columns={[

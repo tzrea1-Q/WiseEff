@@ -131,6 +131,25 @@ describe("shared DTSI draft authoring", () => {
     expect(screen.getByLabelText("文件路径")).toHaveValue("common.dtsi");
   });
 
+  it("restores an exact historical member and a project node return link", async () => {
+    const resourceId="33333333-3333-4333-8333-333333333333",versionId="44444444-4444-4444-8444-444444444444";
+    const member={id:"22222222-2222-4222-8222-222222222222",sourceName:"battery.dtsi",content:'/ { battery { status = "disabled"; }; };',checksum:"sha256:source",sizeBytes:40};
+    const summary={id:versionId,resourceId,version:1,name:"Historical source",changeDescription:"Original",digest:"sha256:version",createdAt:"2026-10-25T00:00:00Z",createdByUserId:"author"};
+    const first={...member,id:"77777777-7777-4777-8777-777777777777",sourceName:"first.dtsi",content:"/ { first {}; };"};
+    const version={...summary,manifest:{schemaVersion:"shared-dtsi/v1",members:[first,member].map(({content:_,...row})=>({...row,role:"include"})),externalReferences:[]},members:[first,member]};
+    const api=createApiClient({baseUrl:"",fetchImpl:async(url)=>new Response(JSON.stringify({item:String(url).endsWith("/detail")
+      ? {resourceId,name:summary.name,updatedAt:summary.createdAt,draftRevision:null,currentVersion:{...summary,id:"88888888-8888-4888-8888-888888888888",version:2}}
+      : version}),{status:200})});
+    const context="/parameter-admin/projects/project/configuration?organization=org&configSet=config&revision=revision&file=file&version=source-v1&node=%2Fbattery&tab=source";
+    const search=`?${new URLSearchParams({resource:resourceId,version:versionId,member:member.id,line:"1",projectContext:context})}`;
+    render(<SharedDtsiPage apiClient={api} canWrite organizationId="org" search={search} onNavigate={()=>{}} />);
+    await screen.findByText("v1 · 历史版本，只读");
+    expect(screen.getByLabelText("已发布 DTSI 源码")).toHaveTextContent("battery");
+    expect(screen.getByLabelText("已发布 DTSI 源码")).toHaveAttribute("aria-readonly","true");
+    expect(screen.getByRole("link",{name:"返回项目节点"})).toHaveAttribute("href",context);
+    expect(screen.queryByRole("button",{name:"保存草稿"})).not.toBeInTheDocument();
+  });
+
   it("publishes a preview, reads immutable history, and discards only the next draft", async () => {
     const user=userEvent.setup();
     const resourceId="33333333-3333-4333-8333-333333333333",versionId="44444444-4444-4444-8444-444444444444";
