@@ -3078,8 +3078,8 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     try{
       let release!:()=>void;const pending=new Promise<void>(resolve=>{release=resolve;});
       await page.route(`**${compositionPath}/preview`,async route=>{await pending;await route.continue();});
-      await dialog.getByRole("button",{name:"预览移除引用",exact:true}).click();await expect(dialog.getByRole("button",{name:"正在核对…",exact:true})).toBeDisabled();release();await page.unroute(`**${compositionPath}/preview`);
-      await expect(dialog.getByRole("region",{name:"移除引用冲突处理",exact:true})).toContainText("removable");
+      await dialog.getByRole("button",{name:"预览移除引用",exact:true}).click();await expect(dialog.getByRole("button",{name:"正在核对…",exact:true})).toBeDisabled();release();
+      await expect(dialog.getByRole("region",{name:"移除引用冲突处理",exact:true})).toContainText("removable");await page.unroute(`**${compositionPath}/preview`);
       for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
         await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
         const path=testInfo.outputPath(`shared-removal-error-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`Removal error ${viewport.width}`,{path,contentType:"image/png"});
