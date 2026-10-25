@@ -3121,6 +3121,77 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const values=await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),{headers:adminHeaders()});expect((await values.json()).items).toContainEqual(expect.objectContaining({id:binding.bindingId,rawValue:'"PrivateChoice", "keep"'}));
   });
 
+  test("shared switch conflicts return from exact source correction and identity inspection with a fresh preview",async({page,request},testInfo)=>{
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
+    const binding=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:'/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "Private", "keep"; }; };',rawValuePattern:'"Private", "keep"',nodeLocatorPattern:"board",reason:"#1423 recovery",timeoutMs:60_000});
+    const sourceName=`recover-${randomUUID()}.dtsi`,content='/ { inherited { compatible = "mt,mt5788"; rx_fod_cond = "Shared", "keep"; }; recovery_bus { dev@10 { reg = <0x10>; }; }; };';
+    const created=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:`Recovery ${randomUUID()}`,sourceName,content,changeDescription:"Original source"}});
+    expect(created.status(),await created.text()).toBe(201);const resourceId=(await created.json()).item.resourceId as string;
+    const publish=async(revision:number)=>{
+      const p=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:revision}});expect(p.status(),await p.text()).toBe(201);
+      const v=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`),{headers:adminHeaders(),data:{previewId:(await p.json()).item.id,idempotencyKey:randomUUID()}});expect(v.status(),await v.text()).toBe(201);return (await v.json()).item.id as string;
+    };
+    const v1=await publish(1),compositionPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition`;
+    const initial={sharedReference:{resourceId,versionId:v1},role:"misc",sortOrder:1};
+    const p=await request.post(apiRoute(`${compositionPath}/preview`),{headers:adminHeaders(),data:initial});expect(p.status(),await p.text()).toBe(200);
+    const a=await request.post(apiRoute(`${compositionPath}/apply`),{headers:adminHeaders(),data:{...initial,proofToken:(await p.json()).item.proofToken,reason:"Pin recovery source",clientMutationId:randomUUID()}});expect(a.status(),await a.text()).toBe(200);
+    let base=v1;
+    const next=async(text:string)=>{
+      const d=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`),{headers:adminHeaders(),data:{baseVersionId:base}});expect(d.status(),await d.text()).toBe(201);
+      const s=await request.put(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`),{headers:adminHeaders(),data:{expectedRevision:(await d.json()).item.revision,name:"Recovery versions",sourceName,content:text,changeDescription:"Explicit recovery choice"}});expect(s.status(),await s.text()).toBe(200);
+      return base=await publish((await s.json()).item.revision);
+    };
+    const missing=content.replace('rx_fod_cond = "Shared", "keep";',''),v2=await next(missing),v3=await next(missing.replace('dev@10 { reg = <0x10>; };','left@10 { reg = <0x10>; }; right@10 { reg = <0x10>; };'));
+    const route=`/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({organization:organizationId,configSet:binding.configSetId,tab:"effective",node:"/board"})}`;
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,route));await dismissXiaozeHint(page);
+    const composition=await openWorkbenchPanel(page,"config-set");await composition.getByRole("button",{name:`${sourceName} 更多`,exact:true}).click();await page.getByRole("menuitem",{name:"切换共享版本",exact:true}).click();
+    const dialog=page.getByRole("dialog",{name:"切换共享版本",exact:true}),reason="#1423 retain the target and project decision";
+    await selectControlOption(dialog.getByRole("combobox",{name:"固定版本",exact:true}),v3);await dialog.getByRole("textbox",{name:"变更说明",exact:true}).fill(reason);
+    const expected={method:"POST",path:`${compositionPath}/preview`,status:409};expectedBrowserApiFailures.push(expected);
+    try{
+      await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();await expect(dialog.getByRole("region",{name:"版本冲突处理",exact:true})).toContainText("/recovery_bus/left@10");
+      await expect(dialog.getByRole("region",{name:"版本冲突处理",exact:true})).toContainText("/recovery_bus/right@10");
+      await dialog.getByRole("button",{name:"核对共享来源",exact:true}).first().click();
+      await expect(page.getByRole("tab",{name:"来源识别",exact:true})).toHaveAttribute("aria-selected","true");
+      await page.reload();await page.getByRole("link",{name:"返回项目节点",exact:true}).click();
+      await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue(reason);await expect(dialog.getByRole("combobox",{name:"固定版本",exact:true})).toHaveAttribute("data-value",v3);
+      await expect(dialog.getByRole("button",{name:"确认切换版本",exact:true})).toHaveCount(0);
+      await selectControlOption(dialog.getByRole("combobox",{name:"固定版本",exact:true}),v2);
+      await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();await expect(dialog.getByRole("region",{name:"版本冲突处理",exact:true})).toContainText("/inherited");
+      for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+        await page.setViewportSize(viewport);await expect(dialog.getByRole("button",{name:"编辑项目根文件",exact:true})).toBeInViewport();
+        expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+        const path=testInfo.outputPath(`switch-conflict-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`Switch conflict ${viewport.width}`,{path,contentType:"image/png"});
+      }
+      await page.evaluate(()=>document.documentElement.classList.add("dark"));
+      await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveCSS("color","rgb(232, 236, 244)");
+      const darkPath=testInfo.outputPath("switch-conflict-dark-1280.png");await page.screenshot({path:darkPath});await testInfo.attach("Switch conflict dark 1280",{path:darkPath,contentType:"image/png"});
+      await page.evaluate(()=>document.documentElement.classList.remove("dark"));
+      await dialog.getByRole("button",{name:"编辑项目根文件",exact:true}).focus();await page.keyboard.press("Enter");
+    }finally{expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(expected),1);}
+    const files=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`),{headers:adminHeaders()});const root=((await files.json()).items as {fileId:string;fileName:string;role:string;currentVersionId:string}[]).find(file=>file.role==="base")!;
+    const original=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${root.fileId}/versions/${root.currentVersionId}/content`),{headers:adminHeaders()});expect(original.status(),await original.text()).toBe(200);
+    const corrected=(await original.text())+'\n/ { inherited { rx_fod_cond = "Recovered", "keep"; }; };\n';
+    const saved=await prepareSourceFromEditor(page,corrected,true);await saved.dialog.getByRole("textbox",{name:"DTS 修改原因",exact:true}).fill("#1423 keep the required declaration in this project");
+    const sourceApplying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/source-apply"));
+    await saved.dialog.getByRole("button",{name:"直接应用修改",exact:true}).click();expect((await sourceApplying).status()).toBe(200);await expect(saved.dialog).toHaveCount(0);
+    await page.reload();await page.getByRole("button",{name:"返回版本切换",exact:true}).click();
+    await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue(reason);await expect(dialog.getByRole("combobox",{name:"固定版本",exact:true})).toHaveAttribute("data-value",v2);await expect(dialog.getByRole("button",{name:"确认切换版本",exact:true})).toHaveCount(0);
+    await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();await expect(dialog.getByRole("region",{name:"版本切换预览",exact:true})).toContainText("构建与参数约束校验通过");
+    const revisions=await request.get(apiRoute(`/api/v2/projects/${projectId}/config-sets/${binding.configSetId}/revisions`),{headers:adminHeaders()});const current=((await revisions.json()).items as {id:string;revisionNumber:number}[]).sort((x,y)=>y.revisionNumber-x.revisionNumber)[0]!;
+    const latestFiles=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`),{headers:adminHeaders()});const latest=((await latestFiles.json()).items as {fileId:string;currentVersionId:string}[]).find(file=>file.fileId===root.fileId)!;
+    const c=await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),{headers:adminHeaders(),data:{fileId:root.fileId,fileName:root.fileName,intent:"source_revision",contentBase64:Buffer.from(corrected+"\n// Changed again after recovery\n").toString("base64"),expectedCurrentVersionId:latest.currentVersionId,expectedConfigRevisionId:current.id,clientMutationId:randomUUID()}});expect(c.status(),await c.text()).toBe(201);const candidateId=(await c.json()).item.id as string;
+    const cp=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-preview`),{headers:adminHeaders()});expect(cp.status(),await cp.text()).toBe(200);
+    const ca=await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-apply`),{headers:adminHeaders(),data:{expectedCurrentVersionId:latest.currentVersionId,expectedProofToken:(await cp.json()).item.proofToken,reason:"Concurrent correction",clientMutationId:randomUUID()}});expect(ca.status(),await ca.text()).toBe(200);
+    const stale={method:"POST",path:`${compositionPath}/apply`,status:409};expectedBrowserApiFailures.push(stale);
+    try{await dialog.getByRole("button",{name:"确认切换版本",exact:true}).click();await expect(dialog.getByRole("alert")).toContainText("预览");await expect(dialog.getByRole("button",{name:"确认切换版本",exact:true})).toHaveCount(0);}finally{expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(stale),1);}
+    await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue(reason);
+    const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/member-addition/apply"));await dialog.getByRole("button",{name:"确认切换版本",exact:true}).focus();await page.keyboard.press("Enter");expect((await applying).status()).toBe(200);await expect(dialog).toHaveCount(0);
+    const values=await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),{headers:adminHeaders()});expect((await values.json()).items).toContainEqual(expect.objectContaining({rawValue:'"Recovered", "keep"'}));
+  });
+
   test("shared successor comparison and authorized usage retain the exact project pin", async ({ page, request }, testInfo) => {
     test.setTimeout(240_000);
     await seedAcceptanceRoleMatrix();

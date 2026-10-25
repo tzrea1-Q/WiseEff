@@ -10,6 +10,15 @@ export const sharedReferenceSwitchPreviewSchema=z.object({
 });
 export type SharedReferenceSwitchPreview=z.infer<typeof sharedReferenceSwitchPreviewSchema>;
 
+/** Original source locations for a refused switch; never an approval or identity decision. */
+export const sharedSwitchConflictSchema=z.object({
+  message:z.string(),sourceName:z.string(),line:z.number().int().positive().optional(),node:z.string().optional(),property:z.string().optional(),
+  fileId:z.string().optional(),fileVersionId:z.string().optional(),
+  resourceId:z.string().optional(),versionId:z.string().optional(),memberId:z.string().optional(),
+  identity:z.boolean().optional(),projectCorrection:z.boolean().optional()
+});
+export type SharedSwitchConflict=z.infer<typeof sharedSwitchConflictSchema>;
+
 const additionFields = {
   candidateId: z.string().min(1).optional(), fileId: z.string().min(1).optional(),
   sharedReference: sharedDtsiDependencySchema.extend({mountPath:sharedDtsiDependencySchema.shape.mountPath.optional(), replaceVersionId:z.string().uuid().optional()}).strict().optional(),

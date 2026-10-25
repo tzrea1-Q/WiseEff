@@ -9,7 +9,9 @@ import type { DtsStructuredRepository, DtsStructureResult } from "@/application/
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
-import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { WiseEffApiError,createApiClient } from "@/infrastructure/http/apiClient";
+import * as memberAdditionClient from "@/infrastructure/http/canonicalMemberAdditionClient";
+import * as sharedDtsiClient from "@/infrastructure/http/sharedDtsiClient";
 import * as canonicalConflictClient from "@/infrastructure/http/canonicalConflictClient";
 import * as userGovernanceClient from "@/infrastructure/http/userGovernanceClient";
 import {
@@ -561,6 +563,25 @@ function legacyDraftStorage(baseVersionId = "version-board-12") {
 }
 
 describe("ProjectConfigurationWorkbench", () => {
+  it.each(["cancel","apply"])("continues switch %s when browser recovery storage cannot be cleared",async(action)=>{
+    const resourceId="11111111-1111-4111-8111-111111111111",old="22222222-2222-4222-8222-222222222222",target="33333333-3333-4333-8333-333333333333";
+    const scope="wiseeff.shared-switch:local-user:org-1:project-1:cs-default";
+    const storage=createMemoryStorage({[scope]:JSON.stringify({scope,reference:{resourceId,versionId:old,version:1},draft:{versionId:target,reason:"Retained switch reason"}})});
+    storage.removeItem=vi.fn(()=>{throw new Error("Browser storage unavailable");});vi.stubGlobal("sessionStorage",storage);
+    const shared=sharedDtsiClient.createSharedDtsiClient(createApiClient({baseUrl:""}));
+    vi.spyOn(sharedDtsiClient,"createSharedDtsiClient").mockReturnValue({...shared,versions:vi.fn(async()=>({items:[{id:target,resourceId,version:2,name:"Limits",changeDescription:"Next",digest:"fixed",createdAt:"today",createdByUserId:"author"}],total:1}))});
+    vi.spyOn(memberAdditionClient,"createCanonicalMemberAdditionClient").mockReturnValue({upload:vi.fn(),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"cs-default",fileName:"limits.dtsi",format:"dts" as const,members:[],entryFile:"aurora-board.dts",includeSearchPaths:["."],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}})),apply:vi.fn(async()=>({requestId:"request",fileId:"applied-file",fileVersionId:"applied-version",configRevisionId:"new-revision"}))});
+    const dts=createDtsRepository(),{onNavigate}=renderWorkbench({apiMode:true,search:"?configSet=cs-default&file=file-board&sharedSwitch=resume",dtsRepository:dts});
+    const dialog=await screen.findByRole("dialog",{name:"切换共享版本"}),reads=vi.mocked(dts.listConfigSetFiles).mock.calls.length;
+    if(action==="cancel")await userEvent.click(within(dialog).getByRole("button",{name:"关闭"}));
+    else{
+      await userEvent.click(within(dialog).getByRole("button",{name:"预览版本切换"}));
+      await userEvent.click(await within(dialog).findByRole("button",{name:"确认切换版本"}));
+      await waitFor(()=>expect(onNavigate).toHaveBeenLastCalledWith(expect.stringContaining("file=applied-file")));
+      await waitFor(()=>expect(vi.mocked(dts.listConfigSetFiles).mock.calls.length).toBeGreaterThan(reads));
+    }
+    expect(storage.removeItem).toHaveBeenCalledWith(scope);expect(screen.queryByRole("dialog",{name:"切换共享版本"})).not.toBeInTheDocument();
+  });
   it("defaults to the complete effective tree, keeps compatible instances separate, and retries a failed read", async () => {
     const getTopology = vi.fn<ParameterTopologyRepository["getTopology"]>()
       .mockRejectedValueOnce(new Error("读取失败"))

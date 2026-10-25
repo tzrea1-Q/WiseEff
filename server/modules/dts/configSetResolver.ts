@@ -469,6 +469,7 @@ function walkNode(ctx: WalkContext, cst: DtsNodeCst, parentLocator: string): voi
         code: "dangling-reference",
         severity: "warning",
         fileName,
+        offset: ctx.originForSpan(cst.span)?.start,
         message: `Overlay target "&${cst.refTarget}" is not defined in the uploaded file set; its properties are attached to a synthetic anchor node so parameters stay manageable (full-tree resolution unavailable until the definition is provided)`,
       });
       node = ensureNode(ctx, cst.refTarget, cst.refTarget, undefined, fileName,true);
