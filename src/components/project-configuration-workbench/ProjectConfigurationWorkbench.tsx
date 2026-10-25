@@ -7,6 +7,9 @@ import type {
   DtsStructuredRepository
 } from "@/application/ports/DtsStructuredRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type { TopologyTree } from "@/domain/parameter-topology/types";
+import { effectiveStructureNodes, WorkbenchEffectiveConfiguration } from "./WorkbenchEffectiveConfiguration";
+import { WorkbenchStructureTree } from "./WorkbenchStructureTree";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { WorkbenchMemberRemovalDialog } from "./WorkbenchMemberRemovalDialog";
 import { WorkbenchSetRootDialog } from "./WorkbenchSetRootDialog";
@@ -142,7 +145,7 @@ export type ProjectConfigurationWorkbenchProps = {
    */
   topologyRepository?: Pick<
     ParameterTopologyRepository,
-    "listConfigRevisions" | "validateRevision" | "listBindings" | "createBindingDraft"
+    "listConfigRevisions" | "validateRevision" | "listBindings" | "createBindingDraft" | "getTopology"
   >;
 };
 
@@ -494,9 +497,37 @@ export function ProjectConfigurationWorkbench({
   const canvasMode: WorkbenchCanvasMode = parseCanvasMode(queryValue(search, "sourceMode"));
   const requestedTab = queryValue(search, "tab");
   const contentTab = requestedTab === "conflicts" ? "conflicts"
+    : requestedTab === "effective" ? "effective"
     : requestedTab === "source" || requestedTab === "structure" ? "source"
-    : queryValue(search, "tasks") === "conflicts" || queryValue(search, "dock") === "conflicts" ? "conflicts" : "source";
-  const showContentTabs = contentTab === "conflicts" || syncConflicts.length > 0 || Boolean(conflictsError);
+    : queryValue(search, "tasks") === "conflicts" || queryValue(search, "dock") === "conflicts" ? "conflicts"
+    : apiMode && topologyRepository && !queryValue(search, "file") ? "effective" : "source";
+  const showContentTabs = Boolean(topologyRepository) || contentTab === "conflicts" || syncConflicts.length > 0 || Boolean(conflictsError);
+  const effectiveRevision = queryValue(search, "revision") ?? "current";
+  const effectiveKey = `${project.id}/${selectedConfigSet?.id}/${effectiveRevision}`;
+  const [effectiveRetry, setEffectiveRetry] = useState(0);
+  const [effectiveResult, setEffectiveResult] = useState<{ key: string; tree?: Extract<TopologyTree, { view: "effective" }>; error?: string } | null>(null);
+  useEffect(() => {
+    if (contentTab !== "effective" || !selectedConfigSet || !topologyRepository) return;
+    let cancelled = false;
+    setEffectiveResult(null);
+    void topologyRepository.getTopology(project.id, selectedConfigSet.id, effectiveRevision, "effective").then(tree => {
+      if (tree.view !== "effective") throw new Error("生效配置返回了错误的视图，请重试。");
+      if (!cancelled) setEffectiveResult({ key: effectiveKey, tree });
+    }).catch(error => { if (!cancelled) setEffectiveResult({ key: effectiveKey, error: presentError(error, "生效配置加载失败。") }); });
+    return () => { cancelled = true; };
+  }, [contentTab, effectiveKey, effectiveRetry, effectiveRevision, project.id, selectedConfigSet, topologyRepository]);
+  const effectiveTree = effectiveResult?.key === effectiveKey ? effectiveResult.tree : undefined;
+  const effectiveError = effectiveResult?.key === effectiveKey ? effectiveResult.error : undefined;
+  const effectiveNodes = useMemo(() => effectiveStructureNodes(effectiveTree?.nodes ?? []), [effectiveTree]);
+  const effectiveNodePath = queryValue(search, "node") ?? effectiveTree?.nodes.find(node => node.locator !== "/")?.locator ?? "/";
+  const effectiveNode = effectiveTree?.nodes.find(node => node.locator === effectiveNodePath) ?? null;
+  const selectEffectiveNode = (node: string, property: string | null = null) => {
+    const params = new URLSearchParams(search);
+    params.set("tab", "effective"); params.set("node", node);
+    params.delete("inspector"); setInspectorOpen(false);
+    if (property) params.set("property", property); else params.delete("property");
+    onNavigate(`/parameter-admin/projects/${encodeURIComponent(project.id)}/configuration?${params}`);
+  };
   const contentTabsWereVisible = useRef(showContentTabs);
   useEffect(() => {
     if (contentTabsWereVisible.current && !showContentTabs && document.activeElement === document.body) {
@@ -510,6 +541,7 @@ export function ProjectConfigurationWorkbench({
   const selectContentTab = (tab: string) => {
     const params = new URLSearchParams(search);
     params.set("tab", tab);
+    if (tab === "effective") { setInspectorOpen(false); params.delete("inspector"); }
     onNavigate(`/parameter-admin/projects/${encodeURIComponent(project.id)}/configuration?${params.toString()}`);
   };
 
@@ -529,10 +561,10 @@ export function ProjectConfigurationWorkbench({
     setInspectorOpen(true);
     if (!selectedConfigSet) return;
     const switchingFile = fileId && fileId !== selectedMember?.fileId;
-    const targetPath = formatWorkbenchPath(project.id, search, { configSet: selectedConfigSet.id, inspector: level,
+    const targetPath = formatWorkbenchPath(project.id, ["file", "versions", "candidates"].includes(level) ? canvasSearch : search, { configSet: selectedConfigSet.id, inspector: level,
       ...(switchingFile ? { file: fileId, node: null, property: null, sourceMode: null, version: null, candidate: null } : {}) });
     if (targetPath !== `/parameter-admin/projects/${encodeURIComponent(project.id)}/configuration?${search.replace(/^\?/, "")}`) onNavigate(targetPath);
-  }, [onNavigate, project.id, search, selectedConfigSet, selectedMember?.fileId]);
+  }, [onNavigate, project.id, search, canvasSearch, selectedConfigSet, selectedMember?.fileId]);
   const closeInspector = () => {
     setInspectorOpen(false);
     if (selectedConfigSet && queryValue(search, "inspector")) onNavigate(formatWorkbenchPath(project.id, search, {
@@ -781,8 +813,9 @@ export function ProjectConfigurationWorkbench({
       selectedMembers,
       projectFiles
     });
-    if (path) onNavigate(path);
+    if (path) onNavigate(contentTab === "effective" && !queryValue(search, "tab") ? `${path}&tab=effective` : path);
   }, [
+    contentTab,
     filesLoading,
     membersListLoading,
     navigationSession,
@@ -815,14 +848,16 @@ export function ProjectConfigurationWorkbench({
     void workspaceLoadSession.loadStructure(
       project.id,
       selectedMemberFileId,
-      selectedMemberVersionId,
+      canvasMode === "history" && historyVersionId ? historyVersionId : selectedMemberVersionId,
       dtsRepository,
       apiMode ? { navigationScope: "organization" } : undefined
     );
   }, [
     apiMode,
+    canvasMode,
     dtsRepository,
     project.id,
+    historyVersionId,
     selectedMemberFileId,
     selectedMemberVersionId,
     structureRetry,
@@ -1832,7 +1867,7 @@ export function ProjectConfigurationWorkbench({
     <section className="configuration-workbench" aria-label="项目配置工作台" ref={workbenchBodyRef}>
       <NavigatorWorkbench
         pageKey={`project-configuration:${project.id}`}
-        navigatorLabel="配置导航"
+        navigatorLabel={contentTab === "effective" ? "设备树" : "配置导航"}
         taskLabel="配置内容"
         panelId={showContentTabs ? `project-configuration-${contentTab}-panel` : undefined}
         tabId={showContentTabs ? `project-configuration-${contentTab}-tab` : undefined}
@@ -1869,8 +1904,8 @@ export function ProjectConfigurationWorkbench({
       />
           {showContentTabs ? <div className="configuration-workbench__viewbar"><ViewSwitch variant="tabs" ariaLabel="项目配置内容" value={contentTab}
             onValueChange={selectContentTab}
-            items={[{ value: "source", label: "源码" },
-              { value: "conflicts", label: syncConflicts.length ? `冲突（${syncConflicts.length}）` : "冲突" }]
+            items={[...(topologyRepository ? [{ value: "effective", label: "生效配置" }] : []), { value: "source", label: "源码" },
+              ...(contentTab === "conflicts" || syncConflicts.length || conflictsError ? [{ value: "conflicts", label: syncConflicts.length ? `冲突（${syncConflicts.length}）` : "冲突" }] : [])]
               .map((item) => ({ ...item, id: `project-configuration-${item.value}-tab`, panelId: `project-configuration-${item.value}-panel` }))} />
           </div> : null}
         </div>}
@@ -1897,7 +1932,12 @@ export function ProjectConfigurationWorkbench({
       />
         </>}
         navigator={<>
-          {selectedConfigSet ? <WorkbenchSourceTree
+          {contentTab === "effective" ? <>
+            <p className="configuration-workbench__effective-tree-note">完整合成设备树 · 包含未纳入业务导航的节点</p>
+            {effectiveTree ? <div role="tree" aria-label="生效设备树"><WorkbenchStructureTree nodes={effectiveNodes} fileId="effective"
+              selectedNodePath={effectiveNodePath} selectedPropertyName={queryValue(search, "property")} sessionDrafts={{}} ariaLabel="生效节点"
+              onSelectNode={selectEffectiveNode} onSelectProperty={selectEffectiveNode} showValues includeRoot defaultExpandDepth={3} /></div> : null}
+          </> : selectedConfigSet ? <WorkbenchSourceTree
             showStructure={contentTab === "source"}
             treeRegionRef={treeRegionRef}
             selectedConfigSet={selectedConfigSet}
@@ -1944,6 +1984,14 @@ export function ProjectConfigurationWorkbench({
         inspector={inspectorLevel === "release" ? null : inspectorPanel}
       >
         {!selectedConfigSet ? <SectionEmpty message="选择或新建配置以查看项目配置。" /> : null}
+        {contentTab === "effective" && selectedConfigSet ? !topologyRepository
+          ? <SectionEmpty message="生效配置需要 API 模式。" />
+          : effectiveError ? <SectionError message={effectiveError} onRetry={() => setEffectiveRetry(value => value + 1)} />
+          : !effectiveTree ? <SectionSkeleton label="正在加载生效配置…" />
+          : effectiveTree.nodes.length === 0 ? <SectionEmpty message="当前配置修订没有生效设备树节点。" />
+          : <WorkbenchEffectiveConfiguration node={effectiveNode}
+            blockingAncestorPath={effectiveTree.nodes.find(node => node.logicalNodeId === effectiveNode?.enablement?.blockingAncestorId)?.locator}
+            projectId={project.id} configSetId={selectedConfigSet.id} revisionId={effectiveTree.revisionId} search={search} onNavigate={onNavigate} /> : null}
         {contentTab === "source" && selectedConfigSet ? <WorkbenchSourceCanvas
             workingEditor={selectedMember?.format === "dts" && !selectedMember.sharedReference && selectedMember.currentVersionId && source && resolvedOrganizationId
               && !sourceLoading && !sourceError && sourceIdentity?.projectId === project.id
@@ -1988,8 +2036,8 @@ export function ProjectConfigurationWorkbench({
             candidateLoading={candidateLoading}
             compareSource={compareSource}
             unifiedDiffText={unifiedDiffText}
-            focusSpan={focusSpan}
-            focusLineOverride={focusLineOverride}
+            focusSpan={queryValue(search, "line") ? null : focusSpan}
+            focusLineOverride={/^[1-9]\d*$/.test(queryValue(search, "line") ?? "") ? Number(queryValue(search, "line")) : focusLineOverride}
             restoredScrollLine={restoredScrollLine}
             findQuery={findQuery}
             findNextToken={findNextToken}

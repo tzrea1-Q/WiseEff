@@ -61,6 +61,7 @@ export type ParameterAdminApplication = {
   parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
 
   listMappingTasks(projectId?: string): Promise<IdentityMappingTask[]>;
+  getTopology: ParameterTopologyRepository["getTopology"];
   listConfigRevisions(
     projectId: string,
     configSetId: string,
@@ -148,6 +149,7 @@ export function createParameterAdminApplication({
     listMappingTasks(projectId) {
       return topology.listMappingTasks(projectId);
     },
+    getTopology: (...args) => topology.getTopology(...args),
     listConfigRevisions(projectId, configSetId) {
       return topology.listConfigRevisions(projectId, configSetId);
     },

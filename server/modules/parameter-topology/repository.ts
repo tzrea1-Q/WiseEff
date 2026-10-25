@@ -10,6 +10,7 @@ import {
   withSourceEnablement,
 } from "../../../src/domain/parameter-topology/nodeEnablement";
 import { normalizeManifestLogicalPath } from "./configRevisionManifest";
+import { renderDtsValue } from "../dts";
 import type {
   ConfigRevisionManifestMember,
   ConfigRevisionManifestState,
@@ -21,7 +22,7 @@ import type {
   PersistedPropertyOccurrence,
   PersistedValidationDiagnostic,
 } from "./types";
-import type { TopologyNodeEnablement } from "../../../src/domain/parameter-topology/types";
+import type { EffectiveTopologyEffect, TopologyNodeEnablement } from "../../../src/domain/parameter-topology/types";
 
 type RevisionRow = TrustedInvocationDomainAttributionRow & {
   id: string;
@@ -750,12 +751,23 @@ type EffectRow = {
   node_occurrence_id: string | null;
   property_occurrence_id: string | null;
   source_order: number | string;
+  raw_text: string | null;
+  ast_json: EffectiveTopologyEffect["value"] | null;
+  file_id: string | null;
+  file_version_id: string | null;
+  source_name: string | null;
+  shared_reference: NonNullable<EffectiveTopologyEffect["source"]>["sharedReference"] | null;
+  start_line: number | null;
+  start_column: number | null;
+  end_line: number | null;
+  end_column: number | null;
 };
 
 type StatusEffectRow = {
   logical_node_revision_id: string;
   effect_kind: "set" | "override" | "delete";
   raw_text: string | null;
+  ast_json: EffectiveTopologyEffect["value"] | null;
   source_order: number | string;
 };
 
@@ -771,14 +783,7 @@ export async function listEffectiveTopology(
     unitAddress?: string;
     compatible?: string;
     parentLogicalNodeId: string | null;
-    effects: Array<{
-      id: string;
-      propertyName: string | null;
-      effectKind: "set" | "override" | "delete";
-      nodeOccurrenceId: string | null;
-      propertyOccurrenceId: string | null;
-      sourceOrder: number;
-    }>;
+    effects: EffectiveTopologyEffect[];
     enablement: TopologyNodeEnablement;
   }>;
 }> {
@@ -794,17 +799,22 @@ export async function listEffectiveTopology(
     ),
     db.query<EffectRow>(
       `
-      select id, logical_node_revision_id, property_name, effect_kind,
-             node_occurrence_id, property_occurrence_id, source_order
-      from dts_occurrence_effects
-      where config_revision_id = $1
-      order by source_order asc
+      select e.id, e.logical_node_revision_id, e.property_name, e.effect_kind,
+             e.node_occurrence_id, e.property_occurrence_id, e.source_order,
+             p.raw_text, p.ast_json, m.file_id, m.file_version_id, m.source_name, m.shared_reference,
+             p.start_line, p.start_column, p.end_line, p.end_column
+      from dts_occurrence_effects e
+      left join dts_property_occurrences p on p.id = e.property_occurrence_id and p.config_revision_id = e.config_revision_id
+      left join dts_node_occurrences n on n.id = e.node_occurrence_id and n.config_revision_id = e.config_revision_id
+      left join dts_config_revision_members m on m.file_version_id = coalesce(p.file_version_id, n.file_version_id) and m.config_revision_id = e.config_revision_id
+      where e.config_revision_id = $1
+      order by e.source_order asc, e.id asc
       `,
       [configRevisionId],
     ),
     db.query<StatusEffectRow>(
       `
-      select oe.logical_node_revision_id, oe.effect_kind, po.raw_text, oe.source_order
+      select oe.logical_node_revision_id, oe.effect_kind, po.raw_text, po.ast_json, oe.source_order
       from dts_occurrence_effects oe
       left join dts_property_occurrences po on po.id = oe.property_occurrence_id
       where oe.config_revision_id = $1
@@ -828,7 +838,7 @@ export async function listEffectiveTopology(
     if (row.effect_kind === "delete") {
       rawStatusByNode.set(row.logical_node_revision_id, null);
     } else {
-      rawStatusByNode.set(row.logical_node_revision_id, row.raw_text);
+      rawStatusByNode.set(row.logical_node_revision_id, row.ast_json?.kind === "strings" ? renderDtsValue(row.ast_json) : row.raw_text);
     }
   }
 
@@ -848,6 +858,15 @@ export async function listEffectiveTopology(
       nodeOccurrenceId: effect.node_occurrence_id,
       propertyOccurrenceId: effect.property_occurrence_id,
       sourceOrder: Number(effect.source_order),
+      ...(effect.raw_text != null ? { rawText: effect.raw_text } : {}),
+      ...(effect.ast_json && ["boolean", "empty", "strings", "bytes", "cells", "mixed"].includes(effect.ast_json.kind)
+        ? { value: effect.ast_json, valueText: renderDtsValue(effect.ast_json) } : {}),
+      ...(effect.file_id && effect.file_version_id && effect.source_name ? { source: {
+        fileId: effect.file_id, fileVersionId: effect.file_version_id, sourceName: effect.source_name,
+        ...(effect.start_line != null ? { startLine: Number(effect.start_line), startColumn: Number(effect.start_column),
+          endLine: Number(effect.end_line), endColumn: Number(effect.end_column) } : {}),
+        ...(effect.shared_reference ? { sharedReference: effect.shared_reference } : {})
+      } } : {}),
     })),
   }));
 
