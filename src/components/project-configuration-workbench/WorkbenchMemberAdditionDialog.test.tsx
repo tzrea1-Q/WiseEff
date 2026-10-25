@@ -38,6 +38,14 @@ it("returns a required dependency to composition instead of offering an ineffect
   await user.click(screen.getByRole("button",{name:"返回配置组成"}));expect(dismiss).toHaveBeenCalledOnce();
 });
 
+it("offers one precise project correction when the broken dependency is already located in the root",async()=>{
+  const user=userEvent.setup(),client={upload:vi.fn(),apply:vi.fn(),preview:vi.fn().mockRejectedValue(new WiseEffApiError("VALIDATION_FAILED","找不到覆盖目标节点",{switchConflicts:[{message:"找不到覆盖目标节点（&removed）",sourceName:"board.dts",fileId:"root",line:4}]},"request"))};
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"}]} initialConfigSetId="set" availableFiles={[]} removeReference={{resourceId:"resource",versionId:"version",version:1}} projectRoot={{fileId:"root",sourceName:"board.dts"}} onRecoverSwitch={vi.fn()} client={client} onDismiss={vi.fn()} onApplied={vi.fn()}/>);
+  await user.click(screen.getByRole("button",{name:"预览移除引用"}));await screen.findByRole("alert");
+  expect(screen.getByRole("button",{name:"修正项目源码"})).toBeVisible();
+  expect(screen.queryByRole("button",{name:"编辑项目根文件"})).not.toBeInTheDocument();
+});
+
 it("locates a blocked project override and retains the task input across correction without retaining its proof", async () => {
   const user=userEvent.setup(), recover=vi.fn(), resourceId="11111111-1111-4111-8111-111111111111",old="22222222-2222-4222-8222-222222222222",target="33333333-3333-4333-8333-333333333333";
   const client={upload:vi.fn(),apply:vi.fn(),preview:vi.fn().mockRejectedValue(new WiseEffApiError("VALIDATION_FAILED","项目覆盖不满足目标约束",{switchConflicts:[{message:"iin_max 超出约束",sourceName:"board.dts",fileId:"root",fileVersionId:"root-v1",line:9,node:"/charger",property:"iin_max"}]},"request"))};
@@ -100,7 +108,7 @@ it("requires an explicit published version and clears its proof when the version
   const user = userEvent.setup(), resourceId = "11111111-1111-4111-8111-111111111111", versionId = "22222222-2222-4222-8222-222222222222";
   const summary = { id: versionId, resourceId, version: 1, name: "Shared limits", changeDescription: "Initial limits", digest: "sha256:fixed", createdAt: "2026-10-24", createdByUserId: "author" };
   const sharedClient = {
-    list: vi.fn(async () => ({ items: [{ resourceId, name: "Shared limits", updatedAt: "2026-10-24", sourceName: "limits.dtsi", draftRevision: null, currentVersion: summary }], total: 1 })),
+    list: vi.fn(async () => ({ items: [{ resourceId, name: "Shared limits", updatedAt: "2026-10-24", sourceName: "limits.dtsi",state:"active" as const,lifecycleRevision:1, draftRevision: null, currentVersion: summary }], total: 1 })),
     versions: vi.fn(async () => ({ items: [summary, { ...summary, id: "33333333-3333-4333-8333-333333333333", version: 2 }], total: 2 }))
   };
   const bodies: Array<Record<string, unknown>> = [];

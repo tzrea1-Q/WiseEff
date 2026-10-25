@@ -191,7 +191,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
             </div>:null}
           </li>)}</ul>:<p>{compositionError==="dependency"?"请先在配置组成中移除或变更依赖此资源的直接引用。":compositionError==="stale"?"请重新核对配置组成后预览。":removeReference?"当前配置未改变；请修正项目源码后重新预览。":"当前配置未改变；请重新预览，或选择其他目标版本。"}</p>}
           <div className="workbench-member-addition-dialog__conflict-actions">
-            {removeReference?!compositionError&&projectRoot&&onRecoverSwitch?<Button type="button" variant="outline" onClick={()=>{invalidate();onRecoverSwitch({message:error,...projectRoot},{versionId,reason});}}>编辑项目根文件</Button>:null:<Button type="button" variant="outline" onClick={()=>{invalidate();if(selectionRef.current){selectionRef.current.open=true;selectionRef.current.querySelector<HTMLButtonElement>('[aria-label="固定版本"]')?.focus();}}}>重选目标版本</Button>}
+            {removeReference?!compositionError&&!switchConflicts.some(item=>item.fileId||item.projectCorrection)&&projectRoot&&onRecoverSwitch?<Button type="button" variant="outline" onClick={()=>{invalidate();onRecoverSwitch({message:error,...projectRoot},{versionId,reason});}}>编辑项目根文件</Button>:null:<Button type="button" variant="outline" onClick={()=>{invalidate();if(selectionRef.current){selectionRef.current.open=true;selectionRef.current.querySelector<HTMLButtonElement>('[aria-label="固定版本"]')?.focus();}}}>重选目标版本</Button>}
             <Button type="button" variant="outline" onClick={onDismiss}>{compositionError?"返回配置组成":removeReference?"取消移除引用":"取消版本切换"}</Button>
           </div>
         </section>:null}

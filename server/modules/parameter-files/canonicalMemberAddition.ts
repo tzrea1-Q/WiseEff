@@ -379,10 +379,10 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     const files = new Map(dts.map((row) => [row.sourceName, { content: contents.get(row.fileId)!, fileVersionId: row.fileVersionId }]));
     resolved = await resolveDtsConfigSetAsync({ entryFile, includeSearchPaths, defines, overlayOrder, requireExactOrigins: true, files });
     diagnostics.push(...resolved.diagnostics.map(({ severity, code, message, fileName }) => ({ severity, code,
-      message: input.setAsRoot ? rootDiagnosticMessage(code, message, fileName) : message })));
+      message: input.setAsRoot||removing ? rootDiagnosticMessage(code, message, fileName) : message })));
     if (diagnostics.some((row) => row.severity === "error" || /dangling|unresolved/.test(row.code))) {
       refuseSwitch(new ApiError("VALIDATION_FAILED", removing?"移除后仍有项目 include/overlay 使用该来源，请修正项目源码，再返回移除任务重新预览。":"配置包含未解决的 include/overlay 引用，请修正来源后重试。", { diagnostics }),
-        resolved.diagnostics.filter(row=>row.severity==="error"||/dangling|unresolved/.test(row.code)).map(row=>switchSource(row.message,row.fileName,row.offset)));
+        resolved.diagnostics.filter(row=>row.severity==="error"||/dangling|unresolved/.test(row.code)).map(row=>switchSource(removing?rootDiagnosticMessage(row.code,row.message).replace(/^配置：/,""):row.message,row.fileName,row.offset)));
     }
     anchors = await matchingDeletedSourceAnchors(tx, restorationScope, resolved.effective.nodesByLocator, afterMembers);
     try { continuity = await prepareReviewedSourceContinuity(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId,
