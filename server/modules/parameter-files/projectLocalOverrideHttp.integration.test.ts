@@ -29,7 +29,7 @@ const admin = makeTestAuthContext({ organizationId: ORG, userId: ADMIN, roles: [
 const editor = makeTestAuthContext({ organizationId: ORG, userId: "shared-ref-editor", roles: [{ roleId: "hardware-user", projectId: A }] });
 const reviewer = makeTestAuthContext({organizationId:ORG,userId:"local-reviewer",roles:[{roleId:"admin",projectId:null},{roleId:"software-committer",projectId:A}]});
 const source = '/dts-v1/; / { compatible = "test,board"; model = "shared reference"; charger: charger { compatible = "acme,power"; iin_max = <36>; }; };';
-const shared = '/ { common: common { status = "okay"; }; charger { iin_max = <42>; }; secondary { compatible = "acme,power"; iin_max = <25>; }; };';
+const shared = '/ { common: common { status = "okay"; }; charger { iin_max = <42>; }; secondary { compatible = "acme,power"; iin_max = <25>; child {}; }; };';
 type Preview = { item: { proofToken: string; entryFile: string; members: unknown[] } };
 type Applied = { item: { fileId: string; fileVersionId: string; configRevisionId: string } };
 
@@ -239,6 +239,172 @@ describe("project local overrides through the real API role", () => {
     expect((await listCatalogBindingRowsForProject(api,admin,{projectId:A})).find(row=>row.id===inherited.id)?.rawValue).toBe("<25>");
   });
 
+  it("reviews exact node status and explicit deletions without exposing inherited values or changing another instance", async () => {
+    const candidatePath = `/api/v1/projects/${A}/parameter-file-candidates`;
+    async function topology() {
+      const revision = (await api.query<{ id: string }>("select id from dts_config_revisions where config_set_id=$1 order by revision_number desc limit 1", [sets[A]])).rows[0]!.id;
+      const response = await requestJson<{ item: TopologyTree }>(server(), `/api/v2/projects/${A}/config-sets/${sets[A]}/revisions/${revision}/topology`);
+      expect(response.status, response.bodyText).toBe(200);
+      if (response.body.item.view !== "effective") throw new Error("Expected effective graph");
+      return { revision, nodes: response.body.item.nodes };
+    }
+    if (!(await topology()).nodes.some(node => node.locator === "/secondary")) {
+      const resource = await post<{ item: { resourceId: string; revision: number } }>("/api/v2/shared-dtsi", {
+        name: "Node state fixture", sourceName: "limits.dtsi", content: shared, changeDescription: "Exact node operations"
+      });
+      expect(resource.status, resource.bodyText).toBe(201);
+      const resourceId = resource.body.item.resourceId;
+      const publication = await post<{ item: { id: string } }>(`/api/v2/shared-dtsi/${resourceId}/publication-preview`, { expectedRevision: resource.body.item.revision });
+      expect(publication.status, publication.bodyText).toBe(201);
+      const version = await post<{ item: { id: string } }>(`/api/v2/shared-dtsi/${resourceId}/publications`, { previewId: publication.body.item.id, idempotencyKey: "node-fixture-v1" });
+      expect(version.status, version.bodyText).toBe(201);
+      for (const project of [A, B]) {
+        const addition = { sharedReference: { resourceId, versionId: version.body.item.id }, role: "misc", sortOrder: 1 };
+        const preview = await post<Preview>(`${path(project)}/preview`, addition);
+        expect(preview.status, preview.bodyText).toBe(200);
+        const applied = await post(`${path(project)}/apply`, { ...addition, proofToken: preview.body.item.proofToken, reason: "Node state fixture", clientMutationId: `node-fixture-${project}` });
+        expect(applied.status, applied.bodyText).toBe(200);
+      }
+    }
+    const beforeB = await listCatalogBindingRowsForProject(api, admin, { projectId: B });
+    const beforeA = await listCatalogBindingRowsForProject(api, admin, { projectId: A });
+    const inherited = beforeA.find(row => row.sourceNodePath === "/secondary" || row.sourceNodePath === "secondary")!;
+    const sensitiveBase = await topology();
+    const sensitiveNode = sensitiveBase.nodes.find(node => node.locator === "/secondary")!;
+    await db.query(`insert into dts_sensitive_node_rules(id,organization_id,project_id,match_type,pattern,risk_tier,required_capability)
+      values ('node-sensitive-child',$1,$2,'path','/secondary/child','critical','platform:access')`, [ORG, A]);
+    try {
+      for (const action of ["enable-node", "disable-node", "remove-status-override", "delete-node"]) {
+        const refused = await post(`/api/v1/projects/${A}/config-sets/${sets[A]}/local-override/prepare`, {
+          expectedConfigRevisionId: sensitiveBase.revision, logicalNodeId: sensitiveNode.logicalNodeId, propertyName: "status", action
+        }, editor);
+        expect(refused.status, refused.bodyText).toBe(403);
+      }
+      const rootRefused = await post(`/api/v1/projects/${A}/config-sets/${sets[A]}/local-override/prepare`, {
+        expectedConfigRevisionId: sensitiveBase.revision, logicalNodeId: sensitiveBase.nodes.find(node => node.locator === "/")!.logicalNodeId,
+        propertyName: "status", action: "disable-node"
+      }, editor);
+      expect(rootRefused.status, rootRefused.bodyText).toBe(403);
+      expect((await topology()).revision).toBe(sensitiveBase.revision);
+    } finally { await db.query("delete from dts_sensitive_node_rules where id='node-sensitive-child'"); }
+    async function change(action: string, propertyName = "status") {
+      const current = await topology();
+      const node = current.nodes.find(row => row.locator === "/secondary")!;
+      const input = { expectedConfigRevisionId: current.revision, logicalNodeId: node.logicalNodeId, propertyName, action };
+      const preparationPath = `/api/v1/projects/${A}/config-sets/${sets[A]}/local-override/prepare`;
+      expect((await post(preparationPath, { ...input, expectedConfigRevisionId: "stale" }, editor)).status).toBe(409);
+      if (action === "disable-node") {
+        expect((await post(preparationPath, { ...input, rawText: '<99>' }, editor)).status).toBe(400);
+        expect((await post(`/api/v1/projects/${B}/config-sets/${sets[B]}/local-override/prepare`, input, editor)).status).toBe(403);
+      }
+      const prepared = await post<{ item: { fileId: string; fileName: string; baseVersionId: string; before: string; after: string; afterValue: string | null; localOverride: unknown } }>(
+        preparationPath, input, editor);
+      expect(prepared.status, prepared.bodyText).toBe(200);
+      expect(prepared.body.item.localOverride).toEqual(input);
+      const body = { intent: "source_revision", localOverride: input, fileId: prepared.body.item.fileId, fileName: prepared.body.item.fileName,
+        expectedCurrentVersionId: prepared.body.item.baseVersionId, expectedConfigRevisionId: current.revision,
+        contentBase64: Buffer.from(prepared.body.item.after).toString("base64"), clientMutationId: `node-${action}` };
+      const forged = await post(candidatePath, { ...body, contentBase64: Buffer.from(prepared.body.item.after + '\n&{/charger} { iin_max = <99>; };').toString("base64"), clientMutationId: `node-${action}-forged` }, editor);
+      expect(forged.status, forged.bodyText).toBe(403);
+      const candidate = await post<{ item: { id: string } }>(candidatePath, body, editor);
+      expect(candidate.status, candidate.bodyText).toBe(201);
+      const preview = await requestJson<{ item: SourceRevisionPreview }>(server(editor), `${candidatePath}/${candidate.body.item.id}/source-preview`);
+      expect(preview.status, preview.bodyText).toBe(200);
+      expect((await post(`${candidatePath}/${candidate.body.item.id}/source-apply`, {
+        expectedCurrentVersionId: prepared.body.item.baseVersionId, expectedProofToken: preview.body.item.proofToken,
+        reason: "Ordinary editor cannot apply directly", clientMutationId: `node-${action}-direct`
+      }, editor)).status).toBe(403);
+      const submit = await post<{ item: { requestId: string } }>(`${candidatePath}/${candidate.body.item.id}/source-submit`, {
+        expectedCurrentVersionId: prepared.body.item.baseVersionId, expectedProofToken: preview.body.item.proofToken,
+        assignedToUserId: reviewer.user.id, reason: `Review ${action}`, clientMutationId: `node-${action}-submit`
+      }, editor);
+      expect(submit.status, submit.bodyText).toBe(200);
+      const reviewPath = `/api/v2/projects/${A}/source-revision-requests/${submit.body.item.requestId}/review`;
+      const decision = { decision: "approve", proofDigest: preview.body.item.proofToken };
+      expect((await post(reviewPath, decision, editor)).status).toBe(403);
+      if (action === "disable-node") {
+        const files = await requestJson(server(), `/api/v1/projects/${A}/config-sets/${sets[A]}/files`);
+        await db.query(`create function public.fail_node_operation_audit_test() returns trigger language plpgsql as $$ begin
+          if new.action='value-change-applied' and new.metadata->>'localOverrideAction'='disable-node' then raise exception 'Injected node audit failure'; end if; return new; end $$`);
+        await db.query("create trigger fail_node_operation_audit_test before insert on public.audit_events for each row execute function public.fail_node_operation_audit_test()");
+        try { expect((await post(reviewPath, decision, reviewer)).status).toBe(500); }
+        finally { await db.query("drop trigger fail_node_operation_audit_test on public.audit_events"); await db.query("drop function public.fail_node_operation_audit_test()"); }
+        expect((await topology()).revision).toBe(current.revision);
+        expect((await requestJson(server(), `/api/v1/projects/${A}/config-sets/${sets[A]}/files`)).body).toEqual(files.body);
+      }
+      const applied = await post(reviewPath, decision, reviewer);
+      expect(applied.status, applied.bodyText).toBe(200);
+      expect((await post(reviewPath, decision, reviewer)).body).toEqual(applied.body);
+      return prepared.body.item;
+    }
+    await change("disable-node");
+    let graph = await topology();
+    expect(graph.nodes.find(node => node.locator === "/secondary")?.enablement).toMatchObject({ selfEnabled: false, reachable: false });
+    expect(graph.nodes.find(node => node.locator === "/secondary/child")?.enablement?.reachable).toBe(false);
+    expect(graph.nodes.find(node => node.locator === "/charger")?.enablement?.reachable).toBe(true);
+    await change("enable-node");
+    expect((await topology()).nodes.find(node => node.locator === "/secondary/child")?.enablement?.reachable).toBe(true);
+    const removal = await change("remove-status-override");
+    expect(removal.after).not.toContain('/delete-property/ status');
+    expect(removal.afterValue).toBeNull();
+    const deletion = await change("delete-property", "iin_max");
+    expect(deletion.after).toContain('/delete-property/ iin_max;');
+    expect(deletion.afterValue).toBeNull();
+    graph = await topology();
+    const effect = graph.nodes.find(node => node.locator === "/secondary")!.effects.filter(row => row.propertyName === "iin_max").at(-1)!;
+    expect(effect.effectKind).toBe("delete");
+    expect(effect.propertyOccurrenceId).toBeNull();
+    expect(effect.rawText).toBe('/delete-property/ iin_max;');
+    expect(effect.source?.startLine).toBeGreaterThan(1);
+    expect((await listCatalogBindingRowsForProject(api, admin, { projectId: A })).find(row => row.id === inherited.id)).toBeUndefined();
+    const history = await requestJson<{ items: Array<{ valueState: string; successAuditRef: string }> }>(server(), `/api/v2/projects/${A}/parameter-bindings/${inherited.id}/change-history`);
+    expect(history.status, history.bodyText).toBe(200);
+    expect(history.body.items.some(row => row.valueState === "deleted" && Boolean(row.successAuditRef))).toBe(true);
+    const deletedNode = await change("delete-node");
+    expect(deletedNode.after).toContain('/delete-node/ secondary;');
+    graph = await topology();
+    expect(graph.nodes.some(node => node.locator === "/secondary" || node.locator.startsWith("/secondary/"))).toBe(false);
+    const nodeEffect = graph.nodes.find(node => node.locator === "/")!.effects.find(row => row.propertyName === null && row.effectKind === "delete")!;
+    expect(nodeEffect.rawText).toBe('/delete-node/ secondary;');
+    expect(nodeEffect.source?.startLine).toBeGreaterThan(1);
+    expect(await listCatalogBindingRowsForProject(api, admin, { projectId: B })).toEqual(beforeB);
+    expect((await listCatalogBindingRowsForProject(api, admin, { projectId: A })).filter(row => row.id !== inherited.id).map(row => [row.id, row.rawValue]))
+      .toEqual(beforeA.filter(row => row.id !== inherited.id).map(row => [row.id, row.rawValue]));
+    // Later composition still parses original fragments that precede the explicit deletion.
+    const extension = await post<{ item: { resourceId: string; revision: number } }>("/api/v2/shared-dtsi", {
+      name: "After deletion", sourceName: "extension.dtsi", content: '/ { extension {}; };', changeDescription: "Preserve deleted source history"
+    });
+    expect(extension.status, extension.bodyText).toBe(201);
+    const publication = await post<{ item: { id: string } }>(`/api/v2/shared-dtsi/${extension.body.item.resourceId}/publication-preview`, { expectedRevision: extension.body.item.revision });
+    expect(publication.status, publication.bodyText).toBe(201);
+    const version = await post<{ item: { id: string } }>(`/api/v2/shared-dtsi/${extension.body.item.resourceId}/publications`, { previewId: publication.body.item.id, idempotencyKey: "after-delete-v1" });
+    expect(version.status, version.bodyText).toBe(201);
+    const addition = { sharedReference: { resourceId: extension.body.item.resourceId, versionId: version.body.item.id }, role: "misc", sortOrder: 3 };
+    const preview = await post<Preview>(`${path(A)}/preview`, addition); expect(preview.status, preview.bodyText).toBe(200);
+    const applied = await post(`${path(A)}/apply`, { ...addition, proofToken: preview.body.item.proofToken, reason: "Composition after node deletion", clientMutationId: "after-delete-compose" });
+    expect(applied.status, applied.bodyText).toBe(200);
+    expect((await topology()).nodes.some(node => node.locator === "/secondary" || node.locator.startsWith("/secondary/"))).toBe(false);
+    expect(await listCatalogBindingRowsForProject(api, admin, { projectId: B })).toEqual(beforeB);
+    const beforeRedeclaration = await topology();
+    const currentMembers = await requestJson<{ items: Array<{ fileId: string; currentVersionId: string; role: string }> }>(server(), `/api/v1/projects/${A}/config-sets/${sets[A]}/files`);
+    const root = currentMembers.body.items.find(member => member.role === "base")!;
+    const original = await requestJson(server(), `/api/v1/projects/${A}/parameter-files/${root.fileId}/versions/${root.currentVersionId}/content`);
+    const candidate = await post<{ item: { id: string } }>(candidatePath, { intent: "source_revision", fileId: root.fileId, fileName: "board.dts",
+      expectedCurrentVersionId: root.currentVersionId, expectedConfigRevisionId: beforeRedeclaration.revision, clientMutationId: "node-redeclaration",
+      contentBase64: Buffer.from(original.bodyText + '\n/ { secondary { fresh = <3>; }; };\n').toString("base64") });
+    expect(candidate.status, candidate.bodyText).toBe(201);
+    const restorationPreview = await requestJson<{ item: SourceRevisionPreview }>(server(), `${candidatePath}/${candidate.body.item.id}/source-preview`);
+    expect(restorationPreview.status, restorationPreview.bodyText).toBe(200);
+    const restored = await post(`${candidatePath}/${candidate.body.item.id}/source-apply`, { expectedCurrentVersionId: root.currentVersionId,
+      expectedProofToken: restorationPreview.body.item.proofToken, reason: "Fresh declaration after explicit deletion", clientMutationId: "node-redeclaration-apply" });
+    expect(restored.status, restored.bodyText).toBe(200);
+    const redeclared = await topology();
+    expect(redeclared.nodes.find(node => node.locator === "/secondary")?.effects.map(effect => effect.propertyName)).toEqual(["fresh"]);
+    expect(redeclared.nodes.some(node => node.locator === "/secondary/child")).toBe(false);
+    expect(redeclared.nodes.find(node => node.locator === "/")?.effects.some(effect => effect.directive?.kind === "delete-node" && effect.directive.redeclared === true)).toBe(true);
+    expect((await listCatalogBindingRowsForProject(api, admin, { projectId: A })).some(row => row.id === inherited.id)).toBe(false);
+  }, 120_000);
+
   it("overrides and removes one inherited macro value without rewriting its header or sibling instance", async()=>{
     const macroSource='#include "limits.h"\n/ { cppFirst { compatible = "acme,power"; iin_max = <SHARED_CAP>; }; cppSecond { compatible = "acme,power"; iin_max = <SHARED_CAP>; }; };';
     const header='#define SHARED_CAP 25\n';
@@ -284,5 +450,6 @@ describe("project local overrides through the real API role", () => {
     expect(exported.body.files.find(file=>file.name==="limits.h")?.content).toBe(header);
     expect(exported.body.files.find(file=>file.name==="cpp-defaults.dtsi")?.content).toBe(macroSource);
   },120_000);
+
 
 });

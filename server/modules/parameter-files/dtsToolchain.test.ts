@@ -22,6 +22,7 @@ import {
   type DtsToolchainProbe
 } from "./dtsToolchain";
 import { missingReferencedLabels } from "../dts/danglingAnchorStub";
+import { resolveDtsConfigSet } from "../dts/configSetResolver";
 
 type FakeChild = ChildProcess & {
   stdoutEmitter: EventEmitter;
@@ -600,6 +601,21 @@ describe("ephemeral overlay fragment wrap", () => {
 });
 
 describe("real dts toolchain (optional)", () => {
+  it("matches native dtc when a deleted node is freshly declared without reviving its old subtree", () => {
+    const source = '/dts-v1/; / { old_label: parent { old = <1>; child { value = <2>; }; }; }; &{/} { /delete-node/ parent; }; / { fresh_label: parent { fresh = <3>; }; };';
+    const compiled = spawnSync(resolveDtsToolchainCommands().dtc, ["-I", "dts", "-O", "dts"], { input: source, encoding: "utf8" });
+    expect(compiled.status, compiled.stderr).toBe(0);
+    expect(compiled.stdout).toMatch(/fresh\s*=\s*<0x0*3>/);
+    expect(compiled.stdout).not.toMatch(/old_label|\bold\s*=|\bchild\s*\{/);
+    for (const content of [source, compiled.stdout]) {
+      const graph = resolveDtsConfigSet({ entryFile: "board.dts", includeSearchPaths: [], overlayOrder: [],
+        files: new Map([["board.dts", { fileVersionId: "v1", content }]]) });
+      expect(graph.diagnostics).toEqual([]);
+      expect([...graph.effective.nodesByLocator.values()].filter(node => !node.deleted).map(node => node.nodeLocator)).toEqual(["/", "/parent"]);
+      expect([...graph.effective.nodesByLocator.get("/parent")!.properties.keys()]).toEqual(["fresh"]);
+    }
+  });
+
   it("compiles frozen header/BIT inputs to the same native DTB as their literal value", async () => {
     const literal = happyConfigSet();
     const content = literal.files.get(literal.entryFile)!.content.replace('model = "toolchain-fixture";', 'model = "toolchain-fixture"; flags = <8>;');

@@ -26145,7 +26145,7 @@
     "/api/v1/projects/{projectId}/config-sets/{configSetId}/local-override/prepare": {
       "post": {
         "operationId": "parameterFiles.prepareProjectLocalOverride",
-        "summary": "Prepare a project-owned source draft for setting or removing one local override",
+        "summary": "Prepare an exact project-owned property or node operation source draft",
         "tags": [
           "parameter-files"
         ],
@@ -28323,7 +28323,12 @@
             "type": "string",
             "enum": [
               "set",
-              "remove-override"
+              "remove-override",
+              "delete-property",
+              "enable-node",
+              "disable-node",
+              "remove-status-override",
+              "delete-node"
             ]
           },
           "rawText": {
@@ -28385,7 +28390,12 @@
                 "type": "string",
                 "enum": [
                   "set",
-                  "remove-override"
+                  "remove-override",
+                  "delete-property",
+                  "enable-node",
+                  "disable-node",
+                  "remove-status-override",
+                  "delete-node"
                 ]
               },
               "localOverride": {
@@ -28404,7 +28414,12 @@
                     "type": "string",
                     "enum": [
                       "set",
-                      "remove-override"
+                      "remove-override",
+                      "delete-property",
+                      "enable-node",
+                      "disable-node",
+                      "remove-status-override",
+                      "delete-node"
                     ]
                   },
                   "rawText": {
@@ -34898,7 +34913,12 @@
                     "type": "string",
                     "enum": [
                       "set",
-                      "remove-override"
+                      "remove-override",
+                      "delete-property",
+                      "enable-node",
+                      "disable-node",
+                      "remove-status-override",
+                      "delete-node"
                     ]
                   },
                   "rawText": {

@@ -108,7 +108,7 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
     parsedIndex: candidate.parsedIndex, origin: "writeback", attribution });
   await ingestDtsFileVersion(tx, version.id, inspected.after,
     inspected.preprocessing?.originalDocuments.get(frozen.members.find(member => member.fileId === frozen.fileId)!.sourceName),
-    new Set(frozen.continuity.nodes.map(node => node.nodeLocator)));
+    inspected.configNodePaths);
   const members = [];
   for (const member of frozen.members) {
     let content = inspected.after;

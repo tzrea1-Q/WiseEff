@@ -299,7 +299,7 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
     </div>
     {changeSummary && dirty ? <p className="workbench-source-editing__notice" role="status">{changeSummary}</p> : null}
     {!canEdit ? <p className="workbench-source-editing__notice">当前为只读预览，需要项目文件修改权限才能编辑。</p>
-      : !canEditSource ? <p className="workbench-source-editing__notice">本项目覆盖仅保存已证明的属性差异；源码编辑另需文件管理权限。</p> : null}
+      : !canEditSource ? <p className="workbench-source-editing__notice">仅可保存已证明的项目差异；整份源码编辑另需文件管理权限。</p> : null}
     {!configRevisionId ? <p className="workbench-source-editing__notice" role="status">配置修订尚未就绪，当前可预览源码。</p> : null}
     {mixedEndings && dirty ? <p className="workbench-source-editing__notice" role="note">原文件混用了换行形式，编辑后可能统一为 LF，请在保存差异中核对。</p> : null}
     {stale ? <p className="workbench-source-editing__notice" role="alert">文件或配置版本已更新，旧草稿仍保留。请核对最新版本后继续。<Button size="sm" variant="outline" disabled={!canEdit || busy || file?.mergeConflicts} onClick={() => void rebase()}>基于最新版本继续编辑</Button><Button size="sm" variant="ghost" onClick={() => setCompareOpen(true)}>对照最新来源</Button><Button size="sm" variant="ghost" onClick={() => download()}>下载草稿</Button><Button size="sm" variant="ghost" onClick={onRefresh}>刷新来源</Button></p> : null}

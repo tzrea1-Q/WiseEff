@@ -493,11 +493,11 @@ async function createCandidateInScope(
   const source = input.bytes.toString("utf8");
   const verifyLocalOverride = async (tx: Database, configSetId: string) => {
     const prepared = await prepareProjectLocalOverride(tx, objectStore, auth, { ...input.localOverride!, projectId: input.projectId, configSetId }, undefined, true);
-    if (!prepared.binding || prepared.after !== source || prepared.fileId !== fileId
+    if ((!prepared.binding && !prepared.nodeOperation) || prepared.after !== source || prepared.fileId !== fileId
       || prepared.baseVersionId !== input.expectedCurrentVersionId || prepared.configRevisionId !== input.expectedConfigRevisionId) {
-      throw new ApiError("FORBIDDEN", "项目覆盖只允许服务器证明的单属性补丁，不能夹带其他源码修改。", { reason: "local-override-patch-mismatch" });
+      throw new ApiError("FORBIDDEN", "仅允许服务器证明的单属性或单节点操作，不能夹带其他源码修改。", { reason: "local-override-patch-mismatch" });
     }
-    return { input: input.localOverride!, ...prepared.binding, authorUserId: auth.user.id };
+    return { input: input.localOverride!, ...prepared.binding, ...(prepared.nodeOperation ? { nodeOperation: true as const } : {}), authorUserId: auth.user.id };
   };
   if (input.localOverride) {
     const file = (await db.query<{ config_set_id: string }>("select config_set_id from public.project_parameter_files where id=$1 and organization_id=$2 and project_id=$3", [fileId, parameterOrganizationId(auth), input.projectId])).rows[0];

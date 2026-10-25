@@ -51,16 +51,17 @@ export function WorkbenchEffectiveConfiguration({ node, projectId, configSetId, 
   const [editing, setEditing] = useState<string | null>(null);
   const [rawText, setRawText] = useState("");
   const [targetFileId, setTargetFileId] = useState("");
+  const [nodeAction, setNodeAction] = useState<ProjectLocalOverrideInput["action"] | "">("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ name: string; message: string } | null>(null);
   if (!node) return <SectionEmpty message="选择设备树节点以查看最终值和来源。" />;
-  const prepare = async (name: string, final: EffectiveTopologyEffect, action: ProjectLocalOverrideInput["action"]) => {
+  const prepare = async (name: string, final: EffectiveTopologyEffect | undefined, action: ProjectLocalOverrideInput["action"]) => {
     if (!onPrepareOverride || busy) return;
     setBusy(true); setError(null);
     try { await onPrepareOverride({ expectedConfigRevisionId: revisionId, logicalNodeId: node.logicalNodeId, propertyName: name,
-      ...(final.propertyOccurrenceId ? { propertyOccurrenceId: final.propertyOccurrenceId } : {}), action,
+      ...(final?.propertyOccurrenceId ? { propertyOccurrenceId: final.propertyOccurrenceId } : {}), action,
       ...(action === "set" ? { rawText, ...(targetFileId ? { targetFileId } : {}) } : {}) }); }
-    catch (cause) { setError({ name, message: presentError(cause, "项目覆盖草稿准备失败，请重试。") }); }
+    catch (cause) { setError({ name, message: presentError(cause, "项目源码草稿准备失败，请重试。") }); }
     finally { setBusy(false); }
   };
   const sourcePath = (effect: EffectiveTopologyEffect) => {
@@ -93,25 +94,41 @@ export function WorkbenchEffectiveConfiguration({ node, projectId, configSetId, 
     return <a href={`/parameter-admin/sources?${params}`} onClick={follow}>共享资源 v{shared.version}</a>;
   };
   const chains = effectivePropertyChains(node);
-  return <main className="configuration-workbench__effective" aria-label="生效配置 · 只读">
+  const status = chains.get("status")?.at(-1);
+  return <main className="configuration-workbench__effective" aria-label="生效配置">
     <header><h2><code>{node.locator}</code></h2>
       {node.compatible ? <p><code>{node.compatible}</code></p> : null}
       <p>{node.enablement?.selfEnabled === false ? `节点未启用${node.enablement.rawToken ? `（${node.enablement.rawToken}）` : ""}` : "节点已启用"}
         {node.enablement?.blockingAncestorLabel ? ` · 祖先 ${blockingAncestorPath ?? node.enablement.blockingAncestorLabel} 阻断`
           : node.enablement?.reachable === false ? " · 不可达" : " · 可达"}</p>
-      <small>生效配置只读 · 查看源码可追溯到此配置修订的固定文件版本</small>
+      <small>查看源码可追溯到此配置修订的固定文件版本</small>
+      {onPrepareOverride ? <form className="configuration-workbench__override-actions" aria-label="本项目节点操作" onSubmit={event => {
+        event.preventDefault(); if (nodeAction) void prepare("status", undefined, nodeAction);
+      }}>
+        <SelectControl ariaLabel="节点操作" value={nodeAction} onValueChange={setNodeAction} disabled={busy}
+          options={[{ value: "", label: "选择节点操作" }, { value: "enable-node", label: "在本项目启用" }, { value: "disable-node", label: "在本项目禁用" },
+            ...(status && status.effectKind !== "delete" && status.source && !status.source.sharedReference
+              ? [{ value: "remove-status-override" as const, label: "撤销本项目状态覆盖" }] : []),
+            ...(node.locator !== "/" ? [{ value: "delete-node" as const, label: "显式删除此节点及子节点" }] : [])]} />
+        <Button type="submit" size="sm" variant="outline" disabled={busy || !nodeAction}>查看节点差异</Button>
+        {error?.name === "status" ? <p role="alert">{error.message}</p> : null}
+      </form> : null}
     </header>
+    {node.effects.filter(effect => effect.directive?.kind === "delete-node").map(effect => <p key={effect.id}>
+      {effect.directive!.redeclared ? "节点曾显式删除，后续已重新声明" : "已显式删除节点"} <code>{effect.directive!.targetNodeLocator}</code> · {sourceLink(effect)}
+    </p>)}
     {chains.size === 0 ? <SectionEmpty message="此节点没有参数属性。" /> : <dl className="configuration-workbench__effective-properties">
       {[...chains].filter(([name]) => !editing || name === editing).map(([name, chain]) => {
         const final = chain.at(-1)!;
         return <div key={name} data-effective-property={name}>
           <dt><code>{name}</code></dt>
           <dd><pre className="parameter-value-content" aria-label={`${name} 最终值`}>{finalValue(final)}</pre>
+            {final.effectKind === "delete" ? <p>显式删除属性 · 继承值不生效</p> : null}
             <div className="configuration-workbench__effective-origin">{sourceLink(final)}{sharedLink(final)}</div>
             {chain.length > 1 ? <details><summary>继承与覆盖（{chain.length}）</summary>
               <ol aria-label={`${name} 来源链`}>{chain.map((effect, index) => <li key={effect.id}>
-                <span>{effect.effectKind === "delete" ? "移除" : index === 0 ? "继承" : "覆盖"}{index === chain.length - 1 ? " · 最终" : ""}</span>
-                <pre className="parameter-value-content">{effect.effectKind === "delete" ? "已移除" : effect.rawText ?? "原始值未记录"}</pre>
+                <span>{effect.effectKind === "delete" ? "显式删除" : index === 0 ? "继承" : "覆盖"}{index === chain.length - 1 ? " · 最终" : ""}</span>
+                <pre className="parameter-value-content">{effect.rawText ?? (effect.effectKind === "delete" ? "删除指令原文未记录" : "原始值未记录")}</pre>
                 <div className="configuration-workbench__effective-origin">{sourceLink(effect)}{sharedLink(effect)}</div>
               </li>)}</ol>
             </details> : null}
@@ -122,6 +139,8 @@ export function WorkbenchEffectiveConfiguration({ node, projectId, configSetId, 
               }}>在本项目覆盖</Button> : null}
               {editing !== name && final.source && !final.source.sharedReference ? <Button type="button" variant="outline" size="sm" disabled={busy}
                 onClick={() => void prepare(name, final, "remove-override")}>撤销本项目覆盖</Button> : null}
+              {editing !== name ? <Button type="button" variant="outline" size="sm" disabled={busy}
+                onClick={() => void prepare(name, final, "delete-property")}>删除此属性</Button> : null}
               {editing === name ? <form aria-label={`${name} 本项目覆盖`} onSubmit={event => { event.preventDefault(); void prepare(name, final, "set"); }}>
                 <label htmlFor={`override-value-${name}`}>本项目值（DTS）</label>
                 <Textarea id={`override-value-${name}`} aria-label={`${name} 本项目值`} value={rawText} disabled={busy} onChange={event => setRawText(event.target.value)} />

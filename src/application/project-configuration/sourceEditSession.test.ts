@@ -15,6 +15,20 @@ const scope: SourceDraftScope = { userId: "u", organizationId: "o", projectId: "
 const base: SourceDraftBase = { fileVersionId: "v1", configRevisionId: "c1", sourceDigest: "digest1" };
 const nextBase: SourceDraftBase = { fileVersionId: "v2", configRevisionId: "c2", sourceDigest: "digest2" };
 
+it("keeps a newly prepared exact node intent when a clean persisted source is reopened after navigation", async () => {
+  const storage = memoryStorage();
+  const first = createSourceEditSession({ storage, persistDelayMs: 0 });
+  await first.open({ scope, base, sourceText: "before" });
+  first.change(scope, "discarded");
+  await first.discard(scope); await first.close();
+  const intent = { input: { expectedConfigRevisionId: "c1", logicalNodeId: "logical", propertyName: "status", action: "delete-node" as const }, afterValue: null };
+  const reopened = createSourceEditSession({ storage, persistDelayMs: 0 });
+  await reopened.open({ scope, base: { ...base, localOverride: intent }, sourceText: "before" });
+  reopened.change(scope, "before\n/delete-node/ device;");
+  expect(reopened.captureSave(scope).base.localOverride).toEqual(intent);
+  await reopened.close();
+});
+
 it("recovers the restricted local override intent with the exact source draft and clears it on discard", async () => {
   const storage=memoryStorage();
   const intent={input:{expectedConfigRevisionId:"c1",logicalNodeId:"logical",propertyName:"rate",action:"set" as const,rawText:"<2>"},afterValue:"<2>"};

@@ -3137,6 +3137,154 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const old=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/versions/${first.id}`),{headers:adminHeaders()});expect((await old.json()).item.members).toEqual(first.members);
   });
 
+  test("project editor reviews node status and explicit deletions through native source workflow", async ({ page, request }, testInfo) => {
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
+    const binding = await seedIsolatedBinding(request, { propertyKey: "rx_fod_cond",
+      dts: '/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "Private", "keep"; }; };',
+      rawValuePattern: '"Private", "keep"', nodeLocatorPattern: "board", reason: "#1420 node operations", timeoutMs: 60_000 });
+    const longValue = `Shared-${"value-".repeat(35)}`;
+    const source = `/ { bus { inherited { compatible = "mt,mt5788"; rx_fod_cond = "${longValue}", "keep"; }; }; sibling { compatible = "mt,mt5788"; rx_fod_cond = "Sibling", "keep"; }; };`;
+    const draft = await request.post(apiRoute("/api/v2/shared-dtsi"), { headers: adminHeaders(), data: {
+      name: `Node operations ${randomUUID()}`, sourceName: `node-${randomUUID()}.dtsi`, content: source, changeDescription: "Node operation fixture"
+    } });
+    expect(draft.status(), await draft.text()).toBe(201); const resourceId = (await draft.json()).item.resourceId as string;
+    const publicationPreview = await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`), { headers: adminHeaders(), data: { expectedRevision: 1 } });
+    expect(publicationPreview.status(), await publicationPreview.text()).toBe(201);
+    const publication = await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`), { headers: adminHeaders(), data: {
+      previewId: (await publicationPreview.json()).item.id, idempotencyKey: `node-${randomUUID()}`
+    } });
+    expect(publication.status(), await publication.text()).toBe(201); const versionId = (await publication.json()).item.id as string;
+    const composition = `/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition`;
+    const addition = { sharedReference: { resourceId, versionId }, role: "misc", sortOrder: 1 };
+    const additionPreview = await request.post(apiRoute(`${composition}/preview`), { headers: adminHeaders(), data: addition });
+    expect(additionPreview.status(), await additionPreview.text()).toBe(200);
+    const added = await request.post(apiRoute(`${composition}/apply`), { headers: adminHeaders(), data: {
+      ...addition, proofToken: (await additionPreview.json()).item.proofToken, reason: "#1420 shared node fixture", clientMutationId: `node-${randomUUID()}`
+    } });
+    expect(added.status(), await added.text()).toBe(200);
+    const route = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({ organization: organizationId, configSet: binding.configSetId, tab: "effective", node: "/bus/inherited" })}`;
+    await signInBrowserAsRole(page, "hardware-user", disposablePageUrl(disposableRuntime, route)); await dismissXiaozeHint(page);
+    const property = page.locator('[data-effective-property="rx_fod_cond"]');
+    await expect(property.getByLabel("rx_fod_cond 最终值", { exact: true })).toContainText(longValue);
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
+      await page.setViewportSize(viewport);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+      const screenshot = testInfo.outputPath(`node-property-${viewport.width}.png`);
+      await page.screenshot({ path: screenshot }); await testInfo.attach(`Node property ${viewport.width}`, { path: screenshot, contentType: "image/png" });
+    }
+    await page.getByRole("treeitem", { name: "节点 /bus", exact: true }).click();
+    const preparePath = `/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/local-override/prepare`;
+    const expectedFailure = { method: "POST", path: preparePath, status: 409 };
+    expectedBrowserApiFailures.push(expectedFailure);
+    try {
+      let releasePrepare!: () => void;
+      const held = new Promise<void>(resolve => { releasePrepare = resolve; });
+      await page.route(`**${preparePath}`, async intercepted => {
+        await held;
+        await intercepted.continue({ postData: JSON.stringify({ ...intercepted.request().postDataJSON(), expectedConfigRevisionId: "stale" }) });
+      }, { times: 1 });
+      await selectControlOption(page.getByRole("combobox", { name: "节点操作", exact: true }), "disable-node");
+      await expect(page.getByRole("listbox")).toBeHidden();
+      await expect(page.getByRole("combobox", { name: "节点操作", exact: true })).toBeFocused(); await page.keyboard.press("Tab");
+      await expect(page.getByRole("button", { name: "查看节点差异", exact: true })).toBeFocused(); await page.keyboard.press("Enter");
+      await expect(page.getByRole("button", { name: "查看节点差异", exact: true })).toBeDisabled();
+      releasePrepare();
+      await expect(page.getByRole("alert")).toContainText("配置已变化");
+      await expect(page.getByRole("combobox", { name: "节点操作", exact: true })).toHaveAttribute("data-value", "disable-node");
+      for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
+        await page.setViewportSize(viewport);
+        await expect(page.getByRole("button", { name: "查看节点差异", exact: true })).toBeInViewport({ ratio: 1 });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+        const screenshot = testInfo.outputPath(`node-operations-${viewport.width}.png`);
+        await page.screenshot({ path: screenshot }); await testInfo.attach(`Node operations ${viewport.width}`, { path: screenshot, contentType: "image/png" });
+      }
+      async function applyPrepared(action: string, choice?: string) {
+        const preparedResponse = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === preparePath);
+        if (choice) {
+          await selectControlOption(page.getByRole("combobox", { name: "节点操作", exact: true }), choice);
+          await expect(page.getByRole("listbox")).toBeHidden();
+          await expect(page.getByRole("combobox", { name: "节点操作", exact: true })).toBeFocused(); await page.keyboard.press("Tab");
+          await expect(page.getByRole("button", { name: "查看节点差异", exact: true })).toBeFocused(); await page.keyboard.press("Enter");
+        } else await property.getByRole("button", { name: "删除此属性", exact: true }).click();
+        const prepared = await preparedResponse; expect(prepared.status(), await prepared.text()).toBe(200);
+        const generated = (await prepared.json()).item as { after: string; afterValue: string | null };
+        const sourceEditor = page.getByRole("textbox", { name: "DTS 源码", exact: true });
+        await expect(sourceEditor).toContainText(action === "delete-node" ? "/delete-node/ bus;" : action === "delete-property" ? "/delete-property/ rx_fod_cond;" : "/dts-v1/");
+        if (action === "disable-node") {
+          await page.getByRole("button", { name: "放弃修改", exact: true }).click();
+          const discard = page.getByRole("dialog", { name: "放弃本地 DTS 修改？", exact: true });
+          await discard.getByRole("button", { name: "取消", exact: true }).click();
+          await expect(sourceEditor).toContainText('"disabled"');
+          await page.reload(); await expect(sourceEditor).toContainText('"disabled"');
+        }
+        if (action === "delete-property") {
+          expect(generated.afterValue).toBeNull();
+          await expect(page.getByText(/显式删除属性后/)).toContainText("继承值不生效");
+        }
+        const candidateResponse = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/parameter-file-candidates"));
+        const previewResponse = page.waitForResponse(response => response.request().method() === "GET" && new URL(response.url()).pathname.endsWith("/source-preview"));
+        await page.getByRole("button", { name: "保存修改", exact: true }).click();
+        const candidate = await candidateResponse; expect(candidate.status(), await candidate.text()).toBe(201);
+        expect(candidate.request().postDataJSON().localOverride.action).toBe(action);
+        const preview = await previewResponse; expect(preview.status(), await preview.text()).toBe(200);
+        const checked = (await preview.json()).item as ParameterFileSourcePreview;
+        const dialog = page.getByRole("dialog", { name: "保存 DTS 修改", exact: true });
+        await expect(dialog.getByRole("button", { name: "直接应用修改", exact: true })).toHaveCount(0);
+        await dialog.getByRole("textbox", { name: "DTS 修改原因", exact: true }).fill(`#1420 ${action}`);
+        const reviewer = checked.reviewers!.find(person => person.userId === acceptanceCast.acceptanceAdmin.userId) ?? checked.reviewers![0]!;
+        await selectControlOption(dialog.getByRole("combobox", { name: "DTS 软件审核人" }), reviewer.userId);
+        await expect(page.getByRole("listbox")).toBeHidden();
+        const submittedResponse = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/source-submit"));
+        await dialog.getByRole("button", { name: "提交审核", exact: true }).click();
+        const submitted = await submittedResponse; expect(submitted.status(), await submitted.text()).toBe(200);
+        await expect(page.getByText("已提交审核 · 工作配置尚未更新", { exact: true })).toBeVisible();
+        const reviewerCast = Object.values(acceptanceCast).find(person => person.userId === reviewer.userId)!;
+        const approved = await request.post(apiRoute(`/api/v2/projects/${projectId}/source-revision-requests/${(await submitted.json()).item.requestId}/review`), {
+          headers: authHeadersForUser(reviewer.userId, reviewerCast.email, reviewer.name), data: { decision: "approve", proofDigest: checked.proofToken }
+        });
+        expect(approved.status(), await approved.text()).toBe(200);
+        await page.getByRole("button", { name: "检查审核结果", exact: true }).click();
+        await expect(page.getByText("当前工作配置", { exact: true })).toBeVisible();
+        await page.getByRole("tab", { name: "生效配置", exact: true }).click();
+      }
+      await applyPrepared("disable-node", "disable-node");
+      await expect(page.getByText('节点未启用（disabled） · 不可达', { exact: true })).toBeVisible();
+      await page.getByRole("treeitem", { name: "节点 /bus/inherited", exact: true }).click();
+      await expect(page.getByText(/祖先 \/bus 阻断/)).toBeVisible();
+      await page.getByRole("treeitem", { name: "节点 /bus", exact: true }).click();
+      await applyPrepared("enable-node", "enable-node");
+      await expect(page.getByText("节点已启用 · 可达", { exact: true })).toBeVisible();
+      await applyPrepared("remove-status-override", "remove-status-override");
+      await page.getByRole("treeitem", { name: "节点 /bus/inherited", exact: true }).click();
+      await applyPrepared("delete-property");
+      await expect(property.getByText("显式删除属性 · 继承值不生效", { exact: true })).toBeVisible();
+      await expect(property.getByLabel("rx_fod_cond 最终值", { exact: true })).not.toContainText(longValue);
+      await property.getByRole("link").first().click();
+      await expect(page.getByRole("region", { name: "DTS 源码", exact: true })).toContainText("/delete-property/ rx_fod_cond;");
+      expect(new URL(page.url()).searchParams.get("line")).toMatch(/^[1-9]\d*$/);
+      await page.goto(disposablePageUrl(disposableRuntime, route.replace("node=%2Fbus%2Finherited", "node=%2Fbus")));
+      await applyPrepared("delete-node", "delete-node");
+      await page.goto(disposablePageUrl(disposableRuntime, route.replace("node=%2Fbus%2Finherited", "node=%2F")));
+      await expect(page.getByText(/已显式删除节点/)).toContainText("/bus");
+      await expect(page.getByRole("treeitem", { name: "节点 /bus", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("treeitem", { name: "节点 /bus/inherited", exact: true })).toHaveCount(0);
+      await page.getByText(/已显式删除节点/).getByRole("link").click();
+      await expect(page.getByRole("region", { name: "DTS 源码", exact: true })).toContainText("/delete-node/ bus;");
+      expect(new URL(page.url()).searchParams.get("line")).toMatch(/^[1-9]\d*$/);
+      await page.getByRole("tab", { name: "生效配置", exact: true }).click();
+      await page.getByRole("treeitem", { name: "节点 /sibling", exact: true }).click();
+      await expect(property.getByLabel("rx_fod_cond 最终值", { exact: true })).toHaveText('"Sibling", "keep"');
+      const unchanged = await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/versions/${versionId}`), { headers: adminHeaders() });
+      expect(unchanged.status(), await unchanged.text()).toBe(200); expect(JSON.stringify(await unchanged.json())).toContain(longValue);
+      await signInBrowserAsRole(page, "guest", disposablePageUrl(disposableRuntime, route.replace("node=%2Fbus%2Finherited", "node=%2Fsibling")));
+      await expect(property.getByLabel("rx_fod_cond 最终值", { exact: true })).toHaveText('"Sibling", "keep"');
+      await expect(page.getByRole("combobox", { name: "节点操作", exact: true })).toHaveCount(0);
+      await expect(property.getByRole("button", { name: "删除此属性", exact: true })).toHaveCount(0);
+    } finally { expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(expectedFailure), 1); }
+  });
+
   for(const actor of ["admin","hardware-user","guest"] as const) test(`project local override and removal preserve inherited values through the source workflow (${actor})`, async ({ page, request }, testInfo) => {
     test.setTimeout(240_000);
     await seedAcceptanceRoleMatrix();
