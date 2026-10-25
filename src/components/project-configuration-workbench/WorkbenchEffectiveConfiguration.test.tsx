@@ -1,10 +1,29 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { EffectiveTopologyNode } from "@/domain/parameter-topology/types";
 import { WorkbenchEffectiveConfiguration } from "./WorkbenchEffectiveConfiguration";
 
 describe("effective project configuration", () => {
+  it("prepares a local source draft with exact property identity, retaining failed input", async () => {
+    const prepare = vi.fn().mockRejectedValueOnce(new Error("配置已变化")).mockResolvedValueOnce(undefined);
+    const node: EffectiveTopologyNode = { id:"n",logicalNodeId:"logical",locator:"/device",name:"device",parentLogicalNodeId:null,compatible:"acme,power", effects:[
+      {id:"e",propertyName:"limit",effectKind:"override",nodeOccurrenceId:"n1",propertyOccurrenceId:"p1",sourceOrder:1,rawText:"<25>",source:{fileId:"local",fileVersionId:"v",sourceName:"board.dts"}}
+    ] };
+    render(<WorkbenchEffectiveConfiguration node={node} projectId="project" configSetId="config" revisionId="revision" search=""
+      overrideTargets={[{fileId:"local",fileName:"board.dts"}]} onPrepareOverride={prepare} />);
+    await userEvent.click(screen.getByRole("button",{name:"在本项目覆盖"}));
+    await userEvent.clear(screen.getByLabelText("limit 本项目值"));
+    await userEvent.type(screen.getByLabelText("limit 本项目值"),"<31>");
+    await userEvent.click(screen.getByRole("button",{name:"查看源码差异"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("配置已变化");
+    expect(screen.getByLabelText("limit 本项目值")).toHaveValue("<31>");
+    await userEvent.click(screen.getByRole("button",{name:"查看源码差异"}));
+    expect(prepare).toHaveBeenLastCalledWith({expectedConfigRevisionId:"revision",logicalNodeId:"logical",propertyName:"limit",propertyOccurrenceId:"p1",action:"set",rawText:"<31>",targetFileId:"local"});
+    await userEvent.click(screen.getByRole("button",{name:"取消"}));
+    await userEvent.click(screen.getByRole("button",{name:"撤销本项目覆盖"}));
+    expect(prepare).toHaveBeenLastCalledWith({expectedConfigRevisionId:"revision",logicalNodeId:"logical",propertyName:"limit",propertyOccurrenceId:"p1",action:"remove-override"});
+  });
   it("shows the final value and ancestor reachability, with the ordered exact source chain on demand", async () => {
     const source = { fileId: "shared-file", fileVersionId: "snapshot-v1", sourceName: "lib/common.dtsi",
       startLine: 7, startColumn: 2, endLine: 7, endColumn: 18,

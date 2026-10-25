@@ -11,6 +11,14 @@ const fixturePath = join(
 );
 
 describe("resolveDts", () => {
+  it("projects original member spans with paths proven by the complete graph, while refusing unknown descendants", () => {
+    const source='&{/soc/device@1} { rate = <7>; };';
+    expect(()=>resolveDts(source)).toThrow("Unresolved DTS node-path");
+    const result=resolveDts(source,new Set(["/soc/device@1"]));
+    expect(result.nodes.map(node=>node.nodePath)).toEqual(["soc/device@1"]);
+    expect(result.nodes[0]!.properties[0]!.cst.span).toEqual({start:source.indexOf("<7>"),end:source.indexOf("<7>")+3});
+    expect(()=>resolveDts('&{/soc/device@1/unknown} { rate = <7>; };',new Set(["/soc/device@1"]))).toThrow("Unresolved DTS node-path");
+  });
   it("merges repeated &label overlays into one logical node (#26)", () => {
     const doc = parseDts(`
 &demo_multi_ref {

@@ -26034,6 +26034,79 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/config-sets/{configSetId}/local-override/prepare": {
+      "post": {
+        "operationId": "parameterFiles.prepareProjectLocalOverride",
+        "summary": "Prepare a project-owned source draft for setting or removing one local override",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "configSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectLocalOverrideRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectLocalOverrideResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/config-sets/{configSetId}/member-addition/apply": {
       "post": {
         "operationId": "parameterFiles.applyCanonicalMemberAddition",
@@ -28125,6 +28198,145 @@
             }
           }
         }
+      },
+      "ProjectLocalOverrideRequest": {
+        "type": "object",
+        "properties": {
+          "expectedConfigRevisionId": {
+            "type": "string"
+          },
+          "logicalNodeId": {
+            "type": "string"
+          },
+          "propertyName": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "set",
+              "remove-override"
+            ]
+          },
+          "rawText": {
+            "type": "string"
+          },
+          "propertyOccurrenceId": {
+            "type": "string"
+          },
+          "targetFileId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedConfigRevisionId",
+          "logicalNodeId",
+          "propertyName",
+          "action"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProjectLocalOverrideRequest"
+      },
+      "ProjectLocalOverrideResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string"
+              },
+              "baseVersionId": {
+                "type": "string"
+              },
+              "configRevisionId": {
+                "type": "string"
+              },
+              "before": {
+                "type": "string"
+              },
+              "after": {
+                "type": "string"
+              },
+              "beforeValue": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "afterValue": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "set",
+                  "remove-override"
+                ]
+              },
+              "localOverride": {
+                "type": "object",
+                "properties": {
+                  "expectedConfigRevisionId": {
+                    "type": "string"
+                  },
+                  "logicalNodeId": {
+                    "type": "string"
+                  },
+                  "propertyName": {
+                    "type": "string"
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "set",
+                      "remove-override"
+                    ]
+                  },
+                  "rawText": {
+                    "type": "string"
+                  },
+                  "propertyOccurrenceId": {
+                    "type": "string"
+                  },
+                  "targetFileId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expectedConfigRevisionId",
+                  "logicalNodeId",
+                  "propertyName",
+                  "action"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "fileId",
+              "fileName",
+              "baseVersionId",
+              "configRevisionId",
+              "before",
+              "after",
+              "beforeValue",
+              "afterValue",
+              "action"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProjectLocalOverrideResponse"
       },
       "SharedDtsiListResponse": {
         "type": "object",
@@ -34145,6 +34357,43 @@
                 "enum": [
                   "source_revision"
                 ]
+              },
+              "localOverride": {
+                "type": "object",
+                "properties": {
+                  "expectedConfigRevisionId": {
+                    "type": "string"
+                  },
+                  "logicalNodeId": {
+                    "type": "string"
+                  },
+                  "propertyName": {
+                    "type": "string"
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "set",
+                      "remove-override"
+                    ]
+                  },
+                  "rawText": {
+                    "type": "string"
+                  },
+                  "propertyOccurrenceId": {
+                    "type": "string"
+                  },
+                  "targetFileId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expectedConfigRevisionId",
+                  "logicalNodeId",
+                  "propertyName",
+                  "action"
+                ],
+                "additionalProperties": false
               },
               "expectedCurrentVersionId": {
                 "type": "string"
