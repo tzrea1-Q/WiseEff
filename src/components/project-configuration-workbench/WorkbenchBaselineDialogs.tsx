@@ -96,6 +96,12 @@ export function WorkbenchBaselineDialogs({
     <div className="min-w-0 [overflow-wrap:anywhere]">
       {canonical ? <>
         <p>整套恢复将原子生成新的工作配置及参数来源记录；原快照和正式版本保持不变。</p>
+        {canonical.sharedDependencies?.length ? <>
+          <p>恢复项目快照会恢复历史项目差异；仅切换依赖版本会保留当前项目差异。后加成员按预览保留。</p>
+          <Table aria-label="恢复后的共享依赖"><TableHeader><TableRow><TableHead>共享资源</TableHead><TableHead>固定版本</TableHead><TableHead>挂载目录</TableHead></TableRow></TableHeader>
+            <TableBody>{canonical.sharedDependencies.map((resource) => <TableRow key={resource.resourceId}><TableCell className="whitespace-normal [overflow-wrap:anywhere]">{resource.name}</TableCell>
+              <TableCell>{resource.beforeVersion === null ? "未引用" : `v${resource.beforeVersion}`} → v{resource.targetVersion}</TableCell><TableCell className="whitespace-normal [overflow-wrap:anywhere]">{resource.mountPath || "根目录"}</TableCell></TableRow>)}</TableBody></Table>
+        </> : null}
         {canonical.entryFile ? <p>入口：{canonical.entryFile}；include 路径：{canonical.includeSearchPaths.join("、")}；overlay 顺序：{canonical.overlayOrder.join(" → ") || "无"}。</p> : null}
         {canonical.members.length ? <Table aria-label="恢复后的成员组成"><TableHeader><TableRow><TableHead>文件</TableHead><TableHead>目标版本</TableHead><TableHead>用途 / 顺序</TableHead><TableHead>操作</TableHead></TableRow></TableHeader>
           <TableBody>{canonical.members.map((member) => <TableRow key={member.fileId}><TableCell className="whitespace-normal [overflow-wrap:anywhere]">{member.fileName}</TableCell><TableCell>v{member.versionNumber}</TableCell><TableCell>{({ base: "基础",overlay: "覆盖层",include: "包含文件",charging: "充电",thermal: "温控",misc: "其他" } as Record<string,string>)[member.role] ?? member.role} / {member.sortOrder}</TableCell>

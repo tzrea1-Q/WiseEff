@@ -5,6 +5,53 @@
     "version": "m5"
   },
   "paths": {
+    "/api/v2/shared-dtsi/{resourceId}/lifecycle": {
+      "post": {
+        "operationId": "sharedDtsi.lifecycle",
+        "summary": "Retire or restore a shared resource with state comparison",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "resourceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SharedDtsiLifecycleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedDtsiLifecycleResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/projects/{projectId}/config-sets/{configSetId}/shared-dtsi": {
       "post": {
         "operationId": "sharedDtsi.projectImport",
@@ -28636,6 +28683,69 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "ProjectLocalOverrideResponse"
       },
+      "SharedDtsiLifecycleRequest": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "retired"
+            ]
+          },
+          "expectedLifecycleRevision": {
+            "type": "number"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "expectedLifecycleRevision",
+          "idempotencyKey"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SharedDtsiLifecycleRequest"
+      },
+      "SharedDtsiLifecycleResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "resourceId": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "retired"
+                ]
+              },
+              "lifecycleRevision": {
+                "type": "number"
+              },
+              "updatedAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "resourceId",
+              "state",
+              "lifecycleRevision",
+              "updatedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SharedDtsiLifecycleResponse"
+      },
       "SharedDtsiProjectImportRequest": {
         "type": "object",
         "properties": {
@@ -28798,6 +28908,16 @@
                 },
                 "updatedAt": {
                   "type": "string"
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "retired"
+                  ]
+                },
+                "lifecycleRevision": {
+                  "type": "number"
                 },
                 "sourceName": {
                   "type": "string"
@@ -29126,6 +29246,16 @@
               },
               "updatedAt": {
                 "type": "string"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "retired"
+                ]
+              },
+              "lifecycleRevision": {
+                "type": "number"
               },
               "draftRevision": {
                 "type": [
@@ -34840,6 +34970,40 @@
                     "type": "array",
                     "items": {
                       "type": "string"
+                    }
+                  },
+                  "sharedDependencies": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "resourceId": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "beforeVersion": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "targetVersion": {
+                          "type": "number"
+                        },
+                        "mountPath": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "resourceId",
+                        "name",
+                        "beforeVersion",
+                        "targetVersion",
+                        "mountPath"
+                      ],
+                      "additionalProperties": false
                     }
                   },
                   "impact": {
