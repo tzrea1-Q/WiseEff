@@ -346,12 +346,25 @@ describe("shared reference version switches through the real API role", () => {
     finally{await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('shared-ref-role',$1,$2,'admin')",[ADMIN,ORG]);}
     const filesBefore=(await requestJson(server(),`/api/v1/projects/${B}/config-sets/${sets[B]}/files`)).body,objectsBefore=await readdir(directory,{recursive:true});
     expect((await post(`${path(B)}/apply`,confirm,admin,{...storage,put:async()=>{throw new Error("Injected removal storage failure");}})).status).toBe(500);
-    for(const [label,mutation] of [
-      ["present-member",`if new.value_state='present' then select file_id,file_version_id into new.file_id,new.file_version_id from public.dts_config_revision_members where shared_reference->>'versionId'='${versionId}' limit 1; end if;`],
-      ["wrong-before",`if new.locator->>'kind'='dts-source-absence' then new.locator=jsonb_set(new.locator,'{baseFileVersionId}','"forged-before"'); new.locator_digest=parameter_catalog.canonical_source_absence_locator_digest(new.locator); end if;`],
-      ["forged-absence",`if new.locator->>'kind'='dts-source-absence' then new.delete_proof=jsonb_set(new.delete_proof,'{beforeSourceDigest}','"sha256:${"0".repeat(64)}"'); end if;`]
-    ]) {
-      await db.query(`create function reject_bad_removal_pin() returns trigger language plpgsql security definer set search_path=pg_catalog,public,parameter_catalog as $$begin ${mutation} return new; end $$`);
+    for(const [label,install] of [
+      ["present-member",()=>db.query(`create function reject_bad_removal_pin() returns trigger language plpgsql security definer set search_path=pg_catalog,public,parameter_catalog as $$begin
+        if new.value_state='present' then
+          select previous.file_id,previous.file_version_id into new.file_id,new.file_version_id
+          from public.dts_config_revision_members previous join public.dts_config_revisions revision on revision.id=previous.config_revision_id
+          where revision.organization_id=new.organization_id and revision.project_id=new.project_id and previous.shared_reference is not null
+            and not exists(select 1 from public.dts_config_revision_members current_member
+              where current_member.config_revision_id=new.config_revision_id and current_member.file_id=previous.file_id)
+          limit 1;
+        end if;
+        return new; end $$`)],
+      ["wrong-before",()=>db.query(`create function reject_bad_removal_pin() returns trigger language plpgsql security definer set search_path=pg_catalog,public,parameter_catalog as $$begin
+        if new.locator->>'kind'='dts-source-absence' then new.locator=jsonb_set(new.locator,'{baseFileVersionId}','"forged-before"'); new.locator_digest=parameter_catalog.canonical_source_absence_locator_digest(new.locator); end if;
+        return new; end $$`)],
+      ["forged-absence",()=>db.query(`create function reject_bad_removal_pin() returns trigger language plpgsql security definer set search_path=pg_catalog,public,parameter_catalog as $$begin
+        if new.locator->>'kind'='dts-source-absence' then new.delete_proof=jsonb_set(new.delete_proof,'{beforeSourceDigest}',to_jsonb('sha256:'||repeat('0',64))); end if;
+        return new; end $$`)]
+    ] as const) {
+      await install();
       await db.query("create trigger reject_bad_removal_pin before insert on parameter_catalog.project_value_source_pins for each row execute function reject_bad_removal_pin()");
       try {expect((await post(`${path(B)}/apply`,{...confirm,clientMutationId:label})).status,label).toBe(500);}
       finally {await db.query("drop trigger reject_bad_removal_pin on parameter_catalog.project_value_source_pins");await db.query("drop function reject_bad_removal_pin()");}
