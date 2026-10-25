@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import JSZip from "jszip";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
+import { createPostgresDatabase, getRootPostgresPool, type Database } from "../../shared/database/client";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
@@ -25,7 +25,7 @@ import { registerParameterFileRoutes } from "./routes";
 import { uploadProjectParameterFile } from "./service";
 import type { ExportConfigSetResult } from "./exportService";
 import { configSetPackageManifestName, type ConfigSetImportPreview, type ConfigSetImportResult } from "../contracts/dtoSchemas/configSetPackage";
-import { installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
+import { captureConfigurationSourceState, installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
 import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
 import { createBaseline, type RestorePreviewResult } from "./baselineService";
 import { evaluateReleaseReadiness } from "./releaseReadinessService";
@@ -42,8 +42,8 @@ describe("complete configuration package through the actual API role",()=>{
   let directory:string,storage:ReturnType<typeof createLocalObjectStore>,setId:string,resourceId:string,versionId:string,exported:ExportConfigSetResult;
   let archive:{name:string;contentBase64:string};
   const token=`package_${process.pid}`;
-  function server(principal=auth,objects:ObjectStore=storage) {const router=createRouter();
-    const options={db:api,objectStore:objects,getCurrentAuthContext:()=>principal,refusalAuditSink:createTrustedRefusalAuditSink(db)};
+  function server(principal=auth,objects:ObjectStore=storage,runtime:Database=api) {const router=createRouter();
+    const options={db:runtime,objectStore:objects,getCurrentAuthContext:()=>principal,refusalAuditSink:createTrustedRefusalAuditSink(db)};
     registerParameterFileRoutes(router,options);registerSharedDtsiRoutes(router,options);registerCatalogProjectValueConsumerRoutes(router,options);registerParameterRoutes(router,options);registerParameterTopologyRoutes(router,options);
     registerUserRoutes(router,options);
     return createHttpServer(router);}
@@ -361,6 +361,26 @@ describe("complete configuration package through the actual API role",()=>{
     const fresh=await requestJson<ExportConfigSetResult>(server(),exportPath);expect(fresh.status,fresh.bodyText).toBe(200);
     expect(fresh.body.files.find(row=>row.name===entry)!.content).toBe(after);expect(fresh.body.manifest.validation?.ok).toBe(true);
   },120_000);
+  it("commits deletion of the former composition administrator after shared reference replacement and snapshot restoration",async()=>{
+    const nextId="package-surviving-admin";
+    await db.query("insert into users(id,organization_id,name,title,is_active) values($1,$2,'Surviving administrator','Admin',true)",[nextId,ORG]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values('package-surviving-admin-role',$1,$2,'admin')",[nextId,ORG]);
+    const next=makeTestAuthContext({organizationId:ORG,userId:nextId,roles:[{roleId:"admin",projectId:null}]});
+    const compositionReceiptsSql="select id,source_revision_context,member_frozen_proof,applied_source_result,applied_audit_ref,historical_attribution from project_parameter_value_change_requests where organization_id=$1 and status='approved' and source_revision_context ? 'sharedComposition' order by id";
+    const before=(await api.query<{id:string}>(compositionReceiptsSql,[ORG])).rows;expect(before.length).toBeGreaterThan(0);
+    const projects=(await api.query<{id:string}>("select id from projects where organization_id=$1 order by id",[ORG])).rows;
+    const readBindings=()=>Promise.all(projects.map(async({id})=>(await captureConfigurationSourceState(api,{organizationId:ORG,projectId:id})).bindings));
+    const bindings=await readBindings();
+    await api.transaction(async tx=>{
+      const deleted=await requestJson(server(next,storage,tx),`/api/v1/users/${ADMIN}`,{method:"DELETE"});expect(deleted.status,deleted.bodyText).toBe(204);
+      await tx.query("set constraints all immediate");
+    });
+    expect((await api.query("select id from users where id=$1",[ADMIN])).rows).toHaveLength(0);
+    expect((await api.query(compositionReceiptsSql,[ORG])).rows).toEqual(before);
+    await expect(api.query("update project_parameter_value_change_requests set source_revision_context='{}'::jsonb where id=$1",[before[0]!.id])).rejects.toMatchObject({code:"23514",message:"Reviewed source revision context is immutable"});
+    expect((await api.query(compositionReceiptsSql,[ORG])).rows).toEqual(before);
+    expect(await readBindings()).toEqual(bindings);
+  });
 });
 
 describe("JSON source identities in complete configuration packages",()=>{

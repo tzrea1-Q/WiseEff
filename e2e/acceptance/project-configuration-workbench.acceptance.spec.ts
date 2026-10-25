@@ -1,4 +1,5 @@
 import { selectControlOption } from "./helpers/selectControl";
+import { waitForInteractionSurfaceReady } from "./helpers/interactionSurface";
 import "./helpers/loadAcceptanceEnvironment";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -81,7 +82,7 @@ async function prepareSourceFromEditor(page: Page, source: string, keyboardSave 
   const previewResponse = page.waitForResponse((response) => response.request().method() === "GET"
     && new URL(response.url()).pathname.endsWith("/source-preview"), { timeout: 60_000 });
   const save = page.getByRole("button", { name: "保存修改", exact: true });
-  if (keyboardSave) { await save.focus(); await page.keyboard.press("Enter"); } else await save.click();
+  if (keyboardSave) { await waitForInteractionSurfaceReady(page); await save.focus(); await expect(save).toBeFocused(); await page.keyboard.press("Enter"); } else await save.click();
   const candidate = await candidateResponse;
   expect(candidate.status(), await candidate.text()).toBe(201);
   expect(candidate.request().postDataJSON()).toMatchObject({ intent: "source_revision",
@@ -3829,10 +3830,12 @@ test.describe("project configuration workbench post-cutover semantic identity", 
       await expect(page.getByRole("radio",{name:"编辑",exact:true})).toBeDisabled();
       if(action==="set") {await page.reload();await expect(page.getByRole("textbox",{name:"DTS 源码",exact:true})).toContainText("ProjectLocal");
         await expect(page.getByRole("radio",{name:"编辑",exact:true})).toBeDisabled();}
+      await waitForInteractionSurfaceReady(page);
       const sourceCandidate=page.waitForResponse(response=>response.request().method()==="POST" && new URL(response.url()).pathname.endsWith("/parameter-file-candidates"),{timeout:60_000});
       const sourcePreview=page.waitForResponse(response=>response.request().method()==="GET" && new URL(response.url()).pathname.endsWith("/source-preview"),{timeout:60_000});
-      await expect(page.getByRole("button",{name:"保存修改",exact:true})).toBeEnabled();
-      await page.getByRole("button",{name:"保存修改",exact:true}).focus();await page.keyboard.press("Enter");
+      const save=page.getByRole("button",{name:"保存修改",exact:true});
+      await expect(save).toBeEnabled();
+      await save.focus();await expect(save).toBeFocused();await page.keyboard.press("Enter");
       const candidate=await sourceCandidate;expect(candidate.status(),await candidate.text()).toBe(201);
       expect(Buffer.from(candidate.request().postDataJSON().contentBase64,"base64").toString("utf8")).toBe(item.after);
       expect(candidate.request().postDataJSON().localOverride.action).toBe(action);
