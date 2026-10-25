@@ -240,7 +240,11 @@ describe("#897 C2 production Driver compatible discovery HTTP", () => {
       .flatMap((entry) => entry.candidate.kind === "review-required" ? entry.candidate.reviewItemIds ?? [] : []);
     expect(remaining).toEqual([itemIds.find((id) => id !== chosen.id)]);
 
-    const oldObservation = page.items[0]!.observationId;
+    const currentObservation = page.items.find((item) => item.source.status === "current");
+    if (!currentObservation || currentObservation.source.status !== "current") {
+      throw new Error("Current source observation unavailable");
+    }
+    const oldObservation = currentObservation.observationId;
     const brokenStorage = {...storage,getBounded:async () => { throw new Error("isolated read failure"); }};
     const unavailable = await requestJson(app(brokenStorage),path(`?observationId=${oldObservation}`),
       {headers:{authorization:"Bearer admin"}});
@@ -254,6 +258,7 @@ describe("#897 C2 production Driver compatible discovery HTTP", () => {
     const oldVersion = (await db.query<{id:string;version_number:number}>(
       "select id,version_number from project_parameter_file_versions where file_id=$1 order by version_number desc limit 1",
       [fileId])).rows[0]!;
+    expect(oldVersion.id).toBe(currentObservation.source.fileVersionId);
     const newVersionId = `${fileId}-history-${oldVersion.version_number + 1}`;
     await db.query(`insert into project_parameter_file_versions
       (id,file_id,version_number,storage_key,checksum,size_bytes,parsed_index,origin,created_by_user_id)
@@ -273,7 +278,9 @@ describe("#897 C2 production Driver compatible discovery HTTP", () => {
       compatibles:[]}]});
     await db.query("update project_parameter_files set current_version_id=$2 where id=$1",[fileId,oldVersion.id]);
     const restored = await get(path(`?observationId=${oldObservation}`));
-    expect(restored.body).toMatchObject({status:"ready",items:[{source:{status:"current"}}]});
+    expect(restored.body).toMatchObject({status:"ready",items:[{
+      observationId:oldObservation,configRevisionId:currentObservation.configRevisionId,
+      source:{status:"current",fileVersionId:oldVersion.id}}]});
     const firstBeforeAdvance = await get(path(`?projectId=${PROJECT}&limit=1`));
     const firstBeforePage = catalogDriverCompatibleDiscoveryResponseSchema.parse(firstBeforeAdvance.body);
     if (firstBeforePage.status !== "ready" || !firstBeforePage.nextCursor) {
