@@ -170,7 +170,11 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
           then event.metadata->'sharedComposition' else '[]'::jsonb end) resource
       where event.organization_id=$1 and event.project_id=$2 and event.target_id=$3
         and event.app='parameters' and event.kind='config-set' and event.action='imported' and event.target_type='dts-config-set'
-        and event.actor_type='user' and event.actor_user_id=imported.created_by_user_id
+        and event.actor_type='user' and (event.actor_user_id=imported.created_by_user_id
+          or (event.actor_user_id is null and imported.created_by_user_id is null and imported.initiator_type='legacy'
+            and event.historical_attribution#>>'{actors,actor_user_id,source}'='recorded'
+            and imported.historical_attribution#>>'{actors,created_by_user_id,source}'='recorded'
+            and event.historical_attribution#>>'{actors,actor_user_id,id}'=imported.historical_attribution#>>'{actors,created_by_user_id,id}'))
         and event.metadata->'result'->>'configSetId'=event.target_id and event.metadata->>'ownership'='reuse'
         and resource->>'resourceId'=$5 and resource->>'versionId'=$6 and resource->>'digest'=$7
         and original.shared_reference->>'resourceId'=$5 and original.shared_reference->>'versionId'=$6

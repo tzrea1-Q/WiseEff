@@ -26,6 +26,9 @@ import { evaluateReleaseReadiness } from "./releaseReadinessService";
 import type { SourceRevisionPreview } from "./sourceRevisionService";
 import { randomUUID } from "node:crypto";
 import { insertFileVersion, insertProjectParameterFile, setCurrentVersion } from "./repository";
+import { createAgentInvocation, trustedDomainAttribution } from "../auth/trustedInvocation";
+import { registerUserRoutes } from "../users/routes";
+import { createAgentApproval, createAgentSession, createAgentToolCall, markAgentApprovalApproved } from "../agent/repository";
 
 const ORG="org-private-conversion",USER="conversion-admin",A="conversion-a",B="conversion-b";
 const admin=makeTestAuthContext({organizationId:ORG,userId:USER,roles:[{roleId:"admin",projectId:null}]});
@@ -43,6 +46,7 @@ describe("explicit private source conversion through the real API role",{timeout
     registerSharedDtsiRoutes(router,{db:api,objectStore:sourceStore,getCurrentAuthContext:()=>auth});
     registerCatalogProjectValueConsumerRoutes(router,{db:api,objectStore:sourceStore,getCurrentAuthContext:()=>auth});
     registerParameterFileRoutes(router,{db:api,objectStore:sourceStore,getCurrentAuthContext:()=>auth,refusalAuditSink:createTrustedRefusalAuditSink(db)});
+    registerUserRoutes(router,{db:api,getCurrentAuthContext:()=>auth});
     return createHttpServer(router);
   }
   const post=<T,>(path:string,body:unknown)=>requestJson<T>(server(),path,{method:"POST",body:JSON.stringify(body)});
@@ -226,24 +230,48 @@ describe("explicit private source conversion through the real API role",{timeout
     expect(after.map(member=>({fileId:member.fileId,currentVersionId:member.currentVersionId}))).toEqual((before as Array<{fileId:string;currentVersionId:string}>).map(member=>({fileId:member.fileId,currentVersionId:member.currentVersionId})));
     expect(await readdir(directory,{recursive:true})).toEqual(objects);
   });
-  it("restores private ownership immediately when every original version is identical and only the canonical restore receipt distinguishes current history",async()=>{
-    const configSetId=(await createConfigSet(db,admin,{projectId:A,name:"Unchanged whole-source private restore"})).id;
+  it.each([false,true])("restores private ownership immediately when every original version is identical and only the canonical restore receipt distinguishes current history (Agent origin=%s)",async(agentOrigin)=>{
+    const configSetId=(await createConfigSet(db,admin,{projectId:A,name:`Unchanged whole-source private restore ${agentOrigin}`})).id;
     const content='/dts-v1/; / { compatible = "test,board"; model = "Private ownership restore"; charger: charger { compatible = "acme,power"; iin_max = <36>; }; };';
-    const uploaded=await uploadProjectParameterFile(db,storage,admin,{projectId:A,fileName:"immediate-private.dts",bytes:Buffer.from(content)});
+    const fileName=`immediate-private-${agentOrigin}.dts`;
+    const uploaded=await uploadProjectParameterFile(db,storage,admin,{projectId:A,fileName,bytes:Buffer.from(content)});
+    const actorId="conversion-agent-origin";
+    if(agentOrigin) {
+      await db.query("insert into users(id,organization_id,name,title,is_active) values($1,$2,'Original Agent principal','Engineer',true)",[actorId,ORG]);
+      const actor=makeTestAuthContext({organizationId:ORG,userId:actorId});
+      const stored=await storage.put({organizationId:ORG,fileName:randomUUID(),contentType:"text/plain",bytes:Buffer.from(content)});
+      await createAgentSession(db,{id:"conversion-origin-session",organizationId:ORG,projectId:A,actorUserId:actorId,pageKey:"parameters",context:{path:`/parameter-admin/projects/${A}/configuration?configSet=${configSetId}`,pageKey:"parameters"},title:"Original private source"});
+      await createAgentToolCall(db,{id:"conversion-origin-tool",sessionId:"conversion-origin-session",organizationId:ORG,projectId:A,name:"action.submitParameterChange",label:"Original private source",requiresApproval:true,status:"running",payload:{fileId:uploaded.file.id,sourceText:content}});
+      await createAgentApproval(db,{id:"conversion-origin-approval",sessionId:"conversion-origin-session",toolCallId:"conversion-origin-tool",organizationId:ORG,projectId:A,status:"pending",title:"Original private source",message:"Retain the approved original source provenance",requestedByUserId:actorId});
+      expect(await markAgentApprovalApproved(db,ORG,"conversion-origin-approval",USER)).toBe(true);
+      // Existing trusted version producer fixture with a real retained human decision;
+      // this does not authorize or add an Agent API write path.
+      uploaded.version=await insertFileVersion(db,{id:randomUUID(),fileId:uploaded.file.id,versionNumber:2,storageKey:stored.storageKey,checksum:stored.checksumSha256,
+        sizeBytes:Buffer.byteLength(content),origin:"writeback",attribution:trustedDomainAttribution(createAgentInvocation(actor,{sessionId:"conversion-origin-session",toolCallId:"conversion-origin-tool",approval:{required:true,approvalId:"conversion-origin-approval"}}))});
+      await setCurrentVersion(db,{fileId:uploaded.file.id,versionId:uploaded.version.id});
+    }
     await addConfigSetFile(db,admin,{configSetId,fileId:uploaded.file.id,role:"base",sortOrder:0});
-    const revision=await ingestConfigRevision(db,{organizationId:ORG,projectId:A,configSetId,entryFile:"immediate-private.dts",includeSearchPaths:["."],overlayOrder:[],members:[{fileId:uploaded.file.id,fileVersionId:uploaded.version.id,fileName:"immediate-private.dts",role:"base",sortOrder:0,content}]},admin);
+    const revision=await ingestConfigRevision(db,{organizationId:ORG,projectId:A,configSetId,entryFile:fileName,includeSearchPaths:["."],overlayOrder:[],members:[{fileId:uploaded.file.id,fileVersionId:uploaded.version.id,fileName,role:"base",sortOrder:0,content}]},admin);
     const catalog=await loadPublishedCatalog(getRootPostgresPool(db)!);await db.transaction(tx=>syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx),catalog!,{organizationId:ORG,projectId:A,configSetId,configRevisionId:revision.id}));
     const gate=await evaluateReleaseReadiness(api,admin,{configSetId},{objectStore:storage});expect(gate.canCreateBaseline,JSON.stringify(gate)).toBe(true);
     const baseline=await createBaseline(api,admin,{configSetId,name:"All original private versions",gateToken:gate.gateToken,acknowledgedWarningIds:gate.warnings.filter(row=>row.acknowledgementRequired).map(row=>row.id)},{},{objectStore:storage});
     const selected={configRevisionId:revision.id,fileId:uploaded.file.id,fileVersionId:uploaded.version.id};
     const imported=await post<{item:{resourceId:string}}>(`/api/v2/projects/${A}/config-sets/${configSetId}/shared-dtsi`,{...selected,name:"Immediate private restoration"});expect(imported.status,imported.bodyText).toBe(201);
-    const version=await publish(imported.body.item.resourceId,1,"immediate-private-publication");
+    const version=await publish(imported.body.item.resourceId,1,`immediate-private-publication-${agentOrigin}`);
     const endpoint=`/api/v1/projects/${A}/config-sets/${configSetId}/member-addition`,input={sharedReference:{resourceId:version.resourceId,versionId:version.id,convertPrivate:selected},role:"misc",sortOrder:0};
     const preview=await post<{item:MemberAdditionPreview}>(`${endpoint}/preview`,input);expect(preview.status,preview.bodyText).toBe(200);
-    expect((await post(`${endpoint}/apply`,{...input,proofToken:preview.body.item.proofToken,reason:"Explicitly convert unchanged root",clientMutationId:"immediate-private-conversion"})).status).toBe(200);
+    const converted=await post(`${endpoint}/apply`,{...input,proofToken:preview.body.item.proofToken,reason:"Explicitly convert unchanged root",clientMutationId:`immediate-private-conversion-${agentOrigin}`});expect(converted.status,converted.bodyText).toBe(200);
+    if(agentOrigin) {
+      const before=(await api.query("select * from project_parameter_file_versions where id=$1",[uploaded.version.id])).rows[0]!;
+      expect(before).toMatchObject({created_by_user_id:actorId,initiator_type:"agent",initiator_principal_deleted:false,initiator_session_id:"conversion-origin-session",initiator_tool_call_id:"conversion-origin-tool",initiator_approval_id:"conversion-origin-approval"});
+      await expect(api.query("update project_parameter_file_versions set created_by_user_id=null where id=$1",[uploaded.version.id])).rejects.toMatchObject({code:"55000"});
+      const deleted=await requestJson(server(),`/api/v1/users/${actorId}`,{method:"DELETE"});expect(deleted.status,deleted.bodyText).toBe(204);
+      expect((await api.query("select * from project_parameter_file_versions where id=$1",[uploaded.version.id])).rows).toEqual([{...before,created_by_user_id:null,initiator_principal_deleted:true}]);
+    }
     const restore=await requestJson<{item:RestorePreviewResult}>(server(),`/api/v1/projects/${A}/baselines/${baseline.id}/restore-preview`);expect(restore.status,restore.bodyText).toBe(200);
-    const restored=await post(`/api/v1/projects/${A}/baselines/${baseline.id}/rollback`,{proofToken:restore.body.item.canonical!.proofToken,sourceConfigRevisionId:revision.id,reason:"Restore exact private ownership without changing any source bytes",confirmCompositionChanges:true,clientMutationId:"immediate-private-restore"});expect(restored.status,restored.bodyText).toBe(200);
+    const restored=await post(`/api/v1/projects/${A}/baselines/${baseline.id}/rollback`,{proofToken:restore.body.item.canonical!.proofToken,sourceConfigRevisionId:revision.id,reason:"Restore exact private ownership without changing any source bytes",confirmCompositionChanges:true,clientMutationId:`immediate-private-restore-${agentOrigin}`});expect(restored.status,restored.bodyText).toBe(200);
     const files=await requestJson<{items:Array<{fileId:string;currentVersionId:string;sharedReference?:unknown}>}>(server(),`/api/v1/projects/${A}/config-sets/${configSetId}/files`);expect(files.body.items).toEqual([expect.objectContaining({fileId:uploaded.file.id,currentVersionId:uploaded.version.id})]);expect(files.body.items[0]!.sharedReference).toBeUndefined();
     expect((await api.query<{restored:boolean}>("select public.shared_dtsi_private_source_is_restored($1) as restored",[uploaded.file.id])).rows[0]!.restored).toBe(true);
+    await expect(api.query("update project_parameter_file_versions set parsed_index='{}'::jsonb where id=$1",[uploaded.version.id])).rejects.toMatchObject({code:"55000"});
   });
 });
