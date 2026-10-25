@@ -24,6 +24,7 @@ export const releaseBaselineRestorePreviewResponseSchema = itemEnvelopeSchema(z.
       role: z.string(), sortOrder: z.number().int(), action: z.enum(["restore", "reattach", "retain-added", "unchanged"]), compositionChanged: z.boolean()
     })),
     entryFile: z.string().nullable(), includeSearchPaths: z.array(z.string()), overlayOrder: z.array(z.string()),
+    sharedDependencies: z.array(z.object({ resourceId: z.string(),name: z.string(),beforeVersion: count.nullable(),targetVersion: count,mountPath: z.string() })).optional(),
     impact: z.object({ parameterChanges: count, retainedBindings: count, restoredBindings: count, sourceReplacements: count })
   }).optional()
 }));

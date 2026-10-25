@@ -34712,6 +34712,40 @@
                       "type": "string"
                     }
                   },
+                  "sharedDependencies": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "resourceId": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "beforeVersion": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "targetVersion": {
+                          "type": "number"
+                        },
+                        "mountPath": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "resourceId",
+                        "name",
+                        "beforeVersion",
+                        "targetVersion",
+                        "mountPath"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
                   "impact": {
                     "type": "object",
                     "properties": {
