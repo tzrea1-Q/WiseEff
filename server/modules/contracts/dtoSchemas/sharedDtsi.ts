@@ -6,7 +6,7 @@ const changeDescription = z.string().trim().max(1000).regex(/^[^\u0000-\u0008\u0
 const sourceName = z.string().min(1).max(240).refine(value =>
   value.endsWith(".dtsi") && value === value.trim() && !/[:\\\u0000-\u001f\u007f]/u.test(value)
   && !value.startsWith("/") && value.split("/").every(part => part !== "" && part !== "." && part !== ".."),
-"请输入项目内的 .dtsi 相对路径。");
+"请输入资源内的 .dtsi 相对路径。");
 export const sharedDtsiDraftInputSchema = z.object({
   name: z.string().trim().min(1, "请输入资源名称。").max(160).regex(/^[^\u0000-\u001f\u007f]+$/u, "资源名称不能包含控制字符。"), sourceName,
   content: z.string().max(2_097_152).refine(value => new TextEncoder().encode(value).length <= 2_097_152 && !value.includes("\0"), "源码不能包含空字符，且不能超过 2 MiB。"),

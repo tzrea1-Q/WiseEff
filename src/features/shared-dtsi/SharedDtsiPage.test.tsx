@@ -40,7 +40,7 @@ describe("shared DTSI draft authoring", () => {
     const user = userEvent.setup();
     setup({ saveError: true });
     await user.click(await screen.findByRole("button", { name: "导入资源" }));
-    await user.type(screen.getByLabelText("资源名称"), "Battery common");
+    await user.type(await screen.findByLabelText("资源名称"), "Battery common");
     expect(screen.getByRole("button", { name: "保存草稿" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "保存草稿" }));
     await screen.findByText("草稿已保存");
@@ -73,13 +73,14 @@ describe("shared DTSI draft authoring", () => {
     const user=userEvent.setup();
     setup();
     await user.click(await screen.findByRole("button",{name:"导入资源"}));
+    await screen.findByLabelText("资源名称");
     let finish!: (value:ArrayBuffer)=>void;
     const file=new File(["ignored"],"old-source.dtsi",{type:"text/plain"});
     Object.defineProperty(file,"arrayBuffer",{value:()=>new Promise<ArrayBuffer>(resolve=>{finish=resolve;})});
     await user.upload(document.querySelector('input[type="file"]')!,file);
     await user.click(screen.getByRole("button",{name:"返回资源列表"}));
     await user.click(await screen.findByRole("button",{name:"导入资源"}));
-    await user.type(screen.getByLabelText("资源名称"),"New current draft");
+    await user.type(await screen.findByLabelText("资源名称"),"New current draft");
     await act(async()=>{finish(new TextEncoder().encode('/ { old { status = "disabled"; }; };').buffer);});
     expect(screen.getByLabelText("资源名称")).toHaveValue("New current draft");
     expect(screen.getByLabelText("文件路径")).toHaveValue("common.dtsi");

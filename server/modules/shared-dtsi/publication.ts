@@ -63,7 +63,8 @@ function publicationSource(draft: SharedDtsiDraft) {
     const tokens=lexDts(member.content);
     for (let i=0;i<tokens.length;i++) {
       const token=tokens[i]!;
-      if (token.kind==="ident" && /^#(?:include|include_next|define|undef|if|ifdef|ifndef|elif|else|endif|pragma|line|error|warning|embed)$/u.test(token.value))
+      const directive=token.value==="#" && tokens[i+1]?.kind==="ident"?`#${tokens[i+1]!.value}`:token.value;
+      if (token.kind==="ident" && /^#(?:include|include_next|define|undef|if|ifdef|ifndef|elif|else|endif|pragma|line|error|warning|embed)$/u.test(directive))
         reject(token.span.start,"此源码需要尚未接入的 C 预处理，不能按单文件直接发布。");
       if (token.kind==="amp" && tokens[i+1]?.kind==="ident") references.add(tokens[i+1]!.value);
     }

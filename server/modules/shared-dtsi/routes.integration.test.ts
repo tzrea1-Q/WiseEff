@@ -125,7 +125,21 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     await expect(api.query("update public.shared_dtsi_revisions set name='changed' where id=$1",[published.body.item.id])).rejects.toThrow();
     await expect(api.query("delete from public.shared_dtsi_resources where id=$1",[draft.resourceId])).rejects.toThrow();
     expect((await publicationCall<Version>(`/${draft.resourceId}/versions/${published.body.item.id}`)).body).toEqual(published.body);
-    expect((await publicationCall(`/${draft.resourceId}/publications`,"POST",{previewId:preview.body.item.id,idempotencyKey:"retained-history"})).status).toBe(200);
+    await publicationCall(`/${draft.resourceId}/draft`,"POST",{baseVersionId:published.body.item.id});
+    await call(`/${draft.resourceId}/draft`,"PUT",{name:"Retained history",sourceName:"history.dtsi",content:source.replace("disabled","okay"),changeDescription:"更新默认状态",expectedRevision:1});
+    const next=await publicationCall<{item:{id:string}}>(`/${draft.resourceId}/publication-preview`,"POST",{expectedRevision:2});
+    const second=await publicationCall<Version>(`/${draft.resourceId}/publications`,"POST",{previewId:next.body.item.id,idempotencyKey:"retained-history-second"});
+    expect(second.status,second.bodyText).toBe(201);
+    type History={items:{id:string}[];total:number};
+    const newest=await publicationCall<History>(`/${draft.resourceId}/versions?limit=1&offset=0`);
+    const oldest=await publicationCall<History>(`/${draft.resourceId}/versions?limit=1&offset=1`);
+    expect(newest.body).toMatchObject({items:[{id:second.body.item.id}],total:2});
+    expect(oldest.body).toMatchObject({items:[{id:published.body.item.id}],total:2});
+    expect((await publicationCall(`/${draft.resourceId}/versions?limit=101`)).status).toBe(400);
+    const replay=await publicationCall<Version>(`/${draft.resourceId}/publications`,"POST",{previewId:preview.body.item.id,idempotencyKey:"retained-history"});
+    expect(replay.status).toBe(200);
+    expect(replay.body).toEqual(published.body);
+    expect((await publicationCall<{item:{currentVersion:{id:string}}}>(`/${draft.resourceId}/detail`)).body.item.currentVersion.id).toBe(second.body.item.id);
   });
 
   it("serializes publication and discard without inverted source and preview locks",async()=>{
@@ -152,7 +166,7 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
   },15_000);
 
   it("keeps drafts on invalid source or audit failure and allows a safe publication retry", async () => {
-    for (const content of ["/ { broken {",'/include/ "missing.dtsi"\n/ {};', '#include "missing.h"\n/ {};', '/ { label: a {}; label: b {}; };']) {
+    for (const content of ["/ { broken {",'/include/ "missing.dtsi"\n/ {};', '#include "missing.h"\n/ {};', '# /**/ include "missing.h"\n/ {};', '/ { label: a {}; label: b {}; };']) {
       const draft=(await call("","POST",{name:"Invalid draft",sourceName:"invalid.dtsi",content,changeDescription:"检查语法与依赖"})).body.item;
       const rejected=await publicationCall(`/${draft.resourceId}/publication-preview`,"POST",{expectedRevision:1});
       expect(rejected.status,rejected.bodyText).toBe(400);

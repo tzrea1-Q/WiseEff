@@ -171,7 +171,7 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
       edits.current += 1;
       setForm(current => ({ ...current, name: current.name || file.name.replace(/\.dtsi$/, ""), sourceName: file.name, content }));
       setEditorDirty(true); setSaved(null); setError(""); setReloadEditor(value => value + 1);
-    } catch { if (isCurrent(scope) && request === importSequence.current) setError("无法读取文件，请选择 UTF-8 编码的 DTSI 源码。"); }
+    } catch { if (isCurrent(scope) && request === importSequence.current && edit === edits.current && !scope.pending) setError("无法读取文件，请选择 UTF-8 编码的 DTSI 源码。"); }
   };
   const [reloadEditor, setReloadEditor] = useState(0);
 

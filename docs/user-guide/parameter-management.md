@@ -107,7 +107,7 @@ Review evidence updates automatically on opening the form, returning to the wind
 
 The Historical registry is a read-only snapshot, distinct from current canonical registration. Search, filter or sort its rows and open details for recorded driver attributes and parsing coverage. This API does not provide a historical timeline. Node-mapping history remains accessible after pending tasks are resolved.
 
-## Prepare shared DTSI drafts
+## Manage shared DTSI versions
 
 Open **Shared DTSI** (`/parameter-admin/sources`) in the parameter administration console. Organization parameter administrators can choose **Import resource**, select a UTF-8 `.dtsi` file or enter source directly, name the resource, and save a draft. The draft keeps its source-member identity when its path or content changes. Incomplete DTS text can be saved while it is being prepared; saving does not publish a version or change any project.
 
