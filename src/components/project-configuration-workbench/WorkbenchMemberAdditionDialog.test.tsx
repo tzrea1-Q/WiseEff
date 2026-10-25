@@ -1,13 +1,33 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import { createApiClient } from "@/infrastructure/http/apiClient";
+import { createApiClient, WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createCanonicalMemberAdditionClient } from "@/infrastructure/http/canonicalMemberAdditionClient";
 import { WorkbenchMemberAdditionDialog } from "./WorkbenchMemberAdditionDialog";
 import type { ParameterCatalogRepository, CatalogSubjectListResponse, CatalogDefinitionListResponse } from "@/application/ports/ParameterCatalogRepository";
 import { jsonLeafPaths } from "@/application/project-configuration/jsonRegistration";
 
 afterEach(cleanup);
+
+it("locates a blocked project override and retains the task input across correction without retaining its proof", async () => {
+  const user=userEvent.setup(), recover=vi.fn(), resourceId="11111111-1111-4111-8111-111111111111",old="22222222-2222-4222-8222-222222222222",target="33333333-3333-4333-8333-333333333333";
+  const client={upload:vi.fn(),apply:vi.fn(),preview:vi.fn().mockRejectedValue(new WiseEffApiError("VALIDATION_FAILED","项目覆盖不满足目标约束",{switchConflicts:[{message:"iin_max 超出约束",sourceName:"board.dts",fileId:"root",fileVersionId:"root-v1",line:9,node:"/charger",property:"iin_max"}]},"request"))};
+  const props={projectId:"project",configSets:[{id:"set",name:"Config"}],initialConfigSetId:"set",availableFiles:[],switchReference:{resourceId,versionId:old,version:1},
+    client,sharedClient:{list:vi.fn(),versions:vi.fn(async()=>({items:[{id:target,resourceId,version:2,name:"Limits",changeDescription:"Next",digest:"fixed",createdAt:"today",createdByUserId:"author"}],total:1}))},onDismiss:vi.fn(),onApplied:vi.fn(),
+    switchDraft:{versionId:target,reason:"Keep local decision"},onSwitchDraftChange:vi.fn(),onRecoverSwitch:recover};
+  const view=render(<WorkbenchMemberAdditionDialog {...props}/>);
+  await user.click(await screen.findByRole("button",{name:"预览版本切换"}));
+  expect(await screen.findByText("board.dts:9 · /charger · iin_max")).toBeVisible();
+  await user.click(screen.getByRole("button",{name:"重选目标版本"}));
+  expect(screen.getByRole("combobox",{name:"固定版本"})).toHaveFocus();
+  await user.click(screen.getByRole("button",{name:"预览版本切换"}));
+  await user.click(screen.getByRole("button",{name:"修正项目源码"}));
+  expect(recover).toHaveBeenCalledWith(expect.objectContaining({fileId:"root",line:9}),{versionId:target,reason:"Keep local decision"});
+  view.unmount();render(<WorkbenchMemberAdditionDialog {...props}/>);
+  expect(screen.getByRole("combobox",{name:"固定版本"})).toHaveAttribute("data-value",target);
+  expect(screen.getByRole("textbox",{name:"变更说明"})).toHaveValue("Keep local decision");
+  expect(screen.queryByRole("button",{name:"确认切换版本"})).not.toBeInTheDocument();
+});
 
 it("switches an existing reference through the same preview owner and cancels proof without losing the selected version or reason", async () => {
   const user=userEvent.setup(), resourceId="11111111-1111-4111-8111-111111111111",old="22222222-2222-4222-8222-222222222222",next="33333333-3333-4333-8333-333333333333";
