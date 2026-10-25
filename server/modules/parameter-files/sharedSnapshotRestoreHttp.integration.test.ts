@@ -41,7 +41,7 @@ describe("shared dependency snapshot restoration through the real API role", () 
   let db: ReturnType<typeof createPostgresDatabase>, api: ReturnType<typeof createPostgresDatabase>;
   let storage: ReturnType<typeof createLocalObjectStore>, directory: string;
   const sets: Record<string, string> = {}, token = `shared_ref_${process.pid}`;
-  
+
   function server(auth = admin, sourceStore: ObjectStore = storage) {
     const router = createRouter();
     registerSharedDtsiRoutes(router, { db: api, getCurrentAuthContext: () => auth });
@@ -206,4 +206,3 @@ describe("shared dependency snapshot restoration through the real API role", () 
     for(const member of members)expect(exported.body.files).toContainEqual(expect.objectContaining({name:`vendor/macro/${member.sourceName}`,content:member.content}));
   },120_000);
 });
-
