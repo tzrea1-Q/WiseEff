@@ -12,6 +12,7 @@ import { createSharedDtsiDraft, discardSharedDtsiDraft, getSharedDtsiDraft, list
 import { createSharedDtsiVersionDraft, getSharedDtsiResourceDetail, getSharedDtsiVersion, listSharedDtsiVersions,
   previewSharedDtsiPublication, publishSharedDtsi } from "./publication";
 import { listSharedDtsiUsages } from "./usages";
+import { recognizeSharedDtsiVersion } from "./recognition";
 import type { ObjectStore } from "../logs/objectStore";
 import { importPrivateProjectSource } from "./projectImport";
 import { sharedDtsiProjectImportSchema } from "../contracts/dtoSchemas/sharedDtsi";
@@ -84,6 +85,10 @@ export function registerSharedDtsiRoutes(router: WiseEffRouter, options: {
   router.get("/api/v2/shared-dtsi/:resourceId/versions/:versionId", async request => {
     const { db,auth }=await access(request);
     return {status:200,body:{item:await getSharedDtsiVersion(db,auth,resourceId(request),parse(z.string().uuid(),request.params.versionId))}};
+  });
+  router.get("/api/v2/shared-dtsi/:resourceId/versions/:versionId/recognition", async request => {
+    const {db,auth}=await access(request);
+    return {status:200,body:await recognizeSharedDtsiVersion(db,auth,resourceId(request),parse(z.string().uuid(),request.params.versionId))};
   });
   router.post("/api/v2/shared-dtsi/:resourceId/publication-preview", async request => {
     const {db,auth,context}=await access(request);

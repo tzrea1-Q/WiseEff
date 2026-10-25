@@ -28,6 +28,8 @@ import type { RegistrationResult } from "../../parameter-governance/registration
 import type { ReviewQueueItem } from "../../parameter-governance/review/types";
 import type { ReviewResolutionResult } from "../../parameter-governance/resolveReviewItem/result";
 import type { ProposalResult } from "../../parameter-governance/proposals/result";
+import { makeTestAuthContext } from "../../../testing/authContext";
+import { createUserInvocation } from "../../auth/trustedInvocation";
 
 import { handleCatalogGovernance, matchCatalogGovernanceRoute } from "./handlers";
 import { catalogGovernanceCommandByRouteId, catalogGovernanceRoutes } from "./mapping";
@@ -653,7 +655,8 @@ describe("S8-GOV one-command HTTP mapping", () => {
   });
 
   it("creates a proposal through exactly one executeProposal command", async () => {
-    const { ports, calls, commands } = createHarness();
+    const trustedActor=createUserInvocation(makeTestAuthContext({organizationId:orgAdmin.organizationId,userId:orgAdmin.principalId}));
+    const { ports, calls, commands } = createHarness({scope:{...orgAdmin,trustedActor}});
     const response = await handleCatalogGovernance(
       ports,
       request("POST", "/api/v2/catalog/definition-proposals", {
@@ -674,6 +677,7 @@ describe("S8-GOV one-command HTTP mapping", () => {
     );
     expect(calls).toEqual(["executeProposal"]);
     expect(commands[0]).toMatchObject({ kind: "create-draft" });
+    expect((commands[0] as {context:{invocation:unknown}}).context.invocation).toBe(trustedActor);
     expect(response.status).toBe(201);
     catalogProposalResponseSchema.parse(response.body);
   });

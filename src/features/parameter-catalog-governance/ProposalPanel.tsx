@@ -1,4 +1,5 @@
 import { SelectControl } from "@/components/common/SelectControl";
+import type { SharedDtsiRecognitionReference } from "@wiseeff/dto-schemas";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
@@ -24,6 +25,9 @@ type ProposalItem = CatalogProposalResponse["item"];
 type ProposalAction = "create" | "submit" | "withdraw" | "accept" | "reject";
 
 export type ProposalPanelProps = {
+  source?:{reference:SharedDtsiRecognitionReference;label:string;href:string};
+  onDirtyChange?:(dirty:boolean)=>void;
+  onPendingChange?:(pending:boolean)=>void;
   actor: CatalogActorKind;
   domainState: CatalogDomainState;
   repository: ParameterCatalogGovernanceRepository;
@@ -38,6 +42,9 @@ export type ProposalPanelProps = {
 const CHANGE_KINDS = ["documentation", "content", "lifecycle"] as const;
 
 export function ProposalPanel({
+  source,
+  onDirtyChange,
+  onPendingChange,
   actor,
   domainState,
   repository,
@@ -63,10 +70,13 @@ export function ProposalPanel({
   const [reason, setReason] = useState("");
   const [repositoryReference, setRepositoryReference] = useState("");
   const [pending, setPending] = useState(false);
+  useEffect(()=>{onPendingChange?.(pending);},[pending,onPendingChange]);
   const [writeFailure, setWriteFailure] = useState<CatalogDomainState | undefined>();
   const [confirmAction, setConfirmAction] = useState<ProposalAction | null>(null);
   const [target, setTarget] = useState<ProposalItem | null>(null);
   const [intentRecorded, setIntentRecorded] = useState(false);
+  const activeSourceProposal=Boolean(source && items.some(item=>item.status==="draft"||item.status==="submitted"));
+  useEffect(()=>{onDirtyChange?.(Boolean(source && reason.trim() && !activeSourceProposal));},[source,reason,activeSourceProposal,onDirtyChange]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,7 +90,12 @@ export function ProposalPanel({
       // Order by the authoritative creation time so the newest draft is the
       // first actionable row, matching the persisted projection order.
       setItems(
-        [...response.items].sort((left, right) =>
+        [...response.items].filter(item=>{
+          if(!source)return true;
+          const reference=item.requestedChange.sourceReference;
+          return reference && typeof reference==="object" && !Array.isArray(reference)
+            && Object.entries(source.reference).every(([key,value])=>(reference as Record<string,unknown>)[key]===value);
+        }).sort((left, right) =>
           (right.createdAt ?? "").localeCompare(left.createdAt ?? "")
         )
       );
@@ -90,7 +105,7 @@ export function ProposalPanel({
     } finally {
       setLoading(false);
     }
-  }, [catalogReleaseId, repository]);
+  }, [catalogReleaseId, repository,source]);
 
   useEffect(() => {
     void load();
@@ -138,7 +153,7 @@ export function ProposalPanel({
               ...(definitionId ? { definitionId } : {}),
               ...(definitionRevisionId ? { definitionRevisionId } : {})
             },
-            requestedChange: { kind: changeKind },
+            requestedChange: source ? {kind:"source-recognition",sourceReference:source.reference,description:reason.trim()} : { kind: changeKind },
             reason: reason.trim()
           },
           prepared.context
@@ -194,23 +209,25 @@ export function ProposalPanel({
   };
 
   const columns: Column<ProposalItem>[] = [
+    ...(source?[{key:"description",header:"变更说明",render:(row:ProposalItem)=><span className="parameter-text-content">{typeof row.requestedChange.description==="string"?row.requestedChange.description:"说明见原修订记录"}</span>}]:[]),
     {
       key: "status",
       header: "状态",
+      className:source?"whitespace-nowrap":undefined,
       render: (row) => proposalStatusLabels[row.status]
     },
-    {
+    ...(!source?[{
       key: "change",
       header: "变更",
-      render: (row) =>
+      render: (row:ProposalItem) =>
         proposalChangeKindLabels[row.requestedChange.kind as keyof typeof proposalChangeKindLabels] ??
         "修订"
     },
     {
       key: "version",
       header: "版本",
-      render: (row) => String(row.version)
-    }
+      render: (row:ProposalItem) => String(row.version)
+    }]:[])
   ];
 
   const confirmMeta: Record<ProposalAction, { title: string; label: string }> = {
@@ -224,14 +241,15 @@ export function ProposalPanel({
   return (
     <section
       className="parameter-catalog__proposal"
-      aria-label={governanceCopy.proposalPanel}
+      aria-label={source?"来源识别修订":governanceCopy.proposalPanel}
       data-proposal-materialize="false"
     >
-      <p>{governanceCopy.proposalNoMaterialize}</p>
+      <p>{source?"提交识别修订供审核；不会创建参数定义或绑定项目实例。":governanceCopy.proposalNoMaterialize}</p>
+      {source?<p className="shared-dtsi-source-context">来源：<a href={source.href} target="_blank" rel="noreferrer">{source.label}</a></p>:null}
       {readOnly ? <p>{governanceCopy.agentReadOnly}</p> : null}
-      {canCreate ? (
+      {canCreate && (!source || !loading && !error && !activeSourceProposal) ? (
         <div className="governance-confirm-dialog__body">
-          <label>
+          {!source?<label>
             {governanceCopy.changeKind}
             <SelectControl
               ariaLabel={governanceCopy.changeKind}
@@ -239,12 +257,12 @@ export function ProposalPanel({
               onValueChange={(value) => setChangeKind(value as (typeof CHANGE_KINDS)[number])}
               options={CHANGE_KINDS.map((kind) => ({ value: kind, label: proposalChangeKindLabels[kind] }))}
             />
-          </label>
+          </label>:null}
           <label>
-            {governanceCopy.reason}
+            {source?"变更说明":governanceCopy.reason}
             <textarea
-              aria-label={governanceCopy.reason}
-              value={reason}
+              aria-label={source?"变更说明":governanceCopy.reason}
+              rows={3} value={reason}
               onChange={(event) => setReason(event.target.value)}
             />
           </label>
@@ -296,9 +314,10 @@ export function ProposalPanel({
       {intentRecorded ? <p>{governanceCopy.proposalIntentRecorded}</p> : null}
       {loading ? <SectionSkeleton label="正在加载定义修订" /> : null}
       {error ? <SectionError message={error} onRetry={() => void load()} /> : null}
-      {!loading && !error && items.length === 0 ? <SectionEmpty message="当前没有定义修订。" /> : null}
+      {!loading && !error && items.length === 0 ? <SectionEmpty message={source?"已加载的最近 50 条组织修订中没有此来源的记录。":"当前没有定义修订。"} /> : null}
       {!loading && !error && items.length > 0 ? (
         <DataTable
+          fluid={Boolean(source)}
           rows={items}
           rowKey={(row) => row.id}
           columns={columns}

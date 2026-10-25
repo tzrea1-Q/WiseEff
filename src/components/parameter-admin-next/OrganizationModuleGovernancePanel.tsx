@@ -80,6 +80,7 @@ export function OrganizationModuleGovernancePanel({
 
   return (
     <ParameterModuleMappingPanel
+      apiClient={apiClient}
       currentPersonId={currentPersonId}
       projects={projects}
       canAdmin={!canonicalEnabled || actor === "org-admin" || actor === "platform-admin"}

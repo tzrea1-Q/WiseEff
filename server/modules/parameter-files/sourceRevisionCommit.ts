@@ -26,6 +26,7 @@ import { assertSourceRevisionWriteAllowed, freezeSourceRevisionRequest, inspectS
 import type { CanonicalSourceSecurityContext } from "./canonicalSource";
 import { applySourceRestoration } from "./sourceRestoration";
 import type { DtsToolchainRunner } from "./dtsToolchain";
+import { produceDtsReviewEvidenceInTransaction } from "../parameter-catalog-api/productionEvidence";
 
 function conflict(message: string): never { throw new ApiError("CONFLICT", message, { reason: "source-revision-stale" }); }
 
@@ -41,7 +42,7 @@ type RequestRow = { id: string; status: string; submitter_user_id: string; assig
 export async function commitSourceRevision(tx: Database, storage: ObjectStore, auth: AuthContext, snapshot: CatalogSnapshot | null,
   input: { projectId: string; requestId: string; invocation: TrustedInvocationContext; traceId: string;
     refusalSink: TrustedRefusalAuditSink; note?: string | null; catalogSnapshots?: ReadonlyMap<string, CatalogSnapshot>;
-    applicationMode?: "administrator_direct"; toolchain?: DtsToolchainRunner }
+    applicationMode?: "administrator_direct"; toolchain?: DtsToolchainRunner;producerRoot?:Database }
 ): Promise<{ requestId: string; status: "approved"; sourceRevisionProofDigest: string }> {
   const security = { invocation: input.invocation, requestId: input.traceId, refusalSink: input.refusalSink };
   await requireCanonicalUserInvocation(auth, security, { projectId: input.projectId, operation: "whole DTS source revision apply",
@@ -223,6 +224,7 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
       results.push({ ...created, kind: "created" });
     }
   }
+  if(input.producerRoot && snapshot)await produceDtsReviewEvidenceInTransaction(tx,input.producerRoot,storage,auth,revision.id);
   const result = { requestId: request.id, configRevisionId: revision.id, fileVersionId: version.id,
     sourceRevisionProofDigest: frozen.proofDigest, results };
   await writeTrustedAuditEventInTx(asAuditTx(tx), { id: auditRef, invocation: input.invocation, app: "parameters",
@@ -282,7 +284,7 @@ export async function applySourceRevisionCandidate(db: Database, storage: Object
     }
     await commitSourceRevision(tx, storage, auth, snapshot, { projectId: input.projectId, requestId,
       invocation: security.invocation, traceId: security.requestId, refusalSink: security.refusalSink,
-      catalogSnapshots: snapshots, applicationMode: "administrator_direct", toolchain: options.toolchain });
+      catalogSnapshots: snapshots, applicationMode: "administrator_direct", toolchain: options.toolchain,producerRoot:db });
     return { requestId };
   });
 }

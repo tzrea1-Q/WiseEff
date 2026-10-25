@@ -156,9 +156,8 @@ export async function loadExactSourceRevisionForProof(tx: Queryable, objectStore
     if (entryFile !== null || includeSearchPaths.length !== 0 || overlayOrder.length !== 0) conflict("JSON-only source manifest contains DTS metadata.");
   } else {
     if (typeof entryFile !== "string") conflict("DTS source manifest is missing its entry file.");
-    const baseMembers = rows.filter((member) => member.role === "base");
     const dtsBaseMembers = dtsMembers.filter((member) => member.role === "base");
-    if (baseMembers.length !== 1 || dtsBaseMembers.length !== 1) conflict("DTS source manifest must have one unique DTS base member.");
+    if (dtsBaseMembers.length !== 1) conflict("DTS source manifest must have one unique DTS base member.");
     const normalized = normalizePersistedManifest({
       entryFile, includeSearchPaths, overlayOrder,
       members: dtsMembers.map((member) => ({

@@ -816,6 +816,9 @@ describe("legacy parameter plane archive", () => {
       { child: "public.node_operations", parent: "parameter_catalog.project_parameter_bindings", delete_action: "RESTRICT", constraint_count: "2" },
       { child: "public.node_operations", parent: "public.project_parameter_bindings", delete_action: "NO ACTION", constraint_count: "1" },
       { child: "public.parameter_spec_review_tasks", parent: "public.dts_config_revisions", delete_action: "CASCADE", constraint_count: "1" },
+      { child: "public.project_shared_dtsi_references", parent: "public.dts_config_set", delete_action: "CASCADE", constraint_count: "1" },
+      { child: "public.project_shared_dtsi_snapshots", parent: "public.project_parameter_file_versions", delete_action: "NO ACTION", constraint_count: "1" },
+      { child: "public.project_shared_dtsi_snapshots", parent: "public.project_parameter_files", delete_action: "CASCADE", constraint_count: "1" },
     ]);
 
     const triggers = await pool.query<{ relation: string; trigger_name: string; function_name: string }>(
@@ -848,6 +851,9 @@ describe("legacy parameter plane archive", () => {
       { relation: "parameter_catalog.project_value_source_pins", trigger_name: "project_value_source_pins_immutable", function_name: "parameter_catalog.reject_immutable_project_value_source_pin" },
       { relation: "public.dts_config_revision_members", trigger_name: "dts_config_revision_member_source_name_normalized", function_name: "parameter_catalog.normalize_dts_revision_member_source_name" },
       { relation: "public.dts_config_revision_members", trigger_name: "dts_config_revision_members_pinned_provenance_immutable", function_name: "parameter_catalog.protect_pinned_source_provenance" },
+      { relation: "public.dts_config_revision_members", trigger_name: "project_shared_manifest_immutable", function_name: "public.guard_project_shared_dtsi_identity" },
+      { relation: "public.dts_config_revision_members", trigger_name: "project_shared_manifest_provenance", function_name: "public.freeze_project_shared_dtsi_member" },
+      { relation: "public.dts_config_revision_members", trigger_name: "project_shared_manifest_retained", function_name: "public.guard_project_shared_dtsi_identity" },
       { relation: "public.dts_config_revisions", trigger_name: "dts_config_revisions_execution_identity_default_user", function_name: "public.parameter_execution_identity_default_user" },
       { relation: "public.dts_config_revisions", trigger_name: "dts_config_revisions_pinned_provenance_immutable", function_name: "parameter_catalog.protect_pinned_source_provenance" },
       { relation: "public.dts_config_revisions", trigger_name: "zz_historical_attribution_capture", function_name: "public.capture_parameter_history_attribution" },
@@ -873,9 +879,11 @@ describe("legacy parameter plane archive", () => {
       { relation: "public.project_parameter_file_candidates", trigger_name: "zz_historical_attribution_capture", function_name: "public.capture_parameter_history_attribution" },
       { relation: "public.project_parameter_file_versions", trigger_name: "project_parameter_file_versions_execution_identity_default_user", function_name: "public.parameter_execution_identity_default_user" },
       { relation: "public.project_parameter_file_versions", trigger_name: "project_parameter_file_versions_pinned_source_immutable", function_name: "parameter_catalog.protect_pinned_source_file" },
+      { relation: "public.project_parameter_file_versions", trigger_name: "project_shared_version_readonly", function_name: "public.guard_project_shared_dtsi_source" },
       { relation: "public.project_parameter_file_versions", trigger_name: "zz_historical_attribution_capture", function_name: "public.capture_parameter_history_attribution" },
       { relation: "public.project_parameter_files", trigger_name: "project_parameter_file_canonical_member_tombstone_ck", function_name: "parameter_catalog.assert_removed_member_has_tombstone" },
       { relation: "public.project_parameter_files", trigger_name: "project_parameter_files_pinned_source_immutable", function_name: "parameter_catalog.protect_pinned_source_file" },
+      { relation: "public.project_parameter_files", trigger_name: "project_shared_source_readonly", function_name: "public.guard_project_shared_dtsi_source" },
       { relation: "public.project_parameter_initialization_reviews", trigger_name: "zz_historical_attribution_capture", function_name: "public.capture_parameter_history_attribution" },
       { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_administrator_source_transitions_ck", function_name: "parameter_catalog.assert_administrator_source_transitions" },
       { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_configuration_restore_ck", function_name: "parameter_catalog.assert_configuration_restore_receipt" },

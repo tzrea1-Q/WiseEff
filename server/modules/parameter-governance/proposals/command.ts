@@ -12,6 +12,7 @@ import {
 
 import type { ProposalFailure } from "./failures";
 import type { Result } from "./result";
+import type { UserInvocationContext } from "../../auth/trustedInvocation";
 
 export const proposalCommandFamily = "definition-proposal";
 
@@ -25,10 +26,12 @@ export type ProposalTrustedContext =
   | {
       readonly actorKind: "org-admin";
       readonly principalId: string;
+      readonly invocation?: UserInvocationContext;
     }
   | {
       readonly actorKind: "platform-admin";
       readonly principalId: string;
+      readonly invocation?: UserInvocationContext;
     };
 
 export type ProposalPayload = {

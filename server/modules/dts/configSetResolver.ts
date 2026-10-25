@@ -89,6 +89,8 @@ export interface DtsEffectiveProperty {
 }
 
 export interface DtsEffectiveNode {
+  /** An unresolved external label is context, never an actual absolute node identity. */
+  isLabelStub?: true;
   nodeLocator: string;
   name: string;
   unitAddress?: string;
@@ -567,6 +569,7 @@ function finalize(byLocator: Map<string, MutableNode>): Map<string, DtsEffective
       properties.set(name, { ...prop, sourceChain: [...prop.sourceChain] });
     }
     out.set(displayLocator(node.locator), {
+      ...(node.isLabelStub ? { isLabelStub: true as const } : {}),
       nodeLocator: displayLocator(node.locator),
       name: node.name,
       unitAddress: node.unitAddress,
