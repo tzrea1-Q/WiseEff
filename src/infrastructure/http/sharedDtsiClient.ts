@@ -19,6 +19,10 @@ export function createSharedDtsiClient(api: ApiClient) {
       const result = await api.post<{ item: unknown }>(base, input);
       return sharedDtsiDraftSchema.parse(result.item);
     },
+    async importProject(projectId: string, configSetId: string, input: {name:string;configRevisionId:string;fileId:string;fileVersionId:string}) {
+      const result = await api.post<{item:unknown}>(`/api/v2/projects/${encodeURIComponent(projectId)}/config-sets/${encodeURIComponent(configSetId)}/shared-dtsi`,input);
+      return sharedDtsiDraftSchema.parse(result.item);
+    },
     async save(id: string, input: SharedDtsiDraftInput & { expectedRevision: number }) {
       const result = await api.put<{ item: unknown }>(`${resource(id)}/draft`, input);
       return sharedDtsiDraftSchema.parse(result.item);

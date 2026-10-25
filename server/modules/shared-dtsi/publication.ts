@@ -141,6 +141,7 @@ export async function createSharedDtsiVersionDraft(db:Database,auth:AuthContext,
     const version=await getSharedDtsiVersion(tx,auth,resourceId,baseVersionId),draftId=randomUUID();
     await tx.query("insert into public.shared_dtsi_drafts(id,resource_id,organization_id,created_by_user_id,updated_by_user_id) values ($1,$2,$3,$4,$4)",[draftId,resourceId,organizationId,auth.user.id]);
     await tx.query("update public.shared_dtsi_drafts set dependencies=$2::jsonb where id=$1",[draftId,JSON.stringify(version.manifest.dependencies??[])]);
+    if(version.manifest.sourceEvidence) await tx.query("update public.shared_dtsi_drafts set source_origin=$2::jsonb where id=$1",[draftId,JSON.stringify({evidence:version.manifest.sourceEvidence})]);
     for (const member of version.members) await tx.query(`insert into public.shared_dtsi_draft_members(draft_id,member_id,resource_id,organization_id,source_name,content)
       values ($1,$2,$3,$4,$5,$6)`,[draftId,member.id,resourceId,organizationId,member.sourceName,member.content]);
     await writeAuditEventInTx(asAuditTx(tx),invocation,{requestId:context.requestId},{app:"parameters",kind:"shared-dtsi-draft",action:"create-version",severity:"Medium",

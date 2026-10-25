@@ -2110,6 +2110,19 @@ export function ProjectConfigurationWorkbench({
         onAddSourceFile={() => openInspector("candidates")}
         onCanonicalAdd={apiMode ? () => setMemberAdditionOpen(true) : undefined}
         onSetRoot={apiMode ? setSetRootTarget : undefined}
+        onCreateShared={apiMode && sharedDtsiClient && !revisionGate.loading && !revisionGate.error ? member => {
+          const configRevisionId = revisionGate.revisions.filter(revision => revision.configSetId === selectedConfigSet.id
+            && ["resolved","validated","compiled","pending_approval"].includes(revision.status))
+            .sort((left,right) => right.revisionNumber-left.revisionNumber)[0]?.id;
+          void runAction("create-shared",async () => {
+            if(!configRevisionId || !member.currentVersionId) throw new Error("请先重新核对配置修订与文件版本。");
+            const draft = await sharedDtsiClient.importProject(project.id,selectedConfigSet.id,{name:member.fileName,
+              configRevisionId,fileId:member.fileId,fileVersionId:member.currentVersionId});
+            const params = new URLSearchParams({resource:draft.resourceId,version:"draft"});
+            if(resolvedOrganizationId) params.set("organization",resolvedOrganizationId);
+            onNavigate(`/parameter-admin/sources?${params}`);
+          });
+        } : undefined}
       /> : null}
       {memberAdditionOpen && canAdmin && selectedConfigSet ? <WorkbenchMemberAdditionDialog key={`${resolvedOrganizationId}:${project.id}:${selectedConfigSet.id}`} projectId={project.id} configSets={configSets}
         client={additionClient} sharedClient={sharedDtsiClient}

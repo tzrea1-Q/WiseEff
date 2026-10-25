@@ -3149,6 +3149,49 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     expect(file.fileId).toBe(root.fileId);
   });
 
+  test("administrator publishes a private DTS root through the existing shared resource editor without converting the project", async ({ page, request }, testInfo) => {
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
+    const sample='/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "PrivateShared", "keep"; }; };';
+    const binding=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:sample,rawValuePattern:'"PrivateShared", "keep"',
+      nodeLocatorPattern:"board",reason:"#1426 private shared publication",timeoutMs:60_000});
+    const file=await lookupParameterFileVersion({fileName:binding.fileName});
+    const membersPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`;
+    const before=(await (await request.get(apiRoute(membersPath),{headers:adminHeaders()})).json()).items;
+    const route=`/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({configSet:binding.configSetId,file:file.fileId})}`;
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,route));await dismissXiaozeHint(page);
+    const composition=await openWorkbenchPanel(page,"config-set");
+    await composition.getByRole("button",{name:`${binding.fileName} 更多`,exact:true}).click();
+    await page.getByRole("menuitem",{name:"创建共享资源",exact:true}).focus();await page.keyboard.press("Enter");
+    await expect(page.getByRole("region",{name:"共享 DTSI 草稿",exact:true})).toBeVisible();
+    const resourceId=new URL(page.url()).searchParams.get("resource")!;
+    await expect(page.getByLabel("文件路径",{exact:true})).toHaveValue(binding.fileName);
+    await expect(page.getByText("已复制所选私有源码及依赖。本组织有查看权限的用户可读取草稿与发布版本；来源项目配置保持不变。",{exact:true})).toBeVisible();
+    await expect(page.getByLabel("DTSI 源码",{exact:true})).toContainText("PrivateShared");
+    await page.getByLabel("资源名称",{exact:true}).fill(`Private board ${randomUUID()}`);
+    await page.getByLabel("变更说明",{exact:true}).fill("#1426 publish an independent frozen private source");
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
+      await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      await expect(page.getByRole("button",{name:"预览发布",exact:true})).toBeInViewport({ratio:1});
+      const path=testInfo.outputPath(`private-shared-draft-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`Private shared draft ${viewport.width}`,{path,contentType:"image/png"});
+    }
+    await page.getByRole("button",{name:"预览发布",exact:true}).click();
+    await expect(page.getByLabel("待发布 DTSI 源码",{exact:true})).toContainText("PrivateShared");
+    await page.getByRole("button",{name:"发布版本",exact:true}).focus();await page.keyboard.press("Enter");
+    await expect(page.getByText("v1 · 已发布，只读",{exact:true})).toBeVisible();
+    const detail=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/detail`),{headers:adminHeaders()});
+    const versionId=(await detail.json()).item.currentVersion.id as string;
+    const version=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/versions/${versionId}`),{headers:adminHeaders()});
+    expect((await version.json()).item).toMatchObject({members:[expect.objectContaining({sourceName:binding.fileName,content:sample})],
+      manifest:{sourceEvidence:{digest:expect.stringMatching(/^sha256:[a-f0-9]{64}$/u)}}});
+    expect((await (await request.get(apiRoute(membersPath),{headers:adminHeaders()})).json()).items).toEqual(before);
+    const after=await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),{headers:adminHeaders()});
+    expect((await after.json()).items.find((item:{id:string})=>item.id===binding.bindingId)).toMatchObject({rawValue:'"PrivateShared", "keep"'});
+    await page.goto(disposablePageUrl(disposableRuntime,route));
+    const retained=await openWorkbenchPanel(page,"config-set");
+    await expect(retained.getByRole("row").filter({hasText:binding.fileName})).toContainText("项目私有源码");
+  });
+
   test("administrator references a fixed shared DTSI version through configuration composition", async ({ page, request }, testInfo) => {
     test.setTimeout(240_000);
     await seedAcceptanceRoleMatrix();

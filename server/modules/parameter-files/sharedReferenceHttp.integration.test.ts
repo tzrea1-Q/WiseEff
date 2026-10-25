@@ -26,6 +26,7 @@ import { createUserInvocation } from "../auth/trustedInvocation";
 import { getAuthContext } from "../auth/repository";
 import type { SourceRevisionPreview } from "./sourceRevisionService";
 import type { TopologyTree } from "../../../src/domain/parameter-topology/types";
+import { createDtsToolchainRunner } from "./dtsToolchain";
 
 const ORG = "org-shared-ref", ADMIN = "user-shared-ref", A = "shared-project-a", B = "shared-project-b";
 const admin = makeTestAuthContext({ organizationId: ORG, userId: ADMIN, roles: [{ roleId: "admin", projectId: null }] });
@@ -41,10 +42,11 @@ describe("fixed shared references through the real API role", () => {
   let storage: ReturnType<typeof createLocalObjectStore>, directory: string;
   const sets: Record<string, string> = {}, token = `shared_ref_${process.pid}`;
   const jsonFiles: Record<string, { fileId: string; versionId: string }> = {};
+  const privateRoots: Record<string, { fileId: string; fileVersionId: string; configRevisionId: string }> = {};
   let resourceId: string, versionId: string, appliedA: Applied["item"], appliedB: Applied["item"];
   function server(auth = admin, sourceStore: ObjectStore = storage) {
     const router = createRouter();
-    registerSharedDtsiRoutes(router, { db: api, getCurrentAuthContext: () => auth });
+    registerSharedDtsiRoutes(router, { db: api, objectStore: sourceStore, getCurrentAuthContext: () => auth });
     registerCatalogProjectValueConsumerRoutes(router, { db: api, objectStore: sourceStore, getCurrentAuthContext: () => auth });
     registerParameterTopologyRoutes(router, { db: api, objectStore: sourceStore, getCurrentAuthContext: () => auth, refusalAuditSink: createTrustedRefusalAuditSink(db) });
     registerParameterFileRoutes(router, { db: api, objectStore: sourceStore, getCurrentAuthContext: () => auth,
@@ -73,6 +75,7 @@ describe("fixed shared references through the real API role", () => {
       const revision = await ingestConfigRevision(db, { organizationId: ORG, projectId, configSetId, entryFile: "board.dts", includeSearchPaths: ["."], overlayOrder: [],
         members: [{ fileId: uploaded.file.id, fileVersionId: uploaded.version.id, fileName: "board.dts", role: "base", sortOrder: 0, content: source },
           { fileId: json.file.id, fileVersionId: json.version.id, fileName: "private.json", role: "thermal", sortOrder: 2, format: "json", content: '{"local":true}' }] }, admin);
+      privateRoots[projectId] = { fileId: uploaded.file.id, fileVersionId: uploaded.version.id, configRevisionId: revision.id };
       const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
       if (!snapshot) throw new Error("Missing Catalog fixture");
       await db.transaction(tx => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), snapshot, { organizationId: ORG, projectId, configSetId, configRevisionId: revision.id }));
@@ -83,6 +86,80 @@ describe("fixed shared references through the real API role", () => {
     await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('shared-ref-editor-role','shared-ref-editor',$1,$2,'hardware-user')", [ORG, A]);
   }, 120_000);
   afterAll(async () => { await api?.close(); if (lane) await dropLabRuntimeLogins(lane.url, token); await db?.close(); await lane?.drop(); if (directory) await rm(directory, { recursive: true, force: true }); }, 120_000);
+
+  it("creates an independent shared draft from a frozen private DTS root without rewriting the project or mixed JSON", async () => {
+    const before = (await requestJson(server(), `/api/v1/projects/${B}/config-sets/${sets[B]}/files`)).body;
+    const created = await post<{ item: { resourceId: string; revision: number; members: Array<{ sourceName: string; content: string }> } }>(
+      `/api/v2/projects/${B}/config-sets/${sets[B]}/shared-dtsi`, { ...privateRoots[B], name: "Shared private board" });
+    expect(created.status, created.bodyText).toBe(201);
+    expect(created.body.item.members).toEqual([expect.objectContaining({ sourceName: "board.dts", content: source })]);
+    const reopened = await requestJson(server(), `/api/v2/shared-dtsi/${created.body.item.resourceId}`);
+    expect(reopened.body).toEqual(created.body);
+    const saved = await requestJson(server(), `/api/v2/shared-dtsi/${created.body.item.resourceId}/draft`, { method: "PUT",
+      body: JSON.stringify({ name: "Shared private board", members: created.body.item.members, changeDescription: "Publish private frozen source", expectedRevision: 1 }) });
+    expect(saved.status, saved.bodyText).toBe(200);
+    const preview = await post<{ item: { id: string } }>(`/api/v2/shared-dtsi/${created.body.item.resourceId}/publication-preview`, { expectedRevision: 2 });
+    expect(preview.status, preview.bodyText).toBe(201);
+    const published = await post<{ item: { members: Array<{ sourceName: string; content: string }>; manifest: { sourceEvidence: { digest: string } } } }>(
+      `/api/v2/shared-dtsi/${created.body.item.resourceId}/publications`, { previewId: preview.body.item.id, idempotencyKey: "private-board-publication" });
+    expect(published.status, published.bodyText).toBe(201);
+    expect(published.body.item.members).toEqual([expect.objectContaining({ sourceName: "board.dts", content: source })]);
+    expect(published.body.item.manifest.sourceEvidence.digest).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect((await createDtsToolchainRunner().validate({entryFile:"board.dts",includeSearchPaths:["."],overlayOrder:[],
+      files:new Map(published.body.item.members.map(member=>[member.sourceName,{content:member.content}]))},{mode:"release"})).ok).toBe(true);
+    expect(published.bodyText).not.toContain(privateRoots[B]!.configRevisionId);
+    expect(published.bodyText).not.toContain(B);
+    expect((await requestJson(server(), `/api/v1/projects/${B}/config-sets/${sets[B]}/files`)).body).toEqual(before);
+    const json = jsonFiles[B]!;
+    expect((await requestJson(server(), `/api/v1/projects/${B}/parameter-files/${json.fileId}/versions/${json.versionId}/content`)).bodyText).toBe('{"local":true}');
+  });
+
+  it("imports only the actual private include closure with original frozen paths and bytes",async()=>{
+    const set = await createConfigSet(db,admin,{projectId:B,name:"Private closure"});
+    const files = [
+      {sourceName:"boards/private.dts",content:'/dts-v1/;\r\n/include/ "../parts/power.dtsi"\r\n/ { compatible = "test,board"; model = "Private closure"; };\r\n',role:"base" as const},
+      {sourceName:"parts/power.dtsi",content:'/include/ "child.dtsi"\r\n/ { power { status = "okay"; }; };\r\n',role:"include" as const},
+      {sourceName:"parts/child.dtsi",content:'/ { child { value = <42>; }; };\r\n',role:"include" as const},
+      {sourceName:"unused.dtsi",content:'/ { unrelated { secret = "unselected private file"; }; };',role:"include" as const}
+    ];
+    const members = [];
+    for(const [index,file] of files.entries()) {
+      const uploaded = await uploadProjectParameterFile(db,storage,admin,{projectId:B,fileName:file.sourceName.split("/").at(-1)!,bytes:Buffer.from(file.content)});
+      await addConfigSetFile(db,admin,{configSetId:set.id,fileId:uploaded.file.id,role:index===0?"base":"misc",sortOrder:index});
+      members.push({...file,fileName:file.sourceName,fileId:uploaded.file.id,fileVersionId:uploaded.version.id,sortOrder:index});
+    }
+    const revision = await ingestConfigRevision(db,{organizationId:ORG,projectId:B,configSetId:set.id,entryFile:files[0]!.sourceName,
+      includeSearchPaths:["."],overlayOrder:[],members},admin);
+    const selected = members[0]!;
+    const created = await post<{item:{resourceId:string;members:{sourceName:string;content:string}[]}}>(`/api/v2/projects/${B}/config-sets/${set.id}/shared-dtsi`,{
+      name:"Frozen closure",configRevisionId:revision.id,fileId:selected.fileId,fileVersionId:selected.fileVersionId});
+    expect(created.status,created.bodyText).toBe(201);
+    expect(created.body.item.members.map(member=>member.sourceName).sort()).toEqual(["boards/private.dts","parts/child.dtsi","parts/power.dtsi"]);
+    for(const member of created.body.item.members)expect(member.content).toBe(files.find(file=>file.sourceName===member.sourceName)!.content);
+    expect(created.bodyText).not.toContain("unselected private file");
+    const include = members[1]!;
+    const fragment = await post<{item:{members:{sourceName:string}[]}}>(`/api/v2/projects/${B}/config-sets/${set.id}/shared-dtsi`,{
+      name:"Private fragment",configRevisionId:revision.id,fileId:include.fileId,fileVersionId:include.fileVersionId});
+    expect(fragment.status,fragment.bodyText).toBe(201);
+    expect(fragment.body.item.members.map(member=>member.sourceName).sort()).toEqual(["parts/child.dtsi","parts/power.dtsi"]);
+  });
+
+  it("refuses stale authorization, cross-project pins and unreadable source objects without creating resources",async()=>{
+    const resourceList = async()=>(await requestJson(server(),"/api/v2/shared-dtsi?limit=100")).body;
+    const before = await resourceList();
+    const target = `/api/v2/projects/${B}/config-sets/${sets[B]}/shared-dtsi`;
+    const body = {...privateRoots[B],name:"Must not appear"};
+    expect((await post(target,body,editor)).status).toBe(403);
+    const wrong = await post(target,{...body,...privateRoots[A]});
+    expect(wrong.status,wrong.bodyText).toBe(409);
+    expect(wrong.bodyText).not.toContain("Shared reference");
+    const unreadable:ObjectStore={...storage,async getBounded(){throw new Error("Object unavailable");}};
+    expect((await post(target,body,admin,unreadable)).status).toBe(409);
+    await db.query("delete from user_role_bindings where id='shared-ref-role'");
+    try { expect((await post(target,body)).status).toBe(403); }
+    finally {await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('shared-ref-role',$1,$2,'admin')",[ADMIN,ORG]);}
+    expect(await resourceList()).toEqual(before);
+  });
 
   it("materializes exact immutable project-owned sources without silently following publication", async () => {
     const draft = await post<{ item: { resourceId: string; revision: number } }>("/api/v2/shared-dtsi", { name: "Charger limits", sourceName: "limits.dtsi", content: shared, changeDescription: "Initial shared source" });
@@ -137,6 +214,19 @@ describe("fixed shared references through the real API role", () => {
       const bytes = await requestJson(server(), `/api/v1/projects/${project}/parameter-files/${json.fileId}/versions/${json.versionId}/content`);
       expect(bytes.status).toBe(200); expect(bytes.bodyText).toBe('{"local":true}');
     }
+  });
+
+  it("retains reachable immutable shared pins instead of claiming their bytes as private source",async()=>{
+    const files = await requestJson<{items:{fileId:string;fileName:string;currentVersionId:string}[]}>(server(),`/api/v1/projects/${A}/config-sets/${sets[A]}/files`);
+    const root = files.body.items.find(file=>file.fileName==="board.dts")!;
+    const created = await post<{item:{resourceId:string;members:{sourceName:string}[];dependencies:unknown[]}}>(`/api/v2/projects/${A}/config-sets/${sets[A]}/shared-dtsi`,{
+      name:"Private source retaining shared ancestry",configRevisionId:appliedA.configRevisionId,fileId:root.fileId,fileVersionId:root.currentVersionId});
+    expect(created.status,created.bodyText).toBe(201);
+    expect(created.body.item.members.map(member=>member.sourceName)).toEqual(["board.dts"]);
+    expect(created.body.item.dependencies).toEqual([{resourceId,versionId,mountPath:""}]);
+    const cannotCopy = await post(`/api/v2/projects/${A}/config-sets/${sets[A]}/shared-dtsi`,{
+      name:"Do not claim a shared member",configRevisionId:appliedA.configRevisionId,fileId:appliedA.fileId,fileVersionId:appliedA.fileVersionId});
+    expect(cannotCopy.status,cannotCopy.bodyText).toBe(400);
   });
 
   it("composes an exact multi-resource closure and keeps every source in independent project history",async()=>{

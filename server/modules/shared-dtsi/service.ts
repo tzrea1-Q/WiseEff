@@ -11,7 +11,7 @@ import { sharedDtsiImportLimits } from "../contracts/dtoSchemas/sharedDtsi";
 
 export type WriteContext = { invocation: TrustedInvocationContext; requestId: string };
 type DraftRow = Omit<SharedDtsiDraft, "members" | "updatedAt"> & { updatedAt: Date };
-const draftColumns = `d.id,d.resource_id as "resourceId",r.name,d.revision,d.updated_at as "updatedAt",d.change_description as "changeDescription",d.dependencies`;
+const draftColumns = `d.id,d.resource_id as "resourceId",r.name,d.revision,d.updated_at as "updatedAt",d.change_description as "changeDescription",d.dependencies,d.source_origin->'evidence' as "sourceEvidence"`;
 const draftTables = `from public.shared_dtsi_resources r join public.shared_dtsi_drafts d on d.resource_id=r.id and d.organization_id=r.organization_id`;
 
 export function requireRead(auth: AuthContext) {
@@ -85,7 +85,7 @@ function inputMembers(input: SharedDtsiDraftInput) {
     bytes += Buffer.byteLength(member.content);
   }
   if (bytes > sharedDtsiImportLimits.maxTotalBytes) throw new ApiError("VALIDATION_FAILED", "资源源码总量不能超过 16 MiB。");
-  if (!members.some(member=>member.sourceName.endsWith(".dtsi"))) throw new ApiError("VALIDATION_FAILED", "资源至少需要一个 .dtsi 源码成员；头文件单独保存为依赖。");
+  if (!members.some(member=>/\.dtsi?$/u.test(member.sourceName))) throw new ApiError("VALIDATION_FAILED", "资源至少需要一个 .dts 或 .dtsi 源码成员；头文件单独保存为依赖。");
   return members;
 }
 export async function lockDraft(db: Database, auth: AuthContext, resourceId: string, expectedRevision: number) {

@@ -12,9 +12,12 @@ import { createSharedDtsiDraft, discardSharedDtsiDraft, getSharedDtsiDraft, list
 import { createSharedDtsiVersionDraft, getSharedDtsiResourceDetail, getSharedDtsiVersion, listSharedDtsiVersions,
   previewSharedDtsiPublication, publishSharedDtsi } from "./publication";
 import { listSharedDtsiUsages } from "./usages";
+import type { ObjectStore } from "../logs/objectStore";
+import { importPrivateProjectSource } from "./projectImport";
+import { sharedDtsiProjectImportSchema } from "../contracts/dtoSchemas/sharedDtsi";
 
 export function registerSharedDtsiRoutes(router: WiseEffRouter, options: {
-  db?: Database; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
+  db?: Database; objectStore?: ObjectStore; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
 }) {
   async function access(request: RouteRequest) {
     if (!options.db) throw new ApiError("INTERNAL_ERROR", "Database adapter is required for shared DTSI.");
@@ -28,6 +31,12 @@ export function registerSharedDtsiRoutes(router: WiseEffRouter, options: {
     return result.data;
   }
   const resourceId = (request: RouteRequest) => parse(z.string().uuid(), request.params.resourceId);
+  router.post("/api/v2/projects/:projectId/config-sets/:configSetId/shared-dtsi", async request => {
+    const {db,auth,context} = await access(request);
+    if(!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Project source storage is required.");
+    const params = parse(z.object({projectId:z.string().min(1).max(200),configSetId:z.string().min(1).max(200)}),request.params);
+    return {status:201,body:{item:await importPrivateProjectSource(db,options.objectStore,auth,{...params,...parse(sharedDtsiProjectImportSchema,request.body)},context)}};
+  });
   router.get("/api/v2/shared-dtsi", async request => {
     const { db, auth } = await access(request);
     const query = parse(z.object({ q: z.string().trim().max(160).default(""), offset: z.coerce.number().int().min(0).max(100_000).default(0), limit: z.coerce.number().int().min(1).max(100).default(20), organizationId: z.string().optional() }), request.query);

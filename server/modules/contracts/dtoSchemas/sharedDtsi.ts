@@ -5,9 +5,9 @@ const id = z.string().uuid();
 const changeDescription = z.string().trim().max(1000).regex(/^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]*$/u);
 export const sharedDtsiImportLimits = { maxFiles: 128, maxFileBytes: 2_097_152, maxTotalBytes: 16_777_216, maxDepth: 16, maxArchiveBytes: 8_388_608 } as const;
 const sourceName = z.string().min(1).max(240).refine(value =>
-  /\.(dtsi|h|hpp)$/u.test(value) && value === value.trim() && !/[:\\\u0000-\u001f\u007f]/u.test(value)
+  /\.(dts|dtsi|h|hpp)$/u.test(value) && value === value.trim() && !/[:\\\u0000-\u001f\u007f]/u.test(value)
   && !value.startsWith("/") && value.split("/").length <= sharedDtsiImportLimits.maxDepth && value.split("/").every(part => part !== "" && part !== "." && part !== ".."),
-"请输入最多 16 层的资源内 .dtsi、.h 或 .hpp 相对路径。");
+"请输入最多 16 层的资源内 .dts、.dtsi、.h 或 .hpp 相对路径。");
 const content = z.string().max(2_097_152).refine(value => new TextEncoder().encode(value).length <= 2_097_152 && !value.includes("\0"), "源码不能包含空字符，且不能超过 2 MiB。");
 const inputMember = z.object({ id: id.optional(), sourceName, content }).strict();
 export const sharedDtsiDependencySchema = z.object({resourceId:id,versionId:id,mountPath:z.string().max(160).refine(value=>value==="" ||
@@ -23,10 +23,14 @@ export const sharedDtsiDraftInputSchema = z.object({
 }).strict();
 export const sharedDtsiDraftUpdateSchema = sharedDtsiDraftInputSchema.extend({ expectedRevision: z.number().int().positive() }).strict();
 export const sharedDtsiDraftDiscardSchema = z.object({ expectedRevision: z.number().int().positive() }).strict();
+export const sharedDtsiProjectImportSchema = z.object({ name: z.string().trim().min(1).max(160),
+  configRevisionId: z.string().min(1).max(200), fileId: z.string().min(1).max(200), fileVersionId: z.string().min(1).max(200) }).strict();
+const sourceEvidence = z.object({ digest: z.string().regex(/^sha256:[a-f0-9]{64}$/u) }).strict();
 export const sharedDtsiDraftSchema = z.object({
   id, resourceId: id, name: z.string(), revision: z.number().int().positive(), updatedAt: z.string(), changeDescription: changeDescription.default(""),
   members: z.array(z.object({ id, sourceName: z.string(), content: z.string() }).strict()).min(1),
-  dependencies:z.array(sharedDtsiDependencySchema).max(32).optional()
+  dependencies:z.array(sharedDtsiDependencySchema).max(32).optional(),
+  sourceEvidence: sourceEvidence.nullable().optional()
 }).strict();
 export const sharedDtsiVersionSummarySchema = z.object({
   id, resourceId: id, version: z.number().int().positive(), name: z.string(), changeDescription,
@@ -38,6 +42,7 @@ export const sharedDtsiManifestSchema = z.object({
   externalReferences: z.array(z.string()),
   dependencies:z.array(sharedDtsiDependencySchema).max(32).optional(),
   dependencyClosure:z.array(sharedDtsiClosureSchema).max(64).optional(),
+  sourceEvidence: sourceEvidence.optional(),
   includeGraph: z.array(z.object({ sourceName: z.string(), target: z.string(), line: z.number().int().positive(), column: z.number().int().positive() }).strict()).default([]),
   buildInputs: z.object({ includeSearchPaths: z.array(z.string()) }).strict().default({ includeSearchPaths: [] })
 }).strict();
@@ -66,6 +71,7 @@ export type SharedDtsiPublicationPreview = z.infer<typeof sharedDtsiPreviewSchem
 
 export const sharedDtsiDtoSchemaCatalog = {
   SharedDtsiDraftRequest: sharedDtsiDraftInputSchema,
+  SharedDtsiProjectImportRequest: sharedDtsiProjectImportSchema,
   SharedDtsiDraftUpdateRequest: sharedDtsiDraftUpdateSchema,
   SharedDtsiDraftDiscardRequest: sharedDtsiDraftDiscardSchema,
   SharedDtsiDraftResponse: itemEnvelopeSchema(sharedDtsiDraftSchema),
@@ -81,6 +87,7 @@ export const sharedDtsiDtoSchemaCatalog = {
   SharedDtsiNewVersionDraftRequest: sharedDtsiNewVersionDraftSchema
 };
 export const sharedDtsiRoutes = [
+  { id: "sharedDtsi.projectImport", method: "POST", path: "/api/v2/projects/:projectId/config-sets/:configSetId/shared-dtsi", module: "parameter-files", stability: "commercial-readiness" },
   { id: "sharedDtsi.list", method: "GET", path: "/api/v2/shared-dtsi", module: "parameter-files", stability: "commercial-readiness" },
   { id: "sharedDtsi.create", method: "POST", path: "/api/v2/shared-dtsi", module: "parameter-files", stability: "commercial-readiness" },
   { id: "sharedDtsi.get", method: "GET", path: "/api/v2/shared-dtsi/:resourceId", module: "parameter-files", stability: "commercial-readiness" },
@@ -96,6 +103,7 @@ export const sharedDtsiRoutes = [
 ] as const;
 const tags = ["parameter-files" as const];
 export const sharedDtsiSchemaRegistry = {
+  "sharedDtsi.projectImport": { summary: "Create a shared draft from an authorized exact private source revision", tags, requestBody: "SharedDtsiProjectImportRequest", responseBody: "SharedDtsiDraftResponse", successStatus: 201 as const },
   "sharedDtsi.list": { summary: "List Organization shared DTSI resources", tags, responseBody: "SharedDtsiListResponse",
     requestParameters: [{ name: "q", in: "query" as const }, { name: "offset", in: "query" as const }, { name: "limit", in: "query" as const }] },
   "sharedDtsi.create": { summary: "Create a shared DTSI resource draft", tags, requestBody: "SharedDtsiDraftRequest", responseBody: "SharedDtsiDraftResponse", successStatus: 201 as const },

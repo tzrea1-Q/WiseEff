@@ -15,7 +15,7 @@ export function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
       {diagnostics:[{sourceName,...location,message}]});
   };
   const graph: SharedDtsiManifest["includeGraph"] = [], included = new Set<string>();
-  for (const member of draft.members.filter(value=>value.sourceName.endsWith(".dtsi"))) {
+  for (const member of draft.members.filter(value=>/\.dtsi?$/u.test(value.sourceName))) {
     let tokens;
     try { tokens=lexDts(member.content); }
     catch (error) { const message=error instanceof Error?error.message:"设备树语法无效。";reject(member.sourceName,Number(/offset (\d+)/u.exec(message)?.[1]??0),message); }
@@ -30,7 +30,7 @@ export function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
         const requested=next!.value.slice(1,-1), target=resolveIncludeTarget(member.sourceName,requested,[],files);
         if (!target.ok) reject(member.sourceName,token.span.start,target.code==="path-escape"?`依赖路径 ${requested} 逃逸资源目录。`:`缺少依赖文件 ${requested}。`);
         if (!target.ok) continue;
-        if (!target.fileName.endsWith(".dtsi")) reject(member.sourceName,token.span.start,`头文件 ${target.fileName} 需要 C 预处理，不能作为普通 DTSI 解析。`);
+        if (!/\.dtsi?$/u.test(target.fileName)) reject(member.sourceName,token.span.start,`头文件 ${target.fileName} 需要 C 预处理，不能作为普通 DTSI 解析。`);
         graph.push({sourceName:member.sourceName,target:target.fileName,...offsetToLineColumn(member.content,token.span.start)});
         included.add(target.fileName);
       } else if (!["/dts-v1/","/delete-node/","/delete-property/","/bits/","/omit-if-no-ref/"].includes(token.value))
@@ -55,7 +55,7 @@ export function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
   };
   for (const member of draft.members) visitGraph(member.sourceName,[member.sourceName]);
   const labels=new Set<string>(),references=new Set<string>(),paths=new Set<string>();
-  const roots=draft.members.filter(member=>member.sourceName.endsWith(".dtsi") && !included.has(member.sourceName));
+  const roots=draft.members.filter(member=>/\.dtsi?$/u.test(member.sourceName) && !included.has(member.sourceName));
   let declarations=0,expandedBytes=0;
   for (const root of roots) {
     let expanded:ReturnType<typeof expandDtsIncludes>;
@@ -98,7 +98,7 @@ export function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
   }
   if(!declarations)reject(roots[0]?.sourceName??draft.members[0]!.sourceName,0,"源码中没有可发布的设备树声明。");
   const members=draft.members.map(member=>({...member,checksum:`sha256:${createHash("sha256").update(member.content).digest("hex")}`,sizeBytes:Buffer.byteLength(member.content)}));
-  const manifest:SharedDtsiManifest={schemaVersion:"shared-dtsi/v1",members:members.map(({content:_,...member})=>({...member,role:member.sourceName.endsWith(".dtsi")?"include":"header"})),
+  const manifest:SharedDtsiManifest={schemaVersion:"shared-dtsi/v1",...(draft.sourceEvidence ? {sourceEvidence:draft.sourceEvidence}:{}),members:members.map(({content:_,...member})=>({...member,role:/\.dtsi?$/u.test(member.sourceName)?"include":"header"})),
     includeGraph:graph,buildInputs:{includeSearchPaths:[]},externalReferences:[...references].filter(reference=>reference.startsWith("&{")
       ?!paths.has(dtsReferencePath(reference.slice(1))!):!labels.has(reference)).sort()};
   return {members,manifest,digest:`sha256:${createHash("sha256").update(JSON.stringify({name:draft.name,manifest,changeDescription:draft.changeDescription})).digest("hex")}`};
