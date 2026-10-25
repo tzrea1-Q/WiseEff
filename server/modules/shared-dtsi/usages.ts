@@ -14,7 +14,7 @@ export async function listSharedDtsiUsages(db:Database,auth:AuthContext,resource
   if(current.organization.id!==auth.organization.id)throw new ApiError("FORBIDDEN","账户所属组织已变化，请重新登录后访问共享资源。",{reason:"authentication-scope-changed"});
   requireRead(current);
   const authorized=withParameterAccess(current,await resolveOperatingContext(db,createUserInvocation(current),requestedOrganizationId));
-  await getSharedDtsiResourceDetail(db,authorized,resourceId);
+  const detail=await getSharedDtsiResourceDetail(db,authorized,resourceId);
   const scope=parameterUsageProjectScope(authorized);
   if(!scope)throw new ApiError("FORBIDDEN","当前项目使用范围不可用。");
   const values=[parameterOrganizationId(authorized),resourceId,scope.kind==="all"?null:scope.ids];
@@ -27,5 +27,6 @@ export async function listSharedDtsiUsages(db:Database,auth:AuthContext,resource
     `select ref.project_id as "projectId",project.name as "projectName",ref.config_set_id as "configSetId",config.name as "configSetName",
       ref.revision_id as "versionId",version.version,ref.is_direct as direct ${from} order by project.name,ref.project_id,ref.config_set_id limit $4 offset $5`,[...values,input.limit,input.offset])).rows;
   const total=Number((await db.query<{count:string}>(`select count(*) ${from}`,values)).rows[0]!.count);
-  return {items,total,visibility:scope.kind==="all"?"organization" as const:"authorized-projects" as const};
+  return {items:items.map(item=>({...item,upgradeAvailable:item.version<(detail.currentVersion?.version??item.version),evaluation:"not-evaluated" as const})),total,
+    visibility:scope.kind==="all"?"organization" as const:"authorized-projects" as const};
 }
