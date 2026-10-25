@@ -2,7 +2,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
+import { createPostgresDatabase, getRootPostgresPool, type Database } from "../../shared/database/client";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
@@ -29,6 +29,7 @@ import { insertFileVersion, insertProjectParameterFile, setCurrentVersion } from
 import { createAgentInvocation, trustedDomainAttribution } from "../auth/trustedInvocation";
 import { registerUserRoutes } from "../users/routes";
 import { createAgentApproval, createAgentSession, createAgentToolCall, markAgentApprovalApproved } from "../agent/repository";
+import { captureConfigurationSourceState } from "../../testing/parameterCatalog/configurationSource";
 
 const ORG="org-private-conversion",USER="conversion-admin",A="conversion-a",B="conversion-b";
 const admin=makeTestAuthContext({organizationId:ORG,userId:USER,roles:[{roleId:"admin",projectId:null}]});
@@ -42,11 +43,11 @@ describe("explicit private source conversion through the real API role",{timeout
   let promoted:SharedDtsiVersion;
   const sets:Record<string,string>={},selected:Record<string,{fileId:string;fileVersionId:string;configRevisionId:string}>={};
   const token=`conversion_${process.pid}`;
-  function server(auth=admin,sourceStore:ObjectStore=storage){const router=createRouter();
-    registerSharedDtsiRoutes(router,{db:api,objectStore:sourceStore,getCurrentAuthContext:()=>auth});
-    registerCatalogProjectValueConsumerRoutes(router,{db:api,objectStore:sourceStore,getCurrentAuthContext:()=>auth});
-    registerParameterFileRoutes(router,{db:api,objectStore:sourceStore,getCurrentAuthContext:()=>auth,refusalAuditSink:createTrustedRefusalAuditSink(db)});
-    registerUserRoutes(router,{db:api,getCurrentAuthContext:()=>auth});
+  function server(auth=admin,sourceStore:ObjectStore=storage,runtime:Database=api){const router=createRouter();
+    registerSharedDtsiRoutes(router,{db:runtime,objectStore:sourceStore,getCurrentAuthContext:()=>auth});
+    registerCatalogProjectValueConsumerRoutes(router,{db:runtime,objectStore:sourceStore,getCurrentAuthContext:()=>auth});
+    registerParameterFileRoutes(router,{db:runtime,objectStore:sourceStore,getCurrentAuthContext:()=>auth,refusalAuditSink:createTrustedRefusalAuditSink(db)});
+    registerUserRoutes(router,{db:runtime,getCurrentAuthContext:()=>auth});
     return createHttpServer(router);
   }
   const post=<T,>(path:string,body:unknown)=>requestJson<T>(server(),path,{method:"POST",body:JSON.stringify(body)});
@@ -273,5 +274,25 @@ describe("explicit private source conversion through the real API role",{timeout
     const files=await requestJson<{items:Array<{fileId:string;currentVersionId:string;sharedReference?:unknown}>}>(server(),`/api/v1/projects/${A}/config-sets/${configSetId}/files`);expect(files.body.items).toEqual([expect.objectContaining({fileId:uploaded.file.id,currentVersionId:uploaded.version.id})]);expect(files.body.items[0]!.sharedReference).toBeUndefined();
     expect((await api.query<{restored:boolean}>("select public.shared_dtsi_private_source_is_restored($1) as restored",[uploaded.file.id])).rows[0]!.restored).toBe(true);
     await expect(api.query("update project_parameter_file_versions set parsed_index='{}'::jsonb where id=$1",[uploaded.version.id])).rejects.toMatchObject({code:"55000"});
+  });
+  it("commits deletion of the former conversion administrator after restoring private ownership",async()=>{
+    const nextId="conversion-surviving-admin";
+    await db.query("insert into users(id,organization_id,name,title,is_active) values($1,$2,'Surviving administrator','Admin',true)",[nextId,ORG]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values('conversion-surviving-admin-role',$1,$2,'admin')",[nextId,ORG]);
+    const next=makeTestAuthContext({organizationId:ORG,userId:nextId,roles:[{roleId:"admin",projectId:null}]});
+    const conversionReceiptsSql="select id,source_revision_context,member_frozen_proof,applied_source_result,applied_audit_ref,historical_attribution from project_parameter_value_change_requests where organization_id=$1 and status='approved' and source_revision_context ? 'sharedConversion' order by id";
+    const before=(await api.query<{id:string}>(conversionReceiptsSql,[ORG])).rows;expect(before.length).toBeGreaterThan(0);
+    const projects=(await api.query<{id:string}>("select id from projects where organization_id=$1 order by id",[ORG])).rows;
+    const readBindings=()=>Promise.all(projects.map(async({id})=>(await captureConfigurationSourceState(api,{organizationId:ORG,projectId:id})).bindings));
+    const bindings=await readBindings();
+    await api.transaction(async tx=>{
+      const deleted=await requestJson(server(next,storage,tx),`/api/v1/users/${USER}`,{method:"DELETE"});expect(deleted.status,deleted.bodyText).toBe(204);
+      await tx.query("set constraints all immediate");
+    });
+    expect((await api.query("select id from users where id=$1",[USER])).rows).toHaveLength(0);
+    expect((await api.query(conversionReceiptsSql,[ORG])).rows).toEqual(before);
+    await expect(api.query("update project_parameter_value_change_requests set source_revision_context='{}'::jsonb where id=$1",[before[0]!.id])).rejects.toMatchObject({code:"23514",message:"Reviewed source revision context is immutable"});
+    expect((await api.query(conversionReceiptsSql,[ORG])).rows).toEqual(before);
+    expect(await readBindings()).toEqual(bindings);
   });
 });
