@@ -9,6 +9,27 @@ import { jsonLeafPaths } from "@/application/project-configuration/jsonRegistrat
 
 afterEach(cleanup);
 
+it("previews removal without browsing versions, cancels and retries with the same reference and explanation",async()=>{
+  const user=userEvent.setup(),removed={resourceId:"11111111-1111-4111-8111-111111111111",versionId:"22222222-2222-4222-8222-222222222222",version:1};
+  const client={upload:vi.fn(),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"set",fileName:"board.dts",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:["."],overlayOrder:[],diagnostics:[],sharedRemoval:{...removed,name:"Limits"},
+    sharedSwitch:{beforeVersion:1,afterVersion:null,dependencies:{before:[{name:"Limits",version:1,mountPath:""}],after:[]},sources:[],effective:[],build:{mode:"release" as const,passed:true as const,includeSearchPaths:["."],defines:{}}},impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:1,retainedBindings:1,sourceReplacements:0}})),apply:vi.fn().mockRejectedValue(new Error("来源已变化，请重新预览。"))};
+  const sharedClient={list:vi.fn(),versions:vi.fn()};
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"}]} initialConfigSetId="set" availableFiles={[]} removeReference={removed} client={client} sharedClient={sharedClient} onDismiss={vi.fn()} onApplied={vi.fn()} />);
+  expect(screen.getByRole("dialog")).toHaveAccessibleName("移除共享引用");
+  expect(screen.queryByRole("combobox",{name:"固定版本"})).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button",{name:"预览移除引用"}));
+  expect(await screen.findByRole("heading",{name:"Config · 移除 Limits · 版本 1（确认后生效）"})).toBeInTheDocument();
+  await user.type(screen.getByRole("textbox",{name:"变更说明"}),"Remove unused source");
+  await user.click(screen.getByRole("button",{name:"取消本次预览"}));
+  await user.click(screen.getByRole("button",{name:"预览移除引用"}));
+  expect(await screen.findByRole("textbox",{name:"变更说明"})).toHaveValue("Remove unused source");
+  await user.click(screen.getByRole("button",{name:"确认移除引用"}));
+  expect(await screen.findByRole("alert")).toHaveTextContent("来源已变化");
+  expect(screen.queryByRole("button",{name:"确认移除引用"})).not.toBeInTheDocument();
+  expect(client.preview).toHaveBeenLastCalledWith("project","set",{removeSharedReference:{resourceId:removed.resourceId,versionId:removed.versionId},role:"misc",sortOrder:0});
+  expect(sharedClient.versions).not.toHaveBeenCalled();
+});
+
 it("switches an existing reference through the same preview owner and cancels proof without losing the selected version or reason", async () => {
   const user=userEvent.setup(), resourceId="11111111-1111-4111-8111-111111111111",old="22222222-2222-4222-8222-222222222222",next="33333333-3333-4333-8333-333333333333";
   const versions=[old,next].map((id,index)=>({id,resourceId,version:index+1,name:"Limits",changeDescription:`Defaults ${index+1}`,digest:"sha256:fixed",createdAt:"2026-10-25",createdByUserId:"author"}));

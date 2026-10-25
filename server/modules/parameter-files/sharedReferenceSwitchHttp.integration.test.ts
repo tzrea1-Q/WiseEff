@@ -273,4 +273,35 @@ describe("shared reference version switches through the real API role", () => {
       beforeRoot=afterRoot;
     }
   },120_000);
+  it("removes a direct shared reference atomically, retaining private JSON, deleted Binding history and the other project", async () => {
+    const draft=await post<{item:{resourceId:string;revision:number}}>("/api/v2/shared-dtsi",{name:"Removable limits",sourceName:"removable.dtsi",content:'/ { removable { compatible = "acme,power"; iin_max = <26>; }; };',changeDescription:"Removal fixture"});
+    expect(draft.status,draft.bodyText).toBe(201);
+    const resourceId=draft.body.item.resourceId;
+    const publication=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publication-preview`,{expectedRevision:1});
+    const published=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publications`,{previewId:publication.body.item.id,idempotencyKey:"removal-publication"});
+    expect(published.status,published.bodyText).toBe(201);
+    const versionId=published.body.item.id,body={sharedReference:{resourceId,versionId},role:"misc",sortOrder:1};
+    const addedPreview=await post<Preview>(`${path(B)}/preview`,body);expect(addedPreview.status,addedPreview.bodyText).toBe(200);
+    const added=await post<Applied>(`${path(B)}/apply`,{...body,proofToken:addedPreview.body.item.proofToken,reason:"Pin removable reference",clientMutationId:"removal-add"});expect(added.status,added.bodyText).toBe(200);
+    const before=await listCatalogBindingRowsForProject(api,admin,{projectId:B});
+    const otherBefore=await requestJson(server(),`/api/v1/projects/${A}/config-sets/${sets[A]}/files`);
+    const remove={removeSharedReference:{resourceId,versionId},role:"misc",sortOrder:0};
+    const preview=await post<Preview>(`${path(B)}/preview`,remove);expect(preview.status,preview.bodyText).toBe(200);
+    expect(preview.body.item.sharedRemoval).toMatchObject({resourceId,versionId});
+    expect(preview.body.item.sharedSwitch?.effective).toContainEqual(expect.objectContaining({node:"/removable",property:"iin_max",before:"<26>",after:null}));
+    expect(preview.body.item.members.some(member=>member.sourceName==="private.json")).toBe(true);
+    expect(preview.body.item.members.some(member=>member.sourceName==="removable.dtsi")).toBe(false);
+    expect((await post(`${path(B)}/preview`,remove,editor)).status).toBe(403);
+    const confirm={...remove,proofToken:preview.body.item.proofToken,reason:"Remove this project reference",clientMutationId:"remove-reference"};
+    const applied=await post<Applied>(`${path(B)}/apply`,confirm);expect(applied.status,applied.bodyText).toBe(200);
+    expect((await post(`${path(B)}/apply`,confirm)).body).toEqual(applied.body);
+    expect((await post(`${path(B)}/apply`,{...confirm,clientMutationId:"remove-stale"})).status).toBe(409);
+    expect((await requestJson(server(),`/api/v1/projects/${A}/config-sets/${sets[A]}/files`)).body).toEqual(otherBefore.body);
+    const after=await listCatalogBindingRowsForProject(api,admin,{projectId:B});
+    const removed=before.find(row=>row.rawValue==="<26>")!;expect(removed).toBeDefined();
+    expect(after.find(row=>row.id===removed.id)?.valueState).toBe("deleted");
+    const files=await requestJson<{items:{fileName:string}[]}>(server(),`/api/v1/projects/${B}/config-sets/${sets[B]}/files`);
+    expect(files.body.items.map(row=>row.fileName)).toContain("private.json");
+    expect(files.body.items.map(row=>row.fileName)).not.toContain("removable.dtsi");
+  },120_000);
 });
