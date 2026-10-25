@@ -109,6 +109,10 @@ The Historical registry is a read-only snapshot, distinct from current canonical
 
 Open **Shared DTSI** (`/parameter-admin/sources`) in the parameter administration console. Organization parameter administrators can choose **Import resource**, select a UTF-8 `.dtsi` file or enter source directly, name the resource, and save a draft. The draft keeps its source-member identity when its path or content changes. Incomplete DTS text can be saved while it is being prepared; saving does not publish a version or change any project.
 
+To publish, enter a **Change description** and choose **Preview publication**. The server freezes the saved source and description; review the read-only preview before choosing **Publish version**. Source-only declarations containing `compatible` and `status` need no invented parameter definition. The first version is `v1`; published bytes and history are immutable, and publication does not automatically update project configurations. The current single-file flow reports missing include dependencies, unsupported preprocessing and invalid syntax instead of publishing an incomplete interpretation.
+
+Use **Versions** to open exact historical source. **Create new version** copies the current published source into a draft with the same member identity. Discarding that draft retains the published version and history. If another administrator changes the draft after preview, regenerate the preview from current source; a failed request retains input for retry.
+
 Reopen a resource from the list to continue editing. If another administrator saved first, your input stays on screen and saving is blocked until you reload and check the current draft. Leaving with unsaved edits asks for confirmation. **Discard draft** removes the never-published resource and its draft after confirmation. Readers cannot create, save or discard drafts.
 
 ## Initialize or import project parameters

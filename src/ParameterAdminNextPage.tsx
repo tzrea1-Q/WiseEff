@@ -260,7 +260,7 @@ export function ParameterAdminNextPage({
         ) : organizationView ? (
           <>
             {organizationView === "sources" ? <SharedDtsiPage key={catalogOrganizationId ?? "home"} apiClient={runtime?.parameterApiClient}
-              canWrite={Boolean(sessionPermissions?.includes("admin:access"))} search={search} onNavigate={onNavigate} /> : null}
+              canWrite={Boolean(sessionPermissions?.includes("admin:access"))} organizationId={catalogOrganizationId} search={search} onNavigate={onNavigate} /> : null}
             {organizationView === "specs" ? <OrganizationBulkImportPanel
               apiClient={runtime?.parameterApiClient}
               projects={projects}

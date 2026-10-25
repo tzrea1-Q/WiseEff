@@ -5,8 +5,11 @@ import { z } from "zod";
 import { ApiError } from "../../shared/http/errors";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { parameterInvocation, parameterRequestAccess } from "../parameters/operatingScope";
-import { sharedDtsiDraftInputSchema, sharedDtsiDraftUpdateSchema, sharedDtsiDraftDiscardSchema } from "../contracts/dtoSchemas/sharedDtsi";
+import { sharedDtsiDraftInputSchema, sharedDtsiDraftUpdateSchema, sharedDtsiDraftDiscardSchema,
+  sharedDtsiPreviewRequestSchema, sharedDtsiPublishRequestSchema, sharedDtsiNewVersionDraftSchema } from "../contracts/dtoSchemas/sharedDtsi";
 import { createSharedDtsiDraft, discardSharedDtsiDraft, getSharedDtsiDraft, listSharedDtsiResources, saveSharedDtsiDraft } from "./service";
+import { createSharedDtsiVersionDraft, getSharedDtsiResourceDetail, getSharedDtsiVersion, listSharedDtsiVersions,
+  previewSharedDtsiPublication, publishSharedDtsi } from "./publication";
 
 export function registerSharedDtsiRoutes(router: WiseEffRouter, options: {
   db?: Database; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
@@ -43,5 +46,31 @@ export function registerSharedDtsiRoutes(router: WiseEffRouter, options: {
   router.delete("/api/v2/shared-dtsi/:resourceId/draft", async request => {
     const { db, auth, context } = await access(request);
     return { status: 200, body: await discardSharedDtsiDraft(db, auth, resourceId(request), parse(sharedDtsiDraftDiscardSchema, request.body).expectedRevision, context) };
+  });
+  router.get("/api/v2/shared-dtsi/:resourceId/detail", async request => {
+    const { db,auth }=await access(request);
+    return {status:200,body:{item:await getSharedDtsiResourceDetail(db,auth,resourceId(request))}};
+  });
+  router.get("/api/v2/shared-dtsi/:resourceId/versions", async request => {
+    const { db,auth }=await access(request);
+    const query=parse(z.object({offset:z.coerce.number().int().min(0).max(100_000).default(0),limit:z.coerce.number().int().min(1).max(100).default(20)}),request.query);
+    return {status:200,body:await listSharedDtsiVersions(db,auth,resourceId(request),query)};
+  });
+  router.get("/api/v2/shared-dtsi/:resourceId/versions/:versionId", async request => {
+    const { db,auth }=await access(request);
+    return {status:200,body:{item:await getSharedDtsiVersion(db,auth,resourceId(request),parse(z.string().uuid(),request.params.versionId))}};
+  });
+  router.post("/api/v2/shared-dtsi/:resourceId/publication-preview", async request => {
+    const {db,auth,context}=await access(request);
+    return {status:201,body:{item:await previewSharedDtsiPublication(db,auth,resourceId(request),parse(sharedDtsiPreviewRequestSchema,request.body).expectedRevision,context)}};
+  });
+  router.post("/api/v2/shared-dtsi/:resourceId/publications", async request => {
+    const {db,auth,context}=await access(request);
+    const result=await publishSharedDtsi(db,auth,resourceId(request),parse(sharedDtsiPublishRequestSchema,request.body),context);
+    return {status:result.replayed?200:201,body:{item:result.item}};
+  });
+  router.post("/api/v2/shared-dtsi/:resourceId/draft", async request => {
+    const {db,auth,context}=await access(request);
+    return {status:201,body:{item:await createSharedDtsiVersionDraft(db,auth,resourceId(request),parse(sharedDtsiNewVersionDraftSchema,request.body).baseVersionId,context)}};
   });
 }

@@ -11,3 +11,13 @@
 .shared-dtsi-error { color: var(--danger); }
 .shared-dtsi-error p { margin: 0 0 var(--space-2); }
 .shared-dtsi-pagination { justify-content: end; padding-block: var(--space-3); color: var(--text-secondary); }
+.shared-dtsi-change-description { display: grid; gap: var(--space-2); color: var(--text-secondary); font-size: var(--text-base); }
+.shared-dtsi-change-description textarea { resize: vertical; }
+.shared-dtsi-metadata { display: grid; gap: var(--space-3); margin: 0; }
+.shared-dtsi-metadata > div { display: grid; grid-template-columns: minmax(0, calc(var(--space-8) * 3)) minmax(0, 1fr); gap: var(--space-3); }
+.shared-dtsi-metadata dt { color: var(--text-secondary); }
+.shared-dtsi-metadata dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.shared-dtsi-published-panel:not([hidden]) { display: flex; flex: 1; flex-direction: column; gap: var(--space-4); min-width: 0; min-height: 0; }
+.shared-dtsi-description { white-space: pre-wrap; overflow-wrap: anywhere; }
+.shared-dtsi-draft-label { margin-inline-start: var(--space-2); color: var(--text-secondary); font-size: var(--text-base); font-weight: 400; }
+.shared-dtsi-hint { margin: 0; color: var(--text-secondary); font-size: var(--text-base); }

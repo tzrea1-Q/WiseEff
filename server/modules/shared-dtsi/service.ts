@@ -8,15 +8,15 @@ import { canAdminParameters, canViewParameters } from "../parameter-kernel/polic
 import { parameterOrganizationId, parameterScopeInvocation } from "../parameters/operatingScope";
 import type { SharedDtsiDraft, SharedDtsiDraftInput, SharedDtsiResourceSummary } from "../contracts/dtoSchemas/sharedDtsi";
 
-type WriteContext = { invocation: TrustedInvocationContext; requestId: string };
+export type WriteContext = { invocation: TrustedInvocationContext; requestId: string };
 type DraftRow = Omit<SharedDtsiDraft, "members" | "updatedAt"> & { updatedAt: Date };
-const draftColumns = `d.id,d.resource_id as "resourceId",r.name,d.revision,d.updated_at as "updatedAt"`;
+const draftColumns = `d.id,d.resource_id as "resourceId",r.name,d.revision,d.updated_at as "updatedAt",d.change_description as "changeDescription"`;
 const draftTables = `from public.shared_dtsi_resources r join public.shared_dtsi_drafts d on d.resource_id=r.id and d.organization_id=r.organization_id`;
 
-function requireRead(auth: AuthContext) {
+export function requireRead(auth: AuthContext) {
   if (!auth.user.isActive || (!canViewParameters(auth) && !canAdminParameters(auth))) throw new ApiError("FORBIDDEN", "没有共享 DTSI 的查看权限。");
 }
-function requireWrite(auth: AuthContext, context: WriteContext) {
+export function requireWrite(auth: AuthContext, context: WriteContext) {
   if (!canAdminParameters(auth)) throw new ApiError("FORBIDDEN", "只有参数管理员可以修改共享 DTSI。");
   const invocation = parameterScopeInvocation(auth, context.invocation, "shared DTSI draft");
   if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "共享 DTSI 修改需要用户操作。");
@@ -40,12 +40,19 @@ export async function getSharedDtsiDraft(db: Database, auth: AuthContext, resour
 export async function listSharedDtsiResources(db: Database, auth: AuthContext, input: { q: string; offset: number; limit: number }) {
   requireRead(auth);
   const values = [parameterOrganizationId(auth), input.q];
+  const tables = `from public.shared_dtsi_resources r left join public.shared_dtsi_drafts d on d.resource_id=r.id and d.organization_id=r.organization_id
+    left join lateral (select id,resource_id,version,name,change_description,digest,created_at,created_by_user_id
+      from public.shared_dtsi_revisions where resource_id=r.id and organization_id=r.organization_id order by version desc limit 1) v on true`;
   const filter = ` where r.organization_id=$1 and ($2='' or position(lower($2) in lower(r.name))>0
-    or exists(select 1 from public.shared_dtsi_draft_members m where m.draft_id=d.id and position(lower($2) in lower(m.source_name))>0))`;
-  const rows = (await db.query<DraftRow & { sourceName: string }>(`select ${draftColumns},
-    (select min(m.source_name) from public.shared_dtsi_draft_members m where m.draft_id=d.id) as "sourceName" ${draftTables}${filter}
+    or exists(select 1 from public.shared_dtsi_draft_members m where m.draft_id=d.id and position(lower($2) in lower(m.source_name))>0)
+    or exists(select 1 from public.shared_dtsi_revision_members m where m.revision_id=v.id and position(lower($2) in lower(m.source_name))>0))`;
+  const rows = (await db.query<Omit<SharedDtsiResourceSummary,"updatedAt"> & {updatedAt:Date}>(`select r.id as "resourceId",r.name,r.updated_at as "updatedAt",d.revision as "draftRevision",
+    coalesce((select min(m.source_name) from public.shared_dtsi_revision_members m where m.revision_id=v.id),
+      (select min(m.source_name) from public.shared_dtsi_draft_members m where m.draft_id=d.id)) as "sourceName",
+    case when v.id is null then null else jsonb_build_object('id',v.id,'resourceId',v.resource_id,'version',v.version,'name',v.name,
+      'changeDescription',v.change_description,'digest',v.digest,'createdAt',v.created_at,'createdByUserId',v.created_by_user_id) end as "currentVersion" ${tables}${filter}
     order by r.updated_at desc,r.id limit $3 offset $4`, [...values, input.limit, input.offset])).rows;
-  const total = (await db.query<{ count: string }>(`select count(*) ${draftTables}${filter}`, values)).rows[0]!.count;
+  const total = (await db.query<{ count: string }>(`select count(*) ${tables}${filter}`, values)).rows[0]!.count;
   return { items: rows.map(row => ({ ...row, updatedAt: row.updatedAt.toISOString() })) satisfies SharedDtsiResourceSummary[], total: Number(total) };
 }
 export async function createSharedDtsiDraft(db: Database, auth: AuthContext, input: SharedDtsiDraftInput, context: WriteContext) {
@@ -54,13 +61,13 @@ export async function createSharedDtsiDraft(db: Database, auth: AuthContext, inp
     const organizationId = parameterOrganizationId(auth), resourceId = randomUUID(), draftId = randomUUID(), memberId = randomUUID();
     await tx.query("insert into public.shared_dtsi_resources(id,organization_id,name) values ($1,$2,$3)", [resourceId, organizationId, input.name]);
     await tx.query("insert into public.shared_dtsi_members(id,resource_id,organization_id) values ($1,$2,$3)", [memberId, resourceId, organizationId]);
-    await tx.query("insert into public.shared_dtsi_drafts(id,resource_id,organization_id,created_by_user_id,updated_by_user_id) values ($1,$2,$3,$4,$4)", [draftId, resourceId, organizationId, auth.user.id]);
+    await tx.query("insert into public.shared_dtsi_drafts(id,resource_id,organization_id,created_by_user_id,updated_by_user_id,change_description) values ($1,$2,$3,$4,$4,$5)", [draftId, resourceId, organizationId, auth.user.id,input.changeDescription]);
     await tx.query("insert into public.shared_dtsi_draft_members(draft_id,member_id,resource_id,organization_id,source_name,content) values ($1,$2,$3,$4,$5,$6)", [draftId, memberId, resourceId, organizationId, input.sourceName, input.content]);
     await audit(tx, auth, context, resourceId, "create", 1);
     return getSharedDtsiDraft(tx, auth, resourceId);
   });
 }
-async function lockDraft(db: Database, auth: AuthContext, resourceId: string, expectedRevision: number) {
+export async function lockDraft(db: Database, auth: AuthContext, resourceId: string, expectedRevision: number) {
   const row = (await db.query<{ id: string; revision: number }>(`select d.id,d.revision from public.shared_dtsi_drafts d
     where d.resource_id=$1 and d.organization_id=$2 for update`, [resourceId, parameterOrganizationId(auth)])).rows[0];
   if (!row) throw new ApiError("NOT_FOUND", "共享 DTSI 草稿不存在。");
@@ -73,7 +80,7 @@ export async function saveSharedDtsiDraft(db: Database, auth: AuthContext, resou
     const draft = await lockDraft(tx, auth, resourceId, input.expectedRevision), organizationId = parameterOrganizationId(auth);
     await tx.query("update public.shared_dtsi_resources set name=$3,updated_at=now() where id=$1 and organization_id=$2", [resourceId, organizationId, input.name]);
     await tx.query("update public.shared_dtsi_draft_members set source_name=$3,content=$4 where draft_id=$1 and organization_id=$2", [draft.id, organizationId, input.sourceName, input.content]);
-    await tx.query("update public.shared_dtsi_drafts set revision=revision+1,updated_by_user_id=$3,updated_at=now() where id=$1 and organization_id=$2", [draft.id, organizationId, auth.user.id]);
+    await tx.query("update public.shared_dtsi_drafts set revision=revision+1,updated_by_user_id=$3,updated_at=now(),change_description=$4 where id=$1 and organization_id=$2", [draft.id, organizationId, auth.user.id,input.changeDescription]);
     await audit(tx, auth, context, resourceId, "save", draft.revision + 1);
     return getSharedDtsiDraft(tx, auth, resourceId);
   });
@@ -82,7 +89,10 @@ export async function discardSharedDtsiDraft(db: Database, auth: AuthContext, re
   requireWrite(auth, context);
   return db.transaction(async tx => {
     const draft = await lockDraft(tx, auth, resourceId, expectedRevision);
-    await tx.query("delete from public.shared_dtsi_resources where id=$1 and organization_id=$2", [resourceId, parameterOrganizationId(auth)]);
+    const published = (await tx.query<{name:string}>("select name from public.shared_dtsi_revisions where resource_id=$1 and organization_id=$2 order by version desc limit 1",[resourceId,parameterOrganizationId(auth)])).rows[0];
+    await tx.query(published ? "delete from public.shared_dtsi_drafts where resource_id=$1 and organization_id=$2"
+      : "delete from public.shared_dtsi_resources where id=$1 and organization_id=$2", [resourceId, parameterOrganizationId(auth)]);
+    if (published) await tx.query("update public.shared_dtsi_resources set name=$3,updated_at=now() where id=$1 and organization_id=$2",[resourceId,parameterOrganizationId(auth),published.name]);
     await audit(tx, auth, context, resourceId, "discard", draft.revision);
     return { ok: true };
   });
