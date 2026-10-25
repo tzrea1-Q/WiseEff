@@ -39,7 +39,7 @@ const invalid = (message: string): never => { throw new ApiError("VALIDATION_FAI
 const conflict = (message: string): never => { throw new ApiError("CONFLICT", message, { reason: "configuration-import-stale" }); };
 
 /** One bounded archive owner, also used by shared-source intake; no extraction to host paths. */
-export async function readConfigSetPackage(input: ConfigSetImportBody["archive"]) {
+export async function readConfigSetPackage(input: ConfigSetImportBody["archive"], selection?: ConfigSetImportBody["sourceConfiguration"]) {
   let files: Map<string, Buffer>;
   try {
     files = await readBoundedZipArchive(Buffer.from(input.contentBase64, "base64"), { ...analysisCaseArchiveLimits,
@@ -54,12 +54,24 @@ export async function readConfigSetPackage(input: ConfigSetImportBody["archive"]
     catch { return invalid(`${name}：源码必须采用 UTF-8 编码。`); }
   };
   const metadata = files.get(configSetPackageManifestName);
-  if (!metadata) invalid("请选择 WiseEff 导出的完整配置 ZIP（缺少导出清单）。");
   let json: unknown;
-  try { json = JSON.parse(decode(metadata!, configSetPackageManifestName)); }
-  catch { invalid("配置导出清单不是有效 JSON。"); }
+  if (metadata) {
+    if (selection) invalid("导出包已经冻结入口和构建输入，请使用包内清单。");
+    try { json = JSON.parse(decode(metadata, configSetPackageManifestName)); }
+    catch { invalid("配置导出清单不是有效 JSON。"); }
+  } else {
+    const buildInputs=selection?.buildInputs ?? {includeSearchPaths:[],defines:{}};
+    json={sourcePackage:{schemaVersion:"wiseeff-config-set/v1",entryFile:selection?.entryFile??null,
+      includeSearchPaths:buildInputs.includeSearchPaths,overlayOrder:selection?.overlayOrder??[],
+      // Explicit source overlays use the existing ephemeral compile adapter;
+      // original fragment bytes remain private and unchanged in storage.
+      formerRootOverlayFiles:selection?.overlayOrder??[],
+      declaredBuildInputs:buildInputs,resolvedBuildInputs:buildInputs,sharedClosure:[],jsonSources:[],
+      members:[...files].map(([sourceName,bytes],sortOrder)=>({sourceName,format:sourceName.endsWith(".json")?"json":"dts",
+        role:sourceName===selection?.entryFile?"base":selection?.overlayOrder.includes(sourceName)?"overlay":"include",sortOrder,checksum:`sha256:${sourceRevisionDigest(bytes)}`}))}};
+  }
   const parsed = configSetSourcePackageSchema.safeParse((json as { sourcePackage?: unknown })?.sourcePackage);
-  if (!parsed.success) invalid("配置包缺少完整原始源码和构建清单，请从当前配置重新导出。");
+  if (!parsed.success) invalid(metadata?"配置包缺少完整原始源码和构建清单，请从当前配置重新导出。":"源码路径、文件数量或构建输入不符合导入要求。");
   const manifest = parsed.data!;
   files.delete(configSetPackageManifestName);
   if (files.size !== manifest.members.length || [...files.values()].reduce((sum, bytes) => sum + bytes.length, 0) > configSetPackageLimits.maxTotalBytes)
@@ -83,7 +95,7 @@ export async function readConfigSetPackage(input: ConfigSetImportBody["archive"]
   if (manifest.overlayOrder.some(path=>!manifest.members.some(row=>row.sourceName===path && row.format==="dts" && row.role!=="include" && row.role!=="base"))
     || new Set(manifest.overlayOrder).size!==manifest.overlayOrder.length || manifest.formerRootOverlayFiles.some(path=>!manifest.overlayOrder.includes(path))) invalid("覆盖顺序与来源文件不一致。");
   if (!isDeepStrictEqual(normalizeIncludeSearchPaths(manifest.resolvedBuildInputs.includeSearchPaths), normalizeIncludeSearchPaths(manifest.includeSearchPaths))) invalid("构建搜索目录与冻结清单不一致。");
-  return { manifest, contents };
+  return { manifest, contents, raw:!metadata, needsSelection:!metadata&&!selection };
 }
 
 async function inspect(tx: Database, auth: AuthContext, projectId: string, input: ConfigSetImportBody, catalog:CatalogSnapshot|null) {
@@ -97,7 +109,9 @@ async function inspect(tx: Database, auth: AuthContext, projectId: string, input
     conflict("完整配置包只能导入尚无来源文件的新项目；请选择空项目。");
   const emptySets=(await tx.query<{id:string;name:string}>("select id,name from dts_config_set where project_id=$1 and organization_id=$2 order by id",[projectId,organizationId])).rows;
   if (emptySets.some(row=>row.name===input.name)) conflict("配置名称已存在，请填写另一个名称后重新预览。");
-  const { manifest, contents } = await readConfigSetPackage(input.archive);
+  const { manifest, contents, raw, needsSelection } = await readConfigSetPackage(input.archive,input.sourceConfiguration);
+  if (needsSelection) return {selection:{kind:"source-selection" as const,members:manifest.members.map(({sourceName,format})=>({sourceName,format}))}};
+  if (raw && input.ownership!=="private") invalid("原始项目源码只能作为项目私有源码导入。");
   const governance = await lockSourceCatalogGovernance(tx, organizationId);
   if (catalog ? governance?.id !== catalog.release.id || governance.digest !== catalog.release.digest : governance) conflict("参数目录已更新，请重新预览。");
   const resources = input.ownership === "reuse" ? await loadSharedDtsiClosure(tx, auth, manifest.sharedClosure.filter(row => row.direct)
@@ -131,6 +145,7 @@ async function inspect(tx: Database, auth: AuthContext, projectId: string, input
     files: new Map(manifest.members.filter(row => row.format === "dts").map(row => [row.sourceName, { content: contents.get(row.sourceName)!, fileVersionId:row.checksum }])) }) : null;
   if (manifest.members.some(row => row.format === "dts") && !resolved) invalid("设备树配置缺少明确入口文件。");
   if (resolved?.diagnostics.some(row => row.severity === "error")) throw new ApiError("VALIDATION_FAILED", "完整来源无法解析，请修复后重新导出。", { diagnostics: resolved.diagnostics });
+  if (raw && resolved?.preprocessing) manifest.preprocessing=resolved.preprocessing.receipt;
   if (resolved) {
     const validation = await createDtsToolchainRunner().validate({ entryFile: manifest.entryFile!, includeSearchPaths: manifest.includeSearchPaths,
       defines: effective.defines, overlayOrder: manifest.overlayOrder, formerRootOverlayFiles:manifest.formerRootOverlayFiles,
@@ -163,7 +178,8 @@ export async function previewConfigSetImport(db: Database, auth: AuthContext, pr
   const catalog=await loadSnapshot(db);
   try { return await db.transaction(async tx => {
     auth = await requireCurrentSourceAdministrator(tx, auth, projectId);
-    return (await inspect(tx, auth, projectId, input, catalog)).preview;
+    const plan=await inspect(tx, auth, projectId, input, catalog);
+    return plan.selection??plan.preview;
   }); } catch (error) { rethrowSourceTransactionError(error); }
 }
 
@@ -180,6 +196,7 @@ export async function applyConfigSetImport(db: Database, storage: ObjectStore, a
       where organization_id=$1 and project_id=$2 and actor_user_id=$3 and target_type='dts-config-set' and target_id=$4 and kind='config-set' and action='imported'`, [organizationId, projectId, auth.user.id, operationId])).rows[0];
     if (replay) { if (replay.metadata.mutationDigest !== mutationDigest) conflict("此操作编号已用于不同配置导入。"); return replay.metadata.result; }
     const plan = await inspect(tx, auth, projectId, input, catalog);
+    if (plan.selection) return invalid("请先选择入口文件并完成源码预览。");
     if (input.proofToken !== plan.preview.proofToken) conflict("导入预览已过期；请重新预览，当前项目未改变。");
     for (const [nodePath,node] of plan.resolved?.effective.nodesByLocator ?? []) await assertTrustedSensitiveNodeWriteAllowed(tx, auth, {
       organizationId, projectId, nodePath, sourcePath: { kind: "node-locator", value: nodePath },

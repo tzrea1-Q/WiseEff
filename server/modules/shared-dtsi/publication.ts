@@ -12,6 +12,8 @@ import { sharedDtsiManifestSchema } from "../contracts/dtoSchemas/sharedDtsi";
 import { getSharedDtsiDraft, lockDraft, requireRead, requireWrite, type WriteContext } from "./service";
 import { closureManifest, closureMembers, composeDtsBuildInputs, loadSharedDtsiClosure } from "./dependencies";
 import { assertSharedDtsiNewReferences, lockSharedDtsiReferences } from "./lifecycle";
+import { compareSharedDtsiSources } from "./comparisonData";
+import { assertDtsPreprocessingAvailable, DtsPreprocessingError, requiresDtsPreprocessing } from "../dts/cppSources";
 
 const digest = (value: unknown) => `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
 const actorFingerprint = (auth: AuthContext) => digest({ userId:auth.user.id,organizationId:parameterOrganizationId(auth),active:auth.user.isActive,
@@ -97,10 +99,18 @@ type PreviewRow={id:string;resourceId:string;draftId:string;draftRevision:number
 const previewColumns=`id,resource_id as "resourceId",draft_id as "draftId",draft_revision as "draftRevision",base_revision_id as "baseVersionId",
   actor_user_id as "actorUserId",actor_fingerprint as "actorFingerprint",name,change_description as "changeDescription",manifest,members,digest,
   created_at as "createdAt",idempotency_key as "idempotencyKey",published_revision_id as "publishedRevisionId"`;
-const previewDto=(row:PreviewRow):SharedDtsiPublicationPreview=>({id:row.id,resourceId:row.resourceId,draftRevision:row.draftRevision,baseVersionId:row.baseVersionId,
-  name:row.name,changeDescription:row.changeDescription,manifest:row.manifest,digest:row.digest,createdAt:row.createdAt.toISOString()});
+const previewDto=(row:PreviewRow,comparison:SharedDtsiPublicationPreview["comparison"]):SharedDtsiPublicationPreview=>({id:row.id,resourceId:row.resourceId,draftRevision:row.draftRevision,baseVersionId:row.baseVersionId,
+  name:row.name,changeDescription:row.changeDescription,manifest:row.manifest,digest:row.digest,createdAt:row.createdAt.toISOString(),comparison});
 export async function previewSharedDtsiPublication(db:Database,auth:AuthContext,resourceId:string,expectedRevision:number,context:WriteContext) {
   requireWrite(auth,context);
+  // Read only the authorized real draft before the organization lifecycle lock:
+  // otherwise another CPP preview waits out the compiler and misses its busy guard.
+  const candidate=await getSharedDtsiDraft(db,auth,resourceId),closure=await loadSharedDtsiClosure(db,auth,candidate.dependencies??[],resourceId);
+  const files=new Map([...candidate.members,...closureMembers(closure)].map(member=>[member.sourceName,{content:member.content,fileVersionId:member.id}]));
+  if(requiresDtsPreprocessing(files,composeDtsBuildInputs(candidate.buildInputs??{includeSearchPaths:[],defines:{}},closure).defines)) {
+    try {assertDtsPreprocessingAvailable(candidate.members[0]!.sourceName);}
+    catch(error){if(error instanceof DtsPreprocessingError)throw new ApiError("CONFLICT",error.message,{reason:error.code});throw error;}
+  }
   return db.transaction(async tx=>{
     await lockDraft(tx,auth,resourceId,expectedRevision);
     const draft=await getSharedDtsiDraft(tx,auth,resourceId),source=await completePublicationSource(tx,auth,draft),base=await currentVersion(tx,auth,resourceId);
@@ -110,7 +120,12 @@ export async function previewSharedDtsiPublication(db:Database,auth:AuthContext,
       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13) returning ${previewColumns}`,
       [randomUUID(),resourceId,parameterOrganizationId(auth),draft.id,draft.revision,base?.id??null,auth.user.id,actorFingerprint(auth),draft.name,
         draft.changeDescription,JSON.stringify(source.manifest),JSON.stringify(source.members),source.digest])).rows[0]!;
-    return previewDto(row);
+    const before=base?await getSharedDtsiVersion(tx,auth,resourceId,base.id):null;
+    const left=before?{...before,preprocessing:(await preparePublishedSharedDtsiSource(tx,auth,before)).preprocessing,
+      closure:await loadSharedDtsiClosure(tx,auth,before.manifest.dependencies??[],resourceId)}:null;
+    const delta=compareSharedDtsiSources(left,{resourceId,name:row.name,manifest:row.manifest,members:row.members,
+      preprocessing:source.preprocessing,closure:await loadSharedDtsiClosure(tx,auth,row.manifest.dependencies??[],resourceId)});
+    return previewDto(row,{before:base,...delta});
   });
 }
 export async function publishSharedDtsi(db:Database,auth:AuthContext,resourceId:string,input:{previewId:string;idempotencyKey:string},context:WriteContext) {

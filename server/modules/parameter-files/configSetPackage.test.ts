@@ -10,6 +10,14 @@ import { readConfigSetPackage } from "./configSetPackage";
 import { configSetPackageManifestName } from "../contracts/dtoSchemas/configSetPackage";
 
 describe("complete source package public import boundary", () => {
+  it("preflights raw sources with the existing archive bounds and rejects invalid original paths and formats",async()=>{
+    const zip=new JSZip();zip.file("src/board.dts",'\uFEFF/dts-v1/;\r\n/ {};\r\n',{createFolders:false});
+    const input=async()=>({name:"raw.zip",contentBase64:await zip.generateAsync({type:"base64"})});
+    const selected=await readConfigSetPackage(await input());expect(selected.needsSelection).toBe(true);expect(selected.contents.get("src/board.dts")).toBe('\uFEFF/dts-v1/;\r\n/ {};\r\n');
+    zip.file("unrelated.csv","value,1");await expect(readConfigSetPackage(await input())).rejects.toMatchObject({code:"VALIDATION_FAILED"});zip.remove("unrelated.csv");
+    zip.file("../outside.dtsi","/ {};");await expect(readConfigSetPackage(await input())).rejects.toMatchObject({code:"VALIDATION_FAILED"});zip.remove("../outside.dtsi");
+    zip.file("invalid.dtsi",new Uint8Array([0xff,0xfe]));await expect(readConfigSetPackage(await input())).rejects.toMatchObject({code:"VALIDATION_FAILED"});
+  });
   it("recognizes the project package preview route before requiring its runtime", async () => {
     const router = createRouter();
     registerParameterFileRoutes(router, { getCurrentAuthContext: () => makeTestAuthContext() });

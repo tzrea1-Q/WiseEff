@@ -22,7 +22,7 @@ import { dtsBuildInputsSchema, sharedDtsiImportLimits } from "@wiseeff/dto-schem
 import "./shared-dtsi.css";
 import { SharedDtsiDependencies } from "./SharedDtsiDependencies";
 import { SharedDtsiRecognition } from "./SharedDtsiRecognition";
-import { SharedDtsiComparison } from "./SharedDtsiComparison";
+import { SharedDtsiComparison, SharedDtsiComparisonContent } from "./SharedDtsiComparison";
 import { SharedDtsiLifecycle } from "./SharedDtsiLifecycle";
 
 type Props = { apiClient?: ApiClient; canWrite: boolean; canCreateSubject?:boolean;canProposeSource?:boolean;canReviewSource?:boolean;search: string; organizationId?: string; onNavigate: (path: string) => void };
@@ -280,9 +280,8 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
     {currentPreview.data.manifest.dependencyClosure?.length?<details><summary>完整固定依赖（{currentPreview.data.manifest.dependencyClosure.length}）</summary>
       <ul>{currentPreview.data.manifest.dependencyClosure.map(pin=><li key={pin.resourceId}>{pin.name} · 版本 {pin.version} · {pin.mountPath||"资源根目录"} <a
         href={path(pin.resourceId,{version:pin.versionId,tab:"source"})} target="_blank" rel="noreferrer">查看源码</a></li>)}</ul></details>:null}
-    <div className="shared-dtsi-workspace">{memberNavigation(sourceMembers(form),selectMember)}
-      <div className="shared-dtsi-source"><WorkbenchDtsEditor sessionKey={`shared-dtsi-preview/${currentPreview.data.id}/${memberIndex}`} text={form.content}
-      readOnly ariaLabel="待发布 DTSI 源码" /></div></div>
+    <SharedDtsiComparisonContent key={currentPreview.data.id} result={currentPreview.data.comparison} resourceId={selected}
+      beforeLabel={currentPreview.data.comparison.before?`v${currentPreview.data.comparison.before.version}`:"首次发布"} afterLabel="待发布版本" />
   </section>;
 
   if (published || tab === "versions" || tab === "usages") return <section className="shared-dtsi-page shared-dtsi-page--editor" aria-label="共享 DTSI 版本" aria-busy={pending}>

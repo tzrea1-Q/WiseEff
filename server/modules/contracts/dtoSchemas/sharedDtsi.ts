@@ -77,9 +77,11 @@ export const sharedDtsiComparisonSchema=z.object({before:sharedDtsiVersionSummar
   semantic:z.object({scope:z.literal("ordered-fragment-declarations"),before:z.string(),after:z.string(),externalReferences:z.array(z.string())}).strict()
 }).strict();
 export type SharedDtsiComparison=z.infer<typeof sharedDtsiComparisonSchema>;
+export const sharedDtsiPendingComparisonSchema=sharedDtsiComparisonSchema.omit({before:true,after:true}).extend({before:sharedDtsiVersionSummarySchema.nullable()}).strict();
+export type SharedDtsiPendingComparison=z.infer<typeof sharedDtsiPendingComparisonSchema>;
 export type SharedDtsiUsages=z.infer<typeof sharedDtsiUsagesSchema>;
 export const sharedDtsiPreviewSchema = z.object({ id, resourceId: id, draftRevision: z.number().int().positive(), name: z.string(),
-  changeDescription, manifest: sharedDtsiManifestSchema, digest: z.string(), createdAt: z.string(), baseVersionId: id.nullable() }).strict();
+  changeDescription, manifest: sharedDtsiManifestSchema, digest: z.string(), createdAt: z.string(), baseVersionId: id.nullable(), comparison:sharedDtsiPendingComparisonSchema }).strict();
 export const sharedDtsiPreviewRequestSchema = z.object({ expectedRevision: z.number().int().positive() }).strict();
 export const sharedDtsiPublishRequestSchema = z.object({ previewId: id,
   idempotencyKey: z.string().min(1).max(160).regex(/^[A-Za-z0-9._:-]+$/u) }).strict();

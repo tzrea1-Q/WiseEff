@@ -39,8 +39,8 @@ test("imports a relative ZIP library, repairs missing dependencies and publishes
   await page.getByRole("button",{name:"预览发布",exact:true}).click();
   await expect(page.getByRole("heading",{name:"发布 battery-library",exact:true})).toBeVisible();
   await expect(page.getByText("project_host",{exact:true})).toBeVisible();
-  await page.getByRole("navigation",{name:"资源文件",exact:true}).getByRole("button",{name:"include/constants.h",exact:true}).click();
-  await expect(page.getByLabel("待发布 DTSI 源码",{exact:true})).toContainText("#define VOLTAGE 42");
+  await page.getByRole("combobox",{name:"比较文件",exact:true}).click();await page.getByRole("option",{name:"新增 → include/constants.h",exact:true}).click();
+  await expect(page.getByRole("region",{name:"共享原始源码修改片段",exact:true})).toContainText("#define VOLTAGE 42");
   await page.setViewportSize({width:1280,height:800});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await catalogScreenshot(page,testInfo,"shared-dtsi-multifile-preview-1280");

@@ -5,6 +5,21 @@ import { WorkbenchPackageImportDialog } from "./WorkbenchPackageImportDialog";
 import type { ConfigSetImportPreview } from "@wiseeff/dto-schemas";
 
 afterEach(cleanup);
+it("selects an explicit raw source root and invalidates proof when overlay order changes",async()=>{
+  const user=userEvent.setup();
+  const client={preview:vi.fn().mockResolvedValueOnce({kind:"source-selection",members:[{sourceName:"board.dts",format:"dts"},{sourceName:"first.dtsi",format:"dts"},{sourceName:"last.dtsi",format:"dts"}]}).mockResolvedValue(result),apply:vi.fn()};
+  render(<WorkbenchPackageImportDialog projectId="project" client={client} onDismiss={vi.fn()} onApplied={vi.fn()}/>);
+  await selectFile(user);await user.click(screen.getByRole("button",{name:"预览导入"}));
+  await user.click(await screen.findByRole("combobox",{name:"入口 DTS"}));await user.click(screen.getByRole("option",{name:"board.dts"}));
+  await user.click(screen.getByRole("checkbox",{name:"覆盖文件 first.dtsi"}));await user.click(screen.getByRole("checkbox",{name:"覆盖文件 last.dtsi"}));
+  expect(screen.getAllByText("last.dtsi",{exact:true})).toHaveLength(1);
+  await user.click(screen.getByRole("button",{name:"预览导入"}));
+  expect(await screen.findByRole("button",{name:"确认导入"})).toBeDisabled();
+  expect(client.preview.mock.calls[1]?.[1]).toMatchObject({ownership:"private",sourceConfiguration:{entryFile:"board.dts",overlayOrder:["first.dtsi","last.dtsi"]}});
+  await user.click(screen.getByRole("button",{name:"上移 last.dtsi"}));
+  expect(screen.queryByRole("button",{name:"确认导入"})).not.toBeInTheDocument();
+  expect(screen.getByRole("textbox",{name:"配置名称"})).toHaveValue("Imported");
+});
 const result:ConfigSetImportPreview={proofToken:"a".repeat(64),name:"Imported",ownership:"reuse",entryFile:"boards/original/board.dts",
   members:[{sourceName:"boards/original/board.dts",format:"dts",ownership:"private"}],sharedVersions:[],nodeCount:2,diagnostics:[]};
 async function selectFile(user:ReturnType<typeof userEvent.setup>) {

@@ -49,6 +49,12 @@ describe("complete configuration package through the actual API role",()=>{
   const importPath=(projectId:string)=>`/api/v1/projects/${projectId}/config-set-import`;
   async function packageArchive(value:{manifest:unknown;files:ExportConfigSetResult["files"]}) {const zip=new JSZip();zip.file(configSetPackageManifestName,JSON.stringify(value.manifest));
     for(const file of value.files)zip.file(file.name,file.content,{createFolders:false});return {name:"complete-export.zip",contentBase64:await zip.generateAsync({type:"base64"})};}
+  async function createEmptyProject(id:string,code:string) {
+    const created=await post("/api/v1/parameters/admin/projects",{id,name:code,code});expect(created.status,created.bodyText).toBe(201);
+    const draft=await requestJson(server(),`/api/v1/parameters/projects/${id}/initialization/draft`,{method:"PUT",body:JSON.stringify({projectName:code,projectCode:code,ownerUserId:ADMIN,sourceProjectIds:[],primarySourceProjectId:null,supplementSourceProjectIds:[],selectedModuleIds:[],selectedRisks:[],selectedSourceBindingIds:[],bindingSnapshots:[],emptyLibrary:true,notes:"Normal initialization before public source import"})});expect(draft.status,draft.bodyText).toBe(200);
+    const submitted=await post<{item:{id:string}}>(`/api/v1/parameters/projects/${id}/initialization/submit`,{});expect(submitted.status,submitted.bodyText).toBe(201);
+    const approved=await post(`/api/v1/parameters/admin/initialization-reviews/${submitted.body.item.id}/approve`,{});expect(approved.status,approved.bodyText).toBe(200);
+  }
   beforeAll(async()=>{
     lane=await createEphemeralTestDatabase("config-package");db=createPostgresDatabase(lane.url);
     directory=await mkdtemp(join(tmpdir(),"wiseeff-package-"));storage=createLocalObjectStore(directory);
@@ -82,6 +88,42 @@ describe("complete configuration package through the actual API role",()=>{
     const approved=await post(`/api/v1/parameters/admin/initialization-reviews/${submitted.body.item.id}/approve`,{});expect(approved.status,approved.bodyText).toBe(200);
   },120_000);
   afterAll(async()=>{await api?.close();if(lane)await dropLabRuntimeLogins(lane.url,token);await db?.close();await lane?.drop();if(directory)await rm(directory,{recursive:true,force:true});},120_000);
+
+  it("imports ordinary project source archives with explicit entry, ordered overlays and private original bytes",async()=>{
+    const TARGET="package-raw-target";await createEmptyProject(TARGET,"RAWNEW");
+    const files=[{name:"boards/board.dts",content:'\uFEFF/dts-v1/;\r\n/include/ "../common/defaults.dtsi"\r\n/ { model = "Raw project"; compatible = "unknown,board"; };\r\n'},
+      {name:"common/defaults.dtsi",content:'/ { raw: raw { compatible = "unknown,driver"; value = <1>; status = "disabled"; }; };\n'},
+      {name:"overrides/first.dtsi",content:'&raw { value = <2>; };\n'}, {name:"overrides/last.dtsi",content:'&raw { value = <3>; status = "okay"; };\n'},
+      {name:"private/config.json",content:json}];
+    const zip=new JSZip();for(const file of files)zip.file(file.name,file.content,{createFolders:false});
+    const rawArchive={name:"project-sources.zip",contentBase64:await zip.generateAsync({type:"base64"})};
+    const input={name:"Original project input",ownership:"private",archive:rawArchive};
+    const selection=await post<{item:{kind:string;members:{sourceName:string}[]}}>(`${importPath(TARGET)}/preview`,input);
+    expect(selection.status,selection.bodyText).toBe(200);expect(selection.body.item.kind).toBe("source-selection");
+    expect(selection.body.item.members.map(row=>row.sourceName)).toEqual(files.map(row=>row.name));expect(selection.body.item).not.toHaveProperty("proofToken");
+    const chosen={...input,sourceConfiguration:{entryFile:"boards/board.dts",overlayOrder:["overrides/first.dtsi","overrides/last.dtsi"],buildInputs:{includeSearchPaths:[],defines:{}}}};
+    const checked=await post<{item:ConfigSetImportPreview}>(`${importPath(TARGET)}/preview`,chosen);expect(checked.status,checked.bodyText).toBe(200);
+    expect(checked.body.item.sharedVersions).toEqual([]);expect(checked.body.item.members.every(row=>row.ownership==="private")).toBe(true);
+    const apply={...chosen,proofToken:checked.body.item.proofToken,reason:"Initialize project from actual source tree",clientMutationId:"raw-source-intake"};
+    const wrong={...apply,sourceConfiguration:{...chosen.sourceConfiguration,overlayOrder:[...chosen.sourceConfiguration.overlayOrder].reverse()}};
+    expect((await post(`${importPath(TARGET)}/apply`,wrong)).status).toBe(409);
+    const imported=await post<{item:ConfigSetImportResult}>(`${importPath(TARGET)}/apply`,apply);expect(imported.status,imported.bodyText).toBe(200);
+    expect((await post(`${importPath(TARGET)}/apply`,apply)).body).toEqual(imported.body);
+    const readback=await requestJson<ExportConfigSetResult>(server(),`/api/v1/projects/${TARGET}/config-sets/${imported.body.item.configSetId}/export`);expect(readback.status,readback.bodyText).toBe(200);
+    expect(readback.body.files.map(({name,content})=>({name,content}))).toEqual(files);expect(readback.body.manifest.sourcePackage?.overlayOrder).toEqual(chosen.sourceConfiguration.overlayOrder);
+    expect(readback.body.manifest.sourcePackage?.sharedClosure).toEqual([]);expect(await listCatalogBindingRowsForProject(api,auth,{projectId:TARGET})).toEqual([]);
+    expect((await post(`${importPath(PRIVATE)}/preview`,{...chosen,ownership:"reuse"})).status).toBe(400);
+    expect((await post(`${importPath(PRIVATE)}/preview`,{...chosen,sourceConfiguration:{...chosen.sourceConfiguration,entryFile:"../outside.dts"}})).status).toBe(400);
+    expect((await post(`${importPath("package-foreign-project")}/preview`,chosen)).status).toBe(404);
+    const unresolved=new JSZip();unresolved.file("board.dts",'/dts-v1/; / { model = "Missing context"; compatible = "unknown,board"; }; &{/soc} { unknown { compatible = "unknown,driver"; }; };');
+    const missingContext=await post(`${importPath(PRIVATE)}/preview`,{...chosen,archive:{name:"missing-context.zip",contentBase64:await unresolved.generateAsync({type:"base64"})},sourceConfiguration:{...chosen.sourceConfiguration,entryFile:"board.dts",overlayOrder:[]}});
+    expect(missingContext.status,missingContext.bodyText).toBe(400);expect(missingContext.bodyText).toContain("target-unresolved");
+    const jsonProject="package-raw-json";await createEmptyProject(jsonProject,"RAWJSON");const jsonZip=new JSZip();jsonZip.file("settings.json",json);
+    const jsonInput={name:"Raw JSON only",ownership:"private",archive:{name:"json-only.zip",contentBase64:await jsonZip.generateAsync({type:"base64"})},sourceConfiguration:{entryFile:null,overlayOrder:[],buildInputs:{includeSearchPaths:[],defines:{}}}};
+    const jsonPreview=await post<{item:ConfigSetImportPreview}>(`${importPath(jsonProject)}/preview`,jsonInput);expect(jsonPreview.status,jsonPreview.bodyText).toBe(200);expect(jsonPreview.body.item.entryFile).toBeNull();
+    const jsonImported=await post<{item:ConfigSetImportResult}>(`${importPath(jsonProject)}/apply`,{...jsonInput,proofToken:jsonPreview.body.item.proofToken,reason:"Private ungoverned JSON source",clientMutationId:"raw-json-intake"});expect(jsonImported.status,jsonImported.bodyText).toBe(200);
+    expect(await listCatalogBindingRowsForProject(api,auth,{projectId:jsonProject})).toEqual([]);
+  },120_000);
 
   it("exports original upgraded shared closure, local overrides/status and mixed JSON then reimports fresh owned identities",async()=>{
     const leaf=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name:"Pinned declaration dependency",sourceName:"nested/dependency.dtsi",content:'/ { frozen_dependency { status = "okay"; }; };',changeDescription:"Publish fixed dependency"});expect(leaf.status,leaf.bodyText).toBe(201);
@@ -129,6 +171,12 @@ describe("complete configuration package through the actual API role",()=>{
   },120_000);
 
   it("restores shared snapshots after complete package import without losing private values or source identity",async()=>{
+    const SOURCE="package-snapshot-source",TARGET="package-snapshot-target",PRIVATE="package-snapshot-legacy";
+    await createEmptyProject(SOURCE,"SNAPSHOTSOURCE");await createEmptyProject(TARGET,"SNAPSHOTNEW");await createEmptyProject(PRIVATE,"SNAPSHOTLEGACY");
+    const initialZip=new JSZip();initialZip.file("boards/board.dts",original,{createFolders:false});initialZip.file("private/settings.json",json,{createFolders:false});
+    const initialInput={name:"Independent snapshot source",ownership:"private",archive:{name:"snapshot-source.zip",contentBase64:await initialZip.generateAsync({type:"base64"})},sourceConfiguration:{entryFile:"boards/board.dts",overlayOrder:[],buildInputs:{includeSearchPaths:[],defines:{}}}};
+    const initialPreview=await post<{item:ConfigSetImportPreview}>(`${importPath(SOURCE)}/preview`,initialInput);expect(initialPreview.status,initialPreview.bodyText).toBe(200);
+    const initialApplied=await post<{item:ConfigSetImportResult}>(`${importPath(SOURCE)}/apply`,{...initialInput,proofToken:initialPreview.body.item.proofToken,reason:"Independent source for snapshot recovery",clientMutationId:"snapshot-source-seed"});expect(initialApplied.status,initialApplied.bodyText).toBe(200);const setId=initialApplied.body.item.configSetId;
     const created=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name:"Portable snapshot defaults",sourceName:"defaults.dtsi",content:'/ { reusable { status = "okay"; }; };',changeDescription:"Exact portable source"});expect(created.status,created.bodyText).toBe(201);
     const id=created.body.item.resourceId;
     const publicationPreview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${id}/publication-preview`,{expectedRevision:1});expect(publicationPreview.status,publicationPreview.bodyText).toBe(201);
@@ -143,6 +191,8 @@ describe("complete configuration package through the actual API role",()=>{
     const imported=await post<{item:ConfigSetImportResult}>(`${importPath(TARGET)}/apply`,{...input,proofToken:importPreview.body.item.proofToken,reason:"Import frozen source",clientMutationId:"snapshot-package-import"});expect(imported.status,imported.bodyText).toBe(200);
     const targetSet=imported.body.item.configSetId;
     const savedBindings=await listCatalogBindingRowsForProject(api,auth,{projectId:TARGET});expect(savedBindings).toHaveLength(1);
+    const historyPath=`/api/v2/projects/${TARGET}/parameter-bindings/${savedBindings[0]!.id}/change-history`;
+    const originalHistory=await requestJson<{items:Array<{id:string}>}>(server(),historyPath);expect(originalHistory.status,originalHistory.bodyText).toBe(200);
     const gate=await evaluateReleaseReadiness(api,auth,{configSetId:targetSet},{objectStore:storage});expect(gate.canCreateBaseline,JSON.stringify(gate)).toBe(true);
     const baseline=await createBaseline(api,auth,{configSetId:targetSet,name:"Imported shared source snapshot",gateToken:gate.gateToken,acknowledgedWarningIds:gate.warnings.filter(row=>row.acknowledgementRequired).map(row=>row.id)},{},{objectStore:storage});
     const targetExport=await requestJson<ExportConfigSetResult>(server(),`/api/v1/projects/${TARGET}/config-sets/${targetSet}/export`);expect(targetExport.status,targetExport.bodyText).toBe(200);
@@ -153,9 +203,22 @@ describe("complete configuration package through the actual API role",()=>{
     const candidate=await post<{item:{id:string}}>(`/api/v1/projects/${TARGET}/parameter-file-candidates`,{fileId:root.fileId,fileName:root.fileName,intent:"source_revision",contentBase64:Buffer.from(after).toString("base64"),expectedCurrentVersionId:rootVersion,expectedConfigRevisionId:imported.body.item.configRevisionId,clientMutationId:"imported-snapshot-edit"});expect(candidate.status,candidate.bodyText).toBe(201);
     const sourcePreview=await requestJson<{item:SourceRevisionPreview}>(server(),`/api/v1/projects/${TARGET}/parameter-file-candidates/${candidate.body.item.id}/source-preview`);expect(sourcePreview.status,sourcePreview.bodyText).toBe(200);
     expect((await post(`/api/v1/projects/${TARGET}/parameter-file-candidates/${candidate.body.item.id}/source-apply`,{expectedCurrentVersionId:rootVersion,expectedProofToken:sourcePreview.body.item.proofToken,reason:"Later private value",clientMutationId:"imported-snapshot-edit-apply"})).status).toBe(200);
+    const editedHistory=await requestJson<{items:Array<{id:string}>}>(server(),historyPath);expect(editedHistory.status,editedHistory.bodyText).toBe(200);
+    expect(editedHistory.body.items.length).toBeGreaterThan(originalHistory.body.items.length);
+    const nextDraft=await post<{item:{members:{id:string;sourceName:string;content:string}[]}}>(`/api/v2/shared-dtsi/${id}/draft`,{baseVersionId:published.body.item.id});expect(nextDraft.status,nextDraft.bodyText).toBe(201);
+    const changed=await requestJson(server(),`/api/v2/shared-dtsi/${id}/draft`,{method:"PUT",body:JSON.stringify({name:"Portable snapshot defaults",members:nextDraft.body.item.members.map(member=>({...member,content:member.content.replace("okay","disabled")})),expectedRevision:1,changeDescription:"Later independently published defaults"})});expect(changed.status,changed.bodyText).toBe(200);
+    const nextPreview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${id}/publication-preview`,{expectedRevision:2});expect(nextPreview.status,nextPreview.bodyText).toBe(201);
+    const nextPublished=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${id}/publications`,{previewId:nextPreview.body.item.id,idempotencyKey:"snapshot-package-successor"});expect(nextPublished.status,nextPublished.bodyText).toBe(201);
+    const additionPath=`/api/v1/projects/${TARGET}/config-sets/${targetSet}/member-addition`;
+    const upgrade={...reference,sharedReference:{...reference.sharedReference,versionId:nextPublished.body.item.id,replaceVersionId:published.body.item.id}};
+    const upgradePreview=await post<{item:{proofToken:string}}>(`${additionPath}/preview`,upgrade);expect(upgradePreview.status,upgradePreview.bodyText).toBe(200);
+    const upgraded=await post(`${additionPath}/apply`,{...upgrade,proofToken:upgradePreview.body.item.proofToken,reason:"Explicitly switch imported exact shared version",clientMutationId:"imported-snapshot-shared-switch"});expect(upgraded.status,upgraded.bodyText).toBe(200);
     const preview=await requestJson<{item:RestorePreviewResult}>(server(),`/api/v1/projects/${TARGET}/baselines/${baseline.id}/restore-preview`);expect(preview.status,preview.bodyText).toBe(200);expect(preview.body.item.canonical?.canRestore).toBe(true);
     const restored=await post(`/api/v1/projects/${TARGET}/baselines/${baseline.id}/rollback`,{proofToken:preview.body.item.canonical!.proofToken,sourceConfigRevisionId:imported.body.item.configRevisionId,reason:"Restore imported source snapshot",confirmCompositionChanges:true,clientMutationId:"imported-snapshot-restore"});expect(restored.status,restored.bodyText).toBe(200);
     expect((await listCatalogBindingRowsForProject(api,auth,{projectId:TARGET})).map(row=>({id:row.id,rawValue:row.rawValue}))).toEqual(savedBindings.map(row=>({id:row.id,rawValue:row.rawValue})));
+    const restoredHistory=await requestJson<{items:Array<{id:string}>}>(server(),historyPath);expect(restoredHistory.status,restoredHistory.bodyText).toBe(200);
+    expect(restoredHistory.body.items.length).toBeGreaterThan(originalHistory.body.items.length);expect(restoredHistory.body.items).toEqual(expect.arrayContaining(originalHistory.body.items));
+    expect(restoredHistory.body.items).toEqual(expect.arrayContaining(editedHistory.body.items));
     const restoredExport=await requestJson<ExportConfigSetResult>(server(),`/api/v1/projects/${TARGET}/config-sets/${targetSet}/export`);expect(restoredExport.status,restoredExport.bodyText).toBe(200);expect(restoredExport.body.files).toEqual(targetExport.body.files);expect(restoredExport.body.manifest.sourcePackage?.sharedClosure).toEqual(targetExport.body.manifest.sourcePackage?.sharedClosure);
     const sharedMember=(await requestJson<{items:Array<{fileId:string;sharedReference?:unknown}>}>(server(),`/api/v1/projects/${TARGET}/config-sets/${targetSet}/files`)).body.items.find(row=>row.sharedReference)!;
     expect((await post(`/api/v1/projects/${TARGET}/parameter-files/${sharedMember.fileId}/versions`,{contentBase64:Buffer.from('/ { forged {}; };').toString("base64")})).status).toBe(409);
@@ -163,7 +226,7 @@ describe("complete configuration package through the actual API role",()=>{
     // A historical producer without the complete committed import receipt must
     // remain refused; current filenames/references cannot reconstruct authority.
     await db.query(`create function omit_import_composition() returns trigger language plpgsql as $$begin
-      if new.kind='config-set' and new.action='imported' and new.project_id='package-private' then new.metadata=new.metadata-'sharedComposition'; end if; return new; end $$`);
+      if new.kind='config-set' and new.action='imported' and new.project_id='package-snapshot-legacy' then new.metadata=new.metadata-'sharedComposition'; end if; return new; end $$`);
     await db.query("create trigger omit_import_composition before insert on public.audit_events for each row execute function omit_import_composition()");
     let legacy:ConfigSetImportResult;
     try {

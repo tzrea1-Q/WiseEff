@@ -24,17 +24,21 @@ export const configSetSourcePackageSchema = z.object({
 export type ConfigSetSourcePackage = z.infer<typeof configSetSourcePackageSchema>;
 const importFields = {
   name: z.string().trim().min(1).max(120), ownership: z.enum(["reuse", "private"]),
+  sourceConfiguration: z.object({ entryFile: path.nullable(), overlayOrder: z.array(path).max(128), buildInputs: dtsBuildInputsSchema }).strict().optional(),
   archive: z.object({ name: z.string().max(240), contentBase64: z.string().min(1).max(Math.ceil(configSetPackageLimits.maxArchiveBytes / 3) * 4).regex(/^[A-Za-z0-9+/]+={0,2}$/u) }).strict()
 };
 export const configSetImportPreviewBodySchema = z.object(importFields).strict();
 export const configSetImportApplyBodySchema = z.object({ ...importFields, proofToken: z.string().regex(/^[a-f0-9]{64}$/u),
   reason: z.string().trim().min(1).max(2000), clientMutationId: z.string().trim().min(1).max(160) }).strict();
-export const configSetImportPreviewResponseSchema = z.object({ item: z.object({ proofToken: z.string(), name: z.string(), ownership: z.enum(["reuse", "private"]),
+const importReadySchema = z.object({ proofToken: z.string(), name: z.string(), ownership: z.enum(["reuse", "private"]),
   entryFile: z.string().nullable(), members: z.array(z.object({ sourceName: z.string(), format: z.enum(["dts", "json"]), ownership: z.enum(["shared", "private"]) })),
   sharedVersions: z.array(z.object({ name: z.string(), version: z.number(), mountPath: z.string() })),
-  nodeCount: z.number(), diagnostics: z.array(z.object({ severity: z.enum(["warning", "error"]), message: z.string() })) }) });
+  nodeCount: z.number(), diagnostics: z.array(z.object({ severity: z.enum(["warning", "error"]), message: z.string() })) });
+const sourceSelectionSchema = z.object({ kind: z.literal("source-selection"), members: z.array(z.object({ sourceName: z.string(), format: z.enum(["dts", "json"]) })) });
+export const configSetImportPreviewResponseSchema = z.object({ item: z.union([importReadySchema, sourceSelectionSchema]) });
 export const configSetImportApplyResponseSchema = z.object({ item: z.object({ configSetId: z.string(), configRevisionId: z.string(),
   fileIds: z.array(z.string()), ownership: z.enum(["reuse", "private"]) }) });
 export type ConfigSetImportBody = z.infer<typeof configSetImportPreviewBodySchema>;
-export type ConfigSetImportPreview = z.infer<typeof configSetImportPreviewResponseSchema>["item"];
+export type ConfigSetImportPreview = z.infer<typeof importReadySchema>;
+export type ConfigSetImportInspection = z.infer<typeof configSetImportPreviewResponseSchema>["item"];
 export type ConfigSetImportResult = z.infer<typeof configSetImportApplyResponseSchema>["item"];

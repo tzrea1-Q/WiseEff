@@ -1,6 +1,8 @@
 import "./helpers/loadAcceptanceEnvironment";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, dirname, basename } from "node:path";
 import JSZip from "jszip";
 import { expect } from "playwright/test";
 import { test, catalogAppUrl } from "./helpers/catalogFixtureRuntime";
@@ -12,6 +14,46 @@ import type { ExportConfigSetResult } from "../../server/modules/parameter-files
 import type { ThemePreference } from "../../src/application/theme/themeController";
 
 test.use({catalogRuntimeScope:import.meta.url,catalogRuntimeDatabaseUrl:process.env.TEST_DATABASE_URL});
+
+test("imports a raw project source directory with an explicit entry and frozen build inputs",async({page,catalogAcceptanceRuntime},testInfo)=>{
+  void catalogAcceptanceRuntime;test.setTimeout(180_000);
+  await page.setViewportSize({width:1440,height:900});
+  const failures:string[]=[];page.on("pageerror",error=>failures.push(error.message));page.on("response",response=>{if(response.status()>=500)failures.push(`${response.status()} ${new URL(response.url()).pathname}`);});
+  await signInCatalogActor(page,"org-admin","/parameter-admin/sources");await dismissXiaozeHint(page);
+  const post=async(path:string,data:unknown)=>{const response=await catalogJson(page.request,"POST",path,{data});expect(response.status,JSON.stringify(response.body)).toBeGreaterThanOrEqual(200);expect(response.status,JSON.stringify(response.body)).toBeLessThan(300);return response.body as {item:Record<string,string>};};
+  const project=`raw-browser-${Date.now().toString(36)}`,code="RAWINTAKE";
+  await post("/api/v1/parameters/admin/projects",{id:project,name:code,code});
+  expect((await catalogJson(page.request,"PUT",`/api/v1/parameters/projects/${project}/initialization/draft`,{data:{projectName:code,projectCode:code,ownerUserId:acceptanceCast.acceptanceAdmin.userId,sourceProjectIds:[],primarySourceProjectId:null,supplementSourceProjectIds:[],selectedModuleIds:[],selectedRisks:[],selectedSourceBindingIds:[],bindingSnapshots:[],emptyLibrary:true,notes:"Raw source intake after normal initialization"}})).status).toBe(200);
+  const submitted=await post(`/api/v1/parameters/projects/${project}/initialization/submit`,{});await post(`/api/v1/parameters/admin/initialization-reviews/${submitted.item.id}/approve`,{});
+  const directory=await mkdtemp(join(tmpdir(),"wiseeff-raw-project-")),root=basename(directory);
+  const originals=[{name:"boards/board.dts",content:'\uFEFF/dts-v1/;\r\n#include <limits.h>\r\n#include "../common/devices.dtsi"\r\n/ { model = "Raw project"; compatible = "unknown,raw-board"; };\r\n'},
+    {name:"include/limits.h",content:"#define LIMIT 12\n"},{name:"common/devices.dtsi",content:'/ { raw: raw { compatible = "unknown,raw-driver"; limit = <LIMIT>; status = "disabled"; }; };\n'},
+    {name:"overlays/project.dtsi",content:'&raw { limit = <23>; status = "okay"; };\n'},{name:"private/options.json",content:'\uFEFF{\r\n  "original": true\r\n}\r\n'}];
+  try {
+    for(const file of originals){const path=join(directory,file.name);await mkdir(dirname(path),{recursive:true});await writeFile(path,file.content);}
+    await page.goto(catalogAppUrl(`/parameter-admin/projects/${project}/configuration`));await page.getByRole("button",{name:"配置",exact:true}).click();await page.getByRole("menuitem",{name:"导入完整配置…",exact:true}).click();
+    const dialog=page.getByRole("dialog",{name:"导入完整配置",exact:true});
+    await dialog.getByLabel("源码目录",{exact:true}).setInputFiles(directory);
+    await dialog.getByRole("textbox",{name:"配置名称",exact:true}).fill("原始项目源码");
+    await dialog.getByRole("button",{name:"预览导入",exact:true}).click();await expect(dialog.getByRole("combobox",{name:"入口 DTS",exact:true})).toBeVisible();
+    await selectControlOption(dialog.getByRole("combobox",{name:"入口 DTS",exact:true}),`${root}/boards/board.dts`);
+    await dialog.getByRole("checkbox",{name:`覆盖文件 ${root}/overlays/project.dtsi`,exact:true}).check();
+    await dialog.locator(".review-dialog__body").evaluate(element=>{element.scrollTop=0;});await page.screenshot({path:testInfo.outputPath("raw-project-entry-overlay-1440.png")});
+    await dialog.getByText("构建设置",{exact:true}).click();await dialog.getByLabel("include 搜索目录（每行一个）",{exact:true}).fill(`${root}/include`);
+    await dialog.getByRole("button",{name:"预览导入",exact:true}).focus();await page.keyboard.press("Enter");
+    await expect(dialog.getByLabel("配置导入预览")).toContainText("项目私有");await dialog.getByRole("textbox",{name:"导入原因",exact:true}).fill("保留项目原始目录与有序覆盖");
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){await page.setViewportSize(viewport);await assertNoPageOverflow(page);await expect(dialog.getByRole("button",{name:"确认导入",exact:true})).toBeInViewport({ratio:1});expect(await dialog.evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);await page.screenshot({path:testInfo.outputPath(`raw-project-preview-${viewport.width}.png`)});}
+    await dialog.getByLabel("构建宏（每行 NAME=VALUE）",{exact:true}).fill("EXTRA=1");await expect(dialog.getByRole("button",{name:"确认导入",exact:true})).toHaveCount(0);
+    await dialog.getByRole("button",{name:"预览导入",exact:true}).click();await expect(dialog.getByRole("button",{name:"确认导入",exact:true})).toBeEnabled();
+    const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===`/api/v1/projects/${project}/config-set-import/apply`);
+    await dialog.getByRole("button",{name:"确认导入",exact:true}).focus();await page.keyboard.press("Enter");const applied=await applying;expect(applied.status(),await applied.text()).toBe(200);const result=(await applied.json()).item as ConfigSetImportResult;await expect(dialog).toHaveCount(0);
+    const exported=await catalogJson(page.request,"GET",`/api/v1/projects/${project}/config-sets/${result.configSetId}/export`);expect(exported.status).toBe(200);const actual=exported.body as ExportConfigSetResult;
+    expect(actual.files.map(({name,content})=>({name,content})).sort((a,b)=>a.name.localeCompare(b.name))).toEqual(originals.map(file=>({...file,name:`${root}/${file.name}`})).sort((a,b)=>a.name.localeCompare(b.name)));
+    expect(actual.manifest.sourcePackage?.preprocessing?.schemaVersion).toBe("dts-cpp/v1");expect(actual.manifest.sourcePackage?.sharedClosure).toEqual([]);
+    await page.getByRole("tab",{name:"生效配置",exact:true}).click();await page.getByRole("treeitem",{name:"节点 /raw",exact:true}).click();await expect(page.getByLabel("limit 最终值",{exact:true})).toHaveText("<23>");
+    await page.screenshot({path:testInfo.outputPath("raw-project-effective-1280.png")});expect(failures).toEqual([]);
+  }finally{await rm(directory,{recursive:true,force:true});}
+});
 
 test("#1427 exports original complete sources and imports them into a normally approved empty project",async({page,catalogAcceptanceRuntime},testInfo)=>{
   test.setTimeout(180_000);void catalogAcceptanceRuntime;

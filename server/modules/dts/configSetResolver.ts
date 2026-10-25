@@ -33,6 +33,8 @@ export type DtsConfigSetInput = {
   preprocessing?: DtsPreprocessingReceipt | null;
   /** Server-owned result prepared asynchronously from these exact frozen inputs. */
   preparedSources?: PreparedDtsSources;
+  /** Library inspection only: exact frozen external requirements, never project context. */
+  libraryExternalReferences?: ReadonlySet<string>;
 };
 
 export type DtsResolutionDiagnosticCode =
@@ -150,6 +152,7 @@ interface Builder {
 }
 
 interface WalkContext {
+  libraryExternalReferences?: ReadonlySet<string>;
   fileForOffset: (offset: number) => string;
   originForSpan: (span: { start: number; end: number }) => DtsSourceChainEntry["origin"];
   visitEntry: () => void;
@@ -453,7 +456,7 @@ function walkNode(ctx: WalkContext, cst: DtsNodeCst, parentLocator: string): voi
     const path=dtsReferencePath(cst.refTarget);
     const offset = ctx.originForSpan({ start: cst.span.start, end: cst.span.start })?.start;
     const target = path!==null?dtsActualPathTarget(ctx.byLocator,path.slice(1)):ctx.byLabel.get(cst.refTarget);
-    if(path!==null && (!target || target.deleted)) {
+    if(path!==null && (!target || target.deleted) && !ctx.libraryExternalReferences?.has(`&${cst.refTarget}`)) {
       ctx.diagnostics.push({code:"target-unresolved",severity:"error",fileName,offset,
         message:`Overlay target "&${cst.refTarget}" is not defined in the uploaded file set`});
       return;
@@ -474,7 +477,7 @@ function walkNode(ctx: WalkContext, cst: DtsNodeCst, parentLocator: string): voi
         message: `Overlay target "&${cst.refTarget}" is not defined in the uploaded file set; its properties are attached to a synthetic anchor node so parameters stay manageable (full-tree resolution unavailable until the definition is provided)`,
       });
       node = ensureNode(ctx, cst.refTarget, cst.refTarget, undefined, fileName,true);
-      registerLabel(ctx, cst.refTarget, node, fileName);
+      if(path===null)registerLabel(ctx, cst.refTarget, node, fileName);
     } else {
       node = target;
     }
@@ -531,6 +534,7 @@ function ingestDocument(
   }
 
   const ctx: WalkContext = {
+    libraryExternalReferences:input.libraryExternalReferences,
     fileForOffset: (offset) => preprocessing
       ? preprocessing.documents.get(fileName)!.originForSpan({ start: offset, end: offset })?.sourceName ?? fileName
       : resolveSegment(builder.segments, offset),
@@ -633,7 +637,7 @@ export function resolveDtsConfigSet(input: DtsConfigSetInput): DtsConfigSetResul
       if(node.deleted || property.deleted)continue;
       for(const token of lexDts(property.rawText))if(token.kind==="path-ref") {
         const target=dtsActualPathTarget(byLocator,dtsReferencePath(token.value)!.slice(1));
-        if(!target || target.deleted)diagnostics.push({code:"target-unresolved",severity:"error",fileName:property.sourceChain.at(-1)!.fileName,
+        if((!target || target.deleted)&&!input.libraryExternalReferences?.has(`&${token.value}`))diagnostics.push({code:"target-unresolved",severity:"error",fileName:property.sourceChain.at(-1)!.fileName,
           message:`Property reference "&${token.value}" is not defined in the uploaded file set`});
       }
     }
