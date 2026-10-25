@@ -3083,9 +3083,11 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await expect(versions.getByRole("table",{name:"快照中的文件版本",exact:true})).toContainText(sourceName);
     await versions.getByRole("button",{name:"对比当前配置",exact:true}).click();
     await expect(page).toHaveURL(/sourceMode=unified-diff/);
-    await expect(page.getByLabel("统一差异对比")).toBeVisible();
     await openWorkbenchPanel(page,"release");
     await expect(versions.getByRole("region",{name:"配置版本对比结果",exact:true})).toContainText(sourceName);
+    await versions.getByLabel("文件差异").getByRole("button").filter({hasText:sourceName}).click();
+    await expect(page.getByLabel("统一差异对比")).toBeVisible();
+    await openWorkbenchPanel(page,"release");
     await versions.getByRole("button",{name:"恢复到此版本…",exact:true}).focus();await page.keyboard.press("Enter");
     const dialog=page.getByRole("dialog",{name:"恢复版本确认",exact:true});
     await expect(dialog).toContainText("恢复项目快照会恢复历史项目差异");
