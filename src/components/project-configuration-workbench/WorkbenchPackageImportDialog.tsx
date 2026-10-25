@@ -21,9 +21,9 @@ export function WorkbenchPackageImportDialog({ projectId, onDismiss, onApplied, 
   const [sourceFiles,setSourceFiles]=useState<Array<{sourceName:string;format:"dts"|"json"}>|null>(null);
   const [entryFile,setEntryFile]=useState(""),[overlays,setOverlays]=useState<string[]>([]),[includePaths,setIncludePaths]=useState(""),[defines,setDefines]=useState("");
   const [diagnostics, setDiagnostics] = useState<string[]>([]), [pending, setPending] = useState<"file" | "preview" | "apply" | null>(null);
-  const first = useRef<HTMLInputElement>(null), directoryInput=useRef<HTMLInputElement>(null), generation = useRef(0);
+  const first = useRef<HTMLInputElement>(null), directoryInput=useRef<HTMLInputElement>(null), generation = useRef(0), fileGeneration=useRef(0);
   const mutation = useRef<{ proofToken: string; reason: string; clientMutationId: string } | null>(null);
-  function invalidate() { generation.current += 1; setPending(null); setPreview(null); setError(""); setDiagnostics([]); mutation.current = null; }
+  function invalidate() { generation.current += 1; setPending(current=>current==="file"?current:null); setPreview(null); setError(""); setDiagnostics([]); mutation.current = null; }
   function showError(cause: unknown, unknownResult = false) {
     const message = presentError(cause, unknownResult ? "文件和输入已保留。" : "配置预览失败，文件和输入已保留。");
     setError(unknownResult ? `未能确认导入结果，请重试同一操作。${message}` : message);
@@ -31,23 +31,23 @@ export function WorkbenchPackageImportDialog({ projectId, onDismiss, onApplied, 
     setDiagnostics(Array.isArray(rows) ? rows.flatMap(row => row && typeof row === "object" && "message" in row && typeof row.message === "string" ? [row.message] : []) : []);
   }
   async function chooseFiles(files: FileList | null) {
-    invalidate(); setArchive(null);setSourceFiles(null);setEntryFile("");setOverlays([]);setIncludePaths("");setDefines("");
+    invalidate(); const selected=++fileGeneration.current; setPending(null);setArchive(null);setSourceFiles(null);setEntryFile("");setOverlays([]);setIncludePaths("");setDefines("");
     if (!files?.length) return;
     const selectedFiles=Array.from(files),zipInput=selectedFiles.length===1&&selectedFiles[0]!.name.toLowerCase().endsWith(".zip");
     if (zipInput?selectedFiles[0]!.size>configSetPackageLimits.maxArchiveBytes:selectedFiles.length>configSetPackageLimits.maxFiles||selectedFiles.some(file=>file.size>configSetPackageLimits.maxFileBytes||!/\.(dts|dtsi|dtso|h|hpp|json)$/u.test(file.name))||selectedFiles.reduce((sum,file)=>sum+file.size,0)>configSetPackageLimits.maxTotalBytes) {setError("请选择一个不超过 17 MiB 的 ZIP，或最多 128 个 DTS、DTSI、头文件及 JSON（单文件 2 MiB，合计 16 MiB）。");return;}
-    setPending("file"); const selected = generation.current;
+    setPending("file");
     try {
       let bytes:Uint8Array;
       if(zipInput)bytes=new Uint8Array(await selectedFiles[0]!.arrayBuffer());
       else {const zip=new JSZip(),paths=new Set<string>();for(const file of selectedFiles){const path=file.webkitRelativePath||file.name,key=path.normalize("NFC");if(paths.has(key))throw new Error(`${path}：重复文件路径。`);paths.add(key);zip.file(path,await file.arrayBuffer(),{createFolders:false});}bytes=await zip.generateAsync({type:"uint8array"});}
       let binary = "";
       for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
-      if (selected !== generation.current) return;
+      if (selected !== fileGeneration.current) return;
       const sourceName=zipInput?selectedFiles[0]!.name:"project-sources.zip";
       setArchive({ name: sourceName, contentBase64: btoa(binary) });
       setName(current => current || (zipInput?sourceName.replace(/(?:-export)?\.zip$/iu, ""):selectedFiles[0]!.webkitRelativePath.split("/")[0]||"项目配置"));
-    } catch (cause) { if (selected === generation.current) showError(cause); }
-    finally { if (selected === generation.current) setPending(null); }
+    } catch (cause) { if (selected === fileGeneration.current) showError(cause); }
+    finally { if (selected === fileGeneration.current) setPending(null); }
   }
   async function inspect() {
     if (!archive || !name.trim() || pending) return;

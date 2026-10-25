@@ -1,10 +1,30 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { WorkbenchPackageImportDialog } from "./WorkbenchPackageImportDialog";
 import type { ConfigSetImportPreview } from "@wiseeff/dto-schemas";
 
 afterEach(cleanup);
+it.each(["archive.zip","board.dts"])("keeps the selected %s read when the configuration name and ownership change",async(fileName)=>{
+  const user=userEvent.setup(),client={preview:vi.fn().mockResolvedValue(result),apply:vi.fn()};
+  let complete!:(bytes:ArrayBuffer)=>void;
+  const file=new File(["original source"],fileName);
+  Object.defineProperty(file,"arrayBuffer",{value:()=>new Promise<ArrayBuffer>(resolve=>{complete=resolve;})});
+  Object.defineProperty(file,"webkitRelativePath",{value:fileName.endsWith(".zip")?"":"project/board.dts"});
+  render(<WorkbenchPackageImportDialog projectId="project" client={client} onDismiss={vi.fn()} onApplied={vi.fn()}/>);
+  await user.upload(screen.getByLabelText("配置包"),file);
+  await user.type(screen.getByRole("textbox",{name:"配置名称"}),"Chosen during file reading");
+  await user.click(screen.getByRole("combobox",{name:"源码归属"}));await user.click(screen.getByRole("option",{name:"全部作为项目私有源码"}));
+  expect(screen.getByRole("button",{name:"预览导入"})).toBeDisabled();
+  await act(async()=>{complete(new Uint8Array(new TextEncoder().encode("original source")).buffer);});
+  await waitFor(()=>expect(screen.getByRole("button",{name:"预览导入"})).toBeEnabled());
+  await user.click(screen.getByRole("button",{name:"预览导入"}));
+  expect(client.preview).toHaveBeenCalledWith("project",expect.objectContaining({name:"Chosen during file reading",ownership:"private",archive:expect.objectContaining({name:fileName.endsWith(".zip")?fileName:"project-sources.zip",contentBase64:expect.any(String)})}));
+  await screen.findByRole("button",{name:"确认导入"});
+  await user.type(screen.getByRole("textbox",{name:"配置名称"})," changed");
+  expect(screen.queryByRole("button",{name:"确认导入"})).not.toBeInTheDocument();
+});
+
 it("selects an explicit raw source root and invalidates proof when overlay order changes",async()=>{
   const user=userEvent.setup();
   const client={preview:vi.fn().mockResolvedValueOnce({kind:"source-selection",members:[{sourceName:"board.dts",format:"dts"},{sourceName:"first.dtsi",format:"dts"},{sourceName:"last.dtsi",format:"dts"}]}).mockResolvedValue(result),apply:vi.fn()};

@@ -275,12 +275,17 @@ it("copies repeated namespaced and literal-underscore aliases from two source pr
   const targetId = "init-paths-target", copy = await pending(targetId, sourceIds[0]!, [sourceIds[1]!]);
   const approved = await api(1, copy.approve, {}); expect(approved.status, approved.bodyText).toBe(200);
   const files = await api<{ items: Array<{ id: string; fileName: string }> }>(0, `/api/v1/projects/${targetId}/parameter-files`);
-  expect(files.body.items).toHaveLength(6); expect(new Set(files.body.items.map(row => row.fileName)).size).toBe(6);
+  expect(files.body.items).toHaveLength(6); expect(new Set(files.body.items.map(row => row.id)).size).toBe(6);
+  expect(files.body.items.map(row=>row.fileName).sort()).toEqual(["a/b.dtsi","a/b.dtsi","a__b.dtsi","a__b.dtsi","board.dts","board.dts"]);
   const sets = await api<{ items: Array<{ id: string }> }>(0, `/api/v1/projects/${targetId}/config-sets`);
-  const copiedSets = [];
+  const copiedSets = [],copiedFileIds:string[]=[];
   for (const set of sets.body.items) {
-    const members = await api<{ items: unknown[] }>(0, `/api/v1/projects/${targetId}/config-sets/${set.id}/files`);
+    const members = await api<{ items: Array<{fileId:string;fileName:string}> }>(0, `/api/v1/projects/${targetId}/config-sets/${set.id}/files`);
     if (!members.body.items.length) continue;
+    expect(members.body.items.map(row=>row.fileName).sort()).toEqual(["a/b.dtsi","a__b.dtsi","board.dts"]);
+    expect(new Set(members.body.items.map(row=>row.fileId)).size).toBe(3);
+    expect(members.body.items.every(member=>files.body.items.some(file=>file.id===member.fileId && file.fileName===member.fileName))).toBe(true);
+    copiedFileIds.push(...members.body.items.map(member=>member.fileId));
     const exported = await api<{ files: Array<{ name: string; content: string }> }>(0, `/api/v1/projects/${targetId}/config-sets/${set.id}/export`);
     expect(exported.status, exported.bodyText).toBe(200);
     expect(exported.body.files).toContainEqual(expect.objectContaining({ name: "a/b.dtsi", content: '/ { path_spelling { retained = <1>; }; };\n' }));
@@ -288,4 +293,5 @@ it("copies repeated namespaced and literal-underscore aliases from two source pr
     copiedSets.push(set.id);
   }
   expect(copiedSets).toHaveLength(2);
+  expect(copiedFileIds.sort()).toEqual(files.body.items.map(file=>file.id).sort());
 });
