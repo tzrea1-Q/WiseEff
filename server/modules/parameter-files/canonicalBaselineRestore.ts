@@ -174,7 +174,8 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     return !saved || saved.versionId !== resource.versionId || saved.digest !== resource.digest || saved.mountPath !== resource.mountPath
       || saved.sources.length !== resource.item.members.length || resource.item.members.some((upstream) => !members.some((source) =>
         source.sharedReference?.resourceId === resource.resourceId && source.sharedReference.memberId === upstream.id
-        && source.sourceName === mountedSharedPath(resource.mountPath,upstream.sourceName) && source.checksum === upstream.checksum && source.sizeBytes === upstream.sizeBytes));
+        && source.sourceName === mountedSharedPath(resource.mountPath,upstream.sourceName)
+        && source.checksum.replace(/^sha256:/,"") === upstream.checksum.replace(/^sha256:/,"") && source.sizeBytes === upstream.sizeBytes));
   })) conflict("历史共享闭包与固定发布版本不一致，无法恢复。");
   const beforeReferences = (await tx.query<{id:string;resourceId:string;versionId:string;mountPath:string;direct:boolean}>(`select id,resource_id as "resourceId",revision_id as "versionId",mount_path as "mountPath",is_direct as direct
     from public.project_shared_dtsi_references where organization_id=$1 and project_id=$2 and config_set_id=$3 order by id`,[parameterOrganizationId(auth),input.projectId,configSetId])).rows;
