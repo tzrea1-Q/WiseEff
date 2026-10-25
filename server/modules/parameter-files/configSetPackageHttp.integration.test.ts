@@ -30,6 +30,7 @@ import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
 import { createBaseline, type RestorePreviewResult } from "./baselineService";
 import { evaluateReleaseReadiness } from "./releaseReadinessService";
 import type { SourceRevisionPreview } from "./sourceRevisionService";
+import { registerUserRoutes } from "../users/routes";
 
 const ORG="org-package", ADMIN="user-package", SOURCE="package-source", TARGET="package-target", PRIVATE="package-private", FAILED="package-failed";
 const auth=makeTestAuthContext({organizationId:ORG,userId:ADMIN,roles:[{roleId:"admin",projectId:null}]});
@@ -44,6 +45,7 @@ describe("complete configuration package through the actual API role",()=>{
   function server(principal=auth,objects:ObjectStore=storage) {const router=createRouter();
     const options={db:api,objectStore:objects,getCurrentAuthContext:()=>principal,refusalAuditSink:createTrustedRefusalAuditSink(db)};
     registerParameterFileRoutes(router,options);registerSharedDtsiRoutes(router,options);registerCatalogProjectValueConsumerRoutes(router,options);registerParameterRoutes(router,options);registerParameterTopologyRoutes(router,options);
+    registerUserRoutes(router,options);
     return createHttpServer(router);}
   const post=<T,>(path:string,body:unknown,principal=auth,objects:ObjectStore=storage)=>requestJson<T>(server(principal,objects),path,{method:"POST",body:JSON.stringify(body)});
   const importPath=(projectId:string)=>`/api/v1/projects/${projectId}/config-set-import`;
@@ -170,9 +172,16 @@ describe("complete configuration package through the actual API role",()=>{
     expect(newBindings.every(row=>oldBindings.every(old=>old.id!==row.id))).toBe(true);
   },120_000);
 
-  it("restores shared snapshots after complete package import without losing private values or source identity",async()=>{
-    const SOURCE="package-snapshot-source",TARGET="package-snapshot-target",PRIVATE="package-snapshot-legacy";
-    await createEmptyProject(SOURCE,"SNAPSHOTSOURCE");await createEmptyProject(TARGET,"SNAPSHOTNEW");await createEmptyProject(PRIVATE,"SNAPSHOTLEGACY");
+  it.each([false,true])("restores shared snapshots after complete package import without losing private values or source identity (deleted importer=%s)",async(deletedImporter)=>{
+    const suffix=deletedImporter?"-deleted":"";
+    const SOURCE=`package-snapshot-source${suffix}`,TARGET=`package-snapshot-target${suffix}`,PRIVATE=`package-snapshot-legacy${suffix}`;
+    const codeSuffix=deletedImporter?"D":"";
+    await createEmptyProject(SOURCE,`SNAPSHOTSOURCE${codeSuffix}`);await createEmptyProject(TARGET,`SNAPSHOTNEW${codeSuffix}`);await createEmptyProject(PRIVATE,`SNAPSHOTLEGACY${codeSuffix}`);
+    const importer=deletedImporter?makeTestAuthContext({organizationId:ORG,userId:"package-former-importer",roles:[{roleId:"admin",projectId:null}]}):auth;
+    if(deletedImporter) {
+      await db.query("insert into users(id,organization_id,name,title,is_active) values($1,$2,'Former importer','Admin',true)",[importer.user.id,ORG]);
+      await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values('package-former-importer-role',$1,$2,'admin')",[importer.user.id,ORG]);
+    }
     const initialZip=new JSZip();initialZip.file("boards/board.dts",original,{createFolders:false});initialZip.file("private/settings.json",json,{createFolders:false});
     const initialInput={name:"Independent snapshot source",ownership:"private",archive:{name:"snapshot-source.zip",contentBase64:await initialZip.generateAsync({type:"base64"})},sourceConfiguration:{entryFile:"boards/board.dts",overlayOrder:[],buildInputs:{includeSearchPaths:[],defines:{}}}};
     const initialPreview=await post<{item:ConfigSetImportPreview}>(`${importPath(SOURCE)}/preview`,initialInput);expect(initialPreview.status,initialPreview.bodyText).toBe(200);
@@ -180,15 +189,15 @@ describe("complete configuration package through the actual API role",()=>{
     const created=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name:"Portable snapshot defaults",sourceName:"defaults.dtsi",content:'/ { reusable { status = "okay"; }; };',changeDescription:"Exact portable source"});expect(created.status,created.bodyText).toBe(201);
     const id=created.body.item.resourceId;
     const publicationPreview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${id}/publication-preview`,{expectedRevision:1});expect(publicationPreview.status,publicationPreview.bodyText).toBe(201);
-    const published=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${id}/publications`,{previewId:publicationPreview.body.item.id,idempotencyKey:"snapshot-package-publication"});expect(published.status,published.bodyText).toBe(201);
+    const published=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${id}/publications`,{previewId:publicationPreview.body.item.id,idempotencyKey:`snapshot-package-publication${suffix}`});expect(published.status,published.bodyText).toBe(201);
     const reference={sharedReference:{resourceId:id,versionId:published.body.item.id,mountPath:"shared"},role:"misc",sortOrder:2};
     const addition=`/api/v1/projects/${SOURCE}/config-sets/${setId}/member-addition`;
     const checked=await post<{item:{proofToken:string}}>(`${addition}/preview`,reference);expect(checked.status,checked.bodyText).toBe(200);
     expect((await post(`${addition}/apply`,{...reference,proofToken:checked.body.item.proofToken,reason:"Portable snapshot source",clientMutationId:"snapshot-package-reference"})).status).toBe(200);
     const sourceExport=await requestJson<ExportConfigSetResult>(server(),`/api/v1/projects/${SOURCE}/config-sets/${setId}/export`);expect(sourceExport.status,sourceExport.bodyText).toBe(200);
     const input={name:"Portable snapshot",ownership:"reuse",archive:await packageArchive(sourceExport.body)};
-    const importPreview=await post<{item:ConfigSetImportPreview}>(`${importPath(TARGET)}/preview`,input);expect(importPreview.status,importPreview.bodyText).toBe(200);
-    const imported=await post<{item:ConfigSetImportResult}>(`${importPath(TARGET)}/apply`,{...input,proofToken:importPreview.body.item.proofToken,reason:"Import frozen source",clientMutationId:"snapshot-package-import"});expect(imported.status,imported.bodyText).toBe(200);
+    const importPreview=await post<{item:ConfigSetImportPreview}>(`${importPath(TARGET)}/preview`,input,importer);expect(importPreview.status,importPreview.bodyText).toBe(200);
+    const imported=await post<{item:ConfigSetImportResult}>(`${importPath(TARGET)}/apply`,{...input,proofToken:importPreview.body.item.proofToken,reason:"Import frozen source",clientMutationId:"snapshot-package-import"},importer);expect(imported.status,imported.bodyText).toBe(200);
     const targetSet=imported.body.item.configSetId;
     const savedBindings=await listCatalogBindingRowsForProject(api,auth,{projectId:TARGET});expect(savedBindings).toHaveLength(1);
     const historyPath=`/api/v2/projects/${TARGET}/parameter-bindings/${savedBindings[0]!.id}/change-history`;
@@ -208,11 +217,27 @@ describe("complete configuration package through the actual API role",()=>{
     const nextDraft=await post<{item:{members:{id:string;sourceName:string;content:string}[]}}>(`/api/v2/shared-dtsi/${id}/draft`,{baseVersionId:published.body.item.id});expect(nextDraft.status,nextDraft.bodyText).toBe(201);
     const changed=await requestJson(server(),`/api/v2/shared-dtsi/${id}/draft`,{method:"PUT",body:JSON.stringify({name:"Portable snapshot defaults",members:nextDraft.body.item.members.map(member=>({...member,content:member.content.replace("okay","disabled")})),expectedRevision:1,changeDescription:"Later independently published defaults"})});expect(changed.status,changed.bodyText).toBe(200);
     const nextPreview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${id}/publication-preview`,{expectedRevision:2});expect(nextPreview.status,nextPreview.bodyText).toBe(201);
-    const nextPublished=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${id}/publications`,{previewId:nextPreview.body.item.id,idempotencyKey:"snapshot-package-successor"});expect(nextPublished.status,nextPublished.bodyText).toBe(201);
+    const nextPublished=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${id}/publications`,{previewId:nextPreview.body.item.id,idempotencyKey:`snapshot-package-successor${suffix}`});expect(nextPublished.status,nextPublished.bodyText).toBe(201);
     const additionPath=`/api/v1/projects/${TARGET}/config-sets/${targetSet}/member-addition`;
     const upgrade={...reference,sharedReference:{...reference.sharedReference,versionId:nextPublished.body.item.id,replaceVersionId:published.body.item.id}};
     const upgradePreview=await post<{item:{proofToken:string}}>(`${additionPath}/preview`,upgrade);expect(upgradePreview.status,upgradePreview.bodyText).toBe(200);
     const upgraded=await post(`${additionPath}/apply`,{...upgrade,proofToken:upgradePreview.body.item.proofToken,reason:"Explicitly switch imported exact shared version",clientMutationId:"imported-snapshot-shared-switch"});expect(upgraded.status,upgraded.bodyText).toBe(200);
+    if(deletedImporter) {
+      const receiptQuery=`select event.actor_type,event.actor_user_id,revision.created_by_user_id,revision.initiator_type,
+        event.historical_attribution as audit_history,revision.historical_attribution as revision_history
+        from audit_events event join dts_config_revisions revision on revision.id=event.metadata->'result'->>'configRevisionId'
+        where event.kind='config-set' and event.action='imported' and event.target_id=$1`;
+      const before=(await db.query<Record<string,unknown>>(receiptQuery,[targetSet])).rows[0]!;
+      expect(before).toMatchObject({actor_type:"user",actor_user_id:importer.user.id,created_by_user_id:importer.user.id,initiator_type:"user"});
+      expect(before.audit_history).toMatchObject({actors:{actor_user_id:{id:importer.user.id,source:"recorded"}}});
+      expect(before.revision_history).toMatchObject({actors:{created_by_user_id:{id:importer.user.id,source:"recorded"}}});
+      const sharedVersion=(await db.query<{file_version_id:string}>("select file_version_id from dts_config_revision_members where config_revision_id=$1 and shared_reference is not null limit 1",[imported.body.item.configRevisionId])).rows[0]!.file_version_id;
+      await expect(api.query("update project_parameter_file_versions set created_by_user_id=null where id=$1",[sharedVersion])).rejects.toMatchObject({code:"55000"});
+      await expect(api.query("update project_parameter_file_versions set checksum='forged' where id=$1",[sharedVersion])).rejects.toMatchObject({code:"55000"});
+      const deleted=await requestJson(server(),`/api/v1/users/${importer.user.id}`,{method:"DELETE"});expect(deleted.status,deleted.bodyText).toBe(204);
+      expect((await db.query("select id from users where id=$1",[importer.user.id])).rows).toHaveLength(0);
+      expect((await db.query(receiptQuery,[targetSet])).rows).toEqual([{...before,actor_user_id:null,created_by_user_id:null,initiator_type:"legacy"}]);
+    }
     const preview=await requestJson<{item:RestorePreviewResult}>(server(),`/api/v1/projects/${TARGET}/baselines/${baseline.id}/restore-preview`);expect(preview.status,preview.bodyText).toBe(200);expect(preview.body.item.canonical?.canRestore).toBe(true);
     const restored=await post(`/api/v1/projects/${TARGET}/baselines/${baseline.id}/rollback`,{proofToken:preview.body.item.canonical!.proofToken,sourceConfigRevisionId:imported.body.item.configRevisionId,reason:"Restore imported source snapshot",confirmCompositionChanges:true,clientMutationId:"imported-snapshot-restore"});expect(restored.status,restored.bodyText).toBe(200);
     expect((await listCatalogBindingRowsForProject(api,auth,{projectId:TARGET})).map(row=>({id:row.id,rawValue:row.rawValue}))).toEqual(savedBindings.map(row=>({id:row.id,rawValue:row.rawValue})));
@@ -226,7 +251,7 @@ describe("complete configuration package through the actual API role",()=>{
     // A historical producer without the complete committed import receipt must
     // remain refused; current filenames/references cannot reconstruct authority.
     await db.query(`create function omit_import_composition() returns trigger language plpgsql as $$begin
-      if new.kind='config-set' and new.action='imported' and new.project_id='package-snapshot-legacy' then new.metadata=new.metadata-'sharedComposition'; end if; return new; end $$`);
+      if new.kind='config-set' and new.action='imported' and new.project_id in ('package-snapshot-legacy','package-snapshot-legacy-deleted') then new.metadata=new.metadata-'sharedComposition'; end if; return new; end $$`);
     await db.query("create trigger omit_import_composition before insert on public.audit_events for each row execute function omit_import_composition()");
     let legacy:ConfigSetImportResult;
     try {
