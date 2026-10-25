@@ -93,6 +93,49 @@ describe("exact DTS source value proof before pin creation", () => {
     expect(overlay.slice(proof.sourceSpan.start,proof.sourceSpan.end)).toBe("<7>");
   });
 
+  it("proves expanded macro values against original occurrences and refuses a stale compiler receipt", async () => {
+    const cppSet = "set-native-cpp-proof";
+    await db.query("insert into dts_config_set(id,organization_id,project_id,name) values($1,$2,$3,'Native CPP')", [cppSet, organizationId, projectId]);
+    const manifest: ConfigRevisionManifest = { organizationId, projectId, configSetId: cppSet, entryFile: "cpp-board.dts", includeSearchPaths: [], overlayOrder: [], members: [] };
+    const source = '\uFEFF// 🧪 exact source\r\n#include "cpp-defs.h"\r\n/dts-v1/;\r\n/ { target {\r\n#if ENABLED\r\n limit = <BIT(3)>;\r\n#else\r\n limit = <0>;\r\n#endif\r\n}; };\r\n';
+    for (const [index, file] of [{ name: "cpp-board.dts", content: source, role: "base" as const },
+      { name: "cpp-defs.h", content: "#define ENABLED 1\n#define BIT(x) (1U << (x))\n", role: "include" as const }].entries()) {
+      const fileId = `cpp-file-${index}`, fileVersionId = `cpp-version-${index}`;
+      const object = await storage.put({ organizationId, fileName: file.name, contentType: "text/plain", bytes: Buffer.from(file.content) });
+      await db.query("insert into project_parameter_files(id,organization_id,project_id,file_name,format,config_set_id,config_set_role,config_set_sort_order) values($1,$2,$3,$4,'dts',$5,$6,$7)",
+        [fileId, organizationId, projectId, file.name, cppSet, file.role, index]);
+      await db.query("insert into project_parameter_file_versions(id,file_id,version_number,storage_key,checksum,size_bytes,parsed_index,origin,created_by_user_id) values($1,$2,1,$3,$4,$5,'{}'::jsonb,'upload',$6)",
+        [fileVersionId, fileId, object.storageKey, object.checksumSha256, object.fileSizeBytes, userId]);
+      await db.query("update project_parameter_files set current_version_id=$2 where id=$1", [fileId, fileVersionId]);
+      manifest.members.push({ fileId, fileVersionId, fileName: file.name, content: file.content, role: file.role, sortOrder: index });
+    }
+    const revision = await ingestConfigRevision(db, manifest, makeTestAuthContext({ userId, organizationId }));
+    expect(revision.status).toBe("resolved");
+    expect(revision.preprocessing).toMatchObject({ schemaVersion: "dts-cpp/v1", compilerVersion: "14.2.0" });
+    const row = (await db.query<{ logicalNodeId: string; nodeOccurrenceId: string; propertyOccurrenceId: string }>(
+      `select logical.logical_node_id as "logicalNodeId",effect.node_occurrence_id as "nodeOccurrenceId",effect.property_occurrence_id as "propertyOccurrenceId"
+       from dts_occurrence_effects effect join dts_logical_node_revisions logical on logical.id=effect.logical_node_revision_id
+       where effect.config_revision_id=$1 and logical.node_locator='/target' and effect.property_name='limit'`, [revision.id])).rows[0]!;
+    const cppIdentity = { organizationId, projectId, configSetId: cppSet, configRevisionId: revision.id, fileId: "cpp-file-0", fileVersionId: "cpp-version-0", propertyName: "limit", ...row };
+    const proof = await db.transaction(tx => proveExactDtsProperty(tx, storage, cppIdentity));
+    expect(proof).toMatchObject({ sourceName: "cpp-board.dts", sourceSpan: { start: source.indexOf("<BIT"), end: source.indexOf("<BIT") + "<BIT(3)>".length },
+      value: { kind: "cells", groups: [[{ value: "8" }]] } });
+    expect((await db.query<{ raw_text: string; ast_json: unknown }>("select raw_text,ast_json from dts_property_occurrences where id=$1", [row.propertyOccurrenceId])).rows[0])
+      .toMatchObject({ raw_text: "<BIT(3)>", ast_json: { kind: "cells", groups: [[{ value: "8" }]] } });
+    await expect(db.transaction(async tx => {
+      await tx.query("update dts_config_revisions set preprocessing=jsonb_set(preprocessing,'{outputDigest}',to_jsonb($2::text)) where id=$1", [revision.id, `sha256:${"0".repeat(64)}`]);
+      return proveExactDtsProperty(tx, storage, cppIdentity);
+    })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "source-proof-invalid" } });
+    await expect(db.transaction(async tx => {
+      await tx.query("update dts_property_occurrences set raw_text='<BIT(4)>' where id=$1", [row.propertyOccurrenceId]);
+      return proveExactDtsProperty(tx, storage, cppIdentity);
+    })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "source-proof-invalid" } });
+    await expect(db.transaction(async tx => {
+      await tx.query("update dts_property_occurrences set ast_json=jsonb_set(ast_json,'{groups,0,0,value}','\"9\"'::jsonb) where id=$1", [row.propertyOccurrenceId]);
+      return proveExactDtsProperty(tx, storage, cppIdentity);
+    })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "source-proof-invalid" } });
+  });
+
   it("refuses an unpinned property row whose value differs from the immutable object", async () => {
     await expect(db.transaction(async (tx) => {
       await lockExactSourceRevisionsForProof(tx,[identity]);

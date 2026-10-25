@@ -6,7 +6,7 @@ import type { AuthContext } from "../auth/types";
 import { trustedDomainAttribution } from "../auth/trustedInvocation";
 import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import type { CatalogSnapshot } from "../catalog-kernel/interface";
-import { resolveDtsConfigSet } from "../dts";
+import { resolveDtsConfigSet, resolveDtsConfigSetAsync } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import { asValueClient, listObservedProperties, lockSourceCatalogGovernance, parseCompatibles, rawTextToPayload, resolveObservedSubject } from "../parameter-bindings/catalogProjectValueSync";
 import { appendProjectValue, loadConfigurationRestoreCohort, loadOwnedProjectValueSourcePin, lockSourceConfigurationBindings, readOwnedCurrentBinding, readOwnedProjectValueIdentity } from "../parameter-bindings/values";
@@ -160,7 +160,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   if (dts.length) {
     if (!entryFile) conflict("历史修订缺少 DTS 入口；请在配置编辑器补齐来源并另存完整快照。");
     const files = new Map(dts.map((row) => [row.sourceName,{ content: contents.get(`${row.fileId}:${row.fileVersionId}`)!,fileVersionId: row.fileVersionId }]));
-    resolved = resolveDtsConfigSet({ entryFile,includeSearchPaths,overlayOrder,files,requireExactOrigins: true });
+    resolved = await resolveDtsConfigSetAsync({ entryFile,includeSearchPaths,overlayOrder,files,requireExactOrigins: true });
     if (resolved.diagnostics.some((row) => row.severity === "error" || /dangling|unresolved/.test(row.code))) throw new ApiError("VALIDATION_FAILED","恢复组合包含未解决的 include/overlay 引用。",{ diagnostics: resolved.diagnostics });
     const formerRootOverlayFiles = await loadFormerRootOverlayFiles(tx, configSetId, members, overlayOrder);
     const validated = await createDtsToolchainRunner().validate({ entryFile,includeSearchPaths,overlayOrder,files,formerRootOverlayFiles },{ mode: "release" });

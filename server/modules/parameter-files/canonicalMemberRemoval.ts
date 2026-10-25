@@ -24,7 +24,7 @@ import { hasCurrentCanonicalReviewRole } from "../parameters/reviewWorkflowRepos
 import { insertConfigRevision, insertConfigRevisionMembers, nextConfigRevisionNumber } from "../parameter-topology/repository";
 import type { ConfigRevisionMemberRole } from "../parameter-topology/types";
 import { ingestConfigRevisionInTransaction, prepareReviewedSourceContinuity, type ReviewedSourceContinuity } from "../parameter-topology/ingestService";
-import { resolveDtsConfigSet } from "../dts";
+import { resolveDtsConfigSet, resolveDtsConfigSetAsync } from "../dts";
 import { stripDtsComments } from "../dts/preprocess";
 import { canonicalizeLogicalNodeCompatible } from "../parameter-topology/writeLock";
 import { assertTrustedSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
@@ -234,7 +234,7 @@ async function inspectAdministratorMemberRemoval(tx: Database, storage: ObjectSt
     if (!survivors.some((row) => row.format === "dts" && row.role === "base" && row.sourceName === revision.entry_file)) {
       throw new ApiError("VALIDATION_FAILED", "不能移除当前 DTS 根文件。请先将其他 DTS 文件设为根文件。", { reason: "missing-base" });
     }
-    const resolved = resolveDtsConfigSet({ ...configuration, files: sourceFiles, requireExactOrigins: true });
+    const resolved = await resolveDtsConfigSetAsync({ ...configuration, files: sourceFiles, requireExactOrigins: true });
     effective = resolved.effective;
     const errors = resolved.diagnostics.filter((row) => row.severity === "error" || /dangling|unresolved/.test(row.code));
     if (errors.length) throw new ApiError("VALIDATION_FAILED", `移除后存在未解决的 include 或节点引用：${errors.map((row) => `${row.fileName ?? "配置"}：${row.message}`).join("；")}。请先更新引用文件，再重新预览。`, { reason: "unresolved-source-dependency", diagnostics: errors });

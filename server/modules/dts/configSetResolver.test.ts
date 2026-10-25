@@ -30,11 +30,12 @@ function loadFixtureDir(name: string): Map<string, DtsConfigSetFile> {
 }
 
 describe("resolveDtsConfigSet", () => {
-  it("leaves malformed source to structural validation without throwing during include discovery",()=>{
+  it("reports malformed source rather than returning an empty successful graph",()=>{
     const result=resolveDtsConfigSet({entryFile:"broken.dts",includeSearchPaths:[],overlayOrder:[],files:new Map([
       ["broken.dts",{fileVersionId:"broken",content:"/ { value = %; };"}]
     ])});
     expect(result.effective.nodesByLocator.size).toBe(0);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "source-syntax", severity: "error" }));
   });
   it("bounds repeated locator metadata even when source bytes are small", () => {
     const properties = Array.from({ length: 1000 }, (_, index) => `p${index};`).join(" ");

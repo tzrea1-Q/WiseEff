@@ -62,7 +62,7 @@ export async function previewSharedDtsiPublication(db:Database,auth:AuthContext,
   requireWrite(auth,context);
   return db.transaction(async tx=>{
     await lockDraft(tx,auth,resourceId,expectedRevision);
-    const draft=await getSharedDtsiDraft(tx,auth,resourceId),source=publicationSource(draft),base=await currentVersion(tx,auth,resourceId);
+    const draft=await getSharedDtsiDraft(tx,auth,resourceId),source=await publicationSource(draft),base=await currentVersion(tx,auth,resourceId);
     const row=(await tx.query<PreviewRow>(`insert into public.shared_dtsi_publication_previews
       (id,resource_id,organization_id,draft_id,draft_revision,base_revision_id,actor_user_id,actor_fingerprint,name,change_description,manifest,members,digest)
       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13) returning ${previewColumns}`,
@@ -91,7 +91,7 @@ export async function publishSharedDtsi(db:Database,auth:AuthContext,resourceId:
     try { await lockDraft(tx,auth,resourceId,frozen.draftRevision); draft=await getSharedDtsiDraft(tx,auth,resourceId); }
     catch (error) { if (error instanceof ApiError && ["NOT_FOUND","CONFLICT"].includes(error.code)) throw conflict(); throw error; }
     const current=await currentVersion(tx,auth,resourceId);
-    if (draft.id!==frozen.draftId || (current?.id??null)!==frozen.baseVersionId || publicationSource(draft).digest!==frozen.digest) throw conflict();
+    if (draft.id!==frozen.draftId || (current?.id??null)!==frozen.baseVersionId || (await publicationSource(draft)).digest!==frozen.digest) throw conflict();
     const revisionId=randomUUID(),version=(current?.version??0)+1;
     await tx.query(`insert into public.shared_dtsi_revisions(id,resource_id,organization_id,version,name,draft_revision,change_description,manifest,digest,created_by_user_id)
       values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10)`,[revisionId,resourceId,organizationId,version,frozen.name,frozen.draftRevision,

@@ -37,6 +37,7 @@ export type ConfigSetSnapshotSkipped = {
 };
 
 export type ConfigSetSnapshot = {
+  preprocessing?: import("../dts/cppSources").DtsPreprocessingReceipt;
   configSetId: string;
   /** Members with a current version, in config-set order, contents loaded. */
   members: ConfigSetSnapshotMember[];
@@ -119,7 +120,8 @@ export async function loadConfigSetSnapshot(
   // Canonical revisions already persist exact parser inputs. Reusing them
   // avoids compiling include-only members as overlays from legacy role names.
   const manifest = (await db.query<{ entry_file: string | null; include_search_paths: string[]; overlay_order: string[];
-    members: Array<{ fileId: string; sourceName: string }> }>(`select revision.entry_file,revision.include_search_paths,revision.overlay_order,
+    preprocessing: import("../dts/cppSources").DtsPreprocessingReceipt | null;
+    members: Array<{ fileId: string; sourceName: string }> }>(`select revision.entry_file,revision.include_search_paths,revision.overlay_order,revision.preprocessing,
       (select jsonb_agg(jsonb_build_object('fileId',member.file_id,'sourceName',member.source_name))
         from dts_config_revision_members member where member.config_revision_id=revision.id) as members
     from dts_config_revisions revision where revision.config_set_id=$1 and revision.status='resolved'
@@ -135,6 +137,7 @@ export async function loadConfigSetSnapshot(
   const overlayOrder = exactManifest?.overlay_order ?? overlays.map((overlay) => overlay.name);
 
   return {
+    ...(exactManifest?.preprocessing ? { preprocessing: exactManifest.preprocessing } : {}),
     configSetId,
     members,
     skipped,

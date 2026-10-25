@@ -94,9 +94,9 @@ export async function lockExactSourceRevisionsForProof(tx: Queryable, inputs: re
 /** Pre-pin read: storage metadata is always resolved server-side, never accepted from a command. */
 export async function loadExactSourceRevisionForProof(tx: Queryable, objectStore: ObjectStore, input: ExactSourceRevisionIdentity) {
   if (!objectStore?.getBounded) conflict("Exact source proof requires bounded source storage.");
-  const revisions = await tx.query<{ entryFile: string | null; includeSearchPaths: string[]; overlayOrder: string[]; status: string; manifestState: string }>(
+  const revisions = await tx.query<{ entryFile: string | null; includeSearchPaths: string[]; overlayOrder: string[]; status: string; manifestState: string; preprocessing: import("../dts/cppSources").DtsPreprocessingReceipt | null }>(
     `select entry_file as "entryFile",include_search_paths as "includeSearchPaths",overlay_order as "overlayOrder",
-      status,manifest_state as "manifestState" from dts_config_revisions
+      status,manifest_state as "manifestState",preprocessing from dts_config_revisions
      where id=$1 and organization_id=$2 and project_id=$3 and config_set_id=$4`,
     [input.configRevisionId,input.organizationId,input.projectId,input.configSetId],
   );

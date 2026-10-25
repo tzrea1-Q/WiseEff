@@ -11,7 +11,7 @@ import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { assertTrustedSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
 import { parseDts, parseDtsValue, renderDtsValue, type DtsDocument, type DtsPropertyCst } from "../dts";
-import { resolveDtsConfigSet } from "../dts/configSetResolver";
+import { resolveDtsConfigSetAsync } from "../dts/configSetResolver";
 import { ensureOverlayProperty } from "../parameter-topology/overlayWriteback";
 import { canonicalizeLogicalNodeCompatible, resolveEnablementWriteLock, verifyEnablementWriteLock } from "../parameter-topology/writeLock";
 import { getChangeRequestEnablementWriteLock } from "../parameter-drafts/repository";
@@ -33,6 +33,7 @@ import type { ConfigSetRole } from "./types";
 export type { CanonicalSourceBindingPin } from "../parameter-bindings/values";
 
 export type CanonicalSourceManifest = CanonicalValueSourcePin & {
+  preprocessing?: import("../dts/cppSources").DtsPreprocessingReceipt;
   members: Array<{
     memberId: string; fileId: string; fileVersionId: string; sourceName: string;
     format: "dts" | "json"; role: string; sortOrder: number; checksum: string; sizeBytes: number;
@@ -173,7 +174,7 @@ export async function loadCanonicalSourceSnapshot(
   if (!pin) throw new ApiError("CONFLICT", "Project value is missing an exact owned source pin.");
   const source = await loadExactSourceRevisionForProof(db, objectStore, pin);
   const files: Array<{ name: string; format: "dts" | "json"; versionNumber: number; content: string }> = [];
-  const manifest: CanonicalSourceManifest = { ...pin, members: [] };
+  const manifest: CanonicalSourceManifest = { ...pin, ...(source.revision.preprocessing ? { preprocessing: source.revision.preprocessing } : {}), members: [] };
   for (const member of source.members) {
     if (member.format === "json") parseJsonSource(member.bytes);
     files.push({ name: member.sourceName, format: member.format, versionNumber: member.versionNumber, content: member.content });
@@ -214,7 +215,7 @@ async function assertPreparedDeletedAnchorsRemainAbsent(
 ) {
   const deleted = await loadDeletedSourceAnchors(db,input.manifest);
   const members = input.manifest.members;
-  const resolved = deleted.some((anchor) => anchor.format === "dts") ? resolveDtsConfigSet({
+  const resolved = deleted.some((anchor) => anchor.format === "dts") ? await resolveDtsConfigSetAsync({
     entryFile: input.manifest.entryFile!, includeSearchPaths: input.manifest.includeSearchPaths,
     overlayOrder: input.manifest.overlayOrder, requireExactOrigins: true,
     files: new Map(members.flatMap((member, index) => member.format === "dts" ? [[member.sourceName, {
@@ -321,6 +322,7 @@ export async function readPinnedDtsSourceChange(
   beforeText: string,
   afterText: string,
 ) {
+  await assertDtsStructuredOrigin(db, manifest.configRevisionId);
   const row = await loadPinnedDtsProperty(db, manifest);
   const before = parseDts(beforeText);
   const properties = dtsProperties(before);
@@ -341,6 +343,7 @@ export async function readPinnedDtsSourceBatchChanges(
   beforeText: string,
   afterText: string,
 ) {
+  for (const revisionId of new Set(manifests.map(manifest => manifest.configRevisionId))) await assertDtsStructuredOrigin(db, revisionId);
   const propertyPaths = (document: DtsDocument) => {
     const properties: Array<{ property: DtsPropertyCst; path: number[] }> = [];
     const visit = (node: DtsDocument["topLevel"][number], path: number[]) => {
@@ -597,6 +600,7 @@ export async function commitPinnedNodeEnablementSourceChange(
 
 /** Reproduce the exact pinned-span removal, preserving all non-target bytes. */
 export async function validatePinnedDtsSourceDeletion(db: Queryable, manifest: CanonicalSourceManifest, beforeText: string, afterText: string) {
+  await assertDtsStructuredOrigin(db, manifest.configRevisionId);
   const row = await loadPinnedDtsProperty(db, manifest);
   const before = parseDts(beforeText);
   const properties = dtsProperties(before);
@@ -609,6 +613,12 @@ export async function validatePinnedDtsSourceDeletion(db: Queryable, manifest: C
   });
   if (afterText !== expected) throw new ApiError("CONFLICT", "DTS deletion changed bytes outside its exact pinned property.");
   parseDts(afterText);
+}
+
+/** Macro definitions can have many consumers; structured writes never guess their target. */
+async function assertDtsStructuredOrigin(db: Queryable, revisionId: string) {
+  const row = (await db.query<{ preprocessing: unknown }>("select preprocessing from public.dts_config_revisions where id=$1", [revisionId])).rows[0];
+  if (row?.preprocessing) throw new ApiError("CONFLICT", "此来源使用宏或条件编译，不能通过旧式属性写回猜测修改位置。请打开原始源码编辑器修正，或在项目中添加明确的本地覆盖。", { reason: "expanded-source-requires-original-edit" });
 }
 
 /** Prepare only. The caller owns the audited transaction; no current pointer moves. */

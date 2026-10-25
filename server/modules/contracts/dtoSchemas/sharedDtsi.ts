@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { itemEnvelopeSchema, okEnvelopeSchema } from "./envelopes";
+import { dtsPreprocessingReceiptSchema } from "./dtsPreprocessing";
 
 const id = z.string().uuid();
 const changeDescription = z.string().trim().max(1000).regex(/^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]*$/u);
@@ -32,7 +33,7 @@ export const sharedDtsiManifestSchema = z.object({
   members: z.array(z.object({ id, sourceName: z.string(), checksum: z.string(), sizeBytes: z.number().int().nonnegative(), role: z.enum(["include", "header"]) }).strict()).min(1),
   externalReferences: z.array(z.string()),
   includeGraph: z.array(z.object({ sourceName: z.string(), target: z.string(), line: z.number().int().positive(), column: z.number().int().positive() }).strict()).default([]),
-  buildInputs: z.object({ includeSearchPaths: z.array(z.string()) }).strict().default({ includeSearchPaths: [] })
+  buildInputs: z.object({ includeSearchPaths: z.array(z.string()), preprocessing: dtsPreprocessingReceiptSchema.optional() }).strict().default({ includeSearchPaths: [] })
 }).strict();
 export const sharedDtsiVersionSchema = sharedDtsiVersionSummarySchema.extend({ manifest: sharedDtsiManifestSchema,
   members: z.array(z.object({ id, sourceName: z.string(), content: z.string(), checksum: z.string(), sizeBytes: z.number().int().nonnegative() }).strict()).min(1) });

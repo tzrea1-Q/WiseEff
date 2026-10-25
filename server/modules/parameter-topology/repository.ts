@@ -33,6 +33,7 @@ type RevisionRow = TrustedInvocationDomainAttributionRow & {
   entry_file: string | null;
   include_search_paths: unknown;
   overlay_order: unknown;
+  preprocessing: import("../dts/cppSources").DtsPreprocessingReceipt | null;
   manifest_state: ConfigRevisionManifestState;
   created_by_user_id: string | null;
   created_at: string | Date;
@@ -68,6 +69,7 @@ function toRevisionDto(row: RevisionRow): DtsConfigRevisionDto {
     entryFile: row.entry_file ?? undefined,
     includeSearchPaths: parseStringArray(row.include_search_paths),
     overlayOrder: parseStringArray(row.overlay_order),
+    ...(row.preprocessing ? { preprocessing: row.preprocessing } : {}),
     manifestState: row.manifest_state ?? "complete",
     createdByUserId: row.created_by_user_id ?? undefined,
     createdAt: dateTimeToIso(row.created_at),

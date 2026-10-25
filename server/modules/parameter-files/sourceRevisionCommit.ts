@@ -106,7 +106,8 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
   const version = await insertFileVersion(tx, { id: randomUUID(), fileId: frozen.fileId, versionNumber: 0,
     storageKey: candidate.storageKey, checksum: candidate.checksum, sizeBytes: candidateBytes.length,
     parsedIndex: candidate.parsedIndex, origin: "writeback", attribution });
-  await ingestDtsFileVersion(tx, version.id, inspected.after);
+  await ingestDtsFileVersion(tx, version.id, inspected.after,
+    inspected.preprocessing?.originalDocuments.get(frozen.members.find(member => member.fileId === frozen.fileId)!.sourceName));
   const members = [];
   for (const member of frozen.members) {
     let content = inspected.after;

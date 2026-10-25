@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { withEphemeralDanglingAnchorStub } from "../dts/danglingAnchorStub";
 import { lexDts } from "../dts/lexer";
 import { stripDtsComments } from "../dts/preprocess";
+import { DtsPreprocessingError, prepareDtsSources, type DtsPreprocessingReceipt } from "../dts/cppSources";
 
 export type DtsToolchainMode = "release" | "warn" | "off";
 
@@ -50,6 +51,7 @@ export type DtsToolchainArtifacts = {
   baseDtbSha256?: string;
   effectiveDtbSha256?: string;
   inputManifestSha256?: string;
+  preprocessing?: DtsPreprocessingReceipt;
 };
 
 export type DtsToolchainResult = {
@@ -761,9 +763,19 @@ export function createDtsToolchainRunner(deps: CreateDtsToolchainRunnerDeps = {}
 
       const tmpDir = tmpDirFactory();
       const diagnostics: DtsToolchainDiagnostic[] = [];
-      const compileConfigSet = withEphemeralOverlayFragmentWrap(
-        withEphemeralEntryCompileStub(configSet)
-      );
+      let compileConfigSet: DtsToolchainConfigSet;
+      try {
+        const prepared = await prepareDtsSources({ ...configSet, includeSearchPaths: configSet.includeSearchPaths ?? [],
+          files: new Map([...configSet.files].map(([name, file]) => [name, { ...file, fileVersionId: name }])) });
+        if (prepared) artifacts.preprocessing = prepared.receipt;
+        const semanticConfigSet = prepared ? { ...configSet, files: new Map([...configSet.files].map(([name, file]) =>
+          [name, { content: prepared.documents.get(name)?.text ?? file.content }])) } : configSet;
+        compileConfigSet = withEphemeralOverlayFragmentWrap(withEphemeralEntryCompileStub(semanticConfigSet));
+      } catch (error) {
+        rmSync(tmpDir, { recursive: true, force: true });
+        if (!(error instanceof DtsPreprocessingError)) throw error;
+        return failed(mode, "compile-failed", versions, [{ file: error.fileName, severity: "error", code: error.code, message: error.message, stage: "toolchain" }], artifacts);
+      }
 
       try {
         const pathDiagnostics = writeLogicalTree(tmpDir, compileConfigSet);

@@ -9,7 +9,7 @@ import { getAuthContext } from "../auth/repository";
 import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import { createCatalogKernel, PropertyKey, type CatalogSnapshot } from "../catalog-kernel/interface";
 import { loadOrganizationCatalogSnapshot } from "../parameter-modules/recognitionSettings";
-import { resolveDtsConfigSet } from "../dts";
+import { resolveDtsConfigSetAsync } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import { loadPublishedCatalog, rawTextToPayload, resolveObservedSubject, parseCompatibles,
   lockSourceCatalogGovernance, loadActiveOrganizationSourceRegistrations } from "../parameter-bindings/catalogProjectValueSync";
@@ -62,6 +62,7 @@ export type SourceRevisionProof = {
   baseDigest: string; proposedDigest: string; members: SourceRevisionMember[];
   cohort: SourceRevisionCohort[]; continuity: ReviewedSourceContinuity;
   entryFile: string; includeSearchPaths: string[]; overlayOrder: string[];
+  preprocessing?: import("../dts/cppSources").DtsPreprocessingReceipt;
   catalogRelease: { id: string; digest: string } | null;
   pinnedCatalogReleases: Array<{ id: string; digest: string }>;
   registrations: Array<{ id: string; subjectId: string }>;
@@ -161,7 +162,8 @@ export async function sourceRevisionReviewers(tx: Database, auth: AuthContext, p
 export async function inspectSourceRevision(tx: Database, storage: ObjectStore, auth: AuthContext,
   input: { projectId: string; candidateId: string }, snapshot: CatalogSnapshot | null,
   options: { lock?: boolean; toolchain?: DtsToolchainRunner; snapshots?: ReadonlyMap<string, CatalogSnapshot> } = {}
-): Promise<{ proof: SourceRevisionProof; before: string; after: string; diagnostics: SourceRevisionDiagnostic[] }> {
+): Promise<{ proof: SourceRevisionProof; before: string; after: string; diagnostics: SourceRevisionDiagnostic[];
+  preprocessing?: import("../dts/cppSources").PreparedDtsSources }> {
   const candidate = await getParameterFileCandidateById(tx, { organizationId: parameterOrganizationId(auth), ...input });
   const context = candidate?.sourceRevisionContext;
   if (!candidate || !context || !candidate.fileId || candidate.format !== "dts") throw new ApiError("NOT_FOUND", "Whole-source candidate was not found.");
@@ -222,7 +224,7 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
   const after = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   const changed = rows.find((row) => row.fileId === candidate.fileId)!;
   files.set(changed.sourceName, { content: after, fileVersionId: candidate.id });
-  const resolved = resolveDtsConfigSet({ entryFile: revision.entry_file, includeSearchPaths: revision.include_search_paths,
+  const resolved = await resolveDtsConfigSetAsync({ entryFile: revision.entry_file, includeSearchPaths: revision.include_search_paths,
     overlayOrder: revision.overlay_order, requireExactOrigins: true, files });
   const diagnostics: SourceRevisionDiagnostic[] = resolved.diagnostics.map((row) => ({
     severity: row.severity, code: row.code, message: row.message, file: row.fileName
@@ -353,12 +355,13 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     candidateId: candidate.id, fileId: candidate.fileId, configSetId: context.configSetId, baseVersionId: context.baseVersionId,
     baseConfigRevisionId: revision.id, baseDigest: sourceRevisionDigest(Buffer.from(before)), proposedDigest: sourceRevisionDigest(bytes),
     entryFile: revision.entry_file, includeSearchPaths: revision.include_search_paths, overlayOrder: revision.overlay_order,
+    ...(resolved.preprocessing ? { preprocessing: resolved.preprocessing.receipt } : {}),
     members, cohort, continuity, catalogRelease: snapshot ? { id: snapshot.release.id, digest: snapshot.release.digest } : null,
     pinnedCatalogReleases: [...new Set(cohort.map((row) => row.catalogReleaseId))].sort().map((id) => {
       const pinned = options.snapshots?.get(id) ?? snapshot!;
       return { id, digest: pinned.release.digest };
     }), registrations, targets, newProperties: sourceProperties, ...(restorations.length ? { restorations } : {}) };
-  return { proof: { ...base, proofDigest: sourceRevisionDigest(base) }, before, after, diagnostics };
+  return { proof: { ...base, proofDigest: sourceRevisionDigest(base) }, before, after, diagnostics, preprocessing: resolved.preprocessing };
 }
 
 export async function assertSourceRevisionWriteAllowed(tx: Database, auth: AuthContext, proof: SourceRevisionProof,
