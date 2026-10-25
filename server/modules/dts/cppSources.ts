@@ -16,7 +16,8 @@ const MAX_BYTES = 16 * 1024 * 1024;
 const MAX_OUTPUT = 32 * 1024 * 1024;
 const MAX_STATEMENTS = 100_000;
 const sha = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
-const blank = (text: string) => text.replace(/[^\r\n]/gu, " ");
+// Match UTF-16 code units so masked astral characters retain their original CST offsets.
+const blank = (text: string) => text.replace(/[^\r\n]/g, " ");
 
 /** CPP headers also have character literals; comment delimiters inside them are data. */
 function stripCppComments(text: string) {
@@ -44,7 +45,7 @@ type Segment = { start: number; end: number; sourceName: string; sourceStart: nu
 export type PreparedDtsDocument = { text: string; document: DtsDocument; originalDocument: DtsDocument;
   originForSpan: (span: { start: number; end: number }) => { sourceName: string; start: number; end: number } | null };
 export type PreparedDtsSources = { receipt: DtsPreprocessingReceipt; documents: Map<string, PreparedDtsDocument>;
-  originalDocuments: Map<string, DtsDocument>; sourceFiles: string[] };
+  originalDocuments: Map<string, DtsDocument>; sourceFiles: string[]; declaredSourceFiles: string[] };
 
 export function pinnedDtsPreprocessor() {
   const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -100,7 +101,7 @@ function checkedInputs(input: DtsConfigSetInput) {
   const defines = normalizeDtsDefines(input.defines ?? input.preprocessing?.defines, input.entryFile);
   for (const [name, value] of Object.entries(defines)) {
     const tokens = stripCppComments(value).replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/gu, "");
-    if (/\b__(?:DATE|TIME|TIMESTAMP|FILE|BASE_FILE|COUNTER|INCLUDE_LEVEL)__\b|\b__has_(?:include|embed|builtin|feature|extension|attribute)\b|\b_Pragma\b/u.test(tokens))
+    if (/\b__(?:DATE|TIME|TIMESTAMP|FILE|BASE_FILE|COUNTER|INCLUDE_LEVEL)__\b|\b__has_(?:include|embed|builtin|feature|extension|attribute)\b|\b_Pragma\b|##/u.test(tokens) || tokens.includes(PREFIX))
       throw new DtsPreprocessingError("preprocess-input", `构建宏 ${name} 包含未冻结时间、环境探测或编译器指令；请修改构建设置。`, input.entryFile);
   }
   const fail = (name: string, line: number, message: string): never => {
@@ -111,6 +112,21 @@ function checkedInputs(input: DtsConfigSetInput) {
   const safePath = (name: string) => name !== "." && name === posix.normalize(name) && !name.startsWith("/") && name !== ".."
     && !name.startsWith("../") && !/[:\\\u0000-\u001f\u007f]/u.test(name);
   if (input.includeSearchPaths.some(root => root !== "." && !safePath(root))) throw new DtsPreprocessingError("path-escape", "预处理搜索目录必须在冻结清单内。", input.entryFile);
+  const literalTarget = (name: string, target: string, quoted: boolean, line: number) => {
+    if (target.startsWith("/") || /[:\\\u0000-\u001f\u007f]/u.test(target)) fail(name, line, "include 不能读取绝对路径或宿主文件。");
+    const roots = quoted ? [posix.dirname(name), ...input.includeSearchPaths, "."] : [...input.includeSearchPaths, "."];
+    let found: string | undefined;
+    for (const [index, root] of roots.entries()) {
+      const candidate = posix.join(root, target);
+      if (!safePath(candidate)) { if (!found) fail(name, line, "include 搜索会先逃逸冻结清单。"); continue; }
+      if (!input.files.has(candidate)) continue;
+      if (quoted && index === 0) return candidate;
+      if (found && found !== candidate) fail(name, line, `依赖 ${target} 同时匹配多个搜索目录；请使用明确的相对路径或调整构建设置。`);
+      found = candidate;
+    }
+    if (!found) fail(name, line, `缺少冻结依赖 ${target}。`);
+    return found!;
+  };
   for (const [name, file] of input.files) {
     if (!safePath(name)) throw new DtsPreprocessingError("path-escape", "预处理文件必须使用清单内的相对路径。", name);
     total += Buffer.byteLength(file.content);
@@ -126,6 +142,7 @@ function checkedInputs(input: DtsConfigSetInput) {
       let line = lines[index]!;
       while (line.endsWith("\\") && index + 1 < lines.length) line = line.slice(0, -1) + lines[++index]!;
       const tokens = line.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/gu, "");
+      if (tokens.includes("##") || tokens.includes(PREFIX)) fail(name, first + 1, "当前冻结合约不支持 token-pasting 或预处理保留标记。");
       if (/\b__(?:DATE|TIME|TIMESTAMP|FILE|BASE_FILE|COUNTER|INCLUDE_LEVEL)__\b/u.test(tokens)) fail(name, first + 1, "时间、路径或环境宏未声明为冻结输入，不能发布。");
       if (/\b__has_(?:include|embed|builtin|feature|extension|attribute)\b/u.test(tokens)) fail(name, first + 1, "当前冻结合约不支持环境探测宏。");
       if (/\b_Pragma\b/u.test(tokens)) fail(name, first + 1, "当前冻结合约不支持计算生成的编译器指令。");
@@ -137,13 +154,7 @@ function checkedInputs(input: DtsConfigSetInput) {
         const include = /^\s*#\s*include\s*(?:"([^"\n]+)"|<([^>\n]+)>)\s*$/u.exec(line);
         if (!include) fail(name, first + 1, "include 必须是明确的清单内字面路径；不支持宏计算文件名。");
         const target = include![1] ?? include![2]!;
-        if (target.startsWith("/") || /[:\\\u0000-\u001f\u007f]/u.test(target)) fail(name, first + 1, "include 不能读取绝对路径或宿主文件。");
-        const roots = include![1] ? [posix.dirname(name), ...input.includeSearchPaths, "."] : [...input.includeSearchPaths, "."];
-        const matches = [...new Set(roots.map(root => posix.join(root, target)).filter(candidate => safePath(candidate) && input.files.has(candidate)))];
-        const local = include![1] ? posix.join(posix.dirname(name), target) : null;
-        if (matches.length > 1 && !matches.includes(local ?? "")) fail(name, first + 1, `依赖 ${target} 同时匹配多个搜索目录；请使用明确的相对路径或调整构建设置。`);
-        const found = local && matches.includes(local) ? local : matches[0];
-        if (!found) fail(name, first + 1, `缺少冻结依赖 ${target}。`);
+        const found = literalTarget(name, target, Boolean(include![1]), first + 1);
         dependencies.push(found!);
         includeGraph.push({ sourceName: name, target: found!, line: first + 1, column: line.indexOf("#") + 1 });
       }
@@ -153,9 +164,7 @@ function checkedInputs(input: DtsConfigSetInput) {
       const native = /^\s*\/include\/\s*"([^"\n]+)"\s*;?\s*$/u.exec(lines[index]!);
       if (native) {
         const target = native[1]!;
-        if (target.startsWith("/") || /[:\\\u0000-\u001f\u007f]/u.test(target)) fail(name, index + 1, "include 不能逃逸冻结清单。");
-        const found = [posix.dirname(name), ...input.includeSearchPaths, "."].map(root => posix.join(root, target)).find(candidate => safePath(candidate) && input.files.has(candidate));
-        if (!found) fail(name, index + 1, `缺少冻结依赖 ${target}。`);
+        const found = literalTarget(name, target, true, index + 1);
         dependencies.push(found!); masked.add(index + 1);
         includeGraph.push({ sourceName: name, target: found!, line: index + 1, column: lines[index]!.indexOf("/include/") + 1 });
         originalLines[index] = `#include "${target}"`;
@@ -232,7 +241,10 @@ export async function prepareDtsSources(input: DtsConfigSetInput): Promise<Prepa
 
 async function prepareOriginalSources(input: DtsConfigSetInput): Promise<PreparedDtsSources> {
   const deadline = Date.now() + 30_000;
-  const { transformed, directiveLines, defines } = checkedInputs(input);
+  const { transformed, directiveLines, defines, edges } = checkedInputs(input);
+  const declared = new Set<string>();
+  const visitDeclared = (name: string) => { if (declared.has(name)) return; declared.add(name); for (const child of edges.get(name) ?? []) visitDeclared(child); };
+  for (const root of [input.entryFile, ...input.overlayOrder]) visitDeclared(root);
   const probe = await probeDtsPreprocessor();
   if (!probe.available) throw new DtsPreprocessingError("preprocess-unavailable", probe.reason!, input.entryFile);
   const pin = pinnedDtsPreprocessor(), root = mkdtempSync(join(tmpdir(), "wiseeff-cpp-"));
@@ -361,6 +373,6 @@ async function prepareOriginalSources(input: DtsConfigSetInput): Promise<Prepare
       language: "c17", encoding: "UTF-8", locale: "C", ...(Object.keys(defines).length ? { defines } : {}), inputDigest: dtsPreprocessingInputDigest(input),
       outputDigest: sha(JSON.stringify([...documents].map(([entry, document]) => [entry, document.text]))) };
     if (Date.now() > deadline) throw new DtsPreprocessingError("preprocess-limit", "完整工程预处理超过 30 秒上限。", input.entryFile);
-    return { receipt, documents, originalDocuments, sourceFiles: [...sourceFiles] };
+    return { receipt, documents, originalDocuments, sourceFiles: [...sourceFiles], declaredSourceFiles: [...declared] };
   } finally { rmSync(root, { recursive: true, force: true }); }
 }

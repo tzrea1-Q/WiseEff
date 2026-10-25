@@ -21,9 +21,28 @@ describe("controlled original DTS preprocessing", () => {
     await expect(prepareDtsSources(input('#include "defs.h"\n/ {};', '#define CHARACTER \'/*\'\n#line 1 "board.dts"\n')))
       .rejects.toMatchObject({ code: "preprocess-input", fileName: "defs.h", message: expect.stringContaining("#line") });
   });
+  it("rejects computed volatile tokens and unsafe earlier include search candidates before launch", async () => {
+    await expect(prepareDtsSources(input('#include "defs.h"\n/ {};','#define JOIN(a,b) a##b\n#define VOLATILE JOIN(__TI,ME__)'))).rejects.toMatchObject({code:"preprocess-input"});
+    await expect(prepareDtsSources({...input('/ {};'),defines:{VALUE:"__TIME__"}})).rejects.toMatchObject({code:"preprocess-input"});
+    await expect(prepareDtsSources({...input('#include "../defs.h"\n/ {};'),includeSearchPaths:["safe"],
+      files:new Map([["board.dts",{fileVersionId:"board",content:'#include "../defs.h"\n/ {};'}],["defs.h",{fileVersionId:"header",content:"#define A 1"}]])})).rejects.toMatchObject({code:"preprocess-input"});
+  });
 });
 
 describe("native pinned CPP original-source proof", () => {
+  it.each([["LF", "\n", ""], ["BOM/CRLF", "\r\n", "\uFEFF"]])("keeps UTF-16 spans after an inactive astral comment (%s)", async (_name, newline, prefix) => {
+    const content = prefix + ['#define V 1', '#if 0', '// 😀', '#endif', '// 🧪 active', '/ { node { value = <V>; }; };', ''].join(newline!);
+    const result = await resolveDtsConfigSet({ ...input(content), requireExactOrigins: true });
+    expect(result.diagnostics).toEqual([]);
+    const start = content.indexOf("<V>"), end = start + "<V>".length;
+    const property = result.effective.nodesByLocator.get("/node")!.properties.get("value")!;
+    expect(property.value).toMatchObject({kind:"cells",groups:[[{kind:"integer",value:"1"}]]});
+    expect(property.sourceChain[0]!.origin).toEqual({fileVersionId:"board-v1",start,end,mode:"expanded-v1"});
+    const originalNode = result.preprocessing!.originalDocuments.get("board.dts")!.topLevel[0]!.children[0]!;
+    if (originalNode.kind !== "node") throw new Error("expected original node");
+    expect(originalNode.children[0]).toMatchObject({kind:"property",rawText:"<V>",span:{start,end}});
+    expect(content.slice(start,end)).toBe("<V>");
+  });
   it("retains original macro invocations, conditional occurrences and exact UTF-16 spans", async () => {
     const content = '\uFEFF// 🧪 原始源码\r\n#include "defs.h"\r\n/dts-v1/;\r\n/ {\r\n #address-cells = <1>;\r\n first {\r\n#if 0\r\nvalue = <99>;\r\n#else\r\nvalue = <PAIR(3, BIT(3))>;\r\n#endif\r\n };\r\n second { value = <PAIR(3, BIT(3))>; };\r\n};\r\n';
     const manifest = input(content, '#define BIT(x) (1U << (x))\n#define PAIR(a,b) a b\n');

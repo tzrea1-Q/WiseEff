@@ -111,6 +111,17 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     const reopened = await call(`/${draft.resourceId}/draft`, "POST", { baseVersionId: published.body.item.id });
     expect(reopened.status, reopened.bodyText).toBe(201);
     expect(reopened.body.item).toMatchObject({ buildInputs: { ...buildInputs, defines: { ENABLED: "0" } } });
+    const consumer=await call("","POST",{name:"CPP dependency consumer",sourceName:"consumer.dtsi",content:'#include <dt-bindings/power.h>\n#include "vendor/lib/common.dtsi"\n',
+      buildInputs:{includeSearchPaths:[],defines:{CONSUMER:"1"}},dependencies:[{resourceId:draft.resourceId,versionId:published.body.item.id,mountPath:"vendor"}],changeDescription:"Keep each resource declaration owned"});
+    expect(consumer.status,consumer.bodyText).toBe(201);
+    const combined=await publicationCall<{item:import("../contracts/dtoSchemas/sharedDtsi").SharedDtsiPublicationPreview}>(`/${consumer.body.item.resourceId}/publication-preview`,"POST",{expectedRevision:1});
+    expect(combined.status,combined.bodyText).toBe(201);
+    expect(combined.body.item.manifest.buildInputs).toMatchObject({includeSearchPaths:[],defines:{CONSUMER:"1"},preprocessing:{defines:{CONSUMER:"1",ENABLED:"0"}}});
+    expect(combined.body.item.manifest.members.map(member=>member.sourceName)).toEqual(["consumer.dtsi"]);
+    const combinedVersion=await publicationCall<{item:import("../contracts/dtoSchemas/sharedDtsi").SharedDtsiVersion}>(`/${consumer.body.item.resourceId}/publications`,"POST",{previewId:combined.body.item.id,idempotencyKey:"cpp-dependency-settings"});
+    expect(combinedVersion.status,combinedVersion.bodyText).toBe(201);
+    const ownDraft=await call(`/${consumer.body.item.resourceId}/draft`,"POST",{baseVersionId:combinedVersion.body.item.id});
+    expect(ownDraft.body.item).toMatchObject({buildInputs:{includeSearchPaths:[],defines:{CONSUMER:"1"}}});
   });
 
   it("keeps real health responsive and refuses concurrent CPP work while a bounded native expansion runs", async () => {

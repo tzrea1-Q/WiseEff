@@ -215,7 +215,8 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       action: retained ? "retain-added" : member.currentConfigSetId !== configSetId ? "reattach" : member.currentVersionId !== member.fileVersionId || compositionChanged ? "restore" : "unchanged" };
   });
   preview.requiresCompositionConfirmation = preview.members.some((row) => row.compositionChanged)
-    || entryFile !== current.entry_file || !sameSourceRevision(includeSearchPaths,current.include_search_paths) || !sameSourceRevision(overlayOrder,current.overlay_order);
+    || entryFile !== current.entry_file || !sameSourceRevision(includeSearchPaths,current.include_search_paths) || !sameSourceRevision(overlayOrder,current.overlay_order)
+    || !sameSourceRevision(declaredBuildInputs,current.declared_build_inputs);
   preview.entryFile = entryFile; preview.includeSearchPaths = includeSearchPaths; preview.overlayOrder = overlayOrder;
   preview.impact = { parameterChanges: planned.filter((row) => row.changed).length,retainedBindings: planned.length,
     restoredBindings: planned.filter((row) => !row.active).length,sourceReplacements: planned.filter((row) => row.fileId !== row.sourceFileId).length };
