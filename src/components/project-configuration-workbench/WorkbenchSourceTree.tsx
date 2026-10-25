@@ -216,7 +216,7 @@ export function WorkbenchSourceTree({
         <div className="configuration-workbench__empty">
           <strong>当前配置还没有文件</strong>
           <p>
-            {canAdmin ? "从「配置 → 文件管理」添加文件。" : "请项目管理员添加来源文件。"}
+            {canAdmin ? "从「配置 → 配置组成」添加文件。" : "请项目管理员添加来源文件。"}
           </p>
         </div>
       ) : null}
@@ -257,7 +257,7 @@ export function WorkbenchSourceTree({
                   <strong title={item.fileName}>{item.fileName}</strong>
                   {/* Human-readable version label; the raw version id stays discoverable via tooltip (FA-23). */}
                   <small title={item.currentVersionId ?? undefined}>
-                    {item.currentVersionNumber ? `版本 v${item.currentVersionNumber}` : "无活跃版本"}
+                    {item.sharedReference ? `共享版本 ${item.sharedReference.version} · 只读` : item.currentVersionNumber ? `版本 v${item.currentVersionNumber}` : "无活跃版本"}
                   </small>
                 </span>
                 <span className="configuration-workbench__member-meta" aria-hidden="true">

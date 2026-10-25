@@ -162,8 +162,8 @@ for (const stalePreview of firstChoice === "draft" ? [false, true] : [false]) {
         await configuration.focus();
         await expect(configuration).toBeFocused();
         await page.keyboard.press("Enter");
-        await page.getByRole("menuitem", { name: "文件管理", exact: true }).press("Enter");
-        const fileRow = page.getByRole("dialog", { name: "文件管理" }).getByRole("row").filter({ hasText: fileName });
+        await page.getByRole("menuitem", { name: "配置组成", exact: true }).press("Enter");
+        const fileRow = page.getByRole("dialog", { name: "配置组成" }).getByRole("row").filter({ hasText: fileName });
         await fileRow.getByRole("button", { name: "更新文件", exact: true }).press("Enter");
       }
       const preparing = page.waitForResponse((response) => response.url().endsWith("/parameter-file-candidates")

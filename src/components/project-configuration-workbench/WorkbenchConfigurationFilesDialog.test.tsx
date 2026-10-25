@@ -26,6 +26,17 @@ function props(overrides: Partial<WorkbenchConfigurationFilesDialogProps> = {}):
 }
 
 describe("WorkbenchConfigurationFilesDialog", () => {
+  it("identifies fixed shared source and offers viewing without project file mutation controls", () => {
+    const values = props({ canonical: true });
+    values.members = [{ ...values.members[0]!, fileName: "shared.dtsi", sharedReference: {
+      referenceId: "ref", resourceId: "resource", versionId: "revision", version: 2, memberId: "member", digest: "sha256:fixed", readOnly: true
+    } }];
+    render(<WorkbenchConfigurationFilesDialog {...values} />);
+    expect(screen.getByRole("dialog", { name: "配置组成" })).toBeInTheDocument();
+    expect(screen.getByText("共享引用 · 版本 2 · 只读")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "更新文件" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看源码" })).toBeInTheDocument();
+  });
   it("offers set-root only for a checked non-root DTS member", async () => {
     const user = userEvent.setup(), onSetRoot = vi.fn();
     const values = props({ canonical: true, onSetRoot });
@@ -91,9 +102,9 @@ describe("WorkbenchConfigurationFilesDialog", () => {
   it("shows configuration file metadata without default seed descriptions or single-file order noise", () => {
     const values = props();
     const view = render(<WorkbenchConfigurationFilesDialog {...values} />);
-    const dialog = screen.getByRole("dialog", { name: "文件管理" });
+    const dialog = screen.getByRole("dialog", { name: "配置组成" });
     expect(dialog).toHaveAccessibleDescription("默认配置 · 2 个文件");
-    expect(screen.getByRole("button", { name: "关闭文件管理" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "关闭配置组成" })).toHaveFocus();
     expect(dialog).not.toHaveTextContent("Auto-seeded");
     const table = screen.getByRole("table", { name: "配置文件" });
     expect(within(table).getByRole("columnheader", { name: "顺序" })).toBeInTheDocument();
@@ -200,7 +211,7 @@ describe("WorkbenchConfigurationFilesDialog", () => {
     const user = userEvent.setup();
     const values = props({ pendingAction });
     render(<WorkbenchConfigurationFilesDialog {...values} />);
-    expect(screen.getByRole("button", { name: "关闭文件管理" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "关闭配置组成" })).toBeDisabled();
     expect(screen.getAllByRole("button", { name: "更新文件" }).every((button) => button.hasAttribute("disabled"))).toBe(true);
     expect(screen.getByRole("button", { name: pendingAction === "add-member" ? "添加中…" : "添加文件" })).toBeDisabled();
     await user.keyboard("{Escape}");
@@ -211,7 +222,7 @@ describe("WorkbenchConfigurationFilesDialog", () => {
     const user = userEvent.setup();
     const values = props({ pendingAction: "export-set" });
     render(<WorkbenchConfigurationFilesDialog {...values} />);
-    expect(screen.getByRole("button", { name: "关闭文件管理" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "关闭配置组成" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "添加文件" }));
     expect(values.onAddMember).toHaveBeenCalledOnce();
     await user.keyboard("{Escape}");

@@ -102,6 +102,7 @@ import type { ApiClient } from "@/infrastructure/http/apiClient";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
 import { createCanonicalConflictClient } from "@/infrastructure/http/canonicalConflictClient";
 import { createCanonicalMemberAdditionClient } from "@/infrastructure/http/canonicalMemberAdditionClient";
+import { createSharedDtsiClient } from "@/infrastructure/http/sharedDtsiClient";
 import { createAdministratorMemberRemovalClient } from "@/infrastructure/http/administratorMemberRemovalClient";
 
 export type ProjectConfigurationWorkbenchProject = {
@@ -167,6 +168,7 @@ export function ProjectConfigurationWorkbench({
   const governanceClient = useMemo(() => createUserGovernanceClient(apiClient), [apiClient]);
   const conflictClient = useMemo(() => createCanonicalConflictClient(apiClient), [apiClient]);
   const additionClient = useMemo(() => createCanonicalMemberAdditionClient(apiClient), [apiClient]);
+  const sharedDtsiClient = useMemo(() => apiClient ? createSharedDtsiClient(apiClient) : undefined, [apiClient]);
   const removalClient = useMemo(() => createAdministratorMemberRemovalClient(apiClient), [apiClient]);
   const { toast } = useToast();
   const [memberRemovalTarget, setMemberRemovalTarget] = useState<DtsConfigSetMemberFile | null>(null);
@@ -969,7 +971,7 @@ export function ProjectConfigurationWorkbench({
 
   const handleRequestRollbackVersion = useCallback(
     (version: ProjectParameterFileVersion) => {
-      if (!canAdmin || !selectedMember) return;
+      if (!canAdmin || !selectedMember || selectedMember.sharedReference) return;
       if (sourceWorkflowLoading || sourceWorkflowError || !sourceWorkflow) {
         showToast(sourceWorkflowError || "来源工作流仍在加载，暂不能执行版本回滚。");
         return;
@@ -1221,7 +1223,7 @@ export function ProjectConfigurationWorkbench({
     setBaselinesRetry
   });
 
-  const canSubmitBatchReview = Boolean(apiMode && canEdit && canAdmin && activeCandidate?.status === "ready"
+  const canSubmitBatchReview = Boolean(apiMode && canEdit && canAdmin && !selectedMember?.sharedReference && activeCandidate?.status === "ready"
     && sourcePreview?.kind === "canonical" && sourcePreview.candidateId === activeCandidate.id
     && ["json", "dts"].includes(sourcePreview.format.toLowerCase()) && sourcePreview.proofToken
     && sourcePreview.bindings && sourcePreview.bindings.length >= 2
@@ -1384,7 +1386,7 @@ export function ProjectConfigurationWorkbench({
     Boolean(selectedStructureNode) &&
     !canEditCritical &&
     isCriticalDtsNodePath(selectedStructureNode!.nodePath);
-  const editorLocked = !canEdit || criticalLocked || staleDraftLocked;
+  const editorLocked = !canEdit || Boolean(selectedMember?.sharedReference) || criticalLocked || staleDraftLocked;
 
   const activePropertyDraftKey =
     selectedMember && selectedStructureNode && selectedStructureProperty
@@ -1583,7 +1585,7 @@ export function ProjectConfigurationWorkbench({
   );
 
   const handleSubmitSelected = useCallback(async () => {
-    if (!selectedMember || !canEdit || submittingEdits) return;
+    if (!selectedMember || selectedMember.sharedReference || !canEdit || submittingEdits) return;
     try {
       await structuredEditSession.submit({
         projectId: project.id,
@@ -1693,11 +1695,12 @@ export function ProjectConfigurationWorkbench({
               selectedPropertyName={selectedPropertyName}
               selectedNodePath={selectedNodePath}
               sourceUpdateUpload={<div className="configuration-workbench__source-update-upload">
-                {selectedMember ? <p>更新「{selectedMember.fileName}」，上传后先核对差异。</p> : null}
-                {canAdmin ? <Button type="button" size="sm" variant="outline" disabled={uploadingCandidate}
+                {selectedMember?.sharedReference ? <p>共享引用版本 {selectedMember.sharedReference.version} 的来源只读；可查看来源和历史。</p>
+                  : selectedMember ? <p>更新「{selectedMember.fileName}」，上传后先核对差异。</p> : null}
+                {canAdmin && !selectedMember?.sharedReference ? <Button type="button" size="sm" variant="outline" disabled={uploadingCandidate}
                   onClick={() => candidateFileInputRef.current?.click()}>
                   {uploadingCandidate ? "上传中…" : selectedMember ? "上传新文件" : "添加来源文件"}
-                </Button> : <p role="note">仅项目管理员可上传文件，已有更新记录可查看。</p>}
+                </Button> : !canAdmin ? <p role="note">仅项目管理员可上传文件，已有更新记录可查看。</p> : null}
                 {candidateError && canvasMode !== "candidate" ? <p role="alert">{candidateError}</p> : null}
                 {candidateRecords.reviewStatusError && candidateRecords.items.length > 0
                   ? <p role="status">审核状态暂不可用，可打开记录核对。</p> : null}
@@ -1731,7 +1734,7 @@ export function ProjectConfigurationWorkbench({
               baselinePinnedMembersLoading={baselinePinnedMembersLoading}
               baselinePinnedMembersError={baselinePinnedMembersError}
               onRetryBaselineMembers={() => { void releaseBaselineSession.loadPinnedMembers(project.id, dtsRepository); }}
-              canAdmin={canAdmin}
+              canAdmin={canAdmin && (inspectorLevel === "release" || !selectedMember?.sharedReference)}
               releaseReadiness={readinessError ? null : releaseReadiness}
               sessionDraftsDirty={sessionDraftsDirty || sourceDraftsDirty}
               sourceEditing={selectedMember?.format === "dts"}
@@ -1770,7 +1773,7 @@ export function ProjectConfigurationWorkbench({
                   : `/parameter-review?project=${encodeURIComponent(project.id)}`);
               }}
               canRecompute={canAdmin && canRecompute}
-              canActivate={canAdmin && canActivate && (activeCandidate?.fileId ? legacySourceWorkflowConfirmed : sourceWorkflowSetReady && !sourceWorkflowSetCanonical && sourcePreview?.kind === "legacy" && !sourcePreviewLoading && !sourcePreviewError)}
+              canActivate={canAdmin && !selectedMember?.sharedReference && canActivate && (activeCandidate?.fileId ? legacySourceWorkflowConfirmed : sourceWorkflowSetReady && !sourceWorkflowSetCanonical && sourcePreview?.kind === "legacy" && !sourcePreviewLoading && !sourcePreviewError)}
               canAbandon={canAdmin && canAbandon}
               onRecomputeCandidate={handleRecomputeCandidate}
               onActivateCandidate={handleOpenActivateCandidate}
@@ -1849,7 +1852,7 @@ export function ProjectConfigurationWorkbench({
         configSetsError={configSetsError}
         onSelectConfigSet={selectConfigSet}
         canAdmin={canAdmin}
-        canSyncFile={canAdmin && Boolean(selectedMember) && sourceWorkflow?.canonical === false}
+        canSyncFile={canAdmin && Boolean(selectedMember) && !selectedMember?.sharedReference && sourceWorkflow?.canonical === false}
         onInspectorToggle={() => { if (inspectorOpen) closeInspector(); else openInspector("file"); }}
         candidateFileInputRef={candidateFileInputRef}
         onOpenInspector={openInspector}
@@ -1942,7 +1945,7 @@ export function ProjectConfigurationWorkbench({
       >
         {!selectedConfigSet ? <SectionEmpty message="选择或新建配置以查看项目配置。" /> : null}
         {contentTab === "source" && selectedConfigSet ? <WorkbenchSourceCanvas
-            workingEditor={selectedMember?.format === "dts" && selectedMember.currentVersionId && source && resolvedOrganizationId
+            workingEditor={selectedMember?.format === "dts" && !selectedMember.sharedReference && selectedMember.currentVersionId && source && resolvedOrganizationId
               && !sourceLoading && !sourceError && sourceIdentity?.projectId === project.id
               && sourceIdentity.fileId === selectedMember.fileId && sourceIdentity.versionId === selectedMember.currentVersionId ? <WorkbenchSourceEditingPane
               scope={{ userId: currentUserId, organizationId: resolvedOrganizationId, projectId: project.id, configSetId: selectedConfigSet.id, fileId: selectedMember.fileId }}
@@ -1950,7 +1953,7 @@ export function ProjectConfigurationWorkbench({
               configRevisionId={revisionGate.loading || revisionGate.error ? null : revisionGate.revisions
                 .filter((revision) => revision.configSetId === selectedConfigSet.id && ["resolved", "validated", "compiled", "pending_approval"].includes(revision.status))
                 .sort((left, right) => right.revisionNumber - left.revisionNumber)[0]?.id ?? null}
-              source={source} repository={fileRepository} canEdit={apiMode && canEdit && canAdmin}
+              source={source} repository={fileRepository} canEdit={apiMode && canEdit && canAdmin && !selectedMember.sharedReference}
               visible={canvasMode === "working"} legacyDraftsDirty={sessionDraftsDirty} onOpenLegacyDrafts={() => setTasksOpen(true)}
               onDirtyChange={setSourceBufferDirty} onRefresh={() => {
                 workspaceLoadSession.retryFiles(); workspaceLoadSession.retryMembers(); workspaceLoadSession.retrySource();
@@ -2060,8 +2063,8 @@ export function ProjectConfigurationWorkbench({
         onCanonicalAdd={apiMode ? () => setMemberAdditionOpen(true) : undefined}
         onSetRoot={apiMode ? setSetRootTarget : undefined}
       /> : null}
-      {memberAdditionOpen && selectedConfigSet ? <WorkbenchMemberAdditionDialog projectId={project.id} configSets={configSets}
-        client={additionClient}
+      {memberAdditionOpen && canAdmin && selectedConfigSet ? <WorkbenchMemberAdditionDialog key={`${resolvedOrganizationId}:${project.id}:${selectedConfigSet.id}`} projectId={project.id} configSets={configSets}
+        client={additionClient} sharedClient={sharedDtsiClient}
         catalogRepository={memberRemovalRepository} fileRepository={fileRepository}
         initialConfigSetId={selectedConfigSet.id} availableFiles={ungroupedFiles} onDismiss={() => setMemberAdditionOpen(false)}
         onApplied={(configSetId, fileId) => {
