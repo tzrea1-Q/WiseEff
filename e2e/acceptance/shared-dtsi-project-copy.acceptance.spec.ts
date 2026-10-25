@@ -129,7 +129,8 @@ test("chooses the source project, previews a private full copy, submits for inde
   await expect(detail.getByRole("button", { name: "通过初始化", exact: true })).toBeDisabled();
   await expect(detail).toContainText("另一位管理员");
   let reviewMember = detail.getByRole("table", { name: "完整配置复制预览", exact: true }).getByRole("link", { name: "mixed.json", exact: true });
-  await reviewMember.scrollIntoViewIfNeeded(); await expect(reviewMember).toBeInViewport();
+  await reviewMember.evaluate(member => member.scrollIntoView({ block: "center", behavior: "instant" }));
+  await reviewMember.click({ trial: true }); await expect(reviewMember).toBeInViewport();
   await expect(detail.getByRole("button", { name: "通过初始化", exact: true })).toBeInViewport();
   await page.screenshot({ path: info.outputPath("copy-review-self-readonly-1280.png"), fullPage: true });
   const reviewer = acceptanceCast.acceptanceAdmin;
@@ -138,7 +139,8 @@ test("chooses the source project, previews a private full copy, submits for inde
   detail = page.getByRole("complementary", { name: "审阅详情", exact: true });
   await expect(detail.getByRole("table", { name: "完整配置复制预览", exact: true })).toContainText("mixed.json");
   reviewMember = detail.getByRole("table", { name: "完整配置复制预览", exact: true }).getByRole("link", { name: "mixed.json", exact: true });
-  await reviewMember.scrollIntoViewIfNeeded(); await expect(reviewMember).toBeInViewport();
+  await reviewMember.evaluate(member => member.scrollIntoView({ block: "center", behavior: "instant" }));
+  await reviewMember.click({ trial: true }); await expect(reviewMember).toBeInViewport();
   await expect(detail.getByRole("button", { name: "通过初始化", exact: true })).toBeInViewport();
   await page.screenshot({ path: info.outputPath("copy-review-independent-1280.png"), fullPage: true });
   await detail.getByRole("button", { name: "通过初始化", exact: true }).focus(); await page.keyboard.press("Enter");
