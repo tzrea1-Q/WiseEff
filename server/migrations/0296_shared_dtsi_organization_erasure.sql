@@ -7,6 +7,8 @@ grant select,delete on public.shared_dtsi_resources,public.shared_dtsi_members,
 do $$ declare installed text; changed text; begin
   select pg_get_functiondef('parameter_catalog.preview_organization_deletion_0276(text,text)'::regprocedure) into strict installed;
   changed:=replace(installed,'for target in select * from (values', $inventory$for target in select * from (values
+    ('public.project_shared_dtsi_references','projects','r.organization_id=$1'),
+    ('public.project_shared_dtsi_snapshots','projects','r.reference_id in(select id from public.project_shared_dtsi_references where organization_id=$1)'),
     ('public.shared_dtsi_resources','organization-parameters','r.organization_id=$1'),
     ('public.shared_dtsi_members','organization-parameters','r.organization_id=$1'),
     ('public.shared_dtsi_drafts','organization-parameters','r.organization_id=$1'),
@@ -54,7 +56,7 @@ do $$ declare installed text; changed text; begin
   select pg_get_functiondef('public.guard_organization_lifecycle()'::regprocedure) into strict installed;
   changed:=replace(installed,'if tg_op=''DELETE'' and ((tg_table_schema=', $guard$if tg_op='DELETE' and tg_table_schema='public'
           and tg_table_name=any(array['shared_dtsi_resources','shared_dtsi_members','shared_dtsi_drafts','shared_dtsi_draft_members',
-            'shared_dtsi_revisions','shared_dtsi_revision_members','shared_dtsi_publication_previews'])
+            'shared_dtsi_revisions','shared_dtsi_revision_members','shared_dtsi_publication_previews','project_shared_dtsi_references'])
           and parameter_catalog.definition_purge_allows_change(TG_TABLE_SCHEMA,TG_TABLE_NAME,old_value,'DELETE') then return old; end if;
         if tg_op='DELETE' and ((tg_table_schema=$guard$);
   if changed=installed then raise exception 'Organization erasure lifecycle seam was not found'; end if;

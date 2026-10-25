@@ -1,4 +1,7 @@
 import { randomBytes } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createWiseEffServer } from "../../app";
 import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
@@ -10,6 +13,11 @@ import { seedBaselineAuthCatalog } from "../auth/baselineCatalog";
 import { createXiaozeCheckpointer } from "../agent/xiaoze/checkpointer";
 import { installPublishedReleaseA } from "../catalog-kernel/runtime/catalogChain.fixture";
 import { applyMigrations, migrationsDir, withTempDatabase } from "../../testing/tempDatabase";
+import { createLocalObjectStore } from "../logs/objectStore";
+import { getAuthContext } from "../auth/repository";
+import { addConfigSetFile, createConfigSet } from "../parameter-files/configSetService";
+import { uploadProjectParameterFile } from "../parameter-files/service";
+import { ingestConfigRevision } from "../parameter-topology/ingestService";
 
 type Preview = { stateDigest: string; blockers: { code: string }[]; inventory: { key: string; category: string; count: number }[] };
 type Draft = { resourceId: string; revision: number };
@@ -19,10 +27,12 @@ const source = '/ { battery { compatible = "test,battery"; status = "disabled"; 
 describe("Shared DTSI organization erasure through HTTP and a PostgreSQL API login", () => {
   let lane: Awaited<ReturnType<typeof createEphemeralTestDatabase>>;
   let db: ReturnType<typeof createPostgresDatabase>, api: ReturnType<typeof createPostgresDatabase>;
+  let directory: string, store: ReturnType<typeof createLocalObjectStore>;
   const token = `orgdtsi${randomBytes(5).toString("hex")}`;
   const agentCheckpointer = createXiaozeCheckpointer();
   beforeAll(async () => {
     lane = await createEphemeralTestDatabase("shared-org-erasure"); db = createPostgresDatabase(lane.url);
+    directory = await mkdtemp(join(tmpdir(), "orgdtsi-objects-")); store = createLocalObjectStore(directory);
     for (const id of ["home", "target", "foreign"]) {
       await seedCoreGraph(db, { organization: { id: `dtsi-${id}` }, users: [{ id: `dtsi-${id}-admin` }] });
     }
@@ -37,10 +47,10 @@ describe("Shared DTSI organization erasure through HTTP and a PostgreSQL API log
     expect((await api.query("select rolsuper,rolinherit from pg_roles where rolname=current_user")).rows)
       .toEqual([{ rolsuper: false, rolinherit: false }]);
   }, 120_000);
-  afterAll(async () => { await api?.close(); if (lane) await dropLabRuntimeLogins(lane.url, token); await db?.close(); await lane?.drop(); });
+  afterAll(async () => { await api?.close(); if (lane) await dropLabRuntimeLogins(lane.url, token); await db?.close(); await lane?.drop(); if (directory) await rm(directory, { recursive: true, force: true }); });
   const target = "/api/v1/platform/organizations/dtsi-target";
   function request<T>(path: string, method = "GET", body?: unknown, user = "dtsi-home-admin") {
-    return requestJson<T>(createWiseEffServer({ db: api, agentCheckpointer }), path, {
+    return requestJson<T>(createWiseEffServer({ db: api, agentCheckpointer, objectStore: store }), path, {
       method, headers: { "x-wiseeff-user": user }, ...(body === undefined ? {} : { body: JSON.stringify(body) })
     });
   }
@@ -74,6 +84,21 @@ describe("Shared DTSI organization erasure through HTTP and a PostgreSQL API log
     const draft = await create("dtsi-target-admin", "Owned draft", false);
     const foreign = await create("dtsi-foreign-admin", "Foreign published", true);
     const foreignDraft = await create("dtsi-foreign-admin", "Foreign draft", false);
+    const auth = await getAuthContext(db, "dtsi-target-admin"), projectId = "dtsi-target-project";
+    await db.query("insert into projects(id,organization_id,name,code,status) values($1,'dtsi-target','Referenced source','DTSI','initialized')", [projectId]);
+    const set = await createConfigSet(db, auth, { projectId, name: "Fixed shared source" });
+    const rootSource = '/dts-v1/; / { model = "Organization erasure"; };';
+    const root = await uploadProjectParameterFile(db, store, auth, { projectId, fileName: "board.dts", bytes: Buffer.from(rootSource) });
+    await addConfigSetFile(db, auth, { configSetId: set.id, fileId: root.file.id, role: "base", sortOrder: 0 });
+    await ingestConfigRevision(db, { organizationId: "dtsi-target", projectId, configSetId: set.id, entryFile: "board.dts", includeSearchPaths: ["."], overlayOrder: [],
+      members: [{ fileId: root.file.id, fileVersionId: root.version.id, fileName: "board.dts", role: "base", sortOrder: 0, content: rootSource }] }, auth);
+    const memberPath = `/api/v1/projects/${projectId}/config-sets/${set.id}/member-addition`;
+    const reference = { sharedReference: { resourceId: owned.draft.resourceId, versionId: owned.version }, role: "misc", sortOrder: 1 };
+    const plan = await request<{ item: { proofToken: string } }>(`${memberPath}/preview`, "POST", reference, "dtsi-target-admin");
+    expect(plan.status, plan.bodyText).toBe(200);
+    const applied = await request(`${memberPath}/apply`, "POST", { ...reference, proofToken: plan.body.item.proofToken,
+      reason: "Reference source before organization erasure", clientMutationId: "org-dtsi-reference" }, "dtsi-target-admin");
+    expect(applied.status, applied.bodyText).toBe(200);
     const foreignVersion = await request(`${foreign.resource}/versions/${foreign.version}`, "GET", undefined, "dtsi-foreign-admin");
     const foreignSource = await request(foreignDraft.resource, "GET", undefined, "dtsi-foreign-admin");
     await expect(api.query("select parameter_catalog.definition_purge_mark('public.shared_dtsi_revisions','[]','DELETE')"))
@@ -93,6 +118,10 @@ describe("Shared DTSI organization erasure through HTTP and a PostgreSQL API log
     const beforeCatalog = (await catalog()).rows;
     const initial = await preview();
     expect(initial.body.item.blockers).toEqual([]);
+    expect(initial.body.item.inventory).toEqual(expect.arrayContaining([
+      { key: "public.project_shared_dtsi_references", category: "projects", count: 1 },
+      { key: "public.project_shared_dtsi_snapshots", category: "projects", count: 1 }
+    ]));
     for (const [relation, count] of Object.entries({ resources: 2, members: 2, drafts: 1, draft_members: 1,
       revisions: 1, revision_members: 1, publication_previews: 2 })) {
       expect(initial.body.item.inventory).toContainEqual({ key: `public.shared_dtsi_${relation}`, category: "organization-parameters", count });
@@ -135,6 +164,8 @@ describe("Shared DTSI organization erasure through HTTP and a PostgreSQL API log
     for (const relation of relations) expect((await db.query(`select count(*)::int n from public.shared_dtsi_${relation} where organization_id='dtsi-target'`)).rows)
       .toEqual([{ n: 0 }]);
     expect((await db.query("select id from organizations where id='dtsi-target'")).rows).toEqual([]);
+    expect((await db.query("select id from project_shared_dtsi_references where organization_id='dtsi-target'")).rows).toEqual([]);
+    expect((await db.query("select file_id from project_shared_dtsi_snapshots")).rows).toEqual([]);
     expect((await request(`${owned.resource}/versions/${owned.version}`, "GET", undefined, "dtsi-foreign-admin")).status).toBe(404);
     expect((await request(`${foreign.resource}/versions/${foreign.version}`, "GET", undefined, "dtsi-foreign-admin")).body).toEqual(foreignVersion.body);
     expect((await request(foreignDraft.resource, "GET", undefined, "dtsi-foreign-admin")).body).toEqual(foreignSource.body);
