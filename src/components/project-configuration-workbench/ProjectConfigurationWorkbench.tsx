@@ -60,6 +60,7 @@ import {
 import { WorkbenchInspectorPanel } from "./WorkbenchInspectorPanel";
 import { WorkbenchConfigurationFilesDialog } from "./WorkbenchConfigurationFilesDialog";
 import { WorkbenchMemberAdditionDialog } from "./WorkbenchMemberAdditionDialog";
+import type { SharedSwitchConflict } from "@wiseeff/dto-schemas";
 import { WorkbenchRevisionGate } from "./WorkbenchRevisionGate";
 import { WorkbenchSourceCanvas } from "./WorkbenchSourceCanvas";
 import { WorkbenchSourceEditingPane } from "./WorkbenchSourceEditingPane";
@@ -742,6 +743,55 @@ export function ProjectConfigurationWorkbench({
   }, [projectFiles, sourceWorkflowsByFileId]);
   const [memberAdditionOpen, setMemberAdditionOpen] = useState(false);
   const [switchSharedMember,setSwitchSharedMember]=useState<DtsConfigSetMemberFile|null>(null);
+  const resolvedOrganizationId = organizationId ?? selectedConfigSet?.organizationId ?? null;
+  const switchTaskKey=`wiseeff.shared-switch:${currentUserId}:${resolvedOrganizationId}:${project.id}:${selectedConfigSet?.id}`;
+  type SwitchTask={scope:string;reference:{resourceId:string;versionId:string;version:number};draft:{versionId:string;reason:string}};
+  const [switchTask,setSwitchTask]=useState<SwitchTask|null>(null);
+  const activeSwitchTask=switchTask?.scope===switchTaskKey?switchTask:null;
+  useEffect(()=>{
+    setMemberAdditionOpen(false);setSwitchSharedMember(null);
+    try {
+      const saved=JSON.parse(sessionStorage.getItem(switchTaskKey)??"null") as SwitchTask|null;
+      if(saved?.scope===switchTaskKey && typeof saved.reference?.resourceId==="string" && typeof saved.reference.versionId==="string"
+        && typeof saved.reference.version==="number" && typeof saved.draft?.versionId==="string" && typeof saved.draft.reason==="string")setSwitchTask(saved);
+    }catch{/* A missing recovery draft never supplies a preview proof. */}
+  },[switchTaskKey]);
+  const saveSwitchTask=useCallback((task:SwitchTask)=>{
+    sessionStorage.setItem(switchTaskKey,JSON.stringify(task));setSwitchTask(task);
+  },[switchTaskKey]);
+  const updateSwitchDraft=useCallback((draft:SwitchTask["draft"])=>{
+    setSwitchTask(current=>{
+      if(!current || current.scope!==switchTaskKey || current.draft.versionId===draft.versionId && current.draft.reason===draft.reason)return current;
+      const next={...current,draft};try{sessionStorage.setItem(switchTaskKey,JSON.stringify(next));}catch{/* Keep the in-page task when browser storage is unavailable. */}return next;
+    });
+  },[switchTaskKey]);
+  const dismissSwitchTask=()=>{setMemberAdditionOpen(false);setSwitchSharedMember(null);setSwitchTask(null);sessionStorage.removeItem(switchTaskKey);};
+  const resumedSwitch=useRef("");
+  useEffect(()=>{
+    if(queryValue(search,"sharedSwitch")==="resume" && activeSwitchTask && canAdmin && resumedSwitch.current!==switchTaskKey){
+      resumedSwitch.current=switchTaskKey;setMemberAdditionOpen(true);
+    }
+  },[search,activeSwitchTask,canAdmin,switchTaskKey]);
+  const recoverSwitch=(location:SharedSwitchConflict,draft:SwitchTask["draft"])=>{
+    const reference=activeSwitchTask?.reference??switchSharedMember?.sharedReference;
+    if(!reference || !selectedConfigSet)return;
+    try{saveSwitchTask({scope:switchTaskKey,reference,draft});}catch{toast({tone:"danger",message:"无法保存版本切换任务，请检查浏览器存储后重试。"});return;}
+    setMemberAdditionOpen(false);resumedSwitch.current="";
+    const params=new URLSearchParams({organizationId:resolvedOrganizationId??"",configSet:selectedConfigSet.id,tab:"source",sourceMode:"working",sharedSwitch:"paused"});
+    if(location.fileId&&!location.resourceId)params.set("file",location.fileId);
+    if(location.node)params.set("node",location.node);
+    if(location.property)params.set("property",location.property);
+    if(location.line){params.set("line",String(location.line));setFocusLineOverride(location.line);}
+    const returnPath=`/parameter-admin/projects/${encodeURIComponent(project.id)}/configuration?${params}`;
+    if(location.resourceId && location.versionId){
+      params.set("sharedSwitch","resume");
+      const sharedParams=new URLSearchParams({organization:resolvedOrganizationId??"",resource:location.resourceId,version:location.versionId,
+        tab:location.identity?"recognition":"source",projectContext:`/parameter-admin/projects/${encodeURIComponent(project.id)}/configuration?${params}`});
+      if(location.memberId)sharedParams.set("member",location.memberId);
+      if(location.line)sharedParams.set("line",String(location.line));
+      onNavigate(`/parameter-admin/sources?${sharedParams}`);
+    }else onNavigate(returnPath);
+  };
   const sourceWorkflowSetCanonical = selectedMembers.some(
     (member) => sourceWorkflowsByFileId[member.fileId]?.canonical === true
   );
@@ -1502,7 +1552,6 @@ export function ProjectConfigurationWorkbench({
     });
   }, [activePropertyDraft, propertyDefinition.status, propertyValueSchema, selectedMember, selectedStructureNode, selectedStructureProperty, structuredEditSession]);
 
-  const resolvedOrganizationId = organizationId ?? selectedConfigSet?.organizationId ?? null;
   const sessionDraftScope = useMemo<SessionDraftScope | null>(() => {
     if (
       !currentUserId ||
@@ -1912,6 +1961,11 @@ export function ProjectConfigurationWorkbench({
 
   return (
     <section className="configuration-workbench" aria-label="项目配置工作台" ref={workbenchBodyRef}>
+      {activeSwitchTask && !memberAdditionOpen && canAdmin?<div role="group" aria-label="待重新预览的版本切换">
+        <Button type="button" variant="outline" onClick={()=>setMemberAdditionOpen(true)}>返回版本切换</Button>
+        <Button type="button" variant="outline" onClick={dismissSwitchTask}>取消版本切换</Button>
+        <span>目标版本与变更说明已保留；修正生效后重新预览。</span>
+      </div>:null}
       <NavigatorWorkbench
         pageKey={`project-configuration:${project.id}`}
         navigatorLabel={contentTab === "effective" ? "设备树" : "配置导航"}
@@ -2165,8 +2219,8 @@ export function ProjectConfigurationWorkbench({
         onUpdateFile={(fileId) => openInspector("candidates", fileId)}
         onOpenVersions={(fileId) => openInspector("versions", fileId)}
         onAddSourceFile={() => openInspector("candidates")}
-        onCanonicalAdd={apiMode ? () => {setSwitchSharedMember(null);setMemberAdditionOpen(true);} : undefined}
-        onSwitchSharedVersion={apiMode?member=>{setSwitchSharedMember(member);setMemberAdditionOpen(true);}:undefined}
+        onCanonicalAdd={apiMode ? () => {dismissSwitchTask();setMemberAdditionOpen(true);} : undefined}
+        onSwitchSharedVersion={apiMode?member=>{setSwitchSharedMember(member);if(member.sharedReference){const task={scope:switchTaskKey,reference:member.sharedReference,draft:{versionId:"",reason:""}};try{saveSwitchTask(task);}catch{setSwitchTask(task);}}setMemberAdditionOpen(true);}:undefined}
         onSetRoot={apiMode ? setSetRootTarget : undefined}
         onCreateShared={apiMode && sharedDtsiClient && sharedImportRevisionId ? member => {
           void runAction("create-shared",async () => {
@@ -2184,11 +2238,13 @@ export function ProjectConfigurationWorkbench({
       /> : null}
       {memberAdditionOpen && canAdmin && selectedConfigSet ? <WorkbenchMemberAdditionDialog key={`${resolvedOrganizationId}:${project.id}:${selectedConfigSet.id}`} projectId={project.id} configSets={configSets}
         client={additionClient} sharedClient={sharedDtsiClient}
-        switchReference={switchSharedMember?.sharedReference}
+        switchReference={activeSwitchTask?.reference??switchSharedMember?.sharedReference}
+        switchDraft={activeSwitchTask?.draft} onSwitchDraftChange={updateSwitchDraft} onRecoverSwitch={recoverSwitch}
+        projectRoot={selectedMembers.find(member=>member.role==="base")?{fileId:selectedMembers.find(member=>member.role==="base")!.fileId,sourceName:selectedMembers.find(member=>member.role==="base")!.fileName}:undefined}
         catalogRepository={memberRemovalRepository} fileRepository={fileRepository}
-        initialConfigSetId={selectedConfigSet.id} availableFiles={ungroupedFiles} onDismiss={() => setMemberAdditionOpen(false)}
+        initialConfigSetId={selectedConfigSet.id} availableFiles={ungroupedFiles} onDismiss={dismissSwitchTask}
         onApplied={(configSetId, fileId) => {
-          setMemberAdditionOpen(false); setInspectorOpen(false); workspaceLoadSession.retryFiles(); workspaceLoadSession.retryMembers();
+          dismissSwitchTask(); setInspectorOpen(false); workspaceLoadSession.retryFiles(); workspaceLoadSession.retryMembers();
           workspaceLoadSession.retrySource(); workspaceLoadSession.retryStructure(); setSourceWorkflowReloadToken((value) => value + 1);
           setVersionsReloadToken((value) => value + 1);
           if (topologyRepository) void revisionGate.session.load(project.id, configSetId, topologyRepository);

@@ -672,7 +672,8 @@ export async function prepareReviewedSourceContinuity(tx: Queryable, input: {
   const prepared = await buildLogicalRevisionsWithContinuity(tx, { ...input, registry,
     revisionNumber: base.revision_number + 1, continuityBaseConfigRevisionId: input.baseConfigRevisionId });
   if (prepared.ambiguous.length) throw new ApiError("CONFLICT", "DTS node identity continuity requires an explicit mapping decision.", {
-    reason: "logical-continuity-decision-needed", nodes: prepared.ambiguous.map((row) => row.previous.nodeLocator)
+    reason: "logical-continuity-decision-needed", nodes: prepared.ambiguous.map((row) => row.previous.nodeLocator),
+    candidates: prepared.ambiguous.flatMap(row=>row.continuity.candidates.map(candidate=>candidate.nodeLocator))
   });
   const newIds = new Map(prepared.logicalNodesToInsert.map((row) => {
     const node = prepared.revisions.find((entry) => entry.logicalNodeId === row.id)!;
