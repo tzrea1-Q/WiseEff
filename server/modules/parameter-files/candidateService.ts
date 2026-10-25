@@ -30,6 +30,9 @@ import {
   updateParameterFileCandidateParseResult
 } from "./candidateRepository";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
+import { resolveDtsConfigSetAsync } from "../dts";
+import { prepareProjectLocalOverride } from "./projectLocalOverride";
+import type { SourceRevisionCandidateContext } from "./types";
 import { getCanonicalSourceWorkflow } from "./canonicalFileWorkflow";
 import {
   assertLegacySourceMutationAllowed,
@@ -45,8 +48,7 @@ import { getConfigSetById, setFileConfigSetMembership } from "./configSetReposit
 import { detectFormat, extractCompatiblesFromDtsSource, MAX_FILE_BYTES, maybeIngestSemanticConfigRevision } from "./service";
 import { ingestDtsFileVersion } from "./structuralIngest";
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
-import { DtsPreprocessingError, prepareDtsSources, requiresDtsPreprocessing } from "../dts/cppSources";
-import { expandDtsIncludes } from "../dts/configSetResolver";
+import { DtsPreprocessingError } from "../dts/cppSources";
 import { loadConfigSetSnapshot } from "./configSetSnapshot";
 import { syncFileVersion } from "./syncService";
 import type {
@@ -103,6 +105,7 @@ export type CreateCandidateInput = {
   bytes: Buffer;
   fileId?: string;
   intent?: "source_revision";
+  localOverride?: NonNullable<SourceRevisionCandidateContext["localOverride"]>["input"];
   expectedCurrentVersionId?: string;
   expectedConfigRevisionId?: string;
   clientMutationId?: string;
@@ -386,13 +389,13 @@ async function createCandidateInScope(
   callerOwnsTransaction: boolean
 ): Promise<ProjectParameterFileCandidateDto> {
   const trustedContext = normalizeCandidateCreationContext(auth, context, "parameter file candidate creation");
-  requireCandidateAdmin(auth);
+  if (!(input.intent === "source_revision" && input.localOverride)) requireCandidateAdmin(auth);
 
   const sourceRevision = input.intent === "source_revision";
   const mutationDigest = sourceRevision ? createHash("sha256").update(JSON.stringify({
     fileId: input.fileId, fileName: input.fileName, baseVersionId: input.expectedCurrentVersionId,
     baseConfigRevisionId: input.expectedConfigRevisionId,
-    content: createHash("sha256").update(input.bytes).digest("hex")
+    content: createHash("sha256").update(input.bytes).digest("hex"), ...(input.localOverride ? { localOverride: input.localOverride } : {})
   })).digest("hex") : undefined;
   const replay = async (tx: Queryable) => {
     if (!sourceRevision) return null;
@@ -488,6 +491,19 @@ async function createCandidateInScope(
 
   const candidateId = randomUUID();
   const source = input.bytes.toString("utf8");
+  const verifyLocalOverride = async (tx: Database, configSetId: string) => {
+    const prepared = await prepareProjectLocalOverride(tx, objectStore, auth, { ...input.localOverride!, projectId: input.projectId, configSetId }, undefined, true);
+    if (!prepared.binding || prepared.after !== source || prepared.fileId !== fileId
+      || prepared.baseVersionId !== input.expectedCurrentVersionId || prepared.configRevisionId !== input.expectedConfigRevisionId) {
+      throw new ApiError("FORBIDDEN", "项目覆盖只允许服务器证明的单属性补丁，不能夹带其他源码修改。", { reason: "local-override-patch-mismatch" });
+    }
+    return { input: input.localOverride!, ...prepared.binding, authorUserId: auth.user.id };
+  };
+  if (input.localOverride) {
+    const file = (await db.query<{ config_set_id: string }>("select config_set_id from public.project_parameter_files where id=$1 and organization_id=$2 and project_id=$3", [fileId, parameterOrganizationId(auth), input.projectId])).rows[0];
+    if (!file?.config_set_id) throw new ApiError("NOT_FOUND", "Project override target was not found.");
+    await db.transaction(tx => verifyLocalOverride(tx, file.config_set_id));
+  }
   const stored = await objectStore.put({
     organizationId: parameterOrganizationId(auth),
     fileName: `candidate-${candidateId}-${fileName}`,
@@ -497,7 +513,6 @@ async function createCandidateInScope(
 
   const persist = async (tx: Database) => {
     let sourceRevisionContext: ProjectParameterFileCandidateDto["sourceRevisionContext"];
-    let needsCompletePreprocessing = false;
     if (sourceRevision) {
       await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
         `source-revision-candidate:${parameterOrganizationId(auth)}:${input.projectId}:${auth.user.id}:${input.clientMutationId}`
@@ -519,8 +534,8 @@ async function createCandidateInScope(
       }
       baseVersionId = current.current_version_id;
       sourceRevisionContext = { kind: "source_revision", configSetId: current.config_set_id,
-        baseVersionId, baseConfigRevisionId: input.expectedConfigRevisionId!, clientMutationId: input.clientMutationId! };
-      needsCompletePreprocessing = Boolean(revision?.preprocessing) || requiresDtsPreprocessing(new Map([[fileName, { content: source, fileVersionId: candidateId }]]));
+        baseVersionId, baseConfigRevisionId: input.expectedConfigRevisionId!, clientMutationId: input.clientMutationId!,
+        ...(input.localOverride ? { localOverride: await verifyLocalOverride(tx, current.config_set_id) } : {}) };
     }
     const uploading = await insertParameterFileCandidate(tx, {
       id: candidateId,
@@ -551,23 +566,21 @@ async function createCandidateInScope(
     });
 
     let parsedIndex = {};
-    let semanticSources: { semanticCandidateSource: string; semanticBaseSource: string } | undefined;
     try {
-      if (needsCompletePreprocessing && sourceRevisionContext) {
+      if (sourceRevisionContext) {
         const snapshot = await loadConfigSetSnapshot(tx, objectStore, sourceRevisionContext.configSetId);
         const name = (await tx.query<{ sourceName: string }>("select source_name as \"sourceName\" from public.dts_config_revision_members where config_revision_id=$1 and file_id=$2",
           [sourceRevisionContext.baseConfigRevisionId, fileId])).rows[0]?.sourceName;
         if (!name || !snapshot.entryFile) throw new ApiError("CONFLICT", "完整原始工程来源已变化，请重新打开源码编辑器。");
         const files = new Map([...snapshot.toolchainFiles].map(([key, file]) => [key, { ...file, fileVersionId: key }]));
         const manifest = { entryFile: snapshot.entryFile, includeSearchPaths: snapshot.includeSearchPaths, overlayOrder: snapshot.overlayOrder, files, defines: snapshot.preprocessing?.defines };
-        const before = await prepareDtsSources(manifest);
-        const semanticText = (prepared: Awaited<ReturnType<typeof prepareDtsSources>>) => [manifest.entryFile, ...manifest.overlayOrder]
-          .map(entry => prepared?.documents.get(entry)!.text ?? expandDtsIncludes({ ...manifest, entryFile: entry }).text).join("\n");
-        const semanticBaseSource = semanticText(before);
         files.set(name, { content: source, fileVersionId: candidateId });
-        const after = await prepareDtsSources(manifest);
-        semanticSources = { semanticBaseSource, semanticCandidateSource: semanticText(after) };
-        parsedIndex = buildDtsParsedIndex(source, after?.originalDocuments.get(name));
+        const after = await resolveDtsConfigSetAsync({ ...manifest, requireExactOrigins: true });
+        const failure = after.diagnostics.find(row => row.severity === "error");
+        if (failure) throw new DtsPreprocessingError(failure.code === "preprocess-busy" ? "preprocess-busy" : "preprocess-input", failure.message, failure.fileName, failure.offset);
+        parsedIndex = Object.fromEntries([...after.effective.nodesByLocator.values()].flatMap(node => [...node.properties]
+          .filter(([, property]) => !node.deleted && !property.deleted && property.sourceChain.at(-1)?.fileName === name)
+          .map(([key, property]) => [node.nodeLocator === "/" ? key : `${node.nodeLocator.slice(1)}/${key}`, { value: property.normalizedValue }])));
       } else parsedIndex = validatedJsonIndex ?? buildParsedIndex(format, input.bytes);
     } catch (error) {
       if (error instanceof DtsPreprocessingError && error.code === "preprocess-busy") throw error;
@@ -610,11 +623,12 @@ async function createCandidateInScope(
           ).filter((conflict) => conflict.fileVersionId === baseVersionId)
         : [];
 
-    const computed = await computeCandidateImpact({
+    // Whole-source candidates resolve only with their exact complete manifest:
+    // a valid reference into an included member is unresolved in isolation.
+    const computed = sourceRevision ? { status: "ready" as const, diagnostics: [], impact: {}, blockers: [] } : await computeCandidateImpact({
       canonicalSourceWorkflow: openConflicts.length > 0 && fileId != null
         && (await getCanonicalSourceWorkflow(tx, auth, { projectId: input.projectId, fileId })).canonical,
       format,
-      ...semanticSources,
       candidateSource: source,
       baseSource,
       baseLabel: baseVersionId ? `active:${baseVersionId}` : "/dev/null",

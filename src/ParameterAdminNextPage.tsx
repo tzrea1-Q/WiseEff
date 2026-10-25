@@ -79,6 +79,7 @@ export type ParameterAdminNextPageProps = {
   catalogOrganizationId?: string;
   sessionPermissions?: readonly string[] | null;
   sessionRoles?: readonly AuthContextDto["roles"][number][] | null;
+  projectMemberships?: AuthContextDto["projectMemberships"];
 };
 
 /**
@@ -109,6 +110,7 @@ export function ParameterAdminNextPage({
   runtime,
   catalogOrganizationId,
   sessionPermissions,
+  projectMemberships,
   sessionRoles
 }: ParameterAdminNextPageProps) {
   const topology = useMemo(
@@ -228,7 +230,7 @@ export function ParameterAdminNextPage({
             : "param-admin-shell"
         }
       >
-        {!isConfigurationWorkbenchRoute ? (
+        {!isConfigurationWorkbenchRoute && (runtimeMode !== "api" || sessionPermissions === undefined || sessionPermissions?.includes("admin:access")) ? (
           <div className="param-admin-navigation">
             <ParameterAdminNextScopeNav active={area} onNavigate={onNavigate} />
             {organizationView ? <ParameterAdminOrganizationSubNav active={organizationView} onNavigate={onNavigate} /> : null}
@@ -250,6 +252,8 @@ export function ParameterAdminNextPage({
               parameterFileRepository={fileRepository}
               dtsStructuredRepository={dtsRepository}
               configurationWorkbenchEnabled={configurationWorkbenchEnabled}
+              sessionPermissions={sessionPermissions}
+              projectMemberships={projectMemberships}
             />
           ) : (
             <section className="param-admin-main" aria-label="项目运营">

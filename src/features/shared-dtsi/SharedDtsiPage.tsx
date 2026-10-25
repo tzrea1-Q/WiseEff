@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { SharedDtsiDraft, SharedDtsiDraftInput, SharedDtsiResourceSummary, SharedDtsiResourceDetail,
-  SharedDtsiVersion, SharedDtsiVersionSummary, SharedDtsiPublicationPreview } from "@wiseeff/dto-schemas";
+  SharedDtsiVersion, SharedDtsiVersionSummary, SharedDtsiPublicationPreview, SharedDtsiUsages } from "@wiseeff/dto-schemas";
 import { AdminListPage } from "@/components/layout/AdminListPage";
 import { DataTable } from "@/components/admin/DataTable";
 import { SettingsLeaveGuard } from "@/components/layout/SettingsFormPage";
@@ -21,6 +21,7 @@ import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { dtsBuildInputsSchema, sharedDtsiImportLimits } from "@wiseeff/dto-schemas";
 import "./shared-dtsi.css";
 import { SharedDtsiDependencies } from "./SharedDtsiDependencies";
+import { SharedDtsiComparison } from "./SharedDtsiComparison";
 
 type Props = { apiClient?: ApiClient; canWrite: boolean; search: string; organizationId?: string; onNavigate: (path: string) => void };
 type Scope = { key: string; client: ReturnType<typeof createSharedDtsiClient> | null; pending: boolean };
@@ -61,7 +62,8 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
   const requestedLine = new URLSearchParams(search).get("line") ?? "";
   const projectContext = new URLSearchParams(search).get("projectContext") ?? "";
   const projectReturnPath = /^\/parameter-admin\/projects\/[^/?#]+\/configuration\?/.test(projectContext) ? projectContext : null;
-  const tab = new URLSearchParams(search).get("tab") === "versions" ? "versions" : "source";
+  const requestedTab=new URLSearchParams(search).get("tab");
+  const tab = requestedTab === "versions" || requestedTab === "usages" ? requestedTab : "source";
   const scopeKey = `${organizationId ?? ""}:${search}:${canWrite}`;
   const active = useRef<Scope>({ key: scopeKey, client, pending: false });
   if (active.current.key !== scopeKey || active.current.client !== client) active.current = { key: scopeKey, client, pending: false };
@@ -80,7 +82,10 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
   const [versions, setVersions] = useState<SharedDtsiVersionSummary[]>([]);
   const [versionsTotal, setVersionsTotal] = useState(0);
   const [historyPage, setHistoryPage] = useState(1);
-  useEffect(()=>setHistoryPage(1),[selected]);
+  const [chosenVersions,setChosenVersions]=useState<SharedDtsiVersionSummary[]>([]);
+  const [comparing,setComparing]=useState(false);
+  const [usages,setUsages]=useState<SharedDtsiUsages|null>(null),[usagePage,setUsagePage]=useState(1);
+  useEffect(()=>{setHistoryPage(1);setUsagePage(1);setChosenVersions([]);setComparing(false);},[selected,organizationId,client,canWrite]);
   const [preview, setPreview] = useState<{ scope: Scope; data: SharedDtsiPublicationPreview; key: string } | null>(null);
   const [form, setForm] = useState(empty);
   const [buildText, setBuildText] = useState(buildTexts(undefined));
@@ -108,12 +113,13 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
   const sessionKey = `shared-dtsi/${selected}/${draft?.revision ?? "new"}/${memberIndex}`;
   const path = useCallback((resourceId: string, options?: { version?: string; tab?: string }) => {
     const params = new URLSearchParams(search);
-    if (resourceId !== selected) { params.delete("version"); params.delete("tab"); }
+    if (resourceId !== selected || options?.version!==undefined && options.version!==selectedVersion) { params.delete("member");params.delete("line"); }
+    if (resourceId !== selected) { params.delete("version"); params.delete("tab");params.delete("projectContext"); }
     if (resourceId) params.set("resource", resourceId); else params.delete("resource");
     if (options?.version !== undefined) { if (options.version) params.set("version", options.version); else params.delete("version"); }
     if (options?.tab !== undefined) { if (options.tab === "source") params.delete("tab"); else params.set("tab", options.tab); }
     return `/parameter-admin/sources${params.size ? `?${params}` : ""}`;
-  }, [search, selected]);
+  }, [search, selected,selectedVersion]);
   const leave = (resourceId: string, options?: { version?: string; tab?: string }) => { flushSync(() => setLeaving(true)); onNavigate(path(resourceId, options)); };
   const navigate = async (resourceId: string, options?: { version?: string; tab?: string }) => { if (!scope.pending && await requestSettingsLeave() && isCurrent(scope)) leave(resourceId, options); };
 
@@ -129,6 +135,9 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
       if (tab === "versions") {
         const result = await client.versions(selected,(historyPage-1)*20);
         if (!cancelled && isCurrent(scope)) {setVersions(result.items);setVersionsTotal(result.total);}
+      } else if(tab === "usages") {
+        const result=await client.usages(selected,(usagePage-1)*20);
+        if(!cancelled&&isCurrent(scope))setUsages(result);
       } else if (metadata.draftRevision && (selectedVersion === "draft" || !metadata.currentVersion)) {
         const result = await client.get(selected);
         if (!cancelled && isCurrent(scope)) { setDraft(result); setForm(draftInput(result)); setBuildText(buildTexts(result.buildInputs)); }
@@ -144,7 +153,7 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
     })).catch(cause => { if (!cancelled && isCurrent(scope)) setError(message(cause)); })
       .finally(() => { if (!cancelled && isCurrent(scope)) { setLoading(false); setLoadedScope(scope); } });
     return () => { cancelled = true; };
-  }, [client, selected, selectedVersion, tab, query, page, historyPage, reload, scope, isCurrent]);
+  }, [client, selected, selectedVersion, tab, query, page, historyPage,usagePage, reload, scope, isCurrent]);
 
   const persist = async (operation: Scope) => {
     if (!client) throw new Error("API 不可用。");
@@ -272,7 +281,7 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
       readOnly ariaLabel="待发布 DTSI 源码" /></div></div>
   </section>;
 
-  if (published || tab === "versions") return <section className="shared-dtsi-page shared-dtsi-page--editor" aria-label="共享 DTSI 版本" aria-busy={pending}>
+  if (published || tab === "versions" || tab === "usages") return <section className="shared-dtsi-page shared-dtsi-page--editor" aria-label="共享 DTSI 版本" aria-busy={pending}>
     <header className="shared-dtsi-header"><div><Button variant="ghost" onClick={() => void navigate("")} disabled={pending}>返回资源列表</Button>
       {projectReturnPath ? <a href={projectReturnPath} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(projectReturnPath); } }}>返回项目节点</a> : null}
       <h1>{published?.name ?? detail?.name ?? "共享 DTSI"}</h1></div>
@@ -282,11 +291,13 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
     {error ? <SectionError message={error} onRetry={() => setReload(value => value + 1)} /> : null}
     <ViewSwitch variant="tabs" ariaLabel="共享资源详情" value={tab} onValueChange={value => void navigate(selected,{tab:value})}
       items={[{value:"source",label:"源码",id:"shared-source-tab",panelId:"shared-source-panel"},
-        {value:"versions",label:"版本",id:"shared-versions-tab",panelId:"shared-versions-panel"}]} />
+        {value:"versions",label:"版本",id:"shared-versions-tab",panelId:"shared-versions-panel"},
+        {value:"usages",label:"使用情况",id:"shared-usages-tab",panelId:"shared-usages-panel"}]} />
     <TabPanel id="shared-source-panel" aria-labelledby="shared-source-tab" hidden={tab!=="source"} className="shared-dtsi-published-panel">
       {tab==="source" && published ? <><p role="status">v{published.version} · {published.id===detail?.currentVersion?.id?"已发布":"历史版本"}，只读</p>
         <dl className="shared-dtsi-metadata"><div><dt>文件路径</dt><dd>{published.members[memberIndex]?.sourceName}</dd></div>
           <div><dt>发布时间</dt><dd>{formatAbsolute(published.createdAt)}</dd></div>
+          <div><dt>发布者</dt><dd>{published.createdByName??published.createdByUserId}</dd></div>
           <div><dt>变更说明</dt><dd>{published.changeDescription}</dd></div></dl>
         {fixedBuildInputs(published.manifest.buildInputs)}
         {published.manifest.dependencyClosure?.length?<details><summary>完整固定依赖（{published.manifest.dependencyClosure.length}）</summary>
@@ -298,14 +309,38 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
           ariaLabel="已发布 DTSI 源码" /></div></div></> : null}
     </TabPanel>
     <TabPanel id="shared-versions-panel" aria-labelledby="shared-versions-tab" hidden={tab!=="versions"}>
-      {tab==="versions" ? <DataTable rows={versions} rowKey={row=>row.id} fluid pageSize={20} columns={[
+      {tab==="versions" && !error ? <><div className="shared-dtsi-version-actions">
+        {chosenVersions.length?<p>{chosenVersions.map(version=>`v${version.version}`).join(" → ")}</p>:null}
+        {versionsTotal>1?<><Button variant="outline" aria-describedby={chosenVersions.length!==2?"shared-comparison-hint":undefined} disabled={chosenVersions.length!==2} onClick={()=>setComparing(value=>!value)}>{comparing?"返回版本记录":"比较所选版本"}</Button>
+          {chosenVersions.length!==2?<p id="shared-comparison-hint">选择两个已发布版本进行比较。</p>:null}</>:null}
+      </div>
+      {comparing&&chosenVersions.length===2?<SharedDtsiComparison key={chosenVersions.map(version=>version.id).join("/")} client={client} resourceId={selected}
+        before={chosenVersions[0]!.id} after={chosenVersions[1]!.id} />:<DataTable rows={versions} rowKey={row=>row.id} fluid pageSize={20} columns={[
+        ...(versionsTotal>1?[{key:"select",header:"比较",render:(row:SharedDtsiVersionSummary)=><input type="checkbox" aria-label={`选择版本 v${row.version}`} checked={chosenVersions.some(item=>item.id===row.id)}
+          disabled={chosenVersions.length===2&&!chosenVersions.some(item=>item.id===row.id)} onChange={event=>{setComparing(false);setChosenVersions(current=>event.target.checked?[...current,row].sort((a,b)=>a.version-b.version):current.filter(item=>item.id!==row.id));}} />}]:[]),
         {key:"version",header:"版本",render:row=><Button variant="link" onClick={()=>void navigate(selected,{version:row.id,tab:"source"})}>v{row.version}</Button>},
         {key:"createdAt",header:"发布时间",render:row=>formatAbsolute(row.createdAt)},
+        {key:"actor",header:"发布者",render:row=>row.createdByName??row.createdByUserId},
         {key:"changeDescription",header:"变更说明",render:row=><span className="shared-dtsi-description">{row.changeDescription}</span>}
-      ]} emptyState={<SectionEmpty title="尚无已发布版本" message="发布草稿后，可在这里追溯版本。" />} /> : null}
-      {tab==="versions" && versionsTotal>20 ? <nav className="shared-dtsi-pagination" aria-label="共享版本分页">
+      ]} emptyState={<SectionEmpty title="尚无已发布版本" message="发布草稿后，可在这里追溯版本。" />} />}</>:null}
+      {tab==="versions" && !comparing && versionsTotal>20 ? <nav className="shared-dtsi-pagination" aria-label="共享版本分页">
         <Button variant="outline" disabled={historyPage===1} onClick={()=>setHistoryPage(value=>value-1)}>上一页</Button>
         <span>{historyPage} / {Math.ceil(versionsTotal/20)}</span><Button variant="outline" disabled={historyPage*20>=versionsTotal} onClick={()=>setHistoryPage(value=>value+1)}>下一页</Button></nav> : null}
+    </TabPanel>
+    <TabPanel id="shared-usages-panel" aria-labelledby="shared-usages-tab" hidden={tab!=="usages"}>
+      {tab==="usages" && !error && usages ? <>
+        <p>{usages.visibility==="authorized-projects"?"仅显示当前有权访问的项目配置。":"当前组织的项目配置。"} 共 {usages.total} 个授权使用。</p>
+        <DataTable rows={usages.items} rowKey={row=>`${row.projectId}/${row.configSetId}`} fluid pageSize={20} columns={[
+          {key:"project",header:"项目 / 配置",render:row=>{const params=new URLSearchParams({...(organizationId?{organization:organizationId}:{}),configSet:row.configSetId,tab:"effective"});
+            const target=`/parameter-admin/projects/${encodeURIComponent(row.projectId)}/configuration?${params}`;
+            return <a href={target} onClick={event=>{if(!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey){event.preventDefault();onNavigate(target);}}}>{row.projectName} / {row.configSetName}</a>;}},
+          {key:"pin",header:"固定版本",render:row=><Button variant="link" onClick={()=>void navigate(selected,{version:row.versionId,tab:"source"})}>v{row.version}</Button>},
+          {key:"origin",header:"引用来源",render:row=>row.direct?"直接引用":"传递依赖"},
+          {key:"upgrade",header:"版本状态",render:row=>row.upgradeAvailable?"有新版本 · 未评估":"已固定最新版本 · 未评估"}
+        ]} emptyState={<SectionEmpty title="没有可显示的项目使用" message="项目引用已发布版本后，可在这里查看有权访问的固定引用。" />} />
+        {usages.total>20?<nav className="shared-dtsi-pagination" aria-label="共享使用分页"><Button variant="outline" disabled={usagePage===1} onClick={()=>setUsagePage(value=>value-1)}>上一页</Button>
+          <span>{usagePage} / {Math.ceil(usages.total/20)}</span><Button variant="outline" disabled={usagePage*20>=usages.total} onClick={()=>setUsagePage(value=>value+1)}>下一页</Button></nav>:null}
+      </>:null}
     </TabPanel>
   </section>;
 

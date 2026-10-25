@@ -15,6 +15,7 @@ import { listSharedDtsiUsages } from "./usages";
 import type { ObjectStore } from "../logs/objectStore";
 import { importPrivateProjectSource } from "./projectImport";
 import { sharedDtsiProjectImportSchema } from "../contracts/dtoSchemas/sharedDtsi";
+import { compareSharedDtsiVersions } from "./comparison";
 
 export function registerSharedDtsiRoutes(router: WiseEffRouter, options: {
   db?: Database; objectStore?: ObjectStore; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
@@ -69,6 +70,11 @@ export function registerSharedDtsiRoutes(router: WiseEffRouter, options: {
     const {db,auth}=await access(request);
     const query=parse(z.object({offset:z.coerce.number().int().min(0).max(100_000).default(0),limit:z.coerce.number().int().min(1).max(100).default(20)}),request.query);
     return {status:200,body:await listSharedDtsiUsages(db,auth,resourceId(request),query)};
+  });
+  router.get("/api/v2/shared-dtsi/:resourceId/comparison",async request=>{
+    const {db,auth}=await access(request);
+    const query=parse(z.object({before:z.string().uuid(),after:z.string().uuid()}).refine(value=>value.before!==value.after,"请选择两个不同的已发布版本。"),request.query);
+    return {status:200,body:{item:await compareSharedDtsiVersions(db,auth,resourceId(request),query.before,query.after)}};
   });
   router.get("/api/v2/shared-dtsi/:resourceId/versions", async request => {
     const { db,auth }=await access(request);

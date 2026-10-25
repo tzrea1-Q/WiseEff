@@ -18,6 +18,8 @@ import { CanonicalBatchSubmitDialog } from "@/features/parameter-review/Canonica
 import { permitsFreshBatchRequest } from "@/application/project-configuration/candidateRequestReceipt";
 import type {
   ParameterFileRepository,
+  ProjectLocalOverrideInput,
+  ProjectLocalOverrideDraft,
   ParameterFileSourceReviewStatus,
   ParameterFileSourceWorkflow,
   ProjectParameterFileVersion
@@ -62,6 +64,7 @@ import { WorkbenchRevisionGate } from "./WorkbenchRevisionGate";
 import { WorkbenchSourceCanvas } from "./WorkbenchSourceCanvas";
 import { WorkbenchSourceEditingPane } from "./WorkbenchSourceEditingPane";
 import { createSourceEditSession } from "@/application/project-configuration/sourceEditSession";
+import { sourceDraftKey } from "@/application/project-configuration/sourceDraftStorage";
 import type { WorkbenchDtsEditorSessions } from "./WorkbenchDtsEditor";
 import { WorkbenchSourceTree } from "./WorkbenchSourceTree";
 import { WorkbenchSetupGate } from "./WorkbenchSetupGate";
@@ -531,6 +534,37 @@ export function ProjectConfigurationWorkbench({
   const effectiveNodes = useMemo(() => effectiveStructureNodes(effectiveTree?.nodes ?? []), [effectiveTree]);
   const effectiveNodePath = queryValue(search, "node") ?? effectiveTree?.nodes.find(node => node.locator !== "/")?.locator ?? "/";
   const effectiveNode = effectiveTree?.nodes.find(node => node.locator === effectiveNodePath) ?? null;
+  const [localOverrideDraft, setLocalOverrideDraft] = useState<(ProjectLocalOverrideDraft & { input: ProjectLocalOverrideInput }) | null>(null);
+  const selectedSourceOverride = Object.values(sourceEditSnapshot.files).find(file => file.scope.projectId === project.id
+    && file.scope.configSetId === selectedConfigSet?.id && file.scope.fileId === selectedMember?.fileId)?.base.localOverride;
+  const overrideContext = useRef("");
+  overrideContext.current = `${effectiveKey}/${effectiveTree?.revisionId ?? ""}/${contentTab}/${effectiveNodePath}`;
+  const prepareLocalOverride = async (input: ProjectLocalOverrideInput) => {
+    if (!fileRepository.prepareProjectLocalOverride || !selectedConfigSet || !resolvedOrganizationId) return;
+    sourceFlushRef.current?.();
+    if (sessionDraftsDirty || Object.values(sourceEditSession.getSnapshot().files).some(file => file.dirty)) throw new Error("请先保存或放弃现有草稿，再准备本项目覆盖。");
+    const context = overrideContext.current;
+    const draft = await fileRepository.prepareProjectLocalOverride(project.id, selectedConfigSet.id, input);
+    if (overrideContext.current !== context) return;
+    if (draft.before === draft.after) throw new Error("此值与当前本项目声明相同，没有需要保存的修改。");
+    const scope = { userId: currentUserId, organizationId: resolvedOrganizationId, projectId: project.id,
+      configSetId: selectedConfigSet.id, fileId: draft.fileId };
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(draft.before));
+    if (overrideContext.current !== context) return;
+    await sourceEditSession.open({ scope, sourceText: draft.before, base: { fileVersionId: draft.baseVersionId,
+      configRevisionId: draft.configRevisionId, sourceDigest: Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join(""),
+      ...(draft.localOverride ? { localOverride: { input: draft.localOverride, afterValue: draft.afterValue } } : {}) } });
+    if (overrideContext.current !== context) return;
+    if (sourceEditSession.getFile(scope)?.dirty) throw new Error("此文件已有恢复草稿，请先在项目源码中处理。");
+    sourceEditorSessions.delete(sourceDraftKey(scope));
+    sourceEditSession.change(scope, draft.after);
+    if (!await sourceEditSession.flush(scope)) throw new Error("无法保存本地恢复草稿，请重试后再提交。");
+    if (overrideContext.current !== context) return;
+    setLocalOverrideDraft({ ...draft, input });
+    const params = new URLSearchParams(search); params.set("tab", "source");
+    onNavigate(formatWorkbenchPath(project.id, params.toString(), { configSet: selectedConfigSet.id, file: draft.fileId,
+      sourceMode: "working", version: null, inspector: null }));
+  };
   const selectEffectiveNode = (node: string, property: string | null = null) => {
     const params = new URLSearchParams(search);
     params.set("tab", "effective"); params.set("node", node);
@@ -1152,6 +1186,7 @@ export function ProjectConfigurationWorkbench({
     restoreWorkbenchBaseline
   } = useWorkbenchBaselineOrchestration({
     projectId: project.id,
+    apiMode,
     search: canvasSearch,
     onNavigate,
     canAdmin,
@@ -1548,14 +1583,15 @@ export function ProjectConfigurationWorkbench({
     setTasksOpen(true);
   }, [structuredEditSession]);
 
+  const workbenchReturnPath = canAdmin ? resolveParamAdminProjectsReturnPath(search) : `/parameters?project=${encodeURIComponent(project.id)}`;
   const handleLeaveWorkbench = useCallback(() => {
     sourceFlushRef.current?.();
     if (sessionDraftsDirty || sourceDraftsDirty) {
       setLeaveConfirmOpen(true);
       return;
     }
-    onNavigate(resolveParamAdminProjectsReturnPath(search));
-  }, [onNavigate, search, sessionDraftsDirty, sourceDraftsDirty]);
+    onNavigate(workbenchReturnPath);
+  }, [onNavigate, workbenchReturnPath, sessionDraftsDirty, sourceDraftsDirty]);
 
   const handleKeepDraftsAndLeave = useCallback(() => {
     if (sourceDiscarding.current) return;
@@ -1566,12 +1602,12 @@ export function ProjectConfigurationWorkbench({
       if (!ok) throw new Error("无法保存本地恢复草稿，请重试或先下载草稿。");
       if (structuredEditSession.getSnapshot().storageError) throw new Error("参数恢复草稿保存失败，请留在本页重试或复制草稿。");
       setLeaveConfirmOpen(false);
-      onNavigate(resolveParamAdminProjectsReturnPath(search));
+      onNavigate(workbenchReturnPath);
     }).catch((cause) => {
       sourceDiscarding.current = false;
       setLeaveError(presentError(cause, "保留草稿失败，请重试。"));
     }).finally(() => setLeavePending(false));
-  }, [onNavigate, search, sourceEditSession, structuredEditSession]);
+  }, [onNavigate, workbenchReturnPath, sourceEditSession, structuredEditSession]);
 
   const handleDiscardAndLeave = useCallback(() => {
     if (sourceDiscarding.current) return;
@@ -1586,13 +1622,13 @@ export function ProjectConfigurationWorkbench({
         structuredEditSession.discard();
         setSourceBufferDirty(false);
         setLeaveConfirmOpen(false);
-        onNavigate(resolveParamAdminProjectsReturnPath(search));
+        onNavigate(workbenchReturnPath);
       } catch (cause) {
         sourceDiscarding.current = false;
         setLeaveError(presentError(cause, "放弃本地修改失败，请重试。"));
       } finally { setLeavePending(false); }
     })();
-  }, [onNavigate, search, sourceEditSession, sourceEditorSessions, structuredEditSession]);
+  }, [onNavigate, workbenchReturnPath, sourceEditSession, sourceEditorSessions, structuredEditSession]);
 
   const handleStructuredValueChange = useCallback(
     (next: StructuredValueChange) => {
@@ -1999,9 +2035,12 @@ export function ProjectConfigurationWorkbench({
           : effectiveError ? <SectionError message={effectiveError} onRetry={() => setEffectiveRetry(value => value + 1)} />
           : !effectiveTree ? <SectionSkeleton label="正在加载生效配置…" />
           : effectiveTree.nodes.length === 0 ? <SectionEmpty message="当前配置修订没有生效设备树节点。" />
-          : <WorkbenchEffectiveConfiguration node={effectiveNode}
+          : <WorkbenchEffectiveConfiguration key={`${effectiveTree.revisionId}/${effectiveNode?.logicalNodeId}`} node={effectiveNode}
             blockingAncestorPath={effectiveTree.nodes.find(node => node.logicalNodeId === effectiveNode?.enablement?.blockingAncestorId)?.locator}
-            projectId={project.id} configSetId={selectedConfigSet.id} revisionId={effectiveTree.revisionId} search={search} onNavigate={onNavigate} /> : null}
+            projectId={project.id} configSetId={selectedConfigSet.id} revisionId={effectiveTree.revisionId} search={search} onNavigate={onNavigate}
+            overrideTargets={selectedMembers.filter(member => member.format === "dts" && !member.sharedReference && !/\.(h|hpp)$/u.test(member.fileName))
+              .sort((a,b) => (a.role === "overlay" ? -1 : 0) - (b.role === "overlay" ? -1 : 0)).map(member => ({fileId:member.fileId,fileName:member.fileName}))}
+            onPrepareOverride={apiMode && canEdit && effectiveRevision === "current" && fileRepository.prepareProjectLocalOverride ? prepareLocalOverride : undefined} /> : null}
         {contentTab === "source" && selectedConfigSet ? <WorkbenchSourceCanvas
             workingEditor={selectedMember?.format === "dts" && !selectedMember.sharedReference && selectedMember.currentVersionId && source && resolvedOrganizationId
               && !sourceLoading && !sourceError && sourceIdentity?.projectId === project.id
@@ -2011,9 +2050,16 @@ export function ProjectConfigurationWorkbench({
               configRevisionId={revisionGate.loading || revisionGate.error ? null : revisionGate.revisions
                 .filter((revision) => revision.configSetId === selectedConfigSet.id && ["resolved", "validated", "compiled", "pending_approval"].includes(revision.status))
                 .sort((left, right) => right.revisionNumber - left.revisionNumber)[0]?.id ?? null}
-              source={source} repository={fileRepository} canEdit={apiMode && canEdit && canAdmin && !selectedMember.sharedReference}
+              source={source} repository={fileRepository} canEdit={apiMode && canEdit && (canAdmin || Boolean(selectedSourceOverride)) && !selectedMember.sharedReference}
+              canEditSource={apiMode && canEdit && canAdmin && !selectedSourceOverride} canDirectApply={apiMode && canEdit && canAdmin}
+              localOverrideIntent={selectedSourceOverride?.input}
+              changeSummary={selectedSourceOverride
+                ? `${selectedSourceOverride.input.action === "remove-override" ? "撤销本项目覆盖后" : "本项目覆盖后"}：${selectedSourceOverride.afterValue ?? "属性缺失"}。保存时将重新验证完整配置。`
+                : localOverrideDraft?.fileId === selectedMember.fileId && localOverrideDraft.baseVersionId === selectedMember.currentVersionId
+                  ? `${localOverrideDraft.action === "remove-override" ? "撤销本项目覆盖后" : "本项目覆盖后"}：${localOverrideDraft.afterValue ?? "属性缺失"}。保存时将重新验证完整配置。` : undefined}
               visible={canvasMode === "working"} legacyDraftsDirty={sessionDraftsDirty} onOpenLegacyDrafts={() => setTasksOpen(true)}
               onDirtyChange={setSourceBufferDirty} onRefresh={() => {
+                setLocalOverrideDraft(null);
                 workspaceLoadSession.retryFiles(); workspaceLoadSession.retryMembers(); workspaceLoadSession.retrySource();
                 workspaceLoadSession.retryStructure(); setSourceWorkflowReloadToken((value) => value + 1); setVersionsReloadToken((value) => value + 1);
                 if (topologyRepository) void revisionGate.session.load(project.id, selectedConfigSet.id, topologyRepository);

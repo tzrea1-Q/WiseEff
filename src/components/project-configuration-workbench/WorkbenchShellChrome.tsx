@@ -18,7 +18,6 @@ export type WorkbenchShellChromeProps = {
 export function WorkbenchShellChrome({
   opsError,
   opsMessage,
-  canAdmin,
   narrowViewport,
   inspectorOpen,
   inspectorLevel,
@@ -39,12 +38,6 @@ export function WorkbenchShellChrome({
           {opsMessage}
         </p>
       ) : null}
-      {!canAdmin ? (
-        <p className="configuration-workbench__ops-banner" role="note">
-          仅管理员可变更配置文件、同步或导出。只读上下文仍可查看。
-        </p>
-      ) : null}
-
       {narrowViewport ? (
         <nav className="configuration-workbench__mobile-tools" aria-label="工作台区域">
           <button

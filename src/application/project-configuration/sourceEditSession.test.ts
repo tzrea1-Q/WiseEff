@@ -15,6 +15,18 @@ const scope: SourceDraftScope = { userId: "u", organizationId: "o", projectId: "
 const base: SourceDraftBase = { fileVersionId: "v1", configRevisionId: "c1", sourceDigest: "digest1" };
 const nextBase: SourceDraftBase = { fileVersionId: "v2", configRevisionId: "c2", sourceDigest: "digest2" };
 
+it("recovers the restricted local override intent with the exact source draft and clears it on discard", async () => {
+  const storage=memoryStorage();
+  const intent={input:{expectedConfigRevisionId:"c1",logicalNodeId:"logical",propertyName:"rate",action:"set" as const,rawText:"<2>"},afterValue:"<2>"};
+  const first=createSourceEditSession({storage,persistDelayMs:0});
+  await first.open({scope,base:{...base,localOverride:intent},sourceText:"before"});first.change(scope,"after");await first.flush();
+  const recovered=createSourceEditSession({storage,persistDelayMs:0});
+  await recovered.open({scope,base,sourceText:"before"});
+  expect(recovered.captureSave(scope)).toMatchObject({sourceText:"after",base:{localOverride:intent}});
+  await recovered.discard(scope);expect(recovered.getFile(scope)?.base.localOverride).toBeUndefined();
+  await first.close();await recovered.close();
+});
+
 function memoryStorage(): SourceDraftStorage & { records: Map<string, StoredSourceDraft> } {
   const records = new Map<string, StoredSourceDraft>();
   return {

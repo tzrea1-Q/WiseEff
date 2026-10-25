@@ -422,7 +422,8 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
       if(source.fileId===target.fileId)fileVersionId = version.id;
       versionIds.set(source.fileId, version.id);
       await setCurrentVersion(tx, { fileId: source.fileId, versionId: version.id });
-      if (source.format === "dts" && !/\.(h|hpp)$/u.test(source.sourceName)) await ingestDtsFileVersion(tx, version.id, contents.get(source.fileId)!, inspected.resolved?.preprocessing?.originalDocuments.get(source.sourceName));
+      if (source.format === "dts" && !/\.(h|hpp)$/u.test(source.sourceName)) await ingestDtsFileVersion(tx, version.id, contents.get(source.fileId)!, inspected.resolved?.preprocessing?.originalDocuments.get(source.sourceName),
+        new Set(proof.continuity?.nodes.map(node => node.nodeLocator)));
     }
     if (proof.rootEdit) {
       const root = proof.members.find(member => member.fileId === proof.rootEdit!.fileId)!;
@@ -431,7 +432,8 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
       if (sourceRevisionDigest(await attempt.objectStore.getBounded!(stored.storageKey, MAX_PARAMETER_SOURCE_BYTES)) !== root.checksum.replace(/^sha256:/, "")) conflict("项目根文件写入校验失败，配置未改变。");
       const version = await insertFileVersion(tx, { id: randomUUID(), fileId: root.fileId, versionNumber: 1,
         storageKey: stored.storageKey, checksum: root.checksum, sizeBytes: root.sizeBytes, origin: "writeback", attribution });
-      await ingestDtsFileVersion(tx, version.id, proof.rootEdit.after, inspected.resolved?.preprocessing?.originalDocuments.get(root.sourceName));
+      await ingestDtsFileVersion(tx, version.id, proof.rootEdit.after, inspected.resolved?.preprocessing?.originalDocuments.get(root.sourceName),
+        new Set(proof.continuity?.nodes.map(node => node.nodeLocator)));
       const updated = await tx.query("update public.project_parameter_files set current_version_id=$2,updated_at=now() where id=$1 and current_version_id=$3", [root.fileId, version.id, proof.rootEdit.baseFileVersionId]);
       if (updated.rowCount !== 1) conflict("项目根文件已变化，请重新预览。");
       versionIds.set(root.fileId, version.id);

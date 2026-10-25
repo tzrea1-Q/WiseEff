@@ -13,8 +13,10 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
   const includeSearchPaths = draft.buildInputs?.includeSearchPaths ?? [], defines = draft.buildInputs?.defines ?? {};
   const reject=(sourceName:string,offset:number,message:string,code?:string):never=>{
     const location=offsetToLineColumn(byName.get(sourceName)!.content,offset);
-    throw new ApiError("VALIDATION_FAILED",`${sourceName}:${location.line}:${location.column}：${message}`,
-      {diagnostics:[{sourceName,...location,message,...(code ? { code } : {})}]});
+    const prefix=[`${sourceName}：`,`${sourceName}:`].find(value=>message.startsWith(value));
+    const detail=prefix?message.slice(prefix.length).replace(/^\d+(?::\d+)?[：:]\s*/u,"").trimStart():message;
+    throw new ApiError("VALIDATION_FAILED",`${sourceName}:${location.line}:${location.column}：${detail}`,
+      {diagnostics:[{sourceName,...location,message:detail,...(code ? { code } : {})}]});
   };
   const graph: SharedDtsiManifest["includeGraph"] = [], included = new Set<string>();
   const cpp = requiresDtsPreprocessing(files, defines);

@@ -103,7 +103,7 @@ describe("fixed shared references through the real API role", () => {
     expect(saved.status, saved.bodyText).toBe(200);
     const preview = await post<{ item: { id: string } }>(`/api/v2/shared-dtsi/${created.body.item.resourceId}/publication-preview`, { expectedRevision: 2 });
     expect(preview.status, preview.bodyText).toBe(201);
-    const published = await post<{ item: { members: Array<{ sourceName: string; content: string }>; manifest: { sourceEvidence: { digest: string } } } }>(
+    const published = await post<{ item: { id:string; members: Array<{ sourceName: string; content: string }>; manifest: { sourceEvidence: { digest: string } } } }>(
       `/api/v2/shared-dtsi/${created.body.item.resourceId}/publications`, { previewId: preview.body.item.id, idempotencyKey: "private-board-publication" });
     expect(published.status, published.bodyText).toBe(201);
     expect(published.body.item.members).toEqual([expect.objectContaining({ sourceName: "board.dts", content: edited })]);
@@ -113,6 +113,22 @@ describe("fixed shared references through the real API role", () => {
     expect(published.bodyText).not.toContain(privateRoots[B]!.configRevisionId);
     expect(published.bodyText).not.toContain(B);
     expect(published.bodyText).not.toContain(createHash("sha256").update(source).digest("hex"));
+    const versionDraft=await post<{item:{members:{id:string;sourceName:string;content:string}[]}}>(`/api/v2/shared-dtsi/${created.body.item.resourceId}/draft`,{baseVersionId:published.body.item.id});
+    expect(versionDraft.status,versionDraft.bodyText).toBe(201);
+    const nextSave=await requestJson(server(),`/api/v2/shared-dtsi/${created.body.item.resourceId}/draft`,{method:"PUT",body:JSON.stringify({
+      name:"Shared private board",members:versionDraft.body.item.members.map(member=>({...member,content:edited.replace("<37>","<38>")})),
+      changeDescription:"Compare a derived private source revision",expectedRevision:1})});
+    expect(nextSave.status,nextSave.bodyText).toBe(200);
+    const nextPreview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${created.body.item.resourceId}/publication-preview`,{expectedRevision:2});
+    expect(nextPreview.status,nextPreview.bodyText).toBe(201);
+    const nextVersion=await post<{item:{id:string;manifest:{sourceEvidence:{digest:string}}}}>(`/api/v2/shared-dtsi/${created.body.item.resourceId}/publications`,{
+      previewId:nextPreview.body.item.id,idempotencyKey:"private-board-comparison-v2"});
+    expect(nextVersion.status,nextVersion.bodyText).toBe(201);
+    expect(nextVersion.body.item.manifest.sourceEvidence).toEqual(published.body.item.manifest.sourceEvidence);
+    const comparison=await requestJson<{item:{semantic:{before:string;after:string}}}>(server(),`/api/v2/shared-dtsi/${created.body.item.resourceId}/comparison?before=${published.body.item.id}&after=${nextVersion.body.item.id}`);
+    expect(comparison.status,comparison.bodyText).toBe(200);
+    expect(comparison.body.item.semantic.before).toContain("<37>");expect(comparison.body.item.semantic.after).toContain("<38>");
+    expect(comparison.bodyText).not.toContain(privateRoots[B]!.configRevisionId);expect(comparison.bodyText).not.toContain(B);
     expect((await requestJson(server(), `/api/v1/projects/${B}/config-sets/${sets[B]}/files`)).body).toEqual(before);
     expect((await requestJson(server(),`/api/v1/projects/${B}/parameter-files/${privateRoots[B]!.fileId}/versions/${privateRoots[B]!.fileVersionId}/content`)).bodyText).toBe(source);
     const json = jsonFiles[B]!;
@@ -443,6 +459,19 @@ describe("fixed shared references through the real API role", () => {
       const revoked=await requestJson<{items:unknown[];total:number;visibility:string}>(server(editor),`/api/v2/shared-dtsi/${leaf.resourceId}/usages`);
       expect(revoked.body).toEqual({items:[],total:0,visibility:"authorized-projects"});
     }finally{await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('shared-ref-editor-role','shared-ref-editor',$1,$2,'hardware-user')",[ORG,A]);}
+    type Export={manifest:{exportedAt:string;[key:string]:unknown};files:unknown[]};
+    const frozenExport=({manifest:{exportedAt:_,...manifest},files}:Export)=>({manifest,files});
+    const exportsBefore=await Promise.all([A,B].map(project=>requestJson<Export>(server(),`/api/v1/projects/${project}/config-sets/${sets[project]}/export`)));
+    const successor=await post<{item:{revision:number;members:{id:string;sourceName:string;content:string}[]}}>(`/api/v2/shared-dtsi/${leaf.resourceId}/draft`,{baseVersionId:leaf.id});
+    expect(successor.status,successor.bodyText).toBe(201);
+    const saved=await requestJson(server(),`/api/v2/shared-dtsi/${leaf.resourceId}/draft`,{method:"PUT",body:JSON.stringify({name:"Fixed leaf",members:successor.body.item.members.map(member=>({...member,content:member.content.replace('"okay"','"disabled"')})),changeDescription:"New shared version only",expectedRevision:successor.body.item.revision})});
+    expect(saved.status,saved.bodyText).toBe(200);
+    const nextPreview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${leaf.resourceId}/publication-preview`,{expectedRevision:2});
+    const next=await post<{item:{id:string;version:number}}>(`/api/v2/shared-dtsi/${leaf.resourceId}/publications`,{previewId:nextPreview.body.item.id,idempotencyKey:"leaf-successor"});
+    expect(next.status,next.bodyText).toBe(201);expect(next.body.item.version).toBe(2);
+    const oldPins=await requestJson<{items:{projectId:string;versionId:string;version:number;upgradeAvailable:boolean;evaluation:string}[]}>(server(),`/api/v2/shared-dtsi/${leaf.resourceId}/usages`);
+    expect(oldPins.body.items).toEqual([A,B].map(projectId=>expect.objectContaining({projectId,versionId:leaf.id,version:1,upgradeAvailable:true,evaluation:"not-evaluated"})));
+    for(const [index,project] of [A,B].entries())expect(frozenExport((await requestJson<Export>(server(),`/api/v1/projects/${project}/config-sets/${sets[project]}/export`)).body)).toEqual(frozenExport(exportsBefore[index]!.body));
     const sibling=await publish("Additional consumer",[{sourceName:"consumer.dtsi",content:'&fixed_leaf { sibling = <7>; };'}],
       [{resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"mounted/vendor"}]);
     const siblingBody={sharedReference:{resourceId:sibling.resourceId,versionId:sibling.id},role:"misc",sortOrder:20};
