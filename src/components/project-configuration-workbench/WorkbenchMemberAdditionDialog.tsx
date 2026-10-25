@@ -145,7 +145,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
                   setQuery(event.target.value); setResourceOffset(0); setResourceId(""); setVersionId(""); setResources([]); setVersions([]); invalidate();
                 }} /></label>
                 <label>共享资源<SelectControl ariaLabel="共享资源" value={resourceId} disabled={sharedLoading || busy} placeholder="选择资源"
-                  options={resources.map(item => ({ value: item.resourceId, label: item.name, disabled: !item.currentVersion }))}
+                  options={resources.map(item => ({ value: item.resourceId, label: `${item.name}${item.state==="retired"?" · 已停用":""}`, disabled: item.state==="retired"||!item.currentVersion }))}
                   onValueChange={value => { setResourceId(value); setVersionId(""); setVersions([]); setVersionOffset(0); invalidate(); }} /></label></>:null}
                 {!resourceId && resourceTotal > 20 ? <div>
                   <Button type="button" variant="outline" disabled={busy || sharedLoading || resourceOffset === 0} onClick={() => { setResourceOffset(value => value - 20); invalidate(); }}>上一页资源</Button>

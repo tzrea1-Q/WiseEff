@@ -17,6 +17,8 @@ import type { ObjectStore } from "../logs/objectStore";
 import { importPrivateProjectSource } from "./projectImport";
 import { sharedDtsiProjectImportSchema } from "../contracts/dtoSchemas/sharedDtsi";
 import { compareSharedDtsiVersions } from "./comparison";
+import { sharedDtsiLifecycleSchema } from "../contracts/dtoSchemas/sharedDtsi";
+import { changeSharedDtsiLifecycle } from "./lifecycle";
 
 export function registerSharedDtsiRoutes(router: WiseEffRouter, options: {
   db?: Database; objectStore?: ObjectStore; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
@@ -66,6 +68,10 @@ export function registerSharedDtsiRoutes(router: WiseEffRouter, options: {
   router.get("/api/v2/shared-dtsi/:resourceId/detail", async request => {
     const { db,auth }=await access(request);
     return {status:200,body:{item:await getSharedDtsiResourceDetail(db,auth,resourceId(request))}};
+  });
+  router.post("/api/v2/shared-dtsi/:resourceId/lifecycle",async request=>{
+    const {db,auth,context}=await access(request);
+    return {status:200,body:{item:await changeSharedDtsiLifecycle(db,auth,resourceId(request),parse(sharedDtsiLifecycleSchema,request.body),context)}};
   });
   router.get("/api/v2/shared-dtsi/:resourceId/usages",async request=>{
     const {db,auth}=await access(request);

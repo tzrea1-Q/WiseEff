@@ -89,6 +89,73 @@ describe("fixed shared references through the real API role", () => {
   }, 120_000);
   afterAll(async () => { await api?.close(); if (lane) await dropLabRuntimeLogins(lane.url, token); await db?.close(); await lane?.drop(); if (directory) await rm(directory, { recursive: true, force: true }); }, 120_000);
 
+  it("stops new direct and transitive references while retaining exact existing closure during unrelated switches",async()=>{
+    const A="lifecycle-project-a",B="lifecycle-project-b",localSets:Record<string,string>={};
+    const path=(project:string)=>`/api/v1/projects/${project}/config-sets/${localSets[project]}/member-addition`;
+    for(const projectId of [A,B]){
+      await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,$1,$1,'initialized')",[projectId,ORG]);
+      const configSetId=localSets[projectId]=(await createConfigSet(db,admin,{projectId,name:"Lifecycle reference"})).id;
+      const content='/dts-v1/; / { model = "Lifecycle reference"; };';
+      const uploaded=await uploadProjectParameterFile(db,storage,admin,{projectId,fileName:"board.dts",bytes:Buffer.from(content)});
+      await addConfigSetFile(db,admin,{configSetId,fileId:uploaded.file.id,role:"base",sortOrder:0});
+      await ingestConfigRevision(db,{organizationId:ORG,projectId,configSetId,entryFile:"board.dts",includeSearchPaths:["."],overlayOrder:[],
+        members:[{fileId:uploaded.file.id,fileVersionId:uploaded.version.id,fileName:"board.dts",role:"base",sortOrder:0,content}]},admin);
+    }
+    const publish=async(name:string,content:string,dependencies:unknown[]=[])=>{
+      const draft=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name,sourceName:`${name}.dtsi`,content,dependencies,changeDescription:"Lifecycle reference evidence"});
+      expect(draft.status,draft.bodyText).toBe(201);const id=draft.body.item.resourceId;
+      const preview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${id}/publication-preview`,{expectedRevision:1});expect(preview.status,preview.bodyText).toBe(201);
+      const version=await post<{item:{resourceId:string;id:string}}>(`/api/v2/shared-dtsi/${id}/publications`,{previewId:preview.body.item.id,idempotencyKey:`lifecycle-${id}`});
+      expect(version.status,version.bodyText).toBe(201);return version.body.item;
+    };
+    const leaf=await publish("life-leaf",'/ { life_leaf: life-leaf { status = "okay"; }; };');
+    const wrapper=await publish("life-wrapper",'/include/ "life-leaf.dtsi"\n',[{resourceId:leaf.resourceId,versionId:leaf.id,mountPath:""}]);
+    const other=await publish("life-other",'/ { life_other: life-other { status = "okay"; }; };');
+    const clone=await post<{item:{members:{id:string;sourceName:string;content:string}[]}}>(`/api/v2/shared-dtsi/${other.resourceId}/draft`,{baseVersionId:other.id});expect(clone.status,clone.bodyText).toBe(201);
+    const saved=await requestJson(server(),`/api/v2/shared-dtsi/${other.resourceId}/draft`,{method:"PUT",body:JSON.stringify({name:"life-other",members:clone.body.item.members.map(member=>({...member,content:member.content.replace("okay","disabled")})),expectedRevision:1,changeDescription:"Unrelated version"})});expect(saved.status,saved.bodyText).toBe(200);
+    const otherPreview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${other.resourceId}/publication-preview`,{expectedRevision:2});expect(otherPreview.status,otherPreview.bodyText).toBe(201);
+    const otherNext=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${other.resourceId}/publications`,{previewId:otherPreview.body.item.id,idempotencyKey:"life-other-v2"});expect(otherNext.status,otherNext.bodyText).toBe(201);
+    async function add(resource:{resourceId:string;id:string},key:string,replaceVersionId?:string){
+      const input={sharedReference:{resourceId:resource.resourceId,versionId:resource.id,...(replaceVersionId?{replaceVersionId}:{})},role:"misc",sortOrder:10};
+      const preview=await post<Preview>(`${path(A)}/preview`,input);expect(preview.status,preview.bodyText).toBe(200);
+      const applied=await post<Applied>(`${path(A)}/apply`,{...input,proofToken:preview.body.item.proofToken,reason:"Retain fixed lifecycle closure",clientMutationId:key});expect(applied.status,applied.bodyText).toBe(200);
+    }
+    await add(other,"life-other-a");
+    const wrapperDraft=await post<{item:{members:{id:string;sourceName:string;content:string}[];dependencies:unknown[]}}>(`/api/v2/shared-dtsi/${wrapper.resourceId}/draft`,{baseVersionId:wrapper.id});expect(wrapperDraft.status,wrapperDraft.bodyText).toBe(201);
+    const wrapperSave=await requestJson(server(),`/api/v2/shared-dtsi/${wrapper.resourceId}/draft`,{method:"PUT",body:JSON.stringify({name:"life-wrapper",members:wrapperDraft.body.item.members,dependencies:wrapperDraft.body.item.dependencies,expectedRevision:1,changeDescription:"Frozen before dependency retirement"})});expect(wrapperSave.status,wrapperSave.bodyText).toBe(200);
+    const frozenPublication=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${wrapper.resourceId}/publication-preview`,{expectedRevision:2});expect(frozenPublication.status,frozenPublication.bodyText).toBe(201);
+    const staleInput={sharedReference:{resourceId:wrapper.resourceId,versionId:wrapper.id},role:"misc",sortOrder:10};
+    const stalePreview=await post<Preview>(`${path(B)}/preview`,staleInput);expect(stalePreview.status,stalePreview.bodyText).toBe(200);
+    // Hold the real reference application at its first object write, while its transaction owns admission.
+    const pendingInput={sharedReference:{resourceId:wrapper.resourceId,versionId:wrapper.id},role:"misc",sortOrder:10};
+    const pendingPreview=await post<Preview>(`${path(A)}/preview`,pendingInput);expect(pendingPreview.status,pendingPreview.bodyText).toBe(200);
+    let started!:()=>void,release!:()=>void;
+    const writing=new Promise<void>(resolve=>{started=resolve;}),held=new Promise<void>(resolve=>{release=resolve;});let first=true;
+    const heldStore:ObjectStore={...storage,put:async input=>{if(first){first=false;started();await held;}return storage.put(input);}};
+    const applying=post<Applied>(`${path(A)}/apply`,{...pendingInput,proofToken:pendingPreview.body.item.proofToken,reason:"Concurrent retirement retains committed reference",clientMutationId:"life-wrapper-a"},admin,heldStore);
+    await writing;
+    const retiring=post(`/api/v2/shared-dtsi/${leaf.resourceId}/lifecycle`,{state:"retired",expectedLifecycleRevision:1,idempotencyKey:"life-leaf-retire"});
+    try{
+      expect((await db.transaction(tx=>tx.query<{admitted:boolean}>("select pg_try_advisory_xact_lock(hashtextextended($1,0)) as admitted",[`shared-dtsi-references:${ORG}`]))).rows[0]!.admitted).toBe(false);
+      expect((await requestJson<{item:{state:string}}>(server(),`/api/v2/shared-dtsi/${leaf.resourceId}/detail`)).body.item.state).toBe("active");
+    }finally{release();}
+    const [applied,retire]=await Promise.all([applying,retiring]);expect(applied.status,applied.bodyText).toBe(200);expect(retire.status,retire.bodyText).toBe(200);
+    expect((await post(`${path(B)}/apply`,{...staleInput,proofToken:stalePreview.body.item.proofToken,reason:"Old reference intent",clientMutationId:"life-stale-reference"})).status).toBe(409);
+    expect((await post(`/api/v2/shared-dtsi/${wrapper.resourceId}/publications`,{previewId:frozenPublication.body.item.id,idempotencyKey:"life-stale-publication"})).status).toBe(409);
+    for(const resource of [leaf,wrapper]){
+      const refused=await post(`${path(B)}/preview`,{sharedReference:{resourceId:resource.resourceId,versionId:resource.id},role:"misc",sortOrder:10});
+      expect(refused.status,refused.bodyText).toBe(409);expect(refused.body).toMatchObject({error:{details:{reason:"shared-resource-retired"}}});
+    }
+    const composed=await post("/api/v2/shared-dtsi",{name:"New retired composition",sourceName:"new.dtsi",content:"/ {};",dependencies:[{resourceId:wrapper.resourceId,versionId:wrapper.id,mountPath:""}]});expect(composed.status,composed.bodyText).toBe(409);
+    await add({...other,id:otherNext.body.item.id},"life-other-switch",other.id);
+    expect((await requestJson(server(),`/api/v2/shared-dtsi/${leaf.resourceId}/versions/${leaf.id}`)).status).toBe(200);
+    const usage=await requestJson<{items:{projectId:string;versionId:string;direct:boolean}[]}>(server(),`/api/v2/shared-dtsi/${leaf.resourceId}/usages`);
+    expect(usage.body.items).toContainEqual(expect.objectContaining({projectId:A,versionId:leaf.id,direct:false}));
+    const restored=await post(`/api/v2/shared-dtsi/${leaf.resourceId}/lifecycle`,{state:"active",expectedLifecycleRevision:2,idempotencyKey:"life-leaf-restore"});expect(restored.status,restored.bodyText).toBe(200);
+    const eligible=await post<Preview>(`${path(B)}/preview`,staleInput);expect(eligible.status,eligible.bodyText).toBe(200);
+    const newlyReferenced=await post<Applied>(`${path(B)}/apply`,{...staleInput,proofToken:eligible.body.item.proofToken,reason:"Restored original resource is eligible again",clientMutationId:"life-restored-b"});expect(newlyReferenced.status,newlyReferenced.bodyText).toBe(200);
+  });
+
   it("creates an independent shared draft from a frozen private DTS root without rewriting the project or mixed JSON", async () => {
     const before = (await requestJson(server(), `/api/v1/projects/${B}/config-sets/${sets[B]}/files`)).body;
     const created = await post<{ item: { resourceId: string; revision: number; members: Array<{ sourceName: string; content: string }> } }>(
