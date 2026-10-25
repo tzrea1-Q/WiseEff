@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CATALOG_CAPABILITY_V3_CONSUMER_REVISIONS,
+  CATALOG_CAPABILITY_V4_CONSUMER_REVISIONS,
   admitCatalogCapabilityRevision,
   catalogConsumerSupportsRevision,
 } from "./capabilities";
@@ -20,7 +21,7 @@ describe("catalog consumer capability admission", () => {
     expect(catalogConsumerSupportsRevision("catalog-capability/v")).toBe(false);
     expect(catalogConsumerSupportsRevision("catalog-capability/v10")).toBe(false);
     expect(catalogConsumerSupportsRevision("")).toBe(false);
-    expect(catalogConsumerSupportsRevision("catalog-capability/v5")).toBe(false);
+    expect(catalogConsumerSupportsRevision("catalog-capability/v5")).toBe(true);
   });
 
   it("lets a frozen v3 consumer refuse v4 before install", () => {
@@ -30,5 +31,9 @@ describe("catalog consumer capability admission", () => {
     expect(admitCatalogCapabilityRevision("catalog-capability/v3", CATALOG_CAPABILITY_V3_CONSUMER_REVISIONS)).toBe(
       true,
     );
+  });
+  it("lets a frozen v4 consumer refuse standalone-subject v5 before install", () => {
+    expect(admitCatalogCapabilityRevision("catalog-capability/v5", CATALOG_CAPABILITY_V4_CONSUMER_REVISIONS)).toBe(false);
+    expect(admitCatalogCapabilityRevision("catalog-capability/v4", CATALOG_CAPABILITY_V4_CONSUMER_REVISIONS)).toBe(true);
   });
 });

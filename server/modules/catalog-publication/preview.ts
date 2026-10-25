@@ -163,18 +163,18 @@ export function parsePublicationChangeSet(
       });
       continue;
     }
-    if (entry.op === "create-subject-with-definitions") {
+    if (entry.op === "create-subject-with-definitions" || entry.op === "create-subject") {
       const selector = parseSelector(entry.selector);
       if (
         (entry.kind !== "driver" && entry.kind !== "node-type") ||
         typeof entry.canonicalKey !== "string" ||
         selector === null ||
-        !Array.isArray(entry.definitions)
+        (entry.op === "create-subject" ? "definitions" in entry : !Array.isArray(entry.definitions))
       ) {
         return { error: { kind: "invalid-input", reason: "changeSet" } };
       }
       const nested: CreateSubjectWithDefinitionsChange["definitions"][number][] = [];
-      for (const definition of entry.definitions) {
+      for (const definition of entry.op === "create-subject" ? [] : entry.definitions as unknown[]) {
         if (!isRecord(definition) || "subjectId" in definition) {
           return { error: { kind: "invalid-input", reason: "changeSet" } };
         }
@@ -184,23 +184,24 @@ export function parsePublicationChangeSet(
         }
         nested.push({ propertyKey: definition.propertyKey, content });
       }
-      const nature =
+      const nature: CreateSubjectWithDefinitionsChange["nature"] =
         entry.nature === "physical-device" || entry.nature === "logical-service"
           ? entry.nature
           : undefined;
-      const cardinality =
+      const cardinality: CreateSubjectWithDefinitionsChange["cardinality"] =
         entry.cardinality === "multiple" || entry.cardinality === "singleton-per-project"
           ? entry.cardinality
           : undefined;
-      changes.push({
-        op: "create-subject-with-definitions",
+      const subject = {
         kind: entry.kind,
         canonicalKey: entry.canonicalKey,
         selector,
         ...(nature ? { nature } : {}),
         ...(cardinality ? { cardinality } : {}),
-        definitions: nested,
-      });
+      } as const;
+      changes.push(entry.op === "create-subject"
+        ? { ...subject, op: "create-subject" }
+        : { ...subject, op: "create-subject-with-definitions", definitions: nested });
       continue;
     }
     return { error: { kind: "unsupported-change-op", op: entry.op } };
@@ -276,7 +277,7 @@ export function m1ImpactFacts(
     successor: { releaseId: "", digest: "" },
     definitions: { added: [], changed: [], unchanged: [] },
     subjects: {
-      added: changeSet.some((change) => change.op === "create-subject-with-definitions") ? ["new"] : [],
+      added: changeSet.some((change) => change.op === "create-subject-with-definitions" || change.op === "create-subject") ? ["new"] : [],
       changed: [],
       unchanged: [],
     },
@@ -314,10 +315,10 @@ const mintFrozenIdentity = (
       });
       continue;
     }
-    if (change.op === "create-subject-with-definitions") {
+    if (change.op === "create-subject-with-definitions" || change.op === "create-subject") {
       const subjectId = `csub_${mintToken()}`;
       subjects.push({ canonicalKey: change.canonicalKey, subjectId });
-      for (const nested of change.definitions) {
+      for (const nested of change.op === "create-subject" ? [] : change.definitions) {
         const token = mintToken();
         definitions.push({
           subjectId,

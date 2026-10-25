@@ -66,6 +66,7 @@ import type {
 } from "./types";
 
 const SHA256_DIGEST = /^sha256:[0-9a-f]{64}$/;
+const STANDALONE_SUBJECT_CAPABILITY_REVISION = "catalog-capability/v5" as const;
 const CREATE_DEFINITION_KEYS = new Set(["op", "subjectId", "propertyKey", "content"]);
 const CREATE_SUBJECT_KEYS = new Set([
   "op",
@@ -138,12 +139,14 @@ export function impactSummaryFromReport(impact: CatalogImpactReport): {
   };
 }
 
-const capabilityContract = (): CapabilityContract => {
+const capabilityContract = (changeSet: readonly CatalogChange[]): CapabilityContract => {
   const identity = CATALOG_CAPABILITY_ALLOW_LIST;
+  const revision = changeSet.some((change) => change.op === "create-subject")
+    ? STANDALONE_SUBJECT_CAPABILITY_REVISION : CATALOG_CAPABILITY_CONTRACT_REVISION;
   return {
-    revision: CATALOG_CAPABILITY_CONTRACT_REVISION,
+    revision,
     allowListId: identity.id,
-    allowListDigest: canonicalDigest(identity as unknown as ContractJsonValue),
+    allowListDigest: canonicalDigest({ ...identity, revision } as unknown as ContractJsonValue),
     valueTypes: [...identity.valueTypes],
     units: [...identity.units],
   };
@@ -854,8 +857,9 @@ export async function buildCompleteSuccessor(
       if (position >= 0) documents[position] = next;
       continue;
     }
-    if (change.op === "create-subject-with-definitions") {
+    if (change.op === "create-subject-with-definitions" || change.op === "create-subject") {
       const extra = extraKeys(change as unknown as Record<string, unknown>, CREATE_SUBJECT_KEYS);
+      if (change.op === "create-subject" && "definitions" in change) extra.push("definitions");
       if (extra.length > 0) {
         return fail({
           kind: "unsupported-catalog-capability",
@@ -863,7 +867,8 @@ export async function buildCompleteSuccessor(
           path: `${path}.${extra[0]}`,
         });
       }
-      const subjectChange = change as CreateSubjectWithDefinitionsChange;
+      const subjectChange: CreateSubjectWithDefinitionsChange = change.op === "create-subject"
+        ? { ...change, op: "create-subject-with-definitions", definitions: [] } : change;
       if (
         subjectChange.kind !== "driver" &&
         subjectChange.kind !== "node-type" &&
@@ -1090,9 +1095,9 @@ export async function buildCompleteSuccessor(
     });
   }
 
-  const impact = buildImpact(predecessorTarget, successor, requestedClasses);
+  const contract = capabilityContract(input.changeSet);
+  const impact = { ...buildImpact(predecessorTarget, successor, requestedClasses), capabilityContractRevision: contract.revision };
   const impactReportDigest = canonicalDigest(impact as unknown as ContractJsonValue);
-  const contract = capabilityContract();
   const artifactBytes = encodeBundleBytes(bundle);
   const toolchain = asJsonObject({
     compiler: frozen.toolchain.compiler,

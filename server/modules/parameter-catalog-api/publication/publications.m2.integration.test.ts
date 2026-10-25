@@ -169,6 +169,34 @@ describe("CP-10 M2 publication HTTP", () => {
     expect((created.body as { item: { riskClass: string } }).item.riskClass).toBe("low");
   });
 
+  it("previews a standalone driver as high risk without a fabricated parameter", async () => {
+    authenticateAs(scopeFor(AUTHOR, [...authorPermissions]));
+    const standalone = {
+      op: "create-subject", kind: "driver", canonicalKey: "driver:acme,standalone-http",
+      selector: { kind: "driver-compatible", value: "acme,standalone-http" },
+      nature: "physical-device", cardinality: "multiple",
+    };
+    const created = await request("POST", "/api/v2/catalog/publication-candidates", {
+      headers: { [CATALOG_RELEASE_HEADER]: pinId }, body: { changeSet: [standalone] },
+    });
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({ item: {
+      riskClass: "high", capabilityContract: { revision: "catalog-capability/v5" },
+      impactSummary: { addedDefinitionCount: 0, changedDefinitionCount: 0, addedSubjectCount: 1 },
+    } });
+    const legacy = await request("POST", "/api/v2/catalog/publication-candidates", {
+      headers: { [CATALOG_RELEASE_HEADER]: pinId },
+      body: { changeSet: [{ ...standalone, op: "create-subject-with-definitions", definitions: [] }] },
+    });
+    expect(legacy.status).toBe(400);
+    const { id } = (created.body as { item: { id: string } }).item;
+    authenticateAs(scopeFor(AUTHOR, [...authorPermissions, ...publisherPermissions, ...reviewerPermissions], "user"));
+    const denied = await request("POST", `/api/v2/catalog/publication-candidates/${id}/publish`, {
+      headers: { [CATALOG_RELEASE_HEADER]: pinId }, body: { idempotencyKey: "standalone-self-approve" },
+    });
+    expect(denied.status).toBe(403);
+  });
+
   it("accepts explicit optional-content removal through the HTTP candidate contract", async () => {
     authenticateAs(scopeFor(AUTHOR, [...authorPermissions]));
     const cleared = await request("POST", "/api/v2/catalog/publication-candidates", {

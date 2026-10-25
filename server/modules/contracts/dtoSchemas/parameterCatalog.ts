@@ -723,8 +723,7 @@ export const catalogNestedDefinitionDraftSchema = catalogObject({
   content: catalogSupportedDefinitionContentSchema
 });
 
-export const catalogCreateSubjectWithDefinitionsChangeSchema = catalogObject({
-  op: z.literal("create-subject-with-definitions"),
+const catalogSubjectCreationFields = {
   kind: z.enum(["driver", "node-type"]),
   canonicalKey: z.string(),
   selector: catalogObject({
@@ -732,7 +731,12 @@ export const catalogCreateSubjectWithDefinitionsChangeSchema = catalogObject({
     value: z.string()
   }),
   nature: z.enum(["physical-device", "logical-service"]).optional(),
-  cardinality: z.enum(["multiple", "singleton-per-project"]).optional(),
+  cardinality: z.enum(["multiple", "singleton-per-project"]).optional()
+};
+
+export const catalogCreateSubjectWithDefinitionsChangeSchema = catalogObject({
+  op: z.literal("create-subject-with-definitions"),
+  ...catalogSubjectCreationFields,
   definitions: z.array(catalogNestedDefinitionDraftSchema).min(1).max(32)
 });
 
@@ -741,6 +745,11 @@ export const catalogReviseDefinitionChangeSchema = catalogObject({
   definitionId: z.string(),
   class: z.enum(["documentation", "semantic"]),
   content: catalogSupportedDefinitionContentSchema
+});
+
+export const catalogCreateSubjectChangeSchema = catalogObject({
+  op: z.literal("create-subject"),
+  ...catalogSubjectCreationFields
 });
 
 export const catalogCreateDefinitionChangeSchema = catalogObject({
@@ -779,6 +788,7 @@ export const catalogRestoreDefinitionChangeSchema = catalogObject({
 });
 
 export const catalogChangeSchema = z.union([
+  catalogCreateSubjectChangeSchema,
   catalogCreateDefinitionChangeSchema,
   catalogCreateSubjectWithDefinitionsChangeSchema,
   catalogReviseDefinitionChangeSchema,

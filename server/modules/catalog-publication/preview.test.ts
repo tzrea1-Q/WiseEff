@@ -23,6 +23,16 @@ const emptyImpact = (overrides: Partial<CatalogImpactReport> = {}): CatalogImpac
 });
 
 describe("publication M2 preview parse and facts", () => {
+  it("accepts standalone subject intent without a definition payload", () => {
+    const change = {
+      op: "create-subject", kind: "driver", canonicalKey: "driver:acme,declaration-only",
+      selector: { kind: "driver-compatible", value: "acme,declaration-only" },
+      nature: "physical-device", cardinality: "multiple",
+    };
+    expect(parsePublicationChangeSet([change])).toEqual([change]);
+    expect(parsePublicationChangeSet([{ ...change, definitions: [] }])).toMatchObject({ error: { kind: "invalid-input" } });
+  });
+
   it("parses create-subject-with-definitions and revise-definition on the frozen routes", () => {
     const parsed = parsePublicationChangeSet([
       {

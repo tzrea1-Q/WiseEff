@@ -356,10 +356,10 @@ describe("CP-10 definition revision and new-subject PG", () => {
           definitionId: `pdef_${input.token}`,
           revisionId: `drev_${input.token}`,
         });
-      } else if (change.op === "create-subject-with-definitions") {
+      } else if (change.op === "create-subject-with-definitions" || change.op === "create-subject") {
         const subjectId = `csub_${input.token}`;
         subjects.push({ canonicalKey: change.canonicalKey, subjectId });
-        for (const nested of change.definitions) {
+        for (const nested of change.op === "create-subject" ? [] : change.definitions) {
           definitions.push({
             subjectId,
             propertyKey: nested.propertyKey,
@@ -667,6 +667,26 @@ describe("CP-10 definition revision and new-subject PG", () => {
     expect(bindings.rows.every((row) => row.effective_revision_id === "drev_acme_power_iin_max_1")).toBe(
       true,
     );
+  }, 60_000);
+
+  it("activates a zero-definition driver through the manager and retains the activation receipt", async () => {
+    const token = uniqueToken("standalone");
+    const result = await activateChangeSet({
+      changeSet: [{
+        op: "create-subject", kind: "driver", canonicalKey: `driver:acme,${token}`,
+        selector: { kind: "driver-compatible", value: `acme,${token}` },
+        nature: "physical-device", cardinality: "multiple",
+      }],
+      authorPrincipalId: AUTHOR, publisherUserId: REVIEWER,
+      publisherPermissions: [...reviewerPermissions], token,
+    });
+    expect(result.built.impact.subjects.added).toEqual([`csub_${token}`]);
+    expect(result.built.impact.definitions.added).toEqual([]);
+    expect(result.built.capabilityContract.revision).toBe("catalog-capability/v5");
+    const receipt = await withPublicationCoordinator(db, (tx) => getReceiptByJobId(tx, result.job.id));
+    expect(receipt.ok).toBe(true);
+    const definitions = await client.query("select id from parameter_catalog.parameter_definitions where subject_id=$1", [`csub_${token}`]);
+    expect(definitions.rows).toEqual([]);
   }, 60_000);
 
   it("T21 catalog success plus registration failure keeps Catalog/Receipt", async () => {

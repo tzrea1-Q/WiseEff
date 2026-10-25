@@ -5,6 +5,7 @@ import {
 import {
   CATALOG_CAPABILITY_CONTRACT_REVISION,
   CATALOG_CAPABILITY_V3_REVISION,
+  CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION,
 } from "../builder/types";
 
 /**
@@ -12,7 +13,7 @@ import {
  * platform. Unknown catalog capability revisions fail closed.
  */
 export const SUPPORTED_CATALOG_CONSUMER_CAPABILITIES = Object.freeze({
-  revision: CATALOG_CAPABILITY_CONTRACT_REVISION,
+  revision: CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION,
   allowListId: CATALOG_CAPABILITY_ALLOW_LIST.id,
   compiler: "catalog-kernel/compileCatalogRelease",
   content: CATALOG_CAPABILITY_ALLOW_LIST.id,
@@ -34,9 +35,13 @@ export const CATALOG_CAPABILITY_V3_CONSUMER_REVISIONS: ReadonlySet<string> = new
  * Historical revisions stay admitted so previously published releases keep their
  * original interpretation; the current revision adds nested value schemas.
  */
-export const SUPPORTED_CATALOG_CONSUMER_REVISIONS: ReadonlySet<string> = new Set([
+export const CATALOG_CAPABILITY_V4_CONSUMER_REVISIONS: ReadonlySet<string> = new Set([
   ...CATALOG_CAPABILITY_V3_CONSUMER_REVISIONS,
   CATALOG_CAPABILITY_CONTRACT_REVISION,
+]);
+export const SUPPORTED_CATALOG_CONSUMER_REVISIONS: ReadonlySet<string> = new Set([
+  ...CATALOG_CAPABILITY_V4_CONSUMER_REVISIONS,
+  CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION,
 ]);
 
 export const admitCatalogCapabilityRevision = (
