@@ -24,7 +24,7 @@ export async function readSharedDtsiCompatibleEvidence(db: Database, auth: AuthC
   const members = [...version.members, ...closureMembers(resources)];
   const files = new Map(members.map(member => [member.sourceName, {fileVersionId: member.id, content: member.content}]));
   const included = new Set(prepared.manifest.includeGraph.map(edge => edge.target));
-  const roots = members.filter(member => member.sourceName.endsWith(".dtsi") && !included.has(member.sourceName));
+  const roots = members.filter(member => /\.dtsi?$/u.test(member.sourceName) && !included.has(member.sourceName));
   if (!roots.length) throw new ApiError("VALIDATION_FAILED", "固定版本没有可识别的源码入口。");
   const resolved = resolveDtsConfigSet({entryFile:roots[0]!.sourceName,overlayOrder:roots.slice(1).map(member=>member.sourceName),
     ...composeDtsBuildInputs(declared,resources),files,requireExactOrigins:true,preparedSources:prepared.preprocessing??undefined});

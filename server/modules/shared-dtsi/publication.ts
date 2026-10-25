@@ -15,7 +15,8 @@ const digest = (value: unknown) => `sha256:${createHash("sha256").update(JSON.st
 const actorFingerprint = (auth: AuthContext) => digest({ userId:auth.user.id,organizationId:parameterOrganizationId(auth),active:auth.user.isActive,
   roles:[...auth.roles].sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))),permissions:[...auth.permissions].sort() });
 const summaryColumns = `id,resource_id as "resourceId",version,name,change_description as "changeDescription",digest,
-  created_at as "createdAt",created_by_user_id as "createdByUserId"`;
+  created_at as "createdAt",created_by_user_id as "createdByUserId",
+  coalesce((select actor.name from public.users actor where actor.id=created_by_user_id),created_by_user_id) as "createdByName"`;
 type VersionRow = Omit<SharedDtsiVersionSummary,"createdAt"> & {createdAt:Date};
 const summary = (row: VersionRow): SharedDtsiVersionSummary => ({...row,createdAt:row.createdAt.toISOString()});
 const conflict = (message="草稿或共享版本已变化，请重新生成发布预览。") => new ApiError("CONFLICT",message,{reason:"shared-source-preview-stale"});
@@ -145,6 +146,7 @@ export async function createSharedDtsiVersionDraft(db:Database,auth:AuthContext,
     const buildInputs = {includeSearchPaths:version.manifest.buildInputs.includeSearchPaths,defines:version.manifest.buildInputs.defines ?? {}};
     await tx.query("insert into public.shared_dtsi_drafts(id,resource_id,organization_id,created_by_user_id,updated_by_user_id,build_inputs) values ($1,$2,$3,$4,$4,$5::jsonb)",[draftId,resourceId,organizationId,auth.user.id,JSON.stringify(buildInputs)]);
     await tx.query("update public.shared_dtsi_drafts set dependencies=$2::jsonb where id=$1",[draftId,JSON.stringify(version.manifest.dependencies??[])]);
+    if(version.manifest.sourceEvidence) await tx.query("update public.shared_dtsi_drafts set source_origin=$2::jsonb where id=$1",[draftId,JSON.stringify({evidence:version.manifest.sourceEvidence})]);
     for (const member of version.members) await tx.query(`insert into public.shared_dtsi_draft_members(draft_id,member_id,resource_id,organization_id,source_name,content)
       values ($1,$2,$3,$4,$5,$6)`,[draftId,member.id,resourceId,organizationId,member.sourceName,member.content]);
     await writeAuditEventInTx(asAuditTx(tx),invocation,{requestId:context.requestId},{app:"parameters",kind:"shared-dtsi-draft",action:"create-version",severity:"Medium",
