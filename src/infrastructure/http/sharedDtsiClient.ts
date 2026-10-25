@@ -1,5 +1,5 @@
 import type { ApiClient } from "./apiClient";
-import { sharedDtsiDraftSchema, sharedDtsiListSchema,
+import { sharedDtsiDraftSchema, sharedDtsiListSchema, sharedDtsiResourceDetailSchema, sharedDtsiVersionSchema, sharedDtsiVersionsSchema, sharedDtsiPreviewSchema,
   type SharedDtsiDraftInput } from "@wiseeff/dto-schemas";
 
 export function createSharedDtsiClient(api: ApiClient) {
@@ -25,6 +25,29 @@ export function createSharedDtsiClient(api: ApiClient) {
     },
     async discard(id: string, expectedRevision: number) {
       await api.delete(`${resource(id)}/draft`, { expectedRevision });
+    },
+    async detail(id: string) {
+      const result=await api.get<{item:unknown}>(`${resource(id)}/detail`);
+      return sharedDtsiResourceDetailSchema.parse(result.item);
+    },
+    async versions(id: string,offset=0) {
+      return sharedDtsiVersionsSchema.parse(await api.get(`${resource(id)}/versions?offset=${offset}&limit=20`));
+    },
+    async version(id: string,versionId: string) {
+      const result=await api.get<{item:unknown}>(`${resource(id)}/versions/${encodeURIComponent(versionId)}`);
+      return sharedDtsiVersionSchema.parse(result.item);
+    },
+    async newVersionDraft(id: string,baseVersionId: string) {
+      const result=await api.post<{item:unknown}>(`${resource(id)}/draft`,{baseVersionId});
+      return sharedDtsiDraftSchema.parse(result.item);
+    },
+    async preview(id: string,expectedRevision: number) {
+      const result=await api.post<{item:unknown}>(`${resource(id)}/publication-preview`,{expectedRevision});
+      return sharedDtsiPreviewSchema.parse(result.item);
+    },
+    async publish(id: string,previewId: string,idempotencyKey: string) {
+      const result=await api.post<{item:unknown}>(`${resource(id)}/publications`,{previewId,idempotencyKey});
+      return sharedDtsiVersionSchema.parse(result.item);
     }
   };
 }
