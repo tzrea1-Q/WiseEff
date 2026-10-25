@@ -146,7 +146,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   const extras = currentMembers.filter((row) => !targetMembers.some((target) => target.fileId === row.fileId));
   const members = [...targetMembers,...extras].sort((a,b) => a.sortOrder-b.sortOrder || a.fileId.localeCompare(b.fileId));
   if (new Set(members.map((row) => row.sourceName)).size !== members.length) conflict("恢复后的来源名称重复，请在配置编辑器修正后重新预览。");
-  // Recover mount/direct metadata only from the approved receipt that created
+  // Recover mount/direct metadata only from the committed receipt that created
   // the exact historical file version, never from its filename or current pin.
   const sharedMembers = members.filter((member) => member.sharedReference);
   const sharedComposition: NonNullable<MemberAdditionPreview["sharedComposition"]> = [];
@@ -159,7 +159,25 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
         and request.status='approved' and request.apply_outcome='committed' and request.applied_file_version_ids ? $4
         and resource->>'resourceId'=$5 and resource->>'versionId'=$6 and resource->>'digest'=$7
         and exists(select 1 from jsonb_array_elements(resource->'sources') source where source->>'memberId'=$8
-          and source->>'fileId'=$9 and source->>'sourceName'=$10) order by request.created_at desc limit 1`,
+          and source->>'fileId'=$9 and source->>'sourceName'=$10)
+      union all select resource from public.audit_events event
+        join public.dts_config_revisions imported on imported.id=event.metadata->'result'->>'configRevisionId'
+          and imported.organization_id=event.organization_id and imported.project_id=event.project_id and imported.config_set_id=event.target_id
+          and imported.status='resolved'
+        join public.dts_config_revision_members original on original.config_revision_id=imported.id
+          and original.file_id=$9 and original.file_version_id=$4 and original.source_name=$10
+        cross join lateral jsonb_array_elements(case when jsonb_typeof(event.metadata->'sharedComposition')='array'
+          then event.metadata->'sharedComposition' else '[]'::jsonb end) resource
+      where event.organization_id=$1 and event.project_id=$2 and event.target_id=$3
+        and event.app='parameters' and event.kind='config-set' and event.action='imported' and event.target_type='dts-config-set'
+        and event.actor_type='user' and event.actor_user_id=imported.created_by_user_id
+        and event.metadata->'result'->>'configSetId'=event.target_id and event.metadata->>'ownership'='reuse'
+        and resource->>'resourceId'=$5 and resource->>'versionId'=$6 and resource->>'digest'=$7
+        and original.shared_reference->>'resourceId'=$5 and original.shared_reference->>'versionId'=$6
+        and original.shared_reference->>'digest'=$7 and original.shared_reference->>'memberId'=$8
+        and exists(select 1 from jsonb_array_elements(resource->'sources') source where source->>'memberId'=$8
+          and source->>'fileId'=$9 and source->>'fileVersionId'=$4 and source->>'sourceName'=$10)
+      limit 1`,
       [parameterOrganizationId(auth),input.projectId,configSetId,member.fileVersionId,pin.resourceId,pin.versionId,pin.digest,pin.memberId,member.fileId,member.sourceName])).rows[0]?.resource;
     if (!receipt) conflict("历史共享依赖缺少准确的已批准来源回执，无法恢复；当前配置未改变。");
     const sources = sharedMembers.filter((source) => source.sharedReference!.resourceId === pin.resourceId);

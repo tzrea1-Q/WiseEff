@@ -239,6 +239,10 @@ export async function applyConfigSetImport(db: Database, storage: ObjectStore, a
     await writeTrustedAuditEventInTx(asAuditTx(tx), { invocation: security.invocation, app: "parameters", kind: "config-set", action: "imported", severity: "Medium",
       projectId, targetType: "dts-config-set", targetId: operationId, traceId: security.requestId,
       metadata: { mutationDigest, reason: input.reason, ownership: input.ownership, proofDigest: plan.preview.proofToken, result,
+        sharedComposition:plan.resources.map(resource=>({resourceId:resource.resourceId,versionId:resource.versionId,digest:resource.digest,
+          name:resource.name,version:resource.version,mountPath:resource.mountPath,direct:resource.direct,
+          sources:resource.item.members.map(source=>{const member=members.find(row=>row.sourceName===mountedSharedPath(resource.mountPath,source.sourceName))!;
+            return {memberId:source.id,fileId:member.fileId,fileVersionId:member.fileVersionId,sourceName:member.sourceName};})})),
         sourceOverlayFileIds:members.filter(member=>plan.manifest.formerRootOverlayFiles.includes(member.fileName)).map(member=>member.fileId) } });
     return result;
   }); } catch (error) { rethrowSourceTransactionError(error); }
