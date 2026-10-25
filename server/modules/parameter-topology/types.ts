@@ -116,6 +116,11 @@ export type PersistedOccurrenceEffect = {
   nodeOccurrenceId: string | null;
   propertyOccurrenceId: string | null;
   sourceOrder: number;
+  sourceDirective?: {
+    kind: "delete-property" | "delete-node"; fileVersionId: string; targetNodeLocator: string; redeclared?: true;
+    startOffset: number; endOffset: number; startLine: number; startColumn: number;
+    endLine: number; endColumn: number; rawText: string;
+  };
 };
 
 export type PersistedLogicalNodeRevision = {

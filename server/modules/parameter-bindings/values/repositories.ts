@@ -181,6 +181,19 @@ export async function loadSourceBindingCohort(tx: Queryable, input: { organizati
 }
 
 /** Read-only cohort projection for previews and workflow discovery. It never takes row locks. */
+/** Exact logical instance/property lookup; compatibility is never a Binding identity. */
+export async function findCurrentSourceBindingId(tx: Queryable, input: {
+  organizationId: string; projectId: string; configSetId: string; logicalNodeId: string; propertyName: string;
+}): Promise<string | null> {
+  const rows = (await tx.query<{ id: string }>(`select binding.id from parameter_catalog.project_parameter_bindings binding
+    join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
+    join parameter_catalog.parameter_definitions definition on definition.id=binding.definition_id
+    where binding.organization_id=$1 and binding.project_id=$2 and occurrence.config_set_id=$3
+      and occurrence.logical_node_id=$4 and definition.property_key=$5 and not parameter_catalog.is_replaced_current_binding(binding.id)
+    limit 2`, [input.organizationId, input.projectId, input.configSetId, input.logicalNodeId, input.propertyName])).rows;
+  return rows.length === 1 ? rows[0]!.id : null;
+}
+
 export async function loadSourceBindingCohortReadOnly(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {
   return querySourceBindingCohort(tx, input, false);
 }

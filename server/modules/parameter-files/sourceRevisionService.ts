@@ -20,8 +20,6 @@ import type { ProjectValuePayload } from "../parameter-bindings/values";
 import { assertCanonicalValueConstraints } from "../parameter-bindings/values/service";
 import { CatalogReleaseId, CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId, serializeContract, type ContractJsonValue } from "../parameter-catalog-contract";
 import { canAdminParameters, canEditParameters, canReviewParameters, canReviewParameterStage, canViewParameters } from "../parameter-kernel/policy";
-import { assertTrustedSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
-import { canonicalizeLogicalNodeCompatible } from "../parameter-topology/writeLock";
 import { prepareReviewedSourceContinuity, type ReviewedSourceContinuity } from "../parameter-topology/ingestService";
 import { isStructuralPropertyKey } from "../parameter-topology/parameterSurface";
 import { hasCurrentCanonicalReviewRole } from "../parameters/reviewWorkflowRepository";
@@ -31,7 +29,7 @@ import { loadFormerRootOverlayFiles } from "./configSetSnapshot";
 import { MAX_PARAMETER_SOURCE_BYTES, parseJsonSource, readJsonSourceValue } from "./jsonSource";
 import { requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "./canonicalSource";
 import { matchingDeletedSourceAnchors, prepareSourceRestorations, sourceRestorationNodes, type SourceRestoration } from "./sourceRestoration";
-import { prepareProjectLocalOverride } from "./projectLocalOverride";
+import { assertProjectSourceOperationSensitiveWrites, prepareProjectLocalOverride } from "./projectLocalOverride";
 import type { SourceRevisionCandidateContext } from "./types";
 
 export const sourceRevisionDigest = (input: string | Buffer | object) => createHash("sha256")
@@ -178,7 +176,7 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
   input: { projectId: string; candidateId: string }, snapshot: CatalogSnapshot | null,
   options: { lock?: boolean; toolchain?: DtsToolchainRunner; snapshots?: ReadonlyMap<string, CatalogSnapshot> } = {}
 ): Promise<{ proof: SourceRevisionProof; before: string; after: string; diagnostics: SourceRevisionDiagnostic[];
-  preprocessing?: import("../dts/cppSources").PreparedDtsSources }> {
+  preprocessing?: import("../dts/cppSources").PreparedDtsSources; configNodePaths: ReadonlySet<string> }> {
   const candidate = await getParameterFileCandidateById(tx, { organizationId: parameterOrganizationId(auth), ...input });
   const context = candidate?.sourceRevisionContext;
   if (!candidate || !context || !candidate.fileId || candidate.format !== "dts") throw new ApiError("NOT_FOUND", "Whole-source candidate was not found.");
@@ -242,8 +240,9 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     const generated = await prepareProjectLocalOverride(tx, storage, auth, { ...context.localOverride.input,
       projectId: input.projectId, configSetId: context.configSetId }, undefined, true);
     if (generated.after !== after || generated.before !== before || generated.fileId !== candidate.fileId
-      || generated.binding?.bindingId !== context.localOverride.bindingId || generated.binding.oldValueId !== context.localOverride.oldValueId
-      || generated.binding.definitionId !== context.localOverride.definitionId || generated.binding.sourcePinId !== context.localOverride.sourcePinId) conflict("The local override differs from its exact authorized property patch.");
+      || generated.nodeOperation !== context.localOverride.nodeOperation
+      || generated.binding?.bindingId !== context.localOverride.bindingId || generated.binding?.oldValueId !== context.localOverride.oldValueId
+      || generated.binding?.definitionId !== context.localOverride.definitionId || generated.binding?.sourcePinId !== context.localOverride.sourcePinId) conflict("The local override differs from its exact authorized property patch.");
   }
   const changed = rows.find((row) => row.fileId === candidate.fileId)!;
   files.set(changed.sourceName, { content: after, fileVersionId: candidate.id });
@@ -390,7 +389,8 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
       const pinned = options.snapshots?.get(id) ?? snapshot!;
       return { id, digest: pinned.release.digest };
     }), registrations, targets, newProperties: sourceProperties, ...(context.localOverride ? { localOverride: context.localOverride } : {}), ...(originTransfers.length ? { originTransfers } : {}), ...(restorations.length ? { restorations } : {}) };
-  return { proof: { ...base, proofDigest: sourceRevisionDigest(base) }, before, after, diagnostics, preprocessing: resolved.preprocessing };
+  return { proof: { ...base, proofDigest: sourceRevisionDigest(base) }, before, after, diagnostics,
+    preprocessing: resolved.preprocessing, configNodePaths: new Set(resolved.effective.nodesByLocator.keys()) };
 }
 
 export async function assertSourceRevisionWriteAllowed(tx: Database, auth: AuthContext, proof: SourceRevisionProof,
@@ -403,13 +403,12 @@ export async function assertSourceRevisionWriteAllowed(tx: Database, auth: AuthC
     "select node_locator,compatible from dts_logical_node_revisions where config_revision_id=$1", [proof.baseConfigRevisionId])).rows;
   const nodes = [...before.map((row) => [row.node_locator, row.compatible] as const),
     ...proof.continuity.nodes.map((row) => [row.nodeLocator, row.compatible ?? null] as const)];
-  const localLocator = proof.localOverride ? proof.continuity.nodes.find(node => node.logicalNodeId === proof.localOverride!.input.logicalNodeId)?.nodeLocator : undefined;
+  const localLocator = proof.localOverride ? (await tx.query<{ node_locator: string }>(
+    "select node_locator from public.dts_logical_node_revisions where config_revision_id=$1 and logical_node_id=$2",
+    [proof.baseConfigRevisionId, proof.localOverride.input.logicalNodeId])).rows[0]?.node_locator : undefined;
   if (proof.localOverride && !localLocator) conflict("The exact local override node is not continuous.");
-  for (const [nodePath, compatible] of nodes.filter(([path]) => !proof.localOverride || path === localLocator)) await assertTrustedSensitiveNodeWriteAllowed(tx, auth, {
-    organizationId: parameterOrganizationId(auth), projectId: proof.projectId, nodePath,
-    sourcePath: { kind: "node-locator", value: nodePath }, compatible: canonicalizeLogicalNodeCompatible(compatible),
-    compatibleIsAuthoritative: true, invocation: security.invocation, requestId: security.requestId, refusalSink: security.refusalSink
-  });
+  await assertProjectSourceOperationSensitiveWrites(tx, auth, nodes, { projectId: proof.projectId,
+    ...(localLocator ? { nodePath: localLocator, subtree: proof.localOverride?.nodeOperation } : {}) }, security);
 }
 
 export async function previewSourceRevisionCandidate(db: Database, storage: ObjectStore, auth: AuthContext,

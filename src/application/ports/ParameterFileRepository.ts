@@ -280,12 +280,13 @@ export type CreateParameterFileCandidateInput = {
 
 export type ProjectLocalOverrideInput = {
   expectedConfigRevisionId: string; logicalNodeId: string; propertyName: string;
-  action: "set" | "remove-override"; rawText?: string; propertyOccurrenceId?: string; targetFileId?: string;
+  action: "set" | "remove-override" | "delete-property" | "enable-node" | "disable-node" | "remove-status-override" | "delete-node";
+  rawText?: string; propertyOccurrenceId?: string; targetFileId?: string;
 };
 export type ProjectLocalOverrideDraft = {
   fileId: string; fileName: string; baseVersionId: string; configRevisionId: string;
   before: string; after: string; beforeValue: string | null; afterValue: string | null;
-  action: "set" | "remove-override";
+  action: ProjectLocalOverrideInput["action"];
   localOverride?: ProjectLocalOverrideInput;
 };
 

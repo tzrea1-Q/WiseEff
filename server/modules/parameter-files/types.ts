@@ -184,7 +184,7 @@ export type SourceRevisionCandidateContext = {
   kind: "source_revision"; configSetId: string; baseConfigRevisionId: string;
   baseVersionId: string; clientMutationId: string;
   localOverride?: { input: import("zod").infer<typeof import("../contracts/dtoSchemas/sourceRevision").projectLocalOverrideRequestSchema>;
-    bindingId: string; definitionId: string; oldValueId: string; sourcePinId: string; authorUserId: string };
+    bindingId?: string; definitionId?: string; oldValueId?: string; sourcePinId?: string; nodeOperation?: true; authorUserId: string };
 };
 
 export type InsertParameterFileCandidateInput = {

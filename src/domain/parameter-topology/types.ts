@@ -339,6 +339,7 @@ export type EffectiveTopologyEffect = {
   nodeOccurrenceId: string | null;
   propertyOccurrenceId: string | null;
   sourceOrder: number;
+  directive?: { kind: "delete-property" | "delete-node"; targetNodeLocator: string; redeclared?: true };
   /** Exact persisted original value; absent when no original occurrence is proven. */
   rawText?: string;
   /** Rendered frozen semantic value, which may differ from an original macro invocation. */

@@ -571,7 +571,7 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
       versionIds.set(source.fileId, version.id);
       if(!proof.sharedSwitch)await setCurrentVersion(tx, { fileId: source.fileId, versionId: version.id });
       if (source.format === "dts" && !/\.(h|hpp)$/u.test(source.sourceName)) await ingestDtsFileVersion(tx, version.id, contents.get(source.fileId)!, inspected.resolved?.preprocessing?.originalDocuments.get(source.sourceName),
-        new Set(proof.continuity?.nodes.map(node => node.nodeLocator)));
+        inspected.resolved ? new Set(inspected.resolved.effective.nodesByLocator.keys()) : undefined);
     }
     if (proof.rootEdit) {
       const root = proof.members.find(member => member.fileId === proof.rootEdit!.fileId)!;
@@ -581,7 +581,7 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
       const version = await insertFileVersion(tx, { id: randomUUID(), fileId: root.fileId, versionNumber: 1,
         storageKey: stored.storageKey, checksum: root.checksum, sizeBytes: root.sizeBytes, origin: "writeback", attribution });
       await ingestDtsFileVersion(tx, version.id, proof.rootEdit.after, inspected.resolved?.preprocessing?.originalDocuments.get(root.sourceName),
-        new Set(proof.continuity?.nodes.map(node => node.nodeLocator)));
+        inspected.resolved ? new Set(inspected.resolved.effective.nodesByLocator.keys()) : undefined);
       const updated = await tx.query("update public.project_parameter_files set current_version_id=$2,updated_at=now() where id=$1 and current_version_id=$3", [root.fileId, version.id, proof.rootEdit.baseFileVersionId]);
       if (updated.rowCount !== 1) conflict("项目根文件已变化，请重新预览。");
       versionIds.set(root.fileId, version.id);

@@ -313,9 +313,9 @@ export function registerParameterFileRoutes(
     const body = projectLocalOverrideRequestSchema.safeParse(request.body);
     if (!body.success) throw new ApiError("VALIDATION_FAILED", "项目覆盖请求不完整。", { issues: body.error.issues });
     const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
-    const { binding, ...draft } = await prepareProjectLocalOverride(options.db, options.objectStore, auth, { ...params, ...body.data },
+    const { binding, nodeOperation, ...draft } = await prepareProjectLocalOverride(options.db, options.objectStore, auth, { ...params, ...body.data },
       { invocation: parameterInvocation(auth) ?? createUserInvocation(auth), requestId: request.requestId, refusalSink: refusalAuditSink });
-    const item = { ...draft, ...(binding ? { localOverride: body.data } : {}) };
+    const item = { ...draft, ...(binding || nodeOperation ? { localOverride: body.data } : {}) };
     return { status: 200, body: { item } };
   });
 
