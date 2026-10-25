@@ -37,13 +37,13 @@ async function objects() {
   return (await Promise.all((await readdir(directory, { recursive: true })).map(async path =>
     (await stat(join(directory, path))).isFile() ? path : null))).filter(path => path !== null).sort();
 }
-async function pending(targetId: string) {
+async function pending(targetId: string, sourceProjectId = SOURCE) {
   expect((await api(0, "/api/v1/parameters/admin/projects", { id: targetId, name: targetId, code: targetId.slice(-16).toUpperCase() })).status).toBe(201);
   const path = `/api/v1/parameters/projects/${targetId}/initialization`;
-  const preview = await api<Preview>(0, `${path}/copy-preview`, { primarySourceProjectId: SOURCE, supplementSourceProjectIds: [] });
+  const preview = await api<Preview>(0, `${path}/copy-preview`, { primarySourceProjectId: sourceProjectId, supplementSourceProjectIds: [] });
   expect(preview.status, preview.bodyText).toBe(200);
   const input = { projectName: targetId, projectCode: targetId.slice(-16).toUpperCase(), ownerUserId: AUTHOR,
-    sourceProjectIds: [SOURCE], primarySourceProjectId: SOURCE, supplementSourceProjectIds: [], selectedModuleIds: [], selectedRisks: [],
+    sourceProjectIds: [sourceProjectId], primarySourceProjectId: sourceProjectId, supplementSourceProjectIds: [], selectedModuleIds: [], selectedRisks: [],
     selectedSourceBindingIds: preview.body.items.map(row => row.sourceProjectParameterBindingId), bindingSnapshots: preview.body.items,
     sourceConfigSnapshots: preview.body.configSnapshots, emptyLibrary: false, notes: "Private fixed whole-source copy" };
   const saved = await api(0, `${path}/draft`, input, "PUT"); expect(saved.status, saved.bodyText).toBe(200);
@@ -206,3 +206,37 @@ it("refuses foreign sources, forged previews, current permission revocation and 
   const submitted = await api<{ item: { id: string } }>(0, `${copy.path}/submit`, {}); expect(submitted.status).toBe(201);
   expect((await api(1, `/api/v1/parameters/admin/initialization-reviews/${submitted.body.item.id}/approve`, {})).status).toBe(200);
 }, 120_000);
+
+it("retains genuine former-root overlay admission with fresh file identities through repeated zero-Binding project copies", async () => {
+  let sourceId = "init-overlay-source";
+  const auth = makeTestAuthContext({ userId: AUTHOR, organizationId: ORG, roles: [{ roleId: "admin", projectId: null }] });
+  await db.query("insert into projects(id,organization_id,name,code,status,initialization_status) values ($1,$2,$1,'OVERLAY','initialized','initialized')", [sourceId, ORG]);
+  const set = await createConfigSet(db, auth, { projectId: sourceId, name: "Original root composition" });
+  const oldText = '/dts-v1/; / { model = "Original root"; old { retained = <1>; }; };\n';
+  const currentText = '/dts-v1/; / { model = "Current root"; };\n';
+  const original = await uploadProjectParameterFile(db, storage, auth, { projectId: sourceId, fileName: "original.dts", bytes: Buffer.from(oldText) });
+  await addConfigSetFile(db, auth, { configSetId: set.id, fileId: original.file.id, role: "base", sortOrder: 0 });
+  const oldMember = { fileId: original.file.id, fileVersionId: original.version.id, fileName: "original.dts", content: oldText, role: "base" as const, sortOrder: 0 };
+  const historical = await ingestConfigRevision(db, { organizationId: ORG, projectId: sourceId, configSetId: set.id, entryFile: "original.dts", includeSearchPaths: ["."], overlayOrder: [], members: [oldMember] }, auth);
+  expect(historical.status).toBe("resolved");
+  const current = await uploadProjectParameterFile(db, storage, auth, { projectId: sourceId, fileName: "current.dts", bytes: Buffer.from(currentText) });
+  await addConfigSetFile(db, auth, { configSetId: set.id, fileId: original.file.id, role: "overlay", sortOrder: 1 });
+  await addConfigSetFile(db, auth, { configSetId: set.id, fileId: current.file.id, role: "base", sortOrder: 0 });
+  const revision = await ingestConfigRevision(db, { organizationId: ORG, projectId: sourceId, configSetId: set.id, entryFile: "current.dts", includeSearchPaths: ["."], overlayOrder: ["original.dts"],
+    members: [{ fileId: current.file.id, fileVersionId: current.version.id, fileName: "current.dts", content: currentText, role: "base", sortOrder: 0 }, { ...oldMember, role: "overlay", sortOrder: 1 }] }, auth);
+  expect(revision.status).toBe("resolved");
+  let previousIds = [original.file.id, current.file.id];
+  for (const targetId of ["init-overlay-a", "init-overlay-b"]) {
+    const copy = await pending(targetId, sourceId); expect(copy.preview.items).toEqual([]);
+    const approved = await api(1, copy.approve, {}); expect(approved.status, approved.bodyText).toBe(200);
+    const sets = await api<{ items: Array<{ id: string; name: string }> }>(0, `/api/v1/projects/${targetId}/config-sets`);
+    expect(sets.status, sets.bodyText).toBe(200); const copiedSet = sets.body.items.find(row => row.name !== "default")!;
+    const exported = await api<{ manifest: { validation: { ok: boolean }; sourcePackage: { formerRootOverlayFiles: string[] } }; files: unknown[] }>(0, `/api/v1/projects/${targetId}/config-sets/${copiedSet.id}/export`);
+    expect(exported.status, exported.bodyText).toBe(200); expect(exported.body.manifest.validation.ok).toBe(true);
+    expect(exported.body.manifest.sourcePackage.formerRootOverlayFiles).toEqual(["original.dts"]);
+    expect(exported.body.files).toEqual([{ name: "current.dts", format: "dts", content: currentText }, { name: "original.dts", format: "dts", content: oldText }]);
+    const files = await api<{ items: Array<{ fileId: string }> }>(0, `/api/v1/projects/${targetId}/config-sets/${copiedSet.id}/files`);
+    expect(files.body.items.every(row => !previousIds.includes(row.fileId))).toBe(true);
+    previousIds = files.body.items.map(row => row.fileId); sourceId = targetId;
+  }
+}, 60_000);
