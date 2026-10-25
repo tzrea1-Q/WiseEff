@@ -21,7 +21,8 @@ export type SharedSwitchConflict=z.infer<typeof sharedSwitchConflictSchema>;
 
 const additionFields = {
   candidateId: z.string().min(1).optional(), fileId: z.string().min(1).optional(),
-  sharedReference: sharedDtsiDependencySchema.extend({mountPath:sharedDtsiDependencySchema.shape.mountPath.optional(), replaceVersionId:z.string().uuid().optional()}).strict().optional(),
+  sharedReference: sharedDtsiDependencySchema.extend({mountPath:sharedDtsiDependencySchema.shape.mountPath.optional(), replaceVersionId:z.string().uuid().optional(),
+    convertPrivate:z.object({configRevisionId:z.string().min(1),fileId:z.string().min(1),fileVersionId:z.string().min(1)}).strict().optional()}).strict().optional(),
   setAsRoot: z.literal(true).optional(),
   role: z.enum(["base", "overlay", "charging", "thermal", "misc"]), sortOrder: z.number().int().min(0).max(100000),
   json: z.object({ configurationSchemaId: z.string().trim().min(1), rootPointer: z.string(),
@@ -35,6 +36,9 @@ export const memberAdditionPreviewResponseSchema = z.object({ item: z.object({
   proofToken: z.string().regex(/^[0-9a-f]{64}$/), configSetId: z.string(), fileName: z.string(), format: z.enum(["dts", "json"]),
   sharedReference: z.object({ resourceId: z.string(), versionId: z.string(), memberId: z.string(), version: z.number(), digest: z.string() }).optional(),
   sharedSwitch:sharedReferenceSwitchPreviewSchema.optional(),
+  sharedConversion:z.object({semanticEqual:z.literal(true),identitiesRetained:z.literal(true),sourceEvidence:z.string(),
+    files:z.array(z.object({fileId:z.string(),fileVersionId:z.string(),sourceName:z.string(),resourceId:z.string(),versionId:z.string(),memberId:z.string(),role:z.string(),sortOrder:z.number()})),
+    origins:z.array(z.object({bindingId:z.string(),sourcePinId:z.string(),fileId:z.string(),fileVersionId:z.string(),propertyName:z.string(),locator:z.record(z.unknown())}))}).optional(),
   sharedComposition:z.array(z.object({resourceId:z.string(),versionId:z.string(),name:z.string(),version:z.number(),digest:z.string(),mountPath:z.string(),direct:z.boolean(),
     sources:z.array(z.object({memberId:z.string(),fileId:z.string(),fileVersionId:z.string(),sourceName:z.string()}))})).optional(),
   rootEdit: z.object({ fileId: z.string(), baseFileVersionId: z.string(), sourceName: z.string(), before: z.string(), after: z.string() }).optional(),
@@ -49,3 +53,4 @@ export const memberAdditionPreviewResponseSchema = z.object({ item: z.object({
 export const memberAdditionApplyResponseSchema = z.object({ item: z.object({
   requestId: z.string(), fileId: z.string(), fileVersionId: z.string(), configRevisionId: z.string()
 }).passthrough() });
+export type MemberAdditionPreviewResponse=z.infer<typeof memberAdditionPreviewResponseSchema>;

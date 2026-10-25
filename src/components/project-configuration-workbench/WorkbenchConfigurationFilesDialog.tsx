@@ -47,13 +47,14 @@ export type WorkbenchConfigurationFilesDialogProps = {
   onSetRoot?: (member: DtsConfigSetMemberFile) => void;
   onSwitchSharedVersion?: (member:DtsConfigSetMemberFile)=>void;
   onCreateShared?: (member: DtsConfigSetMemberFile) => void;
+  onConvertShared?: (member: DtsConfigSetMemberFile) => void;
 };
 
 export function WorkbenchConfigurationFilesDialog({
   open, onClose, configSet, members, canAdmin, pendingAction, loading, error, operationError = "", ready, canonical, onRetry,
   availableFiles, addErrors, memberFileId, memberRole, memberSortOrder, onMemberFileIdChange,
   onMemberRoleChange, onMemberSortOrderChange, onAddMember, onRemoveMember, canRequestReviewedMemberRemoval,
-  onOpenFile, onUpdateFile, onOpenVersions, onAddSourceFile, onCanonicalAdd, onReviewedMemberRemoval, onSetRoot,onSwitchSharedVersion,onCreateShared
+  onOpenFile, onUpdateFile, onOpenVersions, onAddSourceFile, onCanonicalAdd, onReviewedMemberRemoval, onSetRoot,onSwitchSharedVersion,onCreateShared,onConvertShared
 }: WorkbenchConfigurationFilesDialogProps) {
   const addErrorId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -113,6 +114,8 @@ export function WorkbenchConfigurationFilesDialog({
                   ?[{id:"switch-shared",label:"切换共享版本",disabled:busy,onSelect:()=>onSwitchSharedVersion(member)}]:[]),
                 ...(canAdmin && checked && !member.sharedReference && member.format === "dts" && /\.dtsi?$/u.test(member.fileName) && onCreateShared
                   ? [{id:"create-shared",label:"创建共享资源",disabled:busy,onSelect:()=>onCreateShared(member)}] : []),
+                ...(canAdmin && checked && !member.sharedReference && member.format === "dts" && /\.dtsi?$/u.test(member.fileName) && onConvertShared
+                  ? [{id:"convert-shared",label:"转换为共享引用",disabled:busy,onSelect:()=>onConvertShared(member)}] : []),
                 ...(canAdmin && checked && !member.sharedReference && member.format === "dts" && member.role !== "base" && onSetRoot
                   ? [{ id: "set-root", label: "设为根文件", disabled: busy, onSelect: () => onSetRoot(member) }] : []),
                 ...(canRemove(member) ? [{ id: "remove", label: canonical ? "预览移除影响" : "从配置移除", destructive: true as const,

@@ -18,10 +18,11 @@ import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import "./workbench-member-addition-dialog.css";
 
 const roleLabels = { base: "基础", overlay: "覆盖层", charging: "充电", thermal: "温控", misc: "其他 / include" };
-export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialConfigSetId, availableFiles, switchReference, switchDraft, projectRoot, onSwitchDraftChange, onRecoverSwitch, client: suppliedClient, sharedClient: suppliedSharedClient, catalogRepository, fileRepository, onDismiss, onApplied }: {
+export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialConfigSetId, availableFiles, switchReference, conversionSource, switchDraft, projectRoot, onSwitchDraftChange, onRecoverSwitch, client: suppliedClient, sharedClient: suppliedSharedClient, catalogRepository, fileRepository, onDismiss, onApplied }: {
   projectId: string; configSets: Array<{ id: string; name: string }>; initialConfigSetId: string;
   availableFiles: ProjectParameterFile[]; client?: ReturnType<typeof createCanonicalMemberAdditionClient>;
   switchReference?: {resourceId:string;versionId:string;version:number};
+  conversionSource?:{configRevisionId:string;fileId:string;fileVersionId:string;sourceName:string};
   switchDraft?: {versionId:string;reason:string};
   projectRoot?:{fileId:string;sourceName:string};
   onSwitchDraftChange?: (draft:{versionId:string;reason:string})=>void;
@@ -35,7 +36,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   const sharedClient = useMemo(() => suppliedSharedClient ?? createSharedDtsiClient(createDefaultApiClient()), [suppliedSharedClient]);
   const closeRef = useRef<HTMLButtonElement>(null);
   const selectionRef=useRef<HTMLDetailsElement>(null);
-  const [configSetId, setConfigSetId] = useState(initialConfigSetId), [source, setSource] = useState(switchReference?"shared":"upload");
+  const [configSetId, setConfigSetId] = useState(initialConfigSetId), [source, setSource] = useState(switchReference||conversionSource?"shared":"upload");
   const [file, setFile] = useState<File | null>(null), [fileId, setFileId] = useState(availableFiles[0]?.id ?? "");
   const [candidate, setCandidate] = useState<{ id: string; fileName: string; format: "dts" | "json" } | null>(null);
   const [role, setRole] = useState<MemberAdditionBody["role"]>("misc"), [sortOrder, setSortOrder] = useState("0");
@@ -96,7 +97,8 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
         return { definitionId: line.slice(0, separator).trim(), pointer: line.slice(separator + 1).trim() };
       });
       if (registerJson && !jsonMappings?.length) throw new Error("请至少添加一项字段映射。");
-      const body: MemberAdditionBody = { ...(source === "shared" ? { sharedReference: { resourceId, versionId,...(switchReference?{replaceVersionId:switchReference.versionId}:mountPath?{mountPath}:{}) } }
+      const body: MemberAdditionBody = { ...(source === "shared" ? { sharedReference: { resourceId, versionId,...(switchReference?{replaceVersionId:switchReference.versionId}:mountPath?{mountPath}:{}),
+        ...(conversionSource?{convertPrivate:{fileId:conversionSource.fileId,fileVersionId:conversionSource.fileVersionId,configRevisionId:conversionSource.configRevisionId}}:{}) } }
         : source === "upload" ? { candidateId: uploaded!.id } : { fileId }), role: source === "shared" ? "misc" : role,
         sortOrder: Number(sortOrder), ...(registerJson ? { json: { configurationSchemaId: registration.configurationSchemaId, rootPointer: "", mappings: jsonMappings! } } : {}) };
       const result = await client.preview(projectId, configSetId, body);
@@ -115,7 +117,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   return <ModalDialog open onDismiss={busy ? undefined : onDismiss} initialFocusRef={closeRef} describedBy
     className="workbench-member-addition-dialog" backdropClassName="param-admin-modal-backdrop">
     {({ titleId, descriptionId }) => <>
-      <header><div><h2 id={titleId}>{switchReference?"切换共享版本":"加入配置文件"}</h2><p id={descriptionId}>{switchReference?"选择新版本或旧版本，保留当前项目覆盖；确认后创建新配置修订。":source === "shared"
+      <header><div><h2 id={titleId}>{conversionSource?"转换为共享引用":switchReference?"切换共享版本":"加入配置文件"}</h2><p id={descriptionId}>{conversionSource?"选择已发布版本。完整来源和生效配置一致后，确认转换所选私有源码及依赖。":switchReference?"选择新版本或旧版本，保留当前项目覆盖；确认后创建新配置修订。":source === "shared"
         ? "选择共享资源及固定版本，预览配置变化后确认引用。"
         : source === "upload" ? "上传仅保存候选；预览并确认后，文件组成及参数状态一起生效。" : "选择项目文件，预览配置变化后确认加入。"}</p></div>
         <Button ref={closeRef} type="button" variant="outline" disabled={busy} onClick={onDismiss}>关闭</Button></header>
@@ -123,10 +125,10 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
         <details ref={selectionRef} open={!preview} className="workbench-member-addition-dialog__selection"><summary>文件与目标配置</summary>
         <form onSubmit={(event) => { event.preventDefault(); void prepare(); }}>
           <fieldset disabled={busy} aria-label="文件与目标配置">
-            <label>目标配置<SelectControl ariaLabel="目标配置" value={configSetId} disabled={busy||Boolean(switchReference)}
+            <label>目标配置<SelectControl ariaLabel="目标配置" value={configSetId} disabled={busy||Boolean(switchReference||conversionSource)}
               onValueChange={(value) => { setConfigSetId(value); invalidate(); }}
               options={configSets.map((set) => ({ value: set.id, label: set.name === "default" ? "默认配置" : set.name }))} /></label>
-            {!switchReference?<label>文件来源<SelectControl ariaLabel="文件来源" value={source} disabled={busy}
+            {!switchReference&&!conversionSource?<label>文件来源<SelectControl ariaLabel="文件来源" value={source} disabled={busy}
               onValueChange={(value) => { setSource(value); setRegistration({ configurationSchemaId: "", mappings: [] }); invalidate(); }}
               options={[{ value: "upload", label: "上传新文件" }, { value: "existing", label: "选择已有项目文件", disabled: !availableFiles.length }, { value: "shared", label: "引用共享 DTSI 固定版本" }]} /></label>:null}
             {source === "upload" ? <label>上传文件<Input aria-label="上传文件" type="file" accept=".dts,.dtsi,.dtso,.json"
@@ -134,7 +136,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
               : source === "existing" ? <label>待加入文件<SelectControl ariaLabel="待加入文件" value={fileId} disabled={busy}
                 onValueChange={(value) => { setFileId(value); setRegistration({ configurationSchemaId: "", mappings: [] }); invalidate(); }} options={availableFiles.map((item) => ({ value: item.id, label: item.fileName }))} /></label>
               : <>
-                <p>{switchReference?`当前固定：版本 ${switchReference.version}。项目自有源码和覆盖保持原样。`:"共享源码固定为选定版本并只读。先载入共享声明，再应用项目声明；发布新版本不会更改此项目。"}</p>
+                <p>{conversionSource?`所选私有源码：${conversionSource.sourceName}。JSON、项目覆盖和其他项目保持原样；转换后的共享来源只读。`:switchReference?`当前固定：版本 ${switchReference.version}。项目自有源码和覆盖保持原样。`:"共享源码固定为选定版本并只读。先载入共享声明，再应用项目声明；发布新版本不会更改此项目。"}</p>
                 {!switchReference?<><label>搜索共享资源<Input type="search" aria-label="搜索共享资源" value={query} onChange={event => {
                   setQuery(event.target.value); setResourceOffset(0); setResourceId(""); setVersionId(""); setResources([]); setVersions([]); invalidate();
                 }} /></label>
@@ -190,7 +192,15 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
           </div>
         </section>:null}
         {!switchConflicts.length && errorDiagnostics.length ? <ul aria-label="来源校验诊断">{errorDiagnostics.map((message, index) => <li key={index}>{message}</li>)}</ul> : null}
-        {preview ? <section aria-label={switchReference?"版本切换预览":"加入配置预览"} className={preview.sharedSwitch?"workbench-member-addition-dialog__switch-preview":undefined}>
+        {preview ? <section aria-label={conversionSource?"共享转换预览":switchReference?"版本切换预览":"加入配置预览"} className={preview.sharedSwitch?"workbench-member-addition-dialog__switch-preview":undefined}>
+          {preview.sharedConversion?<>
+            <p role="status" className="workbench-member-addition-dialog__switch-status">完整生效配置与构建校验通过，文件、节点及参数关联身份保留。</p>
+            <details><summary>转换文件及来源证明</summary>
+              <ul className="workbench-member-addition-dialog__members">{preview.sharedConversion.files.map(file=><li key={file.fileId}>{file.sourceName} · {roleLabels[file.role as keyof typeof roleLabels]??file.role} · 顺序 {file.sortOrder} · 原始版本保留</li>)}</ul>
+              <p>入口、include、覆盖顺序、构建设置及原始字节一致。</p>
+              <pre>{JSON.stringify({sourceEvidence:preview.sharedConversion.sourceEvidence,files:preview.sharedConversion.files,origins:preview.sharedConversion.origins},null,2)}</pre>
+            </details>
+          </>:null}
           <h3>{configSets.find(set => set.id === configSetId)?.name === "default" ? "默认配置" : configSets.find(set => set.id === configSetId)?.name} · {preview.sharedSwitch?`版本 ${preview.sharedSwitch.beforeVersion} → 版本 ${preview.sharedSwitch.afterVersion}（确认后生效）`:"确认后的文件组成"}</h3>
           {preview.sharedSwitch?<>
             <p role="status" className="workbench-member-addition-dialog__switch-status">构建与参数约束校验通过。</p>
@@ -228,7 +238,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
               <ul className="workbench-member-addition-dialog__members">{resource.sources.map(source=><li key={source.fileId}>{source.sourceName}</li>)}</ul></div>)}
             <details><summary>项目自有及已有来源</summary><ul className="workbench-member-addition-dialog__members">{preview.members.filter(member=>!preview.sharedComposition!.some(resource=>resource.sources.some(source=>source.fileId===member.fileId))).map(member=><li key={member.fileId}>{member.sourceName} · {roleLabels[member.role as keyof typeof roleLabels]??member.role}</li>)}</ul></details>
           </>:<ul className="workbench-member-addition-dialog__members">{preview.members.map((member) => <li key={member.fileId}><span>{member.sourceName}</span><span>{roleLabels[member.role as keyof typeof roleLabels] ?? member.role} · 顺序 {member.sortOrder}</span></li>)}</ul>}
-          {preview.sharedReference ? <p>此项目的当前配置引用共享版本 {preview.sharedReference.version}；来源成员只读，其他项目不受影响。</p> : null}
+          {preview.sharedReference ? <p>{conversionSource?`确认后固定引用版本 ${preview.sharedReference.version}；来源成员只读，其他项目不受影响。`:`此项目的当前配置引用共享版本 ${preview.sharedReference.version}；来源成员只读，其他项目不受影响。`}</p> : null}
           {preview.rootEdit && preview.rootEdit.before!==preview.rootEdit.after ? <details><summary>项目根文件 include 变更：{preview.rootEdit.sourceName}</summary>
             <h4>当前源码</h4><pre aria-label="当前根文件源码">{preview.rootEdit.before}</pre><h4>确认后源码</h4><pre aria-label="确认后根文件源码">{preview.rootEdit.after}</pre></details> : null}
           {preview.entryFile && !preview.rootEdit ? <p>入口：{preview.entryFile}</p> : null}
@@ -247,9 +257,9 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
         </section> : null}
       </div>
       {preview || switchReference ? <footer role="group" aria-label={switchReference?"版本切换确认":"加入配置确认"}>
-        <label>{switchReference?"变更说明":"加入原因"}<Input aria-label={switchReference?"变更说明":"加入原因"} value={reason} disabled={busy} maxLength={2000} onChange={(event) => setReason(event.target.value)} /></label>
+        <label>{switchReference||conversionSource?"变更说明":"加入原因"}<Input aria-label={switchReference||conversionSource?"变更说明":"加入原因"} value={reason} disabled={busy} maxLength={2000} onChange={(event) => setReason(event.target.value)} /></label>
         {preview?<div><Button type="button" variant="outline" disabled={busy} onClick={invalidate}>取消本次预览</Button>
-        <Button type="button" disabled={busy || !reason.trim()} onClick={() => void apply()}>{busy ? "正在应用…" : switchReference?"确认切换版本":"确认加入配置"}</Button></div>:null}
+        <Button type="button" disabled={busy || !reason.trim()} onClick={() => void apply()}>{busy ? "正在应用…" : conversionSource?"确认转换引用":switchReference?"确认切换版本":"确认加入配置"}</Button></div>:null}
       </footer> : null}
     </>}
   </ModalDialog>;

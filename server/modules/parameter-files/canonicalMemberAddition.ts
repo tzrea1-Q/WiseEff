@@ -1,6 +1,7 @@
 import { parameterOrganizationId } from "../parameters/operatingScope";
 import posixPath from "node:path/posix";
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
@@ -43,11 +44,13 @@ import { applySourceRestoration, matchingDeletedSourceAnchors, prepareSourceRest
 import { ingestDtsFileVersion } from "./structuralIngest";
 import { rethrowSourceTransactionError } from "./sourceVersion";
 import { withCanonicalSourceAttemptTransaction } from "./canonicalSourceAttemptTransaction";
+import { provePrivateSharedConversion } from "./sharedConversion";
 import type { ConfigSetRole } from "./types";
 
 export type MemberAdditionInput = {
   projectId: string; configSetId: string; candidateId?: string; fileId?: string;
-  sharedReference?: { resourceId: string; versionId: string; mountPath?: string; replaceVersionId?: string };
+  sharedReference?: { resourceId: string; versionId: string; mountPath?: string; replaceVersionId?: string;
+    convertPrivate?:{configRevisionId:string;fileId:string;fileVersionId:string} };
   role: ConfigSetRole; sortOrder: number;
   setAsRoot?: boolean;
   json?: { configurationSchemaId: string; rootPointer: string; mappings: Array<{ definitionId: string; pointer: string }> };
@@ -75,6 +78,7 @@ type Proof = {
   sharedComposition?: Array<{resourceId:string;versionId:string;version:number;name:string;digest:string;mountPath:string;direct:boolean;
     sources:Array<{memberId:string;fileId:string;fileVersionId:string;sourceName:string}>}>;
   sharedClosure?:ReturnType<typeof closureManifest>;
+  sharedConversion?:NonNullable<MemberAdditionPreview["sharedConversion"]>;
   sharedSwitch?: { beforeReferences: Array<{id:string;resourceId:string;versionId:string;mountPath:string;direct:boolean}>;
     beforeSources: Array<{fileId:string;fileVersionId:string;referenceId:string;memberId:string;sourceName:string}>;
     beforeFiles:Array<{fileId:string;fileVersionId:string}> };
@@ -86,6 +90,7 @@ export type MemberAdditionPreview = {
   sharedReference?: Proof["sharedReference"];
   sharedComposition?: Proof["sharedComposition"];
   sharedSwitch?:SharedReferenceSwitchPreview;
+  sharedConversion?:import("../contracts/dtoSchemas/canonicalMemberAddition").MemberAdditionPreviewResponse["item"]["sharedConversion"];
   rootEdit?: Proof["rootEdit"];
   diagnostics: Array<{ severity: "error" | "warning"; code: string; message: string }>;
   impact: { parameterChanges: number; nodeAdditions: number; nodeRemovals: number; retainedBindings: number; sourceReplacements: number; restoredParameters?: number };
@@ -159,6 +164,9 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   const pins=input.sharedReference ? [{resourceId:input.sharedReference.resourceId,versionId:input.sharedReference.versionId,mountPath:replaced?.mountPath??input.sharedReference.mountPath??""},
     ...(replacing?currentReferences.filter(row=>row.direct&&row.resourceId!==input.sharedReference!.resourceId).map(({resourceId,versionId,mountPath})=>({resourceId,versionId,mountPath})):[])] : [];
   const sharedResources=await loadSharedDtsiClosure(tx,auth,pins);
+  const converting=input.sharedReference?.convertPrivate;
+  if(converting && (converting.configRevisionId!==revision.id || replacing || input.setAsRoot || input.json))conflict("转换来源或当前修订已变化，请重新预览。");
+  const conversion=converting?await provePrivateSharedConversion(tx,storage,auth,{...converting,projectId:input.projectId,configSetId:input.configSetId},sharedResources):null;
   const retainedSources=replacing?(await tx.query<{fileId:string;fileVersionId:string;resourceId:string;memberId:string}>(
     `select distinct file.id as "fileId",file.current_version_id as "fileVersionId",member.shared_reference->>'resourceId' as "resourceId",
        member.shared_reference->>'memberId' as "memberId" from public.project_parameter_files file
@@ -182,9 +190,10 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     reused.add(resource.resourceId);
   }
   const sharedTargets=sharedResources.filter(resource=>!reused.has(resource.resourceId)).flatMap(resource=>resource.item.members.map(member=>({
-    fileId:beforeSources.find(source=>source.memberId===member.id&&currentReferences.find(ref=>ref.id===source.referenceId)?.resourceId===resource.resourceId)?.fileId
+    fileId:conversion?.files.find(source=>source.memberId===member.id&&source.resourceId===resource.resourceId)?.fileId
+      ??beforeSources.find(source=>source.memberId===member.id&&currentReferences.find(ref=>ref.id===source.referenceId)?.resourceId===resource.resourceId)?.fileId
       ??retainedSources.find(source=>source.memberId===member.id&&source.resourceId===resource.resourceId)?.fileId??`shared_${sourceRevisionDigest([input.configSetId,resource.versionId,member.id])}`,
-    fileVersionId:`shared_version_${sourceRevisionDigest([input.configSetId,resource.versionId,member.id])}`,
+    fileVersionId:conversion?.files.find(source=>source.memberId===member.id&&source.resourceId===resource.resourceId)?.fileVersionId??`shared_version_${sourceRevisionDigest([input.configSetId,resource.versionId,member.id])}`,
     sourceName:mountedSharedPath(resource.mountPath,member.sourceName),format:"dts" as const,storageKey:"",checksum:member.checksum,sizeBytes:member.sizeBytes,
     content:member.content,memberId:member.id,resourceId:resource.resourceId
   })));
@@ -206,10 +215,10 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     : sharedTargets[0]??null;
   if (!target || !["dts", "json"].includes(target.format)) throw new ApiError("VALIDATION_FAILED", "请选择 DTS/JSON 候选或已有文件。");
   const retainedMembers=members.filter(member=>!beforeSources.some(source=>source.fileId===member.fileId));
-  if (normalizeManifestLogicalPath(target.sourceName) !== target.sourceName || retainedMembers.some((row) => row.sourceName === target.sourceName && (!input.setAsRoot || row.fileId !== target.fileId))) {
+  if (normalizeManifestLogicalPath(target.sourceName) !== target.sourceName || !conversion && retainedMembers.some((row) => row.sourceName === target.sourceName && (!input.setAsRoot || row.fileId !== target.fileId))) {
     conflict("文件来源名称不合法或与已有成员重名，请使用不同文件名重新上传。");
   }
-  if(sharedTargets.length) {
+  if(sharedTargets.length && !conversion) {
     const names=new Set(retainedMembers.map(member=>member.sourceName.normalize("NFC")));
     for(const member of sharedTargets) {
       if(normalizeManifestLogicalPath(member.sourceName)!==member.sourceName || names.has(member.sourceName.normalize("NFC")))conflict(`${member.sourceName}：共享挂载路径与配置成员重复。`);
@@ -238,8 +247,9 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     ({ fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes })),
   ...(!input.setAsRoot ? (shared?sharedTargets:[target]).map((row,index)=>({ fileId: row.fileId, fileVersionId: row.fileVersionId, sourceName: row.sourceName, format: row.format,
     role: shared ? "include" : input.role, sortOrder: additionSortOrder+index, checksum: row.checksum, sizeBytes: row.sizeBytes })) : [])].sort((a, b) => a.sortOrder - b.sortOrder || a.fileId.localeCompare(b.fileId));
+  if(conversion)afterMembers=members.map(({fileId,fileVersionId,sourceName,format,role,sortOrder,checksum,sizeBytes})=>({fileId,fileVersionId,sourceName,format,role,sortOrder,checksum,sizeBytes}));
   let rootEdit: Proof["rootEdit"];
-  if (shared) {
+  if (shared && !conversion) {
     const root = members.find(member => member.sourceName === revision.entry_file && member.role === "base" && member.format === "dts");
     if (!root) throw new ApiError("VALIDATION_FAILED", "请先提供真实项目根文件并解析配置，再添加共享引用。");
     await assertProjectSourceWritable(tx, root.fileId);
@@ -459,12 +469,24 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       assertCanonicalValueConstraints(definition.definition.selectedRevision, { kind: "json", value: readJsonSourceValue(contents.get(target.fileId)!, mapping.pointer, input.json.rootPointer) as ContractJsonValue });
     }
   }
+  let sharedConversion:Proof["sharedConversion"];
+  if(conversion){
+    const before=await resolveDtsConfigSetAsync({entryFile:revision.entry_file!,includeSearchPaths:revision.include_search_paths,
+      overlayOrder:revision.overlay_order,preprocessing:revision.preprocessing??undefined,defines:composeDtsBuildInputs(declaredBuildInputs,currentResources).defines,
+      requireExactOrigins:true,files:new Map(members.filter(member=>member.format==="dts").map(member=>[member.sourceName,{content:beforeContents.get(member.fileId)!,fileVersionId:member.fileVersionId}]))});
+    if(!resolved || before.diagnostics.some(row=>row.severity==="error") || !isDeepStrictEqual(before.effective,resolved.effective)
+      || !sameSourceRevision(includeSearchPaths,revision.include_search_paths) || !sameSourceRevision(resolved.preprocessing?.receipt??null,revision.preprocessing??null)
+      || targets.length || newProperties.length || restorations.length)conflict("完整生效配置、原始来源或参数关联不同，转换已整批阻断。");
+    sharedConversion={...conversion,semanticEqual:true,identitiesRetained:true,origins:cohort.map(pin=>({bindingId:pin.bindingId,sourcePinId:pin.sourcePinId,
+      fileId:pin.fileId,fileVersionId:pin.fileVersionId,propertyName:pin.propertyName,locator:pin.locator}))};
+  }
   const facts = { kind: "member_addition" as const, organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId,
+    ...(sharedConversion?{sharedConversion}:{}),
     ...(input.setAsRoot ? { setAsRoot: true } : {}),
     ...(replacing?{sharedSwitch:{beforeReferences:currentReferences,beforeSources,beforeFiles:[...beforeSources,...retainedSources.filter(source=>sharedTargets.some(target=>target.fileId===source.fileId))].map(({fileId,fileVersionId})=>({fileId,fileVersionId}))}}:{}),
     ...(shared ? { sharedReference: { resourceId: shared.resourceId, versionId: shared.id, version: shared.version, memberId: shared.members[0]!.id, digest: shared.digest },
       sharedClosure:closureManifest(sharedResources),sharedComposition:sharedResources.filter(resource=>!reused.has(resource.resourceId)).map(({item:_item,...resource})=>({...resource,sources:sharedTargets.filter(member=>member.resourceId===resource.resourceId)
-        .map(({memberId,fileId,fileVersionId,sourceName})=>({memberId,fileId,fileVersionId,sourceName}))})),rootEdit } : {}),
+        .map(({memberId,fileId,fileVersionId,sourceName})=>({memberId,fileId,fileVersionId,sourceName}))})),...(rootEdit?{rootEdit}:{}) } : {}),
     candidateId: candidate?.id ?? null, fileId: target.fileId, baseConfigRevisionId: revision.id,
     baseDigest: sourceRevisionDigest(members.map(({ storageKey: _storage, currentVersionId: _version, currentRole: _role, currentOrder: _order, ...row }) => row)),
     proposedDigest: target.checksum.replace(/^sha256:/, ""), entryFile, includeSearchPaths, overlayOrder, declaredBuildInputs,
@@ -503,6 +525,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
         projectOwned:!oldNames.has(sourceName)&&!nextNames.has(sourceName)})),effective,build:{mode:"release",passed:true,includeSearchPaths,defines}};
   }
   const preview: MemberAdditionPreview = { proofToken: proof.proofDigest, configSetId: input.configSetId, fileName: target.sourceName, format: target.format,
+    ...(sharedConversion?{sharedConversion}:{}),
     ...(shared ? { sharedReference: proof.sharedReference,sharedComposition:proof.sharedComposition, rootEdit } : {}),
     ...(switchPreview?{sharedSwitch:switchPreview}:{}),
     members: afterMembers, entryFile, includeSearchPaths, overlayOrder, diagnostics,
@@ -549,7 +572,7 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
       compatibleIsAuthoritative: true, invocation: security.invocation, requestId: security.requestId, refusalSink: security.refusalSink });
     await lockSourceConfigurationBindings(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId });
     const derived=proof.sharedComposition?.flatMap(resource=>resource.sources.map(source=>proof.members.find(member=>member.fileId===source.fileId)!))??[];
-    if (candidate || proof.sharedReference) {
+    if (candidate || proof.sharedReference && !proof.sharedConversion) {
       for(const source of derived.length?derived:[target])if(!proof.sharedSwitch?.beforeFiles.some(before=>before.fileId===source.fileId))await insertProjectParameterFile(tx, { id: source.fileId, organizationId: parameterOrganizationId(auth), projectId: input.projectId,
         fileName: source.sourceName, format: source.format, enabled: true });
       if (candidate) await tx.query("update public.project_parameter_file_candidates set file_id=$2 where id=$1 and status='ready' and file_id is null", [candidate.id, target.fileId]);
@@ -559,7 +582,8 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
     const attribution = trustedDomainAttribution(security.invocation);
     let fileVersionId = target.fileVersionId;
     const versionIds = new Map<string, string>();
-    for(const source of derived.length?derived:candidate?[target]:[]) {
+    if(proof.sharedConversion)for(const source of derived)versionIds.set(source.fileId,source.fileVersionId);
+    for(const source of proof.sharedConversion?[]:derived.length?derived:candidate?[target]:[]) {
       const stored = proof.sharedReference ? await attempt.objectStore.put({ organizationId: parameterOrganizationId(auth),
         fileName: `${randomUUID()}.dtsi`, contentType: "text/plain", bytes: Buffer.from(contents.get(source.fileId)!) }) : null;
       if (stored && sourceRevisionDigest(await attempt.objectStore.getBounded!(stored.storageKey, MAX_PARAMETER_SOURCE_BYTES)) !== source.checksum.replace(/^sha256:/, "")) conflict("共享来源快照写入校验失败，配置未改变。");
@@ -588,6 +612,8 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
     }
     if(proof.sharedSwitch) {
       await tx.query("select public.apply_shared_dtsi_switch($1,$2::jsonb)",[requestId,JSON.stringify(derived.map(source=>({fileId:source.fileId,fileVersionId:versionIds.get(source.fileId)!})))]);
+    } else if(proof.sharedConversion) {
+      // Exact existing versions acquire an immutable upstream reference; no source or role is rewritten.
     } else if (input.setAsRoot) {
       for (const member of proof.members) {
         const updated = await tx.query(`update public.project_parameter_files set config_set_role=$4,config_set_sort_order=$5,updated_at=now()
@@ -699,7 +725,7 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
       ...(proof.rootEdit ? { rootFileVersionId: versionIds.get(proof.rootEdit.fileId) } : {}), sourceRevisionProofDigest: proof.proofDigest, results };
     await writeTrustedAuditEventInTx(asAuditTx(tx), { id: auditRef, invocation: security.invocation, app: "parameters", kind: "parameter-topology-governance",
       action: "value-change-applied", severity: "Medium", projectId: input.projectId, targetType: "project-parameter-value-change-request", targetId: requestId,
-      metadata: { applicationMode: "administrator_direct", appliedByUserId: auth.user.id, requestKind: "member_addition", operation: proof.sharedSwitch?"switch_shared_version":input.setAsRoot ? "set_root" : "add_member",
+      metadata: { applicationMode: "administrator_direct", appliedByUserId: auth.user.id, requestKind: "member_addition", operation: proof.sharedConversion?"convert_private_shared":proof.sharedSwitch?"switch_shared_version":input.setAsRoot ? "set_root" : "add_member",
         restoredParameters: proof.restorations?.length ?? 0, configSetId: input.configSetId, result: receipt }, traceId: security.requestId });
     if (candidate) await tx.query("update public.project_parameter_file_candidates set status='active',activated_at=now(),activated_by_user_id=$2,activated_version_id=$3 where id=$1 and status='ready'",
       [candidate.id, auth.user.id, fileVersionId]);

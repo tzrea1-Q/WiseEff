@@ -26,6 +26,14 @@ function props(overrides: Partial<WorkbenchConfigurationFilesDialogProps> = {}):
 }
 
 describe("WorkbenchConfigurationFilesDialog", () => {
+  it("offers explicit conversion only for a checked administrator's private DTS source",async()=>{
+    const user=userEvent.setup(),onConvertShared=vi.fn(),values=props();
+    const view=render(<WorkbenchConfigurationFilesDialog {...values} onConvertShared={onConvertShared}/>);
+    await user.click(screen.getByRole("button",{name:"主板.dts 更多"}));
+    await user.click(screen.getByRole("menuitem",{name:"转换为共享引用"}));expect(onConvertShared).toHaveBeenCalledWith(values.members[0]);
+    view.rerender(<WorkbenchConfigurationFilesDialog {...values} canAdmin={false} onConvertShared={onConvertShared}/>);
+    await user.click(screen.getByRole("button",{name:"主板.dts 更多"}));expect(screen.queryByRole("menuitem",{name:"转换为共享引用"})).not.toBeInTheDocument();
+  });
   it("creates shared resources from checked private DTS sources and keeps JSON and fixed shared members out", async () => {
     const user = userEvent.setup(), onCreateShared = vi.fn(), values = props();
     values.members.push({ ...values.members[0]!, fileId:"include",fileName:"parts/power.dtsi",role:"misc" });
