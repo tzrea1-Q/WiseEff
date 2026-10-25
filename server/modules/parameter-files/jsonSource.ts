@@ -148,7 +148,7 @@ function readJsonSource(input: string | Buffer) {
   };
   value();
   // Native parsing owns final grammar validation, including whitespace and trailing input.
-  return { value: JSON.parse(source) as unknown, source, spans, objectMembers, objectPointers };
+  return { value: JSON.parse(source.replace(/^\uFEFF/u, " ")) as unknown, source, spans, objectMembers, objectPointers };
 }
 
 export function parseJsonSource(input: string | Buffer): unknown {

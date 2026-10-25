@@ -37,6 +37,7 @@ export type ConfigSetSnapshotSkipped = {
 };
 
 export type ConfigSetSnapshot = {
+  sourceMembers?: Array<{ fileId: string; sourceName: string; role: import("../parameter-topology/types").ConfigRevisionMemberRole }>;
   preprocessing?: import("../dts/cppSources").DtsPreprocessingReceipt;
   declaredBuildInputs?: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
   configSetId: string;
@@ -123,8 +124,8 @@ export async function loadConfigSetSnapshot(
   const manifest = (await db.query<{ entry_file: string | null; include_search_paths: string[]; overlay_order: string[];
     preprocessing: import("../dts/cppSources").DtsPreprocessingReceipt | null;
     declared_build_inputs: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
-    members: Array<{ fileId: string; sourceName: string }> }>(`select revision.entry_file,revision.include_search_paths,revision.overlay_order,revision.preprocessing,revision.declared_build_inputs,
-      (select jsonb_agg(jsonb_build_object('fileId',member.file_id,'sourceName',member.source_name))
+    members: Array<{ fileId: string; sourceName: string; role: import("../parameter-topology/types").ConfigRevisionMemberRole }> }>(`select revision.entry_file,revision.include_search_paths,revision.overlay_order,revision.preprocessing,revision.declared_build_inputs,
+      (select jsonb_agg(jsonb_build_object('fileId',member.file_id,'sourceName',member.source_name,'role',member.role))
         from dts_config_revision_members member where member.config_revision_id=revision.id) as members
     from dts_config_revisions revision where revision.config_set_id=$1 and revision.status in ('resolved','validated','compiled','pending_approval')
       and (select count(*) from dts_config_revision_members member where member.config_revision_id=revision.id)=$2
@@ -139,6 +140,7 @@ export async function loadConfigSetSnapshot(
   const overlayOrder = exactManifest?.overlay_order ?? overlays.map((overlay) => overlay.name);
 
   return {
+    ...(exactManifest ? { sourceMembers: exactManifest.members } : {}),
     ...(exactManifest?.preprocessing ? { preprocessing: exactManifest.preprocessing } : {}),
     ...(exactManifest ? { declaredBuildInputs: exactManifest.declared_build_inputs } : {}),
     configSetId,

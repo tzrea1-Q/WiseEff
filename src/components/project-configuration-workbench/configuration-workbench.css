@@ -2023,3 +2023,21 @@
 .configuration-workbench__override-actions form { display: flex; flex-wrap: wrap; gap: var(--space-2); width: 100%; }
 .configuration-workbench__override-actions form > label, .configuration-workbench__override-actions form > textarea, .configuration-workbench__override-actions form > p { width: 100%; }
 .configuration-workbench__override-actions form p { font-size: var(--text-sm); color: var(--text-muted); }
+.configuration-workbench__package-import {
+  max-width: min(44rem, calc(100vw - var(--space-8)));
+}
+
+.configuration-workbench__package-import .review-dialog__body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.configuration-workbench__package-import label {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.configuration-workbench__package-path {
+  overflow-wrap: anywhere;
+}

@@ -68,6 +68,8 @@ import { sourceDraftKey } from "@/application/project-configuration/sourceDraftS
 import type { WorkbenchDtsEditorSessions } from "./WorkbenchDtsEditor";
 import { WorkbenchSourceTree } from "./WorkbenchSourceTree";
 import { WorkbenchSetupGate } from "./WorkbenchSetupGate";
+import { WorkbenchPackageImportDialog } from "./WorkbenchPackageImportDialog";
+import { createConfigSetPackageClient } from "@/infrastructure/http/configSetPackageClient";
 import { resolveParamAdminProjectsReturnPath } from "@/hooks/useParamAdminProjectsSearch";
 import { WorkbenchConflictArbitrationDock } from "./WorkbenchConflictArbitrationDock";
 import { WorkbenchTaskDock } from "./WorkbenchTaskDock";
@@ -175,6 +177,8 @@ export function ProjectConfigurationWorkbench({
   const conflictClient = useMemo(() => createCanonicalConflictClient(apiClient), [apiClient]);
   const additionClient = useMemo(() => createCanonicalMemberAdditionClient(apiClient), [apiClient]);
   const sharedDtsiClient = useMemo(() => apiClient ? createSharedDtsiClient(apiClient) : undefined, [apiClient]);
+  const packageClient = useMemo(() => createConfigSetPackageClient(apiClient), [apiClient]);
+  const [packageImportOpen, setPackageImportOpen] = useState(false);
   const sharedImportScope = useMemo(() => ({currentUserId, organizationId, projectId:project.id, search, sharedDtsiClient}), [currentUserId, organizationId, project.id, search, sharedDtsiClient]);
   const currentSharedImport = useRef<object | null>(sharedImportScope);
   currentSharedImport.current = sharedImportScope;
@@ -1952,6 +1956,7 @@ export function ProjectConfigurationWorkbench({
         pendingAction={pendingAction}
         onOpenActivity={openActivityInspector}
         onExportConfigSet={() => void runAction("export-config-set", exportSelectedConfigSet)}
+        onImportPackage={apiMode && !filesLoading && !filesError && !configSetsLoading && !configSetsError && !projectFiles.length ? () => setPackageImportOpen(true) : undefined}
         onCreateConfigSet={submitCreateConfigSet}
       />
           {showContentTabs ? <div className="configuration-workbench__viewbar"><ViewSwitch variant="tabs" ariaLabel="项目配置内容" value={contentTab}
@@ -1981,6 +1986,7 @@ export function ProjectConfigurationWorkbench({
         selectedConfigSet={selectedConfigSet ?? null}
         canAdmin={canAdmin}
         onCreateConfigSet={() => setCreateConfigSetOpen(true)}
+        onImportPackage={apiMode && !filesLoading && !filesError && !configSetsLoading && !configSetsError && !projectFiles.length ? () => setPackageImportOpen(true) : undefined}
       />
         </>}
         navigator={<>
@@ -2199,6 +2205,15 @@ export function ProjectConfigurationWorkbench({
           if (topologyRepository) void revisionGate.session.load(project.id, configSetId, topologyRepository);
           onNavigate(formatWorkbenchPath(project.id, canvasSearch, { configSet: configSetId, file: fileId, inspector: null,
             sourceMode: null, version: null, candidate: null, baseline: null, node: null, property: null }));
+        }} /> : null}
+
+      {packageImportOpen && apiMode && canAdmin ? <WorkbenchPackageImportDialog key={`${resolvedOrganizationId}:${project.id}`} projectId={project.id} client={packageClient}
+        onDismiss={() => setPackageImportOpen(false)} onApplied={result => {
+          setPackageImportOpen(false); workspaceLoadSession.retryConfigSets(); workspaceLoadSession.retryFiles(); workspaceLoadSession.retryMembers();
+          workspaceLoadSession.retrySource(); workspaceLoadSession.retryStructure();
+          if (topologyRepository) void revisionGate.session.load(project.id, result.configSetId, topologyRepository);
+          onNavigate(formatWorkbenchPath(project.id, canvasSearch, { configSet: result.configSetId, file: result.fileIds[0]??null,
+            inspector: null, sourceMode: null, version: null, candidate: null, baseline: null, node: null, property: null }));
         }} /> : null}
 
       <WorkbenchCandidateActivateDialog
