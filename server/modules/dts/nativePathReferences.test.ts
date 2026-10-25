@@ -1,7 +1,16 @@
 import { describe,expect,it } from "vitest";
 import { lexDts,parseDts,parseDtsValue,renderDtsValue,resolveDts,resolveDtsConfigSet,serializeDts } from "./index";
+import { expandDtsIncludes } from "./configSetResolver";
 
 describe("native absolute node-path references",()=>{
+  it("keeps bounded library expansion and project source reachability together",()=>{
+    const files=new Map([["library.dtsi",{fileVersionId:"root-v1",content:'/include/ "base.dtsi"\n'}],
+      ["base.dtsi",{fileVersionId:"base-v1",content:"/ { soc {}; };\n"}]]);
+    const expanded=expandDtsIncludes({entryFile:"library.dtsi",includeSearchPaths:[],files});
+    expect(expanded.text).toBe("/ { soc {}; };\n\n");
+    expect(expanded.originAt(0)).toEqual({fileName:"base.dtsi",offset:0});
+    expect(resolveDtsConfigSet({entryFile:"library.dtsi",includeSearchPaths:[],overlayOrder:[],files}).sourceFiles).toEqual(["library.dtsi","base.dtsi"]);
+  });
   it.each([
     '/ {}; &ghost { status = "disabled"; }; &{/ghost} { status = "okay"; };',
     '/ { consumer { clocks = <&{/ghost}>; }; }; &ghost {};',

@@ -19,6 +19,8 @@ type InventoryQuery = readonly [string, string, "delete" | "detach" | "retain", 
 const inventoryQueries: readonly InventoryQuery[] = [
   ["configurations", "项目配置集合", "delete", `select * from dts_config_set where ${projectScope}`],
   ["source-files", "项目源文件", "delete", `select * from project_parameter_files where ${projectScope}`],
+  ["shared-source-references", "固定共享引用", "delete", `select * from public.project_shared_dtsi_references where ${projectScope}`],
+  ["shared-source-snapshots", "项目只读来源快照", "delete", `select * from public.project_shared_dtsi_snapshots where reference_id in(select id from public.project_shared_dtsi_references where ${projectScope})`],
   ["source-versions", "源文件历史版本", "delete", `select * from project_parameter_file_versions where file_id in (${files})`],
   ["upload-candidates", "上传与源码候选", "delete", `select * from project_parameter_file_candidates where ${projectScope}`],
   ["baselines", "发布基线", "delete", `select * from dts_release_baseline where organization_id=$1 and config_set_id in (${configurations})`],

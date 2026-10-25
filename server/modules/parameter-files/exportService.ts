@@ -19,7 +19,7 @@ import {
   type ValidationMode
 } from "./dtcValidator";
 import { getFileVersionById, getProjectParameterFileById } from "./repository";
-import type { ConfigSetRole, ParameterFileFormat } from "./types";
+import type { ConfigSetRole, ParameterFileFormat, ConfigSetMemberFileDto } from "./types";
 
 export type ExportServiceContext = AuditCorrelationContext;
 
@@ -32,6 +32,8 @@ export type ExportFileResult = {
 };
 
 export type ExportConfigSetManifestMember = {
+  sharedReference?: ConfigSetMemberFileDto["sharedReference"];
+  fileVersionId?: string;
   fileId: string;
   fileName: string;
   role: ConfigSetRole;
@@ -41,6 +43,9 @@ export type ExportConfigSetManifestMember = {
 };
 
 export type ExportConfigSetManifest = {
+  entryFile?: string | null;
+  includeSearchPaths?: string[];
+  overlayOrder?: string[];
   configSetId: string;
   name: string;
   projectId: string;
@@ -212,14 +217,17 @@ export async function exportConfigSet(
   }
 
   const snapshot = await loadConfigSetSnapshot(db, deps.objectStore, configSetId);
+  const hasSharedReferences = snapshot.members.some(member => member.sharedReference);
   const manifestMembers: ExportConfigSetManifestMember[] = [];
   const files: ExportConfigSetFile[] = [];
   const dtsFilesForValidation: Array<{ name: string; content: string }> = [];
 
   for (const member of snapshot.members) {
-    const content = formatExportedContent(member.format, member.content);
+    const content = hasSharedReferences ? member.content : formatExportedContent(member.format, member.content);
 
     manifestMembers.push({
+      ...(member.sharedReference ? { sharedReference: member.sharedReference } : {}),
+      ...(hasSharedReferences ? { fileVersionId: member.versionId } : {}),
       fileId: member.fileId,
       fileName: member.fileName,
       role: member.role,
@@ -245,6 +253,7 @@ export async function exportConfigSet(
   const requiresConfirmation = computeRequiresConfirmation(validation);
 
   const manifest: ExportConfigSetManifest = {
+    ...(hasSharedReferences ? { entryFile: snapshot.entryFile, includeSearchPaths: snapshot.includeSearchPaths, overlayOrder: snapshot.overlayOrder } : {}),
     configSetId: configSet.id,
     name: configSet.name,
     projectId: configSet.projectId,

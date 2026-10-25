@@ -23,6 +23,8 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | Term | Meaning |
 | --- | --- |
 | DTS | Device tree / parameter topology source format in the parameter workbench |
+| Fixed shared reference | An explicit Organization/Project/configuration reference to one exact immutable published shared-source version. Publication of a successor never changes it. Avoid: latest inheritance, linked copy |
+| Shared source snapshot | A project-owned read-only source member derived from a fixed shared reference, retaining the exact upstream resource, version and member provenance. Each project has its own source and Binding identities. Avoid: shared project file, ordinary private copy |
 | Parameter surface | Manageable parameter rows bound to topology, not raw DTS paths alone |
 | Project-primary DTS | One uploaded DTS per project; merges update that file |
 | Catalog subject | Permanent Platform-owned formal identity that is exactly one Driver, NodeType or ConfigurationSchema ([ADR-0045](docs/adr/0045-configuration-schema-subject-and-seed-rebuild.md)). Its canonical key is never reassigned, and it has no independent current lifecycle; Organizations use it through registration and placement. _Avoid_: attribution subject (legacy storage term), organization-owned subject, current subject row |

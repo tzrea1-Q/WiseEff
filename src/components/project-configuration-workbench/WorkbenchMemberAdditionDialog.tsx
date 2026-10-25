@@ -1,4 +1,7 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createSharedDtsiClient } from "@/infrastructure/http/sharedDtsiClient";
+import { createDefaultApiClient } from "@/infrastructure/http/defaultApiClient";
+import type { SharedDtsiResourceSummary, SharedDtsiVersionSummary } from "@wiseeff/dto-schemas";
 import type { ProjectParameterFile } from "@/application/ports/ParameterFileRepository";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -14,14 +17,16 @@ import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import "./workbench-member-addition-dialog.css";
 
 const roleLabels = { base: "基础", overlay: "覆盖层", charging: "充电", thermal: "温控", misc: "其他 / include" };
-export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialConfigSetId, availableFiles, client: suppliedClient, catalogRepository, fileRepository, onDismiss, onApplied }: {
+export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialConfigSetId, availableFiles, client: suppliedClient, sharedClient: suppliedSharedClient, catalogRepository, fileRepository, onDismiss, onApplied }: {
   projectId: string; configSets: Array<{ id: string; name: string }>; initialConfigSetId: string;
   availableFiles: ProjectParameterFile[]; client?: ReturnType<typeof createCanonicalMemberAdditionClient>;
+  sharedClient?: Pick<ReturnType<typeof createSharedDtsiClient>, "list" | "versions">;
   catalogRepository?: Pick<ParameterCatalogRepository, "listSubjects" | "listSubjectDefinitions">;
   fileRepository?: Pick<ParameterFileRepository, "downloadVersion">;
   onDismiss: () => void; onApplied: (configSetId: string, fileId: string) => void;
 }) {
   const client = useMemo(() => suppliedClient ?? createCanonicalMemberAdditionClient(), [suppliedClient]);
+  const sharedClient = useMemo(() => suppliedSharedClient ?? createSharedDtsiClient(createDefaultApiClient()), [suppliedSharedClient]);
   const closeRef = useRef<HTMLButtonElement>(null);
   const [configSetId, setConfigSetId] = useState(initialConfigSetId), [source, setSource] = useState("upload");
   const [file, setFile] = useState<File | null>(null), [fileId, setFileId] = useState(availableFiles[0]?.id ?? "");
@@ -33,6 +38,25 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   const [reason, setReason] = useState(""), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const [errorDiagnostics, setErrorDiagnostics] = useState<string[]>([]);
   const mutationId = useRef<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const [resources, setResources] = useState<SharedDtsiResourceSummary[]>([]), [versions, setVersions] = useState<SharedDtsiVersionSummary[]>([]);
+  const [resourceId, setResourceId] = useState(""), [versionId, setVersionId] = useState("");
+  const [query, setQuery] = useState(""), [resourceOffset, setResourceOffset] = useState(0), [versionOffset, setVersionOffset] = useState(0);
+  const [resourceTotal, setResourceTotal] = useState(0), [versionTotal, setVersionTotal] = useState(0);
+  const [sharedLoading, setSharedLoading] = useState(false), [sharedError, setSharedError] = useState(""), [sharedRetry, setSharedRetry] = useState(0);
+  useEffect(() => {
+    if (source !== "shared") return;
+    let active = true;
+    setSharedLoading(true); setSharedError("");
+    void (resourceId ? sharedClient.versions(resourceId, versionOffset).then(result => {
+      if (active) { setVersions(result.items); setVersionTotal(result.total); }
+    }) : sharedClient.list({ q: query, offset: resourceOffset, limit: 20 }).then(result => {
+      if (active) { setResources(result.items); setResourceTotal(result.total); }
+    })).catch(failure => { if (active) setSharedError(presentError(failure, "无法读取共享资源，请重试。")); })
+      .finally(() => { if (active) setSharedLoading(false); });
+    return () => { active = false; };
+  }, [source, sharedClient, resourceId, query, resourceOffset, versionOffset, sharedRetry]);
   const format = source === "existing" ? availableFiles.find((item) => item.id === fileId)?.format : candidate?.format ?? (file?.name.toLowerCase().endsWith(".json") ? "json" : "dts");
   const invalidate = () => { setPreview(null); setPreparedBody(null); setError(""); setErrorDiagnostics([]); mutationId.current = null; };
   function showError(failure: unknown, fallback: string) {
@@ -48,7 +72,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
       if (source === "upload" && !uploaded) {
         if (!file) throw new Error("请选择要上传的 DTS/JSON 文件。");
         if (file.size > 2 * 1024 * 1024) throw new Error("来源文件不能超过 2 MB。");
-        uploaded = await client.upload(projectId, file); setCandidate(uploaded);
+        uploaded = await client.upload(projectId, file); if (!mounted.current) return; setCandidate(uploaded);
       }
       const registerJson = format === "json" && Boolean(registration.configurationSchemaId);
       const jsonMappings = !registerJson ? undefined : registration.fallbackMappings === undefined ? registration.mappings.map((row) => {
@@ -60,19 +84,21 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
         return { definitionId: line.slice(0, separator).trim(), pointer: line.slice(separator + 1).trim() };
       });
       if (registerJson && !jsonMappings?.length) throw new Error("请至少添加一项字段映射。");
-      const body: MemberAdditionBody = { ...(source === "upload" ? { candidateId: uploaded!.id } : { fileId }), role,
+      const body: MemberAdditionBody = { ...(source === "shared" ? { sharedReference: { resourceId, versionId } }
+        : source === "upload" ? { candidateId: uploaded!.id } : { fileId }), role: source === "shared" ? "misc" : role,
         sortOrder: Number(sortOrder), ...(registerJson ? { json: { configurationSchemaId: registration.configurationSchemaId, rootPointer: "", mappings: jsonMappings! } } : {}) };
       const result = await client.preview(projectId, configSetId, body);
+      if (!mounted.current) return;
       setPreparedBody(body); setPreview(result); mutationId.current = crypto.randomUUID();
-    } catch (failure) { showError(failure, "无法预览文件组成，请检查文件后重试。"); } finally { setBusy(false); }
+    } catch (failure) { if (mounted.current) showError(failure, "无法预览文件组成，请检查文件后重试。"); } finally { if (mounted.current) setBusy(false); }
   }
   async function apply() {
     if (!preview || !preparedBody || !mutationId.current || !reason.trim()) return;
     setBusy(true); setError(""); setErrorDiagnostics([]);
     try {
       const result = await client.apply(projectId, configSetId, { ...preparedBody, proofToken: preview.proofToken, reason: reason.trim(), clientMutationId: mutationId.current });
-      onApplied(configSetId, result.fileId);
-    } catch (failure) { showError(failure, "未能确认加入结果，请重试确认或刷新配置核对；已保存的候选会保留。"); } finally { setBusy(false); }
+      if (mounted.current) onApplied(configSetId, result.fileId);
+    } catch (failure) { if (mounted.current) showError(failure, "未能确认加入结果，请重试确认或刷新配置核对；已保存的候选会保留。"); } finally { if (mounted.current) setBusy(false); }
   }
   return <ModalDialog open onDismiss={busy ? undefined : onDismiss} initialFocusRef={closeRef} describedBy
     className="workbench-member-addition-dialog" backdropClassName="param-admin-modal-backdrop">
@@ -87,32 +113,57 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
               options={configSets.map((set) => ({ value: set.id, label: set.name === "default" ? "默认配置" : set.name }))} /></label>
             <label>文件来源<SelectControl ariaLabel="文件来源" value={source} disabled={busy}
               onValueChange={(value) => { setSource(value); setRegistration({ configurationSchemaId: "", mappings: [] }); invalidate(); }}
-              options={[{ value: "upload", label: "上传新文件" }, { value: "existing", label: "选择已有项目文件", disabled: !availableFiles.length }]} /></label>
+              options={[{ value: "upload", label: "上传新文件" }, { value: "existing", label: "选择已有项目文件", disabled: !availableFiles.length }, { value: "shared", label: "引用共享 DTSI 固定版本" }]} /></label>
             {source === "upload" ? <label>上传文件<Input aria-label="上传文件" type="file" accept=".dts,.dtsi,.dtso,.json"
               onChange={(event) => { setFile(event.target.files?.[0] ?? null); setCandidate(null); setRegistration({ configurationSchemaId: "", mappings: [] }); invalidate(); }} /></label>
-              : <label>待加入文件<SelectControl ariaLabel="待加入文件" value={fileId} disabled={busy}
-                onValueChange={(value) => { setFileId(value); setRegistration({ configurationSchemaId: "", mappings: [] }); invalidate(); }} options={availableFiles.map((item) => ({ value: item.id, label: item.fileName }))} /></label>}
+              : source === "existing" ? <label>待加入文件<SelectControl ariaLabel="待加入文件" value={fileId} disabled={busy}
+                onValueChange={(value) => { setFileId(value); setRegistration({ configurationSchemaId: "", mappings: [] }); invalidate(); }} options={availableFiles.map((item) => ({ value: item.id, label: item.fileName }))} /></label>
+              : <>
+                <p>共享源码固定为选定版本并只读。先载入共享声明，再应用项目声明；发布新版本不会更改此项目。</p>
+                <label>搜索共享资源<Input type="search" aria-label="搜索共享资源" value={query} onChange={event => {
+                  setQuery(event.target.value); setResourceOffset(0); setResourceId(""); setVersionId(""); setResources([]); setVersions([]); invalidate();
+                }} /></label>
+                <label>共享资源<SelectControl ariaLabel="共享资源" value={resourceId} disabled={sharedLoading || busy} placeholder="选择资源"
+                  options={resources.map(item => ({ value: item.resourceId, label: item.name, disabled: !item.currentVersion }))}
+                  onValueChange={value => { setResourceId(value); setVersionId(""); setVersions([]); setVersionOffset(0); invalidate(); }} /></label>
+                {!resourceId && resourceTotal > 20 ? <div>
+                  <Button type="button" variant="outline" disabled={busy || sharedLoading || resourceOffset === 0} onClick={() => { setResourceOffset(value => value - 20); invalidate(); }}>上一页资源</Button>
+                  <Button type="button" variant="outline" disabled={busy || sharedLoading || resourceOffset + 20 >= resourceTotal} onClick={() => { setResourceOffset(value => value + 20); invalidate(); }}>下一页资源</Button>
+                </div> : null}
+                {resourceId ? <label>固定版本<SelectControl ariaLabel="固定版本" value={versionId} disabled={sharedLoading || busy} placeholder="明确选择已发布版本"
+                  options={versions.map(item => ({ value: item.id, label: `版本 ${item.version} · ${item.changeDescription}` }))}
+                  onValueChange={value => { setVersionId(value); invalidate(); }} /></label> : null}
+                {resourceId && versionTotal > 20 ? <div>
+                  <Button type="button" variant="outline" disabled={busy || sharedLoading || versionOffset === 0} onClick={() => { setVersionId(""); setVersionOffset(value => value - 20); invalidate(); }}>较新版本</Button>
+                  <Button type="button" variant="outline" disabled={busy || sharedLoading || versionOffset + 20 >= versionTotal} onClick={() => { setVersionId(""); setVersionOffset(value => value + 20); invalidate(); }}>较早版本</Button>
+                </div> : null}
+                {sharedLoading ? <p role="status">正在读取共享版本…</p> : !resources.length && !resourceId && !sharedError ? <p>没有匹配的共享资源。请先创建并发布资源，或调整搜索。</p> : null}
+                {sharedError ? <div role="alert"><p>{sharedError}</p><Button type="button" variant="outline" onClick={() => setSharedRetry(value => value + 1)}>重试共享资源</Button></div> : null}
+              </>}
             {candidate && source === "upload" ? <p role="status">已保存候选：{candidate.fileName}；尚未加入配置。</p> : null}
             <div className="workbench-member-addition-dialog__columns">
-              <label>文件用途<SelectControl ariaLabel="文件用途" value={role} disabled={busy}
+              {source !== "shared" ? <label>文件用途<SelectControl ariaLabel="文件用途" value={role} disabled={busy}
                 onValueChange={(value) => { setRole(value); invalidate(); }}
-                options={(Object.keys(roleLabels) as Array<MemberAdditionBody["role"]>).map((value) => ({ value, label: roleLabels[value] }))} /></label>
+                options={(Object.keys(roleLabels) as Array<MemberAdditionBody["role"]>).map((value) => ({ value, label: roleLabels[value] }))} /></label> : <p>用途：共享 include（项目根入口保持不变）</p>}
               <label>文件顺序<Input aria-label="文件顺序" type="number" required min="0" max="100000" step="1" value={sortOrder}
                 onChange={(event) => { setSortOrder(event.target.value); invalidate(); }} /></label>
             </div>
-            {format === "json" ? <details onToggle={(event) => setRegistrationOpen(event.currentTarget.open)}><summary>登记 JSON 字段为参数（可选）</summary>
+            {source !== "shared" && format === "json" ? <details onToggle={(event) => setRegistrationOpen(event.currentTarget.open)}><summary>登记 JSON 字段为参数（可选）</summary>
               <p>留空将只加入已校验的 JSON 文件，预览会明确显示未登记的参数状态。</p>
               {registrationOpen ? <WorkbenchJsonRegistrationFields key={`${source}:${source === "upload" ? file?.name : fileId}`} projectId={projectId}
                 file={source === "upload" ? file : null} existingFile={source === "existing" ? availableFiles.find((item) => item.id === fileId) : undefined}
                 catalog={catalogRepository} files={fileRepository} value={registration} onChange={(value) => { setRegistration(value); invalidate(); }} /> : null}
             </details> : null}
-            <Button type="submit" disabled={busy || !configSetId || (source === "existing" ? !fileId : !file && !candidate)}>{busy ? "正在核对…" : "预览加入配置"}</Button>
+            <Button type="submit" disabled={busy || !configSetId || (source === "shared" ? !resourceId || !versionId || sharedLoading || Boolean(sharedError) : source === "existing" ? !fileId : !file && !candidate)}>{busy ? "正在核对…" : "预览加入配置"}</Button>
           </fieldset>
         </form>
         {error ? <p role="alert">{error}</p> : null}
         {errorDiagnostics.length ? <ul aria-label="来源校验诊断">{errorDiagnostics.map((message, index) => <li key={index}>{message}</li>)}</ul> : null}
         {preview ? <section aria-label="加入配置预览">
           <h3>确认后的文件组成</h3><ul>{preview.members.map((member) => <li key={member.fileId}>{member.sourceName} · {roleLabels[member.role as keyof typeof roleLabels] ?? member.role} · 顺序 {member.sortOrder}</li>)}</ul>
+          {preview.sharedReference ? <p>此项目的当前配置引用共享版本 {preview.sharedReference.version}；来源成员只读，其他项目不受影响。</p> : null}
+          {preview.rootEdit ? <details><summary>项目根文件 include 变更：{preview.rootEdit.sourceName}</summary>
+            <h4>当前源码</h4><pre aria-label="当前根文件源码">{preview.rootEdit.before}</pre><h4>确认后源码</h4><pre aria-label="确认后根文件源码">{preview.rootEdit.after}</pre></details> : null}
           {preview.entryFile ? <p>入口：{preview.entryFile}；include 路径：{preview.includeSearchPaths.join("、")}；覆盖顺序：{preview.overlayOrder.join(" → ") || "无"}。</p> : null}
           <p>参数变化：{preview.impact.parameterChanges}；新增节点：{preview.impact.nodeAdditions}；移除节点：{preview.impact.nodeRemovals}。</p>
           {preview.impact.restoredParameters ? <p>恢复 {preview.impact.restoredParameters} 个已删除参数，保留原身份及历史。</p> : null}

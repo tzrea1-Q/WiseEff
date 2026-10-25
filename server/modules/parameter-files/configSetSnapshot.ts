@@ -1,7 +1,7 @@
 import type { Queryable } from "../../shared/database/client";
 import type { ObjectStore } from "../logs/objectStore";
 import { listConfigSetMemberFiles } from "./baselineRepository";
-import type { ConfigSetRole, ParameterFileFormat } from "./types";
+import type { ConfigSetRole, ParameterFileFormat, ConfigSetMemberFileDto } from "./types";
 
 /** Roles applied over the base when assembling/compiling a config set. */
 const OVERLAY_ROLES = new Set<ConfigSetRole>(["overlay", "charging", "thermal", "misc"]);
@@ -19,6 +19,7 @@ export async function loadFormerRootOverlayFiles(db: Queryable, configSetId: str
 }
 
 export type ConfigSetSnapshotMember = {
+  sharedReference?: ConfigSetMemberFileDto["sharedReference"];
   fileId: string;
   fileName: string;
   format: ParameterFileFormat;
@@ -87,6 +88,7 @@ export async function loadConfigSetSnapshot(
   );
 
   const members: ConfigSetSnapshotMember[] = loadable.map((row, index) => ({
+    ...(row.sharedReference ? { sharedReference: row.sharedReference } : {}),
     fileId: row.fileId,
     fileName: row.fileName,
     format: row.format,

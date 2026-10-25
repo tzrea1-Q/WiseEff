@@ -33,6 +33,7 @@ import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import { getCanonicalSourceWorkflow } from "./canonicalFileWorkflow";
 import {
   assertLegacySourceMutationAllowed,
+  assertProjectSourceWritable,
   getFileVersionById,
   getProjectParameterFileById,
   getProjectParameterFileByName,
@@ -449,6 +450,7 @@ async function createCandidateInScope(
     if (!file || file.projectId !== input.projectId) {
       throw new ApiError("NOT_FOUND", "Project parameter file was not found.", { fileId });
     }
+    await assertProjectSourceWritable(db, fileId);
     existingFileName = file.fileName;
     if (fileName !== file.fileName) {
       throw new ApiError("VALIDATION_FAILED", "fileName must match the existing file when fileId is provided.", {
