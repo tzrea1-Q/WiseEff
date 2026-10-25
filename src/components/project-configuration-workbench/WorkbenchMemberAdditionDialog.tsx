@@ -151,8 +151,8 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
               {source !== "shared" ? <label>文件用途<SelectControl ariaLabel="文件用途" value={role} disabled={busy}
                 onValueChange={(value) => { setRole(value); invalidate(); }}
                 options={(Object.keys(roleLabels) as Array<MemberAdditionBody["role"]>).map((value) => ({ value, label: roleLabels[value] }))} /></label> : <p>用途：共享 include（项目根入口保持不变）</p>}
-              <label>文件顺序<Input aria-label="文件顺序" type="number" required min="0" max="100000" step="1" value={sortOrder}
-                onChange={(event) => { setSortOrder(event.target.value); invalidate(); }} /></label>
+              {source!=="shared"?<label>文件顺序<Input aria-label="文件顺序" type="number" required min="0" max="100000" step="1" value={sortOrder}
+                onChange={(event) => { setSortOrder(event.target.value); invalidate(); }} /></label>:null}
             </div>
             {source !== "shared" && format === "json" ? <details onToggle={(event) => setRegistrationOpen(event.currentTarget.open)}><summary>登记 JSON 字段为参数（可选）</summary>
               <p>留空将只加入已校验的 JSON 文件，预览会明确显示未登记的参数状态。</p>

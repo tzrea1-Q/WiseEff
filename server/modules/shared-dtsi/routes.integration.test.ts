@@ -100,15 +100,15 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
       expect(version.status,version.bodyText).toBe(201);return version.body.item;
     };
     const leaf=await publish("Dependency leaf","leaf.dtsi",'/ { leaf: leaf { status = "okay"; }; };');
-    const pin={resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"vendor"};
-    const middle=await publish("Dependency middle","middle.dtsi",'/include/ "vendor/leaf.dtsi"\n&leaf { value = <42>; };',[pin]);
+    const pin={resourceId:leaf.resourceId,versionId:leaf.id,mountPath:""};
+    const middle=await publish("Dependency middle","middle.dtsi",'/include/ "leaf.dtsi"\n&leaf { value = <42>; };',[pin]);
     expect(middle.manifest.dependencies).toEqual([pin]);
     const root=await publish("Dependency root","root.dtsi",'/include/ "middle/middle.dtsi"\n',[{resourceId:middle.resourceId,versionId:middle.id,mountPath:"middle"}]);
     expect(root.members).toHaveLength(1);
     expect(root.members[0]!.content).toBe('/include/ "middle/middle.dtsi"\n');
     expect(root.manifest.dependencyClosure).toEqual(expect.arrayContaining([
       expect.objectContaining({name:"Dependency middle",mountPath:"middle"}),
-      expect.objectContaining({name:"Dependency leaf",mountPath:"middle/vendor"})]));
+      expect.objectContaining({name:"Dependency leaf",mountPath:"middle"})]));
     expect((await call(`/${root.resourceId}/draft`,"POST",{baseVersionId:root.id})).body.item).toHaveProperty("dependencies",[{resourceId:middle.resourceId,versionId:middle.id,mountPath:"middle"}]);
   });
 

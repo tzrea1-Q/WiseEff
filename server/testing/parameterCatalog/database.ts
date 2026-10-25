@@ -186,7 +186,12 @@ export const S2_SCH_0287_FINGERPRINT =
 export const S2_SCH_0291_FINGERPRINT =
   "225e57040eb9c2b1939e103f61db72cb5dc487d7286b1adb2b68b55676bd95a0";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0291_FINGERPRINT;
+/** Fresh PostgreSQL through 0298 with native shared-source composition; 0297 CPP
+ * is not present in this measured variant. Historical pins remain unchanged. */
+export const S2_SCH_0298_NATIVE_FINGERPRINT =
+  "aefc22641fbdc54e2c21366e675deeb973b267fb9cb0c9b8c5d0aff8a0576397";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0298_NATIVE_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

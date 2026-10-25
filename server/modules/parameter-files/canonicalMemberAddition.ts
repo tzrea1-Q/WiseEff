@@ -8,6 +8,7 @@ import type { AuthContext } from "../auth/types";
 import { trustedDomainAttribution } from "../auth/trustedInvocation";
 import { NormalizedConfigurationSchemaId, PropertyKey, type CatalogSnapshot } from "../catalog-kernel/interface";
 import { lexDts, resolveDtsConfigSet } from "../dts";
+import { resolveIncludeTarget } from "../dts/configSetResolver";
 import { closureManifest, loadSharedDtsiClosure, mountedSharedPath } from "../shared-dtsi/dependencies";
 import type { ObjectStore } from "../logs/objectStore";
 import { asValueClient, listObservedProperties, lockSourceCatalogGovernance, parseCompatibles, rawTextToPayload,
@@ -135,6 +136,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   if (existing) await assertProjectSourceWritable(tx, existing.id);
   const sharedResources=input.sharedReference?await loadSharedDtsiClosure(tx,auth,[{...input.sharedReference,mountPath:input.sharedReference.mountPath??""}]):[];
   const shared=sharedResources[0]?.item??null;
+  const additionSortOrder=shared?Math.max(...members.map(member=>member.sortOrder))+1:input.sortOrder;
   if(shared && (input.role!=="misc" || input.setAsRoot || input.json))throw new ApiError("VALIDATION_FAILED","共享资源以 include 用途加入完整配置。");
   const reused=new Set<string>();
   for(const resource of sharedResources) {
@@ -173,7 +175,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       names.add(member.sourceName.normalize("NFC"));
     }
     if(members.length+sharedTargets.length>128)throw new ApiError("VALIDATION_FAILED","完整配置不能超过 128 个成员。");
-    if(input.sortOrder+sharedTargets.length-1>100000)throw new ApiError("VALIDATION_FAILED","完整依赖的成员顺序超过 100000，请降低起始顺序。");
+    if(additionSortOrder+sharedTargets.length-1>100000)throw new ApiError("VALIDATION_FAILED","完整依赖的成员列表顺序超过 100000，请先整理成员顺序。");
   }
   if (target.format === "json" && input.role === "overlay") throw new ApiError("VALIDATION_FAILED", "JSON 文件不能作为 DTS 覆盖层。");
   if (target.format !== "json" && input.json) throw new ApiError("VALIDATION_FAILED", "只有 JSON 文件可指定配置规范及字段映射。");
@@ -193,7 +195,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   let afterMembers: Member[] = [...members.map(({ fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes }) =>
     ({ fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes })),
   ...(!input.setAsRoot ? (shared?sharedTargets:[target]).map((row,index)=>({ fileId: row.fileId, fileVersionId: row.fileVersionId, sourceName: row.sourceName, format: row.format,
-    role: shared ? "include" : input.role, sortOrder: input.sortOrder+index, checksum: row.checksum, sizeBytes: row.sizeBytes })) : [])].sort((a, b) => a.sortOrder - b.sortOrder || a.fileId.localeCompare(b.fileId));
+    role: shared ? "include" : input.role, sortOrder: additionSortOrder+index, checksum: row.checksum, sizeBytes: row.sizeBytes })) : [])].sort((a, b) => a.sortOrder - b.sortOrder || a.fileId.localeCompare(b.fileId));
   let rootEdit: Proof["rootEdit"];
   if (shared) {
     const root = members.find(member => member.sourceName === revision.entry_file && member.role === "base" && member.format === "dts");
@@ -205,8 +207,15 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     const included=new Set(sharedResources.flatMap(resource=>resource.item.manifest.includeGraph.map(edge=>mountedSharedPath(resource.mountPath,edge.target))));
     const roots=[...sharedResources].reverse().flatMap(resource=>sharedTargets.filter(member=>member.resourceId===resource.resourceId && member.sourceName.endsWith(".dtsi") && !included.has(member.sourceName)));
     const includes=roots.map(member=>`/include/ ${JSON.stringify(posixPath.relative(posixPath.dirname(root.sourceName),member.sourceName))}`).join("\n");
+    const existingSharedNames=new Set((await tx.query<{sourceName:string}>(`select source_name as "sourceName" from public.dts_config_revision_members
+      where config_revision_id=$1 and shared_reference is not null`,[revision.id])).rows.map(member=>member.sourceName));
+    const existingFiles=new Map(members.map(member=>[member.sourceName,{content:contents.get(member.fileId)!,fileVersionId:member.fileVersionId}]));
     let offset = tokens[directive + 1]!.span.end;
-    for(let at=directive+2;tokens[at]?.value==="/include/" && tokens[at+1]?.kind==="string";at+=2)offset=tokens[at+1]!.span.end;
+    for(let at=directive+2;tokens[at]?.value==="/include/" && tokens[at+1]?.kind==="string";at+=2) {
+      const current=resolveIncludeTarget(root.sourceName,tokens[at+1]!.value.slice(1,-1),revision.include_search_paths,existingFiles);
+      if(!current.ok || !existingSharedNames.has(current.fileName))break;
+      offset=tokens[at+1]!.span.end;
+    }
     const after = `${before.slice(0, offset)}\n${includes}\n${before.slice(offset)}`;
     if (Buffer.byteLength(after) > MAX_PARAMETER_SOURCE_BYTES) throw new ApiError("VALIDATION_FAILED", "项目根文件加入引用后超过源码容量。");
     rootEdit = { fileId: root.fileId, baseFileVersionId: root.fileVersionId, sourceName: root.sourceName, before, after };

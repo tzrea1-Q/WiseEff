@@ -163,10 +163,22 @@ describe("fixed shared references through the real API role", () => {
       expect(values.map(value=>value.rawValue).sort()).toEqual(["<25>","<36>"]);
     }
     expect(seen[0]!.every(id=>!seen[1]!.includes(id))).toBe(true);
-    const usages=await requestJson<{items:{projectId:string;direct:boolean}[];total:number}>(server(),`/api/v2/shared-dtsi/${leaf.resourceId}/usages`);
+    const usages=await requestJson<{items:{projectId:string;direct:boolean}[];total:number;visibility:string}>(server(),`/api/v2/shared-dtsi/${leaf.resourceId}/usages`);
     expect(usages.body.total).toBe(2);expect(usages.body.items).toEqual(expect.arrayContaining([{projectId:A,direct:false},{projectId:B,direct:false}].map(row=>expect.objectContaining(row))));
-    const restricted=await requestJson<{items:{projectId:string}[];total:number}>(server(editor),`/api/v2/shared-dtsi/${leaf.resourceId}/usages`);
+    expect(usages.body.visibility).toBe("organization");
+    const restricted=await requestJson<{items:{projectId:string}[];total:number;visibility:string}>(server(editor),`/api/v2/shared-dtsi/${leaf.resourceId}/usages`);
     expect(restricted.body.total).toBe(1);expect(restricted.body.items.map(row=>row.projectId)).toEqual([A]);expect(restricted.bodyText).not.toContain(B);
+    expect(restricted.body.visibility).toBe("authorized-projects");
+    await db.query("update user_role_bindings set project_id=null where id='shared-ref-editor-role'");
+    try {
+      const organizationGrant=await requestJson<{total:number;visibility:string}>(server(editor),`/api/v2/shared-dtsi/${leaf.resourceId}/usages`);
+      expect(organizationGrant.body).toMatchObject({total:2,visibility:"organization"});
+    }finally{await db.query("update user_role_bindings set project_id=$1 where id='shared-ref-editor-role'",[A]);}
+    await db.query("delete from user_role_bindings where id='shared-ref-editor-role'");
+    try {
+      const revoked=await requestJson<{items:unknown[];total:number;visibility:string}>(server(editor),`/api/v2/shared-dtsi/${leaf.resourceId}/usages`);
+      expect(revoked.body).toEqual({items:[],total:0,visibility:"authorized-projects"});
+    }finally{await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('shared-ref-editor-role','shared-ref-editor',$1,$2,'hardware-user')",[ORG,A]);}
     const sibling=await publish("Additional consumer",[{sourceName:"consumer.dtsi",content:'&fixed_leaf { sibling = <7>; };'}],
       [{resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"mounted/vendor"}]);
     const siblingBody={sharedReference:{resourceId:sibling.resourceId,versionId:sibling.id},role:"misc",sortOrder:20};
@@ -193,6 +205,29 @@ describe("fixed shared references through the real API role", () => {
     expect(exact.status).toBe(200); expect(exact.bodyText).toBe(shared);
     await expect(api.query("update public.project_parameter_files set enabled=false where id=$1", [appliedA.fileId])).rejects.toThrow(/read-only|immutable/);
     await expect(api.query("update public.project_parameter_file_versions set checksum='changed' where id=$1", [appliedA.fileVersionId])).rejects.toThrow(/read-only|immutable|provenance/);
+  });
+
+  it("keeps private included-file overrides after newly added shared defaults",async()=>{
+    const projectId="shared-private-include",rootSource='/dts-v1/;\n/include/ "private.dtsi"\n/ { compatible = "test,board"; model = "Private include"; };';
+    const privateSource='/ { charger { compatible = "acme,power"; iin_max = <36>; }; };';
+    await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,$1,$1,'initialized')",[projectId,ORG]);
+    const configSetId=sets[projectId]=(await createConfigSet(db,admin,{projectId,name:"Private included source"})).id;
+    const members=[];
+    for(const [fileName,content,role,sortOrder] of [["included-board.dts",rootSource,"base",0],["private.dtsi",privateSource,"misc",1]] as const) {
+      const file=await uploadProjectParameterFile(db,storage,admin,{projectId,fileName,bytes:Buffer.from(content)});
+      await addConfigSetFile(db,admin,{configSetId,fileId:file.file.id,role,sortOrder});
+      members.push({fileId:file.file.id,fileVersionId:file.version.id,fileName,content,role,sortOrder});
+    }
+    const revision=await ingestConfigRevision(db,{organizationId:ORG,projectId,configSetId,entryFile:"included-board.dts",includeSearchPaths:["."],overlayOrder:[],members},admin);
+    const snapshot=await loadPublishedCatalog(getRootPostgresPool(db)!);
+    if(!snapshot)throw new Error("Missing Catalog fixture");
+    await db.transaction(tx=>syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx),snapshot,{organizationId:ORG,projectId,configSetId,configRevisionId:revision.id}));
+    const input={sharedReference:{resourceId,versionId},role:"misc",sortOrder:2};
+    const preview=await post<Preview>(`${path(projectId)}/preview`,input);
+    expect(preview.status,preview.bodyText).toBe(200);
+    const applied=await post<Applied>(`${path(projectId)}/apply`,{...input,proofToken:preview.body.item.proofToken,reason:"Retain private included override",clientMutationId:"private-include-composition"});
+    expect(applied.status,applied.bodyText).toBe(200);
+    expect((await listCatalogBindingRowsForProject(api,admin,{projectId})).map(row=>row.rawValue).sort()).toEqual(["<25>","<36>"]);
   });
 
   it("refuses whole-root removal of a fixed include and still permits private project overrides", async () => {

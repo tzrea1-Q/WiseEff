@@ -37,9 +37,8 @@ export async function loadSharedDtsiClosure(db:Database,auth:AuthContext,pins:Pi
       if(member.sizeBytes!==Buffer.byteLength(member.content) || member.checksum!==`sha256:${createHash("sha256").update(member.content).digest("hex")}`)invalid(`${item.name}：固定版本源码校验失败。`);
     }
     for(const child of item.manifest.dependencies??[])await visit({...child,mountPath:mountedSharedPath(pin.mountPath,child.mountPath).replace(/\/$/u,"")},[...ancestors,pin.resourceId],false);
-    const actual=resources.filter(row=>row!==resource && row.mountPath.startsWith(pin.mountPath?`${pin.mountPath}/`:""));
     for(const frozen of item.manifest.dependencyClosure??[]) {
-      const resolved=actual.find(row=>row.resourceId===frozen.resourceId);
+      const resolved=seen.get(frozen.resourceId);
       if(!resolved || resolved.versionId!==frozen.versionId || resolved.digest!==frozen.digest || resolved.mountPath!==mountedSharedPath(pin.mountPath,frozen.mountPath).replace(/\/$/u,""))invalid(`${item.name}：固定依赖闭包与发布证明不一致。`);
     }
   };

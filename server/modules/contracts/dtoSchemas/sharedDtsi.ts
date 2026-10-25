@@ -47,7 +47,7 @@ export const sharedDtsiResourceSummarySchema = z.object({ resourceId: id, name: 
   sourceName: z.string(), draftRevision: z.number().int().positive().nullable(), currentVersion: sharedDtsiVersionSummarySchema.nullable() }).strict();
 export const sharedDtsiResourceDetailSchema = sharedDtsiResourceSummarySchema.omit({ sourceName: true });
 export const sharedDtsiVersionsSchema = z.object({items:z.array(sharedDtsiVersionSummarySchema),total:z.number().int().nonnegative()}).strict();
-export const sharedDtsiUsagesSchema=z.object({items:z.array(z.object({projectId:z.string(),projectName:z.string(),configSetId:z.string(),configSetName:z.string(),versionId:id,version:z.number(),direct:z.boolean()}).strict()),total:z.number().int().nonnegative()}).strict();
+export const sharedDtsiUsagesSchema=z.object({items:z.array(z.object({projectId:z.string(),projectName:z.string(),configSetId:z.string(),configSetName:z.string(),versionId:id,version:z.number(),direct:z.boolean()}).strict()),total:z.number().int().nonnegative(),visibility:z.enum(["organization","authorized-projects"])}).strict();
 export const sharedDtsiPreviewSchema = z.object({ id, resourceId: id, draftRevision: z.number().int().positive(), name: z.string(),
   changeDescription, manifest: sharedDtsiManifestSchema, digest: z.string(), createdAt: z.string(), baseVersionId: id.nullable() }).strict();
 export const sharedDtsiPreviewRequestSchema = z.object({ expectedRevision: z.number().int().positive() }).strict();
