@@ -9,6 +9,8 @@ import { parameterOrganizationId, parameterScopeInvocation } from "../parameters
 import type { SharedDtsiDraft, SharedDtsiDraftInput, SharedDtsiResourceSummary } from "../contracts/dtoSchemas/sharedDtsi";
 import { sharedDtsiImportLimits } from "../contracts/dtoSchemas/sharedDtsi";
 import { sharedDtsiManifestSchema } from "../contracts/dtoSchemas/sharedDtsi";
+import { assertSharedDtsiNewReferences, lockSharedDtsiReferences } from "./lifecycle";
+import { loadSharedDtsiClosure } from "./dependencies";
 
 export type WriteContext = { invocation: TrustedInvocationContext; requestId: string };
 type DraftRow = Omit<SharedDtsiDraft, "members" | "updatedAt"> & { updatedAt: Date };
@@ -21,7 +23,7 @@ export function requireRead(auth: AuthContext) {
   if (!auth.user.isActive || (!canViewParameters(auth) && !canAdminParameters(auth))) throw new ApiError("FORBIDDEN", "没有共享 DTSI 的查看权限。");
 }
 export function requireWrite(auth: AuthContext, context: WriteContext) {
-  if (!canAdminParameters(auth)) throw new ApiError("FORBIDDEN", "只有参数管理员可以修改共享 DTSI。");
+  if (!auth.user.isActive || !canAdminParameters(auth)) throw new ApiError("FORBIDDEN", "只有参数管理员可以修改共享 DTSI。");
   const invocation = parameterScopeInvocation(auth, context.invocation, "shared DTSI draft");
   if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "共享 DTSI 修改需要用户操作。");
   return invocation;
@@ -90,7 +92,7 @@ export async function listSharedDtsiResources(db: Database, auth: AuthContext, i
   const filter = ` where r.organization_id=$1 and ($2='' or position(lower($2) in lower(r.name))>0
     or exists(select 1 from public.shared_dtsi_draft_members m where m.draft_id=d.id and position(lower($2) in lower(m.source_name))>0)
     or exists(select 1 from public.shared_dtsi_revision_members m where m.revision_id=v.id and position(lower($2) in lower(m.source_name))>0))`;
-  const rows = (await db.query<Omit<SharedDtsiResourceSummary,"updatedAt"> & {updatedAt:Date}>(`select r.id as "resourceId",r.name,r.updated_at as "updatedAt",d.revision as "draftRevision",
+  const rows = (await db.query<Omit<SharedDtsiResourceSummary,"updatedAt"> & {updatedAt:Date}>(`select r.id as "resourceId",r.name,r.state,r.lifecycle_revision as "lifecycleRevision",r.updated_at as "updatedAt",d.revision as "draftRevision",
     coalesce((select min(m.source_name) from public.shared_dtsi_revision_members m where m.revision_id=v.id),
       (select min(m.source_name) from public.shared_dtsi_draft_members m where m.draft_id=d.id)) as "sourceName",
     case when v.id is null then null else jsonb_build_object('id',v.id,'resourceId',v.resource_id,'version',v.version,'name',v.name,
@@ -104,6 +106,8 @@ export async function createSharedDtsiDraft(db: Database, auth: AuthContext, inp
   const members = inputMembers(input);
   return db.transaction(async tx => {
     const organizationId = parameterOrganizationId(auth), resourceId = randomUUID(), draftId = randomUUID();
+    await lockSharedDtsiReferences(tx,auth);
+    await assertSharedDtsiNewReferences(tx,auth,await loadSharedDtsiClosure(tx,auth,input.dependencies??[],resourceId));
     await tx.query("insert into public.shared_dtsi_resources(id,organization_id,name) values ($1,$2,$3)", [resourceId, organizationId, input.name]);
     await tx.query("insert into public.shared_dtsi_drafts(id,resource_id,organization_id,created_by_user_id,updated_by_user_id,change_description,build_inputs) values ($1,$2,$3,$4,$4,$5,$6::jsonb)", [draftId, resourceId, organizationId, auth.user.id,input.changeDescription,JSON.stringify(input.buildInputs ?? {includeSearchPaths:[],defines:{}})]);
     await tx.query("update public.shared_dtsi_drafts set dependencies=$2::jsonb where id=$1",[draftId,JSON.stringify(input.dependencies??[])]);
@@ -132,6 +136,7 @@ function inputMembers(input: SharedDtsiDraftInput) {
   return members;
 }
 export async function lockDraft(db: Database, auth: AuthContext, resourceId: string, expectedRevision: number) {
+  await lockSharedDtsiReferences(db,auth);
   const row = (await db.query<{ id: string; revision: number }>(`select d.id,d.revision from public.shared_dtsi_drafts d
     where d.resource_id=$1 and d.organization_id=$2 for update`, [resourceId, parameterOrganizationId(auth)])).rows[0];
   if (!row) throw new ApiError("NOT_FOUND", "共享 DTSI 草稿不存在。");
@@ -145,6 +150,8 @@ export async function saveSharedDtsiDraft(db: Database, auth: AuthContext, resou
     const draft = await lockDraft(tx, auth, resourceId, input.expectedRevision), organizationId = parameterOrganizationId(auth);
     await tx.query("update public.shared_dtsi_resources set name=$3,updated_at=now() where id=$1 and organization_id=$2", [resourceId, organizationId, input.name]);
     const previous = await getSharedDtsiDraft(tx,auth,resourceId);
+    await assertSharedDtsiNewReferences(tx,auth,await loadSharedDtsiClosure(tx,auth,input.dependencies??[],resourceId),
+      await loadSharedDtsiClosure(tx,auth,previous.dependencies??[],resourceId));
     if (!input.members && previous.members.length !== 1) throw new ApiError("VALIDATION_FAILED", "多文件资源必须提交完整成员集合，不能用单文件保存覆盖。");
     const assigned = members.map(member=>({...member,id:member.id ?? previous.members.find(old=>old.sourceName===member.sourceName)?.id
       ?? (!input.members ? previous.members[0]!.id : randomUUID())}));

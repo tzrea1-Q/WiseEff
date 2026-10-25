@@ -51,7 +51,6 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
   }, 120_000);
   afterAll(async () => { await api?.close(); if (lane) await dropLabRuntimeLogins(lane.url, token); await db?.close(); await lane?.drop(); });
 
-
   it("creates, reopens, updates and discards an exact source draft with stable member identity", async () => {
     const created = await call("", "POST", { name: "Battery common", sourceName: "battery.dtsi", content: source });
     expect(created.status, created.bodyText).toBe(201);
@@ -66,6 +65,62 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
       members: [{ id: draft.members[0]!.id, sourceName: "inc/battery.dtsi", content }] });
     expect((await call(`/${draft.resourceId}/draft`, "DELETE", { expectedRevision: 2 })).status).toBe(200);
     expect((await call(`/${draft.resourceId}`)).status).toBe(404);
+  });
+
+  it("retires and restores the same resource with CAS, exact retry and immutable history", async () => {
+    const created=await call("","POST",{name:"Lifecycle source",sourceName:"lifecycle.dtsi",content:source,changeDescription:"Published before retirement"});
+    expect(created.status,created.bodyText).toBe(201);
+    const resourceId=created.body.item.resourceId;
+    const preview=await publicationCall<{item:{id:string}}>(`/${resourceId}/publication-preview`,"POST",{expectedRevision:1});
+    expect(preview.status,preview.bodyText).toBe(201);
+    const published=await publicationCall<{item:{id:string}}>(`/${resourceId}/publications`,"POST",{previewId:preview.body.item.id,idempotencyKey:"lifecycle-publish"});
+    expect(published.status,published.bodyText).toBe(201);
+    const transition={state:"retired",expectedLifecycleRevision:1,idempotencyKey:"lifecycle-retire"};
+    const concurrent=await Promise.all([0,1].map(()=>publicationCall<{item:{resourceId:string;state:string;lifecycleRevision:number}}>(`/${resourceId}/lifecycle`,"POST",transition)));
+    const retired=concurrent[0]!;
+    expect(concurrent[1]!.status,concurrent[1]!.bodyText).toBe(200);expect(concurrent[1]!.body).toEqual(retired.body);
+    expect(retired.status,retired.bodyText).toBe(200);
+    expect(retired.body.item).toMatchObject({resourceId,state:"retired",lifecycleRevision:2});
+    expect((await publicationCall(`/${resourceId}/lifecycle`,"POST",transition)).body).toEqual(retired.body);
+    expect((await publicationCall(`/${resourceId}/versions/${published.body.item.id}`)).status).toBe(200);
+    await expect(api.query("delete from public.shared_dtsi_resources where id=$1",[resourceId])).rejects.toMatchObject({code:"55000"});
+    expect((await call(`/${resourceId}/draft`,"POST",{baseVersionId:published.body.item.id})).status).toBe(201);
+    expect((await call(`/${resourceId}/draft`,"DELETE",{expectedRevision:1})).status).toBe(200);
+    expect((await publicationCall(`/${resourceId}/versions/${published.body.item.id}`)).status).toBe(200);
+    expect((await publicationCall(`/${resourceId}/lifecycle`,"POST",{state:"active",expectedLifecycleRevision:1,idempotencyKey:"lifecycle-stale"})).status).toBe(409);
+    const restored=await publicationCall<{item:{resourceId:string;state:string;lifecycleRevision:number}}>(`/${resourceId}/lifecycle`,"POST",{state:"active",expectedLifecycleRevision:2,idempotencyKey:"lifecycle-restore"});
+    expect(restored.status,restored.bodyText).toBe(200);
+    expect(restored.body.item).toMatchObject({resourceId,state:"active",lifecycleRevision:3});
+    // A late retry returns the original operation result without retiring the resource again.
+    const retried=await publicationCall(`/${resourceId}/lifecycle`,"POST",transition);
+    expect(retried.status,retried.bodyText).toBe(200);expect(retried.body).toEqual(retired.body);
+    expect((await publicationCall(`/${resourceId}/detail`)).body).toMatchObject({item:{state:"active",lifecycleRevision:3}});
+    expect((await publicationCall(`/${resourceId}/lifecycle`,"POST",{...transition,state:"active",expectedLifecycleRevision:2})).status).toBe(409);
+    expect((await db.query<{count:number}>("select count(*)::int as count from public.audit_events where kind='shared-dtsi-lifecycle' and target_id=$1",[resourceId])).rows[0]!.count).toBe(2);
+  });
+
+  it("requires a current user administrator and rolls back lifecycle changes when audit fails",async()=>{
+    const created=await call("","POST",{name:"Lifecycle authority",sourceName:"authority.dtsi",content:source});
+    const resourceId=created.body.item.resourceId,input={state:"retired",expectedLifecycleRevision:1,idempotencyKey:"lifecycle-authority"};
+    const reader=makeTestAuthContext({organizationId:auth.organization.id,userId:auth.user.id,roles:[{roleId:"hardware-user",projectId:null}]});
+    expect((await publicationCall(`/${resourceId}/lifecycle`,"POST",input,reader)).status).toBe(403);
+    await db.query("insert into public.users(id,organization_id,name,title,is_active) values ('other-lifecycle-admin','org-other-dtsi','Other admin','Admin',true)");
+    await db.query("insert into public.user_role_bindings(id,user_id,organization_id,role_id) values ('other-lifecycle-role','other-lifecycle-admin','org-other-dtsi','admin')");
+    expect((await publicationCall(`/${resourceId}/lifecycle`,"POST",input,makeTestAuthContext({organizationId:"org-other-dtsi",userId:"other-lifecycle-admin"}))).status).toBe(404);
+    const {changeSharedDtsiLifecycle}=await import("./lifecycle"),{createAgentInvocation}=await import("../auth/trustedInvocation");
+    await expect(changeSharedDtsiLifecycle(api,auth,resourceId,input as import("../contracts/dtoSchemas/sharedDtsi").SharedDtsiLifecycleInput,
+      {invocation:createAgentInvocation(auth,{sessionId:"lifecycle",toolCallId:"retire",approval:{required:false}}),requestId:"lifecycle-agent"})).rejects.toMatchObject({code:"FORBIDDEN"});
+    await db.query(`create function fail_shared_lifecycle_audit() returns trigger language plpgsql as $$begin
+      if new.kind='shared-dtsi-lifecycle' then raise exception 'Injected lifecycle audit failure'; end if; return new; end $$`);
+    await db.query("create trigger fail_shared_lifecycle_audit before insert on public.audit_events for each row execute function fail_shared_lifecycle_audit()");
+    try{expect((await publicationCall(`/${resourceId}/lifecycle`,"POST",input)).status).toBe(500);}
+    finally{await db.query("drop trigger fail_shared_lifecycle_audit on public.audit_events");await db.query("drop function fail_shared_lifecycle_audit()");}
+    expect((await publicationCall(`/${resourceId}/detail`)).body).toMatchObject({item:{state:"active",lifecycleRevision:1}});
+    expect((await publicationCall(`/${resourceId}/lifecycle`,"POST",input)).status).toBe(200);
+    expect((await db.query<{count:number}>("select count(*)::int as count from public.audit_events where kind='shared-dtsi-lifecycle' and target_id=$1",[resourceId])).rows[0]!.count).toBe(1);
+    await db.query("delete from public.user_role_bindings where id='shared-dtsi-role'");
+    try{expect((await publicationCall(`/${resourceId}/lifecycle`,"POST",input)).status).toBe(403);}
+    finally{await db.query("insert into public.user_role_bindings(id,user_id,organization_id,role_id) values ('shared-dtsi-role','user-shared-dtsi','org-shared-dtsi','admin')");}
   });
 
   it("reads compatible evidence from the exact authorized shared closure without inventing project observations", async () => {

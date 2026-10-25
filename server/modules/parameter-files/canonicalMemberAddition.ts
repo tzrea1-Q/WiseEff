@@ -10,6 +10,7 @@ import { NormalizedConfigurationSchemaId, PropertyKey, type CatalogSnapshot } fr
 import { lexDts, resolveDtsConfigSet, resolveDtsConfigSetAsync } from "../dts";
 import { resolveIncludeTarget } from "../dts/configSetResolver";
 import { closureManifest, composeDtsBuildInputs, loadSharedDtsiClosure, mountedSharedPath } from "../shared-dtsi/dependencies";
+import { assertSharedDtsiNewReferences, lockSharedDtsiReferences } from "../shared-dtsi/lifecycle";
 import type { DtsBuildInputs } from "../contracts/dtoSchemas/dtsPreprocessing";
 import { inspectDtsCppIncludes, type DtsPreprocessingReceipt } from "../dts/cppSources";
 import type { SharedReferenceSwitchPreview, SharedSwitchConflict } from "../contracts/dtoSchemas/canonicalMemberAddition";
@@ -105,6 +106,7 @@ function rootDiagnosticMessage(code: string, message: string, fileName?: string)
 
 async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, input: MemberAdditionInput,
   snapshot: CatalogSnapshot | null, snapshots: ReadonlyMap<string, CatalogSnapshot>, toolchain?: DtsToolchainRunner) {
+  await lockSharedDtsiReferences(tx,auth);
   await lockOrganizationModuleRecognition(tx, parameterOrganizationId(auth));
   if (snapshot) snapshot = await loadOrganizationCatalogSnapshot(tx, parameterOrganizationId(auth), snapshot);
   const set = (await tx.query("select id from public.dts_config_set where id=$1 and organization_id=$2 and project_id=$3 for update nowait",
@@ -159,6 +161,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   const pins=input.sharedReference ? [{resourceId:input.sharedReference.resourceId,versionId:input.sharedReference.versionId,mountPath:replaced?.mountPath??input.sharedReference.mountPath??""},
     ...(replacing?currentReferences.filter(row=>row.direct&&row.resourceId!==input.sharedReference!.resourceId).map(({resourceId,versionId,mountPath})=>({resourceId,versionId,mountPath})):[])] : [];
   const sharedResources=await loadSharedDtsiClosure(tx,auth,pins);
+  await assertSharedDtsiNewReferences(tx,auth,sharedResources,currentReferences);
   const retainedSources=replacing?(await tx.query<{fileId:string;fileVersionId:string;resourceId:string;memberId:string}>(
     `select distinct file.id as "fileId",file.current_version_id as "fileVersionId",member.shared_reference->>'resourceId' as "resourceId",
        member.shared_reference->>'memberId' as "memberId" from public.project_parameter_files file

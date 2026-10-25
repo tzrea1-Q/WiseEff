@@ -1,10 +1,81 @@
 import "./helpers/loadAcceptanceEnvironment";
 import { expect } from "playwright/test";
 import JSZip from "jszip";
-import { test } from "./helpers/catalogFixtureRuntime";
+import { test, catalogAppUrl } from "./helpers/catalogFixtureRuntime";
+import { createPostgresDatabase } from "../../server/shared/database/client";
 import { catalogJson, catalogScreenshot, dismissXiaozeHint, signInCatalogActor } from "./helpers/catalogBrowser";
 
-test.use({catalogRuntimeScope:import.meta.url});
+test.use({catalogRuntimeScope:import.meta.url,catalogRuntimeDatabaseUrl:process.env.TEST_DATABASE_URL});
+
+test("retires and restores a shared resource through keyboard confirmation with honest stale-state recovery",async({page,catalogAcceptanceRuntime},testInfo)=>{
+  const failures:string[]=[];
+  page.on("pageerror",error=>failures.push(error.message));
+  page.on("response",response=>{if(response.status()>=500)failures.push(`${new URL(response.url()).pathname} ${response.status()}`);});
+  await page.setViewportSize({width:1440,height:900});
+  await signInCatalogActor(page,"org-admin","/parameter-admin/sources");await dismissXiaozeHint(page);
+  const name="共享资源生命周期 · 长路径与固定历史";
+  const created=await catalogJson(page.request,"POST","/api/v2/shared-dtsi",{data:{name,sourceName:"platform/long-source-path/lifecycle-common.dtsi",content:'/ { lifecycle: lifecycle { compatible = "test,lifecycle"; status = "okay"; }; };',changeDescription:"Lifecycle browser evidence"}});
+  expect(created.status).toBe(201);const resourceId=(created.body as {item:{resourceId:string}}).item.resourceId;
+  await page.goto(catalogAppUrl(`/parameter-admin/sources?resource=${resourceId}`));
+  await expect(page.getByLabel("资源名称",{exact:true})).toHaveValue(name);
+  await page.getByRole("button",{name:"停用资源",exact:true}).click();
+  await page.getByRole("dialog",{name:"停用资源？",exact:true}).getByRole("button",{name:"停用资源",exact:true}).click();
+  await expect(page.getByText(/^资源已停用/)).toBeVisible();
+  await expect(page.getByRole("button",{name:"预览发布",exact:true})).toHaveCount(0);
+  await expect(page.getByLabel("资源名称",{exact:true})).toHaveValue(name);
+  await catalogScreenshot(page,testInfo,"shared-lifecycle-draft-retired-1440");
+  await page.getByRole("button",{name:"恢复资源",exact:true}).click();
+  await page.getByRole("dialog",{name:"恢复资源？",exact:true}).getByRole("button",{name:"恢复资源",exact:true}).click();
+  await expect(page.getByText("资源已恢复，可再次建立新引用。",{exact:true})).toBeVisible();
+  await expect(page.getByLabel("资源名称",{exact:true})).toHaveValue(name);
+  const preview=await catalogJson(page.request,"POST",`/api/v2/shared-dtsi/${resourceId}/publication-preview`,{data:{expectedRevision:1}});expect(preview.status).toBe(201);
+  const published=await catalogJson(page.request,"POST",`/api/v2/shared-dtsi/${resourceId}/publications`,{data:{previewId:(preview.body as {item:{id:string}}).item.id,idempotencyKey:"lifecycle-browser-publish"}});expect(published.status).toBe(201);
+  const versionId=(published.body as {item:{id:string}}).item.id;
+  let release!:()=>void,fetched!:()=>void;const held=new Promise<void>(resolve=>{release=resolve;}),realResponse=new Promise<void>(resolve=>{fetched=resolve;});
+  await page.route(`**/api/v2/shared-dtsi/${resourceId}/detail*`,async route=>{const response=await route.fetch();fetched();await held;await route.fulfill({response});});
+  await page.goto(catalogAppUrl(`/parameter-admin/sources?resource=${resourceId}`));
+  await realResponse;
+  await expect(page.getByRole("status",{name:"正在加载共享 DTSI",exact:true})).toBeVisible();
+  await expect(page.getByRole("button",{name:"停用资源",exact:true})).toHaveCount(0);
+  await page.screenshot({path:testInfo.outputPath("shared-lifecycle-loading-1440.png"),fullPage:true,animations:"disabled"});release();
+  const retire=page.getByRole("button",{name:"停用资源",exact:true});await expect(retire).toBeVisible();
+  await expect(page.getByLabel("已发布 DTSI 源码",{exact:true})).toHaveAttribute("aria-readonly","true");
+  await retire.focus();await page.keyboard.press("Enter");
+  let dialog=page.getByRole("dialog",{name:"停用资源？",exact:true});await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("不移除 Catalog 组织登记，也不禁用项目节点");
+  await page.screenshot({path:testInfo.outputPath("shared-lifecycle-retire-dialog-1440.png"),fullPage:true,animations:"disabled"});
+  await page.keyboard.press("Escape");await expect(dialog).toHaveCount(0);await expect(retire).toBeFocused();
+  await page.keyboard.press("Enter");await expect(dialog).toBeVisible();
+  const concurrent=await catalogJson(page.request,"POST",`/api/v2/shared-dtsi/${resourceId}/lifecycle`,{data:{state:"retired",expectedLifecycleRevision:3,idempotencyKey:"lifecycle-browser-other-admin"}});expect(concurrent.status).toBe(200);
+  await dialog.getByRole("button",{name:"停用资源",exact:true}).focus();await page.keyboard.press("Enter");
+  await expect(dialog.getByRole("alert")).toContainText("资源状态已变化");
+  await expect(dialog.getByRole("button",{name:"停用资源",exact:true})).toBeDisabled();
+  await page.setViewportSize({width:1280,height:800});await catalogScreenshot(page,testInfo,"shared-lifecycle-stale-1280");
+  await dialog.getByRole("button",{name:"重新载入状态",exact:true}).focus();await page.keyboard.press("Enter");
+  await expect(page.getByText(/^资源已停用/)).toBeVisible();
+  await expect(page.getByRole("button",{name:"创建新版本",exact:true})).toHaveCount(0);
+  const restore=page.getByRole("button",{name:"恢复资源",exact:true});await restore.focus();await page.keyboard.press("Enter");
+  dialog=page.getByRole("dialog",{name:"恢复资源？",exact:true});await expect(dialog).toContainText("同一资源身份");
+  await dialog.getByRole("button",{name:"恢复资源",exact:true}).focus();await page.keyboard.press("Enter");
+  await expect(page.getByText("资源已恢复，可再次建立新引用。",{exact:true})).toBeVisible();
+  await expect(page.getByRole("button",{name:"创建新版本",exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"停用资源",exact:true}).click();
+  await page.getByRole("dialog",{name:"停用资源？",exact:true}).getByRole("button",{name:"停用资源",exact:true}).click();
+  await expect(page.getByText(/^资源已停用/)).toBeVisible();
+  expect((await catalogJson(page.request,"GET",`/api/v2/shared-dtsi/${resourceId}/versions/${versionId}`)).body).toEqual(published.body);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await catalogScreenshot(page,testInfo,"shared-lifecycle-retired-1280");
+  const db=createPostgresDatabase(catalogAcceptanceRuntime.runtime.databaseUrl);
+  try{expect((await db.query<{action:string;metadata:{lifecycleRevision:number}}>("select action,metadata from public.audit_events where kind='shared-dtsi-lifecycle' and target_id=$1 order by created_at,id",[resourceId])).rows)
+    .toEqual(["retire","restore","retire","restore","retire"].map((action,index)=>expect.objectContaining({action,metadata:expect.objectContaining({lifecycleRevision:index+2})})));}
+  finally{await db.close();}
+  await signInCatalogActor(page,"user",`/parameter-admin/sources?resource=${resourceId}`);await dismissXiaozeHint(page);
+  await expect(page.getByLabel("已发布 DTSI 源码",{exact:true})).toHaveAttribute("aria-readonly","true");
+  await expect(page.getByRole("button",{name:"恢复资源",exact:true})).toHaveCount(0);
+  await expect(page.getByRole("button",{name:"停用资源",exact:true})).toHaveCount(0);
+  await page.setViewportSize({width:1440,height:900});await catalogScreenshot(page,testInfo,"shared-lifecycle-reader-1440");
+  expect(failures).toEqual([]);
+});
 
 test("publishes original header macros and recovers an unfrozen-input diagnostic", async ({ page, catalogAcceptanceRuntime }, testInfo) => {
   void catalogAcceptanceRuntime;

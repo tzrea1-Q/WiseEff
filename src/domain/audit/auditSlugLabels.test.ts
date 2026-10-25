@@ -4,7 +4,7 @@ import { presentAuditAction, presentAuditKind } from "./auditSlugLabels";
 describe("presentAuditKind", () => {
   it.each([
     "config-set", "debug-node-admin-delete", "definition-replacement", "definition-proposal",
-    "catalog-publication-job", "catalog-activation", "mod-d02-comparison-capture", "parameter-catalog-governance", "project-value",
+    "catalog-publication-job", "catalog-activation", "mod-d02-comparison-capture", "parameter-catalog-governance", "project-value", "shared-dtsi-lifecycle",
     "knowledge-definition-reference-add", "knowledge-definition-reference-remove",
     "knowledge-parameter-reference-remove", "legacy-surface-retired", "log-domain-webhook-config",
     "log-domain-webhook-test", "organization-update", "parameter-definition-reconciliation",
@@ -39,7 +39,7 @@ describe("presentAuditKind", () => {
 
 describe("presentAuditAction", () => {
   it.each([
-    "appended", "approval-executed", "approval-execution-failed", "approval-rejected", "approval-requested",
+    "appended", "approval-executed", "approval-execution-failed", "approval-rejected", "approval-requested", "retire", "restore",
     "binding-edited", "deactivate", "definition-reference-add", "definition-reference-remove",
     "definition-replacement-advanced", "dispose-residue", "node-enablement-source-applied",
     "parameter-reference-remove", "promote", "reconcile", "rolled_back", "send-webhook-test", "set",

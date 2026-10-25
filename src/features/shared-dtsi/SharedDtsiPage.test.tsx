@@ -12,8 +12,13 @@ beforeAll(() => {
 function setup(options: { writable?: boolean; saveError?: boolean;dependency?:boolean } = {}) {
   const resourceId = "33333333-3333-4333-8333-333333333333";
   let item: Record<string, unknown> | null = null;
+  let state="active",lifecycleRevision=1;
   const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
     const method = init?.method ?? "GET";
+    if(method==="POST"&&String(_url).endsWith("/lifecycle")){
+      state=JSON.parse(init!.body as string).state;lifecycleRevision++;
+      return new Response(JSON.stringify({item:{resourceId,state,lifecycleRevision,updatedAt:"2026-10-25T00:00:00Z"}}));
+    }
     const dependencyId="44444444-4444-4444-8444-444444444444",versionId="55555555-5555-4555-8555-555555555555";
     const version={id:versionId,resourceId:dependencyId,version:3,name:"Common clocks",changeDescription:"Fixed clock source",digest:"sha256:fixed",createdAt:"2026-10-25T00:00:00Z",createdByUserId:"author"};
     if(options.dependency&&String(_url).includes(`${dependencyId}/versions/${versionId}`))return new Response(JSON.stringify({item:{...version,members:[{id:versionId,sourceName:"clocks.dtsi",content:"/ {};",checksum:"sha256:fixed",sizeBytes:5}],manifest:{schemaVersion:"shared-dtsi/v1",members:[{id:versionId,sourceName:"clocks.dtsi",checksum:"sha256:fixed",sizeBytes:5,role:"include"}],externalReferences:[]}}}));
@@ -28,7 +33,7 @@ function setup(options: { writable?: boolean; saveError?: boolean;dependency?:bo
     }
     if (method === "PUT" && options.saveError) return new Response(JSON.stringify({ error: { code: "CONFLICT", message: "草稿已被更新，请重新载入后核对；本地修改仍保留。" } }), { status: 409 });
     if (method === "GET" && String(_url).includes(`${resourceId}/detail`)) return new Response(JSON.stringify({item:{resourceId,name:item?.name,
-      updatedAt:"2026-10-25T00:00:00Z",draftRevision:item?.revision,currentVersion:null}}));
+      updatedAt:"2026-10-25T00:00:00Z",state,lifecycleRevision,draftRevision:item?.revision,currentVersion:null}}));
     if (method === "GET" && String(_url).includes(resourceId)) return new Response(JSON.stringify({ item }));
     return new Response(JSON.stringify({ items: options.dependency?[{resourceId:dependencyId,name:"Common clocks",updatedAt:version.createdAt,sourceName:"clock.dtsi",draftRevision:null,currentVersion:version}]:item ? [{ resourceId,name:item.name,updatedAt:item.updatedAt,sourceName:"common.dtsi",draftRevision:item.revision,currentVersion:null }] : [], total: options.dependency||item ? 1 : 0 }));
   });
@@ -42,6 +47,20 @@ function setup(options: { writable?: boolean; saveError?: boolean;dependency?:bo
 }
 
 describe("shared DTSI draft authoring", () => {
+  it("can restore an unpublished retired resource without losing its editable draft",async()=>{
+    const user=userEvent.setup();setup();
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));
+    await user.type(await screen.findByLabelText("资源名称"),"Recoverable draft");
+    await user.click(screen.getByRole("button",{name:"保存草稿"}));await screen.findByText("草稿已保存",{exact:true});
+    await user.click(screen.getByRole("button",{name:"停用资源"}));
+    await user.click(within(screen.getByRole("dialog",{name:"停用资源？"})).getByRole("button",{name:"停用资源"}));
+    await screen.findByText(/^资源已停用/);expect(screen.getByLabelText("资源名称")).toHaveValue("Recoverable draft");
+    expect(screen.queryByRole("button",{name:"预览发布"})).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button",{name:"恢复资源"}));
+    await user.click(within(screen.getByRole("dialog",{name:"恢复资源？"})).getByRole("button",{name:"恢复资源"}));
+    await screen.findByText("资源已恢复，可再次建立新引用。",{exact:true});
+    expect(screen.getByLabelText("资源名称")).toHaveValue("Recoverable draft");expect(screen.getByRole("button",{name:"预览发布"})).toBeVisible();
+  });
   it("retains declared search roots and external macros and guards settings-only unsaved changes", async () => {
     const user = userEvent.setup();
     const { fetchImpl } = setup();
