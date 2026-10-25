@@ -22,7 +22,7 @@
 }
 
 .initialization-copy-summary :is(th, td):last-child {
-  width: 50%;
+  width: 65%;
 }
 
 .project-init-scope-toolbar .search-field {

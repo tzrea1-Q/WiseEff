@@ -11,6 +11,9 @@ describe("ProjectParameterInitializationWizard", () => {
       name: "Board sources", ownership: "private" as const, digest: "a".repeat(64), catalogReleaseId: "catalog-a",
       members: [{ fileId: "file-a", fileVersionId: "version-a", checksum: "a".repeat(64), sourceName: "board.dts", format: "dts" as const, sharedVersion: "v2" }] }];
     const submit = vi.fn().mockResolvedValue(undefined);
+    const previousLocation = window.location.href;
+    window.history.replaceState(null, "", "/parameters?organizationId=operating-org");
+    try {
     render(<ProjectParameterInitializationWizard state={initialState} dispatch={vi.fn()} onClose={vi.fn()}
       onPreview={vi.fn().mockResolvedValue([])} onCompletePreview={vi.fn().mockResolvedValue({ items: [], configSnapshots })} onSubmit={submit} />);
     fillProjectInfoAndContinue();
@@ -19,9 +22,17 @@ describe("ProjectParameterInitializationWizard", () => {
     await screen.findByRole("table", { name: "完整配置复制预览" });
     expect(screen.getByText(/board.dts/)).toBeInTheDocument();
     expect(screen.getByText(/固定私有副本/)).toBeInTheDocument();
+    const sourceLink = screen.getByRole("link", { name: "board.dts", exact: true });
+    expect(sourceLink).toHaveAttribute("href", expect.stringContaining("revision=rev-a"));
+    expect(sourceLink).toHaveAttribute("href", expect.stringContaining("organizationId=operating-org"));
+    expect(sourceLink).toHaveAttribute("href", expect.stringContaining("version=version-a"));
+    expect(screen.queryByRole("columnheader", { name: "固定版本", exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("rev-a", { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByText("（共享来源 → 项目私有）", { exact: true })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
     fireEvent.click(screen.getByRole("button", { name: "提交初始化审阅" }));
     await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.anything(), [], configSnapshots));
+    } finally { window.history.replaceState(null, "", previousLocation); }
   });
   function canonicalSnapshot(
     overrides: Partial<SemanticInitializationSnapshotItem> = {}
