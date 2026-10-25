@@ -141,6 +141,22 @@ it("saves and previews multiline DTS examples through the create form", async ()
 });
 
 describe("PublicationDialog", () => {
+  it("does not call its own successful activation a stale preview after the Catalog refreshes", async () => {
+    const { changeRelease, ports } = renderDialog({ actor: "org-admin", publicationOutcome: "active" });
+    const user = userEvent.setup();
+    await fillSupportedDefinition(user);
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await user.click(await screen.findByRole("button", { name: "发布到目录" }));
+    await confirm("确认发布");
+    await screen.findByText(/目录发布已生效/);
+    vi.spyOn(ports.catalog, "listSubjects").mockResolvedValue({ items: [], totalCount: 0,
+      hasMore: false, nextCursor: null, catalogReleaseId: "crel_after_publication" });
+    changeRelease("crel_after_publication");
+    await waitFor(() => expect(screen.queryByText(/正文已修改，旧预览已作废/)).not.toBeInTheDocument());
+    expect(screen.queryByLabelText("发布预览")).not.toBeInTheDocument();
+  });
+
   it("creates a configuration schema using an explicit governed identity without driver facts", async () => {
     const { createCandidate } = renderDialog({ actor: "org-admin", intent: "create-subject" });
     await selectControlOption(await screen.findByLabelText("主体类型"), "configuration-schema");
@@ -153,6 +169,7 @@ describe("PublicationDialog", () => {
       op: "create-subject", kind: "configuration-schema", canonicalKey: "configuration-schema:wiseeff.power-profile",
       selector: { kind: "configuration-schema-id", value: "wiseeff.power-profile" },
     }] }, expect.anything()));
+    expect(screen.queryByText(/新驱动可能改变节点类型回退匹配/)).not.toBeInTheDocument();
   });
 
   it("creates a standalone subject without parameter fields or a second creation mode", async () => {

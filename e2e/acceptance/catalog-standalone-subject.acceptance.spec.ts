@@ -85,6 +85,7 @@ test("#1412 creates a missing declaration-only driver through the single registr
       resolvePublisherActor: async (principalId) => createUserInvocation(await getAuthContext(db, principalId)),
       ownerId: "standalone-browser-manager" })).toBe("claimed");
     await expect(dialog.getByText(/目录发布已生效/)).toBeVisible();
+    await expect(dialog.getByText(/正文已修改，旧预览已作废/)).toHaveCount(0);
     const subject = await catalogJson(page.request, "GET", `/api/v2/catalog/subjects/${subjectId}`);
     expect(subject.body).toMatchObject({ item: { id: subjectId, canonicalName: compatible,
       definitionCounts: { active: 0 }, registration: { status: "unregistered" } } });
@@ -123,6 +124,7 @@ test("#1412 creates a missing declaration-only driver through the single registr
       resolvePublisherActor: async (principalId) => createUserInvocation(await getAuthContext(db, principalId)),
       ownerId: "standalone-schema-browser-manager" })).toBe("claimed");
     await expect(schemaDialog.getByText(/目录发布已生效/)).toBeVisible();
+    await expect(schemaDialog.getByText(/正文已修改，旧预览已作废/)).toHaveCount(0);
     const schemaSubject = await catalogJson(page.request, "GET", `/api/v2/catalog/subjects/${schemaCandidate.impactSummary.addedSubjectIds[0]}`);
     expect(schemaSubject.body).toMatchObject({ item: { type: "configuration-schema", canonicalName: schemaIdentity, definitionCounts: { active: 0 } } });
     await catalogScreenshot(page, testInfo, "standalone-configuration-schema");
