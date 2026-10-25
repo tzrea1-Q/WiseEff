@@ -3777,7 +3777,7 @@ describe("ProjectConfigurationWorkbench", () => {
 
     expect(await screen.findByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "待分配项目文件" })).toHaveTextContent("notes.json");
-    expect(screen.getByText(/仅管理员可变更配置文件、同步或导出/)).toBeInTheDocument();
+    expect(screen.queryByText(/仅管理员可变更配置文件、同步或导出/)).not.toBeInTheDocument();
     const schemes = await openSchemeMenu();
     expect(within(schemes).queryByRole("menuitem", { name: "新建配置…" })).not.toBeInTheDocument();
     expect(within(schemes).queryByRole("menuitem", { name: "导出当前配置" })).not.toBeInTheDocument();

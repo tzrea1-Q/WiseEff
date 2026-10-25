@@ -64,6 +64,7 @@ function extractPhandles(rawText: string): string[] {
 }
 
 class Resolver {
+  constructor(private readonly externalNodePaths: ReadonlySet<string> = new Set()) {}
   private readonly byPath = new Map<string, MutableNode>();
   private readonly byLabel = new Map<string, MutableNode>();
 
@@ -73,7 +74,7 @@ class Resolver {
     }
     for(const node of this.byPath.values())for(const ref of node.phandleRefs) {
       const path=dtsReferencePath(ref.targetLabel);
-      if(path!==null && !dtsActualPathTarget(this.byPath,path.slice(1)))throw new Error(`Unresolved DTS node-path reference &${ref.targetLabel}`);
+      if(path!==null && !dtsActualPathTarget(this.byPath,path.slice(1)) && !this.externalNodePaths.has(path))throw new Error(`Unresolved DTS node-path reference &${ref.targetLabel}`);
     }
     return { nodes: this.flatten() };
   }
@@ -84,19 +85,19 @@ class Resolver {
     if (cst.refTarget) {
       const path=dtsReferencePath(cst.refTarget);
       const existing = path!==null?dtsActualPathTarget(this.byPath,path.slice(1)):this.byLabel.get(cst.refTarget);
-      if(path!==null && !existing)throw new Error(`Unresolved DTS node-path reference &${cst.refTarget}`);
+      if(path!==null && !existing && !this.externalNodePaths.has(path))throw new Error(`Unresolved DTS node-path reference &${cst.refTarget}`);
       if (existing) {
         node = existing;
         node.cst = cst;
       } else {
-        const path = joinPath(parentPath, cst.refTarget);
-        node = this.ensurePath(path, {
+        const targetPath = path !== null ? path.slice(1) : joinPath(parentPath, cst.refTarget);
+        node = this.ensurePath(targetPath, {
           name: cst.refTarget,
           unitAddress: undefined,
           cst,
-          isLabelStub: true,
+          isLabelStub: path === null,
         });
-        this.registerLabel(cst.refTarget, node);
+        if (path === null) this.registerLabel(cst.refTarget, node);
       }
     } else {
       const path = joinPath(parentPath, segmentFor(cst));
@@ -261,7 +262,7 @@ class Resolver {
   }
 }
 
-export function resolveDts(input: DtsDocument | string): ResolvedDts {
+export function resolveDts(input: DtsDocument | string, externalNodePaths?: ReadonlySet<string>): ResolvedDts {
   const doc = typeof input === "string" ? parseDts(input) : input;
-  return new Resolver().resolve(doc);
+  return new Resolver(externalNodePaths).resolve(doc);
 }

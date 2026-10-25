@@ -75,7 +75,16 @@ export function canAccessParameterReviewPage(roleId: string): boolean {
   return canPerform(normalizedRole, "parameter.review") || canPerform(normalizedRole, "parameter.merge");
 }
 
-export function canAccessPage(roleId: string, pageKey: PageKey): boolean {
+export function canAccessPage(roleId: string, pageKey: PageKey, scope?: { path: string; runtimeMode: string;
+  permissions?: readonly string[] | null; roles?: readonly { projectId: string | null }[] | null;
+  projectMemberships?: readonly { projectId: string; roles: readonly string[] }[] | null }): boolean {
+  const project = scope?.path.match(/^\/parameter-admin\/projects\/([^/]+)\/configuration\/?$/)?.[1];
+  if (pageKey === "parameter-admin" && scope?.runtimeMode === "api" && scope.permissions?.includes("parameter:view")) {
+    if (/^\/parameter-admin\/sources\/?$/.test(scope.path)) return true;
+    try { if (project && (scope.roles?.some(role => role.projectId === null)
+      || scope.projectMemberships?.some(member => member.projectId === decodeURIComponent(project) && member.roles.length > 0))) return true; }
+    catch { return false; }
+  }
   const normalizedRole = migrateLegacyRoleId(roleId);
   if (pageKey === "parameter-review") {
     return canAccessParameterReviewPage(normalizedRole);
