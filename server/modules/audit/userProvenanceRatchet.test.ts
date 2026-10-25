@@ -55,6 +55,12 @@ const BASELINE: Record<string, readonly [number, number]> = {
   "modules/product-feedback/scope.ts": [0, 1],
   "modules/release-verification/comparison/offlineModD02SourceReader.ts": [0, 1],
   "modules/release-verification/evidence/api/driver.ts": [0, 1],
+  // Private-source promotion rejects non-user invocation before rehydrating the
+  // current actor; this human-only operation cannot inherit an Agent approval.
+  "modules/shared-dtsi/projectImport.ts": [0, 1],
+  // The user-only usages HTTP read rebuilds current Home/operating authorization
+  // after revocation; it creates neither a mutation nor a User audit assertion.
+  "modules/shared-dtsi/usages.ts": [0, 1],
   "modules/users/service.ts": [0, 11],
   // Public local invitation acceptance creates its new principal inside the atomic
   // account/grants/audit transaction; this bootstrap has no Agent or system entry.

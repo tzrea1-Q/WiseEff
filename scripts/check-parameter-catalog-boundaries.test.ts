@@ -125,6 +125,26 @@ describe("Parameter Catalog count baseline CLI", () => {
 });
 
 describe("unchanged boundary detectors", () => {
+  it("distinguishes the public DTS topology discriminator from retired Catalog views", () => {
+    const imported = 'import type { TopologyTree } from "../../../src/domain/parameter-topology/types";';
+    const topology = `${imported}\nconst result = await requestJson<{item: TopologyTree}>("/topology"); if (result.body.item.view !== "effective") throw Error();`;
+    const inline = 'type Result = Extract<import("../../../src/domain/parameter-topology/types").TopologyTree, {view: "effective"}>;';
+    const projected = `${imported}\nconst result = (await requestJson<{item: TopologyTree}>("/topology")).body.item; if (result.view !== "effective") throw Error();`;
+    for (const source of [topology, inline, projected]) {
+      expect(scanSourceFile("S12-PRJ", consumerFile, source).map(entry => entry.rule)).not.toContain("legacy-effective-governance-contract");
+    }
+    for (const source of [
+      `${imported}\nconst result = await requestJson<{item: CatalogTree}>("/catalog"); if (result.body.item.view !== "effective") throw Error();`,
+      `${imported}\nconst result = await requestJson<{unrelated: TopologyTree, item: CatalogTree}>("/catalog"); if (result.body.item.view !== "effective") throw Error();`,
+      `${imported}\ntype Result = Extract<{unrelated: TopologyTree}, {view: "effective"}>;`,
+      'type Result = Extract<import("../../../elsewhere").TopologyTree, {view: "effective"}>;',
+      `${imported}\nconst catalogView = "effective";`,
+      `${imported}\nconst url = "/catalog?view=effective";`,
+    ]) {
+      expect(scanSourceFile("S12-PRJ", consumerFile, source).map(entry => entry.rule)).toContain("legacy-effective-governance-contract");
+    }
+  });
+
   it.each([
     ['db.query("UPDATE parameter_specs SET name = $1", values);', "legacy-catalog-sql-write"],
     [rawRead, "legacy-catalog-raw-read"],
