@@ -34,8 +34,8 @@ test("imports and edits a shared DTSI draft, keeps stale input, and discards wit
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await catalogScreenshot(page, testInfo, "shared-dtsi-draft-conflict-1280");
   await page.getByRole("button", { name: "重新载入" }).click();
-  const leave = page.getByRole("dialog", { name: "放弃未保存的更改？" });
-  await leave.getByRole("button", { name: "放弃并离开" }).click();
+  const leave = page.getByRole("dialog", { name: "重新载入草稿？" });
+  await leave.getByRole("button", { name: "重新载入", exact: true }).click();
   await expect(page.getByLabel("资源名称")).toHaveValue("Concurrent administrator draft");
   await page.getByRole("button", { name: "丢弃草稿", exact: true }).click();
   const discard = page.getByRole("dialog", { name: "丢弃共享 DTSI 草稿？" });

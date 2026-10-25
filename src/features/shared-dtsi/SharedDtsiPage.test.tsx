@@ -54,6 +54,11 @@ describe("shared DTSI draft authoring", () => {
     await screen.findByRole("alert");
     expect(screen.getByLabelText("资源名称")).toHaveValue("Battery common changed");
     expect(screen.getByRole("button", { name: "重新载入" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "丢弃草稿", exact: true })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "重新载入" }));
+    await screen.findByRole("dialog", { name: "重新载入草稿？" });
+    await user.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(screen.getByLabelText("资源名称")).toHaveValue("Battery common changed");
   });
 
   it("does not offer draft mutations to a resource reader", async () => {

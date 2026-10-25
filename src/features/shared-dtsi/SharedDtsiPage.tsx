@@ -38,6 +38,7 @@ export function SharedDtsiPage({ apiClient, canWrite, search, onNavigate }: Prop
   const [saved, setSaved] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
+  const [reloadOpen, setReloadOpen] = useState(false);
   const [reload, setReload] = useState(0);
   const editor = useRef<WorkbenchDtsEditorHandle>(null);
   const upload = useRef<HTMLInputElement>(null);
@@ -110,11 +111,11 @@ export function SharedDtsiPage({ apiClient, canWrite, search, onNavigate }: Prop
   return <section className="shared-dtsi-page shared-dtsi-page--editor" aria-label="共享 DTSI 草稿" aria-busy={pending}>
     <header className="shared-dtsi-header"><div><Button variant="ghost" onClick={() => void navigate("")} disabled={pending}>返回资源列表</Button>
       <h1>{draft?.name ?? (selected === "new" ? "导入共享 DTSI" : "共享 DTSI")}</h1></div>
-      <div className="shared-dtsi-actions">{draft && canWrite ? <Button variant="outline" disabled={pending} onClick={() => setDiscardOpen(true)}>丢弃草稿</Button> : null}
+      <div className="shared-dtsi-actions">{draft && canWrite ? <Button variant="outline" disabled={pending || conflict} onClick={() => setDiscardOpen(true)}>丢弃草稿</Button> : null}
         {canWrite ? <Button disabled={loading || pending || !dirty || conflict || !form.name.trim() || !form.sourceName} onClick={() => void save()}>{pending ? "保存中…" : "保存草稿"}</Button> : null}</div>
     </header>
     {loading ? <SectionSkeleton label="正在加载共享 DTSI 草稿" /> : error && !draft && selected !== "new" ? <SectionError message={error} onRetry={() => setReload(value => value + 1)} /> : <>
-      {error ? <div className="shared-dtsi-error" role="alert"><p>{error}</p>{conflict ? <Button variant="outline" onClick={() => { void (async () => { if (await requestSettingsLeave()) setReload(value => value + 1); })(); }}>重新载入</Button> : null}</div> : null}
+      {error ? <div className="shared-dtsi-error" role="alert"><p>{error}</p>{conflict ? <Button variant="outline" onClick={() => setReloadOpen(true)}>重新载入</Button> : null}</div> : null}
       {saved === selected ? <p role="status">草稿已保存</p> : null}
       <div className="shared-dtsi-fields">
         <label>资源名称<Input aria-label="资源名称" value={form.name} maxLength={160} readOnly={!canWrite} disabled={pending} onChange={event => { setForm({ ...form, name: event.target.value }); setSaved(null); }} /></label>
@@ -127,7 +128,10 @@ export function SharedDtsiPage({ apiClient, canWrite, search, onNavigate }: Prop
         onChange={snapshot => { if (snapshot.sessionKey === sessionKey) setForm(current => ({ ...current, content: snapshot.text })); }} onSave={() => void save()} /></div>
     </>}
     <SettingsLeaveGuard dirty={dirty && !leaving} saving={pending} description="离开将放弃本页未保存的源码和名称，已保存的草稿不会受到影响。" />
-    <ConfirmDialog open={discardOpen} title="丢弃共享 DTSI 草稿？" description="这份未发布的资源及源码草稿将被移除。" confirmLabel="丢弃草稿" tone="danger" pending={pending} error={error}
+    <ConfirmDialog open={reloadOpen} title="重新载入草稿？" description="本地未保存的修改将被当前服务端草稿替换。"
+      confirmLabel="重新载入" cancelLabel="继续编辑" onCancel={() => setReloadOpen(false)}
+      onConfirm={() => { setReloadOpen(false); setReload(value => value + 1); }} />
+    <ConfirmDialog open={discardOpen} title="丢弃共享 DTSI 草稿？" description="这份未发布的资源及源码草稿将被移除。" confirmLabel="丢弃草稿" tone="danger" pending={pending} confirmDisabled={conflict} error={error}
       onCancel={() => { if (!pending) setDiscardOpen(false); }} onConfirm={() => { if (!client || !draft) return; setPending(true); setError("");
         void client.discard(draft.resourceId, draft.revision).then(() => { setDiscardOpen(false); setEditorDirty(false); leave(""); })
           .catch(cause => { setError(message(cause)); setConflict(cause instanceof WiseEffApiError && cause.code === "CONFLICT"); })
