@@ -23,7 +23,7 @@ import "./shared-dtsi.css";
 import { SharedDtsiDependencies } from "./SharedDtsiDependencies";
 import { SharedDtsiRecognition } from "./SharedDtsiRecognition";
 
-type Props = { apiClient?: ApiClient; canWrite: boolean; canCreateSubject?:boolean;canProposeSource?:boolean;search: string; organizationId?: string; onNavigate: (path: string) => void };
+type Props = { apiClient?: ApiClient; canWrite: boolean; canCreateSubject?:boolean;canProposeSource?:boolean;canReviewSource?:boolean;search: string; organizationId?: string; onNavigate: (path: string) => void };
 type Scope = { key: string; client: ReturnType<typeof createSharedDtsiClient> | null; pending: boolean };
 const empty: SharedDtsiDraftInput = { name: "", sourceName: "common.dtsi", content: "", changeDescription: "",dependencies:[] };
 const draftInput = (draft: SharedDtsiDraft): SharedDtsiDraftInput => ({ name: draft.name,
@@ -54,7 +54,7 @@ const fixedBuildInputs = (input: SharedDtsiVersion["manifest"]["buildInputs"]) =
     {Object.keys(input.defines ?? {}).length ? <div><dt>构建宏</dt><dd>{buildTexts({ includeSearchPaths: [], defines: input.defines ?? {} }).defines}</dd></div> : null}
   </dl></details> : null;
 
-export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,canProposeSource=false,search, organizationId, onNavigate }: Props) {
+export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,canProposeSource=false,canReviewSource=false,search, organizationId, onNavigate }: Props) {
   const client = useMemo(() => apiClient ? createSharedDtsiClient(apiClient) : null, [apiClient]);
   const selected = new URLSearchParams(search).get("resource") ?? "";
   const selectedVersion = new URLSearchParams(search).get("version") ?? "";
@@ -287,7 +287,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
         {value:"versions",label:"版本",id:"shared-versions-tab",panelId:"shared-versions-panel"}]} />
     <TabPanel id="shared-recognition-panel" aria-labelledby="shared-recognition-tab" hidden={tab!=="recognition"}>
       {tab==="recognition" && published ? <SharedDtsiRecognition client={client} resourceId={selected} versionId={published.id}
-        canWrite={canWrite} canCreateSubject={canCreateSubject} canProposeSource={canProposeSource} returnPath={path(selected,{version:published.id,tab:"recognition"})} organizationId={organizationId} onNavigate={onNavigate} /> : null}
+        canWrite={canWrite} canCreateSubject={canCreateSubject} canProposeSource={canProposeSource} canReviewSource={canReviewSource} returnPath={path(selected,{version:published.id,tab:"recognition"})} organizationId={organizationId} onNavigate={onNavigate} /> : null}
     </TabPanel>
     <TabPanel id="shared-source-panel" aria-labelledby="shared-source-tab" hidden={tab!=="source"} className="shared-dtsi-published-panel">
       {tab==="source" && published ? <><p role="status">v{published.version} · {published.id===detail?.currentVersion?.id?"已发布":"历史版本"}，只读</p>

@@ -5,14 +5,15 @@ import { presentError } from "@/infrastructure/http/presentError";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { buildCatalogHref, CATALOG_READ_PAGE_PATH, EMPTY_CATALOG_URL_ANCHOR, serializeCatalogUrlAnchor } from "@/application/parameter-catalog/urlAnchor";
 
-export function sharedRecognitionSourceHref(source: Recognition["items"][number]["source"], organizationId?: string) {
+export function sharedRecognitionSourceHref(source: Recognition["items"][number]["source"], organizationId?: string,projectContext?:string|null) {
   const params=new URLSearchParams({resource:source.resourceId,version:source.versionId,member:source.memberId,line:String(source.line),tab:"source"});
   if(organizationId)params.set("organizationId",organizationId);
+  if(projectContext && /^\/parameter-admin\/projects\/[^/?#]+\/configuration\?/.test(projectContext))params.set("projectContext",projectContext);
   return `/parameter-admin/sources?${params}`;
 }
 
-export function SharedDtsiRecognition({client,resourceId,versionId,canWrite,canCreateSubject,canProposeSource,returnPath,organizationId,onNavigate}: {
-  client:ReturnType<typeof createSharedDtsiClient>;resourceId:string;versionId:string;canWrite:boolean;canCreateSubject:boolean;canProposeSource:boolean;returnPath:string;organizationId?:string;onNavigate:(href:string)=>void;
+export function SharedDtsiRecognition({client,resourceId,versionId,canWrite,canCreateSubject,canProposeSource,canReviewSource,returnPath,organizationId,onNavigate}: {
+  client:ReturnType<typeof createSharedDtsiClient>;resourceId:string;versionId:string;canWrite:boolean;canCreateSubject:boolean;canProposeSource:boolean;canReviewSource:boolean;returnPath:string;organizationId?:string;onNavigate:(href:string)=>void;
 }) {
   const [state,setState]=useState<{key:string;data?:Recognition;error?:string}>({key:""});
   const [retry,setRetry]=useState(0);
@@ -26,6 +27,7 @@ export function SharedDtsiRecognition({client,resourceId,versionId,canWrite,canC
   if(state.key!==key || !state.data&&!state.error)return <SectionSkeleton label="正在读取固定版本的来源识别" />;
   if(state.error)return <SectionError message={state.error} onRetry={()=>setRetry(value=>value+1)} />;
   const data=state.data!;
+  const projectContext=new URLSearchParams(returnPath.split("?")[1]).get("projectContext");
   const follow=(href:string)=>(event:React.MouseEvent<HTMLAnchorElement>)=>{if(!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey){event.preventDefault();onNavigate(href);}};
   return <section className="shared-dtsi-recognition" aria-label="固定版本来源识别">
     <p className="shared-dtsi-hint">compatible 标识用于匹配正式主体；节点标签仅表示源码定位。源码值不会自动成为参数定义。</p>
@@ -34,7 +36,7 @@ export function SharedDtsiRecognition({client,resourceId,versionId,canWrite,canC
       <h3><code>{item.nodeLocator}</code>{item.unresolved?<span> · 待项目补充上下文</span>:null}</h3>
       {item.candidate.status==="ambiguous"?<p>此节点的多个 compatible 标识匹配不同主体，需核对识别依据。</p>:null}
       {item.labels.length?<p>节点标签：{item.labels.join("、")}</p>:null}
-      <a href={sharedRecognitionSourceHref(item.source,organizationId)} onClick={follow(sharedRecognitionSourceHref(item.source,organizationId))}>{item.source.sourceName}:{item.source.line} · v{item.source.version}</a>
+      <a href={sharedRecognitionSourceHref(item.source,organizationId,projectContext)} onClick={follow(sharedRecognitionSourceHref(item.source,organizationId,projectContext))}>{item.source.sourceName}:{item.source.line} · v{item.source.version}</a>
       <ul>{item.compatibles.map((entry,entryIndex)=>{
         const createParams=new URLSearchParams({createSubject:"1",sourceResource:resourceId,sourceVersion:versionId,sourceNode:item.nodeLocator,compatible:entry.compatible});
         createParams.set("sourceReturn",returnPath);
@@ -50,7 +52,7 @@ export function SharedDtsiRecognition({client,resourceId,versionId,canWrite,canC
             return <a key={subjectId} href={target} onClick={follow(target)}>{entry.status==="recognized"?"查看主体与定义":"查看候选主体"}</a>;
           })}
           {canCreateSubject && item.candidate.status==="unknown" && entry.status==="unknown"?<a href={createHref} onClick={follow(createHref)}>识别并创建主体</a>:null}
-          {canProposeSource && entryIndex===0 && (item.candidate.status==="ambiguous"||item.candidate.status==="retired")?<a href={`${createHref}&sourceProposal=1`} onClick={follow(`${createHref}&sourceProposal=1`)}>记录识别修订</a>:null}
+          {(canProposeSource||canReviewSource) && entryIndex===0 && (item.candidate.status==="ambiguous"||item.candidate.status==="retired")?<a href={`${createHref}&sourceProposal=1`} onClick={follow(`${createHref}&sourceProposal=1`)}>{canProposeSource?"记录识别修订":"查看识别修订"}</a>:null}
         </li>;
       })}</ul>
     </li>)}</ul>}

@@ -213,20 +213,21 @@ export function ProposalPanel({
     {
       key: "status",
       header: "状态",
+      className:source?"whitespace-nowrap":undefined,
       render: (row) => proposalStatusLabels[row.status]
     },
-    {
+    ...(!source?[{
       key: "change",
       header: "变更",
-      render: (row) =>
+      render: (row:ProposalItem) =>
         proposalChangeKindLabels[row.requestedChange.kind as keyof typeof proposalChangeKindLabels] ??
         "修订"
     },
     {
       key: "version",
       header: "版本",
-      render: (row) => String(row.version)
-    }
+      render: (row:ProposalItem) => String(row.version)
+    }]:[])
   ];
 
   const confirmMeta: Record<ProposalAction, { title: string; label: string }> = {
@@ -244,7 +245,7 @@ export function ProposalPanel({
       data-proposal-materialize="false"
     >
       <p>{source?"提交识别修订供审核；不会创建参数定义或绑定项目实例。":governanceCopy.proposalNoMaterialize}</p>
-      {source?<p>来源：<a href={source.href} target="_blank" rel="noreferrer">{source.label}</a></p>:null}
+      {source?<p className="shared-dtsi-source-context">来源：<a href={source.href} target="_blank" rel="noreferrer">{source.label}</a></p>:null}
       {readOnly ? <p>{governanceCopy.agentReadOnly}</p> : null}
       {canCreate && (!source || !loading && !error && !activeSourceProposal) ? (
         <div className="governance-confirm-dialog__body">
@@ -316,6 +317,7 @@ export function ProposalPanel({
       {!loading && !error && items.length === 0 ? <SectionEmpty message={source?"已加载的最近 50 条组织修订中没有此来源的记录。":"当前没有定义修订。"} /> : null}
       {!loading && !error && items.length > 0 ? (
         <DataTable
+          fluid={Boolean(source)}
           rows={items}
           rowKey={(row) => row.id}
           columns={columns}

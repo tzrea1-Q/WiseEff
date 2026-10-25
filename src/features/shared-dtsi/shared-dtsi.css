@@ -1,10 +1,14 @@
 .shared-dtsi-page { min-width: 0; padding: var(--space-4); }
 .shared-dtsi-page h1 { margin: 0; color: var(--text); font-size: var(--text-xl); font-weight: 600; }
-.shared-dtsi-page--editor { display: flex; flex-direction: column; gap: var(--space-4); min-height: 0; height: 100%; overflow: auto; }
+.main-content:has(.shared-dtsi-page--editor) { overflow: hidden; padding-bottom: var(--page-gutter); }
+.main-content:has(.shared-dtsi-page--editor) > .page-content { height: 100%; min-height: 0; }
+.param-admin-shell:has(> .shared-dtsi-page--editor) { height: 100%; min-height: 0; }
+.shared-dtsi-page--editor { display: flex; flex: 1; flex-direction: column; gap: var(--space-4); min-height: 0; overflow: auto; padding-block-start: 0; }
 .shared-dtsi-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); min-width: 0; }
 .shared-dtsi-header > div { min-width: 0; }
 .shared-dtsi-page--editor > .shared-dtsi-header { position: sticky; top: 0; z-index: var(--z-sticky); background: var(--surface); padding-block: var(--space-2); }
 .shared-dtsi-header h1 { overflow-wrap: anywhere; }
+.shared-dtsi-header [data-variant="ghost"] { color: var(--text-secondary); }
 .shared-dtsi-actions, .shared-dtsi-pagination { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
 .shared-dtsi-fields { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-3); }
 .shared-dtsi-fields label { display: grid; flex: 1; min-width: 0; gap: var(--space-2); color: var(--text-secondary); font-size: var(--text-base); }
@@ -34,3 +38,4 @@
 .shared-dtsi-recognition h3 { margin: 0 0 var(--space-2); font-size: var(--text-base); }
 .shared-dtsi-recognition li li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-block: var(--space-2); }
 .shared-dtsi-recognition code { overflow-wrap: anywhere; }
+.shared-dtsi-recognition a, .shared-dtsi-source-context a { color: var(--accent); text-decoration: underline; text-underline-offset: var(--space-1); overflow-wrap: anywhere; }

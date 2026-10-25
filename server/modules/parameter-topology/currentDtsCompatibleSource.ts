@@ -1,10 +1,9 @@
 import { parameterOrganizationId } from "../parameters/operatingScope";
-import { isDeepStrictEqual } from "node:util";
 
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
-import { offsetToLineColumn, parseDtsValue } from "../dts";
+import { offsetToLineColumn } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import { parseCanonicalCompatibleSelector } from "../parameter-catalog-contract";
 import { canonicalSourceConfigSetRole } from "../parameter-files/canonicalSource";
@@ -95,13 +94,14 @@ export async function readCurrentDtsCompatibleSource(
       }
       const compatibleMember = source.members.find((member) => member.fileVersionId === final.fileVersionId);
       if (!compatibleMember || compatibleMember.format !== "dts") return unavailable("compatible-source-ambiguous");
-      const compatibleProof = await proveExactDtsProperty(tx, objectStore, {
+      const compatibleProof = locator.propertyName==="compatible" && locator.propertyOccurrenceId===final.propertyOccurrenceId
+        && locator.nodeOccurrenceId===final.nodeOccurrenceId && locator.fileVersionId===final.fileVersionId ? observationProof : await proveExactDtsProperty(tx, objectStore, {
         ...identity, fileId: compatibleMember.fileId, fileVersionId: final.fileVersionId,
         logicalNodeId: input.logicalNodeId, propertyName: "compatible",
         propertyOccurrenceId: final.propertyOccurrenceId, nodeOccurrenceId: final.nodeOccurrenceId,
       }, { purpose: "review-evidence" });
-      const parsed = parseDtsValue("compatible", final.rawText).value;
-      if (!isDeepStrictEqual(parsed, compatibleProof.value) || parsed.kind !== "strings" || !parsed.values.length
+      const parsed = compatibleProof.value;
+      if (parsed.kind !== "strings" || !parsed.values.length
         || parsed.values.some((value) => !parseCanonicalCompatibleSelector(value).ok)) {
         return unavailable("compatible-invalid");
       }

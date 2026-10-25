@@ -13,6 +13,8 @@ it("retains only a local shared-version return link across Catalog anchor normal
   const anchor=parseCatalogUrlAnchor(`?subjectId=subject&sourceReturn=${encodeURIComponent(href)}`);
   expect(parseCatalogUrlAnchor(serializeCatalogUrlAnchor(anchor))).toHaveProperty("sourceReturn",href);
   expect(parseCatalogUrlAnchor("?sourceReturn=https%3A%2F%2Fevil.example")).not.toHaveProperty("sourceReturn");
+  const project="/parameter-admin/projects/project/configuration?configSet=set&revision=revision&file=file&version=version&node=%2Fdevice%402";
+  expect(parseCatalogUrlAnchor(serializeCatalogUrlAnchor({...anchor,sourceReturn:project})).sourceReturn).toBe(project);
 });
 import { CATALOG_DEFINITION_ID, CATALOG_RELEASE_ID, CATALOG_REVIEW_ITEM_ID, CATALOG_SUBJECT_ID } from "./fixtures";
 

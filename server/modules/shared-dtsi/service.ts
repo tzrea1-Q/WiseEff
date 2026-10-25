@@ -76,8 +76,10 @@ export async function listSharedDtsiResources(db: Database, auth: AuthContext, i
           if(selectors.some(compatible=>compatible.toLowerCase().includes(needle))){matches.push(row);continue;}
         }
         if(row.draftRevision) {
-          const preview=(await db.query<{manifest:unknown}>(`select manifest from public.shared_dtsi_publication_previews
-            where resource_id=$1 and organization_id=$2 and draft_revision=$3 order by created_at desc,id desc limit 1`,[row.resourceId,parameterOrganizationId(auth),row.draftRevision])).rows[0];
+          const preview=(await db.query<{manifest:unknown}>(`select preview.manifest from public.shared_dtsi_publication_previews preview
+            join public.shared_dtsi_drafts draft on draft.id=preview.draft_id and draft.resource_id=preview.resource_id
+              and draft.organization_id=preview.organization_id and draft.revision=preview.draft_revision
+            where preview.resource_id=$1 and preview.organization_id=$2 and draft.revision=$3 order by preview.created_at desc,preview.id desc limit 1`,[row.resourceId,parameterOrganizationId(auth),row.draftRevision])).rows[0];
           if(preview && sharedDtsiManifestSchema.parse(preview.manifest).compatibleSelectors?.some(compatible=>compatible.toLowerCase().includes(needle)))matches.push(row);
         }
       }

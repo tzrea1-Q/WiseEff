@@ -143,13 +143,15 @@ export function CanonicalDriverDiscovery({ governance, catalog, projects = [], o
     }
   };
 
-  const navigate = (anchor: { subjectId?: string; reviewItemId?: string }) => {
-    const href=buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, ...anchor,catalogReleaseId:page?.catalogRelease.id??null });
+  const sourcePath=(item:DiscoveryItem)=>item.source.status==="current" && item.source.location
+    ? `/parameter-admin/projects/${encodeURIComponent(item.projectId)}/configuration?${new URLSearchParams({organizationId,configSet:item.source.configSetId,revision:item.configRevisionId,node:item.source.location.nodeLocator,tab:"source",sourceMode:"history",file:item.source.location.fileId,version:item.source.fileVersionId,line:String(item.source.location.line)})}` : null;
+  const navigate = (anchor: { subjectId?: string; reviewItemId?: string },item:DiscoveryItem) => {
+    const href=buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, ...anchor,catalogReleaseId:page?.catalogRelease.id??null,...(sourcePath(item)?{sourceReturn:sourcePath(item)!}:{}) });
     onNavigate?.(`${href}&organizationId=${encodeURIComponent(organizationId)}`);
   };
   const visibleItems = items.filter((item) => {
     if (sourceFilter !== "all" && item.source.status !== sourceFilter) return false;
-    const sourceTerms = item.source.status === "current" ? [item.source.sourceName]
+    const sourceTerms = item.source.status === "current" ? [item.source.sourceName,item.source.location?.nodeLocator]
       : item.source.status === "historical" ? item.source.historicalCompatibles : [];
     return [item.projectId, projects.find((project) => project.id === item.projectId)?.name, item.logicalNodeId, ...sourceTerms,
       ...item.compatibles.flatMap((entry) => [entry.compatible, entry.candidate.kind === "recognized" ? subjectNames[entry.candidate.subjectId] : ""])]
@@ -171,7 +173,7 @@ export function CanonicalDriverDiscovery({ governance, catalog, projects = [], o
     {loading && page ? <p role="status">正在读取下一页…</p> : null}
     {page ? <>
       {items.length > 0 || cursor ? <div className="parameter-module-mapping-panel__form">
-        <label>搜索发现记录（已加载范围）<input type="search" aria-label="搜索发现记录" placeholder="已加载的兼容标识、主体、来源或项目" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
+        <label>搜索发现记录（已加载范围）<input type="search" aria-label="搜索发现记录" placeholder="已加载的 compatible 标识、主体、来源或项目" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
         <label>来源状态<SelectControl ariaLabel="筛选来源状态" value={sourceFilter} onValueChange={setSourceFilter} size="filter"
           options={[{ value: "all", label: "全部来源" }, { value: "current", label: "当前来源" }, { value: "historical", label: "历史来源" }, { value: "unavailable", label: "来源不可用" }]} /></label>
       </div> : null}
@@ -186,18 +188,18 @@ export function CanonicalDriverDiscovery({ governance, catalog, projects = [], o
       <ul className="canonical-driver-discovery__list">
         {visibleItems.map((item) => <li key={item.observationId} className="canonical-driver-discovery__item">
           <p><strong>{projects.find((project) => project.id === item.projectId)?.name ?? item.projectId}</strong> · 节点 <code>{item.source.status==="current"&&item.source.location?item.source.location.nodeLocator:item.logicalNodeId}</code></p>
-          {item.source.status==="current" && item.source.location ? <a href={`/parameter-admin/projects/${encodeURIComponent(item.projectId)}/configuration?${new URLSearchParams({organizationId,configSet:item.source.configSetId,revision:item.configRevisionId,node:item.source.location.nodeLocator,tab:"source",sourceMode:"history",file:item.source.location.fileId,version:item.source.fileVersionId,line:String(item.source.location.line)})}`}>查看固定项目来源</a>:null}
+          {sourcePath(item) ? <a href={sourcePath(item)!}>查看固定项目来源</a>:null}
           {item.source.status === "current" ? <p><strong>当前来源：{item.source.sourceName}</strong></p>
-            : item.source.status === "historical" ? <p>历史来源。历史兼容标识：{item.source.historicalCompatibles.join("；") || "无"}。不可按当前发现操作。</p>
+            : item.source.status === "historical" ? <p>历史来源。历史 compatible 标识：{item.source.historicalCompatibles.join("；") || "无"}。不可按当前发现操作。</p>
               : <p>来源不可用，暂不能处理此记录。</p>}
           {item.source.status === "current" ? <ul>{item.compatibles.map((entry, index) => <li key={`${entry.compatible}-${index}`}>
             <code>{entry.compatible}</code>{" "}
             {entry.candidate.kind === "recognized" ? <>
               已识别主体：{subjectNames[entry.candidate.subjectId] ?? entry.candidate.subjectId} · {entry.candidate.registrationId === null ? "尚未登记" : "已登记"}
-              {onNavigate ? <button type="button" className="button subtle" onClick={() => navigate({ subjectId: entry.candidate.kind === "recognized" ? entry.candidate.subjectId : undefined })}>查看主体</button> : null}
+              {onNavigate ? <button type="button" className="button subtle" onClick={() => navigate({ subjectId: entry.candidate.kind === "recognized" ? entry.candidate.subjectId : undefined },item)}>查看主体</button> : null}
             </> : <>
               需要复核（{{ unknown: "尚未识别", ambiguous: "存在多个候选", retired: "主体已停用" }[entry.candidate.reason]}） · {entry.candidate.reviewItemIds === null ? "复核项关联不可查看" : entry.candidate.reviewItemIds.length === 0 ? "没有开放的复核项" : `${entry.candidate.reviewItemIds.length} 个复核项`}
-              {entry.candidate.reviewItemIds?.map((id, index) => onNavigate ? <button key={id} type="button" className="button subtle" onClick={() => navigate({ reviewItemId: id })}>查看复核项 {index + 1}</button> : null)}
+              {entry.candidate.reviewItemIds?.map((id, index) => onNavigate ? <button key={id} type="button" className="button subtle" onClick={() => navigate({ reviewItemId: id },item)}>查看复核项 {index + 1}</button> : null)}
             </>}
           </li>)}</ul> : null}
           <details><summary>记录详情</summary><dl><dt>观察记录</dt><dd>{item.observationId}</dd><dt>项目</dt><dd>{item.projectId}</dd><dt>节点</dt><dd>{item.logicalNodeId}</dd><dt>目录发布</dt><dd>{page.catalogRelease.id}</dd>

@@ -81,7 +81,9 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     };
     const leaf = await publish("Recognition leaf", "instances.dtsi", '// compatible = "vendor,comment-only";\n/ { first: unit@1 { compatible = "acme,sensor", "acme,power"; }; second: unit@2 { compatible = "vendor,shared-evidence"; }; third: unit@3 { compatible = "vendor,shared-evidence"; }; };');
     const root = await publish("Recognition wrapper", "wrapper.dtsi", '/include/ "vendor/instances.dtsi"\n', [{resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"vendor"}]);
-    const before = (await db.query("select count(*) from parameter_catalog.parameter_observations")).rows;
+    const catalogApp=createWiseEffServer({db:api,auth:{mode:"production",verifier:{verify:async()=>auth}}});
+    const observations=()=>requestJson(catalogApp,`/api/v2/organizations/${auth.organization.id}/parameter-observations`,{headers:{authorization:"Bearer native-t21"}});
+    const before=await observations();expect(before.status,before.bodyText).toBe(200);
     const response = await publicationCall<{items:{nodeLocator:string;labels:string[];compatibles:{compatible:string}[];source:{resourceId:string;versionId:string;memberId:string;sourceName:string;line:number}}[]}>(`/${root.resourceId}/versions/${root.id}/recognition`);
     expect(response.status, response.bodyText).toBe(200);
     expect(response.body.items).toEqual([
@@ -93,17 +95,19 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     expect((await call("?q=vendor%2Ccomment-only")).body.items).toEqual([]);
     expect((await publicationCall(`/${root.resourceId}/versions/${leaf.id}/recognition`)).status).toBe(404);
     expect((await publicationCall(`/${root.resourceId}/versions/${root.id}/recognition`,"GET",undefined,makeTestAuthContext({organizationId:"org-other-dtsi"}))).status).toBe(404);
-    expect((await db.query("select count(*) from parameter_catalog.parameter_observations")).rows).toEqual(before);
-    const catalogApp=createWiseEffServer({db:api,auth:{mode:"production",verifier:{verify:async()=>auth}}});
+    expect((await observations()).body).toEqual(before.body);
     const catalogReleaseId=(await import("../catalog-publication/runtime")).captureCurrentCatalogPin;
     const pin=await catalogReleaseId((await import("../../shared/database/client")).getRootPostgresPool(api)!);
-    const propose=(compatible:string,sourceNode="/unit@2",kind="create-subject")=>requestJson<{item:{requestedChange:Record<string,unknown>}}>(catalogApp,"/api/v2/catalog/definition-proposals",{
-      method:"POST",headers:{authorization:"Bearer native-t21","X-WiseEff-Catalog-Release":pin!.id,"Idempotency-Key":`source-${compatible}-${sourceNode}`},
-      body:JSON.stringify({base:{catalogReleaseId:pin!.id},reason:"Review exact shared declaration",requestedChange:{kind,sourceReference:{resourceId:root.resourceId,versionId:root.id,nodeLocator:sourceNode,compatible},...(kind==="create-subject"?{changeSet:[{op:"create-subject",kind:"driver",canonicalKey:`driver:${compatible}`,nature:"physical-device",cardinality:"multiple",selector:{kind:"driver-compatible",value:compatible}}]}:{})}})});
+    const propose=(compatible:string,sourceNode="/unit@2",kind="create-subject",forged=false)=>requestJson<{item:{id:string;requestedChange:Record<string,unknown>}}>(catalogApp,"/api/v2/catalog/definition-proposals",{
+      method:"POST",headers:{authorization:"Bearer native-t21","X-WiseEff-Catalog-Release":pin!.id,"Idempotency-Key":`source-${compatible}-${sourceNode}-${kind}-${forged}`},
+      body:JSON.stringify({base:{catalogReleaseId:pin!.id},reason:"Review exact shared declaration",requestedChange:{kind,sourceReference:{resourceId:root.resourceId,versionId:root.id,nodeLocator:sourceNode,compatible},...(forged?{sourceEvidence:{trusted:true}}:{}),...(kind==="create-subject"?{changeSet:[{op:"create-subject",kind:"driver",canonicalKey:`driver:${compatible}`,nature:"physical-device",cardinality:"multiple",selector:{kind:"driver-compatible",value:compatible}}]}:{})}})});
     expect((await propose("vendor,forged")).status).toBe(400);
+    expect((await propose("vendor,shared-evidence","/unit@2","create-subject",true)).status).toBe(400);
+    expect((await propose("acme,sensor","/unit@1")).status).toBe(409);
     const proposal=await propose("vendor,shared-evidence");
     expect(proposal.status,proposal.bodyText).toBe(201);
     expect(proposal.body.item.requestedChange).toMatchObject({sourceEvidence:{resourceId:leaf.resourceId,versionId:leaf.id,memberId:leaf.members[0]!.id,sourceName:"instances.dtsi",line:2,nodeLocator:"/unit@2",compatible:"vendor,shared-evidence"}});
+    expect((await propose("vendor,shared-evidence")).body.item.id).toBe(proposal.body.item.id);
     const ambiguous=await propose("acme,sensor","/unit@1","source-recognition");
     expect(ambiguous.status,ambiguous.bodyText).toBe(201);
     expect(ambiguous.body.item.requestedChange).toMatchObject({kind:"source-recognition",sourceEvidence:{nodeLocator:"/unit@1",candidate:{status:"ambiguous"}}});
@@ -133,6 +137,15 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     expect(evidence.body.items).toEqual([expect.objectContaining({nodeLocator:"/component",compatibles:[expect.objectContaining({compatible:"t21,cpp-index-v2"})],source:expect.objectContaining({sourceName:"macro.dtsi",line:2})})]);
     expect(published.body.item.members).toEqual(expect.arrayContaining(changed.map(member=>expect.objectContaining(member))));
     expect((await call("?q=t21%2Ccpp-index-v2")).body.items).toContainEqual(expect.objectContaining({resourceId:draft.resourceId}));
+    const fresh=await call(`/${draft.resourceId}/draft`,"POST",{baseVersionId:published.body.item.id});
+    const third=fresh.body.item.members.map(member=>({...member,content:member.content.replace("cpp-index-v2","cpp-index-discarded")}));
+    expect((await call(`/${draft.resourceId}/draft`,"PUT",{name:draft.name,members:third,expectedRevision:1,changeDescription:"Discarded verified selector",buildInputs:{includeSearchPaths:["include"],defines:{}}})).status).toBe(200);
+    expect((await publicationCall(`/${draft.resourceId}/publication-preview`,"POST",{expectedRevision:2})).status).toBe(201);
+    expect((await call("?q=t21%2Ccpp-index-discarded")).body.items).toContainEqual(expect.objectContaining({resourceId:draft.resourceId}));
+    expect((await call(`/${draft.resourceId}/draft`,"DELETE",{expectedRevision:2})).status).toBe(200);
+    expect((await call(`/${draft.resourceId}/draft`,"POST",{baseVersionId:published.body.item.id})).status).toBe(201);
+    expect((await call(`/${draft.resourceId}/draft`,"PUT",{name:draft.name,members:changed,expectedRevision:1,changeDescription:"New draft at the same revision number",buildInputs:{includeSearchPaths:["include"],defines:{}}})).status).toBe(200);
+    expect((await call("?q=t21%2Ccpp-index-discarded")).body.items).not.toContainEqual(expect.objectContaining({resourceId:draft.resourceId}));
   });
   it("publishes real headers, value/function macros and conditional source with frozen original bytes", async () => {
     const members = [{ sourceName: "common.dtsi", content: '\uFEFF// 🧪 original\r\n#include "defs.h"\r\n/ { battery: battery { compatible = "test,battery";\r\n#if ENABLED\r\n flags = <BIT(3)>;\r\n#else\r\n flags = <0>;\r\n#endif\r\n}; };\r\n' },

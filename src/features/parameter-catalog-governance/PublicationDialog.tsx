@@ -610,7 +610,7 @@ export function PublicationDialog({
                   <div className="parameter-catalog-publication-dialog__form">
                     {draft.mode === "create-subject" ? (
                       <>
-                        {sourcePrefill ? <p>来源：<a href={sourcePrefill.href} target="_blank" rel="noreferrer">{sourcePrefill.label}</a>。仅预填 compatible 标识；驱动性质与实例基数须单独确认。</p> : null}
+                        {sourcePrefill ? <p className="shared-dtsi-source-context">来源：<a href={sourcePrefill.href} target="_blank" rel="noreferrer">{sourcePrefill.label}</a>。仅预填 compatible 标识；驱动性质与实例基数须单独确认。</p> : null}
                         <label>
                           {publicationCopy.subjectKindPick}
                           <SelectControl
