@@ -3050,6 +3050,57 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await expect(await openWorkbenchPanel(page,"config-set")).toContainText("retained-");
   });
 
+  test("shared reference removal recovers project dependencies and retains source history",async({page,request},testInfo)=>{
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
+    const binding=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:'/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "RemovalPrivate", "keep"; }; };',rawValuePattern:'"RemovalPrivate", "keep"',nodeLocatorPattern:"board",reason:"#1426 private source",timeoutMs:60_000});
+    const sourceName=`removal-${randomUUID()}.dtsi`,content='/ { removable: removable { compatible = "mt,mt5788"; rx_fod_cond = "RemovalShared", "keep"; }; };';
+    const created=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:`Removal ${randomUUID()}`,sourceName,content,changeDescription:"Removal fixture"}});expect(created.status(),await created.text()).toBe(201);const resourceId=(await created.json()).item.resourceId as string;
+    const publication=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:1}});expect(publication.status(),await publication.text()).toBe(201);
+    const published=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`),{headers:adminHeaders(),data:{previewId:(await publication.json()).item.id,idempotencyKey:randomUUID()}});expect(published.status(),await published.text()).toBe(201);const versionId=(await published.json()).item.id as string;
+    const compositionPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition`,addition={sharedReference:{resourceId,versionId},role:"misc",sortOrder:1};
+    const preview=await request.post(apiRoute(`${compositionPath}/preview`),{headers:adminHeaders(),data:addition});expect(preview.status(),await preview.text()).toBe(200);
+    const added=await request.post(apiRoute(`${compositionPath}/apply`),{headers:adminHeaders(),data:{...addition,proofToken:(await preview.json()).item.proofToken,reason:"#1426 pin",clientMutationId:randomUUID()}});expect(added.status(),await added.text()).toBe(200);
+    const files=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`),{headers:adminHeaders()});const root=((await files.json()).items as {fileId:string;fileName:string;role:string;currentVersionId:string}[]).find(file=>file.role==="base")!;
+    const original=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${root.fileId}/versions/${root.currentVersionId}/content`),{headers:adminHeaders()});expect(original.status(),await original.text()).toBe(200);const originalSource=await original.text();
+    const candidate=await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),{headers:adminHeaders(),data:{fileId:root.fileId,fileName:root.fileName,intent:"source_revision",contentBase64:Buffer.from(originalSource+'\n&removable { status = "disabled"; };\n').toString("base64"),expectedCurrentVersionId:root.currentVersionId,expectedConfigRevisionId:(await added.json()).item.configRevisionId,clientMutationId:randomUUID()}});expect(candidate.status(),await candidate.text()).toBe(201);const candidateId=(await candidate.json()).item.id as string;
+    const cp=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-preview`),{headers:adminHeaders()});expect(cp.status(),await cp.text()).toBe(200);
+    const ca=await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-apply`),{headers:adminHeaders(),data:{expectedCurrentVersionId:root.currentVersionId,expectedProofToken:(await cp.json()).item.proofToken,reason:"#1426 project overlay dependency",clientMutationId:randomUUID()}});expect(ca.status(),await ca.text()).toBe(200);
+    const route=`/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({organization:organizationId,configSet:binding.configSetId,tab:"source",file:root.fileId})}`;
+    await signInBrowserAsRole(page,"guest",disposablePageUrl(disposableRuntime,route));await dismissXiaozeHint(page);
+    const sharedReadonly=await openWorkbenchPanel(page,"config-set");await expect(sharedReadonly).toContainText("只读");await sharedReadonly.getByRole("button",{name:`${sourceName} 更多`,exact:true}).click();await expect(page.getByRole("menuitem",{name:"移除引用",exact:true})).toHaveCount(0);await page.keyboard.press("Escape");
+    const readonlyCapture=testInfo.outputPath("shared-removal-readonly-1440.png");await page.screenshot({path:readonlyCapture});await testInfo.attach("Removal read-only1440",{path:readonlyCapture,contentType:"image/png"});
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,route));await dismissXiaozeHint(page);
+    const composition=await openWorkbenchPanel(page,"config-set");await composition.getByRole("button",{name:`${sourceName} 更多`,exact:true}).click();await page.getByRole("menuitem",{name:"移除引用",exact:true}).click();
+    const dialog=page.getByRole("dialog",{name:"移除共享引用",exact:true}),reason="#1426 remove this project reference";
+    await dialog.getByRole("textbox",{name:"变更说明",exact:true}).fill(reason);
+    const refusal={method:"POST",path:`${compositionPath}/preview`,status:400};expectedBrowserApiFailures.push(refusal);
+    try{
+      let release!:()=>void;const pending=new Promise<void>(resolve=>{release=resolve;});
+      await page.route(`**${compositionPath}/preview`,async route=>{await pending;await route.continue();});
+      await dialog.getByRole("button",{name:"预览移除引用",exact:true}).click();await expect(dialog.getByRole("button",{name:"正在核对…",exact:true})).toBeDisabled();release();
+      const conflicts=dialog.getByRole("region",{name:"移除引用冲突处理",exact:true});await expect(conflicts).toContainText("找不到覆盖目标节点（&removable）");await expect(conflicts).not.toContainText("synthetic");await expect(dialog.getByRole("button",{name:"编辑项目根文件",exact:true})).toHaveCount(0);await page.unroute(`**${compositionPath}/preview`);
+      for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+        await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+        const path=testInfo.outputPath(`shared-removal-error-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`Removal error ${viewport.width}`,{path,contentType:"image/png"});
+      }
+      await dialog.getByRole("button",{name:"修正项目源码",exact:true}).first().focus();await page.keyboard.press("Enter");
+    }finally{expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(refusal),1);}
+    const corrected=await prepareSourceFromEditor(page,originalSource,true);await corrected.dialog.getByRole("textbox",{name:"DTS 修改原因",exact:true}).fill("#1426 remove the dependent project overlay");
+    const saving=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/source-apply"));await corrected.dialog.getByRole("button",{name:"直接应用修改",exact:true}).click();expect((await saving).status()).toBe(200);await expect(corrected.dialog).toHaveCount(0);
+    await page.reload();await page.getByRole("button",{name:"返回移除引用",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue(reason);await expect(dialog.getByRole("button",{name:"确认移除引用",exact:true})).toHaveCount(0);
+    await dialog.getByRole("button",{name:"预览移除引用",exact:true}).click();await expect(dialog.getByRole("region",{name:"移除引用预览",exact:true})).toContainText("RemovalShared");
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+      await page.setViewportSize(viewport);await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toBeInViewport();await expect(dialog.getByRole("button",{name:"确认移除引用",exact:true})).toBeInViewport();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      const path=testInfo.outputPath(`shared-removal-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`Removal ${viewport.width}`,{path,contentType:"image/png"});
+    }
+    await dialog.getByRole("button",{name:"取消本次预览",exact:true}).click();await expect(dialog.getByRole("button",{name:"确认移除引用",exact:true})).toHaveCount(0);await dialog.getByRole("button",{name:"预览移除引用",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue(reason);
+    const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/member-addition/apply"));await dialog.getByRole("button",{name:"确认移除引用",exact:true}).focus();await page.keyboard.press("Enter");expect((await applying).status()).toBe(200);await expect(dialog).toHaveCount(0);
+    await page.reload();const currentFiles=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`),{headers:adminHeaders()});expect(((await currentFiles.json()).items as {fileName:string}[]).some(file=>file.fileName===sourceName)).toBe(false);
+    const values=await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),{headers:adminHeaders()});expect((await values.json()).items).toContainEqual(expect.objectContaining({rawValue:'"RemovalPrivate", "keep"'}));expect((await values.json()).items).not.toContainEqual(expect.objectContaining({rawValue:'"RemovalShared", "keep"'}));
+    await signInBrowserAsRole(page,"guest",disposablePageUrl(disposableRuntime,route));const readonly=await openWorkbenchPanel(page,"config-set");await expect(readonly).toContainText("只读");await readonly.getByRole("button",{name:`${root.fileName} 更多`,exact:true}).click();await expect(page.getByRole("menuitem",{name:"移除引用",exact:true})).toHaveCount(0);await page.keyboard.press("Escape");
+  });
+
   test("restores historical shared dependencies through snapshot history with retained choice and keyboard confirmation",async({page,request},testInfo)=>{
     test.setTimeout(240_000);
     await seedAcceptanceRoleMatrix();
