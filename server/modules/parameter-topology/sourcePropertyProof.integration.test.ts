@@ -18,8 +18,9 @@ describe("exact DTS source value proof before pin creation", () => {
   let directory: string;
   let storage: ReturnType<typeof createLocalObjectStore>;
   let identity: ExactDtsSourceIdentity;
+  let pathIdentity: ExactDtsSourceIdentity;
   const organizationId = "org-source-proof", projectId = "project-source-proof", configSetId = "set-source-proof", userId = "user-source-proof";
-  const overlay = "/* 🧪 */\n&other { limit = <7>; };\n&charger { /delete-property/ limit; limit = <7>; };\n";
+  const overlay = "/* 🧪 */\n&{/other} { limit = <7>; };\n&charger { /delete-property/ limit; limit = <7>; };\n";
 
   beforeAll(async () => {
     database = await createEphemeralTestDatabase("exactsourceproof");
@@ -56,6 +57,11 @@ describe("exact DTS source value proof before pin creation", () => {
        order by effect.source_order desc`, [revision.id],
     )).rows;
     identity = { organizationId,projectId,configSetId,configRevisionId: revision.id,fileId: "file-proof-2",fileVersionId: "version-proof-2",propertyName: "limit",...rows[0]! };
+    const pathRow=(await db.query<{logicalNodeId:string;nodeOccurrenceId:string;propertyOccurrenceId:string}>(
+      `select logical.logical_node_id as "logicalNodeId",effect.node_occurrence_id as "nodeOccurrenceId",effect.property_occurrence_id as "propertyOccurrenceId"
+       from dts_occurrence_effects effect join dts_logical_node_revisions logical on logical.id=effect.logical_node_revision_id
+       where effect.config_revision_id=$1 and logical.node_locator='/other' and effect.property_name='limit' order by effect.source_order desc`,[revision.id])).rows[0]!;
+    pathIdentity={...identity,...pathRow};
     await db.query(`insert into project_parameter_files(id,organization_id,project_id,file_name,format,config_set_id,config_set_role,config_set_sort_order)
       values ('file-proof-unused',$1,$2,'unused.dtsi','dts',$3,'include',4)`, [organizationId,projectId,configSetId]);
     await db.query(`insert into project_parameter_file_versions(id,file_id,version_number,storage_key,checksum,size_bytes,parsed_index,origin,created_by_user_id)
@@ -75,6 +81,16 @@ describe("exact DTS source value proof before pin creation", () => {
     });
     expect(proof).toMatchObject({ sourceName: "change.dtso",nodeLocator: "/device@0",fileVersionId: "version-proof-2",sourceSpan: { start: overlay.lastIndexOf("<7>"),end: overlay.lastIndexOf("<7>") + 3 },
       value: { kind: "cells",bits: 32,groups: [[{ kind: "integer",raw: "7",value: "7" }]] } });
+  });
+
+  it("proves the actual native path target and exact original property occurrence",async()=>{
+    const proof=await db.transaction(async tx=>{
+      await lockExactSourceRevisionsForProof(tx,[pathIdentity]);
+      return proveExactDtsProperty(tx,storage,pathIdentity);
+    });
+    expect(proof).toMatchObject({nodeLocator:"/other",sourceName:"change.dtso",fileVersionId:"version-proof-2",
+      sourceSpan:{start:overlay.indexOf("<7>"),end:overlay.indexOf("<7>")+3},value:{kind:"cells",groups:[[{value:"7"}]]}});
+    expect(overlay.slice(proof.sourceSpan.start,proof.sourceSpan.end)).toBe("<7>");
   });
 
   it("refuses an unpinned property row whose value differs from the immutable object", async () => {
@@ -244,7 +260,7 @@ describe("exact DTS source value proof before pin creation", () => {
       expect(source.revision.includeSearchPaths).toEqual(includeSearchPaths);
       expect(source.members.find((member) => member.fileVersionId === identity.fileVersionId)?.content).toBe(overlay);
       expect((await proveExactDtsProperty(tx,storage,identity)).value).toMatchObject({ kind: "cells",groups: [[{ value: "7" }]] });
-      expect((await tx.query(`select include_search_paths from dts_config_revisions where id=$1`,[identity.configRevisionId])).rows[0]?.include_search_paths).toEqual(includeSearchPaths);
+      expect((await tx.query<{include_search_paths:string[]}>(`select include_search_paths from dts_config_revisions where id=$1`,[identity.configRevisionId])).rows[0]?.include_search_paths).toEqual(includeSearchPaths);
       throw rollback;
     })).rejects.toBe(rollback);
   });

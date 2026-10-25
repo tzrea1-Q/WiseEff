@@ -36,6 +36,28 @@ function setup(options: { writable?: boolean; saveError?: boolean } = {}) {
 }
 
 describe("shared DTSI draft authoring", () => {
+  it("keeps relative file paths and unsaved editor content while switching source members",async()=>{
+    const user=userEvent.setup();
+    const {fetchImpl}=setup();
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));
+    await screen.findByLabelText("资源名称");
+    const files=[new File(['/include/ "parts/node.dtsi"\n'],"main.dtsi"),new File(['/ { node {}; };\n'],"node.dtsi"),new File(["#define VALUE 42\n"],"constants.h")];
+    files.forEach((file,index)=>{Object.defineProperty(file,"webkitRelativePath",{value:["lib/main.dtsi","lib/parts/node.dtsi","headers/constants.h"][index]});
+      Object.defineProperty(file,"arrayBuffer",{value:async()=>new TextEncoder().encode([ '/include/ "parts/node.dtsi"\n','/ { node {}; };\n',"#define VALUE 42\n"][index]!).buffer});});
+    await user.upload(document.querySelector('input[type="file"]')!,files);
+    await user.click(await screen.findByRole("button",{name:"headers/constants.h"}));
+    expect(screen.getByLabelText("文件路径")).toHaveValue("headers/constants.h");
+    expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("#define VALUE 42");
+    await user.type(screen.getByLabelText("文件路径"),"pp");
+    await user.click(screen.getByRole("button",{name:"lib/main.dtsi"}));
+    await user.click(screen.getByRole("button",{name:"保存草稿"}));
+    const request=fetchImpl.mock.calls.find(([,init])=>init?.method==="POST")!;
+    expect(JSON.parse(request[1]!.body as string).members).toEqual([
+      {sourceName:"lib/main.dtsi",content:'/include/ "parts/node.dtsi"\n'},
+      {sourceName:"lib/parts/node.dtsi",content:'/ { node {}; };\n'},
+      {sourceName:"headers/constants.hpp",content:"#define VALUE 42\n"}
+    ]);
+  });
   it("saves a draft and preserves edited input when a later save conflicts", async () => {
     const user = userEvent.setup();
     setup({ saveError: true });

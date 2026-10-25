@@ -125,6 +125,13 @@ describe("ProjectTopologyWorkspace", () => {
     expect(within(workspace).getByRole("treeitem", { name: /未解析|unresolved/i })).toBeVisible();
   });
 
+  it("recognizes explicit node-path targets in the source tree without treating them as labels",()=>{
+    const base=TOPOLOGY_TEACHING_SOURCE_NODES[0]!,overlay={...TOPOLOGY_TEACHING_SOURCE_NODES[1]!,refTarget:"{/amba}"};
+    renderWorkspace({sourceNodes:[base,overlay]});
+    fireEvent.click(screen.getByRole("radio",{name:"源树"}));
+    expect(screen.getByRole("treeitem",{name:/&\{\/amba\}/u})).not.toHaveTextContent("未解析");
+  });
+
   it("search returns two distinct gpio_int bindings by stable id", () => {
     renderWorkspace();
     const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });

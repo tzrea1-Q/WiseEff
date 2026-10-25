@@ -38,7 +38,7 @@ export interface DtsStringListItem {
 
 export type DtsCell =
   | { kind: "integer"; raw: string; value: string }
-  | { kind: "phandle"; label: string };
+  | { kind: "phandle"; label: string }; // A label or brace-wrapped absolute path, e.g. {/soc/clock}.
 
 export type DtsValueSegment =
   | { kind: "string"; raw: string; value: string }
@@ -94,7 +94,7 @@ export interface DtsNodeCst {
   name: string;
   unitAddress?: string;
   labels: string[];
-  refTarget?: string;
+  refTarget?: string; // A label or brace-wrapped absolute path, preserving existing &target writers.
   isOverlayRoot: boolean;
   children: Array<DtsNodeCst | DtsPropertyCst | DtsDeletePropertyCst | DtsDeleteNodeCst>;
   span: DtsSpan;

@@ -12,7 +12,7 @@ test("publishes a source-only shared version and retains its history after disca
   await dismissXiaozeHint(page);
   await page.getByRole("button",{name:"导入资源",exact:true}).click();
   const source='/ { battery: battery { compatible = "test,published-battery"; status = "disabled"; }; };\n';
-  await page.locator('input[type="file"]').setInputFiles({name:"battery-common.dtsi",mimeType:"text/plain",buffer:Buffer.from(source)});
+  await page.locator('input[type="file"]').first().setInputFiles({name:"battery-common.dtsi",mimeType:"text/plain",buffer:Buffer.from(source)});
   await page.getByLabel("变更说明",{exact:true}).fill("首次发布电池公共声明，项目按需引用。");
   await page.getByRole("button",{name:"保存草稿",exact:true}).click();
   await expect(page.getByText("草稿已保存",{exact:true})).toBeVisible();
