@@ -299,6 +299,7 @@ function scanStringValue(
   }
   const viewSelector = normalized.match(/view=(effective|governance)(?:&|$)/iu)?.[1]?.toLowerCase();
   const contextualView = isViewContext(node) && /^(?:effective|governance)$/u.test(normalized)
+    && !(normalized === "effective" && isPublicDtsTopologyView(node))
     ? normalized.toLowerCase()
     : undefined;
   if (viewSelector || contextualView) {
@@ -748,6 +749,65 @@ function isLegacyIdentityKeyContext(node: ts.StringLiteral | ts.NoSubstitutionTe
     ts.isPropertyAccessExpression(callee) &&
     callMemberName(callee.expression) === "hasOwnProperty"
   );
+}
+
+/** The source topology's public discriminator is unrelated to the retired Catalog projection. */
+function isPublicDtsTopologyView(node: ts.Node): boolean {
+  const source = node.getSourceFile();
+  const moduleMatches = (name: string) => name === "@/domain/parameter-topology/types"
+    || /(?:^|\/)src\/domain\/parameter-topology\/types$/u.test(name);
+  const aliases = new Set(source.statements.flatMap(statement => {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)
+      || !moduleMatches(statement.moduleSpecifier.text)) return [];
+    const bindings = statement.importClause?.namedBindings;
+    return bindings && ts.isNamedImports(bindings) ? bindings.elements
+      .filter(binding => (binding.propertyName ?? binding.name).text === "TopologyTree").map(binding => binding.name.text) : [];
+  }));
+  const isTopologyType = (candidate: ts.Node): boolean => {
+    if (ts.isTypeReferenceNode(candidate) && ts.isIdentifier(candidate.typeName) && aliases.has(candidate.typeName.text)) return true;
+    if (ts.isImportTypeNode(candidate) && candidate.qualifier && ts.isIdentifier(candidate.qualifier)
+      && candidate.qualifier.text === "TopologyTree" && ts.isLiteralTypeNode(candidate.argument)
+      && ts.isStringLiteral(candidate.argument.literal) && moduleMatches(candidate.argument.literal.text)) return true;
+    return false;
+  };
+  const topologyAtPath = (type: ts.TypeNode, path: readonly string[]): boolean => {
+    if (!path.length) return isTopologyType(type);
+    if (!ts.isTypeLiteralNode(type)) return false;
+    const property = type.members.find(member => ts.isPropertySignature(member) && propertyNameText(member.name) === path[0]);
+    return Boolean(property && ts.isPropertySignature(property) && property.type && topologyAtPath(property.type, path.slice(1)));
+  };
+  for (let parent = node.parent; parent && !ts.isStatement(parent); parent = parent.parent) {
+    if (ts.isTypeReferenceNode(parent) && ts.isIdentifier(parent.typeName) && parent.typeName.text === "Extract"
+      && parent.typeArguments?.[0] && isTopologyType(parent.typeArguments[0])) return true;
+  }
+  const comparison = node.parent;
+  if (!ts.isBinaryExpression(comparison)) return false;
+  const reference = comparison.left === node ? comparison.right : comparison.left;
+  if (!ts.isPropertyAccessExpression(reference) || reference.name.text !== "view") return false;
+  let root: ts.Expression = reference.expression;
+  const path: string[] = [];
+  while (ts.isPropertyAccessExpression(root)) { path.unshift(root.name.text); root = root.expression; }
+  if (!ts.isIdentifier(root)) return false;
+  const rootName = root.text;
+  for (let scope: ts.Node | undefined = comparison.parent; scope; scope = scope.parent) {
+    if (!ts.isBlock(scope) && !ts.isSourceFile(scope)) continue;
+    for (const statement of scope.statements) {
+      if (!ts.isVariableStatement(statement)) continue;
+      const binding = statement.declarationList.declarations.find(declaration => ts.isIdentifier(declaration.name) && declaration.name.text === rootName);
+      if (!binding) continue;
+      if (binding.type) return topologyAtPath(binding.type, path);
+      let value = binding.initializer;
+      const projectedPath = [...path];
+      while (value) {
+        if (ts.isPropertyAccessExpression(value)) { projectedPath.unshift(value.name.text); value = value.expression; }
+        else if (ts.isAwaitExpression(value) || ts.isParenthesizedExpression(value)) value = value.expression;
+        else break;
+      }
+      return Boolean(value && ts.isCallExpression(value) && ts.isIdentifier(value.expression) && value.expression.text === "requestJson"
+        && value.typeArguments?.[0] && projectedPath[0] === "body" && topologyAtPath(value.typeArguments[0], projectedPath.slice(1)));
+    }
+  }
+  return false;
 }
 
 function isViewContext(node: ts.Node) {
