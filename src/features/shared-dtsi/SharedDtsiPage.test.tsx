@@ -50,14 +50,14 @@ describe("shared DTSI draft authoring", () => {
     await user.click(screen.getByText("构建设置", { exact: true }));
     await user.type(screen.getByLabelText("Include 搜索目录"), "include");
     await user.type(screen.getByLabelText("构建宏"), "ENABLED=1");
-    await user.click(screen.getByRole("button", { name: "保存草稿", exact: true }));
+    await user.click(screen.getByRole("button", { name: /^保存草稿$/u }));
     await screen.findByText("草稿已保存", { exact: true });
     const post = fetchImpl.mock.calls.find(([, init]) => init?.method === "POST")!;
     expect(JSON.parse(post[1]!.body as string)).toMatchObject({ buildInputs: { includeSearchPaths: ["include"], defines: { ENABLED: "1" } } });
     expect(screen.getByLabelText("构建宏")).toHaveValue("ENABLED=1");
     await user.clear(screen.getByLabelText("构建宏"));
     await user.type(screen.getByLabelText("构建宏"), "ENABLED=0");
-    expect(screen.getByRole("button", { name: "保存草稿", exact: true })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /^保存草稿$/u })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "返回资源列表" }));
     expect(await screen.findByRole("dialog")).toBeVisible();
   });
@@ -79,6 +79,7 @@ describe("shared DTSI draft authoring", () => {
     const request=fetchImpl.mock.calls.find(([,init])=>init?.method==="POST")!;
     expect(JSON.parse(request[1]!.body as string).dependencies).toEqual([{resourceId:"44444444-4444-4444-8444-444444444444",versionId:"55555555-5555-4555-8555-555555555555",mountPath:"vendor/clocks"}]);
     expect(await screen.findByText("Common clocks · 版本 3 · vendor/clocks")).toBeVisible();
+    expect(screen.getByRole("link",{name:"查看固定依赖 1 源码"})).toHaveAttribute("href",expect.stringContaining("version=55555555-5555-4555-8555-555555555555"));
   });
   it("keeps relative file paths and unsaved editor content while switching source members",async()=>{
     const user=userEvent.setup();
@@ -195,7 +196,7 @@ describe("shared DTSI draft authoring", () => {
     function Harness(){const[search,setSearch]=useState(`?resource=${resourceId}`);return <SharedDtsiPage apiClient={api} canWrite search={search} onNavigate={path=>setSearch(new URL(path,"http://localhost").search)}/>;}
     render(<Harness/>);
     await user.click(await screen.findByRole("button",{name:"预览发布"}));
-    expect(screen.getByText("发布共享版本，不会自动更新项目配置。")).toBeVisible();
+    expect(screen.getByText("本组织有查看权限的用户可读取完整源码；发布不会自动更新项目配置。")).toBeVisible();
     expect(screen.getByLabelText("待发布 DTSI 源码")).toHaveAttribute("aria-readonly","true");
     await user.click(screen.getByRole("button",{name:"发布版本"}));
     await screen.findByText("v1 · 已发布，只读");

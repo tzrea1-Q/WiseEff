@@ -15,6 +15,7 @@ import { DtsPreprocessingError, inspectDtsCppIncludes, requiresDtsPreprocessing 
 import { sharedDtsiDraftInputSchema, type SharedDtsiDraft } from "../contracts/dtoSchemas/sharedDtsi";
 import { createSharedDtsiDraft, getSharedDtsiDraft, requireWrite, type WriteContext } from "./service";
 import { sharedDtsiPublicationSource } from "./source";
+import { getSharedDtsiVersion } from "./publication";
 
 export async function importPrivateProjectSource(db: Database, objectStore: ObjectStore, auth: AuthContext,
   input: { projectId: string; configSetId: string; configRevisionId: string; fileId: string; fileVersionId: string; name: string }, context: WriteContext) {
@@ -27,6 +28,8 @@ export async function importPrivateProjectSource(db: Database, objectStore: Obje
   if(!scope || scope.kind === "only" && !scope.ids.includes(input.projectId)) throw new ApiError("FORBIDDEN", "没有此项目的源码读取权限。");
   return db.transaction(async tx => {
     const identity = { ...input, organizationId: parameterOrganizationId(authorized) };
+    if(!(await tx.query("select id from public.projects where id=$1 and organization_id=$2 for key share",[input.projectId,identity.organizationId])).rowCount)
+      throw new ApiError("NOT_FOUND","项目源码不存在。");
     const exact = await loadExactSourceRevisionForProof(tx, objectStore, identity);
     const selected = exact.members.find(member => member.fileId === input.fileId && member.fileVersionId === input.fileVersionId)!;
     if(selected.sharedReference || selected.format !== "dts" || !/\.dtsi?$/u.test(selected.sourceName))
@@ -59,12 +62,17 @@ export async function importPrivateProjectSource(db: Database, objectStore: Obje
     const dependencies: NonNullable<SharedDtsiDraft["dependencies"]> = [];
     for(const member of reachable.filter(member => member.sharedReference)) {
       const pin = member.sharedReference!;
-      if(dependencies.some(value => value.resourceId === pin.resourceId)) continue;
-      const reference = (await tx.query<{mountPath:string}>(`select mount_path as "mountPath" from public.project_shared_dtsi_references
-        where id=$1 and organization_id=$2 and project_id=$3 and config_set_id=$4 and resource_id=$5 and revision_id=$6`,
-        [pin.referenceId, identity.organizationId, input.projectId, input.configSetId, pin.resourceId, pin.versionId])).rows[0];
-      if(!reference) throw new ApiError("CONFLICT", "固定共享依赖的来源证明不可用。");
-      dependencies.push({resourceId:pin.resourceId,versionId:pin.versionId,mountPath:reference.mountPath});
+      const version=await getSharedDtsiVersion(tx,authorized,pin.resourceId,pin.versionId);
+      const upstream=version.members.find(value=>value.id===pin.memberId);
+      if(!upstream || version.digest!==pin.digest || version.version!==pin.version || upstream.content!==member.content
+        || upstream.checksum.replace(/^sha256:/u,"")!==member.checksum.replace(/^sha256:/u,""))
+        throw new ApiError("CONFLICT", "固定共享依赖的来源证明不可用。");
+      const mountPath=member.sourceName===upstream.sourceName?"":member.sourceName.endsWith(`/${upstream.sourceName}`)
+        ?member.sourceName.slice(0,-upstream.sourceName.length-1):null;
+      const previous=dependencies.find(value=>value.resourceId===pin.resourceId);
+      if(mountPath===null || previous && (previous.versionId!==pin.versionId || previous.mountPath!==mountPath))
+        throw new ApiError("CONFLICT","冻结共享依赖的版本或挂载路径不一致。");
+      if(!previous)dependencies.push({resourceId:pin.resourceId,versionId:pin.versionId,mountPath});
     }
     const parsed = sharedDtsiDraftInputSchema.safeParse({ name:input.name,
       members:own.map(member => ({sourceName:member.sourceName,content:member.content})), dependencies,buildInputs,

@@ -1,4 +1,5 @@
 import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -27,6 +28,7 @@ import { getAuthContext } from "../auth/repository";
 import type { SourceRevisionPreview } from "./sourceRevisionService";
 import type { TopologyTree } from "../../../src/domain/parameter-topology/types";
 import { createDtsToolchainRunner } from "./dtsToolchain";
+import { insertFileVersion, insertProjectParameterFile, setCurrentVersion } from "./repository";
 
 const ORG = "org-shared-ref", ADMIN = "user-shared-ref", A = "shared-project-a", B = "shared-project-b";
 const admin = makeTestAuthContext({ organizationId: ORG, userId: ADMIN, roles: [{ roleId: "admin", projectId: null }] });
@@ -95,21 +97,24 @@ describe("fixed shared references through the real API role", () => {
     expect(created.body.item.members).toEqual([expect.objectContaining({ sourceName: "board.dts", content: source })]);
     const reopened = await requestJson(server(), `/api/v2/shared-dtsi/${created.body.item.resourceId}`);
     expect(reopened.body).toEqual(created.body);
+    const edited=source.replace("<36>","<37>");
     const saved = await requestJson(server(), `/api/v2/shared-dtsi/${created.body.item.resourceId}/draft`, { method: "PUT",
-      body: JSON.stringify({ name: "Shared private board", members: created.body.item.members, changeDescription: "Publish private frozen source", expectedRevision: 1 }) });
+      body: JSON.stringify({ name: "Shared private board", members: created.body.item.members.map(member=>({...member,content:edited})), changeDescription: "Publish private frozen source", expectedRevision: 1 }) });
     expect(saved.status, saved.bodyText).toBe(200);
     const preview = await post<{ item: { id: string } }>(`/api/v2/shared-dtsi/${created.body.item.resourceId}/publication-preview`, { expectedRevision: 2 });
     expect(preview.status, preview.bodyText).toBe(201);
     const published = await post<{ item: { members: Array<{ sourceName: string; content: string }>; manifest: { sourceEvidence: { digest: string } } } }>(
       `/api/v2/shared-dtsi/${created.body.item.resourceId}/publications`, { previewId: preview.body.item.id, idempotencyKey: "private-board-publication" });
     expect(published.status, published.bodyText).toBe(201);
-    expect(published.body.item.members).toEqual([expect.objectContaining({ sourceName: "board.dts", content: source })]);
+    expect(published.body.item.members).toEqual([expect.objectContaining({ sourceName: "board.dts", content: edited })]);
     expect(published.body.item.manifest.sourceEvidence.digest).toMatch(/^sha256:[a-f0-9]{64}$/u);
     expect((await createDtsToolchainRunner().validate({entryFile:"board.dts",includeSearchPaths:["."],overlayOrder:[],
       files:new Map(published.body.item.members.map(member=>[member.sourceName,{content:member.content}]))},{mode:"release"})).ok).toBe(true);
     expect(published.bodyText).not.toContain(privateRoots[B]!.configRevisionId);
     expect(published.bodyText).not.toContain(B);
+    expect(published.bodyText).not.toContain(createHash("sha256").update(source).digest("hex"));
     expect((await requestJson(server(), `/api/v1/projects/${B}/config-sets/${sets[B]}/files`)).body).toEqual(before);
+    expect((await requestJson(server(),`/api/v1/projects/${B}/parameter-files/${privateRoots[B]!.fileId}/versions/${privateRoots[B]!.fileVersionId}/content`)).bodyText).toBe(source);
     const json = jsonFiles[B]!;
     expect((await requestJson(server(), `/api/v1/projects/${B}/parameter-files/${json.fileId}/versions/${json.versionId}/content`)).bodyText).toBe('{"local":true}');
   });
@@ -150,6 +155,8 @@ describe("fixed shared references through the real API role", () => {
     const target = `/api/v2/projects/${B}/config-sets/${sets[B]}/shared-dtsi`;
     const body = {...privateRoots[B],name:"Must not appear"};
     expect((await post(target,body,editor)).status).toBe(403);
+    expect((await post("/api/v2/shared-dtsi",{name:"Forged provenance",sourceName:"fake.dts",content:source,
+      sourceEvidence:{digest:`sha256:${"0".repeat(64)}`}})).status).toBe(400);
     const wrong = await post(target,{...body,...privateRoots[A]});
     expect(wrong.status,wrong.bodyText).toBe(409);
     expect(wrong.bodyText).not.toContain("Shared reference");
@@ -159,6 +166,74 @@ describe("fixed shared references through the real API role", () => {
     try { expect((await post(target,body)).status).toBe(403); }
     finally {await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('shared-ref-role',$1,$2,'admin')",[ADMIN,ORG]);}
     expect(await resourceList()).toEqual(before);
+  });
+
+  it("keeps missing or cyclic source selections intact and rolls back the new draft when private provenance auditing fails",async()=>{
+    const before=(await requestJson(server(),"/api/v2/shared-dtsi?limit=100")).body;
+    for(const cycle of [false,true]) {
+      const set=await createConfigSet(db,admin,{projectId:B,name:cycle?"Cycle import":"Missing import"});
+      const fileName=cycle?"cycle.dts":"missing.dts";
+      const content=`/dts-v1/;\n/include/ "${cycle?fileName:"missing.dtsi"}"\n/ {};`;
+      const file=await uploadProjectParameterFile(db,storage,admin,{projectId:B,fileName,bytes:Buffer.from(content)});
+      await addConfigSetFile(db,admin,{configSetId:set.id,fileId:file.file.id,role:"base",sortOrder:0});
+      const revision=await ingestConfigRevision(db,{organizationId:ORG,projectId:B,configSetId:set.id,entryFile:fileName,includeSearchPaths:["."],overlayOrder:[],
+        members:[{fileId:file.file.id,fileVersionId:file.version.id,fileName,content,role:"base",sortOrder:0}]},admin);
+      const result=await post(`/api/v2/projects/${B}/config-sets/${set.id}/shared-dtsi`,{name:"Must not publish incomplete source",
+        configRevisionId:revision.id,fileId:file.file.id,fileVersionId:file.version.id});
+      expect(result.status,result.bodyText).toBe(400);
+      expect(result.bodyText).toContain(cycle?"include-cycle":"include-missing");
+      expect((await requestJson(server(),`/api/v1/projects/${B}/parameter-files/${file.file.id}/versions/${file.version.id}/content`)).bodyText).toBe(content);
+    }
+    await db.query(`create function public.reject_private_source_audit() returns trigger language plpgsql as $$begin
+      if new.kind='shared-dtsi-project-source' then raise exception 'Private proof audit unavailable'; end if; return new; end$$;
+      create trigger reject_private_source_audit before insert on public.audit_events for each row execute function public.reject_private_source_audit()`);
+    try {
+      const failed=await post(`/api/v2/projects/${B}/config-sets/${sets[B]}/shared-dtsi`,{...privateRoots[B],name:"Must roll back source copy"});
+      expect(failed.status,failed.bodyText).toBe(500);
+    } finally {await db.query("drop trigger reject_private_source_audit on public.audit_events; drop function public.reject_private_source_audit()");}
+    expect((await requestJson(server(),"/api/v2/shared-dtsi?limit=100")).body).toEqual(before);
+  });
+
+  it("preserves frozen CPP settings, original headers and inactive declared dependencies when promoting a private root",async()=>{
+    const set=await createConfigSet(db,admin,{projectId:B,name:"Private CPP sources"});
+    const files=[
+      {sourceName:"boards/original.dts",content:'\uFEFF#include <defs.h>\r\n#if 0\r\n#include "../headers/inactive.h"\r\n#endif\r\n/dts-v1/;\r\n/ { compatible = "test,board"; model = "Frozen CPP"; value = <(BASE + OFFSET)>; };\r\n'},
+      {sourceName:"headers/defs.h",content:'\uFEFF#define BASE 37\r\n'},
+      {sourceName:"headers/inactive.h",content:'#define INACTIVE 9\r\n'},
+      {sourceName:"headers/unselected.h",content:'#define UNSELECTED_PRIVATE 7\r\n'}
+    ];
+    const members=[];
+    for(const [index,file] of files.entries()) {
+      const stored=await storage.put({organizationId:ORG,fileName:`fixture-${randomUUID()}`,contentType:"text/plain",bytes:Buffer.from(file.content)});
+      const parameter=await insertProjectParameterFile(db,{id:randomUUID(),organizationId:ORG,projectId:B,fileName:file.sourceName.split("/").at(-1)!,format:"dts"});
+      const version=await insertFileVersion(db,{id:randomUUID(),fileId:parameter.id,versionNumber:1,storageKey:stored.storageKey,checksum:stored.checksumSha256,
+        sizeBytes:Buffer.byteLength(file.content),origin:"upload",createdByUserId:ADMIN});
+      await setCurrentVersion(db,{fileId:parameter.id,versionId:version.id});
+      await addConfigSetFile(db,admin,{configSetId:set.id,fileId:parameter.id,role:index===0?"base":"misc",sortOrder:index});
+      members.push({...file,fileName:file.sourceName,fileId:parameter.id,fileVersionId:version.id,role:index===0?"base" as const:"include" as const,sortOrder:index});
+    }
+    const buildInputs={includeSearchPaths:["headers"],defines:{OFFSET:"5"}};
+    const revision=await ingestConfigRevision(db,{organizationId:ORG,projectId:B,configSetId:set.id,entryFile:files[0]!.sourceName,
+      ...buildInputs,overlayOrder:[],members},admin);
+    expect(revision.status).toBe("resolved");
+    const selected=members[0]!;
+    const imported=await post<{item:{resourceId:string;members:{sourceName:string;content:string}[];buildInputs:typeof buildInputs}}>(`/api/v2/projects/${B}/config-sets/${set.id}/shared-dtsi`,{
+      name:"Frozen private CPP",configRevisionId:revision.id,fileId:selected.fileId,fileVersionId:selected.fileVersionId});
+    expect(imported.status,imported.bodyText).toBe(201);
+    expect(imported.body.item.buildInputs).toEqual(buildInputs);
+    expect(imported.body.item.members.map(member=>member.sourceName).sort()).toEqual(["boards/original.dts","headers/defs.h","headers/inactive.h"]);
+    for(const member of imported.body.item.members)expect(member.content).toBe(files.find(file=>file.sourceName===member.sourceName)!.content);
+    expect(imported.bodyText).not.toContain("UNSELECTED_PRIVATE");
+    const saved=await requestJson(server(),`/api/v2/shared-dtsi/${imported.body.item.resourceId}/draft`,{method:"PUT",body:JSON.stringify({
+      name:"Frozen private CPP",members:imported.body.item.members,buildInputs,changeDescription:"Preserve all original CPP inputs",expectedRevision:1})});
+    expect(saved.status,saved.bodyText).toBe(200);
+    const preview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${imported.body.item.resourceId}/publication-preview`,{expectedRevision:2});
+    expect(preview.status,preview.bodyText).toBe(201);
+    const published=await post<{item:{members:{sourceName:string;content:string}[]}}>(`/api/v2/shared-dtsi/${imported.body.item.resourceId}/publications`,{
+      previewId:preview.body.item.id,idempotencyKey:"private-cpp-publication"});
+    expect(published.status,published.bodyText).toBe(201);
+    expect((await createDtsToolchainRunner().validate({entryFile:files[0]!.sourceName,...buildInputs,overlayOrder:[],
+      files:new Map(published.body.item.members.map(member=>[member.sourceName,{content:member.content}]))},{mode:"release"})).ok).toBe(true);
   });
 
   it("materializes exact immutable project-owned sources without silently following publication", async () => {
