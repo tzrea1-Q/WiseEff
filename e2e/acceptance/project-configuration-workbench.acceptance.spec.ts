@@ -3292,6 +3292,8 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     for(const file of frozen.files)expect(await downloaded.file(file.name)!.async("string")).toBe(file.content);
     expect(JSON.parse(await downloaded.file(configSetPackageManifestName)!.async("string"))).toMatchObject({sourcePackage:frozen.manifest.sourcePackage});
     await page.goto(disposablePageUrl(disposableRuntime,`/parameter-admin/projects/${target}/configuration`));
+    await expect(page.getByText("此配置尚无来源文件。请通过「配置」菜单添加来源或导入完整配置。",{exact:true})).toBeVisible();
+    await screenshot("parent-empty-project-1440.png");
     await page.getByRole("button",{name:"配置",exact:true}).click();await page.getByRole("menuitem",{name:"导入完整配置…",exact:true}).click();
     const dialog=page.getByRole("dialog",{name:"导入完整配置",exact:true});
     await dialog.getByLabel("配置包",{exact:true}).setInputFiles({name:download.suggestedFilename(),mimeType:"application/zip",buffer:bytes});

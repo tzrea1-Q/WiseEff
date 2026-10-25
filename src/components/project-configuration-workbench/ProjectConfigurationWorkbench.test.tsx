@@ -593,6 +593,28 @@ describe("ProjectConfigurationWorkbench", () => {
     renderWorkbench({ apiMode: true, topologyRepository: createTopologyRepository(), search });
     await waitFor(() => expect(screen.getByRole("tab", { name: tab })).toHaveAttribute("aria-selected", "true"));
   });
+  it("waits for loaded members before showing an empty current configuration without requesting an absent revision", async () => {
+    let releaseMembers!: () => void;
+    const pending = new Promise<Awaited<ReturnType<DtsStructuredRepository["listConfigSetFiles"]>>>(resolve => { releaseMembers = () => resolve([]); });
+    const dtsRepository = createDtsRepository({ listConfigSetFiles: vi.fn(() => pending) });
+    const getTopology = vi.fn<ParameterTopologyRepository["getTopology"]>().mockRejectedValue(new Error("No current revision"));
+    renderWorkbench({ apiMode: true, canAdmin: true, dtsRepository, topologyRepository: createTopologyRepository({ getTopology }) });
+    await waitFor(() => expect(dtsRepository.listConfigSetFiles).toHaveBeenCalled());
+    expect(getTopology).not.toHaveBeenCalled();
+    expect(screen.getByRole("status", { name: "正在加载生效配置…" })).toBeVisible();
+    await act(async () => releaseMembers());
+    expect(await screen.findByText("此配置尚无来源文件。请通过「配置」菜单添加来源或导入完整配置。")).toBeVisible();
+    expect(getTopology).not.toHaveBeenCalled();
+    expect(screen.queryByText("No current revision")).not.toBeInTheDocument();
+  });
+  it("loads an explicit historical effective revision when current configuration members are empty", async () => {
+    const getTopology = vi.fn<ParameterTopologyRepository["getTopology"]>().mockResolvedValue({ view: "effective", projectId: PROJECT.id,
+      configSetId: "cs-default", revisionId: "historical-revision", nodes: [{ id: "old", logicalNodeId: "old", locator: "/historical", name: "historical", parentLogicalNodeId: null, effects: [] }] });
+    renderWorkbench({ apiMode: true, search: "?configSet=cs-default&tab=effective&revision=historical-revision",
+      dtsRepository: createDtsRepository({ listConfigSetFiles: vi.fn(async () => []) }), topologyRepository: createTopologyRepository({ getTopology }) });
+    expect(await screen.findByRole("treeitem", { name: "节点 /historical" })).toBeVisible();
+    expect(getTopology).toHaveBeenCalledWith(PROJECT.id, "cs-default", "historical-revision", "effective");
+  });
   it("defaults to the complete effective tree, keeps compatible instances separate, and retries a failed read", async () => {
     const getTopology = vi.fn<ParameterTopologyRepository["getTopology"]>()
       .mockRejectedValueOnce(new Error("读取失败"))

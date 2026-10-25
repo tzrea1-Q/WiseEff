@@ -522,19 +522,21 @@ export function ProjectConfigurationWorkbench({
       && !["file", "versions", "candidates"].includes(queryValue(search, "inspector") ?? "") ? "effective" : "source";
   const showContentTabs = Boolean(topologyRepository) || contentTab === "conflicts" || syncConflicts.length > 0 || Boolean(conflictsError);
   const effectiveRevision = queryValue(search, "revision") ?? "current";
+  const currentEffective = ["current", "latest", "head"].includes(effectiveRevision);
   const effectiveKey = `${project.id}/${selectedConfigSet?.id}/${effectiveRevision}`;
   const [effectiveRetry, setEffectiveRetry] = useState(0);
   const [effectiveResult, setEffectiveResult] = useState<{ key: string; tree?: Extract<TopologyTree, { view: "effective" }>; error?: string } | null>(null);
   useEffect(() => {
     if (contentTab !== "effective" || !selectedConfigSet || !topologyRepository) return;
-    let cancelled = false;
     setEffectiveResult(null);
+    if (currentEffective && (membersListLoading || membersError || selectedMembers.length === 0)) return;
+    let cancelled = false;
     void topologyRepository.getTopology(project.id, selectedConfigSet.id, effectiveRevision, "effective").then(tree => {
       if (tree.view !== "effective") throw new Error("生效配置返回了错误的视图，请重试。");
       if (!cancelled) setEffectiveResult({ key: effectiveKey, tree });
     }).catch(error => { if (!cancelled) setEffectiveResult({ key: effectiveKey, error: presentError(error, "生效配置加载失败。") }); });
     return () => { cancelled = true; };
-  }, [contentTab, effectiveKey, effectiveRetry, effectiveRevision, project.id, selectedConfigSet, topologyRepository]);
+  }, [contentTab, currentEffective, effectiveKey, effectiveRetry, effectiveRevision, membersError, membersListLoading, project.id, selectedConfigSet, selectedMembers.length, topologyRepository]);
   const effectiveTree = effectiveResult?.key === effectiveKey ? effectiveResult.tree : undefined;
   const effectiveError = effectiveResult?.key === effectiveKey ? effectiveResult.error : undefined;
   const effectiveNodes = useMemo(() => effectiveStructureNodes(effectiveTree?.nodes ?? []), [effectiveTree]);
@@ -2100,6 +2102,9 @@ export function ProjectConfigurationWorkbench({
         {!selectedConfigSet ? <SectionEmpty message="选择或新建配置以查看项目配置。" /> : null}
         {contentTab === "effective" && selectedConfigSet ? !topologyRepository
           ? <SectionEmpty message="生效配置需要 API 模式。" />
+          : currentEffective && membersError ? <SectionError message={membersError} onRetry={() => workspaceLoadSession.retryMembers()} />
+          : currentEffective && membersListLoading ? <SectionSkeleton label="正在加载生效配置…" />
+          : currentEffective && selectedMembers.length === 0 ? <SectionEmpty message={canAdmin ? "此配置尚无来源文件。请通过「配置」菜单添加来源或导入完整配置。" : "此配置尚无来源文件，请联系项目管理员。"} />
           : effectiveError ? <SectionError message={effectiveError} onRetry={() => setEffectiveRetry(value => value + 1)} />
           : !effectiveTree ? <SectionSkeleton label="正在加载生效配置…" />
           : effectiveTree.nodes.length === 0 ? <SectionEmpty message="当前配置修订没有生效设备树节点。" />
