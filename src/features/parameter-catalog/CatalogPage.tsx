@@ -686,7 +686,8 @@ export function CatalogPage({
   };
 
   const selectSubject = (subjectId: string | null) => {
-    commitAnchor({ ...anchor, subjectId, definitionId: null, cursor: null }, "push");
+    // A driver leaf replaces the module selection, including one in another branch.
+    commitAnchor({ ...anchor, subjectId, moduleNodeId: null, definitionId: null, cursor: null }, "push");
     setInspectorOpen(false);
   };
 
