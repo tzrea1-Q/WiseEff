@@ -185,6 +185,17 @@ describe("resolveDtsConfigSet", () => {
     ]);
   });
 
+  it("locates the overlay declaration when its body crosses included source segments", () => {
+    const result = resolveDtsConfigSet({ entryFile: "board.dts", includeSearchPaths: [], overlayOrder: [], requireExactOrigins: true,
+      files: new Map([
+        ["board.dts", { fileVersionId: "board-v1", content: '/dts-v1/;\n/include/ "overlay.dtsi"\n/ {};\n' }],
+        ["overlay.dtsi", { fileVersionId: "overlay-v1", content: '&missing_target {\n/include/ "properties.dtsi"\n};\n' }],
+        ["properties.dtsi", { fileVersionId: "properties-v1", content: "value = <7>;\n" }],
+      ]),
+    });
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: "dangling-reference", fileName: "overlay.dtsi", offset: 0 })]);
+  });
+
   it("applies /delete-property/ and /delete-node/ with delete provenance", () => {
     const result = resolveDtsConfigSet({
       entryFile: "board.dts",

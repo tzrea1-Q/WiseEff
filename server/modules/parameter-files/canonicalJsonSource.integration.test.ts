@@ -212,9 +212,11 @@ describe("canonical JSON configuration source", () => {
         sourceRef: current.source_ref,configRevisionId: current.config_revision_id,
         valueDigest: current.value_digest,valueKind: "json",valueJson: JSON.stringify(current.value) });
       await tx.query(`insert into parameter_catalog.project_value_source_pins
-        select (jsonb_populate_record(null::parameter_catalog.project_value_source_pins,
-          to_jsonb(pin)||jsonb_build_object('id',$2::text,'project_value_id',$3::text,
-            'locator',pin.locator||'{"extra":"not-a-locator-field"}'::jsonb))).*
+        (id,project_value_id,binding_id,definition_id,organization_id,project_id,source_occurrence_id,config_revision_id,file_id,file_version_id,
+          format,property_occurrence_id,locator,locator_digest,created_at,value_state,base_source_pin_id,delete_request_id,delete_proof,erased_request_audit_id)
+        select $2,$3,pin.binding_id,pin.definition_id,pin.organization_id,pin.project_id,pin.source_occurrence_id,pin.config_revision_id,pin.file_id,pin.file_version_id,
+          pin.format,pin.property_occurrence_id,pin.locator||'{"extra":"not-a-locator-field"}'::jsonb,pin.locator_digest,pin.created_at,pin.value_state,
+          pin.base_source_pin_id,pin.delete_request_id,pin.delete_proof,pin.erased_request_audit_id
         from parameter_catalog.project_value_source_pins pin where project_value_id=$1`,
       [binding.current_value_id,`json-locator-pin-${randomUUID()}`,valueId]);
       await tx.query("set constraints all immediate");
