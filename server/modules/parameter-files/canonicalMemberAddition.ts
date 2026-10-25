@@ -12,7 +12,7 @@ import { resolveIncludeTarget } from "../dts/configSetResolver";
 import { closureManifest, composeDtsBuildInputs, loadSharedDtsiClosure, mountedSharedPath } from "../shared-dtsi/dependencies";
 import type { DtsBuildInputs } from "../contracts/dtoSchemas/dtsPreprocessing";
 import { inspectDtsCppIncludes, type DtsPreprocessingReceipt } from "../dts/cppSources";
-import type { SharedReferenceSwitchPreview } from "../contracts/dtoSchemas/canonicalMemberAddition";
+import type { SharedReferenceSwitchPreview, SharedSwitchConflict } from "../contracts/dtoSchemas/canonicalMemberAddition";
 import type { ObjectStore } from "../logs/objectStore";
 import { asValueClient, listObservedProperties, lockSourceCatalogGovernance, parseCompatibles, rawTextToPayload,
   resolveObservedSubject, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
@@ -337,6 +337,27 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   const overlayOrder=input.setAsRoot?overlayNames:[...revision.overlay_order,...overlayNames.filter(name=>!revision.overlay_order.includes(name))];
   let continuity: ReviewedSourceContinuity | null = null;
   let resolved: ReturnType<typeof resolveDtsConfigSet> | null = null;
+  const switchSource=(message:string,sourceName:string,offset?:number,node?:string,property?:string,identity=false):SharedSwitchConflict=>{
+    const sharedSource=sharedTargets.find(source=>source.sourceName===sourceName);
+    const member=members.find(source=>source.sourceName===sourceName);
+    const historical=beforeSources.find(source=>source.sourceName===sourceName);
+    const historicalReference=currentReferences.find(reference=>reference.id===historical?.referenceId);
+    return {message,sourceName,...(offset===undefined?{}:{line:(contents.get(sharedSource?.fileId??member?.fileId??"")??"").slice(0,offset).split("\n").length}),
+      ...(node?{node}:{}),...(property?{property}:{}),...(identity?{identity:true}:{}),
+      ...(sharedSource?{resourceId:sharedSource.resourceId,versionId:sharedResources.find(resource=>resource.resourceId===sharedSource.resourceId)!.versionId,memberId:sharedSource.memberId}
+        :historical&&historicalReference?{resourceId:historicalReference.resourceId,versionId:historicalReference.versionId,memberId:historical.memberId}
+        :member?{fileId:member.fileId,fileVersionId:member.fileVersionId}:{})};
+  };
+  const refuseSwitch=(error:unknown,locations:SharedSwitchConflict[]):never=>{
+    if(recomposing && error instanceof ApiError)throw new ApiError(error.code,error.message,{...error.details,switchConflicts:locations});
+    throw error;
+  };
+  const nodeSource=(message:string,nodeLocator:string,propertyName?:string,identity=false)=>{
+    const node=resolved?.effective.nodesByLocator.get(nodeLocator);
+    const property=(propertyName?node?.properties.get(propertyName):undefined)??node?.properties.get("compatible")??node?.properties.get("reg")??node?.properties.values().next().value;
+    const origin=property?.sourceChain.at(-1);
+    return switchSource(message,origin?.fileName??node?.sourceChain.at(-1)?.fileName??entryFile??"配置",origin?.origin?.start,nodeLocator,propertyName,identity);
+  };
   const diagnostics: MemberAdditionPreview["diagnostics"] = [];
   const restorationScope = { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId };
   let anchors: Awaited<ReturnType<typeof matchingDeletedSourceAnchors>> = [];
@@ -350,18 +371,17 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     diagnostics.push(...resolved.diagnostics.map(({ severity, code, message, fileName }) => ({ severity, code,
       message: input.setAsRoot ? rootDiagnosticMessage(code, message, fileName) : message })));
     if (diagnostics.some((row) => row.severity === "error" || /dangling|unresolved/.test(row.code))) {
-      throw new ApiError("VALIDATION_FAILED", removing?"移除后仍有项目 include/overlay 使用该来源，请返回项目源码修正依赖，再回到移除任务重新预览。":"配置包含未解决的 include/overlay 引用，请修正候选后重试。", { diagnostics });
+      refuseSwitch(new ApiError("VALIDATION_FAILED", removing?"移除后仍有项目 include/overlay 使用该来源，请修正项目源码，再返回移除任务重新预览。":"配置包含未解决的 include/overlay 引用，请修正来源后重试。", { diagnostics }),
+        resolved.diagnostics.filter(row=>row.severity==="error"||/dangling|unresolved/.test(row.code)).map(row=>switchSource(row.message,row.fileName,row.offset)));
     }
-    const formerRootOverlayFiles = await loadFormerRootOverlayFiles(tx, input.configSetId, afterMembers, overlayOrder);
-    const validated = await (toolchain ?? createDtsToolchainRunner()).validate({ entryFile, includeSearchPaths, defines, overlayOrder, files, formerRootOverlayFiles }, { mode: "release" });
-    diagnostics.push(...validated.diagnostics.map((row) => ({ severity: row.severity, code: row.code ?? "toolchain",
-      message: input.setAsRoot ? rootDiagnosticMessage(row.code ?? "toolchain", row.message,
-        `${row.file}${row.line ? `，第 ${row.line} 行` : ""}`) : row.message })));
-    if (!validated.ok || validated.mode !== "release") throw new ApiError("VALIDATION_FAILED", "DTS 工具链未通过，当前组成未改变。", { diagnostics });
     anchors = await matchingDeletedSourceAnchors(tx, restorationScope, resolved.effective.nodesByLocator, afterMembers);
-    continuity = await prepareReviewedSourceContinuity(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId,
+    try { continuity = await prepareReviewedSourceContinuity(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId,
       configSetId: input.configSetId, baseConfigRevisionId: revision.id, effectiveNodes: resolved.effective.nodesByLocator,
       sourceDigest: sourceRevisionDigest(afterMembers), restorationNodes: sourceRestorationNodes(anchors) });
+    }catch(error){
+      const candidates=error instanceof ApiError && Array.isArray(error.details.candidates)?error.details.candidates:[];
+      refuseSwitch(error,candidates.filter((value):value is string=>typeof value==="string").map(locator=>nodeSource("原节点存在多个候选对应，尚未确认连续性。",locator,undefined,true)));
+    }
   }
   const cohort: Cohort[] = [], targets: SourceRevisionTarget[] = [], newProperties: NewProperty[] = [], originTransfers: Proof["originTransfers"] = [];
   for (const entry of await loadSourceBindingCohortReadOnly(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId })) {
@@ -386,13 +406,17 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     const origin = afterMembers.find((row) => row.sourceName === property?.sourceChain.at(-1)?.fileName);
     if (node && !node.deleted && snapshot && resolveObservedSubject(snapshot, {
       compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null), nodeName: node.name
-    })?.subjectId !== current.binding.subjectId) conflict("当前节点识别与已有参数关联不一致，请先完成身份核对后重新预览。");
+    })?.subjectId !== current.binding.subjectId) refuseSwitch(new ApiError("CONFLICT","当前节点识别与已有参数关联不一致，请核对来源后重新预览。",{reason:"shared-version-identity"}),[nodeSource("compatible 标识与原参数关联的主体不一致。",logical!.nodeLocator,"compatible",true)]);
     if (!property || property.deleted || node?.deleted || !origin) {
-      if(replacing)throw new ApiError("CONFLICT",`版本切换移除了已关联参数 ${logical?.nodeLocator??"未知节点"} · ${propertyName}，请先处理来源冲突后重新预览。`,{reason:"shared-version-conflict",bindingId:entry.bindingId});
+      const previousLocator=logical?.nodeLocator??(await tx.query<{nodeLocator:string}>("select node_locator as \"nodeLocator\" from public.dts_logical_node_revisions where config_revision_id=$1 and logical_node_id=$2",[revision.id,pin.logicalNodeId])).rows[0]?.nodeLocator;
+      const missingLocation=node?nodeSource("目标版本未保留此已关联参数；请修正项目声明或选择兼容版本。",logical!.nodeLocator,propertyName)
+        :switchSource("目标版本移除了此参数的原始节点；请选择兼容版本，或先在项目源码中保留所需声明。",members.find(member=>member.fileId===pin.fileId)!.sourceName,undefined,previousLocator,propertyName);
+      if(replacing)refuseSwitch(new ApiError("CONFLICT",`版本切换移除了已关联参数 ${logical?.nodeLocator??"未知节点"} · ${propertyName}，请先处理来源冲突后重新预览。`,{reason:"shared-version-conflict",bindingId:entry.bindingId}),
+        [{...missingLocation,projectCorrection:true}]);
       targets.push({ bindingId: entry.bindingId, action: "delete", payload: old.value.payload, afterFileId: pin.fileId, propertyName });
     } else {
       const payload = rawTextToPayload(propertyName, property.rawText);
-      assertCanonicalValueConstraints(definition.revision, payload, true);
+      try{assertCanonicalValueConstraints(definition.revision, payload, true);}catch(error){refuseSwitch(error,[{...nodeSource("生效值不满足已固定的参数定义约束。",logical!.nodeLocator,propertyName),projectCorrection:true}]);}
       if (!sameSourceRevision(payload, old.value.payload) || origin.fileId !== pin.fileId) targets.push({ bindingId: entry.bindingId, action: "set", payload, afterFileId: origin.fileId, propertyName });
       if (origin.fileId !== pin.fileId) originTransfers.push({ bindingId: entry.bindingId, oldValueId: entry.oldValueId,
         sourcePinId: pin.sourcePinId, fromFileId: pin.fileId, toFileId: origin.fileId });
@@ -409,11 +433,22 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       const member = afterMembers.find((row) => row.sourceName === property.sourceChain.at(-1)?.fileName);
       const definition = snapshot.getDefinition({ subjectId: CatalogSubjectId(subject.subjectId), propertyKey: PropertyKey(name) });
       if (!member || definition.status !== "found" || cohort.some((entry) => entry.logicalNodeId === logical.logicalNodeId && entry.propertyName === name)) continue;
-      const payload = rawTextToPayload(name, property.rawText); assertCanonicalValueConstraints(definition.definition.selectedRevision, payload, true);
+      const payload = rawTextToPayload(name, property.rawText);
+      try{assertCanonicalValueConstraints(definition.definition.selectedRevision, payload, true);}catch(error){refuseSwitch(error,[{...nodeSource("目标声明不满足参数定义约束。",node.nodeLocator,name),projectCorrection:true}]);}
       newProperties.push({ fileId: member.fileId, logicalNodeId: logical.logicalNodeId, nodeLocator: node.nodeLocator, propertyName: name,
         definitionId: definition.definition.id, definitionRevisionId: definition.definition.selectedRevision.id,
         registrationId: registration.id, subjectId: subject.subjectId, payload });
     }
+  }
+  if(dts.length && entryFile){
+    const files=new Map(dts.map(row=>[row.sourceName,{content:contents.get(row.fileId)!,fileVersionId:row.fileVersionId}]));
+    const formerRootOverlayFiles = await loadFormerRootOverlayFiles(tx, input.configSetId, afterMembers, overlayOrder);
+    const validated = await (toolchain ?? createDtsToolchainRunner()).validate({ entryFile, includeSearchPaths, defines, overlayOrder, files, formerRootOverlayFiles }, { mode: "release" });
+    diagnostics.push(...validated.diagnostics.map((row) => ({ severity: row.severity, code: row.code ?? "toolchain",
+      message: input.setAsRoot ? rootDiagnosticMessage(row.code ?? "toolchain", row.message,
+        `${row.file}${row.line ? `，第 ${row.line} 行` : ""}`) : row.message })));
+    if (!validated.ok || validated.mode !== "release") refuseSwitch(new ApiError("VALIDATION_FAILED", "DTS 工具链未通过，当前组成未改变。", { diagnostics }),
+      validated.diagnostics.map(row=>({...switchSource(row.message,row.file),...(row.line?{line:row.line}:{})})));
   }
   const restorations = await prepareSourceRestorations(tx, restorationScope, newProperties, anchors, snapshots);
   for (const restored of restorations) {

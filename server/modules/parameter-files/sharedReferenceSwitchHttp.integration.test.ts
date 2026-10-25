@@ -226,8 +226,33 @@ describe("shared reference version switches through the real API role", () => {
       nativeHeadVersionId=target.body.item.id;
       const checked=await post(`${path(A)}/preview`,{sharedReference:{resourceId,versionId:target.body.item.id,replaceVersionId:versionId},role:"misc",sortOrder:1});
       expect(checked.status,checked.bodyText).toBe(400);
+      expect(checked.body).toMatchObject({error:{details:{switchConflicts:expect.arrayContaining([expect.objectContaining({
+        sourceName:"limits.dtsi",resourceId,versionId:target.body.item.id,memberId:expect.any(String),line:expect.any(Number),
+      })])}}});
       expect((await requestJson(server(),`/api/v1/projects/${A}/config-sets/${sets[A]}/files`)).body).toEqual(original);
     }
+  },120_000);
+
+  it("locates every ambiguous candidate in its immutable target source without inventing an identity decision",async()=>{
+    const created=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name:"Ambiguous switch",sourceName:"ambiguous.dtsi",content:'/ { recovery_bus { dev@10 { reg = <0x10>; }; }; };',changeDescription:"Original identity"});
+    expect(created.status,created.bodyText).toBe(201);const resource=created.body.item.resourceId;
+    const publish=async(revision:number)=>{
+      const p=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resource}/publication-preview`,{expectedRevision:revision});expect(p.status,p.bodyText).toBe(201);
+      const v=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resource}/publications`,{previewId:p.body.item.id,idempotencyKey:p.body.item.id});expect(v.status,v.bodyText).toBe(201);return v.body.item.id;
+    };
+    const old=await publish(1),initial={sharedReference:{resourceId:resource,versionId:old},role:"misc",sortOrder:2};
+    const p=await post<Preview>(`${path(A)}/preview`,initial);expect(p.status,p.bodyText).toBe(200);
+    const applied=await post(`${path(A)}/apply`,{...initial,proofToken:p.body.item.proofToken,reason:"Pin original identity",clientMutationId:"ambiguity-initial"});expect(applied.status,applied.bodyText).toBe(200);
+    const draft=await post<{item:{revision:number}}>(`/api/v2/shared-dtsi/${resource}/draft`,{baseVersionId:old});
+    const saved=await requestJson<{item:{revision:number}}>(server(),`/api/v2/shared-dtsi/${resource}/draft`,{method:"PUT",body:JSON.stringify({expectedRevision:draft.body.item.revision,name:"Ambiguous switch",sourceName:"ambiguous.dtsi",content:'/ { recovery_bus { left@10 { reg = <0x10>; }; right@10 { reg = <0x10>; }; }; };',changeDescription:"Requires identity evidence"})});expect(saved.status,saved.bodyText).toBe(200);
+    const target=await publish(saved.body.item.revision),before=(await requestJson(server(),`/api/v1/projects/${A}/config-sets/${sets[A]}/files`)).body;
+    const blocked=await post(`${path(A)}/preview`,{sharedReference:{resourceId:resource,versionId:target,replaceVersionId:old},role:"misc",sortOrder:2});
+    expect(blocked.status,blocked.bodyText).toBe(409);
+    expect(blocked.body).toMatchObject({error:{details:{reason:"logical-continuity-decision-needed",switchConflicts:expect.arrayContaining([
+      expect.objectContaining({node:"/recovery_bus/left@10",resourceId:resource,versionId:target,sourceName:"ambiguous.dtsi",line:1,identity:true}),
+      expect.objectContaining({node:"/recovery_bus/right@10",resourceId:resource,versionId:target,sourceName:"ambiguous.dtsi",line:1,identity:true})
+    ])}}});
+    expect((await requestJson(server(),`/api/v1/projects/${A}/config-sets/${sets[A]}/files`)).body).toEqual(before);
   },120_000);
 
   it("preserves literal CPP root inputs through both version directions and edits quoted entry rename or removal in place",async()=>{
