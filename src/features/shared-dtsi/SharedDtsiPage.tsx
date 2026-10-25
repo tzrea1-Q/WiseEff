@@ -20,17 +20,18 @@ import { createSharedDtsiClient } from "@/infrastructure/http/sharedDtsiClient";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { sharedDtsiImportLimits } from "@wiseeff/dto-schemas";
 import "./shared-dtsi.css";
+import { SharedDtsiDependencies } from "./SharedDtsiDependencies";
 
 type Props = { apiClient?: ApiClient; canWrite: boolean; search: string; organizationId?: string; onNavigate: (path: string) => void };
 type Scope = { key: string; client: ReturnType<typeof createSharedDtsiClient> | null; pending: boolean };
-const empty: SharedDtsiDraftInput = { name: "", sourceName: "common.dtsi", content: "", changeDescription: "" };
+const empty: SharedDtsiDraftInput = { name: "", sourceName: "common.dtsi", content: "", changeDescription: "",dependencies:[] };
 const draftInput = (draft: SharedDtsiDraft): SharedDtsiDraftInput => ({ name: draft.name,
   sourceName: draft.members[0]!.sourceName, content: draft.members[0]!.content, changeDescription: draft.changeDescription,
-  ...(draft.members.length>1?{members:draft.members}:{} ) });
+  dependencies:draft.dependencies??[],...(draft.members.length>1?{members:draft.members}:{} ) });
 const sourceMembers = (input:SharedDtsiDraftInput) => input.members ?? [{sourceName:input.sourceName,content:input.content}];
 const withContent = (input:SharedDtsiDraftInput,index:number,content:string):SharedDtsiDraftInput => ({...input,content,
   ...(input.members?{members:input.members.map((member,at)=>at===index?{...member,content}:member)}:{})});
-const comparable = (input:SharedDtsiDraftInput) => JSON.stringify({name:input.name,changeDescription:input.changeDescription,members:sourceMembers(input),archive:input.archive});
+const comparable = (input:SharedDtsiDraftInput) => JSON.stringify({name:input.name,changeDescription:input.changeDescription,members:sourceMembers(input),archive:input.archive,dependencies:input.dependencies??[]});
 const message = (error: unknown) => error instanceof WiseEffApiError ? error.message : "请求失败，请重试。";
 
 export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, onNavigate }: Props) {
@@ -234,6 +235,8 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
     <dl className="shared-dtsi-metadata"><div><dt>文件</dt><dd>{currentPreview.data.manifest.members.length} 个 · 共享源码库</dd></div>
       <div><dt>变更说明</dt><dd>{currentPreview.data.changeDescription}</dd></div>
       {currentPreview.data.manifest.externalReferences.length ? <div><dt>项目需提供的引用</dt><dd>{currentPreview.data.manifest.externalReferences.join("、")}</dd></div> : null}</dl>
+    {currentPreview.data.manifest.dependencyClosure?.length?<details><summary>完整固定依赖（{currentPreview.data.manifest.dependencyClosure.length}）</summary>
+      <ul>{currentPreview.data.manifest.dependencyClosure.map(pin=><li key={pin.resourceId}>{pin.name} · 版本 {pin.version} · {pin.mountPath||"资源根目录"}</li>)}</ul></details>:null}
     <div className="shared-dtsi-workspace">{memberNavigation(sourceMembers(form),selectMember)}
       <div className="shared-dtsi-source"><WorkbenchDtsEditor sessionKey={`shared-dtsi-preview/${currentPreview.data.id}/${memberIndex}`} text={form.content}
       readOnly ariaLabel="待发布 DTSI 源码" /></div></div>
@@ -254,6 +257,8 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
         <dl className="shared-dtsi-metadata"><div><dt>文件路径</dt><dd>{published.members[memberIndex]?.sourceName}</dd></div>
           <div><dt>发布时间</dt><dd>{formatAbsolute(published.createdAt)}</dd></div>
           <div><dt>变更说明</dt><dd>{published.changeDescription}</dd></div></dl>
+        {published.manifest.dependencyClosure?.length?<details><summary>完整固定依赖（{published.manifest.dependencyClosure.length}）</summary>
+          <ul>{published.manifest.dependencyClosure.map(pin=><li key={pin.resourceId}>{pin.name} · 版本 {pin.version} · {pin.mountPath||"资源根目录"}</li>)}</ul></details>:null}
         <div className="shared-dtsi-workspace">{memberNavigation(published.members,setMemberIndex)}
           <div className="shared-dtsi-source"><WorkbenchDtsEditor sessionKey={`shared-dtsi-version/${published.id}/${memberIndex}`} text={published.members[memberIndex]?.content ?? ""}
           readOnly ariaLabel="已发布 DTSI 源码" /></div></div></> : null}
@@ -290,6 +295,8 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
           <Button variant="outline" disabled={pending} onClick={() => upload.current?.click()}>选择源码或 ZIP</Button>
           <Button variant="outline" disabled={pending} onClick={() => directoryUpload.current?.click()}>选择目录</Button></> : null}
       </div>
+      {canWrite?<SharedDtsiDependencies client={client} value={form.dependencies??[]} resourceId={draft?.resourceId} disabled={pending}
+        onChange={dependencies=>{edits.current+=1;setForm(current=>({...current,dependencies}));setPreview(null);setSaved(null);}} />:null}
       <label className="shared-dtsi-change-description">变更说明<Textarea aria-label="变更说明" value={form.changeDescription} maxLength={1000} rows={2}
         placeholder="说明此共享版本的变更" readOnly={!canWrite} disabled={pending} onChange={event=>{edits.current+=1;setForm({...form,changeDescription:event.target.value});setSaved(null);}} /></label>
       {draft && canWrite && !form.changeDescription.trim() ? <p id="shared-publication-hint" className="shared-dtsi-hint">发布前请填写变更说明。</p> : null}

@@ -90,6 +90,28 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
       .toEqual(saved.body.item.members);
   });
 
+  it("freezes an authorized transitive dependency closure and retains original source members", async () => {
+    const publish=async(name:string,sourceName:string,content:string,dependencies:unknown[]=[])=>{
+      const draft=await call("","POST",{name,sourceName,content,dependencies,changeDescription:"Fixed dependency"});
+      expect(draft.status,draft.bodyText).toBe(201);
+      const preview=await publicationCall<{item:{id:string}}>(`/${draft.body.item.resourceId}/publication-preview`,"POST",{expectedRevision:1});
+      expect(preview.status,preview.bodyText).toBe(201);
+      const version=await publicationCall<{item:{id:string;resourceId:string;manifest:{dependencies:unknown[];dependencyClosure:{name:string;mountPath:string}[]};members:{sourceName:string;content:string}[]}}>(`/${draft.body.item.resourceId}/publications`,"POST",{previewId:preview.body.item.id,idempotencyKey:`dep-${draft.body.item.resourceId}`});
+      expect(version.status,version.bodyText).toBe(201);return version.body.item;
+    };
+    const leaf=await publish("Dependency leaf","leaf.dtsi",'/ { leaf: leaf { status = "okay"; }; };');
+    const pin={resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"vendor"};
+    const middle=await publish("Dependency middle","middle.dtsi",'/include/ "vendor/leaf.dtsi"\n&leaf { value = <42>; };',[pin]);
+    expect(middle.manifest.dependencies).toEqual([pin]);
+    const root=await publish("Dependency root","root.dtsi",'/include/ "middle/middle.dtsi"\n',[{resourceId:middle.resourceId,versionId:middle.id,mountPath:"middle"}]);
+    expect(root.members).toHaveLength(1);
+    expect(root.members[0]!.content).toBe('/include/ "middle/middle.dtsi"\n');
+    expect(root.manifest.dependencyClosure).toEqual(expect.arrayContaining([
+      expect.objectContaining({name:"Dependency middle",mountPath:"middle"}),
+      expect.objectContaining({name:"Dependency leaf",mountPath:"middle/vendor"})]));
+    expect((await call(`/${root.resourceId}/draft`,"POST",{baseVersionId:root.id})).body.item).toHaveProperty("dependencies",[{resourceId:middle.resourceId,versionId:middle.id,mountPath:"middle"}]);
+  });
+
   it("imports original ZIP bytes and refuses unsafe archives without saving a partial resource", async () => {
     const zip = new JSZip();
     zip.file("lib/main.dtsi", '/include/ "node.dtsi"\n');
@@ -105,6 +127,61 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
       expect(result.status,result.bodyText).toBe(400);
     }
     expect((await call("?q=Unsafe%20ZIP")).body.items).toEqual([]);
+  });
+
+  it("retains incomplete drafts and rejects cycles, version/path/label collisions and inaccessible fixed dependencies",async()=>{
+    const publish=async(name:string,content:string)=>{
+      const draft=(await call("","POST",{name,sourceName:"shared.dtsi",content,changeDescription:"Dependency diagnostics"})).body.item;
+      const preview=await publicationCall<{item:{id:string}}>(`/${draft.resourceId}/publication-preview`,"POST",{expectedRevision:1});
+      expect(preview.status,preview.bodyText).toBe(201);
+      const published=await publicationCall<{item:{id:string;resourceId:string}}>(`/${draft.resourceId}/publications`,"POST",{previewId:preview.body.item.id,idempotencyKey:draft.resourceId});
+      expect(published.status,published.bodyText).toBe(201);return published.body.item;
+    };
+    const leaf=await publish("Diagnostic leaf",'/ { duplicate: leaf {}; };');
+    const other=await publish("Diagnostic other",'/ { other: other {}; };');
+    const pin={resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"vendor"};
+    const successorDraft=(await call(`/${leaf.resourceId}/draft`,"POST",{baseVersionId:leaf.id})).body.item;
+    const successorSave=await call(`/${leaf.resourceId}/draft`,"PUT",{name:"Diagnostic leaf",members:successorDraft.members,expectedRevision:1,changeDescription:"Retain exact predecessor"});
+    expect(successorSave.status,successorSave.bodyText).toBe(200);
+    const successorPreview=await publicationCall<{item:{id:string}}>(`/${leaf.resourceId}/publication-preview`,"POST",{expectedRevision:2});
+    const successor=await publicationCall<{item:{id:string}}>(`/${leaf.resourceId}/publications`,"POST",{previewId:successorPreview.body.item.id,idempotencyKey:"diagnostic-leaf-v2"});
+    expect(successor.status,successor.bodyText).toBe(201);
+    for(const [dependencies,content,match] of [
+      [[pin,{...pin,mountPath:"different"}],'/ { root {}; };',"版本或挂载路径冲突"],
+      [[pin,{...pin,versionId:successor.body.item.id}],'/ { root {}; };',"版本或挂载路径冲突"],
+      [[pin,{resourceId:other.resourceId,versionId:other.id,mountPath:"vendor"}],'/ { root {}; };',"挂载路径重复"],
+      [[pin],'/ { duplicate: local {}; };',"标签"],
+      [[{...pin,resourceId:"99999999-9999-4999-8999-999999999999"}],'/ { root {}; };',"不存在"],
+      [[pin],'/include/ "vendor/missing.dtsi"\n',"缺少依赖文件"]
+    ] as const) {
+      const draft=await call("","POST",{name:"Incomplete dependency",sourceName:"root.dtsi",content,dependencies,changeDescription:"Retain incomplete input"});
+      expect(draft.status,draft.bodyText).toBe(201);
+      const preview=await publicationCall<{error:{message:string}}>(`/${draft.body.item.resourceId}/publication-preview`,"POST",{expectedRevision:1});
+      expect([400,404]).toContain(preview.status);expect(preview.body.error.message).toContain(match);
+      expect((await call(`/${draft.body.item.resourceId}`)).body.item).toEqual(draft.body.item);
+      expect((await publicationCall<{items:unknown[]}>(`/${draft.body.item.resourceId}/versions`)).body.items).toEqual([]);
+    }
+    const editable=await call(`/${leaf.resourceId}/draft`,"POST",{baseVersionId:successor.body.item.id});
+    const saved=await call(`/${leaf.resourceId}/draft`,"PUT",{name:"Diagnostic leaf",members:editable.body.item.members,expectedRevision:1,
+      dependencies:[{...pin,mountPath:"self"}],changeDescription:"Cycle diagnostic"});
+    expect(saved.status,saved.bodyText).toBe(200);
+    const cycle=await publicationCall<{error:{message:string}}>(`/${leaf.resourceId}/publication-preview`,"POST",{expectedRevision:2});
+    expect(cycle.status).toBe(400);expect(cycle.body.error.message).toContain("循环");
+  });
+
+  it("bounds the complete resource dependency depth before publishing a partial closure",async()=>{
+    let previous:{resourceId:string;versionId:string;mountPath:string}|undefined;
+    for(let depth=0;depth<17;depth++) {
+      const created=await call("","POST",{name:`Bounded resource ${depth}`,sourceName:`depth-${depth}.dtsi`,content:`/ { depth_${depth} {}; };`,
+        changeDescription:"Bounded closure",dependencies:previous?[previous]:[]});
+      expect(created.status,created.bodyText).toBe(201);
+      const preview=await publicationCall<{item:{id:string};error:{message:string}}>(`/${created.body.item.resourceId}/publication-preview`,"POST",{expectedRevision:1});
+      if(depth===16) {expect(preview.status,preview.bodyText).toBe(400);expect(preview.body.error.message).toContain("16 层");
+        expect((await call(`/${created.body.item.resourceId}`)).body.item).toEqual(created.body.item);break;}
+      expect(preview.status,preview.bodyText).toBe(201);
+      const published=await publicationCall<{item:{id:string}}>(`/${created.body.item.resourceId}/publications`,"POST",{previewId:preview.body.item.id,idempotencyKey:`depth-${depth}`});
+      expect(published.status,published.bodyText).toBe(201);previous={resourceId:created.body.item.resourceId,versionId:published.body.item.id,mountPath:""};
+    }
   });
 
   it("replaces an existing draft from ZIP with CAS and matching member identity",async()=>{

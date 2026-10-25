@@ -121,6 +121,62 @@ describe("fixed shared references through the real API role", () => {
     }
   });
 
+  it("composes an exact multi-resource closure and keeps every source in independent project history",async()=>{
+    const publish=async(name:string,members:{sourceName:string;content:string}[],dependencies:unknown[]=[])=>{
+      const draft=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name,members,dependencies,changeDescription:"Complete dependency composition"});
+      expect(draft.status,draft.bodyText).toBe(201);
+      const preview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${draft.body.item.resourceId}/publication-preview`,{expectedRevision:1});
+      expect(preview.status,preview.bodyText).toBe(201);
+      const result=await post<{item:{id:string;resourceId:string}}>(`/api/v2/shared-dtsi/${draft.body.item.resourceId}/publications`,{previewId:preview.body.item.id,idempotencyKey:draft.body.item.resourceId});
+      expect(result.status,result.bodyText).toBe(201);return result.body.item;
+    };
+    const leafSource='/ { fixed_leaf: fixed-leaf { status = "okay"; }; };';
+    const leaf=await publish("Fixed leaf",[{sourceName:"leaf.dtsi",content:leafSource}]);
+    const mainSource='/include/ "parts/nodes.dtsi"\n/include/ "vendor/leaf.dtsi"\n&fixed_leaf { value = <42>; };';
+    const root=await publish("Complete library",[{sourceName:"main.dtsi",content:mainSource},{sourceName:"parts/nodes.dtsi",content:'/ { fixed_second: fixed-second { status = "okay"; }; };'}],
+      [{resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"vendor"}]);
+    const body={sharedReference:{resourceId:root.resourceId,versionId:root.id,mountPath:"mounted"},role:"misc",sortOrder:10};
+    const seen:string[][]=[];
+    for(const project of [A,B]) {
+      const preview=await post<Preview>(`${path(project)}/preview`,body);
+      expect(preview.status,preview.bodyText).toBe(200);
+      if(project===A) {
+        const before=(await requestJson(server(),`/api/v1/projects/${A}/config-sets/${sets[A]}/files`)).body;
+        const objects=await readdir(directory,{recursive:true});let puts=0,badKey="";
+        const partialStore:ObjectStore={...storage,async put(input){const item=await storage.put(input);if(++puts===2)badKey=item.storageKey;return item;},
+          async getBounded(key,max){return key===badKey?Buffer.from("corrupt second dependency"):storage.getBounded!(key,max);}};
+        const failed=await post(`${path(project)}/apply`,{...body,proofToken:preview.body.item.proofToken,reason:"No partial dependency activation",clientMutationId:"complete-partial-failure"},admin,partialStore);
+        expect(failed.status,failed.bodyText).toBe(409);
+        expect((await requestJson(server(),`/api/v1/projects/${A}/config-sets/${sets[A]}/files`)).body).toEqual(before);
+        expect(await readdir(directory,{recursive:true})).toEqual(objects);
+      }
+      const applied=await post<Applied>(`${path(project)}/apply`,{...body,proofToken:preview.body.item.proofToken,reason:"Apply exact complete closure",clientMutationId:`complete-${project}`});
+      expect(applied.status,applied.bodyText).toBe(200);
+      if(project===A)appliedA.configRevisionId=applied.body.item.configRevisionId;else appliedB.configRevisionId=applied.body.item.configRevisionId;
+      const exported=await requestJson<{files:{name:string;content:string}[];manifest:{members:{fileId:string;fileName:string;sharedReference?:{resourceId:string}}[]}}>(server(),`/api/v1/projects/${project}/config-sets/${sets[project]}/export`);
+      expect(exported.status,exported.bodyText).toBe(200);
+      expect(exported.body.files).toContainEqual(expect.objectContaining({name:"mounted/vendor/leaf.dtsi",content:leafSource}));
+      expect(exported.body.files).toContainEqual(expect.objectContaining({name:"mounted/main.dtsi",content:mainSource}));
+      expect(exported.body.manifest.members.filter(member=>member.sharedReference)).toHaveLength(4);
+      seen.push(exported.body.manifest.members.filter(member=>member.fileName.startsWith("mounted/")).map(member=>member.fileId));
+      const values=await listCatalogBindingRowsForProject(api,admin,{projectId:project});
+      expect(values.map(value=>value.rawValue).sort()).toEqual(["<25>","<36>"]);
+    }
+    expect(seen[0]!.every(id=>!seen[1]!.includes(id))).toBe(true);
+    const usages=await requestJson<{items:{projectId:string;direct:boolean}[];total:number}>(server(),`/api/v2/shared-dtsi/${leaf.resourceId}/usages`);
+    expect(usages.body.total).toBe(2);expect(usages.body.items).toEqual(expect.arrayContaining([{projectId:A,direct:false},{projectId:B,direct:false}].map(row=>expect.objectContaining(row))));
+    const restricted=await requestJson<{items:{projectId:string}[];total:number}>(server(editor),`/api/v2/shared-dtsi/${leaf.resourceId}/usages`);
+    expect(restricted.body.total).toBe(1);expect(restricted.body.items.map(row=>row.projectId)).toEqual([A]);expect(restricted.bodyText).not.toContain(B);
+    const sibling=await publish("Additional consumer",[{sourceName:"consumer.dtsi",content:'&fixed_leaf { sibling = <7>; };'}],
+      [{resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"mounted/vendor"}]);
+    const siblingBody={sharedReference:{resourceId:sibling.resourceId,versionId:sibling.id},role:"misc",sortOrder:20};
+    const siblingPreview=await post<Preview>(`${path(A)}/preview`,siblingBody);
+    expect(siblingPreview.status,siblingPreview.bodyText).toBe(200);
+    const siblingApplied=await post<Applied>(`${path(A)}/apply`,{...siblingBody,proofToken:siblingPreview.body.item.proofToken,reason:"Reuse the same exact fixed dependency",clientMutationId:"reused-dependency"});
+    expect(siblingApplied.status,siblingApplied.bodyText).toBe(200);appliedA.configRevisionId=siblingApplied.body.item.configRevisionId;
+    const leafUsages=await requestJson<{total:number}>(server(),`/api/v2/shared-dtsi/${leaf.resourceId}/usages`);expect(leafUsages.body.total).toBe(2);
+  });
+
   it("rejects legacy and canonical direct writes to the shared snapshot", async () => {
     const file = `/api/v1/projects/${A}/parameter-files/${appliedA.fileId}`;
     const candidate = { fileId: appliedA.fileId, fileName: "limits.dtsi", contentBase64: Buffer.from(shared.replace("<25>", "<26>")).toString("base64") };

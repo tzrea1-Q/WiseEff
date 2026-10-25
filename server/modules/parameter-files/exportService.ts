@@ -11,6 +11,7 @@ import { canAdminParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { loadConfigSetSnapshot } from "./configSetSnapshot";
+import { createDtsToolchainRunner } from "./dtsToolchain";
 import { getConfigSetById } from "./configSetRepository";
 import {
   createSubprocessDtcValidator,
@@ -249,7 +250,11 @@ export async function exportConfigSet(
 
   const validator = deps.validator ?? createSubprocessDtcValidator();
   const mode = readDtsValidationMode();
-  const validation = await validator.validate(dtsFilesForValidation, { mode });
+  const complete = hasSharedReferences && snapshot.entryFile ? await createDtsToolchainRunner().validate({entryFile:snapshot.entryFile,
+    includeSearchPaths:snapshot.includeSearchPaths,overlayOrder:snapshot.overlayOrder,
+    files:new Map(dtsFilesForValidation.map(file=>[file.name,{content:file.content}]))},{mode:mode==="block"?"release":mode}) : null;
+  const validation = complete ? {ok:complete.ok,mode,compiler:complete.compiler.dtc?"dtc" as const:"unavailable" as const,diagnostics:complete.diagnostics}
+    : await validator.validate(dtsFilesForValidation, { mode });
   const requiresConfirmation = computeRequiresConfirmation(validation);
 
   const manifest: ExportConfigSetManifest = {

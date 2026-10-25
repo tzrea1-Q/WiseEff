@@ -42,6 +42,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [resources, setResources] = useState<SharedDtsiResourceSummary[]>([]), [versions, setVersions] = useState<SharedDtsiVersionSummary[]>([]);
   const [resourceId, setResourceId] = useState(""), [versionId, setVersionId] = useState("");
+  const [mountPath,setMountPath]=useState("");
   const [query, setQuery] = useState(""), [resourceOffset, setResourceOffset] = useState(0), [versionOffset, setVersionOffset] = useState(0);
   const [resourceTotal, setResourceTotal] = useState(0), [versionTotal, setVersionTotal] = useState(0);
   const [sharedLoading, setSharedLoading] = useState(false), [sharedError, setSharedError] = useState(""), [sharedRetry, setSharedRetry] = useState(0);
@@ -84,7 +85,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
         return { definitionId: line.slice(0, separator).trim(), pointer: line.slice(separator + 1).trim() };
       });
       if (registerJson && !jsonMappings?.length) throw new Error("请至少添加一项字段映射。");
-      const body: MemberAdditionBody = { ...(source === "shared" ? { sharedReference: { resourceId, versionId } }
+      const body: MemberAdditionBody = { ...(source === "shared" ? { sharedReference: { resourceId, versionId,...(mountPath?{mountPath}:{}) } }
         : source === "upload" ? { candidateId: uploaded!.id } : { fileId }), role: source === "shared" ? "misc" : role,
         sortOrder: Number(sortOrder), ...(registerJson ? { json: { configurationSchemaId: registration.configurationSchemaId, rootPointer: "", mappings: jsonMappings! } } : {}) };
       const result = await client.preview(projectId, configSetId, body);
@@ -142,6 +143,8 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
                 </div> : null}
                 {sharedLoading ? <p role="status">正在读取共享版本…</p> : !resources.length && !resourceId && !sharedError ? <p>没有匹配的共享资源。请先创建并发布资源，或调整搜索。</p> : null}
                 {sharedError ? <div role="alert"><p>{sharedError}</p><Button type="button" variant="outline" onClick={() => setSharedRetry(value => value + 1)}>重试共享资源</Button></div> : null}
+                <details><summary>挂载目录（按需）</summary><label>项目挂载目录<Input aria-label="项目挂载目录" value={mountPath} disabled={busy} placeholder="留空保留资源路径"
+                  onChange={event=>{setMountPath(event.target.value);invalidate();}} /></label></details>
               </>}
             {candidate && source === "upload" ? <p role="status">已保存候选：{candidate.fileName}；尚未加入配置。</p> : null}
             <div className="workbench-member-addition-dialog__columns">
@@ -164,7 +167,11 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
         {errorDiagnostics.length ? <ul aria-label="来源校验诊断">{errorDiagnostics.map((message, index) => <li key={index}>{message}</li>)}</ul> : null}
         {preview ? <section aria-label="加入配置预览">
           <h3>{configSets.find(set => set.id === configSetId)?.name === "default" ? "默认配置" : configSets.find(set => set.id === configSetId)?.name} · 确认后的文件组成</h3>
-          <ul className="workbench-member-addition-dialog__members">{preview.members.map((member) => <li key={member.fileId}><span>{member.sourceName}</span><span>{roleLabels[member.role as keyof typeof roleLabels] ?? member.role} · 顺序 {member.sortOrder}</span></li>)}</ul>
+          {preview.sharedComposition?.length?<>
+            {preview.sharedComposition.map(resource=><div key={resource.resourceId}><p>{resource.name} · 版本 {resource.version} · {resource.direct?"直接引用":"间接依赖"}</p>
+              <ul className="workbench-member-addition-dialog__members">{resource.sources.map(source=><li key={source.fileId}>{source.sourceName}</li>)}</ul></div>)}
+            <details><summary>项目自有及已有来源</summary><ul className="workbench-member-addition-dialog__members">{preview.members.filter(member=>!preview.sharedComposition!.some(resource=>resource.sources.some(source=>source.fileId===member.fileId))).map(member=><li key={member.fileId}>{member.sourceName} · {roleLabels[member.role as keyof typeof roleLabels]??member.role}</li>)}</ul></details>
+          </>:<ul className="workbench-member-addition-dialog__members">{preview.members.map((member) => <li key={member.fileId}><span>{member.sourceName}</span><span>{roleLabels[member.role as keyof typeof roleLabels] ?? member.role} · 顺序 {member.sortOrder}</span></li>)}</ul>}
           {preview.sharedReference ? <p>此项目的当前配置引用共享版本 {preview.sharedReference.version}；来源成员只读，其他项目不受影响。</p> : null}
           {preview.rootEdit ? <details><summary>项目根文件 include 变更：{preview.rootEdit.sourceName}</summary>
             <h4>当前源码</h4><pre aria-label="当前根文件源码">{preview.rootEdit.before}</pre><h4>确认后源码</h4><pre aria-label="确认后根文件源码">{preview.rootEdit.after}</pre></details> : null}
