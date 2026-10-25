@@ -52,6 +52,7 @@ import {
 } from "./configSetService";
 import type { DtcValidator } from "./dtcValidator";
 import { exportConfigSet } from "./exportService";
+import type { CatalogSnapshot } from "../catalog-kernel/interface";
 import {
   addConfigSetFileBody,
   createBaselineBody,
@@ -295,6 +296,7 @@ export function registerParameterFileRoutes(
     db?: Database;
     objectStore?: ObjectStore;
     validator?: DtcValidator;
+    catalogSnapshot?: CatalogSnapshot;
     refusalAuditSink?: TrustedRefusalAuditSink;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
@@ -884,7 +886,7 @@ export function registerParameterFileRoutes(
     const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithConfigSetIdSchema, request.params);
-    const result = await exportConfigSet(db, auth, params.configSetId, validationDeps(), {
+    const result = await exportConfigSet(db, auth, params.configSetId, { ...validationDeps(),snapshot:options.catalogSnapshot }, {
       requestId: request.requestId
     });
 
