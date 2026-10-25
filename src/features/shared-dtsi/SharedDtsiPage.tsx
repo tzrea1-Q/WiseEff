@@ -23,6 +23,7 @@ import "./shared-dtsi.css";
 import { SharedDtsiDependencies } from "./SharedDtsiDependencies";
 import { SharedDtsiRecognition } from "./SharedDtsiRecognition";
 import { SharedDtsiComparison } from "./SharedDtsiComparison";
+import { SharedDtsiLifecycle } from "./SharedDtsiLifecycle";
 
 type Props = { apiClient?: ApiClient; canWrite: boolean; canCreateSubject?:boolean;canProposeSource?:boolean;canReviewSource?:boolean;search: string; organizationId?: string; onNavigate: (path: string) => void };
 type Scope = { key: string; client: ReturnType<typeof createSharedDtsiClient> | null; pending: boolean };
@@ -256,13 +257,15 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
       columns: [
         { key: "name", header: "资源名称", render: row => <Button variant="link" onClick={() => void navigate(row.resourceId)}>{row.name}</Button> },
         { key: "sourceName", header: "文件路径", render: row => <span title={row.sourceName}>{row.sourceName}</span> },
-        { key: "state", header: "当前版本", render: row => row.currentVersion ? `v${row.currentVersion.version}${row.draftRevision ? " · 有草稿" : ""}` : "草稿" },
+        { key: "state", header: "当前版本", render: row => `${row.state==="retired"?"已停用 · ":""}${row.currentVersion ? `v${row.currentVersion.version}${row.draftRevision ? " · 有草稿" : ""}` : "草稿"}` },
         { key: "updatedAt", header: "最后修改", render: row => formatAbsolute(row.updatedAt) }
       ] }} />
     {!loading && total > 20 ? <nav className="shared-dtsi-pagination" aria-label="共享 DTSI 分页"><Button variant="outline" disabled={page === 1} onClick={() => setPage(value => value - 1)}>上一页</Button>
       <span>{page} / {Math.ceil(total / 20)}</span><Button variant="outline" disabled={page * 20 >= total} onClick={() => setPage(value => value + 1)}>下一页</Button></nav> : null}
   </div>;
 
+  const lifecycleControls=client&&detail?<SharedDtsiLifecycle key={scopeKey} client={client} resource={detail} canWrite={canWrite} pending={pending}
+    onPending={value=>{scope.pending=value;if(isCurrent(scope))setPending(value);}} onChanged={value=>{if(isCurrent(scope))setDetail(value);}} />:null;
   if (busyLoading) return <section className="shared-dtsi-page"><SectionSkeleton label="正在加载共享 DTSI" /></section>;
 
   if (currentPreview) return <section className="shared-dtsi-page shared-dtsi-page--editor" aria-label="共享 DTSI 发布预览" aria-busy={pending}>
@@ -286,10 +289,11 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
     <header className="shared-dtsi-header"><div><Button variant="ghost" onClick={() => void navigate("")} disabled={pending}>返回资源列表</Button>
       {projectReturnPath ? <a href={projectReturnPath} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(projectReturnPath); } }}>返回项目节点</a> : null}
       <h1>{published?.name ?? detail?.name ?? "共享 DTSI"}</h1></div>
-      {canWrite && detail?.currentVersion ? <Button disabled={pending} onClick={() => detail.draftRevision ? void navigate(selected,{version:"draft",tab:"source"})
+      {canWrite && detail?.state!=="retired" && detail?.currentVersion ? <Button disabled={pending} onClick={() => detail.draftRevision ? void navigate(selected,{version:"draft",tab:"source"})
         : published && published.id!==detail.currentVersion!.id ? void navigate(selected,{version:detail.currentVersion!.id,tab:"source"}) : void createVersionDraft()}>
         {detail.draftRevision ? "继续编辑草稿" : published && published.id!==detail.currentVersion.id ? "查看最新版本" : "创建新版本"}</Button> : null}</header>
     {error ? <SectionError message={error} onRetry={() => setReload(value => value + 1)} /> : null}
+    {lifecycleControls}
     <ViewSwitch variant="tabs" ariaLabel="共享资源详情" value={tab} onValueChange={value => void navigate(selected,{tab:value})}
       items={[{value:"source",label:"源码",id:"shared-source-tab",panelId:"shared-source-panel"},
         {value:"recognition",label:"来源识别",id:"shared-recognition-tab",panelId:"shared-recognition-panel"},
@@ -356,8 +360,9 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
       <h1>{draft?.name ?? (selected === "new" ? "导入共享 DTSI" : "共享 DTSI")}{draft ? <span className="shared-dtsi-draft-label">草稿</span> : null}</h1></div>
       <div className="shared-dtsi-actions">{draft && canWrite ? <Button variant="outline" disabled={pending || conflict} onClick={() => setDiscardOpen(true)}>丢弃草稿</Button> : null}
         {canWrite && (draft || selected==="new") ? <Button variant={draft?"outline":"default"} disabled={pending || !dirty || conflict || !form.name.trim() || !form.sourceName} onClick={() => void save()}>{pending ? "保存中…" : "保存草稿"}</Button> : null}
-        {draft && canWrite ? <Button aria-describedby={!form.changeDescription.trim()?"shared-publication-hint":undefined} disabled={pending || conflict || !form.changeDescription.trim()} onClick={()=>void preparePublication()}>预览发布</Button> : null}</div>
+        {draft && canWrite && detail?.state!=="retired" ? <Button aria-describedby={!form.changeDescription.trim()?"shared-publication-hint":undefined} disabled={pending || conflict || !form.changeDescription.trim()} onClick={()=>void preparePublication()}>预览发布</Button> : null}</div>
     </header>
+    {lifecycleControls}
     {loading ? <SectionSkeleton label="正在加载共享 DTSI 草稿" /> : error && !draft && selected !== "new" ? <SectionError message={error} onRetry={() => setReload(value => value + 1)} /> : <>
       {error ? <div className="shared-dtsi-error" role="alert"><p>{error}</p>{conflict ? <Button variant="outline" onClick={() => setReloadOpen(true)}>重新载入</Button> : null}</div> : null}
       {saved === selected ? <p role="status">草稿已保存</p> : null}
