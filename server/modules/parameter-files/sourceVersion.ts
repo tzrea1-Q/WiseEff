@@ -34,7 +34,7 @@ function limit(): never { throw new ApiError("CONFLICT", "Exact source proof exc
 export function rethrowSourceTransactionError(error: unknown): never {
   if ((error as { code?: string; constraint?: string })?.code === "23505"
     && (error as { constraint?: string }).constraint === "project_parameter_files_project_id_file_name_key") {
-    throw new ApiError("CONFLICT", "配置来源的物理文件标识已被其他文件占用，所有变更已回滚。", { reason: "source-file-name-conflict" });
+    throw new ApiError("CONFLICT", "文件路径冲突，请检查文件名或挂载目录后重试；当前配置未改变。", { reason: "source-file-name-conflict" });
   }
   if ((error as { code?: string })?.code === "55000" && /Shared reference/.test((error as Error).message)) {
     throw new ApiError("CONFLICT", "共享引用源码只读，请通过引用变更或恢复流程操作。", { reason: "shared-reference-readonly" });

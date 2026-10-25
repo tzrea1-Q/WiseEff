@@ -220,7 +220,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   const physicalCollisions=sharedTargets.length ? (await tx.query<{id:string;fileName:string}>(`select id,file_name as "fileName" from public.project_parameter_files
     where organization_id=$1 and project_id=$2 and file_name=any($3::text[])`,[parameterOrganizationId(auth),input.projectId,sharedTargets.map(target=>configurationSourceFileName(input.configSetId,target.sourceName))])).rows:[];
   for(const collision of physicalCollisions)if(!sharedTargets.some(target=>target.fileId===collision.id && configurationSourceFileName(input.configSetId,target.sourceName)===collision.fileName))
-    conflict("配置来源的物理文件标识已被其他文件占用，请先核对文件身份；当前配置未改变。");
+    conflict("共享源码的目标位置已有文件，请调整挂载目录后重试；当前配置未改变。");
   if (input.setAsRoot) {
     if (input.candidateId || input.json || input.role !== "base" || existing?.format !== "dts"
       || existing.configSetId !== input.configSetId || !members.some((row) => row.fileId === existing.id && row.sourceName !== revision.entry_file)) {
