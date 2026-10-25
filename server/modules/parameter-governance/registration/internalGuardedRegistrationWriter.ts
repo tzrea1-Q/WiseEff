@@ -14,6 +14,7 @@ import {
   type RegistrationCommand,
   type RestoreRegistrationCommand,
   type RetireRegistrationCommand,
+  type RetireUnregisteredSubjectCommand,
 } from "./command";
 import type { RegistrationFailure } from "./failures";
 import { mapWriterDatabaseError } from "./failures";
@@ -56,7 +57,7 @@ const toResult = (
   command: RegistrationCommand,
   fingerprint: string,
   outcome: RegistrationResult["outcome"],
-  previousRegistrationStatus?: RegistrationResult["registrationStatus"],
+  previousRegistrationStatus?: RegistrationResult["previousRegistrationStatus"],
 ): RegistrationResult => ({
   outcome,
   registrationId: SubjectRegistrationId(registration.id),
@@ -208,6 +209,23 @@ const writeRegister = async (
   };
 };
 
+const writeRetireUnregistered = async (
+  client: RegistrationWriterClient,
+  command: RetireUnregisteredSubjectCommand,
+  fingerprint: string,
+): Promise<Result<RegistrationResult, RegistrationFailure>> => {
+  const existing = await loadRegistrationByOrgSubject(client, command.organizationId, command.subjectId);
+  if (existing) return fail({ kind: "registration-conflict", registrationId: existing.id });
+  const registrationId = `sreg_${randomUUID()}`;
+  const placementId = `spla_${randomUUID()}`;
+  const registration = await insertRegistration(client, { id: registrationId, organizationId: command.organizationId,
+    subjectId: command.subjectId, method: "explicit", proof: { reason: command.reason }, placementId, status: "retired" });
+  const placement = await insertPlacement(client, { id: placementId, registrationId,
+    organizationId: command.organizationId, moduleId: null, origin: "curated" });
+  await commitIdempotency(client, command, registration.id);
+  return { ok: true, value: toResult(registration, placement, command, fingerprint, "committed", "unregistered") };
+};
+
 const writeRetire = async (
   client: RegistrationWriterClient,
   command: RetireRegistrationCommand,
@@ -330,7 +348,7 @@ const subjectIdForGuard = async (
   client: RegistrationWriterClient,
   command: RegistrationCommand,
 ): Promise<Result<string, RegistrationFailure>> => {
-  if (command.kind === "register") {
+  if (command.kind === "register" || command.kind === "retire-unregistered") {
     return { ok: true, value: command.subjectId };
   }
   const registration = await loadRegistrationById(
@@ -403,13 +421,15 @@ export const writeGuardedRegistration = async (
         return writeRegister(client, command, fingerprint);
       case "retire":
         return writeRetire(client, command, fingerprint);
+      case "retire-unregistered":
+        return writeRetireUnregistered(client, command, fingerprint);
       case "restore":
         return writeRestore(client, command, fingerprint);
       case "move-placement":
         return writeMove(client, command, fingerprint);
     }
   } catch (error) {
-    const subjectId = command.kind === "register" ? command.subjectId : command.registrationId;
+    const subjectId = command.kind === "register" || command.kind === "retire-unregistered" ? command.subjectId : command.registrationId;
     const mapped = mapWriterDatabaseError(error, command.expectedRelease, subjectId);
     if (mapped) return fail(mapped);
     throw error;

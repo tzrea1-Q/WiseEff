@@ -94,7 +94,7 @@ async function fillSupportedDefinition(user: ReturnType<typeof userEvent.setup>)
   const propertyKey = screen.getByLabelText("属性键");
   const displayName = screen.getByLabelText("显示名称");
   const documentation = screen.getByLabelText("说明");
-  const reason = screen.getByLabelText("草稿原因");
+  const reason = screen.getByLabelText("变更说明");
   await user.clear(propertyKey);
   await user.type(propertyKey, "iin_hold");
   await user.clear(displayName);
@@ -184,7 +184,7 @@ describe("PublicationDialog", () => {
     } });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("radio", { name: "新增主体" }));
-    await user.type(screen.getByLabelText("选择器"), "vendor,new");
+    await user.type(screen.getByLabelText("compatible 标识"), "vendor,new");
     await user.type(screen.getByLabelText("属性键"), "new-value");
     await user.type(screen.getByLabelText("显示名称"), "新参数");
     await user.click(screen.getByRole("button", { name: "预览发布" }));
@@ -416,7 +416,7 @@ describe("PublicationDialog", () => {
     await user.click(await screen.findByLabelText("新增主体"));
     expect(await screen.findByRole("dialog", { name: "新增主体及首批定义" })).toBeVisible();
     await selectControlOption(screen.getByLabelText("主体类型"), "driver");
-    await user.type(screen.getByLabelText("选择器"), "acme,aux");
+    await user.type(screen.getByLabelText("compatible 标识"), "acme,aux");
     await user.clear(screen.getByLabelText("属性键"));
     await user.type(screen.getByLabelText("属性键"), "vbat");
     await user.clear(screen.getByLabelText("显示名称"));
@@ -447,7 +447,7 @@ describe("PublicationDialog", () => {
     );
     const user = userEvent.setup();
     await user.click(await screen.findByLabelText("新增主体"));
-    await user.type(screen.getByLabelText("选择器"), "acme,aux");
+    await user.type(screen.getByLabelText("compatible 标识"), "acme,aux");
     await user.clear(screen.getByLabelText("属性键"));
     await user.type(screen.getByLabelText("属性键"), "vbat");
     await user.clear(screen.getByLabelText("显示名称"));

@@ -181,8 +181,8 @@ const publishDefinition = async (
   await selectControlOption(subjects, evidence.subjectId);
   await dialog.getByLabel("属性键").fill(propertyKey);
   await dialog.getByLabel("显示名称").fill(displayName);
-  await dialog.getByLabel("说明").fill("隔离交付 M1 新增定义。");
-  await dialog.getByLabel("草稿原因").fill("RA-04 isolated image M1");
+  await dialog.getByLabel("说明", { exact: true }).fill("隔离交付 M1 新增定义。");
+  await dialog.getByLabel("变更说明", { exact: true }).fill("RA-04 isolated image M1");
   await dialog.getByRole("button", { name: "保存草稿" }).click();
   await expect(dialog.getByText("草稿已保存")).toBeVisible({ timeout: 30_000 });
   await dialog.getByRole("button", { name: "预览发布" }).click();

@@ -10,6 +10,7 @@ export type {
   RegistrationProof,
   RestoreRegistrationCommand,
   RetireRegistrationCommand,
+  RetireUnregisteredSubjectCommand,
   TrustedInvocationContext,
 } from "./command";
 export type { RegistrationFailure } from "./failures";
