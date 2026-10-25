@@ -5,6 +5,7 @@ import { AlertCircle, LoaderCircle, RefreshCw } from "lucide-react";
 
 import {
   isCatalogActionEnabled,
+  catalogActionsForSession,
   type CatalogActorKind
 } from "@/application/parameter-catalog/authority";
 import {
@@ -19,6 +20,8 @@ import {
   type RegistrationSubjectImpact
 } from "@/features/parameter-catalog-governance/RegistrationDialog";
 import { RegistrationLifecycleDialog } from "@/features/parameter-catalog-governance/RegistrationLifecycleDialog";
+import { PublicationDialog } from "@/features/parameter-catalog-governance/PublicationDialog";
+import { publicationSurfaceAdvisory, type PublicationSurfaceItem } from "@/features/parameter-catalog-governance/publicationSurface";
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type {
@@ -75,6 +78,7 @@ type DefinitionState =
   | { status: "error"; message: string };
 
 export type CanonicalSubjectPlacementPanelProps = {
+  currentPersonId?: string;
   catalog: ParameterCatalogRepository;
   governance: ParameterCatalogGovernanceRepository;
   organizationId: string;
@@ -98,6 +102,7 @@ export type CanonicalSubjectPlacementPanelProps = {
  * this panel never uses the legacy driver registry as a subject identity.
  */
 export function CanonicalSubjectPlacementPanel({
+  currentPersonId = "",
   catalog,
   governance,
   organizationId,
@@ -128,6 +133,27 @@ export function CanonicalSubjectPlacementPanel({
   const [inventoryComplete, setInventoryComplete] = useState(false);
   const [localSearch, setLocalSearch] = useState("");
   const params = useMemo(() => new URLSearchParams(searchProp ?? localSearch), [searchProp, localSearch]);
+  const [createSubjectOpen, setCreateSubjectOpen] = useState(false);
+  const [publicationSurface, setPublicationSurface] = useState<PublicationSurfaceItem | null>(null);
+  const [publicationError, setPublicationError] = useState("");
+  const canAuthorSubject = canAdmin && catalogActionsForSession({ actor, permissions: sessionPermissions }).includes("preview-publication");
+  const canCreateSubject = canAuthorSubject && isCatalogActionEnabled(actor, "preview-publication", domainState, sessionPermissions);
+  useEffect(() => {
+    let cancelled = false;
+    setPublicationSurface(null);
+    setPublicationError("");
+    if (!canAuthorSubject) return;
+    void catalog.getPublicationSurface().then(({ item }) => {
+      if (!cancelled) setPublicationSurface(item);
+    }).catch(() => { if (!cancelled) setPublicationError("无法读取目录编写状态，请刷新规范数据后重试。"); });
+    return () => { cancelled = true; };
+  }, [catalog, organizationId, canAuthorSubject, refreshKey]);
+  const subjectCreationRequested = createSubjectOpen || params.get("createSubject") === "1";
+  const publicationAdvisory = publicationSurface ? publicationSurfaceAdvisory(publicationSurface) : null;
+  const closeSubjectCreation = () => {
+    setCreateSubjectOpen(false);
+    if (params.has("createSubject")) updateQuery({ createSubject: null, returnTo: null });
+  };
   const search = params.get("subjectQ") ?? "";
   const requestedKind = params.get("subjectKind") ?? "all";
   const typeFilter = Object.hasOwn(SUBJECT_KIND_LABEL, requestedKind) ? requestedKind : "all";
@@ -517,6 +543,10 @@ export function CanonicalSubjectPlacementPanel({
               {!loading && inventoryComplete ? `${activeSubjectCount} 个有效主体。` : ""}查看参数定义，或维护主体的模块归属。
             </p>
           </div>
+          {canCreateSubject ? <button type="button" className="button primary sm"
+            disabled={!publicationSurface?.authoringAllowed}
+            title={publicationSurface?.authoringAllowed ? undefined : publicationError || "目录当前不可编写"}
+            onClick={() => setCreateSubjectOpen(true)}>新增主体</button> : null}
           {!managedRefresh ? <button
             type="button"
             className="button subtle"
@@ -532,6 +562,9 @@ export function CanonicalSubjectPlacementPanel({
           </button> : null}
         </header>
         {lifecycleNotice ? <p role="status">{lifecycleNotice}</p> : null}
+        {publicationError ? <p role="alert">{publicationError}</p> : null}
+        {canCreateSubject && publicationAdvisory ? <p role="status">{publicationAdvisory.message}
+          {onNavigate ? <button type="button" className="button ghost sm" onClick={() => onNavigate("/parameter-admin/specs")}>查看目录发布状态</button> : null}</p> : null}
 
         {loading ? (
           <p role="status">
@@ -648,20 +681,21 @@ export function CanonicalSubjectPlacementPanel({
                       </span>
                       <span className="canonical-subject-meta">
                         {registrationStatus === "retired" ? <span className="parameter-catalog__badge" data-tone="warning">已停用 · </span> : null}
-                        {placement && !placement.moduleId ? <span className="parameter-catalog__badge" data-tone="warning">unset（未分配模块）</span> : placement
+                        {placement && !placement.moduleId ? <span className="parameter-catalog__badge" data-tone="warning">未分配模块</span> : placement
                           ? `归属：${moduleLabels.get(placement.moduleId ?? "") ?? placement.displayName}`
                           : "未登记"}
                       </span>
                       <div className="parameter-module-mapping-panel__actions canonical-subject-actions">
-                        <button
+                        {subject.definitionCounts.active > 0 ? <button
                           type="button"
                           className="button subtle"
                           aria-expanded={expandedSubjectId === subject.id}
-                          disabled={subject.definitionCounts.active === 0}
                           onClick={() => updateQuery({ expandedSubject: expandedSubjectId === subject.id ? null : subject.id })}
                         >
-                          {subject.definitionCounts.active === 0 ? "暂无有效参数" : expandedSubjectId === subject.id ? "收起参数" : "查看参数"}
-                        </button>
+                          {expandedSubjectId === subject.id ? "收起参数" : "查看参数"}
+                        </button> : canCreateSubject && onNavigate && subject.membership.status === "active" && registrationStatus !== "retired" ? <button
+                          type="button" className="button subtle" aria-label={`新增定义：${subject.canonicalName}`}
+                          onClick={() => onNavigate(`${buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, subjectId: subject.id })}&createDefinition=1`)}>新增定义</button> : null}
                         {registrationAllowed && subject.registration.status === "unregistered" ? (
                           <button
                             type="button"
@@ -762,6 +796,16 @@ export function CanonicalSubjectPlacementPanel({
         ) : null}
       </section>
 
+      {subjectCreationRequested && canAuthorSubject && catalogReleaseId ? <PublicationDialog
+        open intent="create-subject" actor={actor} sessionPermissions={sessionPermissions}
+        domainState={domainState} catalog={catalog} governance={governance} organizationId={organizationId}
+        currentPersonId={currentPersonId} catalogReleaseId={catalogReleaseId} publicationSurface={publicationSurface}
+        onCompleted={() => void handleCompleted()} onRefreshEvidence={async () => { await loadCanonical(); }}
+        onOpenChange={(open) => { if (!open) closeSubjectCreation(); }}
+        onAddDefinition={onNavigate ? (subjectId) => {
+          closeSubjectCreation();
+          onNavigate(`${buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, subjectId })}&createDefinition=1`);
+        } : undefined} /> : null}
       {placementDialog && catalogReleaseId ? (
         <RegistrationDialog
           open

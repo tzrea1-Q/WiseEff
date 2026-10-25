@@ -45,7 +45,7 @@ export const publicationModes = [
 ] as const;
 export type PublicationMode = (typeof publicationModes)[number];
 
-export const publicationSubjectKinds = ["driver", "node-type"] as const;
+export const publicationSubjectKinds = ["driver", "node-type", "configuration-schema"] as const;
 export type PublicationSubjectKind = (typeof publicationSubjectKinds)[number];
 
 export const publicationDriverNatures = ["physical-device", "logical-service"] as const;
@@ -63,8 +63,8 @@ export type PublicationDraft = {
   subjectKind: PublicationSubjectKind;
   canonicalKey: string;
   selectorValue: string;
-  nature: PublicationDriverNature;
-  cardinality: PublicationDriverCardinality;
+  nature: PublicationDriverNature | "";
+  cardinality: PublicationDriverCardinality | "";
   definitionId: string;
   reviseClass: PublicationReviseClass;
   propertyKey: string;
@@ -105,13 +105,13 @@ export const emptyPublicationDraft = (): PublicationDraft => ({
 export const publicationCopy = {
   entry: "新增定义",
   title: "向已发布主体新增定义",
-  titleCreateSubject: "新增主体及首批定义",
+  titleCreateSubject: "新增主体",
   titleRevise: "修订已有定义",
   mode: "变更类型",
   modeCreateDefinition: "新增定义",
   modeCreateSubject: "新增主体",
   modeRevise: "修订定义",
-  unpublishedEmpty: "当前没有可新增定义的已发布主体。M1 不提供隐式引导。",
+  unpublishedEmpty: "暂无可新增定义的主体。请先创建主体。",
   subjectKindPick: "主体类型",
   selectorValue: {
     driver: "compatible 标识",
@@ -129,10 +129,10 @@ export const publicationCopy = {
   reviseDocumentation: "文档修订",
   reviseSemantic: "语义修订",
   catalogNotAdopted: "目录有新版本并不等于项目已采用。既有绑定与项目值仍钉在旧修订上。",
-  fallbackImpact: "新驱动可能改变节点类型回退匹配，必须由另一位高风险复核人批准。",
+  fallbackImpact: "新驱动可能改变节点类型回退匹配。",
   neverLowCreate: "新增主体不能按低风险发布。",
   registerFollowup: "登记到本组织",
-  registerFollowupHint: "目录发布已成功。组织登记是独立命令，失败不会撤回目录。",
+  registerFollowupHint: "如需在本组织使用，请单独登记主体。",
   registerFollowupFailed: "目录发布已成功，但组织登记失败。可重试登记，不会回滚目录。",
   registerFollowupRetry: "重试登记",
   registerFollowupSuccess: "组织登记已完成。",
@@ -196,10 +196,11 @@ export const publicationCopy = {
   confirmPreview: "确认预览",
   confirmPublishTitle: "确认发布到目录",
   confirmPublish: "确认发布",
-  previewAck: "我已确认按当前正文冻结预览，不会手填摘要或仓库地址",
-  publishAck: "我已确认按当前预览发布，重复点击不会代替后端幂等",
+  previewAck: "我已核对本次变更内容",
+  publishAck: "我已核对影响并确认发布到共享目录",
   driver: "驱动",
-  nodeType: "节点类型"
+  nodeType: "节点类型",
+  configurationSchema: "配置规范"
 } as const;
 
 export type PublicationJobStatus = CatalogPublicationJobResponse["item"]["status"];
@@ -479,26 +480,21 @@ export function buildPublicationChangeSet(
   draft: PublicationDraft
 ): CatalogCreatePublicationCandidateRequest["changeSet"] {
   if (draft.mode === "create-subject") {
-    const selectorKind = draft.subjectKind === "driver" ? "driver-compatible" : "node-type-name";
+    const selectorKind = draft.subjectKind === "driver" ? "driver-compatible"
+      : draft.subjectKind === "node-type" ? "node-type-name" : "configuration-schema-id";
     const selectorValue = draft.selectorValue.trim();
     const canonicalKey =
       draft.canonicalKey.trim() ||
-      `${draft.subjectKind === "driver" ? "driver" : "node-type"}:${selectorValue}`;
+      `${draft.subjectKind}:${selectorValue}`;
     return [
       {
-        op: "create-subject-with-definitions",
+        op: "create-subject",
         kind: draft.subjectKind,
         canonicalKey,
         selector: { kind: selectorKind, value: selectorValue },
         ...(draft.subjectKind === "driver"
-          ? { nature: draft.nature, cardinality: draft.cardinality }
+          ? { nature: draft.nature || undefined, cardinality: draft.cardinality || undefined }
           : {}),
-        definitions: [
-          {
-            propertyKey: draft.propertyKey.trim(),
-            content: definitionContentOf(draft)
-          }
-        ]
       }
     ];
   }
@@ -640,7 +636,8 @@ export function publicationFieldError(error: unknown): { input: keyof Publicatio
   return FIELD_COPY[field] ?? null;
 }
 
-export function publicationApprovalCopy(riskClass: CatalogPublicationCandidateResponse["item"]["riskClass"]): string {
+export function publicationApprovalCopy(riskClass: CatalogPublicationCandidateResponse["item"]["riskClass"], actor?: CatalogActorKind): string {
+  if (actor === "org-admin") return "组织管理员可核对当前影响后确认发布。";
   return riskClass === "high" ? publicationCopy.highRiskApproval : publicationCopy.lowRiskApproval;
 }
 

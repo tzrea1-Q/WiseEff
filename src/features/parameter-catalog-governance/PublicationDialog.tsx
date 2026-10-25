@@ -1,4 +1,6 @@
 import { SelectControl } from "@/components/common/SelectControl";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useEffect, useId, useRef, useState } from "react";
 
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
@@ -61,6 +63,10 @@ type FollowupStatus = "idle" | "failed" | "succeeded";
 
 export type PublicationDialogProps = {
   open: boolean;
+  intent?: "create-definition" | "create-subject";
+  initialSubjectId?: string;
+  onCreateSubject?: () => void;
+  onAddDefinition?: (subjectId: string) => void;
   actor: CatalogActorKind;
   sessionPermissions?: readonly string[] | null;
   domainState: CatalogDomainState;
@@ -78,6 +84,10 @@ export type PublicationDialogProps = {
 
 export function PublicationDialog({
   open,
+  intent = "create-definition",
+  initialSubjectId = "",
+  onCreateSubject,
+  onAddDefinition,
   actor,
   sessionPermissions,
   domainState,
@@ -111,7 +121,10 @@ export function PublicationDialog({
   const pollRef = useRef<number | null>(null);
   const completedRef = useRef(false);
   const formId = useId();
-  const [draft, setDraft] = useState<PublicationDraft>(emptyPublicationDraft);
+  const initialDraft = (): PublicationDraft => ({ ...emptyPublicationDraft(), mode: intent, subjectId: initialSubjectId,
+    ...(intent === "create-subject" ? { nature: "", cardinality: "" } : {}) });
+  const [draft, setDraft] = useState<PublicationDraft>(initialDraft);
+  const leaveAction = useRef<(() => void) | null>(null);
   const [subjects, setSubjects] = useState<SubjectItem[]>([]);
   const [subjectReadEpoch, setSubjectReadEpoch] = useState(0);
   const [followup, setFollowup] = useState<FollowupStatus>("idle");
@@ -152,7 +165,10 @@ export function PublicationDialog({
   const succeeded = job ? publicationSuccessKind(job) : null;
   const draftDirty =
     draft.mode !== "revise-definition" && !succeeded &&
-    fingerprintPublicationDraft(draft) !== fingerprintPublicationDraft(emptyPublicationDraft());
+    fingerprintPublicationDraft(draft) !== fingerprintPublicationDraft(initialDraft());
+  const fieldsComplete = draft.mode === "create-subject"
+    ? Boolean(draft.selectorValue.trim() && (draft.subjectKind !== "driver" || draft.nature && draft.cardinality))
+    : Boolean(draft.propertyKey.trim() && draft.displayName.trim() && draft.subjectId);
 
   useEffect(() => {
     if (!open || !draftDirty) {
@@ -167,12 +183,24 @@ export function PublicationDialog({
   }, [open, draftDirty]);
 
   const requestClose = () => {
+    leaveAction.current = null;
     if (draftDirty && !leaveConfirm) {
       setLeaveConfirm(true);
       return;
     }
     setLeaveConfirm(false);
     onOpenChange(false);
+  };
+
+  const requestCreateSubject = () => {
+    if (!onCreateSubject) return;
+    if (draftDirty) {
+      leaveAction.current = onCreateSubject;
+      setLeaveConfirm(true);
+    } else {
+      onOpenChange(false);
+      onCreateSubject();
+    }
   };
 
   const patchDraft = (patch: Partial<PublicationDraft>) => {
@@ -250,14 +278,14 @@ export function PublicationDialog({
       setIdempotencyKey(stored.idempotencyKey);
       startPolling(stored.jobId);
     } else {
-      setDraft(emptyPublicationDraft());
+      setDraft(initialDraft());
       setCandidate(null);
       setPreviewFingerprint(null);
       setJob(null);
       setIdempotencyKey(null);
     }
     return stopPolling;
-  }, [open, catalog, currentPersonId, organizationId]);
+  }, [open, catalog, currentPersonId, organizationId, intent, initialSubjectId]);
 
   useEffect(() => {
     if (!open) return;
@@ -323,6 +351,7 @@ export function PublicationDialog({
   };
 
   const validateExamples = () => {
+    if (draft.mode === "create-subject") return true;
     try {
       parsePublicationExamples(draft);
       return true;
@@ -333,7 +362,7 @@ export function PublicationDialog({
   };
 
   const saveDraft = async () => {
-    if (!canSaveDraft || !targetAllowed || pending || !draft.propertyKey.trim() || !draft.reason.trim()) {
+    if (!canSaveDraft || !targetAllowed || pending || !fieldsComplete || !draft.reason.trim()) {
       return;
     }
     if (draft.mode === "create-definition" && !draft.subjectId) {
@@ -353,11 +382,11 @@ export function PublicationDialog({
       const created = await governance.createProposal(
         {
           base: { catalogReleaseId },
-          requestedChange: {
+          requestedChange: draft.mode === "create-subject" ? {
+            kind: "create-subject", changeSet: buildPublicationChangeSet(draft)
+          } : {
             kind:
-              draft.mode === "create-subject"
-                ? "create-subject-with-definitions"
-                : draft.mode === "revise-definition"
+              draft.mode === "revise-definition"
                   ? "revise-definition"
                   : "create-definition",
             ...(draft.mode === "create-definition" ? { subjectId: draft.subjectId } : {}),
@@ -384,7 +413,7 @@ export function PublicationDialog({
   };
 
   const runPreview = async () => {
-    if (!canPreview || !targetAllowed || pending || !draft.propertyKey.trim() || !draft.displayName.trim()) {
+    if (!canPreview || !targetAllowed || pending || !fieldsComplete) {
       return;
     }
     if (draft.mode === "create-definition" && !draft.subjectId) {
@@ -393,7 +422,7 @@ export function PublicationDialog({
     if (draft.mode === "revise-definition" && !draft.definitionId) {
       return;
     }
-    if (draft.mode === "create-subject" && !draft.selectorValue.trim()) {
+    if (!fieldsComplete) {
       return;
     }
     if (!validateExamples() || !gateRef.current.begin()) {
@@ -526,8 +555,8 @@ export function PublicationDialog({
             <h2 id={titleId}>{draft.mode === "revise-definition" ? "历史发布任务" : publicationDialogTitle(draft.mode)}</h2>
             <div className="confirm-dialog__scroll">
               <div id={descriptionId} className="governance-confirm-dialog__body">
-                <p id={describedById}>{publicationCopy.noInternalIds}</p>
-                <p>{publicationCopy.requiredApproval}</p>
+                <p id={describedById}>{draft.mode === "create-subject"
+                  ? "参数定义可在主体发布后补充。" : "此处编写共享参数规范，项目取值在项目工作台修改。"}</p>
                 {publicationAdvisory ? (
                   <p role="status" data-tone={publicationAdvisory.tone}>
                     {publicationAdvisory.message}
@@ -565,7 +594,7 @@ export function PublicationDialog({
                   </p>
                 ) : null}
                 {targetUnavailable ? <p role="alert" className="governance-confirm-dialog__error">
-                  所选主体当前不可编写，可能已退役、登记已退役或无法核实有效状态。请重新选择有效主体，或切换为新增主体。
+                  所选主体当前不可编写，请重新选择有效主体。
                 </p> : null}
                 {!loading && draft.mode === "create-definition" && publishedSubjects.length === 0 ? (
                   <p>{publicationCopy.unpublishedEmpty}</p>
@@ -573,31 +602,8 @@ export function PublicationDialog({
                 {draft.mode === "revise-definition" ? <p role="status">
                   此处仅跟踪已有发布任务。修改已有定义，请关闭此窗口后使用目录列表中的“编辑”。
                 </p> : null}
-                {canPreview && draft.mode !== "revise-definition" ? (
+                {canPreview && !catalogSucceeded && draft.mode !== "revise-definition" ? (
                   <div className="parameter-catalog-publication-dialog__form">
-                    <fieldset className="parameter-catalog-publication-dialog__modes">
-                      <legend>{publicationCopy.mode}</legend>
-                      <label>
-                        <input
-                          type="radio"
-                          name={`${formId}-mode`}
-                          value="create-definition"
-                          checked={draft.mode === "create-definition"}
-                          onChange={() => patchDraft({ mode: "create-definition" })}
-                        />
-                        {publicationCopy.modeCreateDefinition}
-                      </label>
-                      <label>
-                        <input
-                          type="radio"
-                          name={`${formId}-mode`}
-                          value="create-subject"
-                          checked={draft.mode === "create-subject"}
-                          onChange={() => patchDraft({ mode: "create-subject", subjectId: "", unit: "mA" })}
-                        />
-                        {publicationCopy.modeCreateSubject}
-                      </label>
-                    </fieldset>
                     {draft.mode === "create-subject" ? (
                       <>
                         <label>
@@ -608,12 +614,13 @@ export function PublicationDialog({
                             onValueChange={(value) =>
                               patchDraft({ subjectKind: value as PublicationSubjectKind })
                             }
-                            options={[{ value: "driver", label: publicationCopy.driver }, { value: "node-type", label: publicationCopy.nodeType }]}
+                            options={[{ value: "driver", label: publicationCopy.driver }, { value: "node-type", label: publicationCopy.nodeType },
+                              { value: "configuration-schema", label: publicationCopy.configurationSchema }]}
                           />
                         </label>
                         <label>
                           {publicationCopy.selectorValue[draft.subjectKind]}
-                          <input
+                          <Input
                             aria-label={publicationCopy.selectorValue[draft.subjectKind]}
                             value={draft.selectorValue}
                             onChange={(event) => patchDraft({ selectorValue: event.target.value })}
@@ -629,10 +636,10 @@ export function PublicationDialog({
                                 onValueChange={(value) =>
                                   patchDraft({ nature: value as PublicationDraft["nature"] })
                                 }
-                                options={publicationDriverNatures.map((nature) => ({
+                                options={[{ value: "", label: "选择驱动性质" }, ...publicationDriverNatures.map((nature) => ({
                                   value: nature,
                                   label: nature === "physical-device" ? publicationCopy.naturePhysical : publicationCopy.natureLogical
-                                }))}
+                                }))]}
                               />
                             </label>
                             <label>
@@ -645,17 +652,17 @@ export function PublicationDialog({
                                     cardinality: value as PublicationDraft["cardinality"]
                                   })
                                 }
-                                options={publicationDriverCardinalities.map((cardinality) => ({
+                                options={[{ value: "", label: "选择实例基数" }, ...publicationDriverCardinalities.map((cardinality) => ({
                                   value: cardinality,
                                   label: cardinality === "multiple" ? publicationCopy.cardinalityMultiple : publicationCopy.cardinalitySingleton
-                                }))}
+                                }))]}
                               />
                             </label>
                           </>
                         ) : null}
-                        <p>{publicationCopy.neverLowCreate}</p>
                       </>
                     ) : (
+                    <>
                     <label>
                       {publicationCopy.subject}
                       <SelectControl
@@ -666,29 +673,16 @@ export function PublicationDialog({
                         onValueChange={(value) => patchDraft({ subjectId: value })}
                         options={[{ value: "", label: "选择主体" },
                           ...(draft.subjectId && !publishedSubjectIds.has(draft.subjectId) ? [{ value: draft.subjectId, label: `${selectedSubject?.canonicalName || "原主体"}（当前不可编写）`, disabled: true }] : []),
-                          ...publishedSubjects.map((item) => ({ value: item.id, label: item.canonicalName }))]}
+                          ...publishedSubjects.map((item) => ({ value: item.id, label: `${catalogSubjectTypeLabel(item.type)} · ${item.canonicalName}` }))]}
                       />
                     </label>
+                    {onCreateSubject ? <button type="button" className="button ghost sm" onClick={requestCreateSubject}>创建缺少的主体</button> : null}
+                    </>
                     )}
-                    {selectedSubject && draft.mode === "create-definition" ? (
-                      <dl className="parameter-catalog-publication-dialog__meta">
-                        <div>
-                          <dt>{publicationCopy.subjectKind}</dt>
-                          <dd>{catalogSubjectTypeLabel(selectedSubject.type)}</dd>
-                        </div>
-                        <div>
-                          <dt>{publicationCopy.selectorValue[selectedSubject.type]}</dt>
-                          <dd>{selectedSubject.canonicalName}</dd>
-                        </div>
-                        <div>
-                          <dt>{publicationCopy.scope}</dt>
-                          <dd>{publicationCopy.sharedScope}</dd>
-                        </div>
-                      </dl>
-                    ) : null}
+                    {draft.mode !== "create-subject" ? <>
                     <label>
                       {publicationCopy.propertyKey}
-                      <input
+                      <Input
                         aria-label={publicationCopy.propertyKey}
                         value={draft.propertyKey}
                         aria-invalid={fieldError?.input === "propertyKey"}
@@ -698,7 +692,7 @@ export function PublicationDialog({
                     </label>
                     <label>
                       {publicationCopy.displayName}
-                      <input
+                      <Input
                         aria-label={publicationCopy.displayName}
                         value={draft.displayName}
                         aria-invalid={fieldError?.input === "displayName"}
@@ -707,7 +701,7 @@ export function PublicationDialog({
                     </label>
                     <label>
                       {publicationCopy.documentation}
-                      <textarea
+                      <Textarea
                         aria-label={publicationCopy.documentation}
                         value={draft.documentation}
                         aria-invalid={fieldError?.input === "documentation"}
@@ -729,7 +723,7 @@ export function PublicationDialog({
                       <>
                         <label>
                           {publicationCopy.minimum}
-                          <input
+                          <Input
                             aria-label={publicationCopy.minimum}
                             inputMode="decimal"
                             value={draft.minimum}
@@ -738,7 +732,7 @@ export function PublicationDialog({
                         </label>
                         <label>
                           {publicationCopy.maximum}
-                          <input
+                          <Input
                             aria-label={publicationCopy.maximum}
                             inputMode="decimal"
                             value={draft.maximum}
@@ -749,7 +743,7 @@ export function PublicationDialog({
                     ) : null}
                     <label>
                       {publicationCopy.unit}
-                      <input
+                      <Input
                         aria-label={publicationCopy.unit}
                         list="publication-unit-options"
                         value={draft.unit}
@@ -764,7 +758,7 @@ export function PublicationDialog({
                     </label>
                     <label>
                       {publicationCopy.examples}
-                      <textarea
+                      <Textarea
                         aria-label={publicationCopy.examples}
                         aria-invalid={fieldError?.input === "examples"}
                         aria-describedby={fieldError?.input === "examples" ? fieldMessageId : describedById}
@@ -774,9 +768,11 @@ export function PublicationDialog({
                         onChange={(event) => patchDraft({ examples: event.target.value })}
                       />
                     </label>
+                    </> : null}
                     <label>
                       {publicationCopy.reason}
-                      <textarea
+                      <Textarea
+                        rows={3}
                         aria-label={publicationCopy.reason}
                         value={draft.reason}
                         onChange={(event) => patchDraft({ reason: event.target.value })}
@@ -791,9 +787,9 @@ export function PublicationDialog({
                     {fieldError.message}
                   </p>
                 ) : null}
-                {draftSaved ? <p>{publicationCopy.draftSaved}</p> : null}
-                {previewStale && candidate ? <p>{publicationCopy.previewStale}</p> : null}
-                {candidate && !previewStale ? (
+                {draftSaved && !catalogSucceeded ? <p>{publicationCopy.draftSaved}</p> : null}
+                {previewStale && candidate && !catalogSucceeded ? <p>{publicationCopy.previewStale}</p> : null}
+                {candidate && !previewStale && !catalogSucceeded ? (
                   <dl className="parameter-catalog-publication-dialog__preview" aria-label="发布预览">
                     <div>
                       <dt>{publicationCopy.added}</dt>
@@ -815,15 +811,15 @@ export function PublicationDialog({
                     </div>
                     <div>
                       <dt>{publicationCopy.approval}</dt>
-                      <dd>{publicationApprovalCopy(candidate.riskClass)}</dd>
+                      <dd>{publicationApprovalCopy(candidate.riskClass, actor)}</dd>
                     </div>
                     <div>
                       <dt>{publicationCopy.scope}</dt>
-                      <dd>{publicationCopy.sharedScope}</dd>
+                      <dd>{draft.mode === "create-subject" ? "主体发布到共享目录，组织登记与项目配置分别维护。" : publicationCopy.sharedScope}</dd>
                     </div>
                   </dl>
                 ) : null}
-                {candidate && !previewStale && candidate.riskClass === "high" && candidate.impactSummary.addedSubjectCount > 0 ? (
+                {candidate && !previewStale && !catalogSucceeded && draft.subjectKind === "driver" && candidate.riskClass === "high" && candidate.impactSummary.addedSubjectCount > 0 ? (
                   <p>{publicationCopy.fallbackImpact}</p>
                 ) : null}
                 {candidate && !previewStale && draft.mode === "revise-definition" && draft.reviseClass === "semantic" ? (
@@ -855,34 +851,31 @@ export function PublicationDialog({
                   setFailure(null);
                 }}>结束跟踪并开始新增</button>
               ) : null}
-              {canSaveDraft && draft.mode !== "revise-definition" ? (
+              {canSaveDraft && !catalogSucceeded && draft.mode !== "revise-definition" ? (
                 <button
                   type="button"
                   className="button subtle sm"
-                  disabled={!targetAllowed || pending || !draft.reason.trim() || !draft.propertyKey.trim()}
+                  disabled={!targetAllowed || pending || !draft.reason.trim() || !fieldsComplete}
                   onClick={() => void saveDraft()}
                 >
                   {pending ? publicationCopy.processing : publicationCopy.saveDraft}
                 </button>
               ) : null}
-              {canPreview && draft.mode !== "revise-definition" ? (
+              {canPreview && !catalogSucceeded && (!candidate || mustRePreview) && draft.mode !== "revise-definition" ? (
                 <button
                   type="button"
-                  className="button sm"
+                  className="button primary sm"
                   disabled={
                     pending ||
                     !targetAllowed ||
-                    !draft.propertyKey.trim() ||
-                    !draft.displayName.trim() ||
-                    (draft.mode === "create-definition" && !draft.subjectId) ||
-                    (draft.mode === "create-subject" && !draft.selectorValue.trim())
+                    !fieldsComplete
                   }
                   onClick={() => setConfirm("preview")}
                 >
                   {mustRePreview ? publicationCopy.rebase : publicationCopy.preview}
                 </button>
               ) : null}
-              {canPublish && draft.mode !== "revise-definition" ? (
+              {canPublish && candidate && !catalogSucceeded && draft.mode !== "revise-definition" ? (
                 <button
                   type="button"
                   className="button primary sm"
@@ -899,6 +892,8 @@ export function PublicationDialog({
                   {pending ? publicationCopy.processing : publicationCopy.publish}
                 </button>
               ) : null}
+              {catalogSucceeded && addedSubjectId && onAddDefinition ? <button type="button" className="button primary sm"
+                onClick={() => onAddDefinition(addedSubjectId)}>新增参数定义</button> : null}
               {catalogSucceeded && addedSubjectId && followup !== "succeeded" ? (
                 <button
                   type="button"
@@ -944,7 +939,7 @@ export function PublicationDialog({
         open={confirm !== null && targetAllowed && (confirm === "publish" ? canPublish : canPreview)}
         title={confirm === "publish" ? publicationCopy.confirmPublishTitle : publicationCopy.confirmPreviewTitle}
         description={
-          <p>{confirm === "publish" ? publicationCopy.requiredApproval : publicationCopy.noInternalIds}</p>
+          <p>{confirm === "publish" ? publicationApprovalCopy(candidate?.riskClass ?? "high", actor) : "将按当前内容生成发布预览。"}</p>
         }
         confirmLabel={confirm === "publish" ? publicationCopy.confirmPublish : publicationCopy.confirmPreview}
         pending={pending}
@@ -968,8 +963,10 @@ export function PublicationDialog({
         onConfirm={() => {
           setLeaveConfirm(false);
           onOpenChange(false);
+          leaveAction.current?.();
+          leaveAction.current = null;
         }}
-        onCancel={() => setLeaveConfirm(false)}
+        onCancel={() => { setLeaveConfirm(false); leaveAction.current = null; }}
       />
     </>
   );

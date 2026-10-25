@@ -25,11 +25,14 @@ import type {
 } from "../persistence/types";
 
 export const CATALOG_CAPABILITY_CONTRACT_REVISION = "catalog-capability/v4" as const;
+/** Standalone subject intent is additive; historical authoring contracts stay frozen. */
+export const CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION = "catalog-capability/v5" as const;
 export const CATALOG_CAPABILITY_V3_REVISION = "catalog-capability/v3" as const;
 export const CATALOG_CAPABILITY_ALLOW_LIST_ID = "page-historical-definition-content" as const;
 export type CatalogCapabilityAllowListRevision =
   | typeof CATALOG_CAPABILITY_V3_REVISION
-  | typeof CATALOG_CAPABILITY_CONTRACT_REVISION;
+  | typeof CATALOG_CAPABILITY_CONTRACT_REVISION
+  | typeof CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION;
 
 export const M1_VALUE_SCHEMA_TYPES = [
   "integer",
@@ -145,6 +148,10 @@ export type ReviseDefinitionChange = {
   readonly content: SupportedDefinitionContent;
 };
 
+export type CreateSubjectChange = Omit<CreateSubjectWithDefinitionsChange, "op" | "definitions"> & {
+  readonly op: "create-subject";
+};
+
 /**
  * Definition lifecycle (issue #847 decision 10). Reversible soft retirement on
  * the existing typed authoring contract: `retire-definition` publishes `retired`
@@ -184,6 +191,7 @@ export const isDefinitionLifecycleChange = (
 export type CatalogChange =
   | CreateDefinitionChange
   | CreateSubjectWithDefinitionsChange
+  | CreateSubjectChange
   | ReviseDefinitionChange
   | RetireDefinitionChange
   | RestoreDefinitionChange;
@@ -294,7 +302,7 @@ export type CapabilityAllowListIdentity = {
 };
 
 export type CapabilityContract = JsonObject & {
-  readonly revision: typeof CATALOG_CAPABILITY_CONTRACT_REVISION;
+  readonly revision: typeof CATALOG_CAPABILITY_CONTRACT_REVISION | typeof CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION;
   readonly allowListId: typeof CATALOG_CAPABILITY_ALLOW_LIST_ID;
   readonly allowListDigest: string;
   readonly valueTypes: readonly ContractJsonValue[];
@@ -360,7 +368,7 @@ export type CatalogImpactReport = {
   };
   readonly matcher: MatcherImpactFacts;
   readonly existingContractsTighten: boolean;
-  readonly capabilityContractRevision: typeof CATALOG_CAPABILITY_CONTRACT_REVISION;
+  readonly capabilityContractRevision: CapabilityContract["revision"];
 };
 
 export type BuiltReleaseArtifact = {

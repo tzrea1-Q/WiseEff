@@ -77,6 +77,8 @@ For current requests, progress appears in pending or history entries and reviewe
 
 ## Understand definitions before governing a project
 
+Create a driver, node type or configuration schema with **Add subject** in **Canonical subjects and placement**. Enter the compatible identity, node name or governed configuration-schema identity respectively; drivers also require explicit nature and instance-cardinality choices. A subject can be published without inventing a parameter. **Add definition** only adds a parameter to a published subject. If its subject is missing, follow the single subject-creation flow and continue adding a definition after publication. Subject publication, organization registration and project node enablement are separate operations.
+
 Open "Parameter definitions" (`/parameters/definitions`) to browse published contracts and revisions. A definition says what a property means; a project binding identifies its actual node or configuration occurrence, and the project value is that occurrence's configured value. Changing a project value does not redefine the shared property contract.
 
 The Platform owns the Catalog, and its published releases are immutable. An Organization registers Catalog subjects and places them in its own taxonomy; the definition schema remains Platform-maintained, rather than becoming a private fork. Open "Parameter definition management" (`/parameter-admin/specs`) in "Parameter admin" (`/parameter-admin`) to take part in governance. Proposals and uploaded DTS files go through a separate publication process described in the [Catalog authoring and publication reference](../design-docs/catalog-authoring-and-publication-control-plane.md).

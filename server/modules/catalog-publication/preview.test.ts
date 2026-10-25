@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { integerContent } from "./builder/predecessorHarness";
-import type { CatalogImpactReport } from "./builder/types";
+import { CATALOG_CAPABILITY_CONTRACT_REVISION, type CatalogImpactReport } from "./builder/types";
 import { parsePublicationChangeSet, publicationImpactFacts } from "./preview";
 
 const emptyImpact = (overrides: Partial<CatalogImpactReport> = {}): CatalogImpactReport => ({
@@ -18,11 +18,21 @@ const emptyImpact = (overrides: Partial<CatalogImpactReport> = {}): CatalogImpac
     newMatchableProperties: [],
   },
   existingContractsTighten: false,
-  capabilityContractRevision: "catalog-capability/v1",
+  capabilityContractRevision: CATALOG_CAPABILITY_CONTRACT_REVISION,
   ...overrides,
 });
 
 describe("publication M2 preview parse and facts", () => {
+  it("accepts standalone subject intent without a definition payload", () => {
+    const change = {
+      op: "create-subject", kind: "driver", canonicalKey: "driver:acme,declaration-only",
+      selector: { kind: "driver-compatible", value: "acme,declaration-only" },
+      nature: "physical-device", cardinality: "multiple",
+    };
+    expect(parsePublicationChangeSet([change])).toEqual([change]);
+    expect(parsePublicationChangeSet([{ ...change, definitions: [] }])).toMatchObject({ error: { kind: "invalid-input" } });
+  });
+
   it("parses create-subject-with-definitions and revise-definition on the frozen routes", () => {
     const parsed = parsePublicationChangeSet([
       {

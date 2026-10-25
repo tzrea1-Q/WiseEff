@@ -50,6 +50,7 @@ export type CatalogOrganizationSurfaceProps = {
   onAnchorChange: (href: string, mode: "push" | "replace") => void;
   organizationId?: string;
   currentPersonId: string;
+  onCreateSubject?: () => void;
   relatedKnowledge?: SpecRelatedKnowledgeSource;
   projects?: readonly { id: string; name: string }[];
   moduleRegistry?: Pick<ParameterModuleRegistryRepository, "getRegistry">;
@@ -67,6 +68,7 @@ export function CatalogOrganizationSurface({
   onAnchorChange,
   organizationId,
   currentPersonId,
+  onCreateSubject,
   relatedKnowledge,
   projects,
   moduleRegistry,
@@ -112,6 +114,10 @@ export function CatalogOrganizationSurface({
   const setReviewLeaveGuard = useCallback((guard: (() => boolean) | null) => { reviewLeaveGuard.current = guard; }, []);
   const [publicationSurface, setPublicationSurface] = useState<PublicationSurfaceItem | null>(null);
   const [publicationSurfaceLoad, setPublicationSurfaceLoad] = useState<"loading" | "ready" | "error">("loading");
+  const definitionCreationRequested = anchor.createDefinition === true;
+  useEffect(() => {
+    if (definitionCreationRequested && publicationSurface?.authoringAllowed && domainState) setAction("preview-publication");
+  }, [definitionCreationRequested, publicationSurface?.authoringAllowed, domainState]);
   const [lifecycle, setLifecycle] = useState<{
     intent: DefinitionLifecycleIntent;
     definition: CatalogDefinitionResponse["item"];
@@ -494,6 +500,8 @@ export function CatalogOrganizationSurface({
       (action === "preview-publication" || action === "publish-publication") ? (
         <PublicationDialog
           open
+          initialSubjectId={subjectId}
+          onCreateSubject={onCreateSubject}
           actor={actor}
           sessionPermissions={sessionPermissions}
           domainState={domainState}
@@ -509,6 +517,7 @@ export function CatalogOrganizationSurface({
           onOpenChange={(open) => {
             if (!open) {
               setAction(null);
+              if (definitionCreationRequested) onAnchorChange(buildCatalogHref({ ...anchor, createDefinition: false }), "replace");
             }
           }}
         />
