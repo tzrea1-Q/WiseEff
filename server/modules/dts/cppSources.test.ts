@@ -21,6 +21,12 @@ describe("controlled original DTS preprocessing", () => {
     await expect(prepareDtsSources(input('#include "defs.h"\n/ {};', '#define CHARACTER \'/*\'\n#line 1 "board.dts"\n')))
       .rejects.toMatchObject({ code: "preprocess-input", fileName: "defs.h", message: expect.stringContaining("#line") });
   });
+  it("rejects computed volatile tokens and unsafe earlier include search candidates before launch", async () => {
+    await expect(prepareDtsSources(input('#include "defs.h"\n/ {};','#define JOIN(a,b) a##b\n#define VOLATILE JOIN(__TI,ME__)'))).rejects.toMatchObject({code:"preprocess-input"});
+    await expect(prepareDtsSources({...input('/ {};'),defines:{VALUE:"__TIME__"}})).rejects.toMatchObject({code:"preprocess-input"});
+    await expect(prepareDtsSources({...input('#include "../defs.h"\n/ {};'),includeSearchPaths:["safe"],
+      files:new Map([["board.dts",{fileVersionId:"board",content:'#include "../defs.h"\n/ {};'}],["defs.h",{fileVersionId:"header",content:"#define A 1"}]])})).rejects.toMatchObject({code:"preprocess-input"});
+  });
 });
 
 describe("native pinned CPP original-source proof", () => {

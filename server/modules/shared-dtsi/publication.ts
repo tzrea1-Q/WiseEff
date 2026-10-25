@@ -9,7 +9,7 @@ import type { SharedDtsiDraft, SharedDtsiManifest, SharedDtsiPublicationPreview,
   SharedDtsiVersion, SharedDtsiVersionSummary } from "../contracts/dtoSchemas/sharedDtsi";
 import { sharedDtsiManifestSchema } from "../contracts/dtoSchemas/sharedDtsi";
 import { getSharedDtsiDraft, lockDraft, requireRead, requireWrite, type WriteContext } from "./service";
-import { closureManifest, closureMembers, loadSharedDtsiClosure } from "./dependencies";
+import { closureManifest, closureMembers, composeDtsBuildInputs, loadSharedDtsiClosure } from "./dependencies";
 
 const digest = (value: unknown) => `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
 const actorFingerprint = (auth: AuthContext) => digest({ userId:auth.user.id,organizationId:parameterOrganizationId(auth),active:auth.user.isActive,
@@ -20,7 +20,7 @@ type VersionRow = Omit<SharedDtsiVersionSummary,"createdAt"> & {createdAt:Date};
 const summary = (row: VersionRow): SharedDtsiVersionSummary => ({...row,createdAt:row.createdAt.toISOString()});
 const conflict = (message="草稿或共享版本已变化，请重新生成发布预览。") => new ApiError("CONFLICT",message,{reason:"shared-source-preview-stale"});
 
-async function completePublicationSource(db:Database,auth:AuthContext,draft:SharedDtsiDraft) {
+export async function completePublicationSource(db:Database,auth:AuthContext,draft:SharedDtsiDraft) {
   const resources=await loadSharedDtsiClosure(db,auth,draft.dependencies??[],draft.resourceId);
   const members=[...draft.members,...closureMembers(resources)];
   if(members.length>128 || members.reduce((size,member)=>size+Buffer.byteLength(member.content),0)>16_777_216)
@@ -31,11 +31,14 @@ async function completePublicationSource(db:Database,auth:AuthContext,draft:Shar
     if(paths.has(path))throw new ApiError("VALIDATION_FAILED",`${path}：本资源与依赖的挂载路径冲突。`);
     paths.add(path);
   }
-  const source=await publicationSource({...draft,members});
+  const declared = draft.buildInputs ?? { includeSearchPaths: [], defines: {} };
+  const source=await publicationSource({...draft,members,buildInputs:composeDtsBuildInputs(declared,resources)});
   if(!resources.length && !draft.dependencies?.length)return source;
   const own=new Set(draft.members.map(member=>member.id));
   source.members=source.members.filter(member=>own.has(member.id));
   source.manifest={...source.manifest,members:source.manifest.members.filter(member=>own.has(member.id)),
+    buildInputs:{includeSearchPaths:declared.includeSearchPaths,...(Object.keys(declared.defines).length?{defines:declared.defines}:{}),
+      ...(source.preprocessing?{preprocessing:source.preprocessing.receipt}:{})},
     dependencies:draft.dependencies??[],dependencyClosure:closureManifest(resources)};
   source.digest=digest({name:draft.name,manifest:source.manifest,changeDescription:draft.changeDescription});
   return source;

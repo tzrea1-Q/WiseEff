@@ -44,6 +44,8 @@ export type ExportConfigSetManifestMember = {
 };
 
 export type ExportConfigSetManifest = {
+  preprocessing?: import("../dts/cppSources").DtsPreprocessingReceipt;
+  declaredBuildInputs?: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
   entryFile?: string | null;
   includeSearchPaths?: string[];
   overlayOrder?: string[];
@@ -224,7 +226,7 @@ export async function exportConfigSet(
   const dtsFilesForValidation: Array<{ name: string; content: string }> = [];
 
   for (const member of snapshot.members) {
-    const content = hasSharedReferences ? member.content : formatExportedContent(member.format, member.content);
+    const content = hasSharedReferences || snapshot.preprocessing ? member.content : formatExportedContent(member.format, member.content);
 
     manifestMembers.push({
       ...(member.sharedReference ? { sharedReference: member.sharedReference } : {}),
@@ -250,15 +252,16 @@ export async function exportConfigSet(
 
   const validator = deps.validator ?? createSubprocessDtcValidator();
   const mode = readDtsValidationMode();
-  const complete = hasSharedReferences && snapshot.entryFile ? await createDtsToolchainRunner().validate({entryFile:snapshot.entryFile,
-    includeSearchPaths:snapshot.includeSearchPaths,overlayOrder:snapshot.overlayOrder,
+  const complete = (hasSharedReferences || snapshot.preprocessing) && snapshot.entryFile ? await createDtsToolchainRunner().validate({entryFile:snapshot.entryFile,
+    includeSearchPaths:snapshot.includeSearchPaths,defines:snapshot.preprocessing?.defines,overlayOrder:snapshot.overlayOrder,
     files:new Map(dtsFilesForValidation.map(file=>[file.name,{content:file.content}]))},{mode:mode==="block"?"release":mode}) : null;
   const validation = complete ? {ok:complete.ok,mode,compiler:complete.compiler.dtc?"dtc" as const:"unavailable" as const,diagnostics:complete.diagnostics}
     : await validator.validate(dtsFilesForValidation, { mode });
   const requiresConfirmation = computeRequiresConfirmation(validation);
 
   const manifest: ExportConfigSetManifest = {
-    ...(hasSharedReferences ? { entryFile: snapshot.entryFile, includeSearchPaths: snapshot.includeSearchPaths, overlayOrder: snapshot.overlayOrder } : {}),
+    ...(hasSharedReferences || snapshot.preprocessing ? { entryFile: snapshot.entryFile, includeSearchPaths: snapshot.includeSearchPaths, overlayOrder: snapshot.overlayOrder,
+      ...(snapshot.preprocessing?{preprocessing:snapshot.preprocessing}:{}),...(snapshot.declaredBuildInputs?{declaredBuildInputs:snapshot.declaredBuildInputs}:{}) } : {}),
     configSetId: configSet.id,
     name: configSet.name,
     projectId: configSet.projectId,

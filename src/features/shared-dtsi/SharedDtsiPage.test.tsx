@@ -50,14 +50,14 @@ describe("shared DTSI draft authoring", () => {
     await user.click(screen.getByText("构建设置", { exact: true }));
     await user.type(screen.getByLabelText("Include 搜索目录"), "include");
     await user.type(screen.getByLabelText("构建宏"), "ENABLED=1");
-    await user.click(screen.getByRole("button", { name: "保存草稿", exact: true }));
+    await user.click(screen.getByRole("button", { name: /^保存草稿$/u }));
     await screen.findByText("草稿已保存", { exact: true });
     const post = fetchImpl.mock.calls.find(([, init]) => init?.method === "POST")!;
     expect(JSON.parse(post[1]!.body as string)).toMatchObject({ buildInputs: { includeSearchPaths: ["include"], defines: { ENABLED: "1" } } });
     expect(screen.getByLabelText("构建宏")).toHaveValue("ENABLED=1");
     await user.clear(screen.getByLabelText("构建宏"));
     await user.type(screen.getByLabelText("构建宏"), "ENABLED=0");
-    expect(screen.getByRole("button", { name: "保存草稿", exact: true })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /^保存草稿$/u })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "返回资源列表" }));
     expect(await screen.findByRole("dialog")).toBeVisible();
   });

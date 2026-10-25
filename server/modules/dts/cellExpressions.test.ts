@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { parseDts } from "./parser";
 import { parseDtsValue, renderDtsValue } from "./valueAst";
+import { parseDtsValue as parseClientDtsValue } from "../../../src/domain/parameter-topology/parseDtsValue";
 
 describe("native DTS integer expressions", () => {
   it("resolves a BIT-style expansion without losing original text or spans", () => {
     const raw = "<(1U << (3))>", source = `/dts-v1/;\n/ { flags = ${raw}; status = "okay"; };`;
     const parsed = parseDtsValue("flags", raw);
+    expect(parseClientDtsValue("flags", raw)).toEqual(parsed);
     expect(parsed.value).toEqual({ kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "(1U << (3))", value: "8" }]] });
     expect(parsed.rawText).toBe(raw);
     expect(renderDtsValue(parsed.value, raw)).toBe(raw);
@@ -26,6 +28,7 @@ describe("native DTS integer expressions", () => {
     ["(077 + 1)", "64"], ["(0xffffffffUL)", "4294967295"],
   ])("evaluates native integer arithmetic %s", (expression, expected) => {
     const raw = `<${expression}>`, value = parseDtsValue("flags", raw).value;
+    expect(parseClientDtsValue("flags", raw).value).toEqual(value);
     expect(value).toMatchObject({ kind: "cells", groups: [[{ kind: "integer", value: expected }]] });
     expect(renderDtsValue(value, raw)).toBe(raw);
   });
@@ -35,6 +38,7 @@ describe("native DTS integer expressions", () => {
     expect(value).toMatchObject({ kind: "cells", bits: 64, groups: [
       [{ value: "9223372036854775808" }, { value: "9007199254740993" }], [{ value: "18446744073709551615" }],
     ] });
+    expect(parseClientDtsValue("flags",raw).value).toEqual(value);
     expect(renderDtsValue(value, raw)).toBe(raw);
     const source = `/ { flags = ${raw}; enabled; };`, document = parseDts(source);
     expect(document.topLevel[0]!.children).toHaveLength(2);
@@ -54,6 +58,7 @@ describe("native DTS integer expressions", () => {
     expect(property).toMatchObject({ kind: "property", rawText: raw });
     expect(document.topLevel[0]!.children).toHaveLength(2);
     expect(() => parseDtsValue("flags", raw)).toThrow();
+    expect(() => parseClientDtsValue("flags", raw)).toThrow();
   });
 
   it.each([
@@ -63,5 +68,6 @@ describe("native DTS integer expressions", () => {
     `<${"(".repeat(65)}1${")".repeat(65)}>`, `<(${"1+".repeat(1024)}1)>`,
   ])("rejects unsupported, invalid or excessive expressions explicitly: %s", raw => {
     expect(() => parseDtsValue("flags", raw)).toThrow();
+    expect(() => parseClientDtsValue("flags", raw)).toThrow();
   });
 });

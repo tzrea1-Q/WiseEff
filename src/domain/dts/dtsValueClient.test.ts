@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { classifyDtsValue, decodeDtsString, encodeDtsString, formatByteLiteral, formatStringList, parseBytesValue, parseStringListValues, validateDtsValue } from "./dtsValueClient";
 
 describe("classifyDtsValue", () => {
+  it("accepts expanded integer expressions at the structured value validation boundary", () => {
+    expect(validateDtsValue("<(1U << (3))>","flags","u32-array")).toEqual({valid:true,valueType:"u32-array",normalizedValue:"<8>"});
+    expect(validateDtsValue("/bits/ 64 <(1ULL << 63)>","flags","bytes")).toMatchObject({valid:true,normalizedValue:"/bits/ 64 <9223372036854775808>"});
+    for(const raw of ["<(1 << 64)>","<(1 / 0)>","<(1 + unknown)>",`<${"(".repeat(65)}1${")".repeat(65)}>`])expect(validateDtsValue(raw,"flags").valid).toBe(false);
+  });
   it("accepts native node-path cells while refusing relative or escaping paths",()=>{
     expect(validateDtsValue("<&{/soc/clock}>","clocks","phandle-list")).toMatchObject({valid:true,normalizedValue:"<&{/soc/clock}>"});
     for(const path of ["relative","/soc/../clock","/soc//clock"])expect(validateDtsValue(`<&{${path}}>`,"clocks","phandle-list").valid).toBe(false);
