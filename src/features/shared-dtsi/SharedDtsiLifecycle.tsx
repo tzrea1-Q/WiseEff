@@ -16,7 +16,11 @@ export function SharedDtsiLifecycle({ client, resource, canWrite, pending, onPen
   async function confirm() {
     if(!request||pending)return;
     onPending(true);setError("");
-    try {onChanged(await client.lifecycle(resource.resourceId,request));setRestored(request.state==="active");setRequest(null);}
+    try {
+      await client.lifecycle(resource.resourceId,request);
+      const current=await client.detail(resource.resourceId);
+      onChanged(current);setRestored(request.state==="active"&&current.state==="active");setRequest(null);
+    }
     catch(cause){setError(presentError(cause,"未能确认资源状态，请重试。"));setStale(cause instanceof WiseEffApiError&&cause.code==="CONFLICT");}
     finally{onPending(false);}
   }
@@ -30,7 +34,7 @@ export function SharedDtsiLifecycle({ client, resource, canWrite, pending, onPen
     {retired?<p role="status">资源已停用 · 既有固定引用与历史版本可继续读取，不能新增直接或传递引用。</p>:null}
     {!retired&&restored?<p role="status">资源已恢复，可再次建立新引用。</p>:null}
     {canWrite?<div className="shared-dtsi-version-actions"><Button variant="outline" disabled={pending} onClick={()=>{
-      setError("");setStale(false);setRequest({state:retired?"active":"retired",expectedLifecycleRevision:resource.lifecycleRevision,idempotencyKey:crypto.randomUUID()});
+      setError("");setStale(false);setRestored(false);setRequest({state:retired?"active":"retired",expectedLifecycleRevision:resource.lifecycleRevision,idempotencyKey:crypto.randomUUID()});
     }}>{label}</Button></div>:null}
     <ConfirmDialog open={Boolean(request)} title={`${label}？`} description={retired
       ?"恢复后可再次新增直接和传递引用，沿用同一资源身份及已发布版本。"

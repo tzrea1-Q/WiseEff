@@ -76,7 +76,9 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     const published=await publicationCall<{item:{id:string}}>(`/${resourceId}/publications`,"POST",{previewId:preview.body.item.id,idempotencyKey:"lifecycle-publish"});
     expect(published.status,published.bodyText).toBe(201);
     const transition={state:"retired",expectedLifecycleRevision:1,idempotencyKey:"lifecycle-retire"};
-    const retired=await publicationCall<{item:{resourceId:string;state:string;lifecycleRevision:number}}>(`/${resourceId}/lifecycle`,"POST",transition);
+    const concurrent=await Promise.all([0,1].map(()=>publicationCall<{item:{resourceId:string;state:string;lifecycleRevision:number}}>(`/${resourceId}/lifecycle`,"POST",transition)));
+    const retired=concurrent[0]!;
+    expect(concurrent[1]!.status,concurrent[1]!.bodyText).toBe(200);expect(concurrent[1]!.body).toEqual(retired.body);
     expect(retired.status,retired.bodyText).toBe(200);
     expect(retired.body.item).toMatchObject({resourceId,state:"retired",lifecycleRevision:2});
     expect((await publicationCall(`/${resourceId}/lifecycle`,"POST",transition)).body).toEqual(retired.body);
@@ -89,8 +91,12 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     const restored=await publicationCall<{item:{resourceId:string;state:string;lifecycleRevision:number}}>(`/${resourceId}/lifecycle`,"POST",{state:"active",expectedLifecycleRevision:2,idempotencyKey:"lifecycle-restore"});
     expect(restored.status,restored.bodyText).toBe(200);
     expect(restored.body.item).toMatchObject({resourceId,state:"active",lifecycleRevision:3});
-    // An old successful request cannot retire the resource again after a restore.
-    expect((await publicationCall(`/${resourceId}/lifecycle`,"POST",transition)).status).toBe(409);
+    // A late retry returns the original operation result without retiring the resource again.
+    const retried=await publicationCall(`/${resourceId}/lifecycle`,"POST",transition);
+    expect(retried.status,retried.bodyText).toBe(200);expect(retried.body).toEqual(retired.body);
+    expect((await publicationCall(`/${resourceId}/detail`)).body).toMatchObject({item:{state:"active",lifecycleRevision:3}});
+    expect((await publicationCall(`/${resourceId}/lifecycle`,"POST",{...transition,state:"active",expectedLifecycleRevision:2})).status).toBe(409);
+    expect((await db.query<{count:number}>("select count(*)::int as count from public.audit_events where kind='shared-dtsi-lifecycle' and target_id=$1",[resourceId])).rows[0]!.count).toBe(2);
   });
 
   it("requires a current user administrator and rolls back lifecycle changes when audit fails",async()=>{

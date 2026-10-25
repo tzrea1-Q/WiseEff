@@ -96,9 +96,12 @@ export type SharedDtsiPublicationPreview = z.infer<typeof sharedDtsiPreviewSchem
 export const sharedDtsiLifecycleSchema=z.object({state:z.enum(["active","retired"]),expectedLifecycleRevision:z.number().int().positive(),
   idempotencyKey:z.string().min(1).max(160).regex(/^[A-Za-z0-9._:-]+$/u)}).strict();
 export type SharedDtsiLifecycleInput=z.infer<typeof sharedDtsiLifecycleSchema>;
+export const sharedDtsiLifecycleResultSchema=z.object({resourceId:id,state:z.enum(["active","retired"]),lifecycleRevision:z.number().int().positive(),updatedAt:z.string()}).strict();
+export type SharedDtsiLifecycleResult=z.infer<typeof sharedDtsiLifecycleResultSchema>;
 
 export const sharedDtsiDtoSchemaCatalog = {
   SharedDtsiLifecycleRequest:sharedDtsiLifecycleSchema,
+  SharedDtsiLifecycleResponse:itemEnvelopeSchema(sharedDtsiLifecycleResultSchema),
   SharedDtsiDraftRequest: sharedDtsiDraftInputSchema,
   SharedDtsiProjectImportRequest: sharedDtsiProjectImportSchema,
   SharedDtsiDraftUpdateRequest: sharedDtsiDraftUpdateSchema,
@@ -137,7 +140,7 @@ export const sharedDtsiRoutes = [
 ] as const;
 const tags = ["parameter-files" as const];
 export const sharedDtsiSchemaRegistry = {
-  "sharedDtsi.lifecycle":{summary:"Retire or restore a shared resource with state comparison",tags,requestBody:"SharedDtsiLifecycleRequest",responseBody:"SharedDtsiDetailResponse"},
+  "sharedDtsi.lifecycle":{summary:"Retire or restore a shared resource with state comparison",tags,requestBody:"SharedDtsiLifecycleRequest",responseBody:"SharedDtsiLifecycleResponse"},
   "sharedDtsi.projectImport": { summary: "Create a shared draft from an authorized exact private source revision", tags, requestBody: "SharedDtsiProjectImportRequest", responseBody: "SharedDtsiDraftResponse", successStatus: 201 as const },
   "sharedDtsi.list": { summary: "List Organization shared DTSI resources", tags, responseBody: "SharedDtsiListResponse",
     requestParameters: [{ name: "q", in: "query" as const }, { name: "offset", in: "query" as const }, { name: "limit", in: "query" as const }] },

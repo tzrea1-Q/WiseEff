@@ -38,7 +38,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SharedDtsiDetailResponse"
+                  "$ref": "#/components/schemas/SharedDtsiLifecycleResponse"
                 }
               }
             }
@@ -28578,19 +28578,13 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "SharedDtsiLifecycleRequest"
       },
-      "SharedDtsiDetailResponse": {
+      "SharedDtsiLifecycleResponse": {
         "type": "object",
         "properties": {
           "item": {
             "type": "object",
             "properties": {
               "resourceId": {
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              },
-              "updatedAt": {
                 "type": "string"
               },
               "state": {
@@ -28603,65 +28597,15 @@
               "lifecycleRevision": {
                 "type": "number"
               },
-              "draftRevision": {
-                "type": [
-                  "number",
-                  "null"
-                ]
-              },
-              "currentVersion": {
-                "type": [
-                  "object",
-                  "null"
-                ],
-                "properties": {
-                  "id": {
-                    "type": "string"
-                  },
-                  "resourceId": {
-                    "type": "string"
-                  },
-                  "version": {
-                    "type": "number"
-                  },
-                  "name": {
-                    "type": "string"
-                  },
-                  "changeDescription": {
-                    "type": "string"
-                  },
-                  "digest": {
-                    "type": "string"
-                  },
-                  "createdAt": {
-                    "type": "string"
-                  },
-                  "createdByUserId": {
-                    "type": "string"
-                  },
-                  "createdByName": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "id",
-                  "resourceId",
-                  "version",
-                  "name",
-                  "changeDescription",
-                  "digest",
-                  "createdAt",
-                  "createdByUserId"
-                ],
-                "additionalProperties": false
+              "updatedAt": {
+                "type": "string"
               }
             },
             "required": [
               "resourceId",
-              "name",
-              "updatedAt",
-              "draftRevision",
-              "currentVersion"
+              "state",
+              "lifecycleRevision",
+              "updatedAt"
             ],
             "additionalProperties": false
           }
@@ -28670,7 +28614,7 @@
           "item"
         ],
         "additionalProperties": false,
-        "x-wiseeff-schema": "SharedDtsiDetailResponse"
+        "x-wiseeff-schema": "SharedDtsiLifecycleResponse"
       },
       "SharedDtsiProjectImportRequest": {
         "type": "object",
@@ -29157,6 +29101,100 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "SharedDtsiDiscardResponse"
+      },
+      "SharedDtsiDetailResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "resourceId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "retired"
+                ]
+              },
+              "lifecycleRevision": {
+                "type": "number"
+              },
+              "draftRevision": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "currentVersion": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "resourceId": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "number"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "changeDescription": {
+                    "type": "string"
+                  },
+                  "digest": {
+                    "type": "string"
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "createdByUserId": {
+                    "type": "string"
+                  },
+                  "createdByName": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "resourceId",
+                  "version",
+                  "name",
+                  "changeDescription",
+                  "digest",
+                  "createdAt",
+                  "createdByUserId"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "resourceId",
+              "name",
+              "updatedAt",
+              "draftRevision",
+              "currentVersion"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SharedDtsiDetailResponse"
       },
       "SharedDtsiUsagesResponse": {
         "type": "object",

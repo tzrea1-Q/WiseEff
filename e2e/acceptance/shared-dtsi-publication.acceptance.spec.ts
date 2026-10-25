@@ -16,6 +16,18 @@ test("retires and restores a shared resource through keyboard confirmation with 
   const name="共享资源生命周期 · 长路径与固定历史";
   const created=await catalogJson(page.request,"POST","/api/v2/shared-dtsi",{data:{name,sourceName:"platform/long-source-path/lifecycle-common.dtsi",content:'/ { lifecycle: lifecycle { compatible = "test,lifecycle"; status = "okay"; }; };',changeDescription:"Lifecycle browser evidence"}});
   expect(created.status).toBe(201);const resourceId=(created.body as {item:{resourceId:string}}).item.resourceId;
+  await page.goto(catalogAppUrl(`/parameter-admin/sources?resource=${resourceId}`));
+  await expect(page.getByLabel("资源名称",{exact:true})).toHaveValue(name);
+  await page.getByRole("button",{name:"停用资源",exact:true}).click();
+  await page.getByRole("dialog",{name:"停用资源？",exact:true}).getByRole("button",{name:"停用资源",exact:true}).click();
+  await expect(page.getByText(/^资源已停用/)).toBeVisible();
+  await expect(page.getByRole("button",{name:"预览发布",exact:true})).toHaveCount(0);
+  await expect(page.getByLabel("资源名称",{exact:true})).toHaveValue(name);
+  await catalogScreenshot(page,testInfo,"shared-lifecycle-draft-retired-1440");
+  await page.getByRole("button",{name:"恢复资源",exact:true}).click();
+  await page.getByRole("dialog",{name:"恢复资源？",exact:true}).getByRole("button",{name:"恢复资源",exact:true}).click();
+  await expect(page.getByText("资源已恢复，可再次建立新引用。",{exact:true})).toBeVisible();
+  await expect(page.getByLabel("资源名称",{exact:true})).toHaveValue(name);
   const preview=await catalogJson(page.request,"POST",`/api/v2/shared-dtsi/${resourceId}/publication-preview`,{data:{expectedRevision:1}});expect(preview.status).toBe(201);
   const published=await catalogJson(page.request,"POST",`/api/v2/shared-dtsi/${resourceId}/publications`,{data:{previewId:(preview.body as {item:{id:string}}).item.id,idempotencyKey:"lifecycle-browser-publish"}});expect(published.status).toBe(201);
   const versionId=(published.body as {item:{id:string}}).item.id;
@@ -34,7 +46,7 @@ test("retires and restores a shared resource through keyboard confirmation with 
   await page.screenshot({path:testInfo.outputPath("shared-lifecycle-retire-dialog-1440.png"),fullPage:true,animations:"disabled"});
   await page.keyboard.press("Escape");await expect(dialog).toHaveCount(0);await expect(retire).toBeFocused();
   await page.keyboard.press("Enter");await expect(dialog).toBeVisible();
-  const concurrent=await catalogJson(page.request,"POST",`/api/v2/shared-dtsi/${resourceId}/lifecycle`,{data:{state:"retired",expectedLifecycleRevision:1,idempotencyKey:"lifecycle-browser-other-admin"}});expect(concurrent.status).toBe(200);
+  const concurrent=await catalogJson(page.request,"POST",`/api/v2/shared-dtsi/${resourceId}/lifecycle`,{data:{state:"retired",expectedLifecycleRevision:3,idempotencyKey:"lifecycle-browser-other-admin"}});expect(concurrent.status).toBe(200);
   await dialog.getByRole("button",{name:"停用资源",exact:true}).focus();await page.keyboard.press("Enter");
   await expect(dialog.getByRole("alert")).toContainText("资源状态已变化");
   await expect(dialog.getByRole("button",{name:"停用资源",exact:true})).toBeDisabled();
@@ -55,7 +67,7 @@ test("retires and restores a shared resource through keyboard confirmation with 
   await catalogScreenshot(page,testInfo,"shared-lifecycle-retired-1280");
   const db=createPostgresDatabase(catalogAcceptanceRuntime.runtime.databaseUrl);
   try{expect((await db.query<{action:string;metadata:{lifecycleRevision:number}}>("select action,metadata from public.audit_events where kind='shared-dtsi-lifecycle' and target_id=$1 order by created_at,id",[resourceId])).rows)
-    .toEqual([expect.objectContaining({action:"retire",metadata:expect.objectContaining({lifecycleRevision:2})}),expect.objectContaining({action:"restore",metadata:expect.objectContaining({lifecycleRevision:3})}),expect.objectContaining({action:"retire",metadata:expect.objectContaining({lifecycleRevision:4})})]);}
+    .toEqual(["retire","restore","retire","restore","retire"].map((action,index)=>expect.objectContaining({action,metadata:expect.objectContaining({lifecycleRevision:index+2})})));}
   finally{await db.close();}
   await signInCatalogActor(page,"user",`/parameter-admin/sources?resource=${resourceId}`);await dismissXiaozeHint(page);
   await expect(page.getByLabel("已发布 DTSI 源码",{exact:true})).toHaveAttribute("aria-readonly","true");
