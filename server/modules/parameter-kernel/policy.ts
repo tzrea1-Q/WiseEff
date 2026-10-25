@@ -1,5 +1,16 @@
 import type { AuthContext, BackendPermission, BackendRoleId } from "../auth/types";
 import type { ParameterChangeRequestStatus } from "./workflowStatus";
+import { permissionsForRoles } from "../auth/policy";
+import type { UsageProjectScope } from "../parameter-bindings/usage";
+
+/** Shared with Catalog: resource readability alone does not widen usage visibility. */
+export function parameterUsageProjectScope(auth:AuthContext):UsageProjectScope|null {
+  if (!Array.isArray(auth.roles) || auth.roles.some((binding) => !binding ||
+    (binding.projectId !== null && (typeof binding.projectId !== "string" || binding.projectId.length === 0 || binding.projectId.trim() !== binding.projectId || /[\u0000-\u001F\u007F-\u009F]/u.test(binding.projectId))))) return null;
+  const eligible = auth.roles.filter((binding) => permissionsForRoles([binding.roleId]).includes("parameter:view"));
+  if (eligible.some((binding) => binding.projectId === null || binding.roleId === "admin" || binding.roleId === "platform-admin")) return { kind: "all" };
+  return { kind: "only", ids: [...new Set(eligible.flatMap((binding) => binding.projectId === null ? [] : [binding.projectId]))] };
+}
 
 function hasPermission(auth: AuthContext, permission: BackendPermission) {
   return auth.permissions.includes(permission);

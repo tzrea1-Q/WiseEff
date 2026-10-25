@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { sharedDtsiDependencySchema } from "./sharedDtsi";
 
 const additionFields = {
   candidateId: z.string().min(1).optional(), fileId: z.string().min(1).optional(),
-  sharedReference: z.object({ resourceId: z.string().uuid(), versionId: z.string().uuid() }).strict().optional(),
+  sharedReference: sharedDtsiDependencySchema.extend({mountPath:sharedDtsiDependencySchema.shape.mountPath.optional()}).strict().optional(),
   setAsRoot: z.literal(true).optional(),
   role: z.enum(["base", "overlay", "charging", "thermal", "misc"]), sortOrder: z.number().int().min(0).max(100000),
   json: z.object({ configurationSchemaId: z.string().trim().min(1), rootPointer: z.string(),
@@ -15,6 +16,8 @@ export const memberAdditionApplyBodySchema = z.object({ ...additionFields, proof
 export const memberAdditionPreviewResponseSchema = z.object({ item: z.object({
   proofToken: z.string().regex(/^[0-9a-f]{64}$/), configSetId: z.string(), fileName: z.string(), format: z.enum(["dts", "json"]),
   sharedReference: z.object({ resourceId: z.string(), versionId: z.string(), memberId: z.string(), version: z.number(), digest: z.string() }).optional(),
+  sharedComposition:z.array(z.object({resourceId:z.string(),versionId:z.string(),name:z.string(),version:z.number(),digest:z.string(),mountPath:z.string(),direct:z.boolean(),
+    sources:z.array(z.object({memberId:z.string(),fileId:z.string(),fileVersionId:z.string(),sourceName:z.string()}))})).optional(),
   rootEdit: z.object({ fileId: z.string(), baseFileVersionId: z.string(), sourceName: z.string(), before: z.string(), after: z.string() }).optional(),
   members: z.array(z.object({ fileId: z.string(), fileVersionId: z.string(), sourceName: z.string(), format: z.enum(["dts", "json"]),
     role: z.string(), sortOrder: z.number().int(), checksum: z.string(), sizeBytes: z.number() })),

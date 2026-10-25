@@ -3059,9 +3059,20 @@ test.describe("project configuration workbench post-cutover semantic identity", 
       rawValuePattern: '"FixedProject", "keep"', nodeLocatorPattern: "board", reason: "#1416 fixed shared reference", timeoutMs: 60_000 });
     const file = await lookupParameterFileVersion({ fileName: binding.fileName });
     const name = `Fixed shared ${randomUUID()}`, sourceName = `fixed-${randomUUID()}.dtsi`;
-    const source = '/ { common { status = "okay"; }; board { rx_fod_cond = "SharedDefault", "keep"; }; };';
+    const leafName=`Fixed dependency ${randomUUID()}`;
+    const leafDraftResponse=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{
+      name:leafName,sourceName:"leaf.dtsi",content:'/ { dependency_node: dependency-node { status = "okay"; }; };',changeDescription:"#1417 exact dependency"}});
+    expect(leafDraftResponse.status(),await leafDraftResponse.text()).toBe(201);
+    const leafDraft=(await leafDraftResponse.json()).item as {resourceId:string};
+    const leafPreview=await request.post(apiRoute(`/api/v2/shared-dtsi/${leafDraft.resourceId}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:1}});
+    expect(leafPreview.status(),await leafPreview.text()).toBe(201);
+    const leafPublished=await request.post(apiRoute(`/api/v2/shared-dtsi/${leafDraft.resourceId}/publications`),{headers:adminHeaders(),data:{previewId:(await leafPreview.json()).item.id,idempotencyKey:`dep-${randomUUID()}`}});
+    expect(leafPublished.status(),await leafPublished.text()).toBe(201);
+    const leafVersion=(await leafPublished.json()).item as {id:string};
+    const source = '/include/ "parts/common.dtsi"\n/include/ "vendor/leaf.dtsi"\n/ { board { rx_fod_cond = "SharedDefault", "keep"; }; };';
     const draftResponse = await request.post(apiRoute("/api/v2/shared-dtsi"), { headers: adminHeaders(), data: {
-      name, sourceName, content: source, changeDescription: "Initial fixed shared source" } });
+      name,members:[{sourceName,content:source},{sourceName:"parts/common.dtsi",content:'/ { common { status = "okay"; }; };'}],
+      dependencies:[{resourceId:leafDraft.resourceId,versionId:leafVersion.id,mountPath:"vendor"}],changeDescription: "Initial complete fixed shared source" } });
     expect(draftResponse.status(), await draftResponse.text()).toBe(201);
     const draft = (await draftResponse.json()).item as { resourceId: string; revision: number };
     const previewResponse = await request.post(apiRoute(`/api/v2/shared-dtsi/${draft.resourceId}/publication-preview`), {
@@ -3087,6 +3098,8 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const preview = await previewing; expect(preview.status(), await preview.text()).toBe(200);
     expect(preview.request().postDataJSON()).toMatchObject({ sharedReference: { resourceId: draft.resourceId, versionId }, role: "misc" });
     await expect(dialog.getByRole("region", { name: "加入配置预览" })).toContainText(sourceName);
+    await expect(dialog.getByRole("region",{name:"加入配置预览"})).toContainText(`${leafName} · 版本 1 · 间接依赖`);
+    await expect(dialog.getByRole("region",{name:"加入配置预览"})).toContainText("vendor/leaf.dtsi");
     await expect(dialog).toHaveAccessibleDescription("选择共享资源及固定版本，预览配置变化后确认引用。");
     await expect(dialog.getByLabel("确认后根文件源码", { exact: true })).toBeHidden();
     await dialog.getByText(`项目根文件 include 变更：${binding.fileName}`, { exact: true }).click();
@@ -3117,10 +3130,13 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await expect(row).toContainText("共享引用 · 版本 1 · 只读");
     await expect(row.getByRole("button", { name: "更新文件", exact: true })).toHaveCount(0);
     await row.getByRole("button", { name: "查看源码", exact: true }).click();
-    await expect(page.getByRole("region", { name: "DTS 源码", exact: true })).toContainText('status = "okay"');
+    await expect(page.getByRole("region", { name: "DTS 源码", exact: true })).toContainText('vendor/leaf.dtsi');
     await expect(page.getByRole("radio", { name: "编辑", exact: true })).toHaveCount(0);
     const exact = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${receipt.fileId}/versions/${receipt.fileVersionId}/content`), { headers: adminHeaders() });
     expect(await exact.text()).toBe(source);
+    const leafUsages=await request.get(apiRoute(`/api/v2/shared-dtsi/${leafDraft.resourceId}/usages`),{headers:adminHeaders()});
+    expect(leafUsages.status(),await leafUsages.text()).toBe(200);
+    expect((await leafUsages.json()).items).toContainEqual(expect.objectContaining({projectId,direct:false}));
   });
 
   test("administrator adds a staged overlay to a Canonical configuration through preview and keyboard confirmation", async ({ page, request }, testInfo) => {

@@ -3,6 +3,7 @@ import { expect } from "playwright/test";
 import JSZip from "jszip";
 import { test } from "./helpers/catalogFixtureRuntime";
 import { catalogJson, catalogScreenshot, dismissXiaozeHint, signInCatalogActor } from "./helpers/catalogBrowser";
+import { selectControlOption } from "./helpers/selectControl";
 
 test.use({catalogRuntimeScope:import.meta.url,catalogRuntimeDatabaseUrl:process.env.TEST_DATABASE_URL});
 
@@ -57,5 +58,49 @@ test("imports a relative ZIP library, repairs missing dependencies and publishes
   await expect(page.getByLabel("已发布 DTSI 源码",{exact:true})).toHaveAttribute("aria-readonly","true");
   await page.setViewportSize({width:1440,height:900});
   await catalogScreenshot(page,testInfo,"shared-dtsi-multifile-published-1440");
+  expect(pageErrors).toEqual([]);expect(serverErrors).toEqual([]);
+});
+
+test("selects a fixed cross-resource dependency in the full resource editor and publishes its exact closure",async({page,catalogAcceptanceRuntime},testInfo)=>{
+  void catalogAcceptanceRuntime;
+  const pageErrors:string[]=[],serverErrors:string[]=[];
+  page.on("pageerror",error=>pageErrors.push(error.message));
+  page.on("response",response=>{if(response.status()>=500)serverErrors.push(`${response.status()} ${new URL(response.url()).pathname}`);});
+  await page.setViewportSize({width:1440,height:900});await signInCatalogActor(page,"org-admin","/parameter-admin/sources");await dismissXiaozeHint(page);
+  const name=`Fixed clock source ${Date.now()}`;
+  const created=await catalogJson(page.request,"POST","/api/v2/shared-dtsi",{data:{name,sourceName:"clocks.dtsi",content:'/ { fixed_clock: clocks { status = "okay"; }; };',changeDescription:"#1417 fixed dependency"}});
+  expect(created.status).toBe(201);const leaf=(created.body as {item:{resourceId:string}}).item;
+  const preview=await catalogJson(page.request,"POST",`/api/v2/shared-dtsi/${leaf.resourceId}/publication-preview`,{data:{expectedRevision:1}});
+  expect(preview.status).toBe(201);
+  const published=await catalogJson(page.request,"POST",`/api/v2/shared-dtsi/${leaf.resourceId}/publications`,{data:{previewId:(preview.body as {item:{id:string}}).item.id,idempotencyKey:`clock-${Date.now()}`}});
+  expect(published.status).toBe(201);const versionId=(published.body as {item:{id:string}}).item.id;
+  await page.getByRole("button",{name:"导入资源",exact:true}).click();
+  const source='/include/ "vendor/clocks.dtsi"\n&fixed_clock { frequency = <24000000>; };';
+  await page.locator('input[type="file"]').first().setInputFiles({name:"platform.dtsi",mimeType:"text/plain",buffer:Buffer.from(source)});
+  await page.getByLabel("资源名称",{exact:true}).fill(`Platform ${Date.now()}`);
+  await page.getByLabel("变更说明",{exact:true}).fill("#1417 reviewed fixed cross-resource closure");
+  await page.getByText("固定资源依赖（按需）",{exact:true}).click();
+  await expect(page.getByText("尚未选择固定资源依赖。",{exact:true})).toBeVisible();
+  await page.getByLabel("搜索依赖资源",{exact:true}).fill(name);
+  await selectControlOption(page.getByRole("combobox",{name:"依赖资源",exact:true}),leaf.resourceId);
+  await selectControlOption(page.getByRole("combobox",{name:"依赖固定版本",exact:true}),versionId);
+  await page.getByLabel("依赖挂载目录",{exact:true}).fill("vendor");
+  await page.getByRole("button",{name:"添加固定依赖",exact:true}).click();
+  await expect(page.getByText(`${name} · 版本 1 · vendor`,{exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"保存草稿",exact:true}).click();
+  await expect(page.getByText("草稿已保存",{exact:true})).toBeVisible();const resourceId=new URL(page.url()).searchParams.get("resource")!;
+  for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
+    await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await expect(page.getByRole("button",{name:"预览发布",exact:true})).toBeInViewport({ratio:1});
+    await catalogScreenshot(page,testInfo,`shared-dependency-editor-${viewport.width}`);
+  }
+  await page.getByRole("button",{name:"预览发布",exact:true}).click();
+  await page.getByText("完整固定依赖（1）",{exact:true}).click();
+  await expect(page.getByText(`${name} · 版本 1 · vendor`,{exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"发布版本",exact:true}).focus();await page.keyboard.press("Enter");
+  await expect(page.getByText("v1 · 已发布，只读",{exact:true})).toBeVisible();
+  const detail=await catalogJson(page.request,"GET",`/api/v2/shared-dtsi/${resourceId}/detail`);
+  const exact=await catalogJson(page.request,"GET",`/api/v2/shared-dtsi/${resourceId}/versions/${(detail.body as {item:{currentVersion:{id:string}}}).item.currentVersion.id}`);
+  expect((exact.body as {item:{members:unknown[];manifest:{dependencyClosure:unknown[]}}}).item).toMatchObject({members:[expect.objectContaining({sourceName:"platform.dtsi",content:source})],manifest:{dependencyClosure:[expect.objectContaining({resourceId:leaf.resourceId,versionId,mountPath:"vendor"})]}});
   expect(pageErrors).toEqual([]);expect(serverErrors).toEqual([]);
 });
