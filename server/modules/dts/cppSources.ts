@@ -16,7 +16,8 @@ const MAX_BYTES = 16 * 1024 * 1024;
 const MAX_OUTPUT = 32 * 1024 * 1024;
 const MAX_STATEMENTS = 100_000;
 const sha = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
-const blank = (text: string) => text.replace(/[^\r\n]/gu, " ");
+// Match UTF-16 code units so masked astral characters retain their original CST offsets.
+const blank = (text: string) => text.replace(/[^\r\n]/g, " ");
 
 /** CPP headers also have character literals; comment delimiters inside them are data. */
 function stripCppComments(text: string) {
