@@ -26,6 +26,36 @@ import {
 } from "./predecessorHarness";
 
 describe("buildCompleteSuccessor", () => {
+  it("publishes a standalone subject without inventing definitions and marks its new capability", async () => {
+    const predecessor = firstAcmePredecessor();
+    const result = await buildCompleteSuccessor({
+      productPath: "m2-core",
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      changeSet: [{
+        op: "create-subject",
+        kind: "driver",
+        canonicalKey: "driver:acme,declaration-only",
+        selector: { kind: "driver-compatible", value: "acme,declaration-only" },
+        nature: "physical-device",
+        cardinality: "multiple",
+      }],
+      frozenIdentity: {
+        ...frozenPageIdentity([], "standalone"),
+        subjects: [{ canonicalKey: "driver:acme,declaration-only", subjectId: "csub_declaration_only" }],
+      },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value.kind !== "successor") return;
+    const compiled = compileCatalogRelease(result.value.artifact.bundle);
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    expect(compiled.value.counts.subjects).toBe(predecessor.compiled.counts.subjects + 1);
+    expect(compiled.value.counts.definitions).toBe(predecessor.compiled.counts.definitions);
+    expect(result.value.impact.definitions.added).toEqual([]);
+    expect(result.value.impact.subjects.added).toEqual(["csub_declaration_only"]);
+    expect(result.value.capabilityContract.revision).toBe("catalog-capability/v5");
+  });
+
   it("adds one definition under the existing acme subject and keeps predecessor identities", async () => {
     const predecessor = firstAcmePredecessor();
     expect(predecessor.compiled.release.id).toBe(FIRST_ACME_RELEASE_ID);

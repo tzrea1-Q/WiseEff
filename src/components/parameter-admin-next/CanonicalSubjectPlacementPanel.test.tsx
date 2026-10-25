@@ -18,6 +18,7 @@ import type { ParameterCatalogRepository } from "@/application/ports/ParameterCa
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import type { CatalogListQuery } from "@/infrastructure/http/parameterCatalogDtos";
 import { catalogApiFailure } from "@/application/parameter-catalog/errors";
+import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
 
 import { CanonicalSubjectPlacementPanel } from "./CanonicalSubjectPlacementPanel";
 
@@ -147,6 +148,7 @@ function createPorts() {
     };
   });
   const catalog = {
+    getPublicationSurface: createMockCatalogPorts().catalog.getPublicationSurface,
     getCatalog: vi.fn(async () => readyCatalogDocument),
     listSubjects,
     listDefinitions
@@ -253,6 +255,24 @@ function createPorts() {
 }
 
 describe("CanonicalSubjectPlacementPanel", () => {
+  it("owns standalone subject creation and offers a real definition action for a zero-definition subject", async () => {
+    const ports = createPorts();
+    const navigate = vi.fn();
+    ports.listSubjects.mockResolvedValue({ items: [{ ...subject({ id: "declaration", canonicalName: "vendor,declaration" }),
+      definitionCounts: { active: 0, deprecated: 0, retired: 0 } }], totalCount: 1, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+    render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID}
+      actor="org-admin" canAdmin sessionPermissions={["catalog:author", "catalog:publish"]} onNavigate={navigate} />);
+    const row = await screen.findByRole("listitem", { name: /vendor,declaration/ });
+    await userEvent.setup().click(within(row).getByRole("button", { name: "新增定义：vendor,declaration" }));
+    expect(navigate).toHaveBeenCalledWith(expect.stringContaining("subjectId=declaration&createDefinition=1"));
+    const create = screen.getByRole("button", { name: "新增主体" });
+    await waitFor(() => expect(create).toBeEnabled());
+    await userEvent.setup().click(create);
+    const dialog = await screen.findByRole("dialog", { name: "新增主体" });
+    expect(within(dialog).getByLabelText("compatible 标识")).toBeVisible();
+    expect(within(dialog).queryByLabelText("属性键")).not.toBeInTheDocument();
+  });
+
   it.each(["active", "retired"] as const)("keeps %s occupants visible to replacement preview even when their subject is absent from the current list", async (status) => {
     const ports = createPorts();
     const registrations = await ports.listRegistrations(CATALOG_ORGANIZATION_ID);
@@ -337,7 +357,7 @@ describe("CanonicalSubjectPlacementPanel", () => {
     render(<CanonicalSubjectPlacementPanel catalog={ports.catalog} governance={ports.governance}
       organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin modules={ports.modules} />);
     const row = await screen.findByRole("listitem", { name: /empty-subject/ });
-    expect(within(row).getByRole("button", { name: "暂无有效参数" })).toBeDisabled();
+    expect(within(row).queryByRole("button", { name: "暂无有效参数" })).not.toBeInTheDocument();
     expect(within(row).queryByText(/已废弃定义/)).not.toBeInTheDocument();
     await userEvent.setup().click(within(screen.getByRole("listitem", { name: /counted-subject/ })).getByRole("button", { name: "查看参数" }));
     expect(await screen.findByText("当前主体没有有效参数定义。")).toBeVisible();

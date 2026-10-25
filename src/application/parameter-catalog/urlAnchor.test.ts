@@ -10,6 +10,14 @@ import {
 import { CATALOG_DEFINITION_ID, CATALOG_RELEASE_ID, CATALOG_REVIEW_ITEM_ID, CATALOG_SUBJECT_ID } from "./fixtures";
 
 describe("catalog URL and release anchors", () => {
+  it("retains the new-definition return intent when the current Catalog pin is added", () => {
+    const returned = parseCatalogUrlAnchor("?subjectId=csub_declaration&createDefinition=1");
+    const pinned = { ...returned, catalogReleaseId: "crel_after_publication" };
+    expect(buildCatalogHref(pinned)).toBe("/parameter-admin/specs?subjectId=csub_declaration&catalogReleaseId=crel_after_publication&createDefinition=1");
+    expect(buildCatalogHref({ ...pinned, createDefinition: false })).toBe("/parameter-admin/specs?subjectId=csub_declaration&catalogReleaseId=crel_after_publication");
+    expect(parseCatalogUrlAnchor("?createDefinition=yes").createDefinition).toBeUndefined();
+  });
+
   it("persists the explicit retired-subject filter without accepting arbitrary truthy values", () => {
     const anchor = parseCatalogUrlAnchor("?q=power&pageSize=20&includeRetiredSubjects=true");
     expect(anchor.includeRetiredSubjects).toBe(true);
