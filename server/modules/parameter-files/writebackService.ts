@@ -703,7 +703,7 @@ export async function writebackMergedParameterValue(
       : buildDtsParsedIndex(patchedBytes.toString("utf8"));
   const stored = await objectStore.put({
     organizationId: parameterOrganizationId(auth),
-    fileName: `writeback-${randomUUID()}-${file.fileName}`,
+    fileName: `writeback-${randomUUID()}.${file.format}`,
     contentType: contentTypeForFormat(file.format),
     bytes: patchedBytes
   });

@@ -136,11 +136,11 @@ describe("writebackMergedParameterValue", () => {
     vi.clearAllMocks();
   });
 
-  it("creates v2 writeback version after merge", async () => {
+  it.each(["config.json", "software/nested/config.json"])("creates v2 writeback after merge while retaining logical filename %s", async (fileName) => {
     const bytesStore = createMemoryObjectStore();
     const db = asAuditTx({
       query: vi.fn().mockResolvedValue({
-        rows: [{ source_file_name: "config.json", source_node_path: "battery/temp/max" }],
+        rows: [{ source_file_name: fileName, source_node_path: "battery/temp/max" }],
         rowCount: 1
       })
     });
@@ -152,7 +152,7 @@ describe("writebackMergedParameterValue", () => {
     mockedGetProjectParameterFileByName.mockResolvedValue({
       id: "file-1",
       projectId: "project-1",
-      fileName: "config.json",
+      fileName,
       format: "json",
       enabled: true,
       currentVersionId: "version-1",
@@ -201,7 +201,8 @@ describe("writebackMergedParameterValue", () => {
     expect(assertLegacySourceMutationAllowed).toHaveBeenCalledWith(db,"file-1");
     expect(vi.mocked(assertLegacySourceMutationAllowed).mock.invocationCallOrder[0]).toBeLessThan(mockedGetFileVersionById.mock.invocationCallOrder[0]!);
     const putPayload = vi.mocked(objectStore.put).mock.calls[0][0];
-    expect(putPayload.fileName).toMatch(/^writeback-[0-9a-f-]{36}-config\.json$/);
+    expect(putPayload.fileName).toMatch(/^writeback-[0-9a-f-]{36}\.json$/);
+    expect(mockedGetProjectParameterFileByName).toHaveBeenCalledWith(db, { organizationId: "org-1", projectId: "project-1", fileName });
     const persisted = mockedInsertFileVersion.mock.calls[0][1];
     expect(persisted.storageKey).toContain(`-${putPayload.fileName}`);
     expect((await bytesStore.get(persisted.storageKey)).toString()).toBe(putPayload.bytes.toString());

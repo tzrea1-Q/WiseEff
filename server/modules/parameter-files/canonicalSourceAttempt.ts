@@ -35,7 +35,7 @@ export function createCanonicalSourceAttempt(
       }
       const stored = await objectStore.put({
         ...input,
-        fileName: `canonical-source-attempt-${randomUUID()}-${input.fileName}`,
+        fileName: `canonical-source-attempt-${randomUUID()}`,
       });
       storageKeys.push(stored.storageKey);
       return stored;
