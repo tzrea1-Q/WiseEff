@@ -27,6 +27,7 @@ type ReleaseBaselineMemberRow = {
 };
 
 type ConfigSetMemberFileRow = {
+  shared_reference: ConfigSetMemberFileDto["sharedReference"] | null;
   config_set_id: string;
   file_id: string;
   file_name: string;
@@ -66,6 +67,7 @@ function toReleaseBaselineMemberDto(row: ReleaseBaselineMemberRow): ReleaseBasel
 
 function toConfigSetMemberFileDto(row: ConfigSetMemberFileRow): ConfigSetMemberFileDto {
   return {
+    ...(row.shared_reference ? { sharedReference: row.shared_reference } : {}),
     configSetId: row.config_set_id,
     fileId: row.file_id,
     fileName: row.file_name,
@@ -207,7 +209,11 @@ export async function listConfigSetMemberFiles(
       ppf.config_set_sort_order as config_set_sort_order,
       ppf.current_version_id as current_version_id,
       v.version_number as version_number,
-      v.storage_key as storage_key
+      v.storage_key as storage_key,
+      (select jsonb_build_object('referenceId',r.id,'resourceId',r.resource_id,'versionId',r.revision_id,
+        'version',upstream.version,'memberId',s.member_id,'digest',upstream.digest,'readOnly',true)
+        from public.project_shared_dtsi_snapshots s join public.project_shared_dtsi_references r on r.id=s.reference_id
+        join public.shared_dtsi_revisions upstream on upstream.id=r.revision_id where s.file_id=ppf.id) as shared_reference
     from project_parameter_files ppf
     left join project_parameter_file_versions v on v.id = ppf.current_version_id
     where ppf.config_set_id = $1

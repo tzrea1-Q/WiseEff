@@ -16,7 +16,7 @@ import { ensureOverlayProperty } from "../parameter-topology/overlayWriteback";
 import { canonicalizeLogicalNodeCompatible, resolveEnablementWriteLock, verifyEnablementWriteLock } from "../parameter-topology/writeLock";
 import { getChangeRequestEnablementWriteLock } from "../parameter-drafts/repository";
 import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
-import { insertFileVersion } from "./repository";
+import { assertProjectSourceWritable, insertFileVersion } from "./repository";
 import type { ConfigRevisionMemberRole } from "../parameter-topology/types";
 import { insertParameterFileCandidate } from "./candidateRepository";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
@@ -36,6 +36,7 @@ export type CanonicalSourceManifest = CanonicalValueSourcePin & {
   members: Array<{
     memberId: string; fileId: string; fileVersionId: string; sourceName: string;
     format: "dts" | "json"; role: string; sortOrder: number; checksum: string; sizeBytes: number;
+    sharedReference?: import("./types").ConfigSetMemberFileDto["sharedReference"];
   }>;
 };
 
@@ -177,7 +178,8 @@ export async function loadCanonicalSourceSnapshot(
     if (member.format === "json") parseJsonSource(member.bytes);
     files.push({ name: member.sourceName, format: member.format, versionNumber: member.versionNumber, content: member.content });
     const { id, fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes } = member;
-    manifest.members.push({ memberId: id, fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes });
+    manifest.members.push({ memberId: id, fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes,
+      ...(member.sharedReference ? { sharedReference: member.sharedReference } : {}) });
   }
   return { manifest, files };
 }
@@ -437,6 +439,7 @@ export async function preparePinnedNodeEnablementSourceChange(
     const persisted = await getChangeRequestEnablementWriteLock(db, { organizationId: parameterOrganizationId(auth), requestId: input.changeRequestId });
     if (!persisted) throw new ApiError("CONFLICT", "Enablement request has no immutable source lock.");
     const lock = await resolveEnablementWriteLock(db, auth, { projectId: input.projectId, logicalNodeId: input.logicalNodeId, baseRevisionId: persisted.baseConfigRevisionId });
+    await assertProjectSourceWritable(db, lock.overlayFileId);
     if (lock.sourceFileVersionId !== persisted.sourceFileVersionId || lock.expectedChecksum !== persisted.expectedChecksum
       || lock.propertyOccurrenceId !== persisted.propertyOccurrenceId || lock.occurrenceSpan?.start !== persisted.occurrenceSpan?.start
       || lock.occurrenceSpan?.end !== persisted.occurrenceSpan?.end) {
@@ -726,6 +729,7 @@ export async function preparePinnedSourceChange(
     throw new ApiError("CONFLICT", "Source cohort changed during preparation.");
   }
   const sourceIndex = manifest.members.findIndex((member) => member.fileId === manifest.fileId && member.fileVersionId === manifest.fileVersionId);
+  await assertProjectSourceWritable(db, manifest.fileId);
   const source = files[sourceIndex]!;
   const base = Buffer.from(source.content);
   let patched: Buffer;

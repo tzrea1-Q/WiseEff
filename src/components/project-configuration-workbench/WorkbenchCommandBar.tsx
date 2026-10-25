@@ -95,7 +95,7 @@ export function WorkbenchCommandBar({
                 disabled={pendingAction !== null}
                 onSelect={() => { schemeTriggerRef.current?.focus(); setNameError(""); setCreateOpen(true); }}><Plus aria-hidden="true" />新建配置…</DropdownMenu.Item> : null}
               {selectedConfigSet ? <DropdownMenu.Item className="row-action-menu__item button-size-sm"
-                onSelect={() => { schemeTriggerRef.current?.focus(); openDetails("config-set"); }}><FolderOpen aria-hidden="true" />{canAdmin ? "文件管理" : "查看文件"}</DropdownMenu.Item> : null}
+                onSelect={() => { schemeTriggerRef.current?.focus(); openDetails("config-set"); }}><FolderOpen aria-hidden="true" />{canAdmin ? "配置组成" : "查看文件"}</DropdownMenu.Item> : null}
               {canAdmin && selectedConfigSet ? <DropdownMenu.Item className="row-action-menu__item button-size-sm"
                 disabled={pendingAction !== null}
                 onSelect={onExportConfigSet}><Download aria-hidden="true" />{pendingAction === "export-config-set" ? "正在导出…" : "导出当前配置"}</DropdownMenu.Item> : null}

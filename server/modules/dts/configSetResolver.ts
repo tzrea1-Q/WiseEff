@@ -94,6 +94,8 @@ export interface DtsEffectiveConfigSet {
 export interface DtsConfigSetResult {
   effective: DtsEffectiveConfigSet;
   diagnostics: DtsResolutionDiagnostic[];
+  /** Actual files expanded from the real entry and ordered overlays. */
+  sourceFiles: string[];
 }
 
 interface MutableProperty {
@@ -127,6 +129,7 @@ interface Segment {
 interface Builder {
   text: string;
   segments: Segment[];
+  sourceFiles: Set<string>;
   proofBudget?: { expandedBytes: number; entries: number; metadataBytes: number };
 }
 
@@ -232,6 +235,7 @@ function expandFile(
     return;
   }
   const file = files.get(fileName);
+  if (file) builder.sourceFiles.add(fileName);
   if (!file) {
     diagnostics.push({
       code: "include-missing",
@@ -443,9 +447,10 @@ function ingestDocument(
   diagnostics: DtsResolutionDiagnostic[],
   byLocator: Map<string, MutableNode>,
   byLabel: Map<string, MutableNode>,
+  sourceFiles: Set<string>,
   proofBudget?: Builder["proofBudget"],
 ): void {
-  const builder: Builder = { text: "", segments: [], proofBudget };
+  const builder: Builder = { text: "", segments: [], sourceFiles, proofBudget };
   expandFile(fileName, [], input.files, input.includeSearchPaths, diagnostics, builder, input.requireExactOrigins);
 
   let topLevel: DtsNodeCst[];
@@ -513,6 +518,7 @@ export function resolveDtsConfigSet(input: DtsConfigSetInput): DtsConfigSetResul
   const diagnostics: DtsResolutionDiagnostic[] = [];
   const byLocator = new Map<string, MutableNode>();
   const byLabel = new Map<string, MutableNode>();
+  const sourceFiles = new Set<string>();
   const proofBudget = input.requireExactOrigins ? { expandedBytes: 0, entries: 0, metadataBytes: 0 } : undefined;
 
   if (!input.files.has(input.entryFile)) {
@@ -522,11 +528,11 @@ export function resolveDtsConfigSet(input: DtsConfigSetInput): DtsConfigSetResul
       fileName: input.entryFile,
       message: `Entry file "${input.entryFile}" was not found in the config set manifest`,
     });
-    return { effective: { nodesByLocator: finalize(byLocator) }, diagnostics };
+    return { effective: { nodesByLocator: finalize(byLocator) }, diagnostics, sourceFiles: [] };
   }
 
   try {
-    ingestDocument(input.entryFile, input, diagnostics, byLocator, byLabel, proofBudget);
+    ingestDocument(input.entryFile, input, diagnostics, byLocator, byLabel, sourceFiles, proofBudget);
 
     for (const overlayFile of input.overlayOrder) {
       if (!input.files.has(overlayFile)) {
@@ -538,13 +544,13 @@ export function resolveDtsConfigSet(input: DtsConfigSetInput): DtsConfigSetResul
         });
         continue;
       }
-      ingestDocument(overlayFile, input, diagnostics, byLocator, byLabel, proofBudget);
+      ingestDocument(overlayFile, input, diagnostics, byLocator, byLabel, sourceFiles, proofBudget);
     }
 
-    return { effective: { nodesByLocator: finalize(byLocator) }, diagnostics };
+    return { effective: { nodesByLocator: finalize(byLocator) }, diagnostics, sourceFiles: [...sourceFiles] };
   } catch (error) {
     if (!(error instanceof SourceProofLimit)) throw error;
-    return { effective: { nodesByLocator: new Map() }, diagnostics: [{
+    return { effective: { nodesByLocator: new Map() }, sourceFiles: [], diagnostics: [{
       code: "source-proof-limit",severity: "error",fileName: input.entryFile,message: "Exact source proof exceeds its bounded capacity.",
     }] };
   }

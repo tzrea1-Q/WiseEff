@@ -343,8 +343,8 @@ async function selectScheme(id: string) {
 
 async function openSchemeFiles() {
   const menu = await openSchemeMenu();
-  await userEvent.click(within(menu).getByRole("menuitem", { name: /^(文件管理|查看文件)$/ }));
-  return screen.findByRole("dialog", { name: "文件管理" });
+  await userEvent.click(within(menu).getByRole("menuitem", { name: /^(配置组成|查看文件)$/ }));
+  return screen.findByRole("dialog", { name: "配置组成" });
 }
 
 async function openWorkbenchVersionDetails() {
@@ -769,7 +769,7 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(screen.getByRole("region", { name: "版本历史" })).toBeVisible();
     const files = await openSchemeFiles();
     expect(within(files).getByRole("table", { name: "配置文件" })).toBeVisible();
-    await user.click(within(files).getByRole("button", { name: "关闭文件管理" }));
+    await user.click(within(files).getByRole("button", { name: "关闭配置组成" }));
     expect(within(screen.getByLabelText("配置命令栏")).queryByRole("button", { name: /^更新来源/ })).not.toBeInTheDocument();
   });
 
@@ -794,7 +794,7 @@ describe("ProjectConfigurationWorkbench", () => {
     if (panel === "closed") expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
     const menu = await openSchemeMenu();
     expect(within(menu).getByRole("menuitemradio", { name: "默认配置" })).toHaveAttribute("aria-checked", "true");
-    expect(within(menu).getByRole("menuitem", { name: "文件管理" })).toBeEnabled();
+    expect(within(menu).getByRole("menuitem", { name: "配置组成" })).toBeEnabled();
     await userEvent.click(within(menu).getByRole("menuitemradio", { name: "alpha" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "配置" })).toHaveAttribute("data-value", "cs-alpha"));
     expect(screen.getByRole("button", { name: "配置" })).toHaveTextContent("alpha");
@@ -846,7 +846,7 @@ describe("ProjectConfigurationWorkbench", () => {
     }));
     const { onNavigate } = renderWorkbench({ syncSearch: true, search: "?configSet=cs-default&file=file-board&inspector=config-set",
       fileRepository: createFileRepository({ getSourceWorkflow }) });
-    const files = await screen.findByRole("dialog", { name: "文件管理" });
+    const files = await screen.findByRole("dialog", { name: "配置组成" });
     await waitFor(() => expect(getSourceWorkflow).toHaveBeenCalledWith(PROJECT.id, "file-overlay"));
     expect(within(files).getByRole("table", { name: "配置文件" })).toBeVisible();
     expect(within(files).queryByRole("button", { name: "添加文件" })).not.toBeInTheDocument();
@@ -856,13 +856,13 @@ describe("ProjectConfigurationWorkbench", () => {
     await userEvent.click(within(overlayRow).getByRole("button", { name: "charging-overlay.dtsi 更多" }));
     expect(screen.queryByRole("menuitem", { name: /从配置移除/ })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("menuitem", { name: "版本历史与下载" }));
-    expect(screen.queryByRole("dialog", { name: "文件管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "配置组成" })).not.toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "版本历史" })).toBeVisible();
     await waitFor(() => expect(onNavigate).toHaveBeenLastCalledWith(expect.stringMatching(/file=file-overlay.*inspector=versions/)));
     const reopened = await openSchemeFiles();
     const reopenedRow = within(reopened).getByRole("button", { name: "charging-overlay.dtsi" }).closest("tr")!;
     await userEvent.click(within(reopenedRow).getByRole("button", { name: "更新文件" }));
-    expect(screen.queryByRole("dialog", { name: "文件管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "配置组成" })).not.toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "候选记录" })).toBeVisible();
     const target = new URLSearchParams(String(onNavigate.mock.calls.at(-1)?.[0]).split("?")[1]);
     expect(target.get("file")).toBe("file-overlay");
@@ -882,12 +882,12 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(within(menu).queryByRole("menuitem", { name: "导出当前配置" })).not.toBeInTheDocument();
     expect(within(menu).queryByRole("menuitem", { name: "新建配置…" })).not.toBeInTheDocument();
     await userEvent.click(within(menu).getByRole("menuitem", { name: "查看文件" }));
-    const files = await screen.findByRole("dialog", { name: "文件管理" });
+    const files = await screen.findByRole("dialog", { name: "配置组成" });
     expect(files).toHaveTextContent("只读");
     expect(within(files).queryByRole("button", { name: "更新文件" })).not.toBeInTheDocument();
     expect(within(files).queryByRole("button", { name: "添加文件" })).not.toBeInTheDocument();
     await userEvent.click(within(files).getByRole("button", { name: "charging-overlay.dtsi" }));
-    expect(screen.queryByRole("dialog", { name: "文件管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "配置组成" })).not.toBeInTheDocument();
     await waitFor(() => expect(onNavigate).toHaveBeenLastCalledWith(expect.stringContaining("file=file-overlay")));
     const reopened = await openSchemeFiles();
     await userEvent.click(within(reopened).getByRole("button", { name: "charging-overlay.dtsi 更多" }));
@@ -2954,7 +2954,7 @@ describe("ProjectConfigurationWorkbench", () => {
     const { onNavigate } = renderWorkbench({ syncSearch: true,
       search: "?configSet=cs-default&inspector=config-set"
     });
-    const files = await screen.findByRole("dialog", { name: "文件管理" });
+    const files = await screen.findByRole("dialog", { name: "配置组成" });
     expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
     expect(files).toHaveTextContent("默认配置");
     expect(files).not.toHaveTextContent("default");
@@ -2962,9 +2962,9 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(within(files).getByRole("table", { name: "配置文件" }).closest("dl")).toBeNull();
     expect((await axe.run(files, { runOnly: ["definition-list", "dlitem"] })).violations).toEqual([]);
     expect(files).toBeVisible();
-    await userEvent.click(within(files).getByRole("button", { name: "关闭文件管理" }));
+    await userEvent.click(within(files).getByRole("button", { name: "关闭配置组成" }));
     await selectScheme("cs-alpha");
-    expect(screen.queryByRole("dialog", { name: "文件管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "配置组成" })).not.toBeInTheDocument();
     expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
     const latest = new URLSearchParams(String(onNavigate.mock.calls.at(-1)?.[0]).split("?")[1]);
     expect(latest.get("configSet")).toBe("cs-alpha");
@@ -2975,7 +2975,7 @@ describe("ProjectConfigurationWorkbench", () => {
     renderWorkbench({
       search: "?configSet=cs-default&inspector=config-set"
     });
-    await screen.findByRole("dialog", { name: "文件管理" });
+    await screen.findByRole("dialog", { name: "配置组成" });
     expect(screen.queryByRole("region", { name: "配置修订门禁" })).not.toBeInTheDocument();
   });
 
@@ -3364,14 +3364,14 @@ describe("ProjectConfigurationWorkbench", () => {
         expect.stringContaining("configSet=cs-board-a")
       )
     );
-    const files = await screen.findByRole("dialog", { name: "文件管理" });
+    const files = await screen.findByRole("dialog", { name: "配置组成" });
     expect(files).toBeVisible();
     const createdPath = onNavigate.mock.calls.map((call) => String(call[0]))
       .find((path) => path.includes("configSet=cs-board-a"))!;
     const createdQuery = new URLSearchParams(createdPath.split("?")[1]);
     expect(createdQuery.get("inspector")).toBe("config-set");
     for (const key of ["baseline", "candidate", "sourceMode"]) expect(createdQuery.has(key)).toBe(false);
-    await userEvent.click(within(files).getByRole("button", { name: "关闭文件管理" }));
+    await userEvent.click(within(files).getByRole("button", { name: "关闭配置组成" }));
 
     await openCreateConfigSetDialog();
     fireEvent.change(screen.getByLabelText("配置名称"), { target: { value: "Board-A" } });
@@ -3440,7 +3440,7 @@ describe("ProjectConfigurationWorkbench", () => {
 
     const files = await openSchemeFiles();
     expect(within(files).getByRole("table", { name: "配置文件" })).toHaveTextContent("notes.json");
-    expect(within(files).getByRole("button", { name: "关闭文件管理" })).toBeInTheDocument();
+    expect(within(files).getByRole("button", { name: "关闭配置组成" })).toBeInTheDocument();
     await userEvent.click(within(files).getByRole("button", { name: "aurora-board.dts 更多" }));
     const remove = await screen.findByRole("menuitem", { name: "从配置移除" });
     await waitFor(() => expect(remove).toBeEnabled());

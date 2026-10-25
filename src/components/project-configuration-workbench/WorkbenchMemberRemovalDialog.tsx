@@ -59,7 +59,7 @@ export function WorkbenchMemberRemovalDialog({ projectId, configSetId, fileId, f
       </> : null}
       <Label htmlFor="administrator-member-removal-reason">移除原因</Label>
       <Textarea id="administrator-member-removal-reason" value={reason} onChange={(event) => setReason(event.target.value)} disabled={busy || Boolean(mutation.current)} maxLength={2000} />
-      {error ? <div role="alert"><p>{error}</p>{!mutation.current ? <Button variant="outline" disabled={busy || loading} onClick={() => setRefresh((value) => value + 1)}>重新预览</Button> : null}<p>可取消并返回文件管理，更新依赖文件后重新操作。</p></div> : null}
+      {error ? <div role="alert"><p>{error}</p>{!mutation.current ? <Button variant="outline" disabled={busy || loading} onClick={() => setRefresh((value) => value + 1)}>重新预览</Button> : null}<p>可取消并返回配置组成，更新依赖文件后重新操作。</p></div> : null}
       </div>
       <footer className="review-dialog__footer"><Button ref={cancel} variant="outline" disabled={busy} onClick={onDismiss}>取消</Button>
         <Button variant="destructive" disabled={busy || loading || !preview || !reason.trim()} onClick={() => void apply()}>{busy ? "移除中…" : mutation.current ? "重试同一操作" : "确认移除"}</Button></footer>

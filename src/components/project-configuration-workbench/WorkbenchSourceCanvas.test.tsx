@@ -69,11 +69,11 @@ describe("source canvas empty states", () => {
     renderCanvas({ canvasMode: "working", selectedMember: {
       configSetId: "set", fileId: "file", fileName: "board.dts", format: "dts", role: "base", sortOrder: 0
     } });
-    expect(screen.getByText("文件身份仍保留在树中；请在「文件管理」中打开该文件的「版本历史与下载」检查。")).toBeInTheDocument();
+    expect(screen.getByText("文件身份仍保留在树中；请在「配置组成」中打开该文件的「版本历史与下载」检查。")).toBeInTheDocument();
   });
   it("keeps source retry beside the correct version history guidance for empty content", () => {
     const props = renderCanvas({ canvasMode: "working", source: "" });
-    expect(screen.getByText("当前活跃版本没有可显示的源码内容；可重试或在「文件管理」中查看该文件的版本历史。")).toBeInTheDocument();
+    expect(screen.getByText("当前活跃版本没有可显示的源码内容；可重试或在「配置组成」中查看该文件的版本历史。")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重试源码" }));
     expect(props.onSourceRetry).toHaveBeenCalledOnce();
   });

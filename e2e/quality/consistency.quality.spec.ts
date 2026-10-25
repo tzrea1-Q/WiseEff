@@ -641,7 +641,7 @@ for (const route of consistencyReadOnlyRoutes) {
         }
         if (/^\/parameter-admin\/projects\/[^/]+\/(?:configuration|files|config-sets|structure|conflicts)$/.test(routePath)) {
           const workbench = page.getByRole("region", { name: "项目配置工作台", exact: true });
-          const files = page.getByRole("dialog", { name: "文件管理", exact: true });
+          const files = page.getByRole("dialog", { name: "配置组成", exact: true });
           const requestedInspector = new URLSearchParams(route.path.split("?")[1]).get("inspector")
             ?? (routePath.endsWith("/config-sets") ? "config-set" : routePath.endsWith("/files") ? "file" : null);
           if (requestedInspector === "config-set") {
@@ -654,7 +654,7 @@ for (const route of consistencyReadOnlyRoutes) {
           }
           if (await files.isVisible()) {
             await expect(files.getByRole("table", { name: "配置文件", exact: true })).toBeVisible();
-            await files.getByRole("button", { name: "关闭文件管理", exact: true }).click();
+            await files.getByRole("button", { name: "关闭配置组成", exact: true }).click();
           }
           const configurationVersions = page.getByRole("dialog", { name: "配置版本", exact: true });
           if (await configurationVersions.isVisible()) await configurationVersions.getByRole("button", { name: "关闭配置版本", exact: true }).click();
@@ -728,16 +728,16 @@ for (const route of consistencyReadOnlyRoutes) {
           }
           await expect(workbench.getByRole("button", { name: /^更新来源/ })).toHaveCount(0);
           await workbench.getByRole("button", { name: "配置", exact: true }).click();
-          await page.getByRole("menuitem", { name: /^(文件管理|查看文件)$/ }).click();
+          await page.getByRole("menuitem", { name: /^(配置组成|查看文件)$/ }).click();
           await files.getByRole("button", { name: /^(更新文件|更新记录|上传来源文件)$/ }).first().click();
           const inspector = page.getByRole("complementary", { name: "配置检查器", exact: true });
           await expect(inspector.getByRole("region", { name: "候选记录", exact: true })).toBeVisible();
           await inspector.getByRole("button", { name: "关闭检查器", exact: true }).click();
           await workbench.getByRole("button", { name: "配置", exact: true }).click();
-          await page.getByRole("menuitem", { name: /^(文件管理|查看文件)$/ }).click();
+          await page.getByRole("menuitem", { name: /^(配置组成|查看文件)$/ }).click();
           await expect(files.getByRole("table", { name: "配置文件", exact: true })).toBeVisible();
           await expect(files).toBeInViewport({ ratio: 1 });
-          await files.getByRole("button", { name: "关闭文件管理", exact: true }).click();
+          await files.getByRole("button", { name: "关闭配置组成", exact: true }).click();
           await expect(page.getByRole("navigation", { name: "参数管理后台配置范围", exact: true })).toHaveCount(0);
           if (new URLSearchParams(route.path.split("?")[1]).get("tab") === "conflicts") {
             await page.goto(legacyConflictsUrl.toString());
@@ -1111,7 +1111,7 @@ for (const route of consistencyReadOnlyRoutes) {
             await page.keyboard.press("Enter");
             const schemeMenu = page.getByRole("menu");
             await expect(schemeMenu.getByRole("menuitemradio", { checked: true })).toHaveAttribute("data-value", selectedSchemeId!);
-            await expect(schemeMenu.getByRole("menuitem", { name: /^(文件管理|查看文件)$/ })).toBeVisible();
+            await expect(schemeMenu.getByRole("menuitem", { name: /^(配置组成|查看文件)$/ })).toBeVisible();
             await page.keyboard.press("Escape");
             await expect(schemeMenu).toBeHidden();
             await expect(scheme).toBeFocused();

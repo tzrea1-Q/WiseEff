@@ -45,15 +45,15 @@ export function smokeHeaders(env: AcceptanceRuntimeEnv = process.env) {
 export async function openWorkbenchPanel(page: Page, panel: "file" | "config-set" | "versions" | "release" | "candidates") {
   const configurationVersions = page.getByRole("dialog", { name: "配置版本", exact: true });
   const restoredPanel = new URL(page.url()).searchParams.get("inspector");
-  if (restoredPanel === "config-set") await expect(page.getByRole("dialog", { name: "文件管理", exact: true })).toBeVisible();
+  if (restoredPanel === "config-set") await expect(page.getByRole("dialog", { name: "配置组成", exact: true })).toBeVisible();
   if (restoredPanel === "release") await expect(configurationVersions).toBeVisible();
   if (panel !== "release" && await configurationVersions.isVisible()) {
     await configurationVersions.getByRole("button", { name: "关闭配置版本", exact: true }).click();
   }
   if (panel === "release") {
     if (await configurationVersions.isVisible()) return configurationVersions;
-    const files = page.getByRole("dialog", { name: "文件管理", exact: true });
-    if (await files.isVisible()) await files.getByRole("button", { name: "关闭文件管理", exact: true }).click();
+    const files = page.getByRole("dialog", { name: "配置组成", exact: true });
+    if (await files.isVisible()) await files.getByRole("button", { name: "关闭配置组成", exact: true }).click();
     await page.getByRole("button", { name: /^配置版本/ }).click();
     await expect(configurationVersions).toBeVisible();
     return configurationVersions;
@@ -63,10 +63,10 @@ export async function openWorkbenchPanel(page: Page, panel: "file" | "config-set
     const scope = fileName ? files.getByRole("row").filter({ has: page.getByRole("button", { name: fileName, exact: true }) }) : files;
     await scope.getByRole("button", { name: /^(更新文件|更新记录|上传来源文件)$/ }).click();
   } else if (panel === "config-set") {
-    const files = page.getByRole("dialog", { name: "文件管理", exact: true });
+    const files = page.getByRole("dialog", { name: "配置组成", exact: true });
     if (await files.isVisible()) return files;
     await page.getByRole("button", { name: "配置", exact: true }).click();
-    await page.getByRole("menuitem", { name: /^(文件管理|查看文件)$/ }).click();
+    await page.getByRole("menuitem", { name: /^(配置组成|查看文件)$/ }).click();
     await expect(files).toBeVisible();
     return files;
   } else {
@@ -119,9 +119,9 @@ export async function createWorkbenchConfigSet(page: Page, name: string) {
   const item = (await response.json()).item as { id: string; name: string };
   await expect(dialog).toBeHidden();
   await expect(page.getByRole("button", { name: "配置", exact: true })).toHaveAttribute("data-value", item.id);
-  const files = page.getByRole("dialog", { name: "文件管理", exact: true });
+  const files = page.getByRole("dialog", { name: "配置组成", exact: true });
   await expect(files).toBeVisible();
-  await files.getByRole("button", { name: "关闭文件管理", exact: true }).click();
+  await files.getByRole("button", { name: "关闭配置组成", exact: true }).click();
   return { response, item };
 }
 
@@ -135,8 +135,8 @@ export async function openWorkbenchVersionMenu(page: Page, versionNumber: number
 }
 
 export async function ensureWorkbenchInspectorOpen(page: Page) {
-  const files = page.getByRole("dialog", { name: "文件管理", exact: true });
-  if (await files.isVisible()) await files.getByRole("button", { name: "关闭文件管理", exact: true }).click();
+  const files = page.getByRole("dialog", { name: "配置组成", exact: true });
+  if (await files.isVisible()) await files.getByRole("button", { name: "关闭配置组成", exact: true }).click();
   const inspector = page.getByRole("complementary", { name: "配置检查器" });
   if (!(await inspector.isVisible())) {
     const query = new URL(page.url()).searchParams;
