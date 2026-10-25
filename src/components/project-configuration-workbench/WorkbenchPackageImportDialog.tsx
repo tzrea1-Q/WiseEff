@@ -65,7 +65,6 @@ export function WorkbenchPackageImportDialog({ projectId, onDismiss, onApplied, 
       <div className="review-dialog__body" aria-busy={Boolean(pending)}>
         <label>配置包<Input ref={first} type="file" accept=".zip,application/zip" disabled={Boolean(pending) || locked}
           onChange={event => { void chooseFile(event.target.files?.[0]); }} /></label>
-        {archive ? <p className="configuration-workbench__package-path">{archive.name}</p> : null}
         <label>配置名称<Input value={name} maxLength={120} disabled={locked} onChange={event => { invalidate(); setName(event.target.value); }} /></label>
         <label>源码归属<SelectControl ariaLabel="源码归属" value={ownership} disabled={locked} onValueChange={value => { invalidate(); setOwnership(value); }}
           options={[{value:"reuse",label:"复用精确共享版本"},{value:"private",label:"全部作为项目私有源码"}]} /></label>
