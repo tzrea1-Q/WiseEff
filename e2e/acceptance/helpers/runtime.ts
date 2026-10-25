@@ -50,6 +50,12 @@ export async function openWorkbenchPanel(page: Page, panel: "file" | "config-set
   if (panel !== "release" && await configurationVersions.isVisible()) {
     await configurationVersions.getByRole("button", { name: "关闭配置版本", exact: true }).click();
   }
+  if (panel === "file" || panel === "versions" || panel === "candidates") {
+    const files = page.getByRole("dialog", { name: "配置组成", exact: true });
+    if (await files.isVisible()) await files.getByRole("button", { name: "关闭配置组成", exact: true }).click();
+    const source = page.getByRole("tab", { name: "源码", exact: true });
+    if (await source.count() && await source.getAttribute("aria-selected") !== "true") await source.click();
+  }
   if (panel === "release") {
     if (await configurationVersions.isVisible()) return configurationVersions;
     const files = page.getByRole("dialog", { name: "配置组成", exact: true });

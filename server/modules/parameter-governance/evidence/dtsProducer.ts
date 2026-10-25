@@ -10,7 +10,7 @@ import { loadOrganizationCatalogSnapshot, lockOrganizationModuleRecognition } fr
 import { PARAMETER_GOVERNANCE_WRITER_ROLE, quoteIdent } from "../../catalog-kernel/security/catalogRoleManifest";
 import { subjectMatcherRevision } from "../../catalog-kernel/runtime/subjectMatch";
 import { captureCurrentCatalogPin, createPinCapturingCatalogRuntime } from "../../catalog-publication/runtime";
-import { parseDtsValue } from "../../dts";
+import { parseDtsValue, type DtsValue } from "../../dts";
 import { parseCanonicalCompatibleSelector } from "../../parameter-catalog-contract";
 import { loadExactSourceRevisionForProof } from "../../parameter-files/sourceVersion";
 import { canAdminParameters } from "../../parameter-kernel/policy";
@@ -27,7 +27,7 @@ import type { LogicalNodeSnapshot } from "../../dts/identity";
 type Property = {
   projectId: string; configSetId: string; fileId: string; logicalNodeId: string;
   fileVersionId: string; nodeOccurrenceId: string; propertyOccurrenceId: string;
-  rawText: string; propertyName: string;
+  rawText: string; propertyName: string; semanticValue:DtsValue|null;
 };
 
 /** File-activation producer. The caller's source revision and these writes commit or roll back together. */
@@ -79,7 +79,7 @@ export async function produceDtsReviewEvidenceInTransaction(
     `select distinct on (logical.logical_node_id) revision.project_id as "projectId",revision.config_set_id as "configSetId",
        file.id as "fileId",logical.logical_node_id as "logicalNodeId",
        property.file_version_id as "fileVersionId",property.node_occurrence_id as "nodeOccurrenceId",
-       property.id as "propertyOccurrenceId",property.raw_text as "rawText",property.property_name as "propertyName"
+       property.id as "propertyOccurrenceId",property.raw_text as "rawText",property.property_name as "propertyName",property.ast_json as "semanticValue"
      from dts_occurrence_effects effect
      join dts_logical_node_revisions logical on logical.id=effect.logical_node_revision_id
        and logical.config_revision_id=effect.config_revision_id
@@ -144,7 +144,7 @@ export async function produceDtsReviewEvidenceInTransaction(
   for (const property of properties) {
     const compatibleProperty = property.propertyName === "compatible";
     if (!compatibleProperty && continuityProduced.has(property.logicalNodeId)) continue;
-    const parsed = parseDtsValue(property.propertyName,property.rawText).value;
+    const parsed = property.semanticValue ?? parseDtsValue(property.propertyName,property.rawText).value;
     const compatibles = compatibleProperty && parsed.kind === "strings" ? parsed.values : [];
     if (compatibleProperty && (!compatibles.length
       || compatibles.some((value) => !parseCanonicalCompatibleSelector(value).ok))) {
@@ -205,7 +205,7 @@ export async function produceDtsReviewEvidenceInTransaction(
     let proof: ExactDtsSourceProof;
     if (compatibleProperty) {
       const source = await readCurrentDtsCompatibleSource(tx,objectStore,auth,input);
-      if (source.status !== "current") throw new Error(`DTS evidence source is ${source.status}`);
+      if (source.status !== "current") throw new Error(`DTS evidence source is ${source.status}${source.status==="unavailable"?`: ${source.reason}`:""}`);
       if (!isDeepStrictEqual(source.compatibles,compatibles)) {
         throw new Error("DTS compatible source changed during evidence production");
       }

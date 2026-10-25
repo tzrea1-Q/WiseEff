@@ -2,6 +2,7 @@ import { SelectControl } from "@/components/common/SelectControl";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useEffect, useId, useRef, useState } from "react";
+import type { SharedDtsiRecognitionReference } from "@wiseeff/dto-schemas";
 
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
 import type { CatalogDomainState } from "@/application/parameter-catalog/states";
@@ -65,6 +66,7 @@ export type PublicationDialogProps = {
   open: boolean;
   intent?: "create-definition" | "create-subject";
   initialSubjectId?: string;
+  sourcePrefill?: { compatible: string; label: string; href: string; reference: SharedDtsiRecognitionReference };
   onCreateSubject?: () => void;
   onAddDefinition?: (subjectId: string) => void;
   actor: CatalogActorKind;
@@ -86,6 +88,7 @@ export function PublicationDialog({
   open,
   intent = "create-definition",
   initialSubjectId = "",
+  sourcePrefill,
   onCreateSubject,
   onAddDefinition,
   actor,
@@ -122,7 +125,7 @@ export function PublicationDialog({
   const completedRef = useRef(false);
   const formId = useId();
   const initialDraft = (): PublicationDraft => ({ ...emptyPublicationDraft(), mode: intent, subjectId: initialSubjectId,
-    ...(intent === "create-subject" ? { nature: "", cardinality: "" } : {}) });
+    ...(intent === "create-subject" ? { nature: "", cardinality: "", selectorValue: sourcePrefill?.compatible ?? "" } : {}) });
   const [draft, setDraft] = useState<PublicationDraft>(initialDraft);
   const leaveAction = useRef<(() => void) | null>(null);
   const [subjects, setSubjects] = useState<SubjectItem[]>([]);
@@ -285,7 +288,7 @@ export function PublicationDialog({
       setIdempotencyKey(null);
     }
     return stopPolling;
-  }, [open, catalog, currentPersonId, organizationId, intent, initialSubjectId]);
+  }, [open, catalog, currentPersonId, organizationId, intent, initialSubjectId, sourcePrefill]);
 
   useEffect(() => {
     if (!open) return;
@@ -383,7 +386,8 @@ export function PublicationDialog({
         {
           base: { catalogReleaseId },
           requestedChange: draft.mode === "create-subject" ? {
-            kind: "create-subject", changeSet: buildPublicationChangeSet(draft)
+            kind: "create-subject", changeSet: buildPublicationChangeSet(draft),
+            ...(sourcePrefill?{sourceReference:sourcePrefill.reference}:{})
           } : {
             kind:
               draft.mode === "revise-definition"
@@ -606,10 +610,12 @@ export function PublicationDialog({
                   <div className="parameter-catalog-publication-dialog__form">
                     {draft.mode === "create-subject" ? (
                       <>
+                        {sourcePrefill ? <p className="shared-dtsi-source-context">来源：<a href={sourcePrefill.href} target="_blank" rel="noreferrer">{sourcePrefill.label}</a>。仅预填 compatible 标识；驱动性质与实例基数须单独确认。</p> : null}
                         <label>
                           {publicationCopy.subjectKindPick}
                           <SelectControl
                             ariaLabel={publicationCopy.subjectKindPick}
+                            disabled={Boolean(sourcePrefill)}
                             value={draft.subjectKind}
                             onValueChange={(value) =>
                               patchDraft({ subjectKind: value as PublicationSubjectKind })
@@ -623,6 +629,7 @@ export function PublicationDialog({
                           <Input
                             aria-label={publicationCopy.selectorValue[draft.subjectKind]}
                             value={draft.selectorValue}
+                            readOnly={Boolean(sourcePrefill)}
                             onChange={(event) => patchDraft({ selectorValue: event.target.value })}
                           />
                         </label>

@@ -24,6 +24,7 @@ import { readSourceRegistrationAgreement } from "../parameter-bindings/binding";
 import { CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId, ProjectValueId, type ContractJsonValue } from "../parameter-catalog-contract";
 import { assertTrustedSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
 import { ingestConfigRevisionInTransaction, prepareReviewedSourceContinuity, type ReviewedSourceContinuity } from "../parameter-topology/ingestService";
+import { produceDtsReviewEvidenceInTransaction } from "../parameter-catalog-api/productionEvidence";
 import { normalizeManifestLogicalPath } from "../parameter-topology/configRevisionManifest";
 import { isStructuralPropertyKey } from "../parameter-topology/parameterSurface";
 import { loadOrganizationCatalogSnapshot, lockOrganizationModuleRecognition } from "../parameter-modules/recognitionSettings";
@@ -584,6 +585,7 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
         configSetId: input.configSetId, entryFile: proof.entryFile, includeSearchPaths: proof.includeSearchPaths,
         overlayOrder: proof.overlayOrder, preprocessing:proof.preprocessing, declaredBuildInputs:proof.declaredBuildInputs, members }, auth, { createdByUserId: auth.user.id, domain: attribution }, { reviewedSource: proof.continuity });
       if (revision.status !== "resolved") conflict("文件组成无法构建，所有变更已回滚。");
+      if(snapshot)await produceDtsReviewEvidenceInTransaction(tx,db,storage,auth,revision.id);
       revisionId = revision.id;
     } else {
       revisionId = randomUUID();

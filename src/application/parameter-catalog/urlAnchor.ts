@@ -2,6 +2,7 @@ export const CATALOG_PAGE_PATH = "/parameter-admin/specs";
 export const CATALOG_READ_PAGE_PATH = "/parameters/definitions";
 
 export type CatalogUrlAnchor = {
+  sourceReturn?: string;
   /** Return from standalone subject creation into the existing definition form. */
   createDefinition?: boolean;
   subjectId: string | null;
@@ -47,6 +48,7 @@ const ANCHOR_KEYS = [
   "moduleNodeId",
   "cursor"
 ] as const;
+const validSourceReturn=(value:string|null|undefined):value is string=>Boolean(value && /^\/parameter-admin\/(?:sources\?|projects\/[^/?#]+\/configuration\?)/u.test(value) && !/[\u0000-\u001f\u007f]/u.test(value));
 
 export function parseCatalogPageSize(value: string | null): CatalogPageSize | null {
   if (!value) return null;
@@ -65,6 +67,8 @@ function readOpaque(params: URLSearchParams, key: (typeof ANCHOR_KEYS)[number]):
 export function parseCatalogUrlAnchor(search: string): CatalogUrlAnchor {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   return {
+    ...(validSourceReturn(params.get("sourceReturn"))
+      ? { sourceReturn: params.get("sourceReturn")! } : {}),
     ...(params.get("createDefinition") === "1" ? { createDefinition: true } : {}),
     subjectId: readOpaque(params, "subjectId"),
     definitionId: readOpaque(params, "definitionId"),
@@ -92,6 +96,7 @@ export function serializeCatalogUrlAnchor(anchor: CatalogUrlAnchor): string {
   }
   if (anchor.includeRetiredSubjects) params.set("includeRetiredSubjects", "true");
   if (anchor.createDefinition) params.set("createDefinition", "1");
+  if (validSourceReturn(anchor.sourceReturn)) params.set("sourceReturn",anchor.sourceReturn);
   const encoded = params.toString();
   return encoded ? `?${encoded}` : "";
 }

@@ -8,11 +8,14 @@ import { canAdminParameters, canViewParameters } from "../parameter-kernel/polic
 import { parameterOrganizationId, parameterScopeInvocation } from "../parameters/operatingScope";
 import type { SharedDtsiDraft, SharedDtsiDraftInput, SharedDtsiResourceSummary } from "../contracts/dtoSchemas/sharedDtsi";
 import { sharedDtsiImportLimits } from "../contracts/dtoSchemas/sharedDtsi";
+import { sharedDtsiManifestSchema } from "../contracts/dtoSchemas/sharedDtsi";
 
 export type WriteContext = { invocation: TrustedInvocationContext; requestId: string };
 type DraftRow = Omit<SharedDtsiDraft, "members" | "updatedAt"> & { updatedAt: Date };
 const draftColumns = `d.id,d.resource_id as "resourceId",r.name,d.revision,d.updated_at as "updatedAt",d.change_description as "changeDescription",d.build_inputs as "buildInputs",d.dependencies,d.source_origin->'evidence' as "sourceEvidence"`;
 const draftTables = `from public.shared_dtsi_resources r join public.shared_dtsi_drafts d on d.resource_id=r.id and d.organization_id=r.organization_id`;
+// Immutable legacy search projection only; every read still authorizes its resource, and authoring re-reads source evidence.
+const legacySelectorCache=new WeakMap<Database,Map<string,string[]>>();
 
 export function requireRead(auth: AuthContext) {
   if (!auth.user.isActive || (!canViewParameters(auth) && !canAdminParameters(auth))) throw new ApiError("FORBIDDEN", "没有共享 DTSI 的查看权限。");
@@ -41,6 +44,45 @@ export async function getSharedDtsiDraft(db: Database, auth: AuthContext, resour
 }
 export async function listSharedDtsiResources(db: Database, auth: AuthContext, input: { q: string; offset: number; limit: number }) {
   requireRead(auth);
+  if (input.q) {
+    const {getSharedDtsiVersion,preparePublishedSharedDtsiSource} = await import("./publication");
+    const matches: SharedDtsiResourceSummary[] = [];
+    // ponytail: linear metadata scan; frozen selectors avoid recompiling current resources, add a SQL index when library size warrants it.
+    for (let offset=0;;offset+=100) {
+      const page = await listSharedDtsiResources(db,auth,{q:"",offset,limit:100});
+      for (const row of page.items) {
+        const needle=input.q.toLowerCase();
+        if ([row.name,row.sourceName].some(value=>value.toLowerCase().includes(needle))) { matches.push(row);continue; }
+        const paths = await db.query<{sourceName:string}>(`select source_name as "sourceName" from public.shared_dtsi_draft_members
+          where resource_id=$1 and organization_id=$2 union select source_name from public.shared_dtsi_revision_members where revision_id=$3 and organization_id=$2`,
+          [row.resourceId,parameterOrganizationId(auth),row.currentVersion?.id??null]);
+        if (paths.rows.some(value=>value.sourceName.toLowerCase().includes(needle))) {matches.push(row);continue;}
+        if (row.currentVersion) {
+          const raw=(await db.query<{manifest:unknown}>("select manifest from public.shared_dtsi_revisions where id=$1 and resource_id=$2 and organization_id=$3",[row.currentVersion.id,row.resourceId,parameterOrganizationId(auth)])).rows[0];
+          if(!raw)throw new ApiError("NOT_FOUND","共享 DTSI 版本不存在。");
+          const manifest=sharedDtsiManifestSchema.parse(raw.manifest);
+          const cache=legacySelectorCache.get(db)??new Map<string,string[]>();legacySelectorCache.set(db,cache);
+          const key=`${parameterOrganizationId(auth)}:${row.currentVersion.id}:${row.currentVersion.digest}`;
+          let selectors=manifest.compatibleSelectors??cache.get(key);
+          if(!selectors) {
+            const version=await getSharedDtsiVersion(db,auth,row.resourceId,row.currentVersion.id);
+            selectors=(await preparePublishedSharedDtsiSource(db,auth,version)).manifest.compatibleSelectors??[];
+            if(selectors.reduce((bytes,value)=>bytes+Buffer.byteLength(value),0)<=262_144){if(cache.size>=32)cache.delete(cache.keys().next().value!);cache.set(key,selectors);}
+          }
+          if(selectors.some(compatible=>compatible.toLowerCase().includes(needle))){matches.push(row);continue;}
+        }
+        if(row.draftRevision) {
+          const preview=(await db.query<{manifest:unknown}>(`select preview.manifest from public.shared_dtsi_publication_previews preview
+            join public.shared_dtsi_drafts draft on draft.id=preview.draft_id and draft.resource_id=preview.resource_id
+              and draft.organization_id=preview.organization_id and draft.revision=preview.draft_revision
+            where preview.resource_id=$1 and preview.organization_id=$2 and draft.revision=$3 order by preview.created_at desc,preview.id desc limit 1`,[row.resourceId,parameterOrganizationId(auth),row.draftRevision])).rows[0];
+          if(preview && sharedDtsiManifestSchema.parse(preview.manifest).compatibleSelectors?.some(compatible=>compatible.toLowerCase().includes(needle)))matches.push(row);
+        }
+      }
+      if(offset+page.items.length>=page.total)break;
+    }
+    return {items:matches.slice(input.offset,input.offset+input.limit),total:matches.length};
+  }
   const values = [parameterOrganizationId(auth), input.q];
   const tables = `from public.shared_dtsi_resources r left join public.shared_dtsi_drafts d on d.resource_id=r.id and d.organization_id=r.organization_id
     left join lateral (select id,resource_id,version,name,change_description,digest,created_at,created_by_user_id

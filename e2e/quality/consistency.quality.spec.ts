@@ -693,7 +693,8 @@ for (const route of consistencyReadOnlyRoutes) {
           await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
           await waitForFontsAndNextPaint(page);
           const contentTabs = workbench.getByRole("tablist", { name: "项目配置内容", exact: true });
-          await expect(contentTabs.getByRole("tab")).toHaveCount(2);
+          await expect(contentTabs.getByRole("tab")).toHaveCount(3);
+          await expect(contentTabs.getByRole("tab", { name: "生效配置", exact: true })).toBeVisible();
           await expect(contentTabs.getByRole("tab", { name: "结构", exact: true })).toHaveCount(0);
           const conflictTab = contentTabs.getByRole("tab", { name: /^冲突/ });
           await expect(conflictTab).toHaveAttribute("aria-selected", "true");
@@ -713,10 +714,12 @@ for (const route of consistencyReadOnlyRoutes) {
           await expect(workbench.getByRole("region", { name: "配置内容", exact: true })).toBeVisible();
           await expect(workbench.getByRole("heading", { name: "冲突处理", exact: true })).toHaveCount(0);
           if (conflictCount === 0) {
-            await expect(contentTabs).toHaveCount(0);
-            await expect(workbench.getByRole("tabpanel")).toHaveCount(0);
-          } else {
             await expect(contentTabs.getByRole("tab")).toHaveCount(2);
+            await expect(contentTabs.getByRole("tab", { name: /^冲突/ })).toHaveCount(0);
+            await expect(contentTabs.getByRole("tab", { name: "源码", exact: true })).toHaveAttribute("aria-selected", "true");
+            await expect(workbench.getByRole("tabpanel")).toBeVisible();
+          } else {
+            await expect(contentTabs.getByRole("tab")).toHaveCount(3);
             const sourceTab = contentTabs.getByRole("tab", { name: "源码", exact: true });
             await expect(sourceTab).toHaveAttribute("aria-selected", "true");
             const sourcePanelId = await sourceTab.getAttribute("aria-controls");

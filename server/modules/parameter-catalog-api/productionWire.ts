@@ -31,6 +31,7 @@ import {
 } from "../parameter-catalog-contract/index";
 import { canViewParameters, parameterUsageProjectScope } from "../parameter-kernel/policy";
 import { executeProposal } from "../parameter-governance/proposals";
+import { bindSharedDtsiProposalEvidence } from "../shared-dtsi/recognition";
 import { createGovernanceCatalogQueries, GOVERNANCE_CURRENT_PROJECTION_SEMANTICS } from "../parameter-governance/queries";
 import type { GovernanceRegistrationRecord } from "../parameter-governance/queries";
 import { executeRegistration } from "../parameter-governance/registration";
@@ -711,7 +712,7 @@ const createGovernancePorts = (
     ? bindCatalogGovernanceCommands({
         executeRegistration: (command) => executeRegistration(pool, command),
         resolveReviewItem: (command) => resolveReviewItem(pool, command),
-        executeProposal: (command) => executeProposal(pool, command),
+        executeProposal: async (command) => executeProposal(pool,db ? await bindSharedDtsiProposalEvidence(db,command) : command),
         listReviewQueue: (query) => {
           const reader = createReviewQueueReader(pool);
           return reader.list(query);

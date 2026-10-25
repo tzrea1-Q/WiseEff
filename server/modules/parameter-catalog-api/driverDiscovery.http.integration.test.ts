@@ -129,6 +129,10 @@ describe("#897 C2 production Driver compatible discovery HTTP", () => {
     if (allPage.status !== "ready") throw new Error("Discovery unavailable");
     expect(allPage.items).toHaveLength(2);
     expect(allPage.items.every((item) => item.source.status === "current")).toBe(true);
+    expect(allPage.items.map(item=>item.source)).toEqual(expect.arrayContaining([
+      expect.objectContaining({location:expect.objectContaining({fileId,nodeLocator:"/charger",line:2})}),
+      expect.objectContaining({location:expect.objectContaining({fileId,nodeLocator:"/peer",line:2})})
+    ]));
     expect(allPage.items.every((item) => item.projectId === PROJECT &&
       item.observationId.length > 0 && item.logicalNodeId.length > 0 &&
       item.configRevisionId.length > 0 && item.observedCatalogReleaseId.length > 0 &&
@@ -156,6 +160,29 @@ describe("#897 C2 production Driver compatible discovery HTTP", () => {
     expect((await get(path(),"admin",{"X-WiseEff-Catalog-Release":"wrong-release"})).status).toBe(409);
     expect(await snapshot()).toEqual(before);
   },120_000);
+
+  it("recognizes original CPP compatible invocations through the real project source and discovery APIs",async()=>{
+    const macroSource=source.replaceAll('"vendor,device"',"DEVICE_ID").replace("/dts-v1/;",'/dts-v1/;\n#define DEVICE_ID "vendor,device"');
+    const currentVersion=(await db.query<{id:string}>("select current_version_id as id from project_parameter_files where id=$1",[fileId])).rows[0]!.id;
+    const revision=await ingestConfigRevision(db,{organizationId:ORG,projectId:PROJECT,configSetId,entryFile:"board.dts",includeSearchPaths:["."],overlayOrder:[],members:[{fileId,fileVersionId:currentVersion,fileName:"board.dts",sourceName:"board.dts",role:"base",sortOrder:0,content:source}]},auth);
+    const post=<T>(url:string,body:unknown)=>requestJson<T>(app(),url,{method:"POST",headers:{authorization:"Bearer admin"},body:JSON.stringify(body)});
+    const candidate=await post<{item:{id:string}}>(`/api/v1/projects/${PROJECT}/parameter-file-candidates`,{fileId,fileName:"board.dts",contentBase64:Buffer.from(macroSource).toString("base64"),intent:"source_revision",expectedCurrentVersionId:currentVersion,expectedConfigRevisionId:revision.id,clientMutationId:"t21-project-cpp-source"});
+    expect(candidate.status,candidate.bodyText).toBe(201);
+    const target=`/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidate.body.item.id}`;
+    const preview=await get(`${target}/source-preview`);
+    expect(preview.status,preview.bodyText).toBe(200);
+    const proof=preview.body as {item:{proofToken:string}};
+    const applied=await post(`${target}/source-apply`,{expectedCurrentVersionId:currentVersion,expectedProofToken:proof.item.proofToken,clientMutationId:"t21-project-cpp-apply",reason:"Verify exact original macro recognition"});
+    expect(applied.status,applied.bodyText).toBe(200);
+    const discovery=await get(path(`?projectId=${PROJECT}`));
+    expect(discovery.status,discovery.bodyText).toBe(200);
+    const page=catalogDriverCompatibleDiscoveryResponseSchema.parse(discovery.body);
+    if(page.status!=="ready")throw new Error("CPP discovery unavailable");
+    const current=page.items.filter(item=>item.source.status==="current");
+    expect(current).toHaveLength(2);
+    expect(current.flatMap(item=>item.compatibles)).toContainEqual(expect.objectContaining({compatible:"vendor,device",candidate:expect.objectContaining({kind:"review-required",reason:"unknown"})}));
+    expect(current.map(item=>item.source)).toContainEqual(expect.objectContaining({location:{fileId,nodeLocator:"/charger",line:3}}));
+  });
 
   it("keeps null association and registration distinct, then shows ignored, historical and unavailable sources", async () => {
     await db.query("update user_role_bindings set project_id=$2 where user_id=$1",[MEMBER,PROJECT]);

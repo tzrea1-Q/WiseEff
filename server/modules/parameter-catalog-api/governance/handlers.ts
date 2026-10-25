@@ -218,7 +218,8 @@ function proposalAuthorContext(scope: TrustedGovernanceScope): ProposalTrustedCo
   if (scope.actorKind !== "org-admin") {
     return null;
   }
-  return { actorKind: "org-admin", principalId: scope.principalId };
+  return { actorKind: "org-admin", principalId: scope.principalId,
+    ...(scope.trustedActor?.initiator === "user" ? {invocation:scope.trustedActor} : {}) };
 }
 
 function proposalReviewerContext(scope: TrustedGovernanceScope): ProposalTrustedContext | null {

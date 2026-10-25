@@ -21,9 +21,10 @@ import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { dtsBuildInputsSchema, sharedDtsiImportLimits } from "@wiseeff/dto-schemas";
 import "./shared-dtsi.css";
 import { SharedDtsiDependencies } from "./SharedDtsiDependencies";
+import { SharedDtsiRecognition } from "./SharedDtsiRecognition";
 import { SharedDtsiComparison } from "./SharedDtsiComparison";
 
-type Props = { apiClient?: ApiClient; canWrite: boolean; search: string; organizationId?: string; onNavigate: (path: string) => void };
+type Props = { apiClient?: ApiClient; canWrite: boolean; canCreateSubject?:boolean;canProposeSource?:boolean;canReviewSource?:boolean;search: string; organizationId?: string; onNavigate: (path: string) => void };
 type Scope = { key: string; client: ReturnType<typeof createSharedDtsiClient> | null; pending: boolean };
 const empty: SharedDtsiDraftInput = { name: "", sourceName: "common.dtsi", content: "", changeDescription: "",dependencies:[] };
 const draftInput = (draft: SharedDtsiDraft): SharedDtsiDraftInput => ({ name: draft.name,
@@ -54,7 +55,7 @@ const fixedBuildInputs = (input: SharedDtsiVersion["manifest"]["buildInputs"]) =
     {Object.keys(input.defines ?? {}).length ? <div><dt>构建宏</dt><dd>{buildTexts({ includeSearchPaths: [], defines: input.defines ?? {} }).defines}</dd></div> : null}
   </dl></details> : null;
 
-export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, onNavigate }: Props) {
+export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,canProposeSource=false,canReviewSource=false,search, organizationId, onNavigate }: Props) {
   const client = useMemo(() => apiClient ? createSharedDtsiClient(apiClient) : null, [apiClient]);
   const selected = new URLSearchParams(search).get("resource") ?? "";
   const selectedVersion = new URLSearchParams(search).get("version") ?? "";
@@ -62,8 +63,8 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
   const requestedLine = new URLSearchParams(search).get("line") ?? "";
   const projectContext = new URLSearchParams(search).get("projectContext") ?? "";
   const projectReturnPath = /^\/parameter-admin\/projects\/[^/?#]+\/configuration\?/.test(projectContext) ? projectContext : null;
-  const requestedTab=new URLSearchParams(search).get("tab");
-  const tab = requestedTab === "versions" || requestedTab === "usages" ? requestedTab : "source";
+  const requestedTab = new URLSearchParams(search).get("tab");
+  const tab = requestedTab === "versions" || requestedTab === "recognition" || requestedTab === "usages" ? requestedTab : "source";
   const scopeKey = `${organizationId ?? ""}:${search}:${canWrite}`;
   const active = useRef<Scope>({ key: scopeKey, client, pending: false });
   if (active.current.key !== scopeKey || active.current.client !== client) active.current = { key: scopeKey, client, pending: false };
@@ -248,7 +249,7 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
   if (!client) return <section className="shared-dtsi-page"><h1>共享 DTSI</h1><p role="status">共享 DTSI 需要 API 模式和有效登录。</p></section>;
   if (!selected) return <div className="shared-dtsi-page"><AdminListPage label="共享 DTSI" headerContent={<h1>共享 DTSI</h1>}
     headerActions={canWrite ? <Button onClick={() => void navigate("new")}>导入资源</Button> : null}
-    filterBar={<SearchField ariaLabel="搜索共享 DTSI" value={query} onValueChange={value => { setQuery(value); setPage(1); }} placeholder="搜索资源名称或路径" />}
+    filterBar={<SearchField ariaLabel="搜索共享 DTSI" value={query} onValueChange={value => { setQuery(value); setPage(1); }} placeholder="搜索名称、路径或已验证 compatible 标识" />}
     emptyState={{ title: query ? "没有匹配的资源" : "尚无共享 DTSI", message: query ? "请调整搜索条件。" : "导入公共源码后，可在这里保存草稿并发布共享版本。" }}
     tableState={busyLoading ? <SectionSkeleton label="正在加载共享 DTSI" /> : error ? <SectionError message={error} onRetry={() => setReload(value => value + 1)} /> : undefined}
     table={{ rows, rowKey: row => row.resourceId, pageSize: 20, page: 1, fluid: true,
@@ -291,8 +292,13 @@ export function SharedDtsiPage({ apiClient, canWrite, search, organizationId, on
     {error ? <SectionError message={error} onRetry={() => setReload(value => value + 1)} /> : null}
     <ViewSwitch variant="tabs" ariaLabel="共享资源详情" value={tab} onValueChange={value => void navigate(selected,{tab:value})}
       items={[{value:"source",label:"源码",id:"shared-source-tab",panelId:"shared-source-panel"},
+        {value:"recognition",label:"来源识别",id:"shared-recognition-tab",panelId:"shared-recognition-panel"},
         {value:"versions",label:"版本",id:"shared-versions-tab",panelId:"shared-versions-panel"},
         {value:"usages",label:"使用情况",id:"shared-usages-tab",panelId:"shared-usages-panel"}]} />
+    <TabPanel id="shared-recognition-panel" aria-labelledby="shared-recognition-tab" hidden={tab!=="recognition"}>
+      {tab==="recognition" && published ? <SharedDtsiRecognition client={client} resourceId={selected} versionId={published.id}
+        canWrite={canWrite} canCreateSubject={canCreateSubject} canProposeSource={canProposeSource} canReviewSource={canReviewSource} returnPath={path(selected,{version:published.id,tab:"recognition"})} organizationId={organizationId} onNavigate={onNavigate} /> : null}
+    </TabPanel>
     <TabPanel id="shared-source-panel" aria-labelledby="shared-source-tab" hidden={tab!=="source"} className="shared-dtsi-published-panel">
       {tab==="source" && published ? <><p role="status">v{published.version} · {published.id===detail?.currentVersion?.id?"已发布":"历史版本"}，只读</p>
         <dl className="shared-dtsi-metadata"><div><dt>文件路径</dt><dd>{published.members[memberIndex]?.sourceName}</dd></div>
