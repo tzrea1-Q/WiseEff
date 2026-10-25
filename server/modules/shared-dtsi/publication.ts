@@ -4,7 +4,7 @@ import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import { parameterOrganizationId } from "../parameters/operatingScope";
-import { lexDts, offsetToLineColumn, parseDts, parseDtsValue, type DtsNodeCst } from "../dts";
+import { sharedDtsiPublicationSource as publicationSource } from "./source";
 import type { SharedDtsiDraft, SharedDtsiManifest, SharedDtsiPublicationPreview, SharedDtsiResourceDetail,
   SharedDtsiVersion, SharedDtsiVersionSummary } from "../contracts/dtoSchemas/sharedDtsi";
 import { getSharedDtsiDraft, lockDraft, requireRead, requireWrite, type WriteContext } from "./service";
@@ -49,50 +49,6 @@ export async function getSharedDtsiVersion(db: Database,auth: AuthContext,resour
   return {...summary(row),manifest:row.manifest,members};
 }
 
-function publicationSource(draft: SharedDtsiDraft) {
-  if (!draft.changeDescription.trim()) throw new ApiError("VALIDATION_FAILED","请填写变更说明后再预览发布。");
-  if (draft.members.length!==1) throw new ApiError("VALIDATION_FAILED","当前发布只支持单文件资源，请先核对完整依赖。");
-  const member=draft.members[0]!;
-  const reject=(offset:number,message:string):never=>{
-    const location=offsetToLineColumn(member.content,offset);
-    throw new ApiError("VALIDATION_FAILED",`${member.sourceName}:${location.line}:${location.column}：${message}`,
-      {diagnostics:[{sourceName:member.sourceName,...location,message}]});
-  };
-  const labels=new Set<string>(),references=new Set<string>();
-  try {
-    const tokens=lexDts(member.content);
-    for (let i=0;i<tokens.length;i++) {
-      const token=tokens[i]!;
-      const directive=token.value==="#" && tokens[i+1]?.kind==="ident"?`#${tokens[i+1]!.value}`:token.value;
-      if (token.kind==="ident" && /^#(?:include|include_next|define|undef|if|ifdef|ifndef|elif|else|endif|pragma|line|error|warning|embed)$/u.test(directive))
-        reject(token.span.start,"此源码需要尚未接入的 C 预处理，不能按单文件直接发布。");
-      if (token.kind==="amp" && tokens[i+1]?.kind==="ident") references.add(tokens[i+1]!.value);
-    }
-    const document=parseDts(member.content);
-    if (!document.topLevel.length) reject(0,"源码中没有可发布的设备树声明。");
-    for (const directive of document.directives) if (directive.name!=="/dts-v1/")
-      reject(directive.span.start,directive.name==="/include/"?`依赖文件 ${directive.arg??""} 未包含在当前单文件资源中。`:`当前单文件发布不支持 ${directive.name} 指令。`);
-    const visit=(node:DtsNodeCst)=>{
-      for (const label of node.labels) { if (labels.has(label)) reject(node.span.start,`节点标签 ${label} 重复。`); labels.add(label); }
-      for (const child of node.children) {
-        if (child.kind==="node") visit(child);
-        else if (child.kind==="property") {
-          try { parseDtsValue(child.name,child.rawText); }
-          catch { reject(child.span.start,`属性 ${child.name} 的值需要补充依赖或使用当前支持的 DTS 值语法。`); }
-        }
-      }
-    };
-    document.topLevel.forEach(visit);
-  } catch (error) {
-    if (error instanceof ApiError) throw error;
-    reject(0,error instanceof Error?error.message:"设备树语法无效。");
-  }
-  const checksum=`sha256:${createHash("sha256").update(member.content).digest("hex")}`,sizeBytes=Buffer.byteLength(member.content);
-  const members=[{...member,checksum,sizeBytes}];
-  const manifest:SharedDtsiManifest={schemaVersion:"shared-dtsi/v1",members:[{id:member.id,sourceName:member.sourceName,checksum,sizeBytes,role:"include"}],
-    externalReferences:[...references].filter(label=>!labels.has(label)).sort()};
-  return {members,manifest,digest:digest({name:draft.name,manifest,changeDescription:draft.changeDescription})};
-}
 type PreviewRow={id:string;resourceId:string;draftId:string;draftRevision:number;baseVersionId:string|null;actorUserId:string;actorFingerprint:string;
   name:string;changeDescription:string;manifest:SharedDtsiManifest;members:SharedDtsiVersion["members"];digest:string;createdAt:Date;
   idempotencyKey:string|null;publishedRevisionId:string|null};

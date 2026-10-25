@@ -2,6 +2,7 @@ import posixPath from "node:path/posix";
 
 import { parseDts } from "./parser";
 import { stripDtsComments } from "./preprocess";
+import { lexDts } from "./lexer";
 import type { DtsDeleteNodeCst, DtsDeletePropertyCst, DtsNodeCst, DtsPropertyCst, DtsValue, DtsValueType } from "./types";
 
 /**
@@ -43,6 +44,7 @@ export type DtsResolutionDiagnostic = {
   severity: "error" | "warning";
   fileName: string;
   message: string;
+  offset?: number;
 };
 
 export type DtsSourceEffect = "set" | "override" | "delete";
@@ -163,12 +165,13 @@ function isEscaping(normalized: string): boolean {
 type IncludeResolution = { ok: true; fileName: string } | { ok: false; code: "include-missing" | "path-escape" };
 
 /** Resolve an `/include/ "path"` request against the including file, then declared search roots. */
-function resolveIncludeTarget(
+export function resolveIncludeTarget(
   includingFile: string,
   requestedPath: string,
   includeSearchPaths: readonly string[],
   files: ReadonlyMap<string, DtsConfigSetFile>,
 ): IncludeResolution {
+  if (posixPath.isAbsolute(requestedPath) || /[:\\\u0000-\u001f\u007f]/u.test(requestedPath)) return {ok:false,code:"path-escape"};
   const candidates = [
     posixPath.normalize(posixPath.join(posixPath.dirname(includingFile), requestedPath)),
     ...includeSearchPaths.map((root) => posixPath.normalize(posixPath.join(root, requestedPath))),
@@ -247,12 +250,15 @@ function expandFile(
   // `stripDtsComments` preserves length (comments → spaces), so spans stay aligned with
   // the original file while the combined document remains parseable.
   const cleaned = stripDtsComments(file.content);
-  const includeRe = /\/include\/\s*"([^"]*)"\s*;?/g;
   let cursor = 0;
-  for (const match of cleaned.matchAll(includeRe)) {
-    const matchIndex = match.index ?? 0;
+  const tokens = lexDts(cleaned);
+  for (let i=0;i<tokens.length;i++) {
+    const token=tokens[i]!;
+    if (token.kind!=="directive" || token.value!=="/include/" || tokens[i+1]?.kind!=="string") continue;
+    const argument=tokens[i+1]!;
+    const matchIndex = token.span.start;
     appendText(builder, cleaned.slice(cursor, matchIndex), fileName, cursor);
-    const requestedPath = match[1];
+    const requestedPath = argument.value.slice(1,-1);
     const resolution = resolveIncludeTarget(fileName, requestedPath, includeSearchPaths, files);
     if (resolution.ok) {
       expandFile(resolution.fileName, nextStack, files, includeSearchPaths, diagnostics, builder, requireExactOrigins);
@@ -261,15 +267,27 @@ function expandFile(
         code: resolution.code,
         severity: "error",
         fileName,
+        offset: matchIndex,
         message:
           resolution.code === "path-escape"
             ? `Include path "${requestedPath}" in "${fileName}" resolves outside the config set`
             : `Include target "${requestedPath}" referenced from "${fileName}" was not found`,
       });
     }
-    cursor = matchIndex + match[0].length;
+    cursor = tokens[i+2]?.kind==="semi" ? tokens[i+2]!.span.end : argument.span.end;
   }
   appendText(builder, cleaned.slice(cursor), fileName, cursor);
+}
+
+/** Bounded native include expansion with original source spans, also usable by reusable libraries. */
+export function expandDtsIncludes(input: Pick<DtsConfigSetInput,"entryFile"|"files"|"includeSearchPaths">) {
+  const builder: Builder = {text:"",segments:[],proofBudget:{expandedBytes:0,entries:0,metadataBytes:0}};
+  const diagnostics: DtsResolutionDiagnostic[] = [];
+  expandFile(input.entryFile,[],input.files,input.includeSearchPaths,diagnostics,builder,true);
+  return {text:builder.text,diagnostics,originAt(offset:number) {
+    const segment=builder.segments.find(value=>offset>=value.start && offset<value.end) ?? builder.segments.at(-1);
+    return segment ? {fileName:segment.fileName,offset:segment.sourceStart+Math.max(0,offset-segment.start)} : {fileName:input.entryFile,offset:0};
+  }};
 }
 
 function resolveSegment(segments: readonly Segment[], offset: number): string {
@@ -446,12 +464,13 @@ function ingestDocument(
   proofBudget?: Builder["proofBudget"],
 ): void {
   const builder: Builder = { text: "", segments: [], proofBudget };
-  expandFile(fileName, [], input.files, input.includeSearchPaths, diagnostics, builder, input.requireExactOrigins);
 
   let topLevel: DtsNodeCst[];
   try {
+    expandFile(fileName, [], input.files, input.includeSearchPaths, diagnostics, builder, input.requireExactOrigins);
     topLevel = parseDts(builder.text).topLevel;
-  } catch {
+  } catch (error) {
+    if (error instanceof SourceProofLimit) throw error;
     // A malformed member is reported structurally elsewhere (parser safety); the config-set
     // resolver only owns include/overlay provenance diagnostics.
     return;

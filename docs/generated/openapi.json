@@ -28177,14 +28177,50 @@
           "content": {
             "type": "string"
           },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "sourceName": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "sourceName",
+                "content"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "archive": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "contentBase64": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "contentBase64"
+            ],
+            "additionalProperties": false
+          },
           "changeDescription": {
             "type": "string"
           }
         },
         "required": [
-          "name",
-          "sourceName",
-          "content"
+          "name"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "SharedDtsiDraftRequest"
@@ -28266,6 +28302,44 @@
           "content": {
             "type": "string"
           },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "sourceName": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "sourceName",
+                "content"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "archive": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "contentBase64": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "contentBase64"
+            ],
+            "additionalProperties": false
+          },
           "changeDescription": {
             "type": "string"
           },
@@ -28275,8 +28349,6 @@
         },
         "required": [
           "name",
-          "sourceName",
-          "content",
           "expectedRevision"
         ],
         "additionalProperties": false,
@@ -28508,7 +28580,8 @@
                         "role": {
                           "type": "string",
                           "enum": [
-                            "include"
+                            "include",
+                            "header"
                           ]
                         }
                       },
@@ -28527,6 +28600,48 @@
                     "items": {
                       "type": "string"
                     }
+                  },
+                  "includeGraph": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "sourceName": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        },
+                        "line": {
+                          "type": "number"
+                        },
+                        "column": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "sourceName",
+                        "target",
+                        "line",
+                        "column"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "buildInputs": {
+                    "type": "object",
+                    "properties": {
+                      "includeSearchPaths": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "includeSearchPaths"
+                    ],
+                    "additionalProperties": false
                   }
                 },
                 "required": [
@@ -28652,7 +28767,8 @@
                         "role": {
                           "type": "string",
                           "enum": [
-                            "include"
+                            "include",
+                            "header"
                           ]
                         }
                       },
@@ -28671,6 +28787,48 @@
                     "items": {
                       "type": "string"
                     }
+                  },
+                  "includeGraph": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "sourceName": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        },
+                        "line": {
+                          "type": "number"
+                        },
+                        "column": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "sourceName",
+                        "target",
+                        "line",
+                        "column"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "buildInputs": {
+                    "type": "object",
+                    "properties": {
+                      "includeSearchPaths": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "includeSearchPaths"
+                    ],
+                    "additionalProperties": false
                   }
                 },
                 "required": [

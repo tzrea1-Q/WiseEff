@@ -4,10 +4,11 @@ import type { AuthContext } from "../auth/types";
 import { z } from "zod";
 import { ApiError } from "../../shared/http/errors";
 import { createUserInvocation } from "../auth/trustedInvocation";
+import { importSharedDtsiInput } from "./import";
 import { parameterInvocation, parameterRequestAccess } from "../parameters/operatingScope";
 import { sharedDtsiDraftInputSchema, sharedDtsiDraftUpdateSchema, sharedDtsiDraftDiscardSchema,
   sharedDtsiPreviewRequestSchema, sharedDtsiPublishRequestSchema, sharedDtsiNewVersionDraftSchema } from "../contracts/dtoSchemas/sharedDtsi";
-import { createSharedDtsiDraft, discardSharedDtsiDraft, getSharedDtsiDraft, listSharedDtsiResources, saveSharedDtsiDraft } from "./service";
+import { createSharedDtsiDraft, discardSharedDtsiDraft, getSharedDtsiDraft, listSharedDtsiResources, saveSharedDtsiDraft, requireWrite } from "./service";
 import { createSharedDtsiVersionDraft, getSharedDtsiResourceDetail, getSharedDtsiVersion, listSharedDtsiVersions,
   previewSharedDtsiPublication, publishSharedDtsi } from "./publication";
 
@@ -33,7 +34,8 @@ export function registerSharedDtsiRoutes(router: WiseEffRouter, options: {
   });
   router.post("/api/v2/shared-dtsi", async request => {
     const { db, auth, context } = await access(request);
-    return { status: 201, body: { item: await createSharedDtsiDraft(db, auth, parse(sharedDtsiDraftInputSchema, request.body), context) } };
+    requireWrite(auth,context);
+    return { status: 201, body: { item: await createSharedDtsiDraft(db, auth, await importSharedDtsiInput(parse(sharedDtsiDraftInputSchema, request.body)), context) } };
   });
   router.get("/api/v2/shared-dtsi/:resourceId", async request => {
     const { db, auth } = await access(request);
@@ -41,7 +43,9 @@ export function registerSharedDtsiRoutes(router: WiseEffRouter, options: {
   });
   router.put("/api/v2/shared-dtsi/:resourceId/draft", async request => {
     const { db, auth, context } = await access(request);
-    return { status: 200, body: { item: await saveSharedDtsiDraft(db, auth, resourceId(request), parse(sharedDtsiDraftUpdateSchema, request.body), context) } };
+    requireWrite(auth,context);
+    const input=parse(sharedDtsiDraftUpdateSchema, request.body);
+    return { status: 200, body: { item: await saveSharedDtsiDraft(db, auth, resourceId(request), {...await importSharedDtsiInput(input),expectedRevision:input.expectedRevision}, context) } };
   });
   router.delete("/api/v2/shared-dtsi/:resourceId/draft", async request => {
     const { db, auth, context } = await access(request);
