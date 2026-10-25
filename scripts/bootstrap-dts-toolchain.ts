@@ -9,6 +9,7 @@ import {
   probeDtsToolchain
 } from "../server/modules/parameter-files/dtsToolchain";
 import { ensurePinnedDtcBinaries } from "./ensure-pinned-dtc";
+import { pinnedDtsPreprocessor, probeDtsPreprocessor } from "../server/modules/dts/cppSources";
 
 export type DtsToolchainVenvPaths = {
   venvDir: string;
@@ -51,6 +52,9 @@ async function main() {
 
   const dtcEnsure = await ensurePinnedDtcBinaries(rootDir, pinned);
   console.log(`Pinned dtc/fdtoverlay: ${dtcEnsure}`);
+  const cpp = pinnedDtsPreprocessor();
+  runRequired("docker", ["pull", "--platform", cpp.platform, cpp.image], rootDir);
+  if (!(await probeDtsPreprocessor()).available) throw new Error("Pinned isolated DTS preprocessing is unavailable.");
 
   runRequired(
     paths.python,

@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -190,28 +190,42 @@ describe("Shared DTSI organization erasure through HTTP and a PostgreSQL API log
           method, headers: { "x-wiseeff-user": user }, ...(body === undefined ? {} : { body: JSON.stringify(body) })
         });
       try {
-        const created = await call<{ item: Draft }>("/api/v2/shared-dtsi", "POST", {
-          name: "Pre-upgrade source", sourceName: "battery.dtsi", content: source, changeDescription: "Before upgrade"
+        // Genuine pre-0296 rows: the current application requires later additive columns.
+        // Seed the old contract through the already provisioned API login, then upgrade it.
+        const resourceId=randomUUID(),memberId=randomUUID(),versionId=randomUUID(),draftId=randomUUID(),previewId=randomUUID();
+        const checksum=`sha256:${createHash("sha256").update(source).digest("hex")}`,sizeBytes=Buffer.byteLength(source);
+        const manifest={schemaVersion:"shared-dtsi/v1",members:[{id:memberId,sourceName:"battery.dtsi",checksum,sizeBytes,role:"include"}],
+          externalReferences:[],includeGraph:[],buildInputs:{includeSearchPaths:[]}};
+        const digest=`sha256:${createHash("sha256").update(JSON.stringify({name:"Pre-upgrade source",manifest,changeDescription:"Before upgrade"})).digest("hex")}`;
+        await upgradedApi.transaction(async tx=>{
+          await tx.query("insert into shared_dtsi_resources(id,organization_id,name) values ($1,'upgrade-dtsi-target','Pre-upgrade source')",[resourceId]);
+          await tx.query("insert into shared_dtsi_members(id,resource_id,organization_id) values ($1,$2,'upgrade-dtsi-target')",[memberId,resourceId]);
+          await tx.query(`insert into shared_dtsi_revisions(id,resource_id,organization_id,version,name,draft_revision,change_description,manifest,digest,created_by_user_id)
+            values ($1,$2,'upgrade-dtsi-target',1,'Pre-upgrade source',1,'Before upgrade',$3::jsonb,$4,'upgrade-dtsi-target-admin')`,[versionId,resourceId,JSON.stringify(manifest),digest]);
+          await tx.query(`insert into shared_dtsi_revision_members(revision_id,member_id,resource_id,organization_id,source_name,content,checksum,size_bytes)
+            values ($1,$2,$3,'upgrade-dtsi-target','battery.dtsi',$4,$5,$6)`,[versionId,memberId,resourceId,source,checksum,sizeBytes]);
+          await tx.query(`insert into shared_dtsi_drafts(id,resource_id,organization_id,created_by_user_id,updated_by_user_id)
+            values ($1,$2,'upgrade-dtsi-target','upgrade-dtsi-target-admin','upgrade-dtsi-target-admin')`,[draftId,resourceId]);
+          await tx.query(`insert into shared_dtsi_draft_members(draft_id,member_id,resource_id,organization_id,source_name,content)
+            values ($1,$2,$3,'upgrade-dtsi-target','battery.dtsi',$4)`,[draftId,memberId,resourceId,source]);
+          await tx.query(`insert into shared_dtsi_publication_previews(id,resource_id,organization_id,draft_id,draft_revision,actor_user_id,actor_fingerprint,
+            name,change_description,manifest,members,digest,idempotency_key,published_revision_id)
+            values ($1,$2,'upgrade-dtsi-target',$3,1,'upgrade-dtsi-target-admin','old-actor-fingerprint','Pre-upgrade source','Before upgrade',$4::jsonb,$5::jsonb,$6,'before-upgrade',$7)`,
+            [previewId,resourceId,randomUUID(),JSON.stringify(manifest),JSON.stringify([{id:memberId,sourceName:"battery.dtsi",content:source,checksum,sizeBytes}]),digest,versionId]);
         });
-        expect(created.status, created.bodyText).toBe(201);
-        const resource = `/api/v2/shared-dtsi/${created.body.item.resourceId}`;
-        const prepared = await call<{ item: { id: string } }>(`${resource}/publication-preview`, "POST", { expectedRevision: 1 });
-        expect(prepared.status, prepared.bodyText).toBe(201);
-        const published = await call<{ item: { id: string } }>(`${resource}/publications`, "POST", {
-          previewId: prepared.body.item.id, idempotencyKey: "before-upgrade"
-        });
-        expect(published.status, published.bodyText).toBe(201);
-        const newDraft = await call(`${resource}/draft`, "POST", { baseVersionId: published.body.item.id });
-        expect(newDraft.status, newDraft.bodyText).toBe(201);
-        const beforeVersion = await call(`${resource}/versions/${published.body.item.id}`);
-        const beforeDraft = await call(resource);
+        const beforeRows=await upgradedApi.query("select to_jsonb(revision) as value from shared_dtsi_revisions revision where id=$1",[versionId]);
+        const beforeDraft=await upgradedApi.query("select to_jsonb(draft) as value from shared_dtsi_drafts draft where id=$1",[draftId]);
+        for(const relation of relations)expect((await upgradedApi.query(`select count(*)::int as count from shared_dtsi_${relation} where organization_id='upgrade-dtsi-target'`)).rows).toEqual([{count:1}]);
+        const resource=`/api/v2/shared-dtsi/${resourceId}`;
         const target = "/api/v1/platform/organizations/upgrade-dtsi-target";
-        const blocked = await call<{ item: Preview }>(`${target}/deletion-preview`, "GET", undefined, "upgrade-dtsi-home-admin");
-        expect(blocked.status, blocked.bodyText).toBe(200);
-        expect(blocked.body.item.blockers).toContainEqual(expect.objectContaining({ code: "unclassified-ownership" }));
         expect(await applyMigrations(legacy, migrationsDir)).toContain("0296_shared_dtsi_organization_erasure.sql");
-        expect((await call(`${resource}/versions/${published.body.item.id}`)).body).toEqual(beforeVersion.body);
-        expect((await call(resource)).body).toEqual(beforeDraft.body);
+        expect((await upgradedApi.query("select to_jsonb(revision) as value from shared_dtsi_revisions revision where id=$1",[versionId])).rows).toEqual(beforeRows.rows);
+        expect((await upgradedApi.query("select to_jsonb(draft)-'dependencies' as value from shared_dtsi_drafts draft where id=$1",[draftId])).rows).toEqual(beforeDraft.rows);
+        const exact=await call<{item:{members:{content:string}[]}}>(`${resource}/versions/${versionId}`);
+        expect(exact.status,exact.bodyText).toBe(200);expect(exact.body.item.members).toEqual([expect.objectContaining({id:memberId,sourceName:"battery.dtsi",content:source,checksum,sizeBytes})]);
+        const reopened=await call<{item:{dependencies:unknown[];members:{content:string}[]}}>(resource);
+        expect(reopened.status,reopened.bodyText).toBe(200);expect(reopened.body.item.dependencies).toEqual([]);expect(reopened.body.item.members).toEqual([expect.objectContaining({content:source})]);
+        expect((await upgradedApi.query("select rolsuper,rolinherit from pg_roles where rolname=current_user")).rows).toEqual([{rolsuper:false,rolinherit:false}]);
         const ready = await call<{ item: Preview }>(`${target}/deletion-preview`, "GET", undefined, "upgrade-dtsi-home-admin");
         expect(ready.body.item.blockers).toEqual([]);
         const erased = await call<{ item: { status: string } }>(`${target}/deletions`, "POST", {

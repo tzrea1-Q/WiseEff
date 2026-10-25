@@ -123,6 +123,7 @@ export function ProjectsOperationsPanel({
   );
   const topologyRepository = useMemo(
     () => ({
+      getTopology: (...args: Parameters<typeof application.getTopology>) => application.getTopology(...args),
       listConfigRevisions: (projectId: string, configSetId: string) =>
         application.listConfigRevisions(projectId, configSetId),
       validateRevision: (projectId: string, revisionId: string) =>

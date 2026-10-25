@@ -11,6 +11,7 @@ import { sharedDtsiDraftInputSchema, sharedDtsiDraftUpdateSchema, sharedDtsiDraf
 import { createSharedDtsiDraft, discardSharedDtsiDraft, getSharedDtsiDraft, listSharedDtsiResources, saveSharedDtsiDraft, requireWrite } from "./service";
 import { createSharedDtsiVersionDraft, getSharedDtsiResourceDetail, getSharedDtsiVersion, listSharedDtsiVersions,
   previewSharedDtsiPublication, publishSharedDtsi } from "./publication";
+import { listSharedDtsiUsages } from "./usages";
 
 export function registerSharedDtsiRoutes(router: WiseEffRouter, options: {
   db?: Database; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
@@ -54,6 +55,11 @@ export function registerSharedDtsiRoutes(router: WiseEffRouter, options: {
   router.get("/api/v2/shared-dtsi/:resourceId/detail", async request => {
     const { db,auth }=await access(request);
     return {status:200,body:{item:await getSharedDtsiResourceDetail(db,auth,resourceId(request))}};
+  });
+  router.get("/api/v2/shared-dtsi/:resourceId/usages",async request=>{
+    const {db,auth}=await access(request);
+    const query=parse(z.object({offset:z.coerce.number().int().min(0).max(100_000).default(0),limit:z.coerce.number().int().min(1).max(100).default(20)}),request.query);
+    return {status:200,body:await listSharedDtsiUsages(db,auth,resourceId(request),query)};
   });
   router.get("/api/v2/shared-dtsi/:resourceId/versions", async request => {
     const { db,auth }=await access(request);

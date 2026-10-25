@@ -339,6 +339,25 @@ export type EffectiveTopologyEffect = {
   nodeOccurrenceId: string | null;
   propertyOccurrenceId: string | null;
   sourceOrder: number;
+  /** Exact persisted original value; absent when no original occurrence is proven. */
+  rawText?: string;
+  /** Rendered frozen semantic value, which may differ from an original macro invocation. */
+  valueText?: string;
+  value?: DtsValue;
+  source?: {
+    fileId: string;
+    fileVersionId: string;
+    sourceName: string;
+    /** Missing for legacy deletion effects that retained only their owning node. */
+    startLine?: number;
+    startColumn?: number;
+    endLine?: number;
+    endColumn?: number;
+    sharedReference?: {
+      referenceId: string; resourceId: string; versionId: string; version: number;
+      memberId: string; digest: string; readOnly: true;
+    };
+  };
 };
 
 /** Serializable node enablement attached to topology DTOs (ADR-0003). */

@@ -9,22 +9,28 @@ beforeAll(() => {
   Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
   Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 });
-function setup(options: { writable?: boolean; saveError?: boolean } = {}) {
+function setup(options: { writable?: boolean; saveError?: boolean;dependency?:boolean } = {}) {
   const resourceId = "33333333-3333-4333-8333-333333333333";
   let item: Record<string, unknown> | null = null;
   const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
     const method = init?.method ?? "GET";
+    const dependencyId="44444444-4444-4444-8444-444444444444",versionId="55555555-5555-4555-8555-555555555555";
+    const version={id:versionId,resourceId:dependencyId,version:3,name:"Common clocks",changeDescription:"Fixed clock source",digest:"sha256:fixed",createdAt:"2026-10-25T00:00:00Z",createdByUserId:"author"};
+    if(options.dependency&&String(_url).includes(`${dependencyId}/versions/${versionId}`))return new Response(JSON.stringify({item:{...version,members:[{id:versionId,sourceName:"clocks.dtsi",content:"/ {};",checksum:"sha256:fixed",sizeBytes:5}],manifest:{schemaVersion:"shared-dtsi/v1",members:[{id:versionId,sourceName:"clocks.dtsi",checksum:"sha256:fixed",sizeBytes:5,role:"include"}],externalReferences:[]}}}));
+    if(options.dependency&&String(_url).includes(`${dependencyId}/versions`))return new Response(JSON.stringify({items:[version],total:1}));
+    if(options.dependency&&String(_url).includes(`${dependencyId}/detail`))return new Response(JSON.stringify({item:{resourceId:dependencyId,name:"Common clocks",updatedAt:version.createdAt,draftRevision:null,currentVersion:version}}));
     if (method === "POST") {
       const input = JSON.parse(init!.body as string);
       item = { id: "11111111-1111-4111-8111-111111111111", resourceId, name: input.name, revision: 1, updatedAt: "2026-10-25T00:00:00Z",
-        members: [{ id: "22222222-2222-4222-8222-222222222222", sourceName: input.sourceName, content: input.content }] };
+        ...(input.buildInputs ? { buildInputs: input.buildInputs } : {}),
+        dependencies:input.dependencies,members: [{ id: "22222222-2222-4222-8222-222222222222", sourceName: input.sourceName, content: input.content }] };
       return new Response(JSON.stringify({ item }), { status: 201 });
     }
     if (method === "PUT" && options.saveError) return new Response(JSON.stringify({ error: { code: "CONFLICT", message: "草稿已被更新，请重新载入后核对；本地修改仍保留。" } }), { status: 409 });
     if (method === "GET" && String(_url).includes(`${resourceId}/detail`)) return new Response(JSON.stringify({item:{resourceId,name:item?.name,
       updatedAt:"2026-10-25T00:00:00Z",draftRevision:item?.revision,currentVersion:null}}));
     if (method === "GET" && String(_url).includes(resourceId)) return new Response(JSON.stringify({ item }));
-    return new Response(JSON.stringify({ items: item ? [{ resourceId,name:item.name,updatedAt:item.updatedAt,sourceName:"common.dtsi",draftRevision:item.revision,currentVersion:null }] : [], total: item ? 1 : 0 }));
+    return new Response(JSON.stringify({ items: options.dependency?[{resourceId:dependencyId,name:"Common clocks",updatedAt:version.createdAt,sourceName:"clock.dtsi",draftRevision:null,currentVersion:version}]:item ? [{ resourceId,name:item.name,updatedAt:item.updatedAt,sourceName:"common.dtsi",draftRevision:item.revision,currentVersion:null }] : [], total: options.dependency||item ? 1 : 0 }));
   });
   const api = createApiClient({ baseUrl: "", fetchImpl });
   function Harness() {
@@ -36,6 +42,44 @@ function setup(options: { writable?: boolean; saveError?: boolean } = {}) {
 }
 
 describe("shared DTSI draft authoring", () => {
+  it("retains declared search roots and external macros and guards settings-only unsaved changes", async () => {
+    const user = userEvent.setup();
+    const { fetchImpl } = setup();
+    await user.click(await screen.findByRole("button", { name: "导入资源" }));
+    await user.type(await screen.findByLabelText("资源名称"), "Original engineering");
+    await user.click(screen.getByText("构建设置", { exact: true }));
+    await user.type(screen.getByLabelText("Include 搜索目录"), "include");
+    await user.type(screen.getByLabelText("构建宏"), "ENABLED=1");
+    await user.click(screen.getByRole("button", { name: /^保存草稿$/u }));
+    await screen.findByText("草稿已保存", { exact: true });
+    const post = fetchImpl.mock.calls.find(([, init]) => init?.method === "POST")!;
+    expect(JSON.parse(post[1]!.body as string)).toMatchObject({ buildInputs: { includeSearchPaths: ["include"], defines: { ENABLED: "1" } } });
+    expect(screen.getByLabelText("构建宏")).toHaveValue("ENABLED=1");
+    await user.clear(screen.getByLabelText("构建宏"));
+    await user.type(screen.getByLabelText("构建宏"), "ENABLED=0");
+    expect(screen.getByRole("button", { name: /^保存草稿$/u })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "返回资源列表" }));
+    expect(await screen.findByRole("dialog")).toBeVisible();
+  });
+
+  it("reveals fixed dependencies only when requested and retains them in draft saves",async()=>{
+    const user=userEvent.setup();const {fetchImpl}=setup({dependency:true});
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));
+    await user.type(await screen.findByLabelText("资源名称"),"Complete resource");
+    await user.click(screen.getByText("固定资源依赖（按需）"));
+    await screen.findByText("尚未选择固定资源依赖。");
+    expect(screen.getByLabelText("依赖挂载目录")).toBeVisible();
+    await user.click(await screen.findByRole("combobox",{name:"依赖资源"}));
+    await user.click(await screen.findByRole("option",{name:"Common clocks"}));
+    await user.click(await screen.findByRole("combobox",{name:"依赖固定版本"}));
+    await user.click(await screen.findByRole("option",{name:"版本 3 · Fixed clock source"}));
+    await user.type(screen.getByLabelText("依赖挂载目录"),"vendor/clocks");
+    await user.click(screen.getByRole("button",{name:"添加固定依赖"}));
+    await user.click(screen.getByRole("button",{name:"保存草稿"}));
+    const request=fetchImpl.mock.calls.find(([,init])=>init?.method==="POST")!;
+    expect(JSON.parse(request[1]!.body as string).dependencies).toEqual([{resourceId:"44444444-4444-4444-8444-444444444444",versionId:"55555555-5555-4555-8555-555555555555",mountPath:"vendor/clocks"}]);
+    expect(await screen.findByText("Common clocks · 版本 3 · vendor/clocks")).toBeVisible();
+  });
   it("keeps relative file paths and unsaved editor content while switching source members",async()=>{
     const user=userEvent.setup();
     const {fetchImpl}=setup();
@@ -106,6 +150,25 @@ describe("shared DTSI draft authoring", () => {
     await act(async()=>{finish(new TextEncoder().encode('/ { old { status = "disabled"; }; };').buffer);});
     expect(screen.getByLabelText("资源名称")).toHaveValue("New current draft");
     expect(screen.getByLabelText("文件路径")).toHaveValue("common.dtsi");
+  });
+
+  it("restores an exact historical member and a project node return link", async () => {
+    const resourceId="33333333-3333-4333-8333-333333333333",versionId="44444444-4444-4444-8444-444444444444";
+    const member={id:"22222222-2222-4222-8222-222222222222",sourceName:"battery.dtsi",content:'/ { battery { status = "disabled"; }; };',checksum:"sha256:source",sizeBytes:40};
+    const summary={id:versionId,resourceId,version:1,name:"Historical source",changeDescription:"Original",digest:"sha256:version",createdAt:"2026-10-25T00:00:00Z",createdByUserId:"author"};
+    const first={...member,id:"77777777-7777-4777-8777-777777777777",sourceName:"first.dtsi",content:"/ { first {}; };"};
+    const version={...summary,manifest:{schemaVersion:"shared-dtsi/v1",members:[first,member].map(({content:_,...row})=>({...row,role:"include"})),externalReferences:[]},members:[first,member]};
+    const api=createApiClient({baseUrl:"",fetchImpl:async(url)=>new Response(JSON.stringify({item:String(url).endsWith("/detail")
+      ? {resourceId,name:summary.name,updatedAt:summary.createdAt,draftRevision:null,currentVersion:{...summary,id:"88888888-8888-4888-8888-888888888888",version:2}}
+      : version}),{status:200})});
+    const context="/parameter-admin/projects/project/configuration?organization=org&configSet=config&revision=revision&file=file&version=source-v1&node=%2Fbattery&tab=source";
+    const search=`?${new URLSearchParams({resource:resourceId,version:versionId,member:member.id,line:"1",projectContext:context})}`;
+    render(<SharedDtsiPage apiClient={api} canWrite organizationId="org" search={search} onNavigate={()=>{}} />);
+    await screen.findByText("v1 · 历史版本，只读");
+    expect(screen.getByLabelText("已发布 DTSI 源码")).toHaveTextContent("battery");
+    expect(screen.getByLabelText("已发布 DTSI 源码")).toHaveAttribute("aria-readonly","true");
+    expect(screen.getByRole("link",{name:"返回项目节点"})).toHaveAttribute("href",context);
+    expect(screen.queryByRole("button",{name:"保存草稿"})).not.toBeInTheDocument();
   });
 
   it("publishes a preview, reads immutable history, and discards only the next draft", async () => {

@@ -304,6 +304,59 @@
         }
       }
     },
+    "/api/v2/shared-dtsi/{resourceId}/usages": {
+      "get": {
+        "operationId": "sharedDtsi.usages",
+        "summary": "List authorized direct and indirect project references",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "resourceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedDtsiUsagesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/shared-dtsi/{resourceId}/versions": {
       "get": {
         "operationId": "sharedDtsi.versions",
@@ -28199,6 +28252,24 @@
               "additionalProperties": false
             }
           },
+          "buildInputs": {
+            "type": "object",
+            "properties": {
+              "includeSearchPaths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "defines": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
           "archive": {
             "type": "object",
             "properties": {
@@ -28217,6 +28288,29 @@
           },
           "changeDescription": {
             "type": "string"
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resourceId": {
+                  "type": "string"
+                },
+                "versionId": {
+                  "type": "string"
+                },
+                "mountPath": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "resourceId",
+                "versionId",
+                "mountPath"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -28249,6 +28343,24 @@
               "changeDescription": {
                 "type": "string"
               },
+              "buildInputs": {
+                "type": "object",
+                "properties": {
+                  "includeSearchPaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "defines": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
               "members": {
                 "type": "array",
                 "items": {
@@ -28268,6 +28380,29 @@
                     "id",
                     "sourceName",
                     "content"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "dependencies": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "resourceId": {
+                      "type": "string"
+                    },
+                    "versionId": {
+                      "type": "string"
+                    },
+                    "mountPath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "resourceId",
+                    "versionId",
+                    "mountPath"
                   ],
                   "additionalProperties": false
                 }
@@ -28324,6 +28459,24 @@
               "additionalProperties": false
             }
           },
+          "buildInputs": {
+            "type": "object",
+            "properties": {
+              "includeSearchPaths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "defines": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
           "archive": {
             "type": "object",
             "properties": {
@@ -28342,6 +28495,29 @@
           },
           "changeDescription": {
             "type": "string"
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resourceId": {
+                  "type": "string"
+                },
+                "versionId": {
+                  "type": "string"
+                },
+                "mountPath": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "resourceId",
+                "versionId",
+                "mountPath"
+              ],
+              "additionalProperties": false
+            }
           },
           "expectedRevision": {
             "type": "number"
@@ -28463,6 +28639,67 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "SharedDtsiDetailResponse"
+      },
+      "SharedDtsiUsagesResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "projectId": {
+                  "type": "string"
+                },
+                "projectName": {
+                  "type": "string"
+                },
+                "configSetId": {
+                  "type": "string"
+                },
+                "configSetName": {
+                  "type": "string"
+                },
+                "versionId": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "number"
+                },
+                "direct": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "projectId",
+                "projectName",
+                "configSetId",
+                "configSetName",
+                "versionId",
+                "version",
+                "direct"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "organization",
+              "authorized-projects"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "visibility"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SharedDtsiUsagesResponse"
       },
       "SharedDtsiVersionsResponse": {
         "type": "object",
@@ -28601,6 +28838,64 @@
                       "type": "string"
                     }
                   },
+                  "dependencies": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "resourceId": {
+                          "type": "string"
+                        },
+                        "versionId": {
+                          "type": "string"
+                        },
+                        "mountPath": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "resourceId",
+                        "versionId",
+                        "mountPath"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "dependencyClosure": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "resourceId": {
+                          "type": "string"
+                        },
+                        "versionId": {
+                          "type": "string"
+                        },
+                        "mountPath": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "number"
+                        },
+                        "digest": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "resourceId",
+                        "versionId",
+                        "mountPath",
+                        "name",
+                        "version",
+                        "digest"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
                   "includeGraph": {
                     "type": "array",
                     "items": {
@@ -28636,6 +28931,80 @@
                         "items": {
                           "type": "string"
                         }
+                      },
+                      "defines": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      },
+                      "preprocessing": {
+                        "type": "object",
+                        "properties": {
+                          "schemaVersion": {
+                            "type": "string",
+                            "enum": [
+                              "dts-cpp/v1"
+                            ]
+                          },
+                          "image": {
+                            "type": "string"
+                          },
+                          "platform": {
+                            "type": "string",
+                            "enum": [
+                              "linux/amd64"
+                            ]
+                          },
+                          "compilerVersion": {
+                            "type": "string",
+                            "enum": [
+                              "14.2.0"
+                            ]
+                          },
+                          "language": {
+                            "type": "string",
+                            "enum": [
+                              "c17"
+                            ]
+                          },
+                          "encoding": {
+                            "type": "string",
+                            "enum": [
+                              "UTF-8"
+                            ]
+                          },
+                          "locale": {
+                            "type": "string",
+                            "enum": [
+                              "C"
+                            ]
+                          },
+                          "defines": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          },
+                          "inputDigest": {
+                            "type": "string"
+                          },
+                          "outputDigest": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "schemaVersion",
+                          "image",
+                          "platform",
+                          "compilerVersion",
+                          "language",
+                          "encoding",
+                          "locale",
+                          "inputDigest",
+                          "outputDigest"
+                        ],
+                        "additionalProperties": false
                       }
                     },
                     "required": [
@@ -28788,6 +29157,64 @@
                       "type": "string"
                     }
                   },
+                  "dependencies": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "resourceId": {
+                          "type": "string"
+                        },
+                        "versionId": {
+                          "type": "string"
+                        },
+                        "mountPath": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "resourceId",
+                        "versionId",
+                        "mountPath"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "dependencyClosure": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "resourceId": {
+                          "type": "string"
+                        },
+                        "versionId": {
+                          "type": "string"
+                        },
+                        "mountPath": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "number"
+                        },
+                        "digest": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "resourceId",
+                        "versionId",
+                        "mountPath",
+                        "name",
+                        "version",
+                        "digest"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
                   "includeGraph": {
                     "type": "array",
                     "items": {
@@ -28823,6 +29250,80 @@
                         "items": {
                           "type": "string"
                         }
+                      },
+                      "defines": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      },
+                      "preprocessing": {
+                        "type": "object",
+                        "properties": {
+                          "schemaVersion": {
+                            "type": "string",
+                            "enum": [
+                              "dts-cpp/v1"
+                            ]
+                          },
+                          "image": {
+                            "type": "string"
+                          },
+                          "platform": {
+                            "type": "string",
+                            "enum": [
+                              "linux/amd64"
+                            ]
+                          },
+                          "compilerVersion": {
+                            "type": "string",
+                            "enum": [
+                              "14.2.0"
+                            ]
+                          },
+                          "language": {
+                            "type": "string",
+                            "enum": [
+                              "c17"
+                            ]
+                          },
+                          "encoding": {
+                            "type": "string",
+                            "enum": [
+                              "UTF-8"
+                            ]
+                          },
+                          "locale": {
+                            "type": "string",
+                            "enum": [
+                              "C"
+                            ]
+                          },
+                          "defines": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          },
+                          "inputDigest": {
+                            "type": "string"
+                          },
+                          "outputDigest": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "schemaVersion",
+                          "image",
+                          "platform",
+                          "compilerVersion",
+                          "language",
+                          "encoding",
+                          "locale",
+                          "inputDigest",
+                          "outputDigest"
+                        ],
+                        "additionalProperties": false
                       }
                     },
                     "required": [
@@ -38900,6 +39401,92 @@
                       "type": "string"
                     }
                   },
+                  "preprocessing": {
+                    "type": "object",
+                    "properties": {
+                      "schemaVersion": {
+                        "type": "string",
+                        "enum": [
+                          "dts-cpp/v1"
+                        ]
+                      },
+                      "image": {
+                        "type": "string"
+                      },
+                      "platform": {
+                        "type": "string",
+                        "enum": [
+                          "linux/amd64"
+                        ]
+                      },
+                      "compilerVersion": {
+                        "type": "string",
+                        "enum": [
+                          "14.2.0"
+                        ]
+                      },
+                      "language": {
+                        "type": "string",
+                        "enum": [
+                          "c17"
+                        ]
+                      },
+                      "encoding": {
+                        "type": "string",
+                        "enum": [
+                          "UTF-8"
+                        ]
+                      },
+                      "locale": {
+                        "type": "string",
+                        "enum": [
+                          "C"
+                        ]
+                      },
+                      "defines": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      },
+                      "inputDigest": {
+                        "type": "string"
+                      },
+                      "outputDigest": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "schemaVersion",
+                      "image",
+                      "platform",
+                      "compilerVersion",
+                      "language",
+                      "encoding",
+                      "locale",
+                      "inputDigest",
+                      "outputDigest"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "declaredBuildInputs": {
+                    "type": "object",
+                    "properties": {
+                      "includeSearchPaths": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "defines": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  },
                   "locator": {
                     "anyOf": [
                       {
@@ -44880,6 +45467,92 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "preprocessing": {
+                "type": "object",
+                "properties": {
+                  "schemaVersion": {
+                    "type": "string",
+                    "enum": [
+                      "dts-cpp/v1"
+                    ]
+                  },
+                  "image": {
+                    "type": "string"
+                  },
+                  "platform": {
+                    "type": "string",
+                    "enum": [
+                      "linux/amd64"
+                    ]
+                  },
+                  "compilerVersion": {
+                    "type": "string",
+                    "enum": [
+                      "14.2.0"
+                    ]
+                  },
+                  "language": {
+                    "type": "string",
+                    "enum": [
+                      "c17"
+                    ]
+                  },
+                  "encoding": {
+                    "type": "string",
+                    "enum": [
+                      "UTF-8"
+                    ]
+                  },
+                  "locale": {
+                    "type": "string",
+                    "enum": [
+                      "C"
+                    ]
+                  },
+                  "defines": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "inputDigest": {
+                    "type": "string"
+                  },
+                  "outputDigest": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "schemaVersion",
+                  "image",
+                  "platform",
+                  "compilerVersion",
+                  "language",
+                  "encoding",
+                  "locale",
+                  "inputDigest",
+                  "outputDigest"
+                ],
+                "additionalProperties": false
+              },
+              "declaredBuildInputs": {
+                "type": "object",
+                "properties": {
+                  "includeSearchPaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "defines": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
               },
               "locator": {
                 "anyOf": [
@@ -76084,6 +76757,9 @@
               },
               "versionId": {
                 "type": "string"
+              },
+              "mountPath": {
+                "type": "string"
               }
             },
             "required": [
@@ -76204,6 +76880,73 @@
                   "digest"
                 ],
                 "additionalProperties": false
+              },
+              "sharedComposition": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "resourceId": {
+                      "type": "string"
+                    },
+                    "versionId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "number"
+                    },
+                    "digest": {
+                      "type": "string"
+                    },
+                    "mountPath": {
+                      "type": "string"
+                    },
+                    "direct": {
+                      "type": "boolean"
+                    },
+                    "sources": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "memberId": {
+                            "type": "string"
+                          },
+                          "fileId": {
+                            "type": "string"
+                          },
+                          "fileVersionId": {
+                            "type": "string"
+                          },
+                          "sourceName": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "memberId",
+                          "fileId",
+                          "fileVersionId",
+                          "sourceName"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "resourceId",
+                    "versionId",
+                    "name",
+                    "version",
+                    "digest",
+                    "mountPath",
+                    "direct",
+                    "sources"
+                  ],
+                  "additionalProperties": false
+                }
               },
               "rootEdit": {
                 "type": "object",
@@ -76394,6 +77137,9 @@
                 "type": "string"
               },
               "versionId": {
+                "type": "string"
+              },
+              "mountPath": {
                 "type": "string"
               }
             },

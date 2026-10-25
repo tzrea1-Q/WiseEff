@@ -200,14 +200,16 @@ describe("WorkbenchNavigationSession", () => {
     expect(session.selectConfigSet("proj", "?configSet=cs-a&file=f1&sourceMode=history", "cs-b")).toBe(
       "/parameter-admin/projects/proj/configuration?configSet=cs-b"
     );
-    const switched = new URL(session.selectConfigSet("proj", "?configSet=cs-a&file=f1&node=board&property=model&sourceMode=candidate&candidate=candidate-a&baseline=baseline-a&version=v9&inspector=release", "cs-b"), "https://wiseeff.test");
+    const switched = new URL(session.selectConfigSet("proj", "?organization=org&tab=effective&configSet=cs-a&file=f1&node=board&property=model&sourceMode=candidate&candidate=candidate-a&baseline=baseline-a&version=v9&revision=rev-a&line=12&inspector=release", "cs-b"), "https://wiseeff.test");
     expect(switched.searchParams.get("configSet")).toBe("cs-b");
+    expect(switched.searchParams.get("organization")).toBe("org");
+    expect(switched.searchParams.get("tab")).toBe("effective");
     expect(switched.searchParams.get("inspector")).toBe("release");
-    for (const key of ["file", "node", "property", "sourceMode", "candidate", "baseline", "version"]) {
+    for (const key of ["file", "node", "property", "sourceMode", "candidate", "baseline", "version", "revision", "line"]) {
       expect(switched.searchParams.has(key)).toBe(false);
     }
     expect(
-      session.selectMember("proj", "?configSet=cs-a&file=f1&sourceMode=history&version=v9", {
+      session.selectMember("proj", "?configSet=cs-a&file=f1&sourceMode=history&version=v9&revision=rev-a&line=12", {
         configSetId: "cs-a",
         fileId: "f2",
         currentFileId: "f1",
@@ -216,5 +218,25 @@ describe("WorkbenchNavigationSession", () => {
         workingMode: false
       })
     ).toBe("/parameter-admin/projects/proj/configuration?configSet=cs-a&file=f2");
+  });
+
+  it("retains a pinned location during URL normalization and clears it when explicitly returning to current source", () => {
+    const session = createWorkbenchNavigationSession();
+    const search = "?configSet=cs-a&revision=rev-a&line=12&tab=effective";
+    const normalized = new URL(session.applyFileUrl({ projectId: "proj", search, membersLoading: false, filesLoading: false,
+      selectedConfigSet: { ...configSets[0]!, id: "cs-a" }, selectedMemberFileId: "f1", selectedMembers: [], projectFiles: [] })!, "https://wiseeff.test");
+    expect(normalized.searchParams.get("revision")).toBe("rev-a");
+    expect(normalized.searchParams.get("line")).toBe("12");
+    const historical = "?configSet=cs-a&file=f1&sourceMode=history&version=v9&revision=rev-a&line=12";
+    const preserved = new URL(session.selectMember("proj", historical, { configSetId: "cs-a", fileId: "f1", currentFileId: "f1",
+      sourceMode: "history", versionId: "v9", workingMode: false }), "https://wiseeff.test");
+    expect(preserved.searchParams.get("revision")).toBe("rev-a");
+    expect(preserved.searchParams.get("line")).toBe("12");
+    for (const workingMode of [true, false]) {
+      const changed = new URL(session.selectMember("proj", historical, { configSetId: "cs-a", fileId: "f1", currentFileId: "f1",
+        sourceMode: workingMode ? null : "history", versionId: workingMode ? "v9" : "v10", workingMode }), "https://wiseeff.test");
+      expect(changed.searchParams.has("revision")).toBe(false);
+      expect(changed.searchParams.has("line")).toBe(false);
+    }
   });
 });

@@ -15,6 +15,8 @@ import {
   S2_SCH_0219_FINGERPRINT,
   S2_SCH_0256_FINGERPRINT,
   S2_SCH_0262_FINGERPRINT,
+  S2_SCH_0291_FINGERPRINT,
+  S2_SCH_0298_NATIVE_FINGERPRINT,
   S2_SCH_LIVE_FINGERPRINT,
   assertCheckedEmptyCatalog,
   assertCheckedEmptyDatabase,
@@ -91,6 +93,9 @@ describe("disposable real-pgvector parameter catalog database", {
 
   it("creates a checked-empty current-schema database on a real pgvector server", async () => {
     database = await createDisposableParameterCatalogDatabase("schema");
+    expect(S2_SCH_0291_FINGERPRINT).toBe("225e57040eb9c2b1939e103f61db72cb5dc487d7286b1adb2b68b55676bd95a0");
+    expect(S2_SCH_0298_NATIVE_FINGERPRINT).toBe("aefc22641fbdc54e2c21366e675deeb973b267fb9cb0c9b8c5d0aff8a0576397");
+    expect(S2_SCH_LIVE_FINGERPRINT).not.toBe(S2_SCH_0291_FINGERPRINT);
     expect(S2_SCH_CONTRACT_FINGERPRINT).not.toBe(S2_SCH_0137_FINGERPRINT);
     expect(S2_SCH_0171_FINGERPRINT).not.toBe(S2_SCH_CONTRACT_FINGERPRINT);
     expect(S2_SCH_LIVE_FINGERPRINT).not.toBe(S2_SCH_0171_FINGERPRINT);

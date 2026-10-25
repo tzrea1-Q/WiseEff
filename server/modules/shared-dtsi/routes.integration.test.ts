@@ -8,6 +8,9 @@ import { requestJson } from "../../test/testClient";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { registerSharedDtsiRoutes } from "./routes";
 import JSZip from "jszip";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { registerOperationsRoutes } from "../operations/routes";
 
 const source = '/ { battery: battery { compatible = "test,battery"; status = "disabled"; }; };\n';
 const auth = makeTestAuthContext({ organizationId: "org-shared-dtsi", userId: "user-shared-dtsi" });
@@ -21,6 +24,7 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
   const token = `shared_dtsi_${process.pid}`;
   function server(actor = auth) {
     const router = createRouter();
+    registerOperationsRoutes(router, { db: api });
     registerSharedDtsiRoutes(router, { db: api, getCurrentAuthContext: () => actor });
     return createHttpServer(router);
   }
@@ -61,6 +65,96 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     expect((await call(`/${draft.resourceId}`)).status).toBe(404);
   });
 
+  it("publishes real headers, value/function macros and conditional source with frozen original bytes", async () => {
+    const members = [{ sourceName: "common.dtsi", content: '\uFEFF// 🧪 original\r\n#include "defs.h"\r\n/ { battery: battery { compatible = "test,battery";\r\n#if ENABLED\r\n flags = <BIT(3)>;\r\n#else\r\n flags = <0>;\r\n#endif\r\n}; };\r\n' },
+      { sourceName: "defs.h", content: '#define ENABLED 1\n#define BIT(x) (1U << (x))\n' }];
+    const created = await call("", "POST", { name: "CPP original project", members, changeDescription: "固定头文件与宏输入" });
+    expect(created.status, created.bodyText).toBe(201);
+    const draft = created.body.item;
+    type Preview = import("../contracts/dtoSchemas/sharedDtsi").SharedDtsiPublicationPreview;
+    const preview = await publicationCall<{ item: Preview }>(`/${draft.resourceId}/publication-preview`, "POST", { expectedRevision: 1 });
+    expect(preview.status, preview.bodyText).toBe(201);
+    expect(preview.body.item.manifest.buildInputs.preprocessing).toMatchObject({ schemaVersion: "dts-cpp/v1", compilerVersion: "14.2.0", language: "c17", locale: "C" });
+    expect(preview.body.item.manifest.includeGraph).toEqual([{ sourceName: "common.dtsi", target: "defs.h", line: 2, column: 1 }]);
+    const repeated = await publicationCall<{ item: Preview }>(`/${draft.resourceId}/publication-preview`, "POST", { expectedRevision: 1 });
+    expect(repeated.status, repeated.bodyText).toBe(201);
+    expect(repeated.body.item.digest).toBe(preview.body.item.digest);
+    const published = await publicationCall<{ item: import("../contracts/dtoSchemas/sharedDtsi").SharedDtsiVersion }>(`/${draft.resourceId}/publications`, "POST", { previewId: preview.body.item.id, idempotencyKey: "native-cpp-publication" });
+    expect(published.status, published.bodyText).toBe(201);
+    expect(published.body.item.members).toEqual(expect.arrayContaining(members.map(member => expect.objectContaining(member))));
+    expect(published.body.item.manifest.buildInputs.preprocessing).toEqual(preview.body.item.manifest.buildInputs.preprocessing);
+    expect((await publicationCall<{ item: unknown }>(`/${draft.resourceId}/versions/${published.body.item.id}`)).body.item).toEqual(published.body.item);
+  });
+
+  it("freezes declared include roots and external defines without flattening original header directories", async () => {
+    const members = [{ sourceName: "lib/common.dtsi", content: '#include <dt-bindings/power.h>\n/ { battery {\n#if ENABLED\n limit = <POWER_LIMIT>;\n#else\n limit = <99>;\n#endif\n}; };\n' },
+      { sourceName: "include/dt-bindings/power.h", content: "#define POWER_LIMIT 37\n" }];
+    const buildInputs = { includeSearchPaths: ["include"], defines: { ENABLED: "1" } };
+    const created = await call("", "POST", { name: "Declared CPP inputs", members, buildInputs, changeDescription: "保留原始构建输入" });
+    expect(created.status, created.bodyText).toBe(201);
+    expect(created.body.item).toMatchObject({ buildInputs });
+    const draft = created.body.item;
+    const preview = await publicationCall<{ item: import("../contracts/dtoSchemas/sharedDtsi").SharedDtsiPublicationPreview }>(`/${draft.resourceId}/publication-preview`, "POST", { expectedRevision: 1 });
+    expect(preview.status, preview.bodyText).toBe(201);
+    expect(preview.body.item.manifest.buildInputs).toMatchObject(buildInputs);
+    expect(preview.body.item.manifest.buildInputs.preprocessing).toMatchObject({ defines: buildInputs.defines });
+    const updated = await call(`/${draft.resourceId}/draft`, "PUT", { name: draft.name, members: draft.members, changeDescription: "改变条件输入", expectedRevision: 1,
+      buildInputs: { ...buildInputs, defines: { ENABLED: "0" } } });
+    expect(updated.status, updated.bodyText).toBe(200);
+    expect((await publicationCall(`/${draft.resourceId}/publications`, "POST", { previewId: preview.body.item.id, idempotencyKey: "stale-build-inputs" })).status).toBe(409);
+    const next = await publicationCall<{ item: import("../contracts/dtoSchemas/sharedDtsi").SharedDtsiPublicationPreview }>(`/${draft.resourceId}/publication-preview`, "POST", { expectedRevision: 2 });
+    expect(next.status, next.bodyText).toBe(201);
+    expect(next.body.item.digest).not.toBe(preview.body.item.digest);
+    const published = await publicationCall<{ item: import("../contracts/dtoSchemas/sharedDtsi").SharedDtsiVersion }>(`/${draft.resourceId}/publications`, "POST", { previewId: next.body.item.id, idempotencyKey: "declared-build-inputs" });
+    expect(published.status, published.bodyText).toBe(201);
+    expect(published.body.item.members).toEqual(expect.arrayContaining(members.map(member => expect.objectContaining(member))));
+    const reopened = await call(`/${draft.resourceId}/draft`, "POST", { baseVersionId: published.body.item.id });
+    expect(reopened.status, reopened.bodyText).toBe(201);
+    expect(reopened.body.item).toMatchObject({ buildInputs: { ...buildInputs, defines: { ENABLED: "0" } } });
+    const consumer=await call("","POST",{name:"CPP dependency consumer",sourceName:"consumer.dtsi",content:'#include <dt-bindings/power.h>\n#include "vendor/lib/common.dtsi"\n',
+      buildInputs:{includeSearchPaths:[],defines:{CONSUMER:"1"}},dependencies:[{resourceId:draft.resourceId,versionId:published.body.item.id,mountPath:"vendor"}],changeDescription:"Keep each resource declaration owned"});
+    expect(consumer.status,consumer.bodyText).toBe(201);
+    const combined=await publicationCall<{item:import("../contracts/dtoSchemas/sharedDtsi").SharedDtsiPublicationPreview}>(`/${consumer.body.item.resourceId}/publication-preview`,"POST",{expectedRevision:1});
+    expect(combined.status,combined.bodyText).toBe(201);
+    expect(combined.body.item.manifest.buildInputs).toMatchObject({includeSearchPaths:[],defines:{CONSUMER:"1"},preprocessing:{defines:{CONSUMER:"1",ENABLED:"0"}}});
+    expect(combined.body.item.manifest.members.map(member=>member.sourceName)).toEqual(["consumer.dtsi"]);
+    const combinedVersion=await publicationCall<{item:import("../contracts/dtoSchemas/sharedDtsi").SharedDtsiVersion}>(`/${consumer.body.item.resourceId}/publications`,"POST",{previewId:combined.body.item.id,idempotencyKey:"cpp-dependency-settings"});
+    expect(combinedVersion.status,combinedVersion.bodyText).toBe(201);
+    const ownDraft=await call(`/${consumer.body.item.resourceId}/draft`,"POST",{baseVersionId:combinedVersion.body.item.id});
+    expect(ownDraft.body.item).toMatchObject({buildInputs:{includeSearchPaths:[],defines:{CONSUMER:"1"}}});
+  });
+
+  it("keeps real health responsive and refuses concurrent CPP work while a bounded native expansion runs", async () => {
+    const header = ['#define G0 1', ...Array.from({ length: 28 }, (_, index) => `#define G${index + 1} G${index} G${index}`)].join("\n");
+    const slowDraft = (await call("", "POST", { name: "Bounded CPP", changeDescription: "限制验证", members: [
+      { sourceName: "slow.dtsi", content: '#include "defs.h"\n/ { node { value = <G28>; }; };\n' }, { sourceName: "defs.h", content: header }] })).body.item;
+    const other = (await call("", "POST", { name: "Concurrent CPP", changeDescription: "稍后预览", sourceName: "other.dtsi", content: '#define V 7\n/ { node { value = <V>; }; };\n' })).body.item;
+    let settled = false;
+    const pending = publicationCall(`/${slowDraft.resourceId}/publication-preview`, "POST", { expectedRevision: 1 }).finally(() => { settled = true; });
+    const run = promisify(execFile), deadline = performance.now() + 5000;
+    let compilerRunning = false;
+    while (!compilerRunning && !settled && performance.now() < deadline) {
+      const result = await run("docker", ["ps", "--no-trunc", "--filter", `label=wiseeff.dts.cpp.owner=${process.pid}`, "--format", "{{.Command}}"], { timeout: 1000, maxBuffer: 8192 });
+      compilerRunning = result.stdout.split("\n").some(line => line.includes("/usr/local/bin/gcc") && !line.includes("-fdirectives-only"));
+    }
+    expect(compilerRunning).toBe(true); expect(settled).toBe(false);
+    const healthStarted = performance.now();
+    const health = await requestJson(server(), "/health/live");
+    const elapsed = performance.now() - healthStarted;
+    expect(health.status, `${elapsed.toFixed(1)}ms`).toBe(200);
+    console.info(`Native CPP health response: ${elapsed.toFixed(1)}ms`);
+    expect(elapsed).toBeLessThan(1000); expect(settled).toBe(false);
+    const busy = await publicationCall<{ error: { details: { reason: string } } }>(`/${other.resourceId}/publication-preview`, "POST", { expectedRevision: 1 });
+    expect(busy.status, busy.bodyText).toBe(409);
+    expect(busy.body.error.details.reason).toBe("preprocess-busy");
+    const limited = await pending;
+    expect(limited.status, limited.bodyText).toBe(400);
+    expect((await call(`/${slowDraft.resourceId}`)).body.item).toEqual(slowDraft);
+    expect((await call(`/${other.resourceId}`)).body.item).toEqual(other);
+    const containers = await run("docker", ["ps", "-a", "--filter", `label=wiseeff.dts.cpp.owner=${process.pid}`, "--format", "{{.Names}}"], { timeout: 1000, maxBuffer: 8192 });
+    expect(containers.stdout.trim()).toBe("");
+  });
+
   it("imports a complete relative file set, publishes its closure and retains member identity on rename", async () => {
     const files = [{ sourceName: "lib/common.dtsi", content: '/include/ "parts/node.dtsi"\n&host { status = "okay"; };\n' },
       { sourceName: "lib/parts/node.dtsi", content: '/ { battery: battery { compatible = "test,battery"; }; };\r\n' },
@@ -90,6 +184,28 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
       .toEqual(saved.body.item.members);
   });
 
+  it("freezes an authorized transitive dependency closure and retains original source members", async () => {
+    const publish=async(name:string,sourceName:string,content:string,dependencies:unknown[]=[])=>{
+      const draft=await call("","POST",{name,sourceName,content,dependencies,changeDescription:"Fixed dependency"});
+      expect(draft.status,draft.bodyText).toBe(201);
+      const preview=await publicationCall<{item:{id:string}}>(`/${draft.body.item.resourceId}/publication-preview`,"POST",{expectedRevision:1});
+      expect(preview.status,preview.bodyText).toBe(201);
+      const version=await publicationCall<{item:{id:string;resourceId:string;manifest:{dependencies:unknown[];dependencyClosure:{name:string;mountPath:string}[]};members:{sourceName:string;content:string}[]}}>(`/${draft.body.item.resourceId}/publications`,"POST",{previewId:preview.body.item.id,idempotencyKey:`dep-${draft.body.item.resourceId}`});
+      expect(version.status,version.bodyText).toBe(201);return version.body.item;
+    };
+    const leaf=await publish("Dependency leaf","leaf.dtsi",'/ { leaf: leaf { status = "okay"; }; };');
+    const pin={resourceId:leaf.resourceId,versionId:leaf.id,mountPath:""};
+    const middle=await publish("Dependency middle","middle.dtsi",'/include/ "leaf.dtsi"\n&leaf { value = <42>; };',[pin]);
+    expect(middle.manifest.dependencies).toEqual([pin]);
+    const root=await publish("Dependency root","root.dtsi",'/include/ "middle/middle.dtsi"\n',[{resourceId:middle.resourceId,versionId:middle.id,mountPath:"middle"}]);
+    expect(root.members).toHaveLength(1);
+    expect(root.members[0]!.content).toBe('/include/ "middle/middle.dtsi"\n');
+    expect(root.manifest.dependencyClosure).toEqual(expect.arrayContaining([
+      expect.objectContaining({name:"Dependency middle",mountPath:"middle"}),
+      expect.objectContaining({name:"Dependency leaf",mountPath:"middle"})]));
+    expect((await call(`/${root.resourceId}/draft`,"POST",{baseVersionId:root.id})).body.item).toHaveProperty("dependencies",[{resourceId:middle.resourceId,versionId:middle.id,mountPath:"middle"}]);
+  });
+
   it("imports original ZIP bytes and refuses unsafe archives without saving a partial resource", async () => {
     const zip = new JSZip();
     zip.file("lib/main.dtsi", '/include/ "node.dtsi"\n');
@@ -105,6 +221,61 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
       expect(result.status,result.bodyText).toBe(400);
     }
     expect((await call("?q=Unsafe%20ZIP")).body.items).toEqual([]);
+  });
+
+  it("retains incomplete drafts and rejects cycles, version/path/label collisions and inaccessible fixed dependencies",async()=>{
+    const publish=async(name:string,content:string)=>{
+      const draft=(await call("","POST",{name,sourceName:"shared.dtsi",content,changeDescription:"Dependency diagnostics"})).body.item;
+      const preview=await publicationCall<{item:{id:string}}>(`/${draft.resourceId}/publication-preview`,"POST",{expectedRevision:1});
+      expect(preview.status,preview.bodyText).toBe(201);
+      const published=await publicationCall<{item:{id:string;resourceId:string}}>(`/${draft.resourceId}/publications`,"POST",{previewId:preview.body.item.id,idempotencyKey:draft.resourceId});
+      expect(published.status,published.bodyText).toBe(201);return published.body.item;
+    };
+    const leaf=await publish("Diagnostic leaf",'/ { duplicate: leaf {}; };');
+    const other=await publish("Diagnostic other",'/ { other: other {}; };');
+    const pin={resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"vendor"};
+    const successorDraft=(await call(`/${leaf.resourceId}/draft`,"POST",{baseVersionId:leaf.id})).body.item;
+    const successorSave=await call(`/${leaf.resourceId}/draft`,"PUT",{name:"Diagnostic leaf",members:successorDraft.members,expectedRevision:1,changeDescription:"Retain exact predecessor"});
+    expect(successorSave.status,successorSave.bodyText).toBe(200);
+    const successorPreview=await publicationCall<{item:{id:string}}>(`/${leaf.resourceId}/publication-preview`,"POST",{expectedRevision:2});
+    const successor=await publicationCall<{item:{id:string}}>(`/${leaf.resourceId}/publications`,"POST",{previewId:successorPreview.body.item.id,idempotencyKey:"diagnostic-leaf-v2"});
+    expect(successor.status,successor.bodyText).toBe(201);
+    for(const [dependencies,content,match] of [
+      [[pin,{...pin,mountPath:"different"}],'/ { root {}; };',"版本或挂载路径冲突"],
+      [[pin,{...pin,versionId:successor.body.item.id}],'/ { root {}; };',"版本或挂载路径冲突"],
+      [[pin,{resourceId:other.resourceId,versionId:other.id,mountPath:"vendor"}],'/ { root {}; };',"挂载路径重复"],
+      [[pin],'/ { duplicate: local {}; };',"标签"],
+      [[{...pin,resourceId:"99999999-9999-4999-8999-999999999999"}],'/ { root {}; };',"不存在"],
+      [[pin],'/include/ "vendor/missing.dtsi"\n',"缺少依赖文件"]
+    ] as const) {
+      const draft=await call("","POST",{name:"Incomplete dependency",sourceName:"root.dtsi",content,dependencies,changeDescription:"Retain incomplete input"});
+      expect(draft.status,draft.bodyText).toBe(201);
+      const preview=await publicationCall<{error:{message:string}}>(`/${draft.body.item.resourceId}/publication-preview`,"POST",{expectedRevision:1});
+      expect([400,404]).toContain(preview.status);expect(preview.body.error.message).toContain(match);
+      expect((await call(`/${draft.body.item.resourceId}`)).body.item).toEqual(draft.body.item);
+      expect((await publicationCall<{items:unknown[]}>(`/${draft.body.item.resourceId}/versions`)).body.items).toEqual([]);
+    }
+    const editable=await call(`/${leaf.resourceId}/draft`,"POST",{baseVersionId:successor.body.item.id});
+    const saved=await call(`/${leaf.resourceId}/draft`,"PUT",{name:"Diagnostic leaf",members:editable.body.item.members,expectedRevision:1,
+      dependencies:[{...pin,mountPath:"self"}],changeDescription:"Cycle diagnostic"});
+    expect(saved.status,saved.bodyText).toBe(200);
+    const cycle=await publicationCall<{error:{message:string}}>(`/${leaf.resourceId}/publication-preview`,"POST",{expectedRevision:2});
+    expect(cycle.status).toBe(400);expect(cycle.body.error.message).toContain("循环");
+  });
+
+  it("bounds the complete resource dependency depth before publishing a partial closure",async()=>{
+    let previous:{resourceId:string;versionId:string;mountPath:string}|undefined;
+    for(let depth=0;depth<17;depth++) {
+      const created=await call("","POST",{name:`Bounded resource ${depth}`,sourceName:`depth-${depth}.dtsi`,content:`/ { depth_${depth} {}; };`,
+        changeDescription:"Bounded closure",dependencies:previous?[previous]:[]});
+      expect(created.status,created.bodyText).toBe(201);
+      const preview=await publicationCall<{item:{id:string};error:{message:string}}>(`/${created.body.item.resourceId}/publication-preview`,"POST",{expectedRevision:1});
+      if(depth===16) {expect(preview.status,preview.bodyText).toBe(400);expect(preview.body.error.message).toContain("16 层");
+        expect((await call(`/${created.body.item.resourceId}`)).body.item).toEqual(created.body.item);break;}
+      expect(preview.status,preview.bodyText).toBe(201);
+      const published=await publicationCall<{item:{id:string}}>(`/${created.body.item.resourceId}/publications`,"POST",{previewId:preview.body.item.id,idempotencyKey:`depth-${depth}`});
+      expect(published.status,published.bodyText).toBe(201);previous={resourceId:created.body.item.resourceId,versionId:published.body.item.id,mountPath:""};
+    }
   });
 
   it("replaces an existing draft from ZIP with CAS and matching member identity",async()=>{
@@ -146,7 +317,7 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
         {sourceName:"cycle.dtsi",content:'// cycle edge\n/include/ "lib.dtsi"\n'}],file:"lib.dtsi",line:2,match:"循环"},
       {members:[{sourceName:"lib.dtsi",content:'// escape\n/include/ "../outside.dtsi"\n'}],file:"lib.dtsi",line:2,match:"逃逸"},
       {members:[{sourceName:"lib.dtsi",content:'/include/ "leaf.dtsi"\n/include/ "leaf.dtsi"\n'},{sourceName:"leaf.dtsi",content:source}],file:"leaf.dtsi",line:1,match:"重复"},
-      {members:[{sourceName:"lib.dtsi",content:'// header\n#include "header.h"\n'},{sourceName:"header.h",content:"#define V 1\n"}],file:"lib.dtsi",line:2,match:"C 预处理"},
+      {members:[{sourceName:"lib.dtsi",content:'// header\n#include HEADER\n'},{sourceName:"header.h",content:"#define V 1\n"}],file:"lib.dtsi",line:2,match:"字面路径"},
       {members:[{sourceName:"lib.dtsi",content:'// original syntax error\n/ { value = %; };'}],file:"lib.dtsi",line:2,match:"Unexpected character"}
     ];
     for (const candidate of cases) {

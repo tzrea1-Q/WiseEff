@@ -282,7 +282,7 @@ function createFileRepository(
 }
 
 function createTopologyRepository(
-  overrides: Partial<Pick<ParameterTopologyRepository, "listConfigRevisions" | "validateRevision">> = {}
+  overrides: Partial<Pick<ParameterTopologyRepository, "listConfigRevisions" | "validateRevision" | "getTopology">> = {}
 ): ParameterTopologyRepository {
   return createTestParameterTopologyRepository({
     listConfigRevisions: vi.fn(async () => [
@@ -539,7 +539,7 @@ function renderSourceWorkbench(options: Parameters<typeof renderWorkbench>[0] = 
   const submitCandidateSourceReview = vi.fn().mockResolvedValue({ requestId: "source-request", status: "pending", replayed: false });
   const fileRepository = options.fileRepository ?? createFileRepository({ createCandidate, getCandidateSourcePreview, submitCandidateSourceReview,
     getSourceRevisionRequest: vi.fn().mockResolvedValue({ id: "source-request", status: "pending" }) });
-  return { ...renderWorkbench({ currentUserId: "user-a", organizationId: "org-1", canEdit: true, canAdmin: true, apiMode: true,
+  return { ...renderWorkbench({ search: "?tab=source", currentUserId: "user-a", organizationId: "org-1", canEdit: true, canAdmin: true, apiMode: true,
     topologyRepository: createTopologyRepository(), dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => ({ ...BOARD_STRUCTURE,
       navigation: { status: "ready" as const, catalogReleaseId: "release", managedNodePaths: ["board", "regulator"] } })) }),
     ...options, fileRepository }), createCandidate, getCandidateSourcePreview, submitCandidateSourceReview };
@@ -561,6 +561,25 @@ function legacyDraftStorage(baseVersionId = "version-board-12") {
 }
 
 describe("ProjectConfigurationWorkbench", () => {
+  it("defaults to the complete effective tree, keeps compatible instances separate, and retries a failed read", async () => {
+    const getTopology = vi.fn<ParameterTopologyRepository["getTopology"]>()
+      .mockRejectedValueOnce(new Error("读取失败"))
+      .mockResolvedValue({ view: "effective", projectId: PROJECT.id, configSetId: "cs-default", revisionId: "fixed-revision", nodes: [
+        { id: "one", logicalNodeId: "one", locator: "/first@1", name: "first", unitAddress: "1", compatible: "same,device", parentLogicalNodeId: null,
+          effects: [{ id: "e1", propertyName: "limit", effectKind: "set", nodeOccurrenceId: "o1", propertyOccurrenceId: "p1", sourceOrder: 0, rawText: "<1>" }] },
+        { id: "two", logicalNodeId: "two", locator: "/second@2", name: "second", unitAddress: "2", compatible: "same,device", parentLogicalNodeId: null,
+          effects: [{ id: "e2", propertyName: "limit", effectKind: "set", nodeOccurrenceId: "o2", propertyOccurrenceId: "p2", sourceOrder: 0, rawText: "<2>" }] }
+      ] });
+    renderWorkbench({ apiMode: true, topologyRepository: createTopologyRepository({ getTopology }), syncSearch: true });
+    await screen.findByRole("button", { name: "重试" });
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await screen.findByRole("treeitem", { name: "节点 /first@1" });
+    expect(screen.getByLabelText("limit 最终值")).toHaveTextContent("<1>");
+    fireEvent.click(screen.getByRole("treeitem", { name: "节点 /second@2" }));
+    expect(screen.getByLabelText("limit 最终值")).toHaveTextContent("<2>");
+    expect(screen.getByRole("tab", { name: "生效配置" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("complementary", { name: "检查器" })).not.toBeInTheDocument();
+  });
   it("follows source scrolling in the tree without replacing the explicit source focus", async () => {
     renderSourceWorkbench({ search: "?configSet=cs-default&file=file-board&node=regulator", syncSearch: true });
     const source = await screen.findByRole("textbox", { name: "DTS 源码" });

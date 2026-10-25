@@ -11,7 +11,7 @@ import { sharedDtsiImportLimits } from "../contracts/dtoSchemas/sharedDtsi";
 
 export type WriteContext = { invocation: TrustedInvocationContext; requestId: string };
 type DraftRow = Omit<SharedDtsiDraft, "members" | "updatedAt"> & { updatedAt: Date };
-const draftColumns = `d.id,d.resource_id as "resourceId",r.name,d.revision,d.updated_at as "updatedAt",d.change_description as "changeDescription"`;
+const draftColumns = `d.id,d.resource_id as "resourceId",r.name,d.revision,d.updated_at as "updatedAt",d.change_description as "changeDescription",d.build_inputs as "buildInputs",d.dependencies`;
 const draftTables = `from public.shared_dtsi_resources r join public.shared_dtsi_drafts d on d.resource_id=r.id and d.organization_id=r.organization_id`;
 
 export function requireRead(auth: AuthContext) {
@@ -36,7 +36,8 @@ export async function getSharedDtsiDraft(db: Database, auth: AuthContext, resour
       from public.shared_dtsi_draft_members m where m.draft_id=d.id and m.organization_id=d.organization_id) as members
     ${draftTables} where r.id=$1 and r.organization_id=$2`, [resourceId, parameterOrganizationId(auth)])).rows[0];
   if (!row) throw new ApiError("NOT_FOUND", "共享 DTSI 草稿不存在。");
-  return { ...row, updatedAt: row.updatedAt.toISOString() };
+  const { buildInputs, ...draft } = row;
+  return { ...draft, ...(buildInputs && (buildInputs.includeSearchPaths.length || Object.keys(buildInputs.defines).length) ? { buildInputs } : {}), updatedAt: row.updatedAt.toISOString() };
 }
 export async function listSharedDtsiResources(db: Database, auth: AuthContext, input: { q: string; offset: number; limit: number }) {
   requireRead(auth);
@@ -62,7 +63,8 @@ export async function createSharedDtsiDraft(db: Database, auth: AuthContext, inp
   return db.transaction(async tx => {
     const organizationId = parameterOrganizationId(auth), resourceId = randomUUID(), draftId = randomUUID();
     await tx.query("insert into public.shared_dtsi_resources(id,organization_id,name) values ($1,$2,$3)", [resourceId, organizationId, input.name]);
-    await tx.query("insert into public.shared_dtsi_drafts(id,resource_id,organization_id,created_by_user_id,updated_by_user_id,change_description) values ($1,$2,$3,$4,$4,$5)", [draftId, resourceId, organizationId, auth.user.id,input.changeDescription]);
+    await tx.query("insert into public.shared_dtsi_drafts(id,resource_id,organization_id,created_by_user_id,updated_by_user_id,change_description,build_inputs) values ($1,$2,$3,$4,$4,$5,$6::jsonb)", [draftId, resourceId, organizationId, auth.user.id,input.changeDescription,JSON.stringify(input.buildInputs ?? {includeSearchPaths:[],defines:{}})]);
+    await tx.query("update public.shared_dtsi_drafts set dependencies=$2::jsonb where id=$1",[draftId,JSON.stringify(input.dependencies??[])]);
     for (const member of members) {
       if (member.id) throw new ApiError("VALIDATION_FAILED", "新资源不能指定已有成员身份。");
       const memberId = randomUUID();
@@ -112,7 +114,8 @@ export async function saveSharedDtsiDraft(db: Database, auth: AuthContext, resou
     }
     await tx.query("delete from public.shared_dtsi_draft_members where draft_id=$1 and organization_id=$2",[draft.id,organizationId]);
     for (const member of assigned) await tx.query("insert into public.shared_dtsi_draft_members(draft_id,member_id,resource_id,organization_id,source_name,content) values ($1,$2,$3,$4,$5,$6)",[draft.id,member.id,resourceId,organizationId,member.sourceName,member.content]);
-    await tx.query("update public.shared_dtsi_drafts set revision=revision+1,updated_by_user_id=$3,updated_at=now(),change_description=$4 where id=$1 and organization_id=$2", [draft.id, organizationId, auth.user.id,input.changeDescription]);
+    await tx.query("update public.shared_dtsi_drafts set revision=revision+1,updated_by_user_id=$3,updated_at=now(),change_description=$4,build_inputs=$5::jsonb where id=$1 and organization_id=$2", [draft.id, organizationId, auth.user.id,input.changeDescription,JSON.stringify(input.buildInputs ?? {includeSearchPaths:[],defines:{}})]);
+    await tx.query("update public.shared_dtsi_drafts set dependencies=$2::jsonb where id=$1",[draft.id,JSON.stringify(input.dependencies??[])]);
     await audit(tx, auth, context, resourceId, "save", draft.revision + 1);
     return getSharedDtsiDraft(tx, auth, resourceId);
   });
