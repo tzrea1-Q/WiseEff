@@ -132,7 +132,7 @@ export const publicationCopy = {
   fallbackImpact: "新驱动可能改变节点类型回退匹配，必须由另一位高风险复核人批准。",
   neverLowCreate: "新增主体不能按低风险发布。",
   registerFollowup: "登记到本组织",
-  registerFollowupHint: "目录发布已成功。组织登记是独立命令，失败不会撤回目录。",
+  registerFollowupHint: "如需在本组织使用，请单独登记主体。",
   registerFollowupFailed: "目录发布已成功，但组织登记失败。可重试登记，不会回滚目录。",
   registerFollowupRetry: "重试登记",
   registerFollowupSuccess: "组织登记已完成。",

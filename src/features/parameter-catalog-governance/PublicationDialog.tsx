@@ -673,28 +673,12 @@ export function PublicationDialog({
                         onValueChange={(value) => patchDraft({ subjectId: value })}
                         options={[{ value: "", label: "选择主体" },
                           ...(draft.subjectId && !publishedSubjectIds.has(draft.subjectId) ? [{ value: draft.subjectId, label: `${selectedSubject?.canonicalName || "原主体"}（当前不可编写）`, disabled: true }] : []),
-                          ...publishedSubjects.map((item) => ({ value: item.id, label: item.canonicalName }))]}
+                          ...publishedSubjects.map((item) => ({ value: item.id, label: `${catalogSubjectTypeLabel(item.type)} · ${item.canonicalName}` }))]}
                       />
                     </label>
                     {onCreateSubject ? <button type="button" className="button ghost sm" onClick={requestCreateSubject}>创建缺少的主体</button> : null}
                     </>
                     )}
-                    {selectedSubject && draft.mode === "create-definition" ? (
-                      <dl className="parameter-catalog-publication-dialog__meta">
-                        <div>
-                          <dt>{publicationCopy.subjectKind}</dt>
-                          <dd>{catalogSubjectTypeLabel(selectedSubject.type)}</dd>
-                        </div>
-                        <div>
-                          <dt>{publicationCopy.selectorValue[selectedSubject.type]}</dt>
-                          <dd>{selectedSubject.canonicalName}</dd>
-                        </div>
-                        <div>
-                          <dt>{publicationCopy.scope}</dt>
-                          <dd>{publicationCopy.sharedScope}</dd>
-                        </div>
-                      </dl>
-                    ) : null}
                     {draft.mode !== "create-subject" ? <>
                     <label>
                       {publicationCopy.propertyKey}
@@ -803,9 +787,9 @@ export function PublicationDialog({
                     {fieldError.message}
                   </p>
                 ) : null}
-                {draftSaved ? <p>{publicationCopy.draftSaved}</p> : null}
-                {previewStale && candidate ? <p>{publicationCopy.previewStale}</p> : null}
-                {candidate && !previewStale ? (
+                {draftSaved && !catalogSucceeded ? <p>{publicationCopy.draftSaved}</p> : null}
+                {previewStale && candidate && !catalogSucceeded ? <p>{publicationCopy.previewStale}</p> : null}
+                {candidate && !previewStale && !catalogSucceeded ? (
                   <dl className="parameter-catalog-publication-dialog__preview" aria-label="发布预览">
                     <div>
                       <dt>{publicationCopy.added}</dt>
@@ -831,11 +815,11 @@ export function PublicationDialog({
                     </div>
                     <div>
                       <dt>{publicationCopy.scope}</dt>
-                      <dd>{publicationCopy.sharedScope}</dd>
+                      <dd>{draft.mode === "create-subject" ? "主体发布到共享目录，组织登记与项目配置分别维护。" : publicationCopy.sharedScope}</dd>
                     </div>
                   </dl>
                 ) : null}
-                {candidate && !previewStale && candidate.riskClass === "high" && candidate.impactSummary.addedSubjectCount > 0 ? (
+                {candidate && !previewStale && !catalogSucceeded && draft.subjectKind === "driver" && candidate.riskClass === "high" && candidate.impactSummary.addedSubjectCount > 0 ? (
                   <p>{publicationCopy.fallbackImpact}</p>
                 ) : null}
                 {candidate && !previewStale && draft.mode === "revise-definition" && draft.reviseClass === "semantic" ? (
