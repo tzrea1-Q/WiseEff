@@ -45,6 +45,9 @@ import { getConfigSetById, setFileConfigSetMembership } from "./configSetReposit
 import { detectFormat, extractCompatiblesFromDtsSource, MAX_FILE_BYTES, maybeIngestSemanticConfigRevision } from "./service";
 import { ingestDtsFileVersion } from "./structuralIngest";
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
+import { DtsPreprocessingError, prepareDtsSources, requiresDtsPreprocessing } from "../dts/cppSources";
+import { expandDtsIncludes } from "../dts/configSetResolver";
+import { loadConfigSetSnapshot } from "./configSetSnapshot";
 import { syncFileVersion } from "./syncService";
 import type {
   CandidateBlocker,
@@ -236,6 +239,8 @@ export async function computeCandidateImpact(input: {
   candidateLabel: string;
   registeredCompatibles: string[];
   canonicalSourceWorkflow?: boolean;
+  semanticCandidateSource?: string;
+  semanticBaseSource?: string;
   openConflicts: Array<{
     id: string;
     parameterName?: string;
@@ -258,7 +263,7 @@ export async function computeCandidateImpact(input: {
     if (input.format === "json") {
       buildJsonParsedIndex(input.candidateSource);
     } else {
-      buildDtsParsedIndex(input.candidateSource);
+      buildDtsParsedIndex(input.semanticCandidateSource ?? input.candidateSource);
     }
   } catch (error) {
     parsedIndexOk = false;
@@ -288,7 +293,7 @@ export async function computeCandidateImpact(input: {
   let structuralDiff: CandidateImpact["structuralDiff"] = [];
   if (input.format === "dts") {
     try {
-      structuralDiff = diffResolvedDts(input.baseSource ?? "", input.candidateSource);
+      structuralDiff = diffResolvedDts(input.semanticBaseSource ?? input.baseSource ?? "", input.semanticCandidateSource ?? input.candidateSource);
     } catch (error) {
       diagnostics.push({
         severity: "error",
@@ -305,7 +310,7 @@ export async function computeCandidateImpact(input: {
   const coverage =
     input.format === "dts"
       ? buildIngestDriverSummary({
-          observedCompatibles: extractCompatiblesFromDtsSource(input.candidateSource),
+          observedCompatibles: extractCompatiblesFromDtsSource(input.semanticCandidateSource ?? input.candidateSource),
           registeredCompatibles: new Set(input.registeredCompatibles)
         })
       : undefined;
@@ -492,6 +497,7 @@ async function createCandidateInScope(
 
   const persist = async (tx: Database) => {
     let sourceRevisionContext: ProjectParameterFileCandidateDto["sourceRevisionContext"];
+    let needsCompletePreprocessing = false;
     if (sourceRevision) {
       await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
         `source-revision-candidate:${parameterOrganizationId(auth)}:${input.projectId}:${auth.user.id}:${input.clientMutationId}`
@@ -504,8 +510,8 @@ async function createCandidateInScope(
            and config.project_id=file.project_id
          where file.id=$1 and file.organization_id=$2 and file.project_id=$3 for update of config,file`,
         [fileId, parameterOrganizationId(auth), input.projectId])).rows[0];
-      const revision = current ? (await tx.query<{ id: string }>(
-        `select id from public.dts_config_revisions where config_set_id=$1 and organization_id=$2 and project_id=$3
+      const revision = current ? (await tx.query<{ id: string; preprocessing: unknown }>(
+        `select id,preprocessing from public.dts_config_revisions where config_set_id=$1 and organization_id=$2 and project_id=$3
          and status in ('resolved','validated','compiled','pending_approval') order by revision_number desc limit 1`,
         [current.config_set_id, parameterOrganizationId(auth), input.projectId])).rows[0] : undefined;
       if (!current || current.current_version_id !== input.expectedCurrentVersionId || revision?.id !== input.expectedConfigRevisionId) {
@@ -514,6 +520,7 @@ async function createCandidateInScope(
       baseVersionId = current.current_version_id;
       sourceRevisionContext = { kind: "source_revision", configSetId: current.config_set_id,
         baseVersionId, baseConfigRevisionId: input.expectedConfigRevisionId!, clientMutationId: input.clientMutationId! };
+      needsCompletePreprocessing = Boolean(revision?.preprocessing) || requiresDtsPreprocessing(new Map([[fileName, { content: source, fileVersionId: candidateId }]]));
     }
     const uploading = await insertParameterFileCandidate(tx, {
       id: candidateId,
@@ -544,9 +551,26 @@ async function createCandidateInScope(
     });
 
     let parsedIndex = {};
+    let semanticSources: { semanticCandidateSource: string; semanticBaseSource: string } | undefined;
     try {
-      parsedIndex = validatedJsonIndex ?? buildParsedIndex(format, input.bytes);
+      if (needsCompletePreprocessing && sourceRevisionContext) {
+        const snapshot = await loadConfigSetSnapshot(tx, objectStore, sourceRevisionContext.configSetId);
+        const name = (await tx.query<{ sourceName: string }>("select source_name as \"sourceName\" from public.dts_config_revision_members where config_revision_id=$1 and file_id=$2",
+          [sourceRevisionContext.baseConfigRevisionId, fileId])).rows[0]?.sourceName;
+        if (!name || !snapshot.entryFile) throw new ApiError("CONFLICT", "完整原始工程来源已变化，请重新打开源码编辑器。");
+        const files = new Map([...snapshot.toolchainFiles].map(([key, file]) => [key, { ...file, fileVersionId: key }]));
+        const manifest = { entryFile: snapshot.entryFile, includeSearchPaths: snapshot.includeSearchPaths, overlayOrder: snapshot.overlayOrder, files, defines: snapshot.preprocessing?.defines };
+        const before = await prepareDtsSources(manifest);
+        const semanticText = (prepared: Awaited<ReturnType<typeof prepareDtsSources>>) => [manifest.entryFile, ...manifest.overlayOrder]
+          .map(entry => prepared?.documents.get(entry)!.text ?? expandDtsIncludes({ ...manifest, entryFile: entry }).text).join("\n");
+        const semanticBaseSource = semanticText(before);
+        files.set(name, { content: source, fileVersionId: candidateId });
+        const after = await prepareDtsSources(manifest);
+        semanticSources = { semanticBaseSource, semanticCandidateSource: semanticText(after) };
+        parsedIndex = buildDtsParsedIndex(source, after?.originalDocuments.get(name));
+      } else parsedIndex = validatedJsonIndex ?? buildParsedIndex(format, input.bytes);
     } catch (error) {
+      if (error instanceof DtsPreprocessingError && error.code === "preprocess-busy") throw error;
       const parseDiagnostics: CandidateDiagnostic[] = [
         {
           severity: "error",
@@ -590,6 +614,7 @@ async function createCandidateInScope(
       canonicalSourceWorkflow: openConflicts.length > 0 && fileId != null
         && (await getCanonicalSourceWorkflow(tx, auth, { projectId: input.projectId, fileId })).canonical,
       format,
+      ...semanticSources,
       candidateSource: source,
       baseSource,
       baseLabel: baseVersionId ? `active:${baseVersionId}` : "/dev/null",
@@ -623,7 +648,16 @@ async function createCandidateInScope(
     );
     return updated;
   };
-  return callerOwnsTransaction ? persist(db) : db.transaction(persist);
+  try { return await (callerOwnsTransaction ? persist(db) : db.transaction(persist)); }
+  catch (error) {
+    if (error instanceof DtsPreprocessingError && error.code === "preprocess-busy") {
+      const ownedKey = objectStore.planKey?.({ organizationId: parameterOrganizationId(auth), fileName: `candidate-${candidateId}-${fileName}`,
+        contentType: contentTypeForFormat(format), bytes: input.bytes });
+      if (!callerOwnsTransaction && ownedKey === stored.storageKey) await objectStore.delete?.(ownedKey).catch(() => undefined);
+      throw new ApiError("CONFLICT", error.message, { reason: error.code });
+    }
+    throw error;
+  }
 }
 
 export async function getCandidate(

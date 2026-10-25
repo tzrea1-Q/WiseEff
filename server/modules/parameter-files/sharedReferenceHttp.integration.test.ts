@@ -139,6 +139,65 @@ describe("fixed shared references through the real API role", () => {
     }
   });
 
+  it("preserves declared conditional include closure and mounted build settings through real CPP reference writes", async () => {
+    const projectId="shared-cpp-build-inputs",rootSource='/dts-v1/;\n/ { compatible = "test,board"; model = "CPP reference"; };\n';
+    await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,$1,$1,'initialized')",[projectId,ORG]);
+    const configSetId=sets[projectId]=(await createConfigSet(db,admin,{projectId,name:"Original CPP settings"})).id;
+    const root=await uploadProjectParameterFile(db,storage,admin,{projectId,fileName:"cpp-board.dts",bytes:Buffer.from(rootSource)});
+    await addConfigSetFile(db,admin,{configSetId,fileId:root.file.id,role:"base",sortOrder:0});
+    await ingestConfigRevision(db,{organizationId:ORG,projectId,configSetId,entryFile:"cpp-board.dts",includeSearchPaths:["."],overlayOrder:[],
+      members:[{fileId:root.file.id,fileVersionId:root.version.id,fileName:"cpp-board.dts",role:"base",sortOrder:0,content:rootSource}]},admin);
+    const publish=async(name:string,members:{sourceName:string;content:string}[],defines:Record<string,string>,includeSearchPaths=["include"])=>{
+      const draft=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name,members,buildInputs:{includeSearchPaths,defines},changeDescription:"Freeze original engineering inputs"});
+      expect(draft.status,draft.bodyText).toBe(201);
+      const preview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${draft.body.item.resourceId}/publication-preview`,{expectedRevision:1});
+      expect(preview.status,preview.bodyText).toBe(201);
+      const result=await post<{item:{id:string;resourceId:string}}>(`/api/v2/shared-dtsi/${draft.body.item.resourceId}/publications`,{previewId:preview.body.item.id,idempotencyKey:draft.body.item.resourceId});
+      expect(result.status,result.bodyText).toBe(201);return result.body.item;
+    };
+    const originals=[{sourceName:"main.dtsi",content:'#include <dt-bindings/power.h>\n#if FLAG\n#include "a.dtsi"\n#else\n#include "b.dtsi"\n#endif\n'},
+      {sourceName:"a.dtsi",content:'/ { cpp_power { compatible = "acme,power"; iin_max = <BIT(3)>; }; };\n'},
+      {sourceName:"b.dtsi",content:'/ { cpp_inactive { status = "disabled"; }; };\n'},
+      {sourceName:"include/dt-bindings/power.h",content:'#define BIT(x) (1U << (x))\n'}];
+    const fixed=await publish("Conditional engineering source",originals,{FLAG:"1"});
+    const input={sharedReference:{resourceId:fixed.resourceId,versionId:fixed.id,mountPath:"vendor/power"},role:"misc",sortOrder:1};
+    const preview=await post<Preview>(`${path(projectId)}/preview`,input);
+    expect(preview.status,preview.bodyText).toBe(200);
+    const applied=await post<Applied>(`${path(projectId)}/apply`,{...input,proofToken:preview.body.item.proofToken,reason:"Use frozen original CPP inputs",clientMutationId:"cpp-original-reference"});
+    expect(applied.status,applied.bodyText).toBe(200);
+    const revision=(await db.query<{include_search_paths:string[];declared_build_inputs:unknown;preprocessing:unknown}>("select include_search_paths,declared_build_inputs,preprocessing from dts_config_revisions where id=$1",[applied.body.item.configRevisionId])).rows[0]!;
+    expect(revision.include_search_paths).toEqual([".","vendor/power/include"]);
+    expect(revision.declared_build_inputs).toEqual({includeSearchPaths:["."],defines:{}});
+    expect(revision.preprocessing).toMatchObject({defines:{FLAG:"1"}});
+    expect((await listCatalogBindingRowsForProject(api,admin,{projectId})).map(row=>row.rawValue)).toEqual(["<8>"]);
+    const effects=await db.query<{source_name:string}>(`select member.source_name from dts_property_occurrences occurrence join dts_config_revision_members member
+      on member.config_revision_id=occurrence.config_revision_id and member.file_version_id=occurrence.file_version_id where occurrence.config_revision_id=$1`,[applied.body.item.configRevisionId]);
+    expect(effects.rows.map(row=>row.source_name)).not.toContain("vendor/power/b.dtsi");
+    const exported=await requestJson<{files:{name:string;content:string}[];manifest:{preprocessing:unknown;declaredBuildInputs:unknown}}>(server(),`/api/v1/projects/${projectId}/config-sets/${configSetId}/export`);
+    expect(exported.status,exported.bodyText).toBe(200);
+    for(const member of originals)expect(exported.body.files).toContainEqual({name:`vendor/power/${member.sourceName}`,format:"dts",content:member.content});
+    expect(exported.body.manifest.preprocessing).toEqual(revision.preprocessing);
+    expect(exported.body.manifest.declaredBuildInputs).toEqual(revision.declared_build_inputs);
+    const before=(await requestJson(server(),`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`)).body;
+    const incompatible=await publish("Conflicting build macro",[{sourceName:"conflict.dtsi",content:'/ { conflict {}; };'}],{FLAG:"0"},[]);
+    const conflict=await post(`${path(projectId)}/preview`,{sharedReference:{resourceId:incompatible.resourceId,versionId:incompatible.id,mountPath:"conflict"},role:"misc",sortOrder:10});
+    expect(conflict.status,conflict.bodyText).toBe(400);expect(conflict.bodyText).toContain("FLAG");
+    const ambiguous=await publish("Ambiguous include binding",[{sourceName:"other.dtsi",content:'/ { other {}; };'},
+      {sourceName:"include/dt-bindings/power.h",content:'#define OTHER 1\n'}],{FLAG:"1"});
+    const collision=await post(`${path(projectId)}/preview`,{sharedReference:{resourceId:ambiguous.resourceId,versionId:ambiguous.id,mountPath:"other"},role:"misc",sortOrder:10});
+    expect(collision.status,collision.bodyText).toBe(400);expect(collision.bodyText).toContain("多个搜索目录");
+    expect((await requestJson(server(),`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`)).body).toEqual(before);
+    const candidate=await post<{item:{id:string}}>(`/api/v1/projects/${projectId}/parameter-file-candidates`,{fileId:root.file.id,fileName:"cpp-board.dts",contentBase64:Buffer.from(rootSource).toString("base64"),intent:"source_revision",
+      expectedCurrentVersionId:(before as {items:{fileId:string;currentVersionId:string}[]}).items.find(row=>row.fileId===root.file.id)!.currentVersionId,expectedConfigRevisionId:applied.body.item.configRevisionId,clientMutationId:"cpp-remove-entry"});
+    expect(candidate.status,candidate.bodyText).toBe(201);
+    const removalPreview=await requestJson<{item:SourceRevisionPreview}>(server(),`/api/v1/projects/${projectId}/parameter-file-candidates/${candidate.body.item.id}/source-preview`);
+    expect(removalPreview.status,removalPreview.bodyText).toBe(200);
+    const removed=await post(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidate.body.item.id}/source-apply`,{expectedCurrentVersionId:(before as {items:{fileId:string;currentVersionId:string}[]}).items.find(row=>row.fileId===root.file.id)!.currentVersionId,
+      expectedProofToken:removalPreview.body.item.proofToken,reason:"Cannot sever fixed declaration closure",clientMutationId:"cpp-remove-entry-apply"});
+    expect(removed.status,removed.bodyText).toBe(409);expect(removed.bodyText).toContain("shared-reference-closure-required");
+    expect((await requestJson(server(),`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`)).body).toEqual(before);
+  },120_000);
+
   it("composes an exact multi-resource closure and keeps every source in independent project history",async()=>{
     const publish=async(name:string,members:{sourceName:string;content:string}[],dependencies:unknown[]=[])=>{
       const draft=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name,members,dependencies,changeDescription:"Complete dependency composition"});

@@ -8,8 +8,9 @@ export async function ingestDtsFileVersion(
   db: Queryable,
   fileVersionId: string,
   source: string,
+  preparedDocument?: ReturnType<typeof parseDts>,
 ): Promise<{ parsedIndex: ParsedIndex; counts: StructuralInsertCounts }> {
-  const doc = parseDts(source);
+  const doc = preparedDocument ?? parseDts(source);
   const resolved = resolveDts(doc);
   const counts = await replaceDtsStructuralModel(db, fileVersionId, resolved, source);
   const parsedIndex = derivedParsedIndexFromResolved(resolved);

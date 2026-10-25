@@ -34,6 +34,9 @@ export type ConfigRevisionManifestMember = {
  * Isolated DTS members without entry/overlays/includes must not call ingest.
  */
 export type ConfigRevisionManifest = {
+  preprocessing?: import("../dts/cppSources").DtsPreprocessingReceipt;
+  defines?: Record<string, string>;
+  declaredBuildInputs?: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
   organizationId: string;
   projectId: string;
   configSetId: string;
@@ -53,6 +56,8 @@ export type DtsConfigRevisionDto = {
   entryFile?: string;
   includeSearchPaths?: string[];
   overlayOrder?: string[];
+  preprocessing?: import("../dts/cppSources").DtsPreprocessingReceipt | null;
+  declaredBuildInputs?: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
   manifestState?: ConfigRevisionManifestState;
   createdByUserId?: string;
   createdAt: string;
