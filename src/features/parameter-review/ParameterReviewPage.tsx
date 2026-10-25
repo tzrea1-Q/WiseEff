@@ -674,7 +674,7 @@ export function ParameterReviewPage({
               </p>
               {selectedInitialization.draft.notes.trim() ? <p>{selectedInitialization.draft.notes}</p> : null}
             </div>
-            {selectedInitialization.draft.sourceConfigSnapshots ? <InitializationCopySummary snapshots={selectedInitialization.draft.sourceConfigSnapshots} /> : null}
+            {selectedInitialization.draft.sourceConfigSnapshots ? <InitializationCopySummary snapshots={selectedInitialization.draft.sourceConfigSnapshots} projects={state.configDraft.projects} /> : null}
             <section className="review-legacy-section" aria-label="将建立的参数">
               <h3>将建立的参数（{selectedInitialization.draft.parameterSnapshots.length} 项）</h3>
               <p>主来源 {selectedInitializationPrimarySource?.name || "来源名称未记录"}

@@ -37,13 +37,13 @@ async function objects() {
   return (await Promise.all((await readdir(directory, { recursive: true })).map(async path =>
     (await stat(join(directory, path))).isFile() ? path : null))).filter(path => path !== null).sort();
 }
-async function pending(targetId: string, sourceProjectId = SOURCE) {
+async function pending(targetId: string, sourceProjectId = SOURCE, supplements: string[] = []) {
   expect((await api(0, "/api/v1/parameters/admin/projects", { id: targetId, name: targetId, code: targetId.slice(-16).toUpperCase() })).status).toBe(201);
   const path = `/api/v1/parameters/projects/${targetId}/initialization`;
-  const preview = await api<Preview>(0, `${path}/copy-preview`, { primarySourceProjectId: sourceProjectId, supplementSourceProjectIds: [] });
+  const preview = await api<Preview>(0, `${path}/copy-preview`, { primarySourceProjectId: sourceProjectId, supplementSourceProjectIds: supplements });
   expect(preview.status, preview.bodyText).toBe(200);
   const input = { projectName: targetId, projectCode: targetId.slice(-16).toUpperCase(), ownerUserId: AUTHOR,
-    sourceProjectIds: [sourceProjectId], primarySourceProjectId: sourceProjectId, supplementSourceProjectIds: [], selectedModuleIds: [], selectedRisks: [],
+    sourceProjectIds: [sourceProjectId, ...supplements], primarySourceProjectId: sourceProjectId, supplementSourceProjectIds: supplements, selectedModuleIds: [], selectedRisks: [],
     selectedSourceBindingIds: preview.body.items.map(row => row.sourceProjectParameterBindingId), bindingSnapshots: preview.body.items,
     sourceConfigSnapshots: preview.body.configSnapshots, emptyLibrary: false, notes: "Private fixed whole-source copy" };
   const saved = await api(0, `${path}/draft`, input, "PUT"); expect(saved.status, saved.bodyText).toBe(200);
@@ -229,7 +229,7 @@ it("retains genuine former-root overlay admission with fresh file identities thr
     const copy = await pending(targetId, sourceId); expect(copy.preview.items).toEqual([]);
     const approved = await api(1, copy.approve, {}); expect(approved.status, approved.bodyText).toBe(200);
     const sets = await api<{ items: Array<{ id: string; name: string }> }>(0, `/api/v1/projects/${targetId}/config-sets`);
-    expect(sets.status, sets.bodyText).toBe(200); const copiedSet = sets.body.items.find(row => row.name !== "default")!;
+    expect(sets.status, sets.bodyText).toBe(200); const copiedSet = sets.body.items.find(row => row.name === "default")!;
     const exported = await api<{ manifest: { validation: { ok: boolean }; sourcePackage: { formerRootOverlayFiles: string[] } }; files: unknown[] }>(0, `/api/v1/projects/${targetId}/config-sets/${copiedSet.id}/export`);
     expect(exported.status, exported.bodyText).toBe(200); expect(exported.body.manifest.validation.ok).toBe(true);
     expect(exported.body.manifest.sourcePackage.formerRootOverlayFiles).toEqual(["original.dts"]);
@@ -239,3 +239,53 @@ it("retains genuine former-root overlay admission with fresh file identities thr
     previousIds = files.body.items.map(row => row.fileId); sourceId = targetId;
   }
 }, 60_000);
+
+it("opens the primary copied configuration through the target project's actual default topology", async () => {
+  const sourceId = "init-primary-source", targetId = "init-primary-target";
+  const auth = makeTestAuthContext({ userId: AUTHOR, organizationId: ORG, roles: [{ roleId: "admin", projectId: null }] });
+  await db.query("insert into projects(id,organization_id,name,code,status,initialization_status) values ($1,$2,$1,'PRIMARY','initialized','initialized')", [sourceId, ORG]);
+  const config = await createConfigSet(db, auth, { projectId: sourceId, name: "Primary business configuration" });
+  const content = '/dts-v1/; / { model = "Primary project copy"; };\n';
+  const file = await uploadProjectParameterFile(db, storage, auth, { projectId: sourceId, fileName: "primary.dts", bytes: Buffer.from(content) });
+  await addConfigSetFile(db, auth, { configSetId: config.id, fileId: file.file.id, role: "base", sortOrder: 0 });
+  await ingestConfigRevision(db, { organizationId: ORG, projectId: sourceId, configSetId: config.id, entryFile: "primary.dts", includeSearchPaths: [], overlayOrder: [],
+    members: [{ fileId: file.file.id, fileVersionId: file.version.id, fileName: "primary.dts", content, role: "base", sortOrder: 0 }] }, auth);
+  const copy = await pending(targetId, sourceId); expect(copy.preview.items).toEqual([]);
+  const approved = await api(1, copy.approve, {}); expect(approved.status, approved.bodyText).toBe(200);
+  const configurations = await api<{ items: Array<{ id: string; name: string }> }>(0, `/api/v1/projects/${targetId}/config-sets`);
+  const targetDefault = configurations.body.items.find(row => row.name === "default")!; expect(targetDefault.id).not.toBe(config.id);
+  const topology = await api(0, `/api/v2/projects/${targetId}/config-sets/${targetDefault.id}/revisions/current/topology`);
+  expect(topology.status, topology.bodyText).toBe(200); expect(topology.bodyText).toContain("Primary project copy");
+});
+
+it("copies repeated namespaced and literal-underscore aliases from two source projects without filename collisions", async () => {
+  const sourceIds = ["init-paths-a", "init-paths-b"], auth = makeTestAuthContext({ userId: AUTHOR, organizationId: ORG, roles: [{ roleId: "admin", projectId: null }] });
+  for (const projectId of sourceIds) {
+    await db.query("insert into projects(id,organization_id,name,code,status,initialization_status) values ($1,$2,$1,$1,'initialized','initialized')", [projectId, ORG]);
+    const config = await createConfigSet(db, auth, { projectId, name: "Colliding source spellings" }), members = [];
+    for (const [index, source] of [{ sourceName: "board.dts", storedName: "board.dts", content: '/dts-v1/; /include/ "a/b.dtsi" /include/ "a__b.dtsi" / { model = "Independent names"; };\n', role: "base" as const },
+      { sourceName: "a/b.dtsi", storedName: "b.dtsi", content: '/ { path_spelling { retained = <1>; }; };\n', role: "include" as const },
+      { sourceName: "a__b.dtsi", storedName: "a__b.dtsi", content: '/ { literal_spelling { retained = <2>; }; };\n', role: "include" as const }].entries()) {
+      const file = await uploadProjectParameterFile(db, storage, auth, { projectId, fileName: source.storedName, bytes: Buffer.from(source.content) });
+      await addConfigSetFile(db, auth, { configSetId: config.id, fileId: file.file.id, role: source.role === "include" ? "misc" : source.role, sortOrder: index });
+      members.push({ fileId: file.file.id, fileVersionId: file.version.id, fileName: source.sourceName, sourceName: source.sourceName, content: source.content, role: source.role, sortOrder: index });
+    }
+    await ingestConfigRevision(db, { organizationId: ORG, projectId, configSetId: config.id, entryFile: "board.dts", includeSearchPaths: [], overlayOrder: [], members }, auth);
+  }
+  const targetId = "init-paths-target", copy = await pending(targetId, sourceIds[0]!, [sourceIds[1]!]);
+  const approved = await api(1, copy.approve, {}); expect(approved.status, approved.bodyText).toBe(200);
+  const files = await api<{ items: Array<{ id: string; fileName: string }> }>(0, `/api/v1/projects/${targetId}/parameter-files`);
+  expect(files.body.items).toHaveLength(6); expect(new Set(files.body.items.map(row => row.fileName)).size).toBe(6);
+  const sets = await api<{ items: Array<{ id: string }> }>(0, `/api/v1/projects/${targetId}/config-sets`);
+  const copiedSets = [];
+  for (const set of sets.body.items) {
+    const members = await api<{ items: unknown[] }>(0, `/api/v1/projects/${targetId}/config-sets/${set.id}/files`);
+    if (!members.body.items.length) continue;
+    const exported = await api<{ files: Array<{ name: string; content: string }> }>(0, `/api/v1/projects/${targetId}/config-sets/${set.id}/export`);
+    expect(exported.status, exported.bodyText).toBe(200);
+    expect(exported.body.files).toContainEqual(expect.objectContaining({ name: "a/b.dtsi", content: '/ { path_spelling { retained = <1>; }; };\n' }));
+    expect(exported.body.files).toContainEqual(expect.objectContaining({ name: "a__b.dtsi", content: '/ { literal_spelling { retained = <2>; }; };\n' }));
+    copiedSets.push(set.id);
+  }
+  expect(copiedSets).toHaveLength(2);
+});

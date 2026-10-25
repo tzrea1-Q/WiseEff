@@ -515,6 +515,7 @@ export async function approveReview(
         snapshots: draft.bindingSnapshots,
         sourceConfigSnapshots: draft.sourceConfigSnapshots,
         sourceProjectIds: draft.sourceProjectIds,
+        primarySourceProjectId: draft.primarySourceProjectId,
       }, { ...canonical, createdStorageKeys: [] });
     }
 

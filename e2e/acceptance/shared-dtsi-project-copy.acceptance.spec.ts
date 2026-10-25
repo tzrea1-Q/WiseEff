@@ -43,8 +43,8 @@ test.beforeAll(async ({ request }) => {
     const submitted = await request.post(apiRoute(`${path}/submit`), { headers, data: {} }); expect(submitted.status(), await submitted.text()).toBe(201);
     const approved = await request.post(apiRoute(`/api/v1/parameters/admin/initialization-reviews/${(await submitted.json()).item.id}/approve`), { headers, data: {} });
     expect(approved.status(), await approved.text()).toBe(200);
-    const config = await request.post(apiRoute(`/api/v1/projects/${SOURCE}/config-sets`), { headers, data: { name: "Board and settings" } });
-    expect(config.status(), await config.text()).toBe(201); configSetId = (await config.json()).item.id;
+    const config = await request.get(apiRoute(`/api/v1/projects/${SOURCE}/config-sets`), { headers });
+    expect(config.status(), await config.text()).toBe(200); configSetId = (await config.json()).items.find((row: { name: string }) => row.name === "default").id;
     const members = [];
     for (const [index, file] of [{ fileName: "board.dts", content: '/dts-v1/;\r\n/include/ "private.dtsi"\r\n/ { model = "Copied original"; };\r\n', format: "dts" as const, role: "base" as const },
       { fileName: "private.dtsi", content: '/ { local { status = "disabled"; }; };\r\n', format: "dts" as const, role: "include" as const },
@@ -107,8 +107,12 @@ test("chooses the source project, previews a private full copy, submits for inde
   const rootLink = wizard.getByRole("link", { name: "board.dts", exact: true }); const rootHref = await rootLink.getAttribute("href");
   const rootPin = snapshot.configSnapshots[0].members.find((row: { sourceName: string }) => row.sourceName === "board.dts");
   expect(rootHref).toContain(`file=${rootPin.fileId}`); expect(rootHref).toContain(`version=${rootPin.fileVersionId}`); expect(rootHref).toContain("sourceMode=history");
+  expect(rootHref).toContain(`revision=${snapshot.configSnapshots[0].sourceConfigRevisionId}`);
   const popup = page.waitForEvent("popup"); await rootLink.click(); const sourcePage = await popup;
-  await expect(sourcePage.getByRole("textbox", { name: "DTS 源码", exact: true })).toHaveAttribute("aria-readonly", "true"); await sourcePage.close();
+  await expect(sourcePage.getByRole("region", { name: "DTS 源码", exact: true })).toContainText("Copied original");
+  await expect(sourcePage.getByText("历史版本 · 只读 · v2", { exact: true })).toBeVisible();
+  await expect(sourcePage.getByRole("radio", { name: "编辑", exact: true })).toHaveCount(0);
+  await sourcePage.screenshot({ path: info.outputPath("copy-source-history-1440.png"), fullPage: true }); await sourcePage.close();
   for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
     await page.setViewportSize(viewport); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(wizard.getByRole("button", { name: "下一步", exact: true })).toBeInViewport({ ratio: 1 });
@@ -145,7 +149,7 @@ test("chooses the source project, previews a private full copy, submits for inde
   const files = (await targetFiles.json()).items; expect(files.every((row: { sharedReference?: unknown }) => !row.sharedReference)).toBe(true);
   const targetRoot = files.find((row: { fileName: string }) => row.fileName === "board.dts"); expect(targetRoot.fileId).not.toBe(rootPin.fileId);
   await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/projects/${TARGET}/configuration?configSet=${manifest.configSetId}&file=${targetRoot.fileId}`);
-  await expect(page.getByRole("textbox", { name: "DTS 源码", exact: true })).toContainText("Copied original");
+  await expect(page.getByRole("region", { name: "DTS 源码", exact: true })).toContainText("Copied original");
   await expect(page.getByRole("radio", { name: "编辑", exact: true })).toBeEnabled();
   await page.setViewportSize({ width: 1440, height: 900 }); await page.screenshot({ path: info.outputPath("copy-target-source-1440.png"), fullPage: true });
   await page.goto(`${runtime.frontendUrl}/parameters?project=${TARGET}`, { waitUntil: "domcontentloaded" });

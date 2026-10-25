@@ -780,7 +780,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
   }
 
   function renderParameterStep() {
-    if (completeCopy && !isEmptyInitialization) return <InitializationCopySummary snapshots={configSnapshots} />;
+    if (completeCopy && !isEmptyInitialization) return <InitializationCopySummary snapshots={configSnapshots} projects={projects} />;
     const emptyCandidateMessage = scopePool.length > 0
       ? "没有匹配的参数，请调整搜索或清除筛选。"
       : isApiMode
@@ -1035,7 +1035,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
             </div>
           </dl>
         </div>
-        {completeCopy && !isEmptyInitialization ? <InitializationCopySummary snapshots={configSnapshots} /> : null}
+        {completeCopy && !isEmptyInitialization ? <InitializationCopySummary snapshots={configSnapshots} projects={projects} /> : null}
         {selectedAvailableParameterIds.length ? <div className="project-init-review-parameters">
           <h4>核对所选参数</h4>
           <p>以下来源与值将一并固定在初始化快照中。</p>
