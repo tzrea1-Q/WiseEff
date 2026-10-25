@@ -1,6 +1,6 @@
 import type { ApiClient } from "./apiClient";
 import { sharedDtsiDraftSchema, sharedDtsiListSchema, sharedDtsiResourceDetailSchema, sharedDtsiVersionSchema, sharedDtsiVersionsSchema, sharedDtsiPreviewSchema,
-  sharedDtsiComparisonSchema,sharedDtsiUsagesSchema,type SharedDtsiDraftInput } from "@wiseeff/dto-schemas";
+  sharedDtsiRecognitionSchema,sharedDtsiComparisonSchema,sharedDtsiUsagesSchema,type SharedDtsiDraftInput } from "@wiseeff/dto-schemas";
 
 export function createSharedDtsiClient(api: ApiClient) {
   const base = "/api/v2/shared-dtsi";
@@ -47,6 +47,9 @@ export function createSharedDtsiClient(api: ApiClient) {
     async version(id: string,versionId: string) {
       const result=await api.get<{item:unknown}>(`${resource(id)}/versions/${encodeURIComponent(versionId)}`);
       return sharedDtsiVersionSchema.parse(result.item);
+    },
+    async recognition(id: string,versionId: string) {
+      return sharedDtsiRecognitionSchema.parse(await api.get(`${resource(id)}/versions/${encodeURIComponent(versionId)}/recognition`));
     },
     async newVersionDraft(id: string,baseVersionId: string) {
       const result=await api.post<{item:unknown}>(`${resource(id)}/draft`,{baseVersionId});

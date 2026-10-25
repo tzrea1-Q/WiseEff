@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
@@ -42,6 +43,19 @@ export async function completePublicationSource(db:Database,auth:AuthContext,dra
       ...(source.preprocessing?{preprocessing:source.preprocessing.receipt}:{})},
     dependencies:draft.dependencies??[],dependencyClosure:closureManifest(resources)};
   source.digest=digest({name:draft.name,manifest:source.manifest,changeDescription:draft.changeDescription});
+  return source;
+}
+
+/** Reprepare an authorized immutable version and verify every frozen source/CPP field. */
+export async function preparePublishedSharedDtsiSource(db:Database,auth:AuthContext,version:SharedDtsiVersion) {
+  const source=await completePublicationSource(db,auth,{id:version.id,resourceId:version.resourceId,name:version.name,
+    revision:version.version,updatedAt:version.createdAt,changeDescription:version.changeDescription,members:version.members,
+    dependencies:version.manifest.dependencies,sourceEvidence:version.manifest.sourceEvidence,
+    buildInputs:{includeSearchPaths:version.manifest.buildInputs.includeSearchPaths,defines:version.manifest.buildInputs.defines??{}}});
+  const manifest={...source.manifest};
+  // Old publications predate this rebuildable search projection; never rewrite their immutable JSON.
+  if(!Object.hasOwn(version.manifest,"compatibleSelectors"))delete manifest.compatibleSelectors;
+  if(!isDeepStrictEqual(manifest,version.manifest))throw new ApiError("CONFLICT","固定版本的源码或预处理证明不匹配，请联系管理员检查工具链。",{reason:"shared-source-comparison-stale"});
   return source;
 }
 

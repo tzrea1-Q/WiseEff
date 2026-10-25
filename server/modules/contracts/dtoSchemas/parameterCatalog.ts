@@ -1422,7 +1422,8 @@ export const catalogDriverCompatibleDiscoveryResponseSchema = z.union([
         catalogObject({status: z.literal("historical"), currentConfigRevisionId: z.string(),
           historicalCompatibles: z.array(z.string())}),
         catalogObject({status: z.literal("current"), configSetId: z.string(), sourceName: z.string(),
-          fileVersionId: z.string(), sourceDigest: z.string(), revisionDigest: z.string()})
+          fileVersionId: z.string(), sourceDigest: z.string(), revisionDigest: z.string(),
+          location:catalogObject({fileId:z.string(),nodeLocator:z.string(),line:z.number().int().positive()}).optional()})
       ]),
       compatibles: z.array(catalogObject({
         compatible: z.string(),

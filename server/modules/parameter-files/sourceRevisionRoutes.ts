@@ -322,7 +322,7 @@ export function registerSourceRevisionRoutes(router: WiseEffRouter, options: {
         if (!catalog || !options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source approval Catalog context is unavailable.");
         await commitSourceRevision(tx, options.objectStore, auth, catalog.snapshot, {
           ...params, invocation: context.invocation, traceId: request.requestId, refusalSink: context.refusalSink, note: body.note,
-          catalogSnapshots: catalog.snapshots
+          catalogSnapshots: catalog.snapshots,producerRoot:db
         });
       } else {
         // Match approval's user-before-request lock order; a simultaneous approve/reject must not deadlock.
