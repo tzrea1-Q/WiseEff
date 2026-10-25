@@ -668,7 +668,20 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
     await db.query("update debug_nodes set description='Keep settings' where id='kept-device-node'");
     await expect(verifySeedRebuild(ctx(), plan)).resolves.toMatchObject({ bindings: 372 });
     await expect(verifySeedRebuild({ ...ctx(), store: { ...store,
-      getBounded: async (key, limit) => key.includes('board.dts') ? Buffer.from('corrupted') : store.getBounded!(key, limit),
-    } }, plan)).rejects.toThrow("source-bytes-mismatch");
+      getBounded: async (key, limit) => key === sharedObjectKey ? Buffer.from('corrupted') : store.getBounded!(key, limit),
+    } }, plan)).rejects.toThrow("seed-rebuild-preservation-object-drift");
+    const rebuiltBoard = await db.query<{ storage_key: string }>(`
+      select version.storage_key from project_parameter_files file
+      join project_parameter_file_versions version on version.id=file.current_version_id
+      join dts_config_set config_set on config_set.id=file.config_set_id
+      where file.organization_id=$1 and file.project_id='atlas' and file.file_name='board.dts'
+        and config_set.name='default'`, [org]);
+    expect(rebuiltBoard.rows).toHaveLength(1);
+    const boardKey = rebuiltBoard.rows[0]!.storage_key;
+    expect(boardKey).not.toBe(sharedObjectKey);
+    await expect(verifySeedRebuild({ ...ctx(), store: { ...store,
+      getBounded: async (key, limit) => key === boardKey ? Buffer.from('corrupted') : store.getBounded!(key, limit),
+    } }, plan)).rejects.toThrow("seed-rebuild-source-bytes-mismatch");
+    await expect(verifySeedRebuild(ctx(), plan)).resolves.toMatchObject({ bindings: 372 });
   });
 });

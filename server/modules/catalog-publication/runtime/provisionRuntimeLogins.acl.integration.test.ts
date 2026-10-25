@@ -25,7 +25,7 @@ import {
   PARAMETER_GOVERNANCE_WRITER_ROLE,
   quoteIdent,
 } from "../../catalog-kernel/security/catalogRoleManifest";
-import { captureDatabaseError } from "../persistence/integrationHarness";
+import { captureDatabaseError, emptyWritableInsertSql } from "../persistence/integrationHarness";
 import { createEphemeralTestDatabase } from "../../../testing/testDatabase";
 import {
   PUBLICATION_API_LOGIN,
@@ -116,8 +116,9 @@ const assertCanonicalSourceAcl = async (client: pg.Client, api: boolean): Promis
       await client.query(`select id from ${relation} where false for share nowait`);
       await assert42501(client, `update ${relation} set project_id = project_id where false`);
       await assert42501(client, `delete from ${relation} where false`);
-      if (append) await client.query(`insert into ${relation} select * from ${relation} where false`);
-      else await assert42501(client, `insert into ${relation} select * from ${relation} where false`);
+      const insert = await emptyWritableInsertSql(client, relation);
+      if (append) expect((await client.query(insert)).rowCount).toBe(0);
+      else await assert42501(client, insert);
     }
   }
 };
