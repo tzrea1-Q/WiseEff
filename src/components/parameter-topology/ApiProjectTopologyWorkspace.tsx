@@ -1482,6 +1482,7 @@ export function ApiProjectTopologyWorkspace({
       onExportBinding={canonicalRepository?.getCanonicalBindingExport ? exportCanonicalBinding : undefined}
       onLoadHistory={repository.listBindingHistory ? loadCanonicalBindingHistory : undefined}
       loadPrimaryJsonSource={loadPrimaryJsonSource}
+      loadLatestParameterSpec={loadLatestParameterSpec}
       onExportRows={(bindings) => downloadJsonWorkbenchCsv(bindings, `json-parameters-${projectId}.csv`)}
       projectName={projectName ?? projectId}
       toolbarActions={activeFormatTab === "json" ? formatSwitcher : undefined}
