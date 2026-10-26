@@ -227,6 +227,11 @@ export function PublicationDialog({
         completedRef.current = true;
         clearStoredPublicationJob();
         onCompleted?.();
+        // Activation advances the current Catalog release. A collection reload
+        // without refreshing the host's URL pin would still show the old release.
+        void Promise.resolve()
+          .then(() => onRefreshEvidence?.())
+          .catch((error: unknown) => setFailure(publicationFailureCopy(error)));
       }
     }
   };
