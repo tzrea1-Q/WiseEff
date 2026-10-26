@@ -148,6 +148,7 @@ export const apiFailureReasons = freezeRegistry([
   "subject-not-published",
   "subject-retired",
   "definition-not-found",
+  "definition-already-exists",
   "definition-retired",
   "registration-required",
   "placement-conflict",

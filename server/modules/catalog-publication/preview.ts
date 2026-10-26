@@ -61,6 +61,7 @@ export type PreviewPublicationError =
   | { readonly kind: "invalid-input"; readonly reason: string }
   | { readonly kind: "subject-not-found"; readonly subjectId: string }
   | { readonly kind: "subject-not-active"; readonly subjectId: string }
+  | { readonly kind: "definition-already-exists" }
   | { readonly kind: "persist-failed"; readonly detail: string };
 
 export type PreviewPublicationValue = {
@@ -427,6 +428,9 @@ export async function previewPublicationCandidate(input: {
       return { ok: false, error: { kind: "subject-not-active", subjectId: built.error.subjectId } };
     }
     if (built.error.kind === "conflict") {
+      if (built.error.reason === "duplicate-natural-key") {
+        return { ok: false, error: { kind: "definition-already-exists" } };
+      }
       return {
         ok: false,
         error: { kind: "unsupported-catalog-capability", detail: built.error.reason },

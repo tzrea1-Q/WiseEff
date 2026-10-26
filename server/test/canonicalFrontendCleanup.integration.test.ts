@@ -82,7 +82,7 @@ describe("assembled canonical publication refusals preserve persisted state", ()
     const materialization = await client.query<{ compiled_fingerprint: string }>(
       "select compiled_fingerprint from parameter_catalog.catalog_materializations where release_id = $1", [releaseId]);
     const adopted = await adoptPreexistingCatalog(pool, {
-      expectedCurrent: { id: releaseId, digest: predecessor.digest },
+      expectedCurrent: { id: predecessor.compiled.release.id, digest: predecessor.digest },
       sourceBytes: predecessor.bytes,
       artifactDigest: predecessor.digest,
       evidenceKind: "synthetic-fixture",
@@ -190,9 +190,9 @@ describe("assembled canonical publication refusals preserve persisted state", ()
     const response = await post("/api/v2/catalog/publication-candidates", {
       changeSet: [{ op: "create-definition", subjectId: "csub_acme_power", propertyKey: "iin_max", content }],
     });
-    expect(response.status, response.bodyText).toBe(422);
-    expect(response.body.error).toMatchObject({ code: "VALIDATION_FAILED",
-      details: { reason: "unsupported-catalog-capability", retryable: false } });
+    expect(response.status, response.bodyText).toBe(409);
+    expect(response.body.error).toMatchObject({ code: "CONFLICT",
+      details: { reason: "definition-already-exists", retryable: false } });
     expect(await snapshot()).toEqual(before);
   });
 });

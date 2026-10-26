@@ -107,6 +107,8 @@ export function catalogErrorCopy(reason: CatalogApiFailureReason | "unknown"): s
       return "该主体未出现在当前目录发布中。";
     case "definition-not-found":
       return "未找到该参数定义。";
+    case "definition-already-exists":
+      return "该主体下已存在同名参数定义，请在目录中找到已有定义进行修改。输入已保留。";
     case "forbidden":
       return "当前范围不可见该目录项。";
     case "release-drift":
