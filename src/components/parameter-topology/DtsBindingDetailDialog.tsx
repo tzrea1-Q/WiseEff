@@ -41,6 +41,8 @@ export type DtsBindingDetailDialogProps = {
   baseProjectId?: string;
   baseProjectName?: string;
   specDetail?: ParameterSpecDetail | CanonicalDtsDefinitionDetail | null;
+  latestDefinition?: CanonicalDtsDefinitionDetail | null;
+  latestStatus?: "idle" | "loading" | "ready" | "error";
   specDetailStatus?: "idle" | "loading" | "ready" | "error";
   specDetailErrorMessage?: string | null;
   historyStatus?: "idle" | "loading" | "ready" | "error";
@@ -61,7 +63,7 @@ export function DtsBindingDetailDialog({
   row, canEdit, onClose, draft, hasLocalChanges = false, hasSavedDraft = false,
   onDraftChange, onResetDraft, onSaveDraft, onStartDtsReload, onOpenSource,
   onUseCompareAsDraft, historyEntries = [], compareEntries = [], baseProjectId = "current",
-  baseProjectName = "当前项目", specDetail = null, specDetailStatus = "idle", specDetailErrorMessage,
+  baseProjectName = "当前项目", specDetail = null, latestDefinition = null, latestStatus = "idle", specDetailStatus = "idle", specDetailErrorMessage,
   historyStatus = "idle", historyErrorMessage, compareStatus = "idle", compareErrorMessage,
   onRetrySpecDetail, onRetryHistory, onRetryCompare
 }: DtsBindingDetailDialogProps) {
@@ -87,8 +89,12 @@ export function DtsBindingDetailDialog({
   const locked = pending || !canEdit;
   const canonical = specDetail && "revisionId" in specDetail ? specDetail : null;
   const legacy = specDetail && !("revisionId" in specDetail) ? specDetail : null;
-  const name = row.displayName?.trim() || specDetail?.displayName?.trim() || row.propertyKey;
-  const documentation = row.documentation?.trim() || specDetail?.documentation?.trim();
+  const currentDefinition = latestStatus === "ready" && latestDefinition?.definitionId === (row.definitionId ?? row.parameterSpecId)
+    && latestDefinition?.propertyKey === row.propertyKey ? latestDefinition : null;
+  const pinnedRevisionId = row.effectiveRevisionId ?? row.parameterSpecVersionId;
+  const differsFromPinned = Boolean(currentDefinition && currentDefinition.revisionId !== pinnedRevisionId);
+  const name = currentDefinition?.displayName?.trim() || row.currentDisplayName?.trim() || row.displayName?.trim() || specDetail?.displayName?.trim() || row.propertyKey;
+  const documentation = currentDefinition ? currentDefinition.documentation?.trim() : row.documentation?.trim() || specDetail?.documentation?.trim();
   const description = row.description?.trim() || legacy?.description?.trim();
   const unit = canonical?.unit || legacy?.units;
   const constraints = formatParameterConstraints(specDetail?.constraints);
@@ -129,7 +135,11 @@ export function DtsBindingDetailDialog({
           <TabPanel id={`${id}-configuration-panel`} aria-labelledby={`${id}-configuration-tab`} hidden={tab !== "configuration"}>
             <div className="parameter-inspector__configuration">
               <section className="parameter-inspector__definition"><h3>参数定义</h3>
+                {currentDefinition && differsFromPinned ? <p role="status">当前目录定义 v{currentDefinition.revisionNumber} · 项目合同仍固定于 {pinnedRevisionId}。下方说明来自最新目录；单位、约束与实际值仍遵循项目固定修订。</p> : null}
+                {latestStatus === "loading" ? <p role="status">正在读取最新目录说明…</p> : null}
+                {latestStatus === "error" ? <p role="status">最新目录说明暂不可用，当前展示项目固定修订。</p> : null}
                 {description ? <p>{description}</p> : null}{documentation ? <p>{documentation}</p> : null}
+                {currentDefinition?.examples?.length ? <div><strong>最新目录示例（仅供参考）</strong><pre>{JSON.stringify(currentDefinition.examples, null, 2)}</pre></div> : null}
                 {specDetailStatus === "loading" ? <p role="status">正在加载规格详情…</p> : null}
                 {specDetailStatus === "error" ? <div role="alert" aria-label="规格详情加载失败"><p>{specDetailErrorMessage || "参数说明加载失败，当前配置仍可查看。"}</p><Button variant="outline" onClick={onRetrySpecDetail}>重试规格详情</Button></div> : null}
                 <dl>{currentDisplay ? <div><dt>当前值</dt><dd><pre className="parameter-value-content" role="region" aria-label="当前生效值" tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Full parameter values must support keyboard scrolling. */}>{currentDisplay}</pre></dd></div> : null}<Field label="单位" value={unit} /><Field label="约束" value={constraints} /><Field label="所属模块" value={formatModulePathLabel(row.modulePath, row.moduleName)} /><Field label="重要性" value={{ high: "高", medium: "中", low: "低" }[row.importance]} />
