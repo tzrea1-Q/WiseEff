@@ -3844,7 +3844,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
       await saved.dialog.getByRole("textbox",{name:"DTS 修改原因",exact:true}).fill(`#1419 ${action} only in this project`);
       if(actor==="admin") {
         const applying=page.waitForResponse(response=>response.request().method()==="POST" && new URL(response.url()).pathname.endsWith("/source-apply"));
-        await saved.dialog.getByRole("button",{name:"直接应用修改",exact:true}).focus();await page.keyboard.press("Enter");
+        const apply=saved.dialog.getByRole("button",{name:"直接应用修改",exact:true});await apply.focus();await expect(apply).toBeFocused();await page.keyboard.press("Enter");
         const applied=await applying;expect(applied.status(),await applied.text()).toBe(200);
       } else {
         await expect(saved.dialog.getByRole("button",{name:"直接应用修改",exact:true})).toHaveCount(0);
@@ -3852,7 +3852,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
         const reviewer=sourcePreview.reviewers?.find(person=>person.userId===acceptanceCast.acceptanceAdmin.userId) ?? sourcePreview.reviewers?.[0];expect(reviewer).toBeDefined();
         await selectControlOption(saved.dialog.getByRole("combobox",{name:"DTS 软件审核人"}),reviewer!.userId);
         const submission=page.waitForResponse(response=>response.request().method()==="POST" && new URL(response.url()).pathname.endsWith("/source-submit"));
-        await saved.dialog.getByRole("button",{name:"提交审核",exact:true}).focus();await page.keyboard.press("Enter");
+        const submit=saved.dialog.getByRole("button",{name:"提交审核",exact:true});await submit.focus();await expect(submit).toBeFocused();await page.keyboard.press("Enter");
         const submitted=await submission;expect(submitted.status(),await submitted.text()).toBe(200);
         const requestId=(await submitted.json()).item.requestId as string;
         await expect(page.getByText("已提交审核 · 工作配置尚未更新",{exact:true})).toBeVisible();
