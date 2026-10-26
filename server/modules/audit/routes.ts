@@ -131,7 +131,10 @@ export function registerAuditRoutes(
     const query = parseAuditListQuery(request.query);
     const result = await listAuditEvents(options.db, {
       organizationId: auth.organization.id,
-      ...query
+      ...query,
+      ...(auth.user.isActive && auth.roles.some((role) => role.roleId === "platform-admin" && role.projectId === null)
+        ? { includePlatformWorkflowPublication: true }
+        : {})
     });
 
     return { status: 200, body: result };

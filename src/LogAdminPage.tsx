@@ -36,7 +36,7 @@ import type { AppAction } from "@/application/state/appState";
 import { CreateSkillDialog } from "@/features/log-skills/CreateSkillDialog";
 import { SkillIdentityDialog } from "@/features/log-skills/SkillIdentityDialog";
 import { ImportSkillPackageDialog } from "@/features/log-skills/SkillPackageDialogs";
-import { SectionSkeleton } from "@/components/common/SectionState";
+import { SectionEmpty, SectionSkeleton } from "@/components/common/SectionState";
 import { LogAdminOverview, matchesOverviewFilter, type OverviewRecordFilter } from "@/features/log-analysis/LogAdminOverview";
 import type { SkillAuthoringRepository, SkillWorkspaceRepository } from "@/features/log-skills/types";
 
@@ -261,11 +261,10 @@ function LogDomainGovernanceSection({
             filterBar={<p className="text-sm text-muted-foreground">上传日志时会自动推荐匹配的技能；没有匹配时按通用分析处理。</p>}
             table={{ "aria-label": "分析技能列表", rows: domains ?? [], rowKey: (domain) => domain.id, columns: domainColumns, pageSize: 50, tableClassName: "log-admin-skills-table",
               onRowClick: (domain) => onNavigate(`/log-admin/skills/${encodeURIComponent(domain.id)}`),
-              emptyState: domainsLoading ? <SectionSkeleton label="正在加载分析技能" /> : <div className="section-empty justify-items-center text-center">
-                <strong>{skillStatusFilter.length > 0 ? "未匹配任何技能" : "还没有分析技能"}</strong>
-                {skillStatusFilter.length === 0 ? <p>从模板创建技能，并上传样例日志开始配置。</p> : null}
-                {skillStatusFilter.length > 0 ? <Button variant="outline" onClick={() => setSkillStatusFilter([])}>重置筛选</Button> : <Button variant="outline" onClick={() => onNavigate("/logs")}>前往日志分析</Button>}
-              </div> }}
+              emptyState: domainsLoading ? <SectionSkeleton label="正在加载分析技能" /> : <SectionEmpty
+                message={skillStatusFilter.length > 0 ? "未匹配任何技能" : "还没有分析技能"}
+                actionLabel={skillStatusFilter.length > 0 ? "重置筛选" : "前往智能分析"}
+                onAction={skillStatusFilter.length > 0 ? () => setSkillStatusFilter([]) : () => onNavigate("/logs")} /> }}
             rowActions={(domain) => ({ label: domain.name,
               items: [
                 { id: "rename", label: "改名", disabled: !apiMode || pending, onSelect: () => setIdentityAction({ skill: domain, restore: false }) },
@@ -723,7 +722,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
       {refreshAction}
       <Button size="sm" onClick={handleExport}>
         <Download data-icon="inline-start" />
-        导出报表
+        导出 JSON
       </Button>
     </>
   );
@@ -756,7 +755,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
         ]} />
       <TabPanel id={`log-panel-${collection}`} aria-labelledby={`log-tab-${collection}`}>
         {collection === "overview" ? <LogAdminOverview logs={windowLogs} allLogs={visibleLogs} timeWindow={timeWindow} feedback={qualityRows} feedbackLoading={qualityLoading} feedbackUnavailable={qualityUnavailable}
-          controls={<><TimeWindowSelect value={timeWindow} onChange={setTimeWindow} /><div className="flex items-center gap-2">{refreshAction}<Button onClick={() => onNavigate("/logs")}>进入智能分析</Button></div></>}
+          controls={<><TimeWindowSelect value={timeWindow} onChange={setTimeWindow} /><div className="flex items-center gap-2">{refreshAction}<Button onClick={() => onNavigate("/logs")}>前往智能分析</Button></div></>}
           onViewRecords={(filter) => { resetFilters(); setOverviewFilter(filter); setLogView("active"); setRecordsTimeWindow(timeWindow); selectCollection("records"); }} /> : null}
         <div hidden={collection !== "skills"}>
           <LogDomainGovernanceSection canGovern={canPerform(state.activeRoleId, "logs.admin-domains")} logActions={logActions} refreshKey={skillsRefreshKey} onNavigate={onNavigate}
@@ -802,7 +801,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
               items: logView === "archived" && canAct ? [{ id: "restore", label: "恢复", disabled: pendingActions.has(pendingKey("unarchive", record.id)), onSelect: () => unarchiveLog(record.id) }] : []
             }) : undefined}
             emptyState={{ message: hasActiveFilters ? "未匹配任何记录" : logView === "archived" ? "暂无已归档日志" : "当前时间窗口内暂无日志",
-              actionLabel: hasActiveFilters ? "重置筛选" : "前往日志分析", onAction: hasActiveFilters ? resetFilters : () => onNavigate("/logs") }} />
+              actionLabel: hasActiveFilters ? "重置筛选" : "前往智能分析", onAction: hasActiveFilters ? resetFilters : () => onNavigate("/logs") }} />
         ) : null}
       </TabPanel>
 

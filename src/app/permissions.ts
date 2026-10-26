@@ -30,6 +30,7 @@ const pageRequiredRoles: Record<PageKey, PlatformRoleId> = {
   "debugging-admin": "admin",
   "user-permissions": "admin",
   "feedback-admin": "admin",
+  "workflow-publication": "platform-admin",
   feedback: "guest",
   audit: "admin",
   knowledge: "guest",

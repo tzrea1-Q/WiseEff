@@ -56,6 +56,7 @@ export type PageKey =
   | "user-permissions"
   | "feedback-admin"
   | "feedback"
+  | "workflow-publication"
   | "audit";
 
 export type PageConfig = {
@@ -175,7 +176,7 @@ export const navigationItems: PageConfig[] = [
     group: "知识库",
     icon: BookOpen,
     title: "工程知识库",
-    subtitle: "沉淀调参经验、故障案例、硬件手册与流程规范,发布后进入检索"
+    subtitle: "沉淀调参经验、故障案例、硬件手册与流程规范，发布后进入检索"
   },
   {
     key: "knowledge-admin",
@@ -184,17 +185,22 @@ export const navigationItems: PageConfig[] = [
     group: "知识库",
     icon: LibraryBig,
     title: "知识库管理后台",
-    subtitle: "已归档条目治理与彻底删除;Agent 草稿队列与索引健康后续阶段加入"
+    subtitle: "审阅小泽知识草稿，管理已归档条目与检索索引"
   }
 ];
 
 export const utilityItems: Array<{ label: string; icon: LucideIcon; path?: string }> = [
+  { label: "工作流发布", icon: Settings2, path: "/workflow-publication" },
   { label: "反馈管理", icon: MessageSquareText, path: "/feedback-admin" },
   { label: "审计中心", icon: ScrollText, path: "/audit" },
   { label: "组织管理", icon: Settings2, path: "/organization" }
 ];
 
 export function getPageByPath(path: string): PageConfig {
+  if (path === "/workflow-publication") {
+    return { key: "workflow-publication", path, label: "工作流发布", group: "平台总览", icon: Settings2,
+      title: "工作流发布", subtitle: "配置向所有组织用户开放的工作流" };
+  }
   if (path === "/log-dashboard") {
     return navigationItems.find((item) => item.key === "log-admin")!;
   }

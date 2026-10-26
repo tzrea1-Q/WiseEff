@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { AnalysisTrace } from "@/features/log-analysis/AnalysisTrace";
+import { LogFileDrawer } from "@/features/log-analysis/LogFileDrawer";
 import { presentError } from "@/infrastructure/http/presentError";
 import type { AnalysisTraceStep, SkillDryRun, SkillWorkspaceRepository } from "./types";
 import "@/features/log-analysis/log-analysis.css";
@@ -20,6 +21,9 @@ export function SkillDryRunDrawer({ skillId, run, repository, open, onClose, onR
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [starting, setStarting] = useState(false);
+  const [viewer, setViewer] = useState<{ file: string; lines: number[] } | null>(null);
+  const openLine = repository.getSkillDryRunLines ? (file: string, line: number, lines?: number[]) => setViewer({ file, lines: [line, ...(lines ?? []).filter((item) => item !== line)] }) : undefined;
+  const readLines = useCallback((start: number, end: number) => repository.getSkillDryRunLines!(skillId, run.id, viewer!.file, start, end), [repository, skillId, run.id, viewer]);
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -45,7 +49,7 @@ export function SkillDryRunDrawer({ skillId, run, repository, open, onClose, onR
     finally { setStarting(false); }
   };
   const report = run.report;
-  return <Sheet open={open} onOpenChange={(value) => { if (!value) onClose(); }}>
+  return <><Sheet open={open} onOpenChange={(value) => { if (!value) onClose(); }}>
       <SheetContent side="right" className="log-file-drawer flex min-w-0 gap-0 p-0">
         <SheetHeader className="border-b border-border pr-12">
           <SheetTitle>试运行</SheetTitle>
@@ -70,15 +74,17 @@ export function SkillDryRunDrawer({ skillId, run, repository, open, onClose, onR
             <section aria-label="试运行证据" className="space-y-2"><h2 className="text-base font-medium">证据</h2>
               {report.evidence.length ? <ol className="list-none space-y-3 p-0">{report.evidence.map((evidence, index) => <li key={index} className="space-y-2 rounded-md border border-border p-3 text-sm">
                 <p className="break-words">{evidence.inference}</p><p className="break-words text-muted-foreground">{evidence.suggestedAction}</p>
-                {evidence.filePath ? <div className="flex flex-wrap gap-1">{evidence.lineNumbers.map((line) => <span key={line}
-                  className="max-w-full break-all rounded-md border border-border px-2 py-1 font-mono text-xs text-muted-foreground">{evidence.filePath}:{line}</span>)}</div> : null}
+                {evidence.filePath ? <div className="flex flex-wrap gap-1">{evidence.lineNumbers.map((line) => <Button key={line} variant="outline" size="sm"
+                  disabled={!openLine} className="h-auto max-w-full break-all whitespace-normal font-mono text-xs"
+                  onClick={() => openLine?.(evidence.filePath!, line, evidence.lineNumbers)}>{evidence.filePath}:{line}</Button>)}</div> : null}
               </li>)}</ol> : <p className="text-sm text-muted-foreground">暂无证据。</p>}
             </section>
           </> : null}
           <section aria-label="试运行分析轨迹" className="space-y-2"><h2 className="text-base font-medium">分析轨迹</h2>
-            <AnalysisTrace steps={steps} analysis={report ?? undefined} />
+            <AnalysisTrace steps={steps} analysis={report ?? undefined} onOpenLine={openLine} />
           </section>
         </div>
       </SheetContent>
-    </Sheet>;
+    </Sheet>
+    {open && viewer ? <LogFileDrawer key={`${run.id}:${viewer.file}:${viewer.lines.join(",")}`} file={viewer.file} citedLines={viewer.lines} readLines={readLines} onClose={() => setViewer(null)} /> : null}</>;
 }

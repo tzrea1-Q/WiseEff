@@ -37,6 +37,7 @@ export function mapApiAuditEventToView(dto: AuditEventDto): AuditEventView {
   const metadata = metadataRecord(dto.metadata);
   return {
     id: dto.id,
+    organizationId: dto.organizationId,
     app: dto.app,
     kind: dto.kind,
     action: dto.action,

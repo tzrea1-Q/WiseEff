@@ -35,7 +35,7 @@ it.each(["records", "domains", "skills", "quality"])("keeps one table, aligned-l
   expect(filters).not.toBeEmptyDOMElement();
   const primary = header.querySelectorAll('[data-slot="button"][data-variant="default"]');
   expect(primary).toHaveLength(1);
-  expect(primary[0]).toHaveTextContent(tab === "skills" || tab === "domains" ? "新建技能" : "导出报表");
+  expect(primary[0]).toHaveTextContent(tab === "skills" || tab === "domains" ? "新建技能" : "导出 JSON");
   expect(primary[0]).toBe(header.querySelector(".admin-list-page__header-actions")!.lastElementChild);
   expect(screen.getAllByRole("button", { name: "刷新" })).toHaveLength(1);
   if (tab !== "skills" && tab !== "domains") {
@@ -147,7 +147,7 @@ describe("LogAdminPage M3 skeleton", () => {
     renderPage();
 
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /导出报表/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /导出 JSON/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "刷新" })).toBeInTheDocument();
     expect(screen.getByRole("toolbar", { name: "日志分析管理后台页面操作" })).toBeEmptyDOMElement();
     expect(screen.queryByRole("heading", { level: 1, name: "日志分析管理后台" })).not.toBeInTheDocument();
@@ -581,10 +581,10 @@ describe("LogAdminPage · insight bar", () => {
 });
 
 describe("LogAdminPage · page header actions", () => {
-  it("dispatches LOG_ADMIN_EXPORT_REPORT on 导出报表 click", async () => {
+  it("dispatches LOG_ADMIN_EXPORT_REPORT on 导出 JSON click", async () => {
     const { dispatch } = renderPage();
 
-    await userEvent.click(screen.getByRole("button", { name: /导出报表/ }));
+    await userEvent.click(screen.getByRole("button", { name: /导出 JSON/ }));
 
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "LOG_ADMIN_EXPORT_REPORT", timeWindow: "all" }));
   });
@@ -723,7 +723,7 @@ describe("LogAdminPage 分析技能治理", () => {
     const table = await screen.findByRole("table", { name: "分析技能列表" });
     expect(within(table).getByText("还没有分析技能")).toBeInTheDocument();
     expect(table.querySelectorAll(".section-empty button")).toHaveLength(1);
-    await userEvent.click(within(table).getByRole("button", { name: "前往日志分析" }));
+    await userEvent.click(within(table).getByRole("button", { name: "前往智能分析" }));
     expect(onNavigate).toHaveBeenCalledWith("/logs");
     expect(screen.getAllByRole("button", { name: "新建技能" })).toHaveLength(1);
     await userEvent.click(screen.getByRole("button", { name: "新建技能" }));
@@ -935,7 +935,7 @@ describe("LogAdminPage 分析质量洞察", () => {
     vi.stubGlobal("URL", Object.assign(Object.create(URL), { createObjectURL: vi.fn((blob: Blob) => { blobs.push(blob); return "blob:quality"; }), revokeObjectURL: vi.fn() }));
     renderPage({ logActions: createLogActions({ listFeedbackInsights: vi.fn().mockResolvedValue([agentInsight]) }) });
     await screen.findByText("75%（3/4）");
-    await userEvent.click(screen.getByRole("button", { name: "导出报表" }));
+    await userEvent.click(screen.getByRole("button", { name: "导出 JSON" }));
     expect(blobs).toHaveLength(1);
     const exported = await new Promise<string>((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.readAsText(blobs[0]); });
     expect(JSON.parse(exported)).toMatchObject({ timeWindow: "7d", rows: [agentInsight] });
@@ -991,11 +991,11 @@ describe("LogAdminPage polish tab controls", () => {
     expect(screen.getByText(/日志解析失败/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "分析技能" }));
     expect(screen.queryByRole("group", { name: "时间窗口" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "导出报表" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "导出 JSON" })).not.toBeInTheDocument();
     expect(screen.queryByText(/日志解析失败/)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "分析质量" }));
     expect(screen.getByRole("group", { name: "时间窗口" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "导出报表" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导出 JSON" })).toBeInTheDocument();
     expect(screen.queryByText(/日志解析失败/)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "日志分析记录" }));
     expect(screen.getByText(/日志解析失败/)).toBeInTheDocument();
@@ -1005,17 +1005,17 @@ describe("LogAdminPage polish tab controls", () => {
     const { onNavigate } = renderPage({ stateOverrides: { logs: [] } });
     const table = screen.getByRole("table", { name: "日志分析记录" });
     expect(table.querySelectorAll(".section-empty button")).toHaveLength(1);
-    await userEvent.click(within(table).getByRole("button", { name: "前往日志分析" }));
+    await userEvent.click(within(table).getByRole("button", { name: "前往智能分析" }));
     expect(onNavigate).toHaveBeenCalledWith("/logs");
     expect(screen.getAllByRole("button", { name: "刷新" })).toHaveLength(1);
     await userEvent.type(screen.getByRole("searchbox"), "无结果");
     expect(table.querySelectorAll(".section-empty button")).toHaveLength(1);
-    expect(within(table).queryByRole("button", { name: "前往日志分析" })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("button", { name: "前往智能分析" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "重置筛选" })).toHaveLength(1);
     await userEvent.click(screen.getByRole("button", { name: "重置筛选" }));
     expect(screen.queryByRole("button", { name: "重置筛选" })).not.toBeInTheDocument();
     expect(table.querySelectorAll(".section-empty button")).toHaveLength(1);
-    expect(within(table).getByRole("button", { name: "前往日志分析" })).toBeInTheDocument();
+    expect(within(table).getByRole("button", { name: "前往智能分析" })).toBeInTheDocument();
   });
 
   it("opens the drawer from the file and shows the uploader, upload time and general-analysis fallback", async () => {

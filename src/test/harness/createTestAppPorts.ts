@@ -68,6 +68,7 @@ export function createTestAppPorts(options: CreateTestAppPortsOptions = {}): Tes
 
   return {
     authClient: pickPort(assembled, overrides, "authClient"),
+    workflowPublicationClient: pickPort(assembled, overrides, "workflowPublicationClient"),
     parameterRepository: pickPort(assembled, overrides, "parameterRepository"),
     parameterTopologyRepository: pickPort(assembled, overrides, "parameterTopologyRepository"),
     parameterCatalogRepository: pickPort(assembled, overrides, "parameterCatalogRepository"),

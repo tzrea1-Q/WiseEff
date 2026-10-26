@@ -1,6 +1,6 @@
 import { knowledgeEntryHref } from "@/domain/knowledge/citations";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DatabaseZap, ExternalLink, RefreshCw } from "lucide-react";
+import { DatabaseZap, ExternalLink, RefreshCw, BookOpen } from "lucide-react";
 
 import type { KnowledgeRepository, UpdateKnowledgeInput } from "@/application/ports/KnowledgeRepository";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
@@ -17,6 +17,7 @@ import { ViewSwitch } from "@/components/ui/view-switch";
 import { TabPanel } from "@/components/ui/tab-panel";
 import { useCollectionTab } from "@/hooks/useCollectionTab";
 import { PageInsightBar, type Column } from "@/components/admin";
+import { Empty, EmptyHeader, EmptyMedia, EmptyDescription, EmptyContent } from "@/components/ui/empty";
 import { Button } from "@/components/ui/button";
 import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 import { KnowledgeTagList, KnowledgeUnsearchableBadge } from "./badges";
@@ -102,7 +103,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
       const result = await repository.list({ status: "draft", sourceType: "agent" });
       setAgentDrafts(result.items);
     } catch (error) {
-      setAgentDraftError(presentError(error, "Agent 草稿加载失败，请稍后重试。"));
+      setAgentDraftError(presentError(error, "小泽草稿加载失败，请稍后重试。"));
     } finally {
       setAgentDraftsLoading(false);
     }
@@ -115,6 +116,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
   }, [loadAgentDrafts, loadArchived, loadIndexHealth]);
 
   const archivedCount = useMemo(() => rows.length, [rows]);
+  const knowledgeNextStep = <EmptyContent><Button asChild variant="outline" size="sm"><a href="/knowledge">前往知识库</a></Button></EmptyContent>;
 
   const publishAgentDraft = async (entry: KnowledgeEntry) => {
     setAgentActionPendingId(entry.id);
@@ -240,7 +242,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
     setRebuildNotice("");
     try {
       const result = await repository.rebuildIndex();
-      setRebuildNotice(`已重新入队 ${result.enqueued} 条已发布条目,索引由后台 worker 逐条重建。`);
+      setRebuildNotice(`已重新入队 ${result.enqueued} 条已发布条目，索引由后台任务逐条重建。`);
       await loadIndexHealth();
     } catch (error) {
       setIndexError(presentError(error, "全量重建入队失败，请稍后重试。"));
@@ -312,7 +314,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
       render: (item) => (
         <span className="text-xs text-muted-foreground">
           {item.chunkCount}
-          {item.embeddedChunkCount > 0 ? ` (向量 ${item.embeddedChunkCount})` : ""}
+          {item.embeddedChunkCount > 0 ? `（向量 ${item.embeddedChunkCount}）` : ""}
         </span>
       ),
       widthClass: "w-24"
@@ -322,7 +324,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
       header: "失败原因",
       render: (item) =>
         item.error ? (
-          <span className="block max-w-72 truncate text-xs text-destructive" title={item.error}>
+          <span className="block max-w-72 truncate text-xs text-destructive" title={presentErrorMessage(item.error, "服务暂时不可用，请稍后重试。")}>
             {presentErrorMessage(item.error, "索引失败，请稍后重试或联系管理员。")}
           </span>
         ) : (
@@ -376,24 +378,23 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
     <div className="knowledge-admin-page flex flex-col gap-5">
       <PageInsightBar
         variant={agentDrafts.length > 0 ? "warn" : "info"}
-        headline={`待审阅 Agent 草稿 ${agentDrafts.length} 条 · 已归档 ${archivedCount} 条`}
-        description="知识治理:审阅 Agent 沉淀的知识草稿(发布或拒绝归档),管理已归档条目与检索索引健康。草稿在发布前不进入检索。"
+        headline={`待审阅小泽草稿 ${agentDrafts.length} 条 · 已归档 ${archivedCount} 条`}
         actions={[]}
       />
 
       <ViewSwitch variant="tabs" ariaLabel="知识治理集合" value={collection} onValueChange={selectCollection}
         items={[
-          { value: "drafts", label: "Agent 草稿发布队列", id: "knowledge-tab-drafts", panelId: "knowledge-panel-drafts" },
+          { value: "drafts", label: "小泽草稿", id: "knowledge-tab-drafts", panelId: "knowledge-panel-drafts" },
           { value: "index", label: "检索索引健康", id: "knowledge-tab-index", panelId: "knowledge-panel-index" },
           { value: "archived", label: "已归档条目", id: "knowledge-tab-archived", panelId: "knowledge-panel-archived" }
         ]} />
       <TabPanel id={`knowledge-panel-${collection}`} aria-labelledby={`knowledge-tab-${collection}`}>
         {collection === "drafts" ? (
-          <AdminListPage label="Agent 草稿发布队列"
+          <AdminListPage label="小泽草稿" headerContent={<></>}
             headerActions={<Button size="sm" onClick={() => void loadAgentDrafts()} disabled={agentDraftsLoading} aria-busy={agentDraftsLoading || undefined}><RefreshCw data-icon="inline-start" />刷新</Button>}
-            filterBar={<p className="text-sm text-muted-foreground">小泽经审批创建的知识草稿在此审阅:knowledge:edit 可发布本人会话沉淀的草稿,knowledge:manage 可发布任意草稿;拒绝会将草稿归档。</p>}
+            filterBar={<p className="text-sm text-muted-foreground">知识编辑者可发布本人会话的草稿，知识管理员可发布任意草稿。拒绝后归档。</p>}
             notice={agentDraftError ? <p role="alert" className="text-destructive">{agentDraftError}</p> : null}
-            table={{ "aria-label": "Agent 知识草稿队列", rows: agentDrafts, rowKey: (entry) => entry.id, columns: agentDraftColumns, pageSize: 10 }}
+            table={{ "aria-label": "小泽知识草稿", rows: agentDrafts, rowKey: (entry) => entry.id, columns: agentDraftColumns, pageSize: 10, emptyState: <Empty className="section-empty"><EmptyHeader><EmptyMedia variant="icon"><BookOpen /></EmptyMedia><EmptyDescription>{agentDraftsLoading ? "正在加载小泽草稿…" : "暂无待审阅的小泽知识草稿。"}</EmptyDescription></EmptyHeader>{knowledgeNextStep}</Empty> }}
             rowActions={(entry) => ({
               label: entry.title,
               primaryAction: { id: "review", label: "审阅", onSelect: () => onNavigate?.(knowledgeEntryHref({ entryId: entry.id })) },
@@ -401,36 +402,36 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
                 { id: "edit", label: "编辑", disabled: !canGovernEntry(entry, capability), onSelect: () => setEditingEntry(entry) },
                 { id: "publish", label: "发布", disabled: !canGovernEntry(entry, capability) || agentActionPendingId !== null, onSelect: () => publishAgentDraft(entry) },
                 { id: "reject", label: "拒绝归档", disabled: !canGovernEntry(entry, capability) || agentActionPendingId !== null, destructive: true,
-                  confirmation: { title: `拒绝并归档「${entry.title}」`, description: "该 Agent 草稿将被归档,不会发布进入检索。归档后可在「已归档条目」标签中查看;操作会写入审计记录。", confirmLabel: "拒绝归档" },
+                  confirmation: { title: `拒绝并归档「${entry.title}」`, description: "该小泽草稿将被归档，不会发布进入检索。归档后可在「已归档条目」标签中查看；操作会写入审计记录。", confirmLabel: "拒绝归档" },
                   onSelect: () => rejectAgentDraft(entry) },
                 ...(canManage ? [{ id: "delete", label: "彻底删除", destructive: true as const,
                   confirmation: { title: `彻底删除「${entry.title}」`, description: `将永久删除该条目及其全部 ${entry.headRevisionNumber} 个修订，不可恢复。存储中的原始文件保留。删除会写入审计记录。`, confirmLabel: "彻底删除" },
                   onSelect: () => deleteEntry(entry) }] : [])
               ]
             })}
-            emptyState={{ message: agentDraftsLoading ? "正在加载 Agent 草稿…" : "当前没有待审阅的 Agent 知识草稿。", actionLabel: "刷新", onAction: () => void loadAgentDrafts() }} />
+            emptyState={{ message: agentDraftsLoading ? "正在加载 小泽草稿…" : "当前没有待审阅的 小泽知识草稿。" }} />
         ) : collection === "index" ? (
           !canManage ? <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">索引健康与重建操作需要知识管理员权限。</p> :
-          <AdminListPage label="检索索引健康"
+          <AdminListPage label="检索索引健康" headerContent={<></>}
             headerActions={<>
               <Button variant="outline" size="sm" onClick={() => void rescanReferenceSuggestions()} disabled={rescanPending || rebuildPending || indexLoading} aria-busy={rescanPending || undefined}><RefreshCw data-icon="inline-start" />重新检测建议关联</Button>
               <Button variant="outline" size="sm" onClick={() => void rebuildIndex()} disabled={rescanPending || rebuildPending || indexLoading} aria-busy={rebuildPending || undefined}><DatabaseZap data-icon="inline-start" />全量重建索引</Button>
               <Button size="sm" onClick={() => void loadIndexHealth()} disabled={indexLoading} aria-busy={indexLoading || undefined}><RefreshCw data-icon="inline-start" />刷新</Button>
             </>}
             filterBar={indexHealth ? <p data-retrieval-mode={indexHealth.retrieval.mode} aria-label="检索模式" className="text-sm text-foreground">
-              当前检索模式:<strong>{knowledgeRetrievalModeLabels[indexHealth.retrieval.mode]}</strong>
-              <span className="ml-2 text-xs text-muted-foreground">pgvector {indexHealth.retrieval.vectorAvailable ? "可用" : "不可用"} · 嵌入端点{indexHealth.retrieval.embeddingConfigured ? "已配置" : "未配置"}{indexHealth.retrieval.mode === "fts_only" ? " —— 语义检索降级,知识库保持全文检索可用。" : ""}</span>
+              当前检索模式：<strong>{knowledgeRetrievalModeLabels[indexHealth.retrieval.mode]}</strong>
+              <span className="ml-2 text-xs text-muted-foreground">pgvector {indexHealth.retrieval.vectorAvailable ? "可用" : "不可用"} · 嵌入端点{indexHealth.retrieval.embeddingConfigured ? "已配置" : "未配置"}{indexHealth.retrieval.mode === "fts_only" ? " —— 语义检索降级，知识库保持全文检索可用。" : ""}</span>
             </p> : <span className="text-sm text-muted-foreground">检索索引状态</span>}
             notice={<>{indexError ? <p role="alert" className="text-destructive">{indexError}</p> : null}{rebuildNotice ? <p role="status">{rebuildNotice}</p> : null}</>}
-            table={{ "aria-label": "知识索引状态", rows: indexHealth?.items ?? [], rowKey: (item) => item.entryId, columns: indexColumns, pageSize: 10 }}
+            table={{ "aria-label": "知识索引状态", rows: indexHealth?.items ?? [], rowKey: (item) => item.entryId, columns: indexColumns, pageSize: 10, emptyState: <Empty className="section-empty"><EmptyHeader><EmptyMedia variant="icon"><BookOpen /></EmptyMedia><EmptyDescription>{indexLoading ? "正在加载索引状态…" : "暂无索引记录。"}</EmptyDescription></EmptyHeader>{knowledgeNextStep}</Empty> }}
             rowActions={(item) => ({ label: item.title, primaryAction: { id: "retry", label: "重试", disabled: indexActionPendingId !== null, onSelect: () => retryIndex(item) }, items: [] })}
-            emptyState={{ message: indexLoading ? "正在加载索引状态…" : "还没有索引记录。发布知识条目后会自动进入索引队列。", actionLabel: "刷新", onAction: () => void loadIndexHealth() }} />
+            emptyState={{ message: indexLoading ? "正在加载索引状态…" : "还没有索引记录。发布知识条目后会自动进入索引队列。" }} />
         ) : (
-          <AdminListPage label="已归档条目管理"
+          <AdminListPage label="已归档条目管理" headerContent={<></>}
             headerActions={<Button size="sm" onClick={() => void loadArchived()} disabled={loading} aria-busy={loading || undefined}><RefreshCw data-icon="inline-start" />刷新</Button>}
             filterBar={<span className="text-sm text-muted-foreground">已归档 {archivedCount} 条</span>}
-            notice={<>{errorMessage ? <p role="alert" className="text-destructive">{errorMessage}</p> : null}{!canManage ? <p>当前账号没有知识治理权限;彻底删除等治理操作需要知识管理员执行。</p> : null}</>}
-            table={{ "aria-label": "已归档知识条目", rows, rowKey: (entry) => entry.id, columns, pageSize: 10 }}
+            notice={<>{errorMessage ? <p role="alert" className="text-destructive">{errorMessage}</p> : null}{!canManage ? <p>当前账号没有知识治理权限；彻底删除等治理操作需要知识管理员执行。</p> : null}</>}
+            table={{ "aria-label": "已归档知识条目", rows, rowKey: (entry) => entry.id, columns, pageSize: 10, emptyState: <Empty className="section-empty"><EmptyHeader><EmptyMedia variant="icon"><BookOpen /></EmptyMedia><EmptyDescription>{loading ? "正在加载已归档条目…" : "暂无已归档条目。"}</EmptyDescription></EmptyHeader>{knowledgeNextStep}</Empty> }}
             rowActions={(entry) => ({ label: entry.title,
               primaryAction: { id: "restore", label: "恢复", disabled: restorePendingId !== null, onSelect: () => restoreEntry(entry) },
               items: [{ id: "edit", label: "编辑", disabled: !canGovernEntry(entry, capability), onSelect: () => setEditingEntry(entry) },
@@ -438,7 +439,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
                 confirmation: { title: `彻底删除「${entry.title}」`, description: `将永久删除该条目及其全部 ${entry.headRevisionNumber} 个修订，不可恢复。存储中的原始文件保留。删除会写入审计记录。`, confirmLabel: "彻底删除" },
                 onSelect: () => deleteEntry(entry) }] : [])]
             })}
-            emptyState={{ message: loading ? "正在加载已归档条目…" : "暂无已归档条目。", actionLabel: "刷新", onAction: () => void loadArchived() }} />
+            emptyState={{ message: loading ? "正在加载已归档条目…" : "暂无已归档条目。" }} />
         )}
       </TabPanel>
       <KnowledgeEntryEditorDialog open={editingEntry?.contentForm === "markdown"} entry={editingEntry}

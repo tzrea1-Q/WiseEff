@@ -72,7 +72,7 @@ export function KnowledgeFileUploadDialog({ open, entry, onSubmit, onClose }: Kn
     } catch (submitError) {
       if (submitError instanceof KnowledgeRevisionConflictError) {
         setError(
-          `保存冲突:条目已被更新到修订 #${submitError.currentHeadRevisionNumber},请刷新后重试。`
+          `保存冲突：条目已被更新到修订 #${submitError.currentHeadRevisionNumber}，请刷新后重试。`
         );
       } else {
         setError(presentError(submitError, "保存失败，请稍后重试。"));
@@ -110,18 +110,18 @@ export function KnowledgeFileUploadDialog({ open, entry, onSubmit, onClose }: Kn
               maxLength={KNOWLEDGE_TITLE_CHARACTER_LIMIT}
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder={entry ? entry.title : "如:MT5788 无线充手册"}
+              placeholder={entry ? entry.title : "如：MT5788 无线充手册"}
               className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </label>
 
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            标签(逗号分隔)
+            标签（逗号分隔）
             <input
-              aria-label="标签(逗号分隔)"
+              aria-label="标签（逗号分隔）"
               value={tagsText}
               onChange={(event) => setTagsText(event.target.value)}
-              placeholder="如:project-aurora, 硬件手册"
+              placeholder="如：project-aurora，硬件手册"
               className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </label>

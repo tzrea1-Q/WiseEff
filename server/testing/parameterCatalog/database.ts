@@ -133,8 +133,14 @@ export const S2_SCH_0253_FINGERPRINT =
 /** 0255 adds the root-swap receipt guard and exact-anchor restoration predicate,
  * updating three source guards. Measured on fresh PostgreSQL including 0251–0254;
  * the other five inventory categories and all historical pins remain intact. */
-export const S2_SCH_LIVE_FINGERPRINT =
+export const S2_SCH_0255_FINGERPRINT =
   "b91687374e810d2223f8ad7a87212032af99a5ae8dff78e9fce496d2b32d404e";
+
+/** 0256 lets a log's uploader erase their own failed log and retry its pending
+ * storage cleanup: a shared erasure-actor guard used by the lock and receipt readers,
+ * plus an owner-scoped pending-cleanup listing. */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "348caf501d780aec9efd1bf7f740c7e946025444f711d28be3de40aaadd916e0";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

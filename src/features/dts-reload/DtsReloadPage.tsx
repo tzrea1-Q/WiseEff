@@ -112,6 +112,9 @@ export type DtsReloadPageProps = {
   knowledgeRepository?: KnowledgeRepository | null;
   /** knowledge:edit gates the distil affordance (deferred roadmap item 3). */
   knowledgeCapability?: KnowledgeCapability;
+  /** Publication controls entry and creation, while permitted references stay readable. */
+  canOpenKnowledge?: boolean;
+  canOpenParameters?: boolean;
   /** Published definition references; absent without knowledge:view. */
   relatedKnowledge?: SpecRelatedKnowledgeSource;
   /** Router navigation for the /knowledge draft-editor handoff. */
@@ -137,6 +140,8 @@ export function DtsReloadPage({
   moduleRegistryRepository,
   knowledgeRepository,
   knowledgeCapability,
+  canOpenKnowledge = true,
+  canOpenParameters = true,
   relatedKnowledge,
   onNavigate,
   initialRunId,
@@ -665,10 +670,10 @@ export function DtsReloadPage({
   // from the terminal run and hands off into the /knowledge draft editor,
   // exactly like the logs page pattern. Server-side gates stay authoritative.
   const canDistilRun = Boolean(
-    knowledgeRepository && knowledgeCapability?.canEdit && onNavigate && run && isReloadRunDistillable(run.status)
+    canOpenKnowledge && knowledgeRepository && knowledgeCapability?.canEdit && onNavigate && run && isReloadRunDistillable(run.status)
   );
   const onDistil = useCallback(async () => {
-    if (!knowledgeRepository || !onNavigate || !run || distilPending) {
+    if (!canDistilRun || !knowledgeRepository || !onNavigate || !run || distilPending) {
       return;
     }
     setDistilPending(true);
@@ -689,12 +694,12 @@ export function DtsReloadPage({
     } finally {
       setDistilPending(false);
     }
-  }, [distilPending, knowledgeRepository, onNavigate, run, session]);
+  }, [canDistilRun, distilPending, knowledgeRepository, onNavigate, run, session]);
 
-  const canPromoteRun = Boolean(canPromoteToDrafts && onNavigate && run && isReloadRunPromotable(run));
+  const canPromoteRun = Boolean(canOpenParameters && canPromoteToDrafts && onNavigate && run && isReloadRunPromotable(run));
   const executePromote = useCallback(
     async (unverifiableAcknowledged?: boolean) => {
-      if (!onNavigate || !run || promotePending) {
+      if (!canPromoteRun || !onNavigate || !run || promotePending) {
         return;
       }
       setPromotePending(true);
@@ -721,7 +726,7 @@ export function DtsReloadPage({
         setPromotePending(false);
       }
     },
-    [onNavigate, promotePending, repository, run, session]
+    [canPromoteRun, onNavigate, promotePending, repository, run, session]
   );
   const onPromote = useCallback(() => {
     if (!run || !canPromoteRun) {

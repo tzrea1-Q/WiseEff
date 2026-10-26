@@ -98,6 +98,7 @@ export const logRecordDtoSchema = z.object({
   fileName: z.string(),
   source: z.string(),
   fileSizeBytes: z.number(),
+  canDelete: z.boolean().optional(),
   status: logRecordStatusSchema,
   archiveState: logArchiveStateSchema,
   stage: logStageSchema,

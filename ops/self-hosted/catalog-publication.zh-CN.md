@@ -22,6 +22,8 @@ setup/upgrade 在缺少私有文件时写入**未配置 stub**，绝不复制 `D
 
 ## schema 升级后刷新既有 LOGIN 权限
 
+迁移 `0257_definition_erasure_writer_runtime_grants.sql` 会自动为已属于 `parameter_governance_writer_role` 且原本可 `SET ROLE` 到该角色的既有 NOINHERIT LOGIN 补齐明确列出的定义删除与清理函数权限，覆盖旧读取函数和清理列表权限都缺失的 API 账号；单独的 `0253` 可能跳过这些账号。只有成员关系但 `SET FALSE` 的账号不满足条件。worker、manager 与无关 LOGIN 不增加能力。迁移不修改密码、角色继承、表 DML 或发布冻结。通用 readiness 不证明 `/api/v2/catalog/definition-erasures` 可读取，升级后应单独验证该接口。
+
 setup preflight 与 doctor 解析 `DATABASE_URL`：bootstrap 用户 `wiseeff` 的密码必须与已展开的 `POSTGRES_PASSWORD` 完全一致；认可的 API 运行时 LOGIN `wiseeff_api` 使用自身非空凭据。两条路径均拒绝未展开的 `${...}` 插值、格式错误的 URL、未认可的用户名与错误的 bootstrap 密码，即使 `POSTGRES_PASSWORD` 出现在 URL 的其他位置也不能通过。比较前会解码 URL 编码的凭据，并拒绝查询参数中的 `user` 与 `password` 覆盖。API 应继续使用 `wiseeff_api`，不要为满足 doctor 而退回 bootstrap 超管。这些配置检查不证明实际认证或数据库权限；后者需通过运行时状态与当前 Catalog 门禁检查。
 
 运行时 LOGIN 可能早于新应用表创建。迁移会创建表，但不会重新执行 LOGIN 配置入口对 public 表的授权。例如，API LOGIN 缺少 `public.project_parameter_value_drafts` 或 `public.project_parameter_value_change_requests` 的 SELECT 时，项目草稿接口会返回 500，即使项目没有草稿。通用 API readiness 不会执行这个接口。

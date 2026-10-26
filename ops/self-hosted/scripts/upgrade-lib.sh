@@ -175,6 +175,8 @@ wiseeff_upgrade_write_status() {
     printf 'recovery_proxy_stopped=%s\n' "$(wiseeff_upgrade_state_read recovery_proxy_stopped)"
     printf 'recovery_queue_paused=%s\n' "$(wiseeff_upgrade_state_read recovery_queue_paused)"
     printf 'recovery_failure_summary=%s\n' "$(wiseeff_upgrade_state_read recovery_failure_summary)"
+    printf 'publication_freeze_owned=%s\n' "$(wiseeff_upgrade_state_read publication_freeze_owned)"
+    printf 'publication_freeze_completion=%s\n' "$(wiseeff_upgrade_state_read publication_freeze_completion)"
     printf 'next_action=%s\n' "$(wiseeff_upgrade_state_read next_action)"
   } > "$temp_path"
   chmod 600 "$temp_path"
@@ -1692,6 +1694,40 @@ wiseeff_upgrade_publication_is_frozen() {
   printf '%s' "$payload" | grep -q '"frozen":true'
 }
 
+wiseeff_upgrade_record_publication_completion() {
+  local completion payload next_action
+  completion=not-managed
+  next_action=none
+  case "$(wiseeff_upgrade_state_read publication_freeze_owned)" in
+    true) completion=cleared ;;
+    false)
+      if [ "$(wiseeff_upgrade_state_read publication_freeze_skipped)" != "first-intro-unconfigured" ]; then
+        if payload="$(wiseeff_upgrade_publication_ops status 2>/dev/null)"; then
+          case "$payload" in
+            '{"frozen":true}') completion=retained ;;
+            '{"frozen":false}') completion=not-frozen ;;
+            *) completion=unknown ;;
+          esac
+        else
+          completion=unknown
+        fi
+      fi
+      ;;
+  esac
+  case "$completion" in
+    retained)
+      next_action="Publication freeze remains set and was not owned by this upgrade. Run ./scripts/collect-catalog-publication-status.sh; the owning operator must verify maintenance is complete before clearing it."
+      printf '%s\n' "Warning: publication freeze remains set; this upgrade did not own it. ${next_action}" >&2
+      ;;
+    unknown)
+      next_action="Publication freeze status could not be confirmed. Run ./scripts/collect-catalog-publication-status.sh before resuming publication."
+      printf '%s\n' "Warning: ${next_action}" >&2
+      ;;
+  esac
+  wiseeff_upgrade_state_write publication_freeze_completion "$completion" || return $?
+  wiseeff_upgrade_state_write next_action "$next_action"
+}
+
 wiseeff_upgrade_isolate_publication() {
   if wiseeff_upgrade_publication_freeze true; then
     wiseeff_upgrade_state_write publication_freeze_held true
@@ -2332,11 +2368,14 @@ wiseeff_upgrade_complete_candidate() {
   fi
   wiseeff_upgrade_state_write outcome completed
   wiseeff_upgrade_record_build_transport_completion
-  wiseeff_upgrade_state_write next_action none
+  wiseeff_upgrade_record_publication_completion || return $?
   wiseeff_upgrade_set_phase completed completed
   wiseeff_upgrade_write_status "$upgrade_run_id"
   if [ "$upgrade_json" = "true" ]; then
-    printf '{"action":"%s","status":"completed","runId":"%s","targetSha":"%s"}\n' "$completion_action" "$upgrade_run_id" "$upgrade_target_sha"
+    printf '{"action":"%s","status":"completed","runId":"%s","targetSha":"%s","publicationFreezeCompletion":"%s","nextAction":"%s"}\n' \
+      "$completion_action" "$upgrade_run_id" "$upgrade_target_sha" \
+      "$(wiseeff_upgrade_json_escape "$(wiseeff_upgrade_state_read publication_freeze_completion)")" \
+      "$(wiseeff_upgrade_json_escape "$(wiseeff_upgrade_state_read next_action)")"
   elif [ "$completion_action" = "recover-candidate" ]; then
     printf 'Candidate recovery completed. run_id=%s target=%s (from %s)\n' "$upgrade_run_id" "$upgrade_target_sha" "$previous_phase"
   else
@@ -3303,12 +3342,14 @@ wiseeff_upgrade_run_apply() {
 
   wiseeff_upgrade_state_write outcome completed
   wiseeff_upgrade_record_build_transport_completion
-  wiseeff_upgrade_state_write next_action none
+  wiseeff_upgrade_record_publication_completion || return $?
   wiseeff_upgrade_set_phase completed completed
   wiseeff_upgrade_write_status "$upgrade_run_id"
   if [ "$upgrade_json" = "true" ]; then
-    printf '{"action":"apply","status":"completed","runId":"%s","targetSha":"%s","completedWithInsecureBuildTransport":%s}\n' \
-      "$upgrade_run_id" "$upgrade_target_sha" "$(wiseeff_upgrade_state_read completed_with_insecure_build_transport)"
+    printf '{"action":"apply","status":"completed","runId":"%s","targetSha":"%s","completedWithInsecureBuildTransport":%s,"publicationFreezeCompletion":"%s","nextAction":"%s"}\n' \
+      "$upgrade_run_id" "$upgrade_target_sha" "$(wiseeff_upgrade_state_read completed_with_insecure_build_transport)" \
+      "$(wiseeff_upgrade_json_escape "$(wiseeff_upgrade_state_read publication_freeze_completion)")" \
+      "$(wiseeff_upgrade_json_escape "$(wiseeff_upgrade_state_read next_action)")"
   else
     printf 'Upgrade completed. run_id=%s target=%s backup=%s insecure_build_transport=%s\n' \
       "$upgrade_run_id" "$upgrade_target_sha" "$upgrade_backup_dir" "$(wiseeff_upgrade_state_read completed_with_insecure_build_transport)"
@@ -3357,7 +3398,7 @@ wiseeff_upgrade_status() {
           true|false) ;;
           *) runtime_proxy_status=false ;;
         esac
-        printf '{"runId":"%s","phase":"%s","outcome":"%s","updatedAt":"%s","protocolVersion":"%s","previousSha":"%s","targetSha":"%s","backupDir":"%s","buildStatus":"%s","diagnosticsDir":"%s","buildLog":"%s","buildSummary":"%s","baseImageRef":"%s","baseImageId":"%s","baseImageConfigId":"%s","baseImagePlatform":"%s","baseImageSource":"%s","baseImageStatus":"%s","buildNetwork":{"proxy":"%s","npmRegistry":"%s","corporateCa":"%s","buildTlsPolicy":"%s","transportFingerprint":"%s","runtimeProxy":%s},"completedWithInsecureBuildTransport":%s,"failedPhase":"%s","failureService":"%s","failureCode":"%s","failureSummary":"%s","recoveryStarted":"%s","recoveryVerified":"%s","recoveryProxyStopped":"%s","recoveryQueuePaused":"%s","recoveryFailureSummary":"%s","nextAction":"%s","parameterDataMode":"%s"}\n' \
+        printf '{"runId":"%s","phase":"%s","outcome":"%s","updatedAt":"%s","protocolVersion":"%s","previousSha":"%s","targetSha":"%s","backupDir":"%s","buildStatus":"%s","diagnosticsDir":"%s","buildLog":"%s","buildSummary":"%s","baseImageRef":"%s","baseImageId":"%s","baseImageConfigId":"%s","baseImagePlatform":"%s","baseImageSource":"%s","baseImageStatus":"%s","buildNetwork":{"proxy":"%s","npmRegistry":"%s","corporateCa":"%s","buildTlsPolicy":"%s","transportFingerprint":"%s","runtimeProxy":%s},"completedWithInsecureBuildTransport":%s,"failedPhase":"%s","failureService":"%s","failureCode":"%s","failureSummary":"%s","recoveryStarted":"%s","recoveryVerified":"%s","recoveryProxyStopped":"%s","recoveryQueuePaused":"%s","recoveryFailureSummary":"%s","nextAction":"%s","parameterDataMode":"%s","publicationFreezeOwned":"%s","publicationFreezeCompletion":"%s"}\n' \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/run_id" 2>/dev/null || printf '%s' "$requested_run_id")")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/phase" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/outcome" 2>/dev/null || true)")" \
@@ -3393,7 +3434,9 @@ wiseeff_upgrade_status() {
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/recovery_queue_paused" 2>/dev/null || printf 'false')")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/recovery_failure_summary" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/next_action" 2>/dev/null || true)")" \
-          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/parameter_data_mode" 2>/dev/null || true)")"
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/parameter_data_mode" 2>/dev/null || true)")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/publication_freeze_owned" 2>/dev/null || true)")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/publication_freeze_completion" 2>/dev/null || true)")"
       else
         cat "${state_root}/${requested_run_id}/status"
       fi

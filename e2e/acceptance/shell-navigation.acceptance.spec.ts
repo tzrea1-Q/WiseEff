@@ -68,12 +68,8 @@ async function expectUsableShell(page: Page, testInfo: TestInfo, route: string) 
       body: await page.screenshot({ fullPage: true }),
       contentType: "image/png"
     });
-  } else if (route.endsWith("/configuration")) {
-    await expect(page.locator('footer[aria-label="页脚信息"]')).toHaveCount(0);
   } else if (["/parameter-review", "/parameter-submissions"].includes(route)) {
-    await expect(page.locator('footer[aria-label="页脚信息"]')).toHaveCount(0);
-    await expect(page.getByRole("complementary", { name: "主导航侧边栏" })
-      .getByRole("button", { name: "问题反馈", exact: true })).toBeVisible();
+    await expect(page.locator('footer[aria-label="页脚信息"]').getByRole("button", { name: "问题反馈" })).toBeVisible();
     await page.getByRole("button", { name: /打开用户菜单$/ }).click();
     const menu = page.locator(".topbar-user-menu");
     await expect(menu).toContainText("©");
@@ -174,9 +170,9 @@ test.describe("M5.4 manual flow A - shell navigation", () => {
           notes: route === "/"
             ? "The rich homepage footer contains one metadata row without a nested footer landmark."
             : route.endsWith("/configuration")
-              ? "The full-height project configuration workbench remains free of the compact footer."
+              ? "The full-height project configuration workbench keeps feedback in a footer below its content."
               : ["/parameter-review", "/parameter-submissions"].includes(route)
-                ? "Review workspaces keep metadata in the user menu and feedback in the sidebar without a compact footer."
+                ? "Review workspaces keep one footer feedback entry and account metadata in the user menu."
               : "The normal shell route ends with one compact footer and a current-page feedback trigger."
         });
       }

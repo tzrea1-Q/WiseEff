@@ -54,6 +54,8 @@ describe("DataTable", () => {
     );
 
     expect(screen.getByText("暂无记录")).toBeInTheDocument();
+    expect(screen.getByRole("cell").querySelector('[data-slot="empty-icon"]')).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /刷新/ })).not.toBeInTheDocument();
   });
 
   it("calls onRowClick when a row is clicked", async () => {

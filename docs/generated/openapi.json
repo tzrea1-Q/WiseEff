@@ -5,6 +5,116 @@
     "version": "m5"
   },
   "paths": {
+    "/api/v1/workflow-publication": {
+      "get": {
+        "operationId": "workflowPublication.get",
+        "summary": "Get global UI workflow publication without management metadata",
+        "tags": [
+          "workflow-publication"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowPublicationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/workflow-publication": {
+      "get": {
+        "operationId": "workflowPublication.adminGet",
+        "summary": "Get global workflow publication and last editor; platform super administrator only",
+        "tags": [
+          "workflow-publication"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowPublicationAdminResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "put": {
+        "operationId": "workflowPublication.update",
+        "summary": "Update global UI workflow publication with an optimistic version; platform super administrator only",
+        "tags": [
+          "workflow-publication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWorkflowPublicationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowPublicationAdminResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/auth/local-config": {
       "get": {
         "operationId": "auth.localConfig",
@@ -21893,6 +22003,165 @@
           }
         }
       },
+      "WorkflowPublicationResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "workflows": {
+                "type": "object",
+                "properties": {
+                  "parameter-management": {
+                    "type": "boolean"
+                  },
+                  "debugging": {
+                    "type": "boolean"
+                  },
+                  "log-analysis": {
+                    "type": "boolean"
+                  },
+                  "knowledge": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "parameter-management",
+                  "debugging",
+                  "log-analysis",
+                  "knowledge"
+                ],
+                "additionalProperties": false
+              },
+              "version": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "workflows",
+              "version"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "WorkflowPublicationResponse"
+      },
+      "WorkflowPublicationAdminResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "workflows": {
+                "type": "object",
+                "properties": {
+                  "parameter-management": {
+                    "type": "boolean"
+                  },
+                  "debugging": {
+                    "type": "boolean"
+                  },
+                  "log-analysis": {
+                    "type": "boolean"
+                  },
+                  "knowledge": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "parameter-management",
+                  "debugging",
+                  "log-analysis",
+                  "knowledge"
+                ],
+                "additionalProperties": false
+              },
+              "version": {
+                "type": "number"
+              },
+              "updatedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "updatedBy": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "workflows",
+              "version",
+              "updatedAt",
+              "updatedBy"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "WorkflowPublicationAdminResponse"
+      },
+      "UpdateWorkflowPublicationRequest": {
+        "type": "object",
+        "properties": {
+          "workflows": {
+            "type": "object",
+            "properties": {
+              "parameter-management": {
+                "type": "boolean"
+              },
+              "debugging": {
+                "type": "boolean"
+              },
+              "log-analysis": {
+                "type": "boolean"
+              },
+              "knowledge": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "parameter-management",
+              "debugging",
+              "log-analysis",
+              "knowledge"
+            ],
+            "additionalProperties": false
+          },
+          "expectedVersion": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "workflows",
+          "expectedVersion"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "UpdateWorkflowPublicationRequest"
+      },
       "CatalogDefinitionErasureListResponse": {
         "type": "object",
         "properties": {
@@ -35857,6 +36126,9 @@
               "fileSizeBytes": {
                 "type": "number"
               },
+              "canDelete": {
+                "type": "boolean"
+              },
               "status": {
                 "type": "string",
                 "enum": [
@@ -36777,6 +37049,9 @@
               "fileSizeBytes": {
                 "type": "number"
               },
+              "canDelete": {
+                "type": "boolean"
+              },
               "status": {
                 "type": "string",
                 "enum": [
@@ -37558,6 +37833,9 @@
                 },
                 "fileSizeBytes": {
                   "type": "number"
+                },
+                "canDelete": {
+                  "type": "boolean"
                 },
                 "status": {
                   "type": "string",
@@ -43573,6 +43851,9 @@
               },
               "fileSizeBytes": {
                 "type": "number"
+              },
+              "canDelete": {
+                "type": "boolean"
               },
               "status": {
                 "type": "string",

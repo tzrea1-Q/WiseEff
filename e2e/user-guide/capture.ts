@@ -296,6 +296,7 @@ test("knowledge-entry-detail", async ({ page }) => {
 test("knowledge-new-entry", async ({ page }) => {
   await openKnowledge(page);
   await page.getByRole("button", { name: "新建条目", exact: true }).click();
+  await page.getByRole("menuitem", { name: "编写条目", exact: true }).click();
   const editor = page.getByRole("dialog", { name: "新建 Markdown 条目", exact: true });
   await expect(editor.getByRole("textbox", { name: "条目标题", exact: true })).toBeVisible();
   await capture(page, "knowledge-new-entry", editor);

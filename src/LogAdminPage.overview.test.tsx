@@ -201,8 +201,8 @@ describe("log admin overview", () => {
     expect(container.querySelectorAll(".overview-tile")).toHaveLength(0);
     expect(within(overview).queryByRole("article")).not.toBeInTheDocument();
     expect(within(overview).queryByText("处理队列稳定")).not.toBeInTheDocument();
-    expect(within(overview).queryByRole("button", { name: "前往日志分析" })).not.toBeInTheDocument();
-    const primary = within(overview).getByRole("button", { name: "进入智能分析" });
+    expect(within(overview).getAllByRole("button", { name: "前往智能分析" })).toHaveLength(1);
+    const primary = within(overview).getByRole("button", { name: "前往智能分析" });
     primary.click();
     expect(onNavigate).toHaveBeenCalledWith("/logs");
   });

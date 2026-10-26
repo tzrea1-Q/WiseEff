@@ -64,4 +64,19 @@ describe("SubAppEntryRow", () => {
     expect(screen.queryByText("暂无记录")).not.toBeInTheDocument();
     expect(screen.queryByText("暂无在线设备")).not.toBeInTheDocument();
   });
+
+  it("only renders cards and links for workflows visible to the caller", () => {
+    render(<SubAppEntryRow visibleWorkflows={["parameter-management", "debugging"]} />);
+
+    expect(screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual(["参数管理", "调试平台"]);
+    expect(screen.queryByRole("link", { name: /日志|知识/ })).not.toBeInTheDocument();
+  });
+
+  it("shows an honest empty state when no workflows are available", () => {
+    render(<SubAppEntryRow visibleWorkflows={[]} />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("暂无向您开放的工作流，请联系管理员。");
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
 });

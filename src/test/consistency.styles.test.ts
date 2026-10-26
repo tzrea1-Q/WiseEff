@@ -97,7 +97,6 @@ describe("shared consistency contracts", () => {
       ".sidebar-collapsed .brand-block",
       ".sidebar-collapsed .sidebar-toggle",
       ".sidebar-collapsed .utility-nav",
-      ".sidebar-collapsed :is(.feedback-entry)",
       ".sidebar-collapsed :is(.primary-nav-action, .nav-item)",
       ".primary-nav-action",
       ".nav-scroll",
@@ -105,7 +104,6 @@ describe("shared consistency contracts", () => {
       ".nav-item",
       ".nav-item.active",
       ".utility-nav",
-      ".feedback-entry",
       ".topbar",
       ".topbar-title",
       ".topbar .topbar-page-actions .project-chip__trigger, .topbar .topbar-page-actions .device-pill, .topbar .topbar-page-actions .dirty-indicator",
@@ -189,12 +187,12 @@ describe("shared consistency contracts", () => {
     expect(navigation.gap).toBe("var(--space-3)");
     expect(navigation.padding).toBe("var(--space-2) var(--space-3)");
     expect(navigation["min-height"]).toBe("var(--space-10)");
-    expect(declarationsFor(styles, ".nav-group-label").padding).toBe("var(--space-2) var(--space-3)");
+    expect(declarationsFor(styles, ".nav-group-label").padding).toBe("0 var(--space-3)");
     expect(declarationsFor(styles, ".nav-item.active")["box-shadow"]).toBe("var(--shadow-1)");
   });
 
   it("keeps expanded and collapsed navigation spacing on the token grid", () => {
-    for (const selector of [".sidebar", ".sidebar-collapsed", ".brand-block", ".sidebar-collapsed .brand-block", ".nav-scroll", ".utility-nav", ".primary-nav-action", ".feedback-entry", ".sidebar-collapsed .utility-nav", ".sidebar-collapsed :is(.feedback-entry)", ".sidebar-collapsed :is(.primary-nav-action, .nav-item)"]) {
+    for (const selector of [".sidebar", ".sidebar-collapsed", ".brand-block", ".sidebar-collapsed .brand-block", ".nav-scroll", ".utility-nav", ".primary-nav-action", ".sidebar-collapsed .utility-nav", ".sidebar-collapsed :is(.primary-nav-action, .nav-item)"]) {
       for (const [property, value] of Object.entries(declarationsFor(styles, selector))) {
         if (/^(?:padding|margin|gap)/.test(property)) expect(value, `${selector} ${property}`).not.toMatch(/[\d.]+(?:px|rem|em)\b/);
       }

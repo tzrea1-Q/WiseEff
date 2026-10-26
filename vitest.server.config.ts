@@ -19,7 +19,7 @@ export default defineConfig({
         && source.endsWith("/shared/database/migrations")) {
         return path.resolve(projectRoot, "server/testing/tempDatabase.ts");
       }
-      if (importer?.split("?")[0]?.endsWith(".test.ts")
+      if (importer && !importer.split("?")[0]?.endsWith("/testing/labRuntimeLogins.ts")
         && source.endsWith("/provisionRuntimeLogins")) {
         return path.resolve(projectRoot, "server/testing/labRuntimeLogins.ts");
       }

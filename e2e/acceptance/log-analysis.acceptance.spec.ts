@@ -534,6 +534,10 @@ async function uploadLogThroughUi(page: Page, filePath: string, question?: strin
     await selectControlOption(dialog.locator("#upload-log-domain"), { label: domainName });
   }
   await dialog.getByTestId("file-drop-zone-input").setInputFiles(filePath);
+  if (filePath === unsupportedFixture) {
+    await expect(dialog.getByRole("button", { name: "开始分析", exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "仍然上传", exact: true })).toBeEnabled();
+  }
   if (question) {
     await dialog.locator("#upload-analysis-question").fill(question);
   }
@@ -575,6 +579,8 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await expect(page.locator(".logs-conclusion-head")).toContainText("已完成");
     await expect(page.getByRole("tablist", { name: "日志辅助信息" }).getByRole("tab"))
       .toHaveText(["报告", "信号", "文件", "分析轨迹"]);
+    await expect(page.getByRole("region", { name: "日志任务区", exact: true }).getByRole("tablist", { name: "日志辅助信息" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "日志记录", exact: true }).getByRole("tablist")).toHaveCount(0);
     await expect(page.getByRole("banner", { name: "页面栏" }).getByRole("button", { name: "首页", exact: true })).toHaveCount(0);
 
     // LOG-CONFIDENCE-PERCENT-001: the server stores confidence as 0-1; the UI
@@ -626,7 +632,11 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await page.goto("/log-admin");
     await expect(page.getByRole("tab", { name: "概览", exact: true })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByTestId("log-admin-overview")).toBeVisible();
+    await expect(page.getByRole("button", { name: "前往智能分析", exact: true })).toBeVisible();
     await page.goto("/log-admin?tab=records");
+    const reportDownload = page.waitForEvent("download");
+    await page.getByRole("button", { name: "导出 JSON", exact: true }).click();
+    expect((await reportDownload).suggestedFilename()).toMatch(/\.json$/);
     // The Xiaoze toggle hint floats over the detail panel's corner actions.
     await dismissXiaozeToggleHint(page);
     await page.locator('input[type="search"]').fill(supportedFileName);
@@ -689,7 +699,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await expect(failureAlert).toContainText("不支持此日志格式");
     await expect(failureAlert).not.toContainText("Unsupported log format");
     await expect(failureAlert.getByRole("button", { name: "重新上传" })).toBeVisible();
-    await expect(failureAlert).toContainText("在 日志解析 阶段失败");
+    await expect(failureAlert).toContainText("在日志解析阶段失败");
     for (const extension of [".log", ".txt", ".csv", ".json", ".zip", ".tar", ".tar.gz", ".tgz", ".gz"]) {
       await expect(failureAlert).toContainText(extension);
     }

@@ -40,6 +40,8 @@ import { createHttpParameterDashboardRepository } from "@/infrastructure/http/pa
 import { createParameterCatalogClient } from "@/infrastructure/http/parameterCatalogClient";
 import { createHttpProductFeedbackRepository } from "@/infrastructure/http/productFeedbackClient";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
+import { createWorkflowPublicationClient, type WorkflowPublicationClient } from "@/infrastructure/http/workflowPublicationClient";
+import { createMockWorkflowPublicationClient } from "@/infrastructure/mock/mockWorkflowPublicationClient";
 import { createMockOrganizationActions } from "@/infrastructure/mock/mockOrganizationActions";
 import type { OrganizationActions } from "@/OrganizationPage";
 import { resolveWiseEffApiBaseUrl, wiseEffApiAuthorization, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
@@ -67,6 +69,7 @@ export type WiseEffAuthClient = {
  */
 export type AppRuntime = {
   authClient: WiseEffAuthClient;
+  workflowPublicationClient?: WorkflowPublicationClient;
   parameterRepository: ParameterRepository;
   parameterTopologyRepository: ParameterTopologyRepository;
   parameterCatalogRepository: ParameterCatalogRepository;
@@ -123,6 +126,7 @@ export function createAppRuntime(
           } });
   return {
     authClient: overrides.authClient ?? createAuthClient(),
+    workflowPublicationClient: overrides.workflowPublicationClient ?? (api ? createWorkflowPublicationClient() : createMockWorkflowPublicationClient()),
     parameterRepository:
       overrides.parameterRepository ??
       (api ? createHttpParameterRepository() : createMockParameterRepository(deps.mockParameterRuntime)),

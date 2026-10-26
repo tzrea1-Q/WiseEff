@@ -2,6 +2,7 @@ import type { KnowledgeExtractionStatus, KnowledgeOrigin, KnowledgeStatus } from
 import { knowledgeExtractionStatusLabels, knowledgeOriginLabels, knowledgeStatusLabels } from "@/domain/knowledge/types";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { presentErrorMessage } from "@/infrastructure/http/presentError";
 
 export function KnowledgeUnsearchableBadge() {
   return <Badge className="bg-[var(--warning-soft)] text-[var(--warning)]">不可检索</Badge>;
@@ -46,7 +47,7 @@ export function KnowledgeExtractionBadge({
     <span
       className={cn("inline-flex h-5 items-center rounded-md px-1.5 text-[11px] font-medium", extractionBadgeClasses[status])}
       data-extraction-status={status}
-      title={status === "failed" && error ? error : undefined}
+      title={status === "failed" && error ? presentErrorMessage(error, "服务暂时不可用，请稍后重试。") : undefined}
     >
       {knowledgeExtractionStatusLabels[status]}
     </span>

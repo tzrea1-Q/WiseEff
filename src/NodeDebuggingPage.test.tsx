@@ -341,6 +341,42 @@ describe("/node-debugging", () => {
     expect(await screen.findByText(/已连接：API Gateway Target/)).toBeInTheDocument();
   });
 
+  it("shows an empty-device alert with an online Bridge and clears it on redetection", async () => {
+    const gateway = createTestDebuggingGateway({ detectTargets: vi.fn().mockResolvedValue([]) });
+    render(<StatefulNodeDebuggingHarness
+      gateway={gateway}
+      initialAppState={userState}
+      pageProps={createMockDebuggingBridgeSeams()}
+    />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "未检测到设备，请检查 USB 连接与调试授权后重新检测。"
+    );
+    expect(gateway.createSession).not.toHaveBeenCalled();
+
+    const detection = createDeferred<Awaited<ReturnType<DebuggingGateway["detectTargets"]>>>();
+    vi.mocked(gateway.detectTargets).mockReturnValue(detection.promise);
+    fireEvent.click(screen.getByRole("button", { name: "重新检测" }));
+    await waitFor(() => expect(screen.getByText("检测中...")).toBeInTheDocument());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    await act(async () => { detection.resolve([apiTarget]); });
+    expect(await screen.findByText(/已连接：API Gateway Target/)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("keeps Bridge recovery guidance without a USB alert when the Bridge is offline", async () => {
+    const gateway = createTestDebuggingGateway({ detectTargets: vi.fn().mockResolvedValue([]) });
+    render(<StatefulNodeDebuggingHarness gateway={gateway} initialAppState={userState} pageProps={{
+      ...createMockDebuggingBridgeSeams(),
+      probeBridgeHealth: async () => ({ health: null, reachability: "offline" })
+    }} />);
+
+    await screen.findByText("未连接设备");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "连接本机" })).toBeInTheDocument();
+  });
+
   it("automatically uses the discovered protocol without exposing protocol tabs", async () => {
     const debuggingActions = createDebuggingActions({
       detectAndStartSession: vi.fn().mockResolvedValue({ session: adbSession, target: adbTarget })

@@ -145,7 +145,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "product-feedback",
     route: "/parameters",
     roles: ["Admin"],
-    action: "Submit product feedback from the sidebar with a required description and optional pasted image.",
+    action: "Submit product feedback from the footer with a required description and optional pasted image.",
     coverage: "automated",
     acceptanceIds: ["PFB-SUBMIT-001"],
     specFiles: ["e2e/acceptance/product-feedback.acceptance.spec.ts"],
@@ -331,10 +331,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     id: "SHELL-FOOTER-001",
     priority: "P1",
     area: "shell",
-    route: "included routes plus auth, error, download, and configuration-workbench exclusions",
+    route: "included routes plus auth, error, and download exclusions",
     roles: ["Admin"],
     action:
-      "Reach page-ending copyright/version metadata and open current-page feedback; preserve one homepage footer, approved contact protocols, and auth/error/download/full-height-workbench exclusions.",
+      "Reach page-ending copyright/version metadata and open current-page feedback; preserve one homepage footer, approved contact protocols, and auth/error/download exclusions.",
     coverage: "automated",
     acceptanceIds: ["SHELL-FOOTER-001"],
     specFiles: [

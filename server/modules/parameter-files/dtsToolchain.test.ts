@@ -325,6 +325,7 @@ describe("createDtsToolchainRunner", () => {
     const result = await runner.validate(happyConfigSet(), { mode: "release" });
     expect(result.ok).toBe(false);
     expect(result.failureCode).toBe("toolchain-unavailable");
+    expect(result.diagnostics[0].message).toBe("DTS 校验工具不可用，请联系管理员。");
     expect(result.compiler.dtschema).toBeNull();
   });
 

@@ -227,9 +227,10 @@ describe("knowledge entry editor reference picker", () => {
     const user = userEvent.setup();
 
     await screen.findByRole("table", { name: "知识条目列表" });
-    await user.click(screen.getByRole("button", { name: /新建条目/ }));
+    await user.click(screen.getByRole("button", { name: "新建条目" }));
+    await user.click(screen.getByRole("menuitem", { name: "编写条目" }));
     const picker = await screen.findByTestId("knowledge-reference-picker");
-    expect(within(picker).getByText("先创建草稿,再关联参数定义。")).toBeInTheDocument();
+    expect(within(picker).getByText("先创建草稿，再关联参数定义。")).toBeInTheDocument();
     expect(within(picker).queryByRole("searchbox", { name: "检索参数定义" })).not.toBeInTheDocument();
   });
 

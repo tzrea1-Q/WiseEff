@@ -1,7 +1,6 @@
 .node-debugging-page .navigator-workbench__toolbar {
-  border-color: transparent;
-  border-radius: 0;
-  background: transparent;
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
 }
 
 .node-debugging-page .navigator-workbench__controls {

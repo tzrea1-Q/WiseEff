@@ -17,23 +17,19 @@ export function DebugModuleDeletionDialog({ module, modules, onPreview, onDelete
   const [targetId, setTargetId] = useState("");
   const [preview, setPreview] = useState<DebugModuleDeletionPreview | null>(null);
   const [attempt, setAttempt] = useState(0);
-  // Derived, not set from the effect: React defers effect updates, and confirmation must
-  // stop in the same render that changes the target, before a stale preview can be confirmed.
-  const previewKey = JSON.stringify([module.id, targetId, attempt]);
-  const [loadedKey, setLoadedKey] = useState<string | null>(null);
-  const loading = loadedKey !== previewKey;
+  const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [mutationId] = useState(() => crypto.randomUUID());
   const targetLabelId = useId();
   useEffect(() => {
     let cancelled = false;
-    setPreview(null); setError("");
+    setLoading(true); setPreview(null); setError("");
     onPreview(module.id, targetId || null).then(value => { if (!cancelled) setPreview(value); })
       .catch(failure => { if (!cancelled) setError(presentError(failure, "读取删除影响失败，请重试。")); })
-      .finally(() => { if (!cancelled) setLoadedKey(previewKey); });
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [module.id, targetId, attempt, onPreview, previewKey]);
+  }, [module.id, targetId, attempt, onPreview]);
   const confirm = async () => {
     if (!preview?.canDelete || pending) return;
     setPending(true); setError("");
@@ -52,7 +48,11 @@ export function DebugModuleDeletionDialog({ module, modules, onPreview, onDelete
       <div className="field"><span id={targetLabelId}>节点迁移目标</span>
         <ModuleTreeSelect mode="single" label="节点迁移目标" labelledBy={targetLabelId} nodes={modules}
           selectableIds={new Set(modules.filter(item => item.id !== module.id).map(item => item.id))}
-          value={targetId} onChange={value => setTargetId(typeof value === "string" ? value : "")} disabled={pending}
+          value={targetId} onChange={value => {
+            const nextTargetId = typeof value === "string" ? value : "";
+            if (nextTargetId === targetId) return;
+            setLoading(true); setPreview(null); setTargetId(nextTargetId);
+          }} disabled={pending}
           placeholder="未分类" includeRootOption rootOptionLabel="未分类" portalMenu />
       </div>
       {preview?.children.length ? <div><p>仍有子模块，请先调整以下子模块：</p><ul>{preview.children.map(child =>

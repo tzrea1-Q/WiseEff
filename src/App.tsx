@@ -73,7 +73,10 @@ import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiv
 import { FeedbackDialog } from "@/features/product-feedback/FeedbackDialog";
 import { xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
 import { getPageByPath, getXiaozeContextSummary, navigationItems, pageUsesProjectScope, PageConfig, utilityItems } from "./appConfig";
-import { isDiscoveryGroupVisible } from "@/domain/workflowDiscovery";
+import { isDiscoveryGroupVisible, workflowForGroup, WORKFLOW_IDS, type WorkflowId } from "@/domain/workflowDiscovery";
+import { useWorkflowPublication } from "@/application/workflow-publication/useWorkflowPublication";
+import type { WorkflowPublicationClient } from "@/infrastructure/http/workflowPublicationClient";
+import { INITIAL_MOCK_WORKFLOW_PUBLICATION } from "@/infrastructure/mock/mockWorkflowPublicationClient";
 import { createApiInitialState } from "@/application/state/apiInitialState";
 import { reducer, type AppAction, type ApiRuntimeDataDomain } from "@/application/state/appState";
 import { createAppRuntime, type AppRuntime, type WiseEffAuthClient } from "@/app/appRuntime";
@@ -178,6 +181,7 @@ function userAccountIdentifier(user: User) {
 
 type AppProps = {
   authClient?: WiseEffAuthClient;
+  workflowPublicationClient?: WorkflowPublicationClient;
   debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
   debuggingGateway?: DebuggingGateway;
   initialAppState?: PrototypeState;
@@ -197,6 +201,7 @@ type AppProps = {
 
 function App({
   authClient,
+  workflowPublicationClient,
   debuggingAdminClient,
   debuggingGateway,
   initialAppState,
@@ -223,6 +228,7 @@ function App({
       <ToastProvider>
         <AppShell
           authClient={authClient}
+          workflowPublicationClient={workflowPublicationClient}
           debuggingAdminClient={debuggingAdminClient}
           debuggingGateway={debuggingGateway}
           initialAppState={resolvedInitialAppState}
@@ -247,6 +253,7 @@ function App({
 
 function AppShell({
   authClient,
+  workflowPublicationClient,
   debuggingAdminClient,
   debuggingGateway,
   initialAppState,
@@ -264,6 +271,7 @@ function AppShell({
   userGovernanceActions
 }: {
   authClient?: WiseEffAuthClient;
+  workflowPublicationClient?: WorkflowPublicationClient;
   debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
   debuggingGateway?: DebuggingGateway;
   initialAppState: PrototypeState;
@@ -315,7 +323,6 @@ function AppShell({
   const isPlatformHome = page.key === "home";
   const isParameterHome = page.key === "parameter-home";
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
-  const canAccessCurrentPage = canAccessPage(currentRoleId, page.key);
   const showsApplicationFooter = !isProjectConfigurationWorkbenchPath(path)
     && page.key !== "parameter-review" && page.key !== "parameter-submissions";
   const usesProjectScope = pageUsesProjectScope(page.key);
@@ -346,6 +353,7 @@ function AppShell({
         { getState: () => stateRef.current, mockParameterRuntime: mockParameterRuntimeRef.current! },
         {
           authClient,
+          workflowPublicationClient,
           parameterRepository,
           parameterTopologyRepository,
           parameterCatalogRepository,
@@ -364,6 +372,7 @@ function AppShell({
     [
       runtimeMode,
       authClient,
+      workflowPublicationClient,
       parameterRepository,
       parameterTopologyRepository,
       parameterCatalogRepository,
@@ -389,6 +398,26 @@ function AppShell({
     debuggingGateway: debuggingGatewayClient,
     debuggingAdminClient: debuggingAdminCatalogClient
   } = appRuntime;
+  const publication = useWorkflowPublication(
+    appRuntime.workflowPublicationClient,
+    apiAuthStatus === "authenticated" ? `${state.currentUserId}:${organizationId}:${path}` : null,
+    runtimeMode === "mock" && !workflowPublicationClient ? INITIAL_MOCK_WORKFLOW_PUBLICATION : undefined
+  );
+  const isPublicationAdministrator = runtimeMode === "api"
+    ? Boolean(apiAuthRoles?.some((role) => role.projectId === null && (role.roleId === "admin" || role.roleId === "platform-admin")))
+    : currentRoleId === "admin" || currentRoleId === "platform-admin";
+  const canManagePublication = runtimeMode === "api"
+    ? Boolean(apiAuthRoles?.some((role) => role.projectId === null && role.roleId === "platform-admin"))
+    : currentRoleId === "platform-admin";
+  const visibleWorkflows = WORKFLOW_IDS.filter((id) =>
+    (isPublicationAdministrator || publication.status === "ready" && publication.publication?.workflows[id] === true) &&
+    navigationItems.some((item) => workflowForGroup(item.group) === id && canAccessPage(currentRoleId, item.key))
+  );
+  const currentWorkflow = workflowForGroup(page.group);
+  const canEnterPublishedPage = currentWorkflow === null || isPublicationAdministrator ||
+    publication.status === "ready" && publication.publication?.workflows[currentWorkflow] === true;
+  const canAccessCurrentPage = canAccessPage(currentRoleId, page.key) && canEnterPublishedPage &&
+    (page.key !== "workflow-publication" || canManagePublication);
   const [dashboardState, dashboardDispatch] = useReducer(dashboardReducer, initialDashboardState);
   const dashboardRuntime = useMemo(
     () => createParameterDashboardRuntime({ repository: dashboardRepository, dispatch: dashboardDispatch }),
@@ -1089,7 +1118,7 @@ function AppShell({
     logs: "日志",
     debugging: "调试"
   };
-  const pageRuntimeDomain: ApiRuntimeDataDomain | null = page.group === "参数管理" || page.key === "dts-reload"
+  const pageRuntimeDomain: ApiRuntimeDataDomain | null = !canAccessCurrentPage ? null : page.group === "参数管理" || page.key === "dts-reload"
     ? "parameters"
     : page.group === "日志分析" ? "logs" : page.group === "调试平台" && page.key !== "debugging-admin" ? "debugging" : null;
   const pageRuntimeState = runtimeMode !== "api" || !pageRuntimeDomain
@@ -1119,6 +1148,9 @@ function AppShell({
         正在连接雷泽服务，加载真实数据…
       </div>
     ) : null;
+  const publicationPreviewBanner = isPublicationAdministrator && currentWorkflow && publication.status === "ready" &&
+    publication.publication?.workflows[currentWorkflow] === false
+    ? <div className="api-runtime-sync-banner" role="status">管理员预览 · 此工作流尚未向用户开放</div> : null;
 
   const appShell = (
     <div className={appShellClassName}>
@@ -1127,6 +1159,8 @@ function AppShell({
           <Sidebar
             activePath={page.path}
             currentRoleId={currentRoleId}
+            visibleWorkflows={visibleWorkflows}
+            canManagePublication={canManagePublication}
             isCollapsed={effectiveSidebarCollapsed}
             onNavigate={navigateFromSidebar}
             onToggleCollapsed={toggleSidebarCollapsed}
@@ -1167,6 +1201,9 @@ function AppShell({
               {proactiveInsightsBanner}
               <PageRouter
                 page={page}
+                publication={publication}
+                visibleWorkflows={visibleWorkflows}
+                publicationAdministrator={isPublicationAdministrator}
                 onFeedback={() => setFeedbackOpen(true)}
                 state={state}
                 dispatch={dispatch}
@@ -1211,10 +1248,14 @@ function AppShell({
               aria-busy={pageRuntimeState === "loading"}
             >
               {apiRuntimeStatusBanner}
+              {publicationPreviewBanner}
               {proactiveInsightsBanner}
               <div className="page-content" inert={pageRuntimeState === "loading"}>
                 <PageRouter
                   page={page}
+                  publication={publication}
+                  visibleWorkflows={visibleWorkflows}
+                  publicationAdministrator={isPublicationAdministrator}
                   onFeedback={() => setFeedbackOpen(true)}
                   state={state}
                   dispatch={dispatch}
@@ -1255,6 +1296,11 @@ function AppShell({
             </main>
           )}
         </TopBarActionsContext.Provider>
+        {!isPlatformHome && !showsApplicationFooter ? (
+          <div className="shell-footer">
+            <AppFooter config={appFooterConfig} onFeedback={() => setFeedbackOpen(true)} />
+          </div>
+        ) : null}
       </div>
       {runtimeMode === "api" && !isPlatformHome && canAccessCurrentPage ? (
         <XiaozePageContextRegistrar
@@ -1297,6 +1343,8 @@ function AppShell({
 function Sidebar({
   activePath,
   currentRoleId,
+  visibleWorkflows,
+  canManagePublication,
   isCollapsed,
   onNavigate,
   onToggleCollapsed,
@@ -1304,6 +1352,8 @@ function Sidebar({
 }: {
   activePath: string;
   currentRoleId: string;
+  visibleWorkflows: readonly WorkflowId[];
+  canManagePublication: boolean;
   isCollapsed: boolean;
   onNavigate: (path: string) => void;
   onToggleCollapsed: () => void;
@@ -1311,7 +1361,7 @@ function Sidebar({
 }) {
   const activePageKey = getPageByPath(activePath).key;
   const visibleNavigationItems = navigationItems.filter(
-    (item) => item.key !== "parameter-submissions" && canAccessPage(currentRoleId, item.key) && isDiscoveryGroupVisible(item.group)
+    (item) => item.key !== "parameter-submissions" && canAccessPage(currentRoleId, item.key) && isDiscoveryGroupVisible(item.group, visibleWorkflows)
   );
   const groups = visibleNavigationItems.reduce<Record<string, PageConfig[]>>((acc, item) => {
     acc[item.group] = [...(acc[item.group] ?? []), item];
@@ -1382,21 +1432,9 @@ function Sidebar({
         </nav>
       </ScrollArea>
       <div className="utility-nav">
-        <Button
-          aria-label="问题反馈"
-          className="nav-item compact feedback-entry"
-          type="button"
-          variant="ghost"
-          onClick={onFeedback}
-        >
-          <MessageSquareText size={18} />
-          <span>
-            <strong>问题反馈</strong>
-            <small>内测收集 · 当前页</small>
-          </span>
-        </Button>
         {utilityItems
-          .filter((item) => !item.path || canAccessPage(currentRoleId, getPageByPath(item.path).key))
+          .filter((item) => (!item.path || canAccessPage(currentRoleId, getPageByPath(item.path).key)) &&
+            (item.path !== "/workflow-publication" || canManagePublication))
           .map((item) => {
             const Icon = item.icon;
             const button = (
@@ -1424,6 +1462,15 @@ function Sidebar({
               </Tooltip>
             );
           })}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button aria-label="问题反馈" className="nav-item compact feedback-entry" type="button" variant="ghost" onClick={onFeedback}>
+              <MessageSquareText size={18} />
+              <span>问题反馈</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">问题反馈</TooltipContent>
+        </Tooltip>
       </div>
     </aside>
   );

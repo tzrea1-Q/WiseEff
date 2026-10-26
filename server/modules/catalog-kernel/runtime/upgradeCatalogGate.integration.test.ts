@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runReconcileParameterDefinitions } from "../../../../scripts/reconcile-parameter-definitions";
 import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
 import { createManagedInstanceTestDatabase, withTestClusterRoleCatalogLock } from "../../../testing/testDatabase";
-import { provisionPublicationRuntimeLogins } from "../../../testing/labRuntimeLogins";
+import { provisionPublicationRuntimeLogins, revokeForeignTestRuntimeGrants } from "../../../testing/labRuntimeLogins";
 import { seedPublishedCatalog } from "../../../testing/parameterCatalog/seedPublishedCatalog";
 import { firstReleaseBundle } from "./catalogChain.fixture";
 import { refreshReleaseAggregateDigest } from "../compiler/__fixtures__/catalogReleaseBundle";
@@ -36,9 +36,11 @@ describe("parameter-definitions:check current Catalog gate", () => {
     if (database) {
       await database.drop();
       await withTestClusterRoleCatalogLock(async () => {
+        const roles = ["wiseeff_api", `wiseeff_${runToken}_worker`, `wiseeff_${runToken}_manager`];
+        await revokeForeignTestRuntimeGrants(adminUrl, roles, `wiseeff-publication-runtime:lab:${runToken}`);
         const admin = createPostgresDatabase(adminUrl);
         try {
-          for (const role of ["wiseeff_api", `wiseeff_${runToken}_worker`, `wiseeff_${runToken}_manager`]) {
+          for (const role of roles) {
             const owned = await admin.query("select rolname from pg_roles where rolname=$1 and shobj_description(oid,'pg_authid')=$2", [
               role, `wiseeff-publication-runtime:lab:${runToken}`,
             ]);

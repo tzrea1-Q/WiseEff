@@ -29,6 +29,7 @@ function selectCompleteLog() {
 function renderStandaloneLogsPage(options: {
   relatedToLog: () => Promise<{ items: unknown[]; retrieval: unknown }>;
   capability?: KnowledgeCapability;
+  canOpenKnowledge?: boolean;
 }) {
   const runtime = {
     knowledgeRepository: { relatedToLog: options.relatedToLog }
@@ -42,6 +43,7 @@ function renderStandaloneLogsPage(options: {
         search=""
         runtime={runtime}
         knowledgeCapability={options.capability ?? { userId: "u-xu-yun", canView: true, canEdit: false, canManage: false }}
+        canOpenKnowledge={options.canOpenKnowledge}
       />
     </ToastProvider>
   );
@@ -49,6 +51,21 @@ function renderStandaloneLogsPage(options: {
 }
 
 describe("LogsPage · 相关知识", () => {
+  it("知识库未开放时保留只读参考，不提供进入知识库的按钮", async () => {
+    renderStandaloneLogsPage({
+      canOpenKnowledge: false,
+      relatedToLog: async () => ({
+        items: [{ entryId: "entry-1", title: "只读排查参考", excerpt: "这段已发布经验仍可用于日志分析。" }],
+        retrieval: { mode: "fts_only", vectorAvailable: false, embeddingConfigured: false }
+      })
+    });
+    const section = within(await screen.findByRole("region", { name: "相关知识" }));
+    expect(await section.findByText("只读排查参考")).toBeVisible();
+    expect(section.getByText("这段已发布经验仍可用于日志分析。")).toBeVisible();
+    expect(section.queryByRole("button")).not.toBeInTheDocument();
+    expect(section.queryByRole("link")).not.toBeInTheDocument();
+  });
+
   it.each(["history", "deep-link"])("Complete 日志从 %s 在报告中展示相关已发布知识,深链进入条目详情", async (source) => {
     const log = initialState.logs.find((record) => record.fileName.includes("usb_pd_negotiation"))!;
     renderLogsPage(source === "deep-link" ? `/logs?logId=${log.id}` : "/logs");
@@ -94,15 +111,13 @@ describe("LogsPage · 相关知识", () => {
     expect(screen.queryByRole("region", { name: "相关知识" })).not.toBeInTheDocument();
   });
 
-  it("没有相关条目时展示诚实空态「暂无相关知识」", async () => {
+  it("没有相关条目时隐藏相关知识区", async () => {
     renderStandaloneLogsPage({
       relatedToLog: async () => ({ items: [], retrieval: { mode: "fts_only", vectorAvailable: false, embeddingConfigured: false } })
     });
 
     const section = await screen.findByRole("region", { name: "相关知识" });
-    expect(await within(section).findByText("暂无相关知识")).toBeInTheDocument();
-    expect(within(section).queryByText(/检索模式|仅全文检索/)).not.toBeInTheDocument();
-    expect(within(section).getByText("暂无相关知识").tagName).toBe("P");
+    await waitFor(() => expect(section).not.toBeInTheDocument());
   });
 
   it("加载失败时展示错误态与重试入口", async () => {
@@ -122,6 +137,6 @@ describe("LogsPage · 相关知识", () => {
     expect(alert).toHaveTextContent("检索服务不可用");
 
     fireEvent.click(within(alert).getByRole("button", { name: "重试" }));
-    expect(await within(section).findByText("暂无相关知识")).toBeInTheDocument();
+    await waitFor(() => expect(section).not.toBeInTheDocument());
   });
 });

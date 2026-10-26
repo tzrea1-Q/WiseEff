@@ -94,4 +94,40 @@ describe("PlatformFlowSection", () => {
 
     expect(screen.getByRole("tab", { name: "调试平台" })).toHaveAttribute("aria-selected", "true");
   });
+
+  it("filters the tabs and scene copy with the caller's visible workflows", () => {
+    render(<PlatformFlowSection visibleWorkflows={["parameter-management", "debugging"]} />);
+
+    expect(screen.getByRole("heading", { name: "一条可审阅工作流，两种场景接入" })).toBeInTheDocument();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["参数管理", "调试平台"]);
+    expect(screen.queryByText(/日志分析|知识库/)).not.toBeInTheDocument();
+  });
+
+  it("preserves a remaining selection and falls back immediately when the selected workflow closes", () => {
+    const { rerender } = render(<PlatformFlowSection />);
+    fireEvent.click(screen.getByRole("tab", { name: "日志分析" }));
+
+    rerender(<PlatformFlowSection visibleWorkflows={["debugging", "log-analysis", "knowledge"]} />);
+    expect(screen.getByRole("tab", { name: "日志分析" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("证据链路")).toBeInTheDocument();
+
+    rerender(<PlatformFlowSection visibleWorkflows={["debugging", "knowledge"]} />);
+    expect(screen.getByRole("tab", { name: "调试平台" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText("证据链路")).not.toBeInTheDocument();
+    expect(screen.getByText("调试场景")).toBeInTheDocument();
+  });
+
+  it("handles an empty publication list and a later recovery without a stale panel", () => {
+    const { rerender } = render(<PlatformFlowSection />);
+    fireEvent.click(screen.getByRole("tab", { name: "知识库" }));
+
+    rerender(<PlatformFlowSection visibleWorkflows={[]} />);
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
+
+    rerender(<PlatformFlowSection visibleWorkflows={["debugging"]} />);
+    expect(screen.getByRole("tab", { name: "调试平台" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("调试场景")).toBeInTheDocument();
+    expect(screen.queryByText("组织文档")).not.toBeInTheDocument();
+  });
 });

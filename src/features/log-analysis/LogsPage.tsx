@@ -1,5 +1,11 @@
 import { formatKnowledgePageLabel, knowledgeEntryHref } from "@/domain/knowledge/citations";
 import { SelectControl } from "@/components/common/SelectControl";
+import { SearchableSelectControl } from "@/components/common/SearchableSelectControl";
+import { SectionEmpty } from "@/components/common/SectionState";
+import { TabPanel } from "@/components/ui/tab-panel";
+import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
+import { LogDeletionPreviewDialog } from "./LogDeletionPreviewDialog";
+import type { LogDeletionStatus } from "@/domain/logs/deletionPreview";
 import { DecodedFields } from "./DecodedFields";
 import { SourceEvidence } from "./SourceEvidence";
 import { Button } from "@/components/ui/button";
@@ -34,7 +40,9 @@ import { RowActionMenu } from "@/components/common/RowActionMenu";
 import { classifyAnalysisDegradation } from "@/domain/logs/analysisProvenance";
 import { SEVERITY_LABELS, STAGE_LABELS, type LogEvidence, type LogRecord, type LogStageId } from "@/domain/prototype/types";
 import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
-import { EmptyState, PanelHeader, SectionLabel } from "@/workbenchUi";
+import { toUserErrorMessage } from "@/infrastructure/http/userErrorMessage";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { PanelHeader, SectionLabel } from "@/workbenchUi";
 import {
   AlertTriangle,
   Check,
@@ -102,7 +110,7 @@ function createEmptyLogRecord(): LogRecord {
   };
 }
 
-export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, knowledgeCapability, sessionPermissions }: PageProps) {
+export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, knowledgeCapability, sessionPermissions, canOpenKnowledge = true, canOpenParameters = true }: PageProps) {
   const knowledgeRepository = runtime?.knowledgeRepository;
   const logRepository = runtime?.logAnalysisRepository;
   const canViewTrace = sessionPermissions ? sessionPermissions.includes("logs:admin-domains") : canPerform(state.activeRoleId, "logs.admin-domains");
@@ -116,6 +124,12 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
     return state.logs[0]?.id ?? "";
   });
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [deletionLogId, setDeletionLogId] = useState<string | null>(null);
+  const [pendingDeletions, setPendingDeletions] = useState<LogDeletionStatus[]>([]);
+  const [deletionReceiptError, setDeletionReceiptError] = useState("");
+  const [receiptRefresh, setReceiptRefresh] = useState(0);
+  const [retryPending, setRetryPending] = useState(false);
+  const [retryError, setRetryError] = useState<{ logId: string; message: string } | null>(null);
   const [uploadLogDomains, setUploadLogDomains] = useState<LogDomain[]>([]);
   const [distilPending, setDistilPending] = useState(false);
   const [casePrefill, setCasePrefill] = useState<(AnalysisCasePrefill & { sourceRecordId: string }) | null>(null);
@@ -145,6 +159,17 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   const prevLogCount = useRef(state.logs.length);
   const emptyLogRecord = useMemo(() => createEmptyLogRecord(), []);
   const selectedLog = state.logs.find((log) => log.id === selectedLogId) ?? state.logs[0];
+
+  useEffect(() => {
+    if (!logRepository?.pendingLogDeletions) return;
+    let active = true;
+    void logRepository.pendingLogDeletions().then((items) => {
+      if (active) { setPendingDeletions(items); setDeletionReceiptError(""); }
+    }, (cause: unknown) => {
+      if (active) setDeletionReceiptError(presentError(cause, "存储清理记录加载失败，请重试。"));
+    });
+    return () => { active = false; };
+  }, [logRepository, receiptRefresh]);
 
   // The list contains summaries with empty evidence/raw lines. Hydrate only
   // the selected record; a list refresh or job update invalidates this detail.
@@ -345,7 +370,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   };
 
   const onPrimary = () => {
-    if (!hasActiveLog) {
+    if (!canOpenParameters || !hasActiveLog) {
       return;
     }
 
@@ -422,30 +447,30 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   };
 
   const onAskAgent = () => {
-    document.querySelector<HTMLButtonElement>(".xiaoze-chat-toggle-anchor button")?.click();
+    dispatchXiaozeOpenHandoff({});
   };
 
   // Distil-to-knowledge (design D15): pre-fills a knowledge draft from this
   // analysis record and hands off into the /knowledge draft editor deep link.
-  const canDistil = Boolean(knowledgeRepository && knowledgeCapability?.canEdit);
+  const canDistil = Boolean(canOpenKnowledge && knowledgeRepository && knowledgeCapability?.canEdit);
   const onDistil = useCallback(async () => {
-    if (!knowledgeRepository || !hasActiveLog || distilPending) {
+    if (!canDistil || !knowledgeRepository || !hasActiveLog || distilPending) {
       return;
     }
     setDistilPending(true);
     try {
       const draft = await knowledgeRepository.distillFromLog(activeLog.id);
-      dispatch({ type: "ADD_NOTIFICATION", message: "已生成知识草稿,请在知识库中审阅后发布" });
+      dispatch({ type: "ADD_NOTIFICATION", message: "已生成知识草稿，请在知识库中审阅后发布" });
       onNavigate(knowledgeEntryHref({ entryId: draft.id }));
     } catch (error) {
       dispatch({
         type: "ADD_NOTIFICATION",
-        message: presentError(error, "沉淀为知识失败,请稍后重试")
+        message: presentError(error, "沉淀为知识失败，请稍后重试")
       });
     } finally {
       setDistilPending(false);
     }
-  }, [activeLog.id, dispatch, distilPending, hasActiveLog, knowledgeRepository, onNavigate]);
+  }, [activeLog.id, canDistil, dispatch, distilPending, hasActiveLog, knowledgeRepository, onNavigate]);
 
   const selectedFeedbackLog = feedbackLogId ? state.logs.find((log) => log.id === feedbackLogId) ?? null : null;
   const submitFeedback = async (log: LogRecord, rating: "helpful" | "not_helpful", note?: string) => {
@@ -510,8 +535,21 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       return;
     }
 
-    void logActions.rerun({ logId: activeLog.id, analysisQuestion: activeLog.analysisQuestion }).catch(() => undefined);
-  }, [activeLog.analysisQuestion, activeLog.id, logActions]);
+    if (retryPending) return;
+    setRetryPending(true);
+    setRetryError(null);
+    void logActions.rerun({ logId: activeLog.id, analysisQuestion: activeLog.analysisQuestion }, { notifyOnFailure: false })
+      .catch((error: unknown) => {
+        if (error instanceof WiseEffApiError && error.details.reason === "related-parameter-unavailable") {
+          setRetryError({ logId: activeLog.id, message: toUserErrorMessage(error) });
+          return;
+        }
+        const message = error instanceof WiseEffApiError && error.code === "INTERNAL_ERROR"
+          ? "服务暂时不可用，请稍后重试。" : presentError(error, "服务暂时不可用，请稍后重试。");
+        setRetryError({ logId: activeLog.id, message: `${message}${error instanceof WiseEffApiError && error.requestId ? `（请求编号 ${error.requestId}）` : ""}` });
+      })
+      .finally(() => setRetryPending(false));
+  }, [activeLog.analysisQuestion, activeLog.id, logActions, retryPending]);
 
   return (
     <div className="logs-v2">
@@ -519,17 +557,18 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
         {liveMessage}
       </div>
       <LogsPageHeader />
+      {pendingDeletions.length > 0 || deletionReceiptError ? <section aria-label="存储清理未完成" className="space-y-2 rounded-lg border p-4">
+        {deletionReceiptError ? <p role="alert">{deletionReceiptError} <Button variant="outline" onClick={() => setReceiptRefresh((value) => value + 1)}>重试加载</Button></p> : null}
+        {pendingDeletions.map((item) => <div key={item.logId} className="flex items-center justify-between gap-3 text-sm">
+          <span className="break-all">存储清理未完成：{item.logId}（{item.pendingObjects} 个对象）</span>
+          <Button variant="outline" onClick={() => setDeletionLogId(item.logId)}>重试清理</Button>
+        </div>)}
+      </section> : null}
       {hasActiveLog ? <NavigatorWorkbench
         pageKey="logs"
         navigatorLabel="日志记录"
         taskLabel="日志任务区"
-        panelId={hasActiveLog ? `logs-aux-${auxTab}` : undefined}
-        tabId={hasActiveLog ? `logs-aux-tab-${auxTab}` : undefined}
-        toolbar={hasActiveLog ? <ViewSwitch variant="tabs" ariaLabel="日志辅助信息" value={auxTab}
-          onValueChange={(value) => setAuxTab(value as LogsAuxTab)}
-          items={([["report", "报告"], ["signals", "信号"], ["files", "文件"], ["trace", "分析轨迹"]] as const)
-            .filter(([value]) => value !== "trace" || canViewTrace)
-            .map(([value, label]) => ({ value, label, id: `logs-aux-tab-${value}`, panelId: `logs-aux-${value}` }))} /> : undefined}
+        toolbar={null}
         primaryAction={hasActiveLog ? <Button onClick={openUploadDialog}>
           <Upload size={16} />上传新日志
         </Button> : undefined}
@@ -548,13 +587,14 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
                 <time>{formatLogDateTime(log.capturedAt)}</time>
               </button>
             ))}
-            {state.logs.length > 0 && !historyLogs.length ? <p>没有匹配的日志记录</p> : null}
+            {state.logs.length > 0 && !historyLogs.length ? <SectionEmpty icon={<FileText aria-hidden size={20} />} message="没有匹配的日志记录" /> : null}
           </div>
         </aside>}
       >
       {hasActiveLog ? <LogConclusionCard
           log={activeLog}
           canViewSkill={canViewTrace}
+          canOpenKnowledge={canOpenKnowledge}
           onNavigate={onNavigate}
           onAskAgent={onAskAgent}
           onCopyLink={onCopyLink}
@@ -572,13 +612,21 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
           feedbackPending={feedbackPending}
           feedbackError={selectedFeedbackLog ? null : feedbackError}
           onFeedback={(rating) => { setFeedbackError(null); if (rating === "helpful") void submitFeedback(activeLog, rating); else setFeedbackLogId(activeLog.id); }}
-          onPrimary={onPrimary}
+          onPrimary={canOpenParameters ? onPrimary : undefined}
           relatedParameterLocated={Boolean(activeLog.relatedParameterId && (activeLog.relatedParameterProjectId || !logActions))}
           relatedParameterUnlocated={relatedParameterUnlocated}
           onRetry={activeLog.status === "Failed" ? openUploadDialog : handleRetryLog}
+          retryPending={retryPending}
         /> : null}
-      {!hasActiveLog ? <div className="logs-empty-state"><h2>还没有日志</h2><p>支持文本日志或压缩包</p>
-        <Button onClick={openUploadDialog}>上传日志</Button></div> : auxTab === "trace" ? (canViewTrace ? <LogTraceTab key={`${activeLog.id}:${activeLog.updatedAtIso}`} logId={activeLog.id} analysis={activeLog} repository={logRepository}
+      {activeLog.canDelete && logRepository?.previewLogDeletion && logRepository.purgeLog ? <Button variant="destructive" onClick={() => setDeletionLogId(activeLog.id)}>删除日志</Button> : null}
+      {retryError?.logId === activeLog.id ? <p role="alert">{retryError.message}</p> : null}
+      <div className="px-4 pb-4"><ViewSwitch variant="tabs" ariaLabel="日志辅助信息" value={auxTab}
+        onValueChange={(value) => setAuxTab(value as LogsAuxTab)}
+        items={([["report", "报告"], ["signals", "信号"], ["files", "文件"], ["trace", "分析轨迹"]] as const)
+          .filter(([value]) => value !== "trace" || canViewTrace)
+          .map(([value, label]) => ({ value, label, id: `logs-aux-tab-${value}`, panelId: `logs-aux-${value}` }))} /></div>
+      <TabPanel role="tabpanel" id={`logs-aux-${auxTab}`} aria-labelledby={`logs-aux-tab-${auxTab}`}>
+      {auxTab === "trace" ? (canViewTrace ? <LogTraceTab key={`${activeLog.id}:${activeLog.updatedAtIso}`} logId={activeLog.id} analysis={activeLog} repository={logRepository}
         onOpenLine={(file, line, lines) => setViewer({ file, lines: lines ?? [line] })} /> : null)
         : auxTab === "signals" ? <SignalsTab summary={activeLog.signalSummary} rawFilePath={rawFilePath} rawLineCount={activeLog.rawLines.length} fileCount={activeLog.files?.length || 1}
         allFilesAvailable={Boolean(logRepository?.getLogLines)}
@@ -633,12 +681,25 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
           </>
         ) : null}
         {hasActiveLog && activeLog.status === "Complete" && knowledgeRepository && knowledgeCapability?.canView ? (
-          <RelatedKnowledgeSection logId={activeLog.id} repository={knowledgeRepository} onNavigate={onNavigate} />
+          <RelatedKnowledgeSection logId={activeLog.id} repository={knowledgeRepository} onNavigate={canOpenKnowledge ? onNavigate : undefined} />
         ) : null}
       </div>}
+      </TabPanel>
       </NavigatorWorkbench> : <section className="logs-empty-state" aria-label="日志任务区">
-        <h2>还没有日志</h2><p>支持文本日志或压缩包</p><Button onClick={openUploadDialog}>上传日志</Button>
+        <SectionEmpty icon={<FileText aria-hidden size={20} />} message="还没有日志" actionLabel="上传日志" onAction={openUploadDialog} />
       </section>}
+      {deletionLogId && logRepository?.previewLogDeletion ? <LogDeletionPreviewDialog key={deletionLogId}
+        logId={deletionLogId} loadPreview={logRepository.previewLogDeletion} purge={logRepository.purgeLog}
+        initialStatus={pendingDeletions.find((item) => item.logId === deletionLogId)}
+        loadStatus={logRepository.getLogDeletionStatus} onClose={() => setDeletionLogId(null)}
+        onDeleted={(item) => {
+          setReceiptRefresh((value) => value + 1);
+          setPendingDeletions((items) => [...items.filter((pending) => pending.logId !== item.logId), ...(item.objects === "pending" ? [item] : [])]);
+          logActions?.forgetLog?.(deletionLogId);
+          dispatch({ type: "HYDRATE_LOG_RUNTIME", logs: state.logs.filter((log) => log.id !== deletionLogId) });
+          setSelectedLogId(state.logs.find((log) => log.id !== deletionLogId)?.id ?? "");
+          setSelectedLogDetail(null);
+        }} /> : null}
       {casePrefill ? <AnalysisCaseDialog title="存为分析用例" initial={casePrefill} availableFiles={casePrefill.files}
         originalUploads={casePrefill.originalUploads} sourceDegradation={casePrefill.sourceDegradation} onClose={() => setCasePrefill(null)} onSave={async (input) => {
         await logRepository!.createAnalysisCase!(casePrefill.skillId, { ...input, sourceRecordId: casePrefill.sourceRecordId });
@@ -839,7 +900,6 @@ function UploadLogDialog({
         <div className="upload-dialog__header">
           <div>
             <h2 id={titleId}><strong>上传日志</strong></h2>
-            <p>文本日志或压缩包，单次最多 100 MiB</p>
           </div>
           <button className="icon-button" type="button" aria-label="关闭上传日志" disabled={uploading} onClick={onClose}>
             <X size={18} />
@@ -884,20 +944,20 @@ function UploadLogDialog({
         ) : null}
         {parameterRepository ? (
           <>
-            <label className="upload-question-field" htmlFor="upload-parameter-project">
-              <span>关联参数的项目（可选）</span>
-              <SelectControl id="upload-parameter-project" ariaLabel="关联参数的项目（可选）" value={projectId} disabled={uploading}
+            <div className="upload-question-field">
+              <label htmlFor="upload-parameter-project">关联参数的项目（可选）</label>
+              <SearchableSelectControl id="upload-parameter-project" ariaLabel="关联参数的项目（可选）" value={projectId} disabled={uploading}
                 onValueChange={setProjectId}
                 options={[{ value: "", label: "不关联参数" }, ...projects.map((project) => ({ value: project.id, label: `${project.code} · ${project.name}` }))]} />
-            </label>
+            </div>
             {projectId ? (
-              <label className="upload-question-field" htmlFor="upload-parameter-binding">
-                <span>项目参数</span>
-                <SelectControl id="upload-parameter-binding" ariaLabel="项目参数" value={bindingId} disabled={uploading || bindingLoading}
+              <div className="upload-question-field">
+                <label htmlFor="upload-parameter-binding">项目参数</label>
+                <SearchableSelectControl key={projectId} id="upload-parameter-binding" ariaLabel="项目参数" value={bindingId} disabled={uploading || bindingLoading}
                   onValueChange={setBindingId}
                   options={[{ value: "", label: bindingLoading ? "正在加载参数…" : "请选择项目参数" }, ...bindings.map((item) => ({ value: item.id, label: item.displayName || "未命名参数" }))]} />
                 {!bindingLoading && !bindingError && !bindings.length ? <span>该项目暂无可关联的当前参数。</span> : null}
-              </label>
+              </div>
             ) : null}
             {bindingError ? <p role="alert">{bindingError}{" "}
               <button type="button" className="button subtle" disabled={uploading || bindingLoading}
@@ -921,9 +981,9 @@ function UploadLogDialog({
             <button className="button subtle" type="button" disabled={uploading} onClick={onClose}>
               取消
             </button>
-            <button className="button primary" type="button" aria-busy={uploading ? "true" : undefined} disabled={!selectedFiles.length || !supported || uploading || !associationReady} onClick={uploadSelected}>
+            {!(selectedFiles.length && !supported && !selectionError) ? <button className="button primary" type="button" aria-busy={uploading ? "true" : undefined} disabled={!selectedFiles.length || !supported || uploading || !associationReady} onClick={uploadSelected}>
               开始分析
-            </button>
+            </button> : null}
           {selectedFiles.length && !supported && !selectionError ? (
             <button className="button subtle" type="button" aria-busy={uploading ? "true" : undefined} disabled={uploading || !associationReady} onClick={uploadSelected}>
               仍然上传
@@ -965,7 +1025,7 @@ function ConfidenceBar({
   );
 }
 
-function AnalysisProvenanceBadges({ log, canViewSkill, onNavigate }: { log: LogRecord; canViewSkill: boolean; onNavigate: (path: string) => void }) {
+function AnalysisProvenanceBadges({ log, canViewSkill, canOpenKnowledge, onNavigate }: { log: LogRecord; canViewSkill: boolean; canOpenKnowledge: boolean; onNavigate: (path: string) => void }) {
   const degraded = classifyAnalysisDegradation(log);
   const skillName = log.logDomainName ?? log.skillNameSnapshot;
   const revisionNumber = log.skillRevision?.number ?? log.skillRevisionNumberSnapshot;
@@ -996,11 +1056,11 @@ function AnalysisProvenanceBadges({ log, canViewSkill, onNavigate }: { log: LogR
         <ul>{log.knowledgeRevisions.map(({ entryId, revisionId, pages }) => {
           const href = knowledgeEntryHref({ entryId, ...(revisionId && pages?.length ? { revisionId, page: pages[0] } : {}) });
           return <li key={`${entryId}:${revisionId}`}>
-            {revisionId ? <><a href={href} onClick={(event) => {
+            {revisionId ? <>{canOpenKnowledge ? <a href={href} onClick={(event) => {
               event.preventDefault(); onNavigate(href);
-            }}>查看知识条目（已固定修订）</a>
+            }}>查看知识条目（已固定修订）</a> : <span>知识条目（已固定修订）</span>}
             {pages?.length ? <span> {formatKnowledgePageLabel(pages).split(/(\d+)/).map((part, index) => {
-              if (!/^\d+$/.test(part)) return part;
+              if (!canOpenKnowledge || !/^\d+$/.test(part)) return part;
               const page = Number(part);
               const href = knowledgeEntryHref({ entryId, revisionId, page });
               return <a key={index} href={href} aria-label={`打开${formatKnowledgePageLabel(page)}`}
@@ -1017,15 +1077,16 @@ function AnalysisProvenanceBadges({ log, canViewSkill, onNavigate }: { log: LogR
 }
 
 function LogConclusionCard({
-  log, canViewSkill, onNavigate, onAskAgent, onPrimary, relatedParameterLocated = false,
+  log, canViewSkill, canOpenKnowledge, onNavigate, onAskAgent, onPrimary, relatedParameterLocated = false,
   relatedParameterUnlocated = false, onExport, onCopyLink, onDistil, distilPending = false,
-  onSaveCase, casePending = false, onFeedback, feedbackRating, feedbackPending, feedbackError, onRetry
+  onSaveCase, casePending = false, onFeedback, feedbackRating, feedbackPending, feedbackError, onRetry, retryPending
 }: {
   log: LogRecord;
   canViewSkill: boolean;
+  canOpenKnowledge: boolean;
   onNavigate: (path: string) => void;
   onAskAgent: () => void;
-  onPrimary: () => void;
+  onPrimary?: () => void;
   relatedParameterLocated?: boolean;
   relatedParameterUnlocated?: boolean;
   onExport: () => void;
@@ -1039,6 +1100,7 @@ function LogConclusionCard({
   feedbackPending: boolean;
   feedbackError: string | null;
   onRetry: () => void;
+  retryPending: boolean;
 }) {
   if (log.status === "Failed") return <LogErrorAlert log={log} onRetry={onRetry} />;
   const complete = log.status === "Complete";
@@ -1051,20 +1113,20 @@ function LogConclusionCard({
       </div>
     </div>
     <LogHeaderMeta log={log} />
-    {complete ? <AnalysisProvenanceBadges log={log} canViewSkill={canViewSkill} onNavigate={onNavigate} /> : null}
+    {complete ? <AnalysisProvenanceBadges log={log} canViewSkill={canViewSkill} canOpenKnowledge={canOpenKnowledge} onNavigate={onNavigate} /> : null}
     {log.analysisQuestion ? <div className="logs-analysis-question"><strong>用户问题</strong><span>{log.analysisQuestion}</span></div> : null}
     {complete ? <>
       <ConfidenceBar value={log.confidence} status={log.status} />
       <div className="logs-conclusion-actions">
-        {relatedParameterLocated ? <Button onClick={onPrimary}>查看关联参数</Button> : null}
+        {relatedParameterLocated && onPrimary ? <Button onClick={onPrimary}>查看关联参数</Button> : null}
         <RowActionMenu label="报告操作" triggerLabel="更多" items={[
           { id: "export", label: "导出报告", onSelect: onExport },
           { id: "copy", label: "复制链接", onSelect: onCopyLink },
-          { id: "ask", label: "问 Agent", onSelect: onAskAgent },
+          { id: "ask", label: "问小泽", onSelect: onAskAgent },
           ...(onDistil ? [{ id: "distil", label: "沉淀为知识", disabled: distilPending, onSelect: onDistil }] : []),
           ...(onSaveCase ? [{ id: "case", label: "存为分析用例", disabled: casePending, onSelect: onSaveCase }] : []),
-          ...(!relatedParameterLocated && !relatedParameterUnlocated ? [{ id: "parameter", label: "生成参数修改请求", onSelect: onPrimary }] : []),
-          { id: "retry", label: "重新分析", onSelect: onRetry }
+          ...(onPrimary && !relatedParameterLocated && !relatedParameterUnlocated ? [{ id: "parameter", label: "生成参数修改请求", onSelect: onPrimary }] : []),
+          { id: "retry", label: "重新分析", disabled: retryPending, onSelect: onRetry }
         ]} />
         <div role="group" aria-label="分析反馈" className="logs-conclusion-actions">
           {feedbackRating ? <span role="status">已反馈：{feedbackRating === "helpful" ? "有帮助" : "没帮助"}</span> : null}
@@ -1081,8 +1143,8 @@ function LogHeaderMeta({ log }: { log: LogRecord }) {
   const sizeBytes = log.files?.length ? log.files.reduce((sum, file) => sum + file.sizeBytes, 0) : log.fileSizeMB * 1024 ** 2;
   return <p className="logs-header-meta">
     {log.createdByCredentialId ? `通过集成凭据 ${log.createdByCredentialName ?? "上传"}` : log.submittedBy}
-    {" · "}{formatLogDateTime(log.capturedAt)}{" · "}
-    {log.files?.length || 1} 个文件 / {formatBytes(sizeBytes)}
+    {" · "}{formatLogDateTime(log.capturedAt)}
+    {log.files?.length ? <> · {log.files.length} 个文件 / {formatBytes(sizeBytes)}</> : null}
   </p>;
 }
 
@@ -1163,7 +1225,7 @@ function LogErrorAlert({ log, onRetry }: { log: LogRecord; onRetry: () => void }
     <AlertTriangle size={22} aria-hidden />
     <div>
       <strong>日志处理失败</strong>
-      <p>在 {STAGE_LABELS[log.stage]} 阶段失败 · <span>{reason}</span></p>
+      <p>在{STAGE_LABELS[log.stage]}阶段失败 · <span>{reason}</span></p>
       <p>{log.fileName}</p>
       <LogHeaderMeta log={log} />
       <Button variant="outline" onClick={onRetry}>重新上传</Button>
@@ -1378,7 +1440,7 @@ function RawLogViewer({
             })}
             {visibleRawLogRows.length === 0 ? (
               <tr className="rawlog-line">
-                <td colSpan={2 + Number(showTime) + Number(showModule)}>当前筛选条件下没有日志行。</td>
+                <td colSpan={2 + Number(showTime) + Number(showModule)}><SectionEmpty icon={<FileText aria-hidden size={20} />} message="当前筛选条件下没有日志行。" /></td>
               </tr>
             ) : null}
           </tbody>
@@ -1413,6 +1475,7 @@ function EvidenceChainPanel({
     <section className="evidence-chain" aria-label="日志分析证据链">
       <SectionLabel icon={<ListChecks size={16} />} label="日志分析证据链" />
       <div className="evidence-chain-list">
+        {!evidence.length ? <SectionEmpty icon={<FileText aria-hidden size={20} />} message="暂无分析证据。" /> : null}
         {evidence.map((item, index) => {
           const focused = item.id === focusedEvidenceId;
           const relatedToHoveredLine = hoveredLine !== null && (!item.filePath || item.filePath === rawFilePath) && item.lineNumbers.includes(hoveredLine);
@@ -1506,7 +1569,7 @@ function EvidenceCard({
 }
 
 function LogFilesTable({ log }: { log: LogRecord }) {
-  if (!log.files?.length) return <EmptyState text="该历史记录暂无文件清单。" />;
+  if (!log.files?.length) return <SectionEmpty icon={<FileText aria-hidden size={20} />} message="该历史记录暂无文件清单。" />;
   return <section className="analysis-card overflow-auto" aria-label="日志文件清单">
     <table className="w-full text-left text-sm">
       <thead><tr>{["路径", "角色", "大小", "行数", "编码", "状态"].map((label) => <th key={label} className="p-3">{label}</th>)}</tr></thead>

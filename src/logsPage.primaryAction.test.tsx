@@ -2,7 +2,6 @@ import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/re
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getContextQuery } from "@/workbenchUi";
-import { logRuntimeFailureNotification } from "@/application/logs/logRuntime";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { LogAnalysisRepository, LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
 import { initialState } from "./mockData";
@@ -146,7 +145,7 @@ describe("LogsPage api rerun wiring", () => {
     });
   });
 
-  it("absorbs handled runtime failures when api rerun rejects", async () => {
+  it("shows an inline failure when api rerun rejects", async () => {
     const repository = renderApiLogs(createLogRepository({ rerunLog: vi.fn().mockRejectedValue(new Error("boom")) }));
     await waitForApiRuntime(repository);
 
@@ -158,7 +157,7 @@ describe("LogsPage api rerun wiring", () => {
       logId: "log-auth",
       analysisQuestion: completeLog.analysisQuestion
     });
-    await waitFor(() => expect(document.body).toHaveTextContent(logRuntimeFailureNotification));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("服务暂时不可用，请稍后重试。"));
     expect(screen.getByRole("main")).toBeInTheDocument();
   });
 

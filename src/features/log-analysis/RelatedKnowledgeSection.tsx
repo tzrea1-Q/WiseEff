@@ -5,6 +5,7 @@ import { BookOpen } from "lucide-react";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
 import type { KnowledgeSearchResult } from "@/domain/knowledge/types";
 import { PanelHeader } from "@/workbenchUi";
+import { presentError } from "@/infrastructure/http/presentError";
 
 /**
  * Related published knowledge for a completed log-analysis record. The parent
@@ -18,7 +19,7 @@ export function RelatedKnowledgeSection({
 }: {
   logId: string;
   repository: Pick<KnowledgeRepository, "relatedToLog">;
-  onNavigate: (path: string) => void;
+  onNavigate?: (path: string) => void;
 }) {
   const [items, setItems] = useState<KnowledgeSearchResult[]>([]);
   const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
@@ -37,7 +38,7 @@ export function RelatedKnowledgeSection({
       },
       (error: unknown) => {
         if (cancelled) return;
-        setErrorMessage(error instanceof Error && error.message ? error.message : "相关知识加载失败,请稍后重试。");
+        setErrorMessage(presentError(error, "服务暂时不可用，请稍后重试。"));
         setPhase("error");
       }
     );
@@ -45,6 +46,8 @@ export function RelatedKnowledgeSection({
       cancelled = true;
     };
   }, [logId, reloadToken, repository]);
+
+  if (phase === "ready" && items.length === 0) return null;
 
   return (
     <section
@@ -64,20 +67,21 @@ export function RelatedKnowledgeSection({
             重试
           </button>
         </div>
-      ) : items.length === 0 ? (
-        <p className="logs-related-knowledge__state">暂无相关知识</p>
       ) : (
         <ul className="logs-related-knowledge__list">
           {items.map((item) => (
             <li key={item.entryId}>
-              <button
+              {onNavigate ? <button
                 className="logs-related-knowledge__entry"
                 type="button"
                 onClick={() => onNavigate(knowledgeEntryHref({ entryId: item.entryId }))}
               >
                 <BookOpen size={14} aria-hidden />
                 <span>{item.title}</span>
-              </button>
+              </button> : <span className="inline-flex items-center gap-1 font-semibold">
+                <BookOpen size={14} aria-hidden />
+                <span>{item.title}</span>
+              </span>}
               <p className="logs-related-knowledge__excerpt">{item.excerpt}</p>
             </li>
           ))}

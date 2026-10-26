@@ -18,9 +18,9 @@ describe("normalized workspace headers", () => {
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
 
-    expect(within(topbar).queryByRole("button", { name: "进入智能分析" })).not.toBeInTheDocument();
+    expect(within(topbar).queryByRole("button", { name: "前往智能分析" })).not.toBeInTheDocument();
     expect(within(topbar).queryByRole("button", { name: "刷新" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "进入智能分析" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "前往智能分析" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "刷新" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 1, name: "日志分析管理后台" })).not.toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();

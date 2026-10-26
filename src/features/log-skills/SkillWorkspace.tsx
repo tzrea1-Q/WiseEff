@@ -53,6 +53,7 @@ export type SectionProps = { skill: AnalysisSkill; spec: SkillSpec; setSpec: (sp
   revisions: SkillRevision[]; onRestore: (revision: SkillRevision) => void;
   repository?: Partial<LogAnalysisRepository>; apiMode: boolean; canEdit: boolean; dirty: boolean;
   knowledgeRepository?: KnowledgeRepository; knowledgeCapability?: KnowledgeCapability;
+  canOpenKnowledge?: boolean;
   fieldErrors?: Record<string, string>;
   onSkillUpdated: (skill: AnalysisSkill) => void; onBusyChange: (busy: boolean) => void;
   onWebhookDirtyChange?: (dirty: boolean) => void;
@@ -200,10 +201,11 @@ export const skillSections: Array<{ id: string; label: string; component?: Compo
   { id: "integration", label: "集成", component: IntegrationSection, inspectorHidden: true }, { id: "versions", label: "版本", component: Versions, inspectorHidden: true }
 ];
 
-export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, knowledgeRepository, knowledgeCapability, onNavigate, onPublished }: {
+export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, knowledgeRepository, knowledgeCapability, canOpenKnowledge = true, onNavigate, onPublished }: {
   skillId: string; search: string; repository?: Partial<LogAnalysisRepository>; apiMode: boolean; canEdit: boolean;
   onNavigate: (path: string) => void; onPublished: (message: string) => void;
   knowledgeRepository?: KnowledgeRepository; knowledgeCapability?: KnowledgeCapability;
+  canOpenKnowledge?: boolean;
 }) {
   const [skill, setSkill] = useState<AnalysisSkill | null>(null);
   const [sample, setSample] = useState<SkillSample | null>(null);
@@ -410,13 +412,16 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
         highlightPreview={currentHighlights?.preview} highlightError={currentHighlights?.error} />}
       toolbar={<header className="skill-workspace-header"><Button variant="link" asChild><a href="/log-admin?tab=skills" onClick={(event) => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); back(); } }}>← 分析技能</a></Button>
         <div className="skill-workspace-identity"><h1 title={skill.name}>{skill.name}</h1><span className="badge" role="status">{workspaceStatus}</span></div>
-        {apiMode && canEdit ? <div className="skill-dry-run-action"><small id="skill-dry-run-reason">{dryRunReason}</small><Button variant="outline" disabled={!!dryRunReason}
+        {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Disabled buttons cannot receive focus; the wrapper exposes their reason to keyboard users. */}
+        {apiMode && canEdit ? <TooltipProvider><Tooltip><TooltipTrigger asChild><span className="skill-dry-run-action" tabIndex={dryRunReason ? 0 : undefined}>
+          <span className="sr-only" id="skill-dry-run-reason">{dryRunReason}</span><Button variant="outline" disabled={!!dryRunReason}
           aria-describedby={dryRunReason ? "skill-dry-run-reason" : undefined} onClick={() => {
             if (dryRun?.status === "processing") { setDryRunOpen(true); return; }
             void run(async () => {
               await startDryRun();
             });
-          }}>{dryRun?.status === "processing" ? "查看试运行" : "试运行"}</Button></div> : null}
+          }}>{dryRun?.status === "processing" ? "查看试运行" : "试运行"}</Button></span></TooltipTrigger>
+          {dryRunReason ? <TooltipContent>{dryRunReason}</TooltipContent> : null}</Tooltip></TooltipProvider> : null}
         <div className="skill-draft-actions-slot">{skill.draft || dirty ? <div className="skill-draft-bar" role="group" aria-label="未发布更改">
           {skill.currentRevision.status === "draft" && repository?.previewSkillDeletion ? <Button variant="ghost" disabled={disabled} onClick={() => setDeletionOpen(true)}>彻底删除…</Button> : <Button variant="ghost" disabled={disabled || (skill.currentRevision.status === "draft" && !dirty)} onClick={() => ask("放弃草稿？", skill.currentRevision.status === "draft" ? "将放弃未保存的更改，保留已导入的首个草稿。" : skill.draft ? "将删除已保存的草稿并放弃未保存的更改，当前发布版本不受影响。" : "将放弃未保存的更改，当前发布版本不受影响。", () => {
             if (skill.currentRevision.status === "draft") { setSpec(structuredClone((skill.draft ?? skill.currentRevision).spec)); setProcedureEdited(false); setParsingYamlDraft(null); setFormatValid(true); setEditorReset((value) => value + 1); setEditReset((generation) => generation + 1); return; }
@@ -451,7 +456,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
           if (pending || yamlInvalid || testsInvalid || !formatValid || conflict) throw new Error("请先修正草稿错误再运行用例。");
           if ((dirty || !skill.draft) && !await run(async () => { await save(); })) throw new Error("草稿保存失败，请重试后再运行用例。");
         }}
-        knowledgeRepository={knowledgeRepository} knowledgeCapability={knowledgeCapability}
+        knowledgeRepository={knowledgeRepository} knowledgeCapability={knowledgeCapability} canOpenKnowledge={canOpenKnowledge}
         onSkillUpdated={(updated) => { setSkill(updated); if (updated.currentRevision !== skill.currentRevision || updated.draft !== skill.draft) setSpec(structuredClone((updated.draft ?? updated.currentRevision).spec));
           setRevisions((history) => [...(updated.draft ? [updated.draft] : []), ...history.filter((revision) => revision.status !== "draft")]); }}
         onRestore={(revision) => {

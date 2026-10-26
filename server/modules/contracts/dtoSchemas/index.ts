@@ -19,8 +19,11 @@ import { productFeedbackCoveredRouteIds, productFeedbackDtoSchemaCatalog } from 
 import { structuralReadResponseSchema, dtsSearchResponseSchema } from "./dtsStructure";
 import { sourceRevisionCoveredRouteIds, sourceRevisionDtoSchemaCatalog } from "./sourceRevision";
 import { parameterDefinitionDeletionDtoSchemaCatalog, parameterDefinitionDeletionCoveredRouteIds } from "./parameterDefinitionDeletion";
+import { workflowPublicationDtoSchemaCatalog, workflowPublicationCoveredRouteIds } from "./workflowPublication";
+export { workflowPublicationAdminStateSchema, workflowPublicationStateSchema } from "./workflowPublication";
 
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
+  ...workflowPublicationDtoSchemaCatalog,
   ...knowledgeDtoSchemaCatalog,
   ...coreDtoSchemaCatalog,
   ...parameterCatalogDtoSchemaCatalog,
@@ -35,6 +38,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 };
 
 export const dtoSchemaCoveredRouteIds = [
+  ...workflowPublicationCoveredRouteIds,
   ...knowledgeCoveredRouteIds,
   ...coreDtoSchemaCoveredRouteIds,
   ...parameterCatalogCoveredRouteIds,

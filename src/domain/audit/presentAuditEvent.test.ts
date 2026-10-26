@@ -32,6 +32,14 @@ const baseEvent: AuditEventView = {
 };
 
 describe("presentAuditEvent", () => {
+  it("presents global publication as a platform operation with a readable target", () => {
+    const presentation = presentAuditEvent({ ...baseEvent, app: "platform", organizationId: null,
+      kind: "workflow-publication-updated", action: "update", targetType: "workflow-publication", targetId: "platform", metadata: {} });
+    expect(presentation.appLabel).toBe("平台管理");
+    expect(presentation.kindLabel).toBe("工作流发布配置更新");
+    expect(presentation.targetLabel).toBe("工作流发布配置");
+    expect(presentation.projectLabel).toBe("平台级操作");
+  });
   it.each([
     ["issue", "签发集成凭据"], ["rotate", "轮换集成凭据"], ["revoke", "撤销集成凭据"]
   ])("uses readable credential action and metadata name for %s", (kind, action) => {

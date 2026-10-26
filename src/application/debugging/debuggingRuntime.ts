@@ -26,6 +26,7 @@ type DebuggingGatewayWriteResult = NodeWriteResult & {
 };
 
 export const debuggingRuntimeFailureNotification = "调试操作未完成，请稍后重试。";
+export const debuggingNoDeviceNotification = "未检测到设备，请检查 USB 连接与调试授权后重新检测。";
 
 export type HydrateDebugRuntimeAction = {
   type: "HYDRATE_DEBUG_RUNTIME";
@@ -111,6 +112,10 @@ export function formatDebuggingRuntimeError(error: unknown): string {
       return "当前账号无权执行此调试操作。";
     }
     return toUserErrorMessage(cause, debuggingRuntimeFailureNotification);
+  }
+
+  if (cause instanceof Error && cause.message === "No debug target detected.") {
+    return debuggingNoDeviceNotification;
   }
 
   if (error instanceof Error && error.message.trim() && error.message !== debuggingRuntimeFailureNotification) {

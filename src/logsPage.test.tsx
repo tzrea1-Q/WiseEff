@@ -1,5 +1,5 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { useReducer, useState } from "react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useReducer } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -15,29 +15,15 @@ vi.mock("@copilotkit/react-core/v2", () => ({
 import App from "./App";
 import { initialState } from "./mockData";
 import { LogsPage } from "@/features/log-analysis/LogsPage";
-import { createApiClient } from "@/infrastructure/http/apiClient";
+import { createApiClient, WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createHttpLogAnalysisRepository } from "@/infrastructure/http/logClient";
 import { createTestAppPorts, createTestLogAnalysisRepository, renderApp } from "@/test/harness";
 import { reducer } from "@/application/state/appState";
 import { selectControlOption } from "@/test/selectControlOption";
+import { XIAOZE_OPEN_HANDOFF_EVENT } from "@/features/agent/xiaozeOpenHandoff";
+import { createLogRuntimeActions } from "@/application/logs/logRuntime";
 
 const userState = { ...initialState, activeRoleId: "user" };
-
-function FakeXiaozeToggle() {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <div className="xiaoze-chat-toggle-anchor">
-        <button type="button" aria-label="打开小泽" onClick={() => setOpen(true)} />
-      </div>
-      {open ? (
-        <div data-testid="xiaoze-popup-layer" className="xiaoze-popup-layer">
-          <span>小泽</span>
-        </div>
-      ) : null}
-    </>
-  );
-}
 
 afterEach(() => {
   cleanup();
@@ -47,6 +33,124 @@ afterEach(() => {
 });
 
 describe("LogsPage · Header", () => {
+  it.each([true, false])("参数管理未开放时隐藏关联参数和修改请求入口（已关联：%s）", async (linked) => {
+    const log = { ...initialState.logs[0], status: "Complete" as const, stage: "report" as const,
+      relatedParameterId: linked ? "binding-1" : undefined, relatedParameterProjectId: linked ? "project-1" : undefined };
+    const onNavigate = vi.fn();
+    render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined}
+      onNavigate={onNavigate} canOpenParameters={false} />);
+    expect(screen.queryByRole("button", { name: "查看关联参数" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "更多" }));
+    expect(screen.queryByRole("menuitem", { name: "生成参数修改请求" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "导出报告" })).toBeInTheDocument();
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  it("将标签页置于详情标题下，未知文件清单时不声称文件数", async () => {
+    const log = { ...initialState.logs[1], files: undefined, fileSizeMB: 0 };
+    render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined} />);
+    const task = screen.getByRole("region", { name: "日志任务区" });
+    const tabs = within(task).getByRole("tablist", { name: "日志辅助信息" });
+    const header = within(task).getByRole("region", { name: log.conclusion });
+    expect(header.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(header).not.toHaveTextContent(/个文件/);
+    expect(screen.getByRole("region", { name: "日志记录" })).not.toContainElement(tabs);
+    await userEvent.click(within(tabs).getByRole("tab", { name: "文件" }));
+    expect(within(screen.getByRole("tabpanel", { name: "文件" })).getByText("该历史记录暂无文件清单。")).toBeInTheDocument();
+  });
+
+  it("重新分析失败只显示一次服务端消息，且可再次重试", async () => {
+    const log = initialState.logs[1];
+    const state = { ...userState, logs: [log] };
+    const dispatch = vi.fn();
+    const repository = createTestLogAnalysisRepository([log], { rerunLog: vi.fn().mockRejectedValue(new Error("技能版本已失效，请重新选择。")) });
+    const logActions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => state });
+    render(<LogsPage search="" state={state} dispatch={dispatch} logActions={logActions} onNavigate={() => undefined} />);
+    await userEvent.click(screen.getByRole("button", { name: "更多" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "重新分析" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("技能版本已失效，请重新选择。");
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ADD_NOTIFICATION" }));
+    await userEvent.click(screen.getByRole("button", { name: "更多" }));
+    expect(screen.getByRole("menuitem", { name: "重新分析" })).toBeEnabled();
+  });
+
+  it("重新分析内部错误隐藏服务端内部文本，保留请求编号", async () => {
+    const log = initialState.logs[1], state = { ...userState, logs: [log] };
+    const dispatch = vi.fn();
+    const repository = createTestLogAnalysisRepository([log], {
+      rerunLog: vi.fn().mockRejectedValue(new WiseEffApiError("INTERNAL_ERROR", "无法读取 /srv/private/config.ts", {}, "request-u2"))
+    });
+    const logActions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => state });
+    render(<LogsPage search="" state={state} dispatch={dispatch} logActions={logActions} onNavigate={() => undefined} />);
+    await userEvent.click(screen.getByRole("button", { name: "更多" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "重新分析" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("服务暂时不可用，请稍后重试。（请求编号 request-u2）");
+    expect(alert).not.toHaveTextContent("/srv/private");
+  });
+
+  it("删除本人失败日志先确认，取消不删除，成功后移出历史列表", async () => {
+    const log = { ...initialState.logs[1], status: "Failed" as const, canDelete: true };
+    const purgeLog = vi.fn().mockResolvedValue({ logId: log.id, version: "a".repeat(64), database: "deleted", objects: "complete", pendingObjects: 0 });
+    const repository = createTestLogAnalysisRepository([log], {
+      previewLogDeletion: vi.fn().mockResolvedValue({ organizationId: "org", logId: log.id, fileName: log.fileName,
+        version: "a".repeat(64), generatedAt: "2026-10-22T10:00:00Z", inventory: [], objects: { total: 0, shared: 0, exclusive: 0 }, conditions: [], notes: [] }), purgeLog
+    });
+    const runtime = createTestAppPorts({ overrides: { logAnalysisRepository: repository } });
+    function OwnedLog() {
+      const [state, dispatch] = useReducer(reducer, { ...userState, logs: [log] });
+      return <LogsPage search="" state={state} dispatch={dispatch} runtime={runtime} onNavigate={() => undefined} />;
+    }
+    render(<OwnedLog />);
+    await userEvent.click(screen.getByRole("button", { name: "删除日志" }));
+    await screen.findByText(`${log.fileName} · ${log.id}`);
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "关闭" }));
+    expect(purgeLog).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "删除日志" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "彻底删除" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "彻底删除" }));
+    await screen.findByText("日志数据库数据已永久删除。");
+    expect(purgeLog).toHaveBeenCalledWith(log.id, "a".repeat(64));
+    expect(screen.queryByRole("button", { name: /usb_pd_negotiation/ })).not.toBeInTheDocument();
+    expect(screen.getByText("还没有日志")).toBeInTheDocument();
+  });
+
+  it("存储清理失败后关闭并重载页面，仍可继续清理且不再预览已删除日志", async () => {
+    const log = { ...initialState.logs[1], status: "Failed" as const, canDelete: true };
+    const receipt = { logId: log.id, version: "a".repeat(64), database: "deleted" as const, objects: "pending" as const, pendingObjects: 1 };
+    let pending = false;
+    const pendingLogDeletions = vi.fn(async () => pending ? [receipt] : []);
+    const purgeLog = vi.fn().mockImplementationOnce(async () => { pending = true; return receipt; })
+      .mockImplementationOnce(async () => { pending = false; return { ...receipt, objects: "complete", pendingObjects: 0 }; });
+    const previewLogDeletion = vi.fn().mockResolvedValue({ organizationId: "org", logId: log.id, fileName: log.fileName,
+      version: receipt.version, generatedAt: "2026-10-22T10:00:00Z", inventory: [], objects: { total: 1, shared: 0, exclusive: 1 }, conditions: [], notes: [] });
+    const repository = createTestLogAnalysisRepository([log], { previewLogDeletion, purgeLog, pendingLogDeletions });
+    const runtime = createTestAppPorts({ overrides: { logAnalysisRepository: repository } });
+    function OwnedLog({ empty = false }: { empty?: boolean }) {
+      const [state, dispatch] = useReducer(reducer, { ...userState, logs: empty ? [] : [log] });
+      return <LogsPage search="" state={state} dispatch={dispatch} runtime={runtime} onNavigate={() => undefined} />;
+    }
+    const first = render(<OwnedLog />);
+    await userEvent.click(screen.getByRole("button", { name: "删除日志" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "彻底删除" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "彻底删除" }));
+    await screen.findByText("日志数据库数据已永久删除。");
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "关闭" }));
+    expect(screen.getByRole("region", { name: "存储清理未完成" })).toHaveTextContent(log.id);
+    first.unmount();
+    const requestsBeforeReload = pendingLogDeletions.mock.calls.length;
+    render(<OwnedLog empty />);
+    const notice = await screen.findByRole("region", { name: "存储清理未完成" });
+    expect(pendingLogDeletions.mock.calls.length).toBeGreaterThan(requestsBeforeReload);
+    await userEvent.click(within(notice).getByRole("button", { name: "重试清理" }));
+    expect(previewLogDeletion).toHaveBeenCalledTimes(1);
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "重试存储清理" }));
+    await screen.findByText("存储清理完成。");
+    expect(purgeLog).toHaveBeenCalledTimes(2);
+    expect(purgeLog).toHaveBeenLastCalledWith(log.id, receipt.version);
+    expect(screen.queryByRole("region", { name: "存储清理未完成" })).not.toBeInTheDocument();
+  });
+
   it.each([undefined, "deleted-skill"])("已删除技能的名称和版本快照以纯文本显示（残留 ID：%s）", (logDomainId) => {
     const log = { ...initialState.logs[1], logDomainId, logDomainName: undefined, skillRevision: null,
       skillNameSnapshot: "历史设备诊断", skillRevisionNumberSnapshot: 3,
@@ -219,7 +323,7 @@ describe("LogsPage · Header", () => {
   it("keeps upload available without presenting an empty installation as a failed analysis", () => {
     render(<LogsPage search="" state={{ ...userState, logs: [] }} dispatch={() => undefined} onNavigate={() => undefined} />);
     const task = screen.getByRole("region", { name: "日志任务区" });
-    expect(within(task).getByRole("heading", { name: "还没有日志" })).toBeInTheDocument();
+    expect(within(task).getByText("还没有日志")).toBeInTheDocument();
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
     expect(within(task).queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "上传日志" })).toBeEnabled();
@@ -322,10 +426,10 @@ describe("LogsPage · Header", () => {
     const summary = screen.getByRole("alert");
     const failedLog = initialState.logs.find((log) => log.status === "Failed")!;
     expect(summary).toHaveTextContent("日志处理失败");
-    expect(summary).toHaveTextContent("在 日志解析 阶段失败");
+    expect(summary).toHaveTextContent("在日志解析阶段失败");
     expect(summary).not.toHaveTextContent("支持格式：");
     expect(within(summary).getByText(failedLog.fileName)).toBeInTheDocument();
-    expect(summary).toHaveTextContent(`${failedLog.fileSizeMB.toFixed(1)} MB`);
+    expect(summary).not.toHaveTextContent(/个文件/);
     expect(summary).toHaveTextContent(failedLog.capturedAt);
     expect(summary).toHaveTextContent(failedLog.submittedBy);
     expect(screen.queryByRole("list", { name: "分析流程" })).not.toBeInTheDocument();
@@ -360,7 +464,7 @@ describe("LogsPage · Header", () => {
     const summary = screen.getByRole("alert");
     expect(summary).toHaveTextContent("日志处理失败");
     expect(summary).toHaveTextContent("分析未完成，未生成报告，请重试或重新上传。");
-    expect(summary).toHaveTextContent("在 根因推断 阶段失败");
+    expect(summary).toHaveTextContent("在根因推断阶段失败");
     expect(summary).not.toHaveTextContent("支持格式：");
     expect(summary).not.toHaveTextContent("Log analysis failed");
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
@@ -378,7 +482,7 @@ describe("LogsPage · Header", () => {
 
     const alert = screen.getByRole("alert");
     expect(within(alert).getAllByText(reason)).toHaveLength(1);
-    expect(alert).toHaveTextContent(`在 日志解析 阶段失败 · ${reason}`);
+    expect(alert).toHaveTextContent(`在日志解析阶段失败 · ${reason}`);
     expect(alert).not.toHaveTextContent("支持格式：");
   });
 
@@ -393,22 +497,17 @@ describe("LogsPage · Header", () => {
     expect(new URLSearchParams(window.location.search).get("logId")).toBe("log-auth");
   });
 
-  it("更多菜单中的问 Agent 能打开小泽", async () => {
+  it("更多菜单中的问小泽直接调用小泽打开入口，无需 DOM 按钮", async () => {
     window.history.replaceState(null, "", "/logs");
 
-    render(
-      <>
-        <App initialAppState={userState} />
-        <FakeXiaozeToggle />
-      </>
-    );
+    const opened = vi.fn();
+    window.addEventListener(XIAOZE_OPEN_HANDOFF_EVENT, opened, { once: true });
+    render(<App initialAppState={userState} />);
 
     fireEvent.click(screen.getByRole("button", { name: /usb_pd_negotiation/ }));
     await userEvent.click(screen.getByRole("button", { name: "更多" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "问 Agent" }));
-
-    expect(screen.getByTestId("xiaoze-popup-layer")).toBeInTheDocument();
-    expect(screen.getByText("小泽")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("menuitem", { name: "问小泽" }));
+    expect(opened).toHaveBeenCalledOnce();
     expect(document.querySelector(".agent-panel")).not.toBeInTheDocument();
     expect(screen.queryByText("WiseAgent")).not.toBeInTheDocument();
   });

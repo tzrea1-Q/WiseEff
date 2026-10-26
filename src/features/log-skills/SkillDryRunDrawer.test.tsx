@@ -26,7 +26,7 @@ describe("skill dry-run drawer", () => {
     expect(repository.startSkillDryRun).not.toHaveBeenCalled();
     expect(onRunChange).toHaveBeenCalledWith(processing);
   });
-  it("shows progress, then the conclusion, evidence and trace with plain-text lines", async () => {
+  it("opens cited sample lines from both evidence and trace in the frozen run", async () => {
     let finish!: (detail: SkillDryRunDetail) => void;
     const repository = { getSkillDryRun: vi.fn(() => new Promise<SkillDryRunDetail>((resolve) => { finish = resolve; })),
       getSkillDryRunLines: vi.fn(async () => ({ file: "sample.log", startLine: 1, endLine: 2, totalLines: 2,
@@ -46,9 +46,18 @@ describe("skill dry-run drawer", () => {
     expect(drawer).toHaveTextContent("提前收敛");
     expect(within(drawer).getByLabelText("分析轨迹摘要")).toHaveTextContent("1 步 · 0 次工具调用 · 提前收敛");
     expect(within(drawer).getAllByText("sample.log:2")).toHaveLength(2);
-    expect(within(drawer).queryByRole("button", { name: "sample.log:2" })).not.toBeInTheDocument();
+    expect(within(drawer).getAllByRole("button", { name: "sample.log:2" })).toHaveLength(2);
     expect(screen.queryByRole("dialog", { name: "日志文件" })).not.toBeInTheDocument();
     expect(repository.getSkillDryRunLines).not.toHaveBeenCalled();
+    for (const citation of within(drawer).getAllByRole("button", { name: "sample.log:2" })) {
+      fireEvent.click(citation);
+      const file = await screen.findByRole("dialog", { name: "日志文件" });
+      const line = await within(file).findByLabelText("引用日志第 2 行");
+      expect(line).toHaveTextContent("temperature=90");
+      expect(line).toHaveAttribute("data-highlighted", "true");
+      expect(repository.getSkillDryRunLines).toHaveBeenLastCalledWith("skill", "dry-run", "sample.log", 1, 101);
+      fireEvent.click(within(file).getByRole("button", { name: "Close" }));
+    }
   });
 
   it("shows failed runs and allows retrying a failed status request", async () => {

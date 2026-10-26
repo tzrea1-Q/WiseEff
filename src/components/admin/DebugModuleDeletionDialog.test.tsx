@@ -1,46 +1,57 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import type { DebugModuleDeletionPreview } from "@/infrastructure/http/debuggingAdminClient";
 import { DebugModuleDeletionDialog } from "./DebugModuleDeletionDialog";
 
-const modules: FlatModuleNode[] = [
-  { id: "source", name: "原分类", parentId: null, path: "source", depth: 1 },
-  { id: "target", name: "目标", parentId: null, path: "target", depth: 1 }
+const modules = [
+  { id: "source", name: "原分类", path: "source", parentId: null, depth: 1 },
+  { id: "target", name: "目标", path: "target", parentId: null, depth: 1 }
 ];
 
-const rootPreview: DebugModuleDeletionPreview = {
-  module: { id: "source", name: "原分类" }, target: null, nodeCount: 2, legacyNodeCount: 0,
-  children: [], ambiguousNodes: [], canDelete: true, previewDigest: "digest-root"
-};
-
 describe("DebugModuleDeletionDialog", () => {
-  it("disables confirmation in the same render that changes the transfer target", async () => {
+  it("invalidates the old proof before requesting a changed target and preserves that target after a conflict", async () => {
     const user = userEvent.setup();
-    const onDelete = vi.fn();
-    const onPreview = vi.fn((_moduleId: string, targetModuleId: string | null) =>
-      targetModuleId ? new Promise<DebugModuleDeletionPreview>(() => undefined) : Promise.resolve(rootPreview));
-    render(<DebugModuleDeletionDialog module={modules[0]!} modules={modules} onPreview={onPreview} onDelete={onDelete}
-      onCancel={vi.fn()} onMoveChild={vi.fn()} onEditNode={vi.fn()} />);
+    const initial: DebugModuleDeletionPreview = {
+      module: modules[0]!, target: null, nodeCount: 2, legacyNodeCount: 1,
+      children: [], ambiguousNodes: [], canDelete: true, previewDigest: "initial-proof"
+    };
+    let resolvePreview!: (preview: DebugModuleDeletionPreview) => void;
+    const disabledAtRequest: boolean[] = [];
+    const onPreview = vi.fn((_moduleId: string, targetId: string | null) => {
+      if (targetId === null) return Promise.resolve(initial);
+      // Inspect the committed UI before the request effect's state updates can render.
+      disabledAtRequest.push((screen.getByRole("button", { name: "迁移节点并删除模块" }) as HTMLButtonElement).disabled);
+      return new Promise<DebugModuleDeletionPreview>(resolve => { resolvePreview = resolve; });
+    });
+    const onDelete = vi.fn().mockRejectedValue(new Error("删除预览已变化，请重新预览。"));
+    const onCancel = vi.fn();
+    render(<DebugModuleDeletionDialog module={modules[0]!} modules={modules} onPreview={onPreview}
+      onDelete={onDelete} onCancel={onCancel} onMoveChild={vi.fn()} onEditNode={vi.fn()} />);
     const confirm = screen.getByRole("button", { name: "迁移节点并删除模块" });
-    await vi.waitFor(() => expect(confirm).toBeEnabled());
+    await waitFor(() => expect(confirm).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "节点迁移目标" }));
-    const target = within(screen.getByRole("tree")).getByRole("button", { name: "目标" });
+    await user.click(within(screen.getByRole("tree")).getByRole("button", { name: "目标" }));
 
-    // Outside act(), React renders the target change synchronously but defers updates made
-    // by effects, which is the window a fast keyboard confirmation can land in.
-    const actEnvironment = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
-    actEnvironment.IS_REACT_ACT_ENVIRONMENT = false;
-    try {
-      target.click();
-      await Promise.resolve();
-      expect(screen.getByRole("button", { name: "节点迁移目标" })).toHaveTextContent("目标");
-      expect(confirm).toBeDisabled();
-      confirm.click();
-      expect(onDelete).not.toHaveBeenCalled();
-    } finally {
-      actEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
-    }
+    expect(disabledAtRequest).toEqual([true]);
+    expect(confirm).toBeDisabled();
+    fireEvent.click(confirm);
+    expect(onDelete).not.toHaveBeenCalled();
+    await act(async () => resolvePreview({ ...initial, target: modules[1]!, previewDigest: "target-proof" }));
+    expect(confirm).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "节点迁移目标" }));
+    await user.click(within(screen.getByRole("tree")).getByRole("button", { name: "目标" }));
+    expect(onPreview).toHaveBeenCalledTimes(2);
+    expect(confirm).toBeEnabled();
+    confirm.focus();
+    await user.keyboard("{Enter}");
+    expect(onDelete).toHaveBeenCalledExactlyOnceWith("source", {
+      targetModuleId: "target", previewDigest: "target-proof", clientMutationId: expect.any(String)
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent("预览已变化");
+    expect(screen.getByRole("button", { name: "节点迁移目标" })).toHaveTextContent("目标");
+    expect(confirm).toBeDisabled();
+    expect(onCancel).not.toHaveBeenCalled();
   });
 });

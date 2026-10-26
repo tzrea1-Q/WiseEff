@@ -823,8 +823,8 @@ export function UserPermissionsPage({
 
       <ConfirmDialog open={pendingRequestDecision !== null} title={pendingRequestDecision?.decision === "approve" ? "通过注册申请？" : pendingRequestDecision?.decision === "enable-basic" ? "按普通成员启用？" : "拒绝注册申请？"}
         description={pendingRequestDecision ? <div><p>{pendingRequestDecision.request.userName} · {pendingRequestDecision.request.organizationName ?? pendingRequestDecision.request.organizationId}</p>
-          <p>申请角色：{roleLabelOf(pendingRequestDecision.request.requestedRoleId)}</p>
-          <p>{roleCapabilityDescriptions[pendingRequestDecision.request.requestedRoleId]}</p>
+          <p>{pendingRequestDecision.decision === "enable-basic" ? "启用角色：" : "申请角色："}{roleLabelOf(pendingRequestDecision.decision === "enable-basic" ? pendingRequestDecision.request.currentRoleId : pendingRequestDecision.request.requestedRoleId)}</p>
+          <p>{roleCapabilityDescriptions[pendingRequestDecision.decision === "enable-basic" ? pendingRequestDecision.request.currentRoleId : pendingRequestDecision.request.requestedRoleId]}</p>
           <p>{pendingRequestDecision.decision === "approve" ? "通过后立即启用账号，并授予上述组织角色。" : pendingRequestDecision.decision === "enable-basic" ? `不授予申请角色，按${roleLabelOf(pendingRequestDecision.request.currentRoleId)}启用，账号可登录。` : "拒绝提升，不更改账号当前的角色与启停状态。初始停用状态将保持；如已有后续管理调整，将保留最新设置。"}</p></div> : undefined}
         confirmLabel={pendingRequestDecision?.decision === "approve" ? "通过并启用" : pendingRequestDecision?.decision === "enable-basic" ? "启用普通成员" : "确认拒绝"} tone={pendingRequestDecision?.decision === "reject" ? "danger" : "primary"}
         pending={Boolean(decidingRequestId)} error={registrationRoleRequestError || null}

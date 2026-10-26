@@ -285,6 +285,7 @@ export function presentAuditEvent(event: AuditEventView): AuditPresentation {
   const statusChange = readStatusChange(metadata);
   const headline = parameterChange ? `${actionLabel} · ${parameterChange.name}` : actionLabel;
   const targetLabels: Record<string, string> = {
+    "workflow-publication": "工作流发布配置",
     parameter: "参数", "parameter-binding": "参数绑定", "project-value": "项目参数值",
     "parameter-value": "参数值", "parameter-change-request": "参数变更申请",
     "project-parameter-value-change-request": "项目参数变更申请", "project-parameter-binding": "项目参数绑定",
@@ -311,7 +312,7 @@ export function presentAuditEvent(event: AuditEventView): AuditPresentation {
     appLabel,
     actionLabel,
     targetLabel,
-    projectLabel: event.projectName ? `${event.projectName}${event.projectCode ? ` · ${event.projectCode}` : ""}` : event.projectCode ?? (event.projectId ? "未记录项目名称" : "组织级操作"),
+    projectLabel: event.projectName ? `${event.projectName}${event.projectCode ? ` · ${event.projectCode}` : ""}` : event.projectCode ?? (event.projectId ? "未记录项目名称" : event.organizationId === null ? "平台级操作" : "组织级操作"),
     evidenceSource: asString(event.evidence?.sourceLabel),
     outcomes,
     actor: {

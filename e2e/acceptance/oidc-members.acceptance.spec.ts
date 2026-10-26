@@ -74,6 +74,7 @@ test("member provisioning follows the actual provider; controlled OIDC binds a s
   expect(me.user.id).toBe(member.id);
   await page.getByRole("button",{ name: `查看 ${name} 的成员资料` }).click();
   const details = page.getByRole("dialog",{ name: `${name} · 成员资料` }), binding = details.getByRole("form",{ name: "OIDC 身份绑定" });
+  await expect(binding.getByRole("textbox", { name: /邮箱/ })).toHaveCount(0);
   await binding.getByLabel("Subject",{ exact: true }).fill(adminSubject);
   await binding.getByRole("button",{ name: "保存",exact: true }).focus(); await page.keyboard.press("Enter");
   await expect(binding.getByRole("alert")).toContainText("核对 Subject");

@@ -22,7 +22,7 @@ const completeCaseRun: AnalysisCaseRun = { id: "case-run", skillRevisionId: "dra
   results: [{ caseId: "case", name: "Case", draft: { score: 100, passed: true, traceReference: "trace", report: { confidence: 0.9, conclusion: "fault", impact: "fault",
     severity: "Warning", evidence: [], suggestedActions: ["inspect"], reportContext: { lineCount: 1, entryCount: 1 } } }, published: null, delta: 10 }], error: null, createdAt: "2026-10-19" };
 function setup(options: { section?: string; tab?: string; draft?: boolean; draftOnly?: boolean; deletion?: boolean; singleVersion?: boolean; noSample?: boolean; apiMode?: boolean; canEdit?: boolean; legacyDescription?: boolean; procedure?: string;
-  spec?: Partial<SkillSpec>; runParseTests?: NonNullable<SkillWorkspaceRepository["runSkillParseTests"]>; knowledgeRepository?: KnowledgeRepository; knowledgeCanEdit?: boolean } = {}) {
+  spec?: Partial<SkillSpec>; runParseTests?: NonNullable<SkillWorkspaceRepository["runSkillParseTests"]>; knowledgeRepository?: KnowledgeRepository; knowledgeCanEdit?: boolean; canOpenKnowledge?: boolean } = {}) {
   const skill = structuredClone(mockSkillWorkspace("skill-charging")!);
   const old: SkillRevision = { ...skill.currentRevision, id: "old", number: 1, status: "superseded", spec: { schemaVersion: "skill/v1", description: "旧描述" } };
   skill.currentRevision = { ...skill.currentRevision, id: "current", number: 2 };
@@ -85,6 +85,7 @@ function setup(options: { section?: string; tab?: string; draft?: boolean; draft
     const [search, setSearch] = useState(`?section=${options.section ?? "overview"}${options.tab ? `&tab=${options.tab}` : ""}`);
     return <SkillWorkspace skillId="skill-charging" search={search} repository={repository} apiMode={options.apiMode ?? true} canEdit={options.canEdit ?? true}
       knowledgeRepository={options.knowledgeRepository} knowledgeCapability={{ userId: "user", canView: true, canEdit: options.knowledgeCanEdit ?? false, canManage: false }}
+      canOpenKnowledge={options.canOpenKnowledge}
       onPublished={onPublished} onNavigate={(path) => {
         const apply = () => { onNavigate(path); if (path.includes("?section=")) setSearch(path.slice(path.indexOf("?"))); };
         const decision = requestSettingsLeave();
@@ -167,13 +168,15 @@ describe("skill workspace", () => {
     for (const name of ["保存草稿", "发布", "放弃草稿"]) expect(within(actions).getByRole("button", { name })).toBeEnabled();
   });
 
-  it("explains the disabled dry run beside its button without requiring hover", async () => {
+  it("explains the disabled dry run through its description and keyboard tooltip", async () => {
     setup({ noSample: true });
     const button = await screen.findByRole("button", { name: "试运行" });
     expect(button).toBeDisabled();
     expect(button).toHaveAccessibleDescription("先上传样例日志");
-    expect(screen.getByText("先上传样例日志")).toBeVisible();
-    expect(button.previousElementSibling).toHaveTextContent("先上传样例日志");
+    expect(button.previousElementSibling).toHaveClass("sr-only");
+    expect(button.parentElement).toHaveAttribute("tabindex", "0");
+    button.parentElement!.focus();
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("先上传样例日志");
   });
 
   it("hides version comparisons until two revisions exist", async () => {
@@ -533,6 +536,27 @@ describe("skill workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
     await waitFor(() => expect(repository.saveSkillDraft).toHaveBeenCalledWith("skill-charging", expect.objectContaining({ signalRules: expect.objectContaining({ rules: [expect.objectContaining({ name: "Timeout", anyOf: [{ type: "text", pattern: "timeout" }] })] }) }), null, "current"));
   });
+  it("keeps linked knowledge readable without entry, creation or association controls when unpublished", async () => {
+    const entry: KnowledgeEntry = {
+      id: "knowledge-1", title: "只读热管理知识", contentForm: "markdown", status: "published", tags: [], origin: "authored", sourceType: "human",
+      sourceSessionId: null, sourceLogId: null, sourceReloadRunId: null, createdByUserId: "user", headRevisionNumber: 3,
+      createdAt: "2026-10-19T10:00:00Z", updatedAt: "2026-10-19T10:00:00Z", publishedAt: "2026-10-19T10:00:00Z", archivedAt: null,
+      contentMarkdown: "# 检查步骤", file: null, parameterReferences: []
+    };
+    const knowledgeRepository = { getBinding: vi.fn(async () => ({ entry, deleted: false })), createFile: vi.fn() };
+    setup({ section: "knowledge", spec: { knowledgeEntryIds: [entry.id] }, canOpenKnowledge: false, knowledgeCanEdit: true,
+      knowledgeRepository: knowledgeRepository as unknown as KnowledgeRepository });
+    expect(await screen.findByText("只读热管理知识")).toBeVisible();
+    const table = within(screen.getByRole("table", { name: "已链接知识条目" }));
+    expect(table.getByText("v3")).toBeVisible();
+    expect(table.getByText("已发布")).toBeVisible();
+    expect(table.queryByRole("link")).not.toBeInTheDocument();
+    expect(table.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "链接已有条目" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "上传 Markdown / 文本" })).not.toBeInTheDocument();
+    expect(knowledgeRepository.createFile).not.toHaveBeenCalled();
+  });
+
   it("opens the knowledge section and saves selected links through the skill draft", async () => {
     const knowledgeRepository = { list: vi.fn(async () => ({ items: [{ id: "00000000-0000-4000-8000-000000000001", title: "热管理知识", status: "published", headRevisionNumber: 1 }] })),
       get: vi.fn(async () => null) } as unknown as KnowledgeRepository;
@@ -731,6 +755,7 @@ describe("skill workspace", () => {
   });
   it("edits parsing in the shared draft, saves and publishes it, and blocks invalid YAML", async () => {
     const { repository } = setup({ section: "parsing" });
+    await userEvent.click(await screen.findByRole("tab", { name: "抽取规则" }));
     await userEvent.click(await screen.findByRole("tab", { name: "代码视图" }));
     const editor = await screen.findByRole("textbox", { name: "代码视图 · YAML" });
     fireEvent.change(editor, { target: { value: "schemaVersion: parsing/v1\nextractors: [" } });

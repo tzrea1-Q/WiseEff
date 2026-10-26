@@ -873,6 +873,8 @@ describe("UserPermissionsPage", () => {
     const trigger = await screen.findByRole("button", { name: "按普通成员启用" }); trigger.focus(); await userEvent.keyboard("{Enter}");
     const dialog = screen.getByRole("dialog", { name: "按普通成员启用？" });
     expect(dialog).toHaveTextContent("软件开发"); expect(dialog).toHaveTextContent("不授予");
+    expect(dialog).toHaveTextContent("启用角色：软件开发");
+    expect(dialog).not.toHaveTextContent("申请角色：软件MDE");
     await userEvent.click(within(dialog).getByRole("button", { name: "启用普通成员" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("重试"); expect(dialog).toHaveTextContent("Committer Candidate");
     await userEvent.click(within(dialog).getByRole("button", { name: "启用普通成员" }));

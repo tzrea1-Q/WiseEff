@@ -729,27 +729,30 @@ styleTest("shared library rows wrap long identities, retain selection and scroll
   expect((await bounds(page.locator(".param-admin-main"))).bottom).toBeLessThanOrEqual(shell.bottom);
 });
 
-styleTest("sidebar feedback stays bottom-aligned and the existing compact drawer can reveal navigation", async ({ page }) => {
+styleTest("admin navigation fits without scrolling and the existing compact drawer can reveal navigation", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   const blockedRequests = await installConsistencyReadGuard(page.context());
   await page.route("**/api/v1/agent/xiaoze/suggest", (route) => route.fulfill({ json: { suggestions: [] } }));
   await page.addInitScript(() => localStorage.setItem("wiseeff.sidebar.collapsed", "false"));
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await test.step("quality:navigation", () => signInBrowserAsRole(page, "software-committer", "/parameters?project=aurora"));
+  await test.step("quality:navigation", () => signInBrowserAsRole(page, "admin", "/parameters?project=aurora"));
   await test.step("quality:readiness", () => expectUsablePage(page));
   await prepareInteractionSurface(page);
   await waitForFontsAndNextPaint(page);
   const sidebar = page.getByRole("complementary", { name: "主导航侧边栏" });
-  const feedback = sidebar.getByRole("button", { name: "问题反馈" });
+  await expect(sidebar.getByRole("button", { name: "问题反馈" })).toBeInViewport({ ratio: 1 });
+  await expect(page.locator('footer[aria-label="页脚信息"]').getByRole("button", { name: "问题反馈" })).toHaveCount(1);
   await expect(sidebar).toHaveClass(/sidebar-expanded/);
   const navigation = sidebar.getByRole("navigation", { name: "主导航" });
-  expect((await bounds(feedback)).y).toBeGreaterThanOrEqual((await bounds(sidebar.locator(".nav-scroll"))).bottom);
+  const viewport = sidebar.locator('[data-slot="scroll-area-viewport"]');
+  expect(await viewport.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeLessThanOrEqual(1);
+  for (const item of await navigation.getByRole("button").all()) await expect(item).toBeInViewport({ ratio: 1 });
+  await expect(navigation.getByRole("button", { name: "知识后台", exact: true })).toBeInViewport({ ratio: 1 });
   const bottomInset = await sidebar.evaluate((element) => parseFloat(getComputedStyle(element).paddingBottom));
   expect((await bounds(sidebar.locator(".utility-nav"))).bottom).toBeCloseTo((await bounds(sidebar)).bottom - bottomInset, 0);
-  await expect(feedback).toHaveCSS("align-items", "flex-start");
   await sidebar.getByRole("button", { name: "收起侧边栏" }).click();
   await expect(sidebar).toHaveClass(/sidebar-collapsed/);
   await expect(page.locator(".utility-nav")).toHaveCSS("display", "block");
-  await expect(feedback).toBeVisible();
   await page.setViewportSize({ width: 900, height: 900 });
   expect((await bounds(page.getByRole("button", { name: /打开用户菜单$/ }))).width).toBe(38);
   await page.setViewportSize({ width: 768, height: 900 });
