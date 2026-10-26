@@ -81,6 +81,25 @@ const moduleRegistry: ParameterModuleRegistry = {
 };
 
 describe("JsonBindingPanel", () => {
+  it("shows latest published meaning while keeping a pinned JSON value", async () => {
+    const loadLatestParameterSpec = vi.fn().mockResolvedValue({
+      definitionId: "canonical-json", propertyKey: "charging-policy", revisionId: "rev-new",
+      revisionNumber: 4, contentDigest: "sha256:rev-new", displayName: "最新 JSON 名称",
+      documentation: "最新已发布的 JSON 说明", unit: null, examples: ["sample"],
+      valueShape: { kind: "json-schema", schema: { type: "object" } },
+      constraints: { kind: "none" }, catalogReleaseId: "release-new"
+    });
+    render(<JsonBindingPanel bindings={[{ ...jsonBinding, definitionId: "canonical-json",
+      effectiveRevisionId: "rev-old", documentation: "旧 JSON 说明" }]}
+      loadLatestParameterSpec={loadLatestParameterSpec} />);
+    fireEvent.click(screen.getByRole("button", { name: "参数详情 charging-policy" }));
+    const dialog = await screen.findByRole("dialog", { name: "最新 JSON 名称 参数详情" });
+    expect(within(dialog).getByText("最新已发布的 JSON 说明")).toBeInTheDocument();
+    expect(within(dialog).queryByText("旧 JSON 说明")).not.toBeInTheDocument();
+    expect(within(dialog).getByText(/项目合同仍固定于 rev-old/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/"values"/)).toBeInTheDocument();
+  });
+
   it("consumes a tray edit request once across background refreshes and accepts a new token", () => {
     const props = { bindings: [jsonBinding, secondBinding], requestedEditBindingId: secondBinding.id, editRequestToken: 1 };
     const view = render(<JsonBindingPanel {...props} />);
