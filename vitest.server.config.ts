@@ -10,7 +10,7 @@ const isNestedWorktree = /[\\/]\.worktrees[\\/]/.test(projectRoot);
 const siblingWorktreeExclude = isNestedWorktree ? [] : [".worktrees/**"];
 class ServerDurationSequencer extends BaseSequencer {
   async sort(files: TestSpecification[]): Promise<TestSpecification[]> {
-    const relativeFile = (file: TestSpecification) => path.relative(projectRoot, file.moduleId).split(path.sep).join("/");
+    const relativeFile = (file: TestSpecification) => path.relative(this.ctx.config.root, file.moduleId).split(path.sep).join("/");
     const ranks = new Map(orderServerFiles(files.map(relativeFile)).map((file, index) => [file, index]));
     return [...files].sort((left, right) => ranks.get(relativeFile(left))! - ranks.get(relativeFile(right))!);
   }
