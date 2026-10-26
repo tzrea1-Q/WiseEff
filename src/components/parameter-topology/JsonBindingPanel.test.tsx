@@ -97,7 +97,9 @@ describe("JsonBindingPanel", () => {
     expect(within(dialog).getByText("最新已发布的 JSON 说明")).toBeInTheDocument();
     expect(within(dialog).queryByText("旧 JSON 说明")).not.toBeInTheDocument();
     expect(within(dialog).getByText(/项目合同仍固定于 rev-old/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/"values"/)).toBeInTheDocument();
+    expect(within(dialog).getByRole("region", { name: "当前配置" })
+      .querySelector("pre.json-binding-card__preview-code"))
+      .toHaveTextContent(/"values"\s*:\s*\[\s*1,\s*2\s*\]/);
   });
 
   it("consumes a tray edit request once across background refreshes and accepts a new token", () => {
