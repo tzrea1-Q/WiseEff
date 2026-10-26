@@ -1,7 +1,7 @@
 import { expect, type Locator } from "playwright/test";
 
-/** Choose through the visible menu and wait for its trigger focus to settle. */
-export async function selectControlOption(trigger: Locator, value: string | { label: string }) {
+/** Choose through the visible menu and wait for its requested state after closing. */
+export async function selectControlOption(trigger: Locator, value: string | { label: string }, settled: "focused" | "disabled" = "focused") {
   await trigger.click();
   const listbox = trigger.page().getByRole("listbox");
   await listbox.waitFor({ state: "visible" });
@@ -15,7 +15,8 @@ export async function selectControlOption(trigger: Locator, value: string | { la
     await options.nth(index).click();
   }
   await listbox.waitFor({ state: "hidden" });
-  await expect(trigger).toBeFocused();
+  if (settled === "disabled") await expect(trigger).toBeDisabled();
+  else await expect(trigger).toBeFocused();
 }
 
 /** Inspect the visible menu without changing the current selection. */

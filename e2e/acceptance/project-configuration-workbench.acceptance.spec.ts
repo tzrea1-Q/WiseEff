@@ -4042,9 +4042,10 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     let releaseVersions:()=>void=()=>{};const versionsGate=new Promise<void>(resolve=>{releaseVersions=resolve;});
     const versionsPattern=`**/api/v2/shared-dtsi/${resourceId}/versions?*`;
     await page.route(versionsPattern,async intercepted=>{await versionsGate;await intercepted.continue();});
-    await selectControlOption(dialog.getByRole("combobox",{name:"共享资源",exact:true}),resourceId);
-    try{await expect(dialog.getByText("正在读取共享版本…",{exact:true})).toBeVisible();await expect(dialog.getByRole("button",{name:"预览共享转换",exact:true})).toBeDisabled();const loading=testInfo.outputPath("private-conversion-loading-1440.png");await page.screenshot({path:loading});}
+    const resourceControl=dialog.getByRole("combobox",{name:"共享资源",exact:true});
+    try{await selectControlOption(resourceControl,resourceId,"disabled");await expect(dialog.getByText("正在读取共享版本…",{exact:true})).toBeVisible();await expect(resourceControl).toBeDisabled();await expect(dialog.getByRole("button",{name:"预览共享转换",exact:true})).toBeDisabled();const loading=testInfo.outputPath("private-conversion-loading-1440.png");await page.screenshot({path:loading});}
     finally{releaseVersions();}
+    await expect(resourceControl).toBeFocused();
     await selectControlOption(dialog.getByRole("combobox",{name:"固定版本",exact:true}),versionId);await page.unroute(versionsPattern);
     const previewPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition/preview`;
     const previewing=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===previewPath);
