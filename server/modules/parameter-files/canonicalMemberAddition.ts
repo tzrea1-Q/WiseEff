@@ -464,7 +464,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   if(dts.length && entryFile){
     const files=new Map(dts.map(row=>[row.sourceName,{content:contents.get(row.fileId)!,fileVersionId:row.fileVersionId}]));
     const formerRootOverlayFiles = await loadFormerRootOverlayFiles(tx, input.configSetId, afterMembers, overlayOrder);
-    const validated = await (toolchain ?? createDtsToolchainRunner()).validate({ entryFile, includeSearchPaths, defines, overlayOrder, files, formerRootOverlayFiles }, { mode: "release" });
+    const validated = await (toolchain ?? createDtsToolchainRunner()).validate({ entryFile, includeSearchPaths, defines, overlayOrder, files, formerRootOverlayFiles, preparedSources: resolved?.preprocessing }, { mode: "release" });
     diagnostics.push(...validated.diagnostics.map((row) => ({ severity: row.severity, code: row.code ?? "toolchain",
       message: input.setAsRoot ? rootDiagnosticMessage(row.code ?? "toolchain", row.message,
         `${row.file}${row.line ? `，第 ${row.line} 行` : ""}`) : row.message })));
@@ -668,7 +668,7 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
     if (proof.entryFile && proof.continuity) {
       const revision = await ingestConfigRevisionInTransaction(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId,
         configSetId: input.configSetId, entryFile: proof.entryFile, includeSearchPaths: proof.includeSearchPaths,
-        overlayOrder: proof.overlayOrder, preprocessing:proof.preprocessing, declaredBuildInputs:proof.declaredBuildInputs, members }, auth, { createdByUserId: auth.user.id, domain: attribution }, { reviewedSource: proof.continuity });
+        overlayOrder: proof.overlayOrder, preprocessing:proof.preprocessing, declaredBuildInputs:proof.declaredBuildInputs, members }, auth, { createdByUserId: auth.user.id, domain: attribution }, { reviewedSource: proof.continuity, preparedSources: inspected.resolved?.preprocessing });
       if (revision.status !== "resolved") conflict("文件组成无法构建，所有变更已回滚。");
       if(snapshot)await produceDtsReviewEvidenceInTransaction(tx,db,storage,auth,revision.id);
       revisionId = revision.id;

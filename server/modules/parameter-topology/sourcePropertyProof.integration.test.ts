@@ -11,6 +11,9 @@ import { loadExactSourceRevisionForProof, lockExactSourceRevisionsForProof } fro
 import { ingestConfigRevision } from "./ingestService";
 import { proveExactDtsProperty, type ExactDtsSourceIdentity } from "./sourcePropertyProof";
 import type { ConfigRevisionManifest } from "./types";
+import { prepareDtsSources } from "../dts/cppSources";
+import { resolveDtsConfigSetAsync } from "../dts/configSetResolver";
+import { createDtsToolchainRunner } from "../parameter-files/dtsToolchain";
 
 describe("exact DTS source value proof before pin creation", () => {
   let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>>;
@@ -110,7 +113,22 @@ describe("exact DTS source value proof before pin creation", () => {
       await db.query("update project_parameter_files set current_version_id=$2 where id=$1", [fileId, fileVersionId]);
       manifest.members.push({ fileId, fileVersionId, fileName: file.name, content: file.content, role: file.role, sortOrder: index });
     }
-    const revision = await ingestConfigRevision(db, manifest, makeTestAuthContext({ userId, organizationId }));
+    const input = { entryFile: manifest.entryFile, includeSearchPaths: ["."], overlayOrder: manifest.overlayOrder, defines: manifest.defines,
+      files: new Map(manifest.members.map(member => [member.fileName, { content: member.content, fileVersionId: `provisional-${member.fileName}` }])) };
+    const preparedSources = (await prepareDtsSources(input))!;
+    const document = preparedSources.documents.get("cpp-board.dts")!;
+    const node = document.document.topLevel[0]!.children.find(child => child.kind === "node" && child.name === "target");
+    if (!node || node.kind !== "node") throw new Error("Prepared CPP target is missing");
+    const property = node.children.find(child => child.kind === "property" && child.name === "limit");
+    if (!property || property.kind !== "property") throw new Error("Prepared CPP value is missing");
+    const snapshot = () => JSON.stringify({ ...preparedSources, documents: [...preparedSources.documents], originalDocuments: [...preparedSources.originalDocuments], origin: document.originForSpan(property.span) });
+    const frozen = snapshot();
+    expect((await resolveDtsConfigSetAsync({ ...input, preparedSources })).diagnostics).toEqual([]);
+    expect((await createDtsToolchainRunner().validate({ ...input, preparedSources }, { mode: "release" })).ok).toBe(true);
+    const auth = makeTestAuthContext({ userId, organizationId });
+    const stale = await ingestConfigRevision(db, manifest, auth, { preparedSources: { ...preparedSources, receipt: { ...preparedSources.receipt, inputDigest: `sha256:${"0".repeat(64)}` } } });
+    expect(stale.status).toBe("invalid");
+    const revision = await ingestConfigRevision(db, manifest, auth, { preparedSources });
     expect(revision.status).toBe("resolved");
     expect(revision.preprocessing).toMatchObject({ schemaVersion: "dts-cpp/v1", compilerVersion: "14.2.0", defines: { ENABLED: "1" } });
     expect(revision.declaredBuildInputs).toEqual(manifest.declaredBuildInputs);
@@ -121,7 +139,11 @@ describe("exact DTS source value proof before pin creation", () => {
     const cppIdentity = { organizationId, projectId, configSetId: cppSet, configRevisionId: revision.id, fileId: "cpp-file-0", fileVersionId: "cpp-version-0", propertyName: "limit", ...row };
     const proof = await db.transaction(tx => proveExactDtsProperty(tx, storage, cppIdentity));
     expect(proof).toMatchObject({ sourceName: "cpp-board.dts", sourceSpan: { start: source.indexOf("<BIT"), end: source.indexOf("<BIT") + "<BIT(3)>".length },
-      value: { kind: "cells", groups: [[{ value: "8" }]] } });
+      fileVersionId: "cpp-version-0", value: { kind: "cells", groups: [[{ value: "8" }]] } });
+    const resolvedAgain = await resolveDtsConfigSetAsync({ ...input, preparedSources,
+      files: new Map(manifest.members.map(member => [member.fileName, { content: member.content, fileVersionId: member.fileVersionId }])) });
+    expect(resolvedAgain.effective.nodesByLocator.get("/target")?.properties.get("limit")?.sourceChain.at(-1)?.origin?.fileVersionId).toBe("cpp-version-0");
+    expect(snapshot()).toBe(frozen);
     expect((await db.query<{ raw_text: string; ast_json: unknown }>("select raw_text,ast_json from dts_property_occurrences where id=$1", [row.propertyOccurrenceId])).rows[0])
       .toMatchObject({ raw_text: "<BIT(3)>", ast_json: { kind: "cells", groups: [[{ value: "8" }]] } });
     await expect(db.transaction(async tx => {
