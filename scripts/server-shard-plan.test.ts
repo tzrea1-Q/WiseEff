@@ -6,6 +6,13 @@ import path from "node:path";
 import { balanceServerShards, orderServerFiles, serverDurationsFromReport } from "./server-shard-plan";
 
 describe("duration-balanced backend ownership", () => {
+  it("defaults to three complete, disjoint backend owners", () => {
+    const files = ["a", "b", "c", "d", "e", "f"].map((name) => `server/${name}.test.ts`);
+    const plan = balanceServerShards(files);
+    expect(plan).toHaveLength(3);
+    expect(plan.map((shard) => shard.files.length)).toEqual([2, 2, 2]);
+    expect(plan.flatMap((shard) => shard.files).sort()).toEqual(files);
+  });
   it("runs long files first without changing the inventory, with conservative unknown weights and deterministic ties", () => {
     const files = ["server/d.test.ts", "server/b.test.ts", "server/a.test.ts", "server/c.test.ts"];
     const durations = { "server/a.test.ts": 90, "server/b.test.ts": 80, "server/c.test.ts": 80, "server/d.test.ts": 10 };
